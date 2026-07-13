@@ -21,6 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT ?? 8787);
+const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default; set HOST="" to bind all interfaces
 const UPSTREAM = "api.anthropic.com";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -82,6 +83,34 @@ function auditRequest(reqJson, realInputTokens) {
     totalBytes,
     realInputTokens,
   };
+}
+
+/** Structured sidecar next to each `.md` — the machine-readable facts the daily
+ * usage-summary reads (token/cost, context bloat, activity). The `.md` stays for
+ * humans; this is stable JSON for tooling. Auth is never included. */
+function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPath, audit, inputTokens, usage }) {
+  const u = usage ?? {};
+  const sidecar = {
+    timestamp,
+    model: reqJson?.model ?? "unknown",
+    endpoint: `${method} ${reqPath}`,
+    statusCode,
+    tokens: {
+      input: u.input_tokens ?? 0,
+      output: u.output_tokens ?? 0,
+      cacheRead: u.cache_read_input_tokens ?? 0,
+      cacheCreation: u.cache_creation_input_tokens ?? 0,
+      realInput: inputTokens ?? 0,
+    },
+    request: {
+      toolCount: audit.toolCount,
+      toolsBytes: audit.toolsBytes,
+      systemBytes: audit.systemBytes,
+      totalBytes: audit.totalBytes,
+    },
+    tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
+  };
+  return JSON.stringify(sidecar, null, 2);
 }
 
 /** The ranked table, as Markdown. The hero of the whole document. */
@@ -236,7 +265,7 @@ function decodeResponse(raw) {
   const inputTokens = usage
     ? (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
     : null;
-  return { markdown: parts.length ? parts.join("\n\n") : fence(raw), inputTokens };
+  return { markdown: parts.length ? parts.join("\n\n") : fence(raw), inputTokens, usage: usage ?? null };
 }
 
 function renderMarkdown(c, audit, responseMd) {
@@ -280,11 +309,12 @@ function handle(req, res) {
           if (isTokenCount(reqPath)) return;
           try {
             const reqJson = JSON.parse(body.toString("utf8"));
-            const { markdown, inputTokens } = decodeResponse(Buffer.concat(respChunks).toString("utf8"));
+            const { markdown, inputTokens, usage } = decodeResponse(Buffer.concat(respChunks).toString("utf8"));
             const audit = auditRequest(reqJson, inputTokens);
             fs.mkdirSync(LOG_DIR, { recursive: true });
             fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), body.toString("utf8"));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode: up.statusCode ?? 0, headers: req.headers }, audit, markdown));
+            fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode: up.statusCode ?? 0, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage }));
             printAudit(audit, base);
           } catch (err) {
             console.error(`[agent-proxy] could not render (non-JSON body?): ${err.message}`);
@@ -302,7 +332,7 @@ function handle(req, res) {
   });
 }
 
-http.createServer(handle).listen(PORT, () => {
-  console.log(`[agent-proxy] listening on http://localhost:${PORT}`);
+http.createServer(handle).listen(PORT, HOST || undefined, () => {
+  console.log(`[agent-proxy] listening on http://${HOST || "0.0.0.0"}:${PORT}`);
   console.log(`[agent-proxy] point Claude Code at it:  ANTHROPIC_BASE_URL=http://localhost:${PORT} claude`);
 });
