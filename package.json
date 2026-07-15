@@ -15,6 +15,7 @@
     "proxy": "pnpm --filter proxy start",
     "server": "pnpm --filter server dev",
     "admin": "pnpm --filter admin dev",
-    "summary": "pnpm --filter server summary"
+    "summary": "pnpm --filter server summary",
+    "zellij": "zellij --layout .zellij/claude-proxy.kdl"
   }
 }

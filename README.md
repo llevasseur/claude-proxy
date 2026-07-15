@@ -45,6 +45,10 @@ pnpm server                   # API on http://localhost:8788 (reads ./logs)
 pnpm admin                    # dashboard on http://localhost:5173
 ```
 
+Prefer one window? `pnpm zellij` opens the proxy, server, and dashboard in a
+split-pane [zellij](https://zellij.dev) layout (`.zellij/claude-proxy.kdl`),
+plus a spare shell tab.
+
 Point the server at a different log directory with `LOG_DIR=/path/to/logs`, and
 the dashboard at a different API with `VITE_API_BASE` (see `apps/admin/.env.example`).
 
