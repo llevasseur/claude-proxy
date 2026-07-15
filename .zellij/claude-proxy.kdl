@@ -1,0 +1,34 @@
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    tab name="dev" {
+        pane split_direction="vertical" {
+            pane name="proxy" {
+                command "pnpm"
+                args "proxy"
+            }
+            pane split_direction="horizontal" {
+                pane name="server" {
+                    command "pnpm"
+                    args "server"
+                }
+                pane name="admin" {
+                    command "pnpm"
+                    args "admin"
+                }
+            }
+        }
+    }
+
+    tab name="shell" {
+        pane
+    }
+}
