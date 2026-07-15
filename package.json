@@ -1,0 +1,20 @@
+{
+  "name": "claude-proxy-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Logging proxy for Claude Code plus an admin dashboard that monitors usage, trends, and advice from the captured audit logs.",
+  "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "proxy": "pnpm --filter proxy start",
+    "server": "pnpm --filter server dev",
+    "admin": "pnpm --filter admin dev",
+    "summary": "pnpm --filter server summary"
+  }
+}
