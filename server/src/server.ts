@@ -1,0 +1,76 @@
+import http from "node:http";
+import { buildSummary, buildTools, buildTrends } from "./api.js";
+import { countSidecarFiles, resolveLogDir } from "./logs.js";
+
+const PORT = Number(process.env.PORT ?? 8788);
+const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default
+const LOG_DIR = resolveLogDir();
+
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, OPTIONS",
+  "access-control-allow-headers": "*",
+};
+
+function send(res: http.ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { "content-type": "application/json", ...CORS });
+  res.end(JSON.stringify(body));
+}
+
+/** Parse `?days=` as a positive int in [1, 365], default 14. */
+function parseDays(raw: string | null): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 14;
+  return Math.min(365, Math.max(1, Math.floor(n)));
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function parseDate(raw: string | null): string | undefined {
+  return raw && DATE_RE.test(raw) ? raw : undefined;
+}
+
+const server = http.createServer(async (req, res) => {
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, CORS);
+    res.end();
+    return;
+  }
+
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const date = parseDate(url.searchParams.get("date"));
+
+  try {
+    switch (url.pathname) {
+      case "/api/health": {
+        let sidecarCount: number | null = null;
+        let logDirReadable = true;
+        try {
+          sidecarCount = await countSidecarFiles(LOG_DIR);
+        } catch {
+          logDirReadable = false;
+        }
+        send(res, 200, { ok: logDirReadable, logDir: LOG_DIR, logDirReadable, sidecarCount });
+        return;
+      }
+      case "/api/summary":
+        send(res, 200, await buildSummary(LOG_DIR, date));
+        return;
+      case "/api/trends":
+        send(res, 200, await buildTrends(LOG_DIR, parseDays(url.searchParams.get("days"))));
+        return;
+      case "/api/tools":
+        send(res, 200, await buildTools(LOG_DIR, date));
+        return;
+      default:
+        send(res, 404, { error: `not found: ${url.pathname}` });
+        return;
+    }
+  } catch (err) {
+    send(res, 500, { error: (err as Error).message });
+  }
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
+  console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
+});

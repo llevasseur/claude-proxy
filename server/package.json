@@ -1,0 +1,21 @@
+{
+  "name": "server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only API over the proxy's audit logs, plus a headless daily-summary job.",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "summary": "tsx src/daily-summary.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@claude-proxy/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
