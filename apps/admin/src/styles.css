@@ -237,6 +237,10 @@ body {
   background: var(--panel-2);
   color: var(--text);
 }
+.segmented button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
 /* bar chart */
 .barchart {
@@ -275,6 +279,69 @@ body {
   font-size: 10px;
   color: var(--muted);
   margin-top: 6px;
+}
+
+/* recharts tooltip + legend */
+.charttip {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.charttip-label {
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.charttip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.charttip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.charttip-name {
+  color: var(--muted);
+}
+.charttip-value {
+  color: var(--text);
+  margin-left: auto;
+}
+.chartlegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.chartlegend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chartlegend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+.window-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.window-nav .range {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 148px;
+  text-align: center;
 }
 
 /* tables */
