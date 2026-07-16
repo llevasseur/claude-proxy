@@ -2,11 +2,14 @@ import {
   computeDigest,
   digestsByDay,
   heuristicAdvice,
+  withheldReport,
   type Advice,
   type TopTool,
   type UsageDigest,
+  type WithheldReport,
 } from "@claude-proxy/core";
 import { readSidecars, shiftDay, today } from "./logs.js";
+import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
 
 export interface SummaryResponse {
   digest: UsageDigest;
@@ -51,4 +54,37 @@ export async function buildTools(logDir: string, date?: string, now: Date = new 
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day }, now);
   const digest = computeDigest(sidecars, { date: day, topN: 200 });
   return { date: day, topTools: digest.topTools, meta: { files, parseErrors } };
+}
+
+export interface WithheldResponse {
+  /** The device settings file the deny-list was read from (device-specific). */
+  settingsPath: string;
+  settingsReadable: boolean;
+  report: WithheldReport;
+  meta: { days: number; files: number; parseErrors: number };
+}
+
+/**
+ * The device's withheld-tools policy: which tool schemas `~/.claude/settings.json`
+ * keeps out of every request, cross-referenced with the last `days` of traffic
+ * so we can confirm each is actually absent. This is a policy/verification view,
+ * hence a window rather than a single day.
+ */
+export async function buildWithheld(
+  logDir: string,
+  days: number,
+  settingsPath: string = resolveSettingsPath(),
+  now: Date = new Date(),
+): Promise<WithheldResponse> {
+  const [{ sidecars, files, parseErrors }, settings] = await Promise.all([
+    readSidecars(logDir, { sinceDays: days }, now),
+    readDeviceSettings(settingsPath),
+  ]);
+  const report = withheldReport(sidecars, settings.denyRules);
+  return {
+    settingsPath: settings.settingsPath,
+    settingsReadable: settings.readable,
+    report,
+    meta: { days, files, parseErrors },
+  };
 }

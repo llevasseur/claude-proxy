@@ -4,6 +4,7 @@ import { AdvicePage } from "./routes/advice";
 import { OverviewPage } from "./routes/overview";
 import { ToolsPage } from "./routes/tools";
 import { TrendsPage } from "./routes/trends";
+import { WithheldPage } from "./routes/withheld";
 
 function RootLayout() {
   const activeProps = { className: "navlink active" };
@@ -23,6 +24,9 @@ function RootLayout() {
           <Link to="/tools" className="navlink" activeProps={activeProps}>
             Tool bloat
           </Link>
+          <Link to="/withheld" className="navlink" activeProps={activeProps}>
+            Not added
+          </Link>
           <Link to="/advice" className="navlink" activeProps={activeProps}>
             Advice
           </Link>
@@ -41,8 +45,9 @@ const rootRoute = createRootRoute({ component: RootLayout });
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: OverviewPage });
 const trendsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/trends", component: TrendsPage });
 const toolsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tools", component: ToolsPage });
+const withheldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/withheld", component: WithheldPage });
 const adviceRoute = createRoute({ getParentRoute: () => rootRoute, path: "/advice", component: AdvicePage });
 
-const routeTree = rootRoute.addChildren([indexRoute, trendsRoute, toolsRoute, adviceRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, trendsRoute, toolsRoute, withheldRoute, adviceRoute]);
 
 export const router = createRouter({ routeTree });
