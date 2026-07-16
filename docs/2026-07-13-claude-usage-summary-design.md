@@ -1,3 +1,11 @@
+---
+type: design
+title: Claude Usage Daily Summary — Design Spec
+description: Device-wide Claude Code usage capture producing a once-daily end-of-day summary.
+tags: [usage, daily-summary, design]
+timestamp: 2026-07-13
+---
+
 # Claude Usage Daily Summary — Design Spec
 
 **Date:** 2026-07-13

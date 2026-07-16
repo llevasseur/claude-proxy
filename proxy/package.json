@@ -1,0 +1,13 @@
+{
+  "name": "proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-dependency logging proxy between Claude Code and the Anthropic API.",
+  "type": "module",
+  "bin": {
+    "claude-proxy": "./proxy.mjs"
+  },
+  "scripts": {
+    "start": "node proxy.mjs"
+  }
+}

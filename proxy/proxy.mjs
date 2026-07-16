@@ -25,7 +25,9 @@ const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default; set 
 const UPSTREAM = "api.anthropic.com";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const LOG_DIR = path.join(HERE, "logs");
+// Logs live at the repo root (shared with the dashboard server), not next to
+// this file. Override with LOG_DIR to point elsewhere.
+const LOG_DIR = process.env.LOG_DIR ?? path.join(HERE, "..", "logs");
 
 /** Rough token estimate for display. Real input tokens come from the response
  * usage; this is only for ranking the request before the reply arrives. */
