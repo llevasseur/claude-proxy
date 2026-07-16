@@ -14,6 +14,10 @@ layout {
             pane name="proxy" {
                 command "pnpm"
                 args "proxy"
+                // Proxy reads PORT; 8787 (its default) conflicts on this machine.
+                env {
+                    PORT "8036"
+                }
             }
             pane split_direction="horizontal" {
                 pane name="server" {

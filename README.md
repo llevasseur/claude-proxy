@@ -23,10 +23,14 @@ machine-readable `.audit.json` sidecar. Auth headers (`authorization`,
 on disk.
 
 ```bash
-node proxy/proxy.mjs          # zero deps, Node 18+
+PORT=8036 node proxy/proxy.mjs   # zero deps, Node 18+ (PORT defaults to 8787)
 # point Claude Code at it in another terminal:
-ANTHROPIC_BASE_URL=http://localhost:8787 claude
+ANTHROPIC_BASE_URL=http://localhost:8036 claude
 ```
+
+The proxy binds `PORT` (default `8787`). Override it — `PORT=8036 pnpm proxy` —
+when that port is taken, and point `ANTHROPIC_BASE_URL` at the same port. The
+zellij dev layout already launches the proxy on `8036`.
 
 Each request lands in `./logs/<timestamp>_anthropic.{md,request.txt,audit.json}`.
 The proxy still runs with bare `node` — no install required.
@@ -70,11 +74,14 @@ pnpm --filter server summary 2026-07-14   # a specific day
 
 ## Ports
 
-| | Port |
-|---|---|
-| proxy | 8787 |
-| server API | 8788 |
-| admin (Vite dev) | 5173 |
+| | Port | Env var |
+|---|---|---|
+| proxy | 8787 (dev layout uses 8036) | `PORT` |
+| server API | 8788 | `PORT` |
+| admin (Vite dev) | 5173 | — (`VITE_API_BASE` → server) |
+
+Both the proxy and server read the bare `PORT` var, so set it **per process**
+(`PORT=8036 pnpm proxy`), not as a shared shell export, or they will collide.
 
 ## Develop
 
