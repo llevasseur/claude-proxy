@@ -6,36 +6,54 @@ import { ToolsPage } from "./routes/tools";
 import { TrendsPage } from "./routes/trends";
 import { WithheldPage } from "./routes/withheld";
 
+/** Nav stations along "the line" — each is a tap on the proxy's inline conduit. */
+const STATIONS = [
+  { to: "/", label: "Overview", hint: "today", exact: true },
+  { to: "/trends", label: "Trends", hint: "history", exact: false },
+  { to: "/tools", label: "Tool bloat", hint: "context", exact: false },
+  { to: "/withheld", label: "Not added", hint: "withheld", exact: false },
+  { to: "/advice", label: "Advice", hint: "coaching", exact: false },
+] as const;
+
 function RootLayout() {
-  const activeProps = { className: "navlink active" };
+  const activeProps = { className: "station active" };
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          claude-proxy <span>admin</span>
+      <aside className="rail">
+        <div className="rail-head">
+          <span className="brand-node" aria-hidden />
+          <span className="brand">
+            claude<span className="brand-sep">·</span>proxy
+          </span>
+          <span className="brand-tag">admin</span>
         </div>
-        <nav className="nav">
-          <Link to="/" className="navlink" activeProps={activeProps} activeOptions={{ exact: true }}>
-            Overview
-          </Link>
-          <Link to="/trends" className="navlink" activeProps={activeProps}>
-            Trends
-          </Link>
-          <Link to="/tools" className="navlink" activeProps={activeProps}>
-            Tool bloat
-          </Link>
-          <Link to="/withheld" className="navlink" activeProps={activeProps}>
-            Not added
-          </Link>
-          <Link to="/advice" className="navlink" activeProps={activeProps}>
-            Advice
-          </Link>
+
+        <nav className="stations" aria-label="Sections">
+          {STATIONS.map((s) => (
+            <Link
+              key={s.to}
+              to={s.to}
+              className="station"
+              activeProps={activeProps}
+              activeOptions={s.exact ? { exact: true } : undefined}
+            >
+              <span className="station-node" aria-hidden />
+              <span className="station-label">{s.label}</span>
+              <span className="station-hint">{s.hint}</span>
+            </Link>
+          ))}
         </nav>
-        <HealthBadge />
-      </header>
-      <main className="content">
-        <Outlet />
-      </main>
+
+        <div className="rail-foot">
+          <HealthBadge />
+        </div>
+      </aside>
+
+      <div className="workspace">
+        <main className="content">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
