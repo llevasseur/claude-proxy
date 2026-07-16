@@ -1,5 +1,5 @@
 import http from "node:http";
-import { buildSummary, buildTools, buildTrends } from "./api.js";
+import { buildSummary, buildTools, buildTrends, buildWithheld } from "./api.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
@@ -60,6 +60,9 @@ const server = http.createServer(async (req, res) => {
         return;
       case "/api/tools":
         send(res, 200, await buildTools(LOG_DIR, date));
+        return;
+      case "/api/withheld":
+        send(res, 200, await buildWithheld(LOG_DIR, parseDays(url.searchParams.get("days"))));
         return;
       default:
         send(res, 404, { error: `not found: ${url.pathname}` });
