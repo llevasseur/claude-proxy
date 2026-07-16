@@ -5,7 +5,7 @@ export interface Series {
   dataKey: string;
   /** Human label shown in the tooltip. */
   name: string;
-  /** Line stroke — use a CSS variable so it tracks the theme. */
+  /** Line stroke colour. */
   color: string;
 }
 

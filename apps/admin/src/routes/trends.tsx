@@ -11,7 +11,7 @@ const WINDOWS = [7, 14, 30];
 /** How many days the per-request chart shows per page. */
 const WINDOW_DAYS = 3;
 
-/** Per-request token series, coloured off the theme accents. */
+/** Per-request token series. */
 const PER_REQUEST_SERIES: Series[] = [
   { dataKey: "realInput", name: "Real input", color: "var(--accent)" },
   { dataKey: "output", name: "Output", color: "var(--good)" },
