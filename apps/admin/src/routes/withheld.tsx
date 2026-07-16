@@ -20,7 +20,8 @@ export function WithheldPage() {
   const data = query.data;
   const report = data?.report;
   const rules = report?.rules ?? [];
-  const leaking = report?.rulesStillLeaking ?? 0;
+  const stillPresent = report?.rulesStillPresent ?? 0;
+  const wasPresent = report?.rulesWasPresent ?? 0;
 
   return (
     <section>
@@ -49,17 +50,16 @@ export function WithheldPage() {
                 <span className="rule-name">{data.settingsPath}</span> · checked against{" "}
                 <strong>{fmtInt(report!.requestsSampled)}</strong> request
                 {report!.requestsSampled === 1 ? "" : "s"} over the last {data.meta.days} days.{" "}
-                {leaking === 0 ? (
-                  <span className="badge absent">all absent</span>
-                ) : (
-                  <span className="badge present">{leaking} still seen in window</span>
-                )}
+                {stillPresent > 0 && <span className="badge present">{stillPresent} still present</span>}{" "}
+                {wasPresent > 0 && <span className="badge was-present">{wasPresent} was present</span>}{" "}
+                {stillPresent === 0 && wasPresent === 0 && <span className="badge absent">all absent</span>}
               </div>
-              {leaking > 0 && (
+              {(stillPresent > 0 || wasPresent > 0) && (
                 <div className="leak-note" style={{ marginTop: 8 }}>
-                  The window can include requests captured <em>before</em> a rule was added — check “last seen”. A
-                  recent timestamp means the tool is still reaching the model (check the exact name and settings
-                  precedence); an old one is just pre-config history aging out.
+                  <strong>Still present</strong> = the tool was in the most recent captured request, so it's still
+                  reaching the model right now (a session that predates the rule is still open, or the name doesn't
+                  match — check spelling and settings precedence). <strong>Was present</strong> = only in older
+                  requests: pre-config history aging out of the window, not live.
                 </div>
               )}
             </div>
@@ -83,17 +83,21 @@ export function WithheldPage() {
                         </span>
                       </td>
                       <td>
-                        {r.stillPresent.length === 0 ? (
+                        {r.status === "absent" ? (
                           <span className="badge absent">absent</span>
                         ) : (
                           <>
-                            <span className="badge present">still present</span>{" "}
+                            <span className={`badge ${r.status === "still-present" ? "present" : "was-present"}`}>
+                              {r.status === "still-present" ? "still present" : "was present"}
+                            </span>{" "}
                             <span className="leak-note">
-                              {r.stillPresent.map((t, i) => (
+                              {r.observed.map((t, i) => (
                                 <span key={t.name}>
                                   {i > 0 ? ", " : ""}
-                                  <span className="present-tool">{t.name}</span> ×{fmtInt(t.occurrences)} (last seen{" "}
-                                  {shortTs(t.lastSeen)})
+                                  <span className={r.status === "still-present" ? "present-tool" : "was-tool"}>
+                                    {t.name}
+                                  </span>{" "}
+                                  ×{fmtInt(t.occurrences)} (last seen {shortTs(t.lastSeen)})
                                 </span>
                               ))}
                             </span>

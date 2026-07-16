@@ -50,11 +50,14 @@ describe("withheldReport", () => {
   it("reports schema-stripping rules and separates scoped ones", () => {
     const r = withheldReport([], deny);
     expect(r.rules.map((x) => x.rule)).toEqual(["Artifact", "mcp__claude_ai_Linear__authenticate"]);
+    expect(r.rules.every((x) => x.status === "absent")).toBe(true);
     expect(r.scopedRules).toEqual(["Bash(rm *)"]);
-    expect(r.rulesStillLeaking).toBe(0);
+    expect(r.rulesStillPresent).toBe(0);
+    expect(r.rulesWasPresent).toBe(0);
+    expect(r.latestRequestTs).toBeNull();
   });
 
-  it("flags a withheld tool that still appears in sampled requests", () => {
+  it("marks a withheld tool still-present when it's in the latest request", () => {
     const s = makeSidecar({
       timestamp: "2026-07-16T10:00:00.000Z",
       tools: [
@@ -64,18 +67,38 @@ describe("withheldReport", () => {
     });
     const r = withheldReport([s], deny);
     const artifact = r.rules.find((x) => x.rule === "Artifact")!;
-    expect(artifact.stillPresent).toHaveLength(1);
-    expect(artifact.stillPresent[0]).toMatchObject({ name: "Artifact", occurrences: 1, lastSeen: "2026-07-16T10:00:00.000Z" });
-    expect(r.rulesStillLeaking).toBe(1);
+    expect(artifact.status).toBe("still-present");
+    expect(artifact.observed).toHaveLength(1);
+    expect(artifact.observed[0]).toMatchObject({
+      name: "Artifact",
+      occurrences: 1,
+      lastSeen: "2026-07-16T10:00:00.000Z",
+      inLatestRequest: true,
+    });
+    expect(r.rulesStillPresent).toBe(1);
+    expect(r.rulesWasPresent).toBe(0);
+    expect(r.latestRequestTs).toBe("2026-07-16T10:00:00.000Z");
     expect(r.observedToolCount).toBe(2);
-    expect(r.requestsSampled).toBe(1);
   });
 
-  it("is healthy (nothing leaking) when withheld tools are absent from traffic", () => {
+  it("marks a withheld tool was-present when it only appears in older requests", () => {
+    const older = makeSidecar({ timestamp: "2026-07-16T09:00:00.000Z", tools: [{ name: "Artifact", bytes: 5_000, estTokens: 1_250 }] });
+    const latest = makeSidecar({ timestamp: "2026-07-16T12:00:00.000Z", tools: [{ name: "Bash", bytes: 4_000, estTokens: 1_000 }] });
+    const r = withheldReport([older, latest], deny);
+    const artifact = r.rules.find((x) => x.rule === "Artifact")!;
+    expect(artifact.status).toBe("was-present");
+    expect(artifact.observed[0]).toMatchObject({ name: "Artifact", inLatestRequest: false });
+    expect(r.rulesWasPresent).toBe(1);
+    expect(r.rulesStillPresent).toBe(0);
+    expect(r.latestRequestTs).toBe("2026-07-16T12:00:00.000Z");
+  });
+
+  it("is healthy (all absent) when withheld tools are gone from traffic", () => {
     const s = makeSidecar({ tools: [{ name: "Bash", bytes: 4_000, estTokens: 1_000 }] });
     const r = withheldReport([s], deny);
-    expect(r.rulesStillLeaking).toBe(0);
-    expect(r.rules.every((x) => x.stillPresent.length === 0)).toBe(true);
+    expect(r.rulesStillPresent).toBe(0);
+    expect(r.rulesWasPresent).toBe(0);
+    expect(r.rules.every((x) => x.status === "absent" && x.observed.length === 0)).toBe(true);
   });
 
   it("aggregates occurrences and keeps the latest lastSeen across requests", () => {
@@ -83,7 +106,8 @@ describe("withheldReport", () => {
     const b = makeSidecar({ timestamp: "2026-07-16T11:00:00.000Z", tools: [{ name: "Artifact", bytes: 5_000, estTokens: 1_250 }] });
     const r = withheldReport([a, b], deny);
     const artifact = r.rules.find((x) => x.rule === "Artifact")!;
-    expect(artifact.stillPresent[0]).toMatchObject({ occurrences: 2, lastSeen: "2026-07-16T11:00:00.000Z", estTokens: 2_500 });
+    expect(artifact.status).toBe("still-present");
+    expect(artifact.observed[0]).toMatchObject({ occurrences: 2, lastSeen: "2026-07-16T11:00:00.000Z", estTokens: 2_500, inLatestRequest: true });
   });
 
   it("skips malformed sidecars", () => {

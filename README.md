@@ -80,10 +80,12 @@ machine. See the [permissions docs](https://code.claude.com/docs/en/permissions)
 ```
 
 The dashboard's **Not added** page (`GET /api/withheld`) reads that device file
-and lists what's withheld, then cross-references recent proxy traffic to confirm
-each tool is actually gone — a withheld tool still appearing with a *recent* "last
-seen" means the rule isn't biting (name typo or settings precedence). Because it
-reads the local `~/.claude/settings.json`, the page is device-specific.
+and lists what's withheld, then cross-references recent proxy traffic: a rule is
+**still present** (red) if its tool is in the most recent captured request — still
+reaching the model now (a session predating the rule is open, or the name doesn't
+match) — **was present** (orange) if it only shows in older requests (pre-config
+history aging out), or **absent** (green) once it's gone. Because it reads the
+local `~/.claude/settings.json`, the page is device-specific.
 
 Prefer the terminal? The same digest + advice as a one-shot text report:
 

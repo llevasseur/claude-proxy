@@ -381,6 +381,10 @@ body {
   background: rgba(242, 116, 138, 0.18);
   color: var(--bad);
 }
+.badge.was-present {
+  background: rgba(240, 163, 94, 0.18);
+  color: var(--accent-2);
+}
 .badge.neutral {
   background: var(--panel-2);
   color: var(--muted);
@@ -395,4 +399,7 @@ body {
 }
 .leak-note .present-tool {
   color: var(--bad);
+}
+.leak-note .was-tool {
+  color: var(--accent-2);
 }

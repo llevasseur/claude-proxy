@@ -60,28 +60,37 @@ export function classifyDenyRules(deny: readonly string[]): DenyRuleClassificati
 
 export interface ObservedToolMatch {
   name: string;
-  /** Requests (sampled) in which this tool still appeared. */
+  /** Requests (sampled) in which this tool appeared. */
   occurrences: number;
-  /** Latest ISO timestamp the tool was still present. */
+  /** Latest ISO timestamp the tool was seen. */
   lastSeen: string;
+  /** True if the tool was in the most recent tool-bearing request in the sample. */
+  inLatestRequest: boolean;
   bytes: number;
   estTokens: number;
 }
 
+/**
+ * Per-rule status against sampled traffic:
+ * - `absent`: no observed tool matches — the schema is being withheld as intended.
+ * - `was-present`: matched only in older requests. Pre-config history aging out
+ *   of the window (or a session that has since been restarted); not live.
+ * - `still-present`: matched in the most recent captured request — the tool is
+ *   still reaching the model right now (a session predating the rule is still
+ *   running, or the rule isn't matching: name typo / settings precedence).
+ */
+export type WithheldStatus = "absent" | "was-present" | "still-present";
+
 export interface WithheldRuleReport {
   rule: string;
   isGlob: boolean;
-  /**
-   * Observed tools matching this rule that are STILL present in sampled
-   * requests. Empty is the healthy state: the rule is withholding the schema as
-   * intended. Non-empty means the tool is still reaching the model (config not
-   * yet applied, requests predate it, or the name doesn't match).
-   */
-  stillPresent: ObservedToolMatch[];
+  status: WithheldStatus;
+  /** Observed tools matching this rule, ranked by occurrences. Empty when absent. */
+  observed: ObservedToolMatch[];
 }
 
 export interface WithheldReport {
-  /** Schema-stripping deny rules, each with any lingering observed matches. */
+  /** Schema-stripping deny rules, each with its status + observed matches. */
   rules: WithheldRuleReport[];
   /** Scoped deny rules — surfaced for context; they don't strip schema. */
   scopedRules: string[];
@@ -89,23 +98,34 @@ export interface WithheldReport {
   observedToolCount: number;
   /** Requests inspected. */
   requestsSampled: number;
-  /** Rules that still match a present tool (should be 0 once config applies). */
-  rulesStillLeaking: number;
+  /** Timestamp of the most recent tool-bearing request, or null if none. */
+  latestRequestTs: string | null;
+  /** Rules still reaching the model in the latest request (should reach 0). */
+  rulesStillPresent: number;
+  /** Rules present only in older requests — aging-out history. */
+  rulesWasPresent: number;
 }
 
 /**
  * Build the withheld-tools report: classify the device's deny rules and, for
- * each schema-stripping rule, list any observed tools that still slipped through.
+ * each schema-stripping rule, decide whether matching tools are absent, only
+ * lingering in older requests (`was-present`), or still in the latest request
+ * (`still-present`). "Latest" is the newest tool-bearing request in the sample.
  */
 export function withheldReport(sidecars: readonly unknown[], deny: readonly string[]): WithheldReport {
   const { schemaStripping, scoped } = classifyDenyRules(deny);
 
-  // Fold sidecars into per-tool observation stats.
+  // Fold sidecars into per-tool observation stats, tracking the newest
+  // tool-bearing request so we can tell live leakage from aging-out history.
   const observed = new Map<string, { occurrences: number; lastSeen: string; bytes: number; estTokens: number }>();
   let requestsSampled = 0;
+  let latestRequestTs: string | null = null;
   for (const s of sidecars) {
     if (!isAuditSidecar(s)) continue;
     requestsSampled += 1;
+    if (s.tools.length > 0 && (latestRequestTs === null || s.timestamp > latestRequestTs)) {
+      latestRequestTs = s.timestamp;
+    }
     for (const t of s.tools) {
       const cur = observed.get(t.name) ?? { occurrences: 0, lastSeen: "", bytes: 0, estTokens: 0 };
       cur.occurrences += 1;
@@ -117,11 +137,13 @@ export function withheldReport(sidecars: readonly unknown[], deny: readonly stri
   }
 
   const rules: WithheldRuleReport[] = schemaStripping.map((rule) => {
-    const stillPresent: ObservedToolMatch[] = [...observed.entries()]
+    const matches: ObservedToolMatch[] = [...observed.entries()]
       .filter(([name]) => matchesRule(rule, name))
-      .map(([name, v]) => ({ name, ...v }))
+      .map(([name, v]) => ({ name, ...v, inLatestRequest: latestRequestTs !== null && v.lastSeen === latestRequestTs }))
       .sort((a, b) => b.occurrences - a.occurrences || a.name.localeCompare(b.name));
-    return { rule, isGlob: isGlobRule(rule), stillPresent };
+    const status: WithheldStatus =
+      matches.length === 0 ? "absent" : matches.some((m) => m.inLatestRequest) ? "still-present" : "was-present";
+    return { rule, isGlob: isGlobRule(rule), status, observed: matches };
   });
 
   return {
@@ -129,6 +151,8 @@ export function withheldReport(sidecars: readonly unknown[], deny: readonly stri
     scopedRules: scoped,
     observedToolCount: observed.size,
     requestsSampled,
-    rulesStillLeaking: rules.filter((r) => r.stillPresent.length > 0).length,
+    latestRequestTs,
+    rulesStillPresent: rules.filter((r) => r.status === "still-present").length,
+    rulesWasPresent: rules.filter((r) => r.status === "was-present").length,
   };
 }
