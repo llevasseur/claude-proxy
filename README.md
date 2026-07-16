@@ -56,6 +56,35 @@ plus a spare shell tab.
 Point the server at a different log directory with `LOG_DIR=/path/to/logs`, and
 the dashboard at a different API with `VITE_API_BASE` (see `apps/admin/.env.example`).
 
+### Withholding tools device-wide ("Not added")
+
+Once the proxy shows a tool is pure bloat, cut it at the source: a **bare tool
+name** in `permissions.deny` in `~/.claude/settings.json` removes that tool's
+schema from Claude's context entirely, so it never reaches the model and costs no
+tokens per turn (a scoped rule like `Bash(rm *)` only blocks calls — the schema
+still ships). This is device-wide: it applies to every Claude Code session on the
+machine. See the [permissions docs](https://code.claude.com/docs/en/permissions).
+
+```jsonc
+// ~/.claude/settings.json
+{
+  "permissions": {
+    "deny": [
+      "Artifact",
+      "EnterPlanMode",
+      "PushNotification",
+      "mcp__claude_ai_Linear__authenticate"   // exact MCP tool, or "mcp__claude_ai_Linear__*" for a whole server
+    ]
+  }
+}
+```
+
+The dashboard's **Not added** page (`GET /api/withheld`) reads that device file
+and lists what's withheld, then cross-references recent proxy traffic to confirm
+each tool is actually gone — a withheld tool still appearing with a *recent* "last
+seen" means the rule isn't biting (name typo or settings precedence). Because it
+reads the local `~/.claude/settings.json`, the page is device-specific.
+
 Prefer the terminal? The same digest + advice as a one-shot text report:
 
 ```bash
@@ -71,6 +100,7 @@ pnpm --filter server summary 2026-07-14   # a specific day
 | `GET /api/summary?date=YYYY-MM-DD` | one day's digest + advice (+ trend vs prior day) |
 | `GET /api/trends?days=N` | per-day digests for the last N days |
 | `GET /api/tools?date=YYYY-MM-DD` | the ranked tool-bloat table for a day |
+| `GET /api/withheld?days=N` | the device's withheld-tool policy (`~/.claude` deny rules) + a check that each is absent from recent traffic |
 
 ## Ports
 

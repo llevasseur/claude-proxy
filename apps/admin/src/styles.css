@@ -373,3 +373,26 @@ body {
   background: rgba(110, 168, 254, 0.18);
   color: var(--info);
 }
+.badge.absent {
+  background: rgba(87, 201, 138, 0.18);
+  color: var(--good);
+}
+.badge.present {
+  background: rgba(242, 116, 138, 0.18);
+  color: var(--bad);
+}
+.badge.neutral {
+  background: var(--panel-2);
+  color: var(--muted);
+}
+.rule-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+.leak-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+.leak-note .present-tool {
+  color: var(--bad);
+}

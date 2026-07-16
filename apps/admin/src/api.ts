@@ -1,4 +1,4 @@
-import type { Advice, TopTool, UsageDigest } from "@claude-proxy/core";
+import type { Advice, TopTool, UsageDigest, WithheldReport } from "@claude-proxy/core";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8788";
 
@@ -16,6 +16,12 @@ export interface ToolsResponse {
   date: string;
   topTools: TopTool[];
   meta: { files: number; parseErrors: number };
+}
+export interface WithheldResponse {
+  settingsPath: string;
+  settingsReadable: boolean;
+  report: WithheldReport;
+  meta: { days: number; files: number; parseErrors: number };
 }
 export interface HealthResponse {
   ok: boolean;
@@ -45,3 +51,4 @@ export const getHealth = () => get<HealthResponse>("/api/health");
 export const getSummary = (date?: string) => get<SummaryResponse>(`/api/summary${qs(date)}`);
 export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days=${days}`);
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);
+export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
