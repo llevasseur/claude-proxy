@@ -12,12 +12,10 @@ layout {
     tab name="dev" {
         pane split_direction="vertical" {
             pane name="proxy" {
-                command "pnpm"
-                args "proxy"
                 // Proxy reads PORT; 8787 (its default) conflicts on this machine.
-                env {
-                    PORT "8036"
-                }
+                // Layouts can't set env directly, so pass it inline via a shell.
+                command "sh"
+                args "-c" "PORT=8036 pnpm proxy"
             }
             pane split_direction="horizontal" {
                 pane name="server" {
