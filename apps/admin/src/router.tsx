@@ -6,7 +6,7 @@ import { ToolsPage } from "./routes/tools";
 import { TrendsPage } from "./routes/trends";
 import { WithheldPage } from "./routes/withheld";
 
-/** Nav stations along "the line" — each is a tap on the proxy's inline conduit. */
+/** Side-rail nav stations. */
 const STATIONS = [
   { to: "/", label: "Overview", hint: "today", exact: true },
   { to: "/trends", label: "Trends", hint: "history", exact: false },

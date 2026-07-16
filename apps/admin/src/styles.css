@@ -1,5 +1,5 @@
 :root {
-  /* ── Ink & surfaces ─────────────────────────────── */
+  /* ink & surfaces */
   --ink: #0b0e14;
   --surface: #12161c;
   --surface-2: #1b212a;
@@ -8,14 +8,14 @@
   --muted: #808c9e;
   --faint: #4e5765;
 
-  /* ── Signal palette ─────────────────────────────── */
-  --signal: #46e0c0; /* the proxy's live signal: flow, links, real input */
+  /* signal palette */
+  --signal: #46e0c0; /* flow, links, real input */
   --signal-dim: #2c8c7c;
   --good: #6fe39a; /* output / positive delta */
   --amber: #f4b15a; /* cost / cache / caution */
   --coral: #ff6b81; /* regression / high severity */
 
-  /* Aliases consumed by chart components (kept so JS color refs resolve). */
+  /* Aliases for chart colors referenced from JS. */
   --accent: var(--signal);
   --accent-2: var(--amber);
   --bad: var(--coral);
@@ -23,7 +23,7 @@
   --high: var(--coral);
   --info: var(--signal);
 
-  /* ── Type ───────────────────────────────────────── */
+  /* type */
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -52,14 +52,14 @@ button:focus-visible {
   border-radius: 6px;
 }
 
-/* ── Shell: fixed rail + scrolling workspace ─────────── */
+/* shell: fixed rail + scrolling workspace */
 .app {
   display: grid;
   grid-template-columns: 244px 1fr;
   min-height: 100vh;
 }
 
-/* ── The line: a vertical conduit the proxy taps into ── */
+/* side rail */
 .rail {
   position: sticky;
   top: 0;
@@ -107,7 +107,7 @@ button:focus-visible {
   padding: 2px 7px;
 }
 
-/* stations along the conduit */
+/* stations */
 .stations {
   position: relative;
   display: flex;
@@ -225,7 +225,7 @@ button:focus-visible {
   }
 }
 
-/* ── Workspace ───────────────────────────────────────── */
+/* workspace */
 .workspace {
   min-width: 0;
 }
@@ -266,7 +266,7 @@ button:focus-visible {
   font-size: 13px;
 }
 
-/* ── Cards + grid ────────────────────────────────────── */
+/* cards + grid */
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -323,7 +323,7 @@ button:focus-visible {
   font-size: 13px;
 }
 
-/* ── Stat card ───────────────────────────────────────── */
+/* stat card */
 .stat {
   margin: 0;
 }
@@ -363,7 +363,7 @@ button:focus-visible {
   color: var(--muted);
 }
 
-/* ── Mini list ───────────────────────────────────────── */
+/* mini list */
 .minilist {
   list-style: none;
   margin: 0;
@@ -383,7 +383,7 @@ button:focus-visible {
   border-bottom: none;
 }
 
-/* ── Segmented control ───────────────────────────────── */
+/* segmented control */
 .segmented {
   display: inline-flex;
   border: 1px solid var(--line);
@@ -411,7 +411,7 @@ button:focus-visible {
   cursor: default;
 }
 
-/* ── Bar chart (CSS) ─────────────────────────────────── */
+/* bar chart */
 .barchart {
   display: flex;
   align-items: flex-end;
@@ -452,7 +452,7 @@ button:focus-visible {
   margin-top: 6px;
 }
 
-/* ── Recharts tooltip + legend ───────────────────────── */
+/* recharts tooltip + legend */
 .charttip {
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -518,7 +518,7 @@ button:focus-visible {
   text-align: center;
 }
 
-/* ── Tables ──────────────────────────────────────────── */
+/* tables */
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -566,7 +566,7 @@ button:focus-visible {
   min-width: 2px;
 }
 
-/* ── Advice ──────────────────────────────────────────── */
+/* advice */
 .advice-list {
   display: grid;
   gap: 12px;
@@ -609,7 +609,7 @@ button:focus-visible {
   font-size: 12px;
 }
 
-/* ── Badges ──────────────────────────────────────────── */
+/* badges */
 .badge {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -663,7 +663,7 @@ button:focus-visible {
   color: var(--amber);
 }
 
-/* ── Responsive: rail folds to a top bar ─────────────── */
+/* responsive: rail folds to a top bar */
 @media (max-width: 860px) {
   .app {
     grid-template-columns: 1fr;
