@@ -271,8 +271,8 @@ button:focus-visible {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 20px 22px;
-  margin-bottom: 18px;
+  padding: 22px 26px;
+  margin-bottom: 20px;
 }
 .card h2 {
   font-family: var(--font-display);
@@ -302,7 +302,15 @@ button:focus-visible {
 }
 .grid {
   display: grid;
-  gap: 16px;
+  gap: 22px;
+}
+/* Inside a grid, let the grid gap own the spacing so rows and columns match. */
+.grid > .card {
+  margin-bottom: 0;
+}
+/* Breathing room between stacked grids (e.g. stat cards → panels). */
+.grid + .grid {
+  margin-top: 22px;
 }
 .grid.stats {
   grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
