@@ -1,9 +1,12 @@
 import {
   computeDigest,
+  computeSkimDigest,
   digestsByDay,
   heuristicAdvice,
+  skimDigestsByDay,
   withheldReport,
   type Advice,
+  type SkimDigest,
   type TopTool,
   type UsageDigest,
   type WithheldReport,
@@ -54,6 +57,31 @@ export async function buildTools(logDir: string, date?: string, now: Date = new 
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day }, now);
   const digest = computeDigest(sidecars, { date: day, topN: 200 });
   return { date: day, topTools: digest.topTools, meta: { files, parseErrors } };
+}
+
+export interface SkimResponse {
+  date: string;
+  skim: SkimDigest;
+  meta: { files: number; parseErrors: number };
+}
+
+/** One day's app-layer skim aggregate: hit-rate, tokens/dollars saved, top shapes. */
+export async function buildSkim(logDir: string, date?: string, now: Date = new Date()): Promise<SkimResponse> {
+  const day = date ?? today(now);
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day }, now);
+  const skim = computeSkimDigest(sidecars, { date: day, topN: 50 });
+  return { date: day, skim, meta: { files, parseErrors } };
+}
+
+export interface SkimTrendResponse {
+  digests: SkimDigest[];
+  meta: { days: number; files: number; parseErrors: number };
+}
+
+/** Per-day skim aggregates for the last `days` days — hit-rate & savings over time. */
+export async function buildSkimTrend(logDir: string, days: number, now: Date = new Date()): Promise<SkimTrendResponse> {
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days }, now);
+  return { digests: skimDigestsByDay(sidecars), meta: { days, files, parseErrors } };
 }
 
 export interface WithheldResponse {

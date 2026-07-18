@@ -1,5 +1,5 @@
 import http from "node:http";
-import { buildSummary, buildTools, buildTrends, buildWithheld } from "./api.js";
+import { buildSkim, buildSkimTrend, buildSummary, buildTools, buildTrends, buildWithheld } from "./api.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
@@ -60,6 +60,12 @@ const server = http.createServer(async (req, res) => {
         return;
       case "/api/tools":
         send(res, 200, await buildTools(LOG_DIR, date));
+        return;
+      case "/api/skim":
+        send(res, 200, await buildSkim(LOG_DIR, date));
+        return;
+      case "/api/skim/trend":
+        send(res, 200, await buildSkimTrend(LOG_DIR, parseDays(url.searchParams.get("days"))));
         return;
       case "/api/withheld":
         send(res, 200, await buildWithheld(LOG_DIR, parseDays(url.searchParams.get("days"))));
