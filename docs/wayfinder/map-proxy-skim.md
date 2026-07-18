@@ -43,15 +43,20 @@ future phase, not the destination itself.
   serves byte-identical repeat `/v1/messages` requests from a disk cache (opt-in
   `SKIM_CACHE=1`), replaying stored SSE with zero upstream call; audit sidecar
   gains `skim.servedFromCache` + `savedInputTokens` so hits are countable.
+- [Cacheability of real traffic](research-002-cacheability-corpus.md) — byte-exact
+  hit-rate floor is **0.7%** on 446 gated requests; recurrence is semantic (≤35
+  system+tools scaffolds cover 92%), and volatile signals (date, cwd, git state,
+  `tool_result`) are ~universal. Sharpens the semantic-skim layer and hands ticket
+  003 the exclude/scope-on list for its key.
 
 ## Not yet specified
 
 - **Semantic skim layer.** Embed the request and vector-match "same or similar
   task" above a threshold, instead of byte-exact hashing. High payoff (real
   agent traffic is rarely byte-identical) but carries wrong-answer risk and needs
-  a threshold + scope keys. Can't be sharply ticketed until the exact-match
-  prototype shows the real byte-exact hit-rate floor — graduates once ticket 001's
-  data is in.
+  a threshold + scope keys. The floor data is now in (research 002: byte-exact 0.7%,
+  but ≤35 system+tools scaffolds cover 92% — the payoff is real and only reachable
+  semantically), so this is ready to graduate into a sharp ticket.
 - **Cost-model / routing skim.** Routing cheap asks to a smaller model instead of
   caching. Adjacent lever, same seat in the proxy; revisit after the cache data
   lands.
