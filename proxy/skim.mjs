@@ -26,18 +26,13 @@ import path from "node:path";
 const ON = /^(1|true|yes|on)$/i.test(process.env.SKIM_CACHE ?? "");
 const TTL_MS = Number(process.env.SKIM_TTL_MS ?? 3_600_000);
 
-/** Is the skim turned on at all? */
 export const skimEnabled = () => ON;
 
 /** Where entries live. Sibling of the logs dir unless SKIM_DIR overrides. */
 export const cacheDir = (logDir) =>
   process.env.SKIM_DIR ?? path.join(logDir, "..", ".skim-cache");
 
-/**
- * The gate: only requests safe to serve from an exact-match cache.
- * Streamed /v1/messages only (we store and replay raw SSE), and only when the
- * skim is enabled. Deliberately narrow — widening this is ticket 002/003.
- */
+/** The gate: streamed /v1/messages only (we store and replay raw SSE), and only when enabled. */
 export function cacheable(reqPath, reqJson) {
   if (!ON) return false;
   if (!reqPath.includes("/v1/messages")) return false;

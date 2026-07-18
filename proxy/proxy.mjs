@@ -111,9 +111,8 @@ function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPa
       systemBytes: audit.systemBytes,
       totalBytes: audit.totalBytes,
     },
-    // App-layer skim (not Anthropic's prefix cache). Present on every request
-    // once the skim is enabled, so the study phase can compute hit-rate + saved
-    // spend straight from the sidecars. See docs/wayfinder/map-proxy-skim.md.
+    // App-layer skim (not Anthropic's prefix cache); recorded on every request so
+    // hit-rate + saved spend are computable from the sidecar.
     skim: skimInfo ?? { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey: null },
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
