@@ -19,6 +19,7 @@ import https from "node:https";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as skim from "./skim.mjs";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default; set HOST="" to bind all interfaces
@@ -90,7 +91,7 @@ function auditRequest(reqJson, realInputTokens) {
 /** Structured sidecar next to each `.md` — the machine-readable facts the daily
  * usage-summary reads (token/cost, context bloat, activity). The `.md` stays for
  * humans; this is stable JSON for tooling. Auth is never included. */
-function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPath, audit, inputTokens, usage }) {
+function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPath, audit, inputTokens, usage, skim: skimInfo }) {
   const u = usage ?? {};
   const sidecar = {
     timestamp,
@@ -110,6 +111,10 @@ function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPa
       systemBytes: audit.systemBytes,
       totalBytes: audit.totalBytes,
     },
+    // App-layer skim (not Anthropic's prefix cache). Present on every request
+    // once the skim is enabled, so the study phase can compute hit-rate + saved
+    // spend straight from the sidecars. See docs/wayfinder/map-proxy-skim.md.
+    skim: skimInfo ?? { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey: null },
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
   return JSON.stringify(sidecar, null, 2);
@@ -300,6 +305,39 @@ function handle(req, res) {
     const timestamp = new Date().toISOString();
     const base = baseName();
 
+    // Parse the request body once — the skim gate and the logging both need it.
+    let reqJson = null;
+    try { reqJson = JSON.parse(body.toString("utf8")); } catch { /* non-JSON body */ }
+
+    const skimDir = skim.cacheDir(LOG_DIR);
+    const canSkim = !isTokenCount(reqPath) && skim.cacheable(reqPath, reqJson);
+    const cacheKey = canSkim ? skim.keyFor(body) : null;
+
+    // ---- Skim hit: replay the stored reply and never call Anthropic ----
+    if (canSkim) {
+      const hit = skim.lookup(skimDir, cacheKey);
+      if (hit) {
+        res.writeHead(hit.meta.statusCode ?? 200, { "content-type": hit.meta.contentType ?? "text/event-stream" });
+        res.end(hit.body);
+        try {
+          const { markdown, inputTokens } = decodeResponse(hit.body.toString("utf8"));
+          const saved = hit.meta.inputTokens ?? inputTokens ?? 0;
+          const statusCode = hit.meta.statusCode ?? 200;
+          const audit = auditRequest(reqJson ?? {}, saved);
+          const skimInfo = { enabled: true, servedFromCache: true, savedInputTokens: saved, cacheKey };
+          fs.mkdirSync(LOG_DIR, { recursive: true });
+          fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), body.toString("utf8"));
+          fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
+          fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens: saved, usage: null, skim: skimInfo }));
+          console.log(`[agent-proxy] SKIM HIT ${cacheKey.slice(0, 8)} · saved ~${saved.toLocaleString()} input tok · logs/${base}.md`);
+        } catch (err) {
+          console.error(`[agent-proxy] skim hit served, logging failed: ${err.message}`);
+        }
+        return;
+      }
+    }
+
+    // ---- Miss: normal transparent pass-through to Anthropic ----
     const upstream = https.request(
       { hostname: UPSTREAM, port: 443, path: reqPath, method: req.method, headers: forwardHeaders(req.headers, body) },
       (up) => {
@@ -310,13 +348,27 @@ function handle(req, res) {
           res.end();
           if (isTokenCount(reqPath)) return;
           try {
-            const reqJson = JSON.parse(body.toString("utf8"));
-            const { markdown, inputTokens, usage } = decodeResponse(Buffer.concat(respChunks).toString("utf8"));
-            const audit = auditRequest(reqJson, inputTokens);
+            const rawResponse = Buffer.concat(respChunks);
+            const { markdown, inputTokens, usage } = decodeResponse(rawResponse.toString("utf8"));
+            const audit = auditRequest(reqJson ?? {}, inputTokens);
+            const statusCode = up.statusCode ?? 0;
+
+            // Store a successful streamed reply so a byte-exact repeat hits.
+            if (canSkim && statusCode === 200) {
+              skim.store(skimDir, cacheKey, {
+                statusCode,
+                contentType: up.headers["content-type"],
+                rawResponse,
+                inputTokens,
+                model: reqJson?.model,
+              });
+            }
+            const skimInfo = { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey };
+
             fs.mkdirSync(LOG_DIR, { recursive: true });
             fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), body.toString("utf8"));
-            fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode: up.statusCode ?? 0, headers: req.headers }, audit, markdown));
-            fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode: up.statusCode ?? 0, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage }));
+            fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
+            fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, skim: skimInfo }));
             printAudit(audit, base);
           } catch (err) {
             console.error(`[agent-proxy] could not render (non-JSON body?): ${err.message}`);
