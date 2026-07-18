@@ -43,6 +43,11 @@ future phase, not the destination itself.
   serves byte-identical repeat `/v1/messages` requests from a disk cache (opt-in
   `SKIM_CACHE=1`), replaying stored SSE with zero upstream call; audit sidecar
   gains `skim.servedFromCache` + `savedInputTokens` so hits are countable.
+- [Correctness guardrails](decision-004-guardrails.md) *(proposed — needs human
+  ratification, charted AFK)* — skim stays opt-in; never cache non-200s, partial
+  streams, or `tool_result`-bearing requests; shorten default TTL and add
+  `SKIM_MAX_ENTRIES`/eviction; undo a bad served reply via `SKIM_CACHE` off +
+  per-`cacheKey` delete, surfaced by the ticket-005 dashboard.
 
 ## Not yet specified
 
