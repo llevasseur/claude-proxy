@@ -559,6 +559,31 @@ button:focus-visible {
 .table tbody tr:last-child td {
   border-bottom: none;
 }
+.skim-request {
+  max-width: 380px;
+}
+.skim-request summary {
+  max-width: 340px;
+  overflow: hidden;
+  color: var(--text);
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skim-request pre {
+  max-height: 280px;
+  margin: 12px 0 4px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
 .toolbloat .tool-name {
   font-family: var(--font-mono);
   font-weight: 500;

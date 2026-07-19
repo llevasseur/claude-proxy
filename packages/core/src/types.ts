@@ -28,6 +28,21 @@ export interface AuditTool {
   estTokens: number;
 }
 
+/**
+ * Opt-in app-layer response-cache record, distinct from Anthropic's prefix
+ * cache. Legacy sidecars may omit it.
+ */
+export interface AuditSkim {
+  /** Whether `SKIM_CACHE` was enabled at capture time. */
+  enabled: boolean;
+  /** True when the reply was replayed from cache with zero upstream call. */
+  servedFromCache: boolean;
+  /** Input tokens avoided upstream; 0 on a miss. */
+  savedInputTokens: number;
+  /** Byte-exact request hash; null when not cacheable. */
+  cacheKey: string | null;
+}
+
 export interface AuditSidecar {
   /** ISO 8601 timestamp of the request. */
   timestamp: string;
@@ -37,6 +52,8 @@ export interface AuditSidecar {
   tokens: AuditTokens;
   request: AuditRequestMeta;
   tools: AuditTool[];
+  /** Present on sidecars written since ticket 001. */
+  skim?: AuditSkim;
 }
 
 /**

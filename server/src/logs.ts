@@ -32,6 +32,40 @@ export interface ReadOptions {
   date?: string;
   /** Only files on/after (today − sinceDays + 1). Ignored if `date` is set. */
   sinceDays?: number;
+  includeSkimRequests?: boolean;
+}
+
+function latestUserText(request: unknown): string | null {
+  if (typeof request !== "object" || request === null) return null;
+  const messages = (request as { messages?: unknown }).messages;
+  if (!Array.isArray(messages)) return null;
+
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i] as { role?: unknown; content?: unknown };
+    if (message?.role !== "user") continue;
+    if (typeof message.content === "string" && message.content.trim()) return message.content.trim();
+    if (!Array.isArray(message.content)) continue;
+    const text = message.content
+      .filter((block): block is { type: "text"; text: string } =>
+        typeof block === "object" && block !== null &&
+        (block as { type?: unknown }).type === "text" &&
+        typeof (block as { text?: unknown }).text === "string",
+      )
+      .map((block) => block.text.trim())
+      .filter(Boolean)
+      .join("\n\n");
+    if (text) return text;
+  }
+  return null;
+}
+
+async function skimRequestText(logDir: string, auditFile: string): Promise<string | null> {
+  const requestFile = auditFile.replace(/\.audit\.json$/, ".request.txt");
+  try {
+    return latestUserText(JSON.parse(await readFile(path.join(logDir, requestFile), "utf8")));
+  } catch {
+    return null;
+  }
 }
 
 /** `YYYY-MM-DD` for today (UTC), matching the proxy's ISO filename prefixes. */
@@ -81,7 +115,11 @@ export async function readSidecars(
   let parseErrors = 0;
   for (const f of files) {
     try {
-      sidecars.push(JSON.parse(await readFile(path.join(logDir, f), "utf8")));
+      const sidecar = JSON.parse(await readFile(path.join(logDir, f), "utf8")) as unknown;
+      if (opts.includeSkimRequests && typeof sidecar === "object" && sidecar !== null) {
+        (sidecar as { skimRequestText?: string }).skimRequestText = (await skimRequestText(logDir, f)) ?? undefined;
+      }
+      sidecars.push(sidecar);
     } catch {
       parseErrors += 1;
       sidecars.push({ __parseError: f });

@@ -1,4 +1,4 @@
-import type { AuditSidecar, AuditTool } from "../src/types.js";
+import type { AuditSidecar, AuditSkim, AuditTool } from "../src/types.js";
 
 /** Build a valid audit sidecar for tests; override any field. */
 export function makeSidecar(overrides: Partial<AuditSidecar> = {}): AuditSidecar {
@@ -16,4 +16,8 @@ export function makeSidecar(overrides: Partial<AuditSidecar> = {}): AuditSidecar
     tools,
     ...overrides,
   };
+}
+
+export function makeSkim(overrides: Partial<AuditSkim> = {}): AuditSkim {
+  return { enabled: false, servedFromCache: false, savedInputTokens: 0, cacheKey: null, ...overrides };
 }
