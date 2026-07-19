@@ -32,7 +32,6 @@ export interface ReadOptions {
   date?: string;
   /** Only files on/after (today − sinceDays + 1). Ignored if `date` is set. */
   sinceDays?: number;
-  /** Enrich skim records with the latest user-authored text from the sibling request log. */
   includeSkimRequests?: boolean;
 }
 

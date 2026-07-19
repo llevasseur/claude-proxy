@@ -3,7 +3,7 @@ import { priceFor } from "./pricing.js";
 
 export interface SkimShape {
   cacheKey: string;
-  /** Latest user-authored text from a request with this shape, when its request log is available. */
+  /** Latest user text when its request log is available. */
   requestText: string | null;
   /** The populating miss plus every hit. */
   requests: number;
