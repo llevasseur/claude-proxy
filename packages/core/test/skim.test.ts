@@ -32,7 +32,6 @@ describe("computeSkimDigest", () => {
   });
 
   it("excludes skim-disabled requests from the denominator", () => {
-    // One disabled request (no skim block) + one enabled hit → hit-rate is 100%.
     const d = computeSkimDigest([makeSidecar(), hit(500, "k")], { date: "2026-07-15" });
     expect(d.requestCount).toBe(2);
     expect(d.enabledRequests).toBe(1);
@@ -42,7 +41,6 @@ describe("computeSkimDigest", () => {
 
   it("estimates dollars saved at the model's input rate", () => {
     const d = computeSkimDigest([hit(1_000_000, "a", "claude-opus-4-8")], { date: "2026-07-15" });
-    // 1M input tokens under opus ($15/MTok).
     expect(d.estSavedUsd).toBeCloseTo(priceFor("claude-opus-4-8").input);
   });
 

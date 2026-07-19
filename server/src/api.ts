@@ -65,7 +65,6 @@ export interface SkimResponse {
   meta: { files: number; parseErrors: number };
 }
 
-/** One day's app-layer skim aggregate: hit-rate, tokens/dollars saved, top shapes. */
 export async function buildSkim(logDir: string, date?: string, now: Date = new Date()): Promise<SkimResponse> {
   const day = date ?? today(now);
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day }, now);
@@ -78,7 +77,6 @@ export interface SkimTrendResponse {
   meta: { days: number; files: number; parseErrors: number };
 }
 
-/** Per-day skim aggregates for the last `days` days — hit-rate & savings over time. */
 export async function buildSkimTrend(logDir: string, days: number, now: Date = new Date()): Promise<SkimTrendResponse> {
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days }, now);
   return { digests: skimDigestsByDay(sidecars), meta: { days, files, parseErrors } };

@@ -13,15 +13,12 @@ const WINDOWS = [7, 14, 30];
 const HIT_RATE_SERIES: Series[] = [{ dataKey: "hitRate", name: "Hit rate", color: "var(--good)" }];
 const SAVED_SERIES: Series[] = [{ dataKey: "cumUsd", name: "Cumulative saved", color: "var(--accent-2)" }];
 
-/** Short, human-glanceable form of a byte-exact request hash. */
 const shortKey = (k: string): string => (k.length > 12 ? `${k.slice(0, 12)}…` : k);
 
-/** Per-day hit-rate row (percentage) for the line chart. */
 function toHitRateRow(d: SkimDigest) {
   return { label: d.date.slice(5), hitRate: Number((d.hitRate * 100).toFixed(1)) };
 }
 
-/** Per-day running-total of estimated dollars saved. */
 function toCumulativeRows(digests: SkimDigest[]) {
   let running = 0;
   return digests.map((d) => {
@@ -30,12 +27,6 @@ function toCumulativeRows(digests: SkimDigest[]) {
   });
 }
 
-/**
- * "Skim" — study whether the opt-in app-layer response cache (wayfinder ticket
- * 001) is worth keeping. On a byte-exact repeat request the proxy replays the
- * stored reply and makes zero call to Anthropic; every request records a `skim`
- * sidecar block, so hit-rate and dollars saved are measurable here.
- */
 export function SkimPage() {
   const [days, setDays] = useState(14);
   const trendQuery = useQuery({ queryKey: ["skim-trend", days], queryFn: () => getSkimTrend(days) });

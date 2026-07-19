@@ -18,7 +18,6 @@ export function makeSidecar(overrides: Partial<AuditSidecar> = {}): AuditSidecar
   };
 }
 
-/** A default-off skim block; override to simulate hits/misses. */
 export function makeSkim(overrides: Partial<AuditSkim> = {}): AuditSkim {
   return { enabled: false, servedFromCache: false, savedInputTokens: 0, cacheKey: null, ...overrides };
 }

@@ -29,19 +29,17 @@ export interface AuditTool {
 }
 
 /**
- * App-layer skim record (wayfinder ticket 001) — the proxy's opt-in response
- * cache, NOT Anthropic's prefix cache. Written on every request so hit-rate and
- * saved spend are computable from the sidecar. Optional: sidecars captured
- * before ticket 001 have no `skim` block.
+ * Opt-in app-layer response-cache record, distinct from Anthropic's prefix
+ * cache. Legacy sidecars may omit it.
  */
 export interface AuditSkim {
-  /** Whether the skim was enabled (SKIM_CACHE) at capture time. */
+  /** Whether `SKIM_CACHE` was enabled at capture time. */
   enabled: boolean;
   /** True when the reply was replayed from cache with zero upstream call. */
   servedFromCache: boolean;
-  /** realInput tokens the hit avoided sending upstream (0 on a miss). */
+  /** Input tokens avoided upstream; 0 on a miss. */
   savedInputTokens: number;
-  /** The byte-exact request hash this entry keyed on (null when not cacheable). */
+  /** Byte-exact request hash; null when not cacheable. */
   cacheKey: string | null;
 }
 

@@ -1,49 +1,48 @@
 import { isAuditSidecar, type AuditSidecar, type AuditSkim } from "./types.js";
 import { priceFor } from "./pricing.js";
 
-/** One repeated request shape, identified by its byte-exact cache key. */
 export interface SkimShape {
   cacheKey: string;
-  /** Total requests seen for this key (the populating miss plus every hit). */
+  /** The populating miss plus every hit. */
   requests: number;
   /** How many of those were served from cache. */
   hits: number;
   /** Sum of `savedInputTokens` across this key's hits. */
   savedInputTokens: number;
-  /** Estimated USD saved by this key's hits (input-token rate, per model). */
+  /** Estimated USD saved at each model's input-token rate. */
   estSavedUsd: number;
 }
 
 export interface SkimDigest {
   date: string;
-  /** Valid sidecars considered (malformed ones are skipped). */
+  /** Valid sidecars considered. */
   requestCount: number;
-  /** Requests where the skim was enabled — the hit/miss denominator. */
+  /** Requests in the hit/miss denominator. */
   enabledRequests: number;
   /** Replies replayed from cache (zero upstream call). */
   hits: number;
   /** Enabled requests that still went upstream. */
   misses: number;
-  /** hits / (hits + misses); 0 when the skim saw no enabled traffic. */
+  /** Hits divided by enabled requests; 0 without enabled traffic. */
   hitRate: number;
   /** realInput tokens avoided across all hits. */
   savedInputTokens: number;
-  /** Estimated USD saved, pricing each hit's saved input tokens at its model's input rate. */
+  /** Estimated USD saved at each model's input-token rate. */
   estSavedUsd: number;
   /** Most-repeated request shapes, ranked by request count. */
   topShapes: SkimShape[];
 }
 
 export interface ComputeSkimDigestOptions {
-  /** Label for the digest (e.g. "2026-07-15"). */
+  /** Digest date in YYYY-MM-DD format. */
   date: string;
-  /** How many shapes to include in `topShapes`. Default 12. */
+  /** Maximum `topShapes` entries. Defaults to 12. */
   topN?: number;
 }
 
 const NO_SKIM: AuditSkim = { enabled: false, servedFromCache: false, savedInputTokens: 0, cacheKey: null };
 
-/** Defensively read a sidecar's skim block; tolerate old sidecars and bad fields. */
+/** Read legacy or malformed skim blocks with safe defaults. */
 function skimOf(sidecar: AuditSidecar): AuditSkim {
   const raw = (sidecar as { skim?: unknown }).skim;
   if (typeof raw !== "object" || raw === null) return NO_SKIM;
@@ -56,15 +55,13 @@ function skimOf(sidecar: AuditSidecar): AuditSkim {
   };
 }
 
-/** USD value of `tokens` priced at `model`'s input rate ($/MTok). */
 function savedUsd(tokens: number, model: string): number {
   return (tokens / 1_000_000) * priceFor(model).input;
 }
 
 /**
- * Aggregate a day's audit sidecars into a `SkimDigest`. Pure: no I/O, no clock.
- * Malformed entries are skipped; sidecars without a `skim` block count as
- * skim-disabled traffic (neither hit nor miss).
+ * Aggregate a day's audit sidecars, skipping malformed entries and treating
+ * legacy sidecars as skim-disabled traffic.
  */
 export function computeSkimDigest(
   sidecars: readonly unknown[],
@@ -121,15 +118,11 @@ export function computeSkimDigest(
   };
 }
 
-/** The ISO timestamp's calendar day in UTC, `YYYY-MM-DD`. */
 function dayOf(sidecar: AuditSidecar): string {
   return sidecar.timestamp.slice(0, 10);
 }
 
-/**
- * Split sidecars into one `SkimDigest` per calendar day (UTC), oldest→newest.
- * Handy for the hit-rate-over-time and cumulative-savings views.
- */
+/** Build daily UTC digests, oldest first. */
 export function skimDigestsByDay(sidecars: readonly unknown[], topN?: number): SkimDigest[] {
   const byDay = new Map<string, unknown[]>();
   for (const s of sidecars) {
