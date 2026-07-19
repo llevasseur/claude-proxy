@@ -7,6 +7,7 @@ import {
   withheldReport,
   type Advice,
   type SkimDigest,
+  type SkimShape,
   type TopTool,
   type UsageDigest,
   type WithheldReport,
@@ -74,12 +75,14 @@ export async function buildSkim(logDir: string, date?: string, now: Date = new D
 
 export interface SkimTrendResponse {
   digests: SkimDigest[];
+  topShapes: SkimShape[];
   meta: { days: number; files: number; parseErrors: number };
 }
 
 export async function buildSkimTrend(logDir: string, days: number, now: Date = new Date()): Promise<SkimTrendResponse> {
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days }, now);
-  return { digests: skimDigestsByDay(sidecars), meta: { days, files, parseErrors } };
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeSkimRequests: true }, now);
+  const topShapes = computeSkimDigest(sidecars, { date: `${days}d`, topN: 50 }).topShapes;
+  return { digests: skimDigestsByDay(sidecars), topShapes, meta: { days, files, parseErrors } };
 }
 
 export interface WithheldResponse {

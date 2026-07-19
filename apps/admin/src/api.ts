@@ -1,4 +1,4 @@
-import type { Advice, SkimDigest, TopTool, UsageDigest, WithheldReport } from "@claude-proxy/core";
+import type { Advice, SkimDigest, SkimShape, TopTool, UsageDigest, WithheldReport } from "@claude-proxy/core";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8788";
 
@@ -24,6 +24,7 @@ export interface SkimResponse {
 }
 export interface SkimTrendResponse {
   digests: SkimDigest[];
+  topShapes: SkimShape[];
   meta: { days: number; files: number; parseErrors: number };
 }
 export interface WithheldResponse {

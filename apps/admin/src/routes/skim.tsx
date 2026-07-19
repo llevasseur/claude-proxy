@@ -33,6 +33,7 @@ export function SkimPage() {
   const dayQuery = useQuery({ queryKey: ["skim-day"], queryFn: () => getSkim() });
 
   const digests = trendQuery.data?.digests ?? [];
+  const topShapes = trendQuery.data?.topShapes ?? [];
   const today = dayQuery.data?.skim;
   const hitRateRows = useMemo(() => digests.map(toHitRateRow), [digests]);
   const cumulativeRows = useMemo(() => toCumulativeRows(digests), [digests]);
@@ -89,12 +90,12 @@ export function SkimPage() {
               <SeriesLineChart data={cumulativeRows} series={SAVED_SERIES} xKey="label" format={fmtUsd} />
             </div>
 
-            {today && today.topShapes.length > 0 && (
+            {topShapes.length > 0 && (
               <>
                 <div className="card">
-                  <h2>Top repeated request shapes (today)</h2>
+                  <h2>Top repeated request shapes ({days}d)</h2>
                   <BarChart
-                    data={today.topShapes.slice(0, 12).map((s) => ({ label: shortKey(s.cacheKey), value: s.requests }))}
+                    data={topShapes.slice(0, 12).map((s) => ({ label: shortKey(s.cacheKey), value: s.requests }))}
                     format={fmtInt}
                     color="var(--accent)"
                   />
@@ -114,7 +115,7 @@ export function SkimPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {today.topShapes.map((s) => (
+                      {topShapes.map((s) => (
                         <tr key={s.cacheKey}>
                           <td title={s.cacheKey}>{shortKey(s.cacheKey)}</td>
                           <td className="skim-request">
