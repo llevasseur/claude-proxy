@@ -3,6 +3,8 @@ import { priceFor } from "./pricing.js";
 
 export interface SkimShape {
   cacheKey: string;
+  /** Latest user-authored text from a request with this shape, when its request log is available. */
+  requestText: string | null;
   /** The populating miss plus every hit. */
   requests: number;
   /** How many of those were served from cache. */
@@ -75,7 +77,7 @@ export function computeSkimDigest(
   let misses = 0;
   let savedInputTokens = 0;
   let estSavedUsd = 0;
-  const shapes = new Map<string, { requests: number; hits: number; savedInputTokens: number; estSavedUsd: number }>();
+  const shapes = new Map<string, { requestText: string | null; requests: number; hits: number; savedInputTokens: number; estSavedUsd: number }>();
 
   for (const s of valid) {
     const skim = skimOf(s);
@@ -88,7 +90,11 @@ export function computeSkimDigest(
     }
 
     if (skim.cacheKey) {
-      const acc = shapes.get(skim.cacheKey) ?? { requests: 0, hits: 0, savedInputTokens: 0, estSavedUsd: 0 };
+      const requestText = typeof (s as unknown as { skimRequestText?: unknown }).skimRequestText === "string"
+        ? (s as unknown as { skimRequestText: string }).skimRequestText
+        : null;
+      const acc = shapes.get(skim.cacheKey) ?? { requestText, requests: 0, hits: 0, savedInputTokens: 0, estSavedUsd: 0 };
+      if (!acc.requestText && requestText) acc.requestText = requestText;
       acc.requests += 1;
       if (skim.servedFromCache) {
         acc.hits += 1;

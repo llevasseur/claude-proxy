@@ -67,7 +67,7 @@ export interface SkimResponse {
 
 export async function buildSkim(logDir: string, date?: string, now: Date = new Date()): Promise<SkimResponse> {
   const day = date ?? today(now);
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day }, now);
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day, includeSkimRequests: true }, now);
   const skim = computeSkimDigest(sidecars, { date: day, topN: 50 });
   return { date: day, skim, meta: { files, parseErrors } };
 }

@@ -54,6 +54,13 @@ describe("computeSkimDigest", () => {
     expect(d.topShapes[1]!.cacheKey).toBe("cold");
   });
 
+  it("retains request text for each shape when the server enriches a sidecar", () => {
+    const sidecar = hit(100, "hot") as ReturnType<typeof hit> & { skimRequestText: string };
+    sidecar.skimRequestText = "Show me the cached result";
+    const d = computeSkimDigest([sidecar], { date: "2026-07-15" });
+    expect(d.topShapes[0]!.requestText).toBe("Show me the cached result");
+  });
+
   it("honours topN", () => {
     const sidecars = ["a", "b", "c"].map((k) => hit(100, k));
     const d = computeSkimDigest(sidecars, { date: "2026-07-15", topN: 2 });
