@@ -1,20 +1,14 @@
 /**
- * Launch aliases — tools withheld not by settings, but by how a Claude Code
- * session is *launched*.
+ * Launch aliases — tools withheld by how a Claude Code session is launched, not
+ * by settings. A shell alias/function running `claude --disallowedTools <names>`
+ * strips those tools' schemas per session, but the flag lives only in the shell
+ * rc and never reaches the API — so, unlike `permissions.deny` rules, these
+ * can't be verified against captured traffic. Parses a shell rc into a
+ * declarative list of `claude*` aliases and the tools each withholds.
  *
- * A shell alias/function that runs `claude --disallowedTools <names>` strips
- * those tools' schemas from that session's requests, the same as a bare
- * `permissions.deny` rule, but the flag lives only in the user's shell rc and
- * never reaches the API. So unlike deny rules, launch aliases can't be verified
- * against captured traffic — the proxy can't tell which alias launched a given
- * session. This module parses a shell rc into a declarative list of `claude*`
- * launch aliases and the tools each one withholds; the dashboard renders it as
- * inventory, not a verified status.
+ * Pure: no I/O — the server reads the rc file and passes its text in.
  *
- * Pure: no I/O. The server reads the rc file and passes its text in.
- *
- * See https://code.claude.com/docs/en/cli-reference (`--disallowedTools`, a
- * "comma or space-separated list of tool names to deny").
+ * See https://code.claude.com/docs/en/cli-reference (`--disallowedTools`).
  */
 
 export interface LaunchAlias {

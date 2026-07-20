@@ -4,11 +4,9 @@ import path from "node:path";
 import { type LaunchAlias, parseLaunchAliases } from "@claude-proxy/core";
 
 /**
- * The device's shell rc — `~/.zshrc` by default. This is where the user's
- * `claude*` launch aliases live (functions/aliases that run `claude
- * --disallowedTools …`), so reading it is what makes the "Launch aliases" view
- * device-specific. Override the path with `CLAUDE_SHELL_RC` (handy for tests,
- * bash users, or non-standard homes).
+ * The device's shell rc — `~/.zshrc` by default, where the user's `claude*`
+ * launch aliases live. Override the path with `CLAUDE_SHELL_RC` (tests, bash
+ * users, or non-standard homes).
  */
 export function resolveShellRcPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.CLAUDE_SHELL_RC ? path.resolve(env.CLAUDE_SHELL_RC) : path.join(os.homedir(), ".zshrc");
