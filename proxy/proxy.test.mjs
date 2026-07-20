@@ -9,8 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest } from "./proxy.mjs";
 
-// A real-shaped non-streaming response body (the safety classifier returns this):
-// a single JSON message object whose usage lives at the top level, no SSE frames.
+// Non-streaming response body: a single JSON message object with usage at the top level, no SSE frames.
 const nonStreamingBody = JSON.stringify({
   model: "claude-sonnet-5",
   id: "msg_test",
@@ -26,7 +25,7 @@ const nonStreamingBody = JSON.stringify({
   },
 });
 
-// A minimal streamed (SSE) response — the path that already worked.
+// A minimal streamed (SSE) response.
 const streamingBody = [
   `data: ${JSON.stringify({ type: "message_start", message: { model: "claude-opus-4-8", usage: { input_tokens: 2, cache_read_input_tokens: 100, cache_creation_input_tokens: 10 } } })}`,
   `data: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "text" } })}`,

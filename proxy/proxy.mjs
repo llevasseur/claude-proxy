@@ -88,8 +88,7 @@ function auditRequest(reqJson, realInputTokens) {
   };
 }
 
-/** Who sent the request, so spend attributes to a session/agent instead of being
- * guessed by timestamp. Reads Claude Code's own headers plus the `metadata.user_id`
+/** Reads sender identity from Claude Code's headers plus the `metadata.user_id`
  * blob (a JSON string carrying account/session/device ids). No auth is included. */
 function extractSession(headers, reqJson) {
   const h = headers ?? {};
@@ -106,7 +105,7 @@ function extractSession(headers, reqJson) {
   }
   return {
     sessionId: first(h["x-claude-code-session-id"]),
-    app: first(h["x-app"]), // e.g. "cli" vs "cli-bg" (background)
+    app: first(h["x-app"]), // "-bg" suffix marks a background agent
     userAgent: first(h["user-agent"]),
     account,
     metadataSessionId,
@@ -281,9 +280,8 @@ function decodeResponse(raw) {
     try { events.push(JSON.parse(m[1])); } catch { /* skip */ }
   }
 
-  // Non-streaming path: the body is a single JSON message object, not SSE. Its
-  // usage lives at the top level — without this it was logged as zero tokens,
-  // which silently hid every non-streaming call (e.g. the safety classifier).
+  // Non-streaming path: body is a single JSON message object (not SSE) with
+  // usage at the top level.
   if (events.length === 0) {
     try {
       const obj = JSON.parse(raw);
@@ -442,8 +440,7 @@ function handle(req, res) {
   });
 }
 
-// Start the server only when run directly (`node proxy.mjs`), not when imported
-// by a test — importing must not bind the port or clobber a running proxy.
+// Start the server only when run directly, not when imported by a test.
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   http.createServer(handle).listen(PORT, HOST || undefined, () => {
@@ -452,5 +449,5 @@ if (isMain) {
   });
 }
 
-// Exported for unit tests; the running proxy uses them internally.
+// Exported for unit tests.
 export { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest };
