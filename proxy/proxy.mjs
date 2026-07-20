@@ -88,16 +88,43 @@ function auditRequest(reqJson, realInputTokens) {
   };
 }
 
+/** Who sent the request, so spend attributes to a session/agent instead of being
+ * guessed by timestamp. Reads Claude Code's own headers plus the `metadata.user_id`
+ * blob (a JSON string carrying account/session/device ids). No auth is included. */
+function extractSession(headers, reqJson) {
+  const h = headers ?? {};
+  const first = (v) => (Array.isArray(v) ? v[0] : v) ?? null;
+  let account = null, metadataSessionId = null, device = null;
+  const rawUserId = reqJson?.metadata?.user_id;
+  if (typeof rawUserId === "string") {
+    try {
+      const m = JSON.parse(rawUserId);
+      account = m.account_uuid ?? null;
+      metadataSessionId = m.session_id ?? null;
+      device = m.device_id ?? null;
+    } catch { /* user_id not JSON — leave ids null */ }
+  }
+  return {
+    sessionId: first(h["x-claude-code-session-id"]),
+    app: first(h["x-app"]), // e.g. "cli" vs "cli-bg" (background)
+    userAgent: first(h["user-agent"]),
+    account,
+    metadataSessionId,
+    deviceId: device,
+  };
+}
+
 /** Structured sidecar next to each `.md` — the machine-readable facts the daily
  * usage-summary reads (token/cost, context bloat, activity). The `.md` stays for
  * humans; this is stable JSON for tooling. Auth is never included. */
-function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPath, audit, inputTokens, usage, skim: skimInfo }) {
+function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPath, audit, inputTokens, usage, respModel, headers, skim: skimInfo }) {
   const u = usage ?? {};
   const sidecar = {
     timestamp,
-    model: reqJson?.model ?? "unknown",
+    model: reqJson?.model ?? respModel ?? "unknown",
     endpoint: `${method} ${reqPath}`,
     statusCode,
+    session: extractSession(headers, reqJson),
     tokens: {
       input: u.input_tokens ?? 0,
       output: u.output_tokens ?? 0,
@@ -239,6 +266,13 @@ function renderMessages(messages) {
 
 /** Reassemble the streamed SSE response so we can read the reply — and pull the
  * real input-token count out of the usage events. */
+/** Sum the three billed input components into the single "real input" figure. */
+function sumInputTokens(usage) {
+  return usage
+    ? (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+    : null;
+}
+
 function decodeResponse(raw) {
   const events = [];
   for (const line of raw.split(/\r?\n/)) {
@@ -246,15 +280,41 @@ function decodeResponse(raw) {
     if (!m || m[1] === "[DONE]" || m[1].trim() === "") continue;
     try { events.push(JSON.parse(m[1])); } catch { /* skip */ }
   }
+
+  // Non-streaming path: the body is a single JSON message object, not SSE. Its
+  // usage lives at the top level — without this it was logged as zero tokens,
+  // which silently hid every non-streaming call (e.g. the safety classifier).
+  if (events.length === 0) {
+    try {
+      const obj = JSON.parse(raw);
+      if (obj && typeof obj === "object" && (obj.usage || obj.content)) {
+        const usage = obj.usage ?? null;
+        const parts = [];
+        if (obj.stop_reason) parts.push(`- **stop reason**: ${obj.stop_reason}`);
+        if (usage) parts.push(`- **usage**: ${JSON.stringify(usage)}`, "");
+        const rendered = renderContent(obj.content ?? []);
+        if (rendered) parts.push(rendered);
+        return {
+          markdown: parts.length ? parts.join("\n\n") : fence(raw),
+          inputTokens: sumInputTokens(usage),
+          usage,
+          model: obj.model ?? null,
+        };
+      }
+    } catch { /* not JSON either — fall through to the raw fence below */ }
+  }
+
   const blocks = {};
-  let stopReason, usage;
+  let stopReason, usage, model;
   for (const ev of events) {
     if (ev.type === "content_block_start") blocks[ev.index] = { type: ev.content_block?.type ?? "text", text: "", name: ev.content_block?.name, id: ev.content_block?.id };
     else if (ev.type === "content_block_delta" && blocks[ev.index]) {
       const d = ev.delta ?? {};
       blocks[ev.index].text += d.text ?? d.partial_json ?? d.thinking ?? "";
-    } else if (ev.type === "message_start" && ev.message?.usage) usage = { ...ev.message.usage, ...(usage ?? {}) };
-    else if (ev.type === "message_delta") {
+    } else if (ev.type === "message_start") {
+      if (ev.message?.usage) usage = { ...ev.message.usage, ...(usage ?? {}) };
+      if (ev.message?.model) model = ev.message.model;
+    } else if (ev.type === "message_delta") {
       if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
       if (ev.usage) usage = { ...(usage ?? {}), ...ev.usage };
     }
@@ -268,10 +328,7 @@ function decodeResponse(raw) {
     else if (b.type === "thinking") parts.push(["<thinking>", "", b.text, "", "</thinking>"].join("\n"));
     else if (b.type === "tool_use") parts.push([`<tool-use name="${b.name}" id="${b.id ?? ""}">`, "", fence(b.text || "{}", "json"), "", "</tool-use>"].join("\n"));
   }
-  const inputTokens = usage
-    ? (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
-    : null;
-  return { markdown: parts.length ? parts.join("\n\n") : fence(raw), inputTokens, usage: usage ?? null };
+  return { markdown: parts.length ? parts.join("\n\n") : fence(raw), inputTokens: sumInputTokens(usage), usage: usage ?? null, model: model ?? null };
 }
 
 function renderMarkdown(c, audit, responseMd) {
@@ -319,7 +376,7 @@ function handle(req, res) {
         res.writeHead(hit.meta.statusCode ?? 200, { "content-type": hit.meta.contentType ?? "text/event-stream" });
         res.end(hit.body);
         try {
-          const { markdown, inputTokens } = decodeResponse(hit.body.toString("utf8"));
+          const { markdown, inputTokens, model: respModel } = decodeResponse(hit.body.toString("utf8"));
           const saved = hit.meta.inputTokens ?? inputTokens ?? 0;
           const statusCode = hit.meta.statusCode ?? 200;
           const audit = auditRequest(reqJson ?? {}, saved);
@@ -327,7 +384,7 @@ function handle(req, res) {
           fs.mkdirSync(LOG_DIR, { recursive: true });
           fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), body.toString("utf8"));
           fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
-          fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens: saved, usage: null, skim: skimInfo }));
+          fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens: saved, usage: null, respModel: respModel ?? hit.meta.model, headers: req.headers, skim: skimInfo }));
           console.log(`[agent-proxy] SKIM HIT ${cacheKey.slice(0, 8)} · saved ~${saved.toLocaleString()} input tok · logs/${base}.md`);
         } catch (err) {
           console.error(`[agent-proxy] skim hit served, logging failed: ${err.message}`);
@@ -348,7 +405,7 @@ function handle(req, res) {
           if (isTokenCount(reqPath)) return;
           try {
             const rawResponse = Buffer.concat(respChunks);
-            const { markdown, inputTokens, usage } = decodeResponse(rawResponse.toString("utf8"));
+            const { markdown, inputTokens, usage, model: respModel } = decodeResponse(rawResponse.toString("utf8"));
             const audit = auditRequest(reqJson ?? {}, inputTokens);
             const statusCode = up.statusCode ?? 0;
 
@@ -367,7 +424,7 @@ function handle(req, res) {
             fs.mkdirSync(LOG_DIR, { recursive: true });
             fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), body.toString("utf8"));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
-            fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, skim: skimInfo }));
+            fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, respModel, headers: req.headers, skim: skimInfo }));
             printAudit(audit, base);
           } catch (err) {
             console.error(`[agent-proxy] could not render (non-JSON body?): ${err.message}`);
@@ -385,7 +442,15 @@ function handle(req, res) {
   });
 }
 
-http.createServer(handle).listen(PORT, HOST || undefined, () => {
-  console.log(`[agent-proxy] listening on http://${HOST || "0.0.0.0"}:${PORT}`);
-  console.log(`[agent-proxy] point Claude Code at it:  ANTHROPIC_BASE_URL=http://localhost:${PORT} claude`);
-});
+// Start the server only when run directly (`node proxy.mjs`), not when imported
+// by a test — importing must not bind the port or clobber a running proxy.
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  http.createServer(handle).listen(PORT, HOST || undefined, () => {
+    console.log(`[agent-proxy] listening on http://${HOST || "0.0.0.0"}:${PORT}`);
+    console.log(`[agent-proxy] point Claude Code at it:  ANTHROPIC_BASE_URL=http://localhost:${PORT} claude`);
+  });
+}
+
+// Exported for unit tests; the running proxy uses them internally.
+export { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest };
