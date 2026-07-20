@@ -1,4 +1,12 @@
-import type { Advice, SkimDigest, SkimShape, TopTool, UsageDigest, WithheldReport } from "@claude-proxy/core";
+import type {
+  Advice,
+  LaunchAlias,
+  SkimDigest,
+  SkimShape,
+  TopTool,
+  UsageDigest,
+  WithheldReport,
+} from "@claude-proxy/core";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8788";
 
@@ -31,6 +39,7 @@ export interface WithheldResponse {
   settingsPath: string;
   settingsReadable: boolean;
   report: WithheldReport;
+  launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[] };
   meta: { days: number; files: number; parseErrors: number };
 }
 export interface HealthResponse {

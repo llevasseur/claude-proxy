@@ -10,11 +10,13 @@ const shortTs = (iso: string): string => (iso ? iso.slice(5, 16).replace("T", " 
 
 /**
  * "Not added" — the tools this device withholds from every Claude Code request.
- * Two device-wide mechanisms strip a tool's schema so it never reaches the model
- * (and costs no tokens per turn), and this page reports both:
- *   - a bare tool name in `~/.claude/settings.json` → `permissions.deny`, and
- *   - a boolean `disable*` setting (e.g. `disableWorkflows` → the Workflow tool).
- * Each is checked against recently-routed traffic to confirm the tool is actually gone.
+ * Three mechanisms strip a tool's schema so it never reaches the model (and costs
+ * no tokens per turn), and this page reports all three:
+ *   - a bare tool name in `~/.claude/settings.json` → `permissions.deny`,
+ *   - a boolean `disable*` setting (e.g. `disableWorkflows` → the Workflow tool), and
+ *   - a `claude*` shell launch alias passing `--disallowedTools`.
+ * The first two are checked against recently-routed traffic to confirm the tool is
+ * gone; launch aliases are declarative (their flags never reach the proxy).
  */
 export function WithheldPage() {
   const query = useQuery({ queryKey: ["withheld", WINDOW_DAYS], queryFn: () => getWithheld(WINDOW_DAYS) });
@@ -28,6 +30,8 @@ export function WithheldPage() {
   const disableStillPresent = report?.disableStillPresent ?? 0;
   const disableWasPresent = report?.disableWasPresent ?? 0;
   const nothingWithheld = rules.length === 0 && disableSchema.length === 0 && scopedRules.length === 0;
+  const launch = data?.launchAliases;
+  const launchAliases = launch?.aliases ?? [];
 
   return (
     <section>
@@ -207,6 +211,59 @@ export function WithheldPage() {
               </div>
             )}
           </>
+        )}
+
+        {launch && (
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="muted">
+              <strong>Launch aliases</strong> — <span className="rule-name">claude*</span> shell aliases that withhold
+              tools per launch via <span className="rule-name">--disallowedTools</span>, read from{" "}
+              <span className="rule-name">{launch.rcPath}</span>.
+            </div>
+            <div className="leak-note" style={{ marginTop: 8 }}>
+              Declarative, not traffic-verified: launch flags never reach the model, so — unlike deny rules — these
+              can't be checked against captured requests, since which alias started a session isn't visible to the
+              proxy.
+            </div>
+            {!launch.rcReadable ? (
+              <div className="leak-note" style={{ marginTop: 8 }}>
+                Couldn't read <span className="rule-name">{launch.rcPath}</span>.
+              </div>
+            ) : launchAliases.length === 0 ? (
+              <div className="leak-note" style={{ marginTop: 8 }}>
+                No <span className="rule-name">claude*</span> launch aliases found in{" "}
+                <span className="rule-name">{launch.rcPath}</span>.
+              </div>
+            ) : (
+              <table className="table" style={{ marginTop: 12 }}>
+                <thead>
+                  <tr>
+                    <th>Alias</th>
+                    <th>Withholds</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {launchAliases.map((a) => (
+                    <tr key={a.name}>
+                      <td className="rule-name">{a.name}</td>
+                      <td>
+                        {a.withheld.length === 0 ? (
+                          <span className="muted">nothing</span>
+                        ) : (
+                          a.withheld.map((t, i) => (
+                            <span key={t}>
+                              {i > 0 ? ", " : ""}
+                              <span className="rule-name">{t}</span>
+                            </span>
+                          ))
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         )}
       </QueryState>
     </section>
