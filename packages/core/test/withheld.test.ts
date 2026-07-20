@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  activeDisableSchemaKeys,
   classifyDenyRules,
+  DISABLE_SCHEMA_TOOLS,
   isGlobRule,
   isScopedRule,
   matchesRule,
@@ -113,5 +115,93 @@ describe("withheldReport", () => {
   it("skips malformed sidecars", () => {
     const r = withheldReport([makeSidecar(), { nope: true }, null], deny);
     expect(r.requestsSampled).toBe(1);
+  });
+
+  it("reports no disable-schema entries by default", () => {
+    const r = withheldReport([], deny);
+    expect(r.disableSchema).toEqual([]);
+    expect(r.disableStillPresent).toBe(0);
+    expect(r.disableWasPresent).toBe(0);
+  });
+});
+
+describe("activeDisableSchemaKeys", () => {
+  it("resolves known keys to their tools in mapping order", () => {
+    expect(activeDisableSchemaKeys(["disableArtifact", "disableWorkflows"])).toEqual([
+      { key: "disableWorkflows", tools: ["Workflow"] },
+      { key: "disableArtifact", tools: ["Artifact"] },
+    ]);
+  });
+
+  it("ignores disable keys that don't strip a tool schema", () => {
+    expect(activeDisableSchemaKeys(["disableAgentView", "disableAllHooks"])).toEqual([]);
+  });
+
+  it("returns nothing for an empty list", () => {
+    expect(activeDisableSchemaKeys([])).toEqual([]);
+  });
+
+  it("maps disableWorkflows to the Workflow tool", () => {
+    expect(DISABLE_SCHEMA_TOOLS.disableWorkflows).toEqual(["Workflow"]);
+  });
+});
+
+describe("withheldReport — disable* settings", () => {
+  it("marks a disable withhold absent when the tool is gone from traffic", () => {
+    const s = makeSidecar({ tools: [{ name: "Bash", bytes: 4_000, estTokens: 1_000 }] });
+    const r = withheldReport([s], [], ["disableWorkflows"]);
+    expect(r.disableSchema).toHaveLength(1);
+    const wf = r.disableSchema[0]!;
+    expect(wf).toMatchObject({ key: "disableWorkflows", tools: ["Workflow"], status: "absent" });
+    expect(wf.observed).toEqual([]);
+    expect(r.disableStillPresent).toBe(0);
+    expect(r.disableWasPresent).toBe(0);
+  });
+
+  it("marks a disable withhold still-present when the tool is in the latest request", () => {
+    const s = makeSidecar({
+      timestamp: "2026-07-16T10:00:00.000Z",
+      tools: [{ name: "Workflow", bytes: 20_000, estTokens: 5_000 }],
+    });
+    const r = withheldReport([s], [], ["disableWorkflows"]);
+    const wf = r.disableSchema[0]!;
+    expect(wf.status).toBe("still-present");
+    expect(wf.observed[0]).toMatchObject({ name: "Workflow", occurrences: 1, inLatestRequest: true });
+    expect(r.disableStillPresent).toBe(1);
+    expect(r.disableWasPresent).toBe(0);
+  });
+
+  it("marks a disable withhold was-present when the tool only appears in older requests", () => {
+    const older = makeSidecar({
+      timestamp: "2026-07-16T09:00:00.000Z",
+      tools: [{ name: "Workflow", bytes: 20_000, estTokens: 5_000 }],
+    });
+    const latest = makeSidecar({
+      timestamp: "2026-07-16T12:00:00.000Z",
+      tools: [{ name: "Bash", bytes: 4_000, estTokens: 1_000 }],
+    });
+    const r = withheldReport([older, latest], [], ["disableWorkflows"]);
+    const wf = r.disableSchema[0]!;
+    expect(wf.status).toBe("was-present");
+    expect(wf.observed[0]).toMatchObject({ name: "Workflow", inLatestRequest: false });
+    expect(r.disableWasPresent).toBe(1);
+    expect(r.disableStillPresent).toBe(0);
+  });
+
+  it("reports deny rules and disable settings side by side", () => {
+    const s = makeSidecar({
+      timestamp: "2026-07-16T10:00:00.000Z",
+      tools: [{ name: "Workflow", bytes: 20_000, estTokens: 5_000 }],
+    });
+    const r = withheldReport([s], ["Artifact"], ["disableWorkflows"]);
+    expect(r.rules.map((x) => x.rule)).toEqual(["Artifact"]);
+    expect(r.rules[0]!.status).toBe("absent");
+    expect(r.disableSchema.map((d) => d.key)).toEqual(["disableWorkflows"]);
+    expect(r.disableSchema[0]!.status).toBe("still-present");
+  });
+
+  it("ignores unknown disable keys", () => {
+    const r = withheldReport([makeSidecar()], [], ["disableAgentView"]);
+    expect(r.disableSchema).toEqual([]);
   });
 });

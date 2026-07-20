@@ -10,18 +10,24 @@ const shortTs = (iso: string): string => (iso ? iso.slice(5, 16).replace("T", " 
 
 /**
  * "Not added" — the tools this device withholds from every Claude Code request.
- * A bare tool name in `~/.claude/settings.json` → `permissions.deny` removes that
- * tool's schema from Claude's context entirely, so it never reaches the model
- * (and costs no tokens per turn). This page lists those rules and checks, against
- * recently-routed traffic, that each withheld tool is actually gone.
+ * Two device-wide mechanisms strip a tool's schema so it never reaches the model
+ * (and costs no tokens per turn), and this page reports both:
+ *   - a bare tool name in `~/.claude/settings.json` → `permissions.deny`, and
+ *   - a boolean `disable*` setting (e.g. `disableWorkflows` → the Workflow tool).
+ * Each is checked against recently-routed traffic to confirm the tool is actually gone.
  */
 export function WithheldPage() {
   const query = useQuery({ queryKey: ["withheld", WINDOW_DAYS], queryFn: () => getWithheld(WINDOW_DAYS) });
   const data = query.data;
   const report = data?.report;
   const rules = report?.rules ?? [];
+  const disableSchema = report?.disableSchema ?? [];
+  const scopedRules = report?.scopedRules ?? [];
   const stillPresent = report?.rulesStillPresent ?? 0;
   const wasPresent = report?.rulesWasPresent ?? 0;
+  const disableStillPresent = report?.disableStillPresent ?? 0;
+  const disableWasPresent = report?.disableWasPresent ?? 0;
+  const nothingWithheld = rules.length === 0 && disableSchema.length === 0 && scopedRules.length === 0;
 
   return (
     <section>
@@ -37,86 +43,162 @@ export function WithheldPage() {
           <div className="card empty">
             Couldn't read device settings at <span className="rule-name">{data?.settingsPath}</span>. Nothing withheld.
           </div>
-        ) : rules.length === 0 ? (
+        ) : nothingWithheld ? (
           <div className="card empty">
-            No schema-stripping deny rules in <span className="rule-name">{data.settingsPath}</span>. Add bare tool
-            names to <span className="rule-name">permissions.deny</span> to withhold them device-wide.
+            No schema-stripping deny rules or <span className="rule-name">disable*</span> settings in{" "}
+            <span className="rule-name">{data.settingsPath}</span>. Add bare tool names to{" "}
+            <span className="rule-name">permissions.deny</span>, or turn on a <span className="rule-name">disable*</span>{" "}
+            setting, to withhold tools device-wide.
           </div>
         ) : (
           <>
-            <div className="card" style={{ marginBottom: 16 }}>
-              <div className="muted">
-                <strong>{rules.length}</strong> tool rule{rules.length === 1 ? "" : "s"} withheld via{" "}
-                <span className="rule-name">{data.settingsPath}</span> · checked against{" "}
-                <strong>{fmtInt(report!.requestsSampled)}</strong> request
-                {report!.requestsSampled === 1 ? "" : "s"} over the last {data.meta.days} days.{" "}
-                {stillPresent > 0 && <span className="badge present">{stillPresent} still present</span>}{" "}
-                {wasPresent > 0 && <span className="badge was-present">{wasPresent} was present</span>}{" "}
-                {stillPresent === 0 && wasPresent === 0 && <span className="badge absent">all absent</span>}
-              </div>
-              {(stillPresent > 0 || wasPresent > 0) && (
-                <div className="leak-note" style={{ marginTop: 8 }}>
-                  <strong>Still present</strong> = the tool was in the most recent captured request, so it's still
-                  reaching the model right now (a session that predates the rule is still open, or the name doesn't
-                  match — check spelling and settings precedence). <strong>Was present</strong> = only in older
-                  requests: pre-config history aging out of the window, not live.
+            {rules.length > 0 && (
+              <>
+                <div className="card" style={{ marginBottom: 16 }}>
+                  <div className="muted">
+                    <strong>{rules.length}</strong> deny rule{rules.length === 1 ? "" : "s"} withheld via{" "}
+                    <span className="rule-name">{data.settingsPath}</span> · checked against{" "}
+                    <strong>{fmtInt(report!.requestsSampled)}</strong> request
+                    {report!.requestsSampled === 1 ? "" : "s"} over the last {data.meta.days} days.{" "}
+                    {stillPresent > 0 && <span className="badge present">{stillPresent} still present</span>}{" "}
+                    {wasPresent > 0 && <span className="badge was-present">{wasPresent} was present</span>}{" "}
+                    {stillPresent === 0 && wasPresent === 0 && <span className="badge absent">all absent</span>}
+                  </div>
+                  {(stillPresent > 0 || wasPresent > 0) && (
+                    <div className="leak-note" style={{ marginTop: 8 }}>
+                      <strong>Still present</strong> = the tool was in the most recent captured request, so it's still
+                      reaching the model right now (a session that predates the rule is still open, or the name doesn't
+                      match — check spelling and settings precedence). <strong>Was present</strong> = only in older
+                      requests: pre-config history aging out of the window, not live.
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div className="card">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Deny rule</th>
-                    <th>Match</th>
-                    <th>Status (last {data.meta.days}d)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rules.map((r) => (
-                    <tr key={r.rule}>
-                      <td className="rule-name">{r.rule}</td>
-                      <td>
-                        <span className={`badge ${r.isGlob ? "sev-info" : "neutral"}`}>
-                          {r.isGlob ? "glob" : "exact"}
-                        </span>
-                      </td>
-                      <td>
-                        {r.status === "absent" ? (
-                          <span className="badge absent">absent</span>
-                        ) : (
-                          <>
-                            <span className={`badge ${r.status === "still-present" ? "present" : "was-present"}`}>
-                              {r.status === "still-present" ? "still present" : "was present"}
-                            </span>{" "}
-                            <span className="leak-note">
-                              {r.observed.map((t, i) => (
-                                <span key={t.name}>
-                                  {i > 0 ? ", " : ""}
-                                  <span className={r.status === "still-present" ? "present-tool" : "was-tool"}>
-                                    {t.name}
-                                  </span>{" "}
-                                  ×{fmtInt(t.occurrences)} (last seen {shortTs(t.lastSeen)})
-                                </span>
-                              ))}
+                <div className="card">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Deny rule</th>
+                        <th>Match</th>
+                        <th>Status (last {data.meta.days}d)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rules.map((r) => (
+                        <tr key={r.rule}>
+                          <td className="rule-name">{r.rule}</td>
+                          <td>
+                            <span className={`badge ${r.isGlob ? "sev-info" : "neutral"}`}>
+                              {r.isGlob ? "glob" : "exact"}
                             </span>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          </td>
+                          <td>
+                            {r.status === "absent" ? (
+                              <span className="badge absent">absent</span>
+                            ) : (
+                              <>
+                                <span className={`badge ${r.status === "still-present" ? "present" : "was-present"}`}>
+                                  {r.status === "still-present" ? "still present" : "was present"}
+                                </span>{" "}
+                                <span className="leak-note">
+                                  {r.observed.map((t, i) => (
+                                    <span key={t.name}>
+                                      {i > 0 ? ", " : ""}
+                                      <span className={r.status === "still-present" ? "present-tool" : "was-tool"}>
+                                        {t.name}
+                                      </span>{" "}
+                                      ×{fmtInt(t.occurrences)} (last seen {shortTs(t.lastSeen)})
+                                    </span>
+                                  ))}
+                                </span>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
-            {report!.scopedRules.length > 0 && (
+            {disableSchema.length > 0 && (
+              <div className="card" style={{ marginTop: rules.length > 0 ? 16 : 0 }}>
+                <div className="muted">
+                  <strong>{disableSchema.length}</strong> disable setting{disableSchema.length === 1 ? "" : "s"}{" "}
+                  withhold{disableSchema.length === 1 ? "s" : ""} tool schemas via{" "}
+                  <span className="rule-name">{data.settingsPath}</span> · checked against{" "}
+                  <strong>{fmtInt(report!.requestsSampled)}</strong> request
+                  {report!.requestsSampled === 1 ? "" : "s"} over the last {data.meta.days} days.{" "}
+                  {disableStillPresent > 0 && (
+                    <span className="badge present">{disableStillPresent} still present</span>
+                  )}{" "}
+                  {disableWasPresent > 0 && <span className="badge was-present">{disableWasPresent} was present</span>}{" "}
+                  {disableStillPresent === 0 && disableWasPresent === 0 && (
+                    <span className="badge absent">all absent</span>
+                  )}
+                </div>
+                <div className="leak-note" style={{ marginTop: 8 }}>
+                  Boolean <span className="rule-name">disable*</span> settings drop a tool's schema from every request —
+                  the same token savings as a bare deny rule, but with no{" "}
+                  <span className="rule-name">permissions.deny</span> entry. Toggling one off restores the tool.
+                </div>
+                <table className="table" style={{ marginTop: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>Disable setting</th>
+                      <th>Withholds</th>
+                      <th>Status (last {data.meta.days}d)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {disableSchema.map((d) => (
+                      <tr key={d.key}>
+                        <td className="rule-name">{d.key}</td>
+                        <td>
+                          {d.tools.map((t, i) => (
+                            <span key={t}>
+                              {i > 0 ? ", " : ""}
+                              <span className="rule-name">{t}</span>
+                            </span>
+                          ))}
+                        </td>
+                        <td>
+                          {d.status === "absent" ? (
+                            <span className="badge absent">absent</span>
+                          ) : (
+                            <>
+                              <span className={`badge ${d.status === "still-present" ? "present" : "was-present"}`}>
+                                {d.status === "still-present" ? "still present" : "was present"}
+                              </span>{" "}
+                              <span className="leak-note">
+                                {d.observed.map((t, i) => (
+                                  <span key={t.name}>
+                                    {i > 0 ? ", " : ""}
+                                    <span className={d.status === "still-present" ? "present-tool" : "was-tool"}>
+                                      {t.name}
+                                    </span>{" "}
+                                    ×{fmtInt(t.occurrences)} (last seen {shortTs(t.lastSeen)})
+                                  </span>
+                                ))}
+                              </span>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {scopedRules.length > 0 && (
               <div className="card" style={{ marginTop: 16 }}>
                 <div className="muted">
                   <strong>Scoped deny rules</strong> (block calls but still send the schema — no token savings):
                 </div>
                 <ul className="minilist">
-                  {report!.scopedRules.map((s) => (
+                  {scopedRules.map((s) => (
                     <li key={s} className="rule-name">
                       {s}
                     </li>
