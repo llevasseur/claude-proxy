@@ -8,6 +8,7 @@
     "claude-proxy": "./proxy.mjs"
   },
   "scripts": {
-    "start": "node proxy.mjs"
+    "start": "node proxy.mjs",
+    "test": "node --test proxy.test.mjs"
   }
 }
