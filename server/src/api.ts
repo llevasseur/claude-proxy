@@ -109,7 +109,7 @@ export async function buildWithheld(
     readSidecars(logDir, { sinceDays: days }, now),
     readDeviceSettings(settingsPath),
   ]);
-  const report = withheldReport(sidecars, settings.denyRules);
+  const report = withheldReport(sidecars, settings.denyRules, settings.enabledDisableKeys);
   return {
     settingsPath: settings.settingsPath,
     settingsReadable: settings.readable,

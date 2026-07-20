@@ -2,19 +2,30 @@
  * Withheld tools — what the device's `~/.claude/settings.json` keeps *out* of
  * every Claude Code request.
  *
- * A bare tool name in `permissions.deny` (e.g. `"Artifact"`) or a bare-name glob
- * (`"mcp__*"`) removes that tool's schema from Claude's context entirely — it is
- * never sent to the model, so it costs no tokens per turn. A *scoped* rule like
- * `"Bash(rm *)"` does NOT strip the schema; it only blocks matching calls at
- * execution time. This module classifies deny rules into those two buckets and
- * cross-references the schema-stripping ones against tools the proxy actually
- * observed, so the dashboard can confirm a withheld tool is truly absent.
+ * There are two device-wide ways to strip a tool's schema, and this module
+ * reports both:
+ *
+ * 1. A bare tool name in `permissions.deny` (e.g. `"Artifact"`) or a bare-name
+ *    glob (`"mcp__*"`) removes that tool's schema from Claude's context entirely
+ *    — never sent to the model, so it costs no tokens per turn. A *scoped* rule
+ *    like `"Bash(rm *)"` does NOT strip the schema; it only blocks matching calls
+ *    at execution time.
+ * 2. A boolean `disable*` setting (e.g. `"disableWorkflows": true`) drops a
+ *    specific tool's schema the same way, but without a `permissions.deny` entry —
+ *    so it's invisible to the deny-rule view even though the token savings are
+ *    identical. `DISABLE_SCHEMA_TOOLS` maps each such key to the tool(s) it removes.
+ *
+ * This module classifies deny rules into schema-stripping vs scoped, resolves the
+ * device's enabled `disable*` keys to their tools, and cross-references both
+ * against tools the proxy actually observed, so the dashboard can confirm a
+ * withheld tool is truly absent.
  *
  * Pure: no I/O, no clock. The server reads the settings file and the sidecars
  * and passes them in.
  *
  * See https://code.claude.com/docs/en/permissions.md ("A bare tool name … removes
- * the tool from Claude's context entirely").
+ * the tool from Claude's context entirely") and
+ * https://code.claude.com/docs/en/settings.md (the `disable*` keys).
  */
 import { isAuditSidecar } from "./types.js";
 
@@ -58,6 +69,41 @@ export function classifyDenyRules(deny: readonly string[]): DenyRuleClassificati
   return { schemaStripping, scoped };
 }
 
+/**
+ * Boolean `disable*` settings that strip a specific tool's schema from every
+ * request — the non-deny path to withholding a tool. When the key is `true`,
+ * Claude Code drops the mapped tool(s) from the request entirely, exactly like a
+ * bare deny rule, but there is no `permissions.deny` entry to see. Only keys that
+ * map to an observable tool schema belong here; other `disable*` settings (hooks,
+ * agent view, remote control, …) don't remove a tool and are intentionally omitted.
+ *
+ * See https://code.claude.com/docs/en/settings.md and
+ * https://code.claude.com/docs/en/workflows.md ("disableWorkflows").
+ */
+export const DISABLE_SCHEMA_TOOLS: Readonly<Record<string, readonly string[]>> = {
+  disableWorkflows: ["Workflow"],
+  disableArtifact: ["Artifact"],
+};
+
+export interface DisableSchemaEntry {
+  /** The settings key, e.g. `disableWorkflows`. */
+  key: string;
+  /** Tool name(s) the key removes from every request. */
+  tools: string[];
+}
+
+/**
+ * Resolve the device's enabled `disable*` keys to the tools they withhold,
+ * keeping only keys known to strip a schema (`DISABLE_SCHEMA_TOOLS`). Output
+ * follows `DISABLE_SCHEMA_TOOLS` order for stability; unknown keys are ignored.
+ */
+export function activeDisableSchemaKeys(enabledKeys: readonly string[]): DisableSchemaEntry[] {
+  const enabled = new Set(enabledKeys);
+  return Object.entries(DISABLE_SCHEMA_TOOLS)
+    .filter(([key]) => enabled.has(key))
+    .map(([key, tools]) => ({ key, tools: [...tools] }));
+}
+
 export interface ObservedToolMatch {
   name: string;
   /** Requests (sampled) in which this tool appeared. */
@@ -89,11 +135,27 @@ export interface WithheldRuleReport {
   observed: ObservedToolMatch[];
 }
 
+/**
+ * Per-`disable*`-setting status against sampled traffic, mirroring
+ * `WithheldRuleReport` but keyed by the settings key rather than a deny rule.
+ */
+export interface DisableSchemaReport {
+  /** The settings key that withholds the tool(s), e.g. `disableWorkflows`. */
+  key: string;
+  /** Tool name(s) the key removes from every request. */
+  tools: string[];
+  status: WithheldStatus;
+  /** Observed tools matching this key's tools, ranked by occurrences. Empty when absent. */
+  observed: ObservedToolMatch[];
+}
+
 export interface WithheldReport {
   /** Schema-stripping deny rules, each with its status + observed matches. */
   rules: WithheldRuleReport[];
   /** Scoped deny rules — surfaced for context; they don't strip schema. */
   scopedRules: string[];
+  /** Enabled schema-stripping `disable*` settings, each with status + matches. */
+  disableSchema: DisableSchemaReport[];
   /** Distinct tool names seen across sampled requests. */
   observedToolCount: number;
   /** Requests inspected. */
@@ -104,15 +166,27 @@ export interface WithheldReport {
   rulesStillPresent: number;
   /** Rules present only in older requests — aging-out history. */
   rulesWasPresent: number;
+  /** `disable*` withholds still reaching the model in the latest request (should reach 0). */
+  disableStillPresent: number;
+  /** `disable*` withholds present only in older requests — aging-out history. */
+  disableWasPresent: number;
 }
 
 /**
- * Build the withheld-tools report: classify the device's deny rules and, for
- * each schema-stripping rule, decide whether matching tools are absent, only
- * lingering in older requests (`was-present`), or still in the latest request
- * (`still-present`). "Latest" is the newest tool-bearing request in the sample.
+ * Build the withheld-tools report: classify the device's deny rules, resolve its
+ * enabled `disable*` keys to tools, and for each schema-stripping rule and each
+ * disable key decide whether matching tools are absent, only lingering in older
+ * requests (`was-present`), or still in the latest request (`still-present`).
+ * "Latest" is the newest tool-bearing request in the sample.
+ *
+ * `enabledDisableKeys` is the device's top-level `disable*` booleans set to
+ * `true`; only those in `DISABLE_SCHEMA_TOOLS` produce a `disableSchema` entry.
  */
-export function withheldReport(sidecars: readonly unknown[], deny: readonly string[]): WithheldReport {
+export function withheldReport(
+  sidecars: readonly unknown[],
+  deny: readonly string[],
+  enabledDisableKeys: readonly string[] = [],
+): WithheldReport {
   const { schemaStripping, scoped } = classifyDenyRules(deny);
 
   // Fold sidecars into per-tool observation stats, tracking the newest
@@ -136,23 +210,39 @@ export function withheldReport(sidecars: readonly unknown[], deny: readonly stri
     }
   }
 
-  const rules: WithheldRuleReport[] = schemaStripping.map((rule) => {
+  // Collect observed tools whose name satisfies `predicate`, ranked, plus the
+  // derived status. Shared by deny rules and disable-key withholds.
+  const collect = (predicate: (name: string) => boolean): { observed: ObservedToolMatch[]; status: WithheldStatus } => {
     const matches: ObservedToolMatch[] = [...observed.entries()]
-      .filter(([name]) => matchesRule(rule, name))
+      .filter(([name]) => predicate(name))
       .map(([name, v]) => ({ name, ...v, inLatestRequest: latestRequestTs !== null && v.lastSeen === latestRequestTs }))
       .sort((a, b) => b.occurrences - a.occurrences || a.name.localeCompare(b.name));
     const status: WithheldStatus =
       matches.length === 0 ? "absent" : matches.some((m) => m.inLatestRequest) ? "still-present" : "was-present";
+    return { observed: matches, status };
+  };
+
+  const rules: WithheldRuleReport[] = schemaStripping.map((rule) => {
+    const { observed: matches, status } = collect((name) => matchesRule(rule, name));
     return { rule, isGlob: isGlobRule(rule), status, observed: matches };
+  });
+
+  const disableSchema: DisableSchemaReport[] = activeDisableSchemaKeys(enabledDisableKeys).map(({ key, tools }) => {
+    const toolSet = new Set(tools);
+    const { observed: matches, status } = collect((name) => toolSet.has(name));
+    return { key, tools, status, observed: matches };
   });
 
   return {
     rules,
     scopedRules: scoped,
+    disableSchema,
     observedToolCount: observed.size,
     requestsSampled,
     latestRequestTs,
     rulesStillPresent: rules.filter((r) => r.status === "still-present").length,
     rulesWasPresent: rules.filter((r) => r.status === "was-present").length,
+    disableStillPresent: disableSchema.filter((d) => d.status === "still-present").length,
+    disableWasPresent: disableSchema.filter((d) => d.status === "was-present").length,
   };
 }
