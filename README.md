@@ -37,10 +37,10 @@ The proxy still runs with bare `node` — no install required.
 
 ### Device setup (route every `claude` invocation through the proxy)
 
-This is how it's set up on this machine: the proxy runs on its **default
-port `8787`**, and Claude Code's own `env` config — not a shell alias —
-points every `claude` invocation at it. There's no zshrc change; Claude
-Code reads `ANTHROPIC_BASE_URL` from its settings file on every launch.
+This is how it's set up on this machine: the proxy runs on `PORT=8036`,
+and Claude Code's own `env` config — not a shell alias — points every
+`claude` invocation at it. There's no zshrc change; Claude Code reads
+`ANTHROPIC_BASE_URL` from its settings file on every launch.
 
 1. Clone and install:
 
@@ -53,11 +53,11 @@ Code reads `ANTHROPIC_BASE_URL` from its settings file on every launch.
 2. Start the proxy (pick one):
 
    ```bash
-   node proxy/proxy.mjs                    # bare, no deps, no install needed (PORT defaults to 8787)
+   PORT=8036 node proxy/proxy.mjs          # bare, no deps, no install needed
    # or, keep it running in the background:
-   node proxy/proxy.mjs &disown
+   PORT=8036 node proxy/proxy.mjs &disown
    # or, launch it alongside server + dashboard in one zellij session:
-   pnpm zellij
+   pnpm zellij                             # zellij dev layout already uses 8036
    ```
 
 3. Point Claude Code at it via `~/.claude/settings.json` (device-wide,
@@ -67,7 +67,7 @@ Code reads `ANTHROPIC_BASE_URL` from its settings file on every launch.
    // ~/.claude/settings.json
    {
      "env": {
-       "ANTHROPIC_BASE_URL": "http://localhost:8787"
+       "ANTHROPIC_BASE_URL": "http://localhost:8036"
      }
    }
    ```
