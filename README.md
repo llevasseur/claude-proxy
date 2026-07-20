@@ -35,6 +35,57 @@ zellij dev layout already launches the proxy on `8036`.
 Each request lands in `./logs/<timestamp>_anthropic.{md,request.txt,audit.json}`.
 The proxy still runs with bare `node` — no install required.
 
+### Device setup (route every `claude` invocation through the proxy)
+
+This is how it's set up on this machine: the proxy runs on `PORT=8036`,
+and Claude Code's own `env` config — not a shell alias — points every
+`claude` invocation at it. There's no zshrc change; Claude Code reads
+`ANTHROPIC_BASE_URL` from its settings file on every launch.
+
+1. Clone and install:
+
+   ```bash
+   git clone <this-repo> ~/Documents/ghub/claude-proxy
+   cd ~/Documents/ghub/claude-proxy
+   pnpm install
+   ```
+
+2. Start the proxy (pick one):
+
+   ```bash
+   PORT=8036 node proxy/proxy.mjs          # bare, no deps, no install needed
+   # or, keep it running in the background:
+   PORT=8036 node proxy/proxy.mjs &disown
+   # or, launch it alongside server + dashboard in one zellij session:
+   pnpm zellij                             # zellij dev layout already uses 8036
+   ```
+
+3. Point Claude Code at it via `~/.claude/settings.json` (device-wide,
+   applies to every `claude` session):
+
+   ```jsonc
+   // ~/.claude/settings.json
+   {
+     "env": {
+       "ANTHROPIC_BASE_URL": "http://localhost:8036"
+     }
+   }
+   ```
+
+   Auth still comes from your normal Claude Code credentials — the proxy
+   only sits in front of the request, redacting auth headers before it
+   writes them to disk.
+
+4. Confirm it's wired up:
+
+   ```bash
+   claude --version   # any claude session now logs to ./logs/
+   ```
+
+   If the proxy isn't running, requests just fail — remove or comment out
+   the `env` block in `~/.claude/settings.json` to fall back to hitting
+   `api.anthropic.com` directly.
+
 ## 2. The dashboard — monitor usage
 
 The `server` package reads those `.audit.json` sidecars and serves a read-only
