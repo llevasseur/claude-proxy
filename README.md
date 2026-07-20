@@ -35,11 +35,12 @@ zellij dev layout already launches the proxy on `8036`.
 Each request lands in `./logs/<timestamp>_anthropic.{md,request.txt,audit.json}`.
 The proxy still runs with bare `node` — no install required.
 
-### Device setup (run proxy always-on, route `claude` through it)
+### Device setup (route every `claude` invocation through the proxy)
 
-This is how it's set up on this machine: proxy runs in the background on
-`PORT=8036`, and a zshrc alias makes `claude` route through it by default —
-plain `claude` still works normally when the proxy isn't running.
+This is how it's set up on this machine: the proxy runs on its **default
+port `8787`**, and Claude Code's own `env` config — not a shell alias —
+points every `claude` invocation at it. There's no zshrc change; Claude
+Code reads `ANTHROPIC_BASE_URL` from its settings file on every launch.
 
 1. Clone and install:
 
@@ -52,33 +53,38 @@ plain `claude` still works normally when the proxy isn't running.
 2. Start the proxy (pick one):
 
    ```bash
-   PORT=8036 node proxy/proxy.mjs          # bare, no deps, no install needed
+   node proxy/proxy.mjs                    # bare, no deps, no install needed (PORT defaults to 8787)
    # or, keep it running in the background:
-   PORT=8036 node proxy/proxy.mjs &disown
+   node proxy/proxy.mjs &disown
    # or, launch it alongside server + dashboard in one zellij session:
    pnpm zellij
    ```
 
-3. Add this alias to `~/.zshrc` so `claude` routes through the proxy:
+3. Point Claude Code at it via `~/.claude/settings.json` (device-wide,
+   applies to every `claude` session):
 
-   ```bash
-   # ~/.zshrc
-   alias claude='ANTHROPIC_BASE_URL=http://localhost:8036 command claude'
+   ```jsonc
+   // ~/.claude/settings.json
+   {
+     "env": {
+       "ANTHROPIC_BASE_URL": "http://localhost:8787"
+     }
+   }
    ```
 
-   `command claude` skips the alias itself to avoid infinite recursion.
-   `ANTHROPIC_BASE_URL` only redirects where requests go — auth still comes
-   from your normal Claude Code credentials, untouched by the proxy.
+   Auth still comes from your normal Claude Code credentials — the proxy
+   only sits in front of the request, redacting auth headers before it
+   writes them to disk.
 
-4. Reload the shell (`source ~/.zshrc`) and confirm it's wired up:
+4. Confirm it's wired up:
 
    ```bash
    claude --version   # any claude session now logs to ./logs/
    ```
 
-   If the proxy isn't running, the alias's `localhost:8036` connection just
-   fails closed — swap in a plain `claude` invocation (or temporarily unalias)
-   to bypass it.
+   If the proxy isn't running, requests just fail — remove or comment out
+   the `env` block in `~/.claude/settings.json` to fall back to hitting
+   `api.anthropic.com` directly.
 
 ## 2. The dashboard — monitor usage
 
