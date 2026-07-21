@@ -559,6 +559,23 @@ button:focus-visible {
 .table tbody tr:last-child td {
   border-bottom: none;
 }
+.table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.table th.sortable:hover {
+  color: var(--text);
+}
+.table th.sortable[aria-sort="ascending"],
+.table th.sortable[aria-sort="descending"] {
+  color: var(--text);
+}
+.table th .sort-arrow {
+  display: inline-block;
+  margin-left: 4px;
+  opacity: 0.7;
+  font-size: 9px;
+}
 .table tbody tr.clickable {
   cursor: pointer;
 }
@@ -776,5 +793,5 @@ button:focus-visible {
   font-size: 12px;
   line-height: 1.5;
   white-space: pre;
-  color: var(--ink, #cfe);
+  color: var(--text, #e9edf3);
 }

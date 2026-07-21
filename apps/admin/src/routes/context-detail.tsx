@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useState } from "react";
-import type { RequestBreakdown } from "@claude-proxy/core";
+import { useMemo, useState } from "react";
+import type { BreakdownMessage, RequestBreakdown } from "@claude-proxy/core";
 import { getContextDetail } from "../api";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtInt, fmtPct } from "../format";
@@ -39,11 +39,9 @@ function regionRows(b: RequestBreakdown): { label: string; bytes: number }[] {
 }
 
 function DetailBody({ file, breakdown: b, raw, truncated }: { file: string; breakdown: RequestBreakdown; raw: string; truncated: boolean }) {
-  const navigate = useNavigate();
   const regions = regionRows(b);
   const regionMax = Math.max(1, ...regions.map((r) => r.bytes));
   const toolMax = Math.max(1, ...b.tools.map((t) => t.bytes));
-  const msgMax = Math.max(1, ...b.messages.map((m) => m.bytes));
 
   return (
     <>
@@ -111,56 +109,129 @@ function DetailBody({ file, breakdown: b, raw, truncated }: { file: string; brea
           )}
         </div>
 
-        <div className="card">
-          <h2>Messages by size</h2>
-          {b.messages.length === 0 ? (
-            <div className="empty">No messages in this request.</div>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th className="num">#</th>
-                  <th>Role</th>
-                  <th className="num">Bytes</th>
-                  <th className="num">~Tokens</th>
-                  <th className="bar-col">Share</th>
-                </tr>
-              </thead>
-              <tbody>
-                {b.messages.map((m) => (
-                  <tr
-                    key={m.index}
-                    className="clickable"
-                    onClick={() =>
-                      navigate({ to: "/context/$file/message/$index", params: { file, index: String(m.index) } })
-                    }
-                  >
-                    <td className="num">
-                      <Link
-                        to="/context/$file/message/$index"
-                        params={{ file, index: String(m.index) }}
-                        className="link"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {m.index}
-                      </Link>
-                    </td>
-                    <td>{m.role}</td>
-                    <td className="num">{fmtBytes(m.bytes)}</td>
-                    <td className="num">{fmtInt(m.estTokens)}</td>
-                    <td className="bar-col">
-                      <div className="rowbar" style={{ width: `${(m.bytes / msgMax) * 100}%` }} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <MessagesTable file={file} messages={b.messages} />
       </div>
 
       <RawJson raw={raw} truncated={truncated} />
     </>
+  );
+}
+
+type SortKey = "index" | "bytes" | "estTokens" | "share";
+type SortDir = "asc" | "desc";
+
+/** Direction applied the first time a column becomes the sort key. */
+const DEFAULT_DIR: Record<SortKey, SortDir> = {
+  index: "asc",
+  bytes: "desc",
+  estTokens: "desc",
+  share: "desc",
+};
+
+/** Share is drawn from bytes, so it sorts on the same underlying value. */
+function sortValue(m: BreakdownMessage, key: SortKey): number {
+  switch (key) {
+    case "index":
+      return m.index;
+    case "estTokens":
+      return m.estTokens;
+    default:
+      return m.bytes;
+  }
+}
+
+function MessagesTable({ file, messages }: { file: string; messages: BreakdownMessage[] }) {
+  const navigate = useNavigate();
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "index", dir: "asc" });
+  const msgMax = Math.max(1, ...messages.map((m) => m.bytes));
+
+  const sorted = useMemo(() => {
+    const rows = [...messages];
+    rows.sort((a, b) => {
+      const diff = sortValue(a, sort.key) - sortValue(b, sort.key);
+      return sort.dir === "asc" ? diff : -diff;
+    });
+    return rows;
+  }, [messages, sort]);
+
+  const onSort = (key: SortKey) =>
+    setSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: DEFAULT_DIR[key] },
+    );
+
+  return (
+    <div className="card">
+      <h2>Messages by size</h2>
+      {messages.length === 0 ? (
+        <div className="empty">No messages in this request.</div>
+      ) : (
+        <table className="table">
+          <thead>
+            <tr>
+              <SortHeader label="#" sortKey="index" sort={sort} onSort={onSort} className="num" />
+              <th>Role</th>
+              <SortHeader label="Bytes" sortKey="bytes" sort={sort} onSort={onSort} className="num" />
+              <SortHeader label="~Tokens" sortKey="estTokens" sort={sort} onSort={onSort} className="num" />
+              <SortHeader label="Share" sortKey="share" sort={sort} onSort={onSort} className="bar-col" />
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((m) => (
+              <tr
+                key={m.index}
+                className="clickable"
+                onClick={() =>
+                  navigate({ to: "/context/$file/message/$index", params: { file, index: String(m.index) } })
+                }
+              >
+                <td className="num">
+                  <Link
+                    to="/context/$file/message/$index"
+                    params={{ file, index: String(m.index) }}
+                    className="link"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {m.index}
+                  </Link>
+                </td>
+                <td>{m.role}</td>
+                <td className="num">{fmtBytes(m.bytes)}</td>
+                <td className="num">{fmtInt(m.estTokens)}</td>
+                <td className="bar-col">
+                  <div className="rowbar" style={{ width: `${(m.bytes / msgMax) * 100}%` }} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: { key: SortKey; dir: SortDir };
+  onSort: (key: SortKey) => void;
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      className={["sortable", className].filter(Boolean).join(" ")}
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      onClick={() => onSort(sortKey)}
+    >
+      {label}
+      {active && <span className="sort-arrow">{sort.dir === "asc" ? "▲" : "▼"}</span>}
+    </th>
   );
 }
 
