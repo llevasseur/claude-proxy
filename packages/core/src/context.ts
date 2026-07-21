@@ -92,9 +92,7 @@ export function toContextEntry(sidecar: unknown, file: string): ContextEntry | n
   };
 }
 
-// ---------------------------------------------------------------------------
 // Raw-request breakdown — "why was this one so large?"
-// ---------------------------------------------------------------------------
 
 export interface BreakdownTool {
   name: string;
