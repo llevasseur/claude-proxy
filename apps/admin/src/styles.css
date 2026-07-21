@@ -316,8 +316,7 @@ button:focus-visible {
   grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
 }
 .grid.two {
-  /* minmax(0, …) lets each track shrink below its content's min-content width,
-     so two tables with different natural widths still render exactly equal. */
+  /* minmax(0,…) lets both columns shrink equally below their content width. */
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 .grid.two > .card {
@@ -542,9 +541,7 @@ button:focus-visible {
   text-align: left;
   padding: 9px 10px;
   border-bottom: 1px solid var(--line);
-  /* Break long unbreakable tokens (e.g. mcp__… tool names) so a cell can never
-     force the table wider than its card — `anywhere` also shrinks min-content,
-     letting the auto layout size columns to the available space. */
+  /* Break long unbreakable tokens so a cell can't force the table past its card. */
   overflow-wrap: anywhere;
 }
 .table th {
@@ -554,8 +551,7 @@ button:focus-visible {
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  /* Column headers are short labels — keep them on one line so the column
-     reserves the width its header needs. */
+  /* Keep short headers on one line. */
   white-space: nowrap;
 }
 .table td {
@@ -567,8 +563,7 @@ button:focus-visible {
 }
 .table td.num {
   font-family: var(--font-mono);
-  /* Numbers stay on one line, so the column keeps its natural content width
-     instead of collapsing and letting a flexible text column crowd it out. */
+  /* Keep numbers on one line so the column holds its natural width. */
   white-space: nowrap;
 }
 .table tbody tr:last-child td {
