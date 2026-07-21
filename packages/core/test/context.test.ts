@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeRequestBody,
+  extractRequestMessage,
   summarizeContext,
   toContextEntry,
   type ContextEntry,
@@ -120,5 +121,37 @@ describe("analyzeRequestBody", () => {
     const junk = analyzeRequestBody(null);
     expect(junk.messageCount).toBe(0);
     expect(junk.tools).toEqual([]);
+  });
+});
+
+describe("extractRequestMessage", () => {
+  const body = {
+    messages: [
+      { role: "user", content: "hello" },
+      { role: "assistant", content: [{ type: "text", text: "hi there" }] },
+    ],
+  };
+
+  it("returns the full message content and size facts by index", () => {
+    const m = extractRequestMessage(body, 1);
+    expect(m).not.toBeNull();
+    expect(m!.index).toBe(1);
+    expect(m!.role).toBe("assistant");
+    expect(m!.messageCount).toBe(2);
+    expect(m!.bytes).toBeGreaterThan(0);
+    expect(m!.estTokens).toBe(Math.round(m!.bytes / 4));
+    expect(JSON.parse(m!.content)).toEqual(body.messages[1]);
+  });
+
+  it("returns null for an out-of-range or non-integer index", () => {
+    expect(extractRequestMessage(body, 2)).toBeNull();
+    expect(extractRequestMessage(body, -1)).toBeNull();
+    expect(extractRequestMessage(body, 0.5)).toBeNull();
+  });
+
+  it("defaults role to unknown and tolerates a malformed body", () => {
+    expect(extractRequestMessage({ messages: [{ content: "no role" }] }, 0)!.role).toBe("unknown");
+    expect(extractRequestMessage({}, 0)).toBeNull();
+    expect(extractRequestMessage(null, 0)).toBeNull();
   });
 });

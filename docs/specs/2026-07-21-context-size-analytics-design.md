@@ -12,7 +12,8 @@ timestamp: 2026-07-21
 **Status:** Approved (key decisions confirmed; PR is the review gate)
 **Builds on:** [`2026-07-15-monorepo-admin-dashboard-design.md`](2026-07-15-monorepo-admin-dashboard-design.md)
 and the [Admin dashboard for claude-proxy usage](../features/admin-dashboard-for-claude-proxy-usage.md) feature.
-**Feature:** [Context-size analytics](../features/context-size-analytics.md).
+**Feature:** [Context-size analytics](../features/context-size-analytics.md),
+[Message drill-down](../features/message-drill-down.md).
 **Scope:** `claude-proxy` only — `packages/core`, `server`, `apps/admin`. No proxy capture
 changes; everything needed is already recorded in the audit sidecars.
 
@@ -61,6 +62,13 @@ proxy (already captures) → logs/*.audit.json + *.request.txt
   measures system, each tool, and each message. Byte length via `TextEncoder` (portable,
   matches the proxy's UTF-8 `Buffer.byteLength`); `estTokens ≈ round(bytes / 4)` matching the
   proxy's `estTokens`. Tolerant of malformed shapes (missing `messages`/`tools`/`system`).
+- `RequestMessageDetail` — `{ index, role, bytes, estTokens, messageCount, content }`, where
+  `content` is the full message object pretty-printed as JSON.
+- `extractRequestMessage(body: unknown, index: number): RequestMessageDetail | null` — pure.
+  Slices one conversation message out of a parsed body by position, returning its full content
+  plus the same size facts `analyzeRequestBody` reports for it; `null` when there is no
+  `messages` array or `index` is out of range. Backs the [Message drill-down](../features/message-drill-down.md)
+  subpage.
 
 Exported from `packages/core/src/index.ts`. Tested in `packages/core/test/context.test.ts`
 following the `makeSidecar` helper convention.
@@ -78,8 +86,12 @@ following the `makeSidecar` helper convention.
   - `buildContextDetail(logDir, file)` — reads that one request body, returns
     `analyzeRequestBody(body)` plus the raw JSON text (pretty-printed, capped at a sane size
     with a `truncated` flag) and the matching sidecar's headline numbers.
-- `server.ts` — routes `/api/context` (`?days=`) and `/api/context/detail` (`?file=`).
-  Detail returns 400 on a missing/invalid `file`, 404 when the request file is absent.
+  - `buildContextMessage(logDir, file, index)` — reads that one request body and returns
+    `extractRequestMessage(body, index)`. Uses the full parsed body (not the truncated raw
+    JSON), so any message resolves regardless of request size. Backs the message drill-down.
+- `server.ts` — routes `/api/context` (`?days=`), `/api/context/detail` (`?file=`), and
+  `/api/context/message` (`?file=` + `?index=`). Detail/message return 400 on a
+  missing/invalid `file` or `index`, 404 when the request file or the index is absent.
 
 ### UI (`apps/admin/`)
 
@@ -91,9 +103,13 @@ following the `makeSidecar` helper convention.
   system B, tools B) where each row links to the drill-down. The peak row is marked.
 - `routes/context-detail.tsx` — route `/context/$file`. Header with the request's real-input
   total and timestamp; a breakdown card (system / tools / messages as shares of the request);
-  a per-tool table; a per-message table (index, role, bytes, ~tokens); and a collapsible/raw
-  `<pre>` block with the full request JSON (with a note if truncated). A back-link to
-  `/context`.
+  a per-tool table; a per-message table (index, role, bytes, ~tokens) whose rows link to the
+  message drill-down; and a collapsible/raw `<pre>` block with the full request JSON (with a
+  note if truncated). A back-link to `/context`.
+- `routes/context-message.tsx` — route `/context/$file/message/$index` via `getContextMessage`.
+  Stat tiles (position `#index` of N, role, bytes/~tokens) and a "Full message" card with the
+  entire message object as pretty-printed JSON. A back-link to `/context/$file`. See the
+  [Message drill-down](../features/message-drill-down.md) feature.
 
 ## Data-volume / performance
 
@@ -113,7 +129,8 @@ crosses the wire.
 
 - Core: `context.test.ts` — empty input; average/median/max over several entries; top-N
   ordering and cap; `analyzeRequestBody` for a normal body, a string-content message, and a
-  malformed/empty body.
+  malformed/empty body; `extractRequestMessage` for a valid index, an out-of-range/non-integer
+  index, and a malformed body.
 - Typecheck + existing test suite must stay green (`pnpm typecheck`, `pnpm test`).
 
 ## Out of scope (YAGNI)

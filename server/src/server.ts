@@ -2,6 +2,7 @@ import http from "node:http";
 import {
   buildContext,
   buildContextDetail,
+  buildContextMessage,
   buildSkim,
   buildSkimTrend,
   buildSummary,
@@ -85,6 +86,28 @@ const server = http.createServer(async (req, res) => {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid request file name")) send(res, 400, { error: msg });
           else if (msg.startsWith("request file not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/context/message": {
+        const file = url.searchParams.get("file");
+        if (!file) {
+          send(res, 400, { error: "missing ?file=" });
+          return;
+        }
+        const index = Number(url.searchParams.get("index"));
+        if (!Number.isInteger(index) || index < 0) {
+          send(res, 400, { error: "missing or invalid ?index=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildContextMessage(LOG_DIR, file, index));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid request file name")) send(res, 400, { error: msg });
+          else if (msg.startsWith("request file not found")) send(res, 404, { error: msg });
+          else if (msg.startsWith("message index out of range")) send(res, 404, { error: msg });
           else throw err;
         }
         return;

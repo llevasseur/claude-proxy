@@ -1,6 +1,7 @@
 import {
   analyzeRequestBody,
   computeDigest,
+  extractRequestMessage,
   computeSkimDigest,
   digestsByDay,
   heuristicAdvice,
@@ -13,6 +14,7 @@ import {
   type ContextSummary,
   type LaunchAlias,
   type RequestBreakdown,
+  type RequestMessageDetail,
   type SkimDigest,
   type SkimShape,
   type TopTool,
@@ -105,6 +107,25 @@ export interface ContextDetailResponse {
 export async function buildContextDetail(logDir: string, file: string): Promise<ContextDetailResponse> {
   const { body, raw, truncated } = await readRequestBody(logDir, file);
   return { file, breakdown: analyzeRequestBody(body), raw, truncated };
+}
+
+export interface ContextMessageResponse {
+  file: string;
+  message: RequestMessageDetail;
+}
+
+/**
+ * The full content of one conversation message from a captured request. Reads
+ * exactly one `.request.txt` (via {@link readRequestBody}, which validates
+ * `file`) and slices out message `index`. The parsed body is always complete
+ * even when the drill-down's raw JSON was truncated, so any message resolves.
+ * Throws a labelled error the server maps to 404 when `index` is out of range.
+ */
+export async function buildContextMessage(logDir: string, file: string, index: number): Promise<ContextMessageResponse> {
+  const { body } = await readRequestBody(logDir, file);
+  const message = extractRequestMessage(body, index);
+  if (!message) throw new Error(`message index out of range: ${index}`);
+  return { file, message };
 }
 
 export interface SkimResponse {

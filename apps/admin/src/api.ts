@@ -3,6 +3,7 @@ import type {
   ContextSummary,
   LaunchAlias,
   RequestBreakdown,
+  RequestMessageDetail,
   SkimDigest,
   SkimShape,
   TopTool,
@@ -36,6 +37,10 @@ export interface ContextDetailResponse {
   breakdown: RequestBreakdown;
   raw: string;
   truncated: boolean;
+}
+export interface ContextMessageResponse {
+  file: string;
+  message: RequestMessageDetail;
 }
 export interface SkimResponse {
   date: string;
@@ -85,6 +90,8 @@ export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(da
 export const getContext = (days: number) => get<ContextResponse>(`/api/context?days=${days}`);
 export const getContextDetail = (file: string) =>
   get<ContextDetailResponse>(`/api/context/detail?file=${encodeURIComponent(file)}`);
+export const getContextMessage = (file: string, index: number) =>
+  get<ContextMessageResponse>(`/api/context/message?file=${encodeURIComponent(file)}&index=${index}`);
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
