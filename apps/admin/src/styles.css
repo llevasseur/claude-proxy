@@ -542,6 +542,10 @@ button:focus-visible {
   text-align: left;
   padding: 9px 10px;
   border-bottom: 1px solid var(--line);
+  /* Break long unbreakable tokens (e.g. mcp__… tool names) so a cell can never
+     force the table wider than its card — `anywhere` also shrinks min-content,
+     letting the auto layout size columns to the available space. */
+  overflow-wrap: anywhere;
 }
 .table th {
   font-family: var(--font-mono);
@@ -550,6 +554,9 @@ button:focus-visible {
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  /* Column headers are short labels — keep them on one line so the column
+     reserves the width its header needs. */
+  white-space: nowrap;
 }
 .table td {
   font-size: 13px;
@@ -560,6 +567,9 @@ button:focus-visible {
 }
 .table td.num {
   font-family: var(--font-mono);
+  /* Numbers stay on one line, so the column keeps its natural content width
+     instead of collapsing and letting a flexible text column crowd it out. */
+  white-space: nowrap;
 }
 .table tbody tr:last-child td {
   border-bottom: none;
@@ -618,7 +628,7 @@ button:focus-visible {
   color: var(--text);
 }
 .bar-col {
-  width: 30%;
+  width: 22%;
 }
 .rowbar {
   height: 10px;
