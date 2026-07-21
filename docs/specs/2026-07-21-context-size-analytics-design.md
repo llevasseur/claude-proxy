@@ -2,7 +2,7 @@
 type: design
 title: Context-Size Analytics — Design Spec
 description: Surface how large the prompt/context sent to the model gets — average, largest, and why the largest was so large.
-tags: [context-size, analytics, design]
+tags: [context-size, usage, dashboard, design]
 timestamp: 2026-07-21
 ---
 
@@ -10,6 +10,9 @@ timestamp: 2026-07-21
 
 **Date:** 2026-07-21
 **Status:** Approved (key decisions confirmed; PR is the review gate)
+**Builds on:** [`2026-07-15-monorepo-admin-dashboard-design.md`](2026-07-15-monorepo-admin-dashboard-design.md)
+and the [Admin dashboard for claude-proxy usage](../features/admin-dashboard-for-claude-proxy-usage.md) feature.
+**Feature:** [Context-size analytics](../features/context-size-analytics.md).
 **Scope:** `claude-proxy` only — `packages/core`, `server`, `apps/admin`. No proxy capture
 changes; everything needed is already recorded in the audit sidecars.
 

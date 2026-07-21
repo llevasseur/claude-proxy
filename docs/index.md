@@ -14,18 +14,17 @@ An [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-cata
 Folders: `adrs/` (decisions), `specs` (specs), `features/` (parts of spec).
 
 <!-- okq:index:begin -->
-
 ### Folders
 
 - [adrs/](adrs/)
 - [features/](features/)
 - [specs/](specs/)
+- [wayfinder/](wayfinder/)
 
 ### Concepts
 
-| Title                                    | File                                                                                   |
-| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| Title | File |
+|-------|------|
 | Claude Usage Daily Summary — Design Spec | [2026-07-13-claude-usage-summary-design.md](2026-07-13-claude-usage-summary-design.md) |
-| docs                                     | [README.md](README.md)                                                                 |
-
+| docs | [README.md](README.md) |
 <!-- okq:index:end -->
