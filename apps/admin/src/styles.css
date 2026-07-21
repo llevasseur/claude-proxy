@@ -559,6 +559,12 @@ button:focus-visible {
 .table tbody tr:last-child td {
   border-bottom: none;
 }
+.table tbody tr.clickable {
+  cursor: pointer;
+}
+.table tbody tr.clickable:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
 .skim-request {
   max-width: 380px;
 }

@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, Link, Outlet } from "@tanst
 import { HealthBadge } from "./components/HealthBadge";
 import { AdvicePage } from "./routes/advice";
 import { ContextDetailPage } from "./routes/context-detail";
+import { ContextMessagePage } from "./routes/context-message";
 import { ContextPage } from "./routes/context";
 import { OverviewPage } from "./routes/overview";
 import { SkimPage } from "./routes/skim";
@@ -73,6 +74,11 @@ const contextDetailRoute = createRoute({
   path: "/context/$file",
   component: ContextDetailPage,
 });
+const contextMessageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/context/$file/message/$index",
+  component: ContextMessagePage,
+});
 const toolsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tools", component: ToolsPage });
 const skimRoute = createRoute({ getParentRoute: () => rootRoute, path: "/skim", component: SkimPage });
 const withheldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/withheld", component: WithheldPage });
@@ -83,6 +89,7 @@ const routeTree = rootRoute.addChildren([
   trendsRoute,
   contextRoute,
   contextDetailRoute,
+  contextMessageRoute,
   toolsRoute,
   skimRoute,
   withheldRoute,

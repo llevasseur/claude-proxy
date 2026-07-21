@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import type { RequestBreakdown } from "@claude-proxy/core";
 import { getContextDetail } from "../api";
@@ -22,7 +22,7 @@ export function ContextDetailPage() {
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
       <QueryState isLoading={query.isLoading} error={query.error}>
-        {data && <DetailBody breakdown={data.breakdown} raw={data.raw} truncated={data.truncated} />}
+        {data && <DetailBody file={file} breakdown={data.breakdown} raw={data.raw} truncated={data.truncated} />}
       </QueryState>
     </section>
   );
@@ -38,7 +38,8 @@ function regionRows(b: RequestBreakdown): { label: string; bytes: number }[] {
   ].sort((a, c) => c.bytes - a.bytes);
 }
 
-function DetailBody({ breakdown: b, raw, truncated }: { breakdown: RequestBreakdown; raw: string; truncated: boolean }) {
+function DetailBody({ file, breakdown: b, raw, truncated }: { file: string; breakdown: RequestBreakdown; raw: string; truncated: boolean }) {
+  const navigate = useNavigate();
   const regions = regionRows(b);
   const regionMax = Math.max(1, ...regions.map((r) => r.bytes));
   const toolMax = Math.max(1, ...b.tools.map((t) => t.bytes));
@@ -127,8 +128,23 @@ function DetailBody({ breakdown: b, raw, truncated }: { breakdown: RequestBreakd
               </thead>
               <tbody>
                 {b.messages.map((m) => (
-                  <tr key={m.index}>
-                    <td className="num">{m.index}</td>
+                  <tr
+                    key={m.index}
+                    className="clickable"
+                    onClick={() =>
+                      navigate({ to: "/context/$file/message/$index", params: { file, index: String(m.index) } })
+                    }
+                  >
+                    <td className="num">
+                      <Link
+                        to="/context/$file/message/$index"
+                        params={{ file, index: String(m.index) }}
+                        className="link"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {m.index}
+                      </Link>
+                    </td>
                     <td>{m.role}</td>
                     <td className="num">{fmtBytes(m.bytes)}</td>
                     <td className="num">{fmtInt(m.estTokens)}</td>

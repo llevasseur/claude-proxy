@@ -171,3 +171,35 @@ export function analyzeRequestBody(body: unknown): RequestBreakdown {
     messages,
   };
 }
+
+export interface RequestMessageDetail {
+  index: number;
+  role: string;
+  bytes: number;
+  estTokens: number;
+  /** How many messages the request had, for context on the drill-down. */
+  messageCount: number;
+  /** The full message object, pretty-printed as JSON. */
+  content: string;
+}
+
+/**
+ * Pull one conversation message out of a parsed request body by its position,
+ * returning its full content (pretty-printed JSON) alongside the same size
+ * facts {@link analyzeRequestBody} reports for it. Returns null when the body
+ * has no messages array or `index` is out of range — pure and tolerant of
+ * malformed shapes, like {@link analyzeRequestBody}.
+ */
+export function extractRequestMessage(body: unknown, index: number): RequestMessageDetail | null {
+  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const rawMessages = Array.isArray(obj.messages) ? obj.messages : [];
+  if (!Number.isInteger(index) || index < 0 || index >= rawMessages.length) return null;
+
+  const m = rawMessages[index];
+  const bytes = byteLength(m);
+  const role =
+    typeof m === "object" && m !== null && typeof (m as { role?: unknown }).role === "string"
+      ? (m as { role: string }).role
+      : "unknown";
+  return { index, role, bytes, estTokens: estTokens(bytes), messageCount: rawMessages.length, content: JSON.stringify(m, null, 2) };
+}

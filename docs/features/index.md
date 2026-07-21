@@ -13,4 +13,5 @@ Add one with `okq new feature "<title>"`.
 |-------|------|
 | Admin dashboard for claude-proxy usage | [admin-dashboard-for-claude-proxy-usage.md](admin-dashboard-for-claude-proxy-usage.md) |
 | Context-size analytics | [context-size-analytics.md](context-size-analytics.md) |
+| Message drill-down | [message-drill-down.md](message-drill-down.md) |
 <!-- okq:index:end -->
