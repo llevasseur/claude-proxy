@@ -95,6 +95,8 @@ export function toContextEntry(sidecar: unknown, file: string): ContextEntry | n
 // Raw-request breakdown — "why was this one so large?"
 
 export interface BreakdownTool {
+  /** Position in the request's `tools` array — the drill-down handle. */
+  index: number;
   name: string;
   bytes: number;
   estTokens: number;
@@ -137,13 +139,13 @@ export function analyzeRequestBody(body: unknown): RequestBreakdown {
 
   const rawTools = Array.isArray(obj.tools) ? obj.tools : [];
   const tools: BreakdownTool[] = rawTools
-    .map((t) => {
+    .map((t, index) => {
       const bytes = byteLength(t);
       const name =
         typeof t === "object" && t !== null && typeof (t as { name?: unknown }).name === "string"
           ? (t as { name: string }).name
           : "(unnamed)";
-      return { name, bytes, estTokens: estTokens(bytes) };
+      return { index, name, bytes, estTokens: estTokens(bytes) };
     })
     .sort((a, b) => b.bytes - a.bytes);
 
@@ -201,4 +203,35 @@ export function extractRequestMessage(body: unknown, index: number): RequestMess
       ? (m as { role: string }).role
       : "unknown";
   return { index, role, bytes, estTokens: estTokens(bytes), messageCount: rawMessages.length, content: JSON.stringify(m, null, 2) };
+}
+
+export interface RequestToolDetail {
+  index: number;
+  name: string;
+  bytes: number;
+  estTokens: number;
+  /** How many tool schemas the request had. */
+  toolCount: number;
+  /** The full tool schema, pretty-printed as JSON. */
+  content: string;
+}
+
+/**
+ * Pull one tool schema from a parsed request body by its position in the
+ * `tools` array, with its full definition (pretty-printed JSON) and the same
+ * size facts {@link analyzeRequestBody} reports. Returns null for a missing
+ * tools array or out-of-range `index`. Pure and tolerant of malformed shapes.
+ */
+export function extractRequestTool(body: unknown, index: number): RequestToolDetail | null {
+  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const rawTools = Array.isArray(obj.tools) ? obj.tools : [];
+  if (!Number.isInteger(index) || index < 0 || index >= rawTools.length) return null;
+
+  const t = rawTools[index];
+  const bytes = byteLength(t);
+  const name =
+    typeof t === "object" && t !== null && typeof (t as { name?: unknown }).name === "string"
+      ? (t as { name: string }).name
+      : "(unnamed)";
+  return { index, name, bytes, estTokens: estTokens(bytes), toolCount: rawTools.length, content: JSON.stringify(t, null, 2) };
 }

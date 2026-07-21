@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import type { BreakdownMessage, RequestBreakdown } from "@claude-proxy/core";
+import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from "@claude-proxy/core";
 import { getContextDetail } from "../api";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtInt, fmtPct } from "../format";
@@ -41,7 +41,6 @@ function regionRows(b: RequestBreakdown): { label: string; bytes: number }[] {
 function DetailBody({ file, breakdown: b, raw, truncated }: { file: string; breakdown: RequestBreakdown; raw: string; truncated: boolean }) {
   const regions = regionRows(b);
   const regionMax = Math.max(1, ...regions.map((r) => r.bytes));
-  const toolMax = Math.max(1, ...b.tools.map((t) => t.bytes));
 
   return (
     <>
@@ -79,37 +78,8 @@ function DetailBody({ file, breakdown: b, raw, truncated }: { file: string; brea
       </div>
 
       <div className="grid two">
-        <div className="card">
-          <h2>Tools by size</h2>
-          {b.tools.length === 0 ? (
-            <div className="empty">No tools in this request.</div>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Tool</th>
-                  <th className="num">Bytes</th>
-                  <th className="num">~Tokens</th>
-                  <th className="bar-col">Share</th>
-                </tr>
-              </thead>
-              <tbody>
-                {b.tools.map((t) => (
-                  <tr key={t.name}>
-                    <td>{t.name}</td>
-                    <td className="num">{fmtBytes(t.bytes)}</td>
-                    <td className="num">{fmtInt(t.estTokens)}</td>
-                    <td className="bar-col">
-                      <div className="rowbar" style={{ width: `${(t.bytes / toolMax) * 100}%` }} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
         <MessagesTable file={file} messages={b.messages} />
+        <ToolsTable file={file} tools={b.tools} />
       </div>
 
       <RawJson raw={raw} truncated={truncated} />
@@ -199,6 +169,58 @@ function MessagesTable({ file, messages }: { file: string; messages: BreakdownMe
                 <td className="num">{fmtInt(m.estTokens)}</td>
                 <td className="bar-col">
                   <div className="rowbar" style={{ width: `${(m.bytes / msgMax) * 100}%` }} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function ToolsTable({ file, tools }: { file: string; tools: BreakdownTool[] }) {
+  const navigate = useNavigate();
+  const toolMax = Math.max(1, ...tools.map((t) => t.bytes));
+
+  return (
+    <div className="card">
+      <h2>Tools by size</h2>
+      {tools.length === 0 ? (
+        <div className="empty">No tools in this request.</div>
+      ) : (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Tool</th>
+              <th className="num">Bytes</th>
+              <th className="num">~Tokens</th>
+              <th className="bar-col">Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tools.map((t) => (
+              <tr
+                key={t.index}
+                className="clickable"
+                onClick={() =>
+                  navigate({ to: "/context/$file/tool/$index", params: { file, index: String(t.index) } })
+                }
+              >
+                <td>
+                  <Link
+                    to="/context/$file/tool/$index"
+                    params={{ file, index: String(t.index) }}
+                    className="link"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {t.name}
+                  </Link>
+                </td>
+                <td className="num">{fmtBytes(t.bytes)}</td>
+                <td className="num">{fmtInt(t.estTokens)}</td>
+                <td className="bar-col">
+                  <div className="rowbar" style={{ width: `${(t.bytes / toolMax) * 100}%` }} />
                 </td>
               </tr>
             ))}

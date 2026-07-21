@@ -316,7 +316,12 @@ button:focus-visible {
   grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
 }
 .grid.two {
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …) lets each track shrink below its content's min-content width,
+     so two tables with different natural widths still render exactly equal. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.grid.two > .card {
+  min-width: 0;
 }
 @media (max-width: 720px) {
   .grid.two {

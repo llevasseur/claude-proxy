@@ -2,6 +2,7 @@ import {
   analyzeRequestBody,
   computeDigest,
   extractRequestMessage,
+  extractRequestTool,
   computeSkimDigest,
   digestsByDay,
   heuristicAdvice,
@@ -15,6 +16,7 @@ import {
   type LaunchAlias,
   type RequestBreakdown,
   type RequestMessageDetail,
+  type RequestToolDetail,
   type SkimDigest,
   type SkimShape,
   type TopTool,
@@ -126,6 +128,25 @@ export async function buildContextMessage(logDir: string, file: string, index: n
   const message = extractRequestMessage(body, index);
   if (!message) throw new Error(`message index out of range: ${index}`);
   return { file, message };
+}
+
+export interface ContextToolResponse {
+  file: string;
+  tool: RequestToolDetail;
+}
+
+/**
+ * The full schema of one tool from a captured request. Reads exactly one
+ * `.request.txt` (via {@link readRequestBody}, which validates `file`) and
+ * slices out tool `index`. The parsed body is always complete even when the
+ * drill-down's raw JSON was truncated, so any tool resolves. Throws a labelled
+ * error the server maps to 404 when `index` is out of range.
+ */
+export async function buildContextTool(logDir: string, file: string, index: number): Promise<ContextToolResponse> {
+  const { body } = await readRequestBody(logDir, file);
+  const tool = extractRequestTool(body, index);
+  if (!tool) throw new Error(`tool index out of range: ${index}`);
+  return { file, tool };
 }
 
 export interface SkimResponse {
