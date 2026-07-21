@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeRequestBody,
   extractRequestMessage,
+  extractRequestTool,
   summarizeContext,
   toContextEntry,
   type ContextEntry,
@@ -153,5 +154,46 @@ describe("extractRequestMessage", () => {
     expect(extractRequestMessage({ messages: [{ content: "no role" }] }, 0)!.role).toBe("unknown");
     expect(extractRequestMessage({}, 0)).toBeNull();
     expect(extractRequestMessage(null, 0)).toBeNull();
+  });
+});
+
+describe("extractRequestTool", () => {
+  const body = {
+    tools: [
+      { name: "Bash", description: "run shell" },
+      { name: "Read", description: "read files", input_schema: { type: "object" } },
+    ],
+  };
+
+  it("returns the full tool schema and size facts by index", () => {
+    const t = extractRequestTool(body, 1);
+    expect(t).not.toBeNull();
+    expect(t!.index).toBe(1);
+    expect(t!.name).toBe("Read");
+    expect(t!.toolCount).toBe(2);
+    expect(t!.bytes).toBeGreaterThan(0);
+    expect(t!.estTokens).toBe(Math.round(t!.bytes / 4));
+    expect(JSON.parse(t!.content)).toEqual(body.tools[1]);
+  });
+
+  it("index matches the tool's original array position, not its size rank", () => {
+    // analyzeRequestBody sorts largest-first; the `index` handle must still
+    // resolve the same tool through extractRequestTool.
+    const b = analyzeRequestBody(body);
+    for (const bt of b.tools) {
+      expect(extractRequestTool(body, bt.index)!.name).toBe(bt.name);
+    }
+  });
+
+  it("returns null for an out-of-range or non-integer index", () => {
+    expect(extractRequestTool(body, 2)).toBeNull();
+    expect(extractRequestTool(body, -1)).toBeNull();
+    expect(extractRequestTool(body, 0.5)).toBeNull();
+  });
+
+  it("defaults name to (unnamed) and tolerates a malformed body", () => {
+    expect(extractRequestTool({ tools: [{ description: "no name" }] }, 0)!.name).toBe("(unnamed)");
+    expect(extractRequestTool({}, 0)).toBeNull();
+    expect(extractRequestTool(null, 0)).toBeNull();
   });
 });

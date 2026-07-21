@@ -316,7 +316,11 @@ button:focus-visible {
   grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
 }
 .grid.two {
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0,…) lets both columns shrink equally below their content width. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.grid.two > .card {
+  min-width: 0;
 }
 @media (max-width: 720px) {
   .grid.two {
@@ -537,6 +541,8 @@ button:focus-visible {
   text-align: left;
   padding: 9px 10px;
   border-bottom: 1px solid var(--line);
+  /* Break long unbreakable tokens so a cell can't force the table past its card. */
+  overflow-wrap: anywhere;
 }
 .table th {
   font-family: var(--font-mono);
@@ -545,6 +551,8 @@ button:focus-visible {
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  /* Keep short headers on one line. */
+  white-space: nowrap;
 }
 .table td {
   font-size: 13px;
@@ -555,6 +563,8 @@ button:focus-visible {
 }
 .table td.num {
   font-family: var(--font-mono);
+  /* Keep numbers on one line so the column holds its natural width. */
+  white-space: nowrap;
 }
 .table tbody tr:last-child td {
   border-bottom: none;
@@ -613,7 +623,7 @@ button:focus-visible {
   color: var(--text);
 }
 .bar-col {
-  width: 30%;
+  width: 22%;
 }
 .rowbar {
   height: 10px;
@@ -794,4 +804,60 @@ button:focus-visible {
   line-height: 1.5;
   white-space: pre;
   color: var(--text, #e9edf3);
+}
+/* Word-wrapped variant. */
+.rawjson.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Pretty message view — one card-inset block per content block. */
+.msg-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+.msg-block {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--line);
+}
+.msg-block-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.msg-block-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.msg-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--coral);
+  border: 1px solid var(--coral);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+/* Wrapped, newline-preserving prose for text/thinking values. */
+.msg-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+}
+/* Nested raw JSON sits flush inside its block. */
+.msg-block .rawjson {
+  margin-top: 0;
 }
