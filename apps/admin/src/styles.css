@@ -312,7 +312,7 @@ button:focus-visible {
 .grid + .grid {
   margin-top: 22px;
 }
-/* Same gap when a grid is followed by a standalone card (e.g. stats → "why it was this large"). */
+/* Same gap when a grid is followed by a standalone card. */
 .grid + .card {
   margin-top: 22px;
 }
