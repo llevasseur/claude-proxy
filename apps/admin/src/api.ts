@@ -1,6 +1,8 @@
 import type {
   Advice,
+  ContextSummary,
   LaunchAlias,
+  RequestBreakdown,
   SkimDigest,
   SkimShape,
   TopTool,
@@ -24,6 +26,16 @@ export interface ToolsResponse {
   date: string;
   topTools: TopTool[];
   meta: { files: number; parseErrors: number };
+}
+export interface ContextResponse {
+  summary: ContextSummary;
+  meta: { days: number; files: number; parseErrors: number };
+}
+export interface ContextDetailResponse {
+  file: string;
+  breakdown: RequestBreakdown;
+  raw: string;
+  truncated: boolean;
 }
 export interface SkimResponse {
   date: string;
@@ -70,6 +82,9 @@ export const getHealth = () => get<HealthResponse>("/api/health");
 export const getSummary = (date?: string) => get<SummaryResponse>(`/api/summary${qs(date)}`);
 export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days=${days}`);
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);
+export const getContext = (days: number) => get<ContextResponse>(`/api/context?days=${days}`);
+export const getContextDetail = (file: string) =>
+  get<ContextDetailResponse>(`/api/context/detail?file=${encodeURIComponent(file)}`);
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);

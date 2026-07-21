@@ -1,19 +1,25 @@
 import {
+  analyzeRequestBody,
   computeDigest,
   computeSkimDigest,
   digestsByDay,
   heuristicAdvice,
   skimDigestsByDay,
+  summarizeContext,
+  toContextEntry,
   withheldReport,
   type Advice,
+  type ContextEntry,
+  type ContextSummary,
   type LaunchAlias,
+  type RequestBreakdown,
   type SkimDigest,
   type SkimShape,
   type TopTool,
   type UsageDigest,
   type WithheldReport,
 } from "@claude-proxy/core";
-import { readSidecars, shiftDay, today } from "./logs.js";
+import { readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
 import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
 import { readLaunchAliases } from "./shell-rc.js";
 
@@ -60,6 +66,45 @@ export async function buildTools(logDir: string, date?: string, now: Date = new 
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day }, now);
   const digest = computeDigest(sidecars, { date: day, topN: 200 });
   return { date: day, topTools: digest.topTools, meta: { files, parseErrors } };
+}
+
+export interface ContextResponse {
+  summary: ContextSummary;
+  meta: { days: number; files: number; parseErrors: number };
+}
+
+/**
+ * Context-size analytics over the last `days` days: average / median / max real
+ * input tokens, plus the largest requests (each with a `file` handle for the
+ * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
+ */
+export async function buildContext(logDir: string, days: number, now: Date = new Date()): Promise<ContextResponse> {
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+  const entries: ContextEntry[] = [];
+  for (const s of sidecars) {
+    const file = (s as { __file?: string }).__file;
+    const entry = file ? toContextEntry(s, file) : null;
+    if (entry) entries.push(entry);
+  }
+  return { summary: summarizeContext(entries), meta: { days, files, parseErrors } };
+}
+
+export interface ContextDetailResponse {
+  file: string;
+  breakdown: RequestBreakdown;
+  /** Full request JSON, pretty-printed (possibly truncated). */
+  raw: string;
+  truncated: boolean;
+}
+
+/**
+ * The "why was it so large?" drill-down for one captured request: its
+ * system/tools/message breakdown plus the raw request JSON. Reads exactly one
+ * `.request.txt`. `file` is validated in {@link readRequestBody}.
+ */
+export async function buildContextDetail(logDir: string, file: string): Promise<ContextDetailResponse> {
+  const { body, raw, truncated } = await readRequestBody(logDir, file);
+  return { file, breakdown: analyzeRequestBody(body), raw, truncated };
 }
 
 export interface SkimResponse {

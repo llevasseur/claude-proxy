@@ -1,5 +1,14 @@
 import http from "node:http";
-import { buildSkim, buildSkimTrend, buildSummary, buildTools, buildTrends, buildWithheld } from "./api.js";
+import {
+  buildContext,
+  buildContextDetail,
+  buildSkim,
+  buildSkimTrend,
+  buildSummary,
+  buildTools,
+  buildTrends,
+  buildWithheld,
+} from "./api.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
@@ -61,6 +70,25 @@ const server = http.createServer(async (req, res) => {
       case "/api/tools":
         send(res, 200, await buildTools(LOG_DIR, date));
         return;
+      case "/api/context":
+        send(res, 200, await buildContext(LOG_DIR, parseDays(url.searchParams.get("days"))));
+        return;
+      case "/api/context/detail": {
+        const file = url.searchParams.get("file");
+        if (!file) {
+          send(res, 400, { error: "missing ?file=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildContextDetail(LOG_DIR, file));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid request file name")) send(res, 400, { error: msg });
+          else if (msg.startsWith("request file not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
       case "/api/skim":
         send(res, 200, await buildSkim(LOG_DIR, date));
         return;
