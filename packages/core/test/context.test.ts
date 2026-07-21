@@ -140,7 +140,6 @@ describe("extractRequestMessage", () => {
     expect(m!.messageCount).toBe(2);
     expect(m!.bytes).toBeGreaterThan(0);
     expect(m!.estTokens).toBe(Math.round(m!.bytes / 4));
-    // content is the pretty-printed message object, round-trips to the original.
     expect(JSON.parse(m!.content)).toEqual(body.messages[1]);
   });
 
