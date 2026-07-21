@@ -6,6 +6,7 @@ import {
   skimDigestsByDay,
   withheldReport,
   type Advice,
+  type LaunchAlias,
   type SkimDigest,
   type SkimShape,
   type TopTool,
@@ -14,6 +15,7 @@ import {
 } from "@claude-proxy/core";
 import { readSidecars, shiftDay, today } from "./logs.js";
 import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
+import { readLaunchAliases } from "./shell-rc.js";
 
 export interface SummaryResponse {
   digest: UsageDigest;
@@ -90,6 +92,10 @@ export interface WithheldResponse {
   settingsPath: string;
   settingsReadable: boolean;
   report: WithheldReport;
+  /** `claude*` launch aliases from the shell rc, and the tools each withholds.
+   * Declarative — launch flags never reach the proxy, so these aren't verified
+   * against traffic like the deny rules are. */
+  launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[] };
   meta: { days: number; files: number; parseErrors: number };
 }
 
@@ -97,7 +103,9 @@ export interface WithheldResponse {
  * The device's withheld-tools policy: which tool schemas `~/.claude/settings.json`
  * keeps out of every request, cross-referenced with the last `days` of traffic
  * so we can confirm each is actually absent. This is a policy/verification view,
- * hence a window rather than a single day.
+ * hence a window rather than a single day. Also surfaces the `claude*` launch
+ * aliases from the shell rc, which withhold tools per-launch via
+ * `--disallowedTools` (declarative — not traffic-verified).
  */
 export async function buildWithheld(
   logDir: string,
@@ -105,15 +113,17 @@ export async function buildWithheld(
   settingsPath: string = resolveSettingsPath(),
   now: Date = new Date(),
 ): Promise<WithheldResponse> {
-  const [{ sidecars, files, parseErrors }, settings] = await Promise.all([
+  const [{ sidecars, files, parseErrors }, settings, launchAliases] = await Promise.all([
     readSidecars(logDir, { sinceDays: days }, now),
     readDeviceSettings(settingsPath),
+    readLaunchAliases(),
   ]);
   const report = withheldReport(sidecars, settings.denyRules, settings.enabledDisableKeys);
   return {
     settingsPath: settings.settingsPath,
     settingsReadable: settings.readable,
     report,
+    launchAliases,
     meta: { days, files, parseErrors },
   };
 }
