@@ -33,6 +33,9 @@ export interface ReadOptions {
   /** Only files on/after (today − sinceDays + 1). Ignored if `date` is set. */
   sinceDays?: number;
   includeSkimRequests?: boolean;
+  /** Attach `__file` (the sidecar base name, minus `.audit.json`) to each parsed
+   * object so callers can map a sidecar back to its raw request file. */
+  includeFile?: boolean;
 }
 
 function latestUserText(request: unknown): string | null {
@@ -116,8 +119,13 @@ export async function readSidecars(
   for (const f of files) {
     try {
       const sidecar = JSON.parse(await readFile(path.join(logDir, f), "utf8")) as unknown;
-      if (opts.includeSkimRequests && typeof sidecar === "object" && sidecar !== null) {
-        (sidecar as { skimRequestText?: string }).skimRequestText = (await skimRequestText(logDir, f)) ?? undefined;
+      if (typeof sidecar === "object" && sidecar !== null) {
+        if (opts.includeSkimRequests) {
+          (sidecar as { skimRequestText?: string }).skimRequestText = (await skimRequestText(logDir, f)) ?? undefined;
+        }
+        if (opts.includeFile) {
+          (sidecar as { __file?: string }).__file = f.replace(/\.audit\.json$/, "");
+        }
       }
       sidecars.push(sidecar);
     } catch {
@@ -126,4 +134,50 @@ export async function readSidecars(
     }
   }
   return { sidecars, files: files.length, parseErrors };
+}
+
+/** Base names the proxy emits, e.g. `2026-07-20T13-31-00-278_anthropic`. Digits,
+ * `T`, `:` (legacy), `.`, `_`, `-` only — no path separators, no `..`. */
+const REQUEST_FILE_RE = /^[0-9A-Za-z:_.\-]+_anthropic$/;
+
+export interface RequestBodyResult {
+  /** The parsed request body (untrusted — analyzed downstream). */
+  body: unknown;
+  /** The raw request text, pretty-printed, capped at `maxRawBytes`. */
+  raw: string;
+  /** True when `raw` was truncated to fit the cap. */
+  truncated: boolean;
+}
+
+/**
+ * Read and parse a single captured request body by its sidecar base name.
+ * Validates `file` against {@link REQUEST_FILE_RE} and confirms the resolved
+ * path stays inside `logDir` before touching the disk — the base name comes
+ * from the client, so path traversal must be impossible. Throws a labelled
+ * error the server maps to 400 (bad name) / 404 (missing file).
+ */
+export async function readRequestBody(
+  logDir: string,
+  file: string,
+  maxRawBytes = 2_000_000,
+): Promise<RequestBodyResult> {
+  if (!REQUEST_FILE_RE.test(file)) {
+    throw new Error(`invalid request file name: ${file}`);
+  }
+  const full = path.resolve(logDir, `${file}.request.txt`);
+  if (path.dirname(full) !== path.resolve(logDir)) {
+    throw new Error(`invalid request file name: ${file}`);
+  }
+
+  let text: string;
+  try {
+    text = await readFile(full, "utf8");
+  } catch {
+    throw new Error(`request file not found: ${file}`);
+  }
+
+  const body = JSON.parse(text) as unknown;
+  const pretty = JSON.stringify(body, null, 2);
+  const truncated = pretty.length > maxRawBytes;
+  return { body, raw: truncated ? pretty.slice(0, maxRawBytes) : pretty, truncated };
 }

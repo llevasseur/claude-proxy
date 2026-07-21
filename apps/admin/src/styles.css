@@ -757,3 +757,18 @@ button:focus-visible {
     transition: none !important;
   }
 }
+
+.rawjson {
+  margin: 12px 0 0;
+  max-height: 480px;
+  overflow: auto;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--ink, #cfe);
+}

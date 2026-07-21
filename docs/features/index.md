@@ -12,4 +12,5 @@ Add one with `okq new feature "<title>"`.
 | Title | File |
 |-------|------|
 | Admin dashboard for claude-proxy usage | [admin-dashboard-for-claude-proxy-usage.md](admin-dashboard-for-claude-proxy-usage.md) |
+| Context-size analytics | [context-size-analytics.md](context-size-analytics.md) |
 <!-- okq:index:end -->

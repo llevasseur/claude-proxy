@@ -1,6 +1,8 @@
 import { createRootRoute, createRoute, createRouter, Link, Outlet } from "@tanstack/react-router";
 import { HealthBadge } from "./components/HealthBadge";
 import { AdvicePage } from "./routes/advice";
+import { ContextDetailPage } from "./routes/context-detail";
+import { ContextPage } from "./routes/context";
 import { OverviewPage } from "./routes/overview";
 import { SkimPage } from "./routes/skim";
 import { ToolsPage } from "./routes/tools";
@@ -11,6 +13,7 @@ import { WithheldPage } from "./routes/withheld";
 const STATIONS = [
   { to: "/", label: "Overview", hint: "today", exact: true },
   { to: "/trends", label: "Trends", hint: "history", exact: false },
+  { to: "/context", label: "Context size", hint: "prompt", exact: false },
   { to: "/tools", label: "Tool bloat", hint: "context", exact: false },
   { to: "/skim", label: "Skim", hint: "cache", exact: false },
   { to: "/withheld", label: "Not added", hint: "withheld", exact: false },
@@ -64,11 +67,26 @@ const rootRoute = createRootRoute({ component: RootLayout });
 
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: OverviewPage });
 const trendsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/trends", component: TrendsPage });
+const contextRoute = createRoute({ getParentRoute: () => rootRoute, path: "/context", component: ContextPage });
+const contextDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/context/$file",
+  component: ContextDetailPage,
+});
 const toolsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tools", component: ToolsPage });
 const skimRoute = createRoute({ getParentRoute: () => rootRoute, path: "/skim", component: SkimPage });
 const withheldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/withheld", component: WithheldPage });
 const adviceRoute = createRoute({ getParentRoute: () => rootRoute, path: "/advice", component: AdvicePage });
 
-const routeTree = rootRoute.addChildren([indexRoute, trendsRoute, toolsRoute, skimRoute, withheldRoute, adviceRoute]);
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  trendsRoute,
+  contextRoute,
+  contextDetailRoute,
+  toolsRoute,
+  skimRoute,
+  withheldRoute,
+  adviceRoute,
+]);
 
 export const router = createRouter({ routeTree });
