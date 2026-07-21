@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { RequestMessageDetail } from "@claude-proxy/core";
@@ -32,6 +33,8 @@ export function ContextMessagePage() {
 }
 
 function MessageBody({ message: m }: { message: RequestMessageDetail }) {
+  const [view, setView] = useState<"pretty" | "raw">("pretty");
+
   return (
     <>
       <div className="grid stats">
@@ -41,11 +44,135 @@ function MessageBody({ message: m }: { message: RequestMessageDetail }) {
       </div>
 
       <div className="card">
-        <h2>Full message</h2>
-        <pre className="rawjson">{m.content}</pre>
+        <div className="card-head">
+          <h2>Full message</h2>
+          <div className="segmented">
+            <button className={view === "pretty" ? "active" : ""} onClick={() => setView("pretty")}>
+              Pretty
+            </button>
+            <button className={view === "raw" ? "active" : ""} onClick={() => setView("raw")}>
+              Raw
+            </button>
+          </div>
+        </div>
+        {view === "pretty" ? <PrettyMessage content={m.content} /> : <pre className="rawjson wrap">{m.content}</pre>}
       </div>
     </>
   );
+}
+
+/** A single content block, loosely typed since request bodies are untrusted. */
+type Block = Record<string, unknown>;
+
+/**
+ * Render the message content as readable blocks instead of raw JSON. The stored
+ * `content` is the pretty-printed JSON of the message object; we parse it and
+ * walk its `content`, dropping transport noise (cache_control, thinking
+ * signatures, base64 image bytes) in favour of the values that carry meaning.
+ * Falls back to the raw JSON when the shape is not what we expect.
+ */
+function PrettyMessage({ content }: { content: string }) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return <pre className="rawjson wrap">{content}</pre>;
+  }
+
+  const blocks = toBlocks((parsed as { content?: unknown } | null)?.content);
+  if (blocks.length === 0) return <pre className="rawjson wrap">{content}</pre>;
+
+  return (
+    <div className="msg-blocks">
+      {blocks.map((block, i) => (
+        <BlockView key={i} block={block} />
+      ))}
+    </div>
+  );
+}
+
+/** Normalise a message's `content` into an array of blocks. */
+function toBlocks(content: unknown): Block[] {
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  if (Array.isArray(content)) return content.map((b) => (typeof b === "string" ? { type: "text", text: b } : (b as Block)));
+  return [];
+}
+
+function BlockView({ block }: { block: Block }) {
+  const type = typeof block.type === "string" ? block.type : "unknown";
+
+  switch (type) {
+    case "text":
+      return <Section label="Text"><Prose text={str(block.text)} /></Section>;
+
+    case "thinking":
+      return <Section label="Thinking"><Prose text={str(block.thinking)} /></Section>;
+
+    case "tool_use":
+      return (
+        <Section label={`Tool call · ${str(block.name) || "unknown"}`}>
+          <pre className="rawjson wrap">{stringify(block.input)}</pre>
+        </Section>
+      );
+
+    case "tool_result": {
+      const error = block.is_error === true;
+      return (
+        <Section label="Tool result" badge={error ? "error" : undefined}>
+          {toBlocks(block.content).map((b, i) => (
+            <BlockView key={i} block={b} />
+          ))}
+        </Section>
+      );
+    }
+
+    case "image": {
+      const src = (block.source ?? {}) as Block;
+      const media = str(src.media_type) || "image";
+      const bytes = typeof src.data === "string" ? Math.floor((src.data.length * 3) / 4) : 0;
+      return (
+        <Section label="Image">
+          <div className="muted">{media}{bytes ? ` · ~${fmtBytes(bytes)} (data omitted)` : ""}</div>
+        </Section>
+      );
+    }
+
+    default:
+      return (
+        <Section label={type}>
+          <pre className="rawjson wrap">{stringify(block)}</pre>
+        </Section>
+      );
+  }
+}
+
+function Section({ label, badge, children }: { label: string; badge?: string; children: React.ReactNode }) {
+  return (
+    <div className="msg-block">
+      <div className="msg-block-head">
+        <span className="msg-block-label">{label}</span>
+        {badge && <span className="msg-badge">{badge}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Wrapped, newline-preserving prose for text-ish values. */
+function Prose({ text }: { text: string }) {
+  return <div className="msg-text">{text}</div>;
+}
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function stringify(v: unknown): string {
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
 }
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
