@@ -35,7 +35,9 @@ into a direct answer without touching the passive-observer proxy.
   request: totals (bytes, message count, tool count), a **region table** (conversation
   messages vs. tool schemas vs. system prompt as shares of the request), a **tools-by-size**
   table, a **messages-by-size** table (each row opens the [Message drill-down](message-drill-down.md)
-  for that message), and the **raw request JSON** (collapsed by default, capped at 2 MB).
+  for that message; sortable by **#**, **Bytes**, **~Tokens**, and **Share** — default **#**
+  ascending, click a column to sort and again to flip direction), and the **raw request JSON**
+  (collapsed by default, capped at 2 MB).
 
 Data comes from the `server` API — `GET /api/context` (windowed summary) and
 `GET /api/context/detail?file=<base>` (one request's breakdown + raw JSON) — computed via
