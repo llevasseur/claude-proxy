@@ -32,6 +32,7 @@ describe("summarizeContext", () => {
     expect(s.maxRealInput).toBe(0);
     expect(s.max).toBeNull();
     expect(s.top).toEqual([]);
+    expect(s.entries).toEqual([]);
   });
 
   it("computes average, median, and max over several entries", () => {
@@ -64,6 +65,15 @@ describe("summarizeContext", () => {
     const s = summarizeContext(entries, { topN: 3 });
     expect(s.top.map((e) => e.realInput)).toEqual([500, 400, 300]);
     expect(s.max?.realInput).toBe(500);
+  });
+
+  it("returns every entry oldest-first, regardless of input order", () => {
+    const s = summarizeContext([
+      entry({ file: "b", timestamp: "2026-07-20T13:31:02.000Z" }),
+      entry({ file: "a", timestamp: "2026-07-20T13:31:00.000Z" }),
+      entry({ file: "c", timestamp: "2026-07-20T13:31:01.000Z" }),
+    ]);
+    expect(s.entries.map((e) => e.file)).toEqual(["a", "c", "b"]);
   });
 });
 

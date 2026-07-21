@@ -30,7 +30,10 @@ into a direct answer without touching the passive-observer proxy.
 - **Metric** — context size is `realInput` tokens, the true prompt size sent to the model.
 - **Context size page** (`/context`) — a 7/14/30-day window selector, stat tiles for
   **average / median / largest** context (tokens per request) and the request count, and a
-  **"Largest requests"** table (peak first) where each row links to its breakdown.
+  **"Requests"** table listing every request in the window where each row links to its
+  breakdown. Default order is **When** newest-first; sortable by **When**, **Model**,
+  **Real input**, **System**, **Tools**, and **Size** (click a column to sort and again to
+  flip direction). The peak request is tagged in place.
 - **Request breakdown** (`/context/$file`) — the "why so large" drill-down for one captured
   request: totals (bytes, message count, tool count), a **region table** (conversation
   messages vs. tool schemas vs. system prompt as shares of the request), a **tools-by-size**
@@ -49,7 +52,8 @@ log directory, so no path traversal is possible.
 
 - The Context size page shows average, median, and largest `realInput` tokens over the
   selected window, plus the request count.
-- The "Largest requests" table lists the top requests peak-first; each row opens its breakdown.
+- The "Requests" table lists every request in the window, ordered by arrival time by default
+  and sortable by when, model, real input, system, tools, and size; each row opens its breakdown.
 - The breakdown attributes a request's size across conversation messages, tool schemas, and
   the system prompt, and exposes the raw request JSON.
 - No proxy changes; the feature is read-only over existing audit sidecars and request logs.
