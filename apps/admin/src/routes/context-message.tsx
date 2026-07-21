@@ -65,11 +65,9 @@ function MessageBody({ message: m }: { message: RequestMessageDetail }) {
 type Block = Record<string, unknown>;
 
 /**
- * Render the message content as readable blocks instead of raw JSON. The stored
- * `content` is the pretty-printed JSON of the message object; we parse it and
- * walk its `content`, dropping transport noise (cache_control, thinking
- * signatures, base64 image bytes) in favour of the values that carry meaning.
- * Falls back to the raw JSON when the shape is not what we expect.
+ * Render the stored message JSON as readable content blocks, dropping transport
+ * noise (cache_control, thinking signatures, base64 image bytes). Falls back to
+ * raw JSON on an unexpected shape.
  */
 function PrettyMessage({ content }: { content: string }) {
   let parsed: unknown;

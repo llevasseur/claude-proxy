@@ -795,7 +795,7 @@ button:focus-visible {
   white-space: pre;
   color: var(--text, #e9edf3);
 }
-/* Word-wrapped variant: break long tokens so JSON fits without horizontal scroll. */
+/* Word-wrapped variant. */
 .rawjson.wrap {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -847,7 +847,7 @@ button:focus-visible {
   line-height: 1.55;
   color: var(--text);
 }
-/* Nested raw JSON (tool inputs, unknown blocks) sits flush inside its block. */
+/* Nested raw JSON sits flush inside its block. */
 .msg-block .rawjson {
   margin-top: 0;
 }
