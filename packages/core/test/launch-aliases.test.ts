@@ -90,7 +90,11 @@ claude-full()   { command claude "$@"; }
 
   it("defaults settingSources/settingsOverrides to null when the flags are absent", () => {
     const rc = `claude() { command claude --disallowedTools Monitor "$@"; }`;
-    expect(parseLaunchAliases(rc)[0]).toMatchObject({ settingSources: null, settingsOverrides: null });
+    expect(parseLaunchAliases(rc)[0]).toMatchObject({
+      settingSources: null,
+      settingsOverrides: null,
+      settingsDynamic: false,
+    });
   });
 
   it("parses --setting-sources into its comma-separated list", () => {
@@ -98,28 +102,41 @@ claude-full()   { command claude "$@"; }
     expect(parseLaunchAliases(rc)[0]!.settingSources).toEqual(["project", "local"]);
   });
 
-  it("parses inline --settings JSON into an overrides object", () => {
+  it("parses inline --settings JSON into an overrides object (not dynamic)", () => {
     const rc = `claude-wf() { command claude --settings '{"disableWorkflows":false}' "$@"; }`;
-    expect(parseLaunchAliases(rc)[0]!.settingsOverrides).toEqual({ disableWorkflows: false });
+    expect(parseLaunchAliases(rc)[0]).toMatchObject({
+      settingsOverrides: { disableWorkflows: false },
+      settingsDynamic: false,
+    });
   });
 
-  it("leaves settingsOverrides null when --settings is an unresolvable shell variable", () => {
+  it("flags --settings as dynamic when its value is an unresolvable shell variable", () => {
     const rc = `claude-y() { command claude --settings "$_cc_on" "$@"; }`;
-    expect(parseLaunchAliases(rc)[0]!.settingsOverrides).toBeNull();
+    expect(parseLaunchAliases(rc)[0]).toMatchObject({ settingsOverrides: null, settingsDynamic: true });
+  });
+
+  it("flags --settings as dynamic for a command substitution", () => {
+    const rc = `claude-z() { command claude --settings "$(jq -c '.x' ~/.claude/settings.json)" "$@"; }`;
+    expect(parseLaunchAliases(rc)[0]).toMatchObject({ settingsOverrides: null, settingsDynamic: true });
+  });
+
+  it("flags --settings as dynamic for a file path", () => {
+    const rc = `claude-f() { command claude --settings /home/me/space.json "$@"; }`;
+    expect(parseLaunchAliases(rc)[0]).toMatchObject({ settingsOverrides: null, settingsDynamic: true });
   });
 });
 
 describe("computeAliasPosture", () => {
   // Mirrors the real device: user settings.json denies both tools + disables
   // Workflows; the shell rc's "on" variants skip the user source to re-enable them.
+  // (Static flags only, so every alias is determinate — see the indeterminate block.)
   const deny = ["DesignSync", "Monitor", "Artifact"];
   const enabledDisableKeys = ["disableWorkflows"];
   const rc = `
-_cc_on='{"env":{"ANTHROPIC_BASE_URL":"http://localhost:8036"}}'
 claude()          { command claude "$@"; }
-claude-design()   { command claude --setting-sources project,local --settings "$_cc_on" --disallowedTools Monitor "$@"; }
-claude-mon()      { command claude --setting-sources project,local --settings "$_cc_on" --disallowedTools DesignSync "$@"; }
-claude-full()     { command claude --setting-sources project,local --settings "$_cc_on" "$@"; }
+claude-design()   { command claude --setting-sources project,local --disallowedTools Monitor "$@"; }
+claude-mon()      { command claude --setting-sources project,local --disallowedTools DesignSync "$@"; }
+claude-full()     { command claude --setting-sources project,local "$@"; }
 claude-workflow() { command claude --settings '{"disableWorkflows":false}' "$@"; }
 `;
 
@@ -164,5 +181,37 @@ claude-workflow() { command claude --settings '{"disableWorkflows":false}' "$@";
     const flat = computeAliasPosture(parseLaunchAliases(`claude() { command claude "$@"; }`), deny, enabledDisableKeys);
     expect(flat.columns).toEqual([]);
     expect(flat.aliases[0]!.withheld).toEqual(["Artifact", "DesignSync", "Monitor", "Workflow"]);
+  });
+
+  it("marks determinate aliases as not indeterminate", () => {
+    expect(byName("claude").indeterminate).toBe(false);
+    expect(byName("claude-design").indeterminate).toBe(false);
+  });
+
+  describe("dynamic --settings (indeterminate)", () => {
+    // The real "spaces" derive settings live via jq — a value the rc parser can't read.
+    const dynRc = `
+claude()       { command claude "$@"; }
+claude-space() { command claude --setting-sources project,local --settings "$(jq -c '.permissions.deny -= ["DesignSync"]' ~/.claude/settings.json)" "$@"; }
+`;
+    const dyn = () => computeAliasPosture(parseLaunchAliases(dynRc), deny, enabledDisableKeys);
+    const space = () => dyn().aliases.find((a) => a.name === "claude-space")!;
+
+    it("marks the alias indeterminate with empty posture", () => {
+      expect(space().indeterminate).toBe(true);
+      expect(space().withheld).toEqual([]);
+      expect(space().cells).toEqual({});
+      expect(space().alsoReenabled).toEqual([]);
+    });
+
+    it("does not let an indeterminate alias skew the columns", () => {
+      // Only `claude` is determinate and it toggles nothing, so no columns emerge —
+      // the dynamic alias must not fabricate a "withholds nothing" that varies.
+      expect(dyn().columns).toEqual([]);
+    });
+
+    it("still reports whether the user source is dropped", () => {
+      expect(space().userSettingsLoaded).toBe(false);
+    });
   });
 });

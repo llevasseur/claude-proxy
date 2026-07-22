@@ -33,9 +33,15 @@ export interface LaunchAlias {
    * so the device's user settings.json applies in full. */
   settingSources: string[] | null;
   /** Parsed inline `--settings` JSON object, or `null` when the flag is absent or
-   * its value can't be resolved statically (a shell variable like `$_cc_on`, or a
-   * file path). Only the `disable*` booleans within it affect tool posture. */
+   * its value can't be resolved statically (see `settingsDynamic`). Only the
+   * `disable*` booleans within it affect tool posture. */
   settingsOverrides: Record<string, unknown> | null;
+  /** True when a `--settings` flag is present but its value can't be read from the
+   * rc text — a shell variable / command substitution (`"$(jq …)"`, `$_cc_on`) or a
+   * file path. The injected settings could re-supply anything (denies, disable*,
+   * env), so the alias's effective posture is *indeterminate* — see
+   * {@link computeAliasPosture}. `false` when there's no flag or it's static JSON. */
+  settingsDynamic: boolean;
 }
 
 /** A `claude*` name: `claude`, or `claude-<suffix>`. */
@@ -90,19 +96,27 @@ function extractSettingSources(body: string): string[] | null {
 }
 
 /**
- * Parse the inline `--settings <json>` object. Returns `null` when the flag is
- * absent or its value isn't a static JSON object (e.g. a shell variable like
- * `$_cc_on` or a file path) — such values can't be resolved from the rc text.
+ * Resolve the `--settings <value>` flag. Three outcomes:
+ *   - flag absent → `{ overrides: null, dynamic: false }`
+ *   - static inline JSON object → `{ overrides: <object>, dynamic: false }`
+ *   - anything we can't read from the rc text (a shell variable / command
+ *     substitution like `"$(jq …)"`, or a file path) → `{ overrides: null,
+ *     dynamic: true }`. The injected settings could be anything, so the alias's
+ *     posture becomes indeterminate.
  */
-function extractSettingsOverrides(body: string): Record<string, unknown> | null {
+function extractSettings(body: string): { overrides: Record<string, unknown> | null; dynamic: boolean } {
   const raw = extractFlagArg(body, "--settings");
-  if (raw === null || raw.includes("$")) return null;
+  if (raw === null) return { overrides: null, dynamic: false };
+  if (raw.includes("$")) return { overrides: null, dynamic: true };
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { overrides: parsed as Record<string, unknown>, dynamic: false };
+    }
   } catch {
-    return null;
+    // Not JSON — a file path or malformed value we can't statically resolve.
   }
+  return { overrides: null, dynamic: true };
 }
 
 /**
@@ -169,11 +183,13 @@ export function parseLaunchAliases(rc: string): LaunchAlias[] {
     if (!INVOKES_CLAUDE.test(def.body)) continue;
     if (seen.has(def.name)) continue;
     seen.add(def.name);
+    const settings = extractSettings(def.body);
     out.push({
       name: def.name,
       withheld: extractDisallowed(def.body),
       settingSources: extractSettingSources(def.body),
-      settingsOverrides: extractSettingsOverrides(def.body),
+      settingsOverrides: settings.overrides,
+      settingsDynamic: settings.dynamic,
     });
   }
   return out;
@@ -182,17 +198,25 @@ export function parseLaunchAliases(rc: string): LaunchAlias[] {
 export interface AliasPosture {
   /** The alias/function name. */
   name: string;
+  /** True when the alias injects settings via a `--settings` value we can't read
+   * from the rc (shell variable / command substitution / file path — see
+   * {@link LaunchAlias.settingsDynamic}). The injected settings could re-supply any
+   * deny/disable/env, so the effective posture is unknowable statically. When true,
+   * `withheld`, `cells`, and `alsoReenabled` are empty and carry no meaning. */
+  indeterminate: boolean;
   /** Whether the user settings source still loads for this alias — i.e. its
    * `permissions.deny` and `disable*` keys apply (false when `--setting-sources`
    * drops `user`). Also governs whether user plugins/hooks load. */
   userSettingsLoaded: boolean;
-  /** Full effective set of schema-stripped (withheld) tools, sorted. */
+  /** Full effective set of schema-stripped (withheld) tools, sorted. Empty when
+   * `indeterminate`. */
   withheld: string[];
-  /** Per grid-column tool: `true` = withheld (off), `false` = available (on). */
+  /** Per grid-column tool: `true` = withheld (off), `false` = available (on).
+   * Empty when `indeterminate`. */
   cells: Record<string, boolean>;
   /** Device-denied tools this alias re-exposes purely by skipping user settings,
    * excluding any already shown as a column — the collateral of `--setting-sources`.
-   * Sorted; empty when the alias keeps user settings. */
+   * Sorted; empty when the alias keeps user settings or is `indeterminate`. */
   alsoReenabled: string[];
 }
 
@@ -259,6 +283,11 @@ function effectiveWithheld(
  * `--setting-sources` dropping the user source are reported per alias in
  * `alsoReenabled` rather than exploding the grid.
  *
+ * Aliases that inject settings via a dynamic `--settings` value (shell variable /
+ * command substitution / file path — {@link LaunchAlias.settingsDynamic}) are marked
+ * `indeterminate`: their injected settings can't be read from the rc, so we don't
+ * guess a posture or let them define/skew the grid columns.
+ *
  * Pure: `deny` is the device `permissions.deny`; `enabledDisableKeys` its enabled
  * top-level `disable*` booleans (as `withheldReport` receives them).
  */
@@ -273,12 +302,16 @@ export function computeAliasPosture(
     ...activeDisableSchemaKeys(enabledDisableKeys).flatMap((e) => e.tools),
   ]);
 
-  const eff = aliases.map((a) => ({ alias: a, ...effectiveWithheld(a, denyTools, enabledDisableKeys) }));
+  // Determinate aliases carry a computed effective set; indeterminate ones (dynamic
+  // --settings) are excluded from posture and column detection entirely.
+  const eff = aliases
+    .filter((a) => !a.settingsDynamic)
+    .map((a) => ({ alias: a, ...effectiveWithheld(a, denyTools, enabledDisableKeys) }));
 
   // Tools an alias explicitly manipulates via its own flags — the only candidates
   // for a grid column (collateral from skipping user settings stays in the notes).
   const explicit = new Set<string>();
-  for (const a of aliases) {
+  for (const { alias: a } of eff) {
     for (const t of disallowedSchemaTools(a)) explicit.add(t);
     for (const t of overriddenDisableTools(a, true)) explicit.add(t);
     for (const t of overriddenDisableTools(a, false)) explicit.add(t);
@@ -292,7 +325,21 @@ export function computeAliasPosture(
     .sort((a, b) => a.localeCompare(b));
   const columnSet = new Set(columns);
 
-  const postureAliases: AliasPosture[] = eff.map(({ alias, withheld, userSettingsLoaded }) => {
+  const byName = new Map(eff.map((e) => [e.alias.name, e]));
+  const postureAliases: AliasPosture[] = aliases.map((alias) => {
+    const e = byName.get(alias.name);
+    if (!e) {
+      // Indeterminate: dynamic --settings we can't resolve from the rc.
+      return {
+        name: alias.name,
+        indeterminate: true,
+        userSettingsLoaded: alias.settingSources === null || alias.settingSources.includes("user"),
+        withheld: [],
+        cells: {},
+        alsoReenabled: [],
+      };
+    }
+    const { withheld, userSettingsLoaded } = e;
     const cells: Record<string, boolean> = {};
     for (const c of columns) cells[c] = withheld.has(c);
     const alsoReenabled = [...baseline]
@@ -300,6 +347,7 @@ export function computeAliasPosture(
       .sort((a, b) => a.localeCompare(b));
     return {
       name: alias.name,
+      indeterminate: false,
       userSettingsLoaded,
       withheld: [...withheld].sort((a, b) => a.localeCompare(b)),
       cells,

@@ -266,7 +266,11 @@ export function WithheldPage() {
                       <td className="rule-name">{a.name}</td>
                       {postureCols.map((c) => (
                         <td key={c}>
-                          {a.cells[c] ? (
+                          {a.indeterminate ? (
+                            <span className="muted" title="settings injected dynamically">
+                              ?
+                            </span>
+                          ) : a.cells[c] ? (
                             <span className="badge absent">off</span>
                           ) : (
                             <span className="badge present">on</span>
@@ -274,7 +278,13 @@ export function WithheldPage() {
                         </td>
                       ))}
                       <td>
-                        {a.userSettingsLoaded ? (
+                        {a.indeterminate ? (
+                          <span className="leak-note">
+                            <span className="badge sev-info">indeterminate</span> injects settings via a dynamic{" "}
+                            <span className="rule-name">--settings</span> value (shell variable, command substitution,
+                            or file path) — the effective posture can't be read from the rc.
+                          </span>
+                        ) : a.userSettingsLoaded ? (
                           <span className="muted">user settings loaded</span>
                         ) : (
                           <>
@@ -306,7 +316,12 @@ export function WithheldPage() {
                     <tr key={a.name}>
                       <td className="rule-name">{a.name}</td>
                       <td>
-                        {a.withheld.length === 0 ? (
+                        {a.indeterminate ? (
+                          <span className="leak-note">
+                            <span className="badge sev-info">indeterminate</span> settings injected via a dynamic{" "}
+                            <span className="rule-name">--settings</span> value
+                          </span>
+                        ) : a.withheld.length === 0 ? (
                           <span className="muted">nothing</span>
                         ) : (
                           a.withheld.map((t, i) => (
