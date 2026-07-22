@@ -10,12 +10,18 @@ import {
   summarizeContext,
   toContextEntry,
   computeAliasPosture,
+  flattenHooks,
+  normalizePlugins,
+  hookPluginLoadExpectations,
   withheldReport,
   type Advice,
+  type AliasLoadExpectation,
   type ContextEntry,
   type ContextSummary,
+  type HookRow,
   type LaunchAlias,
   type LaunchAliasPosture,
+  type PluginRow,
   type RequestBreakdown,
   type RequestMessageDetail,
   type RequestToolDetail,
@@ -249,5 +255,43 @@ export async function buildWithheld(
     report,
     launchAliases: { ...launchAliases, posture },
     meta: { days, files, parseErrors },
+  };
+}
+
+export interface HooksPluginsResponse {
+  /** The device settings file the hooks/plugins were read from. */
+  settingsPath: string;
+  settingsReadable: boolean;
+  /** Configured hook commands, flattened from `settings.json` `hooks`. */
+  hooks: HookRow[];
+  /** Configured plugins, from `settings.json` `enabledPlugins`. */
+  plugins: PluginRow[];
+  /** Per `claude*` launch alias, whether user hooks/plugins are expected to load. */
+  loadExpectations: AliasLoadExpectation[];
+  /** The shell rc the launch aliases were read from (for the expectations section). */
+  launchRcPath: string;
+  launchRcReadable: boolean;
+}
+
+/**
+ * The device's hooks & plugins **configuration** inventory, plus which launch modes
+ * are expected to load them. This is a config view, not a runtime one: hooks are
+ * local shell commands with no API footprint, so the proxy can't confirm one fired —
+ * only what `~/.claude/settings.json` declares. Live firing is verified in-session
+ * with `/hooks`. Load expectations reuse the launch-alias posture.
+ */
+export async function buildHooksPlugins(
+  settingsPath: string = resolveSettingsPath(),
+): Promise<HooksPluginsResponse> {
+  const [settings, launchAliases] = await Promise.all([readDeviceSettings(settingsPath), readLaunchAliases()]);
+  const posture = computeAliasPosture(launchAliases.aliases, settings.denyRules, settings.enabledDisableKeys);
+  return {
+    settingsPath: settings.settingsPath,
+    settingsReadable: settings.readable,
+    hooks: flattenHooks(settings.hooks),
+    plugins: normalizePlugins(settings.enabledPlugins),
+    loadExpectations: hookPluginLoadExpectations(posture),
+    launchRcPath: launchAliases.rcPath,
+    launchRcReadable: launchAliases.rcReadable,
   };
 }
