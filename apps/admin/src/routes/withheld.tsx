@@ -231,6 +231,13 @@ export function WithheldPage() {
               <span className="rule-name">settings.json</span> from loading, so its deny list, plugins, and hooks all
               fall away — see each alias's note.
             </div>
+            <div className="leak-note" style={{ marginTop: 8 }}>
+              Blind spot: this only reads the device <span className="rule-name">user</span> settings, not the{" "}
+              <span className="rule-name">project</span> / <span className="rule-name">local</span> settings of whatever
+              directory a session launches from. Those sources also load (their deny rules merge in; their scalars can
+              override), so an alias shown as <strong>on</strong> for a tool may still be <strong>off</strong> in a
+              project that re-denies it — and vice versa.
+            </div>
             {!launch.rcReadable ? (
               <div className="leak-note" style={{ marginTop: 8 }}>
                 Couldn't read <span className="rule-name">{launch.rcPath}</span>.
