@@ -5,16 +5,9 @@ import type { ContextEntry } from "@claude-proxy/core";
 import { getContext } from "../api";
 import { QueryState } from "../components/QueryState";
 import { StatCard } from "../components/StatCard";
-import { fmtBytes, fmtInt } from "../format";
+import { fmtBytes, fmtInt, fmtLocalTs, LOCAL_TZ_ABBR } from "../format";
 
 const WINDOWS = [7, 14, 30];
-
-/** `MM-DD HH:MM:SS` (UTC) — terse, matches the rest of the admin. */
-function fmtTs(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return `${d.toISOString().slice(5, 10)} ${d.toISOString().slice(11, 19)}`;
-}
 
 export function ContextPage() {
   const [days, setDays] = useState(14);
@@ -116,7 +109,7 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
       <table className="table">
         <thead>
           <tr>
-            <SortHeader label="When (UTC)" sortKey="when" sort={sort} onSort={onSort} />
+            <SortHeader label={`When (${LOCAL_TZ_ABBR})`} sortKey="when" sort={sort} onSort={onSort} />
             <SortHeader label="Model" sortKey="model" sort={sort} onSort={onSort} />
             <SortHeader label="Real input" sortKey="realInput" sort={sort} onSort={onSort} className="num" />
             <SortHeader label="System" sortKey="systemBytes" sort={sort} onSort={onSort} className="num" />
@@ -129,7 +122,7 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
             <tr key={e.file}>
               <td>
                 <Link to="/context/$file" params={{ file: e.file }} className="link">
-                  {fmtTs(e.timestamp)}
+                  {fmtLocalTs(e.timestamp)}
                   {e.realInput === maxRealInput && <span className="muted"> · peak</span>}
                 </Link>
               </td>
