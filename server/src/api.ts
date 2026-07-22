@@ -9,11 +9,13 @@ import {
   skimDigestsByDay,
   summarizeContext,
   toContextEntry,
+  computeAliasPosture,
   withheldReport,
   type Advice,
   type ContextEntry,
   type ContextSummary,
   type LaunchAlias,
+  type LaunchAliasPosture,
   type RequestBreakdown,
   type RequestMessageDetail,
   type RequestToolDetail,
@@ -207,10 +209,16 @@ export interface WithheldResponse {
   settingsPath: string;
   settingsReadable: boolean;
   report: WithheldReport;
-  /** `claude*` launch aliases from the shell rc, and the tools each withholds.
-   * Declarative — launch flags never reach the proxy, so these aren't verified
-   * against traffic like the deny rules are. */
-  launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[] };
+  /** `claude*` launch aliases from the shell rc, the raw flags each parses, and
+   * their net effective tool posture (cross-referencing the device deny list +
+   * disable keys). Launch flags never reach the proxy, so this is computed from
+   * settings precedence, not verified against traffic like the deny rules. */
+  launchAliases: {
+    rcPath: string;
+    rcReadable: boolean;
+    aliases: LaunchAlias[];
+    posture: LaunchAliasPosture;
+  };
   meta: { days: number; files: number; parseErrors: number };
 }
 
@@ -234,11 +242,12 @@ export async function buildWithheld(
     readLaunchAliases(),
   ]);
   const report = withheldReport(sidecars, settings.denyRules, settings.enabledDisableKeys);
+  const posture = computeAliasPosture(launchAliases.aliases, settings.denyRules, settings.enabledDisableKeys);
   return {
     settingsPath: settings.settingsPath,
     settingsReadable: settings.readable,
     report,
-    launchAliases,
+    launchAliases: { ...launchAliases, posture },
     meta: { days, files, parseErrors },
   };
 }

@@ -29,6 +29,9 @@ export function WithheldPage() {
   const nothingWithheld = rules.length === 0 && disableSchema.length === 0 && scopedRules.length === 0;
   const launch = data?.launchAliases;
   const launchAliases = launch?.aliases ?? [];
+  const posture = launch?.posture;
+  const postureCols = posture?.columns ?? [];
+  const postureAliases = posture?.aliases ?? [];
 
   return (
     <section>
@@ -213,14 +216,27 @@ export function WithheldPage() {
         {launch && (
           <div className="card" style={{ marginTop: 16 }}>
             <div className="muted">
-              <strong>Launch aliases</strong> — <span className="rule-name">claude*</span> shell aliases that withhold
-              tools per launch via <span className="rule-name">--disallowedTools</span>, read from{" "}
-              <span className="rule-name">{launch.rcPath}</span>.
+              <strong>Launch aliases</strong> — <span className="rule-name">claude*</span> shell aliases and their{" "}
+              <em>net effective</em> tool posture, read from <span className="rule-name">{launch.rcPath}</span>. Each
+              cell is <strong>on</strong> (schema reaches the model) or <strong>off</strong> (withheld), computed from
+              how the alias's <span className="rule-name">--disallowedTools</span>,{" "}
+              <span className="rule-name">--setting-sources</span>, and <span className="rule-name">--settings</span>{" "}
+              flags compose with this device's deny list.
             </div>
             <div className="leak-note" style={{ marginTop: 8 }}>
-              Declarative, not traffic-verified: launch flags never reach the model, so — unlike deny rules — these
-              can't be checked against captured requests, since which alias started a session isn't visible to the
-              proxy.
+              Computed, not traffic-verified: launch flags never reach the proxy, so — unlike deny rules — this is
+              derived from settings precedence rather than checked against captured requests (which alias started a
+              session isn't visible to the proxy). Note that <span className="rule-name">--setting-sources</span> that
+              drops the <span className="rule-name">user</span> source stops the whole device{" "}
+              <span className="rule-name">settings.json</span> from loading, so its deny list, plugins, and hooks all
+              fall away — see each alias's note.
+            </div>
+            <div className="leak-note" style={{ marginTop: 8 }}>
+              Blind spot: this only reads the device <span className="rule-name">user</span> settings, not the{" "}
+              <span className="rule-name">project</span> / <span className="rule-name">local</span> settings of whatever
+              directory a session launches from. Those sources also load (their deny rules merge in; their scalars can
+              override), so an alias shown as <strong>on</strong> for a tool may still be <strong>off</strong> in a
+              project that re-denies it — and vice versa.
             </div>
             {!launch.rcReadable ? (
               <div className="leak-note" style={{ marginTop: 8 }}>
@@ -231,20 +247,81 @@ export function WithheldPage() {
                 No <span className="rule-name">claude*</span> launch aliases found in{" "}
                 <span className="rule-name">{launch.rcPath}</span>.
               </div>
+            ) : postureCols.length > 0 ? (
+              <table className="table" style={{ marginTop: 12 }}>
+                <thead>
+                  <tr>
+                    <th>Alias</th>
+                    {postureCols.map((c) => (
+                      <th key={c} className="rule-name">
+                        {c}
+                      </th>
+                    ))}
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {postureAliases.map((a) => (
+                    <tr key={a.name}>
+                      <td className="rule-name">{a.name}</td>
+                      {postureCols.map((c) => (
+                        <td key={c}>
+                          {a.indeterminate ? (
+                            <span className="muted" title="settings injected dynamically">
+                              ?
+                            </span>
+                          ) : a.cells[c] ? (
+                            <span className="badge absent">off</span>
+                          ) : (
+                            <span className="badge present">on</span>
+                          )}
+                        </td>
+                      ))}
+                      <td>
+                        {a.indeterminate ? (
+                          <span className="leak-note">
+                            <span className="badge sev-info">indeterminate</span> injects settings via a dynamic{" "}
+                            <span className="rule-name">--settings</span> value (shell variable, command substitution,
+                            or file path) — the effective posture can't be read from the rc.
+                          </span>
+                        ) : a.userSettingsLoaded ? (
+                          <span className="muted">user settings loaded</span>
+                        ) : (
+                          <>
+                            <span className="badge was-present">skips user settings</span>
+                            {a.alsoReenabled.length > 0 && (
+                              <span className="leak-note" title={a.alsoReenabled.join(", ")}>
+                                {" "}
+                                also re-enables {a.alsoReenabled.slice(0, 3).join(", ")}
+                                {a.alsoReenabled.length > 3 ? ` +${a.alsoReenabled.length - 3} more` : ""}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : (
               <table className="table" style={{ marginTop: 12 }}>
                 <thead>
                   <tr>
                     <th>Alias</th>
-                    <th>Withholds</th>
+                    <th>Withholds (effective)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {launchAliases.map((a) => (
+                  {postureAliases.map((a) => (
                     <tr key={a.name}>
                       <td className="rule-name">{a.name}</td>
                       <td>
-                        {a.withheld.length === 0 ? (
+                        {a.indeterminate ? (
+                          <span className="leak-note">
+                            <span className="badge sev-info">indeterminate</span> settings injected via a dynamic{" "}
+                            <span className="rule-name">--settings</span> value
+                          </span>
+                        ) : a.withheld.length === 0 ? (
                           <span className="muted">nothing</span>
                         ) : (
                           a.withheld.map((t, i) => (
