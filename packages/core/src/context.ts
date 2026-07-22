@@ -32,6 +32,8 @@ export interface ContextSummary {
   max: ContextEntry | null;
   /** Largest requests first, capped at `topN`. */
   top: ContextEntry[];
+  /** Every request, oldest first — the full list the context table sorts client-side. */
+  entries: ContextEntry[];
 }
 
 export interface SummarizeContextOptions {
@@ -46,7 +48,10 @@ function median(sorted: readonly number[]): number {
   return n % 2 === 0 ? Math.round((sorted[mid - 1]! + sorted[mid]!) / 2) : sorted[mid]!;
 }
 
-/** Aggregate context entries into averages, the peak, and the largest N. Pure. */
+/**
+ * Aggregate context entries into averages, the peak, the largest N, and the full
+ * chronological list. Pure.
+ */
 export function summarizeContext(
   entries: readonly ContextEntry[],
   opts: SummarizeContextOptions = {},
@@ -55,12 +60,13 @@ export function summarizeContext(
   const requestCount = entries.length;
 
   if (requestCount === 0) {
-    return { requestCount: 0, avgRealInput: 0, medianRealInput: 0, maxRealInput: 0, max: null, top: [] };
+    return { requestCount: 0, avgRealInput: 0, medianRealInput: 0, maxRealInput: 0, max: null, top: [], entries: [] };
   }
 
   const sortedTokens = entries.map((e) => e.realInput).sort((a, b) => a - b);
   const sum = sortedTokens.reduce((n, v) => n + v, 0);
   const byLargest = [...entries].sort((a, b) => b.realInput - a.realInput);
+  const chronological = [...entries].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   return {
     requestCount,
@@ -69,6 +75,7 @@ export function summarizeContext(
     maxRealInput: sortedTokens[sortedTokens.length - 1]!,
     max: byLargest[0]!,
     top: byLargest.slice(0, topN),
+    entries: chronological,
   };
 }
 
