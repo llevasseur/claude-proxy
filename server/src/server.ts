@@ -11,11 +11,13 @@ import {
   buildTrends,
   buildWithheld,
 } from "./api.js";
+import { resolveArchiveDir } from "./archive.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default
 const LOG_DIR = resolveLogDir();
+const ARCHIVE_DIR = resolveArchiveDir();
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -67,7 +69,7 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, await buildSummary(LOG_DIR, date));
         return;
       case "/api/trends":
-        send(res, 200, await buildTrends(LOG_DIR, parseDays(url.searchParams.get("days"))));
+        send(res, 200, await buildTrends(LOG_DIR, parseDays(url.searchParams.get("days")), new Date(), ARCHIVE_DIR));
         return;
       case "/api/tools":
         send(res, 200, await buildTools(LOG_DIR, date));
