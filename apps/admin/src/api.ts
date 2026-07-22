@@ -22,7 +22,7 @@ export interface SummaryResponse {
 }
 export interface TrendsResponse {
   digests: UsageDigest[];
-  meta: { days: number; files: number; parseErrors: number };
+  meta: { days: number; files: number; parseErrors: number; archivedDays: number };
 }
 export interface ToolsResponse {
   date: string;

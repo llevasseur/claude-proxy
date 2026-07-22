@@ -180,3 +180,63 @@ export function digestsByDay(sidecars: readonly unknown[], topN?: number): Usage
   }
   return digests;
 }
+
+function isRec(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+function numOf(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * Coerce a persisted digest into a `UsageDigest`, tolerating the archive's range
+ * of schema versions — from near-complete digests down to a flat legacy
+ * `{ requestCount, realInput, output, costTotal }`. Unknown fields default to
+ * zero. Returns `null` only for non-object input. `fallbackDate` fills in a
+ * missing `date` (e.g. the archive folder name).
+ */
+export function normalizeDigest(raw: unknown, fallbackDate: string): UsageDigest | null {
+  if (!isRec(raw)) return null;
+
+  const rt = isRec(raw.tokens) ? raw.tokens : {};
+  const realInput = numOf(rt.realInput ?? raw.realInput);
+  const cacheRead = numOf(rt.cacheRead);
+  const tokens: DigestTokens = {
+    input: numOf(rt.input),
+    output: numOf(rt.output ?? raw.output),
+    cacheRead,
+    cacheCreation: numOf(rt.cacheCreation),
+    realInput,
+    // Prefer the stored ratio; derive it for legacy digests that predate it.
+    cacheHitRatio: rt.cacheHitRatio != null ? numOf(rt.cacheHitRatio) : realInput > 0 ? cacheRead / realInput : 0,
+  };
+
+  const rc = isRec(raw.cost) ? raw.cost : {};
+  const cost: CostBreakdown = {
+    input: numOf(rc.input),
+    output: numOf(rc.output),
+    cacheWrite: numOf(rc.cacheWrite),
+    cacheRead: numOf(rc.cacheRead),
+    total: numOf(rc.total ?? raw.costTotal),
+  };
+
+  const models = isRec(raw.models) ? (raw.models as Record<string, number>) : {};
+  const topTools = Array.isArray(raw.topTools) ? (raw.topTools as TopTool[]) : [];
+  const busiestHour = isRec(raw.busiestHour)
+    ? { hour: numOf(raw.busiestHour.hour), requestCount: numOf(raw.busiestHour.requestCount) }
+    : null;
+
+  return {
+    date: typeof raw.date === "string" ? raw.date : fallbackDate,
+    requestCount: numOf(raw.requestCount),
+    skipped: numOf(raw.skipped),
+    models,
+    tokens,
+    cost,
+    topTools,
+    avgSystemPromptBytes: numOf(raw.avgSystemPromptBytes),
+    toolOverheadPctOfInput: numOf(raw.toolOverheadPctOfInput),
+    busiestHour,
+    trend: Array.isArray(raw.trend) ? (raw.trend as UsageDigest["trend"]) : undefined,
+  };
+}

@@ -23,6 +23,7 @@ import {
   type UsageDigest,
   type WithheldReport,
 } from "@claude-proxy/core";
+import { loadArchivedDigest } from "./archive.js";
 import { readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
 import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
 import { readLaunchAliases } from "./shell-rc.js";
@@ -49,13 +50,40 @@ export async function buildSummary(logDir: string, date?: string, now: Date = ne
 
 export interface TrendsResponse {
   digests: UsageDigest[];
-  meta: { days: number; files: number; parseErrors: number };
+  meta: { days: number; files: number; parseErrors: number; archivedDays: number };
 }
 
-/** Per-day digests for the last `days` days (chained day-over-day trend). */
-export async function buildTrends(logDir: string, days: number, now: Date = new Date()): Promise<TrendsResponse> {
+/**
+ * Per-day digests for the last `days` days, oldest→newest. The live `logs/` dir
+ * only retains the current day or two, so days beyond that are filled from the
+ * archive of finalized digests. Live days win over the archive for the same date.
+ */
+export async function buildTrends(
+  logDir: string,
+  days: number,
+  now: Date = new Date(),
+  archiveDir?: string,
+): Promise<TrendsResponse> {
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days }, now);
-  return { digests: digestsByDay(sidecars), meta: { days, files, parseErrors } };
+  const byDate = new Map<string, UsageDigest>();
+  for (const d of digestsByDay(sidecars)) byDate.set(d.date, d);
+
+  let archivedDays = 0;
+  if (archiveDir) {
+    const end = today(now);
+    for (let i = 0; i < days; i += 1) {
+      const date = shiftDay(end, -i);
+      if (byDate.has(date)) continue;
+      const digest = await loadArchivedDigest(archiveDir, date);
+      if (digest) {
+        byDate.set(date, digest);
+        archivedDays += 1;
+      }
+    }
+  }
+
+  const digests = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return { digests, meta: { days, files, parseErrors, archivedDays } };
 }
 
 export interface ToolsResponse {
