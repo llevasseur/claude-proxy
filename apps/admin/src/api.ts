@@ -2,6 +2,7 @@ import type {
   Advice,
   ContextSummary,
   LaunchAlias,
+  LaunchAliasPosture,
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
@@ -61,7 +62,7 @@ export interface WithheldResponse {
   settingsPath: string;
   settingsReadable: boolean;
   report: WithheldReport;
-  launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[] };
+  launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[]; posture: LaunchAliasPosture };
   meta: { days: number; files: number; parseErrors: number };
 }
 export interface HealthResponse {
