@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import type { UsageDigest } from "@claude-proxy/core";
 import { getTrends } from "../api";
 import { BarChart } from "../components/BarChart";
@@ -8,8 +8,6 @@ import { type Series, SeriesLineChart } from "../components/SeriesLineChart";
 import { fmtInt, fmtUsd } from "../format";
 
 const WINDOWS = [7, 14, 30];
-/** How many days the per-request chart shows per page. */
-const WINDOW_DAYS = 3;
 
 /** Per-request token series. */
 const PER_REQUEST_SERIES: Series[] = [
@@ -31,7 +29,7 @@ function toPerRequestRow(d: UsageDigest) {
 }
 
 export function TrendsPage() {
-  const [days, setDays] = useState(14);
+  const [days, setDays] = useState(7);
   const query = useQuery({ queryKey: ["trends", days], queryFn: () => getTrends(days) });
   const digests = query.data?.digests ?? [];
 
@@ -100,43 +98,18 @@ export function TrendsPage() {
   );
 }
 
-/** Tokens per request over a navigable {@link WINDOW_DAYS}-day window. */
+/** Tokens per request across every day in the selected window. */
 function PerRequestCard({ digests }: { digests: UsageDigest[] }) {
-  // Page 0 is the most recent window; higher pages step further back in time.
-  const pageCount = Math.max(1, Math.ceil(digests.length / WINDOW_DAYS));
-  const [page, setPage] = useState(0);
-
-  // A new day-range can shrink the page count — pull the page back into range.
-  useEffect(() => {
-    setPage((p) => Math.min(p, pageCount - 1));
-  }, [pageCount]);
-
-  const pageDigests = useMemo(() => {
-    const end = digests.length - page * WINDOW_DAYS;
-    const start = Math.max(0, end - WINDOW_DAYS);
-    return digests.slice(start, end);
-  }, [digests, page]);
-
-  const rows = pageDigests.map(toPerRequestRow);
-  const first = pageDigests.at(0);
-  const last = pageDigests.at(-1);
-  const rangeLabel = !first || !last ? "—" : first === last ? first.date : `${first.date} → ${last.date}`;
+  const rows = digests.map(toPerRequestRow);
+  const first = digests.at(0);
+  const last = digests.at(-1);
+  const rangeLabel = !first || !last ? "—" : first.date === last.date ? first.date : `${first.date} → ${last.date}`;
 
   return (
     <div className="card">
       <div className="card-head">
         <h2>Tokens per request</h2>
-        <div className="window-nav">
-          <div className="segmented">
-            <button disabled={page >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
-              ‹ Older
-            </button>
-            <button disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>
-              Newer ›
-            </button>
-          </div>
-          <span className="range">{rangeLabel}</span>
-        </div>
+        <span className="range">{rangeLabel}</span>
       </div>
       <SeriesLineChart data={rows} series={PER_REQUEST_SERIES} xKey="label" format={fmtInt} />
       <div className="chartlegend">

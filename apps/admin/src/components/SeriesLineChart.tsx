@@ -30,6 +30,8 @@ export function SeriesLineChart({ data, series, xKey, format, height = 220 }: Se
             tick={{ fontSize: 11, fill: "var(--muted)" }}
             axisLine={false}
             tickLine={false}
+            interval="preserveStartEnd"
+            minTickGap={24}
           />
           <YAxis
             width={48}

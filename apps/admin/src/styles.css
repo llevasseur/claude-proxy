@@ -521,17 +521,10 @@ button:focus-visible {
   border-radius: 2px;
   flex: none;
 }
-.window-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.window-nav .range {
+.range {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
-  min-width: 148px;
-  text-align: center;
 }
 
 /* tables */
