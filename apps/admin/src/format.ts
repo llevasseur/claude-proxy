@@ -14,11 +14,8 @@ export function deltaLabel(pct: number): string {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
 }
 
-// --- Timestamps ---------------------------------------------------------
-// Sidecars store timestamps in UTC (ISO 8601). We display them in the
-// viewer's own timezone — auto-detected from the browser/OS — so "when" a
-// request happened reads naturally to whoever is looking. `LOCAL_TZ_ABBR`
-// labels the column so localized times are never mistaken for UTC.
+// Sidecars store timestamps in UTC (ISO 8601); these helpers render them
+// in the viewer's system timezone.
 
 /** The viewer's IANA system timezone, e.g. `"America/New_York"`. */
 export const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -29,8 +26,8 @@ export const LOCAL_TZ_ABBR: string =
     .formatToParts(new Date())
     .find((p) => p.type === "timeZoneName")?.value ?? "local";
 
-// `hourCycle: "h23"` avoids V8's "24:xx" quirk for midnight. No `timeZone`
-// option → the formatter uses the system zone, which is what we want.
+// `hourCycle: "h23"` avoids V8's "24:xx" quirk for midnight. Omitting
+// `timeZone` makes the formatter use the system zone.
 const tsFmt = new Intl.DateTimeFormat("en-US", {
   month: "2-digit",
   day: "2-digit",
