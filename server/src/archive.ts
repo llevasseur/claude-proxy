@@ -4,14 +4,9 @@ import path from "node:path";
 import { normalizeDigest, type UsageDigest } from "@claude-proxy/core";
 
 /**
- * Where finalized per-day digests live. The proxy's live `logs/` dir only keeps
- * the current day's sidecars — a daily job moves older days into a durable
- * archive laid out as `<archive>/<YYYY-MM-DD>/digest.json`. Reading those digests
- * back is what lets the trends view span more than the day or two still on disk.
- *
- * `DIGEST_ARCHIVE_DIR` overrides the location; the default matches this setup's
- * archive. If the directory is absent the archive is simply empty — the trends
- * view falls back to whatever the live `logs/` dir holds.
+ * Where finalized per-day digests live, laid out as
+ * `<archive>/<YYYY-MM-DD>/digest.json`. `DIGEST_ARCHIVE_DIR` overrides the
+ * location. An absent directory just yields an empty archive.
  */
 export function resolveArchiveDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.DIGEST_ARCHIVE_DIR
@@ -19,16 +14,14 @@ export function resolveArchiveDir(env: NodeJS.ProcessEnv = process.env): string 
     : path.join(homedir(), "Documents/logs/claude");
 }
 
-// Past days are immutable once finalized, so a digest read once never changes.
-// Cache successful loads for the process lifetime, keyed by absolute file path
-// (so a dir override can't collide with a stale entry). Misses aren't cached —
-// a not-yet-finalized day can gain its digest while the server is running.
+// Cache successful loads (keyed by absolute file path) for the process lifetime;
+// finalized days are immutable. Misses aren't cached — a not-yet-finalized day
+// can gain its digest while the server runs.
 const cache = new Map<string, UsageDigest>();
 
 /**
- * Load and normalize the archived digest for one calendar day, or `null` when
- * the day has no digest on disk (or it's unreadable/unparseable). Never throws —
- * a missing archive must not break the trends endpoint.
+ * Load and normalize one day's archived digest, or `null` when it's missing,
+ * unreadable, or unparseable. Never throws.
  */
 export async function loadArchivedDigest(archiveDir: string, date: string): Promise<UsageDigest | null> {
   const file = path.join(archiveDir, date, "digest.json");

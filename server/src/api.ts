@@ -55,11 +55,8 @@ export interface TrendsResponse {
 
 /**
  * Per-day digests for the last `days` days, oldest→newest. The live `logs/` dir
- * only retains the current day or two (older days are moved to a durable archive
- * by a daily job), so a live-only read collapses the trend to a couple of points.
- * Fill every other day in the window from the archive of finalized per-day
- * digests. Live days win over the archive for the same date, since `logs/` holds
- * the freshest capture for any day still present there.
+ * only retains the current day or two, so days beyond that are filled from the
+ * archive of finalized digests. Live days win over the archive for the same date.
  */
 export async function buildTrends(
   logDir: string,

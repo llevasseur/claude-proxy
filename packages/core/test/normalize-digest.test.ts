@@ -48,7 +48,6 @@ describe("normalizeDigest", () => {
     expect(d.tokens.realInput).toBe(5000);
     expect(d.tokens.output).toBe(300);
     expect(d.cost.total).toBe(12.5);
-    // Unknown-in-legacy fields default safely rather than throwing.
     expect(d.tokens.cacheRead).toBe(0);
     expect(d.tokens.cacheCreation).toBe(0);
     expect(d.tokens.cacheHitRatio).toBe(0);

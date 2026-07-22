@@ -189,13 +189,11 @@ function numOf(v: unknown): number {
 }
 
 /**
- * Coerce a persisted digest (JSON read back from a durable per-day archive) into
- * a well-formed {@link UsageDigest}. Tolerant by design: the archive spans schema
- * versions — recent days are near-complete digests, older days a flat
+ * Coerce a persisted digest into a `UsageDigest`, tolerating the archive's range
+ * of schema versions — from near-complete digests down to a flat legacy
  * `{ requestCount, realInput, output, costTotal }`. Unknown fields default to
- * zero rather than throwing, so a partial history still charts. Returns `null`
- * only for non-object input. `fallbackDate` is used when the object has no `date`
- * (e.g. the archive folder name).
+ * zero. Returns `null` only for non-object input. `fallbackDate` fills in a
+ * missing `date` (e.g. the archive folder name).
  */
 export function normalizeDigest(raw: unknown, fallbackDate: string): UsageDigest | null {
   if (!isRec(raw)) return null;
