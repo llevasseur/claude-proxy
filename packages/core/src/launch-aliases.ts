@@ -179,8 +179,6 @@ export function parseLaunchAliases(rc: string): LaunchAlias[] {
   return out;
 }
 
-/** A grid column: a tool explicitly toggled by some alias whose effective on/off
- * state also varies across aliases. Constant tools are left out of the grid. */
 export interface AliasPosture {
   /** The alias/function name. */
   name: string;

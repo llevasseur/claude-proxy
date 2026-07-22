@@ -210,9 +210,9 @@ export interface WithheldResponse {
   settingsReadable: boolean;
   report: WithheldReport;
   /** `claude*` launch aliases from the shell rc, the raw flags each parses, and
-   * their computed net effective tool posture (cross-referencing the device deny
-   * list + disable keys). Declarative — launch flags never reach the proxy, so
-   * this is computed from settings precedence, not verified against traffic. */
+   * their net effective tool posture (cross-referencing the device deny list +
+   * disable keys). Launch flags never reach the proxy, so this is computed from
+   * settings precedence, not verified against traffic like the deny rules. */
   launchAliases: {
     rcPath: string;
     rcReadable: boolean;
