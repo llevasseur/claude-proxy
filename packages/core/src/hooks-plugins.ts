@@ -2,19 +2,17 @@
  * Hooks & plugins inventory — what `~/.claude/settings.json` configures, shaped for
  * the dashboard's "Hooks & Plugins" page.
  *
- * This is a *configuration* view, not a runtime one. Hooks are local shell commands
- * Claude Code runs on the machine; they produce no Anthropic API traffic, so the
- * proxy can't observe whether one actually fired — only what's declared. Verifying
- * live firing is done inside a session with `/hooks`.
+ * Config view, not runtime: hooks are local shell commands with no Anthropic API
+ * traffic, so the proxy can't observe firing — only what's declared. Verify live
+ * firing in-session with `/hooks`.
  *
- * Pure: no I/O — the server reads settings.json and passes the parsed `hooks` /
- * `enabledPlugins` values in.
+ * Pure: no I/O — the server reads settings.json and passes the parsed values in.
  */
 import type { LaunchAliasPosture } from "./launch-aliases.js";
 
 /** One configured hook command, flattened out of the nested `hooks` object. */
 export interface HookRow {
-  /** The event that triggers it, e.g. `PreToolUse`, `Stop`. */
+  /** The event that triggers it. */
   event: string;
   /** Tool-name matcher for the group, or `""` when the group has none. */
   matcher: string;

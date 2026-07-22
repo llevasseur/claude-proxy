@@ -274,11 +274,10 @@ export interface HooksPluginsResponse {
 }
 
 /**
- * The device's hooks & plugins **configuration** inventory, plus which launch modes
- * are expected to load them. This is a config view, not a runtime one: hooks are
- * local shell commands with no API footprint, so the proxy can't confirm one fired —
- * only what `~/.claude/settings.json` declares. Live firing is verified in-session
- * with `/hooks`. Load expectations reuse the launch-alias posture.
+ * The device's hooks & plugins configuration inventory, plus which launch modes are
+ * expected to load them. Config view, not runtime: hooks have no API footprint, so
+ * the proxy can't confirm one fired — only what `~/.claude/settings.json` declares.
+ * Load expectations reuse the launch-alias posture.
  */
 export async function buildHooksPlugins(
   settingsPath: string = resolveSettingsPath(),

@@ -4,12 +4,12 @@ import { getHooksPlugins } from "../api";
 import { QueryState } from "../components/QueryState";
 
 /**
- * "Hooks & Plugins" — a configuration inventory of the device's `~/.claude/settings.json`
- * `hooks` and `enabledPlugins`, plus which `claude*` launch modes are expected to load them.
+ * "Hooks & Plugins" — config inventory of the device's `~/.claude/settings.json`
+ * `hooks` and `enabledPlugins`, plus which `claude*` launch modes load them.
  *
- * This is a config view, NOT a live tracker: hooks are local shell commands with no
- * Anthropic API footprint, so the proxy can't observe whether one fired — only what's
- * declared. Verify actual firing in-session with `/hooks`.
+ * Config view, not a live tracker: hooks are local shell commands with no Anthropic
+ * API footprint, so the proxy can't observe firing — only what's declared. Verify
+ * in-session with `/hooks`.
  */
 
 /** Render a load-expectation state as a labelled badge. */
