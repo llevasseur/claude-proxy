@@ -1,12 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { getWithheld } from "../api";
 import { QueryState } from "../components/QueryState";
-import { fmtInt } from "../format";
+import { fmtInt, fmtLocalTsShort, LOCAL_TZ_ABBR } from "../format";
 
 const WINDOW_DAYS = 14;
-
-/** `2026-07-16T14:35:00.123Z` → `07-16 14:35` (UTC, compact). */
-const shortTs = (iso: string): string => (iso ? iso.slice(5, 16).replace("T", " ") : "—");
 
 /**
  * "Not added" — the tools this device withholds from every Claude Code request.
@@ -111,7 +108,7 @@ export function WithheldPage() {
                                       <span className={r.status === "still-present" ? "present-tool" : "was-tool"}>
                                         {t.name}
                                       </span>{" "}
-                                      ×{fmtInt(t.occurrences)} (last seen {shortTs(t.lastSeen)})
+                                      ×{fmtInt(t.occurrences)} (last seen {fmtLocalTsShort(t.lastSeen)} {LOCAL_TZ_ABBR})
                                     </span>
                                   ))}
                                 </span>
@@ -182,7 +179,7 @@ export function WithheldPage() {
                                     <span className={d.status === "still-present" ? "present-tool" : "was-tool"}>
                                       {t.name}
                                     </span>{" "}
-                                    ×{fmtInt(t.occurrences)} (last seen {shortTs(t.lastSeen)})
+                                    ×{fmtInt(t.occurrences)} (last seen {fmtLocalTsShort(t.lastSeen)} {LOCAL_TZ_ABBR})
                                   </span>
                                 ))}
                               </span>
