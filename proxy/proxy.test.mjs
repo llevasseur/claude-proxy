@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest } from "./proxy.mjs";
+import { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS } from "./proxy.mjs";
 
 // Non-streaming response body: a single JSON message object with usage at the top level, no SSE frames.
 const nonStreamingBody = JSON.stringify({
@@ -98,6 +98,34 @@ test("extractSession tolerates missing headers and non-JSON user_id", () => {
   assert.equal(s.sessionId, null);
   assert.equal(s.account, null);
   assert.equal(s.metadataSessionId, null);
+});
+
+test("stripWithheldTools removes EndConversation from the tools array", () => {
+  const reqJson = {
+    model: "claude-opus-4-8",
+    tools: [{ name: "Read" }, { name: "EndConversation" }, { name: "Bash" }],
+  };
+  const { reqJson: out, removed } = stripWithheldTools(reqJson);
+  assert.deepEqual(removed, ["EndConversation"]);
+  assert.deepEqual(out.tools.map((t) => t.name), ["Read", "Bash"]);
+  // Source object is left untouched (shallow copy on strip).
+  assert.equal(reqJson.tools.length, 3);
+  assert.equal(WITHHELD_TOOLS.has("EndConversation"), true);
+});
+
+test("stripWithheldTools is a no-op (same reference) when nothing to strip", () => {
+  const noTools = { model: "claude-opus-4-8", messages: [] };
+  assert.equal(stripWithheldTools(noTools).reqJson, noTools);
+  assert.deepEqual(stripWithheldTools(noTools).removed, []);
+
+  const cleanTools = { tools: [{ name: "Read" }, { name: "Bash" }] };
+  const res = stripWithheldTools(cleanTools);
+  assert.equal(res.reqJson, cleanTools); // untouched → forwarded byte-for-byte
+  assert.deepEqual(res.removed, []);
+
+  // Non-array tools and missing body degrade without throwing.
+  assert.equal(stripWithheldTools(null).reqJson, null);
+  assert.deepEqual(stripWithheldTools({ tools: "nope" }).removed, []);
 });
 
 test("sidecar carries real tokens, session, and model for a non-streaming call", () => {

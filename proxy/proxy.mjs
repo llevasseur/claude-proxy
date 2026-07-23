@@ -2,10 +2,14 @@
  * agent-proxy — see what Claude Code actually sends the model.
  *
  * A zero-dependency logging proxy for Claude Code. It sits between the CLI and
- * the Anthropic API, forwards every request untouched (auth header and all),
- * streams the response straight back so the CLI is unaffected, and for each
- * request writes a readable Markdown document — led by a ranked table of what
- * is eating your context.
+ * the Anthropic API, forwards each request essentially untouched (auth header
+ * and all), streams the response straight back so the CLI is unaffected, and
+ * for each request writes a readable Markdown document — led by a ranked table
+ * of what is eating your context.
+ *
+ * The one deliberate edit: it strips `WITHHELD_TOOLS` (tools the CLI won't keep
+ * out via `permissions.deny`) from the request before forwarding. Requests with
+ * nothing to strip are forwarded byte-for-byte.
  *
  * Run:   node proxy.mjs
  * Point Claude Code at it:
@@ -39,6 +43,22 @@ const estTokens = (bytes) => Math.round(bytes / 4);
 const isTokenCount = (reqPath) => reqPath.includes("count_tokens");
 
 const REDACT = new Set(["authorization", "x-api-key", "api-key"]);
+
+/** Tools the CLI exempts from `permissions.deny` — the deny rule is silently
+ * ignored and the schema ships every turn — so we strip them here instead.
+ * Extend the set to withhold more unstrippable tools. */
+const WITHHELD_TOOLS = new Set(["EndConversation"]);
+
+/** Remove withheld tools from a parsed request body. Returns the original object
+ * (same reference) when there's nothing to strip; otherwise a shallow copy with
+ * a filtered `tools` array, plus the removed names. */
+function stripWithheldTools(reqJson, withheld = WITHHELD_TOOLS) {
+  const tools = reqJson?.tools;
+  if (!Array.isArray(tools)) return { reqJson, removed: [] };
+  const removed = tools.filter((t) => withheld.has(t?.name)).map((t) => t.name);
+  if (removed.length === 0) return { reqJson, removed };
+  return { reqJson: { ...reqJson, tools: tools.filter((t) => !withheld.has(t?.name)) }, removed };
+}
 
 /** Strip hop-by-hop and encoding headers so the captured response is readable,
  * recompute content-length, and pass auth through untouched so the real request
@@ -363,9 +383,21 @@ function handle(req, res) {
     let reqJson = null;
     try { reqJson = JSON.parse(body.toString("utf8")); } catch { /* non-JSON body */ }
 
+    // Strip withheld tools; re-serialize only when something changed.
+    // `forwardBody` is what we send, key, and log from here on.
+    let forwardBody = body;
+    if (reqJson) {
+      const { reqJson: stripped, removed } = stripWithheldTools(reqJson);
+      if (removed.length > 0) {
+        reqJson = stripped;
+        forwardBody = Buffer.from(JSON.stringify(reqJson), "utf8");
+        console.log(`[agent-proxy] stripped ${removed.join(", ")} from request tools`);
+      }
+    }
+
     const skimDir = skim.cacheDir(LOG_DIR);
     const canSkim = !isTokenCount(reqPath) && skim.cacheable(reqPath, reqJson);
-    const cacheKey = canSkim ? skim.keyFor(body) : null;
+    const cacheKey = canSkim ? skim.keyFor(forwardBody) : null;
 
     // ---- Skim hit: replay the stored reply and never call Anthropic ----
     if (canSkim) {
@@ -380,7 +412,7 @@ function handle(req, res) {
           const audit = auditRequest(reqJson ?? {}, saved);
           const skimInfo = { enabled: true, servedFromCache: true, savedInputTokens: saved, cacheKey };
           fs.mkdirSync(LOG_DIR, { recursive: true });
-          fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), body.toString("utf8"));
+          fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString("utf8"));
           fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
           fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens: saved, usage: null, respModel: respModel ?? hit.meta.model, headers: req.headers, skim: skimInfo }));
           console.log(`[agent-proxy] SKIM HIT ${cacheKey.slice(0, 8)} · saved ~${saved.toLocaleString()} input tok · logs/${base}.md`);
@@ -393,7 +425,7 @@ function handle(req, res) {
 
     // ---- Miss: normal transparent pass-through to Anthropic ----
     const upstream = https.request(
-      { hostname: UPSTREAM, port: 443, path: reqPath, method: req.method, headers: forwardHeaders(req.headers, body) },
+      { hostname: UPSTREAM, port: 443, path: reqPath, method: req.method, headers: forwardHeaders(req.headers, forwardBody) },
       (up) => {
         res.writeHead(up.statusCode ?? 502, up.headers);
         const respChunks = [];
@@ -420,7 +452,7 @@ function handle(req, res) {
             const skimInfo = { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey };
 
             fs.mkdirSync(LOG_DIR, { recursive: true });
-            fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), body.toString("utf8"));
+            fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString("utf8"));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, respModel, headers: req.headers, skim: skimInfo }));
             printAudit(audit, base);
@@ -435,7 +467,7 @@ function handle(req, res) {
       if (!res.headersSent) res.writeHead(502, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: `agent-proxy upstream error: ${err.message}` }));
     });
-    if (body.length > 0) upstream.write(body);
+    if (forwardBody.length > 0) upstream.write(forwardBody);
     upstream.end();
   });
 }
@@ -450,4 +482,4 @@ if (isMain) {
 }
 
 // Exported for unit tests.
-export { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest };
+export { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS };
