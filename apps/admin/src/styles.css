@@ -1074,7 +1074,7 @@ a.pager-btn:hover {
   color: var(--coral);
 }
 
-/* ── Live session graph ─────────────────────────────────────────────── */
+/* live session graph */
 .graph-page {
   display: flex;
   flex-direction: column;

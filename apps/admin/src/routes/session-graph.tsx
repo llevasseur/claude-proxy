@@ -8,12 +8,10 @@ import { getSessionsGraph } from "../api";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 /**
- * Live session graph — a bullet-journal dot-grid canvas where each session is a
- * root box and its appended steps (task / decision / tool / error / done) chain
- * off to the right as node boxes, each with a type-colored glow. The view polls
- * the server, so new steps stream in and animate on mount. Pan by dragging the
- * grid, zoom with the wheel or buttons, fit-to-screen, and go fullscreen (Esc
- * exits). Clicking any node opens a detail inspector on the right.
+ * Live session graph — a dot-grid canvas where each session is a root box and its
+ * appended steps (task / decision / tool / error / done) chain off to the right as
+ * type-colored node boxes. Polls the server so new steps stream in and animate on
+ * mount. Pan/zoom/fit/fullscreen; clicking a node opens the inspector.
  */
 
 // Layout geometry, in canvas px (pre-transform).
@@ -234,7 +232,7 @@ export function SessionGraphPage() {
     }
   };
 
-  // Dot grid pans and scales with the view, for a graph-paper feel.
+  // Dot grid pans and scales with the view.
   const dot = 22 * view.k;
   const viewportStyle: CSSProperties = {
     backgroundSize: `${dot}px ${dot}px`,
