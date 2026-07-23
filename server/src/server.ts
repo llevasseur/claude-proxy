@@ -4,6 +4,9 @@ import {
   buildContextDetail,
   buildContextMessage,
   buildContextTool,
+  buildMemory,
+  buildProjectMemories,
+  buildProjects,
   buildSkim,
   buildSkimTrend,
   buildSummary,
@@ -14,11 +17,13 @@ import {
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
+import { resolveProjectsDir } from "./projects.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default
 const LOG_DIR = resolveLogDir();
 const ARCHIVE_DIR = resolveArchiveDir();
+const PROJECTS_DIR = resolveProjectsDir();
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -135,6 +140,44 @@ const server = http.createServer(async (req, res) => {
           else if (msg.startsWith("request file not found")) send(res, 404, { error: msg });
           else if (msg.startsWith("tool index out of range")) send(res, 404, { error: msg });
           else throw err;
+        }
+        return;
+      }
+      case "/api/projects":
+        send(res, 200, await buildProjects(PROJECTS_DIR));
+        return;
+      case "/api/projects/memories": {
+        const project = url.searchParams.get("project");
+        if (!project) {
+          send(res, 400, { error: "missing ?project=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildProjectMemories(PROJECTS_DIR, project));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid project name")) send(res, 400, { error: msg });
+          else if (msg.startsWith("project not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/projects/memory": {
+        const project = url.searchParams.get("project");
+        const name = url.searchParams.get("name");
+        if (!project || !name) {
+          send(res, 400, { error: "missing ?project= or ?name=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildMemory(PROJECTS_DIR, project, name));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid project name") || msg.startsWith("invalid memory file name")) {
+            send(res, 400, { error: msg });
+          } else if (msg.startsWith("project not found") || msg.startsWith("memory file not found")) {
+            send(res, 404, { error: msg });
+          } else throw err;
         }
         return;
       }

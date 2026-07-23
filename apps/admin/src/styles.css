@@ -858,3 +858,88 @@ button:focus-visible {
 .msg-block .rawjson {
   margin-top: 0;
 }
+
+/* Long encoded project dir names — wrap anywhere, monospace. */
+.mono-break {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* Memory "Pretty" view — parsed frontmatter + rendered markdown. */
+.memory-pretty {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+/* Frontmatter as a definition grid. */
+.fm {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--line);
+}
+.fm dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fm dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.md-h {
+  margin: 18px 0 8px;
+  font-family: var(--font-display);
+  line-height: 1.3;
+}
+.md-p {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+.md-list {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+.md-list li {
+  margin: 3px 0;
+}
+.md-quote {
+  margin: 0 0 12px;
+  padding: 2px 14px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+.md-hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 18px 0;
+}
+.md-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+}
+/* Obsidian-style [[wikilink]] reference. */
+.md-wikilink {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--signal);
+  background: rgba(70, 224, 192, 0.08);
+  border: 1px solid var(--signal-dim);
+}
