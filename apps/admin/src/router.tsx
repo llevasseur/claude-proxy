@@ -5,7 +5,10 @@ import { ContextDetailPage } from "./routes/context-detail";
 import { ContextMessagePage } from "./routes/context-message";
 import { ContextToolPage } from "./routes/context-tool";
 import { ContextPage } from "./routes/context";
+import { MemoryDetailPage } from "./routes/memory-detail";
 import { OverviewPage } from "./routes/overview";
+import { ProjectDetailPage } from "./routes/project-detail";
+import { ProjectsPage } from "./routes/projects";
 import { SkimPage } from "./routes/skim";
 import { ToolsPage } from "./routes/tools";
 import { TrendsPage } from "./routes/trends";
@@ -19,6 +22,7 @@ const STATIONS = [
   { to: "/tools", label: "Tool bloat", hint: "context", exact: false },
   { to: "/skim", label: "Skim", hint: "cache", exact: false },
   { to: "/withheld", label: "Not added", hint: "withheld", exact: false },
+  { to: "/projects", label: "Projects", hint: "memory", exact: false },
   { to: "/advice", label: "Advice", hint: "coaching", exact: false },
 ] as const;
 
@@ -85,6 +89,17 @@ const contextToolRoute = createRoute({
   path: "/context/$file/tool/$index",
   component: ContextToolPage,
 });
+const projectsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/projects", component: ProjectsPage });
+const projectDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects/$project",
+  component: ProjectDetailPage,
+});
+const memoryDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects/$project/memory/$name",
+  component: MemoryDetailPage,
+});
 const toolsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tools", component: ToolsPage });
 const skimRoute = createRoute({ getParentRoute: () => rootRoute, path: "/skim", component: SkimPage });
 const withheldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/withheld", component: WithheldPage });
@@ -97,6 +112,9 @@ const routeTree = rootRoute.addChildren([
   contextDetailRoute,
   contextMessageRoute,
   contextToolRoute,
+  projectsRoute,
+  projectDetailRoute,
+  memoryDetailRoute,
   toolsRoute,
   skimRoute,
   withheldRoute,

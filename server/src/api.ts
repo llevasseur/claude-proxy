@@ -27,6 +27,14 @@ import {
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
 import { readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
+import {
+  listProjectMemories,
+  listProjects,
+  readMemory,
+  type MemoryDetail,
+  type MemoryFileSummary,
+  type ProjectSummary,
+} from "./projects.js";
 import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
 import { readLaunchAliases } from "./shell-rc.js";
 
@@ -177,6 +185,38 @@ export async function buildContextTool(logDir: string, file: string, index: numb
   const tool = extractRequestTool(body, index);
   if (!tool) throw new Error(`tool index out of range: ${index}`);
   return { file, tool };
+}
+
+export interface ProjectsResponse {
+  projects: ProjectSummary[];
+  meta: { projectsDir: string; total: number };
+}
+
+/** Every Claude Code project that has a `memory/` dir, with its memory count. */
+export async function buildProjects(projectsDir: string): Promise<ProjectsResponse> {
+  const projects = await listProjects(projectsDir);
+  return { projects, meta: { projectsDir, total: projects.length } };
+}
+
+export interface ProjectMemoriesResponse {
+  project: string;
+  files: MemoryFileSummary[];
+  meta: { total: number };
+}
+
+/** The `*.md` memory files for one project. `project` is validated downstream. */
+export async function buildProjectMemories(projectsDir: string, project: string): Promise<ProjectMemoriesResponse> {
+  const files = await listProjectMemories(projectsDir, project);
+  return { project, files, meta: { total: files.length } };
+}
+
+export interface MemoryResponse {
+  memory: MemoryDetail;
+}
+
+/** One memory file's full contents. `project`/`name` are validated downstream. */
+export async function buildMemory(projectsDir: string, project: string, name: string): Promise<MemoryResponse> {
+  return { memory: await readMemory(projectsDir, project, name) };
 }
 
 export interface SkimResponse {

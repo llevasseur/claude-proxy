@@ -65,6 +65,34 @@ export interface WithheldResponse {
   launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[]; posture: LaunchAliasPosture };
   meta: { days: number; files: number; parseErrors: number };
 }
+export interface ProjectSummary {
+  name: string;
+  memoryCount: number;
+}
+export interface ProjectsResponse {
+  projects: ProjectSummary[];
+  meta: { projectsDir: string; total: number };
+}
+export interface MemoryFileSummary {
+  name: string;
+  bytes: number;
+  modified: string;
+}
+export interface ProjectMemoriesResponse {
+  project: string;
+  files: MemoryFileSummary[];
+  meta: { total: number };
+}
+export interface MemoryDetail {
+  project: string;
+  name: string;
+  content: string;
+  bytes: number;
+  modified: string;
+}
+export interface MemoryResponse {
+  memory: MemoryDetail;
+}
 export interface HealthResponse {
   ok: boolean;
   logDir: string;
@@ -100,6 +128,11 @@ export const getContextMessage = (file: string, index: number) =>
   get<ContextMessageResponse>(`/api/context/message?file=${encodeURIComponent(file)}&index=${index}`);
 export const getContextTool = (file: string, index: number) =>
   get<ContextToolResponse>(`/api/context/tool?file=${encodeURIComponent(file)}&index=${index}`);
+export const getProjects = () => get<ProjectsResponse>("/api/projects");
+export const getProjectMemories = (project: string) =>
+  get<ProjectMemoriesResponse>(`/api/projects/memories?project=${encodeURIComponent(project)}`);
+export const getMemory = (project: string, name: string) =>
+  get<MemoryResponse>(`/api/projects/memory?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`);
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
