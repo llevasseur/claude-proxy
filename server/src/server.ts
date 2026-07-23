@@ -275,7 +275,6 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, await buildSessions(LOG_DIR));
         return;
       case "/api/sessions/stream":
-        // Live session list: watch the sessions dir, re-list on any change.
         await serveSse(req, res, {
           watchPath: resolveSessionsDir(LOG_DIR),
           build: () => buildSessions(LOG_DIR),
@@ -283,7 +282,6 @@ const server = http.createServer(async (req, res) => {
         });
         return;
       case "/api/sessions/session/stream": {
-        // Live single transcript: watch the `<id>.md` file, re-read on append.
         const id = url.searchParams.get("id");
         if (!id) {
           send(res, 400, { error: "missing ?id=" });
