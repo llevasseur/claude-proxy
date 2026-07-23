@@ -294,7 +294,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     // Learn the thread's identity from its first sighting: the root prompt (for
     // subtitle + title matching) and the header ingredients.
     if (!entry.root) entry.root = rootPrompt(messages);
-    if (entry.model === undefined || entry.model == null) entry.model = reqJson?.model ?? "unknown";
+    if (entry.model == null) entry.model = reqJson?.model ?? "unknown";
     if (!entry.sessionId) entry.sessionId = sessionId ?? "unknown";
     if (!entry.startedAt) entry.startedAt = new Date().toISOString();
     // Claim a title that arrived before this thread existed.
