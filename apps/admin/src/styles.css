@@ -920,6 +920,16 @@ a.pager-btn:hover {
   overflow-wrap: anywhere;
 }
 
+/* Sessions list — first-task preview under the thread id. */
+.session-preview {
+  margin-top: 2px;
+  font-size: 12px;
+  max-width: 52ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Memory "Pretty" view — parsed frontmatter + rendered markdown. */
 .memory-pretty {
   margin-top: 12px;

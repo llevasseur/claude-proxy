@@ -10,6 +10,8 @@ import { MemoryDetailPage } from "./routes/memory-detail";
 import { OverviewPage } from "./routes/overview";
 import { ProjectDetailPage } from "./routes/project-detail";
 import { ProjectsPage } from "./routes/projects";
+import { SessionDetailPage } from "./routes/session-detail";
+import { SessionsPage } from "./routes/sessions";
 import { SkimPage } from "./routes/skim";
 import { ToolsPage } from "./routes/tools";
 import { TrendsPage } from "./routes/trends";
@@ -24,6 +26,7 @@ const STATIONS = [
   { to: "/skim", label: "Skim", hint: "cache", exact: false },
   { to: "/withheld", label: "Not added", hint: "withheld", exact: false },
   { to: "/projects", label: "Projects", hint: "memory", exact: false },
+  { to: "/sessions", label: "Sessions", hint: "transcripts", exact: false },
   { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false },
   { to: "/advice", label: "Advice", hint: "coaching", exact: false },
 ] as const;
@@ -102,6 +105,12 @@ const memoryDetailRoute = createRoute({
   path: "/projects/$project/memory/$name",
   component: MemoryDetailPage,
 });
+const sessionsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/sessions", component: SessionsPage });
+const sessionDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sessions/$id",
+  component: SessionDetailPage,
+});
 const toolsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tools", component: ToolsPage });
 const skimRoute = createRoute({ getParentRoute: () => rootRoute, path: "/skim", component: SkimPage });
 const withheldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/withheld", component: WithheldPage });
@@ -122,6 +131,8 @@ const routeTree = rootRoute.addChildren([
   projectsRoute,
   projectDetailRoute,
   memoryDetailRoute,
+  sessionsRoute,
+  sessionDetailRoute,
   toolsRoute,
   skimRoute,
   withheldRoute,
