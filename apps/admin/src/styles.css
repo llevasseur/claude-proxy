@@ -300,6 +300,26 @@ button:focus-visible {
 .link:hover {
   text-decoration: underline;
 }
+/* Breadcrumb trail above a drilled-down page's title. */
+.breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.crumb-sep {
+  color: var(--muted);
+  opacity: 0.6;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.crumb-current {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
 .grid {
   display: grid;
   gap: 22px;

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from "@claude-proxy/core";
 import { getContextDetail } from "../api";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtInt, fmtPct } from "../format";
 
@@ -13,11 +14,14 @@ export function ContextDetailPage() {
 
   return (
     <section>
+      <Breadcrumbs>
+        <Link to="/context" className="link">
+          Context size
+        </Link>
+        <span className="crumb-current">Request breakdown</span>
+      </Breadcrumbs>
       <div className="pagehead">
         <h1>Request breakdown</h1>
-        <Link to="/context" className="link">
-          ‹ back to context
-        </Link>
       </div>
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
