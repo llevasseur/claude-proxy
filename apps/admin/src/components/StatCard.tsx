@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Sparkline, type SparkPoint } from "./Sparkline";
 import { deltaLabel, deltaTone } from "../format";
 
-/** Per-day series + how to read it, for the card's mini chart and popover. */
+/** Per-day series and how to render it, for the mini chart and popover. */
 export interface StatSpark {
   points: SparkPoint[];
   /** Line colour (a CSS custom property). */
@@ -56,7 +56,7 @@ export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, me
   return <div className="card stat">{body}</div>;
 }
 
-/** Hover panel listing each day's value, newest first, for humans to read. */
+/** Hover panel listing each day's value, newest first. */
 function StatPopover({ label, spark }: { label: string; spark: StatSpark }): ReactNode {
   const rows = [...spark.points].reverse();
   return (

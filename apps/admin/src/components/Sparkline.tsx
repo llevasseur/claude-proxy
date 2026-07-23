@@ -14,12 +14,11 @@ export interface SparklineProps {
 }
 
 /**
- * Chrome-free mini line chart for a stat card — no axes, grid, or tooltip.
- * The Y domain hugs the data so day-to-day variation stays visible even when
- * the values themselves are large. Readable values live in the card's popover.
+ * Chrome-free mini line chart for a stat card. The Y domain hugs the data so
+ * day-to-day variation stays visible even when the values are large.
  */
 export function Sparkline({ points, color, height = 40 }: SparklineProps) {
-  // A single day can't form a line; show a dot so the card isn't blank.
+  // A single day can't form a line; show a dot instead.
   const single = points.length === 1;
   return (
     <div className="sparkline" style={{ height }} aria-hidden>

@@ -1,10 +1,7 @@
 import type { UsageDigest } from "@claude-proxy/core";
 import { fmtInt, fmtPct, fmtUsd } from "./format";
 
-/**
- * One Overview statistic, described once so the Overview cards, their mini
- * charts, and the `/trends/$metric` drill-down all agree on how to read a day.
- */
+/** One Overview statistic, shared by the cards, their mini charts, and `/trends/$metric`. */
 export interface StatMetric {
   /** URL slug for `/trends/$metric` and the key used across the app. */
   key: string;
