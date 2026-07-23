@@ -86,7 +86,10 @@ export function Markdown({ source }: { source: string }) {
       out.push(
         <List key={key++} className="md-list">
           {items.map((it, n) => (
-            <li key={n}>{renderInline(it)}</li>
+            // A `✗ …` item is a transcript error — flag it so it stands out.
+            <li key={n} className={/^✗\s/.test(it) ? "md-error" : undefined}>
+              {renderInline(it)}
+            </li>
           ))}
         </List>,
       );

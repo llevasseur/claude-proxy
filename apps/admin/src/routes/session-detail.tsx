@@ -47,7 +47,7 @@ function SessionBody({ session }: { session: SessionDetail }) {
         <StatTile label="Tasks" value={fmtInt(meta.tasks)} />
         <StatTile label="Tools" value={fmtInt(meta.tools)} />
         <StatTile label="Decisions" value={fmtInt(meta.decisions)} />
-        <StatTile label="Errors" value={fmtInt(meta.errors)} />
+        <ErrorsStatTile threadId={meta.threadId} errors={meta.errors} />
       </div>
 
       {meta.sessionId && (
@@ -77,6 +77,31 @@ function SessionBody({ session }: { session: SessionDetail }) {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * The Errors stat: coral and clickable through to the per-session error
+ * drill-down when there's at least one, a plain muted zero otherwise.
+ */
+function ErrorsStatTile({ threadId, errors }: { threadId: string; errors: number }) {
+  if (errors === 0) {
+    return (
+      <div className="card stat">
+        <div className="stat-label">Errors</div>
+        <div className="stat-value muted">0</div>
+        <div className="stat-foot" />
+      </div>
+    );
+  }
+  return (
+    <Link to="/sessions/$id/errors" params={{ id: threadId }} className="card stat stat-error">
+      <div className="stat-label">Errors</div>
+      <div className="stat-value">{fmtInt(errors)}</div>
+      <div className="stat-foot">
+        <span className="stat-error-cta">view details →</span>
+      </div>
+    </Link>
   );
 }
 

@@ -13,6 +13,7 @@ import {
   flattenHooks,
   normalizePlugins,
   hookPluginLoadExpectations,
+  parseSessionErrors,
   withheldReport,
   type Advice,
   type AliasLoadExpectation,
@@ -25,6 +26,8 @@ import {
   type RequestBreakdown,
   type RequestMessageDetail,
   type RequestToolDetail,
+  type SessionError,
+  type SessionMeta,
   type SkimDigest,
   type SkimShape,
   type TopTool,
@@ -249,6 +252,22 @@ export interface SessionResponse {
 /** One session transcript's full contents. `id` is validated downstream. */
 export async function buildSession(logDir: string, id: string): Promise<SessionResponse> {
   return { session: await readSession(logDir, id) };
+}
+
+export interface SessionErrorsResponse {
+  threadId: string;
+  meta: SessionMeta;
+  errors: SessionError[];
+}
+
+/**
+ * Every errored tool result in one session, each re-linked to the task and tool
+ * call it came from — the "what went wrong" drill-down for a transcript. Reuses
+ * {@link readSession} (which validates `id` and maps to 400/404).
+ */
+export async function buildSessionErrors(logDir: string, id: string): Promise<SessionErrorsResponse> {
+  const { meta, content } = await readSession(logDir, id);
+  return { threadId: id, meta, errors: parseSessionErrors(content) };
 }
 
 export interface SkimResponse {

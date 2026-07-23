@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSessionTranscript } from "../src/sessions.js";
+import { parseSessionErrors, parseSessionTranscript } from "../src/sessions.js";
 
 const TRANSCRIPT = [
   "",
@@ -49,5 +49,40 @@ describe("parseSessionTranscript", () => {
     expect(m.model).toBe("claude-opus-4-8");
     expect(m.tools).toBe(3);
     expect(m.firstTask).toBe("Fix the login bug");
+  });
+});
+
+describe("parseSessionErrors", () => {
+  it("re-links each error to its task and nearest preceding tool call", () => {
+    const errors = parseSessionErrors(TRANSCRIPT);
+    expect(errors).toEqual([
+      { index: 0, task: "Fix the login bug", tool: "Bash(command=npm test)", text: "ENOENT: no such file" },
+    ]);
+  });
+
+  it("returns an empty list when the transcript records no errors", () => {
+    expect(parseSessionErrors("just some text\nno structure")).toEqual([]);
+  });
+
+  it("blames a tool call at most once and carries task/tool context per error", () => {
+    const transcript = [
+      "## Task: Ship it",
+      "- Bash(command=npm run build)",
+      "- ✗ build failed: exit 1",
+      "- ✗ cleanup also failed",
+      "## Task: Recover",
+      "- ✗ nothing to undo",
+    ].join("\n");
+    expect(parseSessionErrors(transcript)).toEqual([
+      { index: 0, task: "Ship it", tool: "Bash(command=npm run build)", text: "build failed: exit 1" },
+      { index: 1, task: "Ship it", tool: null, text: "cleanup also failed" },
+      { index: 2, task: "Recover", tool: null, text: "nothing to undo" },
+    ]);
+  });
+
+  it("handles CRLF line endings", () => {
+    const errors = parseSessionErrors(TRANSCRIPT.replace(/\n/g, "\r\n"));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ tool: "Bash(command=npm test)", text: "ENOENT: no such file" });
   });
 });
