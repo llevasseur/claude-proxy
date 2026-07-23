@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import type { MemoryFileSummary } from "../api";
 import { getProjectMemories } from "../api";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtLocalTsShort } from "../format";
 
@@ -16,11 +17,14 @@ export function ProjectDetailPage() {
 
   return (
     <section>
+      <Breadcrumbs>
+        <Link to="/projects" className="link">
+          Projects
+        </Link>
+        <span className="crumb-current">Project memories</span>
+      </Breadcrumbs>
       <div className="pagehead">
         <h1>Project memories</h1>
-        <Link to="/projects" className="link">
-          ‹ back to projects
-        </Link>
       </div>
       <div className="muted mono-break" style={{ marginBottom: "0.75rem" }}>
         {project}

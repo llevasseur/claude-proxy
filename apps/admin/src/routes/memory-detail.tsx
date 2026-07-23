@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { MemoryDetail } from "../api";
 import { getMemory } from "../api";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtLocalTsShort } from "../format";
 
@@ -16,11 +17,17 @@ export function MemoryDetailPage() {
 
   return (
     <section>
+      <Breadcrumbs>
+        <Link to="/projects" className="link">
+          Projects
+        </Link>
+        <Link to="/projects/$project" params={{ project }} className="link">
+          Project memories
+        </Link>
+        <span className="crumb-current">{name}</span>
+      </Breadcrumbs>
       <div className="pagehead">
         <h1>{name}</h1>
-        <Link to="/projects/$project" params={{ project }} className="link">
-          ‹ back to memories
-        </Link>
       </div>
       <div className="muted mono-break" style={{ marginBottom: "0.75rem" }}>
         {project}

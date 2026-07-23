@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { RequestMessageDetail } from "@claude-proxy/core";
 import { getContextMessage } from "../api";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtInt } from "../format";
 
@@ -17,11 +18,17 @@ export function ContextMessagePage() {
 
   return (
     <section>
+      <Breadcrumbs>
+        <Link to="/context" className="link">
+          Context size
+        </Link>
+        <Link to="/context/$file" params={{ file }} className="link">
+          Request breakdown
+        </Link>
+        <span className="crumb-current">Message #{index}</span>
+      </Breadcrumbs>
       <div className="pagehead">
         <h1>Message #{index}</h1>
-        <Link to="/context/$file" params={{ file }} className="link">
-          ‹ back to breakdown
-        </Link>
       </div>
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
