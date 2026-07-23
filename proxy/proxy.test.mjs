@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS } from "./proxy.mjs";
+import { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS, stripInjectedReminders, INJECTED_REMINDERS } from "./proxy.mjs";
 import { threadIdFor, firstUserText, distillMessage, distillMessages, appendSession, sessionsDir, _resetThreads } from "./session.mjs";
 
 // Non-streaming response body: a single JSON message object with usage at the top level, no SSE frames.
@@ -130,6 +130,68 @@ test("stripWithheldTools is a no-op (same reference) when nothing to strip", () 
   // Non-array tools and missing body degrade without throwing.
   assert.equal(stripWithheldTools(null).reqJson, null);
   assert.deepEqual(stripWithheldTools({ tools: "nope" }).removed, []);
+});
+
+// The task-tools nudge as the CLI injects it: a standalone message whose whole
+// content is the reminder (seen as both a bare string and a single text block).
+const TASK_REMINDER =
+  "The task tools haven't been used recently. If you're working on tasks that would benefit from tracking progress, consider using TaskCreate to add new tasks and TaskUpdate to update task status (set to in_progress when starting, completed when done). Also consider cleaning up the task list if it has become stale. Only use these if relevant to the current work. This is just a gentle reminder - ignore if not applicable.";
+
+test("stripInjectedReminders drops a message whose string content is only the reminder", () => {
+  const reqJson = {
+    messages: [
+      { role: "user", content: "real question" },
+      { role: "system", content: TASK_REMINDER + "\n" },
+    ],
+  };
+  const { reqJson: out, removed } = stripInjectedReminders(reqJson);
+  assert.deepEqual(removed, ["task-tools"]);
+  assert.deepEqual(out.messages, [{ role: "user", content: "real question" }]);
+  assert.equal(reqJson.messages.length, 2); // source untouched
+});
+
+test("stripInjectedReminders drops a text block but keeps the rest of the message", () => {
+  const reqJson = {
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "keep me" },
+          { type: "text", text: TASK_REMINDER },
+        ],
+      },
+    ],
+  };
+  const { reqJson: out, removed } = stripInjectedReminders(reqJson);
+  assert.deepEqual(removed, ["task-tools"]);
+  assert.deepEqual(out.messages[0].content, [{ type: "text", text: "keep me" }]);
+});
+
+test("stripInjectedReminders keeps surrounding text when the reminder is embedded", () => {
+  const reqJson = {
+    messages: [{ role: "user", content: `before\n\n${TASK_REMINDER}\n\nafter` }],
+  };
+  const { reqJson: out, removed } = stripInjectedReminders(reqJson);
+  assert.deepEqual(removed, ["task-tools"]);
+  assert.equal(out.messages[0].content, "before\n\nafter");
+});
+
+test("stripInjectedReminders tolerates wording drift in the middle of the nudge", () => {
+  const drifted = "The task tools haven't been used recently. Some new middle wording here. ignore if not applicable.";
+  const { removed } = stripInjectedReminders({ messages: [{ role: "system", content: drifted }] });
+  assert.deepEqual(removed, ["task-tools"]);
+});
+
+test("stripInjectedReminders is a no-op (same reference) when nothing matches", () => {
+  const clean = { messages: [{ role: "user", content: "hello" }] };
+  const res = stripInjectedReminders(clean);
+  assert.equal(res.reqJson, clean); // untouched → forwarded byte-for-byte
+  assert.deepEqual(res.removed, []);
+
+  // Missing / non-array messages degrade without throwing.
+  assert.equal(stripInjectedReminders(null).reqJson, null);
+  assert.deepEqual(stripInjectedReminders({ messages: "nope" }).removed, []);
+  assert.equal(INJECTED_REMINDERS[0].id, "task-tools");
 });
 
 test("sidecar carries real tokens, session, and model for a non-streaming call", () => {

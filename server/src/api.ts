@@ -30,6 +30,8 @@ import {
   type TopTool,
   type UsageDigest,
   type WithheldReport,
+  PROXY_FILTER_INVENTORY,
+  type FiltersResponse,
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
 import { readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
@@ -359,4 +361,15 @@ export async function buildHooksPlugins(
     launchRcPath: launchAliases.rcPath,
     launchRcReadable: launchAliases.rcReadable,
   };
+}
+
+/**
+ * The proxy's request-filter inventory: what `proxy/proxy.mjs` strips from every
+ * request before forwarding. A static config view — these edits have no
+ * per-request variation and can't be configured out of the CLI, so the proxy is
+ * the only place they happen. Sourced from `PROXY_FILTER_INVENTORY` in core, which
+ * mirrors the proxy's runtime constants.
+ */
+export function buildFilters(now: Date = new Date()): FiltersResponse {
+  return { generatedAt: now.toISOString(), filters: PROXY_FILTER_INVENTORY };
 }
