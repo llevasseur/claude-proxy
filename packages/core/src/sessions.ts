@@ -37,11 +37,7 @@ export interface SessionMeta {
   firstTask: string | null;
 }
 
-/**
- * One errored tool result pulled from a transcript, with the context needed to
- * make sense of it in isolation: the task it happened under and the tool call it
- * most likely came from. The `text` is the proxy's already-gisted `- ✗ …` line.
- */
+/** One errored tool result from a transcript, tagged with its task and most-likely originating tool call. */
 export interface SessionError {
   /** Position among the transcript's errors, 0-based — also the deep-link anchor. */
   index: number;
@@ -127,12 +123,9 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
 
 /**
  * Pull every errored tool result out of a transcript, in order, each tagged with
- * the task it fell under and the tool call it most likely came from. The proxy
- * records only a one-line gist per error and disconnects it from its tool call
- * (the call is in a prior assistant turn), so this single pass re-links them: it
- * tracks the current `## Task:` heading and the nearest preceding tool-call line,
- * attributing that line to the next error and then clearing it so a second error
- * in a row isn't blamed on the same call.
+ * its task and nearest preceding tool call. The proxy records only a one-line
+ * gist per error, disconnected from the tool call that produced it (that call is
+ * in a prior turn), so this re-links them, blaming each call at most once.
  */
 export function parseSessionErrors(content: string): SessionError[] {
   const errors: SessionError[] = [];

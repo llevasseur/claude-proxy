@@ -5,13 +5,7 @@ import { getSessionErrors } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
 
-/**
- * The "what went wrong" drill-down for one session: every errored tool result
- * the transcript recorded, each re-linked to the task and tool call it came
- * from. The transcript itself keeps only a one-line gist per error and shows it
- * inline among the rest of the turns; this page collects them in one place so an
- * error is easy to find and read even when it doesn't stand out in the flow.
- */
+/** Per-session drill-down listing every errored tool result, re-linked to its task and tool call. */
 export function SessionErrorsPage() {
   const { id } = useParams({ from: "/sessions/$id/errors" });
   const query = useQuery({

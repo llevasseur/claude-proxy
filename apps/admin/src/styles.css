@@ -976,8 +976,7 @@ a.pager-btn:hover {
 .md-list li {
   margin: 3px 0;
 }
-/* A `✗ …` transcript line — an errored tool result. Make it impossible to miss:
-   coral text on a tinted, left-accented row that breaks the list's rhythm. */
+/* A `✗ …` transcript line — an errored tool result. */
 .md-list li.md-error {
   color: var(--coral);
   font-weight: 500;

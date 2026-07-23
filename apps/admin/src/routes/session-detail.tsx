@@ -80,10 +80,7 @@ function SessionBody({ session }: { session: SessionDetail }) {
   );
 }
 
-/**
- * The Errors stat: coral and clickable through to the per-session error
- * drill-down when there's at least one, a plain muted zero otherwise.
- */
+/** Errors stat tile: links to the per-session error drill-down when non-zero, a muted zero otherwise. */
 function ErrorsStatTile({ threadId, errors }: { threadId: string; errors: number }) {
   if (errors === 0) {
     return (

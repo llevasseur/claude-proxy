@@ -261,9 +261,8 @@ export interface SessionErrorsResponse {
 }
 
 /**
- * Every errored tool result in one session, each re-linked to the task and tool
- * call it came from — the "what went wrong" drill-down for a transcript. Reuses
- * {@link readSession} (which validates `id` and maps to 400/404).
+ * Every errored tool result in one session, re-linked to its task and tool call.
+ * Reuses {@link readSession}, which validates `id` and maps to 400/404.
  */
 export async function buildSessionErrors(logDir: string, id: string): Promise<SessionErrorsResponse> {
   const { meta, content } = await readSession(logDir, id);
