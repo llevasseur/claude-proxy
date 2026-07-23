@@ -63,8 +63,7 @@ function resolveMemoryDir(projectsDir: string, project: string): string {
 
 /**
  * List every project that has a `memory/` directory, with its memory-file count.
- * Projects without a `memory/` dir are omitted — this view exists to browse
- * memories, so an empty project is just noise. Sorted by count (desc), then name.
+ * Projects without a `memory/` dir are omitted. Sorted by count (desc), then name.
  * Throws only if the projects root itself cannot be read.
  */
 export async function listProjects(projectsDir: string): Promise<ProjectSummary[]> {

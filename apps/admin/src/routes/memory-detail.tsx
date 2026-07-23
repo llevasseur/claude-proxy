@@ -70,20 +70,17 @@ function MemoryBody({ memory }: { memory: MemoryDetail }) {
   );
 }
 
-// ---- Frontmatter ----------------------------------------------------------
-
 interface ParsedFrontmatter {
   name?: string;
   description?: string;
   type?: string;
-  /** Every scalar key: value pair we parsed, for display completeness. */
+  /** All top-level scalar key: value pairs parsed. */
   fields: { key: string; value: string }[];
 }
 
 /**
- * Split a leading YAML-ish `--- … ---` frontmatter block off the body. We only
- * read the shallow subset memory files use (top-level `key: value` plus a nested
- * `metadata.type`), rather than pulling in a YAML dependency.
+ * Split a leading YAML-ish `--- … ---` frontmatter block off the body. Reads
+ * only a shallow subset: top-level `key: value` plus a nested `metadata.type`.
  */
 function splitFrontmatter(content: string): { frontmatter: ParsedFrontmatter | null; body: string } {
   const text = content.replace(/^﻿/, "");
@@ -136,8 +133,6 @@ function Frontmatter({ fm }: { fm: ParsedFrontmatter }) {
   );
 }
 
-// ---- Minimal markdown -----------------------------------------------------
-
 /**
  * A small, dependency-free markdown renderer for the common subset memory files
  * use: headings, fenced code, blockquotes, unordered/ordered lists, horizontal
@@ -154,7 +149,6 @@ function Markdown({ source }: { source: string }) {
   while (i < lines.length) {
     const line = at(i);
 
-    // Fenced code block
     const fence = /^```(.*)$/.exec(line);
     if (fence) {
       const buf: string[] = [];
@@ -172,7 +166,6 @@ function Markdown({ source }: { source: string }) {
       continue;
     }
 
-    // Blank line
     if (line.trim() === "") {
       i += 1;
       continue;
@@ -185,7 +178,6 @@ function Markdown({ source }: { source: string }) {
       continue;
     }
 
-    // Heading
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading) {
       const level = (heading[1] ?? "#").length;
@@ -199,7 +191,6 @@ function Markdown({ source }: { source: string }) {
       continue;
     }
 
-    // Blockquote (consecutive `>` lines)
     if (/^\s*>/.test(line)) {
       const buf: string[] = [];
       while (i < lines.length && /^\s*>/.test(at(i))) {
@@ -214,7 +205,6 @@ function Markdown({ source }: { source: string }) {
       continue;
     }
 
-    // Lists (consecutive list items of the same kind)
     const ordered = /^\s*\d+\.\s+/.test(line);
     const unordered = /^\s*[-*+]\s+/.test(line);
     if (ordered || unordered) {
@@ -235,7 +225,6 @@ function Markdown({ source }: { source: string }) {
       continue;
     }
 
-    // Paragraph (gather until blank line)
     const buf: string[] = [];
     while (i < lines.length && at(i).trim() !== "" && !/^```/.test(at(i))) {
       buf.push(at(i));
