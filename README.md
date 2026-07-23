@@ -14,13 +14,19 @@ docs/           okq (Open Knowledge Format) bundle — ADRs, features, design sp
 
 ## 1. The proxy — capture requests
 
-A transparent pass-through between Claude Code and the Anthropic API. It forwards
-every request untouched (auth header and all), streams the reply straight back
-(so the CLI is unaffected), and for each request writes a readable Markdown
-document — led by a **ranked table of what is eating your context** — plus a
-machine-readable `.audit.json` sidecar. Auth headers (`authorization`,
-`x-api-key`, `api-key`) are written as `[REDACTED]`, so nothing sensitive lands
-on disk.
+A near-transparent pass-through between Claude Code and the Anthropic API. It
+forwards each request essentially untouched (auth header and all), streams the
+reply straight back (so the CLI is unaffected), and for each request writes a
+readable Markdown document — led by a **ranked table of what is eating your
+context** — plus a machine-readable `.audit.json` sidecar. Auth headers
+(`authorization`, `x-api-key`, `api-key`) are written as `[REDACTED]`, so nothing
+sensitive lands on disk.
+
+Its one deliberate edit: it strips a small set of **withheld tools**
+(`WITHHELD_TOOLS` in `proxy/proxy.mjs`, e.g. `EndConversation`) from the request
+before forwarding — for tools the CLI exempts from `permissions.deny` and so
+won't otherwise keep out. Requests with nothing to strip are forwarded
+byte-for-byte.
 
 ```bash
 PORT=8036 node proxy/proxy.mjs   # zero deps, Node 18+ (PORT defaults to 8787)
@@ -191,8 +197,9 @@ device-wide daily summary (`docs/2026-07-13-…`) and this monorepo + dashboard
 
 ## Notes
 
-- **Enterprise-safe:** the proxy is a transparent pass-through to
-  `api.anthropic.com`; it copies no credential and redacts auth headers. See
+- **Enterprise-safe:** the proxy is a near-transparent pass-through to
+  `api.anthropic.com` (its only edit is stripping `WITHHELD_TOOLS`); it copies no
+  credential and redacts auth headers. See
   `docs/2026-07-13-claude-usage-summary-design.md`.
 - Costs shown are **estimates** from an editable per-model price map in
   `packages/core/src/pricing.ts`.
