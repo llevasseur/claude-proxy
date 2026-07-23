@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, Link, Outlet } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { HealthBadge } from "./components/HealthBadge";
 import { AdvicePage } from "./routes/advice";
 import { ContextDetailPage } from "./routes/context-detail";
@@ -38,6 +38,9 @@ const STATIONS = [
 
 function RootLayout() {
   const activeProps = { className: "station active" };
+  // The live graph fills the whole content area; every other page keeps the padded column.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const full = pathname === "/sessions/graph";
   return (
     <div className="app">
       <aside className="rail">
@@ -71,7 +74,7 @@ function RootLayout() {
       </aside>
 
       <div className="workspace">
-        <main className="content">
+        <main className={`content${full ? " content--full" : ""}`}>
           <Outlet />
         </main>
       </div>

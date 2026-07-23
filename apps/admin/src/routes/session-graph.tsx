@@ -8,21 +8,23 @@ import { getSessionsGraph } from "../api";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 /**
- * Live session graph — a dot-grid canvas where each session is a root box and its
- * appended steps (task / decision / tool / error / done) chain off to the right as
- * type-colored node boxes. Polls the server so new steps stream in and animate on
- * mount. Pan/zoom/fit/fullscreen; clicking a node opens the inspector.
+ * Live session graph — one session at a time, its appended steps (task / decision /
+ * tool / error / done) chained into a snake so a long run folds onto the screen
+ * instead of running off the right. Rows-per-fold adapt to the viewport (mobile
+ * flows top-to-bottom, desktop uses long rows). A collapsible left rail switches
+ * sessions; the toolbar floats above the canvas. Polls so new steps stream in.
  */
 
 // Layout geometry, in canvas px (pre-transform).
 const ROOT_W = 224;
 const ROOT_H = 96;
-const NODE_W = 162;
-const NODE_H = 62;
-const GAP_X = 46;
-const GAP_Y = 56;
-const PAD = 56;
-const ROW_PITCH = ROOT_H + GAP_Y;
+const NODE_W = 168;
+const NODE_H = 64;
+const CELL_W = ROOT_W; // uniform grid cell; boxes are centered within it
+const CELL_H = ROOT_H;
+const GAP_X = 44;
+const GAP_Y = 58;
+const PAD = 64;
 
 /** Type → CSS color token, used for a node's glow and its incoming edge. */
 const NODE_COLOR: Record<SessionNode["type"] | "root", string> = {
@@ -46,6 +48,14 @@ const LEGEND: { type: SessionNode["type"]; label: string }[] = [
 const color = (type: SessionNode["type"] | "root"): string => NODE_COLOR[type] ?? "var(--signal)";
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
+/** Rows-per-fold from the viewport width: 1 = vertical (mobile), more = longer rows. */
+function colsForWidth(w: number): number {
+  if (w < 700) return 1;
+  if (w < 1024) return 3;
+  if (w < 1440) return 5;
+  return 7;
+}
 
 /** A placed box on the canvas plus the data behind it (node is null for a session root). */
 interface Box {
@@ -76,34 +86,73 @@ interface View {
   k: number;
 }
 
-/** A soft horizontal S-curve from one box's right edge to the next box's left edge. */
-function edgePath(x1: number, y1: number, x2: number, y2: number): string {
+/** Horizontal S-curve between two box edges (used within a snake row). */
+function edgePathH(x1: number, y1: number, x2: number, y2: number): string {
   const mx = (x1 + x2) / 2;
   return `M ${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`;
 }
 
-/** Deterministic left-to-right layout: one session per row, steps chained after its root. */
-function layout(sessions: SessionGraphEntry[]) {
+/** Vertical S-curve between two box edges (used at a snake's turn onto the next row). */
+function edgePathV(x1: number, y1: number, x2: number, y2: number): string {
+  const my = (y1 + y2) / 2;
+  return `M ${x1} ${y1} C ${x1} ${my} ${x2} ${my} ${x2} ${y2}`;
+}
+
+/** Grid cell (row + left-to-right column) for the i-th item in a boustrophedon snake. */
+function cell(i: number, cols: number) {
+  const row = Math.floor(i / cols);
+  const posInRow = i % cols;
+  const leftToRight = row % 2 === 0;
+  const col = leftToRight ? posInRow : cols - 1 - posInRow;
+  return { row, col };
+}
+
+/** Snake layout for a single session: root then its steps fold across `cols` per row. */
+function layout(entry: SessionGraphEntry | null, cols: number) {
   const boxes: Box[] = [];
   const edges: Edge[] = [];
-  let maxRight = PAD + ROOT_W;
-  let maxBottom = PAD + ROOT_H;
+  if (!entry) return { boxes, edges, contentW: 0, contentH: 0 };
 
-  sessions.forEach((entry, i) => {
-    const top = PAD + i * ROW_PITCH;
-    const cy = top + ROOT_H / 2;
-    boxes.push({ key: `r:${entry.threadId}`, kind: "root", x: PAD, y: top, w: ROOT_W, h: ROOT_H, entry, node: null });
+  const items: { kind: "root" | "node"; node: SessionNode | null }[] = [
+    { kind: "root", node: null },
+    ...entry.nodes.map((node) => ({ kind: "node" as const, node })),
+  ];
 
-    let prevRight = PAD + ROOT_W;
-    entry.nodes.forEach((node, j) => {
-      const x = PAD + ROOT_W + GAP_X + j * (NODE_W + GAP_X);
-      boxes.push({ key: `${entry.threadId}:${node.index}`, kind: "node", x, y: cy - NODE_H / 2, w: NODE_W, h: NODE_H, entry, node });
-      edges.push({ key: `e:${entry.threadId}:${j}`, d: edgePath(prevRight, cy, x, cy), color: color(node.type) });
-      prevRight = x + NODE_W;
-      maxRight = Math.max(maxRight, x + NODE_W);
-    });
-    maxBottom = Math.max(maxBottom, top + ROOT_H);
+  let maxRight = PAD;
+  let maxBottom = PAD;
+
+  items.forEach((it, i) => {
+    const { row, col } = cell(i, cols);
+    const cellX = PAD + col * (CELL_W + GAP_X);
+    const cellY = PAD + row * (CELL_H + GAP_Y);
+    const w = it.kind === "root" ? ROOT_W : NODE_W;
+    const h = it.kind === "root" ? ROOT_H : NODE_H;
+    const x = cellX + (CELL_W - w) / 2;
+    const y = cellY + (CELL_H - h) / 2;
+    const key = it.kind === "root" ? `r:${entry.threadId}` : `${entry.threadId}:${it.node!.index}`;
+    boxes.push({ key, kind: it.kind, x, y, w, h, entry, node: it.node });
+    maxRight = Math.max(maxRight, cellX + CELL_W);
+    maxBottom = Math.max(maxBottom, cellY + CELL_H);
   });
+
+  for (let i = 0; i < boxes.length - 1; i++) {
+    const a = boxes[i]!;
+    const b = boxes[i + 1]!;
+    const ra = cell(i, cols).row;
+    const rb = cell(i + 1, cols).row;
+    const stroke = color(b.node ? b.node.type : "root");
+    let d: string;
+    if (ra === rb) {
+      // Within a row — connect the facing horizontal edges, whichever way the row runs.
+      const ay = a.y + a.h / 2;
+      const by = b.y + b.h / 2;
+      d = a.x < b.x ? edgePathH(a.x + a.w, ay, b.x, by) : edgePathH(a.x, ay, b.x + b.w, by);
+    } else {
+      // Turning onto the next row — drop from one box's bottom to the next's top.
+      d = edgePathV(a.x + a.w / 2, a.y + a.h, b.x + b.w / 2, b.y);
+    }
+    edges.push({ key: `e:${entry.threadId}:${i}`, d, color: stroke });
+  }
 
   return { boxes, edges, contentW: maxRight + PAD, contentH: maxBottom + PAD };
 }
@@ -123,35 +172,53 @@ export function SessionGraphPage() {
   const query = useQuery({ queryKey: ["sessions-graph"], queryFn: getSessionsGraph, refetchInterval: 4000 });
   const all = useMemo(() => query.data?.sessions ?? [], [query.data]);
 
-  const [limit, setLimit] = useState(40);
-  const sessions = useMemo(() => (limit >= 9999 ? all : all.slice(0, limit)), [all, limit]);
-  const { boxes, edges, contentW, contentH } = useMemo(() => layout(sessions), [sessions]);
+  // Which session is on the canvas. Sessions arrive newest-first, so default to the head.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (all.length === 0) return;
+    setSelectedId((prev) => (prev && all.some((s) => s.threadId === prev) ? prev : all[0]!.threadId));
+  }, [all]);
+  const entry = useMemo(() => all.find((s) => s.threadId === selectedId) ?? null, [all, selectedId]);
+
+  const [cols, setCols] = useState(7);
+  const { boxes, edges, contentW, contentH } = useMemo(() => layout(entry, cols), [entry, cols]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
   const [dragging, setDragging] = useState(false);
   const [isFull, setIsFull] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(false);
   const [selected, setSelected] = useState<Selection | null>(null);
   const pan = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
-  const didFit = useRef(false);
 
   const fit = useCallback(() => {
     const el = viewportRef.current;
     if (!el || !contentW || !contentH) return;
     const rect = el.getBoundingClientRect();
     if (rect.width === 0) return;
-    const margin = 48;
+    const margin = 56;
     const k = clamp(Math.min((rect.width - margin * 2) / contentW, (rect.height - margin * 2) / contentH), 0.12, 1.4);
     setView({ x: (rect.width - contentW * k) / 2, y: (rect.height - contentH * k) / 2, k });
   }, [contentW, contentH]);
 
-  // Fit once, the first time any data lands.
+  // Refit only when the session or fold width changes — not on every poll, or streaming
+  // steps would keep yanking the view back. `fitRef` keeps the effect off `fit`'s deps.
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
   useEffect(() => {
-    if (!didFit.current && boxes.length > 0) {
-      didFit.current = true;
-      fit();
-    }
-  }, [boxes.length, fit]);
+    const id = requestAnimationFrame(() => fitRef.current());
+    return () => cancelAnimationFrame(id);
+  }, [selectedId, cols]);
+
+  // Track the viewport width to pick rows-per-fold (mobile → vertical, desktop → long rows).
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setCols(colsForWidth(el.clientWidth)));
+    ro.observe(el);
+    setCols(colsForWidth(el.clientWidth));
+    return () => ro.disconnect();
+  }, []);
 
   // Wheel zoom about the cursor (native listener so we can preventDefault).
   useEffect(() => {
@@ -175,11 +242,11 @@ export function SessionGraphPage() {
   useEffect(() => {
     const onChange = () => {
       setIsFull(document.fullscreenElement === viewportRef.current);
-      requestAnimationFrame(fit);
+      requestAnimationFrame(() => fitRef.current());
     };
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
-  }, [fit]);
+  }, []);
 
   // Esc closes the inspector when we're not in fullscreen (there Esc exits fullscreen instead).
   useEffect(() => {
@@ -209,9 +276,15 @@ export function SessionGraphPage() {
     else void el.requestFullscreen?.();
   };
 
+  const selectSession = (id: string) => {
+    setSelectedId(id);
+    setSelected(null);
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
-    if (t.closest(".gnode") || t.closest(".graph-toolbar") || t.closest(".graph-inspector")) return;
+    if (t.closest(".gnode") || t.closest(".graph-toolbar") || t.closest(".graph-inspector") || t.closest(".graph-sessions"))
+      return;
     pan.current = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
     e.currentTarget.setPointerCapture(e.pointerId);
     setDragging(true);
@@ -242,11 +315,6 @@ export function SessionGraphPage() {
 
   return (
     <section className="graph-page">
-      <div className="pagehead">
-        <h1>Live session graph</h1>
-        <span className="muted">Every session as a node stream — new steps stream in live</span>
-      </div>
-
       <div
         ref={viewportRef}
         className={`graph-viewport${isFull ? " is-full" : ""}${dragging ? " is-dragging" : ""}`}
@@ -276,7 +344,9 @@ export function SessionGraphPage() {
                 <span className="gnode-title" title={box.entry.firstTask ?? box.entry.threadId}>
                   {box.entry.firstTask ?? box.entry.threadId}
                 </span>
-                <span className="gnode-sub mono">{box.entry.threadId.slice(0, 8)} · {box.entry.model ?? "—"}</span>
+                <span className="gnode-sub mono">
+                  {box.entry.threadId.slice(0, 8)} · {box.entry.model ?? "—"}
+                </span>
                 <span className="gnode-chips">
                   <span>{fmtInt(box.entry.nodes.length)} steps</span>
                   {box.entry.errors > 0 ? <span className="gchip-error">{fmtInt(box.entry.errors)} err</span> : null}
@@ -299,26 +369,33 @@ export function SessionGraphPage() {
           )}
         </div>
 
+        <SessionNav
+          sessions={all}
+          selectedId={selectedId}
+          collapsed={navCollapsed}
+          onSelect={selectSession}
+          onToggle={() => setNavCollapsed((c) => !c)}
+        />
+
         <div className="graph-toolbar">
           <span className="graph-status">
             <span className={`glive${query.isFetching ? " is-live" : ""}`} aria-hidden />
             {fmtInt(all.length)} sessions
-            {sessions.length < all.length ? <span className="muted"> · {sessions.length} shown</span> : null}
+            {entry ? <span className="muted"> · {fmtInt(entry.nodes.length)} steps</span> : null}
           </span>
-          <label className="graph-limit">
-            show
-            <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
-              <option value={20}>20</option>
-              <option value={40}>40</option>
-              <option value={100}>100</option>
-              <option value={9999}>all</option>
-            </select>
-          </label>
           <div className="graph-btns">
-            <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out">−</button>
-            <button type="button" onClick={() => zoomBy(1.2)} aria-label="Zoom in">+</button>
-            <button type="button" onClick={fit}>Fit</button>
-            <button type="button" onClick={toggleFull}>{isFull ? "Exit" : "Fullscreen"}</button>
+            <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out">
+              −
+            </button>
+            <button type="button" onClick={() => zoomBy(1.2)} aria-label="Zoom in">
+              +
+            </button>
+            <button type="button" onClick={fit}>
+              Fit
+            </button>
+            <button type="button" onClick={toggleFull}>
+              {isFull ? "Exit" : "Fullscreen"}
+            </button>
           </div>
           <div className="graph-legend">
             {LEGEND.map((l) => (
@@ -331,11 +408,53 @@ export function SessionGraphPage() {
         </div>
 
         {query.error ? <div className="graph-note error">Failed to load: {(query.error as Error).message}</div> : null}
-        {!query.isLoading && boxes.length === 0 ? <div className="graph-note muted">No session transcripts yet.</div> : null}
+        {!query.isLoading && all.length === 0 ? <div className="graph-note muted">No session transcripts yet.</div> : null}
 
         <Inspector selection={selected} onClose={() => setSelected(null)} />
       </div>
     </section>
+  );
+}
+
+/** Left rail listing every session; fixed over the canvas, collapses to a peek strip. */
+function SessionNav({
+  sessions,
+  selectedId,
+  collapsed,
+  onSelect,
+  onToggle,
+}: {
+  sessions: SessionGraphEntry[];
+  selectedId: string | null;
+  collapsed: boolean;
+  onSelect: (id: string) => void;
+  onToggle: () => void;
+}) {
+  return (
+    <aside className={`graph-sessions${collapsed ? " is-collapsed" : ""}`} aria-label="Sessions">
+      <div className="gs-head">
+        <span className="gs-title">Sessions</span>
+        <button type="button" className="gs-collapse" onClick={onToggle} aria-label={collapsed ? "Pin open" : "Collapse"}>
+          {collapsed ? "»" : "«"}
+        </button>
+      </div>
+      <div className="gs-list">
+        {sessions.map((s) => (
+          <button
+            key={s.threadId}
+            type="button"
+            className={`gs-item${s.threadId === selectedId ? " is-active" : ""}`}
+            onClick={() => onSelect(s.threadId)}
+          >
+            <span className="gs-item-title">{s.firstTask ?? s.threadId}</span>
+            <span className="gs-item-meta mono">
+              {fmtLocalTsShort(s.modified)} · {fmtInt(s.nodes.length)} steps
+              {s.errors > 0 ? <span className="gs-item-err"> · {fmtInt(s.errors)} err</span> : null}
+            </span>
+          </button>
+        ))}
+      </div>
+    </aside>
   );
 }
 

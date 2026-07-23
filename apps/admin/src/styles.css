@@ -228,11 +228,22 @@ button:focus-visible {
 /* workspace */
 .workspace {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 .content {
   max-width: 1040px;
   margin: 0 auto;
   padding: 40px 40px 72px;
+}
+/* The live graph escapes the padded, centered column and fills the workspace. */
+.content--full {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
 }
 .pagehead {
   display: flex;
@@ -783,6 +794,7 @@ a.pager-btn:hover {
 @media (max-width: 860px) {
   .app {
     grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
   }
   .rail {
     position: sticky;
@@ -1075,9 +1087,12 @@ a.pager-btn:hover {
 }
 
 /* live session graph */
+/* Fills the full-bleed content area; the viewport is the whole page. */
 .graph-page {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   height: 100%;
 }
 /* The pannable dot-grid canvas. Background dots move/scale with the view. */
@@ -1086,8 +1101,6 @@ a.pager-btn:hover {
   flex: 1;
   min-height: 60vh;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 12px;
   background-color: var(--ink);
   background-image: radial-gradient(circle, var(--line) 1px, transparent 1.6px);
   cursor: grab;
@@ -1205,15 +1218,19 @@ a.pager-btn:hover {
   }
 }
 
-/* Floating toolbar (top-left of the viewport). */
+/* Floating toolbar — its own component, pinned above everything on the canvas. */
 .graph-toolbar {
   position: absolute;
   top: 14px;
-  left: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 12px;
+  max-width: calc(100% - 28px);
   padding: 8px 12px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   border: 1px solid var(--line);
@@ -1300,10 +1317,125 @@ a.pager-btn:hover {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  z-index: 4;
   padding: 10px 16px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+/* Left session rail — fixed over the canvas, collapses to a hover-to-peek strip. */
+.graph-sessions {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  width: 272px;
+  max-width: 78%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border-right: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  transition: transform 0.22s ease;
+}
+/* Collapsed: slide off-screen but leave a peek lip; hovering the region brings it back. */
+.graph-sessions.is-collapsed {
+  transform: translateX(calc(-100% + 18px));
+}
+.graph-sessions.is-collapsed::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--signal-dim);
+  opacity: 0.5;
+}
+.graph-sessions.is-collapsed:hover {
+  transform: translateX(0);
+}
+.gs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.gs-title {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--faint);
+}
+.gs-collapse {
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.gs-collapse:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+.gs-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 4px;
+}
+.gs-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.gs-item:hover {
+  background: var(--surface-2);
+}
+.gs-item.is-active {
+  background: var(--surface-2);
+  border-color: var(--line);
+  border-left-color: var(--signal);
+}
+.gs-item-title {
+  font-size: 12.5px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.gs-item-meta {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gs-item-err {
+  color: var(--coral);
 }
 
 /* Right-hand detail inspector. */
@@ -1319,7 +1451,7 @@ a.pager-btn:hover {
   border-left: 1px solid var(--line);
   box-shadow: -18px 0 40px -24px rgba(0, 0, 0, 0.8);
   animation: gi-in 0.2s ease both;
-  z-index: 3;
+  z-index: 8;
 }
 @keyframes gi-in {
   from {
