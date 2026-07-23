@@ -16,6 +16,7 @@ import { SessionErrorsPage } from "./routes/session-errors";
 import { SessionsPage } from "./routes/sessions";
 import { SkimPage } from "./routes/skim";
 import { ToolsPage } from "./routes/tools";
+import { TrendDetailPage } from "./routes/trend-detail";
 import { TrendsPage } from "./routes/trends";
 import { WithheldPage } from "./routes/withheld";
 
@@ -81,6 +82,11 @@ const rootRoute = createRootRoute({ component: RootLayout });
 
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: OverviewPage });
 const trendsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/trends", component: TrendsPage });
+const trendDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/trends/$metric",
+  component: TrendDetailPage,
+});
 const contextRoute = createRoute({ getParentRoute: () => rootRoute, path: "/context", component: ContextPage });
 const contextDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -133,6 +139,7 @@ const adviceRoute = createRoute({ getParentRoute: () => rootRoute, path: "/advic
 const routeTree = rootRoute.addChildren([
   indexRoute,
   trendsRoute,
+  trendDetailRoute,
   contextRoute,
   contextDetailRoute,
   contextMessageRoute,

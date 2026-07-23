@@ -399,6 +399,79 @@ button:focus-visible {
   color: var(--muted);
 }
 
+/* stat card: mini chart + clickable drill-down + hover popover */
+.sparkline {
+  margin-top: 14px;
+  /* Keep recharts' SVG from bleeding past the card's rounded corners. */
+  overflow: hidden;
+}
+/* A stat card that links to its large-scale trend. */
+.stat-link {
+  position: relative;
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.stat-link:hover {
+  border-color: var(--signal-dim);
+  background: var(--surface-2);
+}
+/* Popover listing each day's value; revealed on hover/focus of the card. */
+.stat-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+  pointer-events: none;
+}
+.stat-link:hover .stat-popover,
+.stat-link:focus-visible .stat-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.stat-popover-head {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.stat-popover-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.stat-popover-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.stat-popover-date {
+  color: var(--muted);
+}
+.stat-popover-value {
+  color: var(--text);
+}
+
 /* mini list */
 .minilist {
   list-style: none;
