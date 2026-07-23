@@ -41,6 +41,12 @@ import {
   type MemoryFileSummary,
   type ProjectSummary,
 } from "./projects.js";
+import {
+  listSessions,
+  readSession,
+  type SessionDetail,
+  type SessionSummary,
+} from "./sessions.js";
 import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
 import { readLaunchAliases } from "./shell-rc.js";
 
@@ -223,6 +229,26 @@ export interface MemoryResponse {
 /** One memory file's full contents. `project`/`name` are validated downstream. */
 export async function buildMemory(projectsDir: string, project: string, name: string): Promise<MemoryResponse> {
   return { memory: await readMemory(projectsDir, project, name) };
+}
+
+export interface SessionsResponse {
+  sessions: SessionSummary[];
+  meta: { sessionsDir: string; total: number };
+}
+
+/** Every session transcript the proxy has written, newest first. */
+export async function buildSessions(logDir: string): Promise<SessionsResponse> {
+  const sessions = await listSessions(logDir);
+  return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
+}
+
+export interface SessionResponse {
+  session: SessionDetail;
+}
+
+/** One session transcript's full contents. `id` is validated downstream. */
+export async function buildSession(logDir: string, id: string): Promise<SessionResponse> {
+  return { session: await readSession(logDir, id) };
 }
 
 export interface SkimResponse {

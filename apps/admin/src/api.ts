@@ -9,6 +9,7 @@ import type {
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
+  SessionMeta,
   SkimDigest,
   SkimShape,
   TopTool,
@@ -105,6 +106,23 @@ export interface HooksPluginsResponse {
   launchRcPath: string;
   launchRcReadable: boolean;
 }
+export interface SessionSummary extends SessionMeta {
+  bytes: number;
+  modified: string;
+}
+export interface SessionsResponse {
+  sessions: SessionSummary[];
+  meta: { sessionsDir: string; total: number };
+}
+export interface SessionDetail {
+  meta: SessionMeta;
+  content: string;
+  bytes: number;
+  modified: string;
+}
+export interface SessionResponse {
+  session: SessionDetail;
+}
 export interface HealthResponse {
   ok: boolean;
   logDir: string;
@@ -145,6 +163,9 @@ export const getProjectMemories = (project: string) =>
   get<ProjectMemoriesResponse>(`/api/projects/memories?project=${encodeURIComponent(project)}`);
 export const getMemory = (project: string, name: string) =>
   get<MemoryResponse>(`/api/projects/memory?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`);
+export const getSessions = () => get<SessionsResponse>("/api/sessions");
+export const getSession = (id: string) =>
+  get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
