@@ -1,8 +1,11 @@
 import type {
   Advice,
+  AliasLoadExpectation,
   ContextSummary,
+  HookRow,
   LaunchAlias,
   LaunchAliasPosture,
+  PluginRow,
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
@@ -65,6 +68,15 @@ export interface WithheldResponse {
   launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[]; posture: LaunchAliasPosture };
   meta: { days: number; files: number; parseErrors: number };
 }
+export interface HooksPluginsResponse {
+  settingsPath: string;
+  settingsReadable: boolean;
+  hooks: HookRow[];
+  plugins: PluginRow[];
+  loadExpectations: AliasLoadExpectation[];
+  launchRcPath: string;
+  launchRcReadable: boolean;
+}
 export interface HealthResponse {
   ok: boolean;
   logDir: string;
@@ -103,3 +115,4 @@ export const getContextTool = (file: string, index: number) =>
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
+export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");

@@ -5,6 +5,7 @@ import { ContextDetailPage } from "./routes/context-detail";
 import { ContextMessagePage } from "./routes/context-message";
 import { ContextToolPage } from "./routes/context-tool";
 import { ContextPage } from "./routes/context";
+import { HooksPluginsPage } from "./routes/hooks-plugins";
 import { OverviewPage } from "./routes/overview";
 import { SkimPage } from "./routes/skim";
 import { ToolsPage } from "./routes/tools";
@@ -19,6 +20,7 @@ const STATIONS = [
   { to: "/tools", label: "Tool bloat", hint: "context", exact: false },
   { to: "/skim", label: "Skim", hint: "cache", exact: false },
   { to: "/withheld", label: "Not added", hint: "withheld", exact: false },
+  { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false },
   { to: "/advice", label: "Advice", hint: "coaching", exact: false },
 ] as const;
 
@@ -88,6 +90,11 @@ const contextToolRoute = createRoute({
 const toolsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tools", component: ToolsPage });
 const skimRoute = createRoute({ getParentRoute: () => rootRoute, path: "/skim", component: SkimPage });
 const withheldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/withheld", component: WithheldPage });
+const hooksPluginsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/hooks-plugins",
+  component: HooksPluginsPage,
+});
 const adviceRoute = createRoute({ getParentRoute: () => rootRoute, path: "/advice", component: AdvicePage });
 
 const routeTree = rootRoute.addChildren([
@@ -100,6 +107,7 @@ const routeTree = rootRoute.addChildren([
   toolsRoute,
   skimRoute,
   withheldRoute,
+  hooksPluginsRoute,
   adviceRoute,
 ]);
 

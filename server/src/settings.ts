@@ -23,11 +23,22 @@ export interface DeviceSettings {
    * (resolved to tools downstream in core's `DISABLE_SCHEMA_TOOLS`). Empty when
    * unreadable. */
   enabledDisableKeys: string[];
+  /** Raw `hooks` object (event → matcher groups), or `{}` when absent/unreadable.
+   * Shaped into rows by core's `flattenHooks`. */
+  hooks: Record<string, unknown>;
+  /** Raw `enabledPlugins` map (`"name@marketplace"` → boolean), or `{}` when
+   * absent/unreadable. Shaped into rows by core's `normalizePlugins`. */
+  enabledPlugins: Record<string, unknown>;
 }
 
-/** Read `permissions.deny` and enabled `disable*` keys from the device settings.
- * Never throws: a missing or malformed file yields an empty, `readable: false`
- * result. */
+/** A plain record, or `{}` when the value isn't an object. */
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+/** Read `permissions.deny`, enabled `disable*` keys, and the `hooks` /
+ * `enabledPlugins` config from the device settings. Never throws: a missing or
+ * malformed file yields an empty, `readable: false` result. */
 export async function readDeviceSettings(settingsPath: string = resolveSettingsPath()): Promise<DeviceSettings> {
   try {
     const parsed = JSON.parse(await readFile(settingsPath, "utf8")) as {
@@ -40,8 +51,15 @@ export async function readDeviceSettings(settingsPath: string = resolveSettingsP
       parsed && typeof parsed === "object"
         ? Object.keys(parsed).filter((k) => k.startsWith("disable") && parsed[k] === true)
         : [];
-    return { settingsPath, readable: true, denyRules, enabledDisableKeys };
+    return {
+      settingsPath,
+      readable: true,
+      denyRules,
+      enabledDisableKeys,
+      hooks: asRecord(parsed?.hooks),
+      enabledPlugins: asRecord(parsed?.enabledPlugins),
+    };
   } catch {
-    return { settingsPath, readable: false, denyRules: [], enabledDisableKeys: [] };
+    return { settingsPath, readable: false, denyRules: [], enabledDisableKeys: [], hooks: {}, enabledPlugins: {} };
   }
 }

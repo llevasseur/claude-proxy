@@ -10,6 +10,7 @@ import {
   buildTools,
   buildTrends,
   buildWithheld,
+  buildHooksPlugins,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
@@ -145,6 +146,9 @@ const server = http.createServer(async (req, res) => {
         return;
       case "/api/withheld":
         send(res, 200, await buildWithheld(LOG_DIR, parseDays(url.searchParams.get("days"))));
+        return;
+      case "/api/hooks-plugins":
+        send(res, 200, await buildHooksPlugins());
         return;
       default:
         send(res, 404, { error: `not found: ${url.pathname}` });
