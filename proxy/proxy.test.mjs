@@ -7,7 +7,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS } from "./proxy.mjs";
+import { threadIdFor, firstUserText, distillMessage, distillMessages, appendSession, sessionsDir, _resetThreads } from "./session.mjs";
 
 // Non-streaming response body: a single JSON message object with usage at the top level, no SSE frames.
 const nonStreamingBody = JSON.stringify({
@@ -153,4 +157,96 @@ test("sidecar carries real tokens, session, and model for a non-streaming call",
   assert.equal(parsed.session.sessionId, "sess-1");
   assert.equal(parsed.session.app, "cli-bg");
   assert.equal(parsed.session.account, "acct456");
+});
+
+// ---------------------------------------------------------------------------
+// Session transcripts (session.mjs)
+// ---------------------------------------------------------------------------
+
+const userText = (t) => ({ role: "user", content: [{ type: "text", text: t }] });
+
+test("threadIdFor: stable per root, namespaced by session, null when no root", () => {
+  const msgs = [userText("Fix the login bug")];
+  const a = threadIdFor("sess-1", msgs);
+  assert.equal(a, threadIdFor("sess-1", msgs)); // stable
+  assert.notEqual(a, threadIdFor("sess-2", msgs)); // session-namespaced
+  assert.notEqual(a, threadIdFor("sess-1", [userText("Different task")]));
+  assert.equal(threadIdFor("sess-1", []), null);
+  // A tool-result-only user turn is not a root — first *text* wins.
+  assert.equal(firstUserText([{ role: "user", content: [{ type: "tool_result", content: "x" }] }, userText("real root")]), "real root");
+});
+
+test("distillMessage: task / decided+tool / error / done mapping", () => {
+  assert.deepEqual(distillMessage(userText("Add a feature")), ["\n## Task: Add a feature"]);
+
+  const assistantWithTool = {
+    role: "assistant",
+    content: [
+      { type: "text", text: "I'll edit the file to fix it." },
+      { type: "tool_use", name: "Edit", input: { file_path: "/a/b.mjs", old_string: "x", new_string: "y" } },
+    ],
+  };
+  assert.deepEqual(distillMessage(assistantWithTool), ["- decided: I'll edit the file to fix it.", "- Edit(file_path=/a/b.mjs)"]);
+
+  const errored = { role: "user", content: [{ type: "tool_result", is_error: true, content: "ENOENT: no such file" }] };
+  assert.deepEqual(distillMessage(errored), ["- ✗ ENOENT: no such file"]);
+
+  const plainAnswer = { role: "assistant", content: [{ type: "text", text: "All tests pass." }] };
+  assert.deepEqual(distillMessage(plainAnswer), ["- done: All tests pass."]);
+
+  // Schemas/full inputs never leak: only the allowlisted key arg is kept.
+  const bash = { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "ls -la", timeout: 5000 } }] };
+  assert.deepEqual(distillMessage(bash), ["- Bash(command=ls -la)"]);
+
+  // thinking blocks are dropped.
+  assert.deepEqual(distillMessages([{ role: "assistant", content: [{ type: "thinking", thinking: "hmm" }] }]), []);
+});
+
+test("appendSession: one-shot helper calls never get a file; real threads grow append-only", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-"));
+  const dir = sessionsDir(logDir);
+  const headers = { "x-claude-code-session-id": "sess-A" };
+
+  // A one-shot helper call: seen exactly once, small, never grows.
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-sonnet-5", messages: [userText("classify this")] }, headers });
+  assert.equal(fs.existsSync(dir), false, "first sighting is buffered, not written");
+
+  // A real agent thread: first request (buffered), then a grown follow-up (flushed).
+  const m1 = [userText("Build the parser")];
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m1 }, headers });
+  const tid = threadIdFor("sess-A", m1);
+  const md = path.join(dir, `${tid}.md`);
+  assert.equal(fs.existsSync(md), false, "still buffered after one sighting");
+
+  const m2 = [
+    ...m1,
+    { role: "assistant", content: [{ type: "text", text: "Reading the grammar first." }, { type: "tool_use", name: "Read", input: { file_path: "/g.ebnf" } }] },
+    { role: "user", content: [{ type: "tool_result", is_error: true, content: "parse error at line 3" }] },
+  ];
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+
+  const out = fs.readFileSync(md, "utf8");
+  assert.match(out, /# Session/);
+  assert.match(out, /## Task: Build the parser/);
+  assert.match(out, /- decided: Reading the grammar first\./);
+  assert.match(out, /- Read\(file_path=\/g\.ebnf\)/);
+  assert.match(out, /- ✗ parse error at line 3/);
+
+  // A state sidecar records progress for restart recovery.
+  const state = JSON.parse(fs.readFileSync(path.join(dir, `${tid}.state.json`), "utf8"));
+  assert.equal(state.count, m2.length);
+  assert.equal(state.started, true);
+
+  // Append-only: a duplicate/no-growth request adds nothing.
+  const before = fs.readFileSync(md, "utf8");
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+  assert.equal(fs.readFileSync(md, "utf8"), before);
+
+  // Restart recovery: forget in-memory state, replay m2 — the sidecar prevents re-appending.
+  _resetThreads();
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+  assert.equal(fs.readFileSync(md, "utf8"), before, "state sidecar dedupes across a restart");
+
+  fs.rmSync(logDir, { recursive: true, force: true });
 });
