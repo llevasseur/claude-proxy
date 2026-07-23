@@ -1,44 +1,33 @@
 /**
- * session — a passive, append-only "Session" transcript per agent.
+ * session — a passive, append-only transcript per agent, built from the wire.
  *
- * The proxy already sees every request, and every request carries the full
- * running `messages[]` array. That makes the proxy the natural place to keep a
- * durable, external record of what each agent did — a handoff artifact if an
- * agent dies mid-run, and a history that survives the agent's own context
- * compaction. No agent-side hook or tool is needed; it falls out of the wire.
+ * Every request carries the full running `messages[]`, so the proxy can keep a
+ * durable record of what each agent did with no agent-side hook. Deterministic,
+ * Node built-ins only.
  *
- * Design (all deterministic — no model calls, zero dependencies):
- *   - Identity is per *conversation-root thread*, not per session id. One
- *     `x-claude-code-session-id` carries the main agent, its subagents, and many
- *     tiny one-shot helper calls (title-gen, summaries). The stable per-agent key
- *     is a fingerprint of the first real user message, namespaced by session id.
- *   - The transcript is the sole source of truth: `messages[]` grows
- *     monotonically for a real thread, so each request's new turns are just
- *     `messages.slice(lastSeenCount)`. We distill those and append — never
- *     rewrite or delete.
- *   - One-shot helper calls are filtered by *growth*: a thread's first sighting
- *     is buffered, not written; only when the same thread reappears larger (a
- *     real back-and-forth) do we flush. A thread seen once never gets a file.
- *   - Per-thread progress is mirrored to a `.state.json` sidecar so a proxy
- *     restart resumes where it left off instead of re-appending the history.
+ * Design:
+ *   - Identity is per conversation-root thread, not per session id: one session
+ *     id carries the main agent, its subagents, and one-shot helpers, so a thread
+ *     is keyed by (session id + fingerprint of its first user message).
+ *   - `messages[]` grows monotonically, so each request's new turns are
+ *     `messages.slice(lastSeenCount)` — we distill and append, never rewrite.
+ *   - One-shot helpers are filtered by growth: a thread's first sighting is
+ *     buffered, and only flushed once it reappears larger. Seen once → no file.
+ *   - Per-thread progress mirrors to a `.state.json` sidecar so a restart resumes
+ *     instead of re-appending.
  *
- * What a line captures: the task (user prompt), decisions (assistant text before
- * a tool call), tools used (name + a key arg — never the schema or full input),
- * failures (errored tool results), and outcomes (a plain-text assistant turn).
- * It never records the system prompt, tool schemas, tool-result payloads, full
- * assistant prose, or anything redacted.
- *
- * Zero runtime dependencies — Node built-ins only.
+ * A line captures the task, a decision (assistant text before a tool call), a
+ * tool used (name + one key arg), a failure (errored tool result), or an outcome.
+ * Never the system prompt, tool schemas, tool-result payloads, or full prose.
  */
 
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-/** Where transcripts live: a `sessions/` dir under the proxy's log dir. */
 export const sessionsDir = (logDir) => path.join(logDir, "sessions");
 
-/** Collapse to one line and cap length, so a transcript line stays lean. */
+/** Collapse to one line and cap length. */
 const gist = (s, max = 160) => {
   const one = String(s ?? "").replace(/\s+/g, " ").trim();
   return one.length > max ? one.slice(0, max - 1) + "…" : one;
@@ -65,8 +54,7 @@ function resultText(b) {
   return "";
 }
 
-/** A small allowlist of tool inputs worth recording — identifying, never bulky.
- * We record at most one, truncated. The full input never lands in the transcript. */
+/** Allowlist of identifying tool inputs; at most one is recorded, truncated. */
 const ARG_KEYS = ["file_path", "notebook_path", "path", "command", "pattern", "glob", "url", "query", "subagent_type", "skill", "cron", "description", "prompt"];
 
 function toolArgs(input) {
@@ -78,8 +66,7 @@ function toolArgs(input) {
   return k ? `${k}=${gist(String(input[k]), 60)}` : "";
 }
 
-/** The first real user text in a conversation — its stable root. Tool-result-only
- * user turns don't count; we want the human/instruction prompt that seeded the thread. */
+/** First real user text — the thread's root. Tool-result-only turns don't count. */
 export function firstUserText(messages) {
   if (!Array.isArray(messages)) return "";
   for (const m of messages) {
@@ -91,8 +78,7 @@ export function firstUserText(messages) {
   return first ? gist(JSON.stringify(first.content), 200) : "";
 }
 
-/** Stable per-agent identity: hash of (session id + conversation root). Namespacing
- * by session id keeps identical prompts in different sessions from colliding. */
+/** Per-agent identity: hash of (session id + conversation root). */
 export function threadIdFor(sessionId, messages) {
   const root = firstUserText(messages);
   if (!root) return null;
@@ -121,7 +107,7 @@ export function distillMessage(msg) {
     for (const b of blocks) {
       if (b?.type === "text") texts.push(b.text);
       else if (b?.type === "tool_use") toolLines.push(`- ${b.name ?? "tool"}(${toolArgs(b.input)})`);
-      // `thinking` is intentionally skipped — it is neither a decision nor an outcome.
+      // `thinking` is skipped — neither a decision nor an outcome.
     }
     const reasoning = texts.join(" ").trim();
     if (toolLines.length) {
@@ -173,14 +159,10 @@ function appendLines(mdPath, lines) {
   fs.appendFileSync(mdPath, lines.join("\n") + "\n");
 }
 
-/** In-memory per-thread progress. Recovered from the `.state.json` sidecar on a
- * cold thread so a restart doesn't re-append what's already on disk. */
+/** In-memory per-thread progress, recovered from the `.state.json` sidecar. */
 const threads = new Map();
 
-/**
- * Observe one request and append any new turns to its thread transcript.
- * Best-effort and side-effecting: a failure here must never break the proxy.
- */
+/** Observe one request and append its new turns. Best-effort: never throws. */
 export function appendSession({ logDir, reqPath, reqJson, headers }) {
   try {
     if (!reqPath?.includes("/v1/messages")) return; // only real agent turns
@@ -202,7 +184,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers }) {
     }
 
     const total = messages.length;
-    if (total <= entry.count) return; // no growth — a retry or duplicate, nothing new
+    if (total <= entry.count) return; // no growth — retry or duplicate
     const lines = distillMessages(messages.slice(entry.count));
 
     if (entry.started) {
@@ -212,22 +194,22 @@ export function appendSession({ logDir, reqPath, reqJson, headers }) {
       return;
     }
 
-    // Not yet confirmed a real agent. Buffer the first sighting; a one-shot helper
-    // call is seen exactly once and so never reaches disk.
+    // Unconfirmed thread: buffer the first sighting; a one-shot helper is seen
+    // once and never reaches disk.
     if (entry.pending === null) {
       entry.pending = [header(threadId, reqJson, sessionId), ...lines];
       entry.count = total;
       return;
     }
 
-    // Growth observed → a real back-and-forth. Flush the buffer plus the new turns.
+    // Growth → a real thread. Flush the buffer plus the new turns.
     appendLines(mdPath, [...entry.pending, ...lines]);
     entry.started = true;
     entry.pending = null;
     entry.count = total;
     writeState(statePath, entry);
   } catch {
-    /* best-effort: transcript failures never break the proxy */
+    /* best-effort */
   }
 }
 
