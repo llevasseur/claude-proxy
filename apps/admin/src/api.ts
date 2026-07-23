@@ -10,6 +10,7 @@ import type {
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
+  SessionError,
   SessionMeta,
   SkimDigest,
   SkimShape,
@@ -124,6 +125,11 @@ export interface SessionDetail {
 export interface SessionResponse {
   session: SessionDetail;
 }
+export interface SessionErrorsResponse {
+  threadId: string;
+  meta: SessionMeta;
+  errors: SessionError[];
+}
 export interface FiltersResponse {
   generatedAt: string;
   filters: ProxyFilterEntry[];
@@ -171,6 +177,8 @@ export const getMemory = (project: string, name: string) =>
 export const getSessions = () => get<SessionsResponse>("/api/sessions");
 export const getSession = (id: string) =>
   get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
+export const getSessionErrors = (id: string) =>
+  get<SessionErrorsResponse>(`/api/sessions/errors?id=${encodeURIComponent(id)}`);
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);

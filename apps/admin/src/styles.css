@@ -976,6 +976,19 @@ a.pager-btn:hover {
 .md-list li {
   margin: 3px 0;
 }
+/* A `✗ …` transcript line — an errored tool result. */
+.md-list li.md-error {
+  color: var(--coral);
+  font-weight: 500;
+  list-style: none;
+  margin: 6px 0;
+  margin-left: -20px;
+  padding: 3px 8px 3px 10px;
+  border-left: 3px solid var(--coral);
+  border-radius: 0 5px 5px 0;
+  background: rgba(255, 107, 129, 0.1);
+  overflow-wrap: anywhere;
+}
 .md-quote {
   margin: 0 0 12px;
   padding: 2px 14px;
@@ -1005,4 +1018,58 @@ a.pager-btn:hover {
   color: var(--signal);
   background: rgba(70, 224, 192, 0.08);
   border: 1px solid var(--signal-dim);
+}
+
+/* Sessions list — the Errors count links to the drill-down when non-zero. */
+.error-count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Session detail — the Errors stat tile as a link to the error drill-down. */
+.stat-error {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-color: rgba(255, 107, 129, 0.4);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.stat-error:hover {
+  border-color: var(--coral);
+  background: rgba(255, 107, 129, 0.06);
+}
+.stat-error .stat-value {
+  color: var(--coral);
+}
+.stat-error-cta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--coral);
+}
+
+/* Session errors page — one coral-accented block per error. */
+.error-entry {
+  border-color: rgba(255, 107, 129, 0.4);
+  border-left: 3px solid var(--coral);
+}
+.error-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.error-meta > div {
+  display: contents;
+}
+.error-meta-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.error-text {
+  color: var(--coral);
 }

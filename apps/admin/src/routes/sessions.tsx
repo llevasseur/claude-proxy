@@ -118,7 +118,20 @@ function SessionsTable({ sessions }: { sessions: SessionSummary[] }) {
               <td className="mono-break">{s.model ?? "—"}</td>
               <td className="num">{fmtInt(s.tasks)}</td>
               <td className="num">{fmtInt(s.tools)}</td>
-              <td className={`num ${s.errors > 0 ? "" : "muted"}`}>{fmtInt(s.errors)}</td>
+              <td className="num">
+                {s.errors > 0 ? (
+                  <Link
+                    to="/sessions/$id/errors"
+                    params={{ id: s.threadId }}
+                    className="error error-count"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {fmtInt(s.errors)}
+                  </Link>
+                ) : (
+                  <span className="muted">0</span>
+                )}
+              </td>
               <td className="num muted">{fmtLocalTsShort(s.modified)}</td>
             </tr>
           ))}

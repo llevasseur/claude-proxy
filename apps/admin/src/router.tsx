@@ -12,6 +12,7 @@ import { OverviewPage } from "./routes/overview";
 import { ProjectDetailPage } from "./routes/project-detail";
 import { ProjectsPage } from "./routes/projects";
 import { SessionDetailPage } from "./routes/session-detail";
+import { SessionErrorsPage } from "./routes/session-errors";
 import { SessionsPage } from "./routes/sessions";
 import { SkimPage } from "./routes/skim";
 import { ToolsPage } from "./routes/tools";
@@ -113,6 +114,11 @@ const sessionDetailRoute = createRoute({
   path: "/sessions/$id",
   component: SessionDetailPage,
 });
+const sessionErrorsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sessions/$id/errors",
+  component: SessionErrorsPage,
+});
 const toolsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tools", component: ToolsPage });
 const skimRoute = createRoute({ getParentRoute: () => rootRoute, path: "/skim", component: SkimPage });
 const withheldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/withheld", component: WithheldPage });
@@ -136,6 +142,7 @@ const routeTree = rootRoute.addChildren([
   memoryDetailRoute,
   sessionsRoute,
   sessionDetailRoute,
+  sessionErrorsRoute,
   toolsRoute,
   skimRoute,
   withheldRoute,
