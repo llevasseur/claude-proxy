@@ -56,12 +56,12 @@ export async function listSessions(logDir: string): Promise<SessionSummary[]> {
 }
 
 /**
- * Read one transcript's full contents plus parsed metadata. Validates the
- * (URL-supplied) thread id and confirms the resolved path stays inside the
- * `sessions/` dir before touching disk. Throws a labelled error the server maps
- * to 400 (bad id) / 404 (missing file).
+ * Validate a (URL-supplied) thread id and resolve its transcript path, confirming
+ * the result stays inside the `sessions/` dir so traversal is impossible. Throws a
+ * labelled `invalid session id` error the server maps to 400. Shared by
+ * {@link readSession} and the live SSE watcher.
  */
-export async function readSession(logDir: string, id: string): Promise<SessionDetail> {
+export function resolveSessionFile(logDir: string, id: string): string {
   if (!THREAD_ID_RE.test(id)) {
     throw new Error(`invalid session id: ${id}`);
   }
@@ -70,6 +70,17 @@ export async function readSession(logDir: string, id: string): Promise<SessionDe
   if (path.dirname(full) !== path.resolve(dir)) {
     throw new Error(`invalid session id: ${id}`);
   }
+  return full;
+}
+
+/**
+ * Read one transcript's full contents plus parsed metadata. Validates the
+ * (URL-supplied) thread id and confirms the resolved path stays inside the
+ * `sessions/` dir before touching disk. Throws a labelled error the server maps
+ * to 400 (bad id) / 404 (missing file).
+ */
+export async function readSession(logDir: string, id: string): Promise<SessionDetail> {
+  const full = resolveSessionFile(logDir, id);
 
   let content: string;
   let info: import("node:fs").Stats;

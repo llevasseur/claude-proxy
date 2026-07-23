@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import http from "node:http";
 import {
   buildContext,
@@ -22,6 +23,7 @@ import {
 import { resolveArchiveDir } from "./archive.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
+import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default
@@ -38,6 +40,90 @@ const CORS = {
 function send(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json", ...CORS });
   res.end(JSON.stringify(body));
+}
+
+const SSE_HEADERS = {
+  "content-type": "text/event-stream; charset=utf-8",
+  "cache-control": "no-cache, no-transform",
+  connection: "keep-alive",
+  ...CORS,
+};
+
+/** Comment-frame heartbeat interval — keeps proxies/browsers from idling out. */
+const SSE_HEARTBEAT_MS = 25_000;
+
+interface SseStream {
+  /** File or directory to `fs.watch`; a change re-runs `build` and pushes an update. */
+  watchPath: string;
+  /** Produce the JSON payload sent as the initial `snapshot` and each `update`. */
+  build: () => Promise<unknown>;
+  /** Coalesce bursts of fs events within this window (ms) before rebuilding. */
+  debounceMs: number;
+}
+
+/**
+ * Serve one live JSON resource over Server-Sent Events. Sends the current value as
+ * a `snapshot` event, then an `update` event (same shape) whenever `watchPath`
+ * changes on disk — deduping byte-identical payloads. A comment heartbeat keeps the
+ * connection open, and everything is torn down when the client disconnects.
+ *
+ * The initial build runs *before* the SSE headers, so a build failure surfaces as a
+ * normal HTTP error (400/404/500) that `EventSource` reports without reconnecting.
+ */
+async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, stream: SseStream): Promise<void> {
+  let snapshot: unknown;
+  try {
+    snapshot = await stream.build();
+  } catch (err) {
+    const msg = (err as Error).message;
+    send(res, msg.startsWith("session not found") ? 404 : 500, { error: msg });
+    return;
+  }
+
+  res.writeHead(200, SSE_HEADERS);
+  let lastSent = JSON.stringify(snapshot);
+  res.write(`event: snapshot\ndata: ${lastSent}\n\n`);
+
+  let debounce: NodeJS.Timeout | null = null;
+  const pushUpdate = () => {
+    debounce = null;
+    stream
+      .build()
+      .then((data) => {
+        if (res.writableEnded) return;
+        const next = JSON.stringify(data);
+        if (next === lastSent) return; // spurious fs event or no-op change
+        lastSent = next;
+        res.write(`event: update\ndata: ${next}\n\n`);
+      })
+      .catch(() => {
+        /* transient read error mid-write — skip this tick; the next change re-reads */
+      });
+  };
+
+  let watcher: fs.FSWatcher | null = null;
+  try {
+    watcher = fs.watch(stream.watchPath, () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(pushUpdate, stream.debounceMs);
+    });
+    watcher.on("error", () => {}); // watch dropped (e.g. file removed) — snapshot + heartbeat remain
+  } catch {
+    /* watch unsupported / path missing — client keeps the snapshot, heartbeat holds it open */
+  }
+
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded) res.write(": keep-alive\n\n");
+  }, SSE_HEARTBEAT_MS);
+
+  const cleanup = () => {
+    clearInterval(heartbeat);
+    if (debounce) clearTimeout(debounce);
+    watcher?.close();
+    watcher = null;
+  };
+  req.on("close", cleanup);
+  res.on("error", cleanup);
 }
 
 /** Parse `?days=` as a positive int in [1, 365], default 14. */
@@ -188,6 +274,31 @@ const server = http.createServer(async (req, res) => {
       case "/api/sessions":
         send(res, 200, await buildSessions(LOG_DIR));
         return;
+      case "/api/sessions/stream":
+        // Live session list: watch the sessions dir, re-list on any change.
+        await serveSse(req, res, {
+          watchPath: resolveSessionsDir(LOG_DIR),
+          build: () => buildSessions(LOG_DIR),
+          debounceMs: 400,
+        });
+        return;
+      case "/api/sessions/session/stream": {
+        // Live single transcript: watch the `<id>.md` file, re-read on append.
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        let file: string;
+        try {
+          file = resolveSessionFile(LOG_DIR, id);
+        } catch (err) {
+          send(res, 400, { error: (err as Error).message });
+          return;
+        }
+        await serveSse(req, res, { watchPath: file, build: () => buildSession(LOG_DIR, id), debounceMs: 150 });
+        return;
+      }
       case "/api/sessions/session": {
         const id = url.searchParams.get("id");
         if (!id) {

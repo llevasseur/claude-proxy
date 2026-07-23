@@ -3,18 +3,25 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import type { SessionSummary } from "../api";
 import { getSessions } from "../api";
+import { LiveIndicator } from "../components/LiveIndicator";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
+import { useLiveQuery } from "../useLiveQuery";
 
 export function SessionsPage() {
   const query = useQuery({ queryKey: ["sessions"], queryFn: getSessions });
+  // Live: the server re-lists whenever the sessions dir changes; query is the fallback.
+  const live = useLiveQuery("/api/sessions/stream", ["sessions"]);
   const sessions = query.data?.sessions;
 
   return (
     <section>
       <div className="pagehead">
         <h1>Sessions</h1>
-        <span className="muted">Append-only agent transcripts the proxy captured</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span className="muted">Append-only agent transcripts the proxy captured</span>
+          <LiveIndicator status={live} />
+        </div>
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error}>
