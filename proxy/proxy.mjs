@@ -44,19 +44,14 @@ const isTokenCount = (reqPath) => reqPath.includes("count_tokens");
 
 const REDACT = new Set(["authorization", "x-api-key", "api-key"]);
 
-/** Tools Claude Code refuses to keep out of the request. A bare-name
- * `permissions.deny` rule strips most tool schemas before they're ever sent,
- * but the CLI exempts a few protected core tools — `EndConversation` among them
- * — so the deny rule is silently ignored and the schema still ships every turn.
- * This proxy is the one chokepoint every request passes through, so we strip
- * them here instead. Extend the set to withhold more unstrippable tools. */
+/** Tools the CLI exempts from `permissions.deny` — the deny rule is silently
+ * ignored and the schema ships every turn — so we strip them here instead.
+ * Extend the set to withhold more unstrippable tools. */
 const WITHHELD_TOOLS = new Set(["EndConversation"]);
 
-/** Remove withheld tools from a parsed request body before it's forwarded.
- * Returns the original object untouched (same reference) when there's nothing to
- * strip, so the common path forwards byte-for-byte and the proxy stays a
- * transparent pass-through; otherwise returns a shallow copy with a filtered
- * `tools` array plus the names removed. */
+/** Remove withheld tools from a parsed request body. Returns the original object
+ * (same reference) when there's nothing to strip; otherwise a shallow copy with
+ * a filtered `tools` array, plus the removed names. */
 function stripWithheldTools(reqJson, withheld = WITHHELD_TOOLS) {
   const tools = reqJson?.tools;
   if (!Array.isArray(tools)) return { reqJson, removed: [] };
@@ -388,9 +383,8 @@ function handle(req, res) {
     let reqJson = null;
     try { reqJson = JSON.parse(body.toString("utf8")); } catch { /* non-JSON body */ }
 
-    // Strip tools the CLI won't keep out via permissions.deny. Only re-serialize
-    // when something is actually removed, so every other request still forwards
-    // byte-for-byte; `forwardBody` is what we send, key, and log from here on.
+    // Strip withheld tools; re-serialize only when something changed.
+    // `forwardBody` is what we send, key, and log from here on.
     let forwardBody = body;
     if (reqJson) {
       const { reqJson: stripped, removed } = stripWithheldTools(reqJson);
