@@ -24,6 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as skim from "./skim.mjs";
+import * as session from "./session.mjs";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default; set HOST="" to bind all interfaces
@@ -415,6 +416,7 @@ function handle(req, res) {
           fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString("utf8"));
           fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
           fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens: saved, usage: null, respModel: respModel ?? hit.meta.model, headers: req.headers, skim: skimInfo }));
+          session.appendSession({ logDir: LOG_DIR, reqPath, reqJson, headers: req.headers });
           console.log(`[agent-proxy] SKIM HIT ${cacheKey.slice(0, 8)} · saved ~${saved.toLocaleString()} input tok · logs/${base}.md`);
         } catch (err) {
           console.error(`[agent-proxy] skim hit served, logging failed: ${err.message}`);
@@ -455,6 +457,7 @@ function handle(req, res) {
             fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString("utf8"));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, respModel, headers: req.headers, skim: skimInfo }));
+            session.appendSession({ logDir: LOG_DIR, reqPath, reqJson, headers: req.headers });
             printAudit(audit, base);
           } catch (err) {
             console.error(`[agent-proxy] could not render (non-JSON body?): ${err.message}`);

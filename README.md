@@ -41,6 +41,29 @@ zellij dev layout already launches the proxy on `8036`.
 Each request lands in `./logs/<timestamp>_anthropic.{md,request.txt,audit.json}`.
 The proxy still runs with bare `node` — no install required.
 
+### Session transcripts — an append-only history per agent
+
+Alongside the per-request logs, the proxy keeps a **Session transcript** for each
+agent under `./logs/sessions/<threadId>.md`. Because every request carries the
+full running `messages[]`, the proxy can reconstruct — passively, with no
+agent-side hook — a durable, append-only record of what an agent did: a handoff
+artifact if it dies mid-run, and a history that outlives its own context
+compaction.
+
+It is deterministic and lean by design. Each turn distills to a line: the
+**task** (a user prompt), a **decision** (assistant text before a tool call), a
+**tool** used (name + one key arg — never the schema or full input), a
+**failure** (an errored tool result), or an **outcome** (a plain-text answer). It
+never records the system prompt, tool schemas, tool-result payloads, or full
+assistant prose.
+
+Identity is per *conversation-root thread*, not per session id: one
+`x-claude-code-session-id` carries the main agent, its subagents, and many tiny
+one-shot helper calls, so each real thread is fingerprinted by its first user
+message. One-shot helper calls (title-gen, summaries) are filtered out — a thread
+that never grows past its first request never gets a file. A `<threadId>.state.json`
+sidecar records progress so a proxy restart resumes instead of re-appending.
+
 ### Device setup (route every `claude` invocation through the proxy)
 
 This is how it's set up on this machine: the proxy runs on `PORT=8036`,
