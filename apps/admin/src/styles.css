@@ -427,6 +427,39 @@ button:focus-visible {
   cursor: default;
 }
 
+/* prev/next pager */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.pager-btn {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+a.pager-btn:hover {
+  color: var(--signal);
+  border-color: var(--signal);
+}
+.pager-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.pager-pos {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
 /* bar chart */
 .barchart {
   display: flex;

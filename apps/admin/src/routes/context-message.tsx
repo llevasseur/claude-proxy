@@ -26,17 +26,19 @@ export function ContextMessagePage() {
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
       <QueryState isLoading={query.isLoading} error={query.error}>
-        {message && <MessageBody message={message} />}
+        {message && <MessageBody file={file} message={message} />}
       </QueryState>
     </section>
   );
 }
 
-function MessageBody({ message: m }: { message: RequestMessageDetail }) {
+function MessageBody({ file, message: m }: { file: string; message: RequestMessageDetail }) {
   const [view, setView] = useState<"pretty" | "raw">("pretty");
 
   return (
     <>
+      <MessagePager file={file} index={m.index} messageCount={m.messageCount} />
+
       <div className="grid stats">
         <StatTile label="Position" value={`#${m.index}`} sub={`of ${m.messageCount} messages`} />
         <StatTile label="Role" value={m.role} />
@@ -58,6 +60,48 @@ function MessageBody({ message: m }: { message: RequestMessageDetail }) {
         {view === "pretty" ? <PrettyMessage content={m.content} /> : <pre className="rawjson wrap">{m.content}</pre>}
       </div>
     </>
+  );
+}
+
+/** Previous/Next navigation between adjacent messages in the same request. */
+function MessagePager({ file, index, messageCount }: { file: string; index: number; messageCount: number }) {
+  const hasPrev = index > 0;
+  const hasNext = index < messageCount - 1;
+
+  return (
+    <nav className="pager" aria-label="Message navigation">
+      {hasPrev ? (
+        <Link
+          to="/context/$file/message/$index"
+          params={{ file, index: String(index - 1) }}
+          className="pager-btn"
+        >
+          ‹ Previous
+        </Link>
+      ) : (
+        <button className="pager-btn" disabled>
+          ‹ Previous
+        </button>
+      )}
+
+      <span className="pager-pos muted">
+        #{index} of {messageCount}
+      </span>
+
+      {hasNext ? (
+        <Link
+          to="/context/$file/message/$index"
+          params={{ file, index: String(index + 1) }}
+          className="pager-btn"
+        >
+          Next ›
+        </Link>
+      ) : (
+        <button className="pager-btn" disabled>
+          Next ›
+        </button>
+      )}
+    </nav>
   );
 }
 
