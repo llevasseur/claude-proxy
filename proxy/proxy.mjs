@@ -7,9 +7,11 @@
  * for each request writes a readable Markdown document — led by a ranked table
  * of what is eating your context.
  *
- * The one deliberate edit: it strips `WITHHELD_TOOLS` (tools the CLI won't keep
- * out via `permissions.deny`) from the request before forwarding. Requests with
- * nothing to strip are forwarded byte-for-byte.
+ * Its deliberate edits: it strips `WITHHELD_TOOLS` (tools the CLI won't keep out
+ * via `permissions.deny`) and `INJECTED_REMINDERS` (harness-injected text no user
+ * setting suppresses) from the request before forwarding. Requests with nothing to
+ * strip are forwarded byte-for-byte. `packages/core/src/filters.ts` holds the
+ * human-readable inventory the dashboard renders — keep the two in sync.
  *
  * Run:   node proxy.mjs
  * Point Claude Code at it:
@@ -59,6 +61,78 @@ function stripWithheldTools(reqJson, withheld = WITHHELD_TOOLS) {
   const removed = tools.filter((t) => withheld.has(t?.name)).map((t) => t.name);
   if (removed.length === 0) return { reqJson, removed };
   return { reqJson: { ...reqJson, tools: tools.filter((t) => !withheld.has(t?.name)) }, removed };
+}
+
+/** Text the CLI harness injects into requests that no user setting can keep out —
+ * there's no `permissions.deny` equivalent, and a CLAUDE.md instruction doesn't
+ * reliably suppress it — so we strip it here instead. Each entry's `pattern` (a
+ * global regex) is matched against every text block in `messages`. Anchor patterns
+ * on stable phrasing at both ends so wording drift in the middle still matches.
+ * Keep this inventory in sync with `packages/core/src/filters.ts`. */
+const INJECTED_REMINDERS = [
+  {
+    id: "task-tools",
+    label: "Task-tools nudge",
+    pattern: /The task tools haven't been used recently\.[\s\S]*?ignore if not applicable\.?/g,
+  },
+];
+
+/** Remove injected-reminder text from a parsed request body. Walks `messages`,
+ * strips any matching text from string or `text`-block content, drops blocks left
+ * empty, and drops messages left with no content. Returns the original object
+ * (same reference) when nothing matched; otherwise a shallow copy with a rewritten
+ * `messages` array, plus the ids of the reminders removed. */
+function stripInjectedReminders(reqJson, reminders = INJECTED_REMINDERS) {
+  const messages = reqJson?.messages;
+  if (!Array.isArray(messages)) return { reqJson, removed: [] };
+
+  const removed = new Set();
+  const strip = (text) => {
+    let out = text;
+    let hit = false;
+    for (const r of reminders) {
+      const next = out.replace(r.pattern, "");
+      r.pattern.lastIndex = 0; // stay safe if a pattern is ever declared without /g
+      if (next !== out) { removed.add(r.id); hit = true; }
+      out = next;
+    }
+    // Collapse the blank-line run a removed block leaves behind — but only when we
+    // actually stripped, so untouched text is returned byte-for-byte.
+    return hit ? out.replace(/\n{3,}/g, "\n\n") : out;
+  };
+
+  const nextMessages = [];
+  for (const m of messages) {
+    const content = m?.content;
+    if (typeof content === "string") {
+      const stripped = strip(content);
+      if (stripped === content) { nextMessages.push(m); continue; }
+      const trimmed = stripped.trim();
+      if (trimmed) nextMessages.push({ ...m, content: trimmed }); // else: emptied → drop the message
+    } else if (Array.isArray(content)) {
+      let changed = false;
+      const blocks = [];
+      for (const b of content) {
+        if (b?.type === "text" && typeof b.text === "string") {
+          const stripped = strip(b.text);
+          if (stripped !== b.text) {
+            changed = true;
+            const trimmed = stripped.trim();
+            if (trimmed) blocks.push({ ...b, text: trimmed }); // else: drop the emptied block
+            continue;
+          }
+        }
+        blocks.push(b);
+      }
+      if (!changed) { nextMessages.push(m); continue; }
+      if (blocks.length) nextMessages.push({ ...m, content: blocks }); // else: no blocks left → drop
+    } else {
+      nextMessages.push(m);
+    }
+  }
+
+  if (removed.size === 0) return { reqJson, removed: [] };
+  return { reqJson: { ...reqJson, messages: nextMessages }, removed: [...removed] };
 }
 
 /** Strip hop-by-hop and encoding headers so the captured response is readable,
@@ -384,15 +458,19 @@ function handle(req, res) {
     let reqJson = null;
     try { reqJson = JSON.parse(body.toString("utf8")); } catch { /* non-JSON body */ }
 
-    // Strip withheld tools; re-serialize only when something changed.
-    // `forwardBody` is what we send, key, and log from here on.
+    // Strip what the CLI can't keep out itself — withheld tools and injected
+    // reminders — re-serializing only when something changed. `forwardBody` is
+    // what we send, key, and log from here on.
     let forwardBody = body;
     if (reqJson) {
-      const { reqJson: stripped, removed } = stripWithheldTools(reqJson);
-      if (removed.length > 0) {
-        reqJson = stripped;
+      const notes = [];
+      const wt = stripWithheldTools(reqJson);
+      if (wt.removed.length > 0) { reqJson = wt.reqJson; notes.push(`tools: ${wt.removed.join(", ")}`); }
+      const ir = stripInjectedReminders(reqJson);
+      if (ir.removed.length > 0) { reqJson = ir.reqJson; notes.push(`reminders: ${ir.removed.join(", ")}`); }
+      if (notes.length > 0) {
         forwardBody = Buffer.from(JSON.stringify(reqJson), "utf8");
-        console.log(`[agent-proxy] stripped ${removed.join(", ")} from request tools`);
+        console.log(`[agent-proxy] stripped ${notes.join(" · ")} from request`);
       }
     }
 
@@ -485,4 +563,4 @@ if (isMain) {
 }
 
 // Exported for unit tests.
-export { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS };
+export { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS, stripInjectedReminders, INJECTED_REMINDERS };

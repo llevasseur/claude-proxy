@@ -6,6 +6,7 @@ import type {
   LaunchAlias,
   LaunchAliasPosture,
   PluginRow,
+  ProxyFilterEntry,
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
@@ -129,6 +130,10 @@ export interface SessionErrorsResponse {
   meta: SessionMeta;
   errors: SessionError[];
 }
+export interface FiltersResponse {
+  generatedAt: string;
+  filters: ProxyFilterEntry[];
+}
 export interface HealthResponse {
   ok: boolean;
   logDir: string;
@@ -178,3 +183,4 @@ export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
+export const getFilters = () => get<FiltersResponse>("/api/filters");

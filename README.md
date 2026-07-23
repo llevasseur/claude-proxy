@@ -22,11 +22,14 @@ context** — plus a machine-readable `.audit.json` sidecar. Auth headers
 (`authorization`, `x-api-key`, `api-key`) are written as `[REDACTED]`, so nothing
 sensitive lands on disk.
 
-Its one deliberate edit: it strips a small set of **withheld tools**
-(`WITHHELD_TOOLS` in `proxy/proxy.mjs`, e.g. `EndConversation`) from the request
-before forwarding — for tools the CLI exempts from `permissions.deny` and so
-won't otherwise keep out. Requests with nothing to strip are forwarded
-byte-for-byte.
+Its deliberate edits are the things the CLI can't be configured to keep out on
+its own, both defined in `proxy/proxy.mjs`: **withheld tools** (`WITHHELD_TOOLS`,
+e.g. `EndConversation`) that the CLI exempts from `permissions.deny`, and
+**injected reminders** (`INJECTED_REMINDERS`, e.g. the task-tools nudge) that have
+no suppression setting at all. Both are stripped from the request before
+forwarding; requests with nothing to strip are forwarded byte-for-byte. The
+dashboard's **Proxy filters** page (`GET /api/filters`) lists the full inventory
+with the reason each one needs the proxy.
 
 ```bash
 PORT=8036 node proxy/proxy.mjs   # zero deps, Node 18+ (PORT defaults to 8787)
@@ -183,6 +186,7 @@ pnpm --filter server summary 2026-07-14   # a specific day
 | `GET /api/trends?days=N` | per-day digests for the last N days |
 | `GET /api/tools?date=YYYY-MM-DD` | the ranked tool-bloat table for a day |
 | `GET /api/withheld?days=N` | the device's withheld-tool policy (`~/.claude` deny rules) + a check that each is absent from recent traffic |
+| `GET /api/filters` | the proxy's own strip inventory — withheld tools + injected reminders it removes from every request |
 
 ## Ports
 

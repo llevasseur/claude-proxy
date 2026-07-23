@@ -5,6 +5,7 @@ import { ContextDetailPage } from "./routes/context-detail";
 import { ContextMessagePage } from "./routes/context-message";
 import { ContextToolPage } from "./routes/context-tool";
 import { ContextPage } from "./routes/context";
+import { FiltersPage } from "./routes/filters";
 import { HooksPluginsPage } from "./routes/hooks-plugins";
 import { MemoryDetailPage } from "./routes/memory-detail";
 import { OverviewPage } from "./routes/overview";
@@ -26,6 +27,7 @@ const STATIONS = [
   { to: "/tools", label: "Tool bloat", hint: "context", exact: false },
   { to: "/skim", label: "Skim", hint: "cache", exact: false },
   { to: "/withheld", label: "Not added", hint: "withheld", exact: false },
+  { to: "/filters", label: "Proxy filters", hint: "stripped", exact: false },
   { to: "/projects", label: "Projects", hint: "memory", exact: false },
   { to: "/sessions", label: "Sessions", hint: "transcripts", exact: false },
   { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false },
@@ -120,6 +122,7 @@ const sessionErrorsRoute = createRoute({
 const toolsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tools", component: ToolsPage });
 const skimRoute = createRoute({ getParentRoute: () => rootRoute, path: "/skim", component: SkimPage });
 const withheldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/withheld", component: WithheldPage });
+const filtersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/filters", component: FiltersPage });
 const hooksPluginsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/hooks-plugins",
@@ -143,6 +146,7 @@ const routeTree = rootRoute.addChildren([
   toolsRoute,
   skimRoute,
   withheldRoute,
+  filtersRoute,
   hooksPluginsRoute,
   adviceRoute,
 ]);

@@ -17,6 +17,7 @@ import {
   buildTrends,
   buildWithheld,
   buildHooksPlugins,
+  buildFilters,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
@@ -230,6 +231,9 @@ const server = http.createServer(async (req, res) => {
         return;
       case "/api/hooks-plugins":
         send(res, 200, await buildHooksPlugins());
+        return;
+      case "/api/filters":
+        send(res, 200, buildFilters());
         return;
       default:
         send(res, 404, { error: `not found: ${url.pathname}` });
