@@ -1,4 +1,12 @@
-import { createRootRoute, createRoute, createRouter, Link, Outlet } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Link,
+  Outlet,
+  useRouterState,
+} from "@tanstack/react-router";
+import { useEffect } from "react";
 import { HealthBadge } from "./components/HealthBadge";
 import { AdvicePage } from "./routes/advice";
 import { ContextDetailPage } from "./routes/context-detail";
@@ -34,8 +42,34 @@ const STATIONS = [
   { to: "/advice", label: "Advice", hint: "coaching", exact: false },
 ] as const;
 
+/** Browser-tab title for a route, appended after the ClaudeProxy brand. */
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    title?: string;
+  }
+}
+
+const BRAND = "ClaudeProxy";
+
+/** Keep the document title in sync with the deepest active route's `staticData.title`. */
+function useDocumentTitle() {
+  const title = useRouterState({
+    select: (s) => {
+      for (let i = s.matches.length - 1; i >= 0; i--) {
+        const t = s.matches[i]?.staticData.title;
+        if (t) return t;
+      }
+      return undefined;
+    },
+  });
+  useEffect(() => {
+    document.title = title ? `${BRAND} · ${title}` : BRAND;
+  }, [title]);
+}
+
 function RootLayout() {
   const activeProps = { className: "station active" };
+  useDocumentTitle();
   return (
     <div className="app">
       <aside className="rail">
@@ -79,56 +113,114 @@ function RootLayout() {
 
 const rootRoute = createRootRoute({ component: RootLayout });
 
-const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: OverviewPage });
-const trendsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/trends", component: TrendsPage });
-const contextRoute = createRoute({ getParentRoute: () => rootRoute, path: "/context", component: ContextPage });
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: OverviewPage,
+  staticData: { title: "Overview" },
+});
+const trendsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/trends",
+  component: TrendsPage,
+  staticData: { title: "Trends" },
+});
+const contextRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/context",
+  component: ContextPage,
+  staticData: { title: "Context size" },
+});
 const contextDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/context/$file",
   component: ContextDetailPage,
+  staticData: { title: "Context size" },
 });
 const contextMessageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/context/$file/message/$index",
   component: ContextMessagePage,
+  staticData: { title: "Context message" },
 });
 const contextToolRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/context/$file/tool/$index",
   component: ContextToolPage,
+  staticData: { title: "Context tool call" },
 });
-const projectsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/projects", component: ProjectsPage });
+const projectsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects",
+  component: ProjectsPage,
+  staticData: { title: "Projects" },
+});
 const projectDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects/$project",
   component: ProjectDetailPage,
+  staticData: { title: "Project" },
 });
 const memoryDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects/$project/memory/$name",
   component: MemoryDetailPage,
+  staticData: { title: "Memory" },
 });
-const sessionsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/sessions", component: SessionsPage });
+const sessionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sessions",
+  component: SessionsPage,
+  staticData: { title: "Sessions" },
+});
 const sessionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sessions/$id",
   component: SessionDetailPage,
+  staticData: { title: "Session" },
 });
 const sessionErrorsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sessions/$id/errors",
   component: SessionErrorsPage,
+  staticData: { title: "Session errors" },
 });
-const toolsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tools", component: ToolsPage });
-const skimRoute = createRoute({ getParentRoute: () => rootRoute, path: "/skim", component: SkimPage });
-const withheldRoute = createRoute({ getParentRoute: () => rootRoute, path: "/withheld", component: WithheldPage });
-const filtersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/filters", component: FiltersPage });
+const toolsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tools",
+  component: ToolsPage,
+  staticData: { title: "Tool bloat" },
+});
+const skimRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/skim",
+  component: SkimPage,
+  staticData: { title: "Skim" },
+});
+const withheldRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/withheld",
+  component: WithheldPage,
+  staticData: { title: "Not added" },
+});
+const filtersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/filters",
+  component: FiltersPage,
+  staticData: { title: "Proxy filters" },
+});
 const hooksPluginsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/hooks-plugins",
   component: HooksPluginsPage,
+  staticData: { title: "Hooks & Plugins" },
 });
-const adviceRoute = createRoute({ getParentRoute: () => rootRoute, path: "/advice", component: AdvicePage });
+const adviceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/advice",
+  component: AdvicePage,
+  staticData: { title: "Advice" },
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
