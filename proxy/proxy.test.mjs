@@ -241,6 +241,12 @@ test("threadIdFor: stable per root, namespaced by session, null when no root", (
 test("distillMessage: task / decided+tool / error / done mapping", () => {
   assert.deepEqual(distillMessage(userText("Add a feature")), ["\n## Task: Add a feature"]);
 
+  // Injected <system-reminder> context is stripped from the task line.
+  assert.deepEqual(
+    distillMessage(userText("<system-reminder>\nctx blob\n</system-reminder>\n\nAdd a feature")),
+    ["\n## Task: Add a feature"],
+  );
+
   const assistantWithTool = {
     role: "assistant",
     content: [
@@ -403,4 +409,38 @@ test("appendSession: a title seen before its thread rides into the header at con
   // The title is in the header block (before the first task), not appended after.
   assert.match(out, /- title: Run the report\n- subtitle: run the report/);
   assert.equal((out.match(/- title:/g) || []).length, 1, "title written exactly once");
+});
+
+test("appendSession: back-fills a missing subtitle when root is learned after the header was flushed", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-latesub-"));
+  const dir = sessionsDir(logDir);
+  const headers = { "x-claude-code-session-id": "sess-M" };
+
+  const first = userText("<system-reminder>\nctx\n</system-reminder>\n\nharden the subtitle path");
+  const m2 = [first, { role: "assistant", content: [{ type: "text", text: "on it" }] }];
+  const tid = threadIdFor("sess-M", [first]);
+
+  // Simulate a thread confirmed by an older proxy: the header on disk carries no
+  // subtitle, and the state sidecar predates the `root`/`subtitled` fields.
+  fs.mkdirSync(dir, { recursive: true });
+  const md = path.join(dir, `${tid}.md`);
+  fs.writeFileSync(md, `\n# Session ${tid}\n- model: claude-opus-4-8\n- session: sess-M\n- started: 2026-01-01T00:00:00.000Z\n\n`);
+  fs.writeFileSync(path.join(dir, `${tid}.state.json`), JSON.stringify({ count: 1, started: true }));
+
+  // A new turn under the upgraded proxy learns the root and back-fills the subtitle.
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+
+  let out = fs.readFileSync(md, "utf8");
+  assert.match(out, /- subtitle: harden the subtitle path/, "missing subtitle back-filled");
+  assert.equal((out.match(/- subtitle:/g) || []).length, 1, "subtitle written exactly once");
+
+  // Idempotent: later turns (even across a restart) don't append it again.
+  _resetThreads();
+  const m4 = [...m2, userText("continue"), { role: "assistant", content: [{ type: "text", text: "done" }] }];
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m4 }, headers });
+  out = fs.readFileSync(md, "utf8");
+  assert.equal((out.match(/- subtitle:/g) || []).length, 1, "subtitle not duplicated on later turns");
+
+  fs.rmSync(logDir, { recursive: true, force: true });
 });

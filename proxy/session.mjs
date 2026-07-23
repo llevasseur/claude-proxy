@@ -168,7 +168,7 @@ export function distillMessage(msg) {
       if (b?.type === "text") texts.push(b.text);
       else if (b?.type === "tool_result" && b.is_error) lines.push(`- ✗ ${gist(resultText(b), 120)}`);
     }
-    const task = texts.join(" ").trim();
+    const task = stripReminders(texts.join(" ")).trim();
     if (task) lines.push(`\n## Task: ${gist(task, 200)}`);
     return lines;
   }
@@ -217,7 +217,7 @@ function header(threadId, entry) {
 function readState(statePath) {
   try {
     const s = JSON.parse(fs.readFileSync(statePath, "utf8"));
-    return { count: s.count ?? 0, started: true, pending: null, root: s.root ?? null, title: s.title ?? null, titled: s.titled ?? false };
+    return { count: s.count ?? 0, started: true, pending: null, root: s.root ?? null, title: s.title ?? null, titled: s.titled ?? false, subtitled: s.subtitled ?? false };
   } catch {
     return null;
   }
@@ -225,7 +225,7 @@ function readState(statePath) {
 
 function writeState(statePath, entry) {
   try {
-    fs.writeFileSync(statePath, JSON.stringify({ count: entry.count, started: entry.started, root: entry.root, title: entry.title, titled: entry.titled }));
+    fs.writeFileSync(statePath, JSON.stringify({ count: entry.count, started: entry.started, root: entry.root, title: entry.title, titled: entry.titled, subtitled: entry.subtitled }));
   } catch {
     /* best-effort */
   }
@@ -287,7 +287,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     let entry = threads.get(threadId);
     if (!entry) {
-      entry = readState(statePath) ?? { count: 0, started: false, pending: null, root: null, title: null, titled: false };
+      entry = readState(statePath) ?? { count: 0, started: false, pending: null, root: null, title: null, titled: false, subtitled: false };
       threads.set(threadId, entry);
     }
 
@@ -306,6 +306,16 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
           break;
         }
       }
+    }
+
+    // A thread confirmed by an older proxy (or from pre-subtitle state) may only
+    // learn its root now — after the write-once header was flushed without it, e.g.
+    // across a restart from a state file that predates the `root` field. Append the
+    // subtitle as a standalone line so it isn't lost forever (mirrors a late title).
+    if (entry.started && !entry.subtitled && entry.root) {
+      appendLines(mdPath, [`- subtitle: ${gist(entry.root, 200)}`]);
+      entry.subtitled = true;
+      writeState(statePath, entry);
     }
 
     const total = messages.length;
@@ -332,6 +342,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     appendLines(mdPath, [header(threadId, entry), ...entry.pending, ...lines]);
     entry.started = true;
     entry.titled = !!entry.title; // the header already carries any known title
+    entry.subtitled = !!entry.root; // the header already carries any known subtitle
     entry.pending = null;
     entry.count = total;
     writeState(statePath, entry);
