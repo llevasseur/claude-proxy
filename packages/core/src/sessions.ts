@@ -10,6 +10,8 @@
  *   - model: claude-opus-4-8
  *   - session: <sessionId>
  *   - started: 2026-07-23T17:40:51.064Z
+ *   - title: <CLI-generated chat title>        (present once the CLI titles it)
+ *   - subtitle: <first user prompt, reminder stripped>
  *
  *   ## Task: <first user prompt>
  *   - decided: <assistant reasoning before a tool call>
@@ -35,6 +37,14 @@ export interface SessionMeta {
   errors: number;
   /** The first task's text, for a one-line preview in the list. */
   firstTask: string | null;
+  /**
+   * The CLI's auto-generated chat title, captured from the titling request's
+   * response, or null if the session was never titled. User-*renamed* titles
+   * aren't sent to the API, so only the generated title is observable.
+   */
+  title: string | null;
+  /** The first user message with its injected `<system-reminder>` context stripped — a clean subtitle. */
+  subtitle: string | null;
 }
 
 /** One errored tool result from a transcript, tagged with its task and most-likely originating tool call. */
@@ -53,6 +63,8 @@ const HEADER_RE = {
   model: /^- model:\s*(.*)$/,
   session: /^- session:\s*(.*)$/,
   started: /^- started:\s*(.*)$/,
+  title: /^- title:\s*(.*)$/,
+  subtitle: /^- subtitle:\s*(.*)$/,
 } as const;
 
 const TASK_RE = /^## Task:\s*(.*)$/;
@@ -73,6 +85,8 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
     tools: 0,
     errors: 0,
     firstTask: null,
+    title: null,
+    subtitle: null,
   };
 
   for (const raw of content.split("\n")) {
@@ -114,7 +128,23 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
     }
     if (meta.started === null) {
       const m = HEADER_RE.started.exec(line);
-      if (m) meta.started = (m[1] ?? "").trim() || null;
+      if (m) {
+        meta.started = (m[1] ?? "").trim() || null;
+        continue;
+      }
+    }
+    // `- title:` may be written into the header or appended later (the titling
+    // request arrives out of band), so it isn't confined to the header block.
+    if (meta.title === null) {
+      const m = HEADER_RE.title.exec(line);
+      if (m) {
+        meta.title = (m[1] ?? "").trim() || null;
+        continue;
+      }
+    }
+    if (meta.subtitle === null) {
+      const m = HEADER_RE.subtitle.exec(line);
+      if (m) meta.subtitle = (m[1] ?? "").trim() || null;
     }
   }
 

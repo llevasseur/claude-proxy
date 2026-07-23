@@ -105,15 +105,31 @@ function SessionsTable({ sessions }: { sessions: SessionSummary[] }) {
               onClick={() => navigate({ to: "/sessions/$id", params: { id: s.threadId } })}
             >
               <td>
-                <Link
-                  to="/sessions/$id"
-                  params={{ id: s.threadId }}
-                  className="link mono-break"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {s.threadId}
-                </Link>
-                {s.firstTask && <div className="muted session-preview">{s.firstTask}</div>}
+                {s.title ? (
+                  <>
+                    <div className="session-title">{s.title}</div>
+                    <Link
+                      to="/sessions/$id"
+                      params={{ id: s.threadId }}
+                      className="link mono-break session-id"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {s.threadId}
+                    </Link>
+                  </>
+                ) : (
+                  <Link
+                    to="/sessions/$id"
+                    params={{ id: s.threadId }}
+                    className="link mono-break"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {s.threadId}
+                  </Link>
+                )}
+                {(s.subtitle ?? s.firstTask) && (
+                  <div className="muted session-preview">{s.subtitle ?? s.firstTask}</div>
+                )}
               </td>
               <td className="mono-break">{s.model ?? "—"}</td>
               <td className="num">{fmtInt(s.tasks)}</td>
