@@ -421,21 +421,19 @@ test("appendSession: back-fills a missing subtitle when root is learned after th
   const m2 = [first, { role: "assistant", content: [{ type: "text", text: "on it" }] }];
   const tid = threadIdFor("sess-M", [first]);
 
-  // Simulate a thread confirmed by an older proxy: the header on disk carries no
-  // subtitle, and the state sidecar predates the `root`/`subtitled` fields.
+  // A thread confirmed by an older proxy: header without a subtitle, sidecar predating `root`.
   fs.mkdirSync(dir, { recursive: true });
   const md = path.join(dir, `${tid}.md`);
   fs.writeFileSync(md, `\n# Session ${tid}\n- model: claude-opus-4-8\n- session: sess-M\n- started: 2026-01-01T00:00:00.000Z\n\n`);
   fs.writeFileSync(path.join(dir, `${tid}.state.json`), JSON.stringify({ count: 1, started: true }));
 
-  // A new turn under the upgraded proxy learns the root and back-fills the subtitle.
   appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
 
   let out = fs.readFileSync(md, "utf8");
   assert.match(out, /- subtitle: harden the subtitle path/, "missing subtitle back-filled");
   assert.equal((out.match(/- subtitle:/g) || []).length, 1, "subtitle written exactly once");
 
-  // Idempotent: later turns (even across a restart) don't append it again.
+  // Idempotent across a restart.
   _resetThreads();
   const m4 = [...m2, userText("continue"), { role: "assistant", content: [{ type: "text", text: "done" }] }];
   appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m4 }, headers });

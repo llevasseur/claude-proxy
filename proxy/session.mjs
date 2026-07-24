@@ -98,10 +98,8 @@ export function threadIdFor(sessionId, messages) {
 }
 
 /**
- * The thread's opening prompt with its `<system-reminder>` context removed and
- * whitespace collapsed. This is the human subtitle, and — because the CLI's
- * titling request wraps this same reminder-free prompt in `<session>` tags — the
- * key used to link an out-of-band title back to its thread.
+ * The thread's opening prompt, reminders stripped and whitespace collapsed — the
+ * subtitle, and the key that links an out-of-band title back to its thread.
  */
 export function rootPrompt(messages) {
   return collapse(stripReminders(firstUserText(messages)));
@@ -308,10 +306,8 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
       }
     }
 
-    // A thread confirmed by an older proxy (or from pre-subtitle state) may only
-    // learn its root now — after the write-once header was flushed without it, e.g.
-    // across a restart from a state file that predates the `root` field. Append the
-    // subtitle as a standalone line so it isn't lost forever (mirrors a late title).
+    // Root learned only now, after the write-once header was flushed without it
+    // (older proxy, or restart from state predating `root`): append it standalone.
     if (entry.started && !entry.subtitled && entry.root) {
       appendLines(mdPath, [`- subtitle: ${gist(entry.root, 200)}`]);
       entry.subtitled = true;
