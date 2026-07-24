@@ -1623,8 +1623,8 @@ a.pager-btn:hover {
   border-color: var(--signal);
   color: var(--signal);
 }
-/* Scrolls on its own: `contain` keeps a wheel at either end off the page behind it, and
-   `pan-y` opts back into touch scrolling that the viewport's `touch-action: none` blocks. */
+/* Scrolls on its own: `contain` traps a wheel at either end, `pan-y` undoes the
+   viewport's `touch-action: none`. */
 .gs-list {
   flex: 1;
   overflow-y: auto;

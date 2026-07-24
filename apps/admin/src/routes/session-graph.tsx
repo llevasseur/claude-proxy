@@ -462,8 +462,7 @@ export function SessionGraphPage() {
     const el = viewportRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      // The overlay panels sit inside the viewport, so their wheels bubble here. Zooming
-      // on those swallows the scroll they need — leave the wheel to the panel.
+      // The overlay panels sit inside the viewport, so their wheels bubble here.
       if ((e.target as HTMLElement).closest(SCROLLS_ITSELF)) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
