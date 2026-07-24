@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSessionErrors, parseSessionTranscript } from "../src/sessions.js";
+import { parseSessionErrors, parseSessionNodes, parseSessionTranscript } from "../src/sessions.js";
 
 const TRANSCRIPT = [
   "",
@@ -49,6 +49,33 @@ describe("parseSessionTranscript", () => {
     expect(m.model).toBe("claude-opus-4-8");
     expect(m.tools).toBe(3);
     expect(m.firstTask).toBe("Fix the login bug");
+  });
+});
+
+describe("parseSessionNodes", () => {
+  it("streams the appended lines in order, typed and carrying task/tool context", () => {
+    const nodes = parseSessionNodes(TRANSCRIPT);
+    expect(nodes).toEqual([
+      { index: 0, type: "task", text: "Fix the login bug", tool: null, task: "Fix the login bug" },
+      { index: 1, type: "decision", text: "Reading the handler first.", tool: null, task: "Fix the login bug" },
+      { index: 2, type: "tool", text: "Read(file_path=/auth.ts)", tool: "Read(file_path=/auth.ts)", task: "Fix the login bug" },
+      { index: 3, type: "tool", text: "Bash(command=npm test)", tool: "Bash(command=npm test)", task: "Fix the login bug" },
+      { index: 4, type: "error", text: "ENOENT: no such file", tool: "Bash(command=npm test)", task: "Fix the login bug" },
+      { index: 5, type: "done", text: "All tests pass.", tool: null, task: "Fix the login bug" },
+      { index: 6, type: "task", text: "Add a follow-up feature", tool: null, task: "Add a follow-up feature" },
+      { index: 7, type: "decision", text: "Editing the router.", tool: null, task: "Add a follow-up feature" },
+      { index: 8, type: "tool", text: "Edit(file_path=/router.tsx)", tool: "Edit(file_path=/router.tsx)", task: "Add a follow-up feature" },
+    ]);
+  });
+
+  it("skips the header and returns nothing for unstructured text", () => {
+    expect(parseSessionNodes("# Session deadbeefdeadbeef\n- model: x\n\njust prose")).toEqual([]);
+  });
+
+  it("handles CRLF line endings", () => {
+    const nodes = parseSessionNodes(TRANSCRIPT.replace(/\n/g, "\r\n"));
+    expect(nodes).toHaveLength(9);
+    expect(nodes.map((n) => n.type)).toEqual(["task", "decision", "tool", "tool", "error", "done", "task", "decision", "tool"]);
   });
 });
 

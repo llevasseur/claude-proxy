@@ -11,6 +11,7 @@ import {
   buildSession,
   buildSessionErrors,
   buildSessions,
+  buildSessionsGraph,
   buildSkim,
   buildSkimTrend,
   buildSummary,
@@ -297,6 +298,9 @@ const server = http.createServer(async (req, res) => {
         await serveSse(req, res, { watchPath: file, build: () => buildSession(LOG_DIR, id), debounceMs: 150 });
         return;
       }
+      case "/api/sessions/graph":
+        send(res, 200, await buildSessionsGraph(LOG_DIR));
+        return;
       case "/api/sessions/session": {
         const id = url.searchParams.get("id");
         if (!id) {
