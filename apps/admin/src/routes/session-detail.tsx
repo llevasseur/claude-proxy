@@ -4,9 +4,11 @@ import { Link, useParams } from "@tanstack/react-router";
 import type { SessionDetail } from "../api";
 import { getSession } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { LiveIndicator } from "../components/LiveIndicator";
 import { Markdown } from "../components/Markdown";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
+import { useLiveQuery } from "../useLiveQuery";
 
 export function SessionDetailPage() {
   const { id } = useParams({ from: "/sessions/$id" });
@@ -14,6 +16,8 @@ export function SessionDetailPage() {
     queryKey: ["session", id],
     queryFn: () => getSession(id),
   });
+  // Stream live appends into the same cache key; the query above is the fallback.
+  const live = useLiveQuery(`/api/sessions/session/stream?id=${encodeURIComponent(id)}`, ["session", id]);
   const session = query.data?.session;
 
   return (
@@ -26,6 +30,7 @@ export function SessionDetailPage() {
       </Breadcrumbs>
       <div className="pagehead">
         <h1 className="mono-break">{id}</h1>
+        <LiveIndicator status={live} />
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error}>
