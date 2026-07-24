@@ -10,6 +10,7 @@ import {
   buildSession,
   buildSessionErrors,
   buildSessions,
+  buildSessionsGraph,
   buildSkim,
   buildSkimTrend,
   buildSummary,
@@ -187,6 +188,9 @@ const server = http.createServer(async (req, res) => {
       }
       case "/api/sessions":
         send(res, 200, await buildSessions(LOG_DIR));
+        return;
+      case "/api/sessions/graph":
+        send(res, 200, await buildSessionsGraph(LOG_DIR));
         return;
       case "/api/sessions/session": {
         const id = url.searchParams.get("id");

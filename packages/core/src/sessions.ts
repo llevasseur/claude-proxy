@@ -121,6 +121,81 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
   return meta;
 }
 
+/** The kinds of appended line a transcript records after its header, in emit order. */
+export type SessionNodeType = "task" | "decision" | "tool" | "error" | "done";
+
+/** One appended transcript line, structured for the live session graph. */
+export interface SessionNode {
+  /** Position among the transcript's nodes, 0-based — stable across polls, so a graph can append. */
+  index: number;
+  type: SessionNodeType;
+  /** The human-readable gist (task text, decision, tool signature, error, or outcome). */
+  text: string;
+  /** For `tool` nodes the call signature; for `error` nodes the nearest preceding tool call; else null. */
+  tool: string | null;
+  /** The `## Task:` heading this node falls under, or null if it preceded any task. */
+  task: string | null;
+}
+
+const DECIDED_TEXT_RE = /^- decided:\s*(.*)$/;
+const DONE_TEXT_RE = /^- done:\s*(.*)$/;
+
+/**
+ * Parse a transcript into its ordered stream of appended nodes (task, decision,
+ * tool, error, done), skipping the header. Uses the same line grammar as
+ * {@link parseSessionTranscript}; `error` nodes carry the nearest preceding tool
+ * call so the graph can show what failed. Order is the file's line order.
+ */
+export function parseSessionNodes(content: string): SessionNode[] {
+  const nodes: SessionNode[] = [];
+  let task: string | null = null;
+  let lastTool: string | null = null;
+
+  const push = (type: SessionNodeType, text: string, tool: string | null) => {
+    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task });
+  };
+
+  for (const raw of content.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+
+    const taskMatch = TASK_RE.exec(line);
+    if (taskMatch) {
+      task = (taskMatch[1] ?? "").trim() || null;
+      lastTool = null;
+      push("task", task ?? "", null);
+      continue;
+    }
+
+    const decided = DECIDED_TEXT_RE.exec(line);
+    if (decided) {
+      push("decision", decided[1] ?? "", null);
+      continue;
+    }
+
+    const done = DONE_TEXT_RE.exec(line);
+    if (done) {
+      push("done", done[1] ?? "", null);
+      continue;
+    }
+
+    const errorMatch = ERROR_RE.exec(line);
+    if (errorMatch) {
+      push("error", errorMatch[1] ?? "", lastTool);
+      lastTool = null;
+      continue;
+    }
+
+    const toolMatch = TOOL_RE.exec(line);
+    if (toolMatch) {
+      const sig = (toolMatch[1] ?? "").trim();
+      lastTool = sig;
+      push("tool", sig, sig);
+    }
+  }
+
+  return nodes;
+}
+
 /**
  * Pull every errored tool result out of a transcript, in order, each tagged with
  * its task and nearest preceding tool call. The proxy records only a one-line
