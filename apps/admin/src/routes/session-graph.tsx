@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionNode } from "@claude-proxy/core";
 import { spawnAgentType } from "@claude-proxy/core";
@@ -384,6 +384,7 @@ export function SessionGraphPage() {
   const { boxes, edges, bands, contentW, contentH } = useMemo(() => layout(entry, cols, childIndex), [entry, cols, childIndex]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
   const [dragging, setDragging] = useState(false);
   const [isFull, setIsFull] = useState(false);
@@ -393,15 +394,27 @@ export function SessionGraphPage() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const pan = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
 
-  const fit = useCallback(() => {
+  /**
+   * The slice of the viewport the session rail leaves free — the rail sits over the canvas
+   * rather than shrinking it. Its width is measured live: it animates between states and
+   * caps at a share of narrow viewports.
+   */
+  const freeArea = useCallback(() => {
     const el = viewportRef.current;
-    if (!el || !contentW || !contentH) return;
+    if (!el) return null;
     const rect = el.getBoundingClientRect();
-    if (rect.width === 0) return;
-    const margin = 56;
-    const k = clamp(Math.min((rect.width - margin * 2) / contentW, (rect.height - margin * 2) / contentH), 0.12, 1.4);
-    setView({ x: (rect.width - contentW * k) / 2, y: (rect.height - contentH * k) / 2, k });
-  }, [contentW, contentH]);
+    const left = navRef.current?.getBoundingClientRect().width ?? 0;
+    return { left, width: rect.width - left, height: rect.height };
+  }, []);
+
+  const fit = useCallback(() => {
+    const area = freeArea();
+    if (!area || area.width <= 0 || !contentW || !contentH) return;
+    // Breathing room, dialled back when the rail leaves little to work with.
+    const margin = Math.min(56, area.width / 8, area.height / 8);
+    const k = clamp(Math.min((area.width - margin * 2) / contentW, (area.height - margin * 2) / contentH), 0.12, 1.4);
+    setView({ x: area.left + (area.width - contentW * k) / 2, y: (area.height - contentH * k) / 2, k });
+  }, [contentW, contentH, freeArea]);
 
   // Refit only when the session or fold width changes — not on every poll, or streaming
   // steps would keep yanking the view back. `fitRef` keeps the effect off `fit`'s deps.
@@ -419,18 +432,17 @@ export function SessionGraphPage() {
   useEffect(() => {
     if (!focusId) return;
     const id = requestAnimationFrame(() => {
-      const el = viewportRef.current;
+      const area = freeArea();
       const box = boxesRef.current.find((b) => b.key === `r:${focusId}`);
-      if (!el || !box) return;
-      const rect = el.getBoundingClientRect();
+      if (!area || !box) return;
       setView((v) => ({
         ...v,
-        x: rect.width / 2 - (box.x + box.w / 2) * v.k,
-        y: rect.height / 2 - (box.y + box.h / 2) * v.k,
+        x: area.left + area.width / 2 - (box.x + box.w / 2) * v.k,
+        y: area.height / 2 - (box.y + box.h / 2) * v.k,
       }));
     });
     return () => cancelAnimationFrame(id);
-  }, [focusId, selectedId, cols]);
+  }, [focusId, selectedId, cols, freeArea]);
 
   // Track the viewport width to pick rows-per-fold (mobile → vertical, desktop → long rows).
   useEffect(() => {
@@ -632,6 +644,7 @@ export function SessionGraphPage() {
         </div>
 
         <SessionNav
+          railRef={navRef}
           roots={roots}
           index={childIndex}
           selectedId={selectedId}
@@ -711,9 +724,11 @@ function navRows(roots: SessionGraphEntry[], index: ChildIndex, folded: Set<stri
 
 /**
  * Left rail listing every session with its subagents nested beneath. Fixed over the
- * canvas; collapses to a narrow strip with an explicit re-open button.
+ * canvas; collapses to a narrow strip with an explicit re-open button. `railRef` exposes
+ * its live width to the canvas.
  */
 function SessionNav({
+  railRef,
   roots,
   index,
   selectedId,
@@ -722,6 +737,7 @@ function SessionNav({
   onSelect,
   onToggle,
 }: {
+  railRef: Ref<HTMLElement>;
   roots: SessionGraphEntry[];
   index: ChildIndex;
   selectedId: string | null;
@@ -741,7 +757,7 @@ function SessionNav({
     });
 
   return (
-    <aside className={`graph-sessions${collapsed ? " is-collapsed" : ""}`} aria-label="Sessions">
+    <aside ref={railRef} className={`graph-sessions${collapsed ? " is-collapsed" : ""}`} aria-label="Sessions">
       <div className="gs-head">
         {collapsed ? null : <span className="gs-title">Sessions</span>}
         <button
