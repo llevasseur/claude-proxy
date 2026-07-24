@@ -25,18 +25,14 @@ export interface SparklineProps {
  * Chrome-free mini line chart for a stat card. The Y domain hugs the data so
  * day-to-day variation stays visible even when the values are large.
  *
- * Hovering marks the nearest day and reports it upward, so the card's popover
- * can name the node under the cursor — and highlight it back.
+ * Hovering marks the nearest day and reports it upward.
  */
 export function Sparkline({ points, color, height = 40, activeIndex = null, onActiveIndexChange }: SparklineProps) {
   // A single day can't form a line; show a dot instead.
   const single = points.length === 1;
   const active = activeIndex === null ? undefined : points[activeIndex];
 
-  /**
-   * The category scale spaces days evenly from edge to edge of the plot, so the
-   * nearest index is arithmetic on the cursor offset — no chart internals.
-   */
+  /** Nearest point index to the cursor. The category scale spaces days evenly across the plot. */
   const indexAtClientX = (event: MouseEvent<HTMLDivElement>): number | null => {
     const box = event.currentTarget.getBoundingClientRect();
     const plot = box.width - MARGIN.left - MARGIN.right;

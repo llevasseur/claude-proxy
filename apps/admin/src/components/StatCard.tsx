@@ -28,8 +28,7 @@ export interface StatCardProps {
 export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, metric, spark }: StatCardProps) {
   const tone = deltaPct === undefined ? null : deltaTone(deltaPct);
   const good = tone === "flat" ? "flat" : (tone === "up") === increaseIsBad ? "bad" : "good";
-  // Shared by the mini chart and the popover, so hovering either highlights the
-  // same day in both — that's what tells you which node is which.
+  // Shared by the mini chart and the popover, so hovering either highlights both.
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const body = (
@@ -65,9 +64,8 @@ export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, me
 }
 
 /**
- * Hover panel listing each day's value, newest first. The row for the day under
- * the cursor is highlighted in the series' own colour, and hovering a row marks
- * that day back on the mini chart.
+ * Hover panel listing each day's value, newest first. Rows highlight the active
+ * day and mark it on the mini chart.
  */
 function StatPopover({
   label,
@@ -82,7 +80,7 @@ function StatPopover({
 }): ReactNode {
   // Keep each point's index through the reverse so it still addresses the chart.
   const rows = spark.points.map((p, index) => ({ ...p, index })).reverse();
-  // Lets the highlight pick up the metric's line colour without a per-metric rule.
+  // CSS reads `--spark-color` for the row highlight.
   const tint = { "--spark-color": spark.color } as CSSProperties;
 
   return (

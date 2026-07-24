@@ -55,8 +55,7 @@ button:focus-visible {
 /* shell: fixed rail + scrolling workspace */
 .app {
   display: grid;
-  /* The rail gives ground as the viewport narrows. A fixed width used to leave
-     the content column thinner just above the fold breakpoint than below it. */
+  /* The rail gives ground as the viewport narrows. */
   grid-template-columns: clamp(208px, 18vw, 244px) minmax(0, 1fr);
   min-height: 100vh;
 }
@@ -234,8 +233,6 @@ button:focus-visible {
   flex-direction: column;
 }
 .content {
-  /* Wide enough that dense tables and side-by-side cards use a large display,
-     and the side padding tightens rather than eating a narrow column. */
   max-width: 1280px;
   margin: 0 auto;
   padding: 40px clamp(20px, 3vw, 40px) 72px;
@@ -366,18 +363,15 @@ button:focus-visible {
     grid-template-columns: 1fr;
   }
 }
-/* Two-up for cards that need real width (charts, wide tables): stacked until
-   the column can hold both, where `.two` splits from 720px up. */
+/* Two-up for cards that need real width: stacked until the column can hold both. */
 .grid.wide-two {
   grid-template-columns: minmax(0, 1fr);
 }
 @media (min-width: 1080px) {
   .grid.wide-two {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    /* Cards keep their natural height instead of stretching to the tallest. */
     align-items: start;
   }
-  /* A chart earns more of the row than a table restating the same numbers. */
   .grid.wide-two.chart-lead {
     grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
   }
@@ -471,8 +465,8 @@ button:focus-visible {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
-  /* Rows take the cursor so each can mark its own node on the mini chart. The
-     popover lives inside the card's link, so hovering it keeps the card open. */
+  /* Rows need the cursor to mark their node; the popover sits inside the card's
+     link, so the card stays open. */
   pointer-events: auto;
 }
 .stat-popover-head {
@@ -494,8 +488,8 @@ button:focus-visible {
   display: flex;
   justify-content: space-between;
   gap: 14px;
-  /* Padding is pulled back out by the margin so rows still align to the head,
-     but the hover highlight gets room to breathe around the text. */
+  /* The negative margin cancels the padding: rows stay aligned to the head, and
+     the highlight gets room around the text. */
   padding: 3px 6px;
   margin: 0 -6px;
   border-radius: 6px;
