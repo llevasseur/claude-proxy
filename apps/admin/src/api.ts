@@ -126,6 +126,11 @@ export interface SessionsGraphResponse {
   sessions: SessionGraphEntry[];
   meta: { sessionsDir: string; total: number };
 }
+/** Node index → the whole text behind that step's truncated one-line gist. Sparse. */
+export interface SessionNodeTextsResponse {
+  threadId: string;
+  texts: Record<number, string>;
+}
 export interface SessionDetail {
   meta: SessionMeta;
   content: string;
@@ -190,6 +195,8 @@ export const getSession = (id: string) =>
   get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
 export const getSessionErrors = (id: string) =>
   get<SessionErrorsResponse>(`/api/sessions/errors?id=${encodeURIComponent(id)}`);
+export const getSessionNodeTexts = (id: string) =>
+  get<SessionNodeTextsResponse>(`/api/sessions/node-text?id=${encodeURIComponent(id)}`);
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);

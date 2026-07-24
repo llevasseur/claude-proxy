@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionNode } from "@claude-proxy/core";
 import { spawnAgentType } from "@claude-proxy/core";
 import type { SessionGraphEntry } from "../api";
-import { getSessionsGraph } from "../api";
+import { getSessionNodeTexts, getSessionsGraph } from "../api";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 /**
@@ -803,6 +803,13 @@ function SessionNav({
   );
 }
 
+/**
+ * Transcript lines are one-line gists, so a long task or command lands with a `…`.
+ * The whole text sits in a sidecar the proxy writes alongside the transcript; fetch
+ * it per open drawer rather than on the graph's poll, where it would dwarf the
+ * gists. Empty for sessions captured before the proxy wrote one — then the drawer
+ * just shows what the line carries.
+ */
 function Inspector({
   selection,
   byId,
@@ -815,7 +822,38 @@ function Inspector({
   onFocusAgent: (id: string) => void;
 }) {
   if (!selection) return null;
+  // Remount per selection so a step opened after the last fetch pulls its own text.
+  return (
+    <InspectorBody
+      key={`${selection.entry.threadId}:${selection.node?.index ?? "root"}`}
+      selection={selection}
+      byId={byId}
+      onClose={onClose}
+      onFocusAgent={onFocusAgent}
+    />
+  );
+}
+
+function InspectorBody({
+  selection,
+  byId,
+  onClose,
+  onFocusAgent,
+}: {
+  selection: Selection;
+  byId: Map<string, SessionGraphEntry>;
+  onClose: () => void;
+  onFocusAgent: (id: string) => void;
+}) {
   const { entry, node } = selection;
+  const texts = useQuery({
+    queryKey: ["session-node-text", entry.threadId],
+    queryFn: () => getSessionNodeTexts(entry.threadId),
+  });
+  /** The whole text behind step `index`, when the sidecar recorded one. */
+  const fullText = (index: number | null): string | undefined =>
+    index === null ? undefined : texts.data?.texts[index];
+
   const agentType = node ? spawnAgentType(node) : null;
   const isAgent = !node && entry.parentThreadId !== null;
   const kind = node ? (agentType === null ? node.type : "spawn") : isAgent ? "subagent" : "session";
@@ -840,14 +878,18 @@ function Inspector({
       <div className="gi-body">
         {node ? (
           <>
-            {node.task ? <Field label="Task">{node.task}</Field> : null}
+            {node.task ? (
+              <Field label="Task">
+                <ExpandableText text={node.task} full={fullText(taskIndexFor(entry.nodes, node))} />
+              </Field>
+            ) : null}
             {node.tool ? (
               <Field label="Tool">
                 <code className="mono-break">{node.tool}</code>
               </Field>
             ) : null}
             <Field label="Detail">
-              <p className="gi-text">{node.text || "—"}</p>
+              <ExpandableText text={node.text || "—"} full={fullText(node.index)} />
             </Field>
             <Field label="Step">#{node.index}</Field>
             {agentType === null ? null : spawned ? (
@@ -873,7 +915,9 @@ function Inspector({
                 <Field label="Spawned by">{parent ? `${entryLabel(parent)} · step #${entry.spawnIndex}` : "—"}</Field>
               </>
             ) : null}
-            <Field label="First task">{entry.firstTask ?? "—"}</Field>
+            <Field label="First task">
+              <ExpandableText text={entry.firstTask ?? "—"} full={fullText(firstTaskIndex(entry.nodes))} />
+            </Field>
             <div className="gi-stats">
               <Stat label="tasks" value={entry.tasks} />
               <Stat label="tools" value={entry.tools} />
@@ -901,6 +945,40 @@ function agentStatus(agent: SessionGraphEntry): ReactNode {
     <span className="gi-flight">in flight — the parent hasn't stepped past the spawn</span>
   ) : (
     <>returned into parent step #{agent.returnIndex}</>
+  );
+}
+
+/** The step whose `## Task:` heading a node falls under — where that task's whole text lives. */
+function taskIndexFor(nodes: SessionNode[], node: SessionNode): number | null {
+  if (node.type === "task") return node.index;
+  let found: number | null = null;
+  for (const n of nodes) {
+    if (n.index >= node.index) break;
+    if (n.type === "task") found = n.index;
+  }
+  return found;
+}
+
+const firstTaskIndex = (nodes: SessionNode[]): number | null => nodes.find((n) => n.type === "task")?.index ?? null;
+
+/**
+ * A gist that can grow into the whole text the transcript line cut short. The
+ * expanded form scrolls within the drawer — a task prompt runs far longer than
+ * the panel is tall — and collapses back to the one-liner.
+ */
+function ExpandableText({ text, full }: { text: string; full?: string }) {
+  const [open, setOpen] = useState(false);
+  const more = full !== undefined && full.trim() !== "" && full.trim() !== text.trim();
+
+  return (
+    <>
+      <p className={`gi-text${open ? " is-full" : ""}`}>{open && full !== undefined ? full : text}</p>
+      {more ? (
+        <button type="button" className="gi-more" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          {open ? "Show less" : "Show full text"}
+        </button>
+      ) : null}
+    </>
   );
 }
 
