@@ -228,10 +228,9 @@ export function parseSessionNodes(content: string): SessionNode[] {
 
 /**
  * Untruncated node texts from a transcript's `<threadId>.nodes.jsonl` sidecar,
- * keyed by node index — the whole text behind the lines {@link parseSessionNodes}
- * reads back as one-line gists. Sparse: only nodes whose line dropped something
- * get an entry, and transcripts written before the sidecar existed have none.
- * Malformed lines are skipped rather than failing the read.
+ * keyed by node index — the whole text behind the gists {@link parseSessionNodes}
+ * reads back. Sparse: only nodes whose line dropped something get an entry, and
+ * transcripts predating the sidecar have none. Malformed lines are skipped.
  */
 export function parseSessionNodeTexts(content: string): Record<number, string> {
   const texts: Record<number, string> = {};

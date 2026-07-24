@@ -158,12 +158,10 @@ const titleMatches = (content, root) =>
   !!root && !!content && (content === root || content.startsWith(root) || root.startsWith(content));
 
 /**
- * Distill one message into zero or more transcript entries (deterministic).
- *
- * Each entry is one line for the transcript plus the untruncated text behind it —
- * null when the gist already says the whole thing. Every entry is exactly one node
- * of the graph, in order, so the sidecar {@link appendNodeTexts} writes lines up
- * with what `parseSessionNodes` reads back.
+ * Distill one message into zero or more transcript entries (deterministic). Each
+ * entry is one transcript line plus the untruncated text behind it — null when the
+ * line already says the whole thing. One entry per graph node, in order, so the
+ * sidecar's indices match what `parseSessionNodes` reads back.
  */
 export function distillEntries(msg) {
   const entries = [];
@@ -265,17 +263,17 @@ function appendLines(mdPath, lines) {
 
 // --- Untruncated node text -------------------------------------------------
 //
-// Transcript lines are one-line gists, so anything long lands with a `…`. The
-// whole text goes to a sidecar instead of the transcript, which stays a digest
-// the summary pipeline can read cheaply. One JSON line per node that has more to
-// show — `{"i": <node index>, "text": "…"}` — appended as the transcript grows.
+// Transcript lines are one-line gists, so anything long lands with a `…`. The whole
+// text goes to a sidecar instead, keeping the transcript a digest the summary
+// pipeline can read cheaply. One JSON line per node that has more to show —
+// `{"i": <node index>, "text": "…"}` — appended as the transcript grows.
 
 const nodeTextsPath = (dir, threadId) => path.join(dir, `${threadId}.nodes.jsonl`);
 
 /**
  * The transcript lines `parseSessionNodes` turns into nodes, mirrored here so the
- * sidecar's indices line up with the ones the dashboard parses. The two grammars
- * are pinned together by a cross-check test in `packages/core`.
+ * sidecar's indices match the dashboard's. A cross-check test in `packages/core`
+ * pins the two grammars together.
  */
 const NODE_LINE_RE = /^(?:## Task:|- decided:|- done:|- ✗\s|- [A-Za-z]\w*\()/;
 
@@ -298,7 +296,7 @@ function appendNodeTexts(dir, threadId, entry, mdPath, entries) {
     try {
       entry.nodes = countNodeLines(fs.readFileSync(mdPath, "utf8"));
     } catch {
-      entry.nodes = 0; // no transcript yet — this append starts at zero
+      entry.nodes = 0; // no transcript yet
     }
   }
   const rows = [];
@@ -401,7 +399,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     if (entry.started) {
       if (entries.length) {
-        appendNodeTexts(dir, threadId, entry, mdPath, entries); // counts the transcript as it stands
+        appendNodeTexts(dir, threadId, entry, mdPath, entries); // before the lines land — it counts the transcript as it stands
         appendLines(mdPath, entries.map((e) => e.line));
       }
       entry.count = total;

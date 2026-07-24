@@ -1797,7 +1797,6 @@ a.pager-btn:hover {
   white-space: pre-wrap;
   line-height: 1.5;
 }
-/* Expanded, the whole text scrolls inside the drawer rather than stretching it. */
 .gi-text.is-full {
   max-height: 42vh;
   overflow-y: auto;

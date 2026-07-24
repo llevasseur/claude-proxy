@@ -265,10 +265,9 @@ export async function buildSessionsGraph(logDir: string): Promise<SessionsGraphR
 export type SessionNodeTextsResponse = SessionNodeTexts;
 
 /**
- * The untruncated text behind one session's truncated node lines. Kept off
- * `/api/sessions/graph` — that one polls, and full task prompts would dwarf the
- * gists it exists to ship — so the drawer asks for it only when something is open.
- * `id` is validated downstream.
+ * The untruncated text behind one session's truncated node lines. Kept off the
+ * polling `/api/sessions/graph`, where it would dwarf the gists. `id` is validated
+ * downstream.
  */
 export async function buildSessionNodeTexts(logDir: string, id: string): Promise<SessionNodeTextsResponse> {
   return readSessionNodeTexts(logDir, id);

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-// The proxy is zero-dependency, so it can't import this package — it mirrors the
-// transcript grammar instead. Reaching across to it here is what keeps the two honest.
-// It ships no types (plain JS, by design), so this import is the one untyped edge.
+// The proxy is zero-dependency and mirrors this package's transcript grammar rather
+// than importing it; reaching across here pins the two together. It ships no types.
 // @ts-ignore -- untyped JS module
 import { countNodeLines, distillMessagesEntries } from "../../../proxy/session.mjs";
 import { parseSessionNodes, parseSessionNodeTexts } from "../src/sessions.js";
@@ -81,7 +80,6 @@ describe("node accounting agrees with the proxy", () => {
     const nodes = parseSessionNodes(transcript);
     entries.forEach((entry: Entry, i: number) => {
       if (entry.full === null) return;
-      // What the sidecar would store for this node, read back the way the drawer reads it.
       const stored = parseSessionNodeTexts(JSON.stringify({ i, text: entry.full }));
       expect(stored[i]).toBe(entry.full);
       // The stored text carries on from where the node's gist broke off.

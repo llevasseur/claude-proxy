@@ -804,11 +804,9 @@ function SessionNav({
 }
 
 /**
- * Transcript lines are one-line gists, so a long task or command lands with a `…`.
- * The whole text sits in a sidecar the proxy writes alongside the transcript; fetch
- * it per open drawer rather than on the graph's poll, where it would dwarf the
- * gists. Empty for sessions captured before the proxy wrote one — then the drawer
- * just shows what the line carries.
+ * Node details drawer. Transcript lines are one-line gists; the whole text comes
+ * from a sidecar fetched per open drawer, empty for sessions captured before the
+ * proxy wrote one.
  */
 function Inspector({
   selection,
@@ -961,11 +959,7 @@ function taskIndexFor(nodes: SessionNode[], node: SessionNode): number | null {
 
 const firstTaskIndex = (nodes: SessionNode[]): number | null => nodes.find((n) => n.type === "task")?.index ?? null;
 
-/**
- * A gist that can grow into the whole text the transcript line cut short. The
- * expanded form scrolls within the drawer — a task prompt runs far longer than
- * the panel is tall — and collapses back to the one-liner.
- */
+/** A gist that expands into the whole text the line cut short; expanded, it scrolls within the drawer. */
 function ExpandableText({ text, full }: { text: string; full?: string }) {
   const [open, setOpen] = useState(false);
   const more = full !== undefined && full.trim() !== "" && full.trim() !== text.trim();

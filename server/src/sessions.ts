@@ -131,12 +131,10 @@ export interface SessionNodeTexts {
 }
 
 /**
- * Read the untruncated text behind a transcript's truncated node lines, so the
- * graph's detail drawer can expand a gist into the whole thing. Validates the
- * (URL-supplied) thread id the same way {@link resolveSessionFile} does. A
- * transcript with no sidecar — anything captured before the proxy wrote one, or a
- * run where nothing needed truncating — reads as empty rather than 404: having
- * nothing more to show isn't an error.
+ * Read the untruncated text behind a transcript's truncated node lines. Validates
+ * the (URL-supplied) thread id the same way {@link resolveSessionFile} does. A
+ * transcript with no sidecar — captured before the proxy wrote one, or nothing
+ * needed truncating — reads as empty rather than 404.
  */
 export async function readSessionNodeTexts(logDir: string, id: string): Promise<SessionNodeTexts> {
   if (!THREAD_ID_RE.test(id)) {
