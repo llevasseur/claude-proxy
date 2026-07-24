@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { parseSessionErrors, parseSessionNodes, parseSessionTranscript } from "../src/sessions.js";
+import {
+  isAgentSpawn,
+  linkAgentSessions,
+  parseSessionErrors,
+  parseSessionNodes,
+  parseSessionTranscript,
+  spawnAgentType,
+  type LinkableSession,
+} from "../src/sessions.js";
 
 const TRANSCRIPT = [
   "",
@@ -133,5 +141,149 @@ describe("parseSessionErrors", () => {
     const errors = parseSessionErrors(TRANSCRIPT.replace(/\n/g, "\r\n"));
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({ tool: "Bash(command=npm test)", text: "ENOENT: no such file" });
+  });
+});
+
+describe("spawnAgentType", () => {
+  const nodeFor = (line: string) => parseSessionNodes(line)[0]!;
+
+  it("reads the subagent_type off an Agent/Task call", () => {
+    expect(spawnAgentType(nodeFor("- Agent(subagent_type=Explore)"))).toBe("Explore");
+    expect(spawnAgentType(nodeFor("- Task(subagent_type=general-purpose)"))).toBe("general-purpose");
+  });
+
+  it("reports a spawn with no recorded type as an empty string, not null", () => {
+    expect(spawnAgentType(nodeFor("- Agent(description=go look)"))).toBe("");
+    expect(isAgentSpawn(nodeFor("- Agent(description=go look)"))).toBe(true);
+  });
+
+  it("is null for every other kind of node", () => {
+    expect(spawnAgentType(nodeFor("- Bash(command=npm test)"))).toBeNull();
+    expect(spawnAgentType(nodeFor("- AgentBuilder(path=/x)"))).toBeNull();
+    expect(spawnAgentType(nodeFor("- decided: delegating this"))).toBeNull();
+    expect(isAgentSpawn(nodeFor("- Read(file_path=/a.ts)"))).toBe(false);
+  });
+});
+
+describe("linkAgentSessions", () => {
+  const session = (threadId: string, sessionId: string | null, started: string | null, body: string): LinkableSession => ({
+    threadId,
+    sessionId,
+    started,
+    nodes: parseSessionNodes(body),
+  });
+
+  const PARENT_BODY = [
+    "## Task: Do it", // 0
+    "- decided: Delegating the search.", // 1
+    "- Agent(subagent_type=Explore)", // 2
+    "- decided: Back with results.", // 3
+    "- Read(file_path=/a.ts)", // 4
+  ].join("\n");
+
+  it("links a subagent to the spawn that started it", () => {
+    const links = linkAgentSessions([
+      session("a".repeat(16), "s1", "2026-07-23T18:00:00.000Z", PARENT_BODY),
+      session("b".repeat(16), "s1", "2026-07-23T18:00:10.000Z", "## Task: Search\n- Read(file_path=/b.ts)"),
+    ]);
+
+    expect(links.get("b".repeat(16))).toEqual({
+      parentThreadId: "a".repeat(16),
+      spawnIndex: 2,
+      agentType: "Explore",
+      returnIndex: 3, // the parent's next non-spawn step
+      depth: 1,
+      childThreadIds: [],
+    });
+    expect(links.get("a".repeat(16))).toMatchObject({
+      parentThreadId: null,
+      depth: 0,
+      childThreadIds: ["b".repeat(16)],
+    });
+  });
+
+  it("leaves returnIndex null while the parent has taken no step after the spawn", () => {
+    const links = linkAgentSessions([
+      session("a".repeat(16), "s1", "2026-07-23T18:00:00.000Z", "## Task: Do it\n- Agent(subagent_type=Explore)"),
+      session("b".repeat(16), "s1", "2026-07-23T18:00:10.000Z", "## Task: Search\n- Read(file_path=/b.ts)"),
+    ]);
+    expect(links.get("b".repeat(16))).toMatchObject({ spawnIndex: 1, returnIndex: null });
+  });
+
+  it("rejoins a parallel spawn batch at the same parent step", () => {
+    const body = [
+      "## Task: Do it", // 0
+      "- decided: Fanning out.", // 1
+      "- Agent(subagent_type=Explore)", // 2
+      "- Agent(subagent_type=general-purpose)", // 3
+      "- Edit(file_path=/b.ts)", // 4
+    ].join("\n");
+    const links = linkAgentSessions([
+      session("a".repeat(16), "s1", "2026-07-23T18:00:00.000Z", body),
+      session("b".repeat(16), "s1", "2026-07-23T18:00:05.000Z", "## Task: One"),
+      session("c".repeat(16), "s1", "2026-07-23T18:00:06.000Z", "## Task: Two"),
+    ]);
+
+    expect(links.get("b".repeat(16))).toMatchObject({ spawnIndex: 2, agentType: "Explore", returnIndex: 4 });
+    expect(links.get("c".repeat(16))).toMatchObject({ spawnIndex: 3, agentType: "general-purpose", returnIndex: 4 });
+    expect(links.get("a".repeat(16))?.childThreadIds).toEqual(["b".repeat(16), "c".repeat(16)]);
+  });
+
+  it("nests a subagent that spawns its own subagent", () => {
+    const links = linkAgentSessions([
+      session("a".repeat(16), "s1", "2026-07-23T18:00:00.000Z", "## Task: Do it\n- Agent(subagent_type=general-purpose)"),
+      session("b".repeat(16), "s1", "2026-07-23T18:00:10.000Z", PARENT_BODY),
+      session("c".repeat(16), "s1", "2026-07-23T18:00:20.000Z", "## Task: Deepest"),
+    ]);
+
+    expect(links.get("b".repeat(16))).toMatchObject({ parentThreadId: "a".repeat(16), depth: 1 });
+    expect(links.get("c".repeat(16))).toMatchObject({ parentThreadId: "b".repeat(16), depth: 2, agentType: "Explore" });
+  });
+
+  it("leaves transcripts top-level once the spawns are used up", () => {
+    const links = linkAgentSessions([
+      session("a".repeat(16), "s1", "2026-07-23T18:00:00.000Z", PARENT_BODY),
+      session("b".repeat(16), "s1", "2026-07-23T18:00:10.000Z", "## Task: Search"),
+      session("c".repeat(16), "s1", "2026-07-23T18:00:20.000Z", "## Task: Unrelated"),
+    ]);
+
+    expect(links.get("b".repeat(16))).toMatchObject({ parentThreadId: "a".repeat(16) });
+    expect(links.get("c".repeat(16))).toMatchObject({ parentThreadId: null, depth: 0 });
+  });
+
+  it("never claims a transcript that started before its spawner, or one with no start time", () => {
+    const links = linkAgentSessions([
+      session("a".repeat(16), "s1", "2026-07-23T18:00:00.000Z", PARENT_BODY),
+      session("b".repeat(16), "s1", "2026-07-23T17:59:59.000Z", "## Task: Earlier"),
+      session("c".repeat(16), "s1", null, "## Task: Undated"),
+    ]);
+
+    expect(links.get("b".repeat(16))).toMatchObject({ parentThreadId: null });
+    expect(links.get("c".repeat(16))).toMatchObject({ parentThreadId: null });
+    expect(links.get("a".repeat(16))?.childThreadIds).toEqual([]);
+  });
+
+  it("keeps separate session ids apart and ignores transcripts with none", () => {
+    const links = linkAgentSessions([
+      session("a".repeat(16), "s1", "2026-07-23T18:00:00.000Z", PARENT_BODY),
+      session("b".repeat(16), "s2", "2026-07-23T18:00:10.000Z", "## Task: Other family"),
+      session("c".repeat(16), null, "2026-07-23T18:00:20.000Z", "## Task: No session id"),
+    ]);
+
+    expect(links.get("b".repeat(16))).toMatchObject({ parentThreadId: null });
+    expect(links.get("c".repeat(16))).toMatchObject({ parentThreadId: null });
+  });
+
+  it("gives every transcript a link, even a lone one", () => {
+    const links = linkAgentSessions([session("a".repeat(16), "s1", "2026-07-23T18:00:00.000Z", PARENT_BODY)]);
+    expect([...links.keys()]).toEqual(["a".repeat(16)]);
+    expect(links.get("a".repeat(16))).toEqual({
+      parentThreadId: null,
+      spawnIndex: null,
+      agentType: null,
+      returnIndex: null,
+      depth: 0,
+      childThreadIds: [],
+    });
   });
 });

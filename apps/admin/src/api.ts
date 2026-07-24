@@ -10,6 +10,7 @@ import type {
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
+  SessionAgentLink,
   SessionError,
   SessionMeta,
   SessionNode,
@@ -117,7 +118,8 @@ export interface SessionsResponse {
   sessions: SessionSummary[];
   meta: { sessionsDir: string; total: number };
 }
-export interface SessionGraphEntry extends SessionSummary {
+/** A transcript's steps plus its place in the session's agent tree (parent/subagent links). */
+export interface SessionGraphEntry extends SessionSummary, SessionAgentLink {
   nodes: SessionNode[];
 }
 export interface SessionsGraphResponse {

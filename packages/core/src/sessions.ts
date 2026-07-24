@@ -226,6 +226,168 @@ export function parseSessionNodes(content: string): SessionNode[] {
   return nodes;
 }
 
+// --- Subagent linkage ------------------------------------------------------
+//
+// A subagent runs under its parent's session id but with its own conversation
+// root, so the proxy writes it as a *separate* transcript (see proxy/session.mjs).
+// Nothing on the wire names the pair, so the tree is reconstructed here: the
+// parent's `Agent(...)` call lines are the spawn points, and the group's other
+// transcripts — ordered by start time — are the subagents they spawned.
+
+/** Tool names whose call spawns a subagent that gets its own transcript. */
+const SPAWN_TOOLS = new Set(["Agent", "Task"]);
+
+/** A tool-call signature, split into name and recorded arg (`Agent(subagent_type=Explore)`). */
+const TOOL_SIG_RE = /^([A-Za-z]\w*)\((.*)\)$/;
+const SUBAGENT_TYPE_RE = /(?:^|,\s*)subagent_type=([^,]*)/;
+
+/**
+ * The `subagent_type` a node spawns — `""` when the call recorded no type — or
+ * null when the node isn't a spawn at all.
+ */
+export function spawnAgentType(node: SessionNode): string | null {
+  if (node.type !== "tool" || !node.tool) return null;
+  const sig = TOOL_SIG_RE.exec(node.tool);
+  if (!sig || !SPAWN_TOOLS.has(sig[1] ?? "")) return null;
+  return (SUBAGENT_TYPE_RE.exec(sig[2] ?? "")?.[1] ?? "").trim();
+}
+
+/** True when this node is an `Agent(…)` / `Task(…)` call — a subagent spawn. */
+export function isAgentSpawn(node: SessionNode): boolean {
+  return spawnAgentType(node) !== null;
+}
+
+/** The fields {@link linkAgentSessions} needs from a transcript. */
+export interface LinkableSession {
+  threadId: string;
+  sessionId: string | null;
+  started: string | null;
+  nodes: SessionNode[];
+}
+
+/** Where one transcript sits in its session id's agent tree. */
+export interface SessionAgentLink {
+  /** The transcript that spawned this one, or null for a top-level session. */
+  parentThreadId: string | null;
+  /** Index of the parent node that spawned this one, or null at top level. */
+  spawnIndex: number | null;
+  /** `subagent_type` from the spawn call (e.g. `Explore`), or null when unknown. */
+  agentType: string | null;
+  /**
+   * The parent node this subagent's work flows back into: the parent's first step
+   * after the spawn that isn't itself a spawn. Null while the parent has taken no
+   * such step — i.e. the subagent is still in flight.
+   */
+  returnIndex: number | null;
+  /** 0 for a top-level session, 1 for its subagents, 2 for theirs, and so on. */
+  depth: number;
+  /** Subagents spawned by this transcript, in spawn order. */
+  childThreadIds: string[];
+}
+
+const topLevelLink = (): SessionAgentLink => ({
+  parentThreadId: null,
+  spawnIndex: null,
+  agentType: null,
+  returnIndex: null,
+  depth: 0,
+  childThreadIds: [],
+});
+
+/** Where a spawn's result rejoins the parent: its next non-spawn step, or null while in flight. */
+function returnIndexAfter(nodes: SessionNode[], spawnIndex: number): number | null {
+  for (const node of nodes) {
+    if (node.index > spawnIndex && !isAgentSpawn(node)) return node.index;
+  }
+  return null;
+}
+
+/**
+ * Reconstruct the agent tree across a set of transcripts, keyed by thread id.
+ *
+ * Transcripts sharing a session id are one agent family. Within a family, each
+ * transcript's `Agent(…)` spawn lines are matched, in order, against the family's
+ * other transcripts ordered by start time — a spawn claims the earliest unclaimed
+ * transcript that started no earlier than the spawner. Claiming is one-to-one and
+ * bounded by the spawn count, so anything left over stays top-level rather than
+ * being forced into the tree; likewise a spawn whose transcript was never captured
+ * (a one-shot helper the proxy filtered out) simply goes unmatched.
+ *
+ * Start times are the only ordering the transcripts carry — individual lines have
+ * no timestamps — so pairing is positional, not proven. A transcript with no start
+ * time is never claimed.
+ */
+export function linkAgentSessions(sessions: readonly LinkableSession[]): Map<string, SessionAgentLink> {
+  const links = new Map<string, SessionAgentLink>();
+  for (const s of sessions) links.set(s.threadId, topLevelLink());
+
+  const families = new Map<string, LinkableSession[]>();
+  for (const s of sessions) {
+    if (!s.sessionId) continue; // no session id — nothing to group it with
+    const family = families.get(s.sessionId);
+    if (family) family.push(s);
+    else families.set(s.sessionId, [s]);
+  }
+
+  /** Guard against a cycle: is `id` already somewhere above `of` in the tree? */
+  const isAncestor = (id: string, of: LinkableSession): boolean => {
+    let at: string | null = of.threadId;
+    for (let hops = 0; at && hops <= sessions.length; hops++) {
+      if (at === id) return true;
+      at = links.get(at)?.parentThreadId ?? null;
+    }
+    return false;
+  };
+
+  for (const family of families.values()) {
+    if (family.length < 2) continue;
+    const ordered = [...family].sort(
+      (a, b) => (a.started ?? "").localeCompare(b.started ?? "") || a.threadId.localeCompare(b.threadId),
+    );
+    const claimed = new Set<string>();
+
+    // Every transcript is a candidate spawner, so nested subagents link too; going
+    // in start order means an outer parent claims before its own children do.
+    for (const parent of ordered) {
+      const parentLink = links.get(parent.threadId)!;
+      for (const spawn of parent.nodes) {
+        const agentType = spawnAgentType(spawn);
+        if (agentType === null) continue;
+        const child = ordered.find(
+          (c) =>
+            c.threadId !== parent.threadId &&
+            !claimed.has(c.threadId) &&
+            !!c.started &&
+            !!parent.started &&
+            c.started >= parent.started &&
+            !isAncestor(c.threadId, parent),
+        );
+        if (!child) continue; // no transcript to pair with this spawn
+        claimed.add(child.threadId);
+        const link = links.get(child.threadId)!;
+        link.parentThreadId = parent.threadId;
+        link.spawnIndex = spawn.index;
+        link.agentType = agentType || null;
+        link.returnIndex = returnIndexAfter(parent.nodes, spawn.index);
+        parentLink.childThreadIds.push(child.threadId);
+      }
+    }
+  }
+
+  // Depth is only knowable once every parent is assigned.
+  for (const [threadId, link] of links) {
+    let depth = 0;
+    let at = link.parentThreadId;
+    while (at && depth <= links.size) {
+      depth += 1;
+      at = links.get(at)?.parentThreadId ?? null;
+    }
+    links.set(threadId, { ...link, depth });
+  }
+
+  return links;
+}
+
 /**
  * Pull every errored tool result out of a transcript, in order, each tagged with
  * its task and nearest preceding tool call. The proxy records only a one-line
