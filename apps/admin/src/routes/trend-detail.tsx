@@ -63,7 +63,7 @@ export function TrendDetailPage() {
         {digests.length === 0 ? (
           <div className="card empty">No usage captured in the last {days} days.</div>
         ) : (
-          <>
+          <div className="grid wide-two chart-lead">
             <div className="card">
               <div className="card-head">
                 <h2>{def.label} / day</h2>
@@ -97,7 +97,7 @@ export function TrendDetailPage() {
                 </tbody>
               </table>
             </div>
-          </>
+          </div>
         )}
       </QueryState>
     </section>

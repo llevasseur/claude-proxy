@@ -55,7 +55,9 @@ button:focus-visible {
 /* shell: fixed rail + scrolling workspace */
 .app {
   display: grid;
-  grid-template-columns: 244px 1fr;
+  /* The rail gives ground as the viewport narrows. A fixed width used to leave
+     the content column thinner just above the fold breakpoint than below it. */
+  grid-template-columns: clamp(208px, 18vw, 244px) minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -232,9 +234,11 @@ button:focus-visible {
   flex-direction: column;
 }
 .content {
-  max-width: 1040px;
+  /* Wide enough that dense tables and side-by-side cards use a large display,
+     and the side padding tightens rather than eating a narrow column. */
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 40px 40px 72px;
+  padding: 40px clamp(20px, 3vw, 40px) 72px;
 }
 /* The live graph escapes the padded, centered column and fills the workspace. */
 .content--full {
@@ -362,6 +366,22 @@ button:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+/* Two-up for cards that need real width (charts, wide tables): stacked until
+   the column can hold both, where `.two` splits from 720px up. */
+.grid.wide-two {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 1080px) {
+  .grid.wide-two {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    /* Cards keep their natural height instead of stretching to the tallest. */
+    align-items: start;
+  }
+  /* A chart earns more of the row than a table restating the same numbers. */
+  .grid.wide-two.chart-lead {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  }
+}
 .empty {
   color: var(--muted);
   text-align: center;
@@ -451,6 +471,9 @@ button:focus-visible {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
+  /* Rows take the cursor so each can mark its own node on the mini chart. The
+     popover lives inside the card's link, so hovering it keeps the card open. */
+  pointer-events: auto;
 }
 .stat-popover-head {
   font-family: var(--font-mono);
@@ -471,15 +494,26 @@ button:focus-visible {
   display: flex;
   justify-content: space-between;
   gap: 14px;
-  padding: 3px 0;
+  /* Padding is pulled back out by the margin so rows still align to the head,
+     but the hover highlight gets room to breathe around the text. */
+  padding: 3px 6px;
+  margin: 0 -6px;
+  border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+/* The day under the cursor — on this row or on the mini chart's node. */
+.stat-popover-list li.is-active {
+  background: color-mix(in srgb, var(--spark-color, var(--signal)) 18%, transparent);
 }
 .stat-popover-date {
   color: var(--muted);
 }
 .stat-popover-value {
+  color: var(--text);
+}
+.stat-popover-list li.is-active .stat-popover-date {
   color: var(--text);
 }
 

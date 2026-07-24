@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useState } from "react";
 import { Sparkline, type SparkPoint } from "./Sparkline";
 import { deltaLabel, deltaTone } from "../format";
 
@@ -28,6 +28,9 @@ export interface StatCardProps {
 export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, metric, spark }: StatCardProps) {
   const tone = deltaPct === undefined ? null : deltaTone(deltaPct);
   const good = tone === "flat" ? "flat" : (tone === "up") === increaseIsBad ? "bad" : "good";
+  // Shared by the mini chart and the popover, so hovering either highlights the
+  // same day in both — that's what tells you which node is which.
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const body = (
     <>
@@ -39,8 +42,13 @@ export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, me
       </div>
       {spark && spark.points.length > 0 && (
         <>
-          <Sparkline points={spark.points} color={spark.color} />
-          <StatPopover label={label} spark={spark} />
+          <Sparkline
+            points={spark.points}
+            color={spark.color}
+            activeIndex={activeIndex}
+            onActiveIndexChange={setActiveIndex}
+          />
+          <StatPopover label={label} spark={spark} activeIndex={activeIndex} onActiveIndexChange={setActiveIndex} />
         </>
       )}
     </>
@@ -56,15 +64,37 @@ export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, me
   return <div className="card stat">{body}</div>;
 }
 
-/** Hover panel listing each day's value, newest first. */
-function StatPopover({ label, spark }: { label: string; spark: StatSpark }): ReactNode {
-  const rows = [...spark.points].reverse();
+/**
+ * Hover panel listing each day's value, newest first. The row for the day under
+ * the cursor is highlighted in the series' own colour, and hovering a row marks
+ * that day back on the mini chart.
+ */
+function StatPopover({
+  label,
+  spark,
+  activeIndex,
+  onActiveIndexChange,
+}: {
+  label: string;
+  spark: StatSpark;
+  activeIndex: number | null;
+  onActiveIndexChange: (index: number | null) => void;
+}): ReactNode {
+  // Keep each point's index through the reverse so it still addresses the chart.
+  const rows = spark.points.map((p, index) => ({ ...p, index })).reverse();
+  // Lets the highlight pick up the metric's line colour without a per-metric rule.
+  const tint = { "--spark-color": spark.color } as CSSProperties;
+
   return (
-    <div className="stat-popover" role="tooltip">
+    <div className="stat-popover" role="tooltip" style={tint}>
       <div className="stat-popover-head">{label} · by day</div>
-      <ul className="stat-popover-list">
+      <ul className="stat-popover-list" onMouseLeave={() => onActiveIndexChange(null)}>
         {rows.map((p) => (
-          <li key={p.date}>
+          <li
+            key={p.date}
+            className={p.index === activeIndex ? "is-active" : undefined}
+            onMouseEnter={() => onActiveIndexChange(p.index)}
+          >
             <span className="stat-popover-date">{p.date.slice(5)}</span>
             <span className="stat-popover-value">{spark.format(p.value)}</span>
           </li>
