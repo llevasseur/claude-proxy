@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS, stripInjectedReminders, INJECTED_REMINDERS } from "./proxy.mjs";
-import { threadIdFor, firstUserText, distillMessage, distillMessages, appendSession, sessionsDir, _resetThreads } from "./session.mjs";
+import { threadIdFor, firstUserText, distillMessage, distillMessages, appendSession, sessionsDir, rootPrompt, isTitleRequest, extractTitle, _resetThreads } from "./session.mjs";
 
 // Non-streaming response body: a single JSON message object with usage at the top level, no SSE frames.
 const nonStreamingBody = JSON.stringify({
@@ -241,6 +241,12 @@ test("threadIdFor: stable per root, namespaced by session, null when no root", (
 test("distillMessage: task / decided+tool / error / done mapping", () => {
   assert.deepEqual(distillMessage(userText("Add a feature")), ["\n## Task: Add a feature"]);
 
+  // Injected <system-reminder> context is stripped from the task line.
+  assert.deepEqual(
+    distillMessage(userText("<system-reminder>\nctx blob\n</system-reminder>\n\nAdd a feature")),
+    ["\n## Task: Add a feature"],
+  );
+
   const assistantWithTool = {
     role: "assistant",
     content: [
@@ -309,6 +315,130 @@ test("appendSession: one-shot helper calls never get a file; real threads grow a
   _resetThreads();
   appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
   assert.equal(fs.readFileSync(md, "utf8"), before, "state sidecar dedupes across a restart");
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test("rootPrompt: strips the <system-reminder> context, keeps the real first prompt", () => {
+  const messages = [userText("<system-reminder>\ncontext blob\n</system-reminder>\n\nFix the login bug")];
+  assert.equal(rootPrompt(messages), "Fix the login bug");
+  // No reminder — the prompt passes through, whitespace-collapsed.
+  assert.equal(rootPrompt([userText("  just   this  ")]), "just this");
+});
+
+test("isTitleRequest / extractTitle: detect the CLI titling request and its reply", () => {
+  const titleReq = {
+    system: [{ type: "text", text: "You are a Claude agent." }, { type: "text", text: "Generate a concise, sentence-case title (3-7 words) …" }],
+    messages: [userText("<session>\nsay the single word: mike\n</session>\n\nWrite the title …")],
+  };
+  assert.equal(isTitleRequest(titleReq), true);
+  assert.equal(isTitleRequest({ system: "You are a normal agent.", messages: [] }), false);
+
+  assert.equal(extractTitle('<assistant-text>\n\n{"title": "Say the word mike"}\n\n</assistant-text>'), "Say the word mike");
+  assert.equal(extractTitle('{"title": "Escaped \\"quote\\" here"}'), 'Escaped "quote" here');
+  assert.equal(extractTitle("no title here"), null);
+  assert.equal(extractTitle(undefined), null);
+});
+
+test("appendSession: writes a subtitle and links an out-of-band title to its thread", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-title-"));
+  const dir = sessionsDir(logDir);
+  const headers = { "x-claude-code-session-id": "sess-T" };
+
+  const first = userText("<system-reminder>\nctx\n</system-reminder>\n\nsay the single word: mike");
+  const m1 = [first];
+  const m2 = [first, { role: "assistant", content: [{ type: "text", text: "mike" }] }];
+
+  // First sighting buffers; the follow-up confirms and flushes.
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m1 }, headers });
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+
+  const tid = threadIdFor("sess-T", m1);
+  const md = path.join(dir, `${tid}.md`);
+  let out = fs.readFileSync(md, "utf8");
+  // Subtitle is the reminder-free first prompt; no title yet.
+  assert.match(out, /- subtitle: say the single word: mike/);
+  assert.doesNotMatch(out, /- title:/);
+
+  // The titling request (its own session id, content wrapped in <session>) lands
+  // later; its reply is linked to this thread by content.
+  const titleReq = {
+    system: [{ type: "text", text: "Generate a concise, sentence-case title (3-7 words)." }],
+    messages: [userText("<session>\nsay the single word: mike\n</session>\n\nWrite the title …")],
+  };
+  appendSession({
+    logDir,
+    reqPath: "/v1/messages",
+    reqJson: titleReq,
+    headers: { "x-claude-code-session-id": "sess-title-gen" },
+    responseText: '<assistant-text>\n\n{"title": "Say the word mike"}\n\n</assistant-text>',
+  });
+
+  out = fs.readFileSync(md, "utf8");
+  assert.match(out, /- title: Say the word mike/, "title appended to the confirmed thread");
+  // The titling request itself never becomes a transcript of its own.
+  assert.equal(fs.existsSync(path.join(dir, `${threadIdFor("sess-title-gen", titleReq.messages)}.md`)), false);
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test("appendSession: a title seen before its thread rides into the header at confirmation", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-title2-"));
+  const dir = sessionsDir(logDir);
+  const headers = { "x-claude-code-session-id": "sess-E" };
+
+  // Title arrives first — no thread yet, so it's stashed.
+  appendSession({
+    logDir,
+    reqPath: "/v1/messages",
+    reqJson: { system: [{ type: "text", text: "Generate a concise, sentence-case title." }], messages: [userText("<session>\nrun the report\n</session>")] },
+    headers: { "x-claude-code-session-id": "gen" },
+    responseText: '{"title": "Run the report"}',
+  });
+
+  const first = userText("run the report");
+  const m1 = [first];
+  const m2 = [first, { role: "assistant", content: [{ type: "text", text: "on it" }] }];
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m1 }, headers });
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+
+  const md = path.join(dir, `${threadIdFor("sess-E", m1)}.md`);
+  const out = fs.readFileSync(md, "utf8");
+  // The title is in the header block (before the first task), not appended after.
+  assert.match(out, /- title: Run the report\n- subtitle: run the report/);
+  assert.equal((out.match(/- title:/g) || []).length, 1, "title written exactly once");
+});
+
+test("appendSession: back-fills a missing subtitle when root is learned after the header was flushed", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-latesub-"));
+  const dir = sessionsDir(logDir);
+  const headers = { "x-claude-code-session-id": "sess-M" };
+
+  const first = userText("<system-reminder>\nctx\n</system-reminder>\n\nharden the subtitle path");
+  const m2 = [first, { role: "assistant", content: [{ type: "text", text: "on it" }] }];
+  const tid = threadIdFor("sess-M", [first]);
+
+  // A thread confirmed by an older proxy: header without a subtitle, sidecar predating `root`.
+  fs.mkdirSync(dir, { recursive: true });
+  const md = path.join(dir, `${tid}.md`);
+  fs.writeFileSync(md, `\n# Session ${tid}\n- model: claude-opus-4-8\n- session: sess-M\n- started: 2026-01-01T00:00:00.000Z\n\n`);
+  fs.writeFileSync(path.join(dir, `${tid}.state.json`), JSON.stringify({ count: 1, started: true }));
+
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+
+  let out = fs.readFileSync(md, "utf8");
+  assert.match(out, /- subtitle: harden the subtitle path/, "missing subtitle back-filled");
+  assert.equal((out.match(/- subtitle:/g) || []).length, 1, "subtitle written exactly once");
+
+  // Idempotent across a restart.
+  _resetThreads();
+  const m4 = [...m2, userText("continue"), { role: "assistant", content: [{ type: "text", text: "done" }] }];
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m4 }, headers });
+  out = fs.readFileSync(md, "utf8");
+  assert.equal((out.match(/- subtitle:/g) || []).length, 1, "subtitle not duplicated on later turns");
 
   fs.rmSync(logDir, { recursive: true, force: true });
 });

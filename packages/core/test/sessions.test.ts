@@ -7,6 +7,8 @@ const TRANSCRIPT = [
   "- model: claude-opus-4-8",
   "- session: be4b71b3-ccaf-4350-b1aa-b0cf0218897a",
   "- started: 2026-07-23T17:40:51.064Z",
+  "- title: Fix the login bug",
+  "- subtitle: Fix the login bug so users can sign in",
   "",
   "## Task: Fix the login bug",
   "- decided: Reading the handler first.",
@@ -33,6 +35,8 @@ describe("parseSessionTranscript", () => {
     expect(m.tools).toBe(3); // Read, Bash, Edit — not decided/done/✗ lines
     expect(m.errors).toBe(1);
     expect(m.firstTask).toBe("Fix the login bug");
+    expect(m.title).toBe("Fix the login bug");
+    expect(m.subtitle).toBe("Fix the login bug so users can sign in");
   });
 
   it("leaves fields null when the header is missing and counts nothing", () => {
@@ -41,7 +45,25 @@ describe("parseSessionTranscript", () => {
     expect(m.sessionId).toBeNull();
     expect(m.started).toBeNull();
     expect(m.firstTask).toBeNull();
+    expect(m.title).toBeNull();
+    expect(m.subtitle).toBeNull();
     expect(m).toMatchObject({ tasks: 0, decisions: 0, tools: 0, errors: 0 });
+  });
+
+  it("picks up a title appended after the tasks (the titling request arrives out of band)", () => {
+    const transcript = [
+      "# Session ab3167129339d34f",
+      "- model: claude-opus-4-8",
+      "- subtitle: do the thing",
+      "",
+      "## Task: do the thing",
+      "- done: done it.",
+      "- title: Do the thing well",
+    ].join("\n");
+    const m = parseSessionTranscript("ab3167129339d34f", transcript);
+    expect(m.title).toBe("Do the thing well");
+    expect(m.subtitle).toBe("do the thing");
+    expect(m.firstTask).toBe("do the thing");
   });
 
   it("handles CRLF line endings", () => {

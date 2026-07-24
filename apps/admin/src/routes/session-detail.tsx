@@ -41,6 +41,13 @@ function SessionBody({ session }: { session: SessionDetail }) {
 
   return (
     <>
+      {(meta.title || meta.subtitle) && (
+        <div className="session-heading">
+          {meta.title && <div className="session-title">{meta.title}</div>}
+          {meta.subtitle && <div className="muted">{meta.subtitle}</div>}
+        </div>
+      )}
+
       <div className="grid stats">
         <StatTile label="Model" value={meta.model ?? "—"} />
         <StatTile label="Started" value={meta.started ? fmtLocalTsShort(meta.started) : "—"} />
