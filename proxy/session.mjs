@@ -69,13 +69,15 @@ function resultText(b) {
 /** Allowlist of identifying tool inputs; at most one is recorded, truncated. */
 const ARG_KEYS = ["file_path", "notebook_path", "path", "command", "pattern", "glob", "url", "query", "subagent_type", "skill", "cron", "description", "prompt"];
 
+/** The recorded arg as it goes on the line (`shown`) and in full (`full`). */
 function toolArgs(input) {
-  if (!input || typeof input !== "object") return "";
+  const both = (k, v) => ({ shown: `${k}=${gist(v, 60)}`, full: `${k}=${collapse(v)}` });
+  if (!input || typeof input !== "object") return { shown: "", full: "" };
   for (const k of ARG_KEYS) {
-    if (typeof input[k] === "string" && input[k].trim()) return `${k}=${gist(input[k], 60)}`;
+    if (typeof input[k] === "string" && input[k].trim()) return both(k, input[k]);
   }
   const k = Object.keys(input).find((k) => ["string", "number", "boolean"].includes(typeof input[k]));
-  return k ? `${k}=${gist(String(input[k]), 60)}` : "";
+  return k ? both(k, String(input[k])) : { shown: "", full: "" };
 }
 
 /** First real user text — the thread's root. Tool-result-only turns don't count. */
@@ -155,44 +157,71 @@ export function extractTitle(responseText) {
 const titleMatches = (content, root) =>
   !!root && !!content && (content === root || content.startsWith(root) || root.startsWith(content));
 
-/** Distill one message into zero or more transcript lines (deterministic). */
-export function distillMessage(msg) {
-  const lines = [];
+/**
+ * Distill one message into zero or more transcript entries (deterministic).
+ *
+ * Each entry is one line for the transcript plus the untruncated text behind it —
+ * null when the gist already says the whole thing. Every entry is exactly one node
+ * of the graph, in order, so the sidecar {@link appendNodeTexts} writes lines up
+ * with what `parseSessionNodes` reads back.
+ */
+export function distillEntries(msg) {
+  const entries = [];
   const blocks = asBlocks(msg?.content);
+  /** `whole` was truncated iff its collapsed form isn't what the line carries. */
+  const push = (line, whole, shown) => entries.push({ line, full: collapse(whole) === shown ? null : String(whole).trim() });
 
   if (msg?.role === "user") {
     const texts = [];
     for (const b of blocks) {
       if (b?.type === "text") texts.push(b.text);
-      else if (b?.type === "tool_result" && b.is_error) lines.push(`- ✗ ${gist(resultText(b), 120)}`);
+      else if (b?.type === "tool_result" && b.is_error) {
+        const err = resultText(b);
+        push(`- ✗ ${gist(err, 120)}`, err, gist(err, 120));
+      }
     }
     const task = stripReminders(texts.join(" ")).trim();
-    if (task) lines.push(`\n## Task: ${gist(task, 200)}`);
-    return lines;
+    if (task) push(`\n## Task: ${gist(task, 200)}`, task, gist(task, 200));
+    return entries;
   }
 
   if (msg?.role === "assistant") {
     const texts = [];
-    const toolLines = [];
+    const tools = [];
     for (const b of blocks) {
       if (b?.type === "text") texts.push(b.text);
-      else if (b?.type === "tool_use") toolLines.push(`- ${b.name ?? "tool"}(${toolArgs(b.input)})`);
+      else if (b?.type === "tool_use") {
+        const args = toolArgs(b.input);
+        const name = b.name ?? "tool";
+        // A tool node's text *is* its signature, so the full form is the signature rebuilt.
+        tools.push({ line: `- ${name}(${args.shown})`, full: args.shown === args.full ? null : `${name}(${args.full})` });
+      }
       // `thinking` is skipped — neither a decision nor an outcome.
     }
     const reasoning = texts.join(" ").trim();
-    if (toolLines.length) {
-      if (reasoning) lines.push(`- decided: ${gist(reasoning)}`);
-      lines.push(...toolLines);
+    if (tools.length) {
+      if (reasoning) push(`- decided: ${gist(reasoning)}`, reasoning, gist(reasoning));
+      entries.push(...tools);
     } else if (reasoning) {
-      lines.push(`- done: ${gist(reasoning)}`);
+      push(`- done: ${gist(reasoning)}`, reasoning, gist(reasoning));
     }
   }
-  return lines;
+  return entries;
+}
+
+/** Distill one message into zero or more transcript lines (deterministic). */
+export function distillMessage(msg) {
+  return distillEntries(msg).map((e) => e.line);
 }
 
 /** Distill a run of new messages (the delta since we last looked). */
 export function distillMessages(delta) {
-  return (Array.isArray(delta) ? delta : []).flatMap(distillMessage);
+  return distillMessagesEntries(delta).map((e) => e.line);
+}
+
+/** {@link distillMessages}, keeping each line's untruncated text. */
+export function distillMessagesEntries(delta) {
+  return (Array.isArray(delta) ? delta : []).flatMap(distillEntries);
 }
 
 /** The one-time header written when a thread is first confirmed real. Built from
@@ -215,7 +244,7 @@ function header(threadId, entry) {
 function readState(statePath) {
   try {
     const s = JSON.parse(fs.readFileSync(statePath, "utf8"));
-    return { count: s.count ?? 0, started: true, pending: null, root: s.root ?? null, title: s.title ?? null, titled: s.titled ?? false, subtitled: s.subtitled ?? false };
+    return { count: s.count ?? 0, started: true, pending: null, root: s.root ?? null, title: s.title ?? null, titled: s.titled ?? false, subtitled: s.subtitled ?? false, nodes: typeof s.nodes === "number" ? s.nodes : null };
   } catch {
     return null;
   }
@@ -223,7 +252,7 @@ function readState(statePath) {
 
 function writeState(statePath, entry) {
   try {
-    fs.writeFileSync(statePath, JSON.stringify({ count: entry.count, started: entry.started, root: entry.root, title: entry.title, titled: entry.titled, subtitled: entry.subtitled }));
+    fs.writeFileSync(statePath, JSON.stringify({ count: entry.count, started: entry.started, root: entry.root, title: entry.title, titled: entry.titled, subtitled: entry.subtitled, nodes: entry.nodes }));
   } catch {
     /* best-effort */
   }
@@ -232,6 +261,58 @@ function writeState(statePath, entry) {
 function appendLines(mdPath, lines) {
   fs.mkdirSync(path.dirname(mdPath), { recursive: true });
   fs.appendFileSync(mdPath, lines.join("\n") + "\n");
+}
+
+// --- Untruncated node text -------------------------------------------------
+//
+// Transcript lines are one-line gists, so anything long lands with a `…`. The
+// whole text goes to a sidecar instead of the transcript, which stays a digest
+// the summary pipeline can read cheaply. One JSON line per node that has more to
+// show — `{"i": <node index>, "text": "…"}` — appended as the transcript grows.
+
+const nodeTextsPath = (dir, threadId) => path.join(dir, `${threadId}.nodes.jsonl`);
+
+/**
+ * The transcript lines `parseSessionNodes` turns into nodes, mirrored here so the
+ * sidecar's indices line up with the ones the dashboard parses. The two grammars
+ * are pinned together by a cross-check test in `packages/core`.
+ */
+const NODE_LINE_RE = /^(?:## Task:|- decided:|- done:|- ✗\s|- [A-Za-z]\w*\()/;
+
+/** How many nodes a transcript's text holds. */
+export function countNodeLines(content) {
+  let n = 0;
+  for (const raw of String(content ?? "").split("\n")) {
+    if (NODE_LINE_RE.test(raw.replace(/\r$/, ""))) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Record the untruncated text behind each new line, keyed by node index, and
+ * advance the thread's node count. State written by an older proxy carries no
+ * count, so it's recovered once by counting the transcript already on disk.
+ */
+function appendNodeTexts(dir, threadId, entry, mdPath, entries) {
+  if (entry.nodes === null || entry.nodes === undefined) {
+    try {
+      entry.nodes = countNodeLines(fs.readFileSync(mdPath, "utf8"));
+    } catch {
+      entry.nodes = 0; // no transcript yet — this append starts at zero
+    }
+  }
+  const rows = [];
+  entries.forEach((e, i) => {
+    if (e.full !== null) rows.push(JSON.stringify({ i: entry.nodes + i, text: e.full }));
+  });
+  entry.nodes += entries.length;
+  if (!rows.length) return;
+  try {
+    fs.mkdirSync(dir, { recursive: true }); // the transcript's own dir may not exist yet
+    fs.appendFileSync(nodeTextsPath(dir, threadId), rows.join("\n") + "\n");
+  } catch {
+    /* best-effort */
+  }
 }
 
 /** In-memory per-thread progress, recovered from the `.state.json` sidecar. */
@@ -285,7 +366,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     let entry = threads.get(threadId);
     if (!entry) {
-      entry = readState(statePath) ?? { count: 0, started: false, pending: null, root: null, title: null, titled: false, subtitled: false };
+      entry = readState(statePath) ?? { count: 0, started: false, pending: null, root: null, title: null, titled: false, subtitled: false, nodes: 0 };
       threads.set(threadId, entry);
     }
 
@@ -316,10 +397,13 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     const total = messages.length;
     if (total <= entry.count) return; // no growth — retry or duplicate
-    const lines = distillMessages(messages.slice(entry.count));
+    const entries = distillMessagesEntries(messages.slice(entry.count));
 
     if (entry.started) {
-      if (lines.length) appendLines(mdPath, lines);
+      if (entries.length) {
+        appendNodeTexts(dir, threadId, entry, mdPath, entries); // counts the transcript as it stands
+        appendLines(mdPath, entries.map((e) => e.line));
+      }
       entry.count = total;
       writeState(statePath, entry);
       return;
@@ -329,13 +413,15 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     // seen once and never reaches disk. The header is built at flush time so a
     // title claimed in between rides into it.
     if (entry.pending === null) {
-      entry.pending = lines;
+      entry.pending = entries;
       entry.count = total;
       return;
     }
 
     // Growth → a real thread. Flush header + buffer + new turns.
-    appendLines(mdPath, [header(threadId, entry), ...entry.pending, ...lines]);
+    const flushed = [...entry.pending, ...entries];
+    appendNodeTexts(dir, threadId, entry, mdPath, flushed);
+    appendLines(mdPath, [header(threadId, entry), ...flushed.map((e) => e.line)]);
     entry.started = true;
     entry.titled = !!entry.title; // the header already carries any known title
     entry.subtitled = !!entry.root; // the header already carries any known subtitle

@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   linkAgentSessions,
   parseSessionNodes,
+  parseSessionNodeTexts,
   parseSessionTranscript,
   type SessionAgentLink,
   type SessionMeta,
@@ -121,6 +122,37 @@ export function resolveSessionFile(logDir: string, id: string): string {
     throw new Error(`invalid session id: ${id}`);
   }
   return full;
+}
+
+/** A transcript's untruncated node texts, keyed by node index. */
+export interface SessionNodeTexts {
+  threadId: string;
+  texts: Record<number, string>;
+}
+
+/**
+ * Read the untruncated text behind a transcript's truncated node lines, so the
+ * graph's detail drawer can expand a gist into the whole thing. Validates the
+ * (URL-supplied) thread id the same way {@link resolveSessionFile} does. A
+ * transcript with no sidecar — anything captured before the proxy wrote one, or a
+ * run where nothing needed truncating — reads as empty rather than 404: having
+ * nothing more to show isn't an error.
+ */
+export async function readSessionNodeTexts(logDir: string, id: string): Promise<SessionNodeTexts> {
+  if (!THREAD_ID_RE.test(id)) {
+    throw new Error(`invalid session id: ${id}`);
+  }
+  const dir = resolveSessionsDir(logDir);
+  const full = path.resolve(dir, `${id}.nodes.jsonl`);
+  if (path.dirname(full) !== path.resolve(dir)) {
+    throw new Error(`invalid session id: ${id}`);
+  }
+
+  try {
+    return { threadId: id, texts: parseSessionNodeTexts(await readFile(full, "utf8")) };
+  } catch {
+    return { threadId: id, texts: {} };
+  }
 }
 
 /**

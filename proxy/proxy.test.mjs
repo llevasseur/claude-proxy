@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS, stripInjectedReminders, INJECTED_REMINDERS } from "./proxy.mjs";
-import { threadIdFor, firstUserText, distillMessage, distillMessages, appendSession, sessionsDir, rootPrompt, isTitleRequest, extractTitle, _resetThreads } from "./session.mjs";
+import { threadIdFor, firstUserText, distillMessage, distillMessages, appendSession, sessionsDir, rootPrompt, isTitleRequest, extractTitle, countNodeLines, _resetThreads } from "./session.mjs";
 
 // Non-streaming response body: a single JSON message object with usage at the top level, no SSE frames.
 const nonStreamingBody = JSON.stringify({
@@ -439,6 +439,76 @@ test("appendSession: back-fills a missing subtitle when root is learned after th
   appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m4 }, headers });
   out = fs.readFileSync(md, "utf8");
   assert.equal((out.match(/- subtitle:/g) || []).length, 1, "subtitle not duplicated on later turns");
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test("appendSession: records the whole text behind each truncated line, keyed by node index", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-full-"));
+  const dir = sessionsDir(logDir);
+  const headers = { "x-claude-code-session-id": "sess-F" };
+
+  const task = Array.from({ length: 80 }, () => "task").join(" ");
+  const command = Array.from({ length: 40 }, () => "echo").join(" ");
+  const m1 = [userText(task)];
+  const m2 = [
+    ...m1,
+    { role: "assistant", content: [{ type: "text", text: "Short reason." }, { type: "tool_use", name: "Bash", input: { command } }] },
+  ];
+
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m1 }, headers });
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+
+  const tid = threadIdFor("sess-F", m1);
+  const md = path.join(dir, `${tid}.md`);
+  const rows = fs
+    .readFileSync(path.join(dir, `${tid}.nodes.jsonl`), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l));
+
+  // Node 0 is the task and node 2 the tool call; node 1's `- decided:` said it all.
+  assert.deepEqual(rows.map((r) => r.i), [0, 2]);
+  assert.equal(rows[0].text, task);
+  assert.equal(rows[1].text, `Bash(command=${command})`);
+  assert.equal(countNodeLines(fs.readFileSync(md, "utf8")), 3, "sidecar indices count the same nodes the transcript holds");
+
+  // The transcript itself keeps its one-line gists — the whole text stays out of it.
+  const out = fs.readFileSync(md, "utf8");
+  assert.match(out, /## Task: task task .*…$/m);
+  assert.equal(out.includes(command), false);
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test("appendSession: a transcript that predates the sidecar keeps its indices aligned", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-pre-"));
+  const dir = sessionsDir(logDir);
+  const headers = { "x-claude-code-session-id": "sess-P" };
+
+  const m1 = [userText("Build the parser")];
+  const tid = threadIdFor("sess-P", m1);
+  const md = path.join(dir, `${tid}.md`);
+
+  // An older proxy's leavings: a transcript with three nodes and state carrying no count.
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(md, ["", `# Session ${tid}`, "- model: claude-opus-4-8", "", "## Task: Build the parser", "- decided: Reading first.", "- Read(file_path=/g.ebnf)", ""].join("\n"));
+  fs.writeFileSync(path.join(dir, `${tid}.state.json`), JSON.stringify({ count: 1, started: true, root: "Build the parser", title: null, titled: false, subtitled: true }));
+
+  const command = Array.from({ length: 40 }, () => "echo").join(" ");
+  const m2 = [...m1, { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command } }] }];
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+
+  const rows = fs
+    .readFileSync(path.join(dir, `${tid}.nodes.jsonl`), "utf8")
+    .trim()
+    .split("\n")
+    .map((l) => JSON.parse(l));
+  // The new node is the transcript's fourth — not its first.
+  assert.deepEqual(rows.map((r) => r.i), [3]);
+  assert.equal(countNodeLines(fs.readFileSync(md, "utf8")), 4);
 
   fs.rmSync(logDir, { recursive: true, force: true });
 });
