@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { parseSessionTranscript, type SessionMeta } from "@claude-proxy/core";
+import { parseSessionNodes, parseSessionTranscript, type SessionMeta, type SessionNode } from "@claude-proxy/core";
 
 /** Session transcripts live in `<LOG_DIR>/sessions/`, written by the proxy. */
 export function resolveSessionsDir(logDir: string): string {
@@ -48,6 +48,45 @@ export async function listSessions(logDir: string): Promise<SessionSummary[]> {
       const [content, info] = await Promise.all([readFile(path.join(dir, name), "utf8"), stat(path.join(dir, name))]);
       const meta = parseSessionTranscript(name.replace(/\.md$/, ""), content);
       return { ...meta, bytes: info.size, modified: info.mtime.toISOString() };
+    }),
+  );
+
+  rows.sort((a, b) => b.modified.localeCompare(a.modified) || a.threadId.localeCompare(b.threadId));
+  return rows;
+}
+
+/** One transcript's listing row plus its ordered stream of appended nodes, for the live graph. */
+export interface SessionGraph extends SessionSummary {
+  nodes: SessionNode[];
+}
+
+/**
+ * List every session transcript with its structured node stream, newest first.
+ * Like {@link listSessions} but also parses each transcript's appended lines
+ * (task/decision/tool/error/done) so the graph can render them without shipping
+ * — or re-parsing — raw Markdown in the browser. Empty when no `sessions/` dir.
+ */
+export async function listSessionGraphs(logDir: string): Promise<SessionGraph[]> {
+  const dir = resolveSessionsDir(logDir);
+
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return []; // no sessions yet — not an error
+  }
+
+  const files = names.filter((f) => SESSION_FILE_RE.test(f));
+  const rows = await Promise.all(
+    files.map(async (name) => {
+      const [content, info] = await Promise.all([readFile(path.join(dir, name), "utf8"), stat(path.join(dir, name))]);
+      const meta = parseSessionTranscript(name.replace(/\.md$/, ""), content);
+      return {
+        ...meta,
+        bytes: info.size,
+        modified: info.mtime.toISOString(),
+        nodes: parseSessionNodes(content),
+      };
     }),
   );
 

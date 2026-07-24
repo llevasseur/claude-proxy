@@ -12,6 +12,7 @@ import type {
   RequestToolDetail,
   SessionError,
   SessionMeta,
+  SessionNode,
   SkimDigest,
   SkimShape,
   TopTool,
@@ -116,6 +117,13 @@ export interface SessionsResponse {
   sessions: SessionSummary[];
   meta: { sessionsDir: string; total: number };
 }
+export interface SessionGraphEntry extends SessionSummary {
+  nodes: SessionNode[];
+}
+export interface SessionsGraphResponse {
+  sessions: SessionGraphEntry[];
+  meta: { sessionsDir: string; total: number };
+}
 export interface SessionDetail {
   meta: SessionMeta;
   content: string;
@@ -175,6 +183,7 @@ export const getProjectMemories = (project: string) =>
 export const getMemory = (project: string, name: string) =>
   get<MemoryResponse>(`/api/projects/memory?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`);
 export const getSessions = () => get<SessionsResponse>("/api/sessions");
+export const getSessionsGraph = () => get<SessionsGraphResponse>("/api/sessions/graph");
 export const getSession = (id: string) =>
   get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
 export const getSessionErrors = (id: string) =>

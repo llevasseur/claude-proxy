@@ -47,9 +47,11 @@ import {
   type ProjectSummary,
 } from "./projects.js";
 import {
+  listSessionGraphs,
   listSessions,
   readSession,
   type SessionDetail,
+  type SessionGraph,
   type SessionSummary,
 } from "./sessions.js";
 import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
@@ -244,6 +246,17 @@ export interface SessionsResponse {
 /** Every session transcript the proxy has written, newest first. */
 export async function buildSessions(logDir: string): Promise<SessionsResponse> {
   const sessions = await listSessions(logDir);
+  return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
+}
+
+export interface SessionsGraphResponse {
+  sessions: SessionGraph[];
+  meta: { sessionsDir: string; total: number };
+}
+
+/** Every session transcript with its structured node stream, newest first — feeds the live graph. */
+export async function buildSessionsGraph(logDir: string): Promise<SessionsGraphResponse> {
+  const sessions = await listSessionGraphs(logDir);
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
 }
 
