@@ -395,10 +395,9 @@ export function SessionGraphPage() {
   const pan = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
 
   /**
-   * The slice of the viewport the session rail leaves free. The rail sits over the canvas
-   * rather than shrinking it, so centering against the raw viewport buries content behind
-   * it. Its width is measured, not assumed: it animates between states and caps at a share
-   * of narrow viewports, so only the live value matches what the eye sees.
+   * The slice of the viewport the session rail leaves free — the rail sits over the canvas
+   * rather than shrinking it. Its width is measured live: it animates between states and
+   * caps at a share of narrow viewports.
    */
   const freeArea = useCallback(() => {
     const el = viewportRef.current;
@@ -725,8 +724,8 @@ function navRows(roots: SessionGraphEntry[], index: ChildIndex, folded: Set<stri
 
 /**
  * Left rail listing every session with its subagents nested beneath. Fixed over the
- * canvas; collapses to a narrow strip with an explicit re-open button. `railRef` lets the
- * canvas measure how much width the rail is currently claiming.
+ * canvas; collapses to a narrow strip with an explicit re-open button. `railRef` exposes
+ * its live width to the canvas.
  */
 function SessionNav({
   railRef,
