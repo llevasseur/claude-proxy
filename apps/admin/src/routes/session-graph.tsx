@@ -15,11 +15,9 @@ import { fmtInt, fmtLocalTsShort } from "../format";
  * flows top-to-bottom, desktop uses long rows). A collapsible left rail switches
  * sessions; the toolbar floats above the canvas. Polls so new steps stream in.
  *
- * A subagent keeps its own transcript (same session id, its own conversation root),
- * so it draws as a branch: the parent's `Agent(…)` step opens an indented band around
- * the subagent's own snake, and a return edge carries it back into the parent step its
- * result flows into — which leaves the parent's own steps during that window plainly
- * visible beside the branch. The rail nests the same tree.
+ * A subagent keeps its own transcript, so it draws as a branch: the parent's `Agent(…)`
+ * step opens an indented band around the subagent's own snake, and a return edge carries
+ * it back into the parent step its result flows into. The rail nests the same tree.
  */
 
 // Layout geometry, in canvas px (pre-transform).
@@ -39,7 +37,7 @@ const BAND_HEAD = 34;
 /** Gap between a parent row and a branch band hanging beneath it. */
 const BAND_GAP = 26;
 
-/** What a box or edge is about — drives its glow color and its incoming edge. */
+/** What a box or edge is about — drives its glow color. */
 type Tone = SessionNode["type"] | "root" | "agent";
 
 /** Tone → CSS color token. */
@@ -83,9 +81,9 @@ const stripReminders = (s: string): string =>
     .trim();
 
 /**
- * The most human name a transcript offers. Transcripts written before the proxy
- * recorded a reminder-free subtitle open with an injected context blob, which would
- * make every rail row read alike, so fall back to the first task that says something.
+ * The most human name a transcript offers. Transcripts written before the proxy recorded
+ * a reminder-free subtitle open with an injected context blob, so fall back to the first
+ * task that says something.
  */
 function entryLabel(entry: SessionGraphEntry): string {
   if (entry.title) return entry.title;
@@ -200,10 +198,9 @@ interface Placed {
 }
 
 /**
- * Snake one session from (`x0`, `y0`): its root box, then its steps folding every
- * `cols` boxes. A step that spawned a subagent hangs that subagent's own (recursive)
- * layout beneath its row as an indented band, and the rows below start under the
- * band — so a branch never overlaps the path it came from.
+ * Snake one session from (`x0`, `y0`): its root box, then its steps folding every `cols`
+ * boxes. A step that spawned a subagent hangs that subagent's own (recursive) layout
+ * beneath its row as an indented band, and the rows below start under the band.
  */
 function layoutTree(
   entry: SessionGraphEntry,
@@ -318,8 +315,7 @@ function layout(entry: SessionGraphEntry | null, cols: number, index: ChildIndex
       edges.push({ key: `sp:${child.threadId}`, d: boxPathV(spawn, root), color: color("agent"), kind: "spawn" });
     }
 
-    // Where the branch rejoins the parent path: its last step back into the parent's
-    // next step. Absent while the subagent is still in flight.
+    // The branch's last step back into the parent step it rejoins — absent while in flight.
     const lastNode = child.nodes[child.nodes.length - 1];
     const last = lastNode ? boxAt.get(`${child.threadId}:${lastNode.index}`) : root;
     const rejoin = child.returnIndex === null ? undefined : boxAt.get(`${child.parentThreadId}:${child.returnIndex}`);
@@ -715,9 +711,7 @@ function navRows(roots: SessionGraphEntry[], index: ChildIndex, folded: Set<stri
 
 /**
  * Left rail listing every session with its subagents nested beneath. Fixed over the
- * canvas; collapses to a narrow strip with an explicit re-open button. Peeking on
- * hover instead would fight the toggle — a browser holds `:hover` on an element that
- * slid out from under a cursor that hasn't moved, so the click looks like a no-op.
+ * canvas; collapses to a narrow strip with an explicit re-open button.
  */
 function SessionNav({
   roots,

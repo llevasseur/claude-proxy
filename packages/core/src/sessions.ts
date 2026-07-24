@@ -230,14 +230,13 @@ export function parseSessionNodes(content: string): SessionNode[] {
 //
 // A subagent runs under its parent's session id but with its own conversation
 // root, so the proxy writes it as a *separate* transcript (see proxy/session.mjs).
-// Nothing on the wire names the pair, so the tree is reconstructed here: the
-// parent's `Agent(...)` call lines are the spawn points, and the group's other
-// transcripts — ordered by start time — are the subagents they spawned.
+// Nothing on the wire names the pair, so the tree is reconstructed here from the
+// parent's `Agent(...)` spawn lines and the group's other transcripts.
 
 /** Tool names whose call spawns a subagent that gets its own transcript. */
 const SPAWN_TOOLS = new Set(["Agent", "Task"]);
 
-/** A tool-call signature, split into name and recorded arg (`Agent(subagent_type=Explore)`). */
+/** A tool-call signature, split into name and recorded args. */
 const TOOL_SIG_RE = /^([A-Za-z]\w*)\((.*)\)$/;
 const SUBAGENT_TYPE_RE = /(?:^|,\s*)subagent_type=([^,]*)/;
 
@@ -275,8 +274,7 @@ export interface SessionAgentLink {
   agentType: string | null;
   /**
    * The parent node this subagent's work flows back into: the parent's first step
-   * after the spawn that isn't itself a spawn. Null while the parent has taken no
-   * such step — i.e. the subagent is still in flight.
+   * after the spawn that isn't itself a spawn. Null while the subagent is in flight.
    */
   returnIndex: number | null;
   /** 0 for a top-level session, 1 for its subagents, 2 for theirs, and so on. */
@@ -306,12 +304,10 @@ function returnIndexAfter(nodes: SessionNode[], spawnIndex: number): number | nu
  * Reconstruct the agent tree across a set of transcripts, keyed by thread id.
  *
  * Transcripts sharing a session id are one agent family. Within a family, each
- * transcript's `Agent(…)` spawn lines are matched, in order, against the family's
- * other transcripts ordered by start time — a spawn claims the earliest unclaimed
- * transcript that started no earlier than the spawner. Claiming is one-to-one and
- * bounded by the spawn count, so anything left over stays top-level rather than
- * being forced into the tree; likewise a spawn whose transcript was never captured
- * (a one-shot helper the proxy filtered out) simply goes unmatched.
+ * transcript's `Agent(…)` spawn lines claim, in order, the earliest unclaimed
+ * transcript that started no earlier than the spawner. Claiming is one-to-one, so
+ * leftovers stay top-level and a spawn whose transcript was never captured goes
+ * unmatched.
  *
  * Start times are the only ordering the transcripts carry — individual lines have
  * no timestamps — so pairing is positional, not proven. A transcript with no start
@@ -323,7 +319,7 @@ export function linkAgentSessions(sessions: readonly LinkableSession[]): Map<str
 
   const families = new Map<string, LinkableSession[]>();
   for (const s of sessions) {
-    if (!s.sessionId) continue; // no session id — nothing to group it with
+    if (!s.sessionId) continue;
     const family = families.get(s.sessionId);
     if (family) family.push(s);
     else families.set(s.sessionId, [s]);
@@ -362,7 +358,7 @@ export function linkAgentSessions(sessions: readonly LinkableSession[]): Map<str
             c.started >= parent.started &&
             !isAncestor(c.threadId, parent),
         );
-        if (!child) continue; // no transcript to pair with this spawn
+        if (!child) continue;
         claimed.add(child.threadId);
         const link = links.get(child.threadId)!;
         link.parentThreadId = parent.threadId;

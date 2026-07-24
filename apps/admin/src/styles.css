@@ -1339,7 +1339,7 @@ a.pager-btn:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* The title yields first as the band narrows; the type and state matter more. */
+/* The title yields first as the band narrows. */
 .gband-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -1559,10 +1559,9 @@ a.pager-btn:hover {
   border-radius: 8px;
 }
 
-/* Left session rail — fixed over the canvas, collapses to a narrow strip.
-   Collapsing narrows the rail rather than sliding it behind a hover-to-peek lip:
-   a browser holds `:hover` on an element that moved out from under a cursor that
-   hasn't moved, so a peek strip re-opens the rail the instant it's closed. */
+/* Left session rail — fixed over the canvas, collapses to a narrow strip. It narrows
+   rather than sliding behind a hover-to-peek lip: a browser holds `:hover` on an element
+   that moved out from under a still cursor, so a peek strip re-opens the rail at once. */
 .graph-sessions {
   position: absolute;
   top: 0;
@@ -1585,7 +1584,7 @@ a.pager-btn:hover {
   justify-content: center;
   padding: 10px 0;
 }
-/* Collapsed, the rail still says what it holds — turned on its side to fit. */
+/* Collapsed rail label, turned on its side to fit. */
 .gs-rail-label {
   writing-mode: vertical-rl;
   margin: 10px auto 0;
@@ -1825,7 +1824,7 @@ a.pager-btn:hover {
 .gi-open {
   margin-top: 4px;
 }
-/* `Show its branch` is an in-page action, so it's a button wearing the link style. */
+/* In-page actions wearing the link style. */
 button.gi-open {
   align-self: flex-start;
   padding: 0;

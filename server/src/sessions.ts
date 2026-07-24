@@ -62,10 +62,7 @@ export async function listSessions(logDir: string): Promise<SessionSummary[]> {
   return rows;
 }
 
-/**
- * One transcript's listing row, its ordered stream of appended nodes, and its place
- * in the session's agent tree — everything the live graph draws from.
- */
+/** One transcript's listing row, its ordered stream of appended nodes, and its place in the agent tree. */
 export interface SessionGraph extends SessionSummary, SessionAgentLink {
   nodes: SessionNode[];
 }
