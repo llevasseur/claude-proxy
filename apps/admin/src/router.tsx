@@ -21,6 +21,7 @@ import { ProjectDetailPage } from "./routes/project-detail";
 import { ProjectsPage } from "./routes/projects";
 import { SessionDetailPage } from "./routes/session-detail";
 import { SessionErrorsPage } from "./routes/session-errors";
+import { SessionGraphPage } from "./routes/session-graph";
 import { SessionsPage } from "./routes/sessions";
 import { SkimPage } from "./routes/skim";
 import { ToolsPage } from "./routes/tools";
@@ -37,7 +38,8 @@ const STATIONS = [
   { to: "/withheld", label: "Not added", hint: "withheld", exact: false },
   { to: "/filters", label: "Proxy filters", hint: "stripped", exact: false },
   { to: "/projects", label: "Projects", hint: "memory", exact: false },
-  { to: "/sessions", label: "Sessions", hint: "transcripts", exact: false },
+  { to: "/sessions", label: "Sessions", hint: "transcripts", exact: true },
+  { to: "/sessions/graph", label: "Live graph", hint: "sessions", exact: false },
   { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false },
   { to: "/advice", label: "Advice", hint: "coaching", exact: false },
 ] as const;
@@ -70,6 +72,9 @@ function useDocumentTitle() {
 function RootLayout() {
   const activeProps = { className: "station active" };
   useDocumentTitle();
+  // The live graph fills the whole content area; every other page keeps the padded column.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const full = pathname === "/sessions/graph";
   return (
     <div className="app">
       <aside className="rail">
@@ -103,7 +108,7 @@ function RootLayout() {
       </aside>
 
       <div className="workspace">
-        <main className="content">
+        <main className={`content${full ? " content--full" : ""}`}>
           <Outlet />
         </main>
       </div>
@@ -173,6 +178,12 @@ const sessionsRoute = createRoute({
   component: SessionsPage,
   staticData: { title: "Sessions" },
 });
+const sessionGraphRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sessions/graph",
+  component: SessionGraphPage,
+  staticData: { title: "Live graph" },
+});
 const sessionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sessions/$id",
@@ -233,6 +244,7 @@ const routeTree = rootRoute.addChildren([
   projectDetailRoute,
   memoryDetailRoute,
   sessionsRoute,
+  sessionGraphRoute,
   sessionDetailRoute,
   sessionErrorsRoute,
   toolsRoute,
