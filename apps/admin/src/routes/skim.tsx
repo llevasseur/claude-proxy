@@ -80,14 +80,21 @@ export function SkimPage() {
           <div className="card empty">No skim activity captured in the last {days} days.</div>
         ) : (
           <>
-            <div className="card">
-              <h2>Hit-rate over time</h2>
-              <SeriesLineChart data={hitRateRows} series={HIT_RATE_SERIES} xKey="label" format={(n) => fmtPct(n, 1)} />
-            </div>
+            <div className="grid wide-two">
+              <div className="card">
+                <h2>Hit-rate over time</h2>
+                <SeriesLineChart
+                  data={hitRateRows}
+                  series={HIT_RATE_SERIES}
+                  xKey="label"
+                  format={(n) => fmtPct(n, 1)}
+                />
+              </div>
 
-            <div className="card">
-              <h2>Cumulative $ saved</h2>
-              <SeriesLineChart data={cumulativeRows} series={SAVED_SERIES} xKey="label" format={fmtUsd} />
+              <div className="card">
+                <h2>Cumulative $ saved</h2>
+                <SeriesLineChart data={cumulativeRows} series={SAVED_SERIES} xKey="label" format={fmtUsd} />
+              </div>
             </div>
 
             {topShapes.length > 0 && (

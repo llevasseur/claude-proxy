@@ -25,6 +25,7 @@ import { SessionGraphPage } from "./routes/session-graph";
 import { SessionsPage } from "./routes/sessions";
 import { SkimPage } from "./routes/skim";
 import { ToolsPage } from "./routes/tools";
+import { TrendDetailPage } from "./routes/trend-detail";
 import { TrendsPage } from "./routes/trends";
 import { WithheldPage } from "./routes/withheld";
 
@@ -129,6 +130,12 @@ const trendsRoute = createRoute({
   path: "/trends",
   component: TrendsPage,
   staticData: { title: "Trends" },
+});
+const trendDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/trends/$metric",
+  component: TrendDetailPage,
+  staticData: { title: "Trend" },
 });
 const contextRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -236,6 +243,7 @@ const adviceRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   trendsRoute,
+  trendDetailRoute,
   contextRoute,
   contextDetailRoute,
   contextMessageRoute,

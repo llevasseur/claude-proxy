@@ -1,30 +1,50 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { getSummary, type SummaryResponse } from "../api";
+import { useState } from "react";
+import type { UsageDigest } from "@claude-proxy/core";
+import { getSummary, getTrends, type SummaryResponse } from "../api";
 import { AdviceCard } from "../components/AdviceCard";
 import { QueryState } from "../components/QueryState";
 import { StatCard } from "../components/StatCard";
-import { fmtInt, fmtPct, fmtUsd } from "../format";
+import { fmtInt, fmtPct } from "../format";
+import { METRICS } from "../metrics";
+
+const WINDOWS = [7, 14, 30];
 
 export function OverviewPage() {
-  const query = useQuery({ queryKey: ["summary"], queryFn: () => getSummary() });
-  const data = query.data;
+  const [days, setDays] = useState(7);
+  const summary = useQuery({ queryKey: ["summary"], queryFn: () => getSummary() });
+  // Per-day history feeds every card's mini chart; shares cache with /trends.
+  const trends = useQuery({ queryKey: ["trends", days], queryFn: () => getTrends(days) });
+  const data = summary.data;
 
   return (
-    <QueryState isLoading={query.isLoading} error={query.error}>
-      {data && <OverviewBody data={data} />}
+    <QueryState isLoading={summary.isLoading} error={summary.error}>
+      {data && (
+        <OverviewBody data={data} digests={trends.data?.digests ?? []} days={days} onDays={setDays} />
+      )}
     </QueryState>
   );
 }
 
-function OverviewBody({ data }: { data: SummaryResponse }) {
+function OverviewBody({
+  data,
+  digests,
+  days,
+  onDays,
+}: {
+  data: SummaryResponse;
+  digests: UsageDigest[];
+  days: number;
+  onDays: (d: number) => void;
+}) {
   const d = data.digest;
   const delta = Object.fromEntries((d.trend ?? []).map((t) => [t.field, t.deltaPct]));
 
   if (d.requestCount === 0) {
     return (
       <section>
-        <PageHead date={d.date} meta={data.meta} />
+        <PageHead date={d.date} meta={data.meta} days={days} onDays={onDays} />
         <div className="card empty">No Claude activity captured for {d.date}.</div>
       </section>
     );
@@ -32,20 +52,24 @@ function OverviewBody({ data }: { data: SummaryResponse }) {
 
   return (
     <section>
-      <PageHead date={d.date} meta={data.meta} />
+      <PageHead date={d.date} meta={data.meta} days={days} onDays={onDays} />
       <div className="grid stats">
-        <StatCard label="Real input tokens" value={fmtInt(d.tokens.realInput)} deltaPct={delta.realInput} />
-        <StatCard label="Output tokens" value={fmtInt(d.tokens.output)} deltaPct={delta.output} />
-        <StatCard label="Est. cost" value={fmtUsd(d.cost.total)} sub="approx." deltaPct={delta.cost} />
-        <StatCard label="Cache-hit ratio" value={fmtPct(d.tokens.cacheHitRatio * 100)} increaseIsBad={false} />
-        <StatCard label="Requests" value={fmtInt(d.requestCount)} deltaPct={delta.requestCount} />
-        <StatCard
-          label="Busiest hour"
-          value={d.busiestHour ? `${String(d.busiestHour.hour).padStart(2, "0")}:00` : "—"}
-          sub={d.busiestHour ? `${d.busiestHour.requestCount} req · UTC` : undefined}
-        />
-        <StatCard label="Tool overhead" value={fmtPct(d.toolOverheadPctOfInput)} sub="of input tokens" />
-        <StatCard label="Avg system prompt" value={`${fmtInt(d.avgSystemPromptBytes)} B`} />
+        {METRICS.map((m) => (
+          <StatCard
+            key={m.key}
+            label={m.label}
+            value={m.headline ? m.headline(d) : m.format(m.value(d))}
+            sub={m.sub?.(d)}
+            deltaPct={m.trendField ? delta[m.trendField] : undefined}
+            increaseIsBad={m.increaseIsBad}
+            metric={m.key}
+            spark={{
+              points: digests.map((x) => ({ date: x.date, value: m.value(x) })),
+              color: m.color,
+              format: m.format,
+            }}
+          />
+        ))}
       </div>
 
       <div className="grid two">
@@ -86,13 +110,32 @@ function OverviewBody({ data }: { data: SummaryResponse }) {
   );
 }
 
-function PageHead({ date, meta }: { date: string; meta: { files: number; parseErrors: number } }) {
+function PageHead({
+  date,
+  meta,
+  days,
+  onDays,
+}: {
+  date: string;
+  meta: { files: number; parseErrors: number };
+  days: number;
+  onDays: (d: number) => void;
+}) {
   return (
     <div className="pagehead">
-      <h1>Overview</h1>
-      <div className="muted">
-        {date} · {meta.files} request{meta.files === 1 ? "" : "s"}
-        {meta.parseErrors > 0 && ` · ${meta.parseErrors} skipped`}
+      <div>
+        <h1>Overview</h1>
+        <div className="muted">
+          {date} · {meta.files} request{meta.files === 1 ? "" : "s"}
+          {meta.parseErrors > 0 && ` · ${meta.parseErrors} skipped`}
+        </div>
+      </div>
+      <div className="segmented" aria-label="Mini-chart window">
+        {WINDOWS.map((w) => (
+          <button key={w} className={w === days ? "active" : ""} onClick={() => onDays(w)}>
+            {w}d
+          </button>
+        ))}
       </div>
     </div>
   );
