@@ -2096,7 +2096,7 @@ select.chat-permission:disabled {
   cursor: default;
   opacity: 0.7;
 }
-/* Ends the turn in flight — sits where the send controls are, only while one runs. */
+/* Ends the turn in flight; shown only while one runs. */
 button.chat-stop {
   background: none;
   border: 1px solid var(--bad);

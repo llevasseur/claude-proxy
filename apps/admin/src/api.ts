@@ -147,9 +147,8 @@ export interface FiltersResponse {
 /** `agent` runs a real Claude Code session and can change the repo; `chat` cannot. */
 export type ChatMode = "chat" | "agent";
 /**
- * The standing answer an agent turn's headless child gives to permission prompts, since
- * it has no one to ask. Mirrors `PERMISSION_MODES` in `server/src/chat.ts`; the server
- * rejects anything outside the set.
+ * The standing answer an agent turn's headless child gives to permission prompts.
+ * Mirrors `PERMISSION_MODES` in `server/src/chat.ts`; the server rejects anything else.
  */
 export const PERMISSION_MODES = ["default", "acceptEdits", "bypassPermissions", "plan"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
@@ -277,11 +276,7 @@ export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?d
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
 export const getFilters = () => get<FiltersResponse>("/api/filters");
 export const getChatConfig = () => get<ChatConfigResponse>("/api/chat/config");
-/**
- * The session id is chosen here rather than read off the response: it is the handle
- * `stopChat` needs, and the first turn — the long one — has to be stoppable while it
- * is still the thing that would have returned it.
- */
+/** The session id is chosen here, not read off the response, so the first turn is stoppable. */
 export const startChat = (
   sessionId: string,
   prompt: string,

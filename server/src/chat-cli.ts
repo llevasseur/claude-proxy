@@ -62,11 +62,7 @@ export interface CliToolUse {
   name: string;
   /** True when the tool returned an error result. */
   failed: boolean;
-  /**
-   * The failing `tool_result`'s own text, trimmed to a chip's worth. Without it every
-   * failure looks alike, and a permission denial — the most common one in a `--print`
-   * child — reads as an auth or upstream problem instead of the policy decision it is.
-   */
+  /** The failing `tool_result`'s own text, trimmed to a chip's worth. */
   error?: string;
 }
 
@@ -143,7 +139,6 @@ function applyUsage(into: CliTurnResult["usage"], u: Record<string, unknown>): v
   if (typeof u.cache_creation_input_tokens === "number") into.cacheCreation = u.cache_creation_input_tokens;
 }
 
-/** A failing tool_result can be a whole command's output; a chip needs the head of it. */
 const MAX_TOOL_ERROR_CHARS = 400;
 
 /**
@@ -156,8 +151,8 @@ const MAX_TOOL_ERROR_CHARS = 400;
  * is where a failure shows up — with the reason, which is carried through. A `chat`
  * turn has no tools.
  *
- * `partial` decodes the prefix of a run that was killed: an error `result` event is
- * then a report of the kill, not a failure to raise, so what did arrive still stands.
+ * `partial` decodes the prefix of a killed run: an error `result` event then reports the
+ * kill rather than a failure to raise, so what did arrive still stands.
  */
 export function decodeCliStream(raw: string, opts: { partial?: boolean } = {}): CliTurnResult {
   const out: CliTurnResult = {
@@ -338,15 +333,13 @@ const STOP_GRACE_MS = 3_000;
 /**
  * Run one headless turn. The prompt goes over stdin so it is never argv-quoted.
  *
- * The child is spawned **detached**, which makes it a process-group leader: an agent
- * turn spawns its own tools (shells, editors, subagents), and signalling the CLI alone
- * would orphan them still holding the repo. Ending a run therefore signals `-pid`, the
- * whole group — SIGTERM first, so the CLI can flush the events it has already decided
- * on, then SIGKILL for anything that ignores it.
+ * The child is spawned **detached** so it leads its own process group: an agent turn
+ * spawns its own tools, and signalling the CLI alone would orphan them still holding the
+ * repo. Ending a run signals `-pid`, the whole group — SIGTERM first so the CLI can
+ * flush, then SIGKILL for anything that ignores it.
  *
- * A run that is stopped or times out is not a failure to report: it returns the prefix
- * of the stream that arrived, so the dashboard shows the text and the tools the turn
- * got through instead of discarding them with the exit code.
+ * A stopped or timed-out run is not a failure: it returns the prefix of the stream that
+ * arrived, text and tools included.
  */
 export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   const args = cliArgs(input);
@@ -362,8 +355,8 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   child.stdout.on("data", (c: Buffer) => stdout.push(c));
   child.stderr.on("data", (c: Buffer) => stderr.push(c));
 
-  // Held on an object: both are written from callbacks, and a `let` would read back
-  // as its initializer across the await below.
+  // On an object: both are written from callbacks, and a `let` would read back as its
+  // initializer across the await below.
   const state = { interrupted: null as CliInterruption | null, sigkill: null as NodeJS.Timeout | null };
 
   /** Signal the child's whole group, falling back to the child alone where there isn't one. */
@@ -373,7 +366,7 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
       else child.kill(sig);
     } catch {
       try {
-        child.kill(sig); // no group (or already reaped) — the direct signal is all there is
+        child.kill(sig); // no group, or already reaped
       } catch {
         /* already gone */
       }

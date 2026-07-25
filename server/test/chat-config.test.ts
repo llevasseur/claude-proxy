@@ -1,5 +1,5 @@
-// The env default is only a default, but an unchecked one reaches the child and the
-// form's select, so it is validated the same way the request field is.
+// The env default is validated the same way the request field is: unchecked, it reaches
+// the child and the form's select.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveAgentConfig } from "../src/chat.js";
 

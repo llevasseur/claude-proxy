@@ -245,9 +245,8 @@ describe("decodeCliStream", () => {
 
 // --- runCliTurn, against a stand-in for `claude` -----------------------------
 //
-// The stop path is the one worth spawning a real process for: it has to reach the
-// tools an agent turn started, not just the CLI, and it has to keep the output the
-// run had already produced.
+// The stop path needs a real process: it has to reach the tools an agent turn started,
+// not just the CLI, and keep the output the run had already produced.
 
 const FIXTURES = fs.mkdtempSync(path.join(os.tmpdir(), "chat-cli-test-"));
 afterAll(() => fs.rmSync(FIXTURES, { recursive: true, force: true }));

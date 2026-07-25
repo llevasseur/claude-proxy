@@ -47,10 +47,9 @@ const CHAT_ROUTES = new Set(["/api/chat/sessions", "/api/chat/sessions/message",
  * Origins allowed to POST those routes — the dashboard's dev server by default,
  * overridable with a comma-separated `CHAT_ALLOWED_ORIGINS`.
  *
- * They cannot share the read-only `*`. A POST here can start an agent turn, which runs
- * commands in this checkout, so `*` would let any page the browser happens to be on
- * drive one. The header is scoped to these origins and a request that *declares* another
- * is refused outright, rather than relying on the browser to withhold the response.
+ * They cannot share the read-only `*`: a POST here can start an agent turn, which runs
+ * commands in this checkout. A request that *declares* another origin is refused
+ * outright, rather than relying on the browser to withhold the response.
  */
 const CHAT_ORIGINS = (process.env.CHAT_ALLOWED_ORIGINS ?? "http://localhost:5173,http://127.0.0.1:5173")
   .split(",")

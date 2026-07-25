@@ -49,7 +49,7 @@ export function SessionsPage() {
  * the proxy writes the transcript and the new thread arrives in the table below over
  * SSE, without this page inserting it. The same input then continues the chat.
  */
-/** What each standing answer means for the turn, in the one line the form has room for. */
+/** What each standing answer means for the turn. */
 const PERMISSION_NOTE: Record<PermissionMode, string> = {
   default: "every gated tool asks — and a headless child can't be asked, so commands are denied",
   acceptEdits: "edits are accepted, but every Bash command is auto-denied — no git writes",
@@ -144,7 +144,7 @@ function StartChatCard() {
         </span>
       </div>
 
-      {/* Per session, and pinned like the mode — the alternative is an env var and a restart. */}
+      {/* Permissions — per session, and pinned like the mode. */}
       {mode === "agent" && (
         <div className="chat-modes">
           <label className="muted chat-mode-note" htmlFor="chat-permission">
@@ -190,7 +190,7 @@ function StartChatCard() {
         </div>
       )}
 
-      {/* A cut-short turn still says what it managed, so label it rather than let it read as the answer. */}
+      {/* A cut-short turn's partial reply, labelled so it doesn't read as the answer. */}
       {chat?.interrupted && (
         <p className="muted chat-note">
           {chat.interrupted === "timeout" ? "Turn timed out" : "Turn stopped"} — this is what arrived before it ended.
@@ -248,10 +248,7 @@ function StartChatCard() {
   );
 }
 
-/**
- * One tool the turn ran. A failure carries its `tool_result` text, because "Bash ✗"
- * alone reads as a broken tool when it is usually the permission mode declining it.
- */
+/** One tool the turn ran; a failure carries the first line of its `tool_result` text. */
 function ToolChip({ tool }: { tool: ChatToolUse }) {
   const reason = tool.failed ? tool.error?.split("\n")[0]?.trim() : undefined;
   return (

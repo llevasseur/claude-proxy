@@ -64,21 +64,20 @@ const DEFAULT_AGENT_ALIAS = "claude";
 
 /**
  * The standing answers a `--print` child can be pinned to, since it has no one to ask.
- * They are not degrees of the same thing — what each one does to a *command* differs:
+ * They are not degrees of the same thing — what each does to a *command* differs:
  *
  *   - `default` — every gated tool asks, and asking fails in a `--print` child, so a
  *     Bash command that isn't already allowed by settings is denied.
- *   - `acceptEdits` — file edits are pre-approved; Bash is **not**. Every command that
- *     would have prompted is therefore auto-denied, which is why an agent turn under
- *     this default can rewrite a file but cannot `git commit` it.
+ *   - `acceptEdits` — file edits are pre-approved; Bash is **not**, so every command
+ *     that would have prompted is auto-denied.
  *   - `bypassPermissions` — nothing is asked and nothing is denied: commands run,
- *     including git writes. This is the mode `/task` needs to finish.
+ *     including git writes.
  *   - `plan` — read-only; the turn plans and does not act.
  */
 export const PERMISSION_MODES = ["default", "acceptEdits", "bypassPermissions", "plan"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
-/** Edits without commands — the safe default, and a per-session choice on the start form. */
+/** Edits without commands; the default the start form opens on. */
 const DEFAULT_PERMISSION_MODE: PermissionMode = "acceptEdits";
 
 const MAX_PROMPT_CHARS = 100_000;
@@ -258,10 +257,8 @@ export async function resolveAgentConfig(): Promise<AgentConfig> {
 }
 
 /**
- * `CHAT_AGENT_PERMISSION_MODE` is only the default the start form opens on, but an
- * unchecked one is worse than no default: the CLI would reject it a turn later, and the
- * form's select would have no option matching its own value. A typo falls back to
- * `acceptEdits` and says so, rather than propagating.
+ * `CHAT_AGENT_PERMISSION_MODE`, validated. An unrecognized value warns and falls back
+ * rather than propagating to the CLI and the form's select.
  */
 function resolveDefaultPermissionMode(raw: string | undefined): PermissionMode {
   const value = raw?.trim();
@@ -529,7 +526,7 @@ async function runTurn(config: ChatConfig, session: ChatSession, prompt: string)
       timeoutMs: REQUEST_TIMEOUT_MS,
       agentFlags: agent?.flags,
       permissionMode: agent?.permissionMode,
-      // Held for as long as the child runs, which is what `stopChat` reaches through.
+      // The handle `stopChat` reaches through while the child runs.
       onStart: (run) => {
         session.run = run;
       },
@@ -549,8 +546,8 @@ async function send(session: ChatSession, config: ChatConfig, logDir: string, pr
     session.messages.pop(); // keep the history exactly as the model last saw it
     throw err;
   }
-  // A CLI turn killed before the child opened its session left nothing to `--resume`,
-  // so the next turn has to open it rather than resume a session that never existed.
+  // A turn killed before the child opened its session left nothing to `--resume`, so the
+  // next turn has to open it instead.
   if (session.transport !== "cli" || result.cliSessionId) session.sent += 1;
   if (result.text) session.messages.push(textMessage("assistant", result.text));
   // The proxy writes the transcript after it has answered us, so this is the first
@@ -573,11 +570,7 @@ function pickMode(raw: unknown, fallback: ChatMode): ChatMode {
   return raw;
 }
 
-/**
- * A per-session `permissionMode`, falling back to the resolved default. It is a choice
- * on the start form because the alternative — `CHAT_AGENT_PERMISSION_MODE` — can only be
- * changed by restarting the server, and the mode a turn needs is a property of the turn.
- */
+/** A per-session `permissionMode`, falling back to the resolved default. */
 function pickPermissionMode(raw: unknown, fallback: PermissionMode): PermissionMode {
   if (raw === undefined || raw === null) return fallback;
   if (typeof raw !== "string" || !(PERMISSION_MODES as readonly string[]).includes(raw)) {
@@ -589,10 +582,9 @@ function pickPermissionMode(raw: unknown, fallback: PermissionMode): PermissionM
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The session id, which the caller may supply. The dashboard does, because it is also
- * the CLI's `--session-id` and the handle `POST /api/chat/stop` needs — and waiting for
- * the start response to learn it would mean the first turn, the long one, can't be
- * stopped. It must be a UUID (the CLI's requirement) and not already live here.
+ * The session id, which the caller may supply — it is also the CLI's `--session-id` and
+ * the handle `POST /api/chat/stop` needs, so the dashboard names it before the first
+ * turn. Must be a UUID and not already live here.
  */
 function pickSessionId(raw: unknown): string {
   if (raw === undefined || raw === null) return crypto.randomUUID();
@@ -625,8 +617,8 @@ export async function startChat(
     throw new Error(`chat is not configured: ${config.readyHint}`);
   }
 
-  // Pinned alongside the mode, and for the same reason: what a session was allowed to
-  // do must be answerable from its first request, not from the environment as it is now.
+  // Pinned at start, like the mode: what a session may do is fixed by its first request,
+  // not by the environment as it is now.
   const permissionMode = pickPermissionMode(input.permissionMode, config.agent?.permissionMode ?? DEFAULT_PERMISSION_MODE);
 
   const session: ChatSession = {
@@ -675,8 +667,8 @@ function requireSession(raw: unknown): ChatSession {
 
 /**
  * End the turn in flight without ending the session: the child's whole process group is
- * signalled, and the `send` still in progress returns the partial reply rather than an
- * error. `stopped: false` means there was nothing running — a no-op, not a failure.
+ * signalled and the `send` in progress returns the partial reply rather than an error.
+ * `stopped: false` means there was nothing running — a no-op, not a failure.
  */
 export function stopChat(input: { sessionId: unknown }): { sessionId: string; stopped: boolean } {
   const session = requireSession(input.sessionId);
@@ -687,8 +679,8 @@ export function stopChat(input: { sessionId: unknown }): { sessionId: string; st
 
 /**
  * Forget a chat — what the dashboard's "New chat" does. Without it the Map only ever
- * grows: every session a browser tab ever started stays resident for the life of the
- * process. Any turn in flight is stopped first, since nobody is left to read its reply.
+ * grows: every session a tab started stays resident for the life of the process. Any
+ * turn in flight is stopped first.
  */
 export function endChat(input: { sessionId: unknown }): { sessionId: string; stopped: boolean } {
   const session = requireSession(input.sessionId);
