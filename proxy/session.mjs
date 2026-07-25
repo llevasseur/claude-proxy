@@ -13,7 +13,9 @@
  *     `messages.slice(lastSeenCount)` — we distill and append, never rewrite.
  *   - One-shot helpers are filtered by growth: a thread's first sighting is
  *     buffered, and only flushed once it reappears larger. Seen once → no file.
- *     A client declaring itself interactive (`x-claude-proxy-chat: 1`) is exempt.
+ *     A client declaring itself interactive is exempt, by header
+ *     (`x-claude-proxy-chat: 1`) or by a `.chat/<session id>.json` marker for a
+ *     client that cannot set one.
  *   - Per-thread progress mirrors to a `.state.json` sidecar so a restart resumes
  *     instead of re-appending.
  *
@@ -65,6 +67,23 @@ const firstHeader = (h, k) => {
  * growth filter that suppresses one-shot helpers. Claude Code never sends this header.
  */
 const isInteractiveChat = (headers) => firstHeader(headers, "x-claude-proxy-chat") === "1";
+
+/** Marker files the dashboard writes to declare a session id interactive. */
+export const chatMarkersDir = (logDir) => path.join(logDir, ".chat");
+
+/**
+ * The same exemption, claimed out-of-band. A dashboard chat carried by a headless
+ * Claude Code process cannot add a header — the CLI builds its own — so the server
+ * announces the session id as a file before it spawns, and this reads it back.
+ */
+const isDeclaredChat = (logDir, sessionId) => {
+  if (!sessionId) return false;
+  try {
+    return fs.existsSync(path.join(chatMarkersDir(logDir), `${sessionId}.json`));
+  } catch {
+    return false;
+  }
+};
 
 /** Pull the readable text out of a tool_result block (string or block array). */
 function resultText(b) {
@@ -337,7 +356,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     // seen once and never reaches disk. The header is built at flush time so a
     // title claimed in between rides into it. An interactive chat needs no proof
     // of growth — it is confirmed on sight.
-    if (entry.pending === null && !isInteractiveChat(headers)) {
+    if (entry.pending === null && !isInteractiveChat(headers) && !isDeclaredChat(logDir, sessionId)) {
       entry.pending = lines;
       entry.count = total;
       return;

@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { decodeResponse, extractSession, writeAuditSidecar, sumInputTokens, auditRequest, stripWithheldTools, WITHHELD_TOOLS, stripInjectedReminders, INJECTED_REMINDERS } from "./proxy.mjs";
-import { threadIdFor, firstUserText, distillMessage, distillMessages, appendSession, sessionsDir, rootPrompt, isTitleRequest, extractTitle, _resetThreads } from "./session.mjs";
+import { threadIdFor, firstUserText, distillMessage, distillMessages, appendSession, sessionsDir, chatMarkersDir, rootPrompt, isTitleRequest, extractTitle, _resetThreads } from "./session.mjs";
 
 // Non-streaming response body: a single JSON message object with usage at the top level, no SSE frames.
 const nonStreamingBody = JSON.stringify({
@@ -234,8 +234,8 @@ test("threadIdFor: stable per root, namespaced by session, null when no root", (
   assert.notEqual(a, threadIdFor("sess-2", msgs)); // session-namespaced
   assert.notEqual(a, threadIdFor("sess-1", [userText("Different task")]));
   assert.equal(threadIdFor("sess-1", []), null);
-  // Pinned digest: `threadIdFor` in server/src/chat.ts mirrors this formula. If this
-  // vector changes, that mirror has to change with it.
+  // Pinned digest: thread ids name files on disk and are stored in `.state.json`,
+  // so changing this formula orphans every transcript already written.
   assert.equal(a, "ebd92420bd68e6f7");
   // A tool-result-only user turn is not a root — first *text* wins.
   assert.equal(firstUserText([{ role: "user", content: [{ type: "tool_result", content: "x" }] }, userText("real root")]), "real root");
@@ -355,6 +355,35 @@ test("appendSession: an interactive chat is confirmed on sight, no growth needed
     headers: { "x-claude-code-session-id": "sess-chat" },
   });
   assert.equal(fs.existsSync(path.join(dir, `${threadIdFor("sess-chat", [userText("classify this")])}.md`)), false);
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test("appendSession: a marker file exempts a chat that cannot send the header", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-marker-"));
+  // What the dashboard writes before spawning a headless CLI turn: the CLI builds
+  // its own headers, so the session id is declared on disk instead.
+  fs.mkdirSync(chatMarkersDir(logDir), { recursive: true });
+  fs.writeFileSync(path.join(chatMarkersDir(logDir), "sess-headless.json"), JSON.stringify({ declaredAt: "2026-07-25T00:00:00.000Z" }));
+
+  const headers = { "x-claude-code-session-id": "sess-headless" };
+  const m1 = [userText("Explain the skim cache")];
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-5", messages: m1 }, headers });
+
+  const md = path.join(sessionsDir(logDir), `${threadIdFor("sess-headless", m1)}.md`);
+  assert.match(fs.readFileSync(md, "utf8"), /## Task: Explain the skim cache/, "declared chat is confirmed on sight");
+
+  // An undeclared session id under the same store still buffers.
+  _resetThreads();
+  const other = [userText("summarize this diff")];
+  appendSession({
+    logDir,
+    reqPath: "/v1/messages",
+    reqJson: { model: "claude-opus-5", messages: other },
+    headers: { "x-claude-code-session-id": "sess-plain" },
+  });
+  assert.equal(fs.existsSync(path.join(sessionsDir(logDir), `${threadIdFor("sess-plain", other)}.md`)), false);
 
   fs.rmSync(logDir, { recursive: true, force: true });
 });
