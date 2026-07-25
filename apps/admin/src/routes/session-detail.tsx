@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { SessionDetail } from "../api";
-import { getSession } from "../api";
+import { getRunningChats, getSession, getSessionBreakdown, stopChat } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { Markdown } from "../components/Markdown";
@@ -53,6 +53,8 @@ function SessionBody({ session }: { session: SessionDetail }) {
         </div>
       )}
 
+      {meta.sessionId && <RunningChatBar sessionId={meta.sessionId} />}
+
       <div className="grid stats">
         <StatTile label="Model" value={meta.model ?? "—"} />
         <StatTile label="Started" value={meta.started ? fmtLocalTsShort(meta.started) : "—"} />
@@ -60,6 +62,7 @@ function SessionBody({ session }: { session: SessionDetail }) {
         <StatTile label="Tools" value={fmtInt(meta.tools)} />
         <StatTile label="Decisions" value={fmtInt(meta.decisions)} />
         <ErrorsStatTile threadId={meta.threadId} errors={meta.errors} />
+        <BreakdownStatTile threadId={meta.threadId} sessionId={meta.sessionId} />
       </div>
 
       {meta.sessionId && (
@@ -92,6 +95,58 @@ function SessionBody({ session }: { session: SessionDetail }) {
   );
 }
 
+/** How often to re-ask whether this session's turn is still running. */
+const RUNNING_POLL_MS = 3_000;
+/** Shared so stopping a turn can invalidate the poll it answers. */
+const RUNNING_KEY = ["chat", "running"];
+
+/**
+ * Stop, offered from the transcript itself.
+ *
+ * The tab that started a chat holds the only Stop button in component state, so a
+ * navigation — or the Sessions list refreshing under it — takes that button away while
+ * the child keeps working. The server still knows the turn is in flight, and a running
+ * chat's CLI session id is the same `session:` this transcript records, so this page can
+ * recognise itself in that list and stop the turn without the starting tab.
+ *
+ * Renders nothing at all when this session has no turn running.
+ */
+function RunningChatBar({ sessionId }: { sessionId: string }) {
+  const client = useQueryClient();
+  const running = useQuery({
+    queryKey: RUNNING_KEY,
+    queryFn: getRunningChats,
+    refetchInterval: RUNNING_POLL_MS,
+  });
+  // Re-ask on success rather than waiting out the poll: a bar that lingers after the
+  // turn it names has ended reads as a Stop that did not take, and invites a second one.
+  const stop = useMutation({
+    mutationFn: () => stopChat(sessionId),
+    onSuccess: () => client.invalidateQueries({ queryKey: RUNNING_KEY }),
+  });
+  const chat = running.data?.running.find((r) => r.sessionId === sessionId);
+  if (!chat) return null;
+
+  // What it is really running under, which is the answer when a turn is full of denials.
+  const permission = chat.effectivePermissionMode ?? chat.permissionMode;
+  const drifted = !!chat.effectivePermissionMode && chat.effectivePermissionMode !== chat.permissionMode;
+
+  return (
+    <div className="session-running">
+      <span className="session-running-dot" aria-hidden="true" />
+      <span>
+        {chat.mode === "agent" ? "Agent" : "Chat"} turn running since {fmtLocalTsShort(chat.startedAt)}
+        {permission && ` · ${permission}`}
+      </span>
+      {drifted && <span className="session-running-warn">asked for {chat.permissionMode}</span>}
+      <button type="button" className="chat-stop" onClick={() => stop.mutate()} disabled={stop.isPending}>
+        {stop.isPending ? "Stopping…" : "Stop"}
+      </button>
+      {stop.error && <span className="session-running-warn">{(stop.error as Error).message}</span>}
+    </div>
+  );
+}
+
 /** Errors stat tile: links to the per-session error drill-down when non-zero, a muted zero otherwise. */
 function ErrorsStatTile({ threadId, errors }: { threadId: string; errors: number }) {
   if (errors === 0) {
@@ -109,6 +164,56 @@ function ErrorsStatTile({ threadId, errors }: { threadId: string; errors: number
       <div className="stat-value">{fmtInt(errors)}</div>
       <div className="stat-foot">
         <span className="stat-error-cta">view details →</span>
+      </div>
+    </Link>
+  );
+}
+
+/**
+ * Peak-context tile: links to the Request breakdown of this session's largest
+ * captured request. Falls back to a muted "—" naming the state — loading, no
+ * session id, lookup failed, or nothing matched.
+ *
+ * Requests match on the session id, so a transcript without one has nothing to
+ * fetch and the query stays disabled.
+ */
+function BreakdownStatTile({ threadId, sessionId }: { threadId: string; sessionId: string | null }) {
+  const query = useQuery({
+    queryKey: ["session-breakdown", threadId],
+    queryFn: () => getSessionBreakdown(threadId),
+    enabled: sessionId !== null,
+  });
+  const peak = query.data?.peak;
+
+  if (!peak) {
+    const foot = !sessionId
+      ? "no session id"
+      : query.isError
+        ? "lookup failed"
+        : query.isPending
+          ? "loading…"
+          : "no captured requests";
+    return (
+      <div className="card stat">
+        <div className="stat-label">Peak context</div>
+        <div className="stat-value muted">—</div>
+        <div className="stat-foot">
+          <span className="muted">{foot}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const count = query.data?.requestCount ?? 0;
+  return (
+    <Link to="/context/$file" params={{ file: peak.file }} className="card stat stat-drill">
+      <div className="stat-label">Peak context</div>
+      <div className="stat-value">{fmtInt(peak.realInput)}</div>
+      <div className="stat-foot">
+        <span className="stat-drill-cta">request breakdown →</span>
+        <span className="muted">
+          of {fmtInt(count)} request{count === 1 ? "" : "s"}
+        </span>
       </div>
     </Link>
   );

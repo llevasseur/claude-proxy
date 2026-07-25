@@ -13,6 +13,9 @@
  *     `messages.slice(lastSeenCount)` — we distill and append, never rewrite.
  *   - One-shot helpers are filtered by growth: a thread's first sighting is
  *     buffered, and only flushed once it reappears larger. Seen once → no file.
+ *     A client declaring itself interactive is exempt, by header
+ *     (`x-claude-proxy-chat: 1`) or by a `.chat/<session id>.json` marker for a
+ *     client that cannot set one.
  *   - Per-thread progress mirrors to a `.state.json` sidecar so a restart resumes
  *     instead of re-appending.
  *
@@ -56,6 +59,30 @@ const asBlocks = (content) =>
 const firstHeader = (h, k) => {
   const v = (h ?? {})[k];
   return (Array.isArray(v) ? v[0] : v) ?? null;
+};
+
+/**
+ * A client declaring itself an interactive chat (the dashboard's `POST /api/chat/*`).
+ * Such a thread is a real conversation from its first turn, so it is exempt from the
+ * growth filter that suppresses one-shot helpers. Claude Code never sends this header.
+ */
+const isInteractiveChat = (headers) => firstHeader(headers, "x-claude-proxy-chat") === "1";
+
+/** Marker files the dashboard writes to declare a session id interactive. */
+export const chatMarkersDir = (logDir) => path.join(logDir, ".chat");
+
+/**
+ * The same exemption, claimed out-of-band. A dashboard chat carried by a headless
+ * Claude Code process cannot add a header — the CLI builds its own — so the server
+ * announces the session id as a file before it spawns, and this reads it back.
+ */
+const isDeclaredChat = (logDir, sessionId) => {
+  if (!sessionId) return false;
+  try {
+    return fs.existsSync(path.join(chatMarkersDir(logDir), `${sessionId}.json`));
+  } catch {
+    return false;
+  }
 };
 
 /** Pull the readable text out of a tool_result block (string or block array). */
@@ -327,15 +354,16 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     // Unconfirmed thread: buffer the first sighting's lines; a one-shot helper is
     // seen once and never reaches disk. The header is built at flush time so a
-    // title claimed in between rides into it.
-    if (entry.pending === null) {
+    // title claimed in between rides into it. An interactive chat needs no proof
+    // of growth — it is confirmed on sight.
+    if (entry.pending === null && !isInteractiveChat(headers) && !isDeclaredChat(logDir, sessionId)) {
       entry.pending = lines;
       entry.count = total;
       return;
     }
 
-    // Growth → a real thread. Flush header + buffer + new turns.
-    appendLines(mdPath, [header(threadId, entry), ...entry.pending, ...lines]);
+    // Growth (or a declared chat) → a real thread. Flush header + buffer + new turns.
+    appendLines(mdPath, [header(threadId, entry), ...(entry.pending ?? []), ...lines]);
     entry.started = true;
     entry.titled = !!entry.title; // the header already carries any known title
     entry.subtitled = !!entry.root; // the header already carries any known subtitle

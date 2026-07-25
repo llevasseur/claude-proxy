@@ -14,6 +14,7 @@ import {
   normalizePlugins,
   hookPluginLoadExpectations,
   parseSessionErrors,
+  sessionContextPeak,
   withheldReport,
   type Advice,
   type AliasLoadExpectation,
@@ -26,6 +27,7 @@ import {
   type RequestBreakdown,
   type RequestMessageDetail,
   type RequestToolDetail,
+  type SessionContextPeak,
   type SessionError,
   type SessionMeta,
   type SkimDigest,
@@ -161,19 +163,28 @@ export interface ContextResponse {
 }
 
 /**
- * Context-size analytics over the last `days` days: average / median / max real
- * input tokens, plus the largest requests (each with a `file` handle for the
- * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
+ * Sidecars read with `includeFile: true`, reduced to the context entries that
+ * parsed. A sidecar with no `__file` handle has nothing to drill into, so it is
+ * dropped.
  */
-export async function buildContext(logDir: string, days: number, now: Date = new Date()): Promise<ContextResponse> {
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
   const entries: ContextEntry[] = [];
   for (const s of sidecars) {
     const file = (s as { __file?: string }).__file;
     const entry = file ? toContextEntry(s, file) : null;
     if (entry) entries.push(entry);
   }
-  return { summary: summarizeContext(entries), meta: { days, files, parseErrors } };
+  return entries;
+}
+
+/**
+ * Context-size analytics over the last `days` days: average / median / max real
+ * input tokens, plus the largest requests (each with a `file` handle for the
+ * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
+ */
+export async function buildContext(logDir: string, days: number, now: Date = new Date()): Promise<ContextResponse> {
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+  return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
 }
 
 export interface ContextDetailResponse {
@@ -308,6 +319,36 @@ export interface SessionErrorsResponse {
 export async function buildSessionErrors(logDir: string, id: string): Promise<SessionErrorsResponse> {
   const { meta, content } = await readSession(logDir, id);
   return { threadId: id, meta, errors: parseSessionErrors(content) };
+}
+
+export interface SessionBreakdownResponse extends SessionContextPeak {
+  threadId: string;
+  /** The Claude Code session id the requests were matched on; null if the transcript has none. */
+  sessionId: string | null;
+  meta: { files: number; parseErrors: number };
+}
+
+/**
+ * The captured request a session links to for its breakdown: the largest one sent
+ * under its session id. Scans sidecars from the session's start date onward — a
+ * session's requests never predate it — or the whole log when it has no start.
+ */
+export async function buildSessionBreakdown(
+  logDir: string,
+  id: string,
+  now: Date = new Date(),
+): Promise<SessionBreakdownResponse> {
+  const { meta } = await readSession(logDir, id);
+  const sessionId = meta.sessionId;
+  if (!sessionId) {
+    return { threadId: id, sessionId: null, requestCount: 0, peak: null, meta: { files: 0, parseErrors: 0 } };
+  }
+
+  const since = meta.started ? meta.started.slice(0, 10) : undefined;
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const entries = toContextEntries(sidecars);
+
+  return { threadId: id, sessionId, ...sessionContextPeak(entries, sessionId), meta: { files, parseErrors } };
 }
 
 export interface SkimResponse {
