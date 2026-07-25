@@ -14,6 +14,7 @@
     "@claude-proxy/core": "workspace:*",
     "@tanstack/react-query": "^5.62.7",
     "@tanstack/react-router": "^1.87.0",
+    "lucide-react": "^1.26.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.8.1"

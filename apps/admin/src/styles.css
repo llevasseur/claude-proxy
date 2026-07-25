@@ -117,34 +117,20 @@ button:focus-visible {
   gap: 2px;
   margin-top: 30px;
 }
-.stations::before {
-  content: "";
-  position: absolute;
-  left: 12px;
-  top: 16px;
-  bottom: 16px;
-  width: 1px;
-  background: var(--line);
-}
 .station {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 10px 9px 0;
+  gap: 10px;
+  /* Tight left inset keeps the longest label on one line. */
+  padding: 9px 8px 9px 4px;
   text-decoration: none;
   border-radius: 8px;
 }
-.station-node {
-  width: 9px;
-  height: 9px;
-  margin-left: 7px;
-  border-radius: 50%;
-  border: 1px solid var(--faint);
-  background: var(--ink);
+.station-icon {
   flex: none;
-  z-index: 1;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  color: var(--faint);
+  transition: color 0.15s ease, filter 0.15s ease;
 }
 .station-label {
   font-size: 13.5px;
@@ -162,18 +148,15 @@ button:focus-visible {
 .station:hover .station-label {
   color: var(--text);
 }
-.station:hover .station-node {
-  border-color: var(--muted);
+.station:hover .station-icon {
+  color: var(--muted);
 }
 .station.active .station-label {
   color: var(--text);
 }
-.station.active .station-node {
-  border-color: var(--signal);
-  background: var(--signal);
-  box-shadow:
-    0 0 0 3px rgba(70, 224, 192, 0.14),
-    0 0 10px rgba(70, 224, 192, 0.55);
+.station.active .station-icon {
+  color: var(--signal);
+  filter: drop-shadow(0 0 6px rgba(70, 224, 192, 0.5));
 }
 .station.active::before {
   content: "";
@@ -186,10 +169,80 @@ button:focus-visible {
   border-radius: 0 2px 2px 0;
 }
 
+/* collapse toggle */
+.rail-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  color: var(--faint);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.rail-toggle:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
 .rail-foot {
   margin-top: auto;
   padding-top: 16px;
   border-top: 1px solid var(--line);
+}
+
+/* collapsed rail — icons only, above the top-bar breakpoint */
+@media (min-width: 861px) {
+  .app {
+    transition: grid-template-columns 0.18s ease;
+  }
+  .app--rail-collapsed {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .app--rail-collapsed .rail {
+    padding: 24px 12px;
+  }
+  .app--rail-collapsed .rail-head {
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 2px 0 0;
+  }
+  .app--rail-collapsed .brand,
+  .app--rail-collapsed .brand-tag {
+    display: none;
+  }
+  .app--rail-collapsed .rail-toggle {
+    margin-left: 0;
+  }
+  .app--rail-collapsed .station {
+    justify-content: center;
+    padding: 10px 0;
+  }
+  /* Visually hidden, not removed — the link needs an accessible name. */
+  .app--rail-collapsed .station-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .app--rail-collapsed .station-hint {
+    display: none;
+  }
+  .app--rail-collapsed .station.active::before {
+    left: -12px;
+  }
+  .app--rail-collapsed .health {
+    justify-content: center;
+  }
+  .app--rail-collapsed .health-text {
+    display: none;
+  }
 }
 
 /* health signal */
@@ -920,17 +973,16 @@ a.pager-btn:hover {
     margin-top: 0;
     gap: 4px;
   }
-  .stations::before {
-    display: none;
-  }
   .station {
     padding: 6px 12px;
   }
   .station.active {
     background: var(--surface-2);
   }
-  .station-node,
   .station-hint {
+    display: none;
+  }
+  .rail-toggle {
     display: none;
   }
   .station.active::before {
