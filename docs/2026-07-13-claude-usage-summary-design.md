@@ -14,6 +14,17 @@ timestamp: 2026-07-13
 `~/Documents/ghub/personal/claude-proxy` and `~/Documents/ghub/personal/test-eve/my-agent` (both
 under the personal profile). **Does not touch `hyperion-nexus-app`.**
 
+**Current state (2026-07-24):** the capture and digest shipped, but not at the paths named below.
+`claude-proxy` became a pnpm monorepo two days after this spec
+([ADR 0002](adrs/0002-monorepo-with-pnpm-tanstack-and-node.md),
+[the monorepo spec](specs/2026-07-15-monorepo-admin-dashboard-design.md)), so the proxy is
+`proxy/proxy.mjs`, not a root `proxy.mjs`. Components 4 and 5 — planned as `scripts/lib/
+usage-digest.ts` and `scripts/usage-summary.ts` inside `test-eve/my-agent` — landed **in this
+repo** instead, as `packages/core/src/digest.ts` (+ `advice.ts`, `pricing.ts`) and
+`server/src/daily-summary.ts` (`pnpm --filter server summary [date]`), with the same numbers also
+served to the [admin dashboard](features/admin-dashboard-for-claude-proxy-usage.md). Read the
+per-component sections below as point-in-time design history.
+
 ## Goal
 
 Passively capture every Claude Code request device-wide (including sessions launched from the

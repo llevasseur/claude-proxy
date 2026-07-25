@@ -1,8 +1,9 @@
 ---
+type: ticket
 id: "003"
 title: Cache key & invalidation policy
 map: map-proxy-skim
-labels: [wayfinder:grilling]
+labels: ["wayfinder:grilling"]
 assignee: null
 blockedBy: ["002"]
 status: open

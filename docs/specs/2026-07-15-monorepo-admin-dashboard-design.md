@@ -10,7 +10,20 @@ timestamp: 2026-07-15
 
 **Date:** 2026-07-15
 **Status:** Approved (brainstorming complete)
-**Builds on:** [`docs/2026-07-13-claude-usage-summary-design.md`](../../2026-07-13-claude-usage-summary-design.md)
+**Builds on:** [`docs/2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md)
+**Decision record:** [`adrs/0002-monorepo-with-pnpm-tanstack-and-node.md`](../adrs/0002-monorepo-with-pnpm-tanstack-and-node.md)
+
+**Current state (2026-07-24):** shipped, with three departures from this spec. The proxy is no
+longer a byte-for-byte pass-through — it strips withheld tool schemas (`EndConversation`) and
+harness-injected reminders from outbound requests (`proxy/proxy.mjs`,
+`packages/core/src/filters.ts`); it is still zero-dependency and runs under bare `node`.
+Session-level attribution, listed out of scope below, was later built (`proxy/session.mjs`,
+`packages/core/src/sessions.ts`, the `/api/sessions*` routes) — see
+[Session transcripts](../features/session-transcripts.md). The proxy now carries its own
+`node --test` suite, so `packages/core` is no longer the only tested code. The server has grown
+from the four read-only routes below to 22 (20 JSON + 2 SSE streams); the
+[admin dashboard feature doc](../features/admin-dashboard-for-claude-proxy-usage.md) tracks the
+current surface. Read the rest as point-in-time design history.
 
 ## Goal
 
@@ -45,13 +58,13 @@ claude-proxy/                 (monorepo root — pnpm workspaces)
   server/                     Node API over the logs dir (uses packages/core)
     src/
       logs.ts                 read + parse audit sidecars from LOG_DIR
-      routes.ts               request handling
+      api.ts                  request handling (shipped as api.ts, not routes.ts)
       server.ts               http server entry
       daily-summary.ts        headless daily job entry (reuses core)
   apps/
     admin/                    Vite + TanStack Router + TanStack Query dashboard
       src/...
-  docs/                       okq OKF bundle (adrs/ + features/) + design specs
+  docs/                       okq OKF bundle (adrs/, features/, specs/, wayfinder/)
   logs/                       proxy capture output (gitignored)
 ```
 
@@ -110,7 +123,7 @@ Extracts the deterministic logic from the daily-summary spec into a reusable, un
 
 ### `apps/admin` — TanStack dashboard
 
-- **Vite + React + TanStack Router (file/route tree) + TanStack Query** (data fetching/caching).
+- **Vite + React + TanStack Router (code-defined route tree) + TanStack Query** (data fetching/caching).
 - Talks to the server API (base URL via `VITE_API_BASE`, default `http://localhost:8788`).
 - Views:
   - **Overview** — today's token burn & est. cost, cache-hit ratio, request count, busiest hour,
