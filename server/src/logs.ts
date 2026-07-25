@@ -136,18 +136,14 @@ export async function readSidecars(
   return { sidecars, files: files.length, parseErrors };
 }
 
-/**
- * Where the daily summary job parks each past day's raw sidecars once it rolls
- * them out of the live dir: `<logDir>/archive/<YYYY-MM-DD>/`.
- */
+/** `<logDir>/archive/<YYYY-MM-DD>/` — where the summary job parks each past day's sidecars. */
 export function rawArchiveDayDir(logDir: string, date: string): string {
   return path.join(logDir, "archive", date);
 }
 
 /**
- * Read one archived day's sidecars straight out of `<logDir>/archive/<date>/`.
- * Returns an empty result (rather than throwing) when that day was never
- * archived or has already been pruned past the retention window.
+ * One archived day's sidecars from `<logDir>/archive/<date>/`. Empty result rather
+ * than a throw when the day was never archived or has been pruned.
  */
 export async function readArchivedDay(
   logDir: string,

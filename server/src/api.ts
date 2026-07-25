@@ -82,10 +82,8 @@ export interface TrendsResponse {
   meta: { days: number; files: number; parseErrors: number; archivedDays: number };
 }
 
-// A past day's archived raw logs are immutable, so the digest computed from them
-// is cached for the process lifetime — a 30-day window otherwise re-reads tens of
-// thousands of sidecars on every request. Misses aren't cached: a day can still
-// gain its archive once the summary job runs.
+// Archived days are immutable, so their digests are cached for the process
+// lifetime. Misses aren't cached — a day can still gain its archive later.
 const rawArchiveDigests = new Map<string, UsageDigest>();
 
 /** Test-only: drop the in-process raw-archive digest cache. */
