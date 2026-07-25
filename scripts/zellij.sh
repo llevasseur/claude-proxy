@@ -13,12 +13,9 @@ trap cleanup EXIT HUP INT TERM
 
 cd "${REPO_ROOT}"
 
-# The panes inherit this shell's env, so an unconfigured CLAUDE_PROXY_STORE breaks
-# everything downstream of the transcript store (`/revive --source proxy`, the
-# session views) without any pane saying so. Check here, while there is still a
-# plain terminal to print to — once zellij takes over the screen the warning is
-# gone. Read-only, and a failure only warns: the dashboard and proxy panes work
-# fine without the store, so this must not stand between you and them.
+# The panes inherit this shell's env, and no pane reports an unconfigured
+# CLAUDE_PROXY_STORE. Check before zellij takes over the screen; warn only, since
+# the proxy and dashboard panes work without the store.
 if ! env_report="$(bash scripts/proxy-store-env.sh --check 2>&1)"; then
   printf '%s\n\n' "${env_report}" >&2
   echo "environment incomplete — features that read the transcript store stay broken until this is fixed." >&2
