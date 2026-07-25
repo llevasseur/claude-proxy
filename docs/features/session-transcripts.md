@@ -69,10 +69,20 @@ carried the fix.
   sorts, and clicking again flips direction. A non-zero **Errors** count links straight to that
   session's errors page. Empty state: **"No session transcripts yet."**
 - **Session detail** (`/sessions/$id`) — title and subtitle as a heading, then stat tiles for
-  **Model**, **Started**, **Tasks**, **Tools**, **Decisions**, and **Errors** (the Errors tile
-  is itself a link — **"view details →"** — when non-zero), the underlying session id and file
-  size, and a **"Transcript"** card with a **Pretty** / **Raw** toggle (rendered Markdown vs.
-  the raw file).
+  **Model**, **Started**, **Tasks**, **Tools**, **Decisions**, **Errors** (the Errors tile
+  is itself a link — **"view details →"** — when non-zero), and **Peak context**, the underlying
+  session id and file size, and a **"Transcript"** card with a **Pretty** / **Raw** toggle
+  (rendered Markdown vs. the raw file).
+- **Peak context → Request breakdown** — the **Peak context** tile links into the Context
+  section's [request breakdown](context-size-analytics.md) (`/context/$file`) for this session's
+  largest captured request, showing its real input tokens over **"request breakdown →"** and how
+  many requests the session sent. `GET /api/sessions/breakdown?id=<threadId>` reads the
+  transcript's session id, scans `.audit.json` sidecars from the session's start date onward
+  (a session's requests never predate it), and returns the largest match. Requests are attributed
+  by the sidecar's `session.sessionId`, which the proxy reads off the `x-claude-code-session-id`
+  header — that id spans the whole agent family, so the peak may belong to a subagent of the
+  thread being viewed. The tile reads a muted **—** while the lookup runs, on a transcript with
+  no session id, and on legacy sidecars written before `session` was captured.
 - **Session errors** (`/sessions/$id/errors`) — **"Errored tool results captured in this
   session"**: one **"Error #n"** entry per `- ✗` line, each tagged with the **Task** it fell
   under and the **Tool** most likely responsible (the nearest preceding tool-call line, or
@@ -121,19 +131,23 @@ transcript.
 - [x] The sessions list and one session both update live over SSE (400 ms / 150 ms debounce,
       25 s heartbeat), with the connection state shown on screen and the one-shot query as
       fallback.
+- [x] A session's detail page links to the Request breakdown of its largest captured request,
+      and degrades to a muted tile when no sidecar carries the session's id.
 - [x] Session-id and thread-id handling is validated server-side against path traversal.
 - [x] The session parsers (`parseSessionTranscript`, `parseSessionErrors`) are unit-tested in
       `packages/core/test/sessions.test.ts`.
 
 ## Open questions
 
-- `packages/core/src/types.ts` says `AuditSidecar` "mirrors exactly what `proxy/proxy.mjs`
-  emits — keep the two in sync", but the sidecar's `session` block (`sessionId`, `app`,
-  `userAgent`, `account`, `metadataSessionId`, `deviceId`, from `extractSession`) has no
-  counterpart on the type and isn't checked by `isAuditSidecar`. The session layer reads
-  transcripts instead, so nothing consumes it today: should the block be typed (and then
-  actually used — e.g. to join sidecar token/cost data onto a thread) or dropped from the
-  sidecar?
+- The sidecar's `session` block is now typed as `AuditSession` and consumed — `sessionId` joins
+  a transcript to its captured requests for the Peak context link — but it is still optional and
+  unchecked by `isAuditSidecar`, since legacy sidecars predate it. Once those age out, should the
+  guard require it?
+- Attribution is per session id, not per thread: a session id covers the main agent, its
+  subagents, and one-shot helpers, so a thread's Peak context can be a subagent's request. The
+  thread key is a hash of the session id plus the first user message, which only the request
+  body carries — recomputing it would mean reading every `.request.txt` (megabytes each) instead
+  of the sidecars. Worth having the proxy write the thread id into the sidecar?
 - The errors page is the one session view with no SSE subscription and no **Live** indicator —
   worth streaming it too, or is an error list stable enough to leave on the one-shot query?
 
