@@ -58,6 +58,13 @@ Twelve stations in the side rail, several with drill-down subpages beneath them:
 - **Advice** (`/advice`) — coaching cards derived deterministically from the day's digest
   (dominant tool, tool overhead, low cache-hit, large system prompt, high cost).
 
+Each station carries a [lucide](https://lucide.dev) icon. A toggle in the rail head
+collapses the rail to a 64px icon-only strip and back; the choice is persisted in
+`localStorage` under `admin:rail-collapsed`, so it survives a reload. Collapsed labels
+stay in the accessibility tree (visually hidden, not removed) and surface as hover
+tooltips. Below 860px the rail already folds into a top bar, where collapsing means
+nothing — there the toggle is hidden and the persisted state is ignored.
+
 Data comes from the `server` API — 22 read-only routes (20 JSON plus the two SSE streams
 `/api/sessions/stream` and `/api/sessions/session/stream`) — which computes everything via
 `packages/core`. Advice is produced by a `HeuristicAdviceProvider` behind an
