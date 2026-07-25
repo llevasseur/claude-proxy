@@ -212,6 +212,33 @@ start, exactly what's missing. Both paths are tunable per env — `CHAT_MODEL`,
 `CHAT_CLI_CWD` for the child process. Details in
 [docs/features/dashboard-chat-sessions.md](docs/features/dashboard-chat-sessions.md).
 
+#### Agent mode — what a dashboard prompt can do
+
+> **A prompt typed into the dashboard runs as a full Claude Code session by
+> default, and it can read and write this repository and run commands in it.**
+
+That is the point of the default mode: the child runs at parity with your own
+`claude`, so your CLAUDE.md, settings, plugins, MCP servers, hooks, subagents and
+custom slash commands (`/task` and the rest) all work, and the flags come from
+your actual `claude` shell alias — withhold a tool there and the dashboard
+withholds it too. Its reach is bounded to one directory, the checkout the server
+is running from, and a headless child can't be asked to approve anything, so it
+runs with a standing `--permission-mode acceptEdits`.
+
+There is no auth in front of that. The server binds locally and every other route
+is read-only, but before exposing this port anywhere, switch to the sandboxed
+posture — no tools, no device config, a scratch directory:
+
+```bash
+CHAT_MODE=chat pnpm server
+```
+
+Either mode can also be chosen per chat from the toggle on the Sessions page, and
+it's fixed for the life of that session. `CHAT_AGENT_ALIAS` picks a different
+alias to mirror and `CHAT_AGENT_PERMISSION_MODE` changes the standing answer.
+Design detail in
+[docs/specs/2026-07-25-dashboard-agent-mode-design.md](docs/specs/2026-07-25-dashboard-agent-mode-design.md).
+
 ### Withholding tools device-wide ("Not added")
 
 Once the proxy shows a tool is pure bloat, cut it at the source: a **bare tool

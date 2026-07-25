@@ -11,6 +11,8 @@ timestamp: 2026-07-24
 **Date:** 2026-07-24
 **Status:** Shipped
 **Feature:** [Dashboard chat sessions](../features/dashboard-chat-sessions.md)
+**Extended by:** [Dashboard Agent Mode](2026-07-25-dashboard-agent-mode-design.md) — the
+locked-down child described here is now one of two modes, and no longer the default.
 
 ## Problem
 
