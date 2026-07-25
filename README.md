@@ -31,6 +31,22 @@ forwarding; requests with nothing to strip are forwarded byte-for-byte. The
 dashboard's **Proxy filters** page (`GET /api/filters`) lists the full inventory
 with the reason each one needs the proxy.
 
+It makes one edit on the way back, in `proxy/guard.mjs`: it **refuses tool calls
+that rewrite the agent's own permission config** — `.claude/settings*.json`, the
+hook scripts those files point at, and managed settings. The CLI already checks
+this, so the proxy is deliberately a *second* layer: the CLI's gate runs inside
+the process it governs and is configured by the very file at risk, and it only
+scopes `Edit`/`Write` by path, so `Bash(cat > .claude/settings.json)`, `sed -i`,
+and `tee` walk straight past it. The proxy sees the call whatever tool carries
+it, and can't be switched off by editing the file it protects.
+
+A refused call is replaced with a text block telling the agent to stop and ask
+you, and recorded under `blocked` in that request's `.audit.json` — so an attempt
+leaves a trace even though it never ran. Everything else streams through
+untouched: only the in-flight `tool_use` block is held (long enough to read its
+arguments), never the assistant's text, and a clean reply is forwarded
+byte-for-byte.
+
 ```bash
 PORT=8036 node proxy/proxy.mjs   # zero deps, Node 18+ (PORT defaults to 8787)
 # point Claude Code at it in another terminal:

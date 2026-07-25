@@ -4,14 +4,15 @@ import { getFilters } from "../api";
 import { QueryState } from "../components/QueryState";
 
 /**
- * "Proxy filters" — the inventory of what `proxy/proxy.mjs` strips out of every
- * request before forwarding it to Anthropic.
+ * "Proxy filters" — the inventory of what `proxy/proxy.mjs` changes about an
+ * exchange with Anthropic.
  *
  * Unlike the "Not added" page (which reads the device's own `permissions.deny`
- * config), these are edits the CLI can't be told to make on its own: withheld
- * tools are exempt from `permissions.deny`, and injected reminders have no
- * suppression setting at all. The proxy is the only place they can be removed, so
- * this documents exactly what it takes out and why.
+ * config), most of these are edits the CLI can't be told to make on its own:
+ * withheld tools are exempt from `permissions.deny`, and injected reminders have
+ * no suppression setting at all. Refused tool calls are the exception — the CLI
+ * does check those, and the proxy checks them again from outside the process, so
+ * this documents exactly what it changes and why.
  */
 
 const GROUPS: { kind: ProxyFilterKind; title: string; badge: string; blurb: string }[] = [
@@ -28,6 +29,13 @@ const GROUPS: { kind: ProxyFilterKind; title: string; badge: string; blurb: stri
     badge: "sev-info",
     blurb:
       "Harness-injected text with no suppression setting. The proxy removes the matching text from message content before forwarding.",
+  },
+  {
+    kind: "refused-tool-use",
+    title: "Refused tool calls",
+    badge: "sev-warn",
+    blurb:
+      "The one filter that runs on the response, not the request. The proxy refuses tool calls that would rewrite the agent's own permission config — a second, out-of-band layer behind the CLI's own gate. Refusals are recorded in each request's .audit.json sidecar.",
   },
 ];
 
