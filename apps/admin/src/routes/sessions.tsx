@@ -54,7 +54,7 @@ function StartChatCard() {
   const client = useQueryClient();
   const [draft, setDraft] = useState("");
   const [chat, setChat] = useState<ChatSendResponse | null>(null);
-  // null → follow whatever the server defaults to, so the picker needs no config yet.
+  // null → follow whatever the server defaults to.
   const [picked, setPicked] = useState<ChatMode | null>(null);
 
   const send = useMutation({

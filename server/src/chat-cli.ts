@@ -7,19 +7,18 @@
  * proxy, which then sees an ordinary CLI turn and captures it through its existing
  * path. `ANTHROPIC_API_KEY` is stripped from the child's environment — its presence
  * would silently switch the CLI onto key billing, which is the other transport's job.
- * Both modes below share that credential posture.
+ * Both modes share that credential posture.
  *
  * Two modes, differing only in what the child is permitted to be:
  *
  *   - `chat` — no tools, no customizations, a scratch cwd. Nothing a dashboard
  *     prompt says can reach the filesystem.
- *   - `agent` — a full Claude Code session at parity with the device's own `claude`
- *     sessions: user settings sources, CLAUDE.md, custom slash commands, plugins,
- *     MCP servers and subagents all load, and real tools run. **A dashboard prompt
- *     in this mode can read and write the repo.** Two things bound it: the cwd is
- *     the running server's own checkout and nothing else (no `--add-dir`), and the
- *     device's `claude` alias flags are replayed onto it, so a tool that alias
- *     withholds stays withheld here (see {@link AgentLaunchFlags}).
+ *   - `agent` — a full Claude Code session at parity with the device's own: settings
+ *     sources, CLAUDE.md, custom slash commands, plugins, MCP servers and subagents
+ *     all load, and real tools run. **A dashboard prompt in this mode can read and
+ *     write the repo.** Two things bound it: the cwd is the running server's own
+ *     checkout and nothing else (no `--add-dir`), and the device's `claude` alias
+ *     flags are replayed onto it (see {@link AgentLaunchFlags}).
  *
  * History lives in the CLI's own session store, so a follow-up turn resumes rather
  * than replaying `messages[]`.
@@ -39,10 +38,8 @@ export type ChatMode = "chat" | "agent";
 /**
  * The device's own `claude` launch flags, replayed onto an agent turn so it matches
  * the sessions the user actually runs. Parsed from the shell rc by
- * `@claude-proxy/core`'s `parseLaunchAliases` — e.g. an
- * `alias claude='command claude --disallowed-tools Monitor'` withholds Monitor here
- * too. All fields empty/null means "the CLI's own defaults", which is still parity:
- * that is what a bare `claude` does.
+ * `@claude-proxy/core`'s `parseLaunchAliases`. All fields empty/null means the CLI's
+ * own defaults, which is still parity: that is what a bare `claude` does.
  */
 export interface AgentLaunchFlags {
   /** Tools the alias withholds via `--disallowed-tools`. */
@@ -134,9 +131,7 @@ function applyUsage(into: CliTurnResult["usage"], u: Record<string, unknown>): v
  *
  * An agent turn also runs tools: each is announced as a `tool_use` block on an
  * `assistant` event and answered by a `tool_result` block on a `user` event, which
- * is where a failure shows up. Both are collected so the dashboard can show what the
- * turn actually did rather than only what it said. A `chat` turn has no tools, so
- * this costs it nothing.
+ * is where a failure shows up. A `chat` turn has no tools.
  */
 export function decodeCliStream(raw: string): CliTurnResult {
   const out: CliTurnResult = { text: "", usage: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, sessionId: null, tools: [] };
@@ -187,12 +182,11 @@ export function decodeCliStream(raw: string): CliTurnResult {
  * The `--settings` payload: the alias's own static overrides, with the proxy's base
  * URL layered on top.
  *
- * The base URL rides here rather than only in the environment because a device that
- * set `env.ANTHROPIC_BASE_URL` in `~/.claude/settings.json` — which the README's own
- * setup does — otherwise overrides the child's environment and sends the turn to
- * whatever proxy that file names instead of the one we mean. Agent mode loads that
- * settings file *by design*, so this matters more there, not less: the base URL is
- * written last so it wins over both the file and anything the alias injects.
+ * The base URL rides here rather than only in the environment because an
+ * `env.ANTHROPIC_BASE_URL` in `~/.claude/settings.json` otherwise overrides the
+ * child's environment and sends the turn to whatever proxy that file names. Agent
+ * mode loads that file by design, so the base URL is written last and wins over both
+ * it and anything the alias injects.
  */
 export function cliSettings(baseUrl: string, overrides?: Record<string, unknown> | null): Record<string, unknown> {
   const base = overrides && typeof overrides === "object" ? { ...overrides } : {};
@@ -206,12 +200,11 @@ export function cliSettings(baseUrl: string, overrides?: Record<string, unknown>
  * `chat` locks the child down; `agent` hands it the device's own posture. The one
  * thing neither mode yields is where the turn is sent — see {@link cliSettings}.
  *
- * Agent mode deliberately omits three flags chat mode passes. `--safe-mode` would
- * disable the very customizations parity is about, `--tools ""` would leave the agent
- * unable to act, and `--strict-mcp-config` would drop the device's MCP servers. It
- * also *appends* its system prompt instead of replacing it: `--system-prompt` would
- * discard Claude Code's own harness prompt, which is what teaches the child to use
- * its tools at all.
+ * Agent mode omits three flags chat mode passes: `--safe-mode` would disable the
+ * customizations parity is about, `--tools ""` would leave the agent unable to act,
+ * and `--strict-mcp-config` would drop the device's MCP servers. It also *appends*
+ * its system prompt rather than replacing it — `--system-prompt` would discard the
+ * harness prompt that teaches the child to use its tools.
  */
 export function cliArgs(
   input: Pick<CliTurnInput, "mode" | "model" | "system" | "sessionId" | "resume" | "baseUrl" | "agentFlags" | "permissionMode">,
@@ -230,8 +223,8 @@ export function cliArgs(
     ];
     // Absent → the CLI's default set (user, project, local) loads, which is parity.
     if (flags.settingSources?.length) args.push("--setting-sources", flags.settingSources.join(","));
-    // Replay whatever the device's own alias withholds, so the dashboard is never
-    // *more* capable than the terminal the user trusts.
+    // Replay what the device's alias withholds, so the dashboard is never *more*
+    // capable than the terminal the user trusts.
     if (flags.disallowedTools.length) args.push("--disallowed-tools", ...flags.disallowedTools);
     // A headless child cannot answer a permission prompt, so one is chosen for it.
     if (input.permissionMode) args.push("--permission-mode", input.permissionMode);
@@ -262,8 +255,7 @@ export function cliArgs(
 }
 
 /** The child's environment: the proxy as upstream, and no API key to fall back on.
- * Agent mode keeps that stripping — a device login is still the right credential for
- * a turn the user is watching, and key billing should never start by accident. */
+ * Both modes strip it — key billing should never start by accident. */
 export function cliEnv(baseUrl: string, from: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...from, ANTHROPIC_BASE_URL: baseUrl };
   delete env.ANTHROPIC_API_KEY;
@@ -281,11 +273,9 @@ export function resolveCliCwd(configured?: string): string {
 /**
  * Where an `agent` turn runs: the checkout of the *running server*, and nothing else.
  *
- * This is the same root `resolveLogDir` derives `logs/` from, which is what keeps the
- * capture path coherent — a server started from a worktree audits that worktree's
- * store and drives an agent in that same tree, rather than editing one checkout while
- * writing markers into another. No env override and no `--add-dir`: the whole point
- * is that a dashboard prompt has exactly one reachable tree.
+ * The same root `resolveLogDir` derives `logs/` from, so a server started from a
+ * worktree drives an agent in that same tree rather than writing markers into
+ * another. No env override and no `--add-dir`: exactly one reachable tree.
  */
 export function resolveAgentCwd(): string {
   return path.resolve(HERE, "../..");

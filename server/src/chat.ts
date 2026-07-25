@@ -77,10 +77,7 @@ export type ChatTransport = "cli" | "api";
 
 export type { ChatMode };
 
-/**
- * What an agent turn inherits from the device — resolved once per turn and reported
- * to the dashboard so the posture is visible rather than assumed.
- */
+/** What an agent turn inherits from the device, reported to the dashboard. */
 export interface AgentConfig {
   /** The only directory an agent turn can reach. */
   cwd: string;
@@ -144,8 +141,8 @@ interface ChatSession {
   /** Fixed when the chat starts: a chat that could not act must not gain that power
    * on its second turn, and vice versa. */
   mode: ChatMode;
-  /** The device posture this chat resolved at start; null in `chat` mode. Pinned for
-   * the same reason — editing the shell rc mid-chat must not re-arm a running agent. */
+  /** The device posture resolved at start; null in `chat` mode. Pinned for the same
+   * reason — editing the shell rc mid-chat must not re-arm a running agent. */
   agent: AgentConfig | null;
   model: string;
   maxTokens: number;
@@ -194,23 +191,16 @@ export function resolveChatTransport(raw = process.env.CHAT_TRANSPORT): ChatTran
   return raw?.trim().toLowerCase() === "api" ? "api" : "cli";
 }
 
-/**
- * `agent` unless `CHAT_MODE` says otherwise. Parity is the default because a
- * dashboard prompt that cannot run a tool or a custom command is not the thing most
- * people open the dashboard to use; `CHAT_MODE=chat` restores the sandboxed posture
- * for a deployment that should not be able to act.
- */
+/** `agent` unless `CHAT_MODE=chat` asks for the sandboxed posture. */
 export function resolveChatMode(raw = process.env.CHAT_MODE): ChatMode {
   return raw?.trim().toLowerCase() === "chat" ? "chat" : "agent";
 }
 
 /**
  * Read the device's own `claude` alias and turn it into the flags an agent turn
- * replays. This is what "same settings as my CLI sessions" resolves to in practice:
- * the alias is the user's real launch posture, and `@claude-proxy/core` already
- * parses it for the withheld-tools report.
+ * replays — the alias is the user's real launch posture.
  *
- * A missing alias or unreadable rc is not an error — it means a bare `claude`, which
+ * A missing alias or unreadable rc is not an error: it means a bare `claude`, which
  * is still parity. `aliasFound` reports which of the two happened.
  */
 export async function resolveAgentConfig(): Promise<AgentConfig> {
@@ -534,8 +524,7 @@ export async function startChat(
     model: typeof input.model === "string" && input.model.trim() ? input.model.trim() : config.model,
     maxTokens: typeof input.maxTokens === "number" && input.maxTokens > 0 ? Math.floor(input.maxTokens) : config.maxTokens,
     // `config.system` is resolved for the *default* mode, so a request that opts into
-    // the other one picks its default directly — an agent's prompt is appended to
-    // Claude Code's, a chat's replaces it, and they should not be worded alike.
+    // the other one picks its own default directly.
     system:
       typeof input.system === "string" && input.system.trim()
         ? input.system
