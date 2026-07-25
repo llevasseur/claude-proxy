@@ -139,6 +139,25 @@ that was in flight does not fail: it returns the prefix of the stream that arriv
 text and the tool chips the turn got through survive, tagged `interrupted: "stopped"`. A
 timeout takes the same path and reports `"timeout"` rather than throwing the output away.
 
+**Stop is reachable from the transcript, not only from the tab that started the chat.** The
+Sessions page holds a running turn in component state, so navigating away — or that page
+refreshing under it — takes the Stop button away while the child keeps working; the turn
+that most needs stopping is exactly the long one you walk away from. `GET /api/chat/running`
+names the turns in flight, and because a running chat's CLI session id is the same `session:`
+the proxy records in the transcript, a session detail page recognises *itself* in that list
+and offers its own Stop. It polls every 3s and renders nothing when the session is idle. The
+route is a read — it names sessions, never their content — so it keeps the open CORS the
+other `GET`s have.
+
+**What the child is running under is reported, not assumed.** The stream's opening
+`system`/`init` event states the permission mode the child actually started in, which is
+read as it arrives (not at the end of the turn, since the first turn is the long one) and
+returned as `effectivePermissionMode` alongside the requested `permissionMode`. They should
+be identical; when they are not, the request never reached the child as asked — an older
+server still running the previous code will pin its own default and silently ignore the
+choice — and both the start form and the running bar say so. Without this, the only symptom
+is a turn full of denials, which reads like a broken agent rather than a stale process.
+
 **The mode is pinned when the session starts** and cannot change on a later turn, so what a
 session was allowed to do is answerable from its first request alone. The permission mode is
 pinned with it, for the same reason.
@@ -248,6 +267,15 @@ server accepts; everything else stays read-only.
       group goes, so tools the CLI started are not orphaned; covered against a stand-in CLI
       that spawns a child of its own, and confirmed live against a real agent turn.
 - [x] A timeout returns the same partial result rather than discarding stdout.
+- [x] `GET /api/chat/running` names the turns in flight, and a session detail page whose
+      transcript carries a running chat's session id offers its own Stop — so a turn stays
+      stoppable after the page that started it is gone. Confirmed live: a long agent turn
+      appeared in the list, was stopped through the route, returned `interrupted: "stopped"`
+      with its partial tools, and left the list.
+- [x] The permission mode the child reports at startup is returned as
+      `effectivePermissionMode`, while the turn is still running rather than after it, and a
+      divergence from the requested mode is shown rather than left to be inferred from a
+      turn full of denials.
 - [x] A failed tool chip carries its `tool_result` text, so a permission denial reads as a
       denial. Confirmed live: the chip shows `This command requires approval`.
 - [x] The chat POST routes answer only the dashboard origin, refuse a declared foreign

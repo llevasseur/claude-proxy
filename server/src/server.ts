@@ -22,7 +22,7 @@ import {
   buildFilters,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
-import { continueChat, endChat, resolveChatConfig, startChat, stopChat } from "./chat.js";
+import { continueChat, endChat, listRunningChats, resolveChatConfig, startChat, stopChat } from "./chat.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
@@ -422,6 +422,11 @@ const server = http.createServer(async (req, res) => {
       // The chat routes: the only paths that send a request out through the proxy.
       case "/api/chat/config":
         send(res, 200, await resolveChatConfig());
+        return;
+      // Which turns are in flight. A read, so it keeps the open CORS the other GETs have;
+      // it names running sessions, never their content.
+      case "/api/chat/running":
+        send(res, 200, { running: listRunningChats() });
         return;
       case "/api/chat/sessions":
         await serveChat(req, res, (body) =>

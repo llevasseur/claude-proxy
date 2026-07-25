@@ -8,6 +8,7 @@ import {
   cliEnv,
   cliSettings,
   decodeCliStream,
+  findInitEvent,
   resolveAgentCwd,
   runCliTurn,
 } from "../src/chat-cli.js";
@@ -148,6 +149,23 @@ describe("decodeCliStream", () => {
     expect(out.text).toBe("final");
     expect(out.sessionId).toBe("s1");
     expect(out.usage).toMatchObject({ input: 10, output: 3 });
+  });
+
+  it("reads the permission mode the child reports it started under", () => {
+    const raw =
+      line({ type: "system", subtype: "init", session_id: "s1", permissionMode: "bypassPermissions" }) +
+      line({ type: "result", result: "done" });
+    expect(decodeCliStream(raw).permissionMode).toBe("bypassPermissions");
+  });
+
+  it("leaves the permission mode null when the child never announced one", () => {
+    expect(decodeCliStream(line({ type: "result", result: "done" })).permissionMode).toBeNull();
+  });
+
+  it("finds the init event in a prefix, and ignores a half-written trailing line", () => {
+    const raw = line({ type: "system", subtype: "init", permissionMode: "plan" }) + `{"type":"assis`;
+    expect(findInitEvent(raw)).toEqual({ permissionMode: "plan" });
+    expect(findInitEvent(`{"type":"assis`)).toBeNull();
   });
 
   it("falls back to assistant text when a run ends without a result", () => {

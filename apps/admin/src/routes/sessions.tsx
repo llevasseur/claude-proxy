@@ -105,6 +105,9 @@ function StartChatCard() {
     pickedPermission ??
     agent?.permissionMode ??
     "acceptEdits") as PermissionMode;
+  // What the child actually started under, when it differs from what was asked for.
+  const drifted =
+    !!chat?.session.effectivePermissionMode && chat.session.effectivePermissionMode !== chat.session.permissionMode;
 
   return (
     <div className="card chat-starter">
@@ -164,6 +167,14 @@ function StartChatCard() {
             ))}
           </select>
           <span className="muted chat-mode-note">{PERMISSION_NOTE[permission]}</span>
+          {/* The child reports what it started under. Saying so beats inferring the
+              answer from a turn full of denials — a server running older code pins
+              its own default and the request's choice never lands. */}
+          {drifted && (
+            <span className="session-running-warn">
+              running as {chat?.session.effectivePermissionMode}, not {chat?.session.permissionMode}
+            </span>
+          )}
         </div>
       )}
 

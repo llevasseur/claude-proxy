@@ -173,6 +173,10 @@ interface ChatSession {
   sent: number;
   /** The turn in flight, so `stopChat` can end it; null between turns. */
   run: CliRunHandle | null;
+  /** When the turn in flight began; null between turns. */
+  runStartedAt: string | null;
+  /** What the child reported it was running under, once one has said. */
+  effectivePermissionMode: string | null;
 }
 
 interface AnthropicMessage {
@@ -190,6 +194,13 @@ export interface ChatSendResult {
     mode: ChatMode;
     /** The permission answer pinned at start; null outside `agent` mode. */
     permissionMode: string | null;
+    /**
+     * The mode the child reported on startup. Normally identical to `permissionMode`;
+     * a difference means the request never reached the child as asked — a server
+     * running older code, say — which is worth seeing rather than inferring from
+     * a turn full of denials.
+     */
+    effectivePermissionMode: string | null;
   };
   reply: string;
   usage: ChatUsage;
@@ -332,6 +343,7 @@ const publicSession = (s: ChatSession): ChatSendResult["session"] => ({
   transport: s.transport,
   mode: s.mode,
   permissionMode: s.agent?.permissionMode ?? null,
+  effectivePermissionMode: s.effectivePermissionMode,
 });
 
 const turnsOf = (s: ChatSession): ChatTurn[] =>
@@ -502,11 +514,13 @@ interface TurnResult {
   interrupted: CliInterruption | null;
   /** The CLI's own session id, which only exists once the child got that far. */
   cliSessionId: string | null;
+  /** What the child said it was running under; null when it never got that far. */
+  permissionMode: string | null;
 }
 
 async function runTurn(config: ChatConfig, session: ChatSession, prompt: string): Promise<TurnResult> {
   if (session.transport === "api") {
-    return { ...(await postTurn(config, session)), tools: [], interrupted: null, cliSessionId: null };
+    return { ...(await postTurn(config, session)), tools: [], interrupted: null, cliSessionId: null, permissionMode: null };
   }
   if (!config.cliFound) throw new Error(`chat is not configured: ${config.readyHint}`);
 
@@ -526,14 +540,21 @@ async function runTurn(config: ChatConfig, session: ChatSession, prompt: string)
       timeoutMs: REQUEST_TIMEOUT_MS,
       agentFlags: agent?.flags,
       permissionMode: agent?.permissionMode,
-      // The handle `stopChat` reaches through while the child runs.
+      // The handle `stopChat` reaches through while the child runs. The timestamp rides
+      // along so a session page can say how long the turn it is offering to stop has run.
       onStart: (run) => {
         session.run = run;
+        session.runStartedAt = new Date().toISOString();
+      },
+      // The child's own answer, available while the turn still runs rather than after it.
+      onInit: (info) => {
+        if (info.permissionMode) session.effectivePermissionMode = info.permissionMode;
       },
     });
     return { ...turn, cliSessionId: turn.sessionId };
   } finally {
     session.run = null;
+    session.runStartedAt = null;
   }
 }
 
@@ -549,6 +570,7 @@ async function send(session: ChatSession, config: ChatConfig, logDir: string, pr
   // A turn killed before the child opened its session left nothing to `--resume`, so the
   // next turn has to open it instead.
   if (session.transport !== "cli" || result.cliSessionId) session.sent += 1;
+  if (result.permissionMode) session.effectivePermissionMode = result.permissionMode;
   if (result.text) session.messages.push(textMessage("assistant", result.text));
   // The proxy writes the transcript after it has answered us, so this is the first
   // moment the thread can exist. A first turn may still be buffered — try again next turn.
@@ -639,6 +661,8 @@ export async function startChat(
     messages: [],
     sent: 0,
     run: null,
+    runStartedAt: null,
+    effectivePermissionMode: null,
   };
   declareChatSession(logDir, session.id);
   sessions.set(session.id, session);
@@ -663,6 +687,44 @@ function requireSession(raw: unknown): ChatSession {
   const session = sessions.get(raw);
   if (!session) throw new Error(`chat session not found: ${raw}`);
   return session;
+}
+
+/** A chat with a turn in flight, as any page that can offer to stop it needs to see it. */
+export interface RunningChat {
+  /** The CLI session id — also the `session:` a transcript records, which is how a
+   * session page recognises itself here without knowing the dashboard's tab state. */
+  sessionId: string;
+  /** Null until the first turn resolves it; a page found by thread id already knows it. */
+  threadId: string | null;
+  mode: ChatMode;
+  permissionMode: string | null;
+  effectivePermissionMode: string | null;
+  /** When the turn in flight started. */
+  startedAt: string;
+}
+
+/**
+ * The turns in flight right now.
+ *
+ * The dashboard holds a running turn in component state, so navigating away — or the
+ * Sessions list refreshing under it — loses the only handle that could stop it while the
+ * child keeps working. This is the handle rediscovered from the server: a session page
+ * matches its transcript's `session:` id here and offers Stop on its own.
+ */
+export function listRunningChats(): RunningChat[] {
+  const out: RunningChat[] = [];
+  for (const s of sessions.values()) {
+    if (!s.run || !s.runStartedAt) continue;
+    out.push({
+      sessionId: s.id,
+      threadId: s.threadId,
+      mode: s.mode,
+      permissionMode: s.agent?.permissionMode ?? null,
+      effectivePermissionMode: s.effectivePermissionMode,
+      startedAt: s.runStartedAt,
+    });
+  }
+  return out;
 }
 
 /**

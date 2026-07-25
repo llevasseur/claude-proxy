@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { SessionDetail } from "../api";
-import { getSession } from "../api";
+import { getRunningChats, getSession, stopChat } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { Markdown } from "../components/Markdown";
@@ -53,6 +53,8 @@ function SessionBody({ session }: { session: SessionDetail }) {
         </div>
       )}
 
+      {meta.sessionId && <RunningChatBar sessionId={meta.sessionId} />}
+
       <div className="grid stats">
         <StatTile label="Model" value={meta.model ?? "—"} />
         <StatTile label="Started" value={meta.started ? fmtLocalTsShort(meta.started) : "—"} />
@@ -89,6 +91,50 @@ function SessionBody({ session }: { session: SessionDetail }) {
         )}
       </div>
     </>
+  );
+}
+
+/** How often to re-ask whether this session's turn is still running. */
+const RUNNING_POLL_MS = 3_000;
+
+/**
+ * Stop, offered from the transcript itself.
+ *
+ * The tab that started a chat holds the only Stop button in component state, so a
+ * navigation — or the Sessions list refreshing under it — takes that button away while
+ * the child keeps working. The server still knows the turn is in flight, and a running
+ * chat's CLI session id is the same `session:` this transcript records, so this page can
+ * recognise itself in that list and stop the turn without the starting tab.
+ *
+ * Renders nothing at all when this session has no turn running.
+ */
+function RunningChatBar({ sessionId }: { sessionId: string }) {
+  const running = useQuery({
+    queryKey: ["chat", "running"],
+    queryFn: getRunningChats,
+    refetchInterval: RUNNING_POLL_MS,
+  });
+  const stop = useMutation({ mutationFn: () => stopChat(sessionId) });
+  const chat = running.data?.running.find((r) => r.sessionId === sessionId);
+  if (!chat) return null;
+
+  // What it is really running under, which is the answer when a turn is full of denials.
+  const permission = chat.effectivePermissionMode ?? chat.permissionMode;
+  const drifted = !!chat.effectivePermissionMode && chat.effectivePermissionMode !== chat.permissionMode;
+
+  return (
+    <div className="session-running">
+      <span className="session-running-dot" aria-hidden="true" />
+      <span>
+        {chat.mode === "agent" ? "Agent" : "Chat"} turn running since {fmtLocalTsShort(chat.startedAt)}
+        {permission && ` · ${permission}`}
+      </span>
+      {drifted && <span className="session-running-warn">asked for {chat.permissionMode}</span>}
+      <button type="button" className="chat-stop" onClick={() => stop.mutate()} disabled={stop.isPending}>
+        {stop.isPending ? "Stopping…" : "Stop"}
+      </button>
+      {stop.error && <span className="session-running-warn">{(stop.error as Error).message}</span>}
+    </div>
   );
 }
 

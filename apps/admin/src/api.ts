@@ -192,6 +192,19 @@ export interface ChatToolUse {
 }
 /** Why a turn ended early, when it did. */
 export type ChatInterruption = "stopped" | "timeout";
+/** A chat whose turn is in flight right now, as the server sees it. */
+export interface RunningChat {
+  /** Also the `session:` a transcript records, which is how a session page matches itself. */
+  sessionId: string;
+  threadId: string | null;
+  mode: ChatMode;
+  permissionMode: string | null;
+  effectivePermissionMode: string | null;
+  startedAt: string;
+}
+export interface RunningChatsResponse {
+  running: RunningChat[];
+}
 export interface ChatSendResponse {
   session: {
     id: string;
@@ -201,6 +214,8 @@ export interface ChatSendResponse {
     transport: "cli" | "api";
     mode: ChatMode;
     permissionMode: string | null;
+    /** What the child reported it started under; a mismatch means the pin never landed. */
+    effectivePermissionMode: string | null;
   };
   reply: string;
   usage: { input: number; output: number; cacheRead: number; cacheCreation: number };
@@ -276,6 +291,8 @@ export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?d
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
 export const getFilters = () => get<FiltersResponse>("/api/filters");
 export const getChatConfig = () => get<ChatConfigResponse>("/api/chat/config");
+/** Turns in flight — how a session page finds the Stop the starting tab may have lost. */
+export const getRunningChats = () => get<RunningChatsResponse>("/api/chat/running");
 /** The session id is chosen here, not read off the response, so the first turn is stoppable. */
 export const startChat = (
   sessionId: string,

@@ -2111,3 +2111,39 @@ button.chat-stop:disabled {
   cursor: default;
   opacity: 0.7;
 }
+
+/* The "this session is still running" bar on a transcript, with its own Stop. */
+.session-running {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--signal-dim);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.session-running-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--signal);
+  animation: session-running-pulse 1.6s ease-in-out infinite;
+}
+.session-running-warn {
+  color: var(--warn);
+}
+@keyframes session-running-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-running-dot {
+    animation: none;
+  }
+}

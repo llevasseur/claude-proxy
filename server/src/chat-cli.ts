@@ -76,6 +76,11 @@ export interface CliTurnResult {
   sessionId: string | null;
   /** Tools the turn ran, in order. Always empty in `chat` mode — it has none. */
   tools: CliToolUse[];
+  /**
+   * The permission mode the child reports on startup — what it *is* running under,
+   * as against what was asked for. Null when the run ended before it said.
+   */
+  permissionMode: string | null;
   /** Set when the run was cut short; the text and tools are whatever had arrived by then. */
   interrupted: CliInterruption | null;
 }
@@ -105,6 +110,12 @@ export interface CliTurnInput {
   permissionMode?: string;
   /** Called once the child is up, with the handle that ends it early. */
   onStart?: (run: CliRunHandle) => void;
+  /**
+   * Called when the child announces itself, before it has done any work. The whole
+   * stream is only decoded at the end, and the longest turn is the one whose posture
+   * a watcher most wants to see — so this one fact is reported as it arrives.
+   */
+  onInit?: (info: { permissionMode: string | null }) => void;
 }
 
 /** Enough of a `stream-json` line to reassemble a turn. */
@@ -113,6 +124,8 @@ interface CliEvent {
   subtype?: string;
   session_id?: string;
   is_error?: boolean;
+  /** On the `system`/`init` event: the mode the child actually started in. */
+  permissionMode?: string;
   result?: string;
   usage?: Record<string, unknown>;
   message?: { content?: unknown; usage?: Record<string, unknown> };
@@ -142,6 +155,25 @@ function applyUsage(into: CliTurnResult["usage"], u: Record<string, unknown>): v
 const MAX_TOOL_ERROR_CHARS = 400;
 
 /**
+ * Find the child's `system`/`init` event in a prefix of the stream, if it has arrived.
+ * The full decode happens once at the end; this reads the one line a watcher needs early.
+ */
+export function findInitEvent(raw: string): { permissionMode: string | null } | null {
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.includes(`"init"`)) continue;
+    let ev: CliEvent;
+    try {
+      ev = JSON.parse(line) as CliEvent;
+    } catch {
+      continue; // a partial trailing line; it will be whole on the next chunk
+    }
+    if (ev.type !== "system" || ev.subtype !== "init") continue;
+    return { permissionMode: typeof ev.permissionMode === "string" ? ev.permissionMode : null };
+  }
+  return null;
+}
+
+/**
  * Reassemble a `--output-format stream-json` run: newline-delimited JSON, one event
  * per line. The terminal `result` event carries the finished reply and the billed
  * usage; the `assistant` events are the fallback when a run ends without one.
@@ -160,6 +192,7 @@ export function decodeCliStream(raw: string, opts: { partial?: boolean } = {}): 
     usage: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
     sessionId: null,
     tools: [],
+    permissionMode: null,
     interrupted: null,
   };
   let assistantText = "";
@@ -177,6 +210,9 @@ export function decodeCliStream(raw: string, opts: { partial?: boolean } = {}): 
       continue; // a non-JSON line is CLI chatter, not an event
     }
     if (typeof ev.session_id === "string" && !out.sessionId) out.sessionId = ev.session_id;
+    if (ev.type === "system" && ev.subtype === "init" && typeof ev.permissionMode === "string") {
+      out.permissionMode = ev.permissionMode;
+    }
 
     if (ev.type === "assistant") {
       assistantText += textOf(ev.message?.content);
@@ -352,7 +388,15 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
 
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
-  child.stdout.on("data", (c: Buffer) => stdout.push(c));
+  let announced = false;
+  child.stdout.on("data", (c: Buffer) => {
+    stdout.push(c);
+    if (announced || !input.onInit) return;
+    const init = findInitEvent(Buffer.concat(stdout).toString("utf8"));
+    if (!init) return;
+    announced = true;
+    input.onInit(init);
+  });
   child.stderr.on("data", (c: Buffer) => stderr.push(c));
 
   // On an object: both are written from callbacks, and a `let` would read back as its
