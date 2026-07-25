@@ -133,8 +133,10 @@ pnpm setup:env     # create the store dir, print the two device snippets
 pnpm check:env     # report the resolved paths; non-zero when unconfigured
 ```
 
-Nothing runs automatically — no install or dev-server hook — and `pnpm setup:env`
-writes only inside the repo. It prints the two device snippets to add yourself:
+Nothing *changes* automatically — no install or dev-server hook — and `pnpm
+setup:env` writes only inside the repo. (`pnpm zellij` runs the read-only
+`--check` first and warns when the store is unresolved, but never fixes it for
+you.) `setup:env` prints the two device snippets to add yourself:
 
 ```bash
 # ~/.zshrc — every new shell, and every `claude` launched from one.
@@ -171,7 +173,10 @@ pnpm admin                    # dashboard on http://localhost:5173
 
 Prefer one window? `pnpm zellij` opens the proxy, server, and dashboard in a
 split-pane [zellij](https://zellij.dev) layout (`.zellij/claude-proxy.kdl`),
-plus a spare shell tab.
+plus a spare shell tab. It runs `pnpm check:env` first — the panes inherit that
+shell's environment, so an unresolved `CLAUDE_PROXY_STORE` is worth seeing while
+a plain terminal is still on screen. A failing check warns and waits for Enter
+rather than aborting; the proxy and dashboard panes work without the store.
 
 Point the server at a different log directory with `LOG_DIR=/path/to/logs`, and
 the dashboard at a different API with `VITE_API_BASE` (see `apps/admin/.env.example`).
