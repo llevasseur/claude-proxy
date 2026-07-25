@@ -123,8 +123,7 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* Tight left inset: the icon is wider than the dot it replaced, and the longest
-     label ("Hooks & Plugins") needs the room to stay on one line. */
+  /* Tight left inset keeps the longest label on one line. */
   padding: 9px 8px 9px 4px;
   text-decoration: none;
   border-radius: 8px;
@@ -196,8 +195,7 @@ button:focus-visible {
   border-top: 1px solid var(--line);
 }
 
-/* collapsed rail — icons only. Scoped above the breakpoint where the rail
-   becomes a top bar and collapsing no longer means anything. */
+/* collapsed rail — icons only, above the top-bar breakpoint */
 @media (min-width: 861px) {
   .app--rail-collapsed {
     grid-template-columns: 64px minmax(0, 1fr);
@@ -982,7 +980,6 @@ a.pager-btn:hover {
   .station-hint {
     display: none;
   }
-  /* Collapsing is meaningless once the rail is a top bar. */
   .rail-toggle {
     display: none;
   }

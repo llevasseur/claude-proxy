@@ -46,7 +46,7 @@ import { TrendDetailPage } from "./routes/trend-detail";
 import { TrendsPage } from "./routes/trends";
 import { WithheldPage } from "./routes/withheld";
 
-/** Side-rail nav stations. `icon` carries the whole item when the rail is collapsed. */
+/** Side-rail nav stations. */
 const STATIONS = [
   { to: "/", label: "Overview", hint: "today", exact: true, icon: LayoutDashboard },
   { to: "/trends", label: "Trends", hint: "history", exact: false, icon: TrendingUp },
@@ -125,7 +125,6 @@ function RootLayout() {
               className="station"
               activeProps={activeProps}
               activeOptions={s.exact ? { exact: true } : undefined}
-              // Collapsed, the icon is the only visible cue — a hover tooltip names it.
               title={collapsed ? s.label : undefined}
             >
               <s.icon className="station-icon" size={17} strokeWidth={1.75} aria-hidden />
