@@ -118,6 +118,45 @@ and Claude Code's own `env` config — not a shell alias — points every
    the `env` block in `~/.claude/settings.json` to fall back to hitting
    `api.anthropic.com` directly.
 
+### Pointing `/revive` at the transcript store
+
+`/revive --source proxy` resolves transcripts from **`CLAUDE_PROXY_STORE`** — the
+directory holding `<threadId>.md` — and refuses to guess: unset or missing, and it
+fails fast rather than hunting for a store. That directory is `<LOG_DIR>/sessions`,
+so it depends on where this repo is checked out. `CLAUDE_PROXY_ARCHIVE` is optional
+and only matters once whole days have been relocated out of the live `logs/` dir.
+
+Resolve both from the checkout itself, on request:
+
+```bash
+pnpm setup:env     # create the store dir, print the two device snippets
+pnpm check:env     # report the resolved paths; non-zero when unconfigured
+```
+
+Nothing *changes* automatically — no install or dev-server hook — and `pnpm
+setup:env` writes only inside the repo. (`pnpm zellij` runs the read-only
+`--check` first and warns when the store is unresolved, but never fixes it for
+you.) `setup:env` prints the two device snippets to add yourself:
+
+```bash
+# ~/.zshrc — every new shell, and every `claude` launched from one.
+# Re-resolves on each shell, so moving this checkout needs no edit here.
+source ~/Documents/ghub/claude-proxy/scripts/proxy-store-env.sh
+```
+
+Sessions that don't inherit a login shell (the Claude Code desktop app) read env
+from `~/.claude/settings.json` instead, so add the resolved path to the same `env`
+block as `ANTHROPIC_BASE_URL` above to cover those:
+
+```jsonc
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:8036",
+    "CLAUDE_PROXY_STORE": "/Users/you/Documents/ghub/claude-proxy/logs/sessions"
+  }
+}
+```
+
 ## 2. The dashboard — monitor usage
 
 The `server` package reads those `.audit.json` sidecars and serves a read-only
@@ -134,7 +173,10 @@ pnpm admin                    # dashboard on http://localhost:5173
 
 Prefer one window? `pnpm zellij` opens the proxy, server, and dashboard in a
 split-pane [zellij](https://zellij.dev) layout (`.zellij/claude-proxy.kdl`),
-plus a spare shell tab.
+plus a spare shell tab. It runs `pnpm check:env` first — the panes inherit that
+shell's environment, so an unresolved `CLAUDE_PROXY_STORE` is worth seeing while
+a plain terminal is still on screen. A failing check warns and waits for Enter
+rather than aborting; the proxy and dashboard panes work without the store.
 
 Point the server at a different log directory with `LOG_DIR=/path/to/logs`, and
 the dashboard at a different API with `VITE_API_BASE` (see `apps/admin/.env.example`).
