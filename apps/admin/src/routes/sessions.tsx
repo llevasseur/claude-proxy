@@ -1,11 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import type { SessionSummary } from "../api";
-import { getSessions } from "../api";
+import type { ChatSendResponse, SessionSummary } from "../api";
+import { getChatConfig, getSessions, sendChatMessage, startChat } from "../api";
 import { LiveIndicator } from "../components/LiveIndicator";
+import { Markdown } from "../components/Markdown";
+import { PromptInput } from "../components/PromptInput";
 import { QueryState } from "../components/QueryState";
-import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
+import { fmtInt, fmtLocalTsShort } from "../format";
 import { useLiveQuery } from "../useLiveQuery";
 
 export function SessionsPage() {
@@ -24,6 +26,8 @@ export function SessionsPage() {
         </div>
       </div>
 
+      <StartChatCard />
+
       <QueryState isLoading={query.isLoading} error={query.error}>
         {!sessions || sessions.length === 0 ? (
           <div className="card empty">No session transcripts yet.</div>
@@ -37,6 +41,98 @@ export function SessionsPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/**
+ * Start a session from the dashboard. The prompt goes to the server's chat route,
+ * which sends it *through the proxy* the way Claude Code does — so the proxy writes
+ * the audit sidecar and the transcript, and the new thread shows up in the table
+ * below (live, over SSE) without this page having to insert it.
+ *
+ * The same input then continues the conversation: each turn replays the whole
+ * history, which is exactly what makes the transcript grow.
+ */
+function StartChatCard() {
+  const config = useQuery({ queryKey: ["chat", "config"], queryFn: getChatConfig, staleTime: 60_000 });
+  const client = useQueryClient();
+  const [draft, setDraft] = useState("");
+  const [chat, setChat] = useState<ChatSendResponse | null>(null);
+
+  const send = useMutation({
+    mutationFn: (prompt: string) =>
+      chat ? sendChatMessage(chat.session.id, prompt) : startChat(prompt),
+    onSuccess: (data) => {
+      setChat(data);
+      setDraft("");
+      // The transcript is new (or grew) — refresh the list behind the live stream.
+      client.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+
+  const unconfigured = config.data && !config.data.apiKeySet;
+  const threadId = chat?.session.threadId;
+
+  return (
+    <div className="card chat-starter">
+      <div className="card-head">
+        <h2>{chat ? "Chat in progress" : "Start a session"}</h2>
+        <span className="muted">
+          {config.data
+            ? `${config.data.model} · through ${config.data.baseUrl}`
+            : config.error
+              ? (config.error as Error).message
+              : "resolving chat config…"}
+        </span>
+      </div>
+
+      {unconfigured && (
+        <p className="muted chat-note">
+          Chat needs <code>ANTHROPIC_API_KEY</code> in the server's environment. The proxy forwards
+          credentials, it never supplies them.
+        </p>
+      )}
+
+      {chat && (
+        <div className="chat-log">
+          {chat.turns.map((turn, i) => (
+            <div key={i} className={`chat-turn ${turn.role}`}>
+              <span className="chat-role">{turn.role === "user" ? "You" : "Claude"}</span>
+              {turn.role === "assistant" ? <Markdown source={turn.text} /> : <p>{turn.text}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <PromptInput
+        value={draft}
+        onValueChange={setDraft}
+        onSubmit={(prompt) => send.mutate(prompt)}
+        placeholder={chat ? "Reply…" : "Ask Claude something — this starts a new session"}
+        disabled={!!unconfigured}
+        status={send.isPending ? "submitted" : send.isError ? "error" : "ready"}
+      />
+
+      <div className="chat-foot">
+        {send.isError && <span className="error">{(send.error as Error).message}</span>}
+        {chat && (
+          <>
+            {threadId && (
+              <Link to="/sessions/$id" params={{ id: threadId }} className="link mono-break">
+                open transcript {threadId}
+              </Link>
+            )}
+            <span className="muted">
+              {fmtInt(chat.usage.input + chat.usage.cacheRead + chat.usage.cacheCreation)} in ·{" "}
+              {fmtInt(chat.usage.output)} out
+            </span>
+            <button type="button" className="chat-new" onClick={() => setChat(null)} disabled={send.isPending}>
+              New chat
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -13,6 +13,8 @@
  *     `messages.slice(lastSeenCount)` — we distill and append, never rewrite.
  *   - One-shot helpers are filtered by growth: a thread's first sighting is
  *     buffered, and only flushed once it reappears larger. Seen once → no file.
+ *     A client that declares itself interactive (`x-claude-proxy-chat: 1`, sent by
+ *     the dashboard's own chat) is exempt — it is never a one-shot helper.
  *   - Per-thread progress mirrors to a `.state.json` sidecar so a restart resumes
  *     instead of re-appending.
  *
@@ -57,6 +59,14 @@ const firstHeader = (h, k) => {
   const v = (h ?? {})[k];
   return (Array.isArray(v) ? v[0] : v) ?? null;
 };
+
+/**
+ * A client declaring itself an interactive chat (the dashboard's `POST /api/chat/*`
+ * sends this). Such a thread is a real conversation from its first turn — there is a
+ * human waiting on the Sessions page for it — so it is exempt from the growth filter
+ * that suppresses one-shot helper calls. Claude Code never sends this header.
+ */
+const isInteractiveChat = (headers) => firstHeader(headers, "x-claude-proxy-chat") === "1";
 
 /** Pull the readable text out of a tool_result block (string or block array). */
 function resultText(b) {
@@ -327,15 +337,16 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     // Unconfirmed thread: buffer the first sighting's lines; a one-shot helper is
     // seen once and never reaches disk. The header is built at flush time so a
-    // title claimed in between rides into it.
-    if (entry.pending === null) {
+    // title claimed in between rides into it. An interactive chat needs no proof
+    // of growth — it is confirmed on sight.
+    if (entry.pending === null && !isInteractiveChat(headers)) {
       entry.pending = lines;
       entry.count = total;
       return;
     }
 
-    // Growth → a real thread. Flush header + buffer + new turns.
-    appendLines(mdPath, [header(threadId, entry), ...entry.pending, ...lines]);
+    // Growth (or a declared chat) → a real thread. Flush header + buffer + new turns.
+    appendLines(mdPath, [header(threadId, entry), ...(entry.pending ?? []), ...lines]);
     entry.started = true;
     entry.titled = !!entry.title; // the header already carries any known title
     entry.subtitled = !!entry.root; // the header already carries any known subtitle

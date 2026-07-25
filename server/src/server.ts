@@ -22,6 +22,7 @@ import {
   buildFilters,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
+import { continueChat, resolveChatConfig, startChat } from "./chat.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
@@ -34,7 +35,8 @@ const PROJECTS_DIR = resolveProjectsDir();
 
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, OPTIONS",
+  // POST is for the chat routes only — every other route stays read-only.
+  "access-control-allow-methods": "GET, POST, OPTIONS",
   "access-control-allow-headers": "*",
 };
 
@@ -137,6 +139,55 @@ function parseDays(raw: string | null): number {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function parseDate(raw: string | null): string | undefined {
   return raw && DATE_RE.test(raw) ? raw : undefined;
+}
+
+/** Cap on a chat request body — a prompt, not a payload. */
+const MAX_BODY_BYTES = 1_000_000;
+
+/** Read a JSON request body, refusing anything oversized or unparseable. */
+async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    bytes += (chunk as Buffer).length;
+    if (bytes > MAX_BODY_BYTES) throw new Error(`request body larger than ${MAX_BODY_BYTES} bytes`);
+    chunks.push(chunk as Buffer);
+  }
+  if (bytes === 0) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new Error("request body is not valid JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("request body must be a JSON object");
+  return parsed as Record<string, unknown>;
+}
+
+/** Map a chat failure onto a status: bad input, missing config, or upstream. */
+function chatErrorStatus(msg: string): number {
+  if (msg.startsWith("chat session not found")) return 404;
+  if (msg.startsWith("chat needs an ANTHROPIC_API_KEY")) return 503;
+  if (msg.startsWith("chat request") || msg.startsWith("anthropic stream error")) return 502;
+  return 400; // invalid prompt / missing sessionId / malformed body
+}
+
+/** Run a chat handler over a POST body, mapping its failures onto statuses. */
+async function serveChat(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  handler: (body: Record<string, unknown>) => Promise<unknown>,
+): Promise<void> {
+  if (req.method !== "POST") {
+    send(res, 405, { error: `method not allowed: ${req.method}` });
+    return;
+  }
+  try {
+    send(res, 200, await handler(await readJsonBody(req)));
+  } catch (err) {
+    const msg = (err as Error).message;
+    send(res, chatErrorStatus(msg), { error: msg });
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -333,6 +384,18 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      // --- Chat: the one outbound path, sending a turn *through* the proxy ---
+      case "/api/chat/config":
+        send(res, 200, resolveChatConfig());
+        return;
+      case "/api/chat/sessions":
+        await serveChat(req, res, (body) =>
+          startChat({ prompt: body.prompt, model: body.model, maxTokens: body.maxTokens, system: body.system }),
+        );
+        return;
+      case "/api/chat/sessions/message":
+        await serveChat(req, res, (body) => continueChat({ sessionId: body.sessionId, prompt: body.prompt }));
+        return;
       case "/api/skim":
         send(res, 200, await buildSkim(LOG_DIR, date));
         return;
@@ -360,4 +423,9 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
+  const chat = resolveChatConfig();
+  console.log(
+    `[claude-proxy-server] chat sends ${chat.model} through ${chat.baseUrl}` +
+      (chat.apiKeySet ? "" : " (no ANTHROPIC_API_KEY — chat disabled)"),
+  );
 });

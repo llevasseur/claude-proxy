@@ -144,6 +144,26 @@ export interface FiltersResponse {
   generatedAt: string;
   filters: ProxyFilterEntry[];
 }
+/** The resolved settings a dashboard-started chat runs with. */
+export interface ChatConfigResponse {
+  baseUrl: string;
+  model: string;
+  maxTokens: number;
+  system: string;
+  anthropicVersion: string;
+  beta: string | null;
+  apiKeySet: boolean;
+}
+export interface ChatTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+export interface ChatSendResponse {
+  session: { id: string; threadId: string | null; model: string; createdAt: string };
+  reply: string;
+  usage: { input: number; output: number; cacheRead: number; cacheCreation: number };
+  turns: ChatTurn[];
+}
 export interface HealthResponse {
   ok: boolean;
   logDir: string;
@@ -151,8 +171,8 @@ export interface HealthResponse {
   sidecarCount: number | null;
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+/** Unwrap a response, preferring the server's `{ error }` message over the status. */
+async function unwrap<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
@@ -164,6 +184,21 @@ async function get<T>(path: string): Promise<T> {
     throw new Error(msg);
   }
   return (await res.json()) as T;
+}
+
+async function get<T>(path: string): Promise<T> {
+  return unwrap<T>(await fetch(`${API_BASE}${path}`));
+}
+
+/** The chat routes are the only writes the API accepts. */
+async function post<T>(path: string, body: unknown): Promise<T> {
+  return unwrap<T>(
+    await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
 }
 
 const qs = (date?: string) => (date ? `?date=${encodeURIComponent(date)}` : "");
@@ -195,3 +230,8 @@ export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
 export const getFilters = () => get<FiltersResponse>("/api/filters");
+export const getChatConfig = () => get<ChatConfigResponse>("/api/chat/config");
+/** Start a chat: one prompt, sent through the proxy, which writes the transcript. */
+export const startChat = (prompt: string) => post<ChatSendResponse>("/api/chat/sessions", { prompt });
+export const sendChatMessage = (sessionId: string, prompt: string) =>
+  post<ChatSendResponse>("/api/chat/sessions/message", { sessionId, prompt });
