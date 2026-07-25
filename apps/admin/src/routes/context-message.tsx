@@ -70,10 +70,7 @@ function MessageBody({ file, message: m }: { file: string; message: RequestMessa
   );
 }
 
-/**
- * Previous/Next navigation between adjacent messages in the same request.
- * `index` is 0-based (it is the route param); the position readout is 1-based.
- */
+/** Previous/Next navigation between adjacent messages in the same request. `index` is 0-based. */
 function MessagePager({ file, index, messageCount }: { file: string; index: number; messageCount: number }) {
   const hasPrev = index > 0;
   const hasNext = index < messageCount - 1;
