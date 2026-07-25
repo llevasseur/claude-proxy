@@ -25,10 +25,10 @@ export function ContextMessagePage() {
         <Link to="/context/$file" params={{ file }} className="link">
           Request breakdown
         </Link>
-        <span className="crumb-current">Message #{index}</span>
+        <span className="crumb-current">Message #{idx + 1}</span>
       </Breadcrumbs>
       <div className="pagehead">
-        <h1>Message #{index}</h1>
+        <h1>Message #{idx + 1}</h1>
       </div>
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
@@ -47,7 +47,7 @@ function MessageBody({ file, message: m }: { file: string; message: RequestMessa
       <MessagePager file={file} index={m.index} messageCount={m.messageCount} />
 
       <div className="grid stats">
-        <StatTile label="Position" value={`#${m.index}`} sub={`of ${m.messageCount} messages`} />
+        <StatTile label="Position" value={`#${m.index + 1}`} sub={`of ${m.messageCount} messages`} />
         <StatTile label="Role" value={m.role} />
         <StatTile label="Size" value={fmtBytes(m.bytes)} sub={`~${fmtInt(m.estTokens)} tokens`} />
       </div>
@@ -70,7 +70,10 @@ function MessageBody({ file, message: m }: { file: string; message: RequestMessa
   );
 }
 
-/** Previous/Next navigation between adjacent messages in the same request. */
+/**
+ * Previous/Next navigation between adjacent messages in the same request.
+ * `index` is 0-based (it is the route param); the position readout is 1-based.
+ */
 function MessagePager({ file, index, messageCount }: { file: string; index: number; messageCount: number }) {
   const hasPrev = index > 0;
   const hasNext = index < messageCount - 1;
@@ -92,7 +95,7 @@ function MessagePager({ file, index, messageCount }: { file: string; index: numb
       )}
 
       <span className="pager-pos muted">
-        #{index} of {messageCount}
+        #{index + 1} of {messageCount}
       </span>
 
       {hasNext ? (
