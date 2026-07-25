@@ -39,11 +39,9 @@ _cpe_root="$(cd "$(dirname "$_cpe_self")/.." && pwd)"
 
 _cpe_store="${LOG_DIR:-$_cpe_root/logs}/sessions"
 
-# CLAUDE_PROXY_ARCHIVE is optional and only means anything once whole days have
-# been relocated out of the live logs dir. Adopt the conventional root only when
-# it actually holds a relocated `sessions/` dir — pointing /revive at a directory
-# with nothing to find is worse than leaving it unset, which it handles by saying
-# the archive was skipped.
+# CLAUDE_PROXY_ARCHIVE is optional — it only means anything once whole days have
+# been relocated out of the live logs dir. Adopt the conventional root only when it
+# actually holds a relocated `sessions/` dir; otherwise leave it unset.
 _cpe_archive="${CLAUDE_PROXY_ARCHIVE:-}"
 if [ -z "$_cpe_archive" ]; then
   _cpe_archive_root="$HOME/Documents/logs/claude"
@@ -52,12 +50,11 @@ if [ -z "$_cpe_archive" ]; then
   fi
 fi
 
-# What the *caller's* environment had, before this script overwrites it — the only
-# way --check can tell a configured shell from an unconfigured one.
+# The caller's value, captured before the export below — what --check compares
+# against to tell a configured shell from an unconfigured one.
 _cpe_inherited="${CLAUDE_PROXY_STORE:-}"
 
-# Resolving is read-only — the store directory is created only by `--setup`, so
-# sourcing this from a shell rc touches nothing on disk.
+# Resolving touches nothing on disk; only `--setup` creates the directory.
 export CLAUDE_PROXY_STORE="$_cpe_store"
 [ -z "$_cpe_archive" ] || export CLAUDE_PROXY_ARCHIVE="$_cpe_archive"
 
@@ -67,16 +64,14 @@ _cpe_exports() {
 }
 
 _cpe_setup() {
-  # The one mutating mode. /revive fails fast on a missing store path, and on a
-  # fresh clone nothing has written a transcript yet, so create the directory.
+  # The one mutating mode — /revive fails fast on a missing store path.
   if ! mkdir -p "$_cpe_store" 2>/dev/null; then
     echo "cannot create the store directory: $_cpe_store" >&2
     return 1
   fi
   echo "store directory ready: $_cpe_store"
   if [ -z "$(find "$_cpe_store" -maxdepth 1 -name '*.md' -print -quit 2>/dev/null)" ]; then
-    # Configured but empty still looks broken to /revive. The usual cause is a
-    # long-lived proxy process that started before session logging existed.
+    # Configured but empty still looks broken to /revive.
     echo "note: no transcripts yet — restart the proxy if it has been running since before session logging landed"
   fi
   echo
@@ -110,12 +105,11 @@ _cpe_check() {
     echo "store directory missing: $_cpe_store (run: pnpm setup:env)"
     _cpe_status=1
   elif [ -z "$(find "$_cpe_store" -maxdepth 1 -name '*.md' -print -quit 2>/dev/null)" ]; then
-    # Configured but empty still looks broken to /revive. The usual cause is a
-    # long-lived proxy process that started before session logging existed.
+    # Configured but empty still looks broken to /revive.
     echo "note: no transcripts yet — restart the proxy if it has been running since before session logging landed"
   fi
-  # An unconfigured *shell* is the failure /revive actually sees, so check the
-  # inherited environment separately from the resolved path.
+  # The resolved path can be correct while the shell itself is unconfigured, which
+  # is the failure /revive actually sees.
   if [ "$_cpe_inherited" != "$_cpe_store" ]; then
     echo "this shell: CLAUDE_PROXY_STORE=${_cpe_inherited:-unset} — add the rc line below"
     echo
@@ -125,8 +119,8 @@ _cpe_check() {
   return "$_cpe_status"
 }
 
-# Sourced: the exports above are the whole job — say nothing and leave no helpers
-# behind in the shell. Executed: act on the flag.
+# Sourced: the exports above are the whole job — stay silent, leave no helpers
+# behind. Executed: act on the flag.
 _cpe_sourced=0
 if [ -n "${ZSH_VERSION:-}" ]; then
   case "${ZSH_EVAL_CONTEXT:-}" in *:file*) _cpe_sourced=1 ;; esac
