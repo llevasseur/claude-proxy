@@ -10,10 +10,10 @@ import {
   EyeOff,
   FolderGit2,
   Gauge,
-  LayoutDashboard,
   Lightbulb,
   ListFilter,
   MessagesSquare,
+  Monitor,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -48,7 +48,7 @@ import { WithheldPage } from "./routes/withheld";
 
 /** Side-rail nav stations. */
 const STATIONS = [
-  { to: "/", label: "Overview", hint: "today", exact: true, icon: LayoutDashboard },
+  { to: "/", label: "Overview", hint: "today", exact: true, icon: Monitor },
   { to: "/trends", label: "Trends", hint: "history", exact: false, icon: TrendingUp },
   { to: "/context", label: "Context size", hint: "prompt", exact: false, icon: Gauge },
   { to: "/tools", label: "Tool bloat", hint: "context", exact: false, icon: Wrench },
