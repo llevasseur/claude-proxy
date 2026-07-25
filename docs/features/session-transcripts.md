@@ -81,8 +81,10 @@ carried the fix.
   (a session's requests never predate it), and returns the largest match. Requests are attributed
   by the sidecar's `session.sessionId`, which the proxy reads off the `x-claude-code-session-id`
   header — that id spans the whole agent family, so the peak may belong to a subagent of the
-  thread being viewed. The tile reads a muted **—** while the lookup runs, on a transcript with
-  no session id, and on legacy sidecars written before `session` was captured.
+  thread being viewed. The tile reads a muted **—** with the reason underneath: **"loading…"**
+  while the lookup runs, **"no session id"** on a transcript that carries none (which skips the
+  request entirely), **"lookup failed"** when the call errors, and **"no captured requests"**
+  when nothing matched — including legacy sidecars written before `session` was captured.
 - **Session errors** (`/sessions/$id/errors`) — **"Errored tool results captured in this
   session"**: one **"Error #n"** entry per `- ✗` line, each tagged with the **Task** it fell
   under and the **Tool** most likely responsible (the nearest preceding tool-call line, or

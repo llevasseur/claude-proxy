@@ -163,19 +163,28 @@ export interface ContextResponse {
 }
 
 /**
- * Context-size analytics over the last `days` days: average / median / max real
- * input tokens, plus the largest requests (each with a `file` handle for the
- * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
+ * Sidecars read with `includeFile: true`, reduced to the context entries that
+ * parsed. The `__file` handle is what a drill-down link is built from, so a
+ * sidecar without one is dropped rather than given a placeholder.
  */
-export async function buildContext(logDir: string, days: number, now: Date = new Date()): Promise<ContextResponse> {
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
   const entries: ContextEntry[] = [];
   for (const s of sidecars) {
     const file = (s as { __file?: string }).__file;
     const entry = file ? toContextEntry(s, file) : null;
     if (entry) entries.push(entry);
   }
-  return { summary: summarizeContext(entries), meta: { days, files, parseErrors } };
+  return entries;
+}
+
+/**
+ * Context-size analytics over the last `days` days: average / median / max real
+ * input tokens, plus the largest requests (each with a `file` handle for the
+ * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
+ */
+export async function buildContext(logDir: string, days: number, now: Date = new Date()): Promise<ContextResponse> {
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+  return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
 }
 
 export interface ContextDetailResponse {
@@ -338,12 +347,7 @@ export async function buildSessionBreakdown(
 
   const since = meta.started ? meta.started.slice(0, 10) : undefined;
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
-  const entries: ContextEntry[] = [];
-  for (const s of sidecars) {
-    const file = (s as { __file?: string }).__file;
-    const entry = file ? toContextEntry(s, file) : null;
-    if (entry) entries.push(entry);
-  }
+  const entries = toContextEntries(sidecars);
 
   return { threadId: id, sessionId, ...sessionContextPeak(entries, sessionId), meta: { files, parseErrors } };
 }

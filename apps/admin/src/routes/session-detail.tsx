@@ -62,7 +62,7 @@ function SessionBody({ session }: { session: SessionDetail }) {
         <StatTile label="Tools" value={fmtInt(meta.tools)} />
         <StatTile label="Decisions" value={fmtInt(meta.decisions)} />
         <ErrorsStatTile threadId={meta.threadId} errors={meta.errors} />
-        <BreakdownStatTile threadId={meta.threadId} />
+        <BreakdownStatTile threadId={meta.threadId} sessionId={meta.sessionId} />
       </div>
 
       {meta.sessionId && (
@@ -173,21 +173,35 @@ function ErrorsStatTile({ threadId, errors }: { threadId: string; errors: number
  * Peak-context tile: links to the Request breakdown of this session's largest
  * captured request. Sits idle (muted "—") while the lookup runs, when the
  * transcript carries no session id, or when no sidecar matched it.
+ *
+ * Requests are matched on the session id, so a transcript without one has no
+ * answer to fetch — the query stays disabled rather than round-tripping for a
+ * result the server would have to return empty. A failed lookup says so instead
+ * of borrowing the empty-result wording, which would blame the data for an
+ * outage.
  */
-function BreakdownStatTile({ threadId }: { threadId: string }) {
+function BreakdownStatTile({ threadId, sessionId }: { threadId: string; sessionId: string | null }) {
   const query = useQuery({
     queryKey: ["session-breakdown", threadId],
     queryFn: () => getSessionBreakdown(threadId),
+    enabled: sessionId !== null,
   });
   const peak = query.data?.peak;
 
   if (!peak) {
+    const foot = !sessionId
+      ? "no session id"
+      : query.isError
+        ? "lookup failed"
+        : query.isPending
+          ? "loading…"
+          : "no captured requests";
     return (
       <div className="card stat">
         <div className="stat-label">Peak context</div>
         <div className="stat-value muted">—</div>
         <div className="stat-foot">
-          <span className="muted">{query.isLoading ? "loading…" : "no captured requests"}</span>
+          <span className="muted">{foot}</span>
         </div>
       </div>
     );
