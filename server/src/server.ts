@@ -385,11 +385,14 @@ const server = http.createServer(async (req, res) => {
       }
       // The chat routes: the only paths that send a request out through the proxy.
       case "/api/chat/config":
-        send(res, 200, resolveChatConfig());
+        send(res, 200, await resolveChatConfig());
         return;
       case "/api/chat/sessions":
         await serveChat(req, res, (body) =>
-          startChat({ prompt: body.prompt, model: body.model, maxTokens: body.maxTokens, system: body.system }, LOG_DIR),
+          startChat(
+            { prompt: body.prompt, model: body.model, maxTokens: body.maxTokens, system: body.system, mode: body.mode },
+            LOG_DIR,
+          ),
         );
         return;
       case "/api/chat/sessions/message":
@@ -419,12 +422,21 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
+server.listen(PORT, HOST, async () => {
   console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
-  const chat = resolveChatConfig();
+  const chat = await resolveChatConfig();
   console.log(
     `[claude-proxy-server] chat sends ${chat.model} through ${chat.baseUrl} over the ${chat.transport} transport` +
+      ` in ${chat.mode} mode` +
       (chat.ready ? "" : ` (disabled: ${chat.readyHint})`),
   );
+  // Agent mode can write to the repo, so say so at startup rather than only in docs.
+  if (chat.mode === "agent" && chat.agent) {
+    const { cwd, alias, aliasFound, flags, permissionMode } = chat.agent;
+    const mirrors = aliasFound
+      ? `mirroring the \`${alias}\` alias${flags.disallowedTools.length ? ` (withholding ${flags.disallowedTools.join(", ")})` : ""}`
+      : `no \`${alias}\` alias found — running a bare claude`;
+    console.log(`[claude-proxy-server] agent turns run in ${cwd} with tools (${permissionMode}), ${mirrors}`);
+  }
 });

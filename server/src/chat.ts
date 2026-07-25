@@ -11,6 +11,13 @@
  *     `ANTHROPIC_API_KEY`, in the request shape Claude Code sends. The proxy forwards
  *     credentials and never supplies them, so this transport needs its own key.
  *
+ * The `cli` transport runs in one of two modes. `agent` (the default) is a full
+ * Claude Code session at parity with the device's own — its tools run and its custom
+ * slash commands work, so **a dashboard prompt can change this repo**; the flags come
+ * from the user's real `claude` alias, read off the shell rc. `chat` is the sandboxed
+ * posture: no tools, no customizations, a scratch cwd. `api` is always `chat` — a
+ * bare `/v1/messages` call has no harness to run a tool with.
+ *
  * A thread id is read back from the transcript the proxy wrote, never predicted: the
  * proxy fingerprints a thread from the *wire* text of its first user message, which
  * under the CLI carries harness context this side never sees.
@@ -22,8 +29,18 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { findOnPath, resolveCliCwd, runCliTurn } from "./chat-cli.js";
+import {
+  type AgentLaunchFlags,
+  type ChatMode,
+  type CliToolUse,
+  DEFAULT_AGENT_FLAGS,
+  findOnPath,
+  resolveAgentCwd,
+  resolveCliCwd,
+  runCliTurn,
+} from "./chat-cli.js";
 import { listSessions } from "./sessions.js";
+import { readLaunchAliases } from "./shell-rc.js";
 
 const ANTHROPIC_VERSION = "2023-06-01";
 
@@ -35,6 +52,15 @@ const DEFAULT_CLI_PATH = "claude";
 const DEFAULT_SYSTEM =
   "You are Claude, answering in a chat started from the claude-proxy dashboard. " +
   "Be direct and concise.";
+/** Appended to Claude Code's own prompt in agent mode, never replacing it. */
+const DEFAULT_AGENT_SYSTEM =
+  "You are running as an agent started from the claude-proxy dashboard, in this " +
+  "repository's checkout. Be direct and concise.";
+
+/** The shell alias an agent turn mirrors; the user's everyday `claude`. */
+const DEFAULT_AGENT_ALIAS = "claude";
+/** A headless child cannot answer a permission prompt, so it needs a standing answer. */
+const DEFAULT_PERMISSION_MODE = "acceptEdits";
 
 const MAX_PROMPT_CHARS = 100_000;
 
@@ -49,10 +75,35 @@ const MARKER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type ChatTransport = "cli" | "api";
 
+export type { ChatMode };
+
+/**
+ * What an agent turn inherits from the device — resolved once per turn and reported
+ * to the dashboard so the posture is visible rather than assumed.
+ */
+export interface AgentConfig {
+  /** The only directory an agent turn can reach. */
+  cwd: string;
+  /** The shell alias being mirrored, and whether it was actually found. */
+  alias: string;
+  aliasFound: boolean;
+  /** Where the alias was looked for, and whether that file could be read. */
+  rcPath: string;
+  rcReadable: boolean;
+  /** The flags replayed onto the child, as parsed from that alias. */
+  flags: AgentLaunchFlags;
+  /** The standing answer to permission prompts a headless child can't be asked. */
+  permissionMode: string;
+}
+
 /** The resolved configuration a chat runs with — surfaced by `GET /api/chat/config`. */
 export interface ChatConfig {
   /** Which outbound path a chat takes. */
   transport: ChatTransport;
+  /** The posture new turns default to. `agent` can act; `chat` cannot. */
+  mode: ChatMode;
+  /** Resolved device parity for agent turns; null when the transport can't run them. */
+  agent: AgentConfig | null;
   /** Where the request is sent: the proxy, not `api.anthropic.com`. */
   baseUrl: string;
   model: string;
@@ -90,6 +141,12 @@ interface ChatSession {
   /** The proxy's transcript id, read back from the transcript; null until it exists. */
   threadId: string | null;
   transport: ChatTransport;
+  /** Fixed when the chat starts: a chat that could not act must not gain that power
+   * on its second turn, and vice versa. */
+  mode: ChatMode;
+  /** The device posture this chat resolved at start; null in `chat` mode. Pinned for
+   * the same reason — editing the shell rc mid-chat must not re-arm a running agent. */
+  agent: AgentConfig | null;
   model: string;
   maxTokens: number;
   system: string;
@@ -107,10 +164,12 @@ interface AnthropicMessage {
 }
 
 export interface ChatSendResult {
-  session: { id: string; threadId: string | null; model: string; createdAt: string; transport: ChatTransport };
+  session: { id: string; threadId: string | null; model: string; createdAt: string; transport: ChatTransport; mode: ChatMode };
   reply: string;
   usage: ChatUsage;
   turns: ChatTurn[];
+  /** Tools this turn ran. Always empty in `chat` mode, which has none. */
+  tools: CliToolUse[];
 }
 
 /** Live chats, keyed by session id. Lost on restart; the transcript is not. */
@@ -135,27 +194,76 @@ export function resolveChatTransport(raw = process.env.CHAT_TRANSPORT): ChatTran
   return raw?.trim().toLowerCase() === "api" ? "api" : "cli";
 }
 
-export function resolveChatConfig(): ChatConfig {
+/**
+ * `agent` unless `CHAT_MODE` says otherwise. Parity is the default because a
+ * dashboard prompt that cannot run a tool or a custom command is not the thing most
+ * people open the dashboard to use; `CHAT_MODE=chat` restores the sandboxed posture
+ * for a deployment that should not be able to act.
+ */
+export function resolveChatMode(raw = process.env.CHAT_MODE): ChatMode {
+  return raw?.trim().toLowerCase() === "chat" ? "chat" : "agent";
+}
+
+/**
+ * Read the device's own `claude` alias and turn it into the flags an agent turn
+ * replays. This is what "same settings as my CLI sessions" resolves to in practice:
+ * the alias is the user's real launch posture, and `@claude-proxy/core` already
+ * parses it for the withheld-tools report.
+ *
+ * A missing alias or unreadable rc is not an error — it means a bare `claude`, which
+ * is still parity. `aliasFound` reports which of the two happened.
+ */
+export async function resolveAgentConfig(): Promise<AgentConfig> {
+  const alias = process.env.CHAT_AGENT_ALIAS ?? DEFAULT_AGENT_ALIAS;
+  const { rcPath, rcReadable, aliases } = await readLaunchAliases();
+  const match = aliases.find((a) => a.name === alias);
+
+  return {
+    cwd: resolveAgentCwd(),
+    alias,
+    aliasFound: !!match,
+    rcPath,
+    rcReadable,
+    flags: match
+      ? {
+          disallowedTools: match.withheld,
+          settingSources: match.settingSources,
+          settingsOverrides: match.settingsOverrides,
+        }
+      : DEFAULT_AGENT_FLAGS,
+    permissionMode: process.env.CHAT_AGENT_PERMISSION_MODE ?? DEFAULT_PERMISSION_MODE,
+  };
+}
+
+export async function resolveChatConfig(): Promise<ChatConfig> {
   const transport = resolveChatTransport();
+  const mode = resolveChatMode();
   const cliPath = process.env.CHAT_CLI_PATH ?? DEFAULT_CLI_PATH;
   const cliFound = transport === "cli" ? findOnPath(cliPath) : null;
   const apiKeySet = !!process.env.ANTHROPIC_API_KEY;
+  // Only the CLI transport can be an agent — `api` is a bare `/v1/messages` call
+  // with no harness to run tools or expand a slash command.
+  const agent = transport === "cli" ? await resolveAgentConfig() : null;
 
   const readyHint =
     transport === "api"
-      ? apiKeySet
-        ? null
-        : "set ANTHROPIC_API_KEY — the proxy forwards credentials, it never supplies them"
+      ? mode === "agent"
+        ? "agent mode needs the cli transport — unset CHAT_TRANSPORT=api, or set CHAT_MODE=chat"
+        : apiKeySet
+          ? null
+          : "set ANTHROPIC_API_KEY — the proxy forwards credentials, it never supplies them"
       : cliFound
         ? null
         : `install Claude Code, or point CHAT_CLI_PATH at it (${cliPath} is not on PATH)`;
 
   return {
     transport,
+    mode,
+    agent,
     baseUrl: resolveChatBaseUrl(),
     model: process.env.CHAT_MODEL ?? DEFAULT_MODEL,
     maxTokens: envInt(process.env.CHAT_MAX_TOKENS, DEFAULT_MAX_TOKENS),
-    system: process.env.CHAT_SYSTEM ?? DEFAULT_SYSTEM,
+    system: process.env.CHAT_SYSTEM ?? (mode === "agent" ? DEFAULT_AGENT_SYSTEM : DEFAULT_SYSTEM),
     anthropicVersion: ANTHROPIC_VERSION,
     beta: process.env.CHAT_BETA ?? null,
     apiKeySet,
@@ -187,6 +295,7 @@ const publicSession = (s: ChatSession): ChatSendResult["session"] => ({
   model: s.model,
   createdAt: s.createdAt,
   transport: s.transport,
+  mode: s.mode,
 });
 
 const turnsOf = (s: ChatSession): ChatTurn[] =>
@@ -349,27 +458,36 @@ async function postTurn(config: ChatConfig, session: ChatSession): Promise<{ tex
 
 // --- Dispatch ---------------------------------------------------------------
 
-async function runTurn(config: ChatConfig, session: ChatSession, prompt: string): Promise<{ text: string; usage: ChatUsage }> {
-  if (session.transport === "api") return postTurn(config, session);
+async function runTurn(
+  config: ChatConfig,
+  session: ChatSession,
+  prompt: string,
+): Promise<{ text: string; usage: ChatUsage; tools: CliToolUse[] }> {
+  if (session.transport === "api") return { ...(await postTurn(config, session)), tools: [] };
   if (!config.cliFound) throw new Error(`chat is not configured: ${config.readyHint}`);
 
-  const { text, usage } = await runCliTurn({
+  const agent = session.mode === "agent" ? session.agent : null;
+  const { text, usage, tools } = await runCliTurn({
     cliPath: config.cliFound,
-    cwd: resolveCliCwd(process.env.CHAT_CLI_CWD),
+    // An agent works in the repo; a chat is kept out of it entirely.
+    cwd: agent ? agent.cwd : resolveCliCwd(process.env.CHAT_CLI_CWD),
     baseUrl: config.baseUrl,
+    mode: session.mode,
     model: session.model,
     system: session.system,
     sessionId: session.id,
     resume: session.sent > 0,
     prompt,
     timeoutMs: REQUEST_TIMEOUT_MS,
+    agentFlags: agent?.flags,
+    permissionMode: agent?.permissionMode,
   });
-  return { text, usage };
+  return { text, usage, tools };
 }
 
 async function send(session: ChatSession, config: ChatConfig, logDir: string, prompt: string): Promise<ChatSendResult> {
   session.messages.push(textMessage("user", prompt));
-  let result: { text: string; usage: ChatUsage };
+  let result: { text: string; usage: ChatUsage; tools: CliToolUse[] };
   try {
     result = await runTurn(config, session, prompt);
   } catch (err) {
@@ -381,24 +499,47 @@ async function send(session: ChatSession, config: ChatConfig, logDir: string, pr
   // The proxy writes the transcript after it has answered us, so this is the first
   // moment the thread can exist. A first turn may still be buffered — try again next turn.
   if (!session.threadId) session.threadId = await resolveThreadId(logDir, session.id);
-  return { session: publicSession(session), reply: result.text, usage: result.usage, turns: turnsOf(session) };
+  return { session: publicSession(session), reply: result.text, usage: result.usage, turns: turnsOf(session), tools: result.tools };
+}
+
+/** A per-request `mode`, falling back to the configured default. */
+function pickMode(raw: unknown, fallback: ChatMode): ChatMode {
+  if (raw === undefined || raw === null) return fallback;
+  if (raw !== "chat" && raw !== "agent") throw new Error(`invalid mode: expected "chat" or "agent"`);
+  return raw;
 }
 
 export async function startChat(
-  input: { prompt: unknown; model?: unknown; maxTokens?: unknown; system?: unknown },
+  input: { prompt: unknown; model?: unknown; maxTokens?: unknown; system?: unknown; mode?: unknown },
   logDir: string,
 ): Promise<ChatSendResult> {
   const prompt = normalizePrompt(input.prompt);
-  const config = resolveChatConfig();
-  if (!config.ready) throw new Error(`chat is not configured: ${config.readyHint}`);
+  const config = await resolveChatConfig();
+  const mode = pickMode(input.mode, config.mode);
+  if (mode === "agent" && config.transport !== "cli") {
+    throw new Error("chat is not configured: agent mode needs the cli transport");
+  }
+  // `ready` is judged against the configured default; a request that opts into the
+  // other mode must not inherit a hint about the one it isn't using.
+  if (!config.ready && !(mode === "chat" && config.transport === "cli" && config.cliFound)) {
+    throw new Error(`chat is not configured: ${config.readyHint}`);
+  }
 
   const session: ChatSession = {
     id: crypto.randomUUID(), // also the CLI's `--session-id`, which must be a UUID
     threadId: null,
     transport: config.transport,
+    mode,
+    agent: mode === "agent" ? config.agent : null,
     model: typeof input.model === "string" && input.model.trim() ? input.model.trim() : config.model,
     maxTokens: typeof input.maxTokens === "number" && input.maxTokens > 0 ? Math.floor(input.maxTokens) : config.maxTokens,
-    system: typeof input.system === "string" && input.system.trim() ? input.system : config.system,
+    // `config.system` is resolved for the *default* mode, so a request that opts into
+    // the other one picks its default directly — an agent's prompt is appended to
+    // Claude Code's, a chat's replaces it, and they should not be worded alike.
+    system:
+      typeof input.system === "string" && input.system.trim()
+        ? input.system
+        : (process.env.CHAT_SYSTEM ?? (mode === "agent" ? DEFAULT_AGENT_SYSTEM : DEFAULT_SYSTEM)),
     createdAt: new Date().toISOString(),
     messages: [],
     sent: 0,
@@ -420,7 +561,7 @@ export async function continueChat(input: { sessionId: unknown; prompt: unknown 
   const session = sessions.get(input.sessionId);
   if (!session) throw new Error(`chat session not found: ${input.sessionId}`);
   const prompt = normalizePrompt(input.prompt);
-  return send(session, resolveChatConfig(), logDir, prompt);
+  return send(session, await resolveChatConfig(), logDir, prompt);
 }
 
 /** Test seam: forget in-memory chats. */
