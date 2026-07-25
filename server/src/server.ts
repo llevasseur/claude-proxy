@@ -141,10 +141,8 @@ function parseDate(raw: string | null): string | undefined {
   return raw && DATE_RE.test(raw) ? raw : undefined;
 }
 
-/** Cap on a chat request body — a prompt, not a payload. */
 const MAX_BODY_BYTES = 1_000_000;
 
-/** Read a JSON request body, refusing anything oversized or unparseable. */
 async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let bytes = 0;
@@ -164,7 +162,7 @@ async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, u
   return parsed as Record<string, unknown>;
 }
 
-/** Map a chat failure onto a status: bad input, missing config, or upstream. */
+/** Map a chat failure onto a status. */
 function chatErrorStatus(msg: string): number {
   if (msg.startsWith("chat session not found")) return 404;
   if (msg.startsWith("chat needs an ANTHROPIC_API_KEY")) return 503;
@@ -172,7 +170,6 @@ function chatErrorStatus(msg: string): number {
   return 400; // invalid prompt / missing sessionId / malformed body
 }
 
-/** Run a chat handler over a POST body, mapping its failures onto statuses. */
 async function serveChat(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -384,7 +381,7 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
-      // --- Chat: the one outbound path, sending a turn *through* the proxy ---
+      // The chat routes: the only paths that send a request out through the proxy.
       case "/api/chat/config":
         send(res, 200, resolveChatConfig());
         return;

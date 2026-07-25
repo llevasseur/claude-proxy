@@ -13,8 +13,7 @@
  *     `messages.slice(lastSeenCount)` — we distill and append, never rewrite.
  *   - One-shot helpers are filtered by growth: a thread's first sighting is
  *     buffered, and only flushed once it reappears larger. Seen once → no file.
- *     A client that declares itself interactive (`x-claude-proxy-chat: 1`, sent by
- *     the dashboard's own chat) is exempt — it is never a one-shot helper.
+ *     A client declaring itself interactive (`x-claude-proxy-chat: 1`) is exempt.
  *   - Per-thread progress mirrors to a `.state.json` sidecar so a restart resumes
  *     instead of re-appending.
  *
@@ -61,10 +60,9 @@ const firstHeader = (h, k) => {
 };
 
 /**
- * A client declaring itself an interactive chat (the dashboard's `POST /api/chat/*`
- * sends this). Such a thread is a real conversation from its first turn — there is a
- * human waiting on the Sessions page for it — so it is exempt from the growth filter
- * that suppresses one-shot helper calls. Claude Code never sends this header.
+ * A client declaring itself an interactive chat (the dashboard's `POST /api/chat/*`).
+ * Such a thread is a real conversation from its first turn, so it is exempt from the
+ * growth filter that suppresses one-shot helpers. Claude Code never sends this header.
  */
 const isInteractiveChat = (headers) => firstHeader(headers, "x-claude-proxy-chat") === "1";
 

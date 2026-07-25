@@ -1840,10 +1840,9 @@ button.gi-open {
   color: var(--violet);
 }
 
-/* --- Start a session: prompt input + the chat it opens ------------------- */
+/* start a session: prompt input + the chat it opens */
 
-/* The chat prompt: an auto-growing textarea over its own toolbar, following the
-   shadcn AI prompt-input anatomy in this dashboard's plain CSS. */
+/* An auto-growing textarea over its own toolbar. */
 .prompt-input {
   display: flex;
   flex-direction: column;
@@ -1913,7 +1912,7 @@ button.gi-open {
 .chat-note {
   margin: 0 0 12px;
 }
-/* The turns so far — kept short; the transcript is the durable record. */
+/* The turns so far, kept short. */
 .chat-log {
   display: flex;
   flex-direction: column;

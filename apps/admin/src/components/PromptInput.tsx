@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
 
-/** Where a submit stands, so the button can show it. */
 export type PromptStatus = "ready" | "submitted" | "error";
 
 const SUBMIT_TITLE: Record<PromptStatus, string> = {
@@ -23,19 +22,13 @@ export interface PromptInputProps {
   maxRows?: number;
 }
 
-/** Line height used to translate rows into the auto-grow bounds (matches the CSS). */
+/** Must match the textarea's line-height in `styles.css`. */
 const LINE_HEIGHT = 21;
 const VERTICAL_PADDING = 20;
 
 /**
- * A chat prompt input — one auto-growing textarea plus a send button, following the
- * shadcn AI prompt-input anatomy (Enter submits, Shift+Enter breaks the line, the
- * button disables while a submit is in flight).
- *
- * Hand-rolled rather than pulled from the shadcn registry: this app styles itself
- * with plain CSS tokens in `styles.css` and has no Tailwind or `components.json`, so
- * `shadcn add` has nothing to write into. The behavior and markup structure are the
- * registry component's; the styling is this dashboard's.
+ * Follows the shadcn AI prompt-input anatomy, hand-rolled: this app has no Tailwind
+ * or `components.json`, so `shadcn add` has nothing to write into.
  */
 export function PromptInput({
   value,
@@ -51,7 +44,7 @@ export function PromptInput({
   const busy = status === "submitted";
   const blocked = disabled || busy;
 
-  // Auto-grow: measure content, clamp between minRows and maxRows, scroll past that.
+  // Auto-grow: clamp measured content between minRows and maxRows, scroll past that.
   useEffect(() => {
     const el = textarea.current;
     if (!el) return;

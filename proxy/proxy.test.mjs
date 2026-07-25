@@ -234,8 +234,7 @@ test("threadIdFor: stable per root, namespaced by session, null when no root", (
   assert.notEqual(a, threadIdFor("sess-2", msgs)); // session-namespaced
   assert.notEqual(a, threadIdFor("sess-1", [userText("Different task")]));
   assert.equal(threadIdFor("sess-1", []), null);
-  // Pinned digest: `threadIdFor` in server/src/chat.ts mirrors this formula so the
-  // dashboard can link a chat it started to the transcript written under it. If this
+  // Pinned digest: `threadIdFor` in server/src/chat.ts mirrors this formula. If this
   // vector changes, that mirror has to change with it.
   assert.equal(a, "ebd92420bd68e6f7");
   // A tool-result-only user turn is not a root — first *text* wins.

@@ -231,7 +231,6 @@ export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?d
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
 export const getFilters = () => get<FiltersResponse>("/api/filters");
 export const getChatConfig = () => get<ChatConfigResponse>("/api/chat/config");
-/** Start a chat: one prompt, sent through the proxy, which writes the transcript. */
 export const startChat = (prompt: string) => post<ChatSendResponse>("/api/chat/sessions", { prompt });
 export const sendChatMessage = (sessionId: string, prompt: string) =>
   post<ChatSendResponse>("/api/chat/sessions/message", { sessionId, prompt });

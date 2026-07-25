@@ -45,13 +45,9 @@ export function SessionsPage() {
 }
 
 /**
- * Start a session from the dashboard. The prompt goes to the server's chat route,
- * which sends it *through the proxy* the way Claude Code does — so the proxy writes
- * the audit sidecar and the transcript, and the new thread shows up in the table
- * below (live, over SSE) without this page having to insert it.
- *
- * The same input then continues the conversation: each turn replays the whole
- * history, which is exactly what makes the transcript grow.
+ * The prompt goes to the server's chat route, which sends it through the proxy — so
+ * the proxy writes the transcript and the new thread arrives in the table below over
+ * SSE, without this page inserting it. The same input then continues the chat.
  */
 function StartChatCard() {
   const config = useQuery({ queryKey: ["chat", "config"], queryFn: getChatConfig, staleTime: 60_000 });
@@ -65,7 +61,7 @@ function StartChatCard() {
     onSuccess: (data) => {
       setChat(data);
       setDraft("");
-      // The transcript is new (or grew) — refresh the list behind the live stream.
+      // Refresh the list behind the live stream: the transcript is new, or it grew.
       client.invalidateQueries({ queryKey: ["sessions"] });
     },
   });
