@@ -91,6 +91,8 @@ function StartChatCard() {
     });
     setSessionId(crypto.randomUUID());
     setChat(null);
+    // Both mutations too: a failed turn's error otherwise sits under the new empty chat.
+    send.reset();
     stop.reset();
   };
 

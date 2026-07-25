@@ -100,7 +100,10 @@ both force the base URL the same way.
 permission prompt, so it carries a standing `--permission-mode`, picked on the start form
 next to the mode and pinned for the session's life. `CHAT_AGENT_PERMISSION_MODE` still sets
 the default the form opens on, but it is no longer the only lever — changing it used to mean
-restarting the server, and which answer a turn needs is a property of that turn.
+restarting the server, and which answer a turn needs is a property of that turn. A value
+outside the four is ignored with a warning and `acceptEdits` is used instead, since an
+unchecked default would be rejected by the CLI a turn later and would leave the form's
+select with no option matching its own value.
 
 What each one does to a *command* is the part worth stating, because the default surprises:
 
@@ -169,6 +172,12 @@ overridable with a comma-separated `CHAT_ALLOWED_ORIGINS` — and a request that
 different origin is refused with `403` rather than trusting the browser to withhold the
 response it already produced. A request with no `Origin` at all (curl, a test) is unaffected.
 This is a scope fix, not an auth story; the open question below still stands.
+
+Because the default list names a port, the dashboard has to actually be on it: the admin
+Vite server is `strictPort`, so a taken 5173 fails the dev server outright instead of
+sliding to 5174 and leaving a dashboard whose every chat POST comes back `403`. Serving the
+dashboard from any other origin — a second checkout, a preview build, another host — means
+naming that origin in `CHAT_ALLOWED_ORIGINS`.
 
 **One-shot filter exemption.** The proxy suppresses a thread's first sighting and flushes
 it only once the thread reappears larger, which is how one-shot helper calls stay out of

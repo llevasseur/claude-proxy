@@ -109,7 +109,7 @@ export interface AgentConfig {
   /** The flags replayed onto the child, as parsed from that alias. */
   flags: AgentLaunchFlags;
   /** The standing answer to permission prompts a headless child can't be asked. */
-  permissionMode: string;
+  permissionMode: PermissionMode;
 }
 
 /** The resolved configuration a chat runs with — surfaced by `GET /api/chat/config`. */
@@ -253,8 +253,24 @@ export async function resolveAgentConfig(): Promise<AgentConfig> {
           settingsOverrides: match.settingsOverrides,
         }
       : DEFAULT_AGENT_FLAGS,
-    permissionMode: process.env.CHAT_AGENT_PERMISSION_MODE ?? DEFAULT_PERMISSION_MODE,
+    permissionMode: resolveDefaultPermissionMode(process.env.CHAT_AGENT_PERMISSION_MODE),
   };
+}
+
+/**
+ * `CHAT_AGENT_PERMISSION_MODE` is only the default the start form opens on, but an
+ * unchecked one is worse than no default: the CLI would reject it a turn later, and the
+ * form's select would have no option matching its own value. A typo falls back to
+ * `acceptEdits` and says so, rather than propagating.
+ */
+function resolveDefaultPermissionMode(raw: string | undefined): PermissionMode {
+  const value = raw?.trim();
+  if (!value) return DEFAULT_PERMISSION_MODE;
+  if ((PERMISSION_MODES as readonly string[]).includes(value)) return value as PermissionMode;
+  console.warn(
+    `[chat] ignoring CHAT_AGENT_PERMISSION_MODE=${value}: expected one of ${PERMISSION_MODES.join(", ")} — using ${DEFAULT_PERMISSION_MODE}`,
+  );
+  return DEFAULT_PERMISSION_MODE;
 }
 
 export async function resolveChatConfig(): Promise<ChatConfig> {
@@ -562,12 +578,12 @@ function pickMode(raw: unknown, fallback: ChatMode): ChatMode {
  * on the start form because the alternative — `CHAT_AGENT_PERMISSION_MODE` — can only be
  * changed by restarting the server, and the mode a turn needs is a property of the turn.
  */
-function pickPermissionMode(raw: unknown, fallback: string): string {
+function pickPermissionMode(raw: unknown, fallback: PermissionMode): PermissionMode {
   if (raw === undefined || raw === null) return fallback;
   if (typeof raw !== "string" || !(PERMISSION_MODES as readonly string[]).includes(raw)) {
     throw new Error(`invalid permissionMode: expected one of ${PERMISSION_MODES.join(", ")}`);
   }
-  return raw;
+  return raw as PermissionMode;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

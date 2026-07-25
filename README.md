@@ -223,7 +223,24 @@ custom slash commands (`/task` and the rest) all work, and the flags come from
 your actual `claude` shell alias — withhold a tool there and the dashboard
 withholds it too. Its reach is bounded to one directory, the checkout the server
 is running from, and a headless child can't be asked to approve anything, so it
-runs with a standing `--permission-mode acceptEdits`.
+carries a standing `--permission-mode`.
+
+**Which standing answer is a per-session choice**, picked next to the mode on the
+start form and pinned for that session's life. It matters more than it sounds:
+under the `acceptEdits` default, file edits are pre-approved but Bash is not, so
+any command that would have prompted is auto-denied — an agent turn can rewrite a
+file and cannot `git commit` it. `bypassPermissions` is the one that lets a
+dashboard `/task` finish its git writes; `plan` is read-only. Picking it on the
+form is what makes that a per-task decision instead of a server restart —
+`CHAT_AGENT_PERMISSION_MODE` now only sets the default the form opens on (an
+unrecognized value is ignored with a warning).
+
+**A turn can be stopped.** Agent turns run for minutes; the Stop control ends the
+one in flight without ending the session, and the reply comes back as the partial
+one — the text and tool chips that arrived — rather than an error. The child leads
+its own process group, so the shells and subagents it started go with it instead
+of being orphaned in the repo. Failed tool chips carry the reason from the tool's
+own result, so a permission denial reads as a denial.
 
 There is no auth in front of that. The server binds locally and every other route
 is read-only, but before exposing this port anywhere, switch to the sandboxed
@@ -233,10 +250,17 @@ posture — no tools, no device config, a scratch directory:
 CHAT_MODE=chat pnpm server
 ```
 
+The chat routes are the only writes the server accepts, and they do not answer
+CORS `*` like the read-only ones: they echo only `CHAT_ALLOWED_ORIGINS`
+(`http://localhost:5173` and its `127.0.0.1` form by default) and refuse a request
+declaring any other origin with `403`. Serve the dashboard from somewhere else and
+that origin has to be named there. It scopes the browser reach of the write
+surface; it is not authentication, and anything that can reach the port directly
+is unaffected.
+
 Either mode can also be chosen per chat from the toggle on the Sessions page, and
 it's fixed for the life of that session. `CHAT_AGENT_ALIAS` picks a different
-alias to mirror and `CHAT_AGENT_PERMISSION_MODE` changes the standing answer.
-Design detail in
+alias to mirror. Design detail in
 [docs/specs/2026-07-25-dashboard-agent-mode-design.md](docs/specs/2026-07-25-dashboard-agent-mode-design.md).
 
 ### Withholding tools device-wide ("Not added")
