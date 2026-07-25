@@ -8,7 +8,9 @@ export function HealthBadge() {
   return (
     <div className="health" title={title}>
       <span className={`dot ${ok ? "ok" : "bad"}`} />
-      {data?.sidecarCount != null ? `${data.sidecarCount.toLocaleString()} logs` : ok ? "connected" : "offline"}
+      <span className="health-text">
+        {data?.sidecarCount != null ? `${data.sidecarCount.toLocaleString()} logs` : ok ? "connected" : "offline"}
+      </span>
     </div>
   );
 }

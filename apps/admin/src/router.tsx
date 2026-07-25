@@ -6,8 +6,25 @@ import {
   Outlet,
   useRouterState,
 } from "@tanstack/react-router";
+import {
+  EyeOff,
+  FolderGit2,
+  Gauge,
+  LayoutDashboard,
+  Lightbulb,
+  ListFilter,
+  MessagesSquare,
+  Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Puzzle,
+  TrendingUp,
+  Wrench,
+  Zap,
+} from "lucide-react";
 import { useEffect } from "react";
 import { HealthBadge } from "./components/HealthBadge";
+import { useRailCollapsed } from "./useRailCollapsed";
 import { AdvicePage } from "./routes/advice";
 import { ContextDetailPage } from "./routes/context-detail";
 import { ContextMessagePage } from "./routes/context-message";
@@ -31,18 +48,18 @@ import { WithheldPage } from "./routes/withheld";
 
 /** Side-rail nav stations. */
 const STATIONS = [
-  { to: "/", label: "Overview", hint: "today", exact: true },
-  { to: "/trends", label: "Trends", hint: "history", exact: false },
-  { to: "/context", label: "Context size", hint: "prompt", exact: false },
-  { to: "/tools", label: "Tool bloat", hint: "context", exact: false },
-  { to: "/skim", label: "Skim", hint: "cache", exact: false },
-  { to: "/withheld", label: "Not added", hint: "withheld", exact: false },
-  { to: "/filters", label: "Proxy filters", hint: "stripped", exact: false },
-  { to: "/projects", label: "Projects", hint: "memory", exact: false },
-  { to: "/sessions", label: "Sessions", hint: "transcripts", exact: true },
-  { to: "/sessions/graph", label: "Live graph", hint: "sessions", exact: false },
-  { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false },
-  { to: "/advice", label: "Advice", hint: "coaching", exact: false },
+  { to: "/", label: "Overview", hint: "today", exact: true, icon: LayoutDashboard },
+  { to: "/trends", label: "Trends", hint: "history", exact: false, icon: TrendingUp },
+  { to: "/context", label: "Context size", hint: "prompt", exact: false, icon: Gauge },
+  { to: "/tools", label: "Tool bloat", hint: "context", exact: false, icon: Wrench },
+  { to: "/skim", label: "Skim", hint: "cache", exact: false, icon: Zap },
+  { to: "/withheld", label: "Not added", hint: "withheld", exact: false, icon: EyeOff },
+  { to: "/filters", label: "Proxy filters", hint: "stripped", exact: false, icon: ListFilter },
+  { to: "/projects", label: "Projects", hint: "memory", exact: false, icon: FolderGit2 },
+  { to: "/sessions", label: "Sessions", hint: "transcripts", exact: true, icon: MessagesSquare },
+  { to: "/sessions/graph", label: "Live graph", hint: "sessions", exact: false, icon: Network },
+  { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false, icon: Puzzle },
+  { to: "/advice", label: "Advice", hint: "coaching", exact: false, icon: Lightbulb },
 ] as const;
 
 /** Browser-tab title for a route, appended after the ClaudeProxy brand. */
@@ -76,8 +93,10 @@ function RootLayout() {
   // The live graph fills the whole content area; every other page keeps the padded column.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const full = pathname === "/sessions/graph";
+  const [collapsed, toggleRail] = useRailCollapsed();
+  const toggleLabel = collapsed ? "Expand navigation" : "Collapse navigation";
   return (
-    <div className="app">
+    <div className={`app${collapsed ? " app--rail-collapsed" : ""}`}>
       <aside className="rail">
         <div className="rail-head">
           <span className="brand-node" aria-hidden />
@@ -85,6 +104,16 @@ function RootLayout() {
             claude<span className="brand-sep">·</span>proxy
           </span>
           <span className="brand-tag">admin</span>
+          <button
+            type="button"
+            className="rail-toggle"
+            onClick={toggleRail}
+            aria-pressed={collapsed}
+            aria-label={toggleLabel}
+            title={toggleLabel}
+          >
+            {collapsed ? <PanelLeftOpen size={16} aria-hidden /> : <PanelLeftClose size={16} aria-hidden />}
+          </button>
         </div>
 
         <nav className="stations" aria-label="Sections">
@@ -95,8 +124,9 @@ function RootLayout() {
               className="station"
               activeProps={activeProps}
               activeOptions={s.exact ? { exact: true } : undefined}
+              title={collapsed ? s.label : undefined}
             >
-              <span className="station-node" aria-hidden />
+              <s.icon className="station-icon" size={17} strokeWidth={1.75} aria-hidden />
               <span className="station-label">{s.label}</span>
               <span className="station-hint">{s.hint}</span>
             </Link>
