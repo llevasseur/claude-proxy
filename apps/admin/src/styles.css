@@ -1675,9 +1675,13 @@ a.pager-btn:hover {
   border-color: var(--signal);
   color: var(--signal);
 }
+/* Scrolls on its own: `contain` traps a wheel at either end, `pan-y` undoes the
+   viewport's `touch-action: none`. */
 .gs-list {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
   padding: 8px;
@@ -1825,6 +1829,8 @@ a.pager-btn:hover {
 .gi-body {
   padding: 16px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
   gap: 14px;

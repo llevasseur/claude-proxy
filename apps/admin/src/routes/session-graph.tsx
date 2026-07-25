@@ -37,6 +37,9 @@ const BAND_HEAD = 34;
 /** Gap between a parent row and a branch band hanging beneath it. */
 const BAND_GAP = 26;
 
+/** Overlay panels with their own scrollbar; a collapsed rail has nothing to scroll. */
+const SCROLLS_ITSELF = ".graph-sessions:not(.is-collapsed), .graph-inspector";
+
 /** What a box or edge is about — drives its glow color. */
 type Tone = SessionNode["type"] | "root" | "agent";
 
@@ -459,6 +462,8 @@ export function SessionGraphPage() {
     const el = viewportRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // The overlay panels sit inside the viewport, so their wheels bubble here.
+      if ((e.target as HTMLElement).closest(SCROLLS_ITSELF)) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const mx = e.clientX - rect.left;
