@@ -38,7 +38,8 @@ into a direct answer without touching the passive-observer proxy.
   request: totals (bytes, message count, tool count), a **region table** (conversation
   messages vs. tool schemas vs. system prompt as shares of the request), a
   **messages-by-size** table (each row opens the [Message drill-down](message-drill-down.md)
-  for that message; sortable by **#**, **Bytes**, **~Tokens**, and **Share** — default **#**
+  for that message; the **#** column numbers messages from 1 while the route stays 0-based;
+  sortable by **#**, **Bytes**, **~Tokens**, and **Share** — default **#**
   ascending, click a column to sort and again to flip direction), a **tools-by-size** table
   (each row opens that tool's schema page), and the **raw request JSON** (collapsed by
   default, capped at 2 MB). Breadcrumbs link back up to the Context size page.

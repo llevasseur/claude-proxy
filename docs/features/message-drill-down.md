@@ -33,7 +33,8 @@ was truncated.
   also keyboard-focusable links), navigating to that entry's page.
 - **Message page** (`/context/$file/message/$index`) — a **Previous / Next** pager across
   adjacent messages in the same request (disabled buttons at the first and last message), stat
-  tiles for **position** (`#index` of N messages), **role**, and **size** (bytes, ~tokens),
+  tiles for **position** (`#index` of N messages, numbered from 1 to match the breakdown's **#**
+  column while `$index` stays 0-based), **role**, and **size** (bytes, ~tokens),
   then a **"Full message"** card with a **Pretty / Raw** toggle. Pretty renders the message's
   content blocks — `text`, `thinking`, `tool_use` (name + input), `tool_result` (nested, flagged
   on error), and `image` (media type and approximate size, data omitted) — falling back to raw
