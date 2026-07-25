@@ -1243,6 +1243,27 @@ a.pager-btn:hover {
   color: var(--coral);
 }
 
+/* Session detail — the Peak context stat tile as a link to the request breakdown. */
+.stat-drill {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-color: rgba(70, 224, 192, 0.4);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.stat-drill:hover {
+  border-color: var(--signal);
+  background: rgba(70, 224, 192, 0.06);
+}
+.stat-drill .stat-value {
+  color: var(--signal);
+}
+.stat-drill-cta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--signal);
+}
+
 /* Session errors page — one coral-accented block per error. */
 .error-entry {
   border-color: rgba(255, 107, 129, 0.4);

@@ -30,7 +30,9 @@ export async function countSidecarFiles(logDir: string): Promise<number> {
 export interface ReadOptions {
   /** Only files whose filename date prefix equals this `YYYY-MM-DD`. */
   date?: string;
-  /** Only files on/after (today − sinceDays + 1). Ignored if `date` is set. */
+  /** Only files on/after this `YYYY-MM-DD`. Ignored if `date` is set. */
+  since?: string;
+  /** Only files on/after (today − sinceDays + 1). Ignored if `date` or `since` is set. */
   sinceDays?: number;
   includeSkimRequests?: boolean;
   /** Attach `__file` (the sidecar base name, minus `.audit.json`) to each parsed
@@ -108,6 +110,8 @@ export async function readSidecars(
   let files = entries.filter((f) => f.endsWith(".audit.json"));
   if (opts.date) {
     files = files.filter((f) => f.startsWith(opts.date!));
+  } else if (opts.since) {
+    files = files.filter((f) => f.slice(0, 10) >= opts.since!);
   } else if (opts.sinceDays != null) {
     const from = cutoff(opts.sinceDays, now);
     files = files.filter((f) => f.slice(0, 10) >= from);

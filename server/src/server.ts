@@ -9,6 +9,7 @@ import {
   buildProjectMemories,
   buildProjects,
   buildSession,
+  buildSessionBreakdown,
   buildSessionErrors,
   buildSessions,
   buildSessionsGraph,
@@ -395,6 +396,22 @@ const server = http.createServer(async (req, res) => {
         }
         try {
           send(res, 200, await buildSession(LOG_DIR, id));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
+          else if (msg.startsWith("session not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/sessions/breakdown": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildSessionBreakdown(LOG_DIR, id));
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
