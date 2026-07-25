@@ -106,18 +106,15 @@ export function toContextEntry(sidecar: unknown, file: string): ContextEntry | n
 export interface SessionContextPeak {
   /** How many captured requests carried this session id. */
   requestCount: number;
-  /** The largest of them — the breakdown that explains the session's context cost. */
+  /** The largest of them — the drill-down handle. */
   peak: ContextEntry | null;
 }
 
 /**
- * Find the largest-context request sent under one Claude Code session id. That
- * request's breakdown is the one worth linking to from a session: it answers
- * "why did this session's prompt get so big?".
- *
- * Note a session id spans a whole agent family — the main thread, its subagents,
- * and one-shot helpers all share it — so the peak may belong to any of them.
- * Ties keep the earlier entry. Pure; empty result for a null/unmatched id.
+ * The largest-context request sent under one Claude Code session id. A session id
+ * spans a whole agent family — main thread, subagents, one-shot helpers — so the
+ * peak may belong to any of them. Ties keep the earlier entry; a null or unmatched
+ * id gives an empty result.
  */
 export function sessionContextPeak(
   entries: readonly ContextEntry[],

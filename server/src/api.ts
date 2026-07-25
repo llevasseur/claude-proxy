@@ -164,8 +164,8 @@ export interface ContextResponse {
 
 /**
  * Sidecars read with `includeFile: true`, reduced to the context entries that
- * parsed. The `__file` handle is what a drill-down link is built from, so a
- * sidecar without one is dropped rather than given a placeholder.
+ * parsed. A sidecar with no `__file` handle has nothing to drill into, so it is
+ * dropped.
  */
 function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
   const entries: ContextEntry[] = [];
@@ -329,10 +329,9 @@ export interface SessionBreakdownResponse extends SessionContextPeak {
 }
 
 /**
- * The captured request a session should link to for its "why was it this large?"
- * breakdown: the largest one sent under its session id. Sidecars are scanned from
- * the session's start date onward (the whole log when the transcript has no start),
- * since a session's requests never predate it.
+ * The captured request a session links to for its breakdown: the largest one sent
+ * under its session id. Scans sidecars from the session's start date onward — a
+ * session's requests never predate it — or the whole log when it has no start.
  */
 export async function buildSessionBreakdown(
   logDir: string,

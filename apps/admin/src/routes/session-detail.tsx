@@ -171,14 +171,11 @@ function ErrorsStatTile({ threadId, errors }: { threadId: string; errors: number
 
 /**
  * Peak-context tile: links to the Request breakdown of this session's largest
- * captured request. Sits idle (muted "—") while the lookup runs, when the
- * transcript carries no session id, or when no sidecar matched it.
+ * captured request. Falls back to a muted "—" naming the state — loading, no
+ * session id, lookup failed, or nothing matched.
  *
- * Requests are matched on the session id, so a transcript without one has no
- * answer to fetch — the query stays disabled rather than round-tripping for a
- * result the server would have to return empty. A failed lookup says so instead
- * of borrowing the empty-result wording, which would blame the data for an
- * outage.
+ * Requests match on the session id, so a transcript without one has nothing to
+ * fetch and the query stays disabled.
  */
 function BreakdownStatTile({ threadId, sessionId }: { threadId: string; sessionId: string | null }) {
   const query = useQuery({
