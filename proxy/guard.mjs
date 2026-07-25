@@ -1,31 +1,25 @@
 /**
  * guard — refuse tool calls that rewrite the agent's own permission config.
  *
- * The CLI already guards `.claude/settings.json` (the auto-mode classifier blocks
- * agent self-modification of permission config). This is the out-of-band second
- * layer: the proxy is a separate process whose behaviour is not configured by the
- * file it protects, so an agent that talked its way past the in-process gate still
- * can't land the write. It also closes a gap the permission rules can't reach —
- * `permissions.deny` scopes `Edit`/`Write` by path, but says nothing about
- * `Bash(cat > .claude/settings.json)`, `sed -i`, `tee`, or `python -c`.
+ * A second, out-of-band layer behind the CLI's own check: the proxy is a separate
+ * process whose behaviour is not configured by the file it protects, and it
+ * inspects the call whatever tool carries it, where `permissions.deny` only scopes
+ * `Edit`/`Write` by path.
  *
  * Unlike `WITHHELD_TOOLS` and `INJECTED_REMINDERS` in `proxy.mjs`, which edit the
  * *request* on the way out, this inspects the *response* on the way back: a
  * `tool_use` block is held until its input is complete, then either forwarded
- * byte-for-byte or replaced with a text block explaining the refusal.
- *
- * Every refusal is recorded on `ResponseGuard.blocked` so the caller can log it —
- * the point is a tamper-evident record, not a silent drop.
+ * byte-for-byte or replaced with a text block explaining the refusal. Every
+ * refusal is recorded on `ResponseGuard.blocked` for the caller to log.
  */
 
-/** Tools that can write a file. `Bash` is included because a shell redirect
- * reaches the same paths that `permissions.deny` only covers for `Edit`/`Write`. */
+/** Tools that can write a file, including `Bash` — a shell redirect reaches the
+ * same paths `permissions.deny` only covers for `Edit`/`Write`. */
 export const GUARDED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"]);
 
-/** Permission config: the settings files that carry `permissions` and `hooks`
- * blocks, plus the hook scripts those blocks point at (a hook script *is* the
- * enforcement, so rewriting one disables the rule as surely as deleting it).
- * Matches relative, absolute, and `~`-prefixed forms on both path separators.
+/** Permission config: the settings files carrying `permissions` and `hooks`
+ * blocks, plus the hook scripts those blocks point at. Matches relative,
+ * absolute, and `~`-prefixed forms on both path separators.
  *
  * The leading lookbehind rejects a longer name ending in `.claude` (`app.claude/`)
  * without requiring a separator — inside a shell command the path is preceded by a
@@ -38,17 +32,16 @@ export const MANAGED_PATH =
   /(?:ClaudeCode[/\\]managed-settings\.json|[/\\]etc[/\\]claude-code[/\\]managed-settings\.json)/i;
 
 /** Shell constructs that write. A command naming a guarded path is only refused
- * when it also looks like a mutation — reading the file (`cat`, `grep`, `jq`) stays
- * allowed, since inspecting your own permissions is legitimate and common. */
+ * when it also looks like a mutation; reading permission config stays allowed. */
 const BASH_WRITE =
   />|\b(?:tee|cp|mv|rm|rmdir|truncate|dd|ln|chmod|install|patch|python3?|node|perl|ruby)\b|\bsed\b[^|]*\s-i/i;
 
 const isGuardedPath = (p) => typeof p === "string" && (GUARDED_PATH.test(p) || MANAGED_PATH.test(p));
 
 /**
- * Decide whether a completed tool call would rewrite permission config.
- * Pure and total: unknown tools, malformed input, and non-matching paths all
- * return `null` (allow). Returns `{ tool, target, reason }` to refuse.
+ * Decide whether a completed tool call would rewrite permission config. Unknown
+ * tools, malformed input, and non-matching paths all return `null` (allow);
+ * returns `{ tool, target, reason }` to refuse.
  */
 export function inspectToolUse(name, input) {
   if (!GUARDED_TOOLS.has(name) || !input || typeof input !== "object") return null;
@@ -64,14 +57,12 @@ export function inspectToolUse(name, input) {
     };
   }
 
-  // File tools: whichever path field this tool uses.
   const target = [input.file_path, input.notebook_path, input.path].find(isGuardedPath);
   if (!target) return null;
   return { tool: name, target, reason: "writes to permission config" };
 }
 
-/** The text the agent sees in place of the refused call. Written to be actionable:
- * it should understand what happened and tell the user, not silently retry. */
+/** The text the agent sees in place of the refused call. */
 export function refusalText(hit) {
   return (
     `[claude-proxy] Refused \`${hit.tool}\` — ${hit.reason}: ${hit.target}\n\n` +
@@ -85,8 +76,8 @@ export function refusalText(hit) {
 
 const sse = (obj) => `event: ${obj.type}\ndata: ${JSON.stringify(obj)}\n\n`;
 
-/** Replacement events for a refused block: an empty text block, the refusal text,
- * and a stop — same index, so the surrounding message stays well-formed. */
+/** Replacement events for a refused block, reusing its index so the surrounding
+ * message stays well-formed. */
 function refusalEvents(index, hit) {
   return (
     sse({ type: "content_block_start", index, content_block: { type: "text", text: "" } }) +
@@ -99,13 +90,11 @@ function refusalEvents(index, hit) {
  * Streaming SSE filter. Feed it upstream chunks, write what it returns.
  *
  * Events pass through byte-for-byte until a `content_block_start` opens a
- * `tool_use` for a guarded tool. From there the block's events are held (not
- * dropped) while `input_json_delta` fragments accumulate. At `content_block_stop`
- * the assembled input is inspected: clean blocks are flushed exactly as received,
- * so a normal turn is bit-identical to no proxy at all.
- *
- * Holding costs nothing the user can perceive — text blocks still stream, and a
- * half-arrived tool call can't run.
+ * `tool_use` for a guarded tool. From there the block's events are held while
+ * `input_json_delta` fragments accumulate. At `content_block_stop` the assembled
+ * input is inspected: clean blocks are flushed exactly as received, so a normal
+ * turn is bit-identical to no proxy at all. Only the tool_use block is held —
+ * text keeps streaming.
  */
 export class ResponseGuard {
   constructor({ inspect = inspectToolUse } = {}) {
@@ -116,7 +105,7 @@ export class ResponseGuard {
     this.blocked = [];
     /** Guarded tool_use blocks that passed — decides whether `stop_reason` still holds. */
     this.passedToolUses = 0;
-    /** Non-guarded tool_use blocks, which we never inspect but must still count. */
+    /** Non-guarded tool_use blocks, never inspected but still counted. */
     this.otherToolUses = 0;
   }
 
@@ -125,8 +114,8 @@ export class ResponseGuard {
     this.buf += chunk.toString("utf8");
     let out = "";
     let i;
-    // SSE events are separated by a blank line. Work whole events so framing
-    // (`event:` + `data:`) is never split by a decision.
+    // SSE events are separated by a blank line; work whole events so framing is
+    // never split by a decision.
     while ((i = this.buf.indexOf("\n\n")) !== -1) {
       const evt = this.buf.slice(0, i + 2);
       this.buf = this.buf.slice(i + 2);
@@ -162,7 +151,8 @@ export class ResponseGuard {
     }
 
     // Every guarded call was refused and nothing else wants a tool result, so the
-    // turn ended in text — say so, or the CLI waits for a call that isn't coming.
+    // turn ended in text. Without the correction the CLI waits for a call that
+    // isn't coming.
     if (
       ev.type === "message_delta" &&
       ev.delta?.stop_reason === "tool_use" &&

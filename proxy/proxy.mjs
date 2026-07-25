@@ -14,9 +14,8 @@
  * human-readable inventory the dashboard renders — keep the two in sync.
  *
  * On the way back it applies one more: `guard.mjs` refuses tool calls that would
- * rewrite the agent's own permission config (see that file for why the proxy is
- * the right place for it). A reply with nothing to refuse is forwarded
- * byte-for-byte too.
+ * rewrite the agent's own permission config. A reply with nothing to refuse is
+ * forwarded byte-for-byte too.
  *
  * Run:   node proxy.mjs
  * Point Claude Code at it:
@@ -242,7 +241,7 @@ function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPa
     // hit-rate + saved spend are computable from the sidecar.
     skim: skimInfo ?? { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey: null },
     // Tool calls the guard refused (permission-config self-modification). Empty on
-    // every normal request; non-empty is the tamper-evident record of an attempt.
+    // every normal request.
     blocked: blocked ?? [],
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
@@ -290,9 +289,7 @@ function printAudit(a, base) {
   console.log(`  logs/${base}.md\n`);
 }
 
-/** Announce a refusal on the terminal. The guard is a tripwire: on a healthy run
- * it never fires, so when it does that belongs in front of you, not only in the
- * `.audit.json` sidecar. */
+/** Announce a refusal on the terminal, not only in the `.audit.json` sidecar. */
 function logBlocked(blocked) {
   for (const b of blocked) {
     console.warn(`[agent-proxy] BLOCKED ${b.tool} — ${b.reason}: ${b.target}`);
@@ -501,7 +498,7 @@ function handle(req, res) {
       const hit = skim.lookup(skimDir, cacheKey);
       if (hit) {
         // A replay is a response the CLI will act on, so it goes through the guard
-        // too — a refused call must not become reachable by repeating the request.
+        // too.
         const guarded = guardBuffer(hit.body);
         if (guarded.blocked.length > 0) logBlocked(guarded.blocked);
         res.writeHead(hit.meta.statusCode ?? 200, { "content-type": hit.meta.contentType ?? "text/event-stream" });
@@ -530,14 +527,13 @@ function handle(req, res) {
       { hostname: UPSTREAM, port: 443, path: reqPath, method: req.method, headers: forwardHeaders(req.headers, forwardBody) },
       (up) => {
         const isSse = String(up.headers["content-type"] ?? "").includes("event-stream");
-        // A streamed reply is guarded incrementally, so text keeps flowing and only
-        // an in-flight tool call waits. A non-streaming body has nothing to stream,
-        // so it's held and guarded whole. count_tokens never carries a tool call.
+        // A streamed reply is guarded incrementally; a non-streaming body is held
+        // and guarded whole. count_tokens never carries a tool call.
         const guarded = !isTokenCount(reqPath);
         const guard = guarded && isSse ? new ResponseGuard() : null;
         const streamThrough = !guarded || isSse;
-        // What we actually sent downstream — so the log and the skim entry record
-        // the response the CLI acted on, not one it never saw.
+        // What we actually sent downstream, so the log and the skim entry record
+        // the response the CLI acted on.
         const respChunks = [];
         let blocked = [];
 

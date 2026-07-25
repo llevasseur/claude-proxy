@@ -2,9 +2,9 @@
  * Unit tests for the permission-config guard. Zero-dependency — Node's built-in
  * test runner.
  *
- * The two properties that matter: a clean reply is forwarded byte-for-byte (the
- * proxy stays transparent on every normal turn), and a refused call never reaches
- * the CLI in any framing — split chunks, non-streaming bodies, or cache replays.
+ * The two properties that matter: a clean reply is forwarded byte-for-byte, and a
+ * refused call never reaches the CLI in any framing — split chunks, non-streaming
+ * bodies, or cache replays.
  *
  * Run:  node --test proxy/
  */
@@ -21,7 +21,7 @@ function toolUseStream(name, input, { index = 0, stop_reason = "tool_use" } = {}
   return (
     evt({ type: "message_start", message: { usage: { input_tokens: 10 }, model: "claude-opus-5" } }) +
     evt({ type: "content_block_start", index, content_block: { type: "tool_use", id: "toolu_1", name } }) +
-    // Split the input JSON across two deltas, as a real stream does.
+    // Split across two deltas, as a real stream does.
     evt({ type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: json.slice(0, 8) } }) +
     evt({ type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: json.slice(8) } }) +
     evt({ type: "content_block_stop", index }) +

@@ -11,8 +11,7 @@ import { QueryState } from "../components/QueryState";
  * config), most of these are edits the CLI can't be told to make on its own:
  * withheld tools are exempt from `permissions.deny`, and injected reminders have
  * no suppression setting at all. Refused tool calls are the exception — the CLI
- * does check those, and the proxy checks them again from outside the process, so
- * this documents exactly what it changes and why.
+ * does check those, and the proxy checks them again from outside the process.
  */
 
 const GROUPS: { kind: ProxyFilterKind; title: string; badge: string; blurb: string }[] = [

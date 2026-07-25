@@ -8,9 +8,8 @@
  * is the only place they can be stripped, so the dashboard documents them here.
  *
  * `refused-tool-use` is the one that runs the other way — on the response rather
- * than the request — and the one case where the CLI *does* have its own check. It
- * is here as a second, out-of-band layer: a gate that lives in the agent's process
- * and reads the file being protected can't be the only thing protecting it.
+ * than the request — and the one case where the CLI *does* have its own check;
+ * the proxy is a second, out-of-band layer behind it.
  *
  * The proxy is the source of truth for the *actual* behaviour (`WITHHELD_TOOLS`
  * and `INJECTED_REMINDERS` in `proxy/proxy.mjs`, `GUARDED_PATH` in
