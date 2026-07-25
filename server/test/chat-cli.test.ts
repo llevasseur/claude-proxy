@@ -354,4 +354,28 @@ describe.skipIf(process.platform === "win32")("runCliTurn — ending a run early
   it("still fails loudly when the cli is not there at all", async () => {
     await expect(runCliTurn(turnInput(path.join(FIXTURES, "nope")))).rejects.toThrow(/could not start/);
   });
+
+  // The watch reads each chunk once, so a line arriving in pieces has to be held until
+  // it is whole — the announcement is worth nothing if it only survives a tidy write.
+  it("announces the child's permission mode even when the init line arrives in pieces", async () => {
+    const cliPath = path.join(FIXTURES, "fake-claude-init-split");
+    const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s1", permissionMode: "bypassPermissions" });
+    const half = Math.floor(init.length / 2);
+    fs.writeFileSync(
+      cliPath,
+      [
+        "#!/usr/bin/env node",
+        `process.stdout.write(${JSON.stringify(init.slice(0, half))});`,
+        `setTimeout(() => process.stdout.write(${JSON.stringify(init.slice(half))} + "\\n"), 40);`,
+        `setTimeout(() => process.stdout.write(${JSON.stringify(JSON.stringify({ type: "result", result: "done" }))} + "\\n"), 80);`,
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(cliPath, 0o755);
+
+    const seen: (string | null)[] = [];
+    const result = await runCliTurn({ ...turnInput(cliPath), onInit: (info) => seen.push(info.permissionMode) });
+    expect(seen).toEqual(["bypassPermissions"]); // once, not per chunk
+    expect(result.permissionMode).toBe("bypassPermissions");
+  });
 });

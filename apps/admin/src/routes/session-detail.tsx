@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { SessionDetail } from "../api";
 import { getRunningChats, getSession, getSessionBreakdown, stopChat } from "../api";
@@ -97,6 +97,8 @@ function SessionBody({ session }: { session: SessionDetail }) {
 
 /** How often to re-ask whether this session's turn is still running. */
 const RUNNING_POLL_MS = 3_000;
+/** Shared so stopping a turn can invalidate the poll it answers. */
+const RUNNING_KEY = ["chat", "running"];
 
 /**
  * Stop, offered from the transcript itself.
@@ -110,12 +112,18 @@ const RUNNING_POLL_MS = 3_000;
  * Renders nothing at all when this session has no turn running.
  */
 function RunningChatBar({ sessionId }: { sessionId: string }) {
+  const client = useQueryClient();
   const running = useQuery({
-    queryKey: ["chat", "running"],
+    queryKey: RUNNING_KEY,
     queryFn: getRunningChats,
     refetchInterval: RUNNING_POLL_MS,
   });
-  const stop = useMutation({ mutationFn: () => stopChat(sessionId) });
+  // Re-ask on success rather than waiting out the poll: a bar that lingers after the
+  // turn it names has ended reads as a Stop that did not take, and invites a second one.
+  const stop = useMutation({
+    mutationFn: () => stopChat(sessionId),
+    onSuccess: () => client.invalidateQueries({ queryKey: RUNNING_KEY }),
+  });
   const chat = running.data?.running.find((r) => r.sessionId === sessionId);
   if (!chat) return null;
 
