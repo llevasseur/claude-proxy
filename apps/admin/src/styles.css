@@ -1959,3 +1959,55 @@ button.chat-new {
 button.chat-new:hover:not(:disabled) {
   color: var(--text);
 }
+/* Agent vs chat, plus the one-line posture note that follows the choice. */
+.chat-modes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+button.chat-mode {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+button.chat-mode:hover:not(:disabled) {
+  color: var(--text);
+}
+button.chat-mode.is-active {
+  color: var(--text);
+  border-color: var(--text);
+}
+button.chat-mode:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.chat-mode-note {
+  font-size: 11.5px;
+}
+/* What an agent turn actually ran. */
+.chat-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 11.5px;
+}
+.chat-tool {
+  font-family: var(--font-mono);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+.chat-tool.is-failed {
+  color: var(--bad);
+  border-color: currentColor;
+}

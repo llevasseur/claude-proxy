@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import type { ChatSendResponse, SessionSummary } from "../api";
+import type { ChatMode, ChatSendResponse, SessionSummary } from "../api";
 import { getChatConfig, getSessions, sendChatMessage, startChat } from "../api";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { Markdown } from "../components/Markdown";
@@ -54,10 +54,12 @@ function StartChatCard() {
   const client = useQueryClient();
   const [draft, setDraft] = useState("");
   const [chat, setChat] = useState<ChatSendResponse | null>(null);
+  // null → follow whatever the server defaults to, so the picker needs no config yet.
+  const [picked, setPicked] = useState<ChatMode | null>(null);
 
   const send = useMutation({
     mutationFn: (prompt: string) =>
-      chat ? sendChatMessage(chat.session.id, prompt) : startChat(prompt),
+      chat ? sendChatMessage(chat.session.id, prompt) : startChat(prompt, picked ?? undefined),
     onSuccess: (data) => {
       setChat(data);
       setDraft("");
@@ -68,11 +70,14 @@ function StartChatCard() {
 
   const unconfigured = config.data && !config.data.ready;
   const threadId = chat?.session.threadId;
+  // A running chat's mode is fixed server-side, so it wins over the picker.
+  const mode: ChatMode = chat?.session.mode ?? picked ?? config.data?.mode ?? "agent";
+  const agent = config.data?.agent;
 
   return (
     <div className="card chat-starter">
       <div className="card-head">
-        <h2>{chat ? "Chat in progress" : "Start a session"}</h2>
+        <h2>{chat ? `${mode === "agent" ? "Agent" : "Chat"} in progress` : "Start a session"}</h2>
         <span className="muted">
           {config.data
             ? `${config.data.model} · through ${config.data.baseUrl} · ${
@@ -83,6 +88,40 @@ function StartChatCard() {
               : "resolving chat config…"}
         </span>
       </div>
+
+      {/* Locked once a session exists: its posture was fixed when it started. */}
+      <div className="chat-modes" role="group" aria-label="Session mode">
+        {(["agent", "chat"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            className={`chat-mode${mode === m ? " is-active" : ""}`}
+            aria-pressed={mode === m}
+            disabled={!!chat || send.isPending}
+            onClick={() => setPicked(m)}
+          >
+            {m === "agent" ? "Agent" : "Chat"}
+          </button>
+        ))}
+        <span className="muted chat-mode-note">
+          {mode === "agent"
+            ? agent
+              ? `runs in ${agent.cwd} with tools — this can change the repo`
+              : "runs a full Claude Code session with tools"
+            : "no tools, no customizations — cannot touch the repo"}
+        </span>
+      </div>
+
+      {mode === "agent" && agent && (
+        <p className="muted chat-note">
+          {agent.aliasFound
+            ? `Mirroring your \`${agent.alias}\` alias${
+                agent.flags.disallowedTools.length ? ` (withholding ${agent.flags.disallowedTools.join(", ")})` : ""
+              }`
+            : `No \`${agent.alias}\` alias in ${agent.rcPath} — running a bare claude`}
+          {` · permissions: ${agent.permissionMode}`}
+        </p>
+      )}
 
       {unconfigured && <p className="muted chat-note">Chat is unavailable: {config.data?.readyHint}</p>}
 
@@ -97,11 +136,26 @@ function StartChatCard() {
         </div>
       )}
 
+      {/* What the turn did, not just what it said — agent turns only. */}
+      {chat && chat.tools.length > 0 && (
+        <div className="chat-tools">
+          <span className="muted">ran</span>
+          {chat.tools.map((t, i) => (
+            <span key={i} className={`chat-tool${t.failed ? " is-failed" : ""}`}>
+              {t.name}
+              {t.failed ? " ✗" : ""}
+            </span>
+          ))}
+        </div>
+      )}
+
       <PromptInput
         value={draft}
         onValueChange={setDraft}
         onSubmit={(prompt) => send.mutate(prompt)}
-        placeholder={chat ? "Reply…" : "Ask Claude something — this starts a new session"}
+        placeholder={
+          chat ? "Reply…" : mode === "agent" ? "Ask Claude to do something — /task works here" : "Ask Claude something — this starts a new session"
+        }
         disabled={!!unconfigured}
         status={send.isPending ? "submitted" : send.isError ? "error" : "ready"}
       />

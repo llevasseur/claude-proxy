@@ -144,9 +144,23 @@ export interface FiltersResponse {
   generatedAt: string;
   filters: ProxyFilterEntry[];
 }
+/** `agent` runs a real Claude Code session and can change the repo; `chat` cannot. */
+export type ChatMode = "chat" | "agent";
+/** What an agent turn inherits from the device, for the posture line in the UI. */
+export interface ChatAgentConfig {
+  cwd: string;
+  alias: string;
+  aliasFound: boolean;
+  rcPath: string;
+  rcReadable: boolean;
+  flags: { disallowedTools: string[]; settingSources: string[] | null; settingsOverrides: Record<string, unknown> | null };
+  permissionMode: string;
+}
 /** The resolved settings a dashboard-started chat runs with. */
 export interface ChatConfigResponse {
   transport: "cli" | "api";
+  mode: ChatMode;
+  agent: ChatAgentConfig | null;
   baseUrl: string;
   model: string;
   maxTokens: number;
@@ -163,11 +177,17 @@ export interface ChatTurn {
   role: "user" | "assistant";
   text: string;
 }
+/** One tool an agent turn ran. */
+export interface ChatToolUse {
+  name: string;
+  failed: boolean;
+}
 export interface ChatSendResponse {
-  session: { id: string; threadId: string | null; model: string; createdAt: string; transport: "cli" | "api" };
+  session: { id: string; threadId: string | null; model: string; createdAt: string; transport: "cli" | "api"; mode: ChatMode };
   reply: string;
   usage: { input: number; output: number; cacheRead: number; cacheCreation: number };
   turns: ChatTurn[];
+  tools: ChatToolUse[];
 }
 export interface HealthResponse {
   ok: boolean;
@@ -236,6 +256,7 @@ export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?d
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
 export const getFilters = () => get<FiltersResponse>("/api/filters");
 export const getChatConfig = () => get<ChatConfigResponse>("/api/chat/config");
-export const startChat = (prompt: string) => post<ChatSendResponse>("/api/chat/sessions", { prompt });
+/** `mode` is omitted to take the server's configured default. */
+export const startChat = (prompt: string, mode?: ChatMode) => post<ChatSendResponse>("/api/chat/sessions", { prompt, mode });
 export const sendChatMessage = (sessionId: string, prompt: string) =>
   post<ChatSendResponse>("/api/chat/sessions/message", { sessionId, prompt });
