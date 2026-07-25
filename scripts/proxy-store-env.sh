@@ -7,6 +7,15 @@
 # LOG_DIR defaults to `<repo>/logs`. This script derives it from its own location,
 # so it stays correct after a move, a rename, or a second clone.
 #
+# One correction on top of that: from a worktree under `.claude/worktrees/`, the
+# file's own location is the *worktree's* copy, but the proxy that actually writes
+# transcripts runs from the main checkout (LOG_DIR is `<dir of the running
+# proxy.mjs>/../logs`, proxy/proxy.mjs). Pointing at the worktree's `logs/sessions`
+# would hand `/revive` an empty directory that vanishes with the worktree, so the
+# root is resolved back to the main checkout via `git rev-parse --git-common-dir`.
+# An explicit LOG_DIR still wins, and a non-git copy falls back to the file's own
+# location.
+#
 # Nothing here runs on its own: no install hook, no dev-server hook. `pnpm
 # setup:env` (`--setup`) is the only entry point that changes anything, and all it
 # changes is inside the repo — it creates the store directory and prints the two
@@ -36,6 +45,18 @@ else
   _cpe_self="$0"
 fi
 _cpe_root="$(cd "$(dirname "$_cpe_self")/.." && pwd)"
+
+# In a linked worktree, `--git-common-dir` is the main checkout's `.git`; in the
+# main checkout it is that checkout's own, so this is a no-op there. Accept the
+# result only when it still looks like this repo — a stray answer from an outer
+# repo (a vendored copy, a submodule) must not redirect the store.
+_cpe_common="$(cd "$_cpe_root" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null)"
+if [ -n "$_cpe_common" ]; then
+  _cpe_main="$(cd "$_cpe_root" 2>/dev/null && cd "$_cpe_common/.." 2>/dev/null && pwd)"
+  if [ -n "$_cpe_main" ] && [ -f "$_cpe_main/scripts/proxy-store-env.sh" ]; then
+    _cpe_root="$_cpe_main"
+  fi
+fi
 
 _cpe_store="${LOG_DIR:-$_cpe_root/logs}/sessions"
 
@@ -130,14 +151,14 @@ fi
 
 if [ "$_cpe_sourced" = "1" ]; then
   unset -f _cpe_setup _cpe_exports _cpe_hookup _cpe_check 2>/dev/null
-  unset _cpe_self _cpe_root _cpe_store _cpe_archive _cpe_archive_root _cpe_inherited _cpe_sourced
+  unset _cpe_self _cpe_root _cpe_common _cpe_main _cpe_store _cpe_archive _cpe_archive_root _cpe_inherited _cpe_sourced
 else
   case "${1:-}" in
     --setup) _cpe_setup ;;
     --check) _cpe_check ;;
     --hookup) _cpe_hookup ;;
     "") _cpe_exports ;;
-    -h | --help) sed -n '2,28p' "$_cpe_self" | sed 's|^# \{0,1\}||' ;;
+    -h | --help) sed -n '2,34p' "$_cpe_self" | sed 's|^# \{0,1\}||' ;;
     *)
       echo "proxy-store-env: unknown argument '$1'" >&2
       exit 2

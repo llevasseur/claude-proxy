@@ -126,6 +126,12 @@ fails fast rather than hunting for a store. That directory is `<LOG_DIR>/session
 so it depends on where this repo is checked out. `CLAUDE_PROXY_ARCHIVE` is optional
 and only matters once whole days have been relocated out of the live `logs/` dir.
 
+Run from a worktree, the resolution walks back to the main checkout
+(`git rev-parse --git-common-dir`). That is deliberate: `LOG_DIR` follows the
+*running* `proxy.mjs`, so every worktree's sessions land in the main checkout's
+`logs/sessions`, and a worktree-local path would be an empty directory that
+disappears with the worktree. An explicit `LOG_DIR` still wins.
+
 Resolve both from the checkout itself, on request:
 
 ```bash
