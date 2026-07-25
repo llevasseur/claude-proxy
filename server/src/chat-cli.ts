@@ -28,6 +28,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // server/src
@@ -388,11 +389,22 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
 
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
+  // The watch for the child's opening `init` event reads each chunk once as it lands,
+  // rather than re-reading the whole stream every time: a child that never announces —
+  // an older CLI, or a run that dies before it says — would otherwise make every chunk
+  // rescan everything before it, which is quadratic on exactly the long turns this
+  // watch exists to report on. The decoder holds a multi-byte character split across a
+  // chunk boundary; `pending` holds a line split across one, so it is whole when parsed.
   let announced = false;
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
   child.stdout.on("data", (c: Buffer) => {
     stdout.push(c);
     if (announced || !input.onInit) return;
-    const init = findInitEvent(Buffer.concat(stdout).toString("utf8"));
+    pending += decoder.write(c);
+    const init = findInitEvent(pending);
+    const lastBreak = pending.lastIndexOf("\n");
+    if (lastBreak >= 0) pending = pending.slice(lastBreak + 1);
     if (!init) return;
     announced = true;
     input.onInit(init);
