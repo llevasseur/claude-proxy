@@ -14,6 +14,7 @@ import {
   normalizePlugins,
   hookPluginLoadExpectations,
   parseSessionErrors,
+  sessionContextPeak,
   withheldReport,
   type Advice,
   type AliasLoadExpectation,
@@ -26,6 +27,7 @@ import {
   type RequestBreakdown,
   type RequestMessageDetail,
   type RequestToolDetail,
+  type SessionContextPeak,
   type SessionError,
   type SessionMeta,
   type SkimDigest,
@@ -308,6 +310,42 @@ export interface SessionErrorsResponse {
 export async function buildSessionErrors(logDir: string, id: string): Promise<SessionErrorsResponse> {
   const { meta, content } = await readSession(logDir, id);
   return { threadId: id, meta, errors: parseSessionErrors(content) };
+}
+
+export interface SessionBreakdownResponse extends SessionContextPeak {
+  threadId: string;
+  /** The Claude Code session id the requests were matched on; null if the transcript has none. */
+  sessionId: string | null;
+  meta: { files: number; parseErrors: number };
+}
+
+/**
+ * The captured request a session should link to for its "why was it this large?"
+ * breakdown: the largest one sent under its session id. Sidecars are scanned from
+ * the session's start date onward (the whole log when the transcript has no start),
+ * since a session's requests never predate it.
+ */
+export async function buildSessionBreakdown(
+  logDir: string,
+  id: string,
+  now: Date = new Date(),
+): Promise<SessionBreakdownResponse> {
+  const { meta } = await readSession(logDir, id);
+  const sessionId = meta.sessionId;
+  if (!sessionId) {
+    return { threadId: id, sessionId: null, requestCount: 0, peak: null, meta: { files: 0, parseErrors: 0 } };
+  }
+
+  const since = meta.started ? meta.started.slice(0, 10) : undefined;
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const entries: ContextEntry[] = [];
+  for (const s of sidecars) {
+    const file = (s as { __file?: string }).__file;
+    const entry = file ? toContextEntry(s, file) : null;
+    if (entry) entries.push(entry);
+  }
+
+  return { threadId: id, sessionId, ...sessionContextPeak(entries, sessionId), meta: { files, parseErrors } };
 }
 
 export interface SkimResponse {

@@ -11,6 +11,7 @@ import type {
   RequestMessageDetail,
   RequestToolDetail,
   SessionAgentLink,
+  SessionContextPeak,
   SessionError,
   SessionMeta,
   SessionNode,
@@ -139,6 +140,12 @@ export interface SessionErrorsResponse {
   threadId: string;
   meta: SessionMeta;
   errors: SessionError[];
+}
+/** The session's largest captured request — the handle for its Request breakdown page. */
+export interface SessionBreakdownResponse extends SessionContextPeak {
+  threadId: string;
+  sessionId: string | null;
+  meta: { files: number; parseErrors: number };
 }
 export interface FiltersResponse {
   generatedAt: string;
@@ -285,6 +292,8 @@ export const getSession = (id: string) =>
   get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
 export const getSessionErrors = (id: string) =>
   get<SessionErrorsResponse>(`/api/sessions/errors?id=${encodeURIComponent(id)}`);
+export const getSessionBreakdown = (id: string) =>
+  get<SessionBreakdownResponse>(`/api/sessions/breakdown?id=${encodeURIComponent(id)}`);
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);

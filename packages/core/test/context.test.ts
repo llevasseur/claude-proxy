@@ -3,6 +3,7 @@ import {
   analyzeRequestBody,
   extractRequestMessage,
   extractRequestTool,
+  sessionContextPeak,
   summarizeContext,
   toContextEntry,
   type ContextEntry,
@@ -14,6 +15,7 @@ function entry(overrides: Partial<ContextEntry> = {}): ContextEntry {
     file: "2026-07-20T13-31-00-278_anthropic",
     timestamp: "2026-07-20T13:31:00.278Z",
     model: "claude-opus-4-8",
+    sessionId: null,
     realInput: 10_000,
     systemBytes: 8_000,
     toolsBytes: 24_000,
@@ -89,6 +91,44 @@ describe("toContextEntry", () => {
 
   it("returns null for a malformed sidecar", () => {
     expect(toContextEntry({ nope: true }, "x")).toBeNull();
+  });
+
+  it("carries the session id through, and null when the sidecar predates it", () => {
+    const withSession = makeSidecar({
+      session: {
+        sessionId: "abc-123",
+        app: "cli",
+        userAgent: null,
+        account: null,
+        metadataSessionId: "abc-123",
+        deviceId: null,
+      },
+    });
+    expect(toContextEntry(withSession, "f")!.sessionId).toBe("abc-123");
+    expect(toContextEntry(makeSidecar(), "f")!.sessionId).toBeNull();
+  });
+});
+
+describe("sessionContextPeak", () => {
+  const entries = [
+    entry({ file: "a", sessionId: "s1", realInput: 10_000 }),
+    entry({ file: "b", sessionId: "s2", realInput: 90_000 }),
+    entry({ file: "c", sessionId: "s1", realInput: 42_000 }),
+    entry({ file: "d", sessionId: null, realInput: 99_000 }),
+  ];
+
+  it("picks the largest request carrying the session id", () => {
+    const { peak, requestCount } = sessionContextPeak(entries, "s1");
+    expect(peak!.file).toBe("c");
+    expect(requestCount).toBe(2);
+  });
+
+  it("is empty for a null id, so legacy sidecars never match each other", () => {
+    expect(sessionContextPeak(entries, null)).toEqual({ requestCount: 0, peak: null });
+  });
+
+  it("is empty for a session with no captured requests", () => {
+    expect(sessionContextPeak(entries, "s3")).toEqual({ requestCount: 0, peak: null });
   });
 });
 

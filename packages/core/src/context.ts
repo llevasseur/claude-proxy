@@ -15,6 +15,8 @@ export interface ContextEntry {
   file: string;
   timestamp: string;
   model: string;
+  /** Claude Code session id that sent it; null on legacy sidecars. */
+  sessionId: string | null;
   /** input + cacheRead + cacheCreation — the true prompt size. */
   realInput: number;
   systemBytes: number;
@@ -91,12 +93,46 @@ export function toContextEntry(sidecar: unknown, file: string): ContextEntry | n
     file,
     timestamp: s.timestamp,
     model: s.model,
+    sessionId: s.session?.sessionId ?? null,
     realInput: s.tokens.realInput,
     systemBytes: s.request.systemBytes,
     toolsBytes: s.request.toolsBytes,
     totalBytes: s.request.totalBytes,
     toolCount: s.request.toolCount,
   };
+}
+
+/** One session's captured requests, reduced to the one worth drilling into. */
+export interface SessionContextPeak {
+  /** How many captured requests carried this session id. */
+  requestCount: number;
+  /** The largest of them — the breakdown that explains the session's context cost. */
+  peak: ContextEntry | null;
+}
+
+/**
+ * Find the largest-context request sent under one Claude Code session id. That
+ * request's breakdown is the one worth linking to from a session: it answers
+ * "why did this session's prompt get so big?".
+ *
+ * Note a session id spans a whole agent family — the main thread, its subagents,
+ * and one-shot helpers all share it — so the peak may belong to any of them.
+ * Ties keep the earlier entry. Pure; empty result for a null/unmatched id.
+ */
+export function sessionContextPeak(
+  entries: readonly ContextEntry[],
+  sessionId: string | null,
+): SessionContextPeak {
+  if (!sessionId) return { requestCount: 0, peak: null };
+
+  let requestCount = 0;
+  let peak: ContextEntry | null = null;
+  for (const e of entries) {
+    if (e.sessionId !== sessionId) continue;
+    requestCount += 1;
+    if (!peak || e.realInput > peak.realInput) peak = e;
+  }
+  return { requestCount, peak };
 }
 
 // Raw-request breakdown — "why was this one so large?"

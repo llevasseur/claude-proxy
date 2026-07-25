@@ -43,12 +43,28 @@ export interface AuditSkim {
   cacheKey: string | null;
 }
 
+/**
+ * Who sent the request, read off Claude Code's headers and `metadata.user_id`.
+ * Never carries auth. Legacy sidecars may omit it.
+ */
+export interface AuditSession {
+  /** Claude Code's session id — the handle that ties a request to a transcript. */
+  sessionId: string | null;
+  /** `"-bg"` suffix marks a background agent. */
+  app: string | null;
+  userAgent: string | null;
+  account: string | null;
+  metadataSessionId: string | null;
+  deviceId: string | null;
+}
+
 export interface AuditSidecar {
   /** ISO 8601 timestamp of the request. */
   timestamp: string;
   model: string;
   endpoint: string;
   statusCode: number;
+  session?: AuditSession;
   tokens: AuditTokens;
   request: AuditRequestMeta;
   tools: AuditTool[];
