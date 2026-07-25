@@ -66,7 +66,7 @@ function StartChatCard() {
     },
   });
 
-  const unconfigured = config.data && !config.data.apiKeySet;
+  const unconfigured = config.data && !config.data.ready;
   const threadId = chat?.session.threadId;
 
   return (
@@ -75,19 +75,16 @@ function StartChatCard() {
         <h2>{chat ? "Chat in progress" : "Start a session"}</h2>
         <span className="muted">
           {config.data
-            ? `${config.data.model} · through ${config.data.baseUrl}`
+            ? `${config.data.model} · through ${config.data.baseUrl} · ${
+                config.data.transport === "cli" ? "headless Claude Code" : "API key"
+              }`
             : config.error
               ? (config.error as Error).message
               : "resolving chat config…"}
         </span>
       </div>
 
-      {unconfigured && (
-        <p className="muted chat-note">
-          Chat needs <code>ANTHROPIC_API_KEY</code> in the server's environment. The proxy forwards
-          credentials, it never supplies them.
-        </p>
-      )}
+      {unconfigured && <p className="muted chat-note">Chat is unavailable: {config.data?.readyHint}</p>}
 
       {chat && (
         <div className="chat-log">

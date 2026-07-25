@@ -1,19 +1,29 @@
 /**
- * chat — the package's one outbound path. Posts streamed `/v1/messages` at the
- * **proxy's** base URL rather than `api.anthropic.com`, in the request shape
- * Claude Code sends, so the proxy captures it as it captures a CLI turn: audit
- * sidecar, context table, and an append-only Session transcript.
+ * chat — the package's one outbound path, over either of two transports. Both send
+ * to the **proxy's** base URL rather than `api.anthropic.com`, so the proxy captures
+ * a dashboard chat as it captures a CLI turn: audit sidecar, context table, and an
+ * append-only Session transcript. There is no second logging path.
  *
- * Auth is not borrowed — the proxy forwards credentials and never supplies them,
- * so this path needs its own `ANTHROPIC_API_KEY`. No `tools` are sent, and the
- * CLI's `anthropic-beta` list is OAuth-specific, so it is off unless `CHAT_BETA`
- * asks for it.
+ *   - `cli` (default, local dev): a headless Claude Code process, which authenticates
+ *     itself from the device's own login. The server holds no credential — see
+ *     `chat-cli.ts`.
+ *   - `api` (for a deployment): a direct streamed `POST /v1/messages` carrying
+ *     `ANTHROPIC_API_KEY`, in the request shape Claude Code sends. The proxy forwards
+ *     credentials and never supplies them, so this transport needs its own key.
  *
- * Sessions live in memory only; the durable record is the proxy's transcript, so
- * a restart drops the ability to *continue* a chat, never its history.
+ * A thread id is read back from the transcript the proxy wrote, never predicted: the
+ * proxy fingerprints a thread from the *wire* text of its first user message, which
+ * under the CLI carries harness context this side never sees.
+ *
+ * Sessions live in memory only; the durable record is the proxy's transcript, so a
+ * restart drops the ability to *continue* a chat, never its history.
  */
 
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { findOnPath, resolveCliCwd, runCliTurn } from "./chat-cli.js";
+import { listSessions } from "./sessions.js";
 
 const ANTHROPIC_VERSION = "2023-06-01";
 
@@ -21,6 +31,7 @@ const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_BASE_URL = "http://127.0.0.1:8787"; // the proxy's own default PORT
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_MAX_TOKENS = 64_000;
+const DEFAULT_CLI_PATH = "claude";
 const DEFAULT_SYSTEM =
   "You are Claude, answering in a chat started from the claude-proxy dashboard. " +
   "Be direct and concise.";
@@ -29,18 +40,35 @@ const MAX_PROMPT_CHARS = 100_000;
 
 const REQUEST_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS ?? 300_000);
 
+/** How long to wait for the proxy to finish writing the transcript we then read the id from. */
+const THREAD_WAIT_MS = 5_000;
+const THREAD_POLL_MS = 150;
+
+/** Markers older than this are swept whenever a chat starts. */
+const MARKER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type ChatTransport = "cli" | "api";
+
 /** The resolved configuration a chat runs with — surfaced by `GET /api/chat/config`. */
 export interface ChatConfig {
+  /** Which outbound path a chat takes. */
+  transport: ChatTransport;
   /** Where the request is sent: the proxy, not `api.anthropic.com`. */
   baseUrl: string;
   model: string;
   maxTokens: number;
   system: string;
   anthropicVersion: string;
-  /** The `anthropic-beta` header value, or null when none is sent. */
+  /** The `anthropic-beta` header value, or null when none is sent (`api` only). */
   beta: string | null;
-  /** A chat cannot start without it. */
+  /** `api` cannot start a chat without it. */
   apiKeySet: boolean;
+  /** The command `cli` spawns, and where it resolved to — null when not installed. */
+  cliPath: string;
+  cliFound: string | null;
+  /** Whether a chat can start at all, and what is missing when it can't. */
+  ready: boolean;
+  readyHint: string | null;
 }
 
 export interface ChatTurn {
@@ -48,7 +76,7 @@ export interface ChatTurn {
   text: string;
 }
 
-/** Billed usage, read off the streamed usage events. */
+/** Billed usage, read off the turn's usage events. */
 export interface ChatUsage {
   input: number;
   output: number;
@@ -57,16 +85,20 @@ export interface ChatUsage {
 }
 
 interface ChatSession {
-  /** The `x-claude-code-session-id` this chat sends — the proxy's session key. */
+  /** The session id this chat runs under — the proxy's session key, and the CLI's. */
   id: string;
-  /** The proxy's transcript id for this conversation, or null before the first turn. */
+  /** The proxy's transcript id, read back from the transcript; null until it exists. */
   threadId: string | null;
+  transport: ChatTransport;
   model: string;
   maxTokens: number;
   system: string;
   createdAt: string;
-  /** Full running `messages[]`, replayed on every turn exactly as the CLI does. */
+  /** The conversation as the dashboard shows it. Replayed on the wire by `api` only —
+   * the CLI keeps its own history and is resumed instead. */
   messages: AnthropicMessage[];
+  /** Turns already sent; the CLI resumes rather than opens once this is non-zero. */
+  sent: number;
 }
 
 interface AnthropicMessage {
@@ -75,7 +107,7 @@ interface AnthropicMessage {
 }
 
 export interface ChatSendResult {
-  session: { id: string; threadId: string | null; model: string; createdAt: string };
+  session: { id: string; threadId: string | null; model: string; createdAt: string; transport: ChatTransport };
   reply: string;
   usage: ChatUsage;
   turns: ChatTurn[];
@@ -98,25 +130,40 @@ export function resolveChatBaseUrl(): string {
   return raw.replace(/\/+$/, "");
 }
 
+/** `cli` unless `CHAT_TRANSPORT` says otherwise: local dev should not need a key. */
+export function resolveChatTransport(raw = process.env.CHAT_TRANSPORT): ChatTransport {
+  return raw?.trim().toLowerCase() === "api" ? "api" : "cli";
+}
+
 export function resolveChatConfig(): ChatConfig {
+  const transport = resolveChatTransport();
+  const cliPath = process.env.CHAT_CLI_PATH ?? DEFAULT_CLI_PATH;
+  const cliFound = transport === "cli" ? findOnPath(cliPath) : null;
+  const apiKeySet = !!process.env.ANTHROPIC_API_KEY;
+
+  const readyHint =
+    transport === "api"
+      ? apiKeySet
+        ? null
+        : "set ANTHROPIC_API_KEY — the proxy forwards credentials, it never supplies them"
+      : cliFound
+        ? null
+        : `install Claude Code, or point CHAT_CLI_PATH at it (${cliPath} is not on PATH)`;
+
   return {
+    transport,
     baseUrl: resolveChatBaseUrl(),
     model: process.env.CHAT_MODEL ?? DEFAULT_MODEL,
     maxTokens: envInt(process.env.CHAT_MAX_TOKENS, DEFAULT_MAX_TOKENS),
     system: process.env.CHAT_SYSTEM ?? DEFAULT_SYSTEM,
     anthropicVersion: ANTHROPIC_VERSION,
     beta: process.env.CHAT_BETA ?? null,
-    apiKeySet: !!process.env.ANTHROPIC_API_KEY,
+    apiKeySet,
+    cliPath,
+    cliFound,
+    ready: !readyHint,
+    readyHint,
   };
-}
-
-/**
- * The proxy's transcript id for a thread: SHA-256 of `sessionId\nfirstUserText`,
- * first 16 hex chars. Mirrors `threadIdFor` in `proxy/session.mjs`; the two must
- * agree, and `proxy/proxy.test.mjs` pins a known digest against drift.
- */
-export function threadIdFor(sessionId: string, rootText: string): string {
-  return crypto.createHash("sha256").update(`${sessionId}\n${rootText}`).digest("hex").slice(0, 16);
 }
 
 function normalizePrompt(raw: unknown): string {
@@ -139,10 +186,66 @@ const publicSession = (s: ChatSession): ChatSendResult["session"] => ({
   threadId: s.threadId,
   model: s.model,
   createdAt: s.createdAt,
+  transport: s.transport,
 });
 
 const turnsOf = (s: ChatSession): ChatTurn[] =>
   s.messages.map((m) => ({ role: m.role, text: m.content.map((b) => b.text).join("\n") }));
+
+// --- Declaring a chat to the proxy ------------------------------------------
+//
+// The proxy buffers a thread's first sighting and only writes it once the thread
+// reappears larger, so one-shot helpers leave no transcript. An interactive chat
+// needs no such proof, and the `api` transport says so with `x-claude-proxy-chat`.
+// The CLI cannot be made to send that header, so the exemption is claimed
+// out-of-band instead: a marker file per session id, which the proxy checks.
+
+/** Marker files live beside the store, not inside `sessions/` — that dir is watched. */
+export const chatMarkersDir = (logDir: string): string => path.join(logDir, ".chat");
+
+/** Announce a session id as an interactive chat. Best-effort: a miss only delays
+ * the transcript to the second turn. */
+export function declareChatSession(logDir: string, sessionId: string): void {
+  const dir = chatMarkersDir(logDir);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${sessionId}.json`), JSON.stringify({ declaredAt: new Date().toISOString() }));
+    pruneChatMarkers(dir);
+  } catch {
+    /* best-effort */
+  }
+}
+
+function pruneChatMarkers(dir: string, now = Date.now()): void {
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      const full = path.join(dir, name);
+      if (now - fs.statSync(full).mtimeMs > MARKER_TTL_MS) fs.rmSync(full, { force: true });
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * The transcript's own id for this chat, read back from what the proxy wrote. The
+ * proxy hashes the first user message *as it went over the wire*, which the CLI
+ * wraps in harness context, so this cannot be computed here. Returns null while the
+ * thread is still buffered — a first turn under the `api`-style growth filter.
+ */
+export async function resolveThreadId(logDir: string, sessionId: string, waitMs = THREAD_WAIT_MS): Promise<string | null> {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    // listSessions is newest-first, so a session id reused across threads resolves
+    // to the one still being written.
+    const match = (await listSessions(logDir)).find((s) => s.sessionId === sessionId);
+    if (match) return match.threadId;
+    if (Date.now() >= deadline) return null;
+    await new Promise((r) => setTimeout(r, THREAD_POLL_MS));
+  }
+}
+
+// --- The `api` transport ----------------------------------------------------
 
 /** The subset of a streamed `/v1/messages` event this path reads. */
 interface StreamEvent {
@@ -209,7 +312,10 @@ function chatHeaders(config: ChatConfig, apiKey: string, sessionId: string): Rec
   return headers;
 }
 
-async function postTurn(config: ChatConfig, apiKey: string, session: ChatSession): Promise<{ text: string; usage: ChatUsage }> {
+async function postTurn(config: ChatConfig, session: ChatSession): Promise<{ text: string; usage: ChatUsage }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error(`chat is not configured: ${config.readyHint ?? "missing ANTHROPIC_API_KEY"}`);
+
   const body = {
     model: session.model,
     max_tokens: session.maxTokens,
@@ -241,69 +347,80 @@ async function postTurn(config: ChatConfig, apiKey: string, session: ChatSession
   return decodeChatStream(raw);
 }
 
-/** Checked before anything is sent. */
-function requireApiKey(): string {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) {
-    throw new Error(
-      "chat needs an ANTHROPIC_API_KEY: the proxy forwards credentials, it never supplies them, " +
-        "and Claude Code's OAuth token is not reusable here",
-    );
-  }
-  return key;
+// --- Dispatch ---------------------------------------------------------------
+
+async function runTurn(config: ChatConfig, session: ChatSession, prompt: string): Promise<{ text: string; usage: ChatUsage }> {
+  if (session.transport === "api") return postTurn(config, session);
+  if (!config.cliFound) throw new Error(`chat is not configured: ${config.readyHint}`);
+
+  const { text, usage } = await runCliTurn({
+    cliPath: config.cliFound,
+    cwd: resolveCliCwd(process.env.CHAT_CLI_CWD),
+    baseUrl: config.baseUrl,
+    model: session.model,
+    system: session.system,
+    sessionId: session.id,
+    resume: session.sent > 0,
+    prompt,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+  });
+  return { text, usage };
 }
 
-export async function startChat(input: {
-  prompt: unknown;
-  model?: unknown;
-  maxTokens?: unknown;
-  system?: unknown;
-}): Promise<ChatSendResult> {
+async function send(session: ChatSession, config: ChatConfig, logDir: string, prompt: string): Promise<ChatSendResult> {
+  session.messages.push(textMessage("user", prompt));
+  let result: { text: string; usage: ChatUsage };
+  try {
+    result = await runTurn(config, session, prompt);
+  } catch (err) {
+    session.messages.pop(); // keep the history exactly as the model last saw it
+    throw err;
+  }
+  session.sent += 1;
+  if (result.text) session.messages.push(textMessage("assistant", result.text));
+  // The proxy writes the transcript after it has answered us, so this is the first
+  // moment the thread can exist. A first turn may still be buffered — try again next turn.
+  if (!session.threadId) session.threadId = await resolveThreadId(logDir, session.id);
+  return { session: publicSession(session), reply: result.text, usage: result.usage, turns: turnsOf(session) };
+}
+
+export async function startChat(
+  input: { prompt: unknown; model?: unknown; maxTokens?: unknown; system?: unknown },
+  logDir: string,
+): Promise<ChatSendResult> {
   const prompt = normalizePrompt(input.prompt);
-  const apiKey = requireApiKey();
   const config = resolveChatConfig();
+  if (!config.ready) throw new Error(`chat is not configured: ${config.readyHint}`);
 
   const session: ChatSession = {
-    id: crypto.randomUUID(),
+    id: crypto.randomUUID(), // also the CLI's `--session-id`, which must be a UUID
     threadId: null,
+    transport: config.transport,
     model: typeof input.model === "string" && input.model.trim() ? input.model.trim() : config.model,
     maxTokens: typeof input.maxTokens === "number" && input.maxTokens > 0 ? Math.floor(input.maxTokens) : config.maxTokens,
     system: typeof input.system === "string" && input.system.trim() ? input.system : config.system,
     createdAt: new Date().toISOString(),
     messages: [],
+    sent: 0,
   };
-  // The thread's root is its first user text, so the id is knowable before sending.
-  session.threadId = threadIdFor(session.id, prompt);
+  declareChatSession(logDir, session.id);
   sessions.set(session.id, session);
 
   try {
-    return await send(session, config, apiKey, prompt);
+    return await send(session, config, logDir, prompt);
   } catch (err) {
     sessions.delete(session.id); // nothing was recorded
     throw err;
   }
 }
 
-/** The full history is replayed, as the CLI replays it. */
-export async function continueChat(input: { sessionId: unknown; prompt: unknown }): Promise<ChatSendResult> {
+/** Continues where the transport left off: the CLI resumes, `api` replays the history. */
+export async function continueChat(input: { sessionId: unknown; prompt: unknown }, logDir: string): Promise<ChatSendResult> {
   if (typeof input.sessionId !== "string" || !input.sessionId) throw new Error("missing sessionId");
   const session = sessions.get(input.sessionId);
   if (!session) throw new Error(`chat session not found: ${input.sessionId}`);
   const prompt = normalizePrompt(input.prompt);
-  return send(session, resolveChatConfig(), requireApiKey(), prompt);
-}
-
-async function send(session: ChatSession, config: ChatConfig, apiKey: string, prompt: string): Promise<ChatSendResult> {
-  session.messages.push(textMessage("user", prompt));
-  let result: { text: string; usage: ChatUsage };
-  try {
-    result = await postTurn(config, apiKey, session);
-  } catch (err) {
-    session.messages.pop(); // keep the history exactly as the model last saw it
-    throw err;
-  }
-  if (result.text) session.messages.push(textMessage("assistant", result.text));
-  return { session: publicSession(session), reply: result.text, usage: result.usage, turns: turnsOf(session) };
+  return send(session, resolveChatConfig(), logDir, prompt);
 }
 
 /** Test seam: forget in-memory chats. */

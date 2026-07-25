@@ -165,8 +165,10 @@ async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, u
 /** Map a chat failure onto a status. */
 function chatErrorStatus(msg: string): number {
   if (msg.startsWith("chat session not found")) return 404;
-  if (msg.startsWith("chat needs an ANTHROPIC_API_KEY")) return 503;
-  if (msg.startsWith("chat request") || msg.startsWith("anthropic stream error")) return 502;
+  if (msg.startsWith("chat is not configured")) return 503;
+  if (msg.startsWith("chat request") || msg.startsWith("chat cli") || msg.startsWith("claude cli") || msg.startsWith("anthropic stream error")) {
+    return 502;
+  }
   return 400; // invalid prompt / missing sessionId / malformed body
 }
 
@@ -387,11 +389,11 @@ const server = http.createServer(async (req, res) => {
         return;
       case "/api/chat/sessions":
         await serveChat(req, res, (body) =>
-          startChat({ prompt: body.prompt, model: body.model, maxTokens: body.maxTokens, system: body.system }),
+          startChat({ prompt: body.prompt, model: body.model, maxTokens: body.maxTokens, system: body.system }, LOG_DIR),
         );
         return;
       case "/api/chat/sessions/message":
-        await serveChat(req, res, (body) => continueChat({ sessionId: body.sessionId, prompt: body.prompt }));
+        await serveChat(req, res, (body) => continueChat({ sessionId: body.sessionId, prompt: body.prompt }, LOG_DIR));
         return;
       case "/api/skim":
         send(res, 200, await buildSkim(LOG_DIR, date));
@@ -422,7 +424,7 @@ server.listen(PORT, HOST, () => {
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
   const chat = resolveChatConfig();
   console.log(
-    `[claude-proxy-server] chat sends ${chat.model} through ${chat.baseUrl}` +
-      (chat.apiKeySet ? "" : " (no ANTHROPIC_API_KEY — chat disabled)"),
+    `[claude-proxy-server] chat sends ${chat.model} through ${chat.baseUrl} over the ${chat.transport} transport` +
+      (chat.ready ? "" : ` (disabled: ${chat.readyHint})`),
   );
 });

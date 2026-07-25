@@ -146,6 +146,7 @@ export interface FiltersResponse {
 }
 /** The resolved settings a dashboard-started chat runs with. */
 export interface ChatConfigResponse {
+  transport: "cli" | "api";
   baseUrl: string;
   model: string;
   maxTokens: number;
@@ -153,13 +154,17 @@ export interface ChatConfigResponse {
   anthropicVersion: string;
   beta: string | null;
   apiKeySet: boolean;
+  cliPath: string;
+  cliFound: string | null;
+  ready: boolean;
+  readyHint: string | null;
 }
 export interface ChatTurn {
   role: "user" | "assistant";
   text: string;
 }
 export interface ChatSendResponse {
-  session: { id: string; threadId: string | null; model: string; createdAt: string };
+  session: { id: string; threadId: string | null; model: string; createdAt: string; transport: "cli" | "api" };
   reply: string;
   usage: { input: number; output: number; cacheRead: number; cacheCreation: number };
   turns: ChatTurn[];
