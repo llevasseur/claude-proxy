@@ -187,6 +187,31 @@ rather than aborting; the proxy and dashboard panes work without the store.
 Point the server at a different log directory with `LOG_DIR=/path/to/logs`, and
 the dashboard at a different API with `VITE_API_BASE` (see `apps/admin/.env.example`).
 
+### Starting a chat from the dashboard
+
+The **Sessions** page has a prompt input: type into it and the turn goes out
+through the proxy, so it lands in the logs, the transcripts, and the usage
+digests like any other traffic.
+
+Locally this needs no credential. By default the server spawns a **headless
+Claude Code** (`claude --print`, pointed at the proxy) and that process
+authenticates itself from your own Claude Code login — the server never holds a
+key, and the turn bills the subscription you already have. The requirement is
+just that `claude` is on `PATH` and logged in.
+
+For a deployment, where there is no interactive login to inherit, switch to the
+keyed HTTP client:
+
+```bash
+CHAT_TRANSPORT=api ANTHROPIC_API_KEY=sk-ant-... pnpm server
+```
+
+`GET /api/chat/config` reports which transport is live and, when a chat can't
+start, exactly what's missing. Both paths are tunable per env — `CHAT_MODEL`,
+`CHAT_SYSTEM`, `CHAT_BASE_URL`, `CHAT_TIMEOUT_MS`, plus `CHAT_CLI_PATH` and
+`CHAT_CLI_CWD` for the child process. Details in
+[docs/features/dashboard-chat-sessions.md](docs/features/dashboard-chat-sessions.md).
+
 ### Withholding tools device-wide ("Not added")
 
 Once the proxy shows a tool is pure bloat, cut it at the source: a **bare tool
