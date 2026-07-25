@@ -40,7 +40,7 @@ const MAX_PROMPT_CHARS = 100_000;
 
 const REQUEST_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS ?? 300_000);
 
-/** How long to wait for the proxy to finish writing the transcript we then read the id from. */
+/** How long to wait for the proxy to write the transcript the id is read from. */
 const THREAD_WAIT_MS = 5_000;
 const THREAD_POLL_MS = 150;
 

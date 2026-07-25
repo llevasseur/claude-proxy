@@ -8,9 +8,9 @@
  * path. `ANTHROPIC_API_KEY` is stripped from the child's environment — its presence
  * would silently switch the CLI onto key billing, which is the other transport's job.
  *
- * The child runs with no tools and no customizations: a dashboard prompt is a chat,
- * and nothing it says should reach the filesystem. History lives in the CLI's own
- * session store, so a follow-up turn resumes rather than replaying `messages[]`.
+ * The child runs with no tools and no customizations, so nothing a dashboard prompt
+ * says reaches the filesystem. History lives in the CLI's own session store, so a
+ * follow-up turn resumes rather than replaying `messages[]`.
  */
 
 import { spawn } from "node:child_process";
@@ -104,7 +104,7 @@ export function decodeCliStream(raw: string): CliTurnResult {
 }
 
 /**
- * The argv for one turn. Exported so a test can pin it without spawning.
+ * The argv for one turn.
  *
  * The base URL rides in `--settings` rather than only in the environment: a device
  * that set `env.ANTHROPIC_BASE_URL` in `~/.claude/settings.json` — which the README's
@@ -119,12 +119,10 @@ export function cliArgs(input: Pick<CliTurnInput, "model" | "system" | "sessionI
     "--verbose",
     "--settings",
     JSON.stringify({ env: { ANTHROPIC_BASE_URL: input.baseUrl } }),
-    // A chat, not an agent: no tools to call and none defined, so nothing the
-    // dashboard sends can touch the device.
+    // No tools to call and none defined, so nothing the dashboard sends can touch the device.
     "--tools",
     "",
-    // Ignore this device's CLAUDE.md, hooks, plugins and MCP servers — a dashboard
-    // chat should not vary with whatever the user has configured.
+    // Ignore this device's CLAUDE.md, hooks, plugins and MCP servers.
     "--safe-mode",
     "--strict-mcp-config",
     "--model",
@@ -151,10 +149,7 @@ export function resolveCliCwd(configured?: string): string {
   return dir;
 }
 
-/**
- * Resolve an executable the way a shell would, without spawning one. Used to report
- * readiness in `GET /api/chat/config` before a prompt is ever sent.
- */
+/** Resolve an executable the way a shell would, without spawning one. */
 export function findOnPath(cmd: string, env: NodeJS.ProcessEnv = process.env): string | null {
   if (cmd.includes(path.sep)) return fs.existsSync(cmd) ? cmd : null;
   for (const dir of (env.PATH ?? "").split(path.delimiter)) {
