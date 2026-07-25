@@ -97,7 +97,7 @@ function RootLayout() {
   const toggleLabel = collapsed ? "Expand navigation" : "Collapse navigation";
   return (
     <div className={`app${collapsed ? " app--rail-collapsed" : ""}`}>
-      <aside className="rail" id="rail">
+      <aside className="rail">
         <div className="rail-head">
           <span className="brand-node" aria-hidden />
           <span className="brand">
@@ -108,8 +108,7 @@ function RootLayout() {
             type="button"
             className="rail-toggle"
             onClick={toggleRail}
-            aria-controls="rail"
-            aria-expanded={!collapsed}
+            aria-pressed={collapsed}
             aria-label={toggleLabel}
             title={toggleLabel}
           >

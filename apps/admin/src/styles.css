@@ -59,7 +59,6 @@ button:focus-visible {
   /* The rail gives ground as the viewport narrows. */
   grid-template-columns: clamp(208px, 18vw, 244px) minmax(0, 1fr);
   min-height: 100vh;
-  transition: grid-template-columns 0.18s ease;
 }
 
 /* side rail */
@@ -197,6 +196,9 @@ button:focus-visible {
 
 /* collapsed rail — icons only, above the top-bar breakpoint */
 @media (min-width: 861px) {
+  .app {
+    transition: grid-template-columns 0.18s ease;
+  }
   .app--rail-collapsed {
     grid-template-columns: 64px minmax(0, 1fr);
   }

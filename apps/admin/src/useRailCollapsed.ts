@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 
 const STORAGE_KEY = "admin:rail-collapsed";
+/* Below this width the rail is a top bar, so collapsing does not apply. */
+const COLLAPSIBLE = "(min-width: 861px)";
 
 function readStored(): boolean {
   try {
@@ -10,17 +12,36 @@ function readStored(): boolean {
   }
 }
 
-/** Collapsed/expanded state for the side rail, persisted in `localStorage`. */
-export function useRailCollapsed(): [boolean, () => void] {
-  const [collapsed, setCollapsed] = useState(readStored);
+let query: MediaQueryList | null = null;
+function collapsibleQuery(): MediaQueryList {
+  query ??= window.matchMedia(COLLAPSIBLE);
+  return query;
+}
 
-  useEffect(() => {
+function subscribe(onChange: () => void): () => void {
+  const mql = collapsibleQuery();
+  mql.addEventListener("change", onChange);
+  return () => mql.removeEventListener("change", onChange);
+}
+
+/** Collapsed state for the side rail, persisted in `localStorage`. */
+export function useRailCollapsed(): [boolean, () => void] {
+  const [stored, setStored] = useState(readStored);
+  const collapsible = useSyncExternalStore(
+    subscribe,
+    () => collapsibleQuery().matches,
+    () => false,
+  );
+
+  const toggle = useCallback(() => {
+    const next = !stored;
+    setStored(next);
     try {
-      localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+      localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
     } catch {
       /* ignore — the toggle stays session-only */
     }
-  }, [collapsed]);
+  }, [stored]);
 
-  return [collapsed, useCallback(() => setCollapsed((c) => !c), [])];
+  return [stored && collapsible, toggle];
 }
