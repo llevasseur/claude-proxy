@@ -62,7 +62,16 @@ export interface CliToolUse {
   name: string;
   /** True when the tool returned an error result. */
   failed: boolean;
+  /**
+   * The failing `tool_result`'s own text, trimmed to a chip's worth. Without it every
+   * failure looks alike, and a permission denial — the most common one in a `--print`
+   * child — reads as an auth or upstream problem instead of the policy decision it is.
+   */
+  error?: string;
 }
+
+/** Why a turn ended before the CLI was finished with it. */
+export type CliInterruption = "stopped" | "timeout";
 
 export interface CliTurnResult {
   text: string;
@@ -71,6 +80,14 @@ export interface CliTurnResult {
   sessionId: string | null;
   /** Tools the turn ran, in order. Always empty in `chat` mode — it has none. */
   tools: CliToolUse[];
+  /** Set when the run was cut short; the text and tools are whatever had arrived by then. */
+  interrupted: CliInterruption | null;
+}
+
+/** A turn in flight, handed to the caller so it can be ended from elsewhere. */
+export interface CliRunHandle {
+  /** End the run: SIGTERM the process group, then SIGKILL whatever survives. Idempotent. */
+  stop: () => void;
 }
 
 export interface CliTurnInput {
@@ -90,6 +107,8 @@ export interface CliTurnInput {
   agentFlags?: AgentLaunchFlags;
   /** `agent` only: how the headless child answers permission prompts. */
   permissionMode?: string;
+  /** Called once the child is up, with the handle that ends it early. */
+  onStart?: (run: CliRunHandle) => void;
 }
 
 /** Enough of a `stream-json` line to reassemble a turn. */
@@ -124,6 +143,9 @@ function applyUsage(into: CliTurnResult["usage"], u: Record<string, unknown>): v
   if (typeof u.cache_creation_input_tokens === "number") into.cacheCreation = u.cache_creation_input_tokens;
 }
 
+/** A failing tool_result can be a whole command's output; a chip needs the head of it. */
+const MAX_TOOL_ERROR_CHARS = 400;
+
 /**
  * Reassemble a `--output-format stream-json` run: newline-delimited JSON, one event
  * per line. The terminal `result` event carries the finished reply and the billed
@@ -131,10 +153,20 @@ function applyUsage(into: CliTurnResult["usage"], u: Record<string, unknown>): v
  *
  * An agent turn also runs tools: each is announced as a `tool_use` block on an
  * `assistant` event and answered by a `tool_result` block on a `user` event, which
- * is where a failure shows up. A `chat` turn has no tools.
+ * is where a failure shows up — with the reason, which is carried through. A `chat`
+ * turn has no tools.
+ *
+ * `partial` decodes the prefix of a run that was killed: an error `result` event is
+ * then a report of the kill, not a failure to raise, so what did arrive still stands.
  */
-export function decodeCliStream(raw: string): CliTurnResult {
-  const out: CliTurnResult = { text: "", usage: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, sessionId: null, tools: [] };
+export function decodeCliStream(raw: string, opts: { partial?: boolean } = {}): CliTurnResult {
+  const out: CliTurnResult = {
+    text: "",
+    usage: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
+    sessionId: null,
+    tools: [],
+    interrupted: null,
+  };
   let assistantText = "";
   let resultText: string | null = null;
   let failure: string | null = null;
@@ -164,7 +196,10 @@ export function decodeCliStream(raw: string): CliTurnResult {
       for (const b of blocksOf(ev.message?.content)) {
         if (b.type !== "tool_result" || b.is_error !== true) continue;
         const use = typeof b.tool_use_id === "string" ? byId.get(b.tool_use_id) : undefined;
-        if (use) use.failed = true;
+        if (!use) continue;
+        use.failed = true;
+        const why = textOf(b.content).trim();
+        if (why) use.error = why.length > MAX_TOOL_ERROR_CHARS ? `${why.slice(0, MAX_TOOL_ERROR_CHARS)}…` : why;
       }
     } else if (ev.type === "result") {
       if (ev.usage) applyUsage(out.usage, ev.usage);
@@ -173,7 +208,7 @@ export function decodeCliStream(raw: string): CliTurnResult {
     }
   }
 
-  if (failure) throw new Error(`claude cli reported an error: ${failure}`);
+  if (failure && !opts.partial) throw new Error(`claude cli reported an error: ${failure}`);
   out.text = resultText ?? assistantText;
   return out;
 }
@@ -297,13 +332,29 @@ export function findOnPath(cmd: string, env: NodeJS.ProcessEnv = process.env): s
   return null;
 }
 
-/** Run one headless turn. The prompt goes over stdin so it is never argv-quoted. */
+/** How long a SIGTERMed run has to flush and exit before it is SIGKILLed. */
+const STOP_GRACE_MS = 3_000;
+
+/**
+ * Run one headless turn. The prompt goes over stdin so it is never argv-quoted.
+ *
+ * The child is spawned **detached**, which makes it a process-group leader: an agent
+ * turn spawns its own tools (shells, editors, subagents), and signalling the CLI alone
+ * would orphan them still holding the repo. Ending a run therefore signals `-pid`, the
+ * whole group — SIGTERM first, so the CLI can flush the events it has already decided
+ * on, then SIGKILL for anything that ignores it.
+ *
+ * A run that is stopped or times out is not a failure to report: it returns the prefix
+ * of the stream that arrived, so the dashboard shows the text and the tools the turn
+ * got through instead of discarding them with the exit code.
+ */
 export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   const args = cliArgs(input);
   const child = spawn(input.cliPath, args, {
     cwd: input.cwd,
     env: cliEnv(input.baseUrl, process.env),
     stdio: ["pipe", "pipe", "pipe"],
+    detached: true,
   });
 
   const stdout: Buffer[] = [];
@@ -311,8 +362,35 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   child.stdout.on("data", (c: Buffer) => stdout.push(c));
   child.stderr.on("data", (c: Buffer) => stderr.push(c));
 
-  const timer = setTimeout(() => child.kill("SIGKILL"), input.timeoutMs);
+  // Held on an object: both are written from callbacks, and a `let` would read back
+  // as its initializer across the await below.
+  const state = { interrupted: null as CliInterruption | null, sigkill: null as NodeJS.Timeout | null };
+
+  /** Signal the child's whole group, falling back to the child alone where there isn't one. */
+  const signalGroup = (sig: NodeJS.Signals): void => {
+    try {
+      if (child.pid) process.kill(-child.pid, sig);
+      else child.kill(sig);
+    } catch {
+      try {
+        child.kill(sig); // no group (or already reaped) — the direct signal is all there is
+      } catch {
+        /* already gone */
+      }
+    }
+  };
+
+  const end = (why: CliInterruption): void => {
+    if (state.interrupted) return;
+    state.interrupted = why;
+    signalGroup("SIGTERM");
+    state.sigkill = setTimeout(() => signalGroup("SIGKILL"), STOP_GRACE_MS);
+    state.sigkill.unref?.();
+  };
+
+  const timer = setTimeout(() => end("timeout"), input.timeoutMs);
   timer.unref?.();
+  input.onStart?.({ stop: () => end("stopped") });
 
   const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
     child.on("error", reject);
@@ -321,19 +399,24 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
 
   child.stdin.end(input.prompt);
 
+  const done = () => {
+    clearTimeout(timer);
+    if (state.sigkill) clearTimeout(state.sigkill);
+  };
+
   let closed: { code: number | null; signal: NodeJS.Signals | null };
   try {
     closed = await exit;
   } catch (err) {
-    clearTimeout(timer);
+    done();
     const reason = (err as NodeJS.ErrnoException).code === "ENOENT" ? "not found on PATH" : (err as Error).message;
     throw new Error(`chat cli could not start (${input.cliPath}: ${reason})`);
   }
-  clearTimeout(timer);
+  done();
 
   const raw = Buffer.concat(stdout).toString("utf8");
-  if (closed.signal === "SIGKILL") {
-    throw new Error(`chat cli timed out after ${input.timeoutMs}ms`);
+  if (state.interrupted) {
+    return { ...decodeCliStream(raw, { partial: true }), interrupted: state.interrupted };
   }
   if (closed.code !== 0) {
     const tail = Buffer.concat(stderr).toString("utf8").trim().split("\n").slice(-4).join("\n");

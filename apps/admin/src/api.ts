@@ -146,6 +146,13 @@ export interface FiltersResponse {
 }
 /** `agent` runs a real Claude Code session and can change the repo; `chat` cannot. */
 export type ChatMode = "chat" | "agent";
+/**
+ * The standing answer an agent turn's headless child gives to permission prompts, since
+ * it has no one to ask. Mirrors `PERMISSION_MODES` in `server/src/chat.ts`; the server
+ * rejects anything outside the set.
+ */
+export const PERMISSION_MODES = ["default", "acceptEdits", "bypassPermissions", "plan"] as const;
+export type PermissionMode = (typeof PERMISSION_MODES)[number];
 /** What an agent turn inherits from the device, for the posture line in the UI. */
 export interface ChatAgentConfig {
   cwd: string;
@@ -181,13 +188,27 @@ export interface ChatTurn {
 export interface ChatToolUse {
   name: string;
   failed: boolean;
+  /** Why it failed, from its `tool_result` — a permission denial says so here. */
+  error?: string;
 }
+/** Why a turn ended early, when it did. */
+export type ChatInterruption = "stopped" | "timeout";
 export interface ChatSendResponse {
-  session: { id: string; threadId: string | null; model: string; createdAt: string; transport: "cli" | "api"; mode: ChatMode };
+  session: {
+    id: string;
+    threadId: string | null;
+    model: string;
+    createdAt: string;
+    transport: "cli" | "api";
+    mode: ChatMode;
+    permissionMode: string | null;
+  };
   reply: string;
   usage: { input: number; output: number; cacheRead: number; cacheCreation: number };
   turns: ChatTurn[];
   tools: ChatToolUse[];
+  /** Set when the turn was stopped or timed out; the reply is the partial one. */
+  interrupted: ChatInterruption | null;
 }
 export interface HealthResponse {
   ok: boolean;
@@ -256,7 +277,21 @@ export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?d
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
 export const getFilters = () => get<FiltersResponse>("/api/filters");
 export const getChatConfig = () => get<ChatConfigResponse>("/api/chat/config");
-/** `mode` is omitted to take the server's configured default. */
-export const startChat = (prompt: string, mode?: ChatMode) => post<ChatSendResponse>("/api/chat/sessions", { prompt, mode });
+/**
+ * The session id is chosen here rather than read off the response: it is the handle
+ * `stopChat` needs, and the first turn — the long one — has to be stoppable while it
+ * is still the thing that would have returned it.
+ */
+export const startChat = (
+  sessionId: string,
+  prompt: string,
+  opts: { mode?: ChatMode; permissionMode?: PermissionMode } = {},
+) => post<ChatSendResponse>("/api/chat/sessions", { sessionId, prompt, ...opts });
 export const sendChatMessage = (sessionId: string, prompt: string) =>
   post<ChatSendResponse>("/api/chat/sessions/message", { sessionId, prompt });
+/** Ends the turn in flight; the send it interrupts resolves with the partial reply. */
+export const stopChat = (sessionId: string) =>
+  post<{ sessionId: string; stopped: boolean }>("/api/chat/stop", { sessionId });
+/** Ends the session, so the server stops holding it once the user moves on. */
+export const endChat = (sessionId: string) =>
+  post<{ sessionId: string; stopped: boolean }>("/api/chat/sessions/end", { sessionId });

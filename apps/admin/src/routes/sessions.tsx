@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import type { ChatMode, ChatSendResponse, SessionSummary } from "../api";
-import { getChatConfig, getSessions, sendChatMessage, startChat } from "../api";
+import type { ChatMode, ChatSendResponse, ChatToolUse, PermissionMode, SessionSummary } from "../api";
+import { endChat, getChatConfig, getSessions, PERMISSION_MODES, sendChatMessage, startChat, stopChat } from "../api";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { Markdown } from "../components/Markdown";
 import { PromptInput } from "../components/PromptInput";
@@ -49,6 +49,14 @@ export function SessionsPage() {
  * the proxy writes the transcript and the new thread arrives in the table below over
  * SSE, without this page inserting it. The same input then continues the chat.
  */
+/** What each standing answer means for the turn, in the one line the form has room for. */
+const PERMISSION_NOTE: Record<PermissionMode, string> = {
+  default: "every gated tool asks — and a headless child can't be asked, so commands are denied",
+  acceptEdits: "edits are accepted, but every Bash command is auto-denied — no git writes",
+  bypassPermissions: "nothing is asked: commands run, including git writes — what /task needs",
+  plan: "read-only — the turn plans and does not act",
+};
+
 function StartChatCard() {
   const config = useQuery({ queryKey: ["chat", "config"], queryFn: getChatConfig, staleTime: 60_000 });
   const client = useQueryClient();
@@ -56,10 +64,15 @@ function StartChatCard() {
   const [chat, setChat] = useState<ChatSendResponse | null>(null);
   // null → follow whatever the server defaults to.
   const [picked, setPicked] = useState<ChatMode | null>(null);
+  const [pickedPermission, setPickedPermission] = useState<PermissionMode | null>(null);
+  // Named here, before the first turn, so Stop has a handle on it while it runs.
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
 
   const send = useMutation({
     mutationFn: (prompt: string) =>
-      chat ? sendChatMessage(chat.session.id, prompt) : startChat(prompt, picked ?? undefined),
+      chat
+        ? sendChatMessage(sessionId, prompt)
+        : startChat(sessionId, prompt, { mode: picked ?? undefined, permissionMode: pickedPermission ?? undefined }),
     onSuccess: (data) => {
       setChat(data);
       setDraft("");
@@ -68,11 +81,28 @@ function StartChatCard() {
     },
   });
 
+  // Stopping doesn't fail the send: the turn resolves with whatever it had reached.
+  const stop = useMutation({ mutationFn: () => stopChat(sessionId) });
+
+  /** Drop the server's copy too, so its session map doesn't grow a tab at a time. */
+  const newChat = () => {
+    endChat(sessionId).catch(() => {
+      /* best-effort: a session it has already forgotten is the outcome we wanted */
+    });
+    setSessionId(crypto.randomUUID());
+    setChat(null);
+    stop.reset();
+  };
+
   const unconfigured = config.data && !config.data.ready;
   const threadId = chat?.session.threadId;
   // A running chat's mode is fixed server-side, so it wins over the picker.
   const mode: ChatMode = chat?.session.mode ?? picked ?? config.data?.mode ?? "agent";
   const agent = config.data?.agent;
+  const permission = (chat?.session.permissionMode ??
+    pickedPermission ??
+    agent?.permissionMode ??
+    "acceptEdits") as PermissionMode;
 
   return (
     <div className="card chat-starter">
@@ -112,6 +142,29 @@ function StartChatCard() {
         </span>
       </div>
 
+      {/* Per session, and pinned like the mode — the alternative is an env var and a restart. */}
+      {mode === "agent" && (
+        <div className="chat-modes">
+          <label className="muted chat-mode-note" htmlFor="chat-permission">
+            permissions
+          </label>
+          <select
+            id="chat-permission"
+            className="chat-permission"
+            value={permission}
+            disabled={!!chat || send.isPending}
+            onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}
+          >
+            {PERMISSION_MODES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <span className="muted chat-mode-note">{PERMISSION_NOTE[permission]}</span>
+        </div>
+      )}
+
       {mode === "agent" && agent && (
         <p className="muted chat-note">
           {agent.aliasFound
@@ -119,7 +172,6 @@ function StartChatCard() {
                 agent.flags.disallowedTools.length ? ` (withholding ${agent.flags.disallowedTools.join(", ")})` : ""
               }`
             : `No \`${agent.alias}\` alias in ${agent.rcPath} — running a bare claude`}
-          {` · permissions: ${agent.permissionMode}`}
         </p>
       )}
 
@@ -136,15 +188,19 @@ function StartChatCard() {
         </div>
       )}
 
+      {/* A cut-short turn still says what it managed, so label it rather than let it read as the answer. */}
+      {chat?.interrupted && (
+        <p className="muted chat-note">
+          {chat.interrupted === "timeout" ? "Turn timed out" : "Turn stopped"} — this is what arrived before it ended.
+        </p>
+      )}
+
       {/* What the turn did, not just what it said — agent turns only. */}
       {chat && chat.tools.length > 0 && (
         <div className="chat-tools">
           <span className="muted">ran</span>
           {chat.tools.map((t, i) => (
-            <span key={i} className={`chat-tool${t.failed ? " is-failed" : ""}`}>
-              {t.name}
-              {t.failed ? " ✗" : ""}
-            </span>
+            <ToolChip key={i} tool={t} />
           ))}
         </div>
       )}
@@ -162,6 +218,13 @@ function StartChatCard() {
 
       <div className="chat-foot">
         {send.isError && <span className="error">{(send.error as Error).message}</span>}
+        {stop.isError && <span className="error">{(stop.error as Error).message}</span>}
+        {/* An agent turn can run for minutes; this is the only way to take it back. */}
+        {send.isPending && (
+          <button type="button" className="chat-stop" onClick={() => stop.mutate()} disabled={stop.isPending}>
+            {stop.isPending ? "Stopping…" : "Stop"}
+          </button>
+        )}
         {chat && (
           <>
             {threadId && (
@@ -173,13 +236,28 @@ function StartChatCard() {
               {fmtInt(chat.usage.input + chat.usage.cacheRead + chat.usage.cacheCreation)} in ·{" "}
               {fmtInt(chat.usage.output)} out
             </span>
-            <button type="button" className="chat-new" onClick={() => setChat(null)} disabled={send.isPending}>
+            <button type="button" className="chat-new" onClick={newChat} disabled={send.isPending}>
               New chat
             </button>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * One tool the turn ran. A failure carries its `tool_result` text, because "Bash ✗"
+ * alone reads as a broken tool when it is usually the permission mode declining it.
+ */
+function ToolChip({ tool }: { tool: ChatToolUse }) {
+  const reason = tool.failed ? tool.error?.split("\n")[0]?.trim() : undefined;
+  return (
+    <span className={`chat-tool${tool.failed ? " is-failed" : ""}`} title={tool.error}>
+      {tool.name}
+      {tool.failed ? " ✗" : ""}
+      {reason && <span className="chat-tool-why">{reason}</span>}
+    </span>
   );
 }
 

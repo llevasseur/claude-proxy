@@ -1,6 +1,16 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { cliArgs, cliEnv, cliSettings, decodeCliStream, resolveAgentCwd } from "../src/chat-cli.js";
+import { afterAll, describe, expect, it } from "vitest";
+import {
+  type CliRunHandle,
+  cliArgs,
+  cliEnv,
+  cliSettings,
+  decodeCliStream,
+  resolveAgentCwd,
+  runCliTurn,
+} from "../src/chat-cli.js";
 
 /** The fields every `cliArgs` call needs; each test overrides what it cares about. */
 const base = {
@@ -171,6 +181,53 @@ describe("decodeCliStream", () => {
     expect(decodeCliStream(raw).tools).toEqual([{ name: "Bash", failed: true }]);
   });
 
+  it("carries the tool_result's own text, so a denial reads as one", () => {
+    const raw =
+      line({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Bash" }] } }) +
+      line({
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "t1",
+              is_error: true,
+              content: [{ type: "text", text: "Claude requested permissions to use Bash, but you haven't granted it yet." }],
+            },
+          ],
+        },
+      }) +
+      line({ type: "result", result: "done" });
+    expect(decodeCliStream(raw).tools[0].error).toMatch(/requested permissions to use Bash/);
+  });
+
+  it("truncates a long tool_result rather than returning a whole command's output", () => {
+    const raw =
+      line({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Bash" }] } }) +
+      line({
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true, content: "x".repeat(2000) }] },
+      });
+    const error = decodeCliStream(raw).tools[0].error ?? "";
+    expect(error.length).toBeLessThan(500);
+    expect(error.endsWith("…")).toBe(true);
+  });
+
+  it("reports a completed run as not interrupted", () => {
+    expect(decodeCliStream(line({ type: "result", result: "hi" })).interrupted).toBeNull();
+  });
+
+  it("keeps the partial text and tools of a killed run instead of throwing", () => {
+    const raw =
+      line({ type: "assistant", message: { content: [{ type: "text", text: "got this far" }] } }) +
+      line({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Read" }] } }) +
+      line({ type: "result", is_error: true, subtype: "error_during_execution" });
+    expect(() => decodeCliStream(raw)).toThrow(/error_during_execution/);
+    const partial = decodeCliStream(raw, { partial: true });
+    expect(partial.text).toBe("got this far");
+    expect(partial.tools).toEqual([{ name: "Read", failed: false }]);
+  });
+
   it("reports no tools for a chat turn", () => {
     expect(decodeCliStream(line({ type: "result", result: "hi" })).tools).toEqual([]);
   });
@@ -183,5 +240,101 @@ describe("decodeCliStream", () => {
   it("throws when the run reports an error", () => {
     const raw = line({ type: "result", is_error: true, result: "boom" });
     expect(() => decodeCliStream(raw)).toThrow(/boom/);
+  });
+});
+
+// --- runCliTurn, against a stand-in for `claude` -----------------------------
+//
+// The stop path is the one worth spawning a real process for: it has to reach the
+// tools an agent turn started, not just the CLI, and it has to keep the output the
+// run had already produced.
+
+const FIXTURES = fs.mkdtempSync(path.join(os.tmpdir(), "chat-cli-test-"));
+afterAll(() => fs.rmSync(FIXTURES, { recursive: true, force: true }));
+
+/** Prints one stream-json line, starts a child in its own group, then hangs. */
+function fakeCli(name: string): { cliPath: string; childPidFile: string } {
+  const cliPath = path.join(FIXTURES, name);
+  const childPidFile = path.join(FIXTURES, `${name}.child`);
+  fs.writeFileSync(
+    cliPath,
+    [
+      "#!/usr/bin/env node",
+      'const fs = require("node:fs");',
+      'const { spawn } = require("node:child_process");',
+      `const line = ${JSON.stringify(
+        JSON.stringify({ type: "assistant", session_id: "s1", message: { content: [{ type: "text", text: "partial" }] } }),
+      )};`,
+      'process.stdout.write(line + "\\n", () => {',
+      '  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });',
+      `  fs.writeFileSync(${JSON.stringify(childPidFile)}, String(child.pid));`,
+      "});",
+      "setTimeout(() => {}, 60000);",
+      "",
+    ].join("\n"),
+  );
+  fs.chmodSync(cliPath, 0o755);
+  return { cliPath, childPidFile };
+}
+
+const turnInput = (cliPath: string) => ({
+  cliPath,
+  cwd: FIXTURES,
+  baseUrl: "http://127.0.0.1:8787",
+  mode: "agent" as const,
+  model: "claude-opus-5",
+  system: "be brief",
+  sessionId: "11111111-2222-3333-4444-555555555555",
+  resume: false,
+  prompt: "hello",
+  timeoutMs: 30_000,
+});
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Poll until `check` holds or the deadline passes; returns whether it held. */
+async function until(check: () => boolean, ms = 5_000): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (check()) return true;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  return check();
+}
+
+describe.skipIf(process.platform === "win32")("runCliTurn — ending a run early", () => {
+  it("stops the whole process group and returns what the run had reached", async () => {
+    const { cliPath, childPidFile } = fakeCli("fake-claude-stop");
+    let handle: CliRunHandle | null = null;
+    const turn = runCliTurn({ ...turnInput(cliPath), onStart: (run) => (handle = run) });
+
+    expect(await until(() => fs.existsSync(childPidFile))).toBe(true);
+    const childPid = Number(fs.readFileSync(childPidFile, "utf8"));
+    (handle as unknown as CliRunHandle).stop();
+
+    const result = await turn;
+    expect(result.interrupted).toBe("stopped");
+    expect(result.text).toBe("partial"); // the prefix that arrived, not discarded
+    expect(result.sessionId).toBe("s1");
+    // The tool the CLI itself started goes with it, rather than being orphaned.
+    expect(await until(() => !alive(childPid))).toBe(true);
+  });
+
+  it("reports a timeout the same way rather than throwing the output away", async () => {
+    const { cliPath } = fakeCli("fake-claude-timeout");
+    const result = await runCliTurn({ ...turnInput(cliPath), timeoutMs: 300 });
+    expect(result.interrupted).toBe("timeout");
+    expect(result.text).toBe("partial");
+  });
+
+  it("still fails loudly when the cli is not there at all", async () => {
+    await expect(runCliTurn(turnInput(path.join(FIXTURES, "nope")))).rejects.toThrow(/could not start/);
   });
 });

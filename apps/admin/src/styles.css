@@ -2070,3 +2070,44 @@ button.chat-mode:disabled {
   color: var(--bad);
   border-color: currentColor;
 }
+/* Why it failed, inline on the chip; the full text is the chip's title. */
+.chat-tool-why {
+  margin-left: 6px;
+  color: var(--muted);
+  font-family: var(--font-body);
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: bottom;
+}
+/* The standing permission answer, chosen per session. */
+select.chat-permission {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+select.chat-permission:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+/* Ends the turn in flight — sits where the send controls are, only while one runs. */
+button.chat-stop {
+  background: none;
+  border: 1px solid var(--bad);
+  border-radius: 9px;
+  color: var(--bad);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+button.chat-stop:disabled {
+  cursor: default;
+  opacity: 0.7;
+}

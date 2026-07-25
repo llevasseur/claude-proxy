@@ -32,6 +32,8 @@ import path from "node:path";
 import {
   type AgentLaunchFlags,
   type ChatMode,
+  type CliInterruption,
+  type CliRunHandle,
   type CliToolUse,
   DEFAULT_AGENT_FLAGS,
   findOnPath,
@@ -59,8 +61,25 @@ const DEFAULT_AGENT_SYSTEM =
 
 /** The shell alias an agent turn mirrors; the user's everyday `claude`. */
 const DEFAULT_AGENT_ALIAS = "claude";
-/** A headless child cannot answer a permission prompt, so it needs a standing answer. */
-const DEFAULT_PERMISSION_MODE = "acceptEdits";
+
+/**
+ * The standing answers a `--print` child can be pinned to, since it has no one to ask.
+ * They are not degrees of the same thing — what each one does to a *command* differs:
+ *
+ *   - `default` — every gated tool asks, and asking fails in a `--print` child, so a
+ *     Bash command that isn't already allowed by settings is denied.
+ *   - `acceptEdits` — file edits are pre-approved; Bash is **not**. Every command that
+ *     would have prompted is therefore auto-denied, which is why an agent turn under
+ *     this default can rewrite a file but cannot `git commit` it.
+ *   - `bypassPermissions` — nothing is asked and nothing is denied: commands run,
+ *     including git writes. This is the mode `/task` needs to finish.
+ *   - `plan` — read-only; the turn plans and does not act.
+ */
+export const PERMISSION_MODES = ["default", "acceptEdits", "bypassPermissions", "plan"] as const;
+export type PermissionMode = (typeof PERMISSION_MODES)[number];
+
+/** Edits without commands — the safe default, and a per-session choice on the start form. */
+const DEFAULT_PERMISSION_MODE: PermissionMode = "acceptEdits";
 
 const MAX_PROMPT_CHARS = 100_000;
 
@@ -153,6 +172,8 @@ interface ChatSession {
   messages: AnthropicMessage[];
   /** Turns already sent; the CLI resumes rather than opens once this is non-zero. */
   sent: number;
+  /** The turn in flight, so `stopChat` can end it; null between turns. */
+  run: CliRunHandle | null;
 }
 
 interface AnthropicMessage {
@@ -161,12 +182,23 @@ interface AnthropicMessage {
 }
 
 export interface ChatSendResult {
-  session: { id: string; threadId: string | null; model: string; createdAt: string; transport: ChatTransport; mode: ChatMode };
+  session: {
+    id: string;
+    threadId: string | null;
+    model: string;
+    createdAt: string;
+    transport: ChatTransport;
+    mode: ChatMode;
+    /** The permission answer pinned at start; null outside `agent` mode. */
+    permissionMode: string | null;
+  };
   reply: string;
   usage: ChatUsage;
   turns: ChatTurn[];
   /** Tools this turn ran. Always empty in `chat` mode, which has none. */
   tools: CliToolUse[];
+  /** Set when the turn was stopped or timed out — what follows is the partial reply. */
+  interrupted: CliInterruption | null;
 }
 
 /** Live chats, keyed by session id. Lost on restart; the transcript is not. */
@@ -286,6 +318,7 @@ const publicSession = (s: ChatSession): ChatSendResult["session"] => ({
   createdAt: s.createdAt,
   transport: s.transport,
   mode: s.mode,
+  permissionMode: s.agent?.permissionMode ?? null,
 });
 
 const turnsOf = (s: ChatSession): ChatTurn[] =>
@@ -448,48 +481,73 @@ async function postTurn(config: ChatConfig, session: ChatSession): Promise<{ tex
 
 // --- Dispatch ---------------------------------------------------------------
 
-async function runTurn(
-  config: ChatConfig,
-  session: ChatSession,
-  prompt: string,
-): Promise<{ text: string; usage: ChatUsage; tools: CliToolUse[] }> {
-  if (session.transport === "api") return { ...(await postTurn(config, session)), tools: [] };
+/** What a turn produced, whichever transport carried it. */
+interface TurnResult {
+  text: string;
+  usage: ChatUsage;
+  tools: CliToolUse[];
+  interrupted: CliInterruption | null;
+  /** The CLI's own session id, which only exists once the child got that far. */
+  cliSessionId: string | null;
+}
+
+async function runTurn(config: ChatConfig, session: ChatSession, prompt: string): Promise<TurnResult> {
+  if (session.transport === "api") {
+    return { ...(await postTurn(config, session)), tools: [], interrupted: null, cliSessionId: null };
+  }
   if (!config.cliFound) throw new Error(`chat is not configured: ${config.readyHint}`);
 
   const agent = session.mode === "agent" ? session.agent : null;
-  const { text, usage, tools } = await runCliTurn({
-    cliPath: config.cliFound,
-    // An agent works in the repo; a chat is kept out of it entirely.
-    cwd: agent ? agent.cwd : resolveCliCwd(process.env.CHAT_CLI_CWD),
-    baseUrl: config.baseUrl,
-    mode: session.mode,
-    model: session.model,
-    system: session.system,
-    sessionId: session.id,
-    resume: session.sent > 0,
-    prompt,
-    timeoutMs: REQUEST_TIMEOUT_MS,
-    agentFlags: agent?.flags,
-    permissionMode: agent?.permissionMode,
-  });
-  return { text, usage, tools };
+  try {
+    const turn = await runCliTurn({
+      cliPath: config.cliFound,
+      // An agent works in the repo; a chat is kept out of it entirely.
+      cwd: agent ? agent.cwd : resolveCliCwd(process.env.CHAT_CLI_CWD),
+      baseUrl: config.baseUrl,
+      mode: session.mode,
+      model: session.model,
+      system: session.system,
+      sessionId: session.id,
+      resume: session.sent > 0,
+      prompt,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      agentFlags: agent?.flags,
+      permissionMode: agent?.permissionMode,
+      // Held for as long as the child runs, which is what `stopChat` reaches through.
+      onStart: (run) => {
+        session.run = run;
+      },
+    });
+    return { ...turn, cliSessionId: turn.sessionId };
+  } finally {
+    session.run = null;
+  }
 }
 
 async function send(session: ChatSession, config: ChatConfig, logDir: string, prompt: string): Promise<ChatSendResult> {
   session.messages.push(textMessage("user", prompt));
-  let result: { text: string; usage: ChatUsage; tools: CliToolUse[] };
+  let result: TurnResult;
   try {
     result = await runTurn(config, session, prompt);
   } catch (err) {
     session.messages.pop(); // keep the history exactly as the model last saw it
     throw err;
   }
-  session.sent += 1;
+  // A CLI turn killed before the child opened its session left nothing to `--resume`,
+  // so the next turn has to open it rather than resume a session that never existed.
+  if (session.transport !== "cli" || result.cliSessionId) session.sent += 1;
   if (result.text) session.messages.push(textMessage("assistant", result.text));
   // The proxy writes the transcript after it has answered us, so this is the first
   // moment the thread can exist. A first turn may still be buffered — try again next turn.
   if (!session.threadId) session.threadId = await resolveThreadId(logDir, session.id);
-  return { session: publicSession(session), reply: result.text, usage: result.usage, turns: turnsOf(session), tools: result.tools };
+  return {
+    session: publicSession(session),
+    reply: result.text,
+    usage: result.usage,
+    turns: turnsOf(session),
+    tools: result.tools,
+    interrupted: result.interrupted,
+  };
 }
 
 /** A per-request `mode`, falling back to the configured default. */
@@ -499,8 +557,44 @@ function pickMode(raw: unknown, fallback: ChatMode): ChatMode {
   return raw;
 }
 
+/**
+ * A per-session `permissionMode`, falling back to the resolved default. It is a choice
+ * on the start form because the alternative — `CHAT_AGENT_PERMISSION_MODE` — can only be
+ * changed by restarting the server, and the mode a turn needs is a property of the turn.
+ */
+function pickPermissionMode(raw: unknown, fallback: string): string {
+  if (raw === undefined || raw === null) return fallback;
+  if (typeof raw !== "string" || !(PERMISSION_MODES as readonly string[]).includes(raw)) {
+    throw new Error(`invalid permissionMode: expected one of ${PERMISSION_MODES.join(", ")}`);
+  }
+  return raw;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The session id, which the caller may supply. The dashboard does, because it is also
+ * the CLI's `--session-id` and the handle `POST /api/chat/stop` needs — and waiting for
+ * the start response to learn it would mean the first turn, the long one, can't be
+ * stopped. It must be a UUID (the CLI's requirement) and not already live here.
+ */
+function pickSessionId(raw: unknown): string {
+  if (raw === undefined || raw === null) return crypto.randomUUID();
+  if (typeof raw !== "string" || !UUID_RE.test(raw)) throw new Error("invalid sessionId: expected a uuid");
+  if (sessions.has(raw)) throw new Error(`invalid sessionId: already in use (${raw})`);
+  return raw;
+}
+
 export async function startChat(
-  input: { prompt: unknown; model?: unknown; maxTokens?: unknown; system?: unknown; mode?: unknown },
+  input: {
+    prompt: unknown;
+    model?: unknown;
+    maxTokens?: unknown;
+    system?: unknown;
+    mode?: unknown;
+    sessionId?: unknown;
+    permissionMode?: unknown;
+  },
   logDir: string,
 ): Promise<ChatSendResult> {
   const prompt = normalizePrompt(input.prompt);
@@ -515,12 +609,16 @@ export async function startChat(
     throw new Error(`chat is not configured: ${config.readyHint}`);
   }
 
+  // Pinned alongside the mode, and for the same reason: what a session was allowed to
+  // do must be answerable from its first request, not from the environment as it is now.
+  const permissionMode = pickPermissionMode(input.permissionMode, config.agent?.permissionMode ?? DEFAULT_PERMISSION_MODE);
+
   const session: ChatSession = {
-    id: crypto.randomUUID(), // also the CLI's `--session-id`, which must be a UUID
+    id: pickSessionId(input.sessionId),
     threadId: null,
     transport: config.transport,
     mode,
-    agent: mode === "agent" ? config.agent : null,
+    agent: mode === "agent" && config.agent ? { ...config.agent, permissionMode } : null,
     model: typeof input.model === "string" && input.model.trim() ? input.model.trim() : config.model,
     maxTokens: typeof input.maxTokens === "number" && input.maxTokens > 0 ? Math.floor(input.maxTokens) : config.maxTokens,
     // `config.system` is resolved for the *default* mode, so a request that opts into
@@ -532,6 +630,7 @@ export async function startChat(
     createdAt: new Date().toISOString(),
     messages: [],
     sent: 0,
+    run: null,
   };
   declareChatSession(logDir, session.id);
   sessions.set(session.id, session);
@@ -546,14 +645,49 @@ export async function startChat(
 
 /** Continues where the transport left off: the CLI resumes, `api` replays the history. */
 export async function continueChat(input: { sessionId: unknown; prompt: unknown }, logDir: string): Promise<ChatSendResult> {
-  if (typeof input.sessionId !== "string" || !input.sessionId) throw new Error("missing sessionId");
-  const session = sessions.get(input.sessionId);
-  if (!session) throw new Error(`chat session not found: ${input.sessionId}`);
+  const session = requireSession(input.sessionId);
   const prompt = normalizePrompt(input.prompt);
   return send(session, await resolveChatConfig(), logDir, prompt);
+}
+
+function requireSession(raw: unknown): ChatSession {
+  if (typeof raw !== "string" || !raw) throw new Error("missing sessionId");
+  const session = sessions.get(raw);
+  if (!session) throw new Error(`chat session not found: ${raw}`);
+  return session;
+}
+
+/**
+ * End the turn in flight without ending the session: the child's whole process group is
+ * signalled, and the `send` still in progress returns the partial reply rather than an
+ * error. `stopped: false` means there was nothing running — a no-op, not a failure.
+ */
+export function stopChat(input: { sessionId: unknown }): { sessionId: string; stopped: boolean } {
+  const session = requireSession(input.sessionId);
+  const run = session.run;
+  run?.stop();
+  return { sessionId: session.id, stopped: !!run };
+}
+
+/**
+ * Forget a chat — what the dashboard's "New chat" does. Without it the Map only ever
+ * grows: every session a browser tab ever started stays resident for the life of the
+ * process. Any turn in flight is stopped first, since nobody is left to read its reply.
+ */
+export function endChat(input: { sessionId: unknown }): { sessionId: string; stopped: boolean } {
+  const session = requireSession(input.sessionId);
+  const run = session.run;
+  run?.stop();
+  sessions.delete(session.id);
+  return { sessionId: session.id, stopped: !!run };
 }
 
 /** Test seam: forget in-memory chats. */
 export function _resetChats(): void {
   sessions.clear();
+}
+
+/** Test seam: how many chats are resident. */
+export function _chatCount(): number {
+  return sessions.size;
 }

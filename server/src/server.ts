@@ -22,7 +22,7 @@ import {
   buildFilters,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
-import { continueChat, resolveChatConfig, startChat } from "./chat.js";
+import { continueChat, endChat, resolveChatConfig, startChat, stopChat } from "./chat.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
@@ -33,15 +33,45 @@ const LOG_DIR = resolveLogDir();
 const ARCHIVE_DIR = resolveArchiveDir();
 const PROJECTS_DIR = resolveProjectsDir();
 
+/** Everything but the chat routes is a read-only view of already-captured logs. */
 const CORS = {
   "access-control-allow-origin": "*",
-  // POST is for the chat routes only — every other route stays read-only.
-  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-methods": "GET, OPTIONS",
   "access-control-allow-headers": "*",
 };
 
-function send(res: http.ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { "content-type": "application/json", ...CORS });
+/** The write surface: the only routes that are not read-only GETs. */
+const CHAT_ROUTES = new Set(["/api/chat/sessions", "/api/chat/sessions/message", "/api/chat/sessions/end", "/api/chat/stop"]);
+
+/**
+ * Origins allowed to POST those routes — the dashboard's dev server by default,
+ * overridable with a comma-separated `CHAT_ALLOWED_ORIGINS`.
+ *
+ * They cannot share the read-only `*`. A POST here can start an agent turn, which runs
+ * commands in this checkout, so `*` would let any page the browser happens to be on
+ * drive one. The header is scoped to these origins and a request that *declares* another
+ * is refused outright, rather than relying on the browser to withhold the response.
+ */
+const CHAT_ORIGINS = (process.env.CHAT_ALLOWED_ORIGINS ?? "http://localhost:5173,http://127.0.0.1:5173")
+  .split(",")
+  .map((o) => o.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
+const originAllowed = (origin: string | undefined): boolean => !origin || CHAT_ORIGINS.includes(origin);
+
+function chatCors(origin: string | undefined): Record<string, string> {
+  const headers: Record<string, string> = {
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    // The answer depends on the request's origin, so a cache must not reuse it across them.
+    vary: "origin",
+  };
+  if (origin && CHAT_ORIGINS.includes(origin)) headers["access-control-allow-origin"] = origin;
+  return headers;
+}
+
+function send(res: http.ServerResponse, status: number, body: unknown, cors: Record<string, string> = CORS): void {
+  res.writeHead(status, { "content-type": "application/json", ...cors });
   res.end(JSON.stringify(body));
 }
 
@@ -177,26 +207,33 @@ async function serveChat(
   res: http.ServerResponse,
   handler: (body: Record<string, unknown>) => Promise<unknown>,
 ): Promise<void> {
+  const origin = req.headers.origin;
+  const cors = chatCors(origin);
+  if (!originAllowed(origin)) {
+    send(res, 403, { error: `origin not allowed: ${origin}` }, cors);
+    return;
+  }
   if (req.method !== "POST") {
-    send(res, 405, { error: `method not allowed: ${req.method}` });
+    send(res, 405, { error: `method not allowed: ${req.method}` }, cors);
     return;
   }
   try {
-    send(res, 200, await handler(await readJsonBody(req)));
+    send(res, 200, await handler(await readJsonBody(req)), cors);
   } catch (err) {
     const msg = (err as Error).message;
-    send(res, chatErrorStatus(msg), { error: msg });
+    send(res, chatErrorStatus(msg), { error: msg }, cors);
   }
 }
 
 const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+
   if (req.method === "OPTIONS") {
-    res.writeHead(204, CORS);
+    res.writeHead(204, CHAT_ROUTES.has(url.pathname) ? chatCors(req.headers.origin) : CORS);
     res.end();
     return;
   }
 
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const date = parseDate(url.searchParams.get("date"));
 
   try {
@@ -390,13 +427,30 @@ const server = http.createServer(async (req, res) => {
       case "/api/chat/sessions":
         await serveChat(req, res, (body) =>
           startChat(
-            { prompt: body.prompt, model: body.model, maxTokens: body.maxTokens, system: body.system, mode: body.mode },
+            {
+              prompt: body.prompt,
+              model: body.model,
+              maxTokens: body.maxTokens,
+              system: body.system,
+              mode: body.mode,
+              // The dashboard names the session up front so it can stop the first turn.
+              sessionId: body.sessionId,
+              permissionMode: body.permissionMode,
+            },
             LOG_DIR,
           ),
         );
         return;
       case "/api/chat/sessions/message":
         await serveChat(req, res, (body) => continueChat({ sessionId: body.sessionId, prompt: body.prompt }, LOG_DIR));
+        return;
+      // Ends the turn, not the session: the in-flight send returns what it had.
+      case "/api/chat/stop":
+        await serveChat(req, res, async (body) => stopChat({ sessionId: body.sessionId }));
+        return;
+      // Ends the session: "New chat" evicts it rather than leaving it resident forever.
+      case "/api/chat/sessions/end":
+        await serveChat(req, res, async (body) => endChat({ sessionId: body.sessionId }));
         return;
       case "/api/skim":
         send(res, 200, await buildSkim(LOG_DIR, date));
@@ -437,6 +491,6 @@ server.listen(PORT, HOST, async () => {
     const mirrors = aliasFound
       ? `mirroring the \`${alias}\` alias${flags.disallowedTools.length ? ` (withholding ${flags.disallowedTools.join(", ")})` : ""}`
       : `no \`${alias}\` alias found — running a bare claude`;
-    console.log(`[claude-proxy-server] agent turns run in ${cwd} with tools (${permissionMode}), ${mirrors}`);
+    console.log(`[claude-proxy-server] agent turns run in ${cwd} with tools (${permissionMode} by default, per-session on the form), ${mirrors}`);
   }
 });
