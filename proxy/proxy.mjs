@@ -13,6 +13,11 @@
  * strip are forwarded byte-for-byte. `packages/core/src/filters.ts` holds the
  * human-readable inventory the dashboard renders — keep the two in sync.
  *
+ * On the way back it applies one more: `guard.mjs` refuses tool calls that would
+ * rewrite the agent's own permission config (see that file for why the proxy is
+ * the right place for it). A reply with nothing to refuse is forwarded
+ * byte-for-byte too.
+ *
  * Run:   node proxy.mjs
  * Point Claude Code at it:
  *   ANTHROPIC_BASE_URL=http://localhost:8787 claude
@@ -27,6 +32,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as skim from "./skim.mjs";
 import * as session from "./session.mjs";
+import { ResponseGuard, guardBuffer } from "./guard.mjs";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default; set HOST="" to bind all interfaces
@@ -211,7 +217,7 @@ function extractSession(headers, reqJson) {
 /** Structured sidecar next to each `.md` — the machine-readable facts the daily
  * usage-summary reads (token/cost, context bloat, activity). The `.md` stays for
  * humans; this is stable JSON for tooling. Auth is never included. */
-function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPath, audit, inputTokens, usage, respModel, headers, skim: skimInfo }) {
+function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPath, audit, inputTokens, usage, respModel, headers, skim: skimInfo, blocked }) {
   const u = usage ?? {};
   const sidecar = {
     timestamp,
@@ -235,6 +241,9 @@ function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPa
     // App-layer skim (not Anthropic's prefix cache); recorded on every request so
     // hit-rate + saved spend are computable from the sidecar.
     skim: skimInfo ?? { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey: null },
+    // Tool calls the guard refused (permission-config self-modification). Empty on
+    // every normal request; non-empty is the tamper-evident record of an attempt.
+    blocked: blocked ?? [],
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
   return JSON.stringify(sidecar, null, 2);
@@ -279,6 +288,15 @@ function printAudit(a, base) {
   }
   if (a.toolRows.length > top.length) console.log(`  … ${a.toolRows.length - top.length} more`);
   console.log(`  logs/${base}.md\n`);
+}
+
+/** Announce a refusal on the terminal. The guard is a tripwire: on a healthy run
+ * it never fires, so when it does that belongs in front of you, not only in the
+ * `.audit.json` sidecar. */
+function logBlocked(blocked) {
+  for (const b of blocked) {
+    console.warn(`[agent-proxy] BLOCKED ${b.tool} — ${b.reason}: ${b.target}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -482,10 +500,14 @@ function handle(req, res) {
     if (canSkim) {
       const hit = skim.lookup(skimDir, cacheKey);
       if (hit) {
+        // A replay is a response the CLI will act on, so it goes through the guard
+        // too — a refused call must not become reachable by repeating the request.
+        const guarded = guardBuffer(hit.body);
+        if (guarded.blocked.length > 0) logBlocked(guarded.blocked);
         res.writeHead(hit.meta.statusCode ?? 200, { "content-type": hit.meta.contentType ?? "text/event-stream" });
-        res.end(hit.body);
+        res.end(guarded.body);
         try {
-          const { markdown, inputTokens, model: respModel } = decodeResponse(hit.body.toString("utf8"));
+          const { markdown, inputTokens, model: respModel } = decodeResponse(guarded.body.toString("utf8"));
           const saved = hit.meta.inputTokens ?? inputTokens ?? 0;
           const statusCode = hit.meta.statusCode ?? 200;
           const audit = auditRequest(reqJson ?? {}, saved);
@@ -493,7 +515,7 @@ function handle(req, res) {
           fs.mkdirSync(LOG_DIR, { recursive: true });
           fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString("utf8"));
           fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
-          fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens: saved, usage: null, respModel: respModel ?? hit.meta.model, headers: req.headers, skim: skimInfo }));
+          fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens: saved, usage: null, respModel: respModel ?? hit.meta.model, headers: req.headers, skim: skimInfo, blocked: guarded.blocked }));
           session.appendSession({ logDir: LOG_DIR, reqPath, reqJson, headers: req.headers, responseText: markdown });
           console.log(`[agent-proxy] SKIM HIT ${cacheKey.slice(0, 8)} · saved ~${saved.toLocaleString()} input tok · logs/${base}.md`);
         } catch (err) {
@@ -507,11 +529,45 @@ function handle(req, res) {
     const upstream = https.request(
       { hostname: UPSTREAM, port: 443, path: reqPath, method: req.method, headers: forwardHeaders(req.headers, forwardBody) },
       (up) => {
-        res.writeHead(up.statusCode ?? 502, up.headers);
+        const isSse = String(up.headers["content-type"] ?? "").includes("event-stream");
+        // A streamed reply is guarded incrementally, so text keeps flowing and only
+        // an in-flight tool call waits. A non-streaming body has nothing to stream,
+        // so it's held and guarded whole. count_tokens never carries a tool call.
+        const guarded = !isTokenCount(reqPath);
+        const guard = guarded && isSse ? new ResponseGuard() : null;
+        const streamThrough = !guarded || isSse;
+        // What we actually sent downstream — so the log and the skim entry record
+        // the response the CLI acted on, not one it never saw.
         const respChunks = [];
-        up.on("data", (c) => { respChunks.push(c); res.write(c); });
+        let blocked = [];
+
+        if (streamThrough) res.writeHead(up.statusCode ?? 502, up.headers);
+        up.on("data", (c) => {
+          if (!streamThrough) { respChunks.push(c); return; }
+          const out = guard ? Buffer.from(guard.push(c), "utf8") : c;
+          respChunks.push(out);
+          if (out.length) res.write(out);
+        });
         up.on("end", () => {
-          res.end();
+          if (guard) {
+            const tail = Buffer.from(guard.flush(), "utf8");
+            if (tail.length) { respChunks.push(tail); res.write(tail); }
+            blocked = guard.blocked;
+            res.end();
+          } else if (streamThrough) {
+            res.end();
+          } else {
+            const g = guardBuffer(Buffer.concat(respChunks));
+            blocked = g.blocked;
+            respChunks.length = 0;
+            respChunks.push(g.body);
+            const headers = { ...up.headers };
+            // The rewrite changes the body length; a stale content-length would hang the CLI.
+            if (headers["content-length"] != null) headers["content-length"] = String(g.body.length);
+            res.writeHead(up.statusCode ?? 502, headers);
+            res.end(g.body);
+          }
+          if (blocked.length > 0) logBlocked(blocked);
           if (isTokenCount(reqPath)) return;
           try {
             const rawResponse = Buffer.concat(respChunks);
@@ -534,7 +590,7 @@ function handle(req, res) {
             fs.mkdirSync(LOG_DIR, { recursive: true });
             fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString("utf8"));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
-            fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, respModel, headers: req.headers, skim: skimInfo }));
+            fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, respModel, headers: req.headers, skim: skimInfo, blocked }));
             session.appendSession({ logDir: LOG_DIR, reqPath, reqJson, headers: req.headers, responseText: markdown });
             printAudit(audit, base);
           } catch (err) {
