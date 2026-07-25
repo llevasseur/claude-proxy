@@ -1,8 +1,9 @@
 ---
+type: ticket
 id: "005"
 title: "Future phase — Skim dashboard page to study results"
 map: map-proxy-skim
-labels: [wayfinder:prototype]
+labels: ["wayfinder:prototype"]
 assignee: claude
 blockedBy: ["001"]
 status: closed

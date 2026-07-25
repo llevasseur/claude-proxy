@@ -1,11 +1,18 @@
 ---
+type: decision
+title: "Decision 004 — Correctness guardrails for serving cached replies"
+description: Proposed guardrails for the skim cache — what must never be cached, TTL and eviction limits, and how to undo a bad served reply.
 label: wayfinder:decision
 ticket: "004"
 map: map-proxy-skim
 status: proposed
+timestamp: 2026-07-18
 ---
 
 # Decision 004 — Correctness guardrails for serving cached replies
+
+Answers [ticket 004](tickets/004-safety-guardrails.md) of
+[map-proxy-skim](map-proxy-skim.md).
 
 > **Status: proposed — needs human ratification (charted AFK).**
 > This document was drafted without a live human in the loop. Every answer below

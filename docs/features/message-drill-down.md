@@ -1,20 +1,21 @@
 ---
 type: feature
 title: Message drill-down
-description: Click a row in a request's "Messages by size" table to open a subpage showing that message's entire content.
+description: Click a row in a request's "Messages by size" or "Tools by size" table to open a subpage showing that message's or tool's entire content.
 tags: [context-size, usage, dashboard]
-timestamp: 2026-07-21
+timestamp: 2026-07-24
 ---
 
 # Message drill-down
 
 ## Summary
 
-A subpage of the [Request breakdown](context-size-analytics.md) drill-down: clicking a
-row in the **"Messages by size"** table opens `/context/$file/message/$index`, which shows
-that one conversation message in full — its role, byte/token size, and its complete content
-as pretty-printed JSON. It answers the next question after "which message was largest?":
-**what was actually in it.**
+A pair of subpages under the [Request breakdown](context-size-analytics.md) drill-down:
+clicking a row in the **"Messages by size"** table opens `/context/$file/message/$index`,
+and clicking one in **"Tools by size"** opens `/context/$file/tool/$index`. Each shows that
+one entry in full — its role or name, byte/token size, and its complete content, rendered
+either as readable blocks (**Pretty**) or as raw JSON. It answers the next question after
+"which message was largest?": **what was actually in it.**
 
 ## Motivation
 
@@ -27,20 +28,31 @@ was truncated.
 
 ## Behavior
 
-- **Messages by size → clickable rows** — in the Request breakdown (`/context/$file`), each
-  row of the "Messages by size" table is clickable (the `#` cell is also a keyboard-focusable
-  link), navigating to that message's page.
-- **Message page** (`/context/$file/message/$index`) — stat tiles for **position** (`#index`
-  of N messages), **role**, and **size** (bytes, ~tokens), followed by a **"Full message"**
-  card containing the entire message object as pretty-printed JSON. A back-link returns to the
-  breakdown.
+- **Clickable rows** — in the Request breakdown (`/context/$file`), each row of the
+  "Messages by size" and "Tools by size" tables is clickable (the `#` and tool-name cells are
+  also keyboard-focusable links), navigating to that entry's page.
+- **Message page** (`/context/$file/message/$index`) — a **Previous / Next** pager across
+  adjacent messages in the same request (disabled buttons at the first and last message), stat
+  tiles for **position** (`#index` of N messages), **role**, and **size** (bytes, ~tokens),
+  then a **"Full message"** card with a **Pretty / Raw** toggle. Pretty renders the message's
+  content blocks — `text`, `thinking`, `tool_use` (name + input), `tool_result` (nested, flagged
+  on error), and `image` (media type and approximate size, data omitted) — falling back to raw
+  JSON on an unexpected shape; Raw shows the stored JSON.
+- **Tool page** (`/context/$file/tool/$index`) — the same shape for one tool schema: stat tiles
+  for **position** (`#index` of N tools), **name**, and **size**, then a **"Tool schema"** card
+  whose Pretty view lists the tool's name, description, and a parameter table (name, type,
+  description, `required` badge) drawn from its `input_schema`.
+- **Breadcrumbs** — both pages carry a *Context size → Request breakdown → Message/Tool #N*
+  trail back up the drill-down.
 
-Data comes from the `server` API — `GET /api/context/message?file=<base>&index=<n>` — which
-reads exactly one `.request.txt` and slices out message `n` via `extractRequestMessage` in
-`packages/core`. Because the server parses the full request body (only the drill-down's raw
-JSON is truncated), any message resolves regardless of request size. `file` is validated and
-resolved strictly inside the log directory (no path traversal); the endpoint returns 400 for a
-missing/invalid `file` or `index` and 404 when the request file or index is absent.
+Data comes from the `server` API — `GET /api/context/message?file=<base>&index=<n>` and
+`GET /api/context/tool?file=<base>&index=<n>` — which read exactly one `.request.txt` and
+slice out entry `n` via `extractRequestMessage` / `extractRequestTool` in `packages/core`.
+Because the server parses the full request body (only the drill-down's raw JSON is truncated),
+any entry resolves regardless of request size. `file` is validated and resolved strictly inside
+the log directory (no path traversal); both endpoints return 400 for an invalid `file` or
+`index` and 404 when the request file or the index is absent. An omitted `index` resolves to
+entry 0 rather than erroring.
 
 ## Acceptance criteria
 

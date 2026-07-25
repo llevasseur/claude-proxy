@@ -3,7 +3,7 @@ type: feature
 title: Context-size analytics
 description: A dashboard page showing how large the prompt sent to the model gets — average, largest, and why the largest was so large.
 tags: [context-size, usage, dashboard]
-timestamp: 2026-07-21
+timestamp: 2026-07-24
 ---
 
 # Context-size analytics
@@ -36,17 +36,23 @@ into a direct answer without touching the passive-observer proxy.
   flip direction). The peak request is tagged in place.
 - **Request breakdown** (`/context/$file`) — the "why so large" drill-down for one captured
   request: totals (bytes, message count, tool count), a **region table** (conversation
-  messages vs. tool schemas vs. system prompt as shares of the request), a **tools-by-size**
-  table, a **messages-by-size** table (each row opens the [Message drill-down](message-drill-down.md)
+  messages vs. tool schemas vs. system prompt as shares of the request), a
+  **messages-by-size** table (each row opens the [Message drill-down](message-drill-down.md)
   for that message; sortable by **#**, **Bytes**, **~Tokens**, and **Share** — default **#**
-  ascending, click a column to sort and again to flip direction), and the **raw request JSON**
-  (collapsed by default, capped at 2 MB).
+  ascending, click a column to sort and again to flip direction), a **tools-by-size** table
+  (each row opens that tool's schema page), and the **raw request JSON** (collapsed by
+  default, capped at 2 MB). Breadcrumbs link back up to the Context size page.
+- **Tool schema page** (`/context/$file/tool/$index`) — one tool schema in full: stat tiles
+  for **position** (`#index` of N tools), **name**, and **size** (bytes, ~tokens), then a
+  **"Tool schema"** card with a **Pretty** view (name, description, and a required-flagged
+  parameter table drawn from `input_schema`) and a **Raw** JSON view.
 
-Data comes from the `server` API — `GET /api/context` (windowed summary) and
-`GET /api/context/detail?file=<base>` (one request's breakdown + raw JSON) — computed via
-`summarizeContext` / `analyzeRequestBody` in `packages/core`. The detail endpoint reads
-exactly one `.request.txt`; the `file` handle is validated and resolved strictly inside the
-log directory, so no path traversal is possible.
+Data comes from the `server` API — `GET /api/context?days=<n>` (windowed summary; `days` is
+clamped to 1–365, default 14), `GET /api/context/detail?file=<base>` (one request's breakdown
++ raw JSON), and `GET /api/context/tool?file=<base>&index=<n>` (one tool schema) — computed via
+`summarizeContext` / `analyzeRequestBody` / `extractRequestTool` in `packages/core`. The
+drill-down endpoints read exactly one `.request.txt`; the `file` handle is validated and
+resolved strictly inside the log directory, so no path traversal is possible.
 
 ## Acceptance criteria
 
@@ -56,6 +62,9 @@ log directory, so no path traversal is possible.
   and sortable by when, model, real input, system, tools, and size; each row opens its breakdown.
 - The breakdown attributes a request's size across conversation messages, tool schemas, and
   the system prompt, and exposes the raw request JSON.
+- Each "Tools by size" row opens `/context/$file/tool/$index`, showing that tool's full schema
+  (Pretty parameter table or Raw JSON), read from the parsed request body so it resolves even
+  when the raw JSON was truncated.
 - No proxy changes; the feature is read-only over existing audit sidecars and request logs.
 - `packages/core` context helpers are unit-tested; `pnpm typecheck` and `pnpm test` pass.
 

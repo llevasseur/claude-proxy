@@ -11,7 +11,8 @@ An [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-cata
     okq search "<topic>"
     okq stats
 
-Folders: `adrs/` (decisions), `specs` (specs), `features/` (parts of spec).
+Folders: `adrs/` (decisions), `specs/` (design specs), `features/` (one per capability),
+`wayfinder/` (a campaign's map, tickets, research, and decisions).
 
 <!-- okq:index:begin -->
 ### Folders

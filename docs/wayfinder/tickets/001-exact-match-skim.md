@@ -1,8 +1,9 @@
 ---
+type: ticket
 id: "001"
 title: Exact-match skim short-circuit in the proxy
 map: map-proxy-skim
-labels: [wayfinder:prototype]
+labels: ["wayfinder:prototype"]
 assignee: claude
 blockedBy: []
 status: closed

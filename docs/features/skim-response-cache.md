@@ -1,0 +1,163 @@
+---
+type: feature
+title: Skim response cache
+description: An opt-in, byte-exact response cache in the proxy that replays a repeat streamed /v1/messages reply from disk with zero upstream call, plus a dashboard page measuring hit-rate and dollars saved.
+tags: [backend, dashboard, usage]
+timestamp: 2026-07-24
+---
+
+# Skim response cache
+
+## Summary
+
+An opt-in, byte-exact **response** cache inside the proxy. When a streamed
+`POST /v1/messages` body arrives whose bytes exactly match one already seen, the proxy
+replays the stored SSE reply from disk and makes **zero** call to Anthropic — the entire
+API call is saved, not just its input tokens. Every request (hit or miss) records a `skim`
+block in its audit sidecar, which the [admin dashboard](admin-dashboard-for-claude-proxy-usage.md)
+aggregates into hit-rate and estimated dollars saved on a **Skim** page. The skim is
+**off by default**; the proxy stays a transparent pass-through unless `SKIM_CACHE` is set.
+Charted in [map-proxy-skim](../wayfinder/map-proxy-skim.md).
+
+## Motivation
+
+Two cache layers are easy to conflate, and the effort's first job was separating them.
+Anthropic's **prefix cache** is server-side transformer KV-state living on their GPUs: it
+takes ~90% off *input* tokens, and it cannot be moved into the proxy without self-hosting
+the model. The skim is an **app-layer response cache**: it caches the model's *output*, so
+a hit skips the request entirely — no input tokens, no output tokens, no latency, and it
+works cross-session. That is the lever a proxy can actually pull.
+
+The payoff is deliberately not overstated. [Cacheability research](../wayfinder/research-002-cacheability.md)
+measured a real 1787-body corpus and found the byte-exact hit-rate floor is **~1.1%
+overall and ~0.6% for the streamed traffic the skim can replay** — every request is salted
+with a per-session UUID and stamped with live git status, dates, and `tool_result` output,
+so semantically-repeat requests almost never hash the same. What the corpus *does* show is
+that ~99% of requests fall into ~63 recurring *shapes*, which is why byte-exact keying
+ships as the safe floor and the instrumentation matters more than the current hit-rate:
+the sidecar data is what decides whether a smarter key is worth building.
+
+## Behavior
+
+- **Off by default** — `proxy/skim.mjs` reads `SKIM_CACHE` once at startup and only treats
+  `1`, `true`, `yes`, or `on` (case-insensitive) as enabled. Unset means `cacheable()`
+  returns `false` for everything, so nothing is stored and nothing is served.
+- **Env vars** — `SKIM_CACHE` (enable flag, default off), `SKIM_TTL_MS` (entry lifetime,
+  default `3600000` = 1 hour), `SKIM_DIR` (cache directory, default `<LOG_DIR>/../.skim-cache`,
+  a sibling of the logs dir). Zero runtime dependencies — Node built-ins only.
+- **The gate** — `cacheable()` admits a request only when all three hold: the skim is
+  enabled, the path contains `/v1/messages`, and the parsed body has `stream === true`
+  (the replay path can only re-emit raw SSE, so non-streaming replies are never cached).
+  `proxy.mjs` separately excludes `count_tokens` via `isTokenCount` before calling the gate.
+- **Cache key** — `sha256` of the exact forwarded request body (`keyFor(rawBody)`), taken
+  *after* the proxy's own tool/reminder stripping so the key matches what was actually sent.
+  The model is inside the body, so it is part of the key by construction. Any one-byte
+  difference is a different key, hence a miss.
+- **On disk** — two files per entry in the cache directory: `<key>.sse` (the raw response
+  bytes) and `<key>.meta.json` (`statusCode`, `contentType`, `inputTokens`, `model`,
+  `storedAt`). Writes are best-effort — a failed write is swallowed so it can never break
+  the proxy.
+- **TTL is a read-time check** — `lookup()` returns `null` when `Date.now() - storedAt`
+  exceeds the TTL, and an expired entry is treated as an ordinary miss: the request goes
+  upstream and the entry is only replaced if that identical key recurs. Expired files are
+  never deleted.
+- **Hit path: zero upstream call** — the proxy writes the stored status and content-type,
+  ends the response with the stored bytes, and returns *before* any `https.request` is
+  made. It still writes the full log set (`.request.txt`, `.md`, `.audit.json`) and appends
+  to the session transcript, then logs
+  `[agent-proxy] SKIM HIT <first 8 of key> · saved ~N input tok · logs/<base>.md`.
+- **Miss path stores only clean successes** — on the normal pass-through, `skim.store()`
+  runs only when the request was cacheable *and* the upstream status was exactly `200`.
+  A miss changes nothing about the bytes Claude Code receives.
+- **Sidecar instrumentation on every request** — `writeAuditSidecar` always emits a `skim`
+  block with exactly four fields: `enabled`, `servedFromCache`, `savedInputTokens`, and
+  `cacheKey` (`null` when the request wasn't cacheable). Legacy or malformed blocks are
+  normalized to an all-off default in `packages/core`, so old sidecars simply count as
+  skim-disabled traffic.
+- **Aggregation** (`packages/core/src/skim.ts`) — `computeSkimDigest` walks a day's
+  sidecars and produces `requestCount`, `enabledRequests`, `hits`, `misses`, `hitRate`
+  (hits ÷ enabled requests, `0` with no enabled traffic — disabled requests stay out of the
+  denominator), `savedInputTokens`, `estSavedUsd`, and `topShapes`. Dollars saved are
+  estimated per hit as `savedInputTokens / 1e6 × priceFor(model).input` — the sidecar's own
+  model at that model's **input**-token rate, so it is a conservative floor that ignores the
+  output tokens a hit also avoids. `skimDigestsByDay` buckets by UTC day, oldest first.
+- **Shapes** — any request with a `cacheKey` accumulates into a per-key `SkimShape`
+  (`requests`, `hits`, `savedInputTokens`, `estSavedUsd`, plus a `requestText` label),
+  ranked by request count. `requestText` is **not** a sidecar field: `server/src/logs.ts`
+  enriches each sidecar with `skimRequestText` under the `includeSkimRequests` flag by
+  reading the sibling `.request.txt` and extracting the latest user text, so a key with no
+  surviving request log simply has no label.
+- **Endpoints** — `GET /api/skim?date=YYYY-MM-DD` (one day, defaults to today; invalid
+  dates are ignored) and `GET /api/skim/trend?days=N` (`N` defaults to 14 and is clamped to
+  1–365). Both request `topN: 50` shapes and both enable the request-text enrichment; the
+  trend response carries per-day `digests` plus one cross-window `topShapes` list.
+- **Skim page** (`/skim`) — a 7/14/30-day window selector and four stat tiles:
+  **Hit rate (today)** (with `hits / enabled` underneath), **Saved today**,
+  **Saved (Nd)**, and **Saved input tokens (today)**. Two charts follow —
+  **Hit-rate over time** and **Cumulative $ saved** (a running sum of daily `estSavedUsd`)
+  — then **Top repeated request shapes (Nd)** as a bar chart of the top 12 keys by request
+  count, and a **By shape** table with columns **Cache key**, **Request**, **Requests**,
+  **Hits**, **Saved tokens**, and **Est. saved**. The **Request** cell expands to the
+  captured user text, or reads *"Request log unavailable"* when the log is gone. With no
+  captured activity the page shows *"No skim activity captured in the last N days."*
+
+The data path is `proxy/skim.mjs` (gate, key, store, replay) → the `.audit.json` sidecar's
+`skim` block → `packages/core/src/skim.ts` (`computeSkimDigest` / `skimDigestsByDay`) →
+`server` (`/api/skim`, `/api/skim/trend`) → `apps/admin` (the **Skim** page). The proxy side
+is the only part that touches live traffic; everything downstream is read-only over
+already-captured sidecars.
+
+## Acceptance criteria
+
+- [x] The skim is off unless `SKIM_CACHE` is truthy (`1|true|yes|on`); with it unset the
+      proxy neither stores nor serves anything.
+- [x] Only streamed `/v1/messages` requests are cacheable; `count_tokens` and non-streaming
+      requests are excluded.
+- [x] The cache key is `sha256` of the exact forwarded request body, so only a byte-identical
+      repeat can hit.
+- [x] A hit replays the stored SSE and returns before any upstream request is issued, logging
+      `SKIM HIT` with the key prefix and the input tokens saved.
+- [x] A miss leaves the proxy's bytes unchanged — the response is passed through untouched,
+      and a failed cache write never breaks the request.
+- [x] Entries are stored only for upstream `200`s, and an entry older than `SKIM_TTL_MS` is
+      treated as a miss.
+- [x] Every audit sidecar carries a `skim` block with `enabled`, `servedFromCache`,
+      `savedInputTokens`, and `cacheKey`; malformed and legacy blocks degrade to
+      skim-disabled rather than aborting a digest.
+- [x] `computeSkimDigest` reports hit-rate over enabled traffic only, sums saved input
+      tokens, estimates dollars at each model's input rate, and ranks repeated shapes —
+      all unit-tested in `packages/core/test/skim.test.ts` (empty input, hit/miss counting,
+      disabled-request exclusion, dollar estimation, shape ranking, request-text retention,
+      `topN`, malformed sidecars, and UTC day splitting).
+- [x] `GET /api/skim` and `GET /api/skim/trend` serve the digests, and `/skim` charts
+      hit-rate, cumulative dollars saved, and top repeated shapes.
+
+## Open questions
+
+- **The semantic skim layer is not built.** Byte-exact keying is the conservative floor;
+  matching "same or similar task" instead would need an embedding/similarity threshold plus
+  scope keys (cwd, host, git HEAD) and a policy for excluding answer-irrelevant volatility
+  (`session_id`, embedded dates, `cache_control`). The research points the first version at
+  the small stateless utility calls — the quota ping, the CLAUDE.md classifier, the
+  title/label jobs — not the 64k-token agent turns.
+- **`SKIM_MAX_ENTRIES` and eviction were proposed but never implemented.**
+  [Correctness guardrails](../wayfinder/decision-004-guardrails.md) recommends a max entry
+  count with LRU/oldest-first eviction plus opportunistic deletion of expired files; none of
+  it exists in `proxy/skim.mjs`. The TTL is enforced on read only, expired files are never
+  removed, and the cache directory therefore grows unbounded.
+- **The `tool_result` refusal is proposal-only.** Nothing in `cacheable()` inspects message
+  content, so a request whose messages carry `tool_result` snapshots of now-changed state is
+  cached and replayable like any other. Decision 004 names this the highest-value exclusion
+  to add, alongside a stream-completeness check (a truncated-but-`200` SSE is currently
+  stored as if whole) — and that whole decision doc is still `status: proposed`, awaiting
+  human ratification.
+- **Default TTL.** Decision 004 argues 1 hour is too long for a key that cannot tell a
+  stable question from one whose answer depends on live state, and suggests ~5–15 minutes.
+  The exact number is unratified.
+
+## Related
+
+- [Admin dashboard for claude-proxy usage](admin-dashboard-for-claude-proxy-usage.md)
+- [Map: proxy skim](../wayfinder/map-proxy-skim.md)
+- [Cacheability research](../wayfinder/research-002-cacheability.md)
+- [Correctness guardrails](../wayfinder/decision-004-guardrails.md)

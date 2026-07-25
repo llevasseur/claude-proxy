@@ -1,6 +1,10 @@
 ---
+type: map
+title: "Map: Skim a thin layer off the top of requests to Anthropic"
+description: Wayfinder map for the opt-in proxy response cache — destination, decisions so far, and what stays out of scope.
 label: wayfinder:map
 slug: map-proxy-skim
+timestamp: 2026-07-18
 ---
 
 # Map: Skim a thin layer off the top of requests to Anthropic

@@ -44,4 +44,4 @@ stays plain `.mjs` to preserve its "runs with bare `node`" guarantee.
 - New surface area (a build step, a frontend) is added to a formerly trivial repo.
 
 See the full design in
-[`superpowers/specs/2026-07-15-monorepo-admin-dashboard-design.md`](../superpowers/specs/2026-07-15-monorepo-admin-dashboard-design.md).
+[`specs/2026-07-15-monorepo-admin-dashboard-design.md`](../specs/2026-07-15-monorepo-admin-dashboard-design.md).

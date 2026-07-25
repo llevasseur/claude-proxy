@@ -1,8 +1,9 @@
 ---
+type: ticket
 id: "004"
 title: Correctness guardrails for serving cached replies
 map: map-proxy-skim
-labels: [wayfinder:grilling]
+labels: ["wayfinder:grilling"]
 assignee: claude
 blockedBy: ["001"]
 status: closed

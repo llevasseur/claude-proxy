@@ -1,3 +1,13 @@
+---
+type: research
+title: "Research 002 — Which requests are safe to serve (cacheability gate)"
+description: Corpus analysis of real Claude Code traffic against the determinism, statelessness, and recurrence gates — the byte-exact hit-rate floor and what the cache key must exclude.
+label: wayfinder:research
+ticket: "002"
+map: map-proxy-skim
+timestamp: 2026-07-18
+---
+
 # Research 002 — Which requests are safe to serve (cacheability gate)
 
 Read-only analysis for [ticket 002](tickets/002-cacheability-gate.md) of
