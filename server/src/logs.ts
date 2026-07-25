@@ -136,6 +136,31 @@ export async function readSidecars(
   return { sidecars, files: files.length, parseErrors };
 }
 
+/**
+ * Where the daily summary job parks each past day's raw sidecars once it rolls
+ * them out of the live dir: `<logDir>/archive/<YYYY-MM-DD>/`.
+ */
+export function rawArchiveDayDir(logDir: string, date: string): string {
+  return path.join(logDir, "archive", date);
+}
+
+/**
+ * Read one archived day's sidecars straight out of `<logDir>/archive/<date>/`.
+ * Returns an empty result (rather than throwing) when that day was never
+ * archived or has already been pruned past the retention window.
+ */
+export async function readArchivedDay(
+  logDir: string,
+  date: string,
+  opts: Omit<ReadOptions, "date" | "sinceDays"> = {},
+): Promise<LoadResult> {
+  try {
+    return await readSidecars(rawArchiveDayDir(logDir, date), { ...opts, date });
+  } catch {
+    return { sidecars: [], files: 0, parseErrors: 0 };
+  }
+}
+
 /** Base names the proxy emits, e.g. `2026-07-20T13-31-00-278_anthropic`. Digits,
  * `T`, `:` (legacy), `.`, `_`, `-` only — no path separators, no `..`. */
 const REQUEST_FILE_RE = /^[0-9A-Za-z:_.\-]+_anthropic$/;

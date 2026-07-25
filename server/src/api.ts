@@ -37,7 +37,7 @@ import {
   type FiltersResponse,
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
-import { readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
+import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
 import {
   listProjectMemories,
   listProjects,
@@ -82,10 +82,39 @@ export interface TrendsResponse {
   meta: { days: number; files: number; parseErrors: number; archivedDays: number };
 }
 
+// A past day's archived raw logs are immutable, so the digest computed from them
+// is cached for the process lifetime — a 30-day window otherwise re-reads tens of
+// thousands of sidecars on every request. Misses aren't cached: a day can still
+// gain its archive once the summary job runs.
+const rawArchiveDigests = new Map<string, UsageDigest>();
+
+/** Test-only: drop the in-process raw-archive digest cache. */
+export function clearRawArchiveCache(): void {
+  rawArchiveDigests.clear();
+}
+
+/**
+ * One archived day's digest, computed from the raw sidecars the summary job
+ * moved into `<logDir>/archive/<date>/`. `null` when that day isn't archived.
+ */
+async function rawArchivedDigest(logDir: string, date: string): Promise<UsageDigest | null> {
+  const key = `${logDir} ${date}`;
+  const hit = rawArchiveDigests.get(key);
+  if (hit) return hit;
+
+  const { sidecars, files } = await readArchivedDay(logDir, date);
+  if (files === 0) return null;
+
+  const digest = computeDigest(sidecars, { date });
+  rawArchiveDigests.set(key, digest);
+  return digest;
+}
+
 /**
  * Per-day digests for the last `days` days, oldest→newest. The live `logs/` dir
- * only retains the current day or two, so days beyond that are filled from the
- * archive of finalized digests. Live days win over the archive for the same date.
+ * only retains the current day or two; older days come from the raw sidecars in
+ * `<logDir>/archive/<date>/`, and failing that from the archive of finalized
+ * digests. Live days win over both for the same date.
  */
 export async function buildTrends(
   logDir: string,
@@ -98,16 +127,15 @@ export async function buildTrends(
   for (const d of digestsByDay(sidecars)) byDate.set(d.date, d);
 
   let archivedDays = 0;
-  if (archiveDir) {
-    const end = today(now);
-    for (let i = 0; i < days; i += 1) {
-      const date = shiftDay(end, -i);
-      if (byDate.has(date)) continue;
-      const digest = await loadArchivedDigest(archiveDir, date);
-      if (digest) {
-        byDate.set(date, digest);
-        archivedDays += 1;
-      }
+  const end = today(now);
+  for (let i = 0; i < days; i += 1) {
+    const date = shiftDay(end, -i);
+    if (byDate.has(date)) continue;
+    const digest =
+      (await rawArchivedDigest(logDir, date)) ?? (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
+    if (digest) {
+      byDate.set(date, digest);
+      archivedDays += 1;
     }
   }
 
