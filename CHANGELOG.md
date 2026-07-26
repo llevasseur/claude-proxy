@@ -24,6 +24,7 @@ This project has not cut a release yet, so everything below sits under
 
 - **Chat turns time out on silence, not elapsed time** — a turn is now bounded by an idle timeout re-armed on every stdout/stderr chunk plus a separate absolute ceiling, instead of one 300s wall-clock cap that SIGTERMed healthy 27-request agent loops mid-tool-call. (#56)
 - **Rail collapse toggle placement** — the sidenav collapse button now occupies the `admin` brand pill's slot in the rail head instead of overflowing it. (#58)
+- **Clicking the graph dismisses the details drawer** — a stationary press on empty canvas now clears the node selection on pointer-up (a 4px slop threshold keeps real pans from counting as clicks), so clicking anywhere off the nodes closes the drawer the way a backdrop would; clicking another node still switches to it, and Esc already closed it outside fullscreen.
 - **Scroll pans the Live Graph** — a plain wheel or two-finger trackpad scroll now pans both axes (shift-wheel pans horizontally) instead of zooming on every wheel event; ⌘-scroll zooms about the cursor at the old 1.12 notch step and trackpad pinch zooms continuously, with the +/− buttons carrying a tooltip that names the modifiers. (#62)
 
 ## 07-25-2026
