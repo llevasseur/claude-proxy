@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { SessionBucket } from "@claude-proxy/core";
-import { getSessionSuggestions, getSummary } from "../api";
+import type { SessionBucket, SuggestionStatus } from "@claude-proxy/core";
+import { getSessionSuggestions, getSuggestionStatus, getSummary } from "../api";
 import { AdviceCard } from "../components/AdviceCard";
 import { QueryState } from "../components/QueryState";
+import { isResolved, STATUS_LABEL, SUGGESTION_STATUS_KEY } from "../components/SuggestionStatus";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 export function AdvicePage() {
@@ -37,7 +38,14 @@ export function AdvicePage() {
  */
 function SessionSuggestions() {
   const query = useQuery({ queryKey: ["session-suggestions"], queryFn: getSessionSuggestions });
+  // Every bucket's flags in one lean call. Marking happens on the detail page.
+  const statusQuery = useQuery({ queryKey: [SUGGESTION_STATUS_KEY, "all"], queryFn: () => getSuggestionStatus() });
   const buckets = query.data?.buckets ?? [];
+  const statusByKey = new Map(
+    (statusQuery.data?.rows ?? []).map((row) => [`${row.bucket}:${row.id}`, row.status] as const),
+  );
+  const counts = statusQuery.data?.meta.counts;
+  const resolved = (counts?.done ?? 0) + (counts?.skipped ?? 0);
 
   return (
     <>
@@ -45,7 +53,9 @@ function SessionSuggestions() {
         <h2>Session suggestions</h2>
         <span className="muted">
           {query.data ? `${fmtInt(query.data.meta.sessions)} sessions in ${query.data.meta.buckets} windows of 10` : ""}
+          {resolved > 0 && ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped`}
         </span>
+        {statusQuery.error && <span className="error">flags unavailable: {(statusQuery.error as Error).message}</span>}
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error}>
@@ -54,7 +64,7 @@ function SessionSuggestions() {
         ) : (
           <div className="bucket-list">
             {buckets.map((b) => (
-              <BucketRow key={b.index} bucket={b} />
+              <BucketRow key={b.index} bucket={b} statusByKey={statusByKey} />
             ))}
           </div>
         )}
@@ -65,8 +75,16 @@ function SessionSuggestions() {
 
 const SEV_LABEL = { high: "High", warn: "Warn", info: "Info" } as const;
 
-function BucketRow({ bucket }: { bucket: SessionBucket }) {
+function BucketRow({
+  bucket,
+  statusByKey,
+}: {
+  bucket: SessionBucket;
+  statusByKey: Map<string, SuggestionStatus>;
+}) {
   const worst = bucket.suggestions[0];
+  const statusOf = (id: string): SuggestionStatus => statusByKey.get(`${bucket.index}:${id}`) ?? "pending";
+  const open = bucket.suggestions.filter((s) => !isResolved(statusOf(s.id))).length;
   return (
     <Link to="/advice/sessions/$bucket" params={{ bucket: String(bucket.index) }} className="card bucket-row">
       <div className="bucket-row-head">
@@ -77,16 +95,21 @@ function BucketRow({ bucket }: { bucket: SessionBucket }) {
         </span>
       </div>
       <ul className="bucket-suggestions">
-        {bucket.suggestions.map((s) => (
-          <li key={s.id}>
-            <span className={`dot sev-${s.severity}`} aria-hidden />
-            {s.title}
-          </li>
-        ))}
+        {bucket.suggestions.map((s) => {
+          const status = statusOf(s.id);
+          return (
+            <li key={s.id} className={isResolved(status) ? "is-resolved" : undefined}>
+              <span className={`dot sev-${s.severity}`} aria-hidden />
+              {s.title}
+              {isResolved(status) && <span className="suggestion-flag">{STATUS_LABEL[status].toLowerCase()}</span>}
+            </li>
+          );
+        })}
       </ul>
       <div className="bucket-stats muted">
         {fmtInt(bucket.stats.tasks)} tasks · {fmtInt(bucket.stats.tools)} tool calls · {fmtInt(bucket.stats.errors)}{" "}
         errors · {bucket.stats.toolsPerTask}/task
+        {bucket.suggestions.length > 0 && ` · ${open}/${bucket.suggestions.length} open`}
       </div>
     </Link>
   );

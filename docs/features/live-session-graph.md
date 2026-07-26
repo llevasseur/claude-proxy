@@ -76,6 +76,25 @@ parent did while the branch was in flight.
   mid-thread — so a captured request is treated as a *subsequence* and matched by expanding each
   gist (`isSameStep` allows for the `…`, which for a tool call sits inside the parens). A step
   with no match keeps its abbreviated transcript text, so the graph degrades rather than breaks.
+- **Interruptions and side trails** — a run can be cut off two ways, and both land in the same
+  grammar. Pressing **Esc** in Claude Code makes the CLI prepend `[Request interrupted by user]`
+  (or `… for tool use`) to the next user turn, which `proxy/session.mjs` already writes into the
+  transcript; `splitInterruption` strips that marker off the task text and reports `user` /
+  `tool-use`. **Stop** in the dashboard never reaches the wire at all — the child is killed before
+  it answers — so `recordInterruption` (`server/src/chat.ts`) appends `- interrupted: <why>`
+  (`stopped` / `timeout` / `limit`) to that thread's transcript, the only durable record a chat
+  has. Either way the interruption is a *flag*, never a node: the step it landed after is marked
+  `interrupted`, the step that resumed is marked with the `interruption` kind, and every `index`
+  stays put (the agent linkage is built from them). `mergeSessionNodes` keeps the transcript's
+  flags, since a captured request cannot carry the dashboard's own stop.
+- **Drawing the cut** — the severed step wears a coral ring and a torn right edge, and the run
+  does not simply continue: `runsOf` splits the node stream at each resume, so the snake ends
+  there and the remainder is laid out again inside an inset **side trail** — a coral dashed frame
+  headed **interrupted** · why (*interrupted by user*, *interrupted mid-tool*, *stopped from the
+  dashboard*, *timed out*, *hit its ceiling*) — reached by a distinct dashed **sever** edge
+  dropping out of the severed step. Trails share one indent rather than nesting, so a
+  much-interrupted session doesn't march off the right. The toolbar counts them and the legend
+  gains an **interrupted** swatch.
 - **Inspector** — clicking a box or a band head opens a **Node details** panel (**Esc**
   closes). For a step: **Task**, **Tool**, **Detail**, **Step** index, and for a spawn the
   **Subagent** it started, its **Status** (in flight, or *returned into parent step #n*), and
@@ -108,7 +127,10 @@ reconstructs the family tree (`linkAgentSessions`); the server's `listSessionGra
 every transcript once and merges the two into `SessionGraph` rows, which `buildSessionsGraph`
 serves from `GET /api/sessions/graph` as `{ sessions, meta: { sessionsDir, total } }`; the
 admin page lays those rows out and draws them. The browser never parses raw Markdown, and the
-proxy is untouched — this is read-only over transcripts it already writes.
+proxy is untouched — this reads the transcripts it already writes. The one write back is
+`recordInterruption` appending a dashboard **Stop** to an existing transcript; it never creates
+one, so a thread the proxy hasn't flushed yet is skipped rather than left headerless, and the
+proxy tracks its own progress by message count, not file offset, so the extra line can't desync it.
 
 Step text takes a second path over the same logs. `GET /api/sessions/graph/nodes?id=<threadId>`
 (`buildSessionGraphNodes`) walks the canvased session and every descendant into one agent family,
@@ -138,7 +160,17 @@ left are simply absent from `threads`, and keep their transcript text.
 - [x] The rail nests subagents with fold toggles, and **«** collapses it to a 38 px strip with
       an explicit **»** to reopen.
 - [x] New steps appear without a reload, and the view does not re-fit or re-center on refresh.
-- [x] No proxy changes; the feature is read-only over existing session transcripts.
+- [x] No proxy changes; the feature reads existing session transcripts, and its only write is
+      appending a dashboard **Stop** to a transcript that already exists.
+- [x] A Claude Code **Esc** (`[Request interrupted by user]`, with and without ` for tool use`)
+      and a dashboard **Stop** (`- interrupted: stopped` / `timeout` / `limit`) both parse into
+      the same `interrupted` / `interruption` flags, and the marker is stripped from the step text.
+- [x] An interruption never adds or shifts a node — every `index` survives it, and
+      `mergeSessionNodes` keeps the transcript's flags over a captured request's.
+- [x] The severed step is styled distinctly, and the run resumes in an inset side trail reached
+      by its own sever edge, headed with why it was cut; the toolbar counts the trails.
+- [x] `recordInterruption` skips a thread whose transcript the proxy hasn't flushed rather than
+      creating a headerless one (`server/test/chat-interruption.test.ts`).
 - [x] Step text is re-read from the captured requests, so a prompt or command line the
       transcript gisted to 160 chars shows in full.
 - [x] `mergeSessionNodes` preserves every transcript `index` (the agent linkage depends on

@@ -114,6 +114,14 @@ or not anyone acted on it. A flag per suggestion records that someone did:
   note? }] }`. It goes through the same origin-checked CORS the chat routes use, since it writes.
   An update naming a suggestion no rule currently produces is still written and reported under
   `meta.unknown`, so a typo is visible rather than silent.
+- **In the dashboard** — the bucket detail badges every flagged suggestion, dims the ones acted on
+  (restored to full contrast on hover/focus, so nothing becomes unreadable), and gives each one a
+  `Pending / Done / Skipped` control. `Pending` is the undo: it clears the entry, the same write the
+  API and CLI make. A write re-reads the status list rather than patching the row locally, so what
+  the page shows is what the file says. A **hide resolved** toggle appears once anything is flagged,
+  and the Advice bucket list marks resolved suggestions and reports how many are still open per
+  window. The breakdown-derived suggestions carry no control — they are computed per request rather
+  than per bucket, so the store has no row for them.
 - **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>] [-d]` and
   `pnpm --filter server suggestions mark -r <bucket> -i <ids> -s <flag> [-n <note>]`, both with
   `--json` for the API's own shape. The CLI reads the log directory directly, so it needs no
@@ -146,6 +154,9 @@ The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
       `skipped` with an optional note — keyed so it survives the recomputation on every load.
 - [x] The flags are listable as a lean row per suggestion, filterable by bucket range and by flag,
       over HTTP and from the command line without a running server.
+- [x] The Advice pages show each suggestion's flag and let one be marked `done`/`skipped` or set
+      back to `pending` inline, without a full reload, with resolved suggestions de-emphasized and
+      hideable but still reachable.
 - [x] The flag store is unit-tested pure (`packages/core/test/suggestion-status.test.ts`) and its
       file handling is tested in `server/test/suggestion-status.test.ts`.
 
@@ -162,9 +173,12 @@ The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
   with 2 refusals and one with 40 both read *high*.
 - The breakdown roll-up uses each session's peak request only. That is the cheapest honest
   sample, but a tool schema dropped midway through a session is invisible to it.
-- The status flags have no UI yet — they are written by the API and the CLI, and the Advice pages
-  still render every suggestion the same whether or not it is flagged. A badge on the bucket detail
-  (and a "hide done" toggle) is the obvious next step.
+- The dashboard marks a flag but cannot attach a note — the API and CLI can, and the UI displays
+  whatever they wrote. A `skipped` without a reason is the flag that most wants one; a note field on
+  the control is the obvious next step.
+- The Advice page fetches the suggestions and their flags as two calls, each recomputing every
+  bucket server-side. Correct, and cheap enough at this history size, but the join could move into
+  `GET /api/sessions/suggestions` if that stops being true.
 - A flag's write is read-modify-write on one JSON file, so two writers racing lose one flag. One
   dashboard and one agent at a time is the actual usage; a lock would be cheap if that changes.
 

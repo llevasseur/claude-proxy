@@ -178,6 +178,45 @@ const DECIDED_RE = /^- decided:\s/;
 const ERROR_RE = /^- ✗\s(.*)$/;
 /** A tool-call line: `- Name(` — distinct from `- decided:` / `- done:` prose. */
 const TOOL_RE = /^- ([A-Za-z]\w*\(.*)$/;
+/** The dashboard's own cut, written as its own line (see {@link INTERRUPTION_LINE}). */
+const INTERRUPTED_RE = /^- interrupted:\s*(.*)$/;
+
+// --- Interruptions ---------------------------------------------------------
+//
+// A run can be cut off mid-flight two ways, each leaving a different trace.
+// Claude Code's Esc prepends `[Request interrupted by user]` to the user turn that
+// redirected it, so the marker rides in on the *next* task line. A dashboard chat
+// stopped through `POST /api/chat/stop` never reaches the wire — the child is killed —
+// so the server records it as an `- interrupted: <why>` line. Both read the same to
+// the graph: the step before was cut short, and what follows is a new trail.
+
+/** Why a run stopped mid-flight. */
+export type InterruptionKind = "user" | "tool-use" | "stopped" | "timeout" | "limit";
+
+/** Claude Code's marker, prepended to the user turn that interrupted the run. */
+const INTERRUPT_MARKER_RE = /^\[Request interrupted by user(?<tool> for tool use)?\]\s*/;
+
+const INTERRUPTION_KINDS = new Set<string>(["user", "tool-use", "stopped", "timeout", "limit"]);
+
+/** Read an `- interrupted:` line's reason; anything unrecognized reads as a plain stop. */
+export function interruptionKind(raw: string): InterruptionKind {
+  const one = raw.trim().toLowerCase();
+  return (INTERRUPTION_KINDS.has(one) ? one : "stopped") as InterruptionKind;
+}
+
+/** The transcript line the dashboard appends when its own Stop (or a ceiling) cut a turn. */
+export const INTERRUPTION_LINE = (kind: InterruptionKind): string => `- interrupted: ${kind}`;
+
+/**
+ * Split Claude Code's interruption marker off a user turn: the kind it names, and the
+ * words that followed it (the redirection, which is the resumed run's first task). Text
+ * with no marker comes back unchanged and `null`.
+ */
+export function splitInterruption(text: string): { kind: InterruptionKind | null; text: string } {
+  const m = INTERRUPT_MARKER_RE.exec(text);
+  if (!m) return { kind: null, text };
+  return { kind: m.groups?.tool ? "tool-use" : "user", text: text.slice(m[0].length) };
+}
 
 /** Distill one transcript's text into its listing/detail metadata. */
 export function parseSessionTranscript(threadId: string, content: string): SessionMeta {
@@ -275,6 +314,10 @@ export interface SessionNode {
   tool: string | null;
   /** The `## Task:` heading this node falls under, or null if it preceded any task. */
   task: string | null;
+  /** The interruption this step picked back up after — head of a side trail; null on an ordinary step. */
+  interruption: InterruptionKind | null;
+  /** True when the run was cut off *at* this step: the interruption landed right after it. */
+  interrupted: boolean;
 }
 
 const DECIDED_TEXT_RE = /^- decided:\s*(.*)$/;
@@ -285,22 +328,44 @@ const DONE_TEXT_RE = /^- done:\s*(.*)$/;
  * tool, error, done), skipping the header. Uses the same line grammar as
  * {@link parseSessionTranscript}; `error` nodes carry the nearest preceding tool
  * call so the graph can show what failed. Order is the file's line order.
+ *
+ * An interruption is a flag, not a step: it marks the node it cut short and the node
+ * the run resumed on, so every node's `index` still counts transcript lines (the agent
+ * linkage is built from those positions).
  */
 export function parseSessionNodes(content: string): SessionNode[] {
   const nodes: SessionNode[] = [];
   let task: string | null = null;
   let lastTool: string | null = null;
+  /** An interruption seen but not yet attached — it belongs to the step that resumes. */
+  let pending: InterruptionKind | null = null;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
-    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task });
+    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false });
+    pending = null;
+  };
+
+  /** Sever the run here: the last step so far was cut off, and the next one resumes. */
+  const cut = (kind: InterruptionKind) => {
+    const last = nodes[nodes.length - 1];
+    if (last) last.interrupted = true;
+    pending = kind;
   };
 
   for (const raw of content.split("\n")) {
     const line = raw.replace(/\r$/, "");
 
+    const stopped = INTERRUPTED_RE.exec(line);
+    if (stopped) {
+      cut(interruptionKind(stopped[1] ?? ""));
+      continue;
+    }
+
     const taskMatch = TASK_RE.exec(line);
     if (taskMatch) {
-      task = (taskMatch[1] ?? "").trim() || null;
+      const split = splitInterruption((taskMatch[1] ?? "").trim());
+      if (split.kind) cut(split.kind);
+      task = split.text.trim() || null;
       lastTool = null;
       push("task", task ?? "", null);
       continue;
@@ -657,9 +722,11 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
   const nodes: SessionNode[] = [];
   let task: string | null = null;
   let lastTool: string | null = null;
+  let pending: InterruptionKind | null = null;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
-    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task });
+    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false });
+    pending = null;
   };
 
   for (const raw of messages) {
@@ -675,9 +742,15 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
           lastTool = null;
         }
       }
-      const next = stripReminderBlocks(texts.join(" ")).trim();
-      if (next) {
-        task = next;
+      const split = splitInterruption(stripReminderBlocks(texts.join(" ")).trim());
+      const next = split.text.trim();
+      if (split.kind || next) {
+        if (split.kind) {
+          const last = nodes[nodes.length - 1];
+          if (last) last.interrupted = true;
+          pending = split.kind;
+        }
+        task = next || null;
         lastTool = null;
         push("task", next, null);
       }
@@ -740,7 +813,9 @@ export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNod
   for (const step of transcript) {
     const cand = derived[d];
     if (cand && cand.type === step.type && isSameStep(step.text, cand.text)) {
-      merged.push({ ...cand, index: step.index });
+      // Text comes from the request; which steps exist — and where the run was cut —
+      // stays the transcript's, since it alone carries the dashboard's own stops.
+      merged.push({ ...cand, index: step.index, interruption: step.interruption, interrupted: step.interrupted });
       d += 1;
     } else {
       merged.push(step);

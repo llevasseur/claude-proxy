@@ -3,6 +3,7 @@ import {
   deriveSessionName,
   deriveSessionNodes,
   firstUserText,
+  interruptionKind,
   isAgentSpawn,
   isSameStep,
   linkAgentSessions,
@@ -13,10 +14,18 @@ import {
   sessionDisplayName,
   sessionName,
   spawnAgentType,
+  splitInterruption,
   type LinkableSession,
   type SessionMeta,
   type SessionNode,
 } from "../src/sessions.js";
+
+/** A node fixture, with the interruption fields these cases don't exercise defaulted off. */
+const node = (n: Omit<SessionNode, "interruption" | "interrupted">): SessionNode => ({
+  interruption: null,
+  interrupted: false,
+  ...n,
+});
 
 const TRANSCRIPT = [
   "",
@@ -203,15 +212,15 @@ describe("parseSessionNodes", () => {
   it("streams the appended lines in order, typed and carrying task/tool context", () => {
     const nodes = parseSessionNodes(TRANSCRIPT);
     expect(nodes).toEqual([
-      { index: 0, type: "task", text: "Fix the login bug", tool: null, task: "Fix the login bug" },
-      { index: 1, type: "decision", text: "Reading the handler first.", tool: null, task: "Fix the login bug" },
-      { index: 2, type: "tool", text: "Read(file_path=/auth.ts)", tool: "Read(file_path=/auth.ts)", task: "Fix the login bug" },
-      { index: 3, type: "tool", text: "Bash(command=npm test)", tool: "Bash(command=npm test)", task: "Fix the login bug" },
-      { index: 4, type: "error", text: "ENOENT: no such file", tool: "Bash(command=npm test)", task: "Fix the login bug" },
-      { index: 5, type: "done", text: "All tests pass.", tool: null, task: "Fix the login bug" },
-      { index: 6, type: "task", text: "Add a follow-up feature", tool: null, task: "Add a follow-up feature" },
-      { index: 7, type: "decision", text: "Editing the router.", tool: null, task: "Add a follow-up feature" },
-      { index: 8, type: "tool", text: "Edit(file_path=/router.tsx)", tool: "Edit(file_path=/router.tsx)", task: "Add a follow-up feature" },
+      node({ index: 0, type: "task", text: "Fix the login bug", tool: null, task: "Fix the login bug" }),
+      node({ index: 1, type: "decision", text: "Reading the handler first.", tool: null, task: "Fix the login bug" }),
+      node({ index: 2, type: "tool", text: "Read(file_path=/auth.ts)", tool: "Read(file_path=/auth.ts)", task: "Fix the login bug" }),
+      node({ index: 3, type: "tool", text: "Bash(command=npm test)", tool: "Bash(command=npm test)", task: "Fix the login bug" }),
+      node({ index: 4, type: "error", text: "ENOENT: no such file", tool: "Bash(command=npm test)", task: "Fix the login bug" }),
+      node({ index: 5, type: "done", text: "All tests pass.", tool: null, task: "Fix the login bug" }),
+      node({ index: 6, type: "task", text: "Add a follow-up feature", tool: null, task: "Add a follow-up feature" }),
+      node({ index: 7, type: "decision", text: "Editing the router.", tool: null, task: "Add a follow-up feature" }),
+      node({ index: 8, type: "tool", text: "Edit(file_path=/router.tsx)", tool: "Edit(file_path=/router.tsx)", task: "Add a follow-up feature" }),
     ]);
   });
 
@@ -223,6 +232,95 @@ describe("parseSessionNodes", () => {
     const nodes = parseSessionNodes(TRANSCRIPT.replace(/\n/g, "\r\n"));
     expect(nodes).toHaveLength(9);
     expect(nodes.map((n) => n.type)).toEqual(["task", "decision", "tool", "tool", "error", "done", "task", "decision", "tool"]);
+  });
+});
+
+describe("interruptions", () => {
+  it("splits Claude Code's marker off the turn that redirected the run", () => {
+    expect(splitInterruption("[Request interrupted by user] do this instead")).toEqual({
+      kind: "user",
+      text: "do this instead",
+    });
+    expect(splitInterruption("[Request interrupted by user for tool use] not that file")).toEqual({
+      kind: "tool-use",
+      text: "not that file",
+    });
+    expect(splitInterruption("just a prompt")).toEqual({ kind: null, text: "just a prompt" });
+  });
+
+  it("severs the step it landed on and opens the next as the trail head", () => {
+    const nodes = parseSessionNodes(
+      [
+        "## Task: Fix the login bug",
+        "- Read(file_path=/auth.ts)",
+        "## Task: [Request interrupted by user] check the router first",
+        "- Read(file_path=/router.tsx)",
+      ].join("\n"),
+    );
+
+    expect(nodes.map((n) => n.text)).toEqual([
+      "Fix the login bug",
+      "Read(file_path=/auth.ts)",
+      "check the router first", // the marker is a flag, not part of the prompt
+      "Read(file_path=/router.tsx)",
+    ]);
+    expect(nodes.map((n) => n.interrupted)).toEqual([false, true, false, false]);
+    expect(nodes.map((n) => n.interruption)).toEqual([null, null, "user", null]);
+    // Indices still count transcript lines — the agent linkage is built from them.
+    expect(nodes.map((n) => n.index)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("reads the dashboard's own stop, which never reaches the wire", () => {
+    const nodes = parseSessionNodes(
+      ["## Task: Ship it", "- Bash(command=npm test)", "- interrupted: stopped", "## Task: try again"].join("\n"),
+    );
+
+    expect(nodes).toHaveLength(3); // the stop is a flag on its neighbours, not a step of its own
+    expect(nodes[1]?.interrupted).toBe(true);
+    expect(nodes[2]?.interruption).toBe("stopped");
+  });
+
+  it("marks a run cut off with nothing after it", () => {
+    const nodes = parseSessionNodes(["## Task: Ship it", "- Bash(command=npm test)", "- interrupted: timeout"].join("\n"));
+    expect(nodes).toHaveLength(2);
+    expect(nodes[1]?.interrupted).toBe(true);
+    expect(nodes.some((n) => n.interruption !== null)).toBe(false);
+  });
+
+  it("reads an unrecognized reason as a plain stop", () => {
+    expect(interruptionKind("TIMEOUT")).toBe("timeout");
+    expect(interruptionKind("who knows")).toBe("stopped");
+  });
+
+  it("derives the same flags from a captured request body", () => {
+    const nodes = deriveSessionNodes({
+      messages: [
+        { role: "user", content: "Fix the login bug" },
+        { role: "assistant", content: [{ type: "tool_use", name: "Read", input: { file_path: "/auth.ts" } }] },
+        { role: "user", content: "[Request interrupted by user] check the router first" },
+      ],
+    });
+
+    expect(nodes.map((n) => n.interrupted)).toEqual([false, true, false]);
+    expect(nodes[2]).toMatchObject({ type: "task", text: "check the router first", interruption: "user" });
+  });
+
+  it("keeps the transcript's flags when request text is laid over it", () => {
+    const transcript = parseSessionNodes(
+      ["## Task: Ship it", "- Bash(command=npm test…)", "- interrupted: stopped", "## Task: try again"].join("\n"),
+    );
+    const derived = deriveSessionNodes({
+      messages: [
+        { role: "user", content: "Ship it" },
+        { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "npm test --silent" } }] },
+        { role: "user", content: "try again" },
+      ],
+    });
+
+    const merged = mergeSessionNodes(transcript, derived);
+    expect(merged[1]?.tool).toBe("Bash(command=npm test --silent)"); // text expanded from the request
+    expect(merged[1]?.interrupted).toBe(true); // but the stop, which only the transcript saw, survives
+    expect(merged[2]?.interruption).toBe("stopped");
   });
 });
 
@@ -576,13 +674,13 @@ describe("mergeSessionNodes", () => {
 
   it("realigns after a turn the captured request never held", () => {
     const transcript: SessionNode[] = [
-      { index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" },
-      { index: 1, type: "task", text: "Describe your most recent action…", tool: null, task: "Describe…" },
-      { index: 2, type: "decision", text: "Reading the handler fir…", tool: null, task: "Describe…" },
+      node({ index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" }),
+      node({ index: 1, type: "task", text: "Describe your most recent action…", tool: null, task: "Describe…" }),
+      node({ index: 2, type: "decision", text: "Reading the handler fir…", tool: null, task: "Describe…" }),
     ];
     const derived: SessionNode[] = [
-      { index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" },
-      { index: 1, type: "decision", text: "Reading the handler first, then the router.", tool: null, task: "Do the thing" },
+      node({ index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" }),
+      node({ index: 1, type: "decision", text: "Reading the handler first, then the router.", tool: null, task: "Do the thing" }),
     ];
 
     const merged = mergeSessionNodes(transcript, derived);
@@ -597,8 +695,8 @@ describe("mergeSessionNodes", () => {
     expect(isSameStep(gisted, full)).toBe(true);
 
     const merged = mergeSessionNodes(
-      [{ index: 0, type: "tool", text: gisted, tool: gisted, task: null }],
-      [{ index: 0, type: "tool", text: full, tool: full, task: null }],
+      [node({ index: 0, type: "tool", text: gisted, tool: gisted, task: null })],
+      [node({ index: 0, type: "tool", text: full, tool: full, task: null })],
     );
     expect(merged[0]?.tool).toBe(full);
   });
