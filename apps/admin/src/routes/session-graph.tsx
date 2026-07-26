@@ -43,7 +43,6 @@ const BAND_GAP = 26;
 /** Overlay panels with their own scrollbar; a collapsed rail has nothing to scroll. */
 const SCROLLS_ITSELF = ".graph-sessions:not(.is-collapsed), .graph-inspector";
 
-/** Scroll pans, so the zoom buttons carry the discoverability for the modifier. */
 const ZOOM_HINT = "Scroll to pan · ⌘-scroll or pinch to zoom";
 
 /** What a box or edge is about — drives its glow color. */
@@ -507,8 +506,8 @@ export function SessionGraphPage() {
     return () => ro.disconnect();
   }, []);
 
-  // A plain wheel pans; ⌘-wheel zooms about the cursor, as does a trackpad pinch
-  // (which the browser reports as a ctrl-wheel). Native listener so we can preventDefault.
+  // A plain wheel pans; ⌘-wheel and trackpad pinch (reported as ctrl-wheel) zoom about
+  // the cursor. Native listener so we can preventDefault.
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
