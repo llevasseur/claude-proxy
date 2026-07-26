@@ -45,6 +45,11 @@ export interface SessionMeta {
   title: string | null;
   /** The first user message with its injected `<system-reminder>` context stripped — a clean subtitle. */
   subtitle: string | null;
+  /**
+   * A short name condensed from the opening prompt, for the many transcripts the CLI
+   * never titles — see {@link deriveSessionName}. Always subordinate to {@link title}.
+   */
+  derivedTitle: string | null;
 }
 
 /** One errored tool result from a transcript, tagged with its task and most-likely originating tool call. */
@@ -67,6 +72,125 @@ const HEADER_RE = {
   subtitle: /^- subtitle:\s*(.*)$/,
 } as const;
 
+// --- Deriving a name when the CLI never sends one --------------------------
+//
+// A `- title:` line only exists when Claude Code issued its out-of-band titling
+// request, and it only does that for interactive chats: a dashboard-started run is
+// headless (`claude --print`) and a subagent shares its parent's session id, so
+// neither is ever titled. Those transcripts would otherwise list as a bare hex id,
+// even though their opening prompt says plainly what they are. So condense that
+// prompt here, in the same sentence-case shape the CLI's own titles use.
+
+/**
+ * A slash command reaches the wire wrapped in an envelope — `<command-message>`,
+ * `<command-name>`, `<command-args>`, and then the whole command definition inlined.
+ * The command and its arguments are the session's real name; the definition that
+ * follows is boilerplate identical across every run of it.
+ */
+const COMMAND_NAME_RE = /<command-name>\s*(\/?[^<\s]+)\s*<\/command-name>/i;
+const COMMAND_ARGS_RE = /<command-args>([\s\S]*?)<\/command-args>/i;
+/** The caveat the CLI prepends to a locally-run command, and the leftover envelope tags. */
+const COMMAND_NOISE_RE = /<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<\/?command-[a-z-]+>/gi;
+
+/** Drop the envelope. A prompt cut mid-caveat never closes its tag, so take that shape too. */
+const stripCommandNoise = (s: string): string =>
+  s.replace(COMMAND_NOISE_RE, "").replace(/<local-command-caveat>[\s\S]*$/i, "");
+
+/** Openers a prompt leads with that name nothing about the work. */
+const LEAD_FILLER_RE =
+  /^(?:hey|hi|ok|okay|so|now|please|pls|can you|could you|would you|i(?:'d|'ll| would)? (?:like you to|want you to)|let'?s|help me|go ahead and|just)\b[\s,:—-]*/i;
+
+/** Where a prompt's first sentence ends — the rest is elaboration, not the name. */
+const SENTENCE_END_RE = /[.!?](?:\s|$)/;
+
+/** The most words a derived name carries, matching the CLI's own 3–7 word titles. */
+const NAME_WORDS = 7;
+/** …and its hard character cap, so one long token can't run away with the row. */
+const NAME_CHARS = 60;
+
+/**
+ * Condense an opening prompt into a short session name, or null when there's nothing
+ * to name. A slash command names itself (`/task fix the flaky test`); anything else has
+ * its leading filler dropped and its first sentence kept. Either way the result is
+ * capped at {@link NAME_WORDS} words / {@link NAME_CHARS} chars, an `…` marking the cut.
+ *
+ * The first word is capitalized only when it is purely letters, so a prompt opening on
+ * a path, a flag or a backticked command (`src/api.ts`, `--watch`, `` `pnpm test` ``) is
+ * left exactly as typed.
+ */
+export function deriveSessionName(prompt: string | null): string | null {
+  if (!prompt) return null;
+
+  // Transcripts predating the reminder-free subtitle open with an injected context
+  // blob, and one truncated mid-block never closes its tag — drop both shapes.
+  let text = prompt
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "")
+    .replace(/<system-reminder>[\s\S]*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // A slash command: name it by the command and its arguments, not by the definition
+  // inlined after them, which is identical for every run of that command.
+  const command = COMMAND_NAME_RE.exec(text);
+  if (command) {
+    const args = COMMAND_ARGS_RE.exec(text)?.[1] ?? "";
+    const named = stripCommandNoise(`${command[1]} ${args}`).replace(/\s+/g, " ").trim();
+    return capped(named);
+  }
+  text = stripCommandNoise(text).replace(/\s+/g, " ").trim();
+
+  // Filler can stack ("ok so please …"), so peel until nothing more comes off.
+  for (let i = 0; i < 3; i++) {
+    const stripped = text.replace(LEAD_FILLER_RE, "");
+    if (stripped === text) break;
+    text = stripped;
+  }
+
+  const end = SENTENCE_END_RE.exec(text);
+  if (end && end.index > 0) text = text.slice(0, end.index);
+  return capped(text.trim());
+}
+
+/**
+ * Cut a one-line string down to a name: {@link NAME_WORDS} words and {@link NAME_CHARS}
+ * chars at most, an `…` marking either cut, sentence-cased when its first word is one.
+ * Null when there's nothing left to show.
+ */
+function capped(text: string): string | null {
+  if (!text) return null;
+
+  const words = text.split(" ");
+  let cut = words.length > NAME_WORDS;
+  let name = words.slice(0, NAME_WORDS).join(" ");
+  if (name.length > NAME_CHARS) {
+    name = name.slice(0, NAME_CHARS).trimEnd();
+    cut = true;
+  }
+  if (!name) return null;
+
+  // Sentence case, but never on a path/flag/quoted command — those stay as typed.
+  if (/^[a-z]+$/.test(words[0] ?? "")) name = name[0]!.toUpperCase() + name.slice(1);
+  return cut ? `${name}…` : name;
+}
+
+/**
+ * The most human name a transcript offers, in falling order of authority: the CLI's
+ * own title, the name derived from its opening prompt, then that prompt itself. Null
+ * when the transcript says nothing about itself and only its id is left.
+ */
+export function sessionName(meta: SessionMeta): string | null {
+  return meta.title ?? meta.derivedTitle ?? meta.subtitle ?? meta.firstTask;
+}
+
+/**
+ * {@link sessionName} with the thread id as the last resort — the single answer to
+ * "what is this session called" wherever a name is required rather than optional.
+ * The listing, the graph and a suggestion's sources all read it from here.
+ */
+export function sessionDisplayName(meta: SessionMeta): string {
+  return sessionName(meta) ?? meta.threadId;
+}
+
 const TASK_RE = /^## Task:\s*(.*)$/;
 const DECIDED_RE = /^- decided:\s/;
 const ERROR_RE = /^- ✗\s(.*)$/;
@@ -87,6 +211,7 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
     firstTask: null,
     title: null,
     subtitle: null,
+    derivedTitle: null,
   };
 
   for (const raw of content.split("\n")) {
@@ -148,6 +273,9 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
     }
   }
 
+  // The subtitle is the opening prompt already stripped of reminders; the first task
+  // is the same prompt raw, for transcripts written before subtitles existed.
+  meta.derivedTitle = deriveSessionName(meta.subtitle ?? meta.firstTask);
   return meta;
 }
 
