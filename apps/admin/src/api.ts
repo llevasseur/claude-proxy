@@ -197,8 +197,8 @@ export interface ChatToolUse {
   /** Why it failed, from its `tool_result` — a permission denial says so here. */
   error?: string;
 }
-/** Why a turn ended early, when it did. */
-export type ChatInterruption = "stopped" | "timeout";
+/** Why a turn ended early: `timeout` is going quiet, `limit` is outrunning the ceiling. */
+export type ChatInterruption = "stopped" | "timeout" | "limit";
 /** A chat whose turn is in flight right now, as the server sees it. */
 export interface RunningChat {
   /** Also the `session:` a transcript records, which is how a session page matches itself. */
@@ -228,7 +228,7 @@ export interface ChatSendResponse {
   usage: { input: number; output: number; cacheRead: number; cacheCreation: number };
   turns: ChatTurn[];
   tools: ChatToolUse[];
-  /** Set when the turn was stopped or timed out; the reply is the partial one. */
+  /** Set when the turn was stopped, went quiet, or hit its ceiling; the reply is the partial one. */
   interrupted: ChatInterruption | null;
 }
 export interface HealthResponse {

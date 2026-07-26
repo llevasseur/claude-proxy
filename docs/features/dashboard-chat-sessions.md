@@ -137,7 +137,22 @@ the difference between ending a turn and orphaning the shells and subagents an a
 started, which would keep working in the repo with nothing left to report to. The `send`
 that was in flight does not fail: it returns the prefix of the stream that arrived, so the
 text and the tool chips the turn got through survive, tagged `interrupted: "stopped"`. A
-timeout takes the same path and reports `"timeout"` rather than throwing the output away.
+turn ended by either clock below takes the same path rather than throwing the output away.
+
+**A turn is timed on silence, not on how long it takes.** An agent turn is a tool loop that
+can legitimately run for an hour, so a total-elapsed budget kills healthy work mid-loop: a
+`/revive` run that streamed steadily for 294s was SIGTERMed at the 300s cap with an edit
+issued and never applied, leaving the branch half-changed. What actually wants catching is
+a *wedged* run — a hung tool, a permission prompt a headless child cannot answer — and under
+`--output-format stream-json` that shows up as a stream that has stopped emitting. So the
+`cli` transport runs two clocks: `CHAT_IDLE_TIMEOUT_MS` (default 5m) is re-armed by every
+chunk of stdout or stderr and reports `interrupted: "timeout"`, while `CHAT_MAX_TURN_MS`
+(default 1h) is the absolute ceiling on one turn and reports `"limit"`. They are reported
+apart because they say different things: one turn went quiet, the other simply ran out of
+room. `CHAT_TIMEOUT_MS` still sets the idle window when the newer variable is unset, so a
+deployment that tuned it keeps its value — now spent per silence rather than per turn. The
+`api` transport keeps `CHAT_TIMEOUT_MS` as a plain total-elapsed cap, which is the right
+shape for a single HTTP request.
 
 **Stop is reachable from the transcript, not only from the tab that started the chat.** The
 Sessions page holds a running turn in component state, so navigating away — or that page
@@ -176,7 +191,8 @@ turn, the long one, the only turn that cannot be stopped.
 CLI's entries are OAuth/CLI-specific; opt in with `CHAT_BETA`) and no `tools` (this is a
 plain chat, not an agent loop). Every default is overridable by env —
 `CHAT_TRANSPORT`, `CHAT_MODE`, `CHAT_BASE_URL`/`ANTHROPIC_BASE_URL`, `CHAT_MODEL`,
-`CHAT_MAX_TOKENS`, `CHAT_SYSTEM`, `CHAT_BETA`, `CHAT_TIMEOUT_MS`, plus `CHAT_CLI_PATH` and
+`CHAT_MAX_TOKENS`, `CHAT_SYSTEM`, `CHAT_BETA`, `CHAT_TIMEOUT_MS`,
+`CHAT_IDLE_TIMEOUT_MS`/`CHAT_MAX_TURN_MS` for the two `cli` clocks, plus `CHAT_CLI_PATH` and
 `CHAT_CLI_CWD` for the child, `CHAT_AGENT_ALIAS`/`CHAT_AGENT_PERMISSION_MODE` for agent
 turns, and `CHAT_ALLOWED_ORIGINS` for the write surface — and per-request by
 `model`/`maxTokens`/`system` in the body, plus `mode`, `permissionMode` and `sessionId` on
@@ -267,6 +283,10 @@ server accepts; everything else stays read-only.
       group goes, so tools the CLI started are not orphaned; covered against a stand-in CLI
       that spawns a child of its own, and confirmed live against a real agent turn.
 - [x] A timeout returns the same partial result rather than discarding stdout.
+- [x] The idle clock is re-armed by the child's own output, so a turn that keeps streaming
+      outlives the window many times over and only the ceiling ends it; a turn that goes
+      silent is still ended at the window. Both covered against stand-in CLIs — one that
+      emits on an interval, one that emits once and hangs.
 - [x] `GET /api/chat/running` names the turns in flight, and a session detail page whose
       transcript carries a running chat's session id offers its own Stop — so a turn stays
       stoppable after the page that started it is gone. Confirmed live: a long agent turn
