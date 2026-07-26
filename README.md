@@ -209,7 +209,10 @@ CHAT_TRANSPORT=api ANTHROPIC_API_KEY=sk-ant-... pnpm server
 `GET /api/chat/config` reports which transport is live and, when a chat can't
 start, exactly what's missing. Both paths are tunable per env — `CHAT_MODEL`,
 `CHAT_SYSTEM`, `CHAT_BASE_URL`, `CHAT_TIMEOUT_MS`, plus `CHAT_CLI_PATH` and
-`CHAT_CLI_CWD` for the child process. Details in
+`CHAT_CLI_CWD` for the child process. A `cli` turn is bounded by silence rather
+than by total time — `CHAT_IDLE_TIMEOUT_MS` (default 5m, re-armed by the child's
+own output) with `CHAT_MAX_TURN_MS` (default 1h) as the ceiling — so a long agent
+loop is not killed mid-work. Details in
 [docs/features/dashboard-chat-sessions.md](docs/features/dashboard-chat-sessions.md).
 
 #### Agent mode — what a dashboard prompt can do

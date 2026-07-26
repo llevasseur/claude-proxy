@@ -82,7 +82,26 @@ const DEFAULT_PERMISSION_MODE: PermissionMode = "acceptEdits";
 
 const MAX_PROMPT_CHARS = 100_000;
 
+/**
+ * The `api` transport's cap on one `POST /v1/messages`. Total elapsed is the right shape
+ * here: it bounds a single HTTP request/response, not a body of work.
+ */
 const REQUEST_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS ?? 300_000);
+
+/**
+ * The `cli` transport's two caps, which are deliberately not the one above.
+ *
+ * A CLI turn is a whole agent loop — read files, run commands, write code — and it is
+ * normal for that to outlast any single request. Timing it as one gave it a chat reply's
+ * budget: a `/revive` run streaming steadily for 294s was SIGTERMed at 300s mid-tool-loop,
+ * with an edit issued and never applied. So the child is judged on whether it is still
+ * *producing*, not on how long it has been at it, and only the ceiling is absolute.
+ *
+ * `CHAT_TIMEOUT_MS` still sets the idle window, so an existing deployment that tuned it
+ * keeps the value it chose — now spent per silence rather than per turn.
+ */
+const CLI_IDLE_TIMEOUT_MS = Number(process.env.CHAT_IDLE_TIMEOUT_MS ?? process.env.CHAT_TIMEOUT_MS ?? 300_000);
+const CLI_MAX_TURN_MS = Number(process.env.CHAT_MAX_TURN_MS ?? 3_600_000);
 
 /** How long to wait for the proxy to write the transcript the id is read from. */
 const THREAD_WAIT_MS = 5_000;
@@ -537,7 +556,8 @@ async function runTurn(config: ChatConfig, session: ChatSession, prompt: string)
       sessionId: session.id,
       resume: session.sent > 0,
       prompt,
-      timeoutMs: REQUEST_TIMEOUT_MS,
+      idleTimeoutMs: CLI_IDLE_TIMEOUT_MS,
+      maxTurnMs: CLI_MAX_TURN_MS,
       agentFlags: agent?.flags,
       permissionMode: agent?.permissionMode,
       // The handle `stopChat` reaches through while the child runs. The timestamp rides

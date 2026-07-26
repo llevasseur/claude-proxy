@@ -67,8 +67,14 @@ export interface CliToolUse {
   error?: string;
 }
 
-/** Why a turn ended before the CLI was finished with it. */
-export type CliInterruption = "stopped" | "timeout";
+/**
+ * Why a turn ended before the CLI was finished with it.
+ *
+ *   - `stopped` — a caller ended it.
+ *   - `timeout` — it went quiet: nothing on stdout or stderr for the idle window.
+ *   - `limit` — it stayed lively but outran the absolute ceiling on one turn.
+ */
+export type CliInterruption = "stopped" | "timeout" | "limit";
 
 export interface CliTurnResult {
   text: string;
@@ -104,7 +110,20 @@ export interface CliTurnInput {
   /** First turn opens the session id; later turns resume it. */
   resume: boolean;
   prompt: string;
-  timeoutMs: number;
+  /**
+   * How long the child may produce *nothing* before the run is ended — re-armed on every
+   * chunk of stdout or stderr, so it measures silence rather than total elapsed time.
+   *
+   * An agent turn is a tool loop that can legitimately run for an hour; a total cap kills
+   * healthy work mid-loop and leaves a half-applied edit behind. What actually wants
+   * catching is a wedged run — a hung tool, a permission prompt nobody can answer — and
+   * that shows up as a stream that has stopped emitting. Under `--output-format
+   * stream-json` a working child emits an event every few seconds, so silence is the
+   * signal and progress buys as much time as it needs.
+   */
+  idleTimeoutMs: number;
+  /** The absolute ceiling on one turn, however lively it stays. Armed once, never re-armed. */
+  maxTurnMs: number;
   /** `agent` only: the device flags to replay. Ignored by `chat`. */
   agentFlags?: AgentLaunchFlags;
   /** `agent` only: how the headless child answers permission prompts. */
@@ -375,8 +394,14 @@ const STOP_GRACE_MS = 3_000;
  * repo. Ending a run signals `-pid`, the whole group — SIGTERM first so the CLI can
  * flush, then SIGKILL for anything that ignores it.
  *
- * A stopped or timed-out run is not a failure: it returns the prefix of the stream that
- * arrived, text and tools included.
+ * Two clocks bound a run, and neither is a total-elapsed budget on the work itself:
+ * `idleTimeoutMs` measures silence and is re-armed by every chunk the child writes, so a
+ * turn that keeps streaming keeps running; `maxTurnMs` is the ceiling that ends even a
+ * lively one. They are reported apart — `timeout` and `limit` — because they mean
+ * different things about the run that hit them.
+ *
+ * A run ended any of these three ways is not a failure: it returns the prefix of the
+ * stream that arrived, text and tools included.
  */
 export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   const args = cliArgs(input);
@@ -389,31 +414,14 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
 
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
-  // The watch for the child's opening `init` event reads each chunk once as it lands,
-  // rather than re-reading the whole stream every time: a child that never announces —
-  // an older CLI, or a run that dies before it says — would otherwise make every chunk
-  // rescan everything before it, which is quadratic on exactly the long turns this
-  // watch exists to report on. The decoder holds a multi-byte character split across a
-  // chunk boundary; `pending` holds a line split across one, so it is whole when parsed.
-  let announced = false;
-  const decoder = new StringDecoder("utf8");
-  let pending = "";
-  child.stdout.on("data", (c: Buffer) => {
-    stdout.push(c);
-    if (announced || !input.onInit) return;
-    pending += decoder.write(c);
-    const init = findInitEvent(pending);
-    const lastBreak = pending.lastIndexOf("\n");
-    if (lastBreak >= 0) pending = pending.slice(lastBreak + 1);
-    if (!init) return;
-    announced = true;
-    input.onInit(init);
-  });
-  child.stderr.on("data", (c: Buffer) => stderr.push(c));
 
-  // On an object: both are written from callbacks, and a `let` would read back as its
+  // On an object: these are written from callbacks, and a `let` would read back as its
   // initializer across the await below.
-  const state = { interrupted: null as CliInterruption | null, sigkill: null as NodeJS.Timeout | null };
+  const state = {
+    interrupted: null as CliInterruption | null,
+    sigkill: null as NodeJS.Timeout | null,
+    idle: null as NodeJS.Timeout | null,
+  };
 
   /** Signal the child's whole group, falling back to the child alone where there isn't one. */
   const signalGroup = (sig: NodeJS.Signals): void => {
@@ -432,13 +440,51 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   const end = (why: CliInterruption): void => {
     if (state.interrupted) return;
     state.interrupted = why;
+    if (state.idle) clearTimeout(state.idle);
     signalGroup("SIGTERM");
     state.sigkill = setTimeout(() => signalGroup("SIGKILL"), STOP_GRACE_MS);
     state.sigkill.unref?.();
   };
 
-  const timer = setTimeout(() => end("timeout"), input.timeoutMs);
-  timer.unref?.();
+  /** Restart the silence clock. Called at spawn, then on every chunk the child writes. */
+  const armIdle = (): void => {
+    if (state.interrupted) return;
+    if (state.idle) clearTimeout(state.idle);
+    state.idle = setTimeout(() => end("timeout"), input.idleTimeoutMs);
+    state.idle.unref?.();
+  };
+
+  // The watch for the child's opening `init` event reads each chunk once as it lands,
+  // rather than re-reading the whole stream every time: a child that never announces —
+  // an older CLI, or a run that dies before it says — would otherwise make every chunk
+  // rescan everything before it, which is quadratic on exactly the long turns this
+  // watch exists to report on. The decoder holds a multi-byte character split across a
+  // chunk boundary; `pending` holds a line split across one, so it is whole when parsed.
+  let announced = false;
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  child.stdout.on("data", (c: Buffer) => {
+    stdout.push(c);
+    armIdle(); // the child is alive and working; the silence clock starts over
+    if (announced || !input.onInit) return;
+    pending += decoder.write(c);
+    const init = findInitEvent(pending);
+    const lastBreak = pending.lastIndexOf("\n");
+    if (lastBreak >= 0) pending = pending.slice(lastBreak + 1);
+    if (!init) return;
+    announced = true;
+    input.onInit(init);
+  });
+  child.stderr.on("data", (c: Buffer) => {
+    stderr.push(c);
+    armIdle(); // stderr counts as life too — a child logging its way through is not wedged
+  });
+
+  // Both clocks start at spawn: the silence one, which every chunk pushes back, and the
+  // ceiling, which nothing does.
+  armIdle();
+  const ceiling = setTimeout(() => end("limit"), input.maxTurnMs);
+  ceiling.unref?.();
   input.onStart?.({ stop: () => end("stopped") });
 
   const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
@@ -449,7 +495,8 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   child.stdin.end(input.prompt);
 
   const done = () => {
-    clearTimeout(timer);
+    clearTimeout(ceiling);
+    if (state.idle) clearTimeout(state.idle);
     if (state.sigkill) clearTimeout(state.sigkill);
   };
 

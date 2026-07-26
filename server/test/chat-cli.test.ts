@@ -304,8 +304,32 @@ const turnInput = (cliPath: string) => ({
   sessionId: "11111111-2222-3333-4444-555555555555",
   resume: false,
   prompt: "hello",
-  timeoutMs: 30_000,
+  idleTimeoutMs: 30_000,
+  maxTurnMs: 120_000,
 });
+
+/**
+ * A stand-in that keeps emitting: one stream-json line every `everyMs`, forever. It is
+ * what a healthy long turn looks like from the outside — the case a total-elapsed cap
+ * used to kill.
+ */
+function chattyCli(name: string, everyMs: number): string {
+  const cliPath = path.join(FIXTURES, name);
+  const line = JSON.stringify({ type: "assistant", session_id: "s1", message: { content: [{ type: "text", text: "partial" }] } });
+  fs.writeFileSync(
+    cliPath,
+    [
+      "#!/usr/bin/env node",
+      // Once on startup, as the real CLI announces itself, then on the interval.
+      `const line = ${JSON.stringify(line)} + "\\n";`,
+      "process.stdout.write(line);",
+      `setInterval(() => process.stdout.write(line), ${everyMs});`,
+      "",
+    ].join("\n"),
+  );
+  fs.chmodSync(cliPath, 0o755);
+  return cliPath;
+}
 
 const alive = (pid: number): boolean => {
   try {
@@ -344,11 +368,25 @@ describe.skipIf(process.platform === "win32")("runCliTurn — ending a run early
     expect(await until(() => !alive(childPid))).toBe(true);
   });
 
-  it("reports a timeout the same way rather than throwing the output away", async () => {
-    const { cliPath } = fakeCli("fake-claude-timeout");
-    const result = await runCliTurn({ ...turnInput(cliPath), timeoutMs: 300 });
+  it("ends a run that has gone silent, keeping what it had already said", async () => {
+    const { cliPath } = fakeCli("fake-claude-idle"); // one line, then hangs
+    const result = await runCliTurn({ ...turnInput(cliPath), idleTimeoutMs: 300 });
     expect(result.interrupted).toBe("timeout");
-    expect(result.text).toBe("partial");
+    expect(result.text).toBe("partial"); // reported, not thrown away
+  });
+
+  // The regression: a turn streaming steadily for longer than the window used to be
+  // killed mid-tool-loop, because the clock measured the work rather than the silence.
+  it("lets a still-producing run outlive the idle window many times over", async () => {
+    const cliPath = chattyCli("fake-claude-chatty", 50);
+    const started = Date.now();
+    // The idle window has to clear node's own startup, which is the child's first silence.
+    const result = await runCliTurn({ ...turnInput(cliPath), idleTimeoutMs: 600, maxTurnMs: 1_500 });
+
+    // Well past the idle window in wall clock, none of it ever spent in silence.
+    expect(Date.now() - started).toBeGreaterThan(1_000);
+    expect(result.interrupted).toBe("limit"); // the ceiling caught it, not the silence clock
+    expect(result.text).toMatch(/^(partial)+$/); // every line it streamed, kept
   });
 
   it("still fails loudly when the cli is not there at all", async () => {

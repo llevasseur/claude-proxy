@@ -198,7 +198,8 @@ export interface ChatToolUse {
   error?: string;
 }
 /** Why a turn ended early, when it did. */
-export type ChatInterruption = "stopped" | "timeout";
+/** `timeout` is the turn going quiet; `limit` is it outrunning the ceiling while lively. */
+export type ChatInterruption = "stopped" | "timeout" | "limit";
 /** A chat whose turn is in flight right now, as the server sees it. */
 export interface RunningChat {
   /** Also the `session:` a transcript records, which is how a session page matches itself. */

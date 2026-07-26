@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import type { ChatMode, ChatSendResponse, ChatToolUse, PermissionMode, SessionSummary } from "../api";
+import type { ChatInterruption, ChatMode, ChatSendResponse, ChatToolUse, PermissionMode, SessionSummary } from "../api";
 import { endChat, getChatConfig, getSessions, PERMISSION_MODES, sendChatMessage, startChat, stopChat } from "../api";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { Markdown } from "../components/Markdown";
@@ -55,6 +55,13 @@ const PERMISSION_NOTE: Record<PermissionMode, string> = {
   acceptEdits: "edits are accepted, but every Bash command is auto-denied — no git writes",
   bypassPermissions: "nothing is asked: commands run, including git writes — what /task needs",
   plan: "read-only — the turn plans and does not act",
+};
+
+/** Why a turn ended early, in the terms that tell you what to do about it. */
+const INTERRUPTION_NOTE: Record<ChatInterruption, string> = {
+  stopped: "Turn stopped",
+  timeout: "Turn went quiet and was ended",
+  limit: "Turn hit the time limit for one turn",
 };
 
 function StartChatCard() {
@@ -204,7 +211,7 @@ function StartChatCard() {
       {/* A cut-short turn's partial reply, labelled so it doesn't read as the answer. */}
       {chat?.interrupted && (
         <p className="muted chat-note">
-          {chat.interrupted === "timeout" ? "Turn timed out" : "Turn stopped"} — this is what arrived before it ended.
+          {INTERRUPTION_NOTE[chat.interrupted]} — this is what arrived before it ended.
         </p>
       )}
 
