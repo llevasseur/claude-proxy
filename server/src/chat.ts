@@ -426,16 +426,14 @@ export async function resolveThreadId(logDir: string, sessionId: string, waitMs 
 
 /**
  * Record that this turn was cut short, as a line on the thread's own transcript.
+ * A dashboard Stop kills the child before it answers, so nothing about it reaches the
+ * proxy over the wire, and chat sessions are in-memory — the transcript is the only
+ * durable record.
  *
- * A dashboard **Stop** kills the child before it answers, so — unlike Claude Code's
- * Esc, which prepends `[Request interrupted by user]` to the next turn and rides in
- * over the wire — nothing about it ever reaches the proxy. The transcript is the only
- * durable record (chat sessions are in-memory), so the server appends the fact itself.
- *
- * Append-only and best-effort, matching how the proxy writes: the proxy tracks its own
- * progress by message count rather than file offset, so an extra line can't desync it.
- * A thread whose transcript hasn't been flushed yet is skipped rather than created —
- * a headerless file would parse as a session with no model, session id, or start time.
+ * Append-only and best-effort: the proxy tracks its own progress by message count
+ * rather than file offset, so an extra line can't desync it. A thread whose transcript
+ * hasn't been flushed yet is skipped rather than created — a headerless file would
+ * parse as a session with no model, session id, or start time.
  */
 export function recordInterruption(logDir: string, threadId: string, why: CliInterruption): void {
   const file = path.join(resolveSessionsDir(logDir), `${threadId}.md`);

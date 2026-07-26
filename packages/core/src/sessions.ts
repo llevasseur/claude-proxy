@@ -77,13 +77,12 @@ const INTERRUPTED_RE = /^- interrupted:\s*(.*)$/;
 
 // --- Interruptions ---------------------------------------------------------
 //
-// A run can be cut off mid-flight two ways, and each leaves a different trace.
-// Claude Code's own Esc prepends `[Request interrupted by user]` to the user turn
-// that redirected it, so the marker rides in on the *next* task line. A dashboard
-// chat stopped through `POST /api/chat/stop` never reaches the wire at all — the
-// child is killed — so the server records it itself as an `- interrupted: <why>`
-// line. Both mean the same thing to the graph: the step before was cut short, and
-// whatever comes next is a new trail rather than a continuation.
+// A run can be cut off mid-flight two ways, each leaving a different trace.
+// Claude Code's Esc prepends `[Request interrupted by user]` to the user turn that
+// redirected it, so the marker rides in on the *next* task line. A dashboard chat
+// stopped through `POST /api/chat/stop` never reaches the wire — the child is killed —
+// so the server records it as an `- interrupted: <why>` line. Both read the same to
+// the graph: the step before was cut short, and what follows is a new trail.
 
 /** Why a run stopped mid-flight. */
 export type InterruptionKind = "user" | "tool-use" | "stopped" | "timeout" | "limit";
@@ -205,10 +204,7 @@ export interface SessionNode {
   tool: string | null;
   /** The `## Task:` heading this node falls under, or null if it preceded any task. */
   task: string | null;
-  /**
-   * Set when this step is where the run picked back up after being cut off — the head of
-   * a side trail, and the kind of interruption that opened it. Null on an ordinary step.
-   */
+  /** The interruption this step picked back up after — head of a side trail; null on an ordinary step. */
   interruption: InterruptionKind | null;
   /** True when the run was cut off *at* this step: the interruption landed right after it. */
   interrupted: boolean;

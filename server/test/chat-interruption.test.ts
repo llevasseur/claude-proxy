@@ -1,6 +1,5 @@
-// A dashboard Stop kills the child before it answers, so nothing about it reaches the
-// proxy. The server records it on the transcript instead — the only durable record a
-// chat has — and the graph reads it back as the cut that opens a side trail.
+// A dashboard Stop leaves no trace on the wire, so the server records it on the
+// transcript; the graph reads it back as the cut that opens a side trail.
 import fs from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";

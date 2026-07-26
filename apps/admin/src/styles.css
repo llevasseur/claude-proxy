@@ -1558,7 +1558,6 @@ a.pager-btn:hover {
   font-family: var(--font-mono);
   color: var(--text);
 }
-/* The redirection yields first as the trail narrows. */
 .gtrail-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -1602,8 +1601,7 @@ a.pager-btn:hover {
     0 0 0 1px var(--gc),
     0 16px 34px -12px var(--gc);
 }
-/* The step the run was cut off on: an extra ring over its own tone, and a torn right
-   edge on the side the chain would have carried on from. */
+/* The step the run was cut off on: an extra ring over its own tone, and a torn right edge. */
 .gnode.is-cut {
   border-color: color-mix(in srgb, var(--cut) 55%, var(--line));
   box-shadow:

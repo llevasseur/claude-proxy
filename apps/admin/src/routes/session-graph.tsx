@@ -39,7 +39,7 @@ const BAND_PAD = 18;
 const BAND_HEAD = 34;
 /** Gap between a parent row and a branch band hanging beneath it. */
 const BAND_GAP = 26;
-/** A side trail's own indent and the extra air before it — it reads as a departure, not a fold. */
+/** A side trail's indent from its session's left edge, and the air above it. */
 const TRAIL_INSET = 72;
 const TRAIL_GAP = 52;
 
@@ -244,8 +244,7 @@ interface Item {
 
 /**
  * Split a session's steps at every interruption. The first run continues the snake the
- * root opens; each later one is what the run picked up as after being cut off, and draws
- * away from the tree as its own trail rather than folding on as if nothing happened.
+ * root opens; each later one is what the run picked up as after being cut off.
  */
 function runsOf(nodes: SessionNode[]): SessionNode[][] {
   const runs: SessionNode[][] = [[]];
@@ -359,9 +358,8 @@ function layoutRun(
 /**
  * Lay out one session: its root and steps as a snake, and everything after an interruption
  * as its own trail — inset, framed, and reached by a severed edge off the step that was cut
- * short — so a redirected run reads as a departure from the tree rather than more of it.
- * Trails stay at one indent however many there are; nesting each on the last would march
- * a much-interrupted session off the right.
+ * short. Trails stay at one indent however many there are, so a much-interrupted session
+ * doesn't march off the right.
  */
 function layoutTree(
   entry: SessionGraphEntry,
