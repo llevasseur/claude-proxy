@@ -20,8 +20,7 @@ import { fmtInt, fmtLocalTsShort } from "../format";
  * it back into the parent step its result flows into. The rail nests the same tree.
  *
  * The transcript only fixes *which* steps exist — it gists every line to 160 chars, so the
- * text itself comes from the canvased family's Request breakdown, where the same steps are
- * recorded whole.
+ * text comes from the canvased family's Request breakdown, where the same steps are whole.
  */
 
 // Layout geometry, in canvas px (pre-transform).
@@ -356,21 +355,21 @@ function nodeLabel(node: SessionNode): string {
 
 const nodeKind = (node: SessionNode): string => (spawnAgentType(node) === null ? node.type : "spawn");
 
-/** Untruncated step text runs to thousands of chars — a hover tooltip wants a peek, not all of it. */
+/** A peek at the step text for the hover tooltip — untruncated, it runs to thousands of chars. */
 function hoverLabel(node: SessionNode): string {
   const label = nodeLabel(node);
   return label.length > 300 ? `${label.slice(0, 299)}…` : label;
 }
 
-/** How often to re-read the family's captured requests — far heavier than a transcript poll. */
+/** How often to re-read the family's captured requests — far heavier than the transcript poll. */
 const NODES_REFETCH_MS = 20_000;
 
 export function SessionGraphPage() {
   const query = useQuery({ queryKey: ["sessions-graph"], queryFn: getSessionsGraph, refetchInterval: 4000 });
   const transcripts = useMemo(() => query.data?.sessions ?? [], [query.data]);
 
-  // Selection is resolved off the transcripts: laying the breakdown's text over them
-  // changes no thread id and no parent link, so this stays a one-pass derivation.
+  // Selection resolves off the transcripts — the breakdown's text changes no thread id
+  // and no parent link.
   const byThread = useMemo(() => new Map(transcripts.map((s) => [s.threadId, s])), [transcripts]);
 
   /** Walk up to the top-level session a transcript belongs to — what the canvas draws. */
@@ -396,7 +395,7 @@ export function SessionGraphPage() {
   }, [transcripts, byThread, rootOf]);
 
   // The canvased family's steps, re-read from its captured requests so nothing is gisted.
-  // Failure is silent by design: the transcript still draws the graph, just abbreviated.
+  // Failure is silent: the transcript still draws the graph, just abbreviated.
   const nodesQuery = useQuery({
     queryKey: ["session-graph-nodes", selectedId],
     queryFn: () => getSessionGraphNodes(selectedId!),
@@ -443,10 +442,10 @@ export function SessionGraphPage() {
 
   /**
    * The slice of the viewport left free by the two overlays — the session rail on the left
-   * and the details drawer on the right. Both sit *over* the canvas rather than shrinking
-   * it, so their widths are measured live: each animates between states, the rail caps at a
-   * share of narrow viewports, and the drawer is absent entirely when nothing is selected.
-   * Kept from collapsing to nothing when a widened drawer all but fills a small viewport.
+   * and the details drawer on the right. Both sit *over* the canvas rather than shrinking it,
+   * so their widths are measured live: each animates between states, the rail caps at a share
+   * of narrow viewports, and the drawer is absent when nothing is selected. Floored, so a
+   * widened drawer on a small viewport can't collapse the frame to nothing.
    */
   const freeArea = useCallback(() => {
     const el = viewportRef.current;
@@ -1017,9 +1016,9 @@ function agentStatus(agent: SessionGraphEntry): ReactNode {
 const LONG_TEXT_CHARS = 280;
 
 /**
- * A value that may run long — request-derived steps carry whole prompts and command
- * lines. Short ones render plainly; long ones clamp to a few lines behind a toggle that
- * opens them in full. Give it a key tied to the step so opening one doesn't open the next.
+ * A value that may run long — request-derived steps carry whole prompts and command lines.
+ * Short ones render plainly; long ones clamp behind a toggle. Give it a key tied to the step,
+ * so opening one doesn't open the next.
  */
 function LongText({ text, mono }: { text: string; mono?: boolean }) {
   const [open, setOpen] = useState(false);

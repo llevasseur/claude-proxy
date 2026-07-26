@@ -1813,7 +1813,7 @@ a.pager-btn:hover {
   transition: width 0.18s ease;
   z-index: 8;
 }
-/* Widened for the long, untruncated step text the Request breakdown supplies. */
+/* Widened for the long, untruncated step text from the Request breakdown. */
 .graph-inspector.is-wide {
   width: min(720px, 92%);
 }

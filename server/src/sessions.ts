@@ -12,10 +12,9 @@ import {
 } from "@claude-proxy/core";
 
 /**
- * The thread id a captured request belongs to: a hash of its session id and its
- * conversation root. Mirrors `threadIdFor` in `proxy/session.mjs` — the function that
- * named the transcript in the first place — so a request body can be matched back to
- * it. Null when the body has no user text to root on.
+ * The thread id a captured request belongs to: a hash of its session id and its conversation
+ * root. Mirrors `threadIdFor` in `proxy/session.mjs`, which named the transcript in the first
+ * place. Null when the body has no user text to root on.
  */
 export function threadIdForBody(sessionId: string | null, messages: unknown): string | null {
   const root = firstUserText(messages);

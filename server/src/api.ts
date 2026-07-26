@@ -372,20 +372,17 @@ export interface SessionGraphNodesResponse {
 }
 
 /**
- * How many captured requests one family scan will read and parse. Each is a whole
- * request body, so the cap bounds a graph load; newest-first means it spends the
- * budget on the window the family was actually active in.
+ * How many captured requests one family scan will read and parse. Each is a whole request
+ * body, so the cap bounds a graph load; the scan is newest-first, so the budget goes to the
+ * window the family was active in.
  */
 const MAX_FAMILY_REQUESTS = 60;
 
 /**
- * The untruncated step stream for a canvased session and every subagent under it.
- *
- * The transcript gists each line to 160 chars, so the graph's text is re-derived from
- * the requests themselves: scan the sidecars carrying the family's session id
- * newest-first, hash each body back to the thread that produced it, and keep the
- * richest snapshot seen per thread. Threads with no captured request left simply go
- * unlisted, and the caller keeps their transcript nodes.
+ * The untruncated step stream for a canvased session and every subagent under it: scan the
+ * sidecars carrying the family's session ids newest-first, hash each body back to the thread
+ * that produced it, and keep the richest snapshot per thread. Threads with no captured
+ * request left go unlisted, and the caller keeps their transcript nodes.
  */
 export async function buildSessionGraphNodes(
   logDir: string,
@@ -427,7 +424,7 @@ export async function buildSessionGraphNodes(
     try {
       ({ body } = await readRequestBody(logDir, entry.file));
     } catch {
-      continue; // a request log rotated away or never landed — the sidecar still counts
+      continue; // request log rotated away or never landed — the sidecar still counts
     }
     requestsRead += 1;
 

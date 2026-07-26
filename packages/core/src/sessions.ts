@@ -421,12 +421,10 @@ export function parseSessionErrors(content: string): SessionError[] {
 
 // --- Nodes derived from a captured request ---------------------------------
 //
-// The transcript is a *lossy* render of the same `messages[]` a captured request
-// carries: `proxy/session.mjs` gists every line to 160 chars and every recorded
-// tool arg to 60. The Request breakdown keeps the request whole, so re-running the
-// proxy's own grammar over that body yields the identical node stream with its text
-// intact. Same emission order, so node `index` matches the transcript's positionally
-// and the agent linkage built from transcripts still applies.
+// A transcript is a lossy render of the same `messages[]` a captured request carries:
+// `proxy/session.mjs` gists every line to 160 chars and every tool arg to 60. Re-running
+// the proxy's grammar over the whole body yields the same node stream, same emission
+// order, with the text intact.
 
 /** Normalize a message `content` (string | block array) to a block array. */
 function asBlocks(content: unknown): Record<string, unknown>[] {
@@ -478,9 +476,9 @@ function toolArgs(input: unknown): string {
 }
 
 /**
- * The thread's conversation root: its first real user text. Tool-result-only turns
- * don't count. Mirrors `firstUserText` in `proxy/session.mjs` — the string the proxy
- * hashes into a thread id — so a body can be matched back to the transcript it fed.
+ * The thread's conversation root: its first real user text, tool-result-only turns not
+ * counting. Mirrors `firstUserText` in `proxy/session.mjs`, the string the proxy hashes
+ * into a thread id.
  */
 export function firstUserText(messages: unknown): string {
   if (!Array.isArray(messages)) return "";
@@ -497,10 +495,9 @@ export function firstUserText(messages: unknown): string {
 }
 
 /**
- * Derive a transcript's node stream from a captured request body — the same
- * task/decision/tool/error/done steps {@link parseSessionNodes} reads back, but with
- * every text at full length. Pure and tolerant of malformed shapes: a body with no
- * `messages` array yields no nodes.
+ * A transcript's node stream derived from a captured request body — the same
+ * task/decision/tool/error/done steps {@link parseSessionNodes} reads back, at full text
+ * length. A body with no `messages` array yields no nodes.
  *
  * Emission order matches the proxy's: within a user turn, errored tool results come
  * before the task they precede; within an assistant turn, the decision comes before
@@ -571,7 +568,7 @@ const collapseWhitespace = (s: string): string => s.replace(/\s+/g, " ").trim();
 /**
  * Whether `full` is the untruncated original of the transcript line `gisted`. A gist is the
  * line collapsed and, past its cap, cut with an `…` — which for a tool call lands inside the
- * parens rather than at the end, so match on whatever precedes it.
+ * parens rather than at the end, so only whatever precedes it can be matched.
  */
 export function isSameStep(gisted: string, full: string): boolean {
   const one = collapseWhitespace(full);
@@ -581,16 +578,15 @@ export function isSameStep(gisted: string, full: string): boolean {
 }
 
 /**
- * Lay request-derived steps over a transcript's, which stays the authority on which steps
- * exist: it is the live record, and the agent linkage (spawn/return indices) is built from
- * its positions, so the merge preserves them exactly — the result is always the same length
- * as `transcript`, with the same `index` on every node.
+ * Lay request-derived steps over a transcript's. The transcript stays the authority on which
+ * steps exist — the agent linkage (spawn/return indices) is built from its positions — so the
+ * result is always its length, with the same `index` on every node.
  *
- * The two are not positionally aligned. A transcript accumulates every request the proxy ever
- * saw, so it also carries turns no single body holds — Claude Code's one-shot spinner prompts
- * land mid-thread and shift everything after them. A captured request is therefore a
- * *subsequence*: walk both, take the derived step wherever it matches the transcript line it
- * expands, and otherwise keep the transcript's own abbreviated text.
+ * The two are not positionally aligned: a transcript accumulates every request the proxy ever
+ * saw, so it carries turns no single body holds (Claude Code's one-shot spinner prompts land
+ * mid-thread and shift everything after them). A captured request is therefore a
+ * *subsequence* — take a derived step only where it matches the transcript line it expands,
+ * and otherwise keep the transcript's abbreviated text.
  */
 export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNode[]): SessionNode[] {
   if (derived.length === 0) return transcript;
