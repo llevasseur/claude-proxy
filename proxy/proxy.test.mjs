@@ -552,8 +552,7 @@ test("appendSession: two threads sharing an opening prompt each keep their own t
   sendTitle(logDir, prompt, "Run the probe again");
 
   const readTitles = (tid) => (fs.readFileSync(path.join(dir, `${tid}.md`), "utf8").match(/- title: (.*)/g) ?? []);
-  // Newest untitled thread is named first; the second title falls to the other one
-  // rather than piling onto an already-titled thread and stranding it.
+  // Newest untitled thread is named first; the second title falls to the other one.
   assert.deepEqual(readTitles(newer), ["- title: Run the probe"]);
   assert.deepEqual(readTitles(older), ["- title: Run the probe again"]);
 

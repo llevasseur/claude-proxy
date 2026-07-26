@@ -346,10 +346,9 @@ function appendNodeTexts(dir, threadId, entry, mdPath, entries) {
 const threads = new Map();
 
 /**
- * A thread's last sighting, in epoch ms but never repeating: two threads can be seen
- * inside the same millisecond, and which of them a title belongs to is decided by
- * recency, so ties would make the answer depend on map order. Nudging forward keeps
- * every sighting orderable while staying a real timestamp on disk.
+ * A thread's last sighting, in epoch ms but never repeating: titles are matched by
+ * recency, and two threads seen inside the same millisecond would tie. Nudging forward
+ * keeps every sighting orderable while staying a real timestamp on disk.
  */
 let lastTick = 0;
 function nowSeen() {
@@ -409,9 +408,8 @@ function titleThread(dir, threadId, entry, title) {
 }
 
 /**
- * Title a thread that exists only on disk — one whose transcript this process never
- * touched, because the proxy restarted after it was written. Picks the most recently
- * written untitled match and returns whether it found one.
+ * Title a thread that exists only on disk, written before this process started. Picks
+ * the most recently written untitled match and returns whether it found one.
  */
 function titleDiskThread(dir, content, title) {
   let names;
@@ -445,12 +443,9 @@ function titleDiskThread(dir, content, title) {
 /**
  * Link a captured title to the thread it names, writing/deferring as needed.
  *
- * Nothing on the wire pairs the two, so the match is by content — and content is not
- * unique: the same opening prompt run twice yields two threads under different session
- * ids. So an already-titled match is left alone rather than absorbing a second title
- * (which is how the later thread ended up nameless), and among the untitled matches the
- * most recently active one is the thread actually being named. Failing that, the thread
- * may predate this process, and failing *that*, it may not have arrived yet.
+ * The match is by content, which is not unique: the same opening prompt run twice
+ * yields two threads. Already-titled matches are skipped and the most recently active
+ * untitled one wins; failing that the thread is on disk only, or not yet seen.
  */
 function recordTitle(dir, content, title) {
   if (!content || !title) return;
@@ -510,8 +505,8 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     if (entry.model == null) entry.model = reqJson?.model ?? "unknown";
     if (!entry.sessionId) entry.sessionId = sessionId ?? "unknown";
     if (!entry.startedAt) entry.startedAt = new Date().toISOString();
-    // Claim a title that arrived before this thread existed — including one deferred
-    // by a previous proxy process, which the sidecar carried across the restart.
+    // Claim a title that arrived before this thread existed, including one the sidecar
+    // carried across a restart.
     if (!entry.title) {
       loadPendingTitles(dir);
       for (const [content, title] of pendingTitles) {

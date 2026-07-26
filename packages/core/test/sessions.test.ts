@@ -95,7 +95,7 @@ describe("parseSessionTranscript", () => {
       "Fix the login bug so users can…",
     );
 
-    // No `- title:` line at all — the common case, and the one that used to list as a bare id.
+    // No `- title:` line at all — the common case.
     const untitled = ["# Session ab3167129339d34f", "- subtitle: add a retry to the upload path", ""].join("\n");
     expect(parseSessionTranscript("ab3167129339d34f", untitled).derivedTitle).toBe("Add a retry to the upload path");
 

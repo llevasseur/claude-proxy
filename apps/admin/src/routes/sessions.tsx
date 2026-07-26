@@ -302,11 +302,7 @@ function SessionsTable({ sessions }: { sessions: SessionSummary[] }) {
   );
 }
 
-/**
- * A row's name: whatever the transcript calls itself, headlined, with the thread id
- * kept underneath as the mono link to copy or open. Only a transcript that offers no
- * name at all — no title, no derived name, no opening prompt — leads with its id.
- */
+/** A row's name headlined, with the thread id underneath as the mono link. */
 function SessionCell({ session }: { session: SessionSummary }) {
   const name = sessionName(session);
   const preview = session.subtitle ?? session.firstTask;
@@ -325,7 +321,7 @@ function SessionCell({ session }: { session: SessionSummary }) {
     <>
       {name && <div className="session-title">{name}</div>}
       {idLink}
-      {/* The preview is the prompt in full; skip it when the name already is that prompt. */}
+      {/* Preview: the prompt in full, skipped when the name already is that prompt. */}
       {preview && preview !== name && <div className="muted session-preview">{preview}</div>}
     </>
   );
