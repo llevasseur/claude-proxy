@@ -15,6 +15,9 @@ import {
   hookPluginLoadExpectations,
   parseSessionErrors,
   sessionContextPeak,
+  sessionSuggestionBuckets,
+  suggestFromBreakdown,
+  summarizeBreakdownPatterns,
   withheldReport,
   type Advice,
   type AliasLoadExpectation,
@@ -27,9 +30,13 @@ import {
   type RequestBreakdown,
   type RequestMessageDetail,
   type RequestToolDetail,
+  type BucketBreakdownInput,
+  type BucketBreakdownSummary,
+  type SessionBucket,
   type SessionContextPeak,
   type SessionError,
   type SessionMeta,
+  type SessionSuggestion,
   type SkimDigest,
   type SkimShape,
   type TopTool,
@@ -349,6 +356,89 @@ export async function buildSessionBreakdown(
   const entries = toContextEntries(sidecars);
 
   return { threadId: id, sessionId, ...sessionContextPeak(entries, sessionId), meta: { files, parseErrors } };
+}
+
+export interface SessionSuggestionsResponse {
+  buckets: SessionBucket[];
+  meta: { sessionsDir: string; sessions: number; buckets: number };
+}
+
+/**
+ * Every ten-session window, newest first, with what its transcripts say about
+ * reaching the same outcome in fewer steps. Recomputed from every transcript on
+ * each call — the whole history is derived, so a first load and a refresh do the
+ * same work and there is no backfill state to keep in sync.
+ */
+export async function buildSessionSuggestions(logDir: string): Promise<SessionSuggestionsResponse> {
+  const sessions = await listSessionGraphs(logDir);
+  const buckets = sessionSuggestionBuckets(sessions);
+  return {
+    buckets,
+    meta: { sessionsDir: `${logDir}/sessions`, sessions: sessions.length, buckets: buckets.length },
+  };
+}
+
+export interface SessionSuggestionBucketResponse {
+  bucket: SessionBucket;
+  /** The transcripts it covers, oldest first — the drill-down's session list. */
+  sessions: SessionSummary[];
+  /** What the bucket's peak requests are made of, and what repeats across them. */
+  breakdown: BucketBreakdownSummary;
+  /** Suggestions the breakdown supports that the transcripts alone cannot. */
+  breakdownSuggestions: SessionSuggestion[];
+  meta: { files: number; parseErrors: number; requestsMissing: number };
+}
+
+/**
+ * One bucket's drill-down: its suggestions, the sessions behind them, and the
+ * Request Breakdown patterns that recur across those sessions' largest captured
+ * requests. Each session contributes at most one request (its peak), so the
+ * pattern roll-up compares like with like and reads at most ten request bodies.
+ * Throws a labelled error the server maps to 404 when `index` names no bucket.
+ */
+export async function buildSessionSuggestionBucket(
+  logDir: string,
+  index: number,
+  now: Date = new Date(),
+): Promise<SessionSuggestionBucketResponse> {
+  const graphs = await listSessionGraphs(logDir);
+  const bucket = sessionSuggestionBuckets(graphs).find((b) => b.index === index);
+  if (!bucket) throw new Error(`suggestion bucket not found: ${index}`);
+
+  const byThread = new Map(graphs.map((g) => [g.threadId, g]));
+  // Bucket order is the authority on which sessions belong and in what order.
+  const sessions = bucket.threadIds
+    .map((id) => byThread.get(id))
+    .filter((g): g is (typeof graphs)[number] => !!g)
+    .map(({ nodes: _nodes, ...row }) => row as SessionSummary);
+
+  // A session's requests never predate it, so the earliest start bounds the scan.
+  const since = bucket.startedFirst ? bucket.startedFirst.slice(0, 10) : undefined;
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const entries = toContextEntries(sidecars);
+
+  const peaks = sessions
+    .map((s) => ({ threadId: s.threadId, peak: sessionContextPeak(entries, s.sessionId).peak }))
+    .filter((p): p is { threadId: string; peak: ContextEntry } => !!p.peak);
+
+  const inputs: BucketBreakdownInput[] = [];
+  for (const { threadId, peak } of peaks) {
+    try {
+      const { body } = await readRequestBody(logDir, peak.file);
+      inputs.push({ threadId, file: peak.file, realInput: peak.realInput, breakdown: analyzeRequestBody(body) });
+    } catch {
+      // The sidecar outlived its captured body (retention) — the rest still summarizes.
+    }
+  }
+
+  const breakdown = summarizeBreakdownPatterns(inputs);
+  return {
+    bucket,
+    sessions,
+    breakdown,
+    breakdownSuggestions: suggestFromBreakdown(breakdown),
+    meta: { files, parseErrors, requestsMissing: sessions.length - inputs.length },
+  };
 }
 
 export interface SkimResponse {

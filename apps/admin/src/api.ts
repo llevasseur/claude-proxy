@@ -1,6 +1,7 @@
 import type {
   Advice,
   AliasLoadExpectation,
+  BucketBreakdownSummary,
   ContextSummary,
   HookRow,
   LaunchAlias,
@@ -11,10 +12,12 @@ import type {
   RequestMessageDetail,
   RequestToolDetail,
   SessionAgentLink,
+  SessionBucket,
   SessionContextPeak,
   SessionError,
   SessionMeta,
   SessionNode,
+  SessionSuggestion,
   SkimDigest,
   SkimShape,
   TopTool,
@@ -146,6 +149,19 @@ export interface SessionBreakdownResponse extends SessionContextPeak {
   threadId: string;
   sessionId: string | null;
   meta: { files: number; parseErrors: number };
+}
+/** Every ten-session window with its suggestions, newest bucket first. */
+export interface SessionSuggestionsResponse {
+  buckets: SessionBucket[];
+  meta: { sessionsDir: string; sessions: number; buckets: number };
+}
+/** One bucket's drill-down: its suggestions, its sessions, and the request patterns behind them. */
+export interface SessionSuggestionBucketResponse {
+  bucket: SessionBucket;
+  sessions: SessionSummary[];
+  breakdown: BucketBreakdownSummary;
+  breakdownSuggestions: SessionSuggestion[];
+  meta: { files: number; parseErrors: number; requestsMissing: number };
 }
 export interface FiltersResponse {
   generatedAt: string;
@@ -294,6 +310,10 @@ export const getSessionErrors = (id: string) =>
   get<SessionErrorsResponse>(`/api/sessions/errors?id=${encodeURIComponent(id)}`);
 export const getSessionBreakdown = (id: string) =>
   get<SessionBreakdownResponse>(`/api/sessions/breakdown?id=${encodeURIComponent(id)}`);
+/** Every ten-session window, recomputed server-side on each load — this is the backfill. */
+export const getSessionSuggestions = () => get<SessionSuggestionsResponse>("/api/sessions/suggestions");
+export const getSessionSuggestionBucket = (index: number) =>
+  get<SessionSuggestionBucketResponse>(`/api/sessions/suggestions/bucket?index=${index}`);
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);

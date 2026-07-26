@@ -41,6 +41,7 @@ import { SessionErrorsPage } from "./routes/session-errors";
 import { SessionGraphPage } from "./routes/session-graph";
 import { SessionsPage } from "./routes/sessions";
 import { SkimPage } from "./routes/skim";
+import { SuggestionBucketPage } from "./routes/suggestion-bucket";
 import { ToolsPage } from "./routes/tools";
 import { TrendDetailPage } from "./routes/trend-detail";
 import { TrendsPage } from "./routes/trends";
@@ -269,6 +270,12 @@ const adviceRoute = createRoute({
   component: AdvicePage,
   staticData: { title: "Advice" },
 });
+const suggestionBucketRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/advice/sessions/$bucket",
+  component: SuggestionBucketPage,
+  staticData: { title: "Session suggestions" },
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -291,6 +298,7 @@ const routeTree = rootRoute.addChildren([
   filtersRoute,
   hooksPluginsRoute,
   adviceRoute,
+  suggestionBucketRoute,
 ]);
 
 export const router = createRouter({ routeTree });

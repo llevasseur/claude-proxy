@@ -1,0 +1,233 @@
+import { useQuery } from "@tanstack/react-query";
+import { Link, useParams } from "@tanstack/react-router";
+import type { BreakdownPattern, BucketBreakdownSummary, SessionSuggestion } from "@claude-proxy/core";
+import { getSessionSuggestionBucket, type SessionSummary } from "../api";
+import { Breadcrumbs } from "../components/Breadcrumbs";
+import { QueryState } from "../components/QueryState";
+import { fmtBytes, fmtInt, fmtLocalTsShort, fmtPct } from "../format";
+
+const SEV_LABEL = { high: "High", warn: "Warn", info: "Info" } as const;
+
+/**
+ * One ten-session window in full: what the transcripts suggest, and the Request
+ * Breakdown patterns those sessions share. Each suggestion names the sessions it
+ * was counted in, so every claim on this page is traceable to a transcript.
+ */
+export function SuggestionBucketPage() {
+  const { bucket: param } = useParams({ from: "/advice/sessions/$bucket" });
+  const index = Number(param);
+  const query = useQuery({
+    queryKey: ["suggestion-bucket", index],
+    queryFn: () => getSessionSuggestionBucket(index),
+    enabled: Number.isInteger(index) && index >= 1,
+  });
+  const data = query.data;
+
+  return (
+    <section>
+      <Breadcrumbs>
+        <Link to="/advice" className="link">
+          Advice
+        </Link>
+        <span className="crumb-current">Sessions {data?.bucket.label ?? param}</span>
+      </Breadcrumbs>
+      <div className="pagehead">
+        <h1>Sessions {data?.bucket.label ?? param}</h1>
+        {data && (
+          <span className="muted">
+            {fmtLocalTsShort(data.bucket.startedFirst ?? "")} → {fmtLocalTsShort(data.bucket.startedLast ?? "")}
+          </span>
+        )}
+      </div>
+
+      <QueryState isLoading={query.isLoading} error={query.error}>
+        {data && (
+          <>
+            <div className="grid stats">
+              <StatTile label="Sessions" value={fmtInt(data.bucket.stats.sessions)} />
+              <StatTile label="Tasks" value={fmtInt(data.bucket.stats.tasks)} sub={`${data.bucket.stats.unfinishedTasks} unfinished`} />
+              <StatTile
+                label="Tool calls"
+                value={fmtInt(data.bucket.stats.tools)}
+                sub={`${data.bucket.stats.toolsPerTask}/task`}
+              />
+              <StatTile
+                label="Errors"
+                value={fmtInt(data.bucket.stats.errors)}
+                sub={`${fmtPct(data.bucket.stats.discoveryRatio * 100)} discovery`}
+              />
+            </div>
+
+            <div className="card-head">
+              <h2>Suggestions</h2>
+              <span className="muted">from these {data.bucket.stats.sessions} transcripts</span>
+            </div>
+            <div className="advice-list wide">
+              {data.bucket.suggestions.map((s) => (
+                <SuggestionCard key={s.id} suggestion={s} />
+              ))}
+            </div>
+
+            {data.breakdownSuggestions.length > 0 && (
+              <>
+                <div className="card-head">
+                  <h2>From the request breakdowns</h2>
+                  <span className="muted">what these sessions actually sent</span>
+                </div>
+                <div className="advice-list wide">
+                  {data.breakdownSuggestions.map((s) => (
+                    <SuggestionCard key={s.id} suggestion={s} />
+                  ))}
+                </div>
+              </>
+            )}
+
+            <BreakdownPatterns summary={data.breakdown} missing={data.meta.requestsMissing} />
+            <SessionTable sessions={data.sessions} />
+          </>
+        )}
+      </QueryState>
+    </section>
+  );
+}
+
+function SuggestionCard({ suggestion: s }: { suggestion: SessionSuggestion }) {
+  return (
+    <div className={`card advice sev-${s.severity}`}>
+      <div className="advice-head">
+        <span className={`badge sev-${s.severity}`}>{SEV_LABEL[s.severity]}</span>
+        <h3>{s.title}</h3>
+      </div>
+      <p>{s.detail}</p>
+      <div className="advice-metric muted">evidence: {s.evidence}</div>
+      {s.sources.length > 0 && (
+        <div className="suggestion-sources">
+          <span className="suggestion-sources-label">Seen in</span>
+          <ul>
+            {s.sources.map((src) => (
+              <li key={src.threadId}>
+                <Link to="/sessions/$id" params={{ id: src.threadId }} className="link">
+                  {src.label}
+                </Link>
+                {src.nodeIndexes.length > 0 && (
+                  <span className="muted"> · {src.nodeIndexes.length} step{src.nodeIndexes.length === 1 ? "" : "s"}</span>
+                )}
+                {src.sample && <div className="suggestion-sample">{src.sample}</div>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Regions and tool schemas that recur across the bucket's peak requests. */
+function BreakdownPatterns({ summary, missing }: { summary: BucketBreakdownSummary; missing: number }) {
+  if (summary.requests === 0) {
+    return (
+      <div className="card empty">
+        No captured requests remain for these sessions — the raw bodies have aged out of the log.
+      </div>
+    );
+  }
+  const max = Math.max(1, ...summary.patterns.map((p) => p.avgBytes));
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Request breakdown patterns</h2>
+        <span className="muted">
+          averaged over {summary.requests} peak request{summary.requests === 1 ? "" : "s"}
+          {missing > 0 ? ` · ${missing} session${missing === 1 ? "" : "s"} without one` : ""}
+        </span>
+      </div>
+      <p className="muted">
+        Each session contributes its largest captured request. A region carried by every one of them is a fixed cost on
+        every turn these sessions took.
+      </p>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Region / tool</th>
+            <th className="num">In requests</th>
+            <th className="num">Avg bytes</th>
+            <th className="num">Avg tokens</th>
+            <th className="num">% of request</th>
+            <th className="bar-col">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {summary.patterns.map((p) => (
+            <PatternRow key={`${p.kind}:${p.name}`} pattern={p} max={max} total={summary.requests} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PatternRow({ pattern: p, max, total }: { pattern: BreakdownPattern; max: number; total: number }) {
+  const everywhere = p.requests === total;
+  return (
+    <tr>
+      <td>
+        {p.kind === "tool" ? <code className="md-code">{p.name}</code> : p.name}
+      </td>
+      <td className="num">
+        {p.requests}/{total}
+        {everywhere && <span className="muted"> all</span>}
+      </td>
+      <td className="num">{fmtBytes(p.avgBytes)}</td>
+      <td className="num">{fmtInt(p.avgEstTokens)}</td>
+      <td className="num">{fmtPct(p.avgPctOfRequest, 1)}</td>
+      <td className="bar-col">
+        <div className="rowbar" style={{ width: `${(p.avgBytes / max) * 100}%` }} />
+      </td>
+    </tr>
+  );
+}
+
+function SessionTable({ sessions }: { sessions: SessionSummary[] }) {
+  return (
+    <div className="card">
+      <h2>Sessions in this window</h2>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Session</th>
+            <th>Started</th>
+            <th className="num">Tasks</th>
+            <th className="num">Tools</th>
+            <th className="num">Errors</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sessions.map((s) => (
+            <tr key={s.threadId}>
+              <td>
+                <Link to="/sessions/$id" params={{ id: s.threadId }} className="link">
+                  {s.title ?? s.subtitle ?? s.threadId}
+                </Link>
+              </td>
+              <td>{fmtLocalTsShort(s.started ?? "")}</td>
+              <td className="num">{fmtInt(s.tasks)}</td>
+              <td className="num">{fmtInt(s.tools)}</td>
+              <td className="num">{fmtInt(s.errors)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="card stat">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      <div className="stat-foot">{sub && <span className="muted">{sub}</span>}</div>
+    </div>
+  );
+}
