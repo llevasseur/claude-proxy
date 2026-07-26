@@ -45,6 +45,9 @@ const SCROLLS_ITSELF = ".graph-sessions:not(.is-collapsed), .graph-inspector";
 
 const ZOOM_HINT = "Scroll to pan · ⌘-scroll or pinch to zoom";
 
+/** Pointer travel, in px, past which a press on the canvas is a pan rather than a click. */
+const PAN_SLOP = 4;
+
 /** What a box or edge is about — drives its glow color. */
 type Tone = SessionNode["type"] | "root" | "agent";
 
@@ -441,6 +444,8 @@ export function SessionGraphPage() {
   /** The branch to highlight and center, set by picking a subagent in the rail. */
   const [focusId, setFocusId] = useState<string | null>(null);
   const pan = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  /** Set once a pan travels far enough to count as a drag, so it doesn't read as a click. */
+  const panMoved = useRef(false);
 
   /**
    * The slice of the viewport left free by the two overlays — the session rail on the left
@@ -594,18 +599,23 @@ export function SessionGraphPage() {
     )
       return;
     pan.current = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
+    panMoved.current = false;
     e.currentTarget.setPointerCapture(e.pointerId);
     setDragging(true);
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const p = pan.current;
     if (!p) return;
+    if (Math.abs(e.clientX - p.sx) > PAN_SLOP || Math.abs(e.clientY - p.sy) > PAN_SLOP) panMoved.current = true;
     setView((v) => ({ ...v, x: p.ox + (e.clientX - p.sx), y: p.oy + (e.clientY - p.sy) }));
   };
   const endPan = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!pan.current) return;
     pan.current = null;
     setDragging(false);
+    // A pan only ever starts on empty canvas, so a stationary one is a click off the
+    // graph's nodes — the same dismissal an overlay's backdrop would give the drawer.
+    if (!panMoved.current) setSelected(null);
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
