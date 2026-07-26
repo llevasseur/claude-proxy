@@ -127,6 +127,19 @@ export interface SessionsGraphResponse {
   sessions: SessionGraphEntry[];
   meta: { sessionsDir: string; total: number };
 }
+/** One transcript's steps re-derived from the captured request that holds them untruncated. */
+export interface SessionThreadNodes {
+  threadId: string;
+  /** Sidecar base name of the request the nodes came from — the Request breakdown handle. */
+  file: string;
+  messageCount: number;
+  nodes: SessionNode[];
+}
+export interface SessionGraphNodesResponse {
+  rootThreadId: string;
+  threads: SessionThreadNodes[];
+  meta: { files: number; parseErrors: number; requestsRead: number; capped: boolean };
+}
 export interface SessionDetail {
   meta: SessionMeta;
   content: string;
@@ -288,6 +301,8 @@ export const getMemory = (project: string, name: string) =>
   get<MemoryResponse>(`/api/projects/memory?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`);
 export const getSessions = () => get<SessionsResponse>("/api/sessions");
 export const getSessionsGraph = () => get<SessionsGraphResponse>("/api/sessions/graph");
+export const getSessionGraphNodes = (id: string) =>
+  get<SessionGraphNodesResponse>(`/api/sessions/graph/nodes?id=${encodeURIComponent(id)}`);
 export const getSession = (id: string) =>
   get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
 export const getSessionErrors = (id: string) =>
