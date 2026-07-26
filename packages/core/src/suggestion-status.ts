@@ -20,7 +20,7 @@
  */
 
 import type { Severity } from "./advice.js";
-import type { SessionBucket } from "./suggestions.js";
+import type { SessionBucket, SuggestionSource } from "./suggestions.js";
 
 /** The flags a suggestion can carry. `pending` is the default. */
 export const SUGGESTION_STATUSES = ["pending", "done", "skipped"] as const;
@@ -192,8 +192,10 @@ export function parseBucketRange(spec: string): number[] {
 
 /**
  * One suggestion as the status list reports it: enough to decide whether to work
- * on it, and the handle to mark it afterwards. Deliberately lean — the full
- * detail, evidence and sources stay behind the bucket drill-down.
+ * on it, and the handle to mark it afterwards. Deliberately lean by default — the
+ * `detail`/`evidence`/`sources` half is opt-in, so scanning a wide range stays
+ * cheap while a caller about to act on a suggestion can get the whole thing
+ * without a second round trip per bucket.
  */
 export interface SuggestionStatusRow {
   bucket: number;
@@ -206,6 +208,12 @@ export interface SuggestionStatusRow {
   /** ISO timestamp of the flag's last write; absent while pending. */
   updated?: string;
   note?: string;
+  /** What to change, in the user's terms. Only with `detail`. */
+  detail?: string;
+  /** What the rule counted — the claim's arithmetic. Only with `detail`. */
+  evidence?: string;
+  /** The sessions it was counted in, strongest first. Only with `detail`. */
+  sources?: SuggestionSource[];
 }
 
 export interface SuggestionStatusFilter {
@@ -213,6 +221,8 @@ export interface SuggestionStatusFilter {
   buckets?: readonly number[];
   /** Only suggestions carrying one of these flags. Omit for all three. */
   statuses?: readonly SuggestionStatus[];
+  /** Include each suggestion's detail, evidence and sources. Off by default. */
+  detail?: boolean;
 }
 
 /**
@@ -248,6 +258,11 @@ export function suggestionStatusRows(
         };
         if (entry.updated) row.updated = entry.updated;
         if (entry.note) row.note = entry.note;
+        if (filter.detail) {
+          row.detail = suggestion.detail;
+          row.evidence = suggestion.evidence;
+          row.sources = suggestion.sources;
+        }
         return row;
       }),
     )

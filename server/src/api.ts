@@ -483,10 +483,12 @@ export interface SuggestionStatusResponse {
  * the row carries only what it takes to decide and the handle to mark it after.
  *
  * `buckets` omitted means every bucket; `statuses` omitted means all three flags.
+ * `detail` adds each suggestion's detail, evidence and sources — what a caller
+ * about to act on one needs, at the cost of a much larger response.
  */
 export async function buildSuggestionStatus(
   logDir: string,
-  filter: { buckets?: readonly number[]; statuses?: readonly SuggestionStatus[] } = {},
+  filter: { buckets?: readonly number[]; statuses?: readonly SuggestionStatus[]; detail?: boolean } = {},
 ): Promise<SuggestionStatusResponse> {
   const [sessions, store] = await Promise.all([listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
   const buckets = sessionSuggestionBuckets(sessions);

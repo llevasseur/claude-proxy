@@ -105,13 +105,16 @@ or not anyone acted on it. A flag per suggestion records that someone did:
   suggestion (`bucket`, `label`, `id`, `severity`, `title`, `status`, and `updated`/`note` once
   set), oldest bucket first. `range` accepts one bucket (`9`), a list (`2,3,9`), a span (`2-9`) or
   a mix; `status` accepts a comma-separated subset of the flags. This is the list an agent reads to
-  find what is still pending in a range without pulling each bucket's full drill-down; the detail,
-  evidence and sources stay behind `/api/sessions/suggestions/bucket`. A malformed range is a 400.
+  find what is still pending in a range without pulling each bucket's full drill-down. A malformed
+  range is a 400.
+- **Opt-in detail** — `&detail=1` adds each suggestion's `detail`, `evidence` and `sources` to the
+  rows. Scanning a wide range stays lean by default; a caller about to act on what it found gets the
+  whole claim in the same call rather than one drill-down request per bucket.
 - **Recording** — `POST /api/sessions/suggestions/status` with `{ "updates": [{ bucket, id, status,
   note? }] }`. It goes through the same origin-checked CORS the chat routes use, since it writes.
   An update naming a suggestion no rule currently produces is still written and reported under
   `meta.unknown`, so a typo is visible rather than silent.
-- **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>]` and
+- **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>] [-d]` and
   `pnpm --filter server suggestions mark -r <bucket> -i <ids> -s <flag> [-n <note>]`, both with
   `--json` for the API's own shape. The CLI reads the log directory directly, so it needs no
   running server.

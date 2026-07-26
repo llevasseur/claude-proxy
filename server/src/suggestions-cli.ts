@@ -7,49 +7,59 @@
  *   pnpm --filter server suggestions list -r 2-9                # buckets 2 through 9
  *   pnpm --filter server suggestions list -r 2,3,9 -s pending   # only what's pending
  *   pnpm --filter server suggestions list -r 9 --json           # machine-readable
+ *   pnpm --filter server suggestions list -r 9 -s pending -d    # with evidence + sources
  *   pnpm --filter server suggestions mark -r 9 -i serial-discovery -s done -n "PR #71"
  *   pnpm --filter server suggestions mark -r 9 -i redundant-reads,high-tool-churn -s done
  *
- * `list` prints one row per suggestion: bucket, flag, severity, id, title. `mark`
- * writes flags for one or more ids in one bucket. `--json` on either prints the
- * API's own response, which is the shape callers should parse.
+ * `list` prints one row per suggestion: bucket, flag, severity, id, title, plus the
+ * detail/evidence/sources under `--detail`. `mark` writes flags for one or more ids
+ * in one bucket. `--json` on either prints the API's own response, which is the
+ * shape callers should parse.
  */
 import { isSuggestionStatus, parseBucketRange, type SuggestionStatus, type SuggestionStatusRow } from "@claude-proxy/core";
 import { applySuggestionStatus, buildSuggestionStatus } from "./api.js";
 import { resolveLogDir } from "./logs.js";
 
 const USAGE = `usage:
-  suggestions list [-r|--range <spec>] [-s|--status <flags>] [--json]
+  suggestions list [-r|--range <spec>] [-s|--status <flags>] [-d|--detail] [--json]
   suggestions mark  -r|--range <bucket> -i|--id <ids> -s|--status <flag> [-n|--note <text>] [--json]
 
   <spec>  one bucket (9), a list (2,3,9), a span (2-9), or a mix (2-4,9)
   <flags> comma-separated: pending, done, skipped
   <ids>   comma-separated suggestion ids, as printed by list`;
 
+/** Flags that stand alone; every other flag takes the next argv entry as its value. */
+const BOOLEAN_FLAGS = new Set(["json", "detail"]);
+
 /** Read `--flag value` / `-f value` pairs off argv; anything else is a positional. */
-function parseArgs(argv: readonly string[]): { positionals: string[]; flags: Record<string, string>; json: boolean } {
+function parseArgs(argv: readonly string[]): {
+  positionals: string[];
+  flags: Record<string, string>;
+  json: boolean;
+  detail: boolean;
+} {
   const positionals: string[] = [];
   const flags: Record<string, string> = {};
-  let json = false;
+  const switches = new Set<string>();
 
-  const NAMES: Record<string, string> = { r: "range", s: "status", i: "id", n: "note" };
+  const NAMES: Record<string, string> = { r: "range", s: "status", i: "id", n: "note", d: "detail" };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] ?? "";
-    if (arg === "--json") {
-      json = true;
-      continue;
-    }
     const match = /^--?([A-Za-z-]+)$/.exec(arg);
     if (!match?.[1]) {
       positionals.push(arg);
       continue;
     }
     const name = NAMES[match[1]] ?? match[1];
+    if (BOOLEAN_FLAGS.has(name)) {
+      switches.add(name);
+      continue;
+    }
     const value = argv[++i];
     if (value === undefined) throw new Error(`missing value for --${name}`);
     flags[name] = value;
   }
-  return { positionals, flags, json };
+  return { positionals, flags, json: switches.has("json"), detail: switches.has("detail") };
 }
 
 function parseStatuses(raw: string): SuggestionStatus[] {
@@ -66,13 +76,16 @@ function renderRows(rows: readonly SuggestionStatusRow[]): string {
   return rows
     .map((r) => {
       const note = r.note ? `  — ${r.note}` : "";
-      return `  ${String(r.bucket).padStart(3)} ${r.label.padEnd(9)} ${r.status.padEnd(7)} ${r.severity.padEnd(4)} ${r.id.padEnd(width)}  ${r.title}${note}`;
+      const head = `  ${String(r.bucket).padStart(3)} ${r.label.padEnd(9)} ${r.status.padEnd(7)} ${r.severity.padEnd(4)} ${r.id.padEnd(width)}  ${r.title}${note}`;
+      if (!r.detail) return head;
+      const sources = (r.sources ?? []).map((s) => `        · ${s.label}${s.sample ? `: ${s.sample}` : ""}`);
+      return [head, `      ${r.detail}`, `      evidence: ${r.evidence}`, ...sources].join("\n");
     })
     .join("\n");
 }
 
 async function run(argv: readonly string[]): Promise<void> {
-  const { positionals, flags, json } = parseArgs(argv);
+  const { positionals, flags, json, detail } = parseArgs(argv);
   const command = positionals[0] ?? "list";
   const logDir = resolveLogDir();
 
@@ -80,6 +93,7 @@ async function run(argv: readonly string[]): Promise<void> {
     const result = await buildSuggestionStatus(logDir, {
       buckets: flags.range ? parseBucketRange(flags.range) : undefined,
       statuses: flags.status ? parseStatuses(flags.status) : undefined,
+      detail,
     });
     if (json) {
       console.log(JSON.stringify(result, null, 2));

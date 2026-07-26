@@ -527,7 +527,8 @@ const server = http.createServer(async (req, res) => {
           send(res, 400, { error: (err as Error).message });
           return;
         }
-        send(res, 200, await buildSuggestionStatus(LOG_DIR, { buckets, statuses }));
+        const detail = url.searchParams.get("detail");
+        send(res, 200, await buildSuggestionStatus(LOG_DIR, { buckets, statuses, detail: detail === "1" || detail === "true" }));
         return;
       }
       case "/api/sessions/errors": {

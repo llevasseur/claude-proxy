@@ -139,6 +139,14 @@ describe("suggestionStatusRows", () => {
     expect(pending?.updated).toBeUndefined();
   });
 
+  it("leaves detail out unless asked, so scanning a wide range stays lean", () => {
+    const [lean] = suggestionStatusRows(buckets, store, { buckets: [1] });
+    expect(lean?.detail).toBeUndefined();
+    expect(lean?.sources).toBeUndefined();
+    const [full] = suggestionStatusRows(buckets, store, { buckets: [1], detail: true });
+    expect(full).toMatchObject({ detail: "", evidence: "", sources: [] });
+  });
+
   it("counts the flags it returned", () => {
     expect(countSuggestionStatuses(suggestionStatusRows(buckets, store))).toEqual({ pending: 3, done: 1, skipped: 0 });
   });
