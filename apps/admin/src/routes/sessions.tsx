@@ -111,7 +111,7 @@ function StartChatCard() {
   const permission = (chat?.session.permissionMode ??
     pickedPermission ??
     agent?.permissionMode ??
-    "acceptEdits") as PermissionMode;
+    "bypassPermissions") as PermissionMode;
   // What the child actually started under, when it differs from what was asked for.
   const drifted =
     !!chat?.session.effectivePermissionMode && chat.session.effectivePermissionMode !== chat.session.permissionMode;

@@ -11,20 +11,21 @@ afterEach(() => {
 });
 
 describe("CHAT_AGENT_PERMISSION_MODE", () => {
+  // Not the default, so this only passes if the env value is the one being read.
   it("takes a mode the CLI defines", async () => {
-    process.env.CHAT_AGENT_PERMISSION_MODE = "bypassPermissions";
-    expect((await resolveAgentConfig()).permissionMode).toBe("bypassPermissions");
+    process.env.CHAT_AGENT_PERMISSION_MODE = "acceptEdits";
+    expect((await resolveAgentConfig()).permissionMode).toBe("acceptEdits");
   });
 
-  it("falls back to acceptEdits and warns on anything else", async () => {
+  it("falls back to bypassPermissions and warns on anything else", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     process.env.CHAT_AGENT_PERMISSION_MODE = "acceptedits";
-    expect((await resolveAgentConfig()).permissionMode).toBe("acceptEdits");
+    expect((await resolveAgentConfig()).permissionMode).toBe("bypassPermissions");
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("CHAT_AGENT_PERMISSION_MODE"));
   });
 
-  it("defaults to acceptEdits when unset", async () => {
+  it("defaults to bypassPermissions when unset", async () => {
     delete process.env.CHAT_AGENT_PERMISSION_MODE;
-    expect((await resolveAgentConfig()).permissionMode).toBe("acceptEdits");
+    expect((await resolveAgentConfig()).permissionMode).toBe("bypassPermissions");
   });
 });
