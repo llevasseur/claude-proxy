@@ -149,7 +149,9 @@ left are simply absent from `threads`, and keep their transcript text.
 - [x] The drawer widens on demand, and long values expand behind a **Show all** toggle.
 - [x] `parseSessionNodes`, `spawnAgentType`, `linkAgentSessions`, `deriveSessionNodes`,
       `firstUserText`, `isSameStep`, and `mergeSessionNodes` are unit-tested
-      (`packages/core/test/sessions.test.ts`); `pnpm typecheck` and `pnpm test` pass.
+      (`packages/core/test/sessions.test.ts`), and `threadIdForBody` is checked against the
+      `threadIdFor` it mirrors by importing `proxy/session.mjs` itself
+      (`server/test/session-graph-nodes.test.ts`); `pnpm typecheck` and `pnpm test` pass.
 
 ## Open questions
 

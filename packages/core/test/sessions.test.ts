@@ -304,8 +304,16 @@ describe("firstUserText", () => {
     ).toBe("the real root");
   });
 
-  it("is empty for a body with no user text at all", () => {
-    expect(firstUserText([{ role: "assistant", content: "hi" }])).toBe("");
+  it("falls back to the first message's serialized content, as the proxy does", () => {
+    expect(firstUserText([{ role: "assistant", content: "hi" }])).toBe('"hi"');
+    expect(firstUserText([{ role: "assistant", content: [{ type: "text", text: "hi" }] }])).toBe(
+      '[{"type":"text","text":"hi"}]',
+    );
+    expect(firstUserText([{ role: "assistant" }])).toBe("");
+  });
+
+  it("is empty when there are no messages at all", () => {
+    expect(firstUserText([])).toBe("");
     expect(firstUserText(undefined)).toBe("");
   });
 });
@@ -407,6 +415,25 @@ describe("deriveSessionNodes", () => {
     expect(spawnAgentType(spawn!)).toBe("Explore");
   });
 
+  it("keeps a signature on one line, however the recorded arg was written", () => {
+    const [, tool, spawn] = deriveSessionNodes({
+      messages: [
+        { role: "user", content: "Go" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", name: "Bash", input: { command: 'git commit -m "$(cat <<EOF\nfirst\n\nsecond\nEOF\n)"' } },
+            { type: "tool_use", name: "Task", input: { prompt: "  do this\nand that  " } },
+          ],
+        },
+      ],
+    });
+
+    expect(tool?.tool).toBe('Bash(command=git commit -m "$(cat <<EOF first second EOF )")');
+    expect(spawn?.tool).toBe("Task(prompt=do this and that)");
+    expect(spawnAgentType(spawn!)).toBe("");
+  });
+
   it("yields nothing for a body with no messages", () => {
     expect(deriveSessionNodes({})).toEqual([]);
     expect(deriveSessionNodes(null)).toEqual([]);
@@ -467,6 +494,18 @@ describe("mergeSessionNodes", () => {
   it("matches across the whitespace a transcript line collapses", () => {
     expect(isSameStep("one two three", "one\n  two\tthree")).toBe(true);
     expect(isSameStep("one two three", "one two four")).toBe(false);
+  });
+
+  it("matches a tool call whose recorded arg opened with whitespace", () => {
+    const [, tool] = deriveSessionNodes({
+      messages: [
+        { role: "user", content: "Go" },
+        { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "\n  npm test --silent" } }] },
+      ],
+    });
+
+    // The proxy trims before it records, so the transcript's line has no gap after `=`.
+    expect(isSameStep("Bash(command=npm test --silent)", tool!.tool!)).toBe(true);
   });
 
   it("leaves the transcript untouched when there is nothing to lay over it", () => {

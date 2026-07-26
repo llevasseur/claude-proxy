@@ -435,6 +435,15 @@ function asBlocks(content: unknown): Record<string, unknown>[] {
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+/** The transcript's own normalization: every line it records is whitespace-collapsed. */
+const collapseWhitespace = (s: string): string => s.replace(/\s+/g, " ").trim();
+
+/** The proxy's `gist` — collapse to one line and cap, cut marked with an `…`. */
+function gist(s: unknown, max: number): string {
+  const one = collapseWhitespace(String(s ?? ""));
+  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
+}
+
 /** Drop the harness-injected `<system-reminder>…</system-reminder>` context blocks. */
 const stripReminderBlocks = (s: string): string => s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "");
 
@@ -463,22 +472,27 @@ const ARG_KEYS = [
   "prompt",
 ];
 
-/** The one identifying arg the proxy records for a call — here kept at full length. */
+/**
+ * The one identifying arg the proxy records for a call, uncapped. Still collapsed to a single
+ * line: a transcript's tool signature is one line by construction, and consumers rely on it —
+ * {@link spawnAgentType}'s signature pattern doesn't match across a newline.
+ */
 function toolArgs(input: unknown): string {
   if (typeof input !== "object" || input === null) return "";
   const obj = input as Record<string, unknown>;
   for (const k of ARG_KEYS) {
     const v = obj[k];
-    if (typeof v === "string" && v.trim()) return `${k}=${v}`;
+    if (typeof v === "string" && v.trim()) return `${k}=${collapseWhitespace(v)}`;
   }
   const k = Object.keys(obj).find((key) => ["string", "number", "boolean"].includes(typeof obj[key]));
-  return k ? `${k}=${String(obj[k])}` : "";
+  return k ? `${k}=${collapseWhitespace(String(obj[k]))}` : "";
 }
 
 /**
  * The thread's conversation root: its first real user text, tool-result-only turns not
  * counting. Mirrors `firstUserText` in `proxy/session.mjs`, the string the proxy hashes
- * into a thread id.
+ * into a thread id — including its fallback to the first message's serialized content, so
+ * a body with no user text hashes to the same id there and here.
  */
 export function firstUserText(messages: unknown): string {
   if (!Array.isArray(messages)) return "";
@@ -491,7 +505,8 @@ export function firstUserText(messages: unknown): string {
       .trim();
     if (text) return text;
   }
-  return "";
+  const first = messages[0] as Record<string, unknown> | undefined;
+  return first ? gist(JSON.stringify(first.content), 200) : "";
 }
 
 /**
@@ -561,9 +576,6 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
 
   return nodes;
 }
-
-/** The transcript's own normalization: every line it records is whitespace-collapsed. */
-const collapseWhitespace = (s: string): string => s.replace(/\s+/g, " ").trim();
 
 /**
  * Whether `full` is the untruncated original of the transcript line `gisted`. A gist is the
