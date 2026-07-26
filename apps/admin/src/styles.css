@@ -160,7 +160,6 @@ button:focus-visible {
 
 /* collapse toggle */
 .rail-toggle {
-  /* Sits at the right edge of the head row, where the admin tag used to. */
   margin-left: auto;
   flex: none;
   display: inline-flex;
