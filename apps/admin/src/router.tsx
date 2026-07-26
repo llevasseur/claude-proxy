@@ -103,7 +103,6 @@ function RootLayout() {
           <span className="brand">
             claude<span className="brand-sep">·</span>proxy
           </span>
-          <span className="brand-tag">admin</span>
           <button
             type="button"
             className="rail-toggle"
