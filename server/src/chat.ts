@@ -29,6 +29,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { INTERRUPTION_LINE } from "@claude-proxy/core";
 import {
   type AgentLaunchFlags,
   type ChatMode,
@@ -41,7 +42,7 @@ import {
   resolveCliCwd,
   runCliTurn,
 } from "./chat-cli.js";
-import { listSessions } from "./sessions.js";
+import { listSessions, resolveSessionsDir } from "./sessions.js";
 import { readLaunchAliases } from "./shell-rc.js";
 
 const ANTHROPIC_VERSION = "2023-06-01";
@@ -423,6 +424,27 @@ export async function resolveThreadId(logDir: string, sessionId: string, waitMs 
   }
 }
 
+/**
+ * Record that this turn was cut short, as a line on the thread's own transcript.
+ * A dashboard Stop kills the child before it answers, so nothing about it reaches the
+ * proxy over the wire, and chat sessions are in-memory — the transcript is the only
+ * durable record.
+ *
+ * Append-only and best-effort: the proxy tracks its own progress by message count
+ * rather than file offset, so an extra line can't desync it. A thread whose transcript
+ * hasn't been flushed yet is skipped rather than created — a headerless file would
+ * parse as a session with no model, session id, or start time.
+ */
+export function recordInterruption(logDir: string, threadId: string, why: CliInterruption): void {
+  const file = path.join(resolveSessionsDir(logDir), `${threadId}.md`);
+  try {
+    if (!fs.existsSync(file)) return;
+    fs.appendFileSync(file, `${INTERRUPTION_LINE(why)}\n`);
+  } catch {
+    /* best-effort — a chat turn is not worth failing over a transcript write */
+  }
+}
+
 // --- The `api` transport ----------------------------------------------------
 
 /** The subset of a streamed `/v1/messages` event this path reads. */
@@ -597,6 +619,7 @@ async function send(session: ChatSession, config: ChatConfig, logDir: string, pr
   // The proxy writes the transcript after it has answered us, so this is the first
   // moment the thread can exist. A first turn may still be buffered — try again next turn.
   if (!session.threadId) session.threadId = await resolveThreadId(logDir, session.id);
+  if (result.interrupted && session.threadId) recordInterruption(logDir, session.threadId, result.interrupted);
   return {
     session: publicSession(session),
     reply: result.text,

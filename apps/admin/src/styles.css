@@ -1493,6 +1493,12 @@ button.link {
   stroke-linecap: round;
   opacity: 0.8;
 }
+/* The cut: a long-short stroke leaving the step the run was interrupted on. */
+.graph-edge--sever {
+  stroke-dasharray: 12 4 2 4;
+  stroke-width: 2.5;
+  opacity: 0.9;
+}
 
 /* A subagent's branch: a frame around its own snake, hung under the step that spawned it. */
 .gband {
@@ -1584,6 +1590,50 @@ button.link {
   border-color: color-mix(in srgb, var(--violet) 60%, transparent);
 }
 
+/* An interruption's side trail: the steps the run picked up as, framed away from the tree. */
+.gtrail {
+  position: absolute;
+  border: 1px dashed color-mix(in srgb, var(--coral) 45%, transparent);
+  border-left-width: 3px;
+  border-left-style: solid;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--coral) 5%, transparent);
+  /* Like a band, the canvas pans straight through it. */
+  pointer-events: none;
+}
+.gtrail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+  margin: 7px 0 0 14px;
+  color: var(--muted);
+}
+.gtrail-kind {
+  flex: none;
+  font-size: 9.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--coral);
+}
+.gtrail-why {
+  flex: none;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.gtrail-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 44ch;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Node & session boxes. `--gc` is the per-type glow color, set inline. */
 .gnode {
   position: absolute;
@@ -1616,6 +1666,37 @@ button.link {
   box-shadow:
     0 0 0 1px var(--gc),
     0 16px 34px -12px var(--gc);
+}
+/* The step the run was cut off on: an extra ring over its own tone, and a torn right edge. */
+.gnode.is-cut {
+  border-color: color-mix(in srgb, var(--cut) 55%, var(--line));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cut) 40%, transparent),
+    0 10px 26px -14px var(--cut);
+}
+.gnode.is-cut::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--cut) 55%, transparent) 0 2px,
+    transparent 2px 5px
+  );
+  pointer-events: none;
+}
+.gnode.is-cut:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cut) 60%, transparent),
+    0 14px 30px -12px var(--cut);
+}
+/* And the step it picked back up on, which opens the trail. */
+.gnode.is-resumed {
+  border-left-color: var(--cut);
+  border-left-style: dashed;
 }
 .gnode--root,
 .gnode--agent {
@@ -2038,6 +2119,9 @@ button.link {
   white-space: pre-wrap;
   line-height: 1.5;
 }
+.gi-cut {
+  color: var(--coral);
+}
 /* Folded to a peek until "Show all" opens it. */
 .gi-text.is-clamped {
   display: -webkit-box;
@@ -2113,6 +2197,9 @@ button.gi-open {
 }
 .graph-status-flight {
   color: var(--violet);
+}
+.graph-status-cut {
+  color: var(--coral);
 }
 
 /* start a session: prompt input + the chat it opens */
