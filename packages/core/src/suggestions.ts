@@ -16,7 +16,7 @@
 import type { Severity } from "./advice.js";
 import type { RequestBreakdown } from "./context.js";
 import { estTokens } from "./context.js";
-import type { SessionMeta, SessionNode } from "./sessions.js";
+import { sessionDisplayName, type SessionMeta, type SessionNode } from "./sessions.js";
 
 /** How many sessions one bucket covers: 1–10, 11–20, … */
 export const SESSION_BUCKET_SIZE = 10;
@@ -129,7 +129,7 @@ export function errorSignature(text: string): string {
 
 /** How a session names itself in a suggestion's sources. */
 function sessionLabel(s: SuggestibleSession): string {
-  return s.title ?? s.subtitle ?? s.firstTask ?? s.threadId;
+  return sessionDisplayName(s);
 }
 
 // --- Bucketing -------------------------------------------------------------

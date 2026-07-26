@@ -45,6 +45,8 @@ export interface SessionMeta {
   title: string | null;
   /** The first user message with its injected `<system-reminder>` context stripped — a clean subtitle. */
   subtitle: string | null;
+  /** A short name condensed from the opening prompt, subordinate to {@link title}. */
+  derivedTitle: string | null;
 }
 
 /** One errored tool result from a transcript, tagged with its task and most-likely originating tool call. */
@@ -66,6 +68,110 @@ const HEADER_RE = {
   title: /^- title:\s*(.*)$/,
   subtitle: /^- subtitle:\s*(.*)$/,
 } as const;
+
+// --- Deriving a name when the CLI never sends one --------------------------
+//
+// Only interactive chats get a `- title:` line: headless runs (`claude --print`)
+// and subagents never trigger the CLI's out-of-band titling request. Condense their
+// opening prompt instead, in the same sentence-case shape the CLI's titles use.
+
+/**
+ * A slash command arrives wrapped in an envelope, the command definition inlined
+ * after the tags. The command and its arguments are the name; the definition is
+ * boilerplate identical across every run.
+ */
+const COMMAND_NAME_RE = /<command-name>\s*(\/?[^<\s]+)\s*<\/command-name>/i;
+const COMMAND_ARGS_RE = /<command-args>([\s\S]*?)<\/command-args>/i;
+/** The caveat the CLI prepends to a locally-run command, and the leftover envelope tags. */
+const COMMAND_NOISE_RE = /<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<\/?command-[a-z-]+>/gi;
+
+/** Drop the envelope. A prompt cut mid-caveat never closes its tag, so take that shape too. */
+const stripCommandNoise = (s: string): string =>
+  s.replace(COMMAND_NOISE_RE, "").replace(/<local-command-caveat>[\s\S]*$/i, "");
+
+/** Openers a prompt leads with that name nothing about the work. */
+const LEAD_FILLER_RE =
+  /^(?:hey|hi|ok|okay|so|now|please|pls|can you|could you|would you|i(?:'d|'ll| would)? (?:like you to|want you to)|let'?s|help me|go ahead and|just)\b[\s,:—-]*/i;
+
+/** Where a prompt's first sentence ends — the rest is elaboration, not the name. */
+const SENTENCE_END_RE = /[.!?](?:\s|$)/;
+
+/** The most words a derived name carries, matching the CLI's own 3–7 word titles. */
+const NAME_WORDS = 7;
+/** …and its hard character cap, so one long token can't run away with the row. */
+const NAME_CHARS = 60;
+
+/**
+ * Condense an opening prompt into a short session name, or null when there's nothing
+ * to name. A slash command names itself; anything else has its leading filler dropped
+ * and its first sentence kept, capped at {@link NAME_WORDS} words / {@link NAME_CHARS}
+ * chars with an `…` marking the cut.
+ */
+export function deriveSessionName(prompt: string | null): string | null {
+  if (!prompt) return null;
+
+  // Transcripts predating the reminder-free subtitle open with an injected context
+  // blob; one truncated mid-block never closes its tag, so drop that shape too.
+  let text = prompt
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "")
+    .replace(/<system-reminder>[\s\S]*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Name a slash command by its command and arguments, not the definition inlined after.
+  const command = COMMAND_NAME_RE.exec(text);
+  if (command) {
+    const args = COMMAND_ARGS_RE.exec(text)?.[1] ?? "";
+    const named = stripCommandNoise(`${command[1]} ${args}`).replace(/\s+/g, " ").trim();
+    return capped(named);
+  }
+  text = stripCommandNoise(text).replace(/\s+/g, " ").trim();
+
+  // Filler stacks, so peel until nothing more comes off.
+  for (let i = 0; i < 3; i++) {
+    const stripped = text.replace(LEAD_FILLER_RE, "");
+    if (stripped === text) break;
+    text = stripped;
+  }
+
+  const end = SENTENCE_END_RE.exec(text);
+  if (end && end.index > 0) text = text.slice(0, end.index);
+  return capped(text.trim());
+}
+
+/**
+ * Cut a one-line string down to a name: {@link NAME_WORDS} words and {@link NAME_CHARS}
+ * chars at most, an `…` marking either cut. Null when nothing is left.
+ */
+function capped(text: string): string | null {
+  if (!text) return null;
+
+  const words = text.split(" ");
+  let cut = words.length > NAME_WORDS;
+  let name = words.slice(0, NAME_WORDS).join(" ");
+  if (name.length > NAME_CHARS) {
+    name = name.slice(0, NAME_CHARS).trimEnd();
+    cut = true;
+  }
+  if (!name) return null;
+
+  // Sentence case, but never on a path/flag/quoted command — those stay as typed.
+  if (/^[a-z]+$/.test(words[0] ?? "")) name = name[0]!.toUpperCase() + name.slice(1);
+  return cut ? `${name}…` : name;
+}
+
+/**
+ * The most human name a transcript offers, in falling order of authority: CLI title,
+ * derived name, opening prompt. Null when only the id is left.
+ */
+export function sessionName(meta: SessionMeta): string | null {
+  return meta.title ?? meta.derivedTitle ?? meta.subtitle ?? meta.firstTask;
+}
+
+/** {@link sessionName} with the thread id as the last resort, for callers needing a string. */
+export function sessionDisplayName(meta: SessionMeta): string {
+  return sessionName(meta) ?? meta.threadId;
+}
 
 const TASK_RE = /^## Task:\s*(.*)$/;
 const DECIDED_RE = /^- decided:\s/;
@@ -126,6 +232,7 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
     firstTask: null,
     title: null,
     subtitle: null,
+    derivedTitle: null,
   };
 
   for (const raw of content.split("\n")) {
@@ -187,6 +294,9 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
     }
   }
 
+  // The subtitle is the opening prompt stripped of reminders; the first task is the
+  // same prompt raw, for transcripts written before subtitles existed.
+  meta.derivedTitle = deriveSessionName(meta.subtitle ?? meta.firstTask);
   return meta;
 }
 

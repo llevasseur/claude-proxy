@@ -27,7 +27,9 @@
  * user prompt, minus its `<system-reminder>` context) known at the first sighting,
  * and a `title` (the CLI's own generated chat title). The title comes from a
  * separate, out-of-band titling request under a different session id, so it's
- * linked back by content and may arrive before or after the thread is confirmed.
+ * linked back by content and may arrive before or after the thread is confirmed —
+ * or before this process even started, which a `.pending-titles.json` sidecar keeps
+ * claimable across a restart.
  */
 
 import crypto from "node:crypto";
@@ -269,7 +271,7 @@ function header(threadId, entry) {
 function readState(statePath) {
   try {
     const s = JSON.parse(fs.readFileSync(statePath, "utf8"));
-    return { count: s.count ?? 0, started: true, pending: null, root: s.root ?? null, title: s.title ?? null, titled: s.titled ?? false, subtitled: s.subtitled ?? false, nodes: typeof s.nodes === "number" ? s.nodes : null };
+    return { count: s.count ?? 0, started: true, pending: null, root: s.root ?? null, title: s.title ?? null, titled: s.titled ?? false, subtitled: s.subtitled ?? false, nodes: typeof s.nodes === "number" ? s.nodes : null, lastSeen: typeof s.lastSeen === "number" ? s.lastSeen : 0 };
   } catch {
     return null;
   }
@@ -277,7 +279,7 @@ function readState(statePath) {
 
 function writeState(statePath, entry) {
   try {
-    fs.writeFileSync(statePath, JSON.stringify({ count: entry.count, started: entry.started, root: entry.root, title: entry.title, titled: entry.titled, subtitled: entry.subtitled, nodes: entry.nodes }));
+    fs.writeFileSync(statePath, JSON.stringify({ count: entry.count, started: entry.started, root: entry.root, title: entry.title, titled: entry.titled, subtitled: entry.subtitled, nodes: entry.nodes, lastSeen: entry.lastSeen ?? 0 }));
   } catch {
     /* best-effort */
   }
@@ -343,25 +345,125 @@ function appendNodeTexts(dir, threadId, entry, mdPath, entries) {
 /** In-memory per-thread progress, recovered from the `.state.json` sidecar. */
 const threads = new Map();
 
+/**
+ * A thread's last sighting, in epoch ms but never repeating: titles are matched by
+ * recency, and two threads seen inside the same millisecond would tie. Nudging forward
+ * keeps every sighting orderable while staying a real timestamp on disk.
+ */
+let lastTick = 0;
+function nowSeen() {
+  lastTick = Math.max(Date.now(), lastTick + 1);
+  return lastTick;
+}
+
 /** Titles seen before their thread appeared, keyed by titled `<session>` content. */
 const pendingTitles = new Map();
 
-/** Link a captured title to the thread it names, writing/deferring as needed. */
+/** Where unclaimed titles wait out a proxy restart. Dot-prefixed: not a transcript. */
+const pendingPath = (dir) => path.join(dir, ".pending-titles.json");
+
+/** How many unclaimed titles the sidecar keeps — newest win; an old one is never claimed. */
+const PENDING_LIMIT = 50;
+
+/** The sessions dir whose sidecar is already folded into {@link pendingTitles}. */
+let pendingLoadedFrom = null;
+
+/** Fold the sidecar in once per dir, so a title that outlived a restart is still claimable. */
+function loadPendingTitles(dir) {
+  if (pendingLoadedFrom === dir) return;
+  pendingLoadedFrom = dir;
+  try {
+    const rows = JSON.parse(fs.readFileSync(pendingPath(dir), "utf8"));
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (typeof row?.content === "string" && typeof row?.title === "string" && !pendingTitles.has(row.content)) {
+        pendingTitles.set(row.content, row.title);
+      }
+    }
+  } catch {
+    /* no sidecar yet */
+  }
+}
+
+/** Mirror the unclaimed titles to disk, oldest dropped past {@link PENDING_LIMIT}. */
+function savePendingTitles(dir) {
+  try {
+    while (pendingTitles.size > PENDING_LIMIT) pendingTitles.delete(pendingTitles.keys().next().value);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(pendingPath(dir), JSON.stringify([...pendingTitles].map(([content, title]) => ({ content, title }))));
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Write a title onto a thread this process is following. */
+function titleThread(dir, threadId, entry, title) {
+  entry.title = title;
+  // Already flushed to disk → append a standalone title line. Still pending →
+  // the title rides into the header when the thread is confirmed.
+  if (entry.started && !entry.titled) {
+    appendLines(path.join(dir, `${threadId}.md`), [`- title: ${gist(title, 120)}`]);
+    entry.titled = true;
+    writeState(path.join(dir, `${threadId}.state.json`), entry);
+  }
+}
+
+/**
+ * Title a thread that exists only on disk, written before this process started. Picks
+ * the most recently written untitled match and returns whether it found one.
+ */
+function titleDiskThread(dir, content, title) {
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return false;
+  }
+
+  let best = null;
+  for (const name of names) {
+    const m = /^([0-9a-f]{16})\.state\.json$/.exec(name);
+    if (!m || threads.has(m[1])) continue; // in-memory threads already had their turn
+    const statePath = path.join(dir, name);
+    try {
+      const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+      if (state.title || !titleMatches(content, state.root)) continue;
+      const at = fs.statSync(statePath).mtimeMs;
+      if (!best || at > best.at) best = { threadId: m[1], statePath, state, at };
+    } catch {
+      /* unreadable sidecar — skip it */
+    }
+  }
+  if (!best) return false;
+
+  appendLines(path.join(dir, `${best.threadId}.md`), [`- title: ${gist(title, 120)}`]);
+  writeState(best.statePath, { ...best.state, title, titled: true });
+  return true;
+}
+
+/**
+ * Link a captured title to the thread it names, writing/deferring as needed.
+ *
+ * The match is by content, which is not unique: the same opening prompt run twice
+ * yields two threads. Already-titled matches are skipped and the most recently active
+ * untitled one wins; failing that the thread is on disk only, or not yet seen.
+ */
 function recordTitle(dir, content, title) {
   if (!content || !title) return;
-  for (const [threadId, entry] of threads) {
-    if (!titleMatches(content, entry.root)) continue;
-    entry.title = title;
-    // Already flushed to disk → append a standalone title line. Still pending →
-    // the title rides into the header when the thread is confirmed.
-    if (entry.started && !entry.titled) {
-      appendLines(path.join(dir, `${threadId}.md`), [`- title: ${gist(title, 120)}`]);
-      entry.titled = true;
-      writeState(path.join(dir, `${threadId}.state.json`), entry);
-    }
+
+  const untitled = [...threads]
+    .filter(([, entry]) => !entry.title && titleMatches(content, entry.root))
+    .sort((a, b) => (b[1].lastSeen ?? 0) - (a[1].lastSeen ?? 0));
+  if (untitled.length > 0) {
+    const [threadId, entry] = untitled[0];
+    titleThread(dir, threadId, entry, title);
     return;
   }
+
+  if (titleDiskThread(dir, content, title)) return;
+
+  loadPendingTitles(dir);
   pendingTitles.set(content, title); // thread not seen yet — claim it on arrival
+  savePendingTitles(dir);
 }
 
 /** Observe one request (and its decoded reply) and append its new turns.
@@ -391,9 +493,11 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     let entry = threads.get(threadId);
     if (!entry) {
-      entry = readState(statePath) ?? { count: 0, started: false, pending: null, root: null, title: null, titled: false, subtitled: false, nodes: 0 };
+      entry = readState(statePath) ?? { count: 0, started: false, pending: null, root: null, title: null, titled: false, subtitled: false, nodes: 0, lastSeen: 0 };
       threads.set(threadId, entry);
     }
+    // Which thread a title belongs to is decided by recency, so every sighting counts.
+    entry.lastSeen = nowSeen();
 
     // Learn the thread's identity from its first sighting: the root prompt (for
     // subtitle + title matching) and the header ingredients.
@@ -401,12 +505,15 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     if (entry.model == null) entry.model = reqJson?.model ?? "unknown";
     if (!entry.sessionId) entry.sessionId = sessionId ?? "unknown";
     if (!entry.startedAt) entry.startedAt = new Date().toISOString();
-    // Claim a title that arrived before this thread existed.
+    // Claim a title that arrived before this thread existed, including one the sidecar
+    // carried across a restart.
     if (!entry.title) {
+      loadPendingTitles(dir);
       for (const [content, title] of pendingTitles) {
         if (titleMatches(content, entry.root)) {
           entry.title = title;
           pendingTitles.delete(content);
+          savePendingTitles(dir);
           break;
         }
       }
@@ -463,4 +570,5 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 export function _resetThreads() {
   threads.clear();
   pendingTitles.clear();
+  pendingLoadedFrom = null; // a restart re-reads the sidecar; so does a test
 }

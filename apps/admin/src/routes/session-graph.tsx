@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InterruptionKind, SessionNode } from "@claude-proxy/core";
-import { mergeSessionNodes, spawnAgentType } from "@claude-proxy/core";
+import { mergeSessionNodes, sessionName, spawnAgentType } from "@claude-proxy/core";
 import type { SessionGraphEntry } from "../api";
 import { getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from "../api";
 import { fmtInt, fmtLocalTsShort } from "../format";
@@ -102,8 +102,8 @@ const stripReminders = (s: string): string =>
  * task that says something.
  */
 function entryLabel(entry: SessionGraphEntry): string {
-  if (entry.title) return entry.title;
-  if (entry.subtitle) return entry.subtitle;
+  const name = sessionName(entry);
+  if (name) return name;
   for (const node of entry.nodes) {
     if (node.type !== "task") continue;
     const text = stripReminders(node.text);

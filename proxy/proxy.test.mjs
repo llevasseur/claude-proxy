@@ -512,6 +512,98 @@ test("appendSession: back-fills a missing subtitle when root is learned after th
   fs.rmSync(logDir, { recursive: true, force: true });
 });
 
+/** Confirm a thread (first sighting buffers, the second flushes) and return its id. */
+function confirmThread(logDir, sessionId, prompt) {
+  const headers = { "x-claude-code-session-id": sessionId };
+  const first = userText(prompt);
+  const m1 = [first];
+  const m2 = [first, { role: "assistant", content: [{ type: "text", text: "on it" }] }];
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m1 }, headers });
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m2 }, headers });
+  return threadIdFor(sessionId, m1);
+}
+
+/** Feed one titling request through, as the CLI's out-of-band namer would. */
+function sendTitle(logDir, prompt, title) {
+  appendSession({
+    logDir,
+    reqPath: "/v1/messages",
+    reqJson: {
+      system: [{ type: "text", text: "Generate a concise, sentence-case title (3-7 words)." }],
+      messages: [userText(`<session>\n${prompt}\n</session>`)],
+    },
+    headers: { "x-claude-code-session-id": "gen" },
+    responseText: `{"title": "${title}"}`,
+  });
+}
+
+test("appendSession: two threads sharing an opening prompt each keep their own title", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-dup-"));
+  const dir = sessionsDir(logDir);
+  const prompt = "run the probe twice";
+
+  // The same prompt run in two CLI sessions — same root, different thread ids.
+  const older = confirmThread(logDir, "sess-A", prompt);
+  const newer = confirmThread(logDir, "sess-B", prompt);
+  assert.notEqual(older, newer);
+
+  sendTitle(logDir, prompt, "Run the probe");
+  sendTitle(logDir, prompt, "Run the probe again");
+
+  const readTitles = (tid) => (fs.readFileSync(path.join(dir, `${tid}.md`), "utf8").match(/- title: (.*)/g) ?? []);
+  // Newest untitled thread is named first; the second title falls to the other one.
+  assert.deepEqual(readTitles(newer), ["- title: Run the probe"]);
+  assert.deepEqual(readTitles(older), ["- title: Run the probe again"]);
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test("appendSession: titles a thread that only exists on disk after a restart", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-restart-"));
+  const dir = sessionsDir(logDir);
+  const prompt = "survive the restart";
+
+  const tid = confirmThread(logDir, "sess-R", prompt);
+  _resetThreads(); // the proxy restarts: the transcript is on disk, nothing is in memory
+
+  sendTitle(logDir, prompt, "Survive the restart");
+
+  const out = fs.readFileSync(path.join(dir, `${tid}.md`), "utf8");
+  assert.match(out, /- title: Survive the restart/, "title reached the on-disk thread");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, `${tid}.state.json`), "utf8")).titled, true);
+
+  // …and a later turn on that thread doesn't append it a second time.
+  const first = userText(prompt);
+  const m3 = [first, { role: "assistant", content: [{ type: "text", text: "on it" }] }, userText("more"), { role: "assistant", content: [{ type: "text", text: "done" }] }];
+  appendSession({ logDir, reqPath: "/v1/messages", reqJson: { model: "claude-opus-4-8", messages: m3 }, headers: { "x-claude-code-session-id": "sess-R" } });
+  const after = fs.readFileSync(path.join(dir, `${tid}.md`), "utf8");
+  assert.equal((after.match(/- title:/g) || []).length, 1, "title written exactly once");
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test("appendSession: an unclaimed title survives a restart in its sidecar", () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-pending-"));
+  const dir = sessionsDir(logDir);
+  const prompt = "claim me later";
+
+  // Titled before the thread was ever seen — nothing on disk or in memory to attach to.
+  sendTitle(logDir, prompt, "Claim me later");
+  assert.equal(fs.existsSync(path.join(dir, ".pending-titles.json")), true, "deferred to the sidecar");
+
+  _resetThreads(); // the proxy restarts before the thread arrives
+
+  const tid = confirmThread(logDir, "sess-P", prompt);
+  const out = fs.readFileSync(path.join(dir, `${tid}.md`), "utf8");
+  assert.match(out, /- title: Claim me later\n- subtitle: claim me later/, "claimed into the header");
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, ".pending-titles.json"), "utf8")), [], "and cleared once claimed");
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
 test("appendSession: records the whole text behind each truncated line, keyed by node index", () => {
   _resetThreads();
   const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "sess-full-"));
