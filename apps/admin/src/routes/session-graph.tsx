@@ -613,8 +613,7 @@ export function SessionGraphPage() {
     if (!pan.current) return;
     pan.current = null;
     setDragging(false);
-    // A pan only ever starts on empty canvas, so a stationary one is a click off the
-    // graph's nodes — the same dismissal an overlay's backdrop would give the drawer.
+    // A pan only starts on empty canvas, so a stationary one is a click off the nodes.
     if (!panMoved.current) setSelected(null);
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
