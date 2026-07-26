@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import http from "node:http";
+import { isSuggestionStatus, parseBucketRange, parseSuggestionStatusUpdates, type SuggestionStatus } from "@claude-proxy/core";
 import {
   buildContext,
   buildContextDetail,
@@ -17,6 +18,8 @@ import {
   buildSessionsGraph,
   buildSessionSuggestionBucket,
   buildSessionSuggestions,
+  buildSuggestionStatus,
+  applySuggestionStatus,
   buildSkim,
   buildSkimTrend,
   buildSummary,
@@ -27,7 +30,16 @@ import {
   buildFilters,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
-import { continueChat, endChat, listRunningChats, resolveChatConfig, startChat, stopChat } from "./chat.js";
+import {
+  continueChat,
+  endChat,
+  listRunningChats,
+  resolveChatConfig,
+  resolveThreadId,
+  startChat,
+  stopChat,
+  UUID_RE,
+} from "./chat.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
@@ -47,6 +59,12 @@ const CORS = {
 
 /** The write surface: the only routes that are not read-only GETs. */
 const CHAT_ROUTES = new Set(["/api/chat/sessions", "/api/chat/sessions/message", "/api/chat/sessions/end", "/api/chat/stop"]);
+
+/** The suggestion flags: a GET list under the open read CORS, a POST that writes them. */
+const SUGGESTION_STATUS_ROUTE = "/api/sessions/suggestions/status";
+
+/** Paths whose POST goes through the origin-checked write CORS. */
+const WRITE_ROUTES = new Set([...CHAT_ROUTES, SUGGESTION_STATUS_ROUTE]);
 
 /**
  * Origins allowed to POST those routes — the dashboard's dev server by default,
@@ -206,10 +224,16 @@ function chatErrorStatus(msg: string): number {
   return 400; // invalid prompt / missing sessionId / malformed body
 }
 
-async function serveChat(
+/**
+ * A POST route: the same origin check, method check and JSON body the chat routes
+ * have, with the failure→status mapping left to the caller since each write
+ * surface fails in its own vocabulary.
+ */
+async function servePost(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   handler: (body: Record<string, unknown>) => Promise<unknown>,
+  errorStatus: (msg: string) => number = chatErrorStatus,
 ): Promise<void> {
   const origin = req.headers.origin;
   const cors = chatCors(origin);
@@ -225,7 +249,7 @@ async function serveChat(
     send(res, 200, await handler(await readJsonBody(req)), cors);
   } catch (err) {
     const msg = (err as Error).message;
-    send(res, chatErrorStatus(msg), { error: msg }, cors);
+    send(res, errorStatus(msg), { error: msg }, cors);
   }
 }
 
@@ -233,7 +257,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
   if (req.method === "OPTIONS") {
-    res.writeHead(204, CHAT_ROUTES.has(url.pathname) ? chatCors(req.headers.origin) : CORS);
+    res.writeHead(204, WRITE_ROUTES.has(url.pathname) ? chatCors(req.headers.origin) : CORS);
     res.end();
     return;
   }
@@ -473,6 +497,40 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      // The flags on those suggestions: GET lists them, POST records them. The GET is
+      // as read-only as its neighbours; the POST writes a file, so it goes through the
+      // origin-checked write CORS the chat routes use.
+      case SUGGESTION_STATUS_ROUTE: {
+        if (req.method === "POST") {
+          await servePost(
+            req,
+            res,
+            (body) => applySuggestionStatus(LOG_DIR, parseSuggestionStatusUpdates(body.updates)),
+            () => 400,
+          );
+          return;
+        }
+        const rangeParam = url.searchParams.get("range");
+        const statusParam = url.searchParams.get("status");
+        let buckets: number[] | undefined;
+        let statuses: SuggestionStatus[] | undefined;
+        try {
+          if (rangeParam) buckets = parseBucketRange(rangeParam);
+          if (statusParam) {
+            statuses = statusParam.split(",").map((s) => {
+              const status = s.trim();
+              if (!isSuggestionStatus(status)) throw new Error(`invalid status: ${status}`);
+              return status;
+            });
+          }
+        } catch (err) {
+          send(res, 400, { error: (err as Error).message });
+          return;
+        }
+        const detail = url.searchParams.get("detail");
+        send(res, 200, await buildSuggestionStatus(LOG_DIR, { buckets, statuses, detail: detail === "1" || detail === "true" }));
+        return;
+      }
       case "/api/sessions/errors": {
         const id = url.searchParams.get("id");
         if (!id) {
@@ -498,8 +556,24 @@ const server = http.createServer(async (req, res) => {
       case "/api/chat/running":
         send(res, 200, { running: listRunningChats() });
         return;
+      // The transcript's own id for a chat session id, or null while the proxy has yet to
+      // write it. Answers from the sessions dir rather than the in-memory map, so it survives
+      // a restart and outlives the turn. Non-blocking — the caller polls.
+      case "/api/chat/thread": {
+        const sessionId = url.searchParams.get("sessionId");
+        if (!sessionId) {
+          send(res, 400, { error: "missing ?sessionId=" });
+          return;
+        }
+        if (!UUID_RE.test(sessionId)) {
+          send(res, 400, { error: "invalid sessionId: expected a uuid" });
+          return;
+        }
+        send(res, 200, { sessionId, threadId: await resolveThreadId(LOG_DIR, sessionId, 0) });
+        return;
+      }
       case "/api/chat/sessions":
-        await serveChat(req, res, (body) =>
+        await servePost(req, res, (body) =>
           startChat(
             {
               prompt: body.prompt,
@@ -516,15 +590,15 @@ const server = http.createServer(async (req, res) => {
         );
         return;
       case "/api/chat/sessions/message":
-        await serveChat(req, res, (body) => continueChat({ sessionId: body.sessionId, prompt: body.prompt }, LOG_DIR));
+        await servePost(req, res, (body) => continueChat({ sessionId: body.sessionId, prompt: body.prompt }, LOG_DIR));
         return;
       // Ends the turn, not the session: the in-flight send returns what it had.
       case "/api/chat/stop":
-        await serveChat(req, res, async (body) => stopChat({ sessionId: body.sessionId }));
+        await servePost(req, res, async (body) => stopChat({ sessionId: body.sessionId }));
         return;
       // Ends the session: "New chat" evicts it rather than leaving it resident forever.
       case "/api/chat/sessions/end":
-        await serveChat(req, res, async (body) => endChat({ sessionId: body.sessionId }));
+        await servePost(req, res, async (body) => endChat({ sessionId: body.sessionId }));
         return;
       case "/api/skim":
         send(res, 200, await buildSkim(LOG_DIR, date));

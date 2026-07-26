@@ -246,6 +246,11 @@ export interface RunningChat {
 export interface RunningChatsResponse {
   running: RunningChat[];
 }
+/** The transcript a chat session id became; `threadId` is null until the proxy has written it. */
+export interface ChatThreadResponse {
+  sessionId: string;
+  threadId: string | null;
+}
 export interface ChatSendResponse {
   session: {
     id: string;
@@ -344,6 +349,9 @@ export const getFilters = () => get<FiltersResponse>("/api/filters");
 export const getChatConfig = () => get<ChatConfigResponse>("/api/chat/config");
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */
 export const getRunningChats = () => get<RunningChatsResponse>("/api/chat/running");
+/** Which transcript a chat session id became — polled by the page it navigated to. */
+export const getChatThread = (sessionId: string) =>
+  get<ChatThreadResponse>(`/api/chat/thread?sessionId=${encodeURIComponent(sessionId)}`);
 /** The session id is chosen here, not read off the response, so the first turn is stoppable. */
 export const startChat = (
   sessionId: string,

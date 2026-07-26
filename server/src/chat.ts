@@ -646,7 +646,8 @@ function pickPermissionMode(raw: unknown, fallback: PermissionMode): PermissionM
   return raw as PermissionMode;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The shape of a chat session id, wherever one arrives from outside. */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * The session id, which the caller may supply — it is also the CLI's `--session-id` and
