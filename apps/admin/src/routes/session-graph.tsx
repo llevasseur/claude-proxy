@@ -43,6 +43,8 @@ const BAND_GAP = 26;
 /** Overlay panels with their own scrollbar; a collapsed rail has nothing to scroll. */
 const SCROLLS_ITSELF = ".graph-sessions:not(.is-collapsed), .graph-inspector";
 
+const ZOOM_HINT = "Scroll to pan · ⌘-scroll or pinch to zoom";
+
 /** What a box or edge is about — drives its glow color. */
 type Tone = SessionNode["type"] | "root" | "agent";
 
@@ -504,7 +506,8 @@ export function SessionGraphPage() {
     return () => ro.disconnect();
   }, []);
 
-  // Wheel zoom about the cursor (native listener so we can preventDefault).
+  // A plain wheel pans; ⌘-wheel and trackpad pinch (reported as ctrl-wheel) zoom about
+  // the cursor. Native listener so we can preventDefault.
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -512,11 +515,22 @@ export function SessionGraphPage() {
       // The overlay panels sit inside the viewport, so their wheels bubble here.
       if ((e.target as HTMLElement).closest(SCROLLS_ITSELF)) return;
       e.preventDefault();
+
+      if (!e.metaKey && !e.ctrlKey) {
+        // Shift-wheel on a plain mouse still arrives as deltaY; read it as horizontal.
+        const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
+        const dy = e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY;
+        setView((v) => ({ ...v, x: v.x - dx, y: v.y - dy }));
+        return;
+      }
+
       const rect = el.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
+      // A pinch streams many small deltas, so scale it continuously; a wheel notch steps.
+      const factor = e.ctrlKey ? Math.exp(-e.deltaY * 0.01) : e.deltaY < 0 ? 1.12 : 1 / 1.12;
       setView((v) => {
-        const k = clamp(v.k * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.1, 3);
+        const k = clamp(v.k * factor, 0.1, 3);
         return { k, x: mx - (mx - v.x) * (k / v.k), y: my - (my - v.y) * (k / v.k) };
       });
     };
@@ -720,10 +734,10 @@ export function SessionGraphPage() {
             ) : null}
           </span>
           <div className="graph-btns">
-            <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out">
+            <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out" title={ZOOM_HINT}>
               −
             </button>
-            <button type="button" onClick={() => zoomBy(1.2)} aria-label="Zoom in">
+            <button type="button" onClick={() => zoomBy(1.2)} aria-label="Zoom in" title={ZOOM_HINT}>
               +
             </button>
             <button type="button" onClick={fit}>
