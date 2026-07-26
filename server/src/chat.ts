@@ -83,10 +83,23 @@ const DEFAULT_PERMISSION_MODE: PermissionMode = "acceptEdits";
 const MAX_PROMPT_CHARS = 100_000;
 
 /**
+ * Read a positive integer out of the environment, falling back on anything else.
+ *
+ * The guard matters most for the clocks below: `Number("")` is `0` and `Number("5m")` is
+ * `NaN`, and `setTimeout` treats both as ~1ms — so a set-but-empty or fat-fingered knob
+ * would end every turn the instant it started, which is a far worse failure than the
+ * default it was trying to override.
+ */
+const envInt = (raw: string | undefined, fallback: number): number => {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+};
+
+/**
  * The `api` transport's cap on one `POST /v1/messages`. Total elapsed is the right shape
  * here: it bounds a single HTTP request/response, not a body of work.
  */
-const REQUEST_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS ?? 300_000);
+const REQUEST_TIMEOUT_MS = envInt(process.env.CHAT_TIMEOUT_MS, 300_000);
 
 /**
  * The `cli` transport's two caps, which are deliberately not the one above.
@@ -100,8 +113,8 @@ const REQUEST_TIMEOUT_MS = Number(process.env.CHAT_TIMEOUT_MS ?? 300_000);
  * `CHAT_TIMEOUT_MS` still sets the idle window, so an existing deployment that tuned it
  * keeps the value it chose — now spent per silence rather than per turn.
  */
-const CLI_IDLE_TIMEOUT_MS = Number(process.env.CHAT_IDLE_TIMEOUT_MS ?? process.env.CHAT_TIMEOUT_MS ?? 300_000);
-const CLI_MAX_TURN_MS = Number(process.env.CHAT_MAX_TURN_MS ?? 3_600_000);
+const CLI_IDLE_TIMEOUT_MS = envInt(process.env.CHAT_IDLE_TIMEOUT_MS, envInt(process.env.CHAT_TIMEOUT_MS, 300_000));
+const CLI_MAX_TURN_MS = envInt(process.env.CHAT_MAX_TURN_MS, 3_600_000);
 
 /** How long to wait for the proxy to write the transcript the id is read from. */
 const THREAD_WAIT_MS = 5_000;
@@ -226,17 +239,12 @@ export interface ChatSendResult {
   turns: ChatTurn[];
   /** Tools this turn ran. Always empty in `chat` mode, which has none. */
   tools: CliToolUse[];
-  /** Set when the turn was stopped or timed out — what follows is the partial reply. */
+  /** Set when the turn was stopped, went quiet, or hit its ceiling — what follows is the partial reply. */
   interrupted: CliInterruption | null;
 }
 
 /** Live chats, keyed by session id. Lost on restart; the transcript is not. */
 const sessions = new Map<string, ChatSession>();
-
-const envInt = (raw: string | undefined, fallback: number): number => {
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
-};
 
 /**
  * `CHAT_BASE_URL` wins; otherwise `ANTHROPIC_BASE_URL`, which on a device set up

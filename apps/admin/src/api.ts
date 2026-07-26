@@ -229,7 +229,7 @@ export interface ChatSendResponse {
   usage: { input: number; output: number; cacheRead: number; cacheCreation: number };
   turns: ChatTurn[];
   tools: ChatToolUse[];
-  /** Set when the turn was stopped or timed out; the reply is the partial one. */
+  /** Set when the turn was stopped, went quiet, or hit its ceiling; the reply is the partial one. */
   interrupted: ChatInterruption | null;
 }
 export interface HealthResponse {
