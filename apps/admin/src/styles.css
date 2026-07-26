@@ -97,17 +97,6 @@ button:focus-visible {
 .brand-sep {
   color: var(--signal);
 }
-.brand-tag {
-  margin-left: 2px;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 7px;
-}
 
 /* stations */
 .stations {
@@ -172,6 +161,7 @@ button:focus-visible {
 /* collapse toggle */
 .rail-toggle {
   margin-left: auto;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -211,8 +201,7 @@ button:focus-visible {
     gap: 14px;
     padding: 2px 0 0;
   }
-  .app--rail-collapsed .brand,
-  .app--rail-collapsed .brand-tag {
+  .app--rail-collapsed .brand {
     display: none;
   }
   .app--rail-collapsed .rail-toggle {
@@ -1901,7 +1890,12 @@ a.pager-btn:hover {
   border-left: 1px solid var(--line);
   box-shadow: -18px 0 40px -24px rgba(0, 0, 0, 0.8);
   animation: gi-in 0.2s ease both;
+  transition: width 0.18s ease;
   z-index: 8;
+}
+/* Widened for the long, untruncated step text from the Request breakdown. */
+.graph-inspector.is-wide {
+  width: min(720px, 92%);
 }
 @keyframes gi-in {
   from {
@@ -1928,7 +1922,13 @@ a.pager-btn:hover {
   border: 1px solid var(--gc);
   border-radius: 999px;
 }
-.gi-close {
+.gi-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gi-close,
+.gi-wide {
   background: none;
   border: none;
   color: var(--muted);
@@ -1936,7 +1936,11 @@ a.pager-btn:hover {
   line-height: 1;
   cursor: pointer;
 }
-.gi-close:hover {
+.gi-wide {
+  font-size: 15px;
+}
+.gi-close:hover,
+.gi-wide:hover {
   color: var(--text);
 }
 .gi-body {
@@ -1967,6 +1971,27 @@ a.pager-btn:hover {
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.5;
+}
+/* Folded to a peek until "Show all" opens it. */
+.gi-text.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.gi-more {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.gi-note {
+  font-size: 12px;
 }
 .gi-stats {
   display: flex;

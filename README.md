@@ -230,10 +230,11 @@ carries a standing `--permission-mode`.
 
 **Which standing answer is a per-session choice**, picked next to the mode on the
 start form and pinned for that session's life. It matters more than it sounds:
-under the `acceptEdits` default, file edits are pre-approved but Bash is not, so
-any command that would have prompted is auto-denied — an agent turn can rewrite a
-file and cannot `git commit` it. `bypassPermissions` is the one that lets a
-dashboard `/task` finish its git writes; `plan` is read-only. Picking it on the
+the form opens on `bypassPermissions`, the one that lets a dashboard `/task`
+finish its git writes. The narrower modes are for turns that should not act:
+under `acceptEdits` file edits are pre-approved but Bash is not, so any command
+that would have prompted is auto-denied — an agent turn can rewrite a file and
+cannot `git commit` it; `plan` is read-only. Picking it on the
 form is what makes that a per-task decision instead of a server restart —
 `CHAT_AGENT_PERMISSION_MODE` now only sets the default the form opens on (an
 unrecognized value is ignored with a warning).

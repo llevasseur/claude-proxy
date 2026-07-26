@@ -77,8 +77,8 @@ const DEFAULT_AGENT_ALIAS = "claude";
 export const PERMISSION_MODES = ["default", "acceptEdits", "bypassPermissions", "plan"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
-/** Edits without commands; the default the start form opens on. */
-const DEFAULT_PERMISSION_MODE: PermissionMode = "acceptEdits";
+/** Commands included; the default the start form opens on, so `/task` runs as-is. */
+const DEFAULT_PERMISSION_MODE: PermissionMode = "bypassPermissions";
 
 const MAX_PROMPT_CHARS = 100_000;
 

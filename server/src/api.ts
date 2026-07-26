@@ -1,6 +1,7 @@
 import {
   analyzeRequestBody,
   computeDigest,
+  deriveSessionNodes,
   extractRequestMessage,
   extractRequestTool,
   computeSkimDigest,
@@ -36,6 +37,7 @@ import {
   type SessionContextPeak,
   type SessionError,
   type SessionMeta,
+  type SessionNode,
   type SessionSuggestion,
   type SkimDigest,
   type SkimShape,
@@ -59,6 +61,7 @@ import {
   listSessionGraphs,
   listSessions,
   readSession,
+  threadIdForBody,
   type SessionDetail,
   type SessionGraph,
   type SessionSummary,
@@ -437,6 +440,98 @@ export async function buildSessionSuggestionBucket(
     breakdown,
     breakdownSuggestions: suggestFromBreakdown(breakdown),
     meta: { files, parseErrors, requestsMissing: sessions.length - inputs.length },
+  };
+}
+
+/** One transcript's steps, re-read from the captured request that carries them whole. */
+export interface SessionThreadNodes {
+  threadId: string;
+  /** Sidecar base name of the request the nodes came from — the Request breakdown handle. */
+  file: string;
+  /** How many messages that request carried, i.e. how deep a snapshot this is. */
+  messageCount: number;
+  nodes: SessionNode[];
+}
+
+export interface SessionGraphNodesResponse {
+  rootThreadId: string;
+  /** Only the threads a captured request could be found for; the rest keep their transcript. */
+  threads: SessionThreadNodes[];
+  meta: { files: number; parseErrors: number; requestsRead: number; capped: boolean };
+}
+
+/**
+ * How many captured requests one family scan will read and parse. Each is a whole request
+ * body, so the cap bounds a graph load; the scan is newest-first, so the budget goes to the
+ * window the family was active in.
+ */
+const MAX_FAMILY_REQUESTS = 60;
+
+/**
+ * The untruncated step stream for a canvased session and every subagent under it: scan the
+ * sidecars carrying the family's session ids newest-first, hash each body back to the thread
+ * that produced it, and keep the richest snapshot per thread. Threads with no captured
+ * request left go unlisted, and the caller keeps their transcript nodes.
+ */
+export async function buildSessionGraphNodes(
+  logDir: string,
+  id: string,
+  now: Date = new Date(),
+): Promise<SessionGraphNodesResponse> {
+  const graphs = await listSessionGraphs(logDir);
+  const byId = new Map(graphs.map((g) => [g.threadId, g]));
+  if (!byId.has(id)) throw new Error(`session not found: ${id}`);
+
+  // The canvased session plus every descendant — one agent family.
+  const family = new Set<string>();
+  const walk = (threadId: string) => {
+    if (family.has(threadId)) return;
+    family.add(threadId);
+    for (const kid of byId.get(threadId)?.childThreadIds ?? []) walk(kid);
+  };
+  walk(id);
+
+  const sessionIds = new Set([...family].map((t) => byId.get(t)?.sessionId).filter((s): s is string => !!s));
+  if (sessionIds.size === 0) {
+    return { rootThreadId: id, threads: [], meta: { files: 0, parseErrors: 0, requestsRead: 0, capped: false } };
+  }
+
+  // A family's requests never predate its earliest transcript.
+  const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
+  const since = starts.length > 0 ? starts.sort()[0]!.slice(0, 10) : undefined;
+
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const candidates = toContextEntries(sidecars)
+    .filter((e) => e.sessionId !== null && sessionIds.has(e.sessionId))
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, MAX_FAMILY_REQUESTS);
+
+  const best = new Map<string, SessionThreadNodes>();
+  let requestsRead = 0;
+  for (const entry of candidates) {
+    let body: unknown;
+    try {
+      ({ body } = await readRequestBody(logDir, entry.file));
+    } catch {
+      continue; // request log rotated away or never landed — the sidecar still counts
+    }
+    requestsRead += 1;
+
+    const threadId = threadIdForBody(entry.sessionId, (body as { messages?: unknown } | null)?.messages);
+    if (!threadId || !family.has(threadId)) continue;
+
+    const messageCount = Array.isArray((body as { messages?: unknown }).messages)
+      ? ((body as { messages: unknown[] }).messages.length ?? 0)
+      : 0;
+    const prev = best.get(threadId);
+    if (prev && prev.messageCount >= messageCount) continue;
+    best.set(threadId, { threadId, file: entry.file, messageCount, nodes: deriveSessionNodes(body) });
+  }
+
+  return {
+    rootThreadId: id,
+    threads: [...best.values()],
+    meta: { files, parseErrors, requestsRead, capped: candidates.length === MAX_FAMILY_REQUESTS },
   };
 }
 

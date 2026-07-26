@@ -12,6 +12,7 @@ import {
   buildSessionBreakdown,
   buildSessionErrors,
   buildSessions,
+  buildSessionGraphNodes,
   buildSessionsGraph,
   buildSessionSuggestionBucket,
   buildSessionSuggestions,
@@ -390,6 +391,22 @@ const server = http.createServer(async (req, res) => {
       case "/api/sessions/graph":
         send(res, 200, await buildSessionsGraph(LOG_DIR));
         return;
+      case "/api/sessions/graph/nodes": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildSessionGraphNodes(LOG_DIR, id));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
+          else if (msg.startsWith("session not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
       case "/api/sessions/session": {
         const id = url.searchParams.get("id");
         if (!id) {

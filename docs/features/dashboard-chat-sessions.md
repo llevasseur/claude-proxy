@@ -91,7 +91,7 @@ is the checkout the server is running from, resolved from the server's own modul
 when the server is launched out of `.claude/worktrees/<name>`, that worktree is the root,
 which is deliberately the same root `LOG_DIR` resolves against. Because a `--print` child
 has no one to answer a permission prompt, it carries a standing `--permission-mode`, chosen
-per session and defaulting to `acceptEdits`. Its system prompt is *appended*, so Claude Code
+per session and defaulting to `bypassPermissions`. Its system prompt is *appended*, so Claude Code
 keeps its own.
 Both modes strip `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` from the child environment, and
 both force the base URL the same way.
@@ -101,20 +101,21 @@ permission prompt, so it carries a standing `--permission-mode`, picked on the s
 next to the mode and pinned for the session's life. `CHAT_AGENT_PERMISSION_MODE` still sets
 the default the form opens on, but it is no longer the only lever — changing it used to mean
 restarting the server, and which answer a turn needs is a property of that turn. A value
-outside the four is ignored with a warning and `acceptEdits` is used instead, since an
+outside the four is ignored with a warning and `bypassPermissions` is used instead, since an
 unchecked default would be rejected by the CLI a turn later and would leave the form's
 select with no option matching its own value.
 
-What each one does to a *command* is the part worth stating, because the default surprises:
+What each one does to a *command* is the part worth stating, because the narrower modes
+surprise:
 
-- **`acceptEdits` (the default).** File edits are pre-approved; Bash is not. A command the
-  CLI classifies as read-only still runs (`git status --short` does), but any command that
-  *would* have prompted comes back `This command requires approval` and is denied, because
-  there is nobody to approve it. Every mutating command is in that group — so an agent turn
-  under the default can rewrite a file and cannot `git commit` it, and `/task` run from the
-  dashboard stalls at its first git write.
-- **`bypassPermissions`.** Nothing is asked and nothing is denied: commands run, git writes
-  included. This is the mode `/task` needs, and the reason the choice is on the form.
+- **`bypassPermissions` (the default).** Nothing is asked and nothing is denied: commands
+  run, git writes included. This is the mode `/task` needs, so it is the one the form opens
+  on — the narrower modes are there for turns that should not be able to act.
+- **`acceptEdits`.** File edits are pre-approved; Bash is not. A command the CLI classifies
+  as read-only still runs (`git status --short` does), but any command that *would* have
+  prompted comes back `This command requires approval` and is denied, because there is
+  nobody to approve it. Every mutating command is in that group — so an agent turn under it
+  can rewrite a file and cannot `git commit` it, and `/task` stalls at its first git write.
 - **`default`.** Every gated tool asks, which in a headless child means it is denied.
 - **`plan`.** Read-only; the turn plans and does not act.
 
