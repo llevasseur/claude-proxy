@@ -366,8 +366,7 @@ export interface SessionSuggestionsResponse {
 /**
  * Every ten-session window, newest first, with what its transcripts say about
  * reaching the same outcome in fewer steps. Recomputed from every transcript on
- * each call — the whole history is derived, so a first load and a refresh do the
- * same work and there is no backfill state to keep in sync.
+ * each call — there is no backfill state to keep in sync.
  */
 export async function buildSessionSuggestions(logDir: string): Promise<SessionSuggestionsResponse> {
   const sessions = await listSessionGraphs(logDir);

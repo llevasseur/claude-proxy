@@ -239,8 +239,7 @@ function bucketStats(sessions: readonly SuggestibleSession[]): SessionBucketStat
 
 // --- Rules -----------------------------------------------------------------
 //
-// Each rule reads the bucket's sessions and returns one suggestion or null. They
-// are independent and individually testable; `suggestBucket` runs them all.
+// Each rule reads the bucket's sessions and returns one suggestion or null.
 
 type Rule = (sessions: readonly SuggestibleSession[], stats: SessionBucketStats) => SessionSuggestion | null;
 
