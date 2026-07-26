@@ -1,11 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import type { ChatInterruption, ChatMode, ChatSendResponse, ChatToolUse, PermissionMode, SessionSummary } from "../api";
-import { endChat, getChatConfig, getSessions, PERMISSION_MODES, sendChatMessage, startChat, stopChat } from "../api";
+import type { ChatMode, PermissionMode, SessionSummary } from "../api";
+import { getChatConfig, getSessions, PERMISSION_MODES } from "../api";
+import { useChatSession } from "../chat-session";
+import { ChatConversation } from "../components/ChatConversation";
 import { LiveIndicator } from "../components/LiveIndicator";
-import { Markdown } from "../components/Markdown";
-import { PromptInput } from "../components/PromptInput";
 import { QueryState } from "../components/QueryState";
 import { fmtInt, fmtLocalTsShort } from "../format";
 import { useLiveQuery } from "../useLiveQuery";
@@ -57,51 +57,23 @@ const PERMISSION_NOTE: Record<PermissionMode, string> = {
   plan: "read-only — the turn plans and does not act",
 };
 
-/** Why a turn ended early, in the terms that tell you what to do about it. */
-const INTERRUPTION_NOTE: Record<ChatInterruption, string> = {
-  stopped: "Turn stopped",
-  timeout: "Turn went quiet and was ended",
-  limit: "Turn hit the time limit for one turn",
-};
-
 function StartChatCard() {
   const config = useQuery({ queryKey: ["chat", "config"], queryFn: getChatConfig, staleTime: 60_000 });
-  const client = useQueryClient();
-  const [draft, setDraft] = useState("");
-  const [chat, setChat] = useState<ChatSendResponse | null>(null);
-  // null → follow whatever the server defaults to.
-  const [picked, setPicked] = useState<ChatMode | null>(null);
-  const [pickedPermission, setPickedPermission] = useState<PermissionMode | null>(null);
-  // Named here, before the first turn, so Stop has a handle on it while it runs.
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  const navigate = useNavigate();
+  const {
+    sessionId,
+    chat,
+    pendingPrompt,
+    isSending,
+    mode: picked,
+    permissionMode: pickedPermission,
+    setMode: setPicked,
+    setPermissionMode: setPickedPermission,
+    reset: newChat,
+  } = useChatSession();
 
-  const send = useMutation({
-    mutationFn: (prompt: string) =>
-      chat
-        ? sendChatMessage(sessionId, prompt)
-        : startChat(sessionId, prompt, { mode: picked ?? undefined, permissionMode: pickedPermission ?? undefined }),
-    onSuccess: (data) => {
-      setChat(data);
-      setDraft("");
-      // Refresh the list behind the live stream: the transcript is new, or it grew.
-      client.invalidateQueries({ queryKey: ["sessions"] });
-    },
-  });
-
-  // Stopping doesn't fail the send: the turn resolves with whatever it had reached.
-  const stop = useMutation({ mutationFn: () => stopChat(sessionId) });
-
-  /** Drop the server's copy too, so its session map doesn't grow a tab at a time. */
-  const newChat = () => {
-    endChat(sessionId).catch(() => {
-      /* best-effort: a session it has already forgotten is the outcome we wanted */
-    });
-    setSessionId(crypto.randomUUID());
-    setChat(null);
-    // Both mutations too: a failed turn's error otherwise sits under the new empty chat.
-    send.reset();
-    stop.reset();
-  };
+  // Once a turn has been handed off the session exists; only the first one starts it.
+  const started = chat !== null || pendingPrompt !== null;
 
   const unconfigured = config.data && !config.data.ready;
   const threadId = chat?.session.threadId;
@@ -119,7 +91,7 @@ function StartChatCard() {
   return (
     <div className="card chat-starter">
       <div className="card-head">
-        <h2>{chat ? `${mode === "agent" ? "Agent" : "Chat"} in progress` : "Start a session"}</h2>
+        <h2>{started ? `${mode === "agent" ? "Agent" : "Chat"} in progress` : "Start a session"}</h2>
         <span className="muted">
           {config.data
             ? `${config.data.model} · through ${config.data.baseUrl} · ${
@@ -139,7 +111,7 @@ function StartChatCard() {
             type="button"
             className={`chat-mode${mode === m ? " is-active" : ""}`}
             aria-pressed={mode === m}
-            disabled={!!chat || send.isPending}
+            disabled={started || isSending}
             onClick={() => setPicked(m)}
           >
             {m === "agent" ? "Agent" : "Chat"}
@@ -164,7 +136,7 @@ function StartChatCard() {
             id="chat-permission"
             className="chat-permission"
             value={permission}
-            disabled={!!chat || send.isPending}
+            disabled={started || isSending}
             onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}
           >
             {PERMISSION_MODES.map((p) => (
@@ -197,84 +169,35 @@ function StartChatCard() {
 
       {unconfigured && <p className="muted chat-note">Chat is unavailable: {config.data?.readyHint}</p>}
 
-      {chat && (
-        <div className="chat-log">
-          {chat.turns.map((turn, i) => (
-            <div key={i} className={`chat-turn ${turn.role}`}>
-              <span className="chat-role">{turn.role === "user" ? "You" : "Claude"}</span>
-              {turn.role === "assistant" ? <Markdown source={turn.text} /> : <p>{turn.text}</p>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* A cut-short turn's partial reply, labelled so it doesn't read as the answer. */}
-      {chat?.interrupted && (
-        <p className="muted chat-note">
-          {INTERRUPTION_NOTE[chat.interrupted]} — this is what arrived before it ended.
-        </p>
-      )}
-
-      {/* What the turn did, not just what it said — agent turns only. */}
-      {chat && chat.tools.length > 0 && (
-        <div className="chat-tools">
-          <span className="muted">ran</span>
-          {chat.tools.map((t, i) => (
-            <ToolChip key={i} tool={t} />
-          ))}
-        </div>
-      )}
-
-      <PromptInput
-        value={draft}
-        onValueChange={setDraft}
-        onSubmit={(prompt) => send.mutate(prompt)}
+      <ChatConversation
         placeholder={
-          chat ? "Reply…" : mode === "agent" ? "Ask Claude to do something — /task works here" : "Ask Claude something — this starts a new session"
+          started
+            ? "Reply…"
+            : mode === "agent"
+              ? "Ask Claude to do something — /task works here"
+              : "Ask Claude something — this starts a new session"
         }
         disabled={!!unconfigured}
-        status={send.isPending ? "submitted" : send.isError ? "error" : "ready"}
+        // The first send moves you to the session's own page, where the reply lands.
+        onSend={() => {
+          if (!started) navigate({ to: "/sessions/$id", params: { id: sessionId } });
+        }}
+        footExtras={
+          chat && (
+            <>
+              {threadId && (
+                <Link to="/sessions/$id" params={{ id: threadId }} className="link mono-break">
+                  open transcript {threadId}
+                </Link>
+              )}
+              <button type="button" className="chat-new" onClick={newChat} disabled={isSending}>
+                New chat
+              </button>
+            </>
+          )
+        }
       />
-
-      <div className="chat-foot">
-        {send.isError && <span className="error">{(send.error as Error).message}</span>}
-        {stop.isError && <span className="error">{(stop.error as Error).message}</span>}
-        {/* An agent turn can run for minutes; this is the only way to take it back. */}
-        {send.isPending && (
-          <button type="button" className="chat-stop" onClick={() => stop.mutate()} disabled={stop.isPending}>
-            {stop.isPending ? "Stopping…" : "Stop"}
-          </button>
-        )}
-        {chat && (
-          <>
-            {threadId && (
-              <Link to="/sessions/$id" params={{ id: threadId }} className="link mono-break">
-                open transcript {threadId}
-              </Link>
-            )}
-            <span className="muted">
-              {fmtInt(chat.usage.input + chat.usage.cacheRead + chat.usage.cacheCreation)} in ·{" "}
-              {fmtInt(chat.usage.output)} out
-            </span>
-            <button type="button" className="chat-new" onClick={newChat} disabled={send.isPending}>
-              New chat
-            </button>
-          </>
-        )}
-      </div>
     </div>
-  );
-}
-
-/** One tool the turn ran; a failure carries the first line of its `tool_result` text. */
-function ToolChip({ tool }: { tool: ChatToolUse }) {
-  const reason = tool.failed ? tool.error?.split("\n")[0]?.trim() : undefined;
-  return (
-    <span className={`chat-tool${tool.failed ? " is-failed" : ""}`} title={tool.error}>
-      {tool.name}
-      {tool.failed ? " ✗" : ""}
-      {reason && <span className="chat-tool-why">{reason}</span>}
-    </span>
   );
 }
 

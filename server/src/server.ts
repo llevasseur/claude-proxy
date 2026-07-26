@@ -27,7 +27,16 @@ import {
   buildFilters,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
-import { continueChat, endChat, listRunningChats, resolveChatConfig, startChat, stopChat } from "./chat.js";
+import {
+  continueChat,
+  endChat,
+  listRunningChats,
+  resolveChatConfig,
+  resolveThreadId,
+  startChat,
+  stopChat,
+  UUID_RE,
+} from "./chat.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
@@ -498,6 +507,22 @@ const server = http.createServer(async (req, res) => {
       case "/api/chat/running":
         send(res, 200, { running: listRunningChats() });
         return;
+      // The transcript's own id for a chat session id, or null while the proxy has yet to
+      // write it. Answers from the sessions dir rather than the in-memory map, so it survives
+      // a restart and outlives the turn. Non-blocking — the caller polls.
+      case "/api/chat/thread": {
+        const sessionId = url.searchParams.get("sessionId");
+        if (!sessionId) {
+          send(res, 400, { error: "missing ?sessionId=" });
+          return;
+        }
+        if (!UUID_RE.test(sessionId)) {
+          send(res, 400, { error: "invalid sessionId: expected a uuid" });
+          return;
+        }
+        send(res, 200, { sessionId, threadId: await resolveThreadId(LOG_DIR, sessionId, 0) });
+        return;
+      }
       case "/api/chat/sessions":
         await serveChat(req, res, (body) =>
           startChat(
