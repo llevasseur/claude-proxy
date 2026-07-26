@@ -197,8 +197,7 @@ export interface ChatToolUse {
   /** Why it failed, from its `tool_result` — a permission denial says so here. */
   error?: string;
 }
-/** Why a turn ended early, when it did. */
-/** `timeout` is the turn going quiet; `limit` is it outrunning the ceiling while lively. */
+/** Why a turn ended early: `timeout` is going quiet, `limit` is outrunning the ceiling. */
 export type ChatInterruption = "stopped" | "timeout" | "limit";
 /** A chat whose turn is in flight right now, as the server sees it. */
 export interface RunningChat {
