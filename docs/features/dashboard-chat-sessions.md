@@ -244,7 +244,8 @@ hex characters, so the two can never be confused. That page polls
 in-memory map — so it survives a server restart and outlives the turn — and replaces the URL
 with the thread id the moment the transcript exists. Measured at ~2s on a real turn, which
 is while the turn is still running rather than after it. Until then the page says it is
-waiting for the transcript. A reload on the pre-resolution URL still lands on the transcript,
+waiting for the transcript, and it gives up after two minutes — far past the moment a real
+session writes its first request — so a start that never happened stops polling and says so. A reload on the pre-resolution URL still lands on the transcript,
 because the lookup reads from disk and needs nothing the tab was holding.
 
 **The conversation follows you there.** It used to live in the Sessions page's own component
@@ -342,9 +343,13 @@ server accepts; everything else stays read-only.
 - [x] Starting a session navigates to `/sessions/$id` immediately, addressed by the chat
       session id, without waiting on the turn.
 - [x] `GET /api/chat/thread?sessionId=` answers the transcript's thread id, `null` while it
-      has yet to be written, and `400` with no `sessionId`. Confirmed live against an
+      has yet to be written, `400` with no `sessionId`, and `400` for a `sessionId` that is
+      not a uuid — the same shape the POST routes validate. Confirmed live against an
       existing transcript, an unknown id, and a real turn — which resolved ~2s in, while the
       turn was still running.
+- [x] The poll is bounded: after two minutes with no transcript the page stops asking and
+      says none arrived, rather than polling forever on a start that failed or on a uuid
+      someone typed into the address bar.
 - [x] That page replaces its URL with the thread id once it resolves, so the address bar,
       a reload and a shared link all end on the transcript.
 - [x] The session page carries a chat section between the stats and the transcript showing

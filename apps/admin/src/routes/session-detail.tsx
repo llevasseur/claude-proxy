@@ -21,20 +21,32 @@ const CHAT_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 
 /** How often to re-ask which transcript a just-started chat became. */
 const THREAD_POLL_MS = 2_000;
+/**
+ * How long to keep asking. The transcript appears within seconds of the first request — well
+ * inside this — so past it the session is one that never started, or an id that was never ours.
+ */
+const THREAD_POLL_CEILING_MS = 120_000;
 
 export function SessionDetailPage() {
   const { id } = useParams({ from: "/sessions/$id" });
   const navigate = useNavigate();
   const isChatId = CHAT_SESSION_ID_RE.test(id);
+  const [gaveUp, setGaveUp] = useState(false);
 
   // Addressed by a chat session id: poll for the transcript the proxy is writing, then replace
   // the URL with the thread id so a reload or a shared link still lands on the transcript.
   const thread = useQuery({
     queryKey: ["chat", "thread", id],
     queryFn: () => getChatThread(id),
-    enabled: isChatId,
+    enabled: isChatId && !gaveUp,
     refetchInterval: THREAD_POLL_MS,
   });
+  useEffect(() => {
+    setGaveUp(false);
+    if (!isChatId) return;
+    const timer = setTimeout(() => setGaveUp(true), THREAD_POLL_CEILING_MS);
+    return () => clearTimeout(timer);
+  }, [id, isChatId]);
   const resolved = thread.data?.threadId ?? null;
   useEffect(() => {
     if (resolved) navigate({ to: "/sessions/$id", params: { id: resolved }, replace: true });
@@ -67,7 +79,7 @@ export function SessionDetailPage() {
       </div>
 
       {isChatId ? (
-        <StartingBody sessionId={id} />
+        <StartingBody sessionId={id} gaveUp={gaveUp} />
       ) : (
         <QueryState isLoading={query.isLoading} error={query.error}>
           {session && <SessionBody session={session} />}
@@ -78,11 +90,15 @@ export function SessionDetailPage() {
 }
 
 /** This page before its transcript exists: the chat alone, with the stats and transcript to come. */
-function StartingBody({ sessionId }: { sessionId: string }) {
+function StartingBody({ sessionId, gaveUp }: { sessionId: string; gaveUp: boolean }) {
   return (
     <>
       <SessionChatPanel sessionId={sessionId} />
-      <div className="card empty">Waiting for the proxy to write this session's transcript…</div>
+      <div className="card empty">
+        {gaveUp
+          ? "No transcript ever arrived for this session — it never reached the proxy, or this id is not one of ours."
+          : "Waiting for the proxy to write this session's transcript…"}
+      </div>
     </>
   );
 }
