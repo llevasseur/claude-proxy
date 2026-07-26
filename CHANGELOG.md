@@ -10,6 +10,10 @@ This project has not cut a release yet, so everything below sits under
 
 ## [Unreleased]
 
+### Changed
+
+- **A session's name wears the signal color, its id doesn't** — the title and the thread id swapped colors in the sessions list, so the primary label is the one that stands out and the mono id under it reads as plain text. The id keeps its link and hover underline, and a session with no name still shows its id in signal — `.session-id` only applies when a name sits above it.
+
 ### Fixed
 
 - **Sessions are named, not numbered** — a transcript now headlines what it is instead of its thread id, which is what 92 of 100 local transcripts showed. Only a session Claude Code titled itself carried a name, and it only titles interactive chats: a dashboard-started run is headless (`claude --print`) and a subagent shares its parent's session id, so neither is ever titled. `deriveSessionName` condenses the opening prompt into a short sentence-case name for those, `sessionName`/`sessionDisplayName` set one fallback order (CLI title → derived name → prompt → id) that the listing, the graph, the detail page and a suggestion's sources all read, and the id stays as the mono sublink. Two title-linking bugs went with it: a title landing on the *first* thread whose opening prompt matched left a second thread with the same prompt permanently nameless (it now goes to the most recently active **untitled** match, and never displaces a title already written), and titles were only ever matched against in-memory threads, so a proxy restart dropped them — an unclaimed title now waits in a `.pending-titles.json` sidecar and a title arriving for a thread that exists only on disk is written to it directly.
