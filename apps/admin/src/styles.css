@@ -884,6 +884,97 @@ a.pager-btn:hover {
   font-size: 12px;
 }
 
+/* session suggestion buckets */
+.bucket-list {
+  display: grid;
+  gap: 12px;
+}
+.bucket-row {
+  display: block;
+  margin: 0;
+  text-decoration: none;
+  color: inherit;
+  border-left: 3px solid var(--line);
+}
+.bucket-row:hover {
+  border-color: var(--signal-dim);
+}
+.bucket-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.bucket-label {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+}
+.bucket-range {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.bucket-suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.bucket-suggestions li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--line);
+}
+.dot.sev-high {
+  background: var(--high);
+}
+.dot.sev-warn {
+  background: var(--warn);
+}
+.dot.sev-info {
+  background: var(--info);
+}
+.bucket-stats {
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.suggestion-sources {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.suggestion-sources-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.suggestion-sources ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.suggestion-sample {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 /* badges */
 .badge {
   font-family: var(--font-mono);

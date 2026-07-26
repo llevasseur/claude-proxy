@@ -14,6 +14,8 @@ import {
   buildSessions,
   buildSessionGraphNodes,
   buildSessionsGraph,
+  buildSessionSuggestionBucket,
+  buildSessionSuggestions,
   buildSkim,
   buildSkimTrend,
   buildSummary,
@@ -433,6 +435,24 @@ const server = http.createServer(async (req, res) => {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
           else if (msg.startsWith("session not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/sessions/suggestions":
+        send(res, 200, await buildSessionSuggestions(LOG_DIR));
+        return;
+      case "/api/sessions/suggestions/bucket": {
+        const index = Number(url.searchParams.get("index"));
+        if (!Number.isInteger(index) || index < 1) {
+          send(res, 400, { error: "missing or invalid ?index=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildSessionSuggestionBucket(LOG_DIR, index));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("suggestion bucket not found")) send(res, 404, { error: msg });
           else throw err;
         }
         return;
