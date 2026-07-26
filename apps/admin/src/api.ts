@@ -20,6 +20,9 @@ import type {
   SessionSuggestion,
   SkimDigest,
   SkimShape,
+  SuggestionStatus,
+  SuggestionStatusRow,
+  SuggestionStatusUpdate,
   TopTool,
   UsageDigest,
   WithheldReport,
@@ -181,6 +184,24 @@ export interface SessionSuggestionBucketResponse {
   breakdownSuggestions: SessionSuggestion[];
   meta: { files: number; parseErrors: number; requestsMissing: number };
 }
+/**
+ * Every suggestion in the requested buckets with its flag, oldest bucket first.
+ * Lean by default — `detail` is what a caller about to act on one asks for.
+ */
+export interface SuggestionStatusResponse {
+  rows: SuggestionStatusRow[];
+  meta: {
+    statusFile: string;
+    buckets: number[];
+    missing: number[];
+    counts: Record<SuggestionStatus, number>;
+  };
+}
+/** The rows a write touched, re-read through the same join the list uses. */
+export interface SuggestionStatusUpdateResponse {
+  rows: SuggestionStatusRow[];
+  meta: { statusFile: string; updated: number; unknown: { bucket: number; id: string }[] };
+}
 export interface FiltersResponse {
   generatedAt: string;
   filters: ProxyFilterEntry[];
@@ -296,7 +317,7 @@ async function get<T>(path: string): Promise<T> {
   return unwrap<T>(await fetch(`${API_BASE}${path}`));
 }
 
-/** The chat routes are the only writes the API accepts. */
+/** The chat routes and the suggestion flags are the only writes the API accepts. */
 async function post<T>(path: string, body: unknown): Promise<T> {
   return unwrap<T>(
     await fetch(`${API_BASE}${path}`, {
@@ -341,6 +362,22 @@ export const getSessionBreakdown = (id: string) =>
 export const getSessionSuggestions = () => get<SessionSuggestionsResponse>("/api/sessions/suggestions");
 export const getSessionSuggestionBucket = (index: number) =>
   get<SessionSuggestionBucketResponse>(`/api/sessions/suggestions/bucket?index=${index}`);
+/**
+ * The flags on those suggestions. `range` narrows to a bucket, list or span; the
+ * lean row is the default, since the pages that show a flag already hold the
+ * suggestion it belongs to.
+ */
+export const getSuggestionStatus = (opts: { range?: string; statuses?: SuggestionStatus[]; detail?: boolean } = {}) => {
+  const params = new URLSearchParams();
+  if (opts.range) params.set("range", opts.range);
+  if (opts.statuses?.length) params.set("status", opts.statuses.join(","));
+  if (opts.detail) params.set("detail", "1");
+  const query = params.toString();
+  return get<SuggestionStatusResponse>(`/api/sessions/suggestions/status${query ? `?${query}` : ""}`);
+};
+/** Record flags. Setting one back to `pending` deletes its entry — that is the undo. */
+export const markSuggestionStatus = (updates: SuggestionStatusUpdate[]) =>
+  post<SuggestionStatusUpdateResponse>("/api/sessions/suggestions/status", { updates });
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
