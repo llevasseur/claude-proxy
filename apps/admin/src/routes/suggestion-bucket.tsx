@@ -1,9 +1,21 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { BreakdownPattern, BucketBreakdownSummary, SessionSuggestion } from "@claude-proxy/core";
-import { getSessionSuggestionBucket, type SessionSummary } from "../api";
+import type {
+  BreakdownPattern,
+  BucketBreakdownSummary,
+  SessionSuggestion,
+  SuggestionStatusRow,
+} from "@claude-proxy/core";
+import { getSessionSuggestionBucket, getSuggestionStatus, type SessionSummary } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
+import {
+  isResolved,
+  SUGGESTION_STATUS_KEY,
+  SuggestionStatusBadge,
+  SuggestionStatusControl,
+} from "../components/SuggestionStatus";
 import { fmtBytes, fmtInt, fmtLocalTsShort, fmtPct } from "../format";
 
 const SEV_LABEL = { high: "High", warn: "Warn", info: "Info" } as const;
@@ -21,7 +33,21 @@ export function SuggestionBucketPage() {
     queryFn: () => getSessionSuggestionBucket(index),
     enabled: Number.isInteger(index) && index >= 1,
   });
+  // The flags for this window only, separate from the drill-down: a write
+  // re-reads this and nothing else.
+  const statusQuery = useQuery({
+    queryKey: [SUGGESTION_STATUS_KEY, index],
+    queryFn: () => getSuggestionStatus({ range: String(index) }),
+    enabled: Number.isInteger(index) && index >= 1,
+  });
+  const [hideResolved, setHideResolved] = useState(false);
   const data = query.data;
+  const statusById = new Map((statusQuery.data?.rows ?? []).map((row) => [row.id, row]));
+  const counts = statusQuery.data?.meta.counts;
+  const resolvedCount = (counts?.done ?? 0) + (counts?.skipped ?? 0);
+  const suggestions = (data?.bucket.suggestions ?? []).filter(
+    (s) => !hideResolved || !isResolved(statusById.get(s.id)?.status ?? "pending"),
+  );
 
   return (
     <section>
@@ -58,14 +84,28 @@ export function SuggestionBucketPage() {
               />
             </div>
 
-            <div className="card-head">
+            <div className="card-head suggestions-head">
               <h2>Suggestions</h2>
-              <span className="muted">from these {data.bucket.stats.sessions} transcripts</span>
+              <span className="muted">
+                from these {data.bucket.stats.sessions} transcripts
+                {resolvedCount > 0 && ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped`}
+              </span>
+              {statusQuery.error && (
+                <span className="error">flags unavailable: {(statusQuery.error as Error).message}</span>
+              )}
+              {resolvedCount > 0 && (
+                <button type="button" className="link toggle-resolved" onClick={() => setHideResolved((v) => !v)}>
+                  {hideResolved ? `Show resolved (${resolvedCount})` : "Hide resolved"}
+                </button>
+              )}
             </div>
             <div className="advice-list wide">
-              {data.bucket.suggestions.map((s) => (
-                <SuggestionCard key={s.id} suggestion={s} />
+              {suggestions.map((s) => (
+                <SuggestionCard key={s.id} suggestion={s} bucket={index} status={statusById.get(s.id)} />
               ))}
+              {suggestions.length === 0 && data.bucket.suggestions.length > 0 && (
+                <div className="card empty">Every suggestion in this window has been acted on.</div>
+              )}
             </div>
 
             {data.breakdownSuggestions.length > 0 && (
@@ -91,12 +131,27 @@ export function SuggestionBucketPage() {
   );
 }
 
-function SuggestionCard({ suggestion: s }: { suggestion: SessionSuggestion }) {
+/**
+ * One suggestion, with its flag when it can carry one. Only the transcript rules
+ * are flaggable — breakdown-derived suggestions are computed per request, not per
+ * bucket, so the status store has no row for them.
+ */
+function SuggestionCard({
+  suggestion: s,
+  bucket,
+  status,
+}: {
+  suggestion: SessionSuggestion;
+  bucket?: number;
+  status?: SuggestionStatusRow;
+}) {
+  const resolved = isResolved(status?.status ?? "pending");
   return (
-    <div className={`card advice sev-${s.severity}`}>
+    <div className={`card advice sev-${s.severity}${resolved ? " is-resolved" : ""}`}>
       <div className="advice-head">
         <span className={`badge sev-${s.severity}`}>{SEV_LABEL[s.severity]}</span>
         <h3>{s.title}</h3>
+        {status && <SuggestionStatusBadge status={status.status} />}
       </div>
       <p>{s.detail}</p>
       <div className="advice-metric muted">evidence: {s.evidence}</div>
@@ -118,6 +173,7 @@ function SuggestionCard({ suggestion: s }: { suggestion: SessionSuggestion }) {
           </ul>
         </div>
       )}
+      {bucket !== undefined && <SuggestionStatusControl bucket={bucket} id={s.id} row={status} />}
     </div>
   );
 }
