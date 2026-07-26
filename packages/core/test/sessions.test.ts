@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveSessionNodes,
+  firstUserText,
   isAgentSpawn,
+  isSameStep,
   linkAgentSessions,
+  mergeSessionNodes,
   parseSessionErrors,
   parseSessionNodes,
   parseSessionTranscript,
   spawnAgentType,
   type LinkableSession,
+  type SessionNode,
 } from "../src/sessions.js";
 
 const TRANSCRIPT = [
@@ -285,5 +290,187 @@ describe("linkAgentSessions", () => {
       depth: 0,
       childThreadIds: [],
     });
+  });
+});
+
+describe("firstUserText", () => {
+  it("takes the first user turn that says something", () => {
+    expect(
+      firstUserText([
+        { role: "user", content: [{ type: "tool_result", content: "stale output" }] },
+        { role: "assistant", content: "thinking" },
+        { role: "user", content: "the real root" },
+      ]),
+    ).toBe("the real root");
+  });
+
+  it("is empty for a body with no user text at all", () => {
+    expect(firstUserText([{ role: "assistant", content: "hi" }])).toBe("");
+    expect(firstUserText(undefined)).toBe("");
+  });
+});
+
+describe("deriveSessionNodes", () => {
+  /** The request the TRANSCRIPT above was distilled from — same steps, full text. */
+  const BODY = {
+    messages: [
+      { role: "user", content: [{ type: "text", text: "Fix the login bug" }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "internal" },
+          { type: "text", text: "Reading the handler first." },
+          { type: "tool_use", name: "Read", input: { file_path: "/auth.ts" } },
+          { type: "tool_use", name: "Bash", input: { command: "npm test" } },
+        ],
+      },
+      { role: "user", content: [{ type: "tool_result", is_error: true, content: "ENOENT: no such file" }] },
+      { role: "assistant", content: [{ type: "text", text: "All tests pass." }] },
+      { role: "user", content: [{ type: "text", text: "Add a follow-up feature" }] },
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Editing the router." },
+          { type: "tool_use", name: "Edit", input: { file_path: "/router.tsx" } },
+        ],
+      },
+    ],
+  };
+
+  it("emits the same step stream the transcript records, position for position", () => {
+    const derived = deriveSessionNodes(BODY);
+    const parsed = parseSessionNodes(TRANSCRIPT);
+
+    expect(derived.map((n) => [n.index, n.type, n.tool])).toEqual(parsed.map((n) => [n.index, n.type, n.tool]));
+    expect(derived.map((n) => n.text)).toEqual(parsed.map((n) => n.text));
+    expect(derived.map((n) => n.task)).toEqual(parsed.map((n) => n.task));
+  });
+
+  it("keeps text the transcript would have gisted away", () => {
+    const long = "x".repeat(400);
+    const [task, , tool] = deriveSessionNodes({
+      messages: [
+        { role: "user", content: long },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: long },
+            { type: "tool_use", name: "Bash", input: { command: long } },
+          ],
+        },
+      ],
+    });
+
+    expect(task?.text).toBe(long);
+    expect(tool?.text).toBe(`Bash(command=${long})`);
+  });
+
+  it("strips injected reminders from a task, and drops a turn left with nothing", () => {
+    const nodes = deriveSessionNodes({
+      messages: [
+        { role: "user", content: "Real ask<system-reminder>ignore me</system-reminder>" },
+        { role: "user", content: "<system-reminder>only context</system-reminder>" },
+      ],
+    });
+
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.text).toBe("Real ask");
+  });
+
+  it("attaches an errored result to the tool call it followed, not the next task", () => {
+    const nodes = deriveSessionNodes({
+      messages: [
+        { role: "user", content: "Go" },
+        { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "false" } }] },
+        { role: "user", content: [{ type: "tool_result", is_error: true, content: "boom" }, { type: "text", text: "Try again" }] },
+      ],
+    });
+
+    expect(nodes.map((n) => [n.type, n.tool])).toEqual([
+      ["task", null],
+      ["tool", "Bash(command=false)"],
+      ["error", "Bash(command=false)"],
+      ["task", null],
+    ]);
+    expect(nodes[2]?.task).toBe("Go");
+  });
+
+  it("keeps a spawn resolvable so the agent tree still links", () => {
+    const [, spawn] = deriveSessionNodes({
+      messages: [
+        { role: "user", content: "Go" },
+        { role: "assistant", content: [{ type: "tool_use", name: "Agent", input: { subagent_type: "Explore" } }] },
+      ],
+    });
+
+    expect(isAgentSpawn(spawn!)).toBe(true);
+    expect(spawnAgentType(spawn!)).toBe("Explore");
+  });
+
+  it("yields nothing for a body with no messages", () => {
+    expect(deriveSessionNodes({})).toEqual([]);
+    expect(deriveSessionNodes(null)).toEqual([]);
+    expect(deriveSessionNodes({ messages: "nope" })).toEqual([]);
+  });
+});
+
+describe("mergeSessionNodes", () => {
+  const derivedFor = (body: unknown) => deriveSessionNodes(body);
+
+  it("swaps in the untruncated text without moving a single index", () => {
+    const transcript = parseSessionNodes(TRANSCRIPT);
+    const long = "Fix the login bug so that ".repeat(20);
+    const derived = derivedFor({
+      messages: [
+        { role: "user", content: "Fix the login bug" },
+        { role: "assistant", content: [{ type: "text", text: long }, { type: "tool_use", name: "Read", input: { file_path: "/auth.ts" } }] },
+      ],
+    });
+
+    const merged = mergeSessionNodes(transcript, derived);
+    expect(merged.map((n) => n.index)).toEqual(transcript.map((n) => n.index));
+    expect(merged).toHaveLength(transcript.length);
+    // The task matched and stayed; the decision's gist differs, so it kept the transcript's.
+    expect(merged[0]?.text).toBe("Fix the login bug");
+    expect(merged[1]?.text).toBe("Reading the handler first.");
+  });
+
+  it("realigns after a turn the captured request never held", () => {
+    const transcript: SessionNode[] = [
+      { index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" },
+      { index: 1, type: "task", text: "Describe your most recent action…", tool: null, task: "Describe…" },
+      { index: 2, type: "decision", text: "Reading the handler fir…", tool: null, task: "Describe…" },
+    ];
+    const derived: SessionNode[] = [
+      { index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" },
+      { index: 1, type: "decision", text: "Reading the handler first, then the router.", tool: null, task: "Do the thing" },
+    ];
+
+    const merged = mergeSessionNodes(transcript, derived);
+    expect(merged.map((n) => n.index)).toEqual([0, 1, 2]);
+    expect(merged[1]?.text).toBe("Describe your most recent action…"); // the interleaved turn survives
+    expect(merged[2]?.text).toBe("Reading the handler first, then the router."); // and the tail still expands
+  });
+
+  it("expands a tool call whose gist was cut inside its parens", () => {
+    const gisted = 'Bash(command=grep -n "session" server/src/chat.ts | head…)';
+    const full = 'Bash(command=grep -n "session" server/src/chat.ts | head -50 && echo done)';
+    expect(isSameStep(gisted, full)).toBe(true);
+
+    const merged = mergeSessionNodes(
+      [{ index: 0, type: "tool", text: gisted, tool: gisted, task: null }],
+      [{ index: 0, type: "tool", text: full, tool: full, task: null }],
+    );
+    expect(merged[0]?.tool).toBe(full);
+  });
+
+  it("matches across the whitespace a transcript line collapses", () => {
+    expect(isSameStep("one two three", "one\n  two\tthree")).toBe(true);
+    expect(isSameStep("one two three", "one two four")).toBe(false);
+  });
+
+  it("leaves the transcript untouched when there is nothing to lay over it", () => {
+    const transcript = parseSessionNodes(TRANSCRIPT);
+    expect(mergeSessionNodes(transcript, [])).toBe(transcript);
   });
 });

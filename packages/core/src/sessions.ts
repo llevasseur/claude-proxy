@@ -418,3 +418,193 @@ export function parseSessionErrors(content: string): SessionError[] {
 
   return errors;
 }
+
+// --- Nodes derived from a captured request ---------------------------------
+//
+// The transcript is a *lossy* render of the same `messages[]` a captured request
+// carries: `proxy/session.mjs` gists every line to 160 chars and every recorded
+// tool arg to 60. The Request breakdown keeps the request whole, so re-running the
+// proxy's own grammar over that body yields the identical node stream with its text
+// intact. Same emission order, so node `index` matches the transcript's positionally
+// and the agent linkage built from transcripts still applies.
+
+/** Normalize a message `content` (string | block array) to a block array. */
+function asBlocks(content: unknown): Record<string, unknown>[] {
+  if (typeof content === "string") return [{ type: "text", text: content }];
+  if (!Array.isArray(content)) return [];
+  return content.filter((b): b is Record<string, unknown> => typeof b === "object" && b !== null);
+}
+
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/** Drop the harness-injected `<system-reminder>…</system-reminder>` context blocks. */
+const stripReminderBlocks = (s: string): string => s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "");
+
+/** The readable text of a `tool_result` block (string or nested block array). */
+function resultText(block: Record<string, unknown>): string {
+  const content = block.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((x) => (typeof x === "string" ? x : str((x as Record<string, unknown>)?.text))).join(" ");
+}
+
+/** Allowlist of identifying tool inputs, in the proxy's precedence order. */
+const ARG_KEYS = [
+  "file_path",
+  "notebook_path",
+  "path",
+  "command",
+  "pattern",
+  "glob",
+  "url",
+  "query",
+  "subagent_type",
+  "skill",
+  "cron",
+  "description",
+  "prompt",
+];
+
+/** The one identifying arg the proxy records for a call — here kept at full length. */
+function toolArgs(input: unknown): string {
+  if (typeof input !== "object" || input === null) return "";
+  const obj = input as Record<string, unknown>;
+  for (const k of ARG_KEYS) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim()) return `${k}=${v}`;
+  }
+  const k = Object.keys(obj).find((key) => ["string", "number", "boolean"].includes(typeof obj[key]));
+  return k ? `${k}=${String(obj[k])}` : "";
+}
+
+/**
+ * The thread's conversation root: its first real user text. Tool-result-only turns
+ * don't count. Mirrors `firstUserText` in `proxy/session.mjs` — the string the proxy
+ * hashes into a thread id — so a body can be matched back to the transcript it fed.
+ */
+export function firstUserText(messages: unknown): string {
+  if (!Array.isArray(messages)) return "";
+  for (const m of messages) {
+    if ((m as Record<string, unknown>)?.role !== "user") continue;
+    const text = asBlocks((m as Record<string, unknown>).content)
+      .filter((b) => b.type === "text")
+      .map((b) => str(b.text))
+      .join(" ")
+      .trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+/**
+ * Derive a transcript's node stream from a captured request body — the same
+ * task/decision/tool/error/done steps {@link parseSessionNodes} reads back, but with
+ * every text at full length. Pure and tolerant of malformed shapes: a body with no
+ * `messages` array yields no nodes.
+ *
+ * Emission order matches the proxy's: within a user turn, errored tool results come
+ * before the task they precede; within an assistant turn, the decision comes before
+ * the calls it explains.
+ */
+export function deriveSessionNodes(body: unknown): SessionNode[] {
+  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const messages = Array.isArray(obj.messages) ? obj.messages : [];
+
+  const nodes: SessionNode[] = [];
+  let task: string | null = null;
+  let lastTool: string | null = null;
+
+  const push = (type: SessionNodeType, text: string, tool: string | null) => {
+    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task });
+  };
+
+  for (const raw of messages) {
+    const msg = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+    const blocks = asBlocks(msg.content);
+
+    if (msg.role === "user") {
+      const texts: string[] = [];
+      for (const b of blocks) {
+        if (b.type === "text") texts.push(str(b.text));
+        else if (b.type === "tool_result" && b.is_error === true) {
+          push("error", resultText(b), lastTool);
+          lastTool = null;
+        }
+      }
+      const next = stripReminderBlocks(texts.join(" ")).trim();
+      if (next) {
+        task = next;
+        lastTool = null;
+        push("task", next, null);
+      }
+      continue;
+    }
+
+    if (msg.role !== "assistant") continue;
+
+    const texts: string[] = [];
+    const calls: string[] = [];
+    for (const b of blocks) {
+      if (b.type === "text") texts.push(str(b.text));
+      else if (b.type === "tool_use") calls.push(`${str(b.name) || "tool"}(${toolArgs(b.input)})`);
+      // `thinking` is skipped — neither a decision nor an outcome.
+    }
+    const reasoning = texts.join(" ").trim();
+
+    if (calls.length > 0) {
+      if (reasoning) push("decision", reasoning, null);
+      for (const sig of calls) {
+        lastTool = sig;
+        push("tool", sig, sig);
+      }
+    } else if (reasoning) {
+      push("done", reasoning, null);
+    }
+  }
+
+  return nodes;
+}
+
+/** The transcript's own normalization: every line it records is whitespace-collapsed. */
+const collapseWhitespace = (s: string): string => s.replace(/\s+/g, " ").trim();
+
+/**
+ * Whether `full` is the untruncated original of the transcript line `gisted`. A gist is the
+ * line collapsed and, past its cap, cut with an `…` — which for a tool call lands inside the
+ * parens rather than at the end, so match on whatever precedes it.
+ */
+export function isSameStep(gisted: string, full: string): boolean {
+  const one = collapseWhitespace(full);
+  if (one === gisted) return true;
+  const cut = gisted.indexOf("…");
+  return cut > 0 && one.startsWith(gisted.slice(0, cut));
+}
+
+/**
+ * Lay request-derived steps over a transcript's, which stays the authority on which steps
+ * exist: it is the live record, and the agent linkage (spawn/return indices) is built from
+ * its positions, so the merge preserves them exactly — the result is always the same length
+ * as `transcript`, with the same `index` on every node.
+ *
+ * The two are not positionally aligned. A transcript accumulates every request the proxy ever
+ * saw, so it also carries turns no single body holds — Claude Code's one-shot spinner prompts
+ * land mid-thread and shift everything after them. A captured request is therefore a
+ * *subsequence*: walk both, take the derived step wherever it matches the transcript line it
+ * expands, and otherwise keep the transcript's own abbreviated text.
+ */
+export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNode[]): SessionNode[] {
+  if (derived.length === 0) return transcript;
+
+  const merged: SessionNode[] = [];
+  let d = 0;
+  for (const step of transcript) {
+    const cand = derived[d];
+    if (cand && cand.type === step.type && isSameStep(step.text, cand.text)) {
+      merged.push({ ...cand, index: step.index });
+      d += 1;
+    } else {
+      merged.push(step);
+    }
+  }
+  return merged;
+}
