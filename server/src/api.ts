@@ -17,6 +17,8 @@ import {
   parseSessionErrors,
   sessionContextPeak,
   sessionSuggestionBuckets,
+  countSuggestionStatuses,
+  suggestionStatusRows,
   suggestFromBreakdown,
   summarizeBreakdownPatterns,
   withheldReport,
@@ -39,6 +41,9 @@ import {
   type SessionMeta,
   type SessionNode,
   type SessionSuggestion,
+  type SuggestionStatus,
+  type SuggestionStatusRow,
+  type SuggestionStatusUpdate,
   type SkimDigest,
   type SkimShape,
   type TopTool,
@@ -69,6 +74,7 @@ import {
   type SessionSummary,
 } from "./sessions.js";
 import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
+import { readSuggestionStatusStore, resolveSuggestionStatusPath, updateSuggestionStatusStore } from "./suggestion-status.js";
 import { readLaunchAliases } from "./shell-rc.js";
 
 export interface SummaryResponse {
@@ -453,6 +459,83 @@ export async function buildSessionSuggestionBucket(
     breakdown,
     breakdownSuggestions: suggestFromBreakdown(breakdown),
     meta: { files, parseErrors, requestsMissing: sessions.length - inputs.length },
+  };
+}
+
+export interface SuggestionStatusResponse {
+  rows: SuggestionStatusRow[];
+  meta: {
+    /** Where the flags are stored. */
+    statusFile: string;
+    /** Bucket indexes that exist, ascending — what a range can name. */
+    buckets: number[];
+    /** Bucket indexes the caller asked for that don't exist, if any. */
+    missing: number[];
+    /** Row counts per flag, over the rows returned. */
+    counts: Record<SuggestionStatus, number>;
+  };
+}
+
+/**
+ * The lean status list: every suggestion in the requested buckets with its flag,
+ * oldest bucket first. This is the list an agent reads to find what is still
+ * `pending` in a range of buckets without pulling each bucket's full drill-down —
+ * the row carries only what it takes to decide and the handle to mark it after.
+ *
+ * `buckets` omitted means every bucket; `statuses` omitted means all three flags.
+ * `detail` adds each suggestion's detail, evidence and sources — what a caller
+ * about to act on one needs, at the cost of a much larger response.
+ */
+export async function buildSuggestionStatus(
+  logDir: string,
+  filter: { buckets?: readonly number[]; statuses?: readonly SuggestionStatus[]; detail?: boolean } = {},
+): Promise<SuggestionStatusResponse> {
+  const [sessions, store] = await Promise.all([listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
+  const buckets = sessionSuggestionBuckets(sessions);
+  const existing = buckets.map((b) => b.index).sort((a, b) => a - b);
+  const rows = suggestionStatusRows(buckets, store, filter);
+  return {
+    rows,
+    meta: {
+      statusFile: resolveSuggestionStatusPath(logDir),
+      buckets: existing,
+      missing: (filter.buckets ?? []).filter((i) => !existing.includes(i)),
+      counts: countSuggestionStatuses(rows),
+    },
+  };
+}
+
+export interface SuggestionStatusUpdateResponse {
+  /** The updated rows, re-read through the same join the list uses. */
+  rows: SuggestionStatusRow[];
+  meta: { statusFile: string; updated: number; unknown: { bucket: number; id: string }[] };
+}
+
+/**
+ * Record flags for suggestions. Every update is applied — a suggestion whose rule
+ * has since stopped tripping keeps its flag rather than being dropped, so marking
+ * something done is not undone by the next recomputation. Updates naming a
+ * bucket/id pair no suggestion currently carries are still written, and reported
+ * under `unknown` so a typo is visible instead of silent.
+ */
+export async function applySuggestionStatus(
+  logDir: string,
+  updates: readonly SuggestionStatusUpdate[],
+  now: Date = new Date(),
+): Promise<SuggestionStatusUpdateResponse> {
+  if (updates.length === 0) throw new Error("no suggestion status updates given");
+  const store = await updateSuggestionStatusStore(logDir, updates, now);
+  const buckets = sessionSuggestionBuckets(await listSessionGraphs(logDir));
+  const touched = [...new Set(updates.map((u) => u.bucket))];
+  const rows = suggestionStatusRows(buckets, store, { buckets: touched });
+  const known = new Set(rows.map((r) => `${r.bucket} ${r.id}`));
+  return {
+    rows: rows.filter((r) => updates.some((u) => u.bucket === r.bucket && u.id === r.id)),
+    meta: {
+      statusFile: resolveSuggestionStatusPath(logDir),
+      updated: updates.length,
+      unknown: updates.filter((u) => !known.has(`${u.bucket} ${u.id}`)).map((u) => ({ bucket: u.bucket, id: u.id })),
+    },
   };
 }
 
