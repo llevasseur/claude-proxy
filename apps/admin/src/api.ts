@@ -130,6 +130,11 @@ export interface SessionsGraphResponse {
   sessions: SessionGraphEntry[];
   meta: { sessionsDir: string; total: number };
 }
+/** Node index → the whole text behind that step's truncated one-line gist. Sparse. */
+export interface SessionNodeTextsResponse {
+  threadId: string;
+  texts: Record<number, string>;
+}
 /** One transcript's steps re-derived from the captured request that holds them untruncated. */
 export interface SessionThreadNodes {
   threadId: string;
@@ -323,6 +328,8 @@ export const getSession = (id: string) =>
   get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
 export const getSessionErrors = (id: string) =>
   get<SessionErrorsResponse>(`/api/sessions/errors?id=${encodeURIComponent(id)}`);
+export const getSessionNodeTexts = (id: string) =>
+  get<SessionNodeTextsResponse>(`/api/sessions/node-text?id=${encodeURIComponent(id)}`);
 export const getSessionBreakdown = (id: string) =>
   get<SessionBreakdownResponse>(`/api/sessions/breakdown?id=${encodeURIComponent(id)}`);
 /** Every ten-session window, recomputed server-side on each load — this is the backfill. */

@@ -2064,6 +2064,16 @@ a.pager-btn:hover {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* Opened: capped in height so a whole prompt scrolls instead of swamping the drawer. */
+.gi-text.is-full {
+  max-height: 42vh;
+  overflow-y: auto;
+  margin-top: 2px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
 .gi-more {
   display: block;
   margin-top: 4px;
@@ -2073,6 +2083,9 @@ a.pager-btn:hover {
   background: none;
   border: none;
   cursor: pointer;
+}
+.gi-more:hover {
+  text-decoration: underline;
 }
 .gi-note {
   font-size: 12px;

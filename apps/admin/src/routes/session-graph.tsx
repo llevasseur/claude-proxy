@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InterruptionKind, SessionNode } from "@claude-proxy/core";
 import { mergeSessionNodes, spawnAgentType } from "@claude-proxy/core";
 import type { SessionGraphEntry } from "../api";
-import { getSessionGraphNodes, getSessionsGraph } from "../api";
+import { getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from "../api";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 /**
@@ -1052,6 +1052,11 @@ function SessionNav({
   );
 }
 
+/**
+ * Node details drawer. Transcript lines are one-line gists; the whole text comes
+ * from a sidecar fetched per open drawer, empty for sessions captured before the
+ * proxy wrote one.
+ */
 function Inspector({
   panelRef,
   selection,
@@ -1072,7 +1077,50 @@ function Inspector({
   onFocusAgent: (id: string) => void;
 }) {
   if (!selection) return null;
+  // Remount per selection so a step opened after the last fetch pulls its own text.
+  return (
+    <InspectorBody
+      key={`${selection.entry.threadId}:${selection.node?.index ?? "root"}`}
+      panelRef={panelRef}
+      selection={selection}
+      byId={byId}
+      sources={sources}
+      wide={wide}
+      onToggleWide={onToggleWide}
+      onClose={onClose}
+      onFocusAgent={onFocusAgent}
+    />
+  );
+}
+
+function InspectorBody({
+  panelRef,
+  selection,
+  byId,
+  sources,
+  wide,
+  onToggleWide,
+  onClose,
+  onFocusAgent,
+}: {
+  panelRef: Ref<HTMLElement>;
+  selection: Selection;
+  byId: Map<string, SessionGraphEntry>;
+  sources: Map<string, string>;
+  wide: boolean;
+  onToggleWide: () => void;
+  onClose: () => void;
+  onFocusAgent: (id: string) => void;
+}) {
   const { entry, node } = selection;
+  const texts = useQuery({
+    queryKey: ["session-node-text", entry.threadId],
+    queryFn: () => getSessionNodeTexts(entry.threadId),
+  });
+  /** The whole text behind step `index`, when the sidecar recorded one. */
+  const fullText = (index: number | null): string | undefined =>
+    index === null ? undefined : texts.data?.texts[index];
+
   const source = sources.get(entry.threadId);
   const agentType = node ? spawnAgentType(node) : null;
   const isAgent = !node && entry.parentThreadId !== null;
@@ -1111,7 +1159,11 @@ function Inspector({
           <>
             {node.task ? (
               <Field label="Task">
-                <LongText key={`t:${entry.threadId}:${node.index}`} text={node.task} />
+                <ExpandableText
+                  key={`t:${entry.threadId}:${node.index}`}
+                  text={node.task}
+                  full={fullText(taskIndexFor(entry.nodes, node))}
+                />
               </Field>
             ) : null}
             {node.tool ? (
@@ -1120,7 +1172,11 @@ function Inspector({
               </Field>
             ) : null}
             <Field label="Detail">
-              {node.text ? <LongText key={`d:${entry.threadId}:${node.index}`} text={node.text} /> : <p className="gi-text">—</p>}
+              <ExpandableText
+                key={`d:${entry.threadId}:${node.index}`}
+                text={node.text || "—"}
+                full={fullText(node.index)}
+              />
             </Field>
             <Field label="Step">#{node.index}</Field>
             {node.interrupted ? (
@@ -1156,7 +1212,9 @@ function Inspector({
                 <Field label="Spawned by">{parent ? `${entryLabel(parent)} · step #${entry.spawnIndex}` : "—"}</Field>
               </>
             ) : null}
-            <Field label="First task">{entry.firstTask ?? "—"}</Field>
+            <Field label="First task">
+              <ExpandableText text={entry.firstTask ?? "—"} full={fullText(firstTaskIndex(entry.nodes))} />
+            </Field>
             <div className="gi-stats">
               <Stat label="tasks" value={entry.tasks} />
               <Stat label="tools" value={entry.tools} />
@@ -1194,6 +1252,28 @@ function agentStatus(agent: SessionGraphEntry): ReactNode {
   );
 }
 
+/** The step whose `## Task:` heading a node falls under — where that task's whole text lives. */
+function taskIndexFor(nodes: SessionNode[], node: SessionNode): number | null {
+  if (node.type === "task") return node.index;
+  let found: number | null = null;
+  for (const n of nodes) {
+    if (n.index >= node.index) break;
+    if (n.type === "task") found = n.index;
+  }
+  return found;
+}
+
+const firstTaskIndex = (nodes: SessionNode[]): number | null => nodes.find((n) => n.type === "task")?.index ?? null;
+
+/**
+ * A gist plus the whole text the transcript line cut short, when the sidecar recorded one.
+ * The fuller text is what gets rendered; {@link LongText} keeps it from flooding the drawer.
+ */
+function ExpandableText({ text, full }: { text: string; full?: string }) {
+  const whole = full !== undefined && full.trim() !== "" ? full : text;
+  return <LongText text={whole} />;
+}
+
 /** Past this much text a value is folded away until asked for. */
 const LONG_TEXT_CHARS = 280;
 
@@ -1205,7 +1285,8 @@ const LONG_TEXT_CHARS = 280;
 function LongText({ text, mono }: { text: string; mono?: boolean }) {
   const [open, setOpen] = useState(false);
   const long = text.length > LONG_TEXT_CHARS;
-  const cls = `gi-text${mono ? " mono-break" : ""}${long && !open ? " is-clamped" : ""}`;
+  // Opened, it scrolls within the drawer rather than pushing the fields below it off-screen.
+  const cls = `gi-text${mono ? " mono-break" : ""}${long ? (open ? " is-full" : " is-clamped") : ""}`;
 
   return (
     <>

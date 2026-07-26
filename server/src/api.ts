@@ -61,9 +61,11 @@ import {
   listSessionGraphs,
   listSessions,
   readSession,
+  readSessionNodeTexts,
   threadIdForBody,
   type SessionDetail,
   type SessionGraph,
+  type SessionNodeTexts,
   type SessionSummary,
 } from "./sessions.js";
 import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
@@ -305,6 +307,17 @@ export interface SessionsGraphResponse {
 export async function buildSessionsGraph(logDir: string): Promise<SessionsGraphResponse> {
   const sessions = await listSessionGraphs(logDir);
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
+}
+
+export type SessionNodeTextsResponse = SessionNodeTexts;
+
+/**
+ * The untruncated text behind one session's truncated node lines. Kept off the
+ * polling `/api/sessions/graph`, where it would dwarf the gists. `id` is validated
+ * downstream.
+ */
+export async function buildSessionNodeTexts(logDir: string, id: string): Promise<SessionNodeTextsResponse> {
+  return readSessionNodeTexts(logDir, id);
 }
 
 export interface SessionResponse {

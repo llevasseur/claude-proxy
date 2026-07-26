@@ -11,6 +11,7 @@ import {
   buildSession,
   buildSessionBreakdown,
   buildSessionErrors,
+  buildSessionNodeTexts,
   buildSessions,
   buildSessionGraphNodes,
   buildSessionsGraph,
@@ -391,6 +392,21 @@ const server = http.createServer(async (req, res) => {
       case "/api/sessions/graph":
         send(res, 200, await buildSessionsGraph(LOG_DIR));
         return;
+      case "/api/sessions/node-text": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildSessionNodeTexts(LOG_DIR, id));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
+          else throw err;
+        }
+        return;
+      }
       case "/api/sessions/graph/nodes": {
         const id = url.searchParams.get("id");
         if (!id) {
