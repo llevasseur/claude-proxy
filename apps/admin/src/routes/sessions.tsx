@@ -1,3 +1,4 @@
+import { sessionName } from "@claude-proxy/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -273,31 +274,7 @@ function SessionsTable({ sessions }: { sessions: SessionSummary[] }) {
               onClick={() => navigate({ to: "/sessions/$id", params: { id: s.threadId } })}
             >
               <td>
-                {s.title ? (
-                  <>
-                    <div className="session-title">{s.title}</div>
-                    <Link
-                      to="/sessions/$id"
-                      params={{ id: s.threadId }}
-                      className="link mono-break session-id"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {s.threadId}
-                    </Link>
-                  </>
-                ) : (
-                  <Link
-                    to="/sessions/$id"
-                    params={{ id: s.threadId }}
-                    className="link mono-break"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {s.threadId}
-                  </Link>
-                )}
-                {(s.subtitle ?? s.firstTask) && (
-                  <div className="muted session-preview">{s.subtitle ?? s.firstTask}</div>
-                )}
+                <SessionCell session={s} />
               </td>
               <td className="mono-break">{s.model ?? "—"}</td>
               <td className="num">{fmtInt(s.tasks)}</td>
@@ -322,6 +299,35 @@ function SessionsTable({ sessions }: { sessions: SessionSummary[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * A row's name: whatever the transcript calls itself, headlined, with the thread id
+ * kept underneath as the mono link to copy or open. Only a transcript that offers no
+ * name at all — no title, no derived name, no opening prompt — leads with its id.
+ */
+function SessionCell({ session }: { session: SessionSummary }) {
+  const name = sessionName(session);
+  const preview = session.subtitle ?? session.firstTask;
+  const idLink = (
+    <Link
+      to="/sessions/$id"
+      params={{ id: session.threadId }}
+      className={`link mono-break${name ? " session-id" : ""}`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {session.threadId}
+    </Link>
+  );
+
+  return (
+    <>
+      {name && <div className="session-title">{name}</div>}
+      {idLink}
+      {/* The preview is the prompt in full; skip it when the name already is that prompt. */}
+      {preview && preview !== name && <div className="muted session-preview">{preview}</div>}
+    </>
   );
 }
 

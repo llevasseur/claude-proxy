@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { sessionName } from "@claude-proxy/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import type { SessionDetail } from "../api";
@@ -106,13 +107,14 @@ function StartingBody({ sessionId, gaveUp }: { sessionId: string; gaveUp: boolea
 function SessionBody({ session }: { session: SessionDetail }) {
   const [view, setView] = useState<"pretty" | "raw">("pretty");
   const { meta } = session;
+  const name = sessionName(meta);
 
   return (
     <>
-      {(meta.title || meta.subtitle) && (
+      {(name || meta.subtitle) && (
         <div className="session-heading">
-          {meta.title && <div className="session-title">{meta.title}</div>}
-          {meta.subtitle && <div className="muted">{meta.subtitle}</div>}
+          {name && <div className="session-title">{name}</div>}
+          {meta.subtitle && meta.subtitle !== name && <div className="muted">{meta.subtitle}</div>}
         </div>
       )}
 
