@@ -233,6 +233,37 @@ renders an "open transcript" link straight to `/sessions/$id`. It is not predict
 proxy fingerprints a thread from the first user message *as it went over the wire*, which
 the CLI wraps in harness context this side never sees.
 
+**Starting a session goes to that session's page.** The turn *is* the session, so watching
+it from a list of every other session buries it; a send now navigates straight to
+`/sessions/$id` and the reply lands there. The complication is that at the moment of
+navigating there is no thread id to navigate to — see above, it is a fingerprint of a
+request that has not been sent yet. So the session route accepts the *chat session id* as
+well, which the dashboard chose before the first turn: it is a uuid, and a thread id is 16
+hex characters, so the two can never be confused. That page polls
+`GET /api/chat/thread?sessionId=`, which answers from the sessions dir rather than the
+in-memory map — so it survives a server restart and outlives the turn — and replaces the URL
+with the thread id the moment the transcript exists. Measured at ~2s on a real turn, which
+is while the turn is still running rather than after it. Until then the page says it is
+waiting for the transcript. A reload on the pre-resolution URL still lands on the transcript,
+because the lookup reads from disk and needs nothing the tab was holding.
+
+**The conversation follows you there.** It used to live in the Sessions page's own component
+state, which made starting a session and *reading* it mutually exclusive: navigating to the
+transcript unmounted the card and took the turn log, the Stop button and the pending prompt
+with it. It is held above the router instead, and rendered on the session page too — between
+the stats and the transcript, in a section that shows the prompt that was sent and the reply
+when it lands, with an input to carry on from there. The transcript below is the durable
+record and lags a turn behind; this is the turn as it happens. It renders only for the
+session it belongs to, so every session Claude Code left behind is unchanged.
+
+**The prompt in flight is shown as a turn.** The server returns history only once the turn
+resolves and an agent turn can run for an hour, so a page you were just navigated to would
+otherwise sit empty with nothing saying what it is working on. The prompt is rendered as a
+user turn the moment it is handed off, above a `Working…` placeholder. For the same reason
+the session page suppresses its own running-turn Stop bar when *this* tab is the one running
+the turn — the chat section already offers that turn's Stop, and two of them invite pressing
+the second after the first has taken.
+
 **The input** is the shadcn AI prompt-input anatomy — one auto-growing textarea, Enter to
 send, Shift+Enter for a newline, IME-safe, a button that disables while a send is in
 flight. It is hand-rolled: this app styles itself with plain CSS tokens and has no Tailwind
@@ -308,6 +339,23 @@ server accepts; everything else stays read-only.
       real tool, and the proxy's transcript shows both — proven end to end, on turn one.
 - [x] A `chat` turn on the same server still reports zero tools, so the mode is additive.
 - [x] `agent` requested over `CHAT_TRANSPORT=api` is rejected rather than downgraded.
+- [x] Starting a session navigates to `/sessions/$id` immediately, addressed by the chat
+      session id, without waiting on the turn.
+- [x] `GET /api/chat/thread?sessionId=` answers the transcript's thread id, `null` while it
+      has yet to be written, and `400` with no `sessionId`. Confirmed live against an
+      existing transcript, an unknown id, and a real turn — which resolved ~2s in, while the
+      turn was still running.
+- [x] That page replaces its URL with the thread id once it resolves, so the address bar,
+      a reload and a shared link all end on the transcript.
+- [x] The session page carries a chat section between the stats and the transcript showing
+      the prompt that was sent and the reply when it lands, and an input that continues the
+      session from there. Confirmed live that the resolved transcript's `- session:` id is
+      the chat's own session id, which is what attaches the section to the page.
+- [x] The conversation survives the navigation — turn log, usage, tool chips, Stop and the
+      prompt in flight — because it is held above the router rather than in the Sessions
+      page's state.
+- [x] A start that fails after navigating still shows its error on the session page rather
+      than dropping the section for want of a turn.
 
 ## Open questions
 
@@ -339,8 +387,16 @@ server accepts; everything else stays read-only.
 - **Stopping is not resuming.** A stopped turn returns what it had, and the session stays
   open for a follow-up, but the CLI's own view of that turn ended mid-flight; the next turn
   resumes a session whose last turn was cut off rather than continuing the work in place.
-- **No UI screenshot evidence.** Browser automation was unavailable in the session that
-  built this, so the page was verified through the API and the build, not visually.
+- **No UI screenshot evidence.** Browser automation was unavailable in the sessions that
+  built this and that added the navigate-on-start flow, so the pages were verified through
+  the API, the typecheck and the build, not visually. The navigation change in particular
+  was proven at its seams — the resolve route against a real transcript and a real turn, and
+  the id that attaches the chat section to the session page — but nobody has watched it
+  happen.
+- **The chat is one at a time, and in memory.** Held above the router now rather than in a
+  page, so it survives navigation, but not a reload and not a second concurrent chat.
+  "New chat" still evicts it. A tab reloaded onto a pre-resolution URL recovers the
+  transcript and loses the turn log.
 
 ## Related
 

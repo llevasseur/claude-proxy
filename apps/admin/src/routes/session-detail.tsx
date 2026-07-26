@@ -1,23 +1,60 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import type { SessionDetail } from "../api";
-import { getRunningChats, getSession, getSessionBreakdown, stopChat } from "../api";
+import { getChatThread, getRunningChats, getSession, getSessionBreakdown, stopChat } from "../api";
+import { useChatSession } from "../chat-session";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { ChatConversation } from "../components/ChatConversation";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { Markdown } from "../components/Markdown";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
 import { useLiveQuery } from "../useLiveQuery";
 
+/**
+ * A chat session id, which this route also accepts.
+ *
+ * Starting a session from the dashboard navigates here immediately, and at that moment the
+ * only id that exists is the one the dashboard chose — the proxy fingerprints a thread from
+ * the first request *as it goes over the wire*, so the thread id cannot be known in advance.
+ * Thread ids are 16 hex characters, so a uuid is unambiguously the other kind of id.
+ */
+const CHAT_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** How often to re-ask which transcript a just-started chat became. */
+const THREAD_POLL_MS = 2_000;
+
 export function SessionDetailPage() {
   const { id } = useParams({ from: "/sessions/$id" });
+  const navigate = useNavigate();
+  const isChatId = CHAT_SESSION_ID_RE.test(id);
+
+  // Only while this page is addressed by a chat session id: poll for the transcript the
+  // proxy is writing, then replace the URL with the thread id so the page becomes the
+  // ordinary session page — and so a reload or a shared link still lands on the transcript.
+  const thread = useQuery({
+    queryKey: ["chat", "thread", id],
+    queryFn: () => getChatThread(id),
+    enabled: isChatId,
+    refetchInterval: THREAD_POLL_MS,
+  });
+  const resolved = thread.data?.threadId ?? null;
+  useEffect(() => {
+    if (resolved) navigate({ to: "/sessions/$id", params: { id: resolved }, replace: true });
+  }, [resolved, navigate]);
+
   const query = useQuery({
     queryKey: ["session", id],
     queryFn: () => getSession(id),
+    enabled: !isChatId,
   });
   // Stream live appends into the same cache key; the query above is the fallback.
-  const live = useLiveQuery(`/api/sessions/session/stream?id=${encodeURIComponent(id)}`, ["session", id]);
+  const live = useLiveQuery(
+    `/api/sessions/session/stream?id=${encodeURIComponent(id)}`,
+    ["session", id],
+    !isChatId,
+  );
   const session = query.data?.session;
 
   return (
@@ -29,14 +66,32 @@ export function SessionDetailPage() {
         <span className="crumb-current">{id}</span>
       </Breadcrumbs>
       <div className="pagehead">
-        <h1 className="mono-break">{id}</h1>
-        <LiveIndicator status={live} />
+        <h1 className="mono-break">{isChatId ? "New session" : id}</h1>
+        {!isChatId && <LiveIndicator status={live} />}
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
-        {session && <SessionBody session={session} />}
-      </QueryState>
+      {isChatId ? (
+        <StartingBody sessionId={id} />
+      ) : (
+        <QueryState isLoading={query.isLoading} error={query.error}>
+          {session && <SessionBody session={session} />}
+        </QueryState>
+      )}
     </section>
+  );
+}
+
+/**
+ * This page before its transcript exists: the chat that was just started, with the stats
+ * and the transcript still to come. Both appear on their own once the proxy has written
+ * the first request and the URL swaps itself for the thread id.
+ */
+function StartingBody({ sessionId }: { sessionId: string }) {
+  return (
+    <>
+      <SessionChatPanel sessionId={sessionId} />
+      <div className="card empty">Waiting for the proxy to write this session's transcript…</div>
+    </>
   );
 }
 
@@ -71,6 +126,11 @@ function SessionBody({ session }: { session: SessionDetail }) {
         </div>
       )}
 
+      {/* Between the stats and the transcript: what was asked and what came back, for a
+          session started from this dashboard. The transcript below is the durable record
+          and lags a turn behind; this is the conversation as it happens. */}
+      {meta.sessionId && <SessionChatPanel sessionId={meta.sessionId} />}
+
       <div className="card">
         <div className="card-head">
           <h2>Transcript</h2>
@@ -95,6 +155,32 @@ function SessionBody({ session }: { session: SessionDetail }) {
   );
 }
 
+/**
+ * The live chat for this session, when this session is the one the dashboard started.
+ *
+ * The chat is held above the router, so navigating here from the start card keeps the turn
+ * log, the prompt in flight and the Stop button; the input carries on the conversation from
+ * the transcript itself. Renders nothing for every other session — which is every session
+ * Claude Code left behind, and any dashboard chat but the current one.
+ */
+function SessionChatPanel({ sessionId }: { sessionId: string }) {
+  const { sessionId: liveId, chat, pendingPrompt, sendError } = useChatSession();
+  // `sendError` counts: a start that failed after this page was navigated to has no turn
+  // and no reply, and dropping the panel would leave the reason nowhere on screen.
+  if (liveId !== sessionId || (!chat && !pendingPrompt && !sendError)) return null;
+
+  const mode = chat?.session.mode ?? "agent";
+  return (
+    <div className="card chat-starter">
+      <div className="card-head">
+        <h2>{mode === "agent" ? "Agent" : "Chat"} conversation</h2>
+        <span className="muted">started from this dashboard</span>
+      </div>
+      <ChatConversation placeholder="Reply…" />
+    </div>
+  );
+}
+
 /** How often to re-ask whether this session's turn is still running. */
 const RUNNING_POLL_MS = 3_000;
 /** Shared so stopping a turn can invalidate the poll it answers. */
@@ -109,10 +195,13 @@ const RUNNING_KEY = ["chat", "running"];
  * chat's CLI session id is the same `session:` this transcript records, so this page can
  * recognise itself in that list and stop the turn without the starting tab.
  *
- * Renders nothing at all when this session has no turn running.
+ * Renders nothing at all when this session has no turn running, and nothing when *this*
+ * tab is the one running it — the chat panel below already offers that turn's Stop, and
+ * two Stop buttons for one turn invite pressing the second after the first has taken.
  */
 function RunningChatBar({ sessionId }: { sessionId: string }) {
   const client = useQueryClient();
+  const live = useChatSession();
   const running = useQuery({
     queryKey: RUNNING_KEY,
     queryFn: getRunningChats,
@@ -125,7 +214,7 @@ function RunningChatBar({ sessionId }: { sessionId: string }) {
     onSuccess: () => client.invalidateQueries({ queryKey: RUNNING_KEY }),
   });
   const chat = running.data?.running.find((r) => r.sessionId === sessionId);
-  if (!chat) return null;
+  if (!chat || (live.sessionId === sessionId && live.isSending)) return null;
 
   // What it is really running under, which is the answer when a turn is full of denials.
   const permission = chat.effectivePermissionMode ?? chat.permissionMode;

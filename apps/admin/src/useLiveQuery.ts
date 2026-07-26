@@ -11,14 +11,21 @@ export type LiveStatus = "connecting" | "live" | "offline";
  * without polling. The paired one-shot query still runs, providing the initial value
  * and a fallback: when SSE is unavailable the status is `offline` and that query stays
  * in charge. Returns the current connection status.
+ *
+ * `enabled: false` holds the connection open-ended — for a page whose id is not one the
+ * stream knows yet, where subscribing would only earn a 404 and an `offline` badge.
  */
-export function useLiveQuery<T>(path: string, queryKey: QueryKey): LiveStatus {
+export function useLiveQuery<T>(path: string, queryKey: QueryKey, enabled = true): LiveStatus {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<LiveStatus>("connecting");
   // Stable dep for the (array) query key without re-subscribing on every render.
   const keyId = JSON.stringify(queryKey);
 
   useEffect(() => {
+    if (!enabled) {
+      setStatus("connecting");
+      return;
+    }
     if (typeof EventSource === "undefined") {
       setStatus("offline");
       return;
@@ -41,7 +48,7 @@ export function useLiveQuery<T>(path: string, queryKey: QueryKey): LiveStatus {
     es.onerror = () => setStatus(es.readyState === EventSource.CLOSED ? "offline" : "connecting");
 
     return () => es.close();
-  }, [path, keyId, queryClient]);
+  }, [path, keyId, queryClient, enabled]);
 
   return status;
 }
