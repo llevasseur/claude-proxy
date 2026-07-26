@@ -9,6 +9,8 @@
     "node": ">=18"
   },
   "scripts": {
+    "setup:env": "bash scripts/proxy-store-env.sh --setup",
+    "check:env": "bash scripts/proxy-store-env.sh --check",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",

@@ -1,6 +1,9 @@
 # Architecture Decision Records
 
-Numbered records of significant, hard-to-reverse decisions. List them:
+Numbered records of significant, hard-to-reverse decisions. The convention itself is
+recorded in [0001 — Record architecture decisions](0001-record-architecture-decisions.md):
+decisions are append-only, so a reversal is a new ADR that supersedes the old one rather
+than an edit. List them:
 
     okq find --type adr
 

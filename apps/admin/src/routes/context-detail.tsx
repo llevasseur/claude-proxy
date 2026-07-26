@@ -165,7 +165,7 @@ function MessagesTable({ file, messages }: { file: string; messages: BreakdownMe
                     className="link"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {m.index}
+                    {m.index + 1}
                   </Link>
                 </td>
                 <td>{m.role}</td>

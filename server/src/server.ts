@@ -9,9 +9,11 @@ import {
   buildProjectMemories,
   buildProjects,
   buildSession,
+  buildSessionBreakdown,
   buildSessionErrors,
   buildSessionNodeTexts,
   buildSessions,
+  buildSessionGraphNodes,
   buildSessionsGraph,
   buildSkim,
   buildSkimTrend,
@@ -23,6 +25,7 @@ import {
   buildFilters,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
+import { continueChat, endChat, listRunningChats, resolveChatConfig, startChat, stopChat } from "./chat.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
@@ -33,14 +36,44 @@ const LOG_DIR = resolveLogDir();
 const ARCHIVE_DIR = resolveArchiveDir();
 const PROJECTS_DIR = resolveProjectsDir();
 
+/** Everything but the chat routes is a read-only view of already-captured logs. */
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, OPTIONS",
   "access-control-allow-headers": "*",
 };
 
-function send(res: http.ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { "content-type": "application/json", ...CORS });
+/** The write surface: the only routes that are not read-only GETs. */
+const CHAT_ROUTES = new Set(["/api/chat/sessions", "/api/chat/sessions/message", "/api/chat/sessions/end", "/api/chat/stop"]);
+
+/**
+ * Origins allowed to POST those routes — the dashboard's dev server by default,
+ * overridable with a comma-separated `CHAT_ALLOWED_ORIGINS`.
+ *
+ * They cannot share the read-only `*`: a POST here can start an agent turn, which runs
+ * commands in this checkout. A request that *declares* another origin is refused
+ * outright, rather than relying on the browser to withhold the response.
+ */
+const CHAT_ORIGINS = (process.env.CHAT_ALLOWED_ORIGINS ?? "http://localhost:5173,http://127.0.0.1:5173")
+  .split(",")
+  .map((o) => o.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
+const originAllowed = (origin: string | undefined): boolean => !origin || CHAT_ORIGINS.includes(origin);
+
+function chatCors(origin: string | undefined): Record<string, string> {
+  const headers: Record<string, string> = {
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    // The answer depends on the request's origin, so a cache must not reuse it across them.
+    vary: "origin",
+  };
+  if (origin && CHAT_ORIGINS.includes(origin)) headers["access-control-allow-origin"] = origin;
+  return headers;
+}
+
+function send(res: http.ServerResponse, status: number, body: unknown, cors: Record<string, string> = CORS): void {
+  res.writeHead(status, { "content-type": "application/json", ...cors });
   res.end(JSON.stringify(body));
 }
 
@@ -140,14 +173,69 @@ function parseDate(raw: string | null): string | undefined {
   return raw && DATE_RE.test(raw) ? raw : undefined;
 }
 
+const MAX_BODY_BYTES = 1_000_000;
+
+async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    bytes += (chunk as Buffer).length;
+    if (bytes > MAX_BODY_BYTES) throw new Error(`request body larger than ${MAX_BODY_BYTES} bytes`);
+    chunks.push(chunk as Buffer);
+  }
+  if (bytes === 0) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new Error("request body is not valid JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("request body must be a JSON object");
+  return parsed as Record<string, unknown>;
+}
+
+/** Map a chat failure onto a status. */
+function chatErrorStatus(msg: string): number {
+  if (msg.startsWith("chat session not found")) return 404;
+  if (msg.startsWith("chat is not configured")) return 503;
+  if (msg.startsWith("chat request") || msg.startsWith("chat cli") || msg.startsWith("claude cli") || msg.startsWith("anthropic stream error")) {
+    return 502;
+  }
+  return 400; // invalid prompt / missing sessionId / malformed body
+}
+
+async function serveChat(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  handler: (body: Record<string, unknown>) => Promise<unknown>,
+): Promise<void> {
+  const origin = req.headers.origin;
+  const cors = chatCors(origin);
+  if (!originAllowed(origin)) {
+    send(res, 403, { error: `origin not allowed: ${origin}` }, cors);
+    return;
+  }
+  if (req.method !== "POST") {
+    send(res, 405, { error: `method not allowed: ${req.method}` }, cors);
+    return;
+  }
+  try {
+    send(res, 200, await handler(await readJsonBody(req)), cors);
+  } catch (err) {
+    const msg = (err as Error).message;
+    send(res, chatErrorStatus(msg), { error: msg }, cors);
+  }
+}
+
 const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+
   if (req.method === "OPTIONS") {
-    res.writeHead(204, CORS);
+    res.writeHead(204, CHAT_ROUTES.has(url.pathname) ? chatCors(req.headers.origin) : CORS);
     res.end();
     return;
   }
 
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const date = parseDate(url.searchParams.get("date"));
 
   try {
@@ -317,6 +405,22 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      case "/api/sessions/graph/nodes": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildSessionGraphNodes(LOG_DIR, id));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
+          else if (msg.startsWith("session not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
       case "/api/sessions/session": {
         const id = url.searchParams.get("id");
         if (!id) {
@@ -325,6 +429,22 @@ const server = http.createServer(async (req, res) => {
         }
         try {
           send(res, 200, await buildSession(LOG_DIR, id));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
+          else if (msg.startsWith("session not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/sessions/breakdown": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildSessionBreakdown(LOG_DIR, id));
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
@@ -349,6 +469,43 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      // The chat routes: the only paths that send a request out through the proxy.
+      case "/api/chat/config":
+        send(res, 200, await resolveChatConfig());
+        return;
+      // Which turns are in flight. A read, so it keeps the open CORS the other GETs have;
+      // it names running sessions, never their content.
+      case "/api/chat/running":
+        send(res, 200, { running: listRunningChats() });
+        return;
+      case "/api/chat/sessions":
+        await serveChat(req, res, (body) =>
+          startChat(
+            {
+              prompt: body.prompt,
+              model: body.model,
+              maxTokens: body.maxTokens,
+              system: body.system,
+              mode: body.mode,
+              // The dashboard names the session up front so it can stop the first turn.
+              sessionId: body.sessionId,
+              permissionMode: body.permissionMode,
+            },
+            LOG_DIR,
+          ),
+        );
+        return;
+      case "/api/chat/sessions/message":
+        await serveChat(req, res, (body) => continueChat({ sessionId: body.sessionId, prompt: body.prompt }, LOG_DIR));
+        return;
+      // Ends the turn, not the session: the in-flight send returns what it had.
+      case "/api/chat/stop":
+        await serveChat(req, res, async (body) => stopChat({ sessionId: body.sessionId }));
+        return;
+      // Ends the session: "New chat" evicts it rather than leaving it resident forever.
+      case "/api/chat/sessions/end":
+        await serveChat(req, res, async (body) => endChat({ sessionId: body.sessionId }));
+        return;
       case "/api/skim":
         send(res, 200, await buildSkim(LOG_DIR, date));
         return;
@@ -373,7 +530,21 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
+server.listen(PORT, HOST, async () => {
   console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
+  const chat = await resolveChatConfig();
+  console.log(
+    `[claude-proxy-server] chat sends ${chat.model} through ${chat.baseUrl} over the ${chat.transport} transport` +
+      ` in ${chat.mode} mode` +
+      (chat.ready ? "" : ` (disabled: ${chat.readyHint})`),
+  );
+  // Agent mode can write to the repo, so say so at startup rather than only in docs.
+  if (chat.mode === "agent" && chat.agent) {
+    const { cwd, alias, aliasFound, flags, permissionMode } = chat.agent;
+    const mirrors = aliasFound
+      ? `mirroring the \`${alias}\` alias${flags.disallowedTools.length ? ` (withholding ${flags.disallowedTools.join(", ")})` : ""}`
+      : `no \`${alias}\` alias found — running a bare claude`;
+    console.log(`[claude-proxy-server] agent turns run in ${cwd} with tools (${permissionMode} by default, per-session on the form), ${mirrors}`);
+  }
 });

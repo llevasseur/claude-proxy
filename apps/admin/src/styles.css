@@ -97,17 +97,6 @@ button:focus-visible {
 .brand-sep {
   color: var(--signal);
 }
-.brand-tag {
-  margin-left: 2px;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 7px;
-}
 
 /* stations */
 .stations {
@@ -117,34 +106,20 @@ button:focus-visible {
   gap: 2px;
   margin-top: 30px;
 }
-.stations::before {
-  content: "";
-  position: absolute;
-  left: 12px;
-  top: 16px;
-  bottom: 16px;
-  width: 1px;
-  background: var(--line);
-}
 .station {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 10px 9px 0;
+  gap: 10px;
+  /* Tight left inset keeps the longest label on one line. */
+  padding: 9px 8px 9px 4px;
   text-decoration: none;
   border-radius: 8px;
 }
-.station-node {
-  width: 9px;
-  height: 9px;
-  margin-left: 7px;
-  border-radius: 50%;
-  border: 1px solid var(--faint);
-  background: var(--ink);
+.station-icon {
   flex: none;
-  z-index: 1;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  color: var(--faint);
+  transition: color 0.15s ease, filter 0.15s ease;
 }
 .station-label {
   font-size: 13.5px;
@@ -162,18 +137,15 @@ button:focus-visible {
 .station:hover .station-label {
   color: var(--text);
 }
-.station:hover .station-node {
-  border-color: var(--muted);
+.station:hover .station-icon {
+  color: var(--muted);
 }
 .station.active .station-label {
   color: var(--text);
 }
-.station.active .station-node {
-  border-color: var(--signal);
-  background: var(--signal);
-  box-shadow:
-    0 0 0 3px rgba(70, 224, 192, 0.14),
-    0 0 10px rgba(70, 224, 192, 0.55);
+.station.active .station-icon {
+  color: var(--signal);
+  filter: drop-shadow(0 0 6px rgba(70, 224, 192, 0.5));
 }
 .station.active::before {
   content: "";
@@ -186,10 +158,80 @@ button:focus-visible {
   border-radius: 0 2px 2px 0;
 }
 
+/* collapse toggle */
+.rail-toggle {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  color: var(--faint);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.rail-toggle:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
 .rail-foot {
   margin-top: auto;
   padding-top: 16px;
   border-top: 1px solid var(--line);
+}
+
+/* collapsed rail — icons only, above the top-bar breakpoint */
+@media (min-width: 861px) {
+  .app {
+    transition: grid-template-columns 0.18s ease;
+  }
+  .app--rail-collapsed {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .app--rail-collapsed .rail {
+    padding: 24px 12px;
+  }
+  .app--rail-collapsed .rail-head {
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 2px 0 0;
+  }
+  .app--rail-collapsed .brand {
+    display: none;
+  }
+  .app--rail-collapsed .rail-toggle {
+    margin-left: 0;
+  }
+  .app--rail-collapsed .station {
+    justify-content: center;
+    padding: 10px 0;
+  }
+  /* Visually hidden, not removed — the link needs an accessible name. */
+  .app--rail-collapsed .station-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .app--rail-collapsed .station-hint {
+    display: none;
+  }
+  .app--rail-collapsed .station.active::before {
+    left: -12px;
+  }
+  .app--rail-collapsed .health {
+    justify-content: center;
+  }
+  .app--rail-collapsed .health-text {
+    display: none;
+  }
 }
 
 /* health signal */
@@ -237,7 +279,8 @@ button:focus-visible {
   flex-direction: column;
 }
 .content {
-  max-width: 1280px;
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 40px clamp(20px, 3vw, 40px) 72px;
 }
@@ -920,17 +963,16 @@ a.pager-btn:hover {
     margin-top: 0;
     gap: 4px;
   }
-  .stations::before {
-    display: none;
-  }
   .station {
     padding: 6px 12px;
   }
   .station.active {
     background: var(--surface-2);
   }
-  .station-node,
   .station-hint {
+    display: none;
+  }
+  .rail-toggle {
     display: none;
   }
   .station.active::before {
@@ -1188,6 +1230,27 @@ a.pager-btn:hover {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--coral);
+}
+
+/* Session detail — the Peak context stat tile as a link to the request breakdown. */
+.stat-drill {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-color: rgba(70, 224, 192, 0.4);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.stat-drill:hover {
+  border-color: var(--signal);
+  background: rgba(70, 224, 192, 0.06);
+}
+.stat-drill .stat-value {
+  color: var(--signal);
+}
+.stat-drill-cta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--signal);
 }
 
 /* Session errors page — one coral-accented block per error. */
@@ -1623,9 +1686,13 @@ a.pager-btn:hover {
   border-color: var(--signal);
   color: var(--signal);
 }
+/* Scrolls on its own: `contain` traps a wheel at either end, `pan-y` undoes the
+   viewport's `touch-action: none`. */
 .gs-list {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
   padding: 8px;
@@ -1732,7 +1799,12 @@ a.pager-btn:hover {
   border-left: 1px solid var(--line);
   box-shadow: -18px 0 40px -24px rgba(0, 0, 0, 0.8);
   animation: gi-in 0.2s ease both;
+  transition: width 0.18s ease;
   z-index: 8;
+}
+/* Widened for the long, untruncated step text from the Request breakdown. */
+.graph-inspector.is-wide {
+  width: min(720px, 92%);
 }
 @keyframes gi-in {
   from {
@@ -1759,7 +1831,13 @@ a.pager-btn:hover {
   border: 1px solid var(--gc);
   border-radius: 999px;
 }
-.gi-close {
+.gi-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gi-close,
+.gi-wide {
   background: none;
   border: none;
   color: var(--muted);
@@ -1767,12 +1845,18 @@ a.pager-btn:hover {
   line-height: 1;
   cursor: pointer;
 }
-.gi-close:hover {
+.gi-wide {
+  font-size: 15px;
+}
+.gi-close:hover,
+.gi-wide:hover {
   color: var(--text);
 }
 .gi-body {
   padding: 16px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1797,6 +1881,15 @@ a.pager-btn:hover {
   white-space: pre-wrap;
   line-height: 1.5;
 }
+/* Folded to a peek until "Show all" opens it. */
+.gi-text.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* Opened: capped in height so a whole prompt scrolls instead of swamping the drawer. */
 .gi-text.is-full {
   max-height: 42vh;
   overflow-y: auto;
@@ -1807,17 +1900,20 @@ a.pager-btn:hover {
   border-radius: 8px;
 }
 .gi-more {
+  display: block;
   margin-top: 4px;
   padding: 0;
   font: inherit;
-  font-size: 11.5px;
-  color: var(--signal);
+  font-size: 12px;
   background: none;
   border: none;
   cursor: pointer;
 }
 .gi-more:hover {
   text-decoration: underline;
+}
+.gi-note {
+  font-size: 12px;
 }
 .gi-stats {
   display: flex;
@@ -1860,4 +1956,253 @@ button.gi-open {
 }
 .graph-status-flight {
   color: var(--violet);
+}
+
+/* start a session: prompt input + the chat it opens */
+
+/* An auto-growing textarea over its own toolbar. */
+.prompt-input {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.prompt-input:focus-within {
+  border-color: var(--signal-dim);
+}
+.prompt-input-textarea {
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  line-height: 21px;
+  padding: 10px 14px;
+}
+.prompt-input-textarea::placeholder {
+  color: var(--faint);
+}
+.prompt-input-textarea:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.prompt-input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px 8px 14px;
+}
+.prompt-input-hint {
+  font-size: 11px;
+}
+.prompt-input-hint kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.prompt-input-submit {
+  background: var(--signal-dim);
+  color: var(--ink);
+  border: none;
+  border-radius: 9px;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+.prompt-input-submit:hover:not(:disabled) {
+  background: var(--signal);
+}
+.prompt-input-submit:disabled {
+  background: var(--surface);
+  color: var(--faint);
+  cursor: default;
+}
+
+.chat-note {
+  margin: 0 0 12px;
+}
+/* The turns so far, kept short. */
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 44vh;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+.chat-turn p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.chat-turn.user {
+  color: var(--muted);
+}
+.chat-role {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  margin-bottom: 4px;
+}
+.chat-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 12px;
+}
+button.chat-new {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+button.chat-new:hover:not(:disabled) {
+  color: var(--text);
+}
+/* Agent vs chat, plus the one-line posture note that follows the choice. */
+.chat-modes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+button.chat-mode {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+button.chat-mode:hover:not(:disabled) {
+  color: var(--text);
+}
+button.chat-mode.is-active {
+  color: var(--text);
+  border-color: var(--text);
+}
+button.chat-mode:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.chat-mode-note {
+  font-size: 11.5px;
+}
+/* What an agent turn actually ran. */
+.chat-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 11.5px;
+}
+.chat-tool {
+  font-family: var(--font-mono);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+.chat-tool.is-failed {
+  color: var(--bad);
+  border-color: currentColor;
+}
+/* Why it failed, inline on the chip; the full text is the chip's title. */
+.chat-tool-why {
+  margin-left: 6px;
+  color: var(--muted);
+  font-family: var(--font-body);
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: bottom;
+}
+/* The standing permission answer, chosen per session. */
+select.chat-permission {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+select.chat-permission:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+/* Ends the turn in flight; shown only while one runs. */
+button.chat-stop {
+  background: none;
+  border: 1px solid var(--bad);
+  border-radius: 9px;
+  color: var(--bad);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+button.chat-stop:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* The "this session is still running" bar on a transcript, with its own Stop. */
+.session-running {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--signal-dim);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.session-running-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--signal);
+  animation: session-running-pulse 1.6s ease-in-out infinite;
+}
+.session-running-warn {
+  color: var(--warn);
+}
+@keyframes session-running-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-running-dot {
+    animation: none;
+  }
 }

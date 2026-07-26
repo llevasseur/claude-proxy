@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionNode } from "@claude-proxy/core";
-import { spawnAgentType } from "@claude-proxy/core";
+import { mergeSessionNodes, spawnAgentType } from "@claude-proxy/core";
 import type { SessionGraphEntry } from "../api";
-import { getSessionNodeTexts, getSessionsGraph } from "../api";
+import { getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from "../api";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 /**
@@ -18,6 +18,9 @@ import { fmtInt, fmtLocalTsShort } from "../format";
  * A subagent keeps its own transcript, so it draws as a branch: the parent's `Agent(…)`
  * step opens an indented band around the subagent's own snake, and a return edge carries
  * it back into the parent step its result flows into. The rail nests the same tree.
+ *
+ * The transcript only fixes *which* steps exist — it gists every line to 160 chars, so the
+ * text comes from the canvased family's Request breakdown, where the same steps are whole.
  */
 
 // Layout geometry, in canvas px (pre-transform).
@@ -36,6 +39,9 @@ const BAND_PAD = 18;
 const BAND_HEAD = 34;
 /** Gap between a parent row and a branch band hanging beneath it. */
 const BAND_GAP = 26;
+
+/** Overlay panels with their own scrollbar; a collapsed rail has nothing to scroll. */
+const SCROLLS_ITSELF = ".graph-sessions:not(.is-collapsed), .graph-inspector";
 
 /** What a box or edge is about — drives its glow color. */
 type Tone = SessionNode["type"] | "root" | "agent";
@@ -349,59 +355,116 @@ function nodeLabel(node: SessionNode): string {
 
 const nodeKind = (node: SessionNode): string => (spawnAgentType(node) === null ? node.type : "spawn");
 
+/** A peek at the step text for the hover tooltip — untruncated, it runs to thousands of chars. */
+function hoverLabel(node: SessionNode): string {
+  const label = nodeLabel(node);
+  return label.length > 300 ? `${label.slice(0, 299)}…` : label;
+}
+
+/** How often to re-read the family's captured requests — far heavier than the transcript poll. */
+const NODES_REFETCH_MS = 20_000;
+
 export function SessionGraphPage() {
   const query = useQuery({ queryKey: ["sessions-graph"], queryFn: getSessionsGraph, refetchInterval: 4000 });
-  const all = useMemo(() => query.data?.sessions ?? [], [query.data]);
+  const transcripts = useMemo(() => query.data?.sessions ?? [], [query.data]);
 
-  const byId = useMemo(() => new Map(all.map((s) => [s.threadId, s])), [all]);
-  const childIndex = useMemo(() => indexChildren(all), [all]);
-  const roots = useMemo(() => all.filter((s) => s.parentThreadId === null), [all]);
+  // Selection resolves off the transcripts — the breakdown's text changes no thread id
+  // and no parent link.
+  const byThread = useMemo(() => new Map(transcripts.map((s) => [s.threadId, s])), [transcripts]);
 
   /** Walk up to the top-level session a transcript belongs to — what the canvas draws. */
   const rootOf = useCallback(
     (id: string): string => {
       let at = id;
-      for (let hops = 0; hops <= byId.size; hops++) {
-        const parent = byId.get(at)?.parentThreadId;
-        if (!parent || !byId.has(parent)) return at;
+      for (let hops = 0; hops <= byThread.size; hops++) {
+        const parent = byThread.get(at)?.parentThreadId;
+        if (!parent || !byThread.has(parent)) return at;
         at = parent;
       }
       return at;
     },
-    [byId],
+    [byThread],
   );
 
   // Which session is on the canvas — always a top-level one, so picking a subagent
   // canvases its family. Sessions arrive newest-first, so default to the head's family.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useEffect(() => {
-    if (all.length === 0) return;
-    setSelectedId((prev) => rootOf(prev && byId.has(prev) ? prev : all[0]!.threadId));
-  }, [all, byId, rootOf]);
+    if (transcripts.length === 0) return;
+    setSelectedId((prev) => rootOf(prev && byThread.has(prev) ? prev : transcripts[0]!.threadId));
+  }, [transcripts, byThread, rootOf]);
+
+  // The canvased family's steps, re-read from its captured requests so nothing is gisted.
+  // Failure is silent: the transcript still draws the graph, just abbreviated.
+  const nodesQuery = useQuery({
+    queryKey: ["session-graph-nodes", selectedId],
+    queryFn: () => getSessionGraphNodes(selectedId!),
+    enabled: selectedId !== null,
+    refetchInterval: NODES_REFETCH_MS,
+  });
+  const derived = useMemo(
+    () => new Map((nodesQuery.data?.threads ?? []).map((t) => [t.threadId, t])),
+    [nodesQuery.data],
+  );
+  /** Thread id → the captured request its steps were read from, for the inspector to link. */
+  const sources = useMemo(() => new Map([...derived].map(([id, t]) => [id, t.file])), [derived]);
+
+  const all = useMemo(
+    () =>
+      transcripts.map((e) => {
+        const from = derived.get(e.threadId);
+        return from ? { ...e, nodes: mergeSessionNodes(e.nodes, from.nodes) } : e;
+      }),
+    [transcripts, derived],
+  );
+
+  const byId = useMemo(() => new Map(all.map((s) => [s.threadId, s])), [all]);
+  const childIndex = useMemo(() => indexChildren(all), [all]);
+  const roots = useMemo(() => all.filter((s) => s.parentThreadId === null), [all]);
   const entry = useMemo(() => all.find((s) => s.threadId === selectedId) ?? null, [all, selectedId]);
 
   const [cols, setCols] = useState(7);
   const { boxes, edges, bands, contentW, contentH } = useMemo(() => layout(entry, cols, childIndex), [entry, cols, childIndex]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const inspectorRef = useRef<HTMLElement>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
   const [dragging, setDragging] = useState(false);
   const [isFull, setIsFull] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [selected, setSelected] = useState<Selection | null>(null);
+  /** Whether the details drawer is widened — sticky, so it survives picking another node. */
+  const [inspectorWide, setInspectorWide] = useState(false);
   /** The branch to highlight and center, set by picking a subagent in the rail. */
   const [focusId, setFocusId] = useState<string | null>(null);
   const pan = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
 
-  const fit = useCallback(() => {
+  /**
+   * The slice of the viewport left free by the two overlays — the session rail on the left
+   * and the details drawer on the right. Both sit *over* the canvas rather than shrinking it,
+   * so their widths are measured live: each animates between states, the rail caps at a share
+   * of narrow viewports, and the drawer is absent when nothing is selected. Floored, so a
+   * widened drawer on a small viewport can't collapse the frame to nothing.
+   */
+  const freeArea = useCallback(() => {
     const el = viewportRef.current;
-    if (!el || !contentW || !contentH) return;
+    if (!el) return null;
     const rect = el.getBoundingClientRect();
-    if (rect.width === 0) return;
-    const margin = 56;
-    const k = clamp(Math.min((rect.width - margin * 2) / contentW, (rect.height - margin * 2) / contentH), 0.12, 1.4);
-    setView({ x: (rect.width - contentW * k) / 2, y: (rect.height - contentH * k) / 2, k });
-  }, [contentW, contentH]);
+    const left = navRef.current?.getBoundingClientRect().width ?? 0;
+    const right = inspectorRef.current?.getBoundingClientRect().width ?? 0;
+    const width = Math.max(rect.width - left - right, Math.min(240, rect.width));
+    return { left, width, height: rect.height };
+  }, []);
+
+  const fit = useCallback(() => {
+    const area = freeArea();
+    if (!area || area.width <= 0 || !contentW || !contentH) return;
+    // Breathing room, dialled back when the rail leaves little to work with.
+    const margin = Math.min(56, area.width / 8, area.height / 8);
+    const k = clamp(Math.min((area.width - margin * 2) / contentW, (area.height - margin * 2) / contentH), 0.12, 1.4);
+    setView({ x: area.left + (area.width - contentW * k) / 2, y: (area.height - contentH * k) / 2, k });
+  }, [contentW, contentH, freeArea]);
 
   // Refit only when the session or fold width changes — not on every poll, or streaming
   // steps would keep yanking the view back. `fitRef` keeps the effect off `fit`'s deps.
@@ -419,18 +482,17 @@ export function SessionGraphPage() {
   useEffect(() => {
     if (!focusId) return;
     const id = requestAnimationFrame(() => {
-      const el = viewportRef.current;
+      const area = freeArea();
       const box = boxesRef.current.find((b) => b.key === `r:${focusId}`);
-      if (!el || !box) return;
-      const rect = el.getBoundingClientRect();
+      if (!area || !box) return;
       setView((v) => ({
         ...v,
-        x: rect.width / 2 - (box.x + box.w / 2) * v.k,
-        y: rect.height / 2 - (box.y + box.h / 2) * v.k,
+        x: area.left + area.width / 2 - (box.x + box.w / 2) * v.k,
+        y: area.height / 2 - (box.y + box.h / 2) * v.k,
       }));
     });
     return () => cancelAnimationFrame(id);
-  }, [focusId, selectedId, cols]);
+  }, [focusId, selectedId, cols, freeArea]);
 
   // Track the viewport width to pick rows-per-fold (mobile → vertical, desktop → long rows).
   useEffect(() => {
@@ -447,6 +509,8 @@ export function SessionGraphPage() {
     const el = viewportRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // The overlay panels sit inside the viewport, so their wheels bubble here.
+      if ((e.target as HTMLElement).closest(SCROLLS_ITSELF)) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const mx = e.clientX - rect.left;
@@ -602,7 +666,7 @@ export function SessionGraphPage() {
                 onClick={() => setSelected({ entry: box.entry, node: box.node })}
               >
                 <span className="gnode-kind">{nodeKind(box.node!)}</span>
-                <span className="gnode-title" title={nodeLabel(box.node!)}>
+                <span className="gnode-title" title={hoverLabel(box.node!)}>
                   {nodeLabel(box.node!)}
                 </span>
               </button>
@@ -632,6 +696,7 @@ export function SessionGraphPage() {
         </div>
 
         <SessionNav
+          railRef={navRef}
           roots={roots}
           index={childIndex}
           selectedId={selectedId}
@@ -681,7 +746,16 @@ export function SessionGraphPage() {
         {query.error ? <div className="graph-note error">Failed to load: {(query.error as Error).message}</div> : null}
         {!query.isLoading && all.length === 0 ? <div className="graph-note muted">No session transcripts yet.</div> : null}
 
-        <Inspector selection={selected} byId={byId} onClose={() => setSelected(null)} onFocusAgent={setFocusId} />
+        <Inspector
+          panelRef={inspectorRef}
+          selection={selected}
+          byId={byId}
+          sources={sources}
+          wide={inspectorWide}
+          onToggleWide={() => setInspectorWide((w) => !w)}
+          onClose={() => setSelected(null)}
+          onFocusAgent={setFocusId}
+        />
       </div>
     </section>
   );
@@ -711,9 +785,11 @@ function navRows(roots: SessionGraphEntry[], index: ChildIndex, folded: Set<stri
 
 /**
  * Left rail listing every session with its subagents nested beneath. Fixed over the
- * canvas; collapses to a narrow strip with an explicit re-open button.
+ * canvas; collapses to a narrow strip with an explicit re-open button. `railRef` exposes
+ * its live width to the canvas.
  */
 function SessionNav({
+  railRef,
   roots,
   index,
   selectedId,
@@ -722,6 +798,7 @@ function SessionNav({
   onSelect,
   onToggle,
 }: {
+  railRef: Ref<HTMLElement>;
   roots: SessionGraphEntry[];
   index: ChildIndex;
   selectedId: string | null;
@@ -741,7 +818,7 @@ function SessionNav({
     });
 
   return (
-    <aside className={`graph-sessions${collapsed ? " is-collapsed" : ""}`} aria-label="Sessions">
+    <aside ref={railRef} className={`graph-sessions${collapsed ? " is-collapsed" : ""}`} aria-label="Sessions">
       <div className="gs-head">
         {collapsed ? null : <span className="gs-title">Sessions</span>}
         <button
@@ -809,13 +886,21 @@ function SessionNav({
  * proxy wrote one.
  */
 function Inspector({
+  panelRef,
   selection,
   byId,
+  sources,
+  wide,
+  onToggleWide,
   onClose,
   onFocusAgent,
 }: {
+  panelRef: Ref<HTMLElement>;
   selection: Selection | null;
   byId: Map<string, SessionGraphEntry>;
+  sources: Map<string, string>;
+  wide: boolean;
+  onToggleWide: () => void;
   onClose: () => void;
   onFocusAgent: (id: string) => void;
 }) {
@@ -824,8 +909,12 @@ function Inspector({
   return (
     <InspectorBody
       key={`${selection.entry.threadId}:${selection.node?.index ?? "root"}`}
+      panelRef={panelRef}
       selection={selection}
       byId={byId}
+      sources={sources}
+      wide={wide}
+      onToggleWide={onToggleWide}
       onClose={onClose}
       onFocusAgent={onFocusAgent}
     />
@@ -833,13 +922,21 @@ function Inspector({
 }
 
 function InspectorBody({
+  panelRef,
   selection,
   byId,
+  sources,
+  wide,
+  onToggleWide,
   onClose,
   onFocusAgent,
 }: {
+  panelRef: Ref<HTMLElement>;
   selection: Selection;
   byId: Map<string, SessionGraphEntry>;
+  sources: Map<string, string>;
+  wide: boolean;
+  onToggleWide: () => void;
   onClose: () => void;
   onFocusAgent: (id: string) => void;
 }) {
@@ -852,6 +949,7 @@ function InspectorBody({
   const fullText = (index: number | null): string | undefined =>
     index === null ? undefined : texts.data?.texts[index];
 
+  const source = sources.get(entry.threadId);
   const agentType = node ? spawnAgentType(node) : null;
   const isAgent = !node && entry.parentThreadId !== null;
   const kind = node ? (agentType === null ? node.type : "spawn") : isAgent ? "subagent" : "session";
@@ -863,14 +961,25 @@ function InspectorBody({
     : undefined;
 
   return (
-    <aside className="graph-inspector" aria-label="Node details">
+    <aside ref={panelRef} className={`graph-inspector${wide ? " is-wide" : ""}`} aria-label="Node details">
       <div className="gi-head">
         <span className="gi-kind" style={{ "--gc": kindColor } as CSSProperties}>
           {kind}
         </span>
-        <button type="button" className="gi-close" onClick={onClose} aria-label="Close">
-          ×
-        </button>
+        <div className="gi-actions">
+          <button
+            type="button"
+            className="gi-wide"
+            onClick={onToggleWide}
+            aria-expanded={wide}
+            title={wide ? "Narrow the drawer" : "Widen the drawer"}
+          >
+            {wide ? "⇥" : "⇤"}
+          </button>
+          <button type="button" className="gi-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
       </div>
 
       <div className="gi-body">
@@ -878,16 +987,24 @@ function InspectorBody({
           <>
             {node.task ? (
               <Field label="Task">
-                <ExpandableText text={node.task} full={fullText(taskIndexFor(entry.nodes, node))} />
+                <ExpandableText
+                  key={`t:${entry.threadId}:${node.index}`}
+                  text={node.task}
+                  full={fullText(taskIndexFor(entry.nodes, node))}
+                />
               </Field>
             ) : null}
             {node.tool ? (
               <Field label="Tool">
-                <code className="mono-break">{node.tool}</code>
+                <LongText key={`c:${entry.threadId}:${node.index}`} text={node.tool} mono />
               </Field>
             ) : null}
             <Field label="Detail">
-              <ExpandableText text={node.text || "—"} full={fullText(node.index)} />
+              <ExpandableText
+                key={`d:${entry.threadId}:${node.index}`}
+                text={node.text || "—"}
+                full={fullText(node.index)}
+              />
             </Field>
             <Field label="Step">#{node.index}</Field>
             {agentType === null ? null : spawned ? (
@@ -932,6 +1049,13 @@ function InspectorBody({
         <Link to="/sessions/$id" params={{ id: entry.threadId }} className="link gi-open">
           Open transcript →
         </Link>
+        {source ? (
+          <Link to="/context/$file" params={{ file: source }} className="link gi-open">
+            Open request breakdown →
+          </Link>
+        ) : (
+          <span className="gi-note muted">Text from the transcript — no captured request matched.</span>
+        )}
       </div>
     </aside>
   );
@@ -959,17 +1083,35 @@ function taskIndexFor(nodes: SessionNode[], node: SessionNode): number | null {
 
 const firstTaskIndex = (nodes: SessionNode[]): number | null => nodes.find((n) => n.type === "task")?.index ?? null;
 
-/** A gist that expands into the whole text the line cut short; expanded, it scrolls within the drawer. */
+/**
+ * A gist plus the whole text the transcript line cut short, when the sidecar recorded one.
+ * The fuller text is what gets rendered; {@link LongText} keeps it from flooding the drawer.
+ */
 function ExpandableText({ text, full }: { text: string; full?: string }) {
+  const whole = full !== undefined && full.trim() !== "" ? full : text;
+  return <LongText text={whole} />;
+}
+
+/** Past this much text a value is folded away until asked for. */
+const LONG_TEXT_CHARS = 280;
+
+/**
+ * A value that may run long — request-derived steps carry whole prompts and command lines.
+ * Short ones render plainly; long ones clamp behind a toggle. Give it a key tied to the step,
+ * so opening one doesn't open the next.
+ */
+function LongText({ text, mono }: { text: string; mono?: boolean }) {
   const [open, setOpen] = useState(false);
-  const more = full !== undefined && full.trim() !== "" && full.trim() !== text.trim();
+  const long = text.length > LONG_TEXT_CHARS;
+  // Opened, it scrolls within the drawer rather than pushing the fields below it off-screen.
+  const cls = `gi-text${mono ? " mono-break" : ""}${long ? (open ? " is-full" : " is-clamped") : ""}`;
 
   return (
     <>
-      <p className={`gi-text${open ? " is-full" : ""}`}>{open && full !== undefined ? full : text}</p>
-      {more ? (
-        <button type="button" className="gi-more" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-          {open ? "Show less" : "Show full text"}
+      <p className={cls}>{text}</p>
+      {long ? (
+        <button type="button" className="link gi-more" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          {open ? "Show less" : `Show all ${fmtInt(text.length)} characters`}
         </button>
       ) : null}
     </>

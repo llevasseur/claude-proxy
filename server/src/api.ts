@@ -1,6 +1,7 @@
 import {
   analyzeRequestBody,
   computeDigest,
+  deriveSessionNodes,
   extractRequestMessage,
   extractRequestTool,
   computeSkimDigest,
@@ -14,6 +15,7 @@ import {
   normalizePlugins,
   hookPluginLoadExpectations,
   parseSessionErrors,
+  sessionContextPeak,
   withheldReport,
   type Advice,
   type AliasLoadExpectation,
@@ -26,8 +28,10 @@ import {
   type RequestBreakdown,
   type RequestMessageDetail,
   type RequestToolDetail,
+  type SessionContextPeak,
   type SessionError,
   type SessionMeta,
+  type SessionNode,
   type SkimDigest,
   type SkimShape,
   type TopTool,
@@ -37,7 +41,7 @@ import {
   type FiltersResponse,
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
-import { readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
+import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
 import {
   listProjectMemories,
   listProjects,
@@ -51,6 +55,7 @@ import {
   listSessions,
   readSession,
   readSessionNodeTexts,
+  threadIdForBody,
   type SessionDetail,
   type SessionGraph,
   type SessionNodeTexts,
@@ -84,10 +89,37 @@ export interface TrendsResponse {
   meta: { days: number; files: number; parseErrors: number; archivedDays: number };
 }
 
+// Archived days are immutable, so their digests are cached for the process
+// lifetime. Misses aren't cached — a day can still gain its archive later.
+const rawArchiveDigests = new Map<string, UsageDigest>();
+
+/** Test-only: drop the in-process raw-archive digest cache. */
+export function clearRawArchiveCache(): void {
+  rawArchiveDigests.clear();
+}
+
+/**
+ * One archived day's digest, computed from the raw sidecars the summary job
+ * moved into `<logDir>/archive/<date>/`. `null` when that day isn't archived.
+ */
+async function rawArchivedDigest(logDir: string, date: string): Promise<UsageDigest | null> {
+  const key = `${logDir} ${date}`;
+  const hit = rawArchiveDigests.get(key);
+  if (hit) return hit;
+
+  const { sidecars, files } = await readArchivedDay(logDir, date);
+  if (files === 0) return null;
+
+  const digest = computeDigest(sidecars, { date });
+  rawArchiveDigests.set(key, digest);
+  return digest;
+}
+
 /**
  * Per-day digests for the last `days` days, oldest→newest. The live `logs/` dir
- * only retains the current day or two, so days beyond that are filled from the
- * archive of finalized digests. Live days win over the archive for the same date.
+ * only retains the current day or two; older days come from the raw sidecars in
+ * `<logDir>/archive/<date>/`, and failing that from the archive of finalized
+ * digests. Live days win over both for the same date.
  */
 export async function buildTrends(
   logDir: string,
@@ -100,16 +132,15 @@ export async function buildTrends(
   for (const d of digestsByDay(sidecars)) byDate.set(d.date, d);
 
   let archivedDays = 0;
-  if (archiveDir) {
-    const end = today(now);
-    for (let i = 0; i < days; i += 1) {
-      const date = shiftDay(end, -i);
-      if (byDate.has(date)) continue;
-      const digest = await loadArchivedDigest(archiveDir, date);
-      if (digest) {
-        byDate.set(date, digest);
-        archivedDays += 1;
-      }
+  const end = today(now);
+  for (let i = 0; i < days; i += 1) {
+    const date = shiftDay(end, -i);
+    if (byDate.has(date)) continue;
+    const digest =
+      (await rawArchivedDigest(logDir, date)) ?? (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
+    if (digest) {
+      byDate.set(date, digest);
+      archivedDays += 1;
     }
   }
 
@@ -137,19 +168,28 @@ export interface ContextResponse {
 }
 
 /**
- * Context-size analytics over the last `days` days: average / median / max real
- * input tokens, plus the largest requests (each with a `file` handle for the
- * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
+ * Sidecars read with `includeFile: true`, reduced to the context entries that
+ * parsed. A sidecar with no `__file` handle has nothing to drill into, so it is
+ * dropped.
  */
-export async function buildContext(logDir: string, days: number, now: Date = new Date()): Promise<ContextResponse> {
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
   const entries: ContextEntry[] = [];
   for (const s of sidecars) {
     const file = (s as { __file?: string }).__file;
     const entry = file ? toContextEntry(s, file) : null;
     if (entry) entries.push(entry);
   }
-  return { summary: summarizeContext(entries), meta: { days, files, parseErrors } };
+  return entries;
+}
+
+/**
+ * Context-size analytics over the last `days` days: average / median / max real
+ * input tokens, plus the largest requests (each with a `file` handle for the
+ * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
+ */
+export async function buildContext(logDir: string, days: number, now: Date = new Date()): Promise<ContextResponse> {
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+  return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
 }
 
 export interface ContextDetailResponse {
@@ -295,6 +335,128 @@ export interface SessionErrorsResponse {
 export async function buildSessionErrors(logDir: string, id: string): Promise<SessionErrorsResponse> {
   const { meta, content } = await readSession(logDir, id);
   return { threadId: id, meta, errors: parseSessionErrors(content) };
+}
+
+export interface SessionBreakdownResponse extends SessionContextPeak {
+  threadId: string;
+  /** The Claude Code session id the requests were matched on; null if the transcript has none. */
+  sessionId: string | null;
+  meta: { files: number; parseErrors: number };
+}
+
+/**
+ * The captured request a session links to for its breakdown: the largest one sent
+ * under its session id. Scans sidecars from the session's start date onward — a
+ * session's requests never predate it — or the whole log when it has no start.
+ */
+export async function buildSessionBreakdown(
+  logDir: string,
+  id: string,
+  now: Date = new Date(),
+): Promise<SessionBreakdownResponse> {
+  const { meta } = await readSession(logDir, id);
+  const sessionId = meta.sessionId;
+  if (!sessionId) {
+    return { threadId: id, sessionId: null, requestCount: 0, peak: null, meta: { files: 0, parseErrors: 0 } };
+  }
+
+  const since = meta.started ? meta.started.slice(0, 10) : undefined;
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const entries = toContextEntries(sidecars);
+
+  return { threadId: id, sessionId, ...sessionContextPeak(entries, sessionId), meta: { files, parseErrors } };
+}
+
+/** One transcript's steps, re-read from the captured request that carries them whole. */
+export interface SessionThreadNodes {
+  threadId: string;
+  /** Sidecar base name of the request the nodes came from — the Request breakdown handle. */
+  file: string;
+  /** How many messages that request carried, i.e. how deep a snapshot this is. */
+  messageCount: number;
+  nodes: SessionNode[];
+}
+
+export interface SessionGraphNodesResponse {
+  rootThreadId: string;
+  /** Only the threads a captured request could be found for; the rest keep their transcript. */
+  threads: SessionThreadNodes[];
+  meta: { files: number; parseErrors: number; requestsRead: number; capped: boolean };
+}
+
+/**
+ * How many captured requests one family scan will read and parse. Each is a whole request
+ * body, so the cap bounds a graph load; the scan is newest-first, so the budget goes to the
+ * window the family was active in.
+ */
+const MAX_FAMILY_REQUESTS = 60;
+
+/**
+ * The untruncated step stream for a canvased session and every subagent under it: scan the
+ * sidecars carrying the family's session ids newest-first, hash each body back to the thread
+ * that produced it, and keep the richest snapshot per thread. Threads with no captured
+ * request left go unlisted, and the caller keeps their transcript nodes.
+ */
+export async function buildSessionGraphNodes(
+  logDir: string,
+  id: string,
+  now: Date = new Date(),
+): Promise<SessionGraphNodesResponse> {
+  const graphs = await listSessionGraphs(logDir);
+  const byId = new Map(graphs.map((g) => [g.threadId, g]));
+  if (!byId.has(id)) throw new Error(`session not found: ${id}`);
+
+  // The canvased session plus every descendant — one agent family.
+  const family = new Set<string>();
+  const walk = (threadId: string) => {
+    if (family.has(threadId)) return;
+    family.add(threadId);
+    for (const kid of byId.get(threadId)?.childThreadIds ?? []) walk(kid);
+  };
+  walk(id);
+
+  const sessionIds = new Set([...family].map((t) => byId.get(t)?.sessionId).filter((s): s is string => !!s));
+  if (sessionIds.size === 0) {
+    return { rootThreadId: id, threads: [], meta: { files: 0, parseErrors: 0, requestsRead: 0, capped: false } };
+  }
+
+  // A family's requests never predate its earliest transcript.
+  const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
+  const since = starts.length > 0 ? starts.sort()[0]!.slice(0, 10) : undefined;
+
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const candidates = toContextEntries(sidecars)
+    .filter((e) => e.sessionId !== null && sessionIds.has(e.sessionId))
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, MAX_FAMILY_REQUESTS);
+
+  const best = new Map<string, SessionThreadNodes>();
+  let requestsRead = 0;
+  for (const entry of candidates) {
+    let body: unknown;
+    try {
+      ({ body } = await readRequestBody(logDir, entry.file));
+    } catch {
+      continue; // request log rotated away or never landed — the sidecar still counts
+    }
+    requestsRead += 1;
+
+    const threadId = threadIdForBody(entry.sessionId, (body as { messages?: unknown } | null)?.messages);
+    if (!threadId || !family.has(threadId)) continue;
+
+    const messageCount = Array.isArray((body as { messages?: unknown }).messages)
+      ? ((body as { messages: unknown[] }).messages.length ?? 0)
+      : 0;
+    const prev = best.get(threadId);
+    if (prev && prev.messageCount >= messageCount) continue;
+    best.set(threadId, { threadId, file: entry.file, messageCount, nodes: deriveSessionNodes(body) });
+  }
+
+  return {
+    rootThreadId: id,
+    threads: [...best.values()],
+    meta: { files, parseErrors, requestsRead, capped: candidates.length === MAX_FAMILY_REQUESTS },
+  };
 }
 
 export interface SkimResponse {

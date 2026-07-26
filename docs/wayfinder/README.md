@@ -1,3 +1,10 @@
+---
+type: readme
+title: Wayfinder — local-markdown tracker
+description: How this repo tracks a wayfinder campaign in checked-in markdown — the map, its tickets, and their frontmatter.
+timestamp: 2026-07-18
+---
+
 # Wayfinder — local-markdown tracker
 
 No external issue tracker is wired for this repo, so wayfinder uses its
@@ -17,15 +24,20 @@ docs/wayfinder/
 
 ```yaml
 ---
-id: "001"                     # identity; referenced by blockedBy
+type: ticket                    # required by okq validate
+id: "001"                       # identity; referenced by blockedBy
 title: Exact-match skim short-circuit
 map: map-proxy-skim
-labels: [wayfinder:prototype] # one of research|prototype|grilling|task
-assignee: null                # null = unclaimed; a name = claimed
-blockedBy: []                 # ids that must be closed first
-status: open                  # open | closed
+labels: ["wayfinder:prototype"] # one of research|prototype|grilling|task
+assignee: null                  # null = unclaimed; a name = claimed
+blockedBy: []                   # ids that must be closed first
+status: open                    # open | closed
 ---
 ```
+
+Quote the label: a bare `wayfinder:prototype` inside a `[…]` flow sequence is invalid
+YAML (the colon reads as a mapping indicator), which makes the whole ticket unparseable
+to `okq`.
 
 ## Wayfinding operations (this tracker)
 

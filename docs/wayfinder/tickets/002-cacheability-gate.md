@@ -1,8 +1,9 @@
 ---
+type: ticket
 id: "002"
 title: Which requests are safe to serve — cacheability gate
 map: map-proxy-skim
-labels: [wayfinder:research]
+labels: ["wayfinder:research"]
 assignee: claude
 blockedBy: []
 status: closed
