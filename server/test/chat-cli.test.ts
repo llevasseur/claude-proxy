@@ -308,11 +308,7 @@ const turnInput = (cliPath: string) => ({
   maxTurnMs: 120_000,
 });
 
-/**
- * A stand-in that keeps emitting: one stream-json line every `everyMs`, forever. It is
- * what a healthy long turn looks like from the outside — the case a total-elapsed cap
- * used to kill.
- */
+/** A stand-in that keeps emitting: one stream-json line every `everyMs`, forever. */
 function chattyCli(name: string, everyMs: number): string {
   const cliPath = path.join(FIXTURES, name);
   const line = JSON.stringify({ type: "assistant", session_id: "s1", message: { content: [{ type: "text", text: "partial" }] } });
@@ -320,7 +316,6 @@ function chattyCli(name: string, everyMs: number): string {
     cliPath,
     [
       "#!/usr/bin/env node",
-      // Once on startup, as the real CLI announces itself, then on the interval.
       `const line = ${JSON.stringify(line)} + "\\n";`,
       "process.stdout.write(line);",
       `setInterval(() => process.stdout.write(line), ${everyMs});`,
@@ -375,8 +370,6 @@ describe.skipIf(process.platform === "win32")("runCliTurn — ending a run early
     expect(result.text).toBe("partial"); // reported, not thrown away
   });
 
-  // The regression: a turn streaming steadily for longer than the window used to be
-  // killed mid-tool-loop, because the clock measured the work rather than the silence.
   it("lets a still-producing run outlive the idle window many times over", async () => {
     const cliPath = chattyCli("fake-claude-chatty", 50);
     const started = Date.now();
@@ -386,7 +379,7 @@ describe.skipIf(process.platform === "win32")("runCliTurn — ending a run early
     // Well past the idle window in wall clock, none of it ever spent in silence.
     expect(Date.now() - started).toBeGreaterThan(1_000);
     expect(result.interrupted).toBe("limit"); // the ceiling caught it, not the silence clock
-    expect(result.text).toMatch(/^(partial)+$/); // every line it streamed, kept
+    expect(result.text).toMatch(/^(partial)+$/);
   });
 
   it("still fails loudly when the cli is not there at all", async () => {

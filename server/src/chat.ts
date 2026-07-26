@@ -85,10 +85,8 @@ const MAX_PROMPT_CHARS = 100_000;
 /**
  * Read a positive integer out of the environment, falling back on anything else.
  *
- * The guard matters most for the clocks below: `Number("")` is `0` and `Number("5m")` is
- * `NaN`, and `setTimeout` treats both as ~1ms — so a set-but-empty or fat-fingered knob
- * would end every turn the instant it started, which is a far worse failure than the
- * default it was trying to override.
+ * `Number("")` is `0` and a typo is `NaN`; `setTimeout` treats both as ~1ms, so an
+ * unguarded clock below would end every turn the instant it started.
  */
 const envInt = (raw: string | undefined, fallback: number): number => {
   const n = Number(raw);
@@ -102,16 +100,12 @@ const envInt = (raw: string | undefined, fallback: number): number => {
 const REQUEST_TIMEOUT_MS = envInt(process.env.CHAT_TIMEOUT_MS, 300_000);
 
 /**
- * The `cli` transport's two caps, which are deliberately not the one above.
+ * The `cli` transport's two caps, which are deliberately not the one above. A CLI turn is
+ * a whole agent loop and normally outlasts any single request, so the child is judged on
+ * whether it is still *producing*; only the ceiling is absolute.
  *
- * A CLI turn is a whole agent loop — read files, run commands, write code — and it is
- * normal for that to outlast any single request. Timing it as one gave it a chat reply's
- * budget: a `/revive` run streaming steadily for 294s was SIGTERMed at 300s mid-tool-loop,
- * with an edit issued and never applied. So the child is judged on whether it is still
- * *producing*, not on how long it has been at it, and only the ceiling is absolute.
- *
- * `CHAT_TIMEOUT_MS` still sets the idle window, so an existing deployment that tuned it
- * keeps the value it chose — now spent per silence rather than per turn.
+ * `CHAT_TIMEOUT_MS` still sets the idle window, so a deployment that tuned it keeps its
+ * value — now spent per silence rather than per turn.
  */
 const CLI_IDLE_TIMEOUT_MS = envInt(process.env.CHAT_IDLE_TIMEOUT_MS, envInt(process.env.CHAT_TIMEOUT_MS, 300_000));
 const CLI_MAX_TURN_MS = envInt(process.env.CHAT_MAX_TURN_MS, 3_600_000);

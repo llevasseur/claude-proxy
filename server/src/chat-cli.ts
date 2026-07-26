@@ -114,12 +114,9 @@ export interface CliTurnInput {
    * How long the child may produce *nothing* before the run is ended — re-armed on every
    * chunk of stdout or stderr, so it measures silence rather than total elapsed time.
    *
-   * An agent turn is a tool loop that can legitimately run for an hour; a total cap kills
-   * healthy work mid-loop and leaves a half-applied edit behind. What actually wants
-   * catching is a wedged run — a hung tool, a permission prompt nobody can answer — and
-   * that shows up as a stream that has stopped emitting. Under `--output-format
-   * stream-json` a working child emits an event every few seconds, so silence is the
-   * signal and progress buys as much time as it needs.
+   * Under `--output-format stream-json` a working child emits an event every few seconds,
+   * so this catches a wedged run — a hung tool, a permission prompt nobody can answer —
+   * without capping the length of a healthy one.
    */
   idleTimeoutMs: number;
   /** The absolute ceiling on one turn, however lively it stays. Armed once, never re-armed. */
@@ -465,7 +462,7 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   let pending = "";
   child.stdout.on("data", (c: Buffer) => {
     stdout.push(c);
-    armIdle(); // the child is alive and working; the silence clock starts over
+    armIdle();
     if (announced || !input.onInit) return;
     pending += decoder.write(c);
     const init = findInitEvent(pending);
@@ -477,11 +474,9 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   });
   child.stderr.on("data", (c: Buffer) => {
     stderr.push(c);
-    armIdle(); // stderr counts as life too — a child logging its way through is not wedged
+    armIdle(); // a child logging its way through is not wedged
   });
 
-  // Both clocks start at spawn: the silence one, which every chunk pushes back, and the
-  // ceiling, which nothing does.
   armIdle();
   const ceiling = setTimeout(() => end("limit"), input.maxTurnMs);
   ceiling.unref?.();
