@@ -8,6 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "summary": "tsx src/daily-summary.ts",
+    "suggestions": "tsx src/suggestions-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

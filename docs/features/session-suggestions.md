@@ -85,6 +85,37 @@ never called.
   `meta.requestsMissing`, and reported next to the table; a window with none left says so instead
   of showing an empty table.
 
+### Status flags
+
+The suggestions themselves carry no state — a rule that keeps tripping keeps reappearing whether
+or not anyone acted on it. A flag per suggestion records that someone did:
+
+- **The flags** — `pending` (the default), `done` (applied), `skipped` (deliberately passed over).
+  Each carries the ISO timestamp of the write and an optional note (a PR link, why it was skipped).
+- **The key is `(bucket index, suggestion id)`.** Both halves are stable — buckets are fixed
+  windows numbered oldest-first, and a suggestion's id is its rule's id — so a flag survives the
+  recomputation that happens on every load. Marking a suggestion `done` sticks even after the rule
+  stops tripping, and a rule that starts tripping again in the same window is *not* re-flagged.
+- **Where they live** — `<logDir>/suggestion-status.json`, beside the transcripts they describe, so
+  they travel with a `LOG_DIR` override and stay device-local (`logs/` is gitignored). Only
+  decisions are written: setting a suggestion back to `pending` deletes its entry, so an empty file
+  and a missing one both mean "nothing done yet". Writes go through a temp file and a rename, and a
+  corrupt file reads as empty rather than taking the page down with it.
+- **The lean list** — `GET /api/sessions/suggestions/status[?range=&status=]` returns one row per
+  suggestion (`bucket`, `label`, `id`, `severity`, `title`, `status`, and `updated`/`note` once
+  set), oldest bucket first. `range` accepts one bucket (`9`), a list (`2,3,9`), a span (`2-9`) or
+  a mix; `status` accepts a comma-separated subset of the flags. This is the list an agent reads to
+  find what is still pending in a range without pulling each bucket's full drill-down; the detail,
+  evidence and sources stay behind `/api/sessions/suggestions/bucket`. A malformed range is a 400.
+- **Recording** — `POST /api/sessions/suggestions/status` with `{ "updates": [{ bucket, id, status,
+  note? }] }`. It goes through the same origin-checked CORS the chat routes use, since it writes.
+  An update naming a suggestion no rule currently produces is still written and reported under
+  `meta.unknown`, so a typo is visible rather than silent.
+- **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>]` and
+  `pnpm --filter server suggestions mark -r <bucket> -i <ids> -s <flag> [-n <note>]`, both with
+  `--json` for the API's own shape. The CLI reads the log directory directly, so it needs no
+  running server.
+
 The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
 `packages/core/src/suggestions.ts` (pure: `sessionSuggestionBuckets`, `suggestBucket`,
 `summarizeBreakdownPatterns`, `suggestFromBreakdown` — no I/O, no clock) → `server`
@@ -108,6 +139,12 @@ The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
 - [x] The suggestion engine is pure and unit-tested in `packages/core/test/suggestions.test.ts`.
 - [x] A window whose captured request bodies have aged out still renders, reporting how many
       sessions had no readable request.
+- [x] Every suggestion carries a status flag — `pending` by default, settable to `done` or
+      `skipped` with an optional note — keyed so it survives the recomputation on every load.
+- [x] The flags are listable as a lean row per suggestion, filterable by bucket range and by flag,
+      over HTTP and from the command line without a running server.
+- [x] The flag store is unit-tested pure (`packages/core/test/suggestion-status.test.ts`) and its
+      file handling is tested in `server/test/suggestion-status.test.ts`.
 
 ## Open questions
 
@@ -122,6 +159,11 @@ The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
   with 2 refusals and one with 40 both read *high*.
 - The breakdown roll-up uses each session's peak request only. That is the cheapest honest
   sample, but a tool schema dropped midway through a session is invisible to it.
+- The status flags have no UI yet — they are written by the API and the CLI, and the Advice pages
+  still render every suggestion the same whether or not it is flagged. A badge on the bucket detail
+  (and a "hide done" toggle) is the obvious next step.
+- A flag's write is read-modify-write on one JSON file, so two writers racing lose one flag. One
+  dashboard and one agent at a time is the actual usage; a lock would be cheap if that changes.
 
 ## Related
 
