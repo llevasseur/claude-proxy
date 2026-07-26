@@ -14,6 +14,7 @@ This project has not cut a release yet, so everything below sits under
 
 ### Added
 
+- **Interruptions in the live session graph** — a run that was cut off now shows the severed step with a coral ring and torn edge, and lays the resumed steps out in an inset dashed "side trail" labelled with why it stopped; the toolbar counts interruptions, the legend gains a swatch, and the inspector gains "Cut off" / "Resumed after". Both sources are covered: Claude Code's Esc (`splitInterruption` strips the `[Request interrupted by user]` marker the CLI prepends) and the dashboard's Stop button (`recordInterruption` appends `- interrupted: <why>` to the thread's transcript, since the child is killed before anything reaches the wire). (#63)
 - **Untruncated graph steps** — live session graph nodes now derive their text from the captured request body's `messages[]` (`deriveSessionNodes`) and merge it over the transcript stream, so prompts and command lines no longer arrive cut off at the transcript's 160/60-char gists; the node inspector became an expandable drawer. (#60)
 
 ### Changed
