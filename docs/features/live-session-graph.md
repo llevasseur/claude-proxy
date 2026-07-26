@@ -64,12 +64,35 @@ parent did while the branch was in flight.
   strip showing only a vertical **N sessions** label and an explicit **»** to reopen, so
   collapse survives a cursor sitting where the rail used to be and stays keyboard- and
   touch-reachable. Picking a subagent canvases its top-level family and centers that branch.
+- **Step text from the Request breakdown** — a transcript is a *lossy* render: `proxy/session.mjs`
+  gists every line to 160 chars and every recorded tool argument to 60, so a prompt or a command
+  line arrives at the graph cut off. The same steps are held whole in the requests the proxy
+  captured, so the text is re-read from there. `deriveSessionNodes` runs the proxy's own grammar
+  over a captured body's `messages[]` and emits the identical `SessionNode[]` stream untruncated;
+  `mergeSessionNodes` lays that over the transcript's, which stays the authority on *which* steps
+  exist (the agent linkage is built from its positions, so the merge preserves every `index`).
+  The two are not positionally aligned — a transcript accumulates every request ever seen, so it
+  also carries turns no single body holds, notably Claude Code's one-shot spinner prompts landing
+  mid-thread — so a captured request is treated as a *subsequence* and matched by expanding each
+  gist (`isSameStep` allows for the `…`, which for a tool call sits inside the parens). A step
+  with no match keeps its abbreviated transcript text, so the graph degrades rather than breaks.
 - **Inspector** — clicking a box or a band head opens a **Node details** panel (**Esc**
   closes). For a step: **Task**, **Tool**, **Detail**, **Step** index, and for a spawn the
   **Subagent** it started, its **Status** (in flight, or *returned into parent step #n*), and
   **Show its branch →**. For a session or subagent root: **Agent type**, **Status**,
   **Spawned by**, **First task**, tasks/tools/errors stats, thread id, **Model**, **Started**,
-  **Updated**, and **Open transcript →**.
+  **Updated**, **Open transcript →**, and **Open request breakdown →** for the captured request
+  the step text came from (or a note that none matched).
+- **Expanding the details** — untruncated step text runs to thousands of characters, so the
+  drawer opens up two ways: **⇤** / **⇥** in its header widens it from 360 px to 720 px (sticky
+  across selections), and any value past 280 characters folds to six lines behind a **Show all
+  N characters** toggle. Hover tooltips on the canvas stay capped at 300 characters.
+- **Fit accounts for both overlays** — the rail and the details drawer sit *over* the canvas
+  rather than shrinking it, so **Fit** measures the slice they leave free (both widths read live,
+  since each animates and the drawer is absent when nothing is selected) and frames the graph
+  there. A widened drawer on a narrow viewport can't squeeze the free area to nothing. Opening
+  the drawer does not itself refit — that would yank the canvas on every node click; **Fit** is
+  the explicit control.
 - **Toolbar** — a live dot beside a count of sessions, the canvased session's steps, and its
   subagents with how many are in flight; a legend for **task**, **decision**, **tool**,
   **subagent**, **error**, **done**.
@@ -86,6 +109,17 @@ every transcript once and merges the two into `SessionGraph` rows, which `buildS
 serves from `GET /api/sessions/graph` as `{ sessions, meta: { sessionsDir, total } }`; the
 admin page lays those rows out and draws them. The browser never parses raw Markdown, and the
 proxy is untouched — this is read-only over transcripts it already writes.
+
+Step text takes a second path over the same logs. `GET /api/sessions/graph/nodes?id=<threadId>`
+(`buildSessionGraphNodes`) walks the canvased session and every descendant into one agent family,
+scans the sidecars carrying the family's session ids **newest-first** capped at 60 requests, and
+hashes each body back to the thread that produced it with `threadIdForBody` — the server-side
+mirror of the `threadIdFor` in `proxy/session.mjs` that named the transcript in the first place.
+The richest snapshot found per thread supplies its `deriveSessionNodes` stream, returned as
+`{ rootThreadId, threads: [{ threadId, file, messageCount, nodes }], meta }`. The admin page
+fetches it per canvased session on a 20 s interval — far heavier than the 4 s transcript poll,
+since each candidate is a whole request body — and merges it in. Threads with no captured request
+left are simply absent from `threads`, and keep their transcript text.
 
 ## Acceptance criteria
 
@@ -105,8 +139,19 @@ proxy is untouched — this is read-only over transcripts it already writes.
       an explicit **»** to reopen.
 - [x] New steps appear without a reload, and the view does not re-fit or re-center on refresh.
 - [x] No proxy changes; the feature is read-only over existing session transcripts.
-- [x] `parseSessionNodes`, `spawnAgentType`, and `linkAgentSessions` are unit-tested
-      (`packages/core/test/sessions.test.ts`); `pnpm typecheck` and `pnpm test` pass.
+- [x] Step text is re-read from the captured requests, so a prompt or command line the
+      transcript gisted to 160 chars shows in full.
+- [x] `mergeSessionNodes` preserves every transcript `index` (the agent linkage depends on
+      them) and realigns across turns a single captured request never held.
+- [x] `GET /api/sessions/graph/nodes` resolves the canvased session *and* its subagents to
+      their own captured requests, and 404s an unknown thread id.
+- [x] **Fit** frames the graph into the area left free by the rail *and* the details drawer.
+- [x] The drawer widens on demand, and long values expand behind a **Show all** toggle.
+- [x] `parseSessionNodes`, `spawnAgentType`, `linkAgentSessions`, `deriveSessionNodes`,
+      `firstUserText`, `isSameStep`, and `mergeSessionNodes` are unit-tested
+      (`packages/core/test/sessions.test.ts`), and `threadIdForBody` is checked against the
+      `threadIdFor` it mirrors by importing `proxy/session.mjs` itself
+      (`server/test/session-graph-nodes.test.ts`); `pnpm typecheck` and `pnpm test` pass.
 
 ## Open questions
 
@@ -130,6 +175,16 @@ proxy is untouched — this is read-only over transcripts it already writes.
   single transcript — one branch instead of two.
 - Whether the canvas should ever show more than one top-level family at a time (today it draws
   the selected session and its descendants only).
+- What the step-text scan should cost. It reads up to 60 whole request bodies per canvased
+  family, newest-first, and re-runs every 20 s — cheap on a local log dir (~120 ms in practice)
+  but unbounded in the wrong direction as the log grows, and `meta.capped` is the only signal
+  that older requests went unread. A thread whose activity falls outside that window keeps its
+  gisted text with nothing in the UI explaining why. Recording the thread id in the audit
+  sidecar at capture time would turn the whole scan into an index lookup.
+- The merge is a heuristic, not a proof. A gist is matched by expanding its prefix, so two
+  adjacent same-type steps sharing a 160-char prefix are indistinguishable; and after context
+  compaction the richest captured request may predate steps the transcript already has, which
+  simply keep their gisted text. Neither case is marked in the UI.
 
 ## Related
 
