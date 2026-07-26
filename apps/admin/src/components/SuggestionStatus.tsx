@@ -54,8 +54,8 @@ export function SuggestionStatusControl({
             type="button"
             className={status === choice ? "active" : undefined}
             aria-pressed={status === choice}
-            disabled={mark.isPending || status === choice}
-            onClick={() => mark.mutate(choice)}
+            disabled={mark.isPending}
+            onClick={() => status !== choice && mark.mutate(choice)}
           >
             {STATUS_LABEL[choice]}
           </button>

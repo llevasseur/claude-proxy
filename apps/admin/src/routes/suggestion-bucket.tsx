@@ -90,6 +90,9 @@ export function SuggestionBucketPage() {
                 from these {data.bucket.stats.sessions} transcripts
                 {resolvedCount > 0 && ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped`}
               </span>
+              {statusQuery.error && (
+                <span className="error">flags unavailable: {(statusQuery.error as Error).message}</span>
+              )}
               {resolvedCount > 0 && (
                 <button type="button" className="link toggle-resolved" onClick={() => setHideResolved((v) => !v)}>
                   {hideResolved ? `Show resolved (${resolvedCount})` : "Hide resolved"}

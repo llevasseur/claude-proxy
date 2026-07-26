@@ -55,6 +55,7 @@ function SessionSuggestions() {
           {query.data ? `${fmtInt(query.data.meta.sessions)} sessions in ${query.data.meta.buckets} windows of 10` : ""}
           {resolved > 0 && ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped`}
         </span>
+        {statusQuery.error && <span className="error">flags unavailable: {(statusQuery.error as Error).message}</span>}
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error}>
