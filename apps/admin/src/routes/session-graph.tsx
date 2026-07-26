@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SessionNode } from "@claude-proxy/core";
+import type { InterruptionKind, SessionNode } from "@claude-proxy/core";
 import { mergeSessionNodes, spawnAgentType } from "@claude-proxy/core";
 import type { SessionGraphEntry } from "../api";
 import { getSessionGraphNodes, getSessionsGraph } from "../api";
@@ -39,12 +39,15 @@ const BAND_PAD = 18;
 const BAND_HEAD = 34;
 /** Gap between a parent row and a branch band hanging beneath it. */
 const BAND_GAP = 26;
+/** A side trail's own indent and the extra air before it — it reads as a departure, not a fold. */
+const TRAIL_INSET = 72;
+const TRAIL_GAP = 52;
 
 /** Overlay panels with their own scrollbar; a collapsed rail has nothing to scroll. */
 const SCROLLS_ITSELF = ".graph-sessions:not(.is-collapsed), .graph-inspector";
 
 /** What a box or edge is about — drives its glow color. */
-type Tone = SessionNode["type"] | "root" | "agent";
+type Tone = SessionNode["type"] | "root" | "agent" | "cut";
 
 /** Tone → CSS color token. */
 const NODE_COLOR: Record<Tone, string> = {
@@ -55,6 +58,7 @@ const NODE_COLOR: Record<Tone, string> = {
   done: "var(--good)",
   root: "var(--signal-dim)",
   agent: "var(--violet)",
+  cut: "var(--coral)",
 };
 
 const LEGEND: { tone: Tone; label: string }[] = [
@@ -64,6 +68,7 @@ const LEGEND: { tone: Tone; label: string }[] = [
   { tone: "agent", label: "subagent" },
   { tone: "error", label: "error" },
   { tone: "done", label: "done" },
+  { tone: "cut", label: "interrupted" },
 ];
 
 /** Total color lookup (indexing is `string | undefined` under noUncheckedIndexedAccess). */
@@ -122,8 +127,11 @@ interface Edge {
   key: string;
   d: string;
   color: string;
-  /** `step` follows one session's chain; `spawn`/`return` cross into and out of a branch. */
-  kind: "step" | "spawn" | "return";
+  /**
+   * `step` follows one session's chain; `spawn`/`return` cross into and out of a branch;
+   * `sever` leaves an interrupted step for the side trail the run resumed on.
+   */
+  kind: "step" | "spawn" | "return" | "sever";
 }
 
 /** The nested frame drawn around one subagent's branch. */
@@ -136,6 +144,30 @@ interface Band {
   entry: SessionGraphEntry;
   inFlight: boolean;
 }
+
+/** The frame drawn around the run of steps that followed one interruption. */
+interface Trail {
+  key: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  entry: SessionGraphEntry;
+  kind: InterruptionKind;
+  /** What the run was redirected to — the resuming step's own text. */
+  label: string;
+}
+
+/** How each interruption reads on a trail's head strip. */
+const INTERRUPTION_LABEL: Record<InterruptionKind, string> = {
+  user: "interrupted by user",
+  "tool-use": "interrupted mid-tool",
+  stopped: "stopped from the dashboard",
+  timeout: "timed out",
+  limit: "hit its ceiling",
+};
+
+const interruptionLabel = (kind: InterruptionKind): string => INTERRUPTION_LABEL[kind] ?? "interrupted";
 
 interface Selection {
   entry: SessionGraphEntry;
@@ -198,33 +230,55 @@ interface Placed {
   boxes: Box[];
   edges: Edge[];
   bands: Band[];
+  trails: Trail[];
   /** Rightmost / lowest canvas coordinate reached, so a caller can frame around it. */
   right: number;
   bottom: number;
 }
 
+/** One box to place: a session/subagent root, or one step. */
+interface Item {
+  kind: Box["kind"];
+  node: SessionNode | null;
+}
+
 /**
- * Snake one session from (`x0`, `y0`): its root box, then its steps folding every `cols`
- * boxes. A step that spawned a subagent hangs that subagent's own (recursive) layout
- * beneath its row as an indented band, and the rows below start under the band.
+ * Split a session's steps at every interruption. The first run continues the snake the
+ * root opens; each later one is what the run picked up as after being cut off, and draws
+ * away from the tree as its own trail rather than folding on as if nothing happened.
  */
-function layoutTree(
+function runsOf(nodes: SessionNode[]): SessionNode[][] {
+  const runs: SessionNode[][] = [[]];
+  for (const node of nodes) {
+    const current = runs[runs.length - 1]!;
+    // A leading interruption has nothing behind it to depart from — it opens the snake.
+    if (node.interruption && current.length > 0) runs.push([node]);
+    else current.push(node);
+  }
+  return runs;
+}
+
+/**
+ * Snake one run of boxes from (`x0`, `y0`), folding every `cols` boxes. A step that spawned
+ * a subagent hangs that subagent's own (recursive) layout beneath its row as an indented
+ * band, and the rows below start under the band.
+ */
+function layoutRun(
   entry: SessionGraphEntry,
+  items: Item[],
   cols: number,
   x0: number,
   y0: number,
   index: ChildIndex,
   depth: number,
+  runKey: string,
 ): Placed {
-  const items: { kind: Box["kind"]; node: SessionNode | null }[] = [
-    { kind: depth === 0 ? "root" : "agent", node: null },
-    ...entry.nodes.map((node) => ({ kind: "node" as const, node })),
-  ];
   const spawned = index.get(entry.threadId);
 
   const boxes: Box[] = [];
   const edges: Edge[] = [];
   const bands: Band[] = [];
+  const trails: Trail[] = [];
   let right = x0;
   let y = y0;
 
@@ -274,6 +328,7 @@ function layoutTree(
       bands.push(...inner.bands);
       boxes.push(...inner.boxes);
       edges.push(...inner.edges);
+      trails.push(...inner.trails);
       right = Math.max(right, bandRight);
       y = inner.bottom + BAND_PAD;
     }
@@ -295,10 +350,84 @@ function layoutTree(
       // Turning onto the next row — drop from one box's bottom to the next's top.
       d = edgePathV(a.x + a.w / 2, a.y + a.h, b.x + b.w / 2, b.y);
     }
-    edges.push({ key: `e:${entry.threadId}:${i}`, d, color: color(boxTone(b)), kind: "step" });
+    edges.push({ key: `e:${runKey}:${i}`, d, color: color(boxTone(b)), kind: "step" });
   }
 
-  return { boxes, edges, bands, right, bottom: Math.max(y0, y - GAP_Y) };
+  return { boxes, edges, bands, trails, right, bottom: Math.max(y0, y - GAP_Y) };
+}
+
+/**
+ * Lay out one session: its root and steps as a snake, and everything after an interruption
+ * as its own trail — inset, framed, and reached by a severed edge off the step that was cut
+ * short — so a redirected run reads as a departure from the tree rather than more of it.
+ * Trails stay at one indent however many there are; nesting each on the last would march
+ * a much-interrupted session off the right.
+ */
+function layoutTree(
+  entry: SessionGraphEntry,
+  cols: number,
+  x0: number,
+  y0: number,
+  index: ChildIndex,
+  depth: number,
+): Placed {
+  const runs = runsOf(entry.nodes);
+  const head: Item[] = [
+    { kind: depth === 0 ? "root" : "agent", node: null },
+    ...runs[0]!.map((node) => ({ kind: "node" as const, node })),
+  ];
+
+  const placed = layoutRun(entry, head, cols, x0, y0, index, depth, `${entry.threadId}:0`);
+  const boxes = [...placed.boxes];
+  const edges = [...placed.edges];
+  const bands = [...placed.bands];
+  const trails = [...placed.trails];
+  let right = placed.right;
+  let bottom = placed.bottom;
+
+  for (let r = 1; r < runs.length; r++) {
+    const steps = runs[r]!;
+    const opener = steps[0]!;
+    const trailTop = bottom + TRAIL_GAP;
+    const trailX = x0 + TRAIL_INSET;
+    const inner = layoutRun(
+      entry,
+      steps.map((node) => ({ kind: "node" as const, node })),
+      Math.max(1, cols - 1),
+      trailX + BAND_PAD,
+      trailTop + BAND_HEAD,
+      index,
+      depth,
+      `${entry.threadId}:${r}`,
+    );
+    const trailRight = inner.right + BAND_PAD;
+    trails.push({
+      key: `t:${entry.threadId}:${opener.index}`,
+      x: trailX,
+      y: trailTop,
+      w: trailRight - trailX,
+      h: inner.bottom + BAND_PAD - trailTop,
+      entry,
+      kind: opener.interruption ?? "user",
+      label: nodeLabel(opener),
+    });
+    trails.push(...inner.trails);
+    bands.push(...inner.bands);
+    boxes.push(...inner.boxes);
+    edges.push(...inner.edges);
+
+    // The cut itself: off the step the interruption landed on, into the trail's first step.
+    const severed = boxes.find((b) => b.node?.index === opener.index - 1 && b.entry.threadId === entry.threadId);
+    const resumed = inner.boxes.find((b) => b.node?.index === opener.index);
+    if (severed && resumed) {
+      edges.push({ key: `sv:${entry.threadId}:${opener.index}`, d: boxPathV(severed, resumed), color: color("cut"), kind: "sever" });
+    }
+
+    right = Math.max(right, trailRight);
+    bottom = inner.bottom + BAND_PAD;
+  }
+
+  return { boxes, edges, bands, trails, right, bottom };
 }
 
 /**
@@ -308,7 +437,7 @@ function layoutTree(
  * placed, since a return can land on a row below the branch.
  */
 function layout(entry: SessionGraphEntry | null, cols: number, index: ChildIndex) {
-  if (!entry) return { boxes: [], edges: [], bands: [], contentW: 0, contentH: 0 };
+  if (!entry) return { boxes: [], edges: [], bands: [], trails: [], contentW: 0, contentH: 0 };
 
   const placed = layoutTree(entry, cols, PAD, PAD, index, 0);
   const boxAt = new Map(placed.boxes.map((b) => [b.key, b]));
@@ -340,9 +469,21 @@ function boxTone(box: Box): Tone {
   return spawnAgentType(box.node!) === null ? box.node!.type : "agent";
 }
 
-/** Node style carries its glow color via the `--gc` custom property. */
+/** Node style carries its glow color via the `--gc` custom property, plus the cut's for a severed step. */
 function boxStyle(box: Box): CSSProperties {
-  return { left: box.x, top: box.y, width: box.w, height: box.h, "--gc": color(boxTone(box)) } as CSSProperties;
+  return {
+    left: box.x,
+    top: box.y,
+    width: box.w,
+    height: box.h,
+    "--gc": color(boxTone(box)),
+    "--cut": color("cut"),
+  } as CSSProperties;
+}
+
+/** The extra layer a step wears when the run was cut off on it, or resumed on it. */
+function cutClass(node: SessionNode): string {
+  return `${node.interrupted ? " is-cut" : ""}${node.interruption ? " is-resumed" : ""}`;
 }
 
 /** A spawn step is labelled by the kind of agent it started, not its raw signature. */
@@ -424,7 +565,10 @@ export function SessionGraphPage() {
   const entry = useMemo(() => all.find((s) => s.threadId === selectedId) ?? null, [all, selectedId]);
 
   const [cols, setCols] = useState(7);
-  const { boxes, edges, bands, contentW, contentH } = useMemo(() => layout(entry, cols, childIndex), [entry, cols, childIndex]);
+  const { boxes, edges, bands, trails, contentW, contentH } = useMemo(
+    () => layout(entry, cols, childIndex),
+    [entry, cols, childIndex],
+  );
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -638,6 +782,19 @@ export function SessionGraphPage() {
             </div>
           ))}
 
+          {/* A trail frames what the run did after being cut off — same layer as a branch band. */}
+          {trails.map((trail) => (
+            <div key={trail.key} className="gtrail" style={{ left: trail.x, top: trail.y, width: trail.w, height: trail.h }}>
+              <div className="gtrail-head">
+                <span className="gtrail-kind">interrupted</span>
+                <span className="gtrail-why">{interruptionLabel(trail.kind)}</span>
+                <span className="gtrail-title" title={trail.label}>
+                  {trail.label}
+                </span>
+              </div>
+            </div>
+          ))}
+
           <svg className="graph-edges" width={contentW} height={contentH} aria-hidden>
             <defs>
               {/* Points a return edge at the parent step it lands on. */}
@@ -661,7 +818,7 @@ export function SessionGraphPage() {
               <button
                 key={box.key}
                 type="button"
-                className={`gnode gnode--${boxTone(box)}${selected?.node && selected.entry.threadId === box.entry.threadId && selected.node.index === box.node!.index ? " is-selected" : ""}`}
+                className={`gnode gnode--${boxTone(box)}${cutClass(box.node!)}${selected?.node && selected.entry.threadId === box.entry.threadId && selected.node.index === box.node!.index ? " is-selected" : ""}`}
                 style={boxStyle(box)}
                 onClick={() => setSelected({ entry: box.entry, node: box.node })}
               >
@@ -717,6 +874,9 @@ export function SessionGraphPage() {
                 · {fmtInt(bands.length)} subagents
                 {flying > 0 ? <span className="graph-status-flight"> ({fmtInt(flying)} in flight)</span> : null}
               </span>
+            ) : null}
+            {trails.length > 0 ? (
+              <span className="graph-status-cut"> · {fmtInt(trails.length)} interrupted</span>
             ) : null}
           </span>
           <div className="graph-btns">
@@ -951,6 +1111,16 @@ function Inspector({
               {node.text ? <LongText key={`d:${entry.threadId}:${node.index}`} text={node.text} /> : <p className="gi-text">—</p>}
             </Field>
             <Field label="Step">#{node.index}</Field>
+            {node.interrupted ? (
+              <Field label="Cut off">
+                <span className="gi-cut">the run was interrupted here — it picks up on the trail below</span>
+              </Field>
+            ) : null}
+            {node.interruption ? (
+              <Field label="Resumed after">
+                <span className="gi-cut">{interruptionLabel(node.interruption)}</span>
+              </Field>
+            ) : null}
             {agentType === null ? null : spawned ? (
               <>
                 <Field label="Subagent">{entryLabel(spawned)}</Field>
