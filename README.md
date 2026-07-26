@@ -350,6 +350,15 @@ It holds the architecture decisions, feature specs, and the two design docs:
 device-wide daily summary (`docs/2026-07-13-…`) and this monorepo + dashboard
 (`docs/superpowers/specs/2026-07-15-…`).
 
+## Changelog
+
+`CHANGELOG.md` at the repo root tracks every shipped change, in
+[Keep a Changelog](https://keepachangelog.com/) form. There are no releases yet,
+so everything sits under `[Unreleased]`, grouped by merge date (`MM-DD-YYYY`,
+newest first) with `### Added` / `### Changed` / `### Fixed` sections and the
+originating PR number on each entry. Add an entry with the work, not after it —
+`/changelog` writes one from the branch diff in that shape.
+
 ## Notes
 
 - **Enterprise-safe:** the proxy is a near-transparent pass-through to
