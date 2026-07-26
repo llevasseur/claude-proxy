@@ -178,8 +178,7 @@ function StartChatCard() {
               : "Ask Claude something — this starts a new session"
         }
         disabled={!!unconfigured}
-        // Starting a session moves you to its page, where the reply lands: the turn is the
-        // session, and watching it from a list of every other session buries it.
+        // The first send moves you to the session's own page, where the reply lands.
         onSend={() => {
           if (!started) navigate({ to: "/sessions/$id", params: { id: sessionId } });
         }}

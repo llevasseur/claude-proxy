@@ -12,8 +12,7 @@ export type LiveStatus = "connecting" | "live" | "offline";
  * and a fallback: when SSE is unavailable the status is `offline` and that query stays
  * in charge. Returns the current connection status.
  *
- * `enabled: false` holds the connection open-ended — for a page whose id is not one the
- * stream knows yet, where subscribing would only earn a 404 and an `offline` badge.
+ * `enabled: false` skips the subscription, for an id the stream does not know yet.
  */
 export function useLiveQuery<T>(path: string, queryKey: QueryKey, enabled = true): LiveStatus {
   const queryClient = useQueryClient();

@@ -13,11 +13,8 @@ import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
 import { useLiveQuery } from "../useLiveQuery";
 
 /**
- * A chat session id, which this route also accepts.
- *
- * Starting a session from the dashboard navigates here immediately, and at that moment the
- * only id that exists is the one the dashboard chose — the proxy fingerprints a thread from
- * the first request *as it goes over the wire*, so the thread id cannot be known in advance.
+ * A chat session id, which this route also accepts: a dashboard chat navigates here before its
+ * thread id exists, since the proxy fingerprints a thread from the first request over the wire.
  * Thread ids are 16 hex characters, so a uuid is unambiguously the other kind of id.
  */
 const CHAT_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,9 +27,8 @@ export function SessionDetailPage() {
   const navigate = useNavigate();
   const isChatId = CHAT_SESSION_ID_RE.test(id);
 
-  // Only while this page is addressed by a chat session id: poll for the transcript the
-  // proxy is writing, then replace the URL with the thread id so the page becomes the
-  // ordinary session page — and so a reload or a shared link still lands on the transcript.
+  // Addressed by a chat session id: poll for the transcript the proxy is writing, then replace
+  // the URL with the thread id so a reload or a shared link still lands on the transcript.
   const thread = useQuery({
     queryKey: ["chat", "thread", id],
     queryFn: () => getChatThread(id),
@@ -81,11 +77,7 @@ export function SessionDetailPage() {
   );
 }
 
-/**
- * This page before its transcript exists: the chat that was just started, with the stats
- * and the transcript still to come. Both appear on their own once the proxy has written
- * the first request and the URL swaps itself for the thread id.
- */
+/** This page before its transcript exists: the chat alone, with the stats and transcript to come. */
 function StartingBody({ sessionId }: { sessionId: string }) {
   return (
     <>
@@ -126,9 +118,7 @@ function SessionBody({ session }: { session: SessionDetail }) {
         </div>
       )}
 
-      {/* Between the stats and the transcript: what was asked and what came back, for a
-          session started from this dashboard. The transcript below is the durable record
-          and lags a turn behind; this is the conversation as it happens. */}
+      {/* Chat — the conversation as it happens; the transcript below lags a turn behind. */}
       {meta.sessionId && <SessionChatPanel sessionId={meta.sessionId} />}
 
       <div className="card">
@@ -156,17 +146,14 @@ function SessionBody({ session }: { session: SessionDetail }) {
 }
 
 /**
- * The live chat for this session, when this session is the one the dashboard started.
- *
- * The chat is held above the router, so navigating here from the start card keeps the turn
- * log, the prompt in flight and the Stop button; the input carries on the conversation from
- * the transcript itself. Renders nothing for every other session — which is every session
- * Claude Code left behind, and any dashboard chat but the current one.
+ * The live chat for this session, when this session is the one the dashboard started — the turn
+ * log, the prompt in flight, the Stop button and an input to carry on. Renders nothing for every
+ * other session.
  */
 function SessionChatPanel({ sessionId }: { sessionId: string }) {
   const { sessionId: liveId, chat, pendingPrompt, sendError } = useChatSession();
-  // `sendError` counts: a start that failed after this page was navigated to has no turn
-  // and no reply, and dropping the panel would leave the reason nowhere on screen.
+  // `sendError` counts: a failed start has no turn and no reply, and the reason would otherwise
+  // be nowhere on screen.
   if (liveId !== sessionId || (!chat && !pendingPrompt && !sendError)) return null;
 
   const mode = chat?.session.mode ?? "agent";
@@ -195,9 +182,8 @@ const RUNNING_KEY = ["chat", "running"];
  * chat's CLI session id is the same `session:` this transcript records, so this page can
  * recognise itself in that list and stop the turn without the starting tab.
  *
- * Renders nothing at all when this session has no turn running, and nothing when *this*
- * tab is the one running it — the chat panel below already offers that turn's Stop, and
- * two Stop buttons for one turn invite pressing the second after the first has taken.
+ * Renders nothing at all when this session has no turn running, and nothing when *this* tab is
+ * the one running it — the chat panel below already offers that turn's Stop.
  */
 function RunningChatBar({ sessionId }: { sessionId: string }) {
   const client = useQueryClient();

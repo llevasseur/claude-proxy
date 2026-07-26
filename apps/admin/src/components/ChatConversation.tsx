@@ -13,13 +13,11 @@ const INTERRUPTION_NOTE: Record<ChatInterruption, string> = {
 };
 
 /**
- * The live chat itself: what was asked, what came back, what the turn ran, and the input
- * to keep going. Rendered both on the Sessions page's start card and on the session page
- * the chat navigates to, so the conversation reads the same in either place.
+ * The live chat: what was asked, what came back, what the turn ran, and the input to keep going.
+ * Shared by the Sessions start card and the session page.
  *
- * The prompt in flight is rendered as a user turn straight away. The server only returns
- * history once the turn resolves, and an agent turn can run for an hour — without this the
- * page you were just navigated to would sit empty with nothing saying what it is working on.
+ * The prompt in flight renders as a user turn straight away — the server returns history only
+ * once the turn resolves, and an agent turn can run for an hour.
  */
 export function ChatConversation({
   placeholder,
@@ -38,7 +36,7 @@ export function ChatConversation({
   const [draft, setDraft] = useState("");
 
   const submit = (prompt: string) => {
-    // Cleared here rather than on success: the prompt is already on screen as a turn.
+    // Cleared on submit, not on success: the prompt is already on screen as a turn.
     setDraft("");
     send(prompt);
     onSend?.(prompt);
@@ -74,7 +72,7 @@ export function ChatConversation({
         <p className="muted chat-note">{INTERRUPTION_NOTE[chat.interrupted]} — this is what arrived before it ended.</p>
       )}
 
-      {/* What the turn did, not just what it said — agent turns only. */}
+      {/* Tools the turn ran — agent turns only. */}
       {chat && chat.tools.length > 0 && (
         <div className="chat-tools">
           <span className="muted">ran</span>
@@ -96,7 +94,6 @@ export function ChatConversation({
       <div className="chat-foot">
         {sendError && <span className="error">{sendError.message}</span>}
         {stopError && <span className="error">{stopError.message}</span>}
-        {/* An agent turn can run for minutes; this is the only way to take it back. */}
         {isSending && (
           <button type="button" className="chat-stop" onClick={stop} disabled={isStopping}>
             {isStopping ? "Stopping…" : "Stop"}

@@ -3,25 +3,13 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import type { ChatMode, ChatSendResponse, PermissionMode } from "./api";
 import { endChat, sendChatMessage, startChat, stopChat } from "./api";
 
-/**
- * The dashboard-started chat, held above the router.
- *
- * It used to live in the Sessions page's own component state, which made starting a
- * session and *reading* it mutually exclusive: navigating to the transcript unmounted the
- * card and took the turn log, the pending prompt and the Stop button with it. Starting a
- * session now navigates straight to its session page, so the conversation has to outlive
- * the page it was typed on — hence one live chat, owned here and rendered wherever the
- * session it belongs to is shown.
- *
- * One chat at a time, as before: `reset` ends the server's copy and opens a fresh id.
- */
+/** The one dashboard-started chat, held above the router so it outlives the page it was typed on. */
 export interface ChatSessionValue {
-  /** Named before the first turn: it is the CLI `--session-id`, the handle Stop needs, and
-   * the URL a fresh chat lands on before its transcript exists. */
+  /** Named before the first turn: the CLI `--session-id`, Stop's handle, and the URL a fresh chat lands on. */
   sessionId: string;
   /** The last completed turn's result — history, usage, tools, interruption. */
   chat: ChatSendResponse | null;
-  /** The prompt in flight, so the input message shows before the reply does. */
+  /** The prompt in flight; shown as a turn before the reply lands. */
   pendingPrompt: string | null;
   isSending: boolean;
   sendError: Error | null;
@@ -35,7 +23,7 @@ export interface ChatSessionValue {
   /** Starts the session on the first call, continues it after. */
   send: (prompt: string) => void;
   stop: () => void;
-  /** Drops the server's copy too, so its session map doesn't grow a tab at a time. */
+  /** Opens a fresh id, ending the server's copy of the old one. */
   reset: () => void;
 }
 
@@ -57,10 +45,10 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
         : startChat(sessionId, prompt, { mode: mode ?? undefined, permissionMode: permissionMode ?? undefined }),
     onSuccess: (data) => {
       setChat(data);
-      // Refresh the list behind the live stream: the transcript is new, or it grew.
+      // The transcript is new, or it grew.
       client.invalidateQueries({ queryKey: ["sessions"] });
     },
-    // The turn's own history now carries this prompt — or it failed and the error says so.
+    // The turn's history carries this prompt now; a failure carries the error.
     onSettled: () => setPendingPrompt(null),
   });
 
@@ -84,7 +72,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     setSessionId(crypto.randomUUID());
     setChat(null);
     setPendingPrompt(null);
-    // Both mutations too: a failed turn's error otherwise sits under the new empty chat.
+    // Both mutations too, or a failed turn's error sits under the new empty chat.
     sendMutation.reset();
     stopMutation.reset();
   }, [sessionId, sendMutation, stopMutation]);

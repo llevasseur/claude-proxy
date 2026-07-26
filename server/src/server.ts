@@ -507,10 +507,8 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, { running: listRunningChats() });
         return;
       // The transcript's own id for a chat session id, or null while the proxy has yet to
-      // write it. A dashboard-started chat navigates to its session page before the thread
-      // exists, so this is what tells that page which transcript it became. Answers from the
-      // sessions dir rather than the in-memory map, so it survives a restart and outlives the
-      // turn. Non-blocking on purpose — the caller polls.
+      // write it. Answers from the sessions dir rather than the in-memory map, so it survives
+      // a restart and outlives the turn. Non-blocking — the caller polls.
       case "/api/chat/thread": {
         const sessionId = url.searchParams.get("sessionId");
         if (!sessionId) {

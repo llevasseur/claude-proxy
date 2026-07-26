@@ -22,8 +22,7 @@ if (!rootEl) throw new Error("#root not found");
 ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      {/* Outside the router on purpose: a chat started on the Sessions page navigates to
-          its own session page, and the conversation has to survive that. */}
+      {/* Outside the router: the chat has to survive navigating to its own session page. */}
       <ChatSessionProvider>
         <RouterProvider router={router} />
       </ChatSessionProvider>
