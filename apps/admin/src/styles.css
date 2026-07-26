@@ -97,17 +97,6 @@ button:focus-visible {
 .brand-sep {
   color: var(--signal);
 }
-.brand-tag {
-  margin-left: 2px;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 7px;
-}
 
 /* stations */
 .stations {
@@ -171,7 +160,9 @@ button:focus-visible {
 
 /* collapse toggle */
 .rail-toggle {
+  /* Sits at the right edge of the head row, where the admin tag used to. */
   margin-left: auto;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -211,8 +202,7 @@ button:focus-visible {
     gap: 14px;
     padding: 2px 0 0;
   }
-  .app--rail-collapsed .brand,
-  .app--rail-collapsed .brand-tag {
+  .app--rail-collapsed .brand {
     display: none;
   }
   .app--rail-collapsed .rail-toggle {
