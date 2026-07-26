@@ -184,10 +184,7 @@ export interface SessionSuggestionBucketResponse {
   breakdownSuggestions: SessionSuggestion[];
   meta: { files: number; parseErrors: number; requestsMissing: number };
 }
-/**
- * Every suggestion in the requested buckets with its flag, oldest bucket first.
- * Lean by default — `detail` is what a caller about to act on one asks for.
- */
+/** Every suggestion in the requested buckets with its flag, oldest bucket first. */
 export interface SuggestionStatusResponse {
   rows: SuggestionStatusRow[];
   meta: {
@@ -362,11 +359,7 @@ export const getSessionBreakdown = (id: string) =>
 export const getSessionSuggestions = () => get<SessionSuggestionsResponse>("/api/sessions/suggestions");
 export const getSessionSuggestionBucket = (index: number) =>
   get<SessionSuggestionBucketResponse>(`/api/sessions/suggestions/bucket?index=${index}`);
-/**
- * The flags on those suggestions. `range` narrows to a bucket, list or span; the
- * lean row is the default, since the pages that show a flag already hold the
- * suggestion it belongs to.
- */
+/** The flags on those suggestions. `range` narrows to a bucket, list or span. */
 export const getSuggestionStatus = (opts: { range?: string; statuses?: SuggestionStatus[]; detail?: boolean } = {}) => {
   const params = new URLSearchParams();
   if (opts.range) params.set("range", opts.range);

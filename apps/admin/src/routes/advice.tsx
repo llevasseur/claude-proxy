@@ -38,8 +38,7 @@ export function AdvicePage() {
  */
 function SessionSuggestions() {
   const query = useQuery({ queryKey: ["session-suggestions"], queryFn: getSessionSuggestions });
-  // Every bucket's flags in one lean call — enough to mark the list up without
-  // pulling each window's drill-down. Marking happens on the detail page.
+  // Every bucket's flags in one lean call. Marking happens on the detail page.
   const statusQuery = useQuery({ queryKey: [SUGGESTION_STATUS_KEY, "all"], queryFn: () => getSuggestionStatus() });
   const buckets = query.data?.buckets ?? [];
   const statusByKey = new Map(

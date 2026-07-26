@@ -33,8 +33,8 @@ export function SuggestionBucketPage() {
     queryFn: () => getSessionSuggestionBucket(index),
     enabled: Number.isInteger(index) && index >= 1,
   });
-  // The flags for this window only. Separate from the drill-down because a write
-  // re-reads this and nothing else — the suggestions themselves have not moved.
+  // The flags for this window only, separate from the drill-down: a write
+  // re-reads this and nothing else.
   const statusQuery = useQuery({
     queryKey: [SUGGESTION_STATUS_KEY, index],
     queryFn: () => getSuggestionStatus({ range: String(index) }),
@@ -130,9 +130,8 @@ export function SuggestionBucketPage() {
 
 /**
  * One suggestion, with its flag when it can carry one. Only the transcript rules
- * are flaggable: the breakdown-derived suggestions are computed per request rather
- * than per bucket, so the status store has no row for them and marking one would
- * write an entry the list never reads back.
+ * are flaggable — breakdown-derived suggestions are computed per request, not per
+ * bucket, so the status store has no row for them.
  */
 function SuggestionCard({
   suggestion: s,

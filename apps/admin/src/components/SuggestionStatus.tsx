@@ -5,11 +5,8 @@ import { fmtLocalTsShort } from "../format";
 
 /**
  * The UI for a suggestion's flag: a badge that says where it stands, and the
- * three-way control that sets it.
- *
- * The flags are keyed `(bucket index, suggestion id)` server-side and the
- * suggestions underneath are recomputed on every load, so nothing here caches a
- * flag locally — a write re-reads the list through the same join that rendered it.
+ * three-way control that sets it. Nothing here caches a flag — the suggestions
+ * underneath are recomputed on every load, so a write re-reads the list.
  */
 
 /** Query key prefix every status list shares, so one write can invalidate them all. */
@@ -21,20 +18,16 @@ export const STATUS_LABEL: Record<SuggestionStatus, string> = {
   skipped: "Skipped",
 };
 
-/** Acted on either way — the half of the list a "hide resolved" toggle hides. */
+/** Acted on either way — what a "hide resolved" toggle hides. */
 export const isResolved = (status: SuggestionStatus): boolean => status !== "pending";
 
-/** Nothing at all while pending: an unflagged suggestion is the ordinary case. */
+/** Nothing at all while pending — unflagged is the ordinary case. */
 export function SuggestionStatusBadge({ status }: { status: SuggestionStatus }) {
   if (!isResolved(status)) return null;
   return <span className={`badge status-${status}`}>{STATUS_LABEL[status]}</span>;
 }
 
-/**
- * Mark one suggestion. `Pending` is the undo — the server deletes the entry
- * rather than recording a third state, which is why it sits in the same control
- * as the other two rather than off to the side.
- */
+/** Mark one suggestion. `Pending` is the undo — the server deletes the entry. */
 export function SuggestionStatusControl({
   bucket,
   id,
@@ -48,8 +41,7 @@ export function SuggestionStatusControl({
   const status = row?.status ?? "pending";
   const mark = useMutation({
     mutationFn: (next: SuggestionStatus) => markSuggestionStatus([{ bucket, id, status: next }]),
-    // Re-ask rather than patching the row here: the file is the truth, and every
-    // list showing this flag should move together.
+    // Re-ask rather than patch: every list showing this flag moves together.
     onSuccess: () => client.invalidateQueries({ queryKey: [SUGGESTION_STATUS_KEY] }),
   });
 

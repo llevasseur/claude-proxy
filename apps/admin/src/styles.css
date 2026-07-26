@@ -977,7 +977,6 @@ a.pager-btn:hover {
 
 /* suggestion status flags */
 
-/* Acted on: still readable, but it stops competing with what is still open. */
 .advice.is-resolved {
   opacity: 0.55;
 }
@@ -1013,22 +1012,19 @@ a.pager-btn:hover {
   font-size: 11.5px;
   color: var(--coral);
 }
-/* A note is the writer's own words, so it gets its own line rather than a chip. */
 .suggestion-note {
   flex-basis: 100%;
   font-size: 12.5px;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-/* A button wearing the link style needs the button chrome taken off first. */
 button.link {
   background: none;
   border: none;
   padding: 0;
   cursor: pointer;
 }
-/* Title, then its summary, then the toggle pushed to the far edge — `space-between`
-   alone would strand the summary in the middle of the row. */
+/* `space-between` alone would strand the summary in the middle of the row. */
 .suggestions-head {
   justify-content: flex-start;
   gap: 12px;
