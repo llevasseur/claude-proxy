@@ -226,6 +226,28 @@ export function parseSessionNodes(content: string): SessionNode[] {
   return nodes;
 }
 
+/**
+ * Untruncated node texts from a transcript's `<threadId>.nodes.jsonl` sidecar,
+ * keyed by node index — the whole text behind the gists {@link parseSessionNodes}
+ * reads back. Sparse: only nodes whose line dropped something get an entry, and
+ * transcripts predating the sidecar have none. Malformed lines are skipped.
+ */
+export function parseSessionNodeTexts(content: string): Record<number, string> {
+  const texts: Record<number, string> = {};
+  for (const line of content.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line) as { i?: unknown; text?: unknown };
+      if (typeof row.i === "number" && Number.isInteger(row.i) && row.i >= 0 && typeof row.text === "string") {
+        texts[row.i] = row.text;
+      }
+    } catch {
+      /* skip a torn or truncated line */
+    }
+  }
+  return texts;
+}
+
 // --- Subagent linkage ------------------------------------------------------
 //
 // A subagent runs under its parent's session id but with its own conversation
