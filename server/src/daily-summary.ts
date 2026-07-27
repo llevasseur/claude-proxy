@@ -7,7 +7,7 @@
  *   pnpm --filter server summary            # today
  *   pnpm --filter server summary 2026-07-14 # a specific day
  */
-import type { UsageDigest } from "@claude-proxy/core";
+import { reportTzAbbr, type UsageDigest } from "@claude-proxy/core";
 import { buildSummary, type SummaryResponse } from "./api.js";
 import { resolveLogDir } from "./logs.js";
 
@@ -41,7 +41,10 @@ function render({ digest: d, advice, meta }: SummaryResponse): string {
       `   Cache hit: ${(d.tokens.cacheHitRatio * 100).toFixed(0)}%`,
   );
   lines.push(`Est. cost: ${usd(d.cost.total)} (out ${usd(d.cost.output)}, cache-write ${usd(d.cost.cacheWrite)})`);
-  if (d.busiestHour) lines.push(`Busiest hour: ${String(d.busiestHour.hour).padStart(2, "0")}:00 UTC (${d.busiestHour.requestCount} req)`);
+  if (d.busiestHour)
+    lines.push(
+      `Busiest hour: ${String(d.busiestHour.hour).padStart(2, "0")}:00 ${reportTzAbbr(new Date(`${d.date}T12:00:00.000Z`))} (${d.busiestHour.requestCount} req)`,
+    );
   const trend = trendLine(d);
   if (trend) lines.push(trend);
 

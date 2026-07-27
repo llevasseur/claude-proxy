@@ -5,7 +5,7 @@ import { getTrends } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
 import { SeriesLineChart } from "../components/SeriesLineChart";
-import { findMetric } from "../metrics";
+import { findMetric, REPORT_TZ_ABBR } from "../metrics";
 
 const WINDOWS = [7, 14, 30];
 
@@ -83,7 +83,7 @@ export function TrendDetailPage() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Date</th>
+                    <th>Date ({REPORT_TZ_ABBR})</th>
                     <th className="num">{def.label}</th>
                   </tr>
                 </thead>

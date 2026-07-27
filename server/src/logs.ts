@@ -1,6 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { reportDay, shiftDay } from "@claude-proxy/core";
+
+export { shiftDay };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // server/src
 
@@ -28,11 +31,11 @@ export async function countSidecarFiles(logDir: string): Promise<number> {
 }
 
 export interface ReadOptions {
-  /** Only files whose filename date prefix equals this `YYYY-MM-DD`. */
+  /** Only sidecars whose reporting-zone day equals this `YYYY-MM-DD`. */
   date?: string;
-  /** Only files on/after this `YYYY-MM-DD`. Ignored if `date` is set. */
+  /** Only sidecars on/after this reporting-zone `YYYY-MM-DD`. Ignored if `date` is set. */
   since?: string;
-  /** Only files on/after (today − sinceDays + 1). Ignored if `date` or `since` is set. */
+  /** Only sidecars on/after (today − sinceDays + 1). Ignored if `date` or `since` is set. */
   sinceDays?: number;
   includeSkimRequests?: boolean;
   /** Attach `__file` (the sidecar base name, minus `.audit.json`) to each parsed
@@ -73,20 +76,20 @@ async function skimRequestText(logDir: string, auditFile: string): Promise<strin
   }
 }
 
-/** `YYYY-MM-DD` for today (UTC), matching the proxy's ISO filename prefixes. */
+/** `YYYY-MM-DD` for today in the reporting zone (see `REPORT_TZ`). */
 export function today(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
-}
-
-/** `YYYY-MM-DD` for `n` days before `from` (UTC). */
-export function shiftDay(from: string, n: number): string {
-  const d = new Date(`${from}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
+  return reportDay(now) ?? now.toISOString().slice(0, 10);
 }
 
 function cutoff(sinceDays: number, now: Date): string {
   return shiftDay(today(now), -(sinceDays - 1));
+}
+
+/** A sidecar's ISO `timestamp`, when it has a usable one. */
+function timestampOf(sidecar: unknown): string | null {
+  if (typeof sidecar !== "object" || sidecar === null) return null;
+  const ts = (sidecar as { timestamp?: unknown }).timestamp;
+  return typeof ts === "string" ? ts : null;
 }
 
 /**
@@ -108,36 +111,57 @@ export async function readSidecars(
   }
 
   let files = entries.filter((f) => f.endsWith(".audit.json"));
+  // Filenames carry the proxy's UTC prefix, so one reporting day spans the
+  // filenames `D` and `D+1`. Match a superset by filename, then narrow it
+  // exactly by each sidecar's own timestamp.
+  let keepDay: ((day: string) => boolean) | null = null;
   if (opts.date) {
-    files = files.filter((f) => f.startsWith(opts.date!));
+    const next = shiftDay(opts.date, 1);
+    files = files.filter((f) => f.startsWith(opts.date!) || f.startsWith(next));
+    keepDay = (day) => day === opts.date;
   } else if (opts.since) {
     files = files.filter((f) => f.slice(0, 10) >= opts.since!);
+    keepDay = (day) => day >= opts.since!;
   } else if (opts.sinceDays != null) {
     const from = cutoff(opts.sinceDays, now);
     files = files.filter((f) => f.slice(0, 10) >= from);
+    keepDay = (day) => day >= from;
   }
   files.sort();
 
   const sidecars: unknown[] = [];
   let parseErrors = 0;
+  let kept = 0;
   for (const f of files) {
+    let sidecar: unknown;
     try {
-      const sidecar = JSON.parse(await readFile(path.join(logDir, f), "utf8")) as unknown;
-      if (typeof sidecar === "object" && sidecar !== null) {
-        if (opts.includeSkimRequests) {
-          (sidecar as { skimRequestText?: string }).skimRequestText = (await skimRequestText(logDir, f)) ?? undefined;
-        }
-        if (opts.includeFile) {
-          (sidecar as { __file?: string }).__file = f.replace(/\.audit\.json$/, "");
-        }
-      }
-      sidecars.push(sidecar);
+      sidecar = JSON.parse(await readFile(path.join(logDir, f), "utf8")) as unknown;
     } catch {
+      // No timestamp to place it by, so fall back to the filename's UTC day.
+      if (keepDay && !keepDay(f.slice(0, 10))) continue;
       parseErrors += 1;
+      kept += 1;
       sidecars.push({ __parseError: f });
+      continue;
     }
+
+    if (keepDay) {
+      const ts = timestampOf(sidecar);
+      if (!keepDay((ts && reportDay(ts)) || f.slice(0, 10))) continue;
+    }
+
+    if (typeof sidecar === "object" && sidecar !== null) {
+      if (opts.includeSkimRequests) {
+        (sidecar as { skimRequestText?: string }).skimRequestText = (await skimRequestText(logDir, f)) ?? undefined;
+      }
+      if (opts.includeFile) {
+        (sidecar as { __file?: string }).__file = f.replace(/\.audit\.json$/, "");
+      }
+    }
+    kept += 1;
+    sidecars.push(sidecar);
   }
-  return { sidecars, files: files.length, parseErrors };
+  return { sidecars, files: kept, parseErrors };
 }
 
 /** `<logDir>/archive/<YYYY-MM-DD>/` — where the summary job parks each past day's sidecars. */
@@ -148,17 +172,28 @@ export function rawArchiveDayDir(logDir: string, date: string): string {
 /**
  * One archived day's sidecars from `<logDir>/archive/<date>/`. Empty result rather
  * than a throw when the day was never archived or has been pruned.
+ *
+ * Folders are named for the UTC day the job moved, so a reporting day straddles
+ * `date` and `date + 1`; both are read and `readSidecars` keeps only the
+ * sidecars that land on `date`.
  */
 export async function readArchivedDay(
   logDir: string,
   date: string,
   opts: Omit<ReadOptions, "date" | "sinceDays"> = {},
 ): Promise<LoadResult> {
-  try {
-    return await readSidecars(rawArchiveDayDir(logDir, date), { ...opts, date });
-  } catch {
-    return { sidecars: [], files: 0, parseErrors: 0 };
+  const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0 };
+  for (const day of [date, shiftDay(date, 1)]) {
+    try {
+      const r = await readSidecars(rawArchiveDayDir(logDir, day), { ...opts, date });
+      out.sidecars.push(...r.sidecars);
+      out.files += r.files;
+      out.parseErrors += r.parseErrors;
+    } catch {
+      // Never archived or already pruned — contributes nothing.
+    }
   }
+  return out;
 }
 
 /** Base names the proxy emits, e.g. `2026-07-20T13-31-00-278_anthropic`. Digits,

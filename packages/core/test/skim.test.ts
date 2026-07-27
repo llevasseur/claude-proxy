@@ -75,12 +75,21 @@ describe("computeSkimDigest", () => {
 });
 
 describe("skimDigestsByDay", () => {
-  it("splits by UTC day, oldest first", () => {
+  it("splits by reporting-zone day, oldest first", () => {
     const d1 = makeSidecar({ timestamp: "2026-07-14T10:00:00.000Z", skim: makeSkim({ enabled: true, servedFromCache: true, savedInputTokens: 100, cacheKey: "a" }) });
     const d2 = makeSidecar({ timestamp: "2026-07-15T10:00:00.000Z", skim: makeSkim({ enabled: true, servedFromCache: false, cacheKey: "b" }) });
     const digests = skimDigestsByDay([d2, d1]);
     expect(digests.map((d) => d.date)).toEqual(["2026-07-14", "2026-07-15"]);
     expect(digests[0]!.hits).toBe(1);
     expect(digests[1]!.misses).toBe(1);
+  });
+
+  it("keeps a late-evening request on the day it was made", () => {
+    // 01:30Z on the 16th is 21:30 Eastern on the 15th.
+    const evening = makeSidecar({ timestamp: "2026-07-16T01:30:00.000Z", skim: makeSkim({ enabled: true, servedFromCache: true, savedInputTokens: 100, cacheKey: "a" }) });
+    const morning = makeSidecar({ timestamp: "2026-07-15T14:00:00.000Z", skim: makeSkim({ enabled: true, servedFromCache: false, cacheKey: "b" }) });
+    const digests = skimDigestsByDay([evening, morning]);
+    expect(digests.map((d) => d.date)).toEqual(["2026-07-15"]);
+    expect(digests[0]!.requestCount).toBe(2);
   });
 });

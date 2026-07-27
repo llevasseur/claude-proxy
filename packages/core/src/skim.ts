@@ -1,5 +1,6 @@
 import { isAuditSidecar, type AuditSidecar, type AuditSkim } from "./types.js";
 import { priceFor } from "./pricing.js";
+import { reportDay } from "./time.js";
 
 export interface SkimShape {
   cacheKey: string;
@@ -125,10 +126,10 @@ export function computeSkimDigest(
 }
 
 function dayOf(sidecar: AuditSidecar): string {
-  return sidecar.timestamp.slice(0, 10);
+  return reportDay(sidecar.timestamp) ?? sidecar.timestamp.slice(0, 10);
 }
 
-/** Build daily UTC digests, oldest first. */
+/** Build one digest per calendar day in the reporting zone, oldest first. */
 export function skimDigestsByDay(sidecars: readonly unknown[], topN?: number): SkimDigest[] {
   const byDay = new Map<string, unknown[]>();
   for (const s of sidecars) {
