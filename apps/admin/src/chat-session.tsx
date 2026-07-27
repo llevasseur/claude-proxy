@@ -11,7 +11,7 @@ export interface ChatSessionValue {
   chat: ChatSendResponse | null;
   /** The prompt in flight; shown as a turn before the reply lands. */
   pendingPrompt: string | null;
-  /** The unsent input. Held here so navigating away and back doesn't discard what was typed. */
+  /** The unsent input, held here so navigating away doesn't discard it. */
   draft: string;
   setDraft: (next: string) => void;
   isSending: boolean;
@@ -78,7 +78,6 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     setSessionId(crypto.randomUUID());
     setChat(null);
     setPendingPrompt(null);
-    // A fresh chat starts on an empty input; the old draft belonged to the session just ended.
     setDraft("");
     // Both mutations too, or a failed turn's error sits under the new empty chat.
     sendMutation.reset();

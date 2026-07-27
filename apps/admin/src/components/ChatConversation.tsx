@@ -32,8 +32,7 @@ export function ChatConversation({
   /** Fired after the turn is handed off — the start card navigates to the session here. */
   onSend?: (prompt: string) => void;
 }) {
-  // The draft lives in the session, not here: this component unmounts on every navigation,
-  // and an unsent reply shouldn't die with it.
+  // The draft lives in the session, not here: this component unmounts on every navigation.
   const { chat, pendingPrompt, isSending, sendError, isStopping, stopError, draft, setDraft, send, stop } =
     useChatSession();
 
