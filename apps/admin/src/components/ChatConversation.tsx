@@ -16,9 +16,7 @@ const INTERRUPTION_NOTE: Record<ChatInterruption, string> = {
  * The live chat: what was asked, what came back, what the turn ran, and the input to keep going.
  * Shared by the Sessions page's chat pane and the session page.
  *
- * Laid out as a chat panel — a scrolling transcript above a pinned composer. `fill` makes it
- * take the height it is given; without it the transcript sizes to its turns, which is what the
- * card on a session page wants.
+ * Laid out as a scrolling transcript above a pinned composer.
  *
  * The prompt in flight renders as a user turn straight away — the server returns history only
  * once the turn resolves, and an agent turn can run for an hour.
@@ -47,7 +45,7 @@ export function ChatConversation({
   const log = useRef<HTMLDivElement>(null);
   const started = !!chat || !!pendingPrompt;
 
-  // Follow the conversation down as turns land, the way every chat panel does.
+  // Follow the transcript down as turns land.
   useEffect(() => {
     const el = log.current;
     if (el) el.scrollTop = el.scrollHeight;

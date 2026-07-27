@@ -2668,7 +2668,6 @@ button.sessions-new.is-active {
   font-size: 10.5px;
   color: var(--faint);
 }
-/* Two lines of the prompt, so a rail scan stays a scan. */
 .session-row-preview {
   color: var(--muted);
   font-size: 12px;

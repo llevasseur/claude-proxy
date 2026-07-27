@@ -10,8 +10,7 @@ import { fmtAgeShort, fmtInt } from "../format";
  * and grown a page at a time as you scroll.
  *
  * The list arrives whole — `/api/sessions` has no cursor — so "infinite scroll" here
- * windows what is *rendered*. A machine with hundreds of transcripts otherwise pays
- * for every row on first paint, and the rail is the one place they all land.
+ * windows what is *rendered*.
  */
 const PAGE = 30;
 
@@ -44,8 +43,7 @@ export function SessionsSidenav({
     );
   }, [sessions, filter]);
 
-  // A narrowed list starts at the top again, or the window stays open at its old depth
-  // and the rail is left scrolled into results the reader never asked about.
+  // A narrowed list starts at the top again, at the first page.
   useEffect(() => {
     setShown(PAGE);
     if (list.current) list.current.scrollTop = 0;
