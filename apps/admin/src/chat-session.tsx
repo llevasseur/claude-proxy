@@ -11,6 +11,9 @@ export interface ChatSessionValue {
   chat: ChatSendResponse | null;
   /** The prompt in flight; shown as a turn before the reply lands. */
   pendingPrompt: string | null;
+  /** The unsent input, held here so navigating away doesn't discard it. */
+  draft: string;
+  setDraft: (next: string) => void;
   isSending: boolean;
   sendError: Error | null;
   isStopping: boolean;
@@ -34,6 +37,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
   const [chat, setChat] = useState<ChatSendResponse | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
   // null → follow whatever the server defaults to.
   const [mode, setMode] = useState<ChatMode | null>(null);
   const [permissionMode, setPermissionMode] = useState<PermissionMode | null>(null);
@@ -58,6 +62,8 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const send = useCallback(
     (prompt: string) => {
       setPendingPrompt(prompt);
+      // Cleared on submit, not on success: the prompt is already on screen as a turn.
+      setDraft("");
       sendMutation.mutate(prompt);
     },
     [sendMutation],
@@ -72,6 +78,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     setSessionId(crypto.randomUUID());
     setChat(null);
     setPendingPrompt(null);
+    setDraft("");
     // Both mutations too, or a failed turn's error sits under the new empty chat.
     sendMutation.reset();
     stopMutation.reset();
@@ -82,6 +89,8 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       sessionId,
       chat,
       pendingPrompt,
+      draft,
+      setDraft,
       isSending: sendMutation.isPending,
       sendError: (sendMutation.error as Error | null) ?? null,
       isStopping: stopMutation.isPending,
@@ -98,6 +107,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       sessionId,
       chat,
       pendingPrompt,
+      draft,
       sendMutation.isPending,
       sendMutation.error,
       stopMutation.isPending,
