@@ -6,6 +6,7 @@ import { BarChart } from "../components/BarChart";
 import { QueryState } from "../components/QueryState";
 import { type Series, SeriesLineChart } from "../components/SeriesLineChart";
 import { fmtInt, fmtUsd } from "../format";
+import { REPORT_TZ_ABBR } from "../metrics";
 
 const WINDOWS = [7, 14, 30];
 
@@ -69,7 +70,7 @@ export function TrendsPage() {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Date</th>
+                    <th>Date ({REPORT_TZ_ABBR})</th>
                     <th className="num">Requests</th>
                     <th className="num">Real input</th>
                     <th className="num">Output</th>

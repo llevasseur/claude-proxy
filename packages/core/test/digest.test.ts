@@ -23,7 +23,8 @@ describe("computeDigest", () => {
     expect(d.cost.total).toBeGreaterThan(0);
     expect(d.models).toEqual({ "claude-opus-4-8": 1 });
     expect(d.topTools[0]!.name).toBe("Workflow");
-    expect(d.busiestHour).toEqual({ hour: 13, requestCount: 1 });
+    // 13:47Z is 09:47 Eastern.
+    expect(d.busiestHour).toEqual({ hour: 9, requestCount: 1 });
   });
 
   it("counts multiple models and sums cost", () => {
@@ -65,15 +66,26 @@ describe("computeDigest", () => {
     expect(reqTrend.deltaPct).toBeCloseTo(100);
   });
 
-  it("finds the busiest hour", () => {
+  it("finds the busiest hour, in the reporting zone", () => {
     const at = (h: string) => makeSidecar({ timestamp: `2026-07-15T${h}:00:00.000Z` });
     const d = computeDigest([at("09"), at("14"), at("14")], { date: "2026-07-15" });
-    expect(d.busiestHour).toEqual({ hour: 14, requestCount: 2 });
+    // 14:00Z is 10:00 Eastern.
+    expect(d.busiestHour).toEqual({ hour: 10, requestCount: 2 });
   });
 });
 
 describe("digestsByDay", () => {
-  it("splits by UTC day and chains trend across days", () => {
+  it("keeps a late-evening request on the reporting day it was made", () => {
+    // 01:30Z on the 16th is 21:30 Eastern on the 15th — bucketing on the raw
+    // UTC prefix would roll it onto the 16th, hours before local midnight.
+    const evening = makeSidecar({ timestamp: "2026-07-16T01:30:00.000Z" });
+    const morning = makeSidecar({ timestamp: "2026-07-15T14:00:00.000Z" });
+    const digests = digestsByDay([evening, morning]);
+    expect(digests.map((d) => d.date)).toEqual(["2026-07-15"]);
+    expect(digests[0]!.requestCount).toBe(2);
+  });
+
+  it("splits by reporting-zone day and chains trend across days", () => {
     const day1 = makeSidecar({ timestamp: "2026-07-14T10:00:00.000Z" });
     const day2a = makeSidecar({ timestamp: "2026-07-15T10:00:00.000Z" });
     const day2b = makeSidecar({ timestamp: "2026-07-15T11:00:00.000Z" });

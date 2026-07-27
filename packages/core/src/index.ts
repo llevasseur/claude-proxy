@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./time.js";
 export * from "./pricing.js";
 export * from "./digest.js";
 export * from "./advice.js";

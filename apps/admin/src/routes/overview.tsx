@@ -7,7 +7,7 @@ import { AdviceCard } from "../components/AdviceCard";
 import { QueryState } from "../components/QueryState";
 import { StatCard } from "../components/StatCard";
 import { fmtInt, fmtPct } from "../format";
-import { METRICS } from "../metrics";
+import { METRICS, REPORT_TZ_ABBR } from "../metrics";
 
 const WINDOWS = [7, 14, 30];
 
@@ -126,7 +126,7 @@ function PageHead({
       <div>
         <h1>Overview</h1>
         <div className="muted">
-          {date} · {meta.files} request{meta.files === 1 ? "" : "s"}
+          {date} ({REPORT_TZ_ABBR}) · {meta.files} request{meta.files === 1 ? "" : "s"}
           {meta.parseErrors > 0 && ` · ${meta.parseErrors} skipped`}
         </div>
       </div>

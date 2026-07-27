@@ -1,5 +1,6 @@
 import { isAuditSidecar, type AuditSidecar } from "./types.js";
 import { addCost, estimateCost, ZERO_COST, type CostBreakdown } from "./pricing.js";
+import { reportDay, reportHour } from "./time.js";
 
 export interface DigestTokens {
   input: number;
@@ -62,9 +63,12 @@ function pct(part: number, whole: number): number {
   return whole > 0 ? (part / whole) * 100 : 0;
 }
 
-/** The ISO timestamp's calendar day in UTC, `YYYY-MM-DD`. */
+/**
+ * The sidecar's calendar day in the reporting zone, `YYYY-MM-DD`. Falls back to
+ * the timestamp's UTC prefix only if it can't be parsed.
+ */
 export function dayOf(sidecar: AuditSidecar): string {
-  return sidecar.timestamp.slice(0, 10);
+  return reportDay(sidecar.timestamp) ?? sidecar.timestamp.slice(0, 10);
 }
 
 /**
@@ -109,8 +113,8 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
       toolEstTokensSum += t.estTokens;
     }
 
-    const hour = Number(s.timestamp.slice(11, 13));
-    if (!Number.isNaN(hour)) hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
+    const hour = reportHour(s.timestamp);
+    if (hour !== null) hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
   }
 
   const allToolBytes = [...toolBytes.values()].reduce((n, v) => n + v.totalBytes, 0);
@@ -156,7 +160,8 @@ function buildTrend(today: UsageDigest, prior: UsageDigest): TrendEntry[] {
 }
 
 /**
- * Split sidecars into one digest per calendar day (UTC), oldest→newest, with
+ * Split sidecars into one digest per calendar day in the reporting zone
+ * (see `REPORT_TZ`), oldest→newest, with
  * each day's `trend` computed against the previous day. Handy for the multi-day
  * trend view.
  */

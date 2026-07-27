@@ -1,4 +1,4 @@
-import type { UsageDigest } from "@claude-proxy/core";
+import { reportTzAbbr, type UsageDigest } from "@claude-proxy/core";
 import { fmtInt, fmtPct, fmtUsd } from "./format";
 
 /** One Overview statistic, shared by the cards, their mini charts, and `/trends/$metric`. */
@@ -28,6 +28,9 @@ export interface StatMetric {
 }
 
 const fmtBytesLabel = (n: number) => `${fmtInt(n)} B`;
+
+/** Zone every day-bucketed Overview/Trend value is reported in, e.g. `"EDT"`. */
+export const REPORT_TZ_ABBR = reportTzAbbr();
 
 /** The Overview statistics, in the order they appear on the page. */
 export const METRICS: StatMetric[] = [
@@ -81,12 +84,12 @@ export const METRICS: StatMetric[] = [
     key: "busiest-hour",
     label: "Busiest hour",
     title: "Busiest-hour requests",
-    description: "Requests during the single busiest UTC hour of each day.",
+    description: `Requests during the single busiest hour of each day (${REPORT_TZ_ABBR}).`,
     color: "var(--accent)",
     format: (n) => `${fmtInt(n)} req`,
     value: (d) => d.busiestHour?.requestCount ?? 0,
     headline: (d) => (d.busiestHour ? `${String(d.busiestHour.hour).padStart(2, "0")}:00` : "—"),
-    sub: (d) => (d.busiestHour ? `${d.busiestHour.requestCount} req · UTC` : undefined),
+    sub: (d) => (d.busiestHour ? `${d.busiestHour.requestCount} req · ${REPORT_TZ_ABBR}` : undefined),
   },
   {
     key: "tool-overhead",
