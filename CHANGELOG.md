@@ -10,6 +10,10 @@ This project has not cut a release yet, so everything below sits under
 
 ## [Unreleased]
 
+### Added
+
+- **From a session into the live graph** — the sessions list gains a `graph →` link per row and a session's own page one beside its live indicator, both landing on `/sessions/graph?session=<threadId>`. The graph reads that search param instead of always opening on the newest session: it canvases the linked session's family, and centers the branch when what was linked is a subagent. Picking in the rail writes the param back, so the canvas survives a reload and the URL is shareable. The graph inspector's existing "Open transcript →" now has a way back.
+
 ### Changed
 
 - **A session's name wears the signal color, its id doesn't** — the title and the thread id swapped colors in the sessions list, so the primary label is the one that stands out and the mono id under it reads as plain text. The id keeps its link and hover underline, and a session with no name still shows its id in signal — `.session-id` only applies when a name sits above it.
