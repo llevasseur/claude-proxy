@@ -102,8 +102,8 @@ describe("readArchivedDay", () => {
   it("falls back to the other layout per UTC folder", async () => {
     const logRoot = await mkdtemp(path.join(tmpdir(), "logs-split-"));
     const archiveDir = await mkdtemp(path.join(tmpdir(), "digest-split-"));
-    // The 15th archived the old way, the 16th the new way — the reporting day
-    // spans both, so neither layout alone holds it.
+    // The 15th archived the old way, the 16th the new — neither layout alone
+    // holds the reporting day that spans them.
     const legacy = path.join(logRoot, "archive", "2026-07-15");
     const current = path.join(archiveDir, "2026-07-16", "raw");
     await mkdir(legacy, { recursive: true });

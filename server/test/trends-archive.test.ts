@@ -83,7 +83,6 @@ describe("buildTrends archive fallbacks", () => {
     await writeFinalizedDigest(archiveDir, "2026-07-15");
 
     const day = dayOf(await buildTrends(logDir, 5, NOW, archiveDir), "2026-07-15");
-    // The recomputed digest wins over the finalized one that lacks the field.
     expect(day?.requestCount).toBe(2);
     expect(day?.toolOverheadPctOfInput).toBeCloseTo(EXPECTED_OVERHEAD, 6);
   });

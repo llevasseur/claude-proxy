@@ -135,11 +135,10 @@ async function rawArchivedDigest(logDir: string, date: string, archiveDir?: stri
  * raw sidecars the archive still holds, and failing that read from the archive
  * of finalized digests. Live days win over both for the same date.
  *
- * Recomputing beats the finalized digest wherever the raw capture survives: that
- * file is written by an external job whose digest schema has drifted from
- * core's, so fields it never learned to emit (`toolOverheadPctOfInput`) read as
- * zero, and its `topTools` is truncated. Past the archive's raw-retention window
- * the finalized digest is all that's left.
+ * Recomputing beats the finalized digest wherever raw survives: that file comes
+ * from an external job whose digest schema has drifted from core's — it never
+ * emits `toolOverheadPctOfInput` and truncates `topTools`. Past the archive's
+ * raw-retention window the finalized digest is all that's left.
  */
 export async function buildTrends(
   logDir: string,

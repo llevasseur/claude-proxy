@@ -94,9 +94,7 @@ function timestampOf(sidecar: unknown): string | null {
 
 /**
  * How many sidecars to read at once. A single archived day is thousands of tiny
- * files, so reading them one `await` at a time is almost entirely latency —
- * enough to dominate a multi-day trends request. Measured on one 2,700-file day:
- * ~880ms serial vs ~275ms here.
+ * files, so reading them one `await` at a time is almost entirely latency.
  */
 const READ_CONCURRENCY = 32;
 
@@ -137,8 +135,7 @@ export async function readSidecars(
   }
   files.sort();
 
-  // Kept sidecars stay in filename order: each read writes its own slot, and the
-  // slots are collapsed in order once every worker has finished.
+  // Kept sidecars stay in filename order: each read fills its own slot.
   const slots: Array<{ sidecar: unknown; parseError: boolean } | null> = new Array(files.length).fill(null);
   let next = 0;
 
@@ -193,12 +190,7 @@ export function rawArchiveDayDir(logDir: string, date: string): string {
   return path.join(logDir, "archive", date);
 }
 
-/**
- * `<archiveDir>/<YYYY-MM-DD>/raw/` — the other place a day's sidecars can live:
- * beside that day's finalized `digest.json` in the durable digest archive. Which
- * layout a device uses depends on how its summary job is set up, so both are
- * treated as optional.
- */
+/** `<archiveDir>/<YYYY-MM-DD>/raw/` — the other place they can live, beside that day's finalized `digest.json`. */
 export function digestArchiveRawDayDir(archiveDir: string, date: string): string {
   return path.join(archiveDir, date, "raw");
 }
@@ -216,8 +208,8 @@ export interface ArchivedDayOptions extends Omit<ReadOptions, "date" | "sinceDay
  * Folders are named for the UTC day the job moved, so a reporting day straddles
  * `date` and `date + 1`; both are read and `readSidecars` keeps only the
  * sidecars that land on `date`. Per UTC day the first layout that actually holds
- * it wins rather than the two being merged, so a day present in both (a
- * half-finished migration) is counted once.
+ * it wins rather than the two being merged, so a day present in both is counted
+ * once.
  */
 export async function readArchivedDay(
   logDir: string,
