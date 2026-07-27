@@ -170,27 +170,54 @@ export function rawArchiveDayDir(logDir: string, date: string): string {
 }
 
 /**
- * One archived day's sidecars from `<logDir>/archive/<date>/`. Empty result rather
- * than a throw when the day was never archived or has been pruned.
+ * `<archiveDir>/<YYYY-MM-DD>/raw/` — the other place a day's sidecars can live:
+ * beside that day's finalized `digest.json` in the durable digest archive. Which
+ * layout a device uses depends on how its summary job is set up, so both are
+ * treated as optional.
+ */
+export function digestArchiveRawDayDir(archiveDir: string, date: string): string {
+  return path.join(archiveDir, date, "raw");
+}
+
+export interface ArchivedDayOptions extends Omit<ReadOptions, "date" | "sinceDays"> {
+  /** Digest-archive root to search besides `<logDir>/archive/`. Skipped when unset. */
+  archiveDir?: string;
+}
+
+/**
+ * One archived day's sidecars, from whichever archive layout this device uses.
+ * Empty result rather than a throw when the day was never archived, has been
+ * pruned, or the archive doesn't exist at all.
  *
  * Folders are named for the UTC day the job moved, so a reporting day straddles
  * `date` and `date + 1`; both are read and `readSidecars` keeps only the
- * sidecars that land on `date`.
+ * sidecars that land on `date`. Per UTC day the first layout that actually holds
+ * it wins rather than the two being merged, so a day present in both (a
+ * half-finished migration) is counted once.
  */
 export async function readArchivedDay(
   logDir: string,
   date: string,
-  opts: Omit<ReadOptions, "date" | "sinceDays"> = {},
+  opts: ArchivedDayOptions = {},
 ): Promise<LoadResult> {
+  const { archiveDir, ...readOpts } = opts;
   const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0 };
   for (const day of [date, shiftDay(date, 1)]) {
-    try {
-      const r = await readSidecars(rawArchiveDayDir(logDir, day), { ...opts, date });
+    const dirs = [rawArchiveDayDir(logDir, day)];
+    if (archiveDir) dirs.push(digestArchiveRawDayDir(archiveDir, day));
+
+    for (const dir of dirs) {
+      let r: LoadResult;
+      try {
+        r = await readSidecars(dir, { ...readOpts, date });
+      } catch {
+        continue; // Never archived or already pruned — contributes nothing.
+      }
+      if (r.files === 0) continue; // Present but holds nothing for `date`.
       out.sidecars.push(...r.sidecars);
       out.files += r.files;
       out.parseErrors += r.parseErrors;
-    } catch {
-      // Never archived or already pruned — contributes nothing.
+      break;
     }
   }
   return out;

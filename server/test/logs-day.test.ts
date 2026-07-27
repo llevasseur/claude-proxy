@@ -46,14 +46,20 @@ describe("readSidecars date filtering", () => {
   });
 });
 
+/** The day folders a reporting day straddles, in one layout or the other. */
+const STRADDLING_DAY = [
+  ["2026-07-15", MORNING_15TH],
+  ["2026-07-16", EVENING_15TH],
+  ["2026-07-16", MORNING_16TH],
+] as const;
+
+const timestamps = (sidecars: unknown[]): string[] =>
+  sidecars.map((s) => (s as { timestamp: string }).timestamp).sort();
+
 describe("readArchivedDay", () => {
   it("merges the two UTC folders a reporting day straddles", async () => {
     const archiveRoot = await mkdtemp(path.join(tmpdir(), "logs-archive-"));
-    for (const [folder, iso] of [
-      ["2026-07-15", MORNING_15TH],
-      ["2026-07-16", EVENING_15TH],
-      ["2026-07-16", MORNING_16TH],
-    ] as const) {
+    for (const [folder, iso] of STRADDLING_DAY) {
       const dir = path.join(archiveRoot, "archive", folder);
       await mkdir(dir, { recursive: true });
       await writeSidecar(dir, iso);
@@ -61,9 +67,69 @@ describe("readArchivedDay", () => {
 
     const { sidecars, files } = await readArchivedDay(archiveRoot, "2026-07-15");
     expect(files).toBe(2);
-    expect(sidecars.map((s) => (s as { timestamp: string }).timestamp).sort()).toEqual(
-      [MORNING_15TH, EVENING_15TH].sort(),
-    );
+    expect(timestamps(sidecars)).toEqual([MORNING_15TH, EVENING_15TH].sort());
+  });
+
+  it("reads the digest archive's own `<date>/raw/` layout", async () => {
+    const logRoot = await mkdtemp(path.join(tmpdir(), "logs-empty-"));
+    const archiveDir = await mkdtemp(path.join(tmpdir(), "digest-archive-"));
+    for (const [folder, iso] of STRADDLING_DAY) {
+      const dir = path.join(archiveDir, folder, "raw");
+      await mkdir(dir, { recursive: true });
+      await writeSidecar(dir, iso);
+    }
+
+    const { sidecars, files } = await readArchivedDay(logRoot, "2026-07-15", { archiveDir });
+    expect(files).toBe(2);
+    expect(timestamps(sidecars)).toEqual([MORNING_15TH, EVENING_15TH].sort());
+  });
+
+  it("counts a day held by both layouts once", async () => {
+    const logRoot = await mkdtemp(path.join(tmpdir(), "logs-both-"));
+    const archiveDir = await mkdtemp(path.join(tmpdir(), "digest-both-"));
+    for (const [folder, iso] of STRADDLING_DAY) {
+      for (const dir of [path.join(logRoot, "archive", folder), path.join(archiveDir, folder, "raw")]) {
+        await mkdir(dir, { recursive: true });
+        await writeSidecar(dir, iso);
+      }
+    }
+
+    const { sidecars, files } = await readArchivedDay(logRoot, "2026-07-15", { archiveDir });
+    expect(files).toBe(2);
+    expect(timestamps(sidecars)).toEqual([MORNING_15TH, EVENING_15TH].sort());
+  });
+
+  it("falls back to the other layout per UTC folder", async () => {
+    const logRoot = await mkdtemp(path.join(tmpdir(), "logs-split-"));
+    const archiveDir = await mkdtemp(path.join(tmpdir(), "digest-split-"));
+    // The 15th archived the old way, the 16th the new way — the reporting day
+    // spans both, so neither layout alone holds it.
+    const legacy = path.join(logRoot, "archive", "2026-07-15");
+    const current = path.join(archiveDir, "2026-07-16", "raw");
+    await mkdir(legacy, { recursive: true });
+    await mkdir(current, { recursive: true });
+    await writeSidecar(legacy, MORNING_15TH);
+    await writeSidecar(current, EVENING_15TH);
+
+    const { sidecars, files } = await readArchivedDay(logRoot, "2026-07-15", { archiveDir });
+    expect(files).toBe(2);
+    expect(timestamps(sidecars)).toEqual([MORNING_15TH, EVENING_15TH].sort());
+  });
+
+  it("is empty, not a throw, when neither archive exists", async () => {
+    const logRoot = await mkdtemp(path.join(tmpdir(), "logs-none-"));
+    const missing = path.join(logRoot, "no-such-archive");
+
+    await expect(readArchivedDay(logRoot, "2026-07-15")).resolves.toEqual({
+      sidecars: [],
+      files: 0,
+      parseErrors: 0,
+    });
+    await expect(readArchivedDay(logRoot, "2026-07-15", { archiveDir: missing })).resolves.toEqual({
+      sidecars: [],
+      files: 0,
+      parseErrors: 0,
+    });
   });
 });
 

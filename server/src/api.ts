@@ -113,14 +113,15 @@ export function clearRawArchiveCache(): void {
 
 /**
  * One archived day's digest, computed from the raw sidecars the summary job
- * moved into `<logDir>/archive/<date>/`. `null` when that day isn't archived.
+ * moved into `<logDir>/archive/<date>/` or `<archiveDir>/<date>/raw/`. `null`
+ * when that day isn't archived in either layout.
  */
-async function rawArchivedDigest(logDir: string, date: string): Promise<UsageDigest | null> {
-  const key = `${logDir} ${date}`;
+async function rawArchivedDigest(logDir: string, date: string, archiveDir?: string): Promise<UsageDigest | null> {
+  const key = `${logDir}\0${archiveDir ?? ""}\0${date}`;
   const hit = rawArchiveDigests.get(key);
   if (hit) return hit;
 
-  const { sidecars, files } = await readArchivedDay(logDir, date);
+  const { sidecars, files } = await readArchivedDay(logDir, date, { archiveDir });
   if (files === 0) return null;
 
   const digest = computeDigest(sidecars, { date });
@@ -130,9 +131,15 @@ async function rawArchivedDigest(logDir: string, date: string): Promise<UsageDig
 
 /**
  * Per-day digests for the last `days` days, oldest→newest. The live `logs/` dir
- * only retains the current day or two; older days come from the raw sidecars in
- * `<logDir>/archive/<date>/`, and failing that from the archive of finalized
- * digests. Live days win over both for the same date.
+ * only retains the current day or two; older days are recomputed from whatever
+ * raw sidecars the archive still holds, and failing that read from the archive
+ * of finalized digests. Live days win over both for the same date.
+ *
+ * Recomputing beats the finalized digest wherever the raw capture survives: that
+ * file is written by an external job whose digest schema has drifted from
+ * core's, so fields it never learned to emit (`toolOverheadPctOfInput`) read as
+ * zero, and its `topTools` is truncated. Past the archive's raw-retention window
+ * the finalized digest is all that's left.
  */
 export async function buildTrends(
   logDir: string,
@@ -150,7 +157,8 @@ export async function buildTrends(
     const date = shiftDay(end, -i);
     if (byDate.has(date)) continue;
     const digest =
-      (await rawArchivedDigest(logDir, date)) ?? (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
+      (await rawArchivedDigest(logDir, date, archiveDir)) ??
+      (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
     if (digest) {
       byDate.set(date, digest);
       archivedDays += 1;
