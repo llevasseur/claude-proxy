@@ -12,6 +12,8 @@ This project has not cut a release yet, so everything below sits under
 
 ### Changed
 
+- **Sessions is a chat client** — the page is now a full-height two-pane layout: a scrolling rail of transcripts on the left and the session you start from here filling the pane beside it. The rail (`SessionsSidenav`) sorts newest-first, filters by name / id / prompt / model, and renders 30 rows at a time, paging the next 30 from an `IntersectionObserver` sentinel as you scroll — `/api/sessions` returns the whole list in one payload, so the windowing is over what is *rendered*, which is what a machine with hundreds of transcripts pays for on first paint. The sortable table it replaces is gone; each row carries the name, a two-line prompt preview, a short age (`fmtAgeShort`) and model / tool / error chips. `ChatConversation` became a proper chat panel — avatar-and-bubble turns with the reader's own mirrored right, a transcript that follows itself down as turns land, a typing indicator for the prompt in flight, and a composer pinned below it — so the session page's live-chat card gets the same treatment. A short conversation anchors to the composer instead of the top of the pane, and under 900px the rail stacks above the chat.
+
 - **A session's name wears the signal color, its id doesn't** — the title and the thread id swapped colors in the sessions list, so the primary label is the one that stands out and the mono id under it reads as plain text. The id keeps its link and hover underline, and a session with no name still shows its id in signal — `.session-id` only applies when a name sits above it.
 
 ### Fixed
