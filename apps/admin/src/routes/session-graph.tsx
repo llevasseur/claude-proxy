@@ -15,8 +15,8 @@ import { fmtInt, fmtLocalTsShort } from "../format";
  * flows top-to-bottom, desktop uses long rows). A collapsible left rail switches
  * sessions; the toolbar floats above the canvas. Polls so new steps stream in.
  *
- * `?session=<threadId>` opens the graph on one session rather than the newest — what the
- * sessions list and a session's own page link to, and what picking in the rail writes back.
+ * `?session=<threadId>` opens the graph on one session rather than the newest; picking in
+ * the rail writes it back.
  *
  * A subagent keeps its own transcript, so it draws as a branch: the parent's `Agent(…)`
  * step opens an indented band around the subagent's own snake, and a return edge carries
@@ -544,8 +544,8 @@ export function SessionGraphPage() {
   const opened = useRef<string | null>(null);
   useEffect(() => {
     if (transcripts.length === 0) return;
-    // Linked in with `?session=`: canvas that session's family, centering the branch
-    // when what was linked is a subagent. Waits for a session the poll hasn't seen yet.
+    // `?session=`: canvas that session's family, centering the branch when it names a
+    // subagent. Waits out an id the poll hasn't seen yet.
     if (requested !== undefined && byThread.has(requested) && opened.current !== requested) {
       opened.current = requested;
       setSelectedId(rootOf(requested));
@@ -740,8 +740,7 @@ export function SessionGraphPage() {
 
   /**
    * Picking a session canvases it; picking a subagent canvases its family and centers that
-   * branch. The pick goes into `?session=` too, so the canvas survives a reload and the URL
-   * is shareable — replacing rather than pushing, since browsing the rail isn't history.
+   * branch. The pick lands in `?session=`, replacing rather than pushing — the rail isn't history.
    */
   const selectSession = (picked: SessionGraphEntry) => {
     setSelectedId(rootOf(picked.threadId));

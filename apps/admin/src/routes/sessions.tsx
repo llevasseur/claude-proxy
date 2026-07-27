@@ -296,7 +296,6 @@ function SessionsTable({ sessions }: { sessions: SessionSummary[] }) {
               </td>
               <td className="num muted">{fmtLocalTsShort(s.modified)}</td>
               <td>
-                {/* Sideways into the live graph, opened on this session rather than the newest. */}
                 <Link
                   to="/sessions/graph"
                   search={{ session: s.threadId }}

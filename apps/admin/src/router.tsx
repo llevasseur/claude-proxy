@@ -215,7 +215,7 @@ const sessionsRoute = createRoute({
   component: SessionsPage,
   staticData: { title: "Sessions" },
 });
-/** `?session=` hands the graph a session to open on — how the list and a session's page link in. */
+/** `?session=` names the session the graph opens on. */
 export interface SessionGraphSearch {
   session?: string;
 }
