@@ -13,8 +13,7 @@ async function writeSidecar(dir: string, iso: string): Promise<void> {
   await writeFile(path.join(dir, nameFor(iso)), JSON.stringify({ timestamp: iso }), "utf8");
 }
 
-// 21:30 EDT on the 15th, but 01:30Z on the 16th — the case that used to be
-// counted a day early.
+// 21:30 EDT on the 15th, but 01:30Z on the 16th.
 const EVENING_15TH = "2026-07-16T01:30:00.000Z";
 const MORNING_15TH = "2026-07-15T14:00:00.000Z";
 const MORNING_16TH = "2026-07-16T14:00:00.000Z";

@@ -1,11 +1,7 @@
 /**
  * The reporting timezone for every day-bucketed number in the dashboard.
- *
- * Sidecars are stamped in UTC, but a "day" should line up with the wall clock
- * you were actually working against. Bucketing on the raw UTC prefix rolls the
- * day over at 19:00/20:00 Eastern, so an evening's work lands on tomorrow.
- * `America/New_York` is Eastern proper — EST in winter, EDT in summer — so the
- * boundary stays at local midnight year-round.
+ * Eastern proper — EST in winter, EDT in summer — so the day boundary stays at
+ * local midnight year-round rather than following the sidecars' UTC stamps.
  */
 export const REPORT_TZ = "America/New_York";
 
@@ -52,10 +48,7 @@ export function reportTzAbbr(at: Date = new Date()): string {
   return abbrFmt.formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "ET";
 }
 
-/**
- * `YYYY-MM-DD` for `n` days from the `YYYY-MM-DD` label `from`. Pure label
- * arithmetic on a calendar date, so it carries no timezone of its own.
- */
+/** `YYYY-MM-DD` for `n` days from the label `from`. Pure label arithmetic — no timezone of its own. */
 export function shiftDay(from: string, n: number): string {
   const d = new Date(`${from}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + n);

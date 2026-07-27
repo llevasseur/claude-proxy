@@ -111,10 +111,9 @@ export async function readSidecars(
   }
 
   let files = entries.filter((f) => f.endsWith(".audit.json"));
-  // Filenames carry the proxy's UTC prefix, but days are bucketed in the
-  // reporting zone, which is behind UTC — so one reporting day's requests are
-  // spread across the UTC filenames `D` and `D+1`. Match a superset by
-  // filename here, then narrow it exactly by each sidecar's own timestamp.
+  // Filenames carry the proxy's UTC prefix, so one reporting day spans the
+  // filenames `D` and `D+1`. Match a superset by filename, then narrow it
+  // exactly by each sidecar's own timestamp.
   let keepDay: ((day: string) => boolean) | null = null;
   if (opts.date) {
     const next = shiftDay(opts.date, 1);
@@ -138,8 +137,7 @@ export async function readSidecars(
     try {
       sidecar = JSON.parse(await readFile(path.join(logDir, f), "utf8")) as unknown;
     } catch {
-      // Unreadable, so there's no timestamp to place it by — fall back to the
-      // filename's UTC day rather than dropping it silently.
+      // No timestamp to place it by, so fall back to the filename's UTC day.
       if (keepDay && !keepDay(f.slice(0, 10))) continue;
       parseErrors += 1;
       kept += 1;
@@ -175,9 +173,9 @@ export function rawArchiveDayDir(logDir: string, date: string): string {
  * One archived day's sidecars from `<logDir>/archive/<date>/`. Empty result rather
  * than a throw when the day was never archived or has been pruned.
  *
- * The summary job names each folder for the UTC day it moved, so a reporting-zone
- * day straddles the `date` and `date + 1` folders; both are read and `readSidecars`
- * keeps only the sidecars that actually land on `date`.
+ * Folders are named for the UTC day the job moved, so a reporting day straddles
+ * `date` and `date + 1`; both are read and `readSidecars` keeps only the
+ * sidecars that land on `date`.
  */
 export async function readArchivedDay(
   logDir: string,

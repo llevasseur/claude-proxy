@@ -63,10 +63,7 @@ function pct(part: number, whole: number): number {
   return whole > 0 ? (part / whole) * 100 : 0;
 }
 
-/**
- * The sidecar's calendar day in the reporting zone, `YYYY-MM-DD`. Falls back to
- * the timestamp's UTC prefix only if it can't be parsed.
- */
+/** The sidecar's calendar day in the reporting zone, `YYYY-MM-DD`; the timestamp's UTC prefix if unparseable. */
 export function dayOf(sidecar: AuditSidecar): string {
   return reportDay(sidecar.timestamp) ?? sidecar.timestamp.slice(0, 10);
 }
@@ -160,10 +157,9 @@ function buildTrend(today: UsageDigest, prior: UsageDigest): TrendEntry[] {
 }
 
 /**
- * Split sidecars into one digest per calendar day in the reporting zone
- * (see `REPORT_TZ`), oldest→newest, with
- * each day's `trend` computed against the previous day. Handy for the multi-day
- * trend view.
+ * Split sidecars into one digest per calendar day in the reporting zone (see
+ * `REPORT_TZ`), oldest→newest, with each day's `trend` computed against the
+ * previous day. Handy for the multi-day trend view.
  */
 export function digestsByDay(sidecars: readonly unknown[], topN?: number): UsageDigest[] {
   const byDay = new Map<string, unknown[]>();

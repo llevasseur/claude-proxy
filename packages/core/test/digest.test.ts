@@ -76,8 +76,7 @@ describe("computeDigest", () => {
 
 describe("digestsByDay", () => {
   it("keeps a late-evening request on the reporting day it was made", () => {
-    // 01:30Z on the 16th is 21:30 Eastern on the 15th — bucketing on the raw
-    // UTC prefix would roll it onto the 16th, hours before local midnight.
+    // 01:30Z on the 16th is 21:30 Eastern on the 15th.
     const evening = makeSidecar({ timestamp: "2026-07-16T01:30:00.000Z" });
     const morning = makeSidecar({ timestamp: "2026-07-15T14:00:00.000Z" });
     const digests = digestsByDay([evening, morning]);
