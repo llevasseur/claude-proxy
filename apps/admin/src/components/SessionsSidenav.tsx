@@ -1,9 +1,10 @@
 import { sessionName } from "@claude-proxy/core";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, PenSquare, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ArrowUp, Check, Plus, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "../api";
 import { fmtAgeShort, fmtInt } from "../format";
+import { useResolvedSessions } from "../useResolvedSessions";
 
 /**
  * The session list, as a chat app's conversation rail: newest first, filterable,
@@ -11,6 +12,9 @@ import { fmtAgeShort, fmtInt } from "../format";
  *
  * The list arrives whole — `/api/sessions` has no cursor — so "infinite scroll" here
  * windows what is *rendered*.
+ *
+ * Two lists, not one: what the reader is still working through, and what they have filed
+ * away. Each scrolls on its own, and the divider between them is draggable.
  */
 const PAGE = 30;
 
@@ -23,34 +27,194 @@ export function SessionsSidenav({
   sessions: SessionSummary[];
   /** Thread id of the transcript being read, if the reader is on one. */
   activeId?: string;
-  /** True while the composer holds an unstarted chat — the "New chat" row is the active one. */
+  /** True while the composer holds an unstarted chat — the "New chat" button is the active one. */
   isDrafting: boolean;
   onNewChat: () => void;
 }) {
   const [filter, setFilter] = useState("");
-  const [shown, setShown] = useState(PAGE);
-  const sentinel = useRef<HTMLDivElement>(null);
-  const list = useRef<HTMLDivElement>(null);
+  const { isResolved, activeAt, resolve, restore } = useResolvedSessions();
+  const body = useRef<HTMLDivElement>(null);
+  const [split, setSplit] = useSplit();
 
   const matched = useMemo(() => {
-    const rows = [...sessions].sort((a, b) => b.modified.localeCompare(a.modified));
     const needle = filter.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter((s) =>
+    if (!needle) return sessions;
+    return sessions.filter((s) =>
       [sessionName(s), s.threadId, s.subtitle, s.firstTask, s.model].some((field) =>
         field?.toLowerCase().includes(needle),
       ),
     );
   }, [sessions, filter]);
 
-  // A narrowed list starts at the top again, at the first page.
+  // Newest turn first in Active — and a session pulled back out of Resolved counts as newest.
+  const active = useMemo(
+    () => matched.filter((s) => !isResolved(s)).sort((a, b) => activeAt(b) - activeAt(a)),
+    [matched, isResolved, activeAt],
+  );
+  const resolved = useMemo(
+    () => matched.filter(isResolved).sort((a, b) => b.modified.localeCompare(a.modified)),
+    [matched, isResolved],
+  );
+
+  // Drag the divider: the top list takes a fixed height, the bottom one takes the rest.
+  const onResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const rail = body.current;
+      const top = rail?.firstElementChild as HTMLElement | undefined;
+      if (!rail || !top) return;
+      const startY = event.clientY;
+      const startH = top.offsetHeight;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const move = (e: PointerEvent) => setSplit(clamp(startH + e.clientY - startY, rail.offsetHeight));
+      const done = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", done);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", done);
+    },
+    [setSplit],
+  );
+
+  const nudge = (by: number) => {
+    const rail = body.current;
+    const top = rail?.firstElementChild as HTMLElement | undefined;
+    if (rail && top) setSplit(clamp(top.offsetHeight + by, rail.offsetHeight));
+  };
+
+  return (
+    <aside className="sessions-nav" aria-label="Sessions">
+      <div className="sessions-nav-body" ref={body}>
+        <SessionSection
+          title="Active"
+          sessions={active}
+          activeId={activeId}
+          filter={filter}
+          empty={sessions.length === 0 ? "No session transcripts yet." : "Nothing active."}
+          onToggle={resolve}
+          style={split === null ? undefined : { flex: "none", height: `${split}px` }}
+        />
+
+        <div
+          className="sessions-nav-resize"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize the Active list"
+          tabIndex={0}
+          onPointerDown={onResize}
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+            e.preventDefault();
+            nudge(e.key === "ArrowUp" ? -24 : 24);
+          }}
+        />
+
+        <SessionSection
+          title="Resolved"
+          sessions={resolved}
+          activeId={activeId}
+          filter={filter}
+          resolved
+          empty="Nothing resolved yet."
+          onToggle={restore}
+          style={split === null ? { flex: "0 1 auto", maxHeight: "38%" } : undefined}
+        />
+      </div>
+
+      <div className="sessions-nav-foot">
+        <div className="sessions-nav-actions">
+          <label className="sessions-search">
+            <Search size={14} strokeWidth={1.75} aria-hidden />
+            <input
+              type="search"
+              value={filter}
+              placeholder="Search sessions"
+              aria-label="Search sessions"
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className={`sessions-new${isDrafting ? " is-active" : ""}`}
+            title="New chat"
+            aria-label="New chat"
+            onClick={onNewChat}
+          >
+            <Plus size={16} strokeWidth={2} aria-hidden />
+          </button>
+        </div>
+        <span className="muted sessions-nav-count">
+          {fmtInt(active.length)} active · {fmtInt(resolved.length)} resolved
+          {filter.trim() ? ` of ${fmtInt(sessions.length)}` : ""}
+        </span>
+      </div>
+    </aside>
+  );
+}
+
+/** Keep both lists usable however the divider is dragged. */
+const MIN_SECTION = 88;
+function clamp(height: number, railHeight: number): number {
+  return Math.max(MIN_SECTION, Math.min(height, railHeight - MIN_SECTION));
+}
+
+const SPLIT_KEY = "admin:sessions-split";
+
+/** Where the divider sits, in pixels of Active; `null` until the reader has dragged it. */
+function useSplit(): [number | null, (next: number) => void] {
+  const [split, setSplit] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem(SPLIT_KEY);
+      return raw ? Number(raw) || null : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const set = useCallback((next: number) => {
+    setSplit(next);
+    try {
+      localStorage.setItem(SPLIT_KEY, String(Math.round(next)));
+    } catch {
+      /* ignore — the split stays session-only */
+    }
+  }, []);
+
+  return [split, set];
+}
+
+/** One of the two lists: a sticky heading over its own scroller, paged by a sentinel at the end. */
+function SessionSection({
+  title,
+  sessions,
+  activeId,
+  filter,
+  resolved = false,
+  empty,
+  onToggle,
+  style,
+}: {
+  title: string;
+  sessions: SessionSummary[];
+  activeId?: string;
+  /** Narrowing the list starts it over at the top, at the first page. */
+  filter: string;
+  resolved?: boolean;
+  empty: string;
+  onToggle: (threadId: string) => void;
+  style?: React.CSSProperties;
+}) {
+  const [shown, setShown] = useState(PAGE);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setShown(PAGE);
     if (list.current) list.current.scrollTop = 0;
   }, [filter]);
 
-  const visible = matched.slice(0, shown);
-  const more = shown < matched.length;
+  const visible = sessions.slice(0, shown);
+  const more = shown < sessions.length;
 
   useEffect(() => {
     const el = sentinel.current;
@@ -67,37 +231,24 @@ export function SessionsSidenav({
   }, [more]);
 
   return (
-    <aside className="sessions-nav" aria-label="Sessions">
-      <div className="sessions-nav-head">
-        <button
-          type="button"
-          className={`sessions-new${isDrafting ? " is-active" : ""}`}
-          onClick={onNewChat}
-        >
-          <PenSquare size={15} strokeWidth={1.75} aria-hidden />
-          New chat
-        </button>
-        <label className="sessions-search">
-          <Search size={14} strokeWidth={1.75} aria-hidden />
-          <input
-            type="search"
-            value={filter}
-            placeholder="Search sessions"
-            aria-label="Search sessions"
-            onChange={(e) => setFilter(e.target.value)}
-          />
-        </label>
-      </div>
-
+    <section className="sessions-group" style={style}>
+      <h2 className="sessions-group-head">
+        {title}
+        <span className="sessions-group-count">{fmtInt(sessions.length)}</span>
+      </h2>
       <div className="sessions-nav-list" ref={list}>
-        {matched.length === 0 ? (
-          <p className="muted sessions-nav-empty">
-            {sessions.length === 0 ? "No session transcripts yet." : "No session matches that."}
-          </p>
+        {sessions.length === 0 ? (
+          <p className="muted sessions-nav-empty">{empty}</p>
         ) : (
           <>
             {visible.map((s) => (
-              <SessionRow key={s.threadId} session={s} active={s.threadId === activeId} />
+              <SessionRow
+                key={s.threadId}
+                session={s}
+                active={s.threadId === activeId}
+                resolved={resolved}
+                onToggle={onToggle}
+              />
             ))}
             {more && (
               <div ref={sentinel} className="muted sessions-nav-more">
@@ -107,40 +258,66 @@ export function SessionsSidenav({
           </>
         )}
       </div>
-
-      <div className="sessions-nav-foot muted">
-        {fmtInt(matched.length)}
-        {filter.trim() ? ` of ${fmtInt(sessions.length)}` : ""} session
-        {matched.length === 1 && !filter.trim() ? "" : "s"}
-      </div>
-    </aside>
+    </section>
   );
 }
 
-function SessionRow({ session, active }: { session: SessionSummary; active: boolean }) {
+/**
+ * A card in the rail, with the file-away control the row reveals on hover.
+ *
+ * The control is a sibling of the link rather than a child: a button inside an anchor is
+ * invalid, and clicking it must not navigate.
+ */
+function SessionRow({
+  session,
+  active,
+  resolved,
+  onToggle,
+}: {
+  session: SessionSummary;
+  active: boolean;
+  resolved: boolean;
+  onToggle: (threadId: string) => void;
+}) {
   const name = sessionName(session);
   const preview = session.subtitle ?? session.firstTask;
+  const label = resolved ? "Move back to Active" : "Resolve";
   return (
-    <Link
-      to="/sessions/$id"
-      params={{ id: session.threadId }}
-      className={`session-row${active ? " is-active" : ""}`}
-    >
-      <div className="session-row-top">
-        <span className="session-row-name">{name ?? session.threadId}</span>
-        <span className="session-row-age">{fmtAgeShort(session.modified)}</span>
-      </div>
-      {preview && preview !== name && <span className="session-row-preview">{preview}</span>}
-      <div className="session-row-meta">
-        {session.model && <span className="session-chip">{session.model}</span>}
-        {session.tools > 0 && <span className="session-chip">{fmtInt(session.tools)} tools</span>}
-        {session.errors > 0 && (
-          <span className="session-chip is-bad">
-            <AlertTriangle size={11} strokeWidth={2} aria-hidden />
-            {fmtInt(session.errors)}
-          </span>
+    <div className={`session-row${active ? " is-active" : ""}`}>
+      <Link
+        to="/sessions/$id"
+        params={{ id: session.threadId }}
+        className="session-row-link"
+      >
+        <div className="session-row-top">
+          <span className="session-row-name">{name ?? session.threadId}</span>
+          <span className="session-row-age">{fmtAgeShort(session.modified)}</span>
+        </div>
+        {preview && preview !== name && <span className="session-row-preview">{preview}</span>}
+        <div className="session-row-meta">
+          {session.model && <span className="session-chip">{session.model}</span>}
+          {session.tools > 0 && <span className="session-chip">{fmtInt(session.tools)} tools</span>}
+          {session.errors > 0 && (
+            <span className="session-chip is-bad">
+              <AlertTriangle size={11} strokeWidth={2} aria-hidden />
+              {fmtInt(session.errors)}
+            </span>
+          )}
+        </div>
+      </Link>
+      <button
+        type="button"
+        className="session-row-cta"
+        title={label}
+        aria-label={`${label}: ${name ?? session.threadId}`}
+        onClick={() => onToggle(session.threadId)}
+      >
+        {resolved ? (
+          <ArrowUp size={14} strokeWidth={2} aria-hidden />
+        ) : (
+          <Check size={14} strokeWidth={2} aria-hidden />
         )}
-      </div>
-    </Link>
+      </button>
+    </div>
   );
 }

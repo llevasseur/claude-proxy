@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 
 export type PromptStatus = "ready" | "submitted" | "error";
 
@@ -20,6 +20,8 @@ export interface PromptInputProps {
   minRows?: number;
   /** Ceiling for the auto-grow, in rows. */
   maxRows?: number;
+  /** The session's own controls, carried in the toolbar beside the send button. */
+  options?: ReactNode;
 }
 
 /** Must match the textarea's line-height in `styles.css`. */
@@ -39,6 +41,7 @@ export function PromptInput({
   status = "ready",
   minRows = 2,
   maxRows = 10,
+  options,
 }: PromptInputProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const busy = status === "submitted";
@@ -86,6 +89,7 @@ export function PromptInput({
         }}
       />
       <div className="prompt-input-toolbar">
+        {options && <div className="prompt-input-options">{options}</div>}
         <span className="muted prompt-input-hint">
           <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line
         </span>

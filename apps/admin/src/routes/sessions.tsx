@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import type { ChatMode, PermissionMode } from "../api";
+import type { PermissionMode } from "../api";
 import { getChatConfig, getSessions, PERMISSION_MODES } from "../api";
 import { useChatSession } from "../chat-session";
 import { ChatConversation } from "../components/ChatConversation";
@@ -65,9 +65,7 @@ function ChatPane({
     chat,
     pendingPrompt,
     isSending,
-    mode: picked,
     permissionMode: pickedPermission,
-    setMode: setPicked,
     setPermissionMode: setPickedPermission,
     reset: newChat,
   } = useChatSession();
@@ -77,8 +75,6 @@ function ChatPane({
 
   const unconfigured = config.data && !config.data.ready;
   const threadId = chat?.session.threadId;
-  // A running chat's mode is fixed server-side, so it wins over the picker.
-  const mode: ChatMode = chat?.session.mode ?? picked ?? config.data?.mode ?? "agent";
   const agent = config.data?.agent;
   const permission = (chat?.session.permissionMode ??
     pickedPermission ??
@@ -89,11 +85,46 @@ function ChatPane({
     !!chat?.session.effectivePermissionMode && chat.session.effectivePermissionMode !== chat.session.permissionMode;
 
   return (
-    <>
-      <header className="chat-head">
-        <div className="chat-head-title">
-          <h1>{started ? `${mode === "agent" ? "Agent" : "Chat"} in progress` : "Start a session"}</h1>
-          <span className="muted">
+    <ChatConversation
+      fill
+      placeholder={started ? "Reply…" : "Ask Claude to do something — /task works here"}
+      disabled={!!unconfigured}
+      emptyState={<ChatEmptyState />}
+      // The first send moves you to the session's own page, where the reply lands.
+      onSend={() => {
+        if (!started) navigate({ to: "/sessions/$id", params: { id: sessionId } });
+      }}
+      // The session's own settings, carried in the input the way a chat client does it.
+      inputOptions={
+        <>
+          {/* Locked once a session exists: its posture was fixed when it started. */}
+          <select
+            className="chat-permission"
+            aria-label="Permissions"
+            value={permission}
+            title={PERMISSION_NOTE[permission]}
+            disabled={started || isSending}
+            onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}
+          >
+            {PERMISSION_MODES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          {/* The child reports what it started under. Saying so beats inferring the
+              answer from a turn full of denials — a server running older code pins
+              its own default and the request's choice never lands. */}
+          {drifted && (
+            <span className="session-running-warn">
+              running as {chat?.session.effectivePermissionMode}, not {chat?.session.permissionMode}
+            </span>
+          )}
+        </>
+      }
+      footnote={
+        <>
+          <span>
             {config.data
               ? `${config.data.model} · through ${config.data.baseUrl} · ${
                   config.data.transport === "cli" ? "headless Claude Code" : "API key"
@@ -102,124 +133,38 @@ function ChatPane({
                 ? (config.error as Error).message
                 : "resolving chat config…"}
           </span>
-        </div>
-        <LiveIndicator status={live} />
-      </header>
-
-      <div className="chat-settings">
-        {/* Locked once a session exists: its posture was fixed when it started. */}
-        <div className="chat-modes" role="group" aria-label="Session mode">
-          {(["agent", "chat"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={`chat-mode${mode === m ? " is-active" : ""}`}
-              aria-pressed={mode === m}
-              disabled={started || isSending}
-              onClick={() => setPicked(m)}
-            >
-              {m === "agent" ? "Agent" : "Chat"}
-            </button>
-          ))}
-          <span className="muted chat-mode-note">
-            {mode === "agent"
-              ? agent
-                ? `runs in ${agent.cwd} with tools — this can change the repo`
-                : "runs a full Claude Code session with tools"
-              : "no tools, no customizations — cannot touch the repo"}
-          </span>
-        </div>
-
-        {/* Permissions — per session, and pinned like the mode. */}
-        {mode === "agent" && (
-          <div className="chat-modes">
-            <label className="muted chat-mode-note" htmlFor="chat-permission">
-              permissions
-            </label>
-            <select
-              id="chat-permission"
-              className="chat-permission"
-              value={permission}
-              disabled={started || isSending}
-              onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}
-            >
-              {PERMISSION_MODES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-            <span className="muted chat-mode-note">{PERMISSION_NOTE[permission]}</span>
-            {/* The child reports what it started under. Saying so beats inferring the
-                answer from a turn full of denials — a server running older code pins
-                its own default and the request's choice never lands. */}
-            {drifted && (
-              <span className="session-running-warn">
-                running as {chat?.session.effectivePermissionMode}, not {chat?.session.permissionMode}
-              </span>
+          {sessionsDir && <span className="mono-break">logs → {sessionsDir}</span>}
+          {unconfigured && <span className="error">Chat is unavailable: {config.data?.readyHint}</span>}
+          <LiveIndicator status={live} />
+        </>
+      }
+      footExtras={
+        chat && (
+          <>
+            {threadId && (
+              <Link to="/sessions/$id" params={{ id: threadId }} className="link mono-break">
+                open transcript {threadId}
+              </Link>
             )}
-          </div>
-        )}
-
-        {mode === "agent" && agent && (
-          <p className="muted chat-note">
-            {agent.aliasFound
-              ? `Mirroring your \`${agent.alias}\` alias${
-                  agent.flags.disallowedTools.length ? ` (withholding ${agent.flags.disallowedTools.join(", ")})` : ""
-                }`
-              : `No \`${agent.alias}\` alias in ${agent.rcPath} — running a bare claude`}
-          </p>
-        )}
-
-        {unconfigured && <p className="muted chat-note">Chat is unavailable: {config.data?.readyHint}</p>}
-      </div>
-
-      <ChatConversation
-        fill
-        placeholder={
-          started
-            ? "Reply…"
-            : mode === "agent"
-              ? "Ask Claude to do something — /task works here"
-              : "Ask Claude something — this starts a new session"
-        }
-        disabled={!!unconfigured}
-        emptyState={<ChatEmptyState mode={mode} sessionsDir={sessionsDir} />}
-        // The first send moves you to the session's own page, where the reply lands.
-        onSend={() => {
-          if (!started) navigate({ to: "/sessions/$id", params: { id: sessionId } });
-        }}
-        footExtras={
-          chat && (
-            <>
-              {threadId && (
-                <Link to="/sessions/$id" params={{ id: threadId }} className="link mono-break">
-                  open transcript {threadId}
-                </Link>
-              )}
-              <button type="button" className="chat-new" onClick={newChat} disabled={isSending}>
-                New chat
-              </button>
-            </>
-          )
-        }
-      />
-    </>
+            <button type="button" className="chat-new" onClick={newChat} disabled={isSending}>
+              New chat
+            </button>
+          </>
+        )
+      }
+    />
   );
 }
 
-/** The blank pane before the first turn — what this chat is, and where its transcript lands. */
-function ChatEmptyState({ mode, sessionsDir }: { mode: ChatMode; sessionsDir?: string }) {
+/** The blank pane before the first turn, centered on the one thing to do with it. */
+function ChatEmptyState() {
   return (
     <div className="chat-empty">
       <span className="chat-empty-node" aria-hidden />
-      <h2>{mode === "agent" ? "Start an agent session" : "Start a chat"}</h2>
+      <h2>Start an agent session</h2>
       <p className="muted">
-        {mode === "agent"
-          ? "It runs with tools and writes a transcript the proxy captures — it appears in the rail as it goes."
-          : "A plain conversation, no tools. The proxy still captures the transcript."}
+        It runs with tools and writes a transcript the proxy captures — it appears in the rail as it goes.
       </p>
-      {sessionsDir && <p className="muted mono-break chat-empty-dir">{sessionsDir}</p>}
     </div>
   );
 }

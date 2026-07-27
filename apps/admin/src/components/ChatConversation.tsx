@@ -26,6 +26,8 @@ export function ChatConversation({
   disabled = false,
   fill = false,
   emptyState,
+  inputOptions,
+  footnote,
   footExtras,
   onSend,
 }: {
@@ -35,6 +37,10 @@ export function ChatConversation({
   fill?: boolean;
   /** Shown in place of the transcript before the first turn. */
   emptyState?: ReactNode;
+  /** The session's settings, carried inside the input's own toolbar. */
+  inputOptions?: ReactNode;
+  /** The fine print under the composer — where this chat runs and where its transcript lands. */
+  footnote?: ReactNode;
   /** Page-specific foot controls — the transcript link and "New chat" on the Sessions page. */
   footExtras?: ReactNode;
   /** Fired after the turn is handed off — the Sessions page navigates to the session here. */
@@ -111,6 +117,7 @@ export function ChatConversation({
           placeholder={placeholder}
           disabled={disabled}
           status={isSending ? "submitted" : sendError ? "error" : "ready"}
+          options={inputOptions}
         />
 
         <div className="chat-foot">
@@ -129,6 +136,8 @@ export function ChatConversation({
           )}
           {footExtras}
         </div>
+
+        {footnote && <div className="muted chat-footnote">{footnote}</div>}
       </div>
     </div>
   );

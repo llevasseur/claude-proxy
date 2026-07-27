@@ -2243,7 +2243,16 @@ button.gi-open {
   gap: 12px;
   padding: 6px 10px 8px 14px;
 }
+/* The session's own controls, carried in the toolbar the way a chat client does it. */
+.prompt-input-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
 .prompt-input-hint {
+  margin-left: auto;
   font-size: 11px;
 }
 .prompt-input-hint kbd {
@@ -2430,37 +2439,16 @@ button.chat-new {
 button.chat-new:hover:not(:disabled) {
   color: var(--text);
 }
-/* Agent vs chat, plus the one-line posture note that follows the choice. */
-.chat-modes {
+/* Where this chat runs and where its transcript lands — the fine print under the input. */
+.chat-footnote {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-button.chat-mode {
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--muted);
-  padding: 4px 12px;
-  cursor: pointer;
+  margin-top: 8px;
+  padding-bottom: 4px;
   font-family: var(--font-mono);
-  font-size: 11.5px;
-}
-button.chat-mode:hover:not(:disabled) {
-  color: var(--text);
-}
-button.chat-mode.is-active {
-  color: var(--text);
-  border-color: var(--text);
-}
-button.chat-mode:disabled {
-  cursor: default;
-  opacity: 0.7;
-}
-.chat-mode-note {
-  font-size: 11.5px;
+  font-size: 11px;
 }
 /* What an agent turn actually ran. */
 .chat-tools {
@@ -2547,27 +2535,62 @@ button.chat-stop:disabled {
   border-right: 1px solid var(--line);
   background: var(--surface);
 }
-.sessions-nav-head {
-  flex: none;
+/* The two lists and the divider between them, sharing what the foot leaves over. */
+.sessions-nav-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 18px 14px 12px;
-  border-bottom: 1px solid var(--line);
 }
-button.sessions-new {
+.sessions-group {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sessions-group-head {
+  flex: none;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 8px;
+  margin: 0;
+  padding: 12px 14px 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sessions-group-count {
+  color: var(--faint);
+}
+/* Drag (or arrow) to give one list more of the rail. */
+.sessions-nav-resize {
+  flex: none;
+  height: 7px;
+  cursor: row-resize;
+  border-top: 1px solid var(--line);
+  background: none;
+}
+.sessions-nav-resize:hover,
+.sessions-nav-resize:focus-visible {
+  outline: none;
+  border-top-color: var(--signal-dim);
+  background: var(--surface-2);
+}
+button.sessions-new {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
   background: none;
   border: 1px dashed var(--line);
   border-radius: 10px;
   color: var(--muted);
-  padding: 8px 12px;
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 12px;
 }
 button.sessions-new:hover {
   color: var(--text);
@@ -2606,12 +2629,12 @@ button.sessions-new.is-active {
   color: var(--faint);
 }
 
-/* The scroll container the sentinel at its end pages against. */
+/* The scroll container the sentinel at its end pages against — one per list. */
 .sessions-nav-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px;
+  padding: 0 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2620,26 +2643,66 @@ button.sessions-new.is-active {
 .sessions-nav-more {
   font-family: var(--font-mono);
   font-size: 12px;
-  padding: 16px 8px;
+  padding: 12px 8px;
   text-align: center;
 }
+/* Search and "new chat", at the foot where a chat client keeps them. */
 .sessions-nav-foot {
   flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   border-top: 1px solid var(--line);
-  padding: 8px 14px;
+  padding: 10px 14px 12px;
+}
+.sessions-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sessions-nav-count {
   font-family: var(--font-mono);
   font-size: 11px;
 }
 
+/* A card in the rail, with the control it reveals on hover. */
 .session-row {
+  position: relative;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+.session-row-link {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 9px 10px;
-  border-radius: 10px;
-  border: 1px solid transparent;
+  padding: 9px 34px 9px 10px;
   text-decoration: none;
   color: inherit;
+}
+.session-row-cta {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.session-row:hover .session-row-cta,
+.session-row-cta:focus-visible {
+  opacity: 1;
+}
+.session-row-cta:hover {
+  color: var(--signal);
+  border-color: var(--signal-dim);
 }
 .session-row:hover {
   background: var(--surface-2);
@@ -2703,63 +2766,30 @@ button.sessions-new.is-active {
   border-color: currentColor;
 }
 
-/* The pane's own header and the posture controls under it. */
-.chat-head {
-  flex: none;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--line);
-}
-.chat-head-title h1 {
-  font-family: var(--font-display);
-  font-size: 21px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin: 0 0 2px;
-}
-.chat-head-title .muted {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-}
-.chat-settings {
-  flex: none;
-  padding-top: 14px;
-}
-.chat-settings .chat-modes:last-child,
-.chat-settings .chat-note:last-child {
-  margin-bottom: 0;
-}
-
-/* The pane before the first turn. */
+/* The pane before the first turn — centered on the one thing to do with it. */
 .chat-empty {
   max-width: 46ch;
   text-align: center;
 }
 .chat-empty-node {
   display: block;
-  width: 12px;
-  height: 12px;
-  margin: 0 auto 14px;
-  border-radius: 4px;
+  width: 14px;
+  height: 14px;
+  margin: 0 auto 18px;
+  border-radius: 5px;
   background: var(--signal);
   box-shadow: 0 0 18px rgba(70, 224, 192, 0.6);
 }
 .chat-empty h2 {
   font-family: var(--font-display);
-  font-size: 17px;
+  font-size: 30px;
   font-weight: 600;
-  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
 }
 .chat-empty p {
   margin: 0;
-  font-size: 13px;
-}
-.chat-empty p.chat-empty-dir {
-  margin-top: 10px;
-  font-size: 11px;
+  font-size: 13.5px;
 }
 
 /* Narrow: the rail gives up its column and sits above the chat. */
