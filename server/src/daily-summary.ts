@@ -43,7 +43,7 @@ function render({ digest: d, advice, meta }: SummaryResponse): string {
   lines.push(`Est. cost: ${usd(d.cost.total)} (out ${usd(d.cost.output)}, cache-write ${usd(d.cost.cacheWrite)})`);
   if (d.busiestHour)
     lines.push(
-      `Busiest hour: ${String(d.busiestHour.hour).padStart(2, "0")}:00 ${reportTzAbbr()} (${d.busiestHour.requestCount} req)`,
+      `Busiest hour: ${String(d.busiestHour.hour).padStart(2, "0")}:00 ${reportTzAbbr(new Date(`${d.date}T12:00:00.000Z`))} (${d.busiestHour.requestCount} req)`,
     );
   const trend = trendLine(d);
   if (trend) lines.push(trend);

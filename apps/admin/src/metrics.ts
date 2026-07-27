@@ -29,7 +29,12 @@ export interface StatMetric {
 
 const fmtBytesLabel = (n: number) => `${fmtInt(n)} B`;
 
-/** Zone every day-bucketed Overview/Trend value is reported in, e.g. `"EDT"`. */
+/**
+ * Zone every day-bucketed Overview/Trend value is reported in, e.g. `"EDT"`.
+ * Distinct from `format.ts`'s `LOCAL_TZ_ABBR`, which is the viewer's own zone
+ * and labels individual timestamps. Resolved once, so a window spanning the
+ * daylight-saving switch carries the current abbreviation throughout.
+ */
 export const REPORT_TZ_ABBR = reportTzAbbr();
 
 /** The Overview statistics, in the order they appear on the page. */

@@ -31,11 +31,11 @@ export async function countSidecarFiles(logDir: string): Promise<number> {
 }
 
 export interface ReadOptions {
-  /** Only files whose filename date prefix equals this `YYYY-MM-DD`. */
+  /** Only sidecars whose reporting-zone day equals this `YYYY-MM-DD`. */
   date?: string;
-  /** Only files on/after this `YYYY-MM-DD`. Ignored if `date` is set. */
+  /** Only sidecars on/after this reporting-zone `YYYY-MM-DD`. Ignored if `date` is set. */
   since?: string;
-  /** Only files on/after (today − sinceDays + 1). Ignored if `date` or `since` is set. */
+  /** Only sidecars on/after (today − sinceDays + 1). Ignored if `date` or `since` is set. */
   sinceDays?: number;
   includeSkimRequests?: boolean;
   /** Attach `__file` (the sidecar base name, minus `.audit.json`) to each parsed
