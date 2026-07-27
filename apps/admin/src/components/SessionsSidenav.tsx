@@ -13,8 +13,7 @@ import { useResolvedSessions } from "../useResolvedSessions";
  * The list arrives whole — `/api/sessions` has no cursor — so "infinite scroll" here
  * windows what is *rendered*.
  *
- * Two lists, not one: what the reader is still working through, and what they have filed
- * away. Each scrolls on its own, and the divider between them is draggable.
+ * Active and Resolved each scroll on their own, split by a draggable divider.
  */
 const PAGE = 30;
 
@@ -27,7 +26,7 @@ export function SessionsSidenav({
   sessions: SessionSummary[];
   /** Thread id of the transcript being read, if the reader is on one. */
   activeId?: string;
-  /** True while the composer holds an unstarted chat — the "New chat" button is the active one. */
+  /** True while the composer holds an unstarted chat. */
   isDrafting: boolean;
   onNewChat: () => void;
 }) {
@@ -56,7 +55,7 @@ export function SessionsSidenav({
     [matched, isResolved],
   );
 
-  // Drag the divider: the top list takes a fixed height, the bottom one takes the rest.
+  // The top list takes a fixed height; the bottom one takes the rest.
   const onResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const rail = body.current;
@@ -265,8 +264,7 @@ function SessionSection({
 /**
  * A card in the rail, with the file-away control the row reveals on hover.
  *
- * The control is a sibling of the link rather than a child: a button inside an anchor is
- * invalid, and clicking it must not navigate.
+ * The control is a sibling of the link, not a child: a button inside an anchor is invalid.
  */
 function SessionRow({
   session,

@@ -44,9 +44,8 @@ export interface ResolvedSessions {
 /**
  * Which sessions the reader has filed away, persisted in `localStorage`.
  *
- * Resolved is a mark plus a timestamp rather than a flag, so a session that starts talking
- * again returns to Active on its own: the mark only holds while the transcript has been
- * quiet since it was made. Nothing has to notice the new turn and clear anything.
+ * The mark carries a timestamp rather than being a flag: it only holds while the transcript
+ * has been quiet since it was made, so a session that takes another turn returns to Active.
  */
 export function useResolvedSessions(): ResolvedSessions {
   const [marks, setMarks] = useState<Marks>(read);

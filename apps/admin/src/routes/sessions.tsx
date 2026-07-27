@@ -94,7 +94,7 @@ function ChatPane({
       onSend={() => {
         if (!started) navigate({ to: "/sessions/$id", params: { id: sessionId } });
       }}
-      // The session's own settings, carried in the input the way a chat client does it.
+      // The session's own settings, carried in the input's toolbar.
       inputOptions={
         <>
           {/* Locked once a session exists: its posture was fixed when it started. */}
@@ -156,7 +156,7 @@ function ChatPane({
   );
 }
 
-/** The blank pane before the first turn, centered on the one thing to do with it. */
+/** The blank pane before the first turn. */
 function ChatEmptyState() {
   return (
     <div className="chat-empty">

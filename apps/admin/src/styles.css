@@ -2243,7 +2243,7 @@ button.gi-open {
   gap: 12px;
   padding: 6px 10px 8px 14px;
 }
-/* The session's own controls, carried in the toolbar the way a chat client does it. */
+/* The session's own controls, in the input's toolbar. */
 .prompt-input-options {
   display: flex;
   align-items: center;
@@ -2646,7 +2646,7 @@ button.sessions-new.is-active {
   padding: 12px 8px;
   text-align: center;
 }
-/* Search and "new chat", at the foot where a chat client keeps them. */
+/* Search and "new chat", at the foot of the rail. */
 .sessions-nav-foot {
   flex: none;
   display: flex;
@@ -2766,7 +2766,7 @@ button.sessions-new.is-active {
   border-color: currentColor;
 }
 
-/* The pane before the first turn — centered on the one thing to do with it. */
+/* The pane before the first turn. */
 .chat-empty {
   max-width: 46ch;
   text-align: center;

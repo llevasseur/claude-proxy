@@ -43,8 +43,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     mutationFn: (prompt: string) =>
       chat
         ? sendChatMessage(sessionId, prompt)
-        : // A dashboard chat is always an agent: the tools are the point of starting one here.
-          startChat(sessionId, prompt, { mode: "agent", permissionMode: permissionMode ?? undefined }),
+        : startChat(sessionId, prompt, { mode: "agent", permissionMode: permissionMode ?? undefined }),
     onSuccess: (data) => {
       setChat(data);
       // The transcript is new, or it grew.
