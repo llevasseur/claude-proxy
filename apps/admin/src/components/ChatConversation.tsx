@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { ChatInterruption, ChatToolUse } from "../api";
 import { useChatSession } from "../chat-session";
 import { fmtInt } from "../format";
@@ -40,8 +40,9 @@ export function ChatConversation({
   /** Fired after the turn is handed off — the Sessions page navigates to the session here. */
   onSend?: (prompt: string) => void;
 }) {
-  const { chat, pendingPrompt, isSending, sendError, isStopping, stopError, send, stop } = useChatSession();
-  const [draft, setDraft] = useState("");
+  // The draft lives in the session, not here: this component unmounts on every navigation.
+  const { chat, pendingPrompt, isSending, sendError, isStopping, stopError, draft, setDraft, send, stop } =
+    useChatSession();
   const log = useRef<HTMLDivElement>(null);
   const started = !!chat || !!pendingPrompt;
 
@@ -52,8 +53,7 @@ export function ChatConversation({
   }, [chat, pendingPrompt]);
 
   const submit = (prompt: string) => {
-    // Cleared on submit, not on success: the prompt is already on screen as a turn.
-    setDraft("");
+    // `send` clears the draft — the prompt is already on screen as a turn.
     send(prompt);
     onSend?.(prompt);
   };

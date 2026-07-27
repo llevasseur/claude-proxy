@@ -257,6 +257,13 @@ when it lands, with an input to carry on from there. The transcript below is the
 record and lags a turn behind; this is the turn as it happens. It renders only for the
 session it belongs to, so every session Claude Code left behind is unchanged.
 
+The unsent input travels with them. What was typed into the composer but never sent used to
+sit in the same component state the turn log did, so clicking through to a session or the
+graph discarded it; the draft is held above the router alongside the turn log, the pending
+prompt and the Stop button. It still clears where clearing is the point: on submit, since
+the prompt is already on screen as a turn, and on "New chat", with the session it belonged
+to.
+
 **The prompt in flight is shown as a turn.** The server returns history only once the turn
 resolves and an agent turn can run for an hour, so a page you were just navigated to would
 otherwise sit empty with nothing saying what it is working on. The prompt is rendered as a
@@ -356,9 +363,9 @@ server accepts; everything else stays read-only.
       the prompt that was sent and the reply when it lands, and an input that continues the
       session from there. Confirmed live that the resolved transcript's `- session:` id is
       the chat's own session id, which is what attaches the section to the page.
-- [x] The conversation survives the navigation — turn log, usage, tool chips, Stop and the
-      prompt in flight — because it is held above the router rather than in the Sessions
-      page's state.
+- [x] The conversation survives the navigation — turn log, usage, tool chips, Stop, the
+      prompt in flight and an unsent draft in the composer — because it is held above the
+      router rather than in the Sessions page's state.
 - [x] A start that fails after navigating still shows its error on the session page rather
       than dropping the section for want of a turn.
 
