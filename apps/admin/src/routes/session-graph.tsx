@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InterruptionKind, SessionNode } from "@claude-proxy/core";
@@ -14,6 +14,9 @@ import { fmtInt, fmtLocalTsShort } from "../format";
  * instead of running off the right. Rows-per-fold adapt to the viewport (mobile
  * flows top-to-bottom, desktop uses long rows). A collapsible left rail switches
  * sessions; the toolbar floats above the canvas. Polls so new steps stream in.
+ *
+ * `?session=<threadId>` opens the graph on one session rather than the newest — what the
+ * sessions list and a session's own page link to, and what picking in the rail writes back.
  *
  * A subagent keeps its own transcript, so it draws as a branch: the parent's `Agent(…)`
  * step opens an indented band around the subagent's own snake, and a return edge carries
@@ -509,6 +512,8 @@ function hoverLabel(node: SessionNode): string {
 const NODES_REFETCH_MS = 20_000;
 
 export function SessionGraphPage() {
+  const { session: requested } = useSearch({ from: "/sessions/graph" });
+  const navigate = useNavigate();
   const query = useQuery({ queryKey: ["sessions-graph"], queryFn: getSessionsGraph, refetchInterval: 4000 });
   const transcripts = useMemo(() => query.data?.sessions ?? [], [query.data]);
 
@@ -533,10 +538,22 @@ export function SessionGraphPage() {
   // Which session is on the canvas — always a top-level one, so picking a subagent
   // canvases its family. Sessions arrive newest-first, so default to the head's family.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** The branch to highlight and center, set by picking a subagent in the rail. */
+  const [focusId, setFocusId] = useState<string | null>(null);
+  /** The `?session=` already honoured, so the rail stays in charge once it has been. */
+  const opened = useRef<string | null>(null);
   useEffect(() => {
     if (transcripts.length === 0) return;
+    // Linked in with `?session=`: canvas that session's family, centering the branch
+    // when what was linked is a subagent. Waits for a session the poll hasn't seen yet.
+    if (requested !== undefined && byThread.has(requested) && opened.current !== requested) {
+      opened.current = requested;
+      setSelectedId(rootOf(requested));
+      setFocusId(byThread.get(requested)!.parentThreadId === null ? null : requested);
+      return;
+    }
     setSelectedId((prev) => rootOf(prev && byThread.has(prev) ? prev : transcripts[0]!.threadId));
-  }, [transcripts, byThread, rootOf]);
+  }, [transcripts, byThread, rootOf, requested]);
 
   // The canvased family's steps, re-read from its captured requests so nothing is gisted.
   // Failure is silent: the transcript still draws the graph, just abbreviated.
@@ -583,8 +600,6 @@ export function SessionGraphPage() {
   const [selected, setSelected] = useState<Selection | null>(null);
   /** Whether the details drawer is widened — sticky, so it survives picking another node. */
   const [inspectorWide, setInspectorWide] = useState(false);
-  /** The branch to highlight and center, set by picking a subagent in the rail. */
-  const [focusId, setFocusId] = useState<string | null>(null);
   const pan = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
   /** Set once a pan travels far enough to count as a drag, so it doesn't read as a click. */
   const panMoved = useRef(false);
@@ -723,11 +738,16 @@ export function SessionGraphPage() {
     else void el.requestFullscreen?.();
   };
 
-  /** Picking a session canvases it; picking a subagent canvases its family and centers that branch. */
+  /**
+   * Picking a session canvases it; picking a subagent canvases its family and centers that
+   * branch. The pick goes into `?session=` too, so the canvas survives a reload and the URL
+   * is shareable — replacing rather than pushing, since browsing the rail isn't history.
+   */
   const selectSession = (picked: SessionGraphEntry) => {
     setSelectedId(rootOf(picked.threadId));
     setFocusId(picked.parentThreadId === null ? null : picked.threadId);
     setSelected(null);
+    void navigate({ to: "/sessions/graph", search: { session: picked.threadId }, replace: true });
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {

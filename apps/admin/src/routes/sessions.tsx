@@ -264,6 +264,7 @@ function SessionsTable({ sessions }: { sessions: SessionSummary[] }) {
             <SortHeader label="Tools" sortKey="tools" sort={sort} onSort={onSort} className="num" />
             <SortHeader label="Errors" sortKey="errors" sort={sort} onSort={onSort} className="num" />
             <SortHeader label="Updated" sortKey="modified" sort={sort} onSort={onSort} className="num" />
+            <th>Graph</th>
           </tr>
         </thead>
         <tbody>
@@ -294,6 +295,17 @@ function SessionsTable({ sessions }: { sessions: SessionSummary[] }) {
                 )}
               </td>
               <td className="num muted">{fmtLocalTsShort(s.modified)}</td>
+              <td>
+                {/* Sideways into the live graph, opened on this session rather than the newest. */}
+                <Link
+                  to="/sessions/graph"
+                  search={{ session: s.threadId }}
+                  className="link"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  graph →
+                </Link>
+              </td>
             </tr>
           ))}
         </tbody>

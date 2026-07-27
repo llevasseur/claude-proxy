@@ -215,11 +215,19 @@ const sessionsRoute = createRoute({
   component: SessionsPage,
   staticData: { title: "Sessions" },
 });
+/** `?session=` hands the graph a session to open on — how the list and a session's page link in. */
+export interface SessionGraphSearch {
+  session?: string;
+}
 const sessionGraphRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sessions/graph",
   component: SessionGraphPage,
   staticData: { title: "Live graph" },
+  validateSearch: (search: Record<string, unknown>): SessionGraphSearch => {
+    const session = search.session;
+    return typeof session === "string" && session !== "" ? { session } : {};
+  },
 });
 const sessionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,

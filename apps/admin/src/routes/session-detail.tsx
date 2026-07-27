@@ -76,7 +76,15 @@ export function SessionDetailPage() {
       </Breadcrumbs>
       <div className="pagehead">
         <h1 className="mono-break">{isChatId ? "New session" : id}</h1>
-        {!isChatId && <LiveIndicator status={live} />}
+        {/* A chat id isn't a thread id, and the graph is keyed by thread — offered once resolved. */}
+        {!isChatId && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Link to="/sessions/graph" search={{ session: id }} className="link">
+              live graph →
+            </Link>
+            <LiveIndicator status={live} />
+          </div>
+        )}
       </div>
 
       {isChatId ? (
