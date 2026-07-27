@@ -1,53 +1,46 @@
-import { sessionName } from "@claude-proxy/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import type { ChatMode, PermissionMode, SessionSummary } from "../api";
+import type { PermissionMode } from "../api";
 import { getChatConfig, getSessions, PERMISSION_MODES } from "../api";
 import { useChatSession } from "../chat-session";
 import { ChatConversation } from "../components/ChatConversation";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { QueryState } from "../components/QueryState";
-import { fmtInt, fmtLocalTsShort } from "../format";
+import { SessionsSidenav } from "../components/SessionsSidenav";
 import { useLiveQuery } from "../useLiveQuery";
 
+/**
+ * Sessions, laid out the way a chat client is: the transcripts as a scrolling rail on
+ * the left, and the chat you start from here filling the pane beside it.
+ */
 export function SessionsPage() {
   const query = useQuery({ queryKey: ["sessions"], queryFn: getSessions });
   // Live: the server re-lists whenever the sessions dir changes; query is the fallback.
   const live = useLiveQuery("/api/sessions/stream", ["sessions"]);
+  const { chat, pendingPrompt, reset: newChat } = useChatSession();
   const sessions = query.data?.sessions;
 
   return (
-    <section>
-      <div className="pagehead">
-        <h1>Sessions</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span className="muted">Append-only agent transcripts the proxy captured</span>
-          <LiveIndicator status={live} />
-        </div>
-      </div>
-
-      <StartChatCard />
-
+    <section className="sessions-shell">
       <QueryState isLoading={query.isLoading} error={query.error}>
-        {!sessions || sessions.length === 0 ? (
-          <div className="card empty">No session transcripts yet.</div>
-        ) : (
-          <>
-            <div className="muted mono-break" style={{ marginBottom: "0.75rem" }}>
-              {query.data?.meta.sessionsDir}
-            </div>
-            <SessionsTable sessions={sessions} />
-          </>
-        )}
+        <SessionsSidenav
+          sessions={sessions ?? []}
+          activeId={chat?.session.threadId ?? undefined}
+          isDrafting={chat === null && pendingPrompt === null}
+          onNewChat={newChat}
+        />
       </QueryState>
+
+      <div className="sessions-main">
+        <ChatPane sessionsDir={query.data?.meta.sessionsDir} live={live} />
+      </div>
     </section>
   );
 }
 
 /**
  * The prompt goes to the server's chat route, which sends it through the proxy — so
- * the proxy writes the transcript and the new thread arrives in the table below over
+ * the proxy writes the transcript and the new thread arrives in the rail beside it over
  * SSE, without this page inserting it. The same input then continues the chat.
  */
 /** What each standing answer means for the turn. */
@@ -58,7 +51,13 @@ const PERMISSION_NOTE: Record<PermissionMode, string> = {
   plan: "read-only — the turn plans and does not act",
 };
 
-function StartChatCard() {
+function ChatPane({
+  sessionsDir,
+  live,
+}: {
+  sessionsDir?: string;
+  live: ReturnType<typeof useLiveQuery>;
+}) {
   const config = useQuery({ queryKey: ["chat", "config"], queryFn: getChatConfig, staleTime: 60_000 });
   const navigate = useNavigate();
   const {
@@ -66,9 +65,7 @@ function StartChatCard() {
     chat,
     pendingPrompt,
     isSending,
-    mode: picked,
     permissionMode: pickedPermission,
-    setMode: setPicked,
     setPermissionMode: setPickedPermission,
     reset: newChat,
   } = useChatSession();
@@ -78,8 +75,6 @@ function StartChatCard() {
 
   const unconfigured = config.data && !config.data.ready;
   const threadId = chat?.session.threadId;
-  // A running chat's mode is fixed server-side, so it wins over the picker.
-  const mode: ChatMode = chat?.session.mode ?? picked ?? config.data?.mode ?? "agent";
   const agent = config.data?.agent;
   const permission = (chat?.session.permissionMode ??
     pickedPermission ??
@@ -90,53 +85,24 @@ function StartChatCard() {
     !!chat?.session.effectivePermissionMode && chat.session.effectivePermissionMode !== chat.session.permissionMode;
 
   return (
-    <div className="card chat-starter">
-      <div className="card-head">
-        <h2>{started ? `${mode === "agent" ? "Agent" : "Chat"} in progress` : "Start a session"}</h2>
-        <span className="muted">
-          {config.data
-            ? `${config.data.model} · through ${config.data.baseUrl} · ${
-                config.data.transport === "cli" ? "headless Claude Code" : "API key"
-              }`
-            : config.error
-              ? (config.error as Error).message
-              : "resolving chat config…"}
-        </span>
-      </div>
-
-      {/* Locked once a session exists: its posture was fixed when it started. */}
-      <div className="chat-modes" role="group" aria-label="Session mode">
-        {(["agent", "chat"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            className={`chat-mode${mode === m ? " is-active" : ""}`}
-            aria-pressed={mode === m}
-            disabled={started || isSending}
-            onClick={() => setPicked(m)}
-          >
-            {m === "agent" ? "Agent" : "Chat"}
-          </button>
-        ))}
-        <span className="muted chat-mode-note">
-          {mode === "agent"
-            ? agent
-              ? `runs in ${agent.cwd} with tools — this can change the repo`
-              : "runs a full Claude Code session with tools"
-            : "no tools, no customizations — cannot touch the repo"}
-        </span>
-      </div>
-
-      {/* Permissions — per session, and pinned like the mode. */}
-      {mode === "agent" && (
-        <div className="chat-modes">
-          <label className="muted chat-mode-note" htmlFor="chat-permission">
-            permissions
-          </label>
+    <ChatConversation
+      fill
+      placeholder={started ? "Reply…" : "Ask Claude to do something — /task works here"}
+      disabled={!!unconfigured}
+      emptyState={<ChatEmptyState />}
+      // The first send moves you to the session's own page, where the reply lands.
+      onSend={() => {
+        if (!started) navigate({ to: "/sessions/$id", params: { id: sessionId } });
+      }}
+      // The session's own settings, carried in the input's toolbar.
+      inputOptions={
+        <>
+          {/* Locked once a session exists: its posture was fixed when it started. */}
           <select
-            id="chat-permission"
             className="chat-permission"
+            aria-label="Permissions"
             value={permission}
+            title={PERMISSION_NOTE[permission]}
             disabled={started || isSending}
             onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}
           >
@@ -146,7 +112,6 @@ function StartChatCard() {
               </option>
             ))}
           </select>
-          <span className="muted chat-mode-note">{PERMISSION_NOTE[permission]}</span>
           {/* The child reports what it started under. Saying so beats inferring the
               answer from a turn full of denials — a server running older code pins
               its own default and the request's choice never lands. */}
@@ -155,211 +120,51 @@ function StartChatCard() {
               running as {chat?.session.effectivePermissionMode}, not {chat?.session.permissionMode}
             </span>
           )}
-        </div>
-      )}
+        </>
+      }
+      footnote={
+        <>
+          <span>
+            {config.data
+              ? `${config.data.model} · through ${config.data.baseUrl} · ${
+                  config.data.transport === "cli" ? "headless Claude Code" : "API key"
+                }`
+              : config.error
+                ? (config.error as Error).message
+                : "resolving chat config…"}
+          </span>
+          {sessionsDir && <span className="mono-break">logs → {sessionsDir}</span>}
+          {unconfigured && <span className="error">Chat is unavailable: {config.data?.readyHint}</span>}
+          <LiveIndicator status={live} />
+        </>
+      }
+      footExtras={
+        chat && (
+          <>
+            {threadId && (
+              <Link to="/sessions/$id" params={{ id: threadId }} className="link mono-break">
+                open transcript {threadId}
+              </Link>
+            )}
+            <button type="button" className="chat-new" onClick={newChat} disabled={isSending}>
+              New chat
+            </button>
+          </>
+        )
+      }
+    />
+  );
+}
 
-      {mode === "agent" && agent && (
-        <p className="muted chat-note">
-          {agent.aliasFound
-            ? `Mirroring your \`${agent.alias}\` alias${
-                agent.flags.disallowedTools.length ? ` (withholding ${agent.flags.disallowedTools.join(", ")})` : ""
-              }`
-            : `No \`${agent.alias}\` alias in ${agent.rcPath} — running a bare claude`}
-        </p>
-      )}
-
-      {unconfigured && <p className="muted chat-note">Chat is unavailable: {config.data?.readyHint}</p>}
-
-      <ChatConversation
-        placeholder={
-          started
-            ? "Reply…"
-            : mode === "agent"
-              ? "Ask Claude to do something — /task works here"
-              : "Ask Claude something — this starts a new session"
-        }
-        disabled={!!unconfigured}
-        // The first send moves you to the session's own page, where the reply lands.
-        onSend={() => {
-          if (!started) navigate({ to: "/sessions/$id", params: { id: sessionId } });
-        }}
-        footExtras={
-          chat && (
-            <>
-              {threadId && (
-                <Link to="/sessions/$id" params={{ id: threadId }} className="link mono-break">
-                  open transcript {threadId}
-                </Link>
-              )}
-              <button type="button" className="chat-new" onClick={newChat} disabled={isSending}>
-                New chat
-              </button>
-            </>
-          )
-        }
-      />
+/** The blank pane before the first turn. */
+function ChatEmptyState() {
+  return (
+    <div className="chat-empty">
+      <span className="chat-empty-node" aria-hidden />
+      <h2>Start an agent session</h2>
+      <p className="muted">
+        It runs with tools and writes a transcript the proxy captures — it appears in the rail as it goes.
+      </p>
     </div>
-  );
-}
-
-type SortKey = "threadId" | "model" | "tasks" | "tools" | "errors" | "modified";
-type SortDir = "asc" | "desc";
-
-/** Direction applied the first time a column becomes the sort key. */
-const DEFAULT_DIR: Record<SortKey, SortDir> = {
-  threadId: "asc",
-  model: "asc",
-  tasks: "desc",
-  tools: "desc",
-  errors: "desc",
-  modified: "desc",
-};
-
-/** Signed comparison for a column, ascending. */
-function compare(a: SessionSummary, b: SessionSummary, key: SortKey): number {
-  switch (key) {
-    case "threadId":
-      return a.threadId.localeCompare(b.threadId);
-    case "model":
-      return (a.model ?? "").localeCompare(b.model ?? "");
-    case "modified":
-      return a.modified.localeCompare(b.modified);
-    default:
-      return a[key] - b[key];
-  }
-}
-
-function SessionsTable({ sessions }: { sessions: SessionSummary[] }) {
-  const navigate = useNavigate();
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "modified", dir: "desc" });
-
-  const sorted = useMemo(() => {
-    const rows = [...sessions];
-    rows.sort((a, b) => {
-      const diff = compare(a, b, sort.key);
-      return sort.dir === "asc" ? diff : -diff;
-    });
-    return rows;
-  }, [sessions, sort]);
-
-  const onSort = (key: SortKey) =>
-    setSort((prev) =>
-      prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: DEFAULT_DIR[key] },
-    );
-
-  return (
-    <div className="card">
-      <div className="card-head">
-        <h2>
-          {sessions.length} session{sessions.length === 1 ? "" : "s"}
-        </h2>
-        <span className="muted">click a column to sort · click a row to read the transcript</span>
-      </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <SortHeader label="Session" sortKey="threadId" sort={sort} onSort={onSort} />
-            <SortHeader label="Model" sortKey="model" sort={sort} onSort={onSort} />
-            <SortHeader label="Tasks" sortKey="tasks" sort={sort} onSort={onSort} className="num" />
-            <SortHeader label="Tools" sortKey="tools" sort={sort} onSort={onSort} className="num" />
-            <SortHeader label="Errors" sortKey="errors" sort={sort} onSort={onSort} className="num" />
-            <SortHeader label="Updated" sortKey="modified" sort={sort} onSort={onSort} className="num" />
-            <th>Graph</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((s) => (
-            <tr
-              key={s.threadId}
-              className="clickable"
-              onClick={() => navigate({ to: "/sessions/$id", params: { id: s.threadId } })}
-            >
-              <td>
-                <SessionCell session={s} />
-              </td>
-              <td className="mono-break">{s.model ?? "—"}</td>
-              <td className="num">{fmtInt(s.tasks)}</td>
-              <td className="num">{fmtInt(s.tools)}</td>
-              <td className="num">
-                {s.errors > 0 ? (
-                  <Link
-                    to="/sessions/$id/errors"
-                    params={{ id: s.threadId }}
-                    className="error error-count"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {fmtInt(s.errors)}
-                  </Link>
-                ) : (
-                  <span className="muted">0</span>
-                )}
-              </td>
-              <td className="num muted">{fmtLocalTsShort(s.modified)}</td>
-              <td>
-                <Link
-                  to="/sessions/graph"
-                  search={{ session: s.threadId }}
-                  className="link"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  graph →
-                </Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/** A row's name headlined, with the thread id underneath as the mono link. */
-function SessionCell({ session }: { session: SessionSummary }) {
-  const name = sessionName(session);
-  const preview = session.subtitle ?? session.firstTask;
-  const idLink = (
-    <Link
-      to="/sessions/$id"
-      params={{ id: session.threadId }}
-      className={`link mono-break${name ? " session-id" : ""}`}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {session.threadId}
-    </Link>
-  );
-
-  return (
-    <>
-      {name && <div className="session-title">{name}</div>}
-      {idLink}
-      {/* Preview: the prompt in full, skipped when the name already is that prompt. */}
-      {preview && preview !== name && <div className="muted session-preview">{preview}</div>}
-    </>
-  );
-}
-
-function SortHeader({
-  label,
-  sortKey,
-  sort,
-  onSort,
-  className,
-}: {
-  label: string;
-  sortKey: SortKey;
-  sort: { key: SortKey; dir: SortDir };
-  onSort: (key: SortKey) => void;
-  className?: string;
-}) {
-  const active = sort.key === sortKey;
-  return (
-    <th
-      className={["sortable", className].filter(Boolean).join(" ")}
-      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
-      onClick={() => onSort(sortKey)}
-    >
-      {label}
-      {active && <span className="sort-arrow">{sort.dir === "asc" ? "▲" : "▼"}</span>}
-    </th>
   );
 }

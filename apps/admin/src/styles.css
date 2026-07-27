@@ -2243,7 +2243,16 @@ button.gi-open {
   gap: 12px;
   padding: 6px 10px 8px 14px;
 }
+/* The session's own controls, in the input's toolbar. */
+.prompt-input-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
 .prompt-input-hint {
+  margin-left: auto;
   font-size: 11px;
 }
 .prompt-input-hint kbd {
@@ -2276,30 +2285,137 @@ button.gi-open {
 .chat-note {
   margin: 0 0 12px;
 }
-/* The turns so far, kept short. */
+
+/* A scrolling transcript over a pinned composer. */
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.chat-panel--fill {
+  flex: 1;
+}
+/* The turns so far. Without `--fill` it grows with them, up to a readable ceiling. */
 .chat-log {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  max-height: 44vh;
+  gap: 18px;
   overflow-y: auto;
-  margin-bottom: 14px;
+  scroll-behavior: smooth;
+  max-height: 44vh;
+  padding: 4px 2px 18px;
+}
+.chat-panel--fill .chat-log {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  padding: 8px clamp(0px, 4vw, 60px) 22px;
+}
+/* Anchor a short conversation to the composer rather than the top of the pane.
+   `margin-top: auto` on the first turn, not `justify-content`, so an overflowing
+   log still scrolls to its own first turn. */
+.chat-panel--fill .chat-log > :first-child {
+  margin-top: auto;
+}
+.chat-log--empty {
+  display: grid;
+  place-items: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-log {
+    scroll-behavior: auto;
+  }
+}
+
+/* One turn: avatar beside the bubble, the reader's own turns mirrored to the right. */
+.chat-turn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 82%;
+}
+.chat-turn.user {
+  flex-direction: row-reverse;
+  align-self: flex-end;
 }
 .chat-turn p {
   margin: 0;
   white-space: pre-wrap;
 }
-.chat-turn.user {
+.chat-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-top: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
   color: var(--muted);
-}
-.chat-role {
-  display: block;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--faint);
-  margin-bottom: 4px;
+}
+.chat-turn.assistant .chat-avatar {
+  border-color: var(--signal-dim);
+  color: var(--signal);
+}
+.chat-bubble {
+  min-width: 0;
+  border-radius: 14px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 13.5px;
+}
+.chat-turn.user .chat-bubble {
+  background: rgba(70, 224, 192, 0.08);
+  border-color: var(--signal-dim);
+  border-bottom-right-radius: 5px;
+}
+.chat-turn.assistant .chat-bubble {
+  border-bottom-left-radius: 5px;
+}
+/* The reply that hasn't arrived yet. */
+.chat-thinking {
+  display: flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+.chat-thinking i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+  animation: chat-thinking-pulse 1.2s ease-in-out infinite;
+}
+.chat-thinking i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.chat-thinking i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes chat-thinking-pulse {
+  50% {
+    opacity: 0.2;
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-thinking i {
+    animation: none;
+  }
+}
+
+/* Everything pinned below the transcript: the turn's tools, the input, the foot. */
+.chat-composer {
+  flex: none;
+}
+.chat-panel--fill .chat-composer {
+  padding: 12px clamp(0px, 4vw, 60px) 4px;
+  border-top: 1px solid var(--line);
 }
 .chat-foot {
   display: flex;
@@ -2323,37 +2439,16 @@ button.chat-new {
 button.chat-new:hover:not(:disabled) {
   color: var(--text);
 }
-/* Agent vs chat, plus the one-line posture note that follows the choice. */
-.chat-modes {
+/* Where this chat runs and where its transcript lands — the fine print under the input. */
+.chat-footnote {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-button.chat-mode {
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  color: var(--muted);
-  padding: 4px 12px;
-  cursor: pointer;
+  margin-top: 8px;
+  padding-bottom: 4px;
   font-family: var(--font-mono);
-  font-size: 11.5px;
-}
-button.chat-mode:hover:not(:disabled) {
-  color: var(--text);
-}
-button.chat-mode.is-active {
-  color: var(--text);
-  border-color: var(--text);
-}
-button.chat-mode:disabled {
-  cursor: default;
-  opacity: 0.7;
-}
-.chat-mode-note {
-  font-size: 11.5px;
+  font-size: 11px;
 }
 /* What an agent turn actually ran. */
 .chat-tools {
@@ -2415,6 +2510,304 @@ button.chat-stop {
 button.chat-stop:disabled {
   cursor: default;
   opacity: 0.7;
+}
+
+/* sessions: conversation rail + chat pane */
+
+.sessions-shell {
+  display: grid;
+  grid-template-columns: clamp(260px, 24vw, 340px) minmax(0, 1fr);
+  height: 100vh;
+}
+.sessions-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 22px clamp(16px, 2.5vw, 32px) 20px;
+}
+
+/* The rail of transcripts, scrolled on its own. */
+.sessions-nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+/* The two lists and the divider between them, sharing what the foot leaves over. */
+.sessions-nav-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sessions-group {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sessions-group-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sessions-group-count {
+  color: var(--faint);
+}
+/* Drag (or arrow) to give one list more of the rail. */
+.sessions-nav-resize {
+  flex: none;
+  height: 7px;
+  cursor: row-resize;
+  border-top: 1px solid var(--line);
+  background: none;
+}
+.sessions-nav-resize:hover,
+.sessions-nav-resize:focus-visible {
+  outline: none;
+  border-top-color: var(--signal-dim);
+  background: var(--surface-2);
+}
+button.sessions-new {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+button.sessions-new:hover {
+  color: var(--text);
+  border-color: var(--signal-dim);
+}
+button.sessions-new.is-active {
+  border-style: solid;
+  border-color: var(--signal-dim);
+  color: var(--text);
+}
+.sessions-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 10px;
+  color: var(--faint);
+}
+.sessions-search:focus-within {
+  border-color: var(--signal-dim);
+}
+.sessions-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 7px 0;
+}
+.sessions-search input::placeholder {
+  color: var(--faint);
+}
+
+/* The scroll container the sentinel at its end pages against — one per list. */
+.sessions-nav-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sessions-nav-empty,
+.sessions-nav-more {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 12px 8px;
+  text-align: center;
+}
+/* Search and "new chat", at the foot of the rail. */
+.sessions-nav-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding: 10px 14px 12px;
+}
+.sessions-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sessions-nav-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* A card in the rail, with the control it reveals on hover. */
+.session-row {
+  position: relative;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+.session-row-link {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 34px 9px 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.session-row-cta {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.session-row:hover .session-row-cta,
+.session-row-cta:focus-visible {
+  opacity: 1;
+}
+.session-row-cta:hover {
+  color: var(--signal);
+  border-color: var(--signal-dim);
+}
+.session-row:hover {
+  background: var(--surface-2);
+}
+.session-row.is-active {
+  background: var(--surface-2);
+  border-color: var(--signal-dim);
+}
+.session-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.session-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-row-age {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+.session-row-preview {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.session-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.session-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 6px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-chip.is-bad {
+  color: var(--bad);
+  border-color: currentColor;
+}
+
+/* The pane before the first turn. */
+.chat-empty {
+  max-width: 46ch;
+  text-align: center;
+}
+.chat-empty-node {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 0 auto 18px;
+  border-radius: 5px;
+  background: var(--signal);
+  box-shadow: 0 0 18px rgba(70, 224, 192, 0.6);
+}
+.chat-empty h2 {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+.chat-empty p {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+/* Narrow: the rail gives up its column and sits above the chat. */
+@media (max-width: 900px) {
+  .sessions-shell {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .sessions-nav {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    max-height: 46vh;
+  }
+  /* The shell no longer bounds the pane, so the transcript bounds itself. */
+  .chat-panel--fill .chat-log {
+    min-height: 32vh;
+    max-height: 52vh;
+  }
 }
 
 /* The "this session is still running" bar on a transcript, with its own Stop. */

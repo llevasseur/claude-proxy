@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { ChatInterruption, ChatToolUse } from "../api";
 import { useChatSession } from "../chat-session";
 import { fmtInt } from "../format";
@@ -14,7 +14,9 @@ const INTERRUPTION_NOTE: Record<ChatInterruption, string> = {
 
 /**
  * The live chat: what was asked, what came back, what the turn ran, and the input to keep going.
- * Shared by the Sessions start card and the session page.
+ * Shared by the Sessions page's chat pane and the session page.
+ *
+ * Laid out as a scrolling transcript above a pinned composer.
  *
  * The prompt in flight renders as a user turn straight away — the server returns history only
  * once the turn resolves, and an agent turn can run for an hour.
@@ -22,19 +24,39 @@ const INTERRUPTION_NOTE: Record<ChatInterruption, string> = {
 export function ChatConversation({
   placeholder,
   disabled = false,
+  fill = false,
+  emptyState,
+  inputOptions,
+  footnote,
   footExtras,
   onSend,
 }: {
   placeholder: string;
   disabled?: boolean;
-  /** Page-specific foot controls — the transcript link and "New chat" on the start card. */
+  /** Stretch to the container's height instead of growing with the turns. */
+  fill?: boolean;
+  /** Shown in place of the transcript before the first turn. */
+  emptyState?: ReactNode;
+  /** The session's settings, carried inside the input's own toolbar. */
+  inputOptions?: ReactNode;
+  /** The fine print under the composer — where this chat runs and where its transcript lands. */
+  footnote?: ReactNode;
+  /** Page-specific foot controls — the transcript link and "New chat" on the Sessions page. */
   footExtras?: ReactNode;
-  /** Fired after the turn is handed off — the start card navigates to the session here. */
+  /** Fired after the turn is handed off — the Sessions page navigates to the session here. */
   onSend?: (prompt: string) => void;
 }) {
   // The draft lives in the session, not here: this component unmounts on every navigation.
   const { chat, pendingPrompt, isSending, sendError, isStopping, stopError, draft, setDraft, send, stop } =
     useChatSession();
+  const log = useRef<HTMLDivElement>(null);
+  const started = !!chat || !!pendingPrompt;
+
+  // Follow the transcript down as turns land.
+  useEffect(() => {
+    const el = log.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [chat, pendingPrompt]);
 
   const submit = (prompt: string) => {
     // `send` clears the draft — the prompt is already on screen as a turn.
@@ -43,71 +65,93 @@ export function ChatConversation({
   };
 
   return (
-    <>
-      {(chat || pendingPrompt) && (
-        <div className="chat-log">
+    <div className={`chat-panel${fill ? " chat-panel--fill" : ""}`}>
+      {started ? (
+        <div className="chat-log" ref={log}>
           {chat?.turns.map((turn, i) => (
-            <div key={i} className={`chat-turn ${turn.role}`}>
-              <span className="chat-role">{turn.role === "user" ? "You" : "Claude"}</span>
+            <ChatBubble key={i} role={turn.role}>
               {turn.role === "assistant" ? <Markdown source={turn.text} /> : <p>{turn.text}</p>}
-            </div>
+            </ChatBubble>
           ))}
           {pendingPrompt && (
             <>
-              <div className="chat-turn user">
-                <span className="chat-role">You</span>
+              <ChatBubble role="user">
                 <p>{pendingPrompt}</p>
-              </div>
-              <div className="chat-turn assistant">
-                <span className="chat-role">Claude</span>
-                <p className="muted">Working…</p>
-              </div>
+              </ChatBubble>
+              <ChatBubble role="assistant">
+                <span className="chat-thinking" aria-label="Working">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </ChatBubble>
             </>
           )}
         </div>
+      ) : (
+        emptyState && <div className="chat-log chat-log--empty">{emptyState}</div>
       )}
 
-      {/* A cut-short turn's partial reply, labelled so it doesn't read as the answer. */}
-      {chat?.interrupted && (
-        <p className="muted chat-note">{INTERRUPTION_NOTE[chat.interrupted]} — this is what arrived before it ended.</p>
-      )}
+      <div className="chat-composer">
+        {/* A cut-short turn's partial reply, labelled so it doesn't read as the answer. */}
+        {chat?.interrupted && (
+          <p className="muted chat-note">
+            {INTERRUPTION_NOTE[chat.interrupted]} — this is what arrived before it ended.
+          </p>
+        )}
 
-      {/* Tools the turn ran — agent turns only. */}
-      {chat && chat.tools.length > 0 && (
-        <div className="chat-tools">
-          <span className="muted">ran</span>
-          {chat.tools.map((t, i) => (
-            <ToolChip key={i} tool={t} />
-          ))}
+        {/* Tools the turn ran — agent turns only. */}
+        {chat && chat.tools.length > 0 && (
+          <div className="chat-tools">
+            <span className="muted">ran</span>
+            {chat.tools.map((t, i) => (
+              <ToolChip key={i} tool={t} />
+            ))}
+          </div>
+        )}
+
+        <PromptInput
+          value={draft}
+          onValueChange={setDraft}
+          onSubmit={submit}
+          placeholder={placeholder}
+          disabled={disabled}
+          status={isSending ? "submitted" : sendError ? "error" : "ready"}
+          options={inputOptions}
+        />
+
+        <div className="chat-foot">
+          {sendError && <span className="error">{sendError.message}</span>}
+          {stopError && <span className="error">{stopError.message}</span>}
+          {isSending && (
+            <button type="button" className="chat-stop" onClick={stop} disabled={isStopping}>
+              {isStopping ? "Stopping…" : "Stop"}
+            </button>
+          )}
+          {chat && (
+            <span className="muted">
+              {fmtInt(chat.usage.input + chat.usage.cacheRead + chat.usage.cacheCreation)} in ·{" "}
+              {fmtInt(chat.usage.output)} out
+            </span>
+          )}
+          {footExtras}
         </div>
-      )}
 
-      <PromptInput
-        value={draft}
-        onValueChange={setDraft}
-        onSubmit={submit}
-        placeholder={placeholder}
-        disabled={disabled}
-        status={isSending ? "submitted" : sendError ? "error" : "ready"}
-      />
-
-      <div className="chat-foot">
-        {sendError && <span className="error">{sendError.message}</span>}
-        {stopError && <span className="error">{stopError.message}</span>}
-        {isSending && (
-          <button type="button" className="chat-stop" onClick={stop} disabled={isStopping}>
-            {isStopping ? "Stopping…" : "Stop"}
-          </button>
-        )}
-        {chat && (
-          <span className="muted">
-            {fmtInt(chat.usage.input + chat.usage.cacheRead + chat.usage.cacheCreation)} in ·{" "}
-            {fmtInt(chat.usage.output)} out
-          </span>
-        )}
-        {footExtras}
+        {footnote && <div className="muted chat-footnote">{footnote}</div>}
       </div>
-    </>
+    </div>
+  );
+}
+
+/** One turn: an avatar beside the message, the reader's own turns mirrored to the right. */
+function ChatBubble({ role, children }: { role: "user" | "assistant"; children: ReactNode }) {
+  return (
+    <div className={`chat-turn ${role}`}>
+      <span className="chat-avatar" aria-hidden>
+        {role === "user" ? "You" : "C"}
+      </span>
+      <div className="chat-bubble">{children}</div>
+    </div>
   );
 }
 

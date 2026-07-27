@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import type { ChatMode, ChatSendResponse, PermissionMode } from "./api";
+import type { ChatSendResponse, PermissionMode } from "./api";
 import { endChat, sendChatMessage, startChat, stopChat } from "./api";
 
 /** The one dashboard-started chat, held above the router so it outlives the page it was typed on. */
@@ -18,10 +18,8 @@ export interface ChatSessionValue {
   sendError: Error | null;
   isStopping: boolean;
   stopError: Error | null;
-  /** Picked before the first turn; both are pinned server-side once the session starts. */
-  mode: ChatMode | null;
+  /** Picked before the first turn; pinned server-side once the session starts. */
   permissionMode: PermissionMode | null;
-  setMode: (mode: ChatMode) => void;
   setPermissionMode: (permission: PermissionMode) => void;
   /** Starts the session on the first call, continues it after. */
   send: (prompt: string) => void;
@@ -39,14 +37,13 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   // null → follow whatever the server defaults to.
-  const [mode, setMode] = useState<ChatMode | null>(null);
   const [permissionMode, setPermissionMode] = useState<PermissionMode | null>(null);
 
   const sendMutation = useMutation({
     mutationFn: (prompt: string) =>
       chat
         ? sendChatMessage(sessionId, prompt)
-        : startChat(sessionId, prompt, { mode: mode ?? undefined, permissionMode: permissionMode ?? undefined }),
+        : startChat(sessionId, prompt, { mode: "agent", permissionMode: permissionMode ?? undefined }),
     onSuccess: (data) => {
       setChat(data);
       // The transcript is new, or it grew.
@@ -95,9 +92,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       sendError: (sendMutation.error as Error | null) ?? null,
       isStopping: stopMutation.isPending,
       stopError: (stopMutation.error as Error | null) ?? null,
-      mode,
       permissionMode,
-      setMode,
       setPermissionMode,
       send,
       stop,
@@ -112,7 +107,6 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       sendMutation.error,
       stopMutation.isPending,
       stopMutation.error,
-      mode,
       permissionMode,
       send,
       stop,

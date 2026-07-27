@@ -60,6 +60,22 @@ export function fmtLocalTsShort(iso: string): string {
   return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
+/** `2m` / `3h` / `4d` / `MM-DD` — the age of a timestamp, at chat-list width. */
+export function fmtAgeShort(iso: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const mins = Math.floor((Date.now() - d.getTime()) / 60_000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  const p = tsParts(iso);
+  return p ? `${p.month}-${p.day}` : iso;
+}
+
 /** For a metric where up is worse (cost, tokens): positive delta → "bad". */
 export function deltaTone(pct: number): "up" | "down" | "flat" {
   if (Math.abs(pct) < 0.5) return "flat";
