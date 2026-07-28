@@ -298,6 +298,32 @@ match) — **was present** (orange) if it only shows in older requests (pre-conf
 history aging out), or **absent** (green) once it's gone. Because it reads the
 local `~/.claude/settings.json`, the page is device-specific.
 
+### Browsing background jobs ("Jobs")
+
+Claude Code keeps a directory per **background job** under `~/.claude/jobs/<id>` —
+a `state.json` it rewrites as the job runs, a `timeline.jsonl` of its state
+changes, and a `tmp/` holding whatever the run built. Like **Not added**, this is
+device-wide and read off the local filesystem rather than captured traffic.
+
+The **Jobs** page (`GET /api/jobs`) lists every one of those directories whichever
+project it ran in, newest activity first, with its state, working directory, file
+count and size. A directory whose job is gone is listed as a **husk** rather than
+hidden — the scratch space is still on your disk.
+
+Opening one (`GET /api/jobs/job?id=`) shows what the state file says — the prompt
+it was given, the model and agent it ran as, any PR it opened, what it had in
+flight at the last write — and presents the directory as a **folder tree**.
+Selecting a file reads it (`GET /api/jobs/file?id=&file=`) with a **Pretty / Raw**
+toggle: pretty re-indents JSON, renders `timeline.jsonl` as badged state changes,
+strips terminal escapes and progress redraws out of a build log, numbers and
+colours source, and inlines a screenshot; raw is the bytes on disk, for when you
+suspect the pretty view of hiding something.
+
+Reading is confined to the job directory — the id and every path segment are
+validated, and the resolved path is `realpath`'d and re-checked, so a symlink left
+in a job's `tmp/` can't read the rest of the filesystem. Point it elsewhere with
+`CLAUDE_JOBS=/path/to/jobs`.
+
 Prefer the terminal? The same digest + advice as a one-shot text report:
 
 ```bash
@@ -315,6 +341,9 @@ pnpm --filter server summary 2026-07-14   # a specific day
 | `GET /api/tools?date=YYYY-MM-DD` | the ranked tool-bloat table for a day |
 | `GET /api/withheld?days=N` | the device's withheld-tool policy (`~/.claude` deny rules) + a check that each is absent from recent traffic |
 | `GET /api/filters` | the proxy's own strip inventory — withheld tools + injected reminders it removes from every request |
+| `GET /api/jobs` | every background job directory under `~/.claude/jobs`, newest activity first |
+| `GET /api/jobs/job?id=` | one job's state plus its directory as a folder tree |
+| `GET /api/jobs/file?id=&file=` | one file inside a job directory, for the pretty/raw viewer |
 
 ## Ports
 
