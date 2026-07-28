@@ -364,6 +364,25 @@ pnpm -r test           # vitest (packages/core)
 pnpm --filter admin build
 ```
 
+### Worktree Setup
+
+`git worktree add` brings only tracked files, so a fresh worktree has no
+`node_modules/`, no `.env`, and — the one that bites — no `logs/`, leaving the
+dashboard empty and `/health` failing. One script fixes all three:
+
+```bash
+bash scripts/bootstrap-worktree.sh
+```
+
+It finds the main checkout via `git rev-parse --git-common-dir` (no hardcoded
+paths, same resolution `scripts/proxy-store-env.sh` uses), symlinks
+`apps/admin/.env`, `proxy/.env`, and `logs/` from it, then runs `pnpm install
+--frozen-lockfile`. Symlinks rather than copies, so the main checkout stays the
+single source of truth and new sidecars show up in every worktree at once;
+existing files are kept, missing ones skipped. It refuses to run from the main
+checkout, and needs no branch or base — `/task` invokes it on any worktree it
+creates.
+
 ## Docs (okq)
 
 `docs/` is an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog)
