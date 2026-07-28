@@ -42,7 +42,8 @@ into a direct answer without touching the passive-observer proxy.
   sortable by **#**, **Bytes**, **~Tokens**, and **Share** — default **#**
   ascending, click a column to sort and again to flip direction), a **tools-by-size** table
   (each row opens that tool's schema page), and the **raw request JSON** (collapsed by
-  default, capped at 2 MB). Breadcrumbs link back up to the Context size page.
+  default, capped at 2 MB). Breadcrumbs link back up to the Context size page, and coming
+  back from a drill-down restores the scroll position the page was left at.
 - **Tool schema page** (`/context/$file/tool/$index`) — one tool schema in full: stat tiles
   for **position** (`#index` of N tools), **name**, and **size** (bytes, ~tokens), then a
   **"Tool schema"** card with a **Pretty** view (name, description, and a required-flagged
