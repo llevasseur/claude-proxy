@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import { highlightSource, type CodeSyntax } from "@claude-proxy/core";
 
-/** Lines rendered before the block gives up and points at the Raw view instead.
- * A capped job file is half a megabyte, which can be 15k lines — enough to cost a
- * visible pause on every re-render for a view nobody scrolls to the end of. */
+/** Lines rendered before the block gives up and points at the Raw view instead. A
+ * capped job file is half a megabyte, which can be 15k lines — enough to cost a
+ * visible pause on every re-render. */
 const MAX_LINES = 3000;
 
 export interface CodeBlockProps {

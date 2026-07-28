@@ -127,7 +127,6 @@ describe("highlightSource", () => {
     const lines = highlightSource("say 'oops\nconst a = 1;", "c-like");
     expect(lines).toHaveLength(2);
     expect(lines[0]?.some((t) => t.kind === "string")).toBe(true);
-    // The next line recovers: `const` is still a keyword, not string content.
     expect(lines[1]?.[0]).toEqual({ kind: "keyword", text: "const" });
   });
 

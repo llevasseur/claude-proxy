@@ -16,8 +16,7 @@ export interface JobFileViewProps {
  * One job file, read either way. **Pretty** interprets the file for what it is —
  * re-indented and coloured JSON, a rendered timeline, rendered markdown, a log with
  * its terminal escapes and progress redraws resolved, numbered and coloured source,
- * an inlined image. **Raw** is the bytes as they sit on disk, unwrapped, which is
- * what you want the moment you suspect the pretty view of lying.
+ * an inlined image. **Raw** is the bytes as they sit on disk, unwrapped.
  */
 export function JobFileView({ file }: JobFileViewProps) {
   const [view, setView] = useState<View>("pretty");

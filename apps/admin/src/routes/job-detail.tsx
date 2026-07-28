@@ -14,9 +14,6 @@ import { cwdLabel, StateBadge } from "./jobs";
 /**
  * One background job: what its `state.json` says, and its directory as a browsable
  * folder tree with a pretty/raw viewer for whatever you open.
- *
- * The file the page opens on is `state.json` when the job has one, since that is the
- * file that explains the rest of the directory.
  */
 
 /** The first file the tree should open, depth-first: the job's state file if it has

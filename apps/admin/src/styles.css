@@ -2847,7 +2847,7 @@ button.sessions-new.is-active {
   }
 }
 
-/* ── Jobs: the device's ~/.claude/jobs directories ────────────────────────── */
+/* jobs — the device's ~/.claude/jobs directories */
 
 /* Listing: the job's name leads, its id and status detail sit under it. */
 .job-title {
