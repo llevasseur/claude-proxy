@@ -1,4 +1,6 @@
-logs/
+# No trailing slash: in a worktree `logs` is a symlink
+# (scripts/bootstrap-worktree.sh), which `logs/` would not match.
+logs
 .skim-cache/
 .DS_Store
 node_modules/
