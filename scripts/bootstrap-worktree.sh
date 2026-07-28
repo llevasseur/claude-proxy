@@ -1,27 +1,14 @@
 #!/usr/bin/env bash
 #
-# Make a linked worktree behave like the main checkout.
+# Fill in what `git worktree add` leaves out — it materializes only tracked files,
+# so a fresh worktree has no `node_modules/`, no `.env`, and no `logs/`. Symlinks
+# env and logs from the main checkout, then installs. `/task` runs this on the
+# worktrees it creates.
 #
-# `git worktree add` only materializes *tracked* files, so a fresh worktree starts
-# without the three things this repo keeps out of git: `node_modules/`, the `.env`
-# files, and `logs/` — the sidecar directory every dashboard view reads. This
-# script fills those in, and is what `/task` looks for when it sets up a worktree.
-#
-# The main checkout is found via `git rev-parse --git-common-dir`, which points at
-# the *shared* `.git` no matter which linked worktree asks. Nothing here hardcodes
-# a path, so the script survives a move, a rename, or a second clone — the same
-# resolution `scripts/proxy-store-env.sh` already does for the transcript store.
-#
-# Env and logs are symlinked, never copied: the main checkout stays the single
-# source of truth, so a `.env` edit or a newly written sidecar is visible from
-# every worktree at once and nothing drifts. Existing files are left alone, and
-# anything missing upstream is skipped with a note rather than invented.
-#
-# Branch-agnostic by construction: it reads only this worktree's working tree and
-# the main checkout, never `main` or any assumed base. There is no code generation
-# step because the repo has none — `@claude-proxy/core` is consumed as TypeScript
-# source (the server runs it through tsx, Vite excludes it from optimizeDeps), so
-# `pnpm install` is genuinely all the build this needs.
+# The main checkout comes from `git rev-parse --git-common-dir` — the shared `.git`
+# whichever worktree asks — so no path is hardcoded and no branch or base is
+# assumed. Nothing is generated: `@claude-proxy/core` is consumed as TypeScript
+# source, so install is the whole build.
 #
 # Usage: bash scripts/bootstrap-worktree.sh   (from anywhere inside the worktree)
 
@@ -33,17 +20,13 @@ MAIN_CHECKOUT="$(dirname "${GIT_COMMON_DIR}")"
 
 cd "${WORKTREE_ROOT}"
 
-# Every action below either reads from the main checkout or writes a symlink into
-# it — harmless from a linked worktree, meaningless (or destructive) from the main
-# checkout itself, which already has the real files.
 if [ "${MAIN_CHECKOUT}" = "${WORKTREE_ROOT}" ]; then
   echo "run this from a linked worktree, not the main checkout (${MAIN_CHECKOUT})" >&2
   exit 1
 fi
 
-# Link one path from the main checkout, relative to both roots. Missing upstream
-# is normal (a device that never configured that env file); an existing path wins,
-# so a deliberately divergent worktree file is never clobbered.
+# Link one path, relative to both roots. Missing upstream is skipped; a path the
+# worktree already has wins.
 link_from_main() {
   local rel="$1"
   local src="${MAIN_CHECKOUT}/${rel}"
@@ -65,27 +48,19 @@ link_from_main() {
 
 echo "bootstrapping $(basename "${WORKTREE_ROOT}") from ${MAIN_CHECKOUT}"
 
-# Gitignored env. `apps/admin/.env` is loaded by Vite; `proxy/.env` is a record of
-# the device's port that no code path reads today, linked so the worktree stays a
-# faithful copy. Tracked `.env.example` files arrive with the worktree already.
+# Vite loads `apps/admin/.env`; `proxy/.env` records the device's port and no code
+# path reads it. Tracked `.env.example` files arrive with the worktree.
 echo "env:"
 link_from_main "apps/admin/.env"
 link_from_main "proxy/.env"
 
-# `logs/` is where the proxy writes sidecars and the only thing the server reads:
-# `resolveLogDir()` (server/src/logs.ts) defaults to `<repo>/logs`, so without this
-# link a worktree's dashboard is empty and its health check fails. Linking rather
-# than overriding LOG_DIR keeps that default correct for every entry point at once
-# — server, daily summary, and `/revive`'s store — with no env to remember. Writes
-# that belong to the logs (`suggestion-status.json`) land beside the transcripts
-# they describe, which is where that file is meant to live.
+# `resolveLogDir()` (server/src/logs.ts) defaults to `<repo>/logs`, so an unlinked
+# worktree serves an empty dashboard and fails its health check. Linking keeps that
+# default correct for the server, the daily summary and `/revive`'s store at once.
 echo "logs:"
 link_from_main "logs"
 
-# Install at the worktree root: pnpm links the workspace packages here and shares
-# the global store, so this is cheap. Frozen because the lockfile arrived with the
-# branch and should match it — a failure here means real lockfile drift, not a
-# stale worktree.
+# Frozen: the lockfile arrived with the branch, so a failure here is real drift.
 echo "install:"
 pnpm install --frozen-lockfile
 
