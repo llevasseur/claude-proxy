@@ -45,6 +45,11 @@ was truncated.
   description, `required` badge) drawn from its `input_schema`.
 - **Breadcrumbs** — both pages carry a *Context size → Request breakdown → Message/Tool #N*
   trail back up the drill-down.
+- **Going back keeps your place** — returning to the breakdown (browser Back, or the
+  breadcrumb) lands on the row you left instead of the top of a long table. The router
+  restores window scroll per history entry (`scrollRestoration`), and the breakdown re-applies
+  the remembered offset once its query resolves — without that second pass the restore would
+  land on the loading state, which is too short to hold the offset.
 
 Data comes from the `server` API — `GET /api/context/message?file=<base>&index=<n>` and
 `GET /api/context/tool?file=<base>&index=<n>` — which read exactly one `.request.txt` and
@@ -61,6 +66,7 @@ entry 0 rather than erroring.
 - [x] The message page shows the message's role, size, and complete content.
 - [x] The message content is read from the full parsed body, so it resolves even when the
       request's raw JSON was truncated.
+- [x] Navigating back to the breakdown restores the scroll position it was left at.
 - [x] No proxy changes; the feature is read-only over existing request logs.
 - [x] `extractRequestMessage` is unit-tested; `pnpm typecheck` and `pnpm test` pass.
 

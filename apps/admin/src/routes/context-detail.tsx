@@ -6,11 +6,13 @@ import { getContextDetail } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtInt, fmtPct } from "../format";
+import { useRestoredScroll } from "../useRestoredScroll";
 
 export function ContextDetailPage() {
   const { file } = useParams({ from: "/context/$file" });
   const query = useQuery({ queryKey: ["context-detail", file], queryFn: () => getContextDetail(file) });
   const data = query.data;
+  useRestoredScroll(!!data);
 
   return (
     <section>

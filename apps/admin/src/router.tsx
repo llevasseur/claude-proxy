@@ -326,4 +326,6 @@ const routeTree = rootRoute.addChildren([
   suggestionBucketRoute,
 ]);
 
-export const router = createRouter({ routeTree });
+// `scrollRestoration` snapshots scroll per history entry, so a Back returns to the offset it
+// was left at; a forward navigation still starts at the top.
+export const router = createRouter({ routeTree, scrollRestoration: true });
