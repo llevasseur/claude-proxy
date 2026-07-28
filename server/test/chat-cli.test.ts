@@ -365,7 +365,9 @@ describe.skipIf(process.platform === "win32")("runCliTurn — ending a run early
 
   it("ends a run that has gone silent, keeping what it had already said", async () => {
     const { cliPath } = fakeCli("fake-claude-idle"); // one line, then hangs
-    const result = await runCliTurn({ ...turnInput(cliPath), idleTimeoutMs: 300 });
+    // The window has to clear node's own startup — the child's first silence — or a
+    // loaded machine times out before the line it is supposed to keep ever arrives.
+    const result = await runCliTurn({ ...turnInput(cliPath), idleTimeoutMs: 600 });
     expect(result.interrupted).toBe("timeout");
     expect(result.text).toBe("partial"); // reported, not thrown away
   });

@@ -14,6 +14,7 @@ import {
   flattenHooks,
   normalizePlugins,
   hookPluginLoadExpectations,
+  jobStateTone,
   parseSessionErrors,
   sessionContextPeak,
   sessionSuggestionBuckets,
@@ -40,6 +41,7 @@ import {
   type SessionError,
   type SessionMeta,
   type SessionNode,
+  type JobTreeNode,
   type SessionSuggestion,
   type SuggestionStatus,
   type SuggestionStatusRow,
@@ -54,6 +56,7 @@ import {
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
 import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
+import { listJobs, readJob, readJobFile, type JobFileDetail, type JobSummary } from "./jobs.js";
 import {
   listProjectMemories,
   listProjects,
@@ -291,6 +294,64 @@ export interface MemoryResponse {
 /** One memory file's full contents. `project`/`name` are validated downstream. */
 export async function buildMemory(projectsDir: string, project: string, name: string): Promise<MemoryResponse> {
   return { memory: await readMemory(projectsDir, project, name) };
+}
+
+export interface JobsResponse {
+  jobs: JobSummary[];
+  meta: {
+    jobsDir: string;
+    total: number;
+    /** How many are in a `busy` state right now. */
+    running: number;
+    /** Directories with no readable `state.json` — scratch space outliving its job. */
+    husks: number;
+    /** Files across every job, and their total bytes. */
+    files: number;
+    bytes: number;
+  };
+}
+
+/**
+ * Every background job directory on the device, newest activity first. A device
+ * view, not a traffic one: these directories are Claude Code's own scratch space,
+ * so nothing here comes from the captured logs.
+ */
+export async function buildJobs(jobsDir: string): Promise<JobsResponse> {
+  const jobs = await listJobs(jobsDir);
+  return {
+    jobs,
+    meta: {
+      jobsDir,
+      total: jobs.length,
+      running: jobs.filter((j) => jobStateTone(j.state) === "busy").length,
+      husks: jobs.filter((j) => !j.stateReadable).length,
+      files: jobs.reduce((sum, j) => sum + j.files, 0),
+      bytes: jobs.reduce((sum, j) => sum + j.bytes, 0),
+    },
+  };
+}
+
+export interface JobResponse {
+  job: JobSummary;
+  /** The job directory as a folder tree, directories before files. */
+  tree: JobTreeNode[];
+  meta: { entries: number; truncated: boolean };
+}
+
+/** One job's state plus its folder tree. `id` is validated downstream. */
+export async function buildJob(jobsDir: string, id: string): Promise<JobResponse> {
+  const { job, tree } = await readJob(jobsDir, id);
+  return { job, tree: tree.tree, meta: { entries: tree.entries, truncated: tree.truncated } };
+}
+
+export interface JobFileResponse {
+  file: JobFileDetail;
+}
+
+/** One file inside a job directory, for the pretty/raw viewer. Both params are
+ * validated downstream, where the path is also confirmed to stay inside the job. */
+export async function buildJobFile(jobsDir: string, id: string, file: string): Promise<JobFileResponse> {
+  return { file: await readJobFile(jobsDir, id, file) };
 }
 
 export interface SessionsResponse {

@@ -6,6 +6,9 @@ import {
   buildContextDetail,
   buildContextMessage,
   buildContextTool,
+  buildJob,
+  buildJobFile,
+  buildJobs,
   buildMemory,
   buildProjectMemories,
   buildProjects,
@@ -40,6 +43,7 @@ import {
   stopChat,
   UUID_RE,
 } from "./chat.js";
+import { resolveJobsDir } from "./jobs.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
@@ -49,6 +53,7 @@ const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default
 const LOG_DIR = resolveLogDir();
 const ARCHIVE_DIR = resolveArchiveDir();
 const PROJECTS_DIR = resolveProjectsDir();
+const JOBS_DIR = resolveJobsDir();
 
 /** Everything but the chat routes is a read-only view of already-captured logs. */
 const CORS = {
@@ -382,6 +387,49 @@ const server = http.createServer(async (req, res) => {
           if (msg.startsWith("invalid project name") || msg.startsWith("invalid memory file name")) {
             send(res, 400, { error: msg });
           } else if (msg.startsWith("project not found") || msg.startsWith("memory file not found")) {
+            send(res, 404, { error: msg });
+          } else throw err;
+        }
+        return;
+      }
+      // The device's background jobs: `~/.claude/jobs`, read-only like its neighbours.
+      case "/api/jobs":
+        send(res, 200, await buildJobs(JOBS_DIR));
+        return;
+      case "/api/jobs/job": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildJob(JOBS_DIR, id));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid job id")) send(res, 400, { error: msg });
+          else if (msg.startsWith("job not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/jobs/file": {
+        const id = url.searchParams.get("id");
+        const file = url.searchParams.get("file");
+        if (!id || !file) {
+          send(res, 400, { error: "missing ?id= or ?file=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildJobFile(JOBS_DIR, id, file));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (
+            msg.startsWith("invalid job id") ||
+            msg.startsWith("invalid job file path") ||
+            msg.startsWith("job file is a directory")
+          ) {
+            send(res, 400, { error: msg });
+          } else if (msg.startsWith("job not found") || msg.startsWith("job file not found")) {
             send(res, 404, { error: msg });
           } else throw err;
         }
