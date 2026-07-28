@@ -1,0 +1,231 @@
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { jobStateTone, type JobTone } from "@claude-proxy/core";
+import type { JobSummary } from "../api";
+import { getJobs } from "../api";
+import { QueryState } from "../components/QueryState";
+import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
+
+/**
+ * "Jobs" — every background job directory under `~/.claude/jobs` on this device.
+ *
+ * A filesystem view, not a traffic one: a job directory is Claude Code's own scratch
+ * space for a background session, written by the daemon on the machine. Nothing here
+ * passes through the proxy, so this page reports what is *on disk* — including the
+ * directories left behind after their job is gone.
+ */
+
+/** Badge class per state tone; the tones themselves come from core. */
+const TONE_BADGES: Record<JobTone, string> = {
+  busy: "sev-info",
+  done: "absent",
+  blocked: "was-present",
+  failed: "sev-high",
+  idle: "neutral",
+  unknown: "neutral",
+};
+
+export function StateBadge({ state }: { state: string }) {
+  const tone = jobStateTone(state);
+  return <span className={`badge ${TONE_BADGES[tone]}`}>{state || "no state"}</span>;
+}
+
+/** The last segment of a job's working directory — which checkout it ran in. */
+export function cwdLabel(cwd: string): string {
+  if (cwd === "") return "—";
+  const trimmed = cwd.replace(/\/+$/, "");
+  return trimmed.slice(trimmed.lastIndexOf("/") + 1) || trimmed;
+}
+
+export function JobsPage() {
+  const query = useQuery({ queryKey: ["jobs"], queryFn: getJobs });
+  const data = query.data;
+  const jobs = data?.jobs ?? [];
+
+  return (
+    <section>
+      <div className="pagehead">
+        <h1>Jobs</h1>
+        <div className="muted">
+          Every background job directory in <span className="rule-name">{data?.meta.jobsDir ?? "~/.claude/jobs"}</span>{" "}
+          — device-wide, whichever project it ran in.
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="leak-note">
+          <strong>What's on disk, not what's on the wire.</strong> A job directory is Claude Code's own scratch space
+          for a background session — a <span className="rule-name">state.json</span> it rewrites as it goes, a{" "}
+          <span className="rule-name">timeline.jsonl</span> of its state changes, and a{" "}
+          <span className="rule-name">tmp/</span> holding whatever the run built. The daemon writes all of it locally,
+          so unlike the rest of the dashboard none of it comes through the proxy. Directories whose job is gone stay
+          behind, and are listed here as <strong>husks</strong>.
+        </div>
+      </div>
+
+      <QueryState isLoading={query.isLoading} error={query.error}>
+        {!data ? null : (
+          <>
+            <div className="grid stats">
+              <StatTile label="Jobs" value={fmtInt(data.meta.total)} sub="directories on disk" />
+              <StatTile label="Running" value={fmtInt(data.meta.running)} sub="in a working state" />
+              <StatTile label="Husks" value={fmtInt(data.meta.husks)} sub="no readable state" />
+              <StatTile label="On disk" value={fmtBytes(data.meta.bytes)} sub={`${fmtInt(data.meta.files)} files`} />
+            </div>
+
+            {jobs.length === 0 ? (
+              <div className="card empty">
+                No job directories in <span className="rule-name">{data.meta.jobsDir}</span>.
+              </div>
+            ) : (
+              <JobsTable jobs={jobs} />
+            )}
+          </>
+        )}
+      </QueryState>
+    </section>
+  );
+}
+
+type SortKey = "name" | "state" | "cwd" | "files" | "bytes" | "activity";
+type SortDir = "asc" | "desc";
+
+/** Direction applied the first time a column becomes the sort key. */
+const DEFAULT_DIR: Record<SortKey, SortDir> = {
+  name: "asc",
+  state: "asc",
+  cwd: "asc",
+  files: "desc",
+  bytes: "desc",
+  activity: "desc",
+};
+
+/** What a job is called: its name if it has one, else its id. */
+function jobLabel(job: JobSummary): string {
+  return job.name || job.id;
+}
+
+/** Signed comparison for a column, ascending. */
+function compare(a: JobSummary, b: JobSummary, key: SortKey): number {
+  switch (key) {
+    case "name":
+      return jobLabel(a).localeCompare(jobLabel(b));
+    case "state":
+      return a.state.localeCompare(b.state);
+    case "cwd":
+      return cwdLabel(a.cwd).localeCompare(cwdLabel(b.cwd));
+    case "files":
+      return a.files - b.files;
+    case "bytes":
+      return a.bytes - b.bytes;
+    default:
+      return a.activity.localeCompare(b.activity);
+  }
+}
+
+function JobsTable({ jobs }: { jobs: JobSummary[] }) {
+  const navigate = useNavigate();
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "activity", dir: "desc" });
+
+  const sorted = useMemo(() => {
+    const rows = [...jobs];
+    rows.sort((a, b) => {
+      const diff = compare(a, b, sort.key);
+      return sort.dir === "asc" ? diff : -diff;
+    });
+    return rows;
+  }, [jobs, sort]);
+
+  const onSort = (key: SortKey) =>
+    setSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: DEFAULT_DIR[key] },
+    );
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>
+          {jobs.length} job{jobs.length === 1 ? "" : "s"}
+        </h2>
+        <span className="muted">click a column to sort · click a row to browse its files</span>
+      </div>
+      <table className="table">
+        <thead>
+          <tr>
+            <SortHeader label="Job" sortKey="name" sort={sort} onSort={onSort} />
+            <SortHeader label="State" sortKey="state" sort={sort} onSort={onSort} />
+            <SortHeader label="Ran in" sortKey="cwd" sort={sort} onSort={onSort} />
+            <SortHeader label="Files" sortKey="files" sort={sort} onSort={onSort} className="num" />
+            <SortHeader label="Size" sortKey="bytes" sort={sort} onSort={onSort} className="num" />
+            <SortHeader label="Last active" sortKey="activity" sort={sort} onSort={onSort} className="num" />
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((job) => (
+            <tr key={job.id} className="clickable" onClick={() => navigate({ to: "/jobs/$id", params: { id: job.id } })}>
+              <td>
+                <Link
+                  to="/jobs/$id"
+                  params={{ id: job.id }}
+                  className="link job-title"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {jobLabel(job)}
+                </Link>
+                {job.name !== "" && <div className="muted mono-break job-id">{job.id}</div>}
+                {job.detail !== "" && <div className="job-detail">{job.detail}</div>}
+              </td>
+              <td>
+                <StateBadge state={job.state} />
+                {!job.stateReadable && <div className="leak-note">husk — no state.json</div>}
+              </td>
+              <td>
+                <span title={job.cwd}>{cwdLabel(job.cwd)}</span>
+              </td>
+              <td className="num">{fmtInt(job.files)}</td>
+              <td className="num">{fmtBytes(job.bytes)}</td>
+              <td className="num muted">{fmtLocalTsShort(job.activity)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: { key: SortKey; dir: SortDir };
+  onSort: (key: SortKey) => void;
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      className={["sortable", className].filter(Boolean).join(" ")}
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      onClick={() => onSort(sortKey)}
+    >
+      {label}
+      {active && <span className="sort-arrow">{sort.dir === "asc" ? "▲" : "▼"}</span>}
+    </th>
+  );
+}
+
+function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="card stat">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      <div className="stat-foot">{sub && <span className="muted">{sub}</span>}</div>
+    </div>
+  );
+}

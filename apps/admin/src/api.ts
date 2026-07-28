@@ -4,6 +4,9 @@ import type {
   BucketBreakdownSummary,
   ContextSummary,
   HookRow,
+  JobFileKind,
+  JobStateFields,
+  JobTreeNode,
   LaunchAlias,
   LaunchAliasPosture,
   PluginRow,
@@ -116,6 +119,43 @@ export interface HooksPluginsResponse {
   loadExpectations: AliasLoadExpectation[];
   launchRcPath: string;
   launchRcReadable: boolean;
+}
+/** One `~/.claude/jobs/<id>` directory: what its state file says plus what it holds. */
+export interface JobSummary extends JobStateFields {
+  id: string;
+  stateReadable: boolean;
+  files: number;
+  bytes: number;
+  modified: string;
+  /** Newest of `updatedAt` and `modified` — what the listing sorts by. */
+  activity: string;
+}
+export interface JobsResponse {
+  jobs: JobSummary[];
+  meta: { jobsDir: string; total: number; running: number; husks: number; files: number; bytes: number };
+}
+export interface JobResponse {
+  job: JobSummary;
+  tree: JobTreeNode[];
+  meta: { entries: number; truncated: boolean };
+}
+/** One file inside a job directory, as the pretty/raw viewer receives it. */
+export interface JobFileDetail {
+  id: string;
+  path: string;
+  name: string;
+  kind: JobFileKind;
+  bytes: number;
+  modified: string;
+  encoding: "utf8" | "base64";
+  content: string;
+  mime: string | null;
+  truncated: boolean;
+  binary: boolean;
+  note: string | null;
+}
+export interface JobFileResponse {
+  file: JobFileDetail;
 }
 export interface SessionSummary extends SessionMeta {
   bytes: number;
@@ -343,6 +383,12 @@ export const getProjectMemories = (project: string) =>
   get<ProjectMemoriesResponse>(`/api/projects/memories?project=${encodeURIComponent(project)}`);
 export const getMemory = (project: string, name: string) =>
   get<MemoryResponse>(`/api/projects/memory?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`);
+/** Every background job directory on the device, newest activity first. */
+export const getJobs = () => get<JobsResponse>("/api/jobs");
+export const getJob = (id: string) => get<JobResponse>(`/api/jobs/job?id=${encodeURIComponent(id)}`);
+/** One file from a job directory — `file` is a path relative to that directory. */
+export const getJobFile = (id: string, file: string) =>
+  get<JobFileResponse>(`/api/jobs/file?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`);
 export const getSessions = () => get<SessionsResponse>("/api/sessions");
 export const getSessionsGraph = () => get<SessionsGraphResponse>("/api/sessions/graph");
 export const getSessionGraphNodes = (id: string) =>
