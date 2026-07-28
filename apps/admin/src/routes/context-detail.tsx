@@ -12,8 +12,6 @@ export function ContextDetailPage() {
   const { file } = useParams({ from: "/context/$file" });
   const query = useQuery({ queryKey: ["context-detail", file], queryFn: () => getContextDetail(file) });
   const data = query.data;
-  // Coming back from a message or tool subpage lands on the row you left, not the top —
-  // the tables are long, and the offset only holds once they have rendered.
   useRestoredScroll(!!data);
 
   return (

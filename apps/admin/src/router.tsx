@@ -308,6 +308,6 @@ const routeTree = rootRoute.addChildren([
   suggestionBucketRoute,
 ]);
 
-// `scrollRestoration` keeps a page's offset across a back navigation instead of dropping
-// every arrival at the top; a forward navigation still starts at the top.
+// `scrollRestoration` snapshots scroll per history entry, so a Back returns to the offset it
+// was left at; a forward navigation still starts at the top.
 export const router = createRouter({ routeTree, scrollRestoration: true });
