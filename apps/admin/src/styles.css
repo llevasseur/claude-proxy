@@ -2353,12 +2353,17 @@ button.gi-open {
 /* Anchor a short conversation to the composer rather than the top of the pane.
    `margin-top: auto` on the first turn, not `justify-content`, so an overflowing
    log still scrolls to its own first turn. */
-.chat-panel--fill .chat-log > :first-child {
+.chat-panel--fill .chat-log:not(.chat-log--empty) > :first-child {
   margin-top: auto;
 }
 .chat-log--empty {
   display: grid;
   place-items: center;
+}
+/* Even block padding for the centered state — the log's asymmetric bottom padding
+   would otherwise ride it high. */
+.chat-panel--fill .chat-log--empty {
+  padding-block: 12px;
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-log {
@@ -2478,14 +2483,13 @@ button.chat-new {
 button.chat-new:hover:not(:disabled) {
   color: var(--text);
 }
-/* Where this chat runs and where its transcript lands — the fine print under the input. */
+/* Where this chat runs and where its transcript lands — the fine print above the input. */
 .chat-footnote {
   display: flex;
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-  margin-top: 8px;
-  padding-bottom: 4px;
+  margin-bottom: 8px;
   font-family: var(--font-mono);
   font-size: 11px;
 }
