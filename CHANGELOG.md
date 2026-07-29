@@ -12,6 +12,26 @@ This project has not cut a release yet, so everything below sits under
 
 ### Added
 
+- **A repository map, the failing shell forms, and refusals that are final** —
+  `AGENTS.md` gains a **Repository map** so a session reads one section instead of
+  re-deriving the layout: the four workspace packages, `server/src/server.ts` versus
+  `api.ts`, the CLI entry points behind `pnpm --filter server suggestions`, the
+  `logs/` transcript and sidecar layout, `my-command-tools verify`'s four gates, and
+  the OKF bundle under `docs/`. **Shell command forms** records the invocations that
+  kept failing — a relative `cd` when the working directory was a worktree,
+  unquoted zsh globs aborting the command (`grep --include=*.ts` versus
+  `rg -g '*.ts'`), and reading `@{u}` on a branch with no upstream — while the
+  existing discovery bullet now covers confirming a *file* exists before `sed`-ing
+  or reading it, and a new one hands a broad fan-out to a single search agent.
+  **Environment-specific failures** names the two recurring ones with known
+  recoveries: a 1Password signing prompt (retry the same commit once, never
+  `--no-gpg-sign` around it) and `gh`'s GraphQL `must be a collaborator`, which is
+  the wrong identity rather than a missing permission. Finally, a classifier refusal
+  of a PR merge or a remote-ref deletion is now explicitly **final** — `gh api -X PUT
+  .../pulls/N/merge` is `gh pr merge` and `gh api --method DELETE .../git/refs/...`
+  is `git push origin --delete`, so neither counts as the one narrow retry the
+  neighbouring bullet allows, and the two bullets were reworded to read together.
+
 - **Repository-wide tool preconditions for agent edits and reads** — `AGENTS.md`
   now requires an existing target to pass through the `Read` tool before its first
   `Edit` — or the first `Write` that overwrites it — even when shell output or
