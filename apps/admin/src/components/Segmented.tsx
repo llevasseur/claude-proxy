@@ -3,7 +3,7 @@ export interface SegmentedOption<T> {
   label: string;
 }
 
-/** The day windows every trend-shaped page offers. */
+/** The day windows the trend-shaped pages offer. */
 export const DAY_WINDOWS: readonly SegmentedOption<number>[] = [
   { value: 7, label: "7d" },
   { value: 14, label: "14d" },
@@ -12,16 +12,15 @@ export const DAY_WINDOWS: readonly SegmentedOption<number>[] = [
 
 export type PrettyRawView = "pretty" | "raw";
 
-/** The rendered-or-source toggle every document-shaped page carries. */
+/** The rendered-or-source toggle the document-shaped pages carry. */
 export const PRETTY_RAW: readonly SegmentedOption<PrettyRawView>[] = [
   { value: "pretty", label: "Pretty" },
   { value: "raw", label: "Raw" },
 ];
 
 /**
- * The pill switcher in a page head. `busy` marks the control while the view it
- * selects is still settling — the buttons stay live throughout, because the pending
- * work is a transition and the previous window is still on screen behind it.
+ * The pill switcher in a page head. `busy` marks the control while the view it selects
+ * is still settling; the buttons stay live throughout.
  */
 export function Segmented<T extends string | number>({
   options,

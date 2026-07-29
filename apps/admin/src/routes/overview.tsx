@@ -14,9 +14,7 @@ import { useTransitionState } from "../useTransitionState";
 export function OverviewPage() {
   const [days, selectDays, isSwitching] = useTransitionState(7);
   const summary = useQuery({ queryKey: ["summary"], queryFn: () => getSummary() });
-  // Per-day history feeds every card's mini chart; shares cache with /trends. Keeping
-  // the previous window while a wider one loads is what lets the sparklines redraw in
-  // place instead of the cards emptying out and coming back.
+  // Per-day history feeds every card's mini chart; shares cache with /trends.
   const trends = useQuery({
     queryKey: ["trends", days],
     queryFn: () => getTrends(days),
@@ -30,9 +28,8 @@ export function OverviewPage() {
         data={data}
         days={days}
         onDays={selectDays}
-        // Only the mini charts follow this window — every headline number comes from
-        // today's digest and is not stale — so the switcher marks itself busy and the
-        // cards are left at full strength.
+        // Only the mini charts follow this window; the headline numbers come from
+        // today's digest, so the switcher marks itself and the cards stay at full strength.
         busy={isSwitching || trends.isFetching}
       />
       <QueryState isLoading={summary.isLoading} error={summary.error} skeleton={<OverviewSkeleton />}>
@@ -42,7 +39,7 @@ export function OverviewPage() {
   );
 }
 
-/** The cards and panels this page loads into, holding their loaded size. */
+/** The cards and panels this page loads into, at their loaded size. */
 function OverviewSkeleton() {
   return (
     <>
@@ -147,9 +144,8 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
 }
 
 /**
- * The page's own head, above the loading boundary: the title and the window switcher
- * are usable while the digest is still on its way, and only the line that reports the
- * day's request count waits for data.
+ * The page head, above the loading boundary: title and window switcher stay usable
+ * while the digest loads, and only the day's request-count line waits for data.
  */
 function PageHead({
   data,

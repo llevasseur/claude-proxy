@@ -41,8 +41,6 @@ function toPerRequestRow(d: UsageDigest) {
 
 export function TrendsPage() {
   const [days, selectDays, isSwitching] = useTransitionState(7);
-  // The window that is already drawn stays drawn while the next one loads, so
-  // widening to 30 days redraws the charts rather than clearing the page.
   const query = useQuery({
     queryKey: ["trends", days],
     queryFn: () => getTrends(days),
@@ -115,10 +113,7 @@ export function TrendsPage() {
   );
 }
 
-/**
- * The four cards, at the size the selected window will fill: one row and one bar per
- * day, so the charts and the table are already their final height.
- */
+/** The four cards at the selected window's size: one row and one bar per day. */
 function TrendsSkeleton({ days }: { days: number }) {
   return (
     <>

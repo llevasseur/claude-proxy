@@ -80,11 +80,7 @@ export function SessionDetailPage() {
   );
 }
 
-/**
- * The session's seven stat tiles and its transcript card. The tile count is fixed by
- * the page rather than the data, so the grid is already the right height and the
- * transcript below it does not slide up when the numbers arrive.
- */
+/** The session's seven stat tiles — a count fixed by the page, not the data — and its transcript card. */
 function SessionSkeleton() {
   return (
     <>
@@ -115,10 +111,6 @@ function StartingBody({ sessionId, gaveUp }: { sessionId: string; gaveUp: boolea
 }
 
 function SessionBody({ session }: { session: SessionDetail }) {
-  // A transcript is the largest document the dashboard renders, and both views are
-  // expensive — Markdown one way, the whole file in a `<pre>` the other. Switching as
-  // a transition keeps the toggle responsive and leaves the current view in place,
-  // dimmed, instead of blanking the card while the other one lays out.
   const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
   const { meta } = session;
   const name = sessionName(meta);

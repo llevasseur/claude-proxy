@@ -348,10 +348,7 @@ export function WithheldPage() {
 /** Rule, how it matches, and its traffic status. */
 const RULE_COLUMNS: readonly SkeletonColumn[] = [{ cell: "58%" }, { cell: "40%" }, {}];
 
-/**
- * The summary card, the deny-rule table, and the launch-alias card — the three that
- * are always on this page when anything is withheld at all.
- */
+/** The summary card, the deny-rule table, and the launch-alias card. */
 function WithheldSkeleton() {
   return (
     <>

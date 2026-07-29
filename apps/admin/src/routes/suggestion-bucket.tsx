@@ -49,9 +49,6 @@ export function SuggestionBucketPage() {
     queryFn: () => getSuggestionStatus({ range: String(index) }),
     enabled: Number.isInteger(index) && index >= 1,
   });
-  // Hiding the resolved ones re-renders every remaining card, so it runs as a
-  // transition: the button answers at once and the list it is filtering stays on
-  // screen, dimmed, rather than blanking.
   const [hideResolved, setHideResolved, isFiltering] = useTransitionState(false);
   const data = query.data;
   const statusById = new Map((statusQuery.data?.rows ?? []).map((row) => [row.id, row]));
@@ -164,8 +161,7 @@ const SESSION_COLUMNS: readonly SkeletonColumn[] = [
 
 /**
  * A window's four stat tiles, its suggestions, the breakdown patterns, and the ten
- * sessions it covers — a bucket is always ten sessions, so the last table's height is
- * known before the data lands.
+ * sessions it covers — a bucket is always ten.
  */
 function BucketSkeleton() {
   return (

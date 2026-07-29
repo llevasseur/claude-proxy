@@ -32,9 +32,8 @@ export function SessionsPage() {
 
   return (
     <section className="sessions-shell">
-      {/* The rail is the only half that waits — the chat beside it is usable from the
-          first paint, and the shell's grid column already fixes the rail's width, so
-          the transcripts fill a column that is never resized. */}
+      {/* The rail is the only half that waits; the chat beside it is usable from the
+          first paint, in a grid column the shell already sizes. */}
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<SessionsRailSkeleton />}>
         <SessionsSidenav
           sessions={sessions ?? []}

@@ -38,7 +38,7 @@ export function ProjectsPage() {
   );
 }
 
-/** The projects directory line, then the table, both at their loaded height. */
+/** The projects directory line, then the table. */
 function ProjectsSkeleton() {
   return (
     <>
@@ -78,8 +78,6 @@ function compare(a: ProjectSummary, b: ProjectSummary, key: SortKey): number {
 function ProjectsTable({ projects }: { projects: ProjectSummary[] }) {
   const navigate = useNavigate();
   const max = Math.max(1, ...projects.map((p) => p.memoryCount));
-  // Re-sorting is a render, not a fetch: as a transition the header stays responsive
-  // and the rows already on screen hold their place until the new order is ready.
   const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
     key: "memoryCount",
     dir: "desc",

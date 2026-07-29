@@ -514,11 +514,9 @@ function boxStyle(box: Box): CSSProperties {
 }
 
 /**
- * Ghost boxes on the canvas while the first poll is in flight, laid out from the same
- * `COMPACT` geometry and gaps the real snake uses — a session box with its steps
- * trailing to the right. The canvas is pannable and the boxes are absolutely placed,
- * so this reserves nothing the layout has to give back: the real boxes replace these
- * at the same size, in the same place.
+ * Ghost boxes on the canvas while the first poll is in flight — a session box with its
+ * steps trailing to the right, laid out from the same `COMPACT` geometry and gaps the
+ * real snake uses, so the real boxes replace these at the same size and place.
  */
 function GraphSkeleton({ rows = 2, steps = 4 }: { rows?: number; steps?: number }) {
   const s = COMPACT;

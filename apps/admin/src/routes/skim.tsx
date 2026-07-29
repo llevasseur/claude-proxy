@@ -45,7 +45,6 @@ function toCumulativeRows(digests: SkimDigest[]) {
 
 export function SkimPage() {
   const [days, selectDays, isSwitching] = useTransitionState(14);
-  // Widening the window redraws both charts in place instead of clearing them.
   const trendQuery = useQuery({
     queryKey: ["skim-trend", days],
     queryFn: () => getSkimTrend(days),

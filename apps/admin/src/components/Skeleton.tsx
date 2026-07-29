@@ -1,18 +1,11 @@
 import type { CSSProperties, ReactNode } from "react";
 
 /**
- * Loading placeholders that stand in the loaded content's own boxes.
- *
- * Every shape here is built from the classes the real page uses — `.card`,
+ * Loading placeholders built from the classes the real page uses — `.card`,
  * `.card.stat`, `.table`, `.grid.stats` — with the shimmer placed *inside* those
  * elements rather than replacing them. Each block is an inline-block, so the real
- * element's own strut still sets the line box: a skeleton `.stat-value` is exactly
- * as tall as a filled one without either side hardcoding a pixel height. The
- * container is therefore already the size the content needs, and data arrives in
- * place instead of pushing the page around.
- *
- * The shapes take their row/card counts from the caller because that count is what
- * fixes the height — a page asks for what it typically shows.
+ * element's strut still sets the line box and no pixel heights are hardcoded.
+ * Row and card counts come from the caller.
  */
 
 /** A CSS length: a number is px, a string is passed through. */
@@ -20,27 +13,24 @@ type Len = number | string;
 
 const len = (v: Len | undefined): string | undefined => (typeof v === "number" ? `${v}px` : v);
 
-/** Cycled so a paragraph of placeholders reads as written text, not as ruled lines. */
+/** Cycled so placeholder prose reads as text rather than ruled lines. */
 const LINE_WIDTHS = ["100%", "92%", "97%", "88%"];
 
 export interface SkeletonProps {
   /** Width within its container. Defaults to filling it. */
   w?: Len;
-  /** Height. Defaults to `0.72em`, which tracks the container's font size. */
+  /** Height. Defaults to `0.72em`, tracking the container's font size. */
   h?: Len;
   className?: string;
 }
 
-/**
- * One shimmering block. Decorative — the page announces its own load once, through
- * `SkeletonStatus`, so these stay out of the accessibility tree.
- */
+/** One shimmering block. Decorative — `SkeletonStatus` carries the announcement. */
 export function Skeleton({ w, h, className }: SkeletonProps) {
   const style: CSSProperties = { width: len(w), height: len(h) };
   return <span className={className ? `skeleton ${className}` : "skeleton"} style={style} aria-hidden />;
 }
 
-/** Placeholder prose. The last line is short, the way a real paragraph ends. */
+/** Placeholder prose, ending on a short line. */
 export function SkeletonText({ lines = 3 }: { lines?: number }) {
   return (
     <div className="skeleton-text" aria-hidden>
@@ -53,7 +43,7 @@ export function SkeletonText({ lines = 3 }: { lines?: number }) {
 
 /**
  * The one thing a screen reader hears while a page loads. Absolutely positioned, so
- * it can be dropped into a grid or flex container without becoming an item in it.
+ * it can sit in a grid or flex container without becoming an item in it.
  */
 export function SkeletonStatus({ label = "Loading" }: { label?: string }) {
   return (
@@ -63,7 +53,7 @@ export function SkeletonStatus({ label = "Loading" }: { label?: string }) {
   );
 }
 
-/** A `.grid.stats` row of stat cards, matching the tiles the page will fill in. */
+/** A `.grid.stats` row of stat cards. */
 export function SkeletonStats({ count = 4 }: { count?: number }) {
   return (
     <div className="grid stats" aria-hidden>
@@ -94,7 +84,7 @@ export interface SkeletonColumn {
   cell?: Len;
 }
 
-/** A `.table` of placeholder rows, for dropping inside a card the page already draws. */
+/** A `.table` of placeholder rows, for dropping inside a card. */
 export function SkeletonTable({ columns, rows = 6 }: { columns: readonly SkeletonColumn[]; rows?: number }) {
   return (
     <table className="table" aria-hidden>
@@ -132,7 +122,7 @@ export function SkeletonCard({ title, head, children }: { title?: string; head?:
   );
 }
 
-/** A table in its own card — the shape most list pages load into. */
+/** A table in its own card. */
 export function SkeletonTableCard({
   title,
   columns,
@@ -149,10 +139,7 @@ export function SkeletonTableCard({
   );
 }
 
-/**
- * A chart card. `height` is the real chart's own fixed height (220 by default, the
- * `SeriesLineChart` default), so the plot area does not resize when data lands.
- */
+/** A chart card. `height` must match the real chart's fixed height (`SeriesLineChart` defaults to 220). */
 export function SkeletonChartCard({
   title,
   height = 220,
@@ -162,8 +149,7 @@ export function SkeletonChartCard({
   height?: number;
   bars?: number;
 }) {
-  // A deterministic sawtooth: enough shape to read as a chart, no randomness to
-  // make it flicker between renders.
+  // Deterministic sawtooth, so the bars don't flicker between renders.
   const heights = Array.from({ length: bars }, (_, i) => 34 + ((i * 37) % 61));
 
   return (
@@ -177,7 +163,7 @@ export function SkeletonChartCard({
   );
 }
 
-/** A card of placeholder prose — for pages whose content is text rather than rows. */
+/** A card of placeholder prose. */
 export function SkeletonTextCard({ title, lines = 4 }: { title?: string; lines?: number }) {
   return (
     <SkeletonCard title={title} head={title === undefined}>
@@ -186,10 +172,7 @@ export function SkeletonTextCard({ title, lines = 4 }: { title?: string; lines?:
   );
 }
 
-/**
- * `.msg-blocks` sections — the labelled blocks the message, tool-schema and error
- * pages render their content into.
- */
+/** `.msg-blocks` sections, as used by the message, tool-schema and error pages. */
 export function SkeletonMsgBlocks({ count = 3, lines = 4 }: { count?: number; lines?: number }) {
   return (
     <div className="msg-blocks" aria-hidden>
@@ -207,10 +190,7 @@ export function SkeletonMsgBlocks({ count = 3, lines = 4 }: { count?: number; li
   );
 }
 
-/**
- * A stack of card-shaped placeholders, for the advice and bucket lists. `lines`
- * sets how much prose each card reserves.
- */
+/** A stack of card-shaped placeholders; `lines` sets the prose each card reserves. */
 export function SkeletonCardList({
   count = 3,
   lines = 2,

@@ -58,8 +58,6 @@ function ToolSkeleton() {
 }
 
 function ToolBody({ tool: t }: { tool: RequestToolDetail }) {
-  // A big tool schema is expensive to lay out both ways, so the switch is a transition
-  // and the view on screen holds its place until the other one is ready.
   const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
 
   return (

@@ -106,7 +106,7 @@ export function FiltersPage() {
   );
 }
 
-/** One card per filter kind — the groups are fixed, so both are reserved up front. */
+/** One card per filter kind. */
 function FiltersSkeleton() {
   return (
     <>
@@ -115,7 +115,7 @@ function FiltersSkeleton() {
           <div className="muted" aria-hidden>
             <Skeleton w="78%" />
           </div>
-          {/* The real table carries this offset itself; matching it keeps the card's height. */}
+          {/* Matches the offset the real table carries. */}
           <div style={{ marginTop: 12 }}>
             <SkeletonTable columns={FILTER_COLUMNS} rows={3} />
           </div>

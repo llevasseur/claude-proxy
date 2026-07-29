@@ -185,10 +185,7 @@ export function HooksPluginsPage() {
 /** Every table on this page is three columns wide. */
 const CONFIG_COLUMNS: readonly SkeletonColumn[] = [{ cell: "62%" }, { cell: "48%" }, {}];
 
-/**
- * The three inventory cards — hooks, plugins, and the per-alias load expectations —
- * each holding the count line and table it will fill.
- */
+/** The three inventory cards — hooks, plugins, and per-alias load expectations. */
 function HooksPluginsSkeleton() {
   return (
     <>

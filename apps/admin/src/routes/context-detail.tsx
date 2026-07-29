@@ -56,11 +56,8 @@ const BREAKDOWN_COLUMNS: readonly SkeletonColumn[] = [
 /**
  * The whole breakdown at the height it will occupy: four tiles, the region table
  * (always exactly three rows — conversation, tools, system prompt), the messages and
- * tools tables side by side, and the collapsed raw-JSON card.
- *
- * Reserving this much is also what lets a Back navigation land where it left off —
- * see `useRestoredScroll`, which exists because the old one-line loading state was
- * too short a document to hold a remembered offset.
+ * tools tables side by side, and the collapsed raw-JSON card. Long enough a document
+ * for `useRestoredScroll` to have an offset to restore on a Back navigation.
  */
 function BreakdownSkeleton() {
   return (
@@ -174,8 +171,6 @@ function sortValue(m: BreakdownMessage, key: SortKey): number {
 
 function MessagesTable({ file, messages }: { file: string; messages: BreakdownMessage[] }) {
   const navigate = useNavigate();
-  // A long conversation's re-sort is render work: as a transition the header answers
-  // immediately and the rows hold their place until the new order is ready.
   const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
     key: "index",
     dir: "asc",

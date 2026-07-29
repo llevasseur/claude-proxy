@@ -115,10 +115,7 @@ export function TrendDetailPage() {
   );
 }
 
-/**
- * The chart and its by-day table, side by side in the same two-up grid the loaded
- * page uses — one row and one plotted point per day in the window.
- */
+/** The chart and its by-day table in the loaded page's two-up grid — one row and point per day. */
 function TrendDetailSkeleton({ days, label }: { days: number; label: string }) {
   return (
     <div className="grid wide-two chart-lead">

@@ -41,7 +41,7 @@ export function ContextMessagePage() {
   );
 }
 
-/** The pager, three stat tiles, and the message card — a whole turn's worth of room. */
+/** The pager, three stat tiles, and the message card. */
 function MessageSkeleton() {
   return (
     <>
@@ -63,9 +63,6 @@ function MessageSkeleton() {
 }
 
 function MessageBody({ file, message: m }: { file: string; message: RequestMessageDetail }) {
-  // A whole turn is a lot to lay out either way — parsed blocks or one long `<pre>` —
-  // so the switch runs as a transition and the current view stays put until the other
-  // one is ready to take its place.
   const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
 
   return (

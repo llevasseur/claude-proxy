@@ -61,9 +61,6 @@ function MemorySkeleton() {
 }
 
 function MemoryBody({ memory }: { memory: MemoryDetail }) {
-  // Both views are costly to build — rendered Markdown one way, a whole file in a
-  // `<pre>` the other — so the switch is a transition: the button responds now and the
-  // view already on screen holds its place, dimmed, until the other one is ready.
   const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
   const { frontmatter, body } = splitFrontmatter(memory.content);
 

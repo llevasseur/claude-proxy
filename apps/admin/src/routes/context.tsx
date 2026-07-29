@@ -22,8 +22,6 @@ const REQUEST_COLUMNS: readonly SkeletonColumn[] = [
 
 export function ContextPage() {
   const [days, selectDays, isSwitching] = useTransitionState(14);
-  // The window on screen survives the switch to a wider one, so the stats and the
-  // table are replaced in place rather than emptied first.
   const query = useQuery({
     queryKey: ["context", days],
     queryFn: () => getContext(days),
@@ -114,9 +112,6 @@ function compare(a: ContextEntry, b: ContextEntry, key: SortKey): number {
 }
 
 function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; maxRealInput: number }) {
-  // A month's requests is the longest list in the dashboard, and re-sorting it is
-  // pure render cost. Doing it in a transition keeps the header clickable and holds
-  // the current order on screen until the new one is ready to swap in.
   const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
     key: "when",
     dir: "desc",

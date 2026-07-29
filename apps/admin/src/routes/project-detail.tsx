@@ -46,7 +46,7 @@ export function ProjectDetailPage() {
   );
 }
 
-/** The memories card at the size the table will fill. */
+/** The memories card and the table it holds. */
 function MemoriesSkeleton() {
   return (
     <div className="card">
@@ -83,8 +83,6 @@ function compare(a: MemoryFileSummary, b: MemoryFileSummary, key: SortKey): numb
 
 function MemoriesTable({ project, files }: { project: string; files: MemoryFileSummary[] }) {
   const navigate = useNavigate();
-  // Re-sorting is render work, so it runs as a transition and the current order stays
-  // on screen until the new one is ready.
   const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
     key: "bytes",
     dir: "desc",
