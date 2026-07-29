@@ -29,7 +29,6 @@ export function ChatConversation({
   inputOptions,
   footnote,
   footExtras,
-  onSend,
 }: {
   placeholder: string;
   disabled?: boolean;
@@ -43,8 +42,6 @@ export function ChatConversation({
   footnote?: ReactNode;
   /** Page-specific foot controls — the transcript link and "New chat" on the Sessions page. */
   footExtras?: ReactNode;
-  /** Fired after the turn is handed off — the Sessions page navigates to the session here. */
-  onSend?: (prompt: string) => void;
 }) {
   // The draft lives in the session, not here: this component unmounts on every navigation.
   const { chat, pendingPrompt, isSending, sendError, isStopping, stopError, draft, setDraft, send, stop } =
@@ -57,12 +54,6 @@ export function ChatConversation({
     const el = log.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [chat, pendingPrompt]);
-
-  const submit = (prompt: string) => {
-    // `send` clears the draft — the prompt is already on screen as a turn.
-    send(prompt);
-    onSend?.(prompt);
-  };
 
   return (
     <div className={`chat-panel${fill ? " chat-panel--fill" : ""}`}>
@@ -115,7 +106,7 @@ export function ChatConversation({
         <PromptInput
           value={draft}
           onValueChange={setDraft}
-          onSubmit={submit}
+          onSubmit={send}
           placeholder={placeholder}
           disabled={disabled}
           status={isSending ? "submitted" : sendError ? "error" : "ready"}

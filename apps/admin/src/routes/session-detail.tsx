@@ -3,8 +3,8 @@ import { sessionName } from "@claude-proxy/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import type { SessionDetail } from "../api";
-import { getChatThread, getRunningChats, getSession, getSessionBreakdown, stopChat } from "../api";
-import { useChatSession } from "../chat-session";
+import { getRunningChats, getSession, getSessionBreakdown, stopChat } from "../api";
+import { useChatSession, useChatThread } from "../chat-session";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { ChatConversation } from "../components/ChatConversation";
 import { LiveIndicator } from "../components/LiveIndicator";
@@ -14,41 +14,20 @@ import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
 import { useLiveQuery } from "../useLiveQuery";
 
 /**
- * A chat session id, which this route also accepts: a dashboard chat navigates here before its
- * thread id exists, since the proxy fingerprints a thread from the first request over the wire.
- * Thread ids are 16 hex characters, so a uuid is unambiguously the other kind of id.
+ * A chat session id, which this route also accepts: a dashboard chat can be linked or bookmarked
+ * before its thread id exists, since the proxy fingerprints a thread from the first request over
+ * the wire. Thread ids are 16 hex characters, so a uuid is unambiguously the other kind of id.
  */
 const CHAT_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** How often to re-ask which transcript a just-started chat became. */
-const THREAD_POLL_MS = 2_000;
-/**
- * How long to keep asking. The transcript appears within seconds of the first request — well
- * inside this — so past it the session is one that never started, or an id that was never ours.
- */
-const THREAD_POLL_CEILING_MS = 120_000;
 
 export function SessionDetailPage() {
   const { id } = useParams({ from: "/sessions/$id" });
   const navigate = useNavigate();
   const isChatId = CHAT_SESSION_ID_RE.test(id);
-  const [gaveUp, setGaveUp] = useState(false);
 
-  // Addressed by a chat session id: poll for the transcript the proxy is writing, then replace
-  // the URL with the thread id so a reload or a shared link still lands on the transcript.
-  const thread = useQuery({
-    queryKey: ["chat", "thread", id],
-    queryFn: () => getChatThread(id),
-    enabled: isChatId && !gaveUp,
-    refetchInterval: THREAD_POLL_MS,
-  });
-  useEffect(() => {
-    setGaveUp(false);
-    if (!isChatId) return;
-    const timer = setTimeout(() => setGaveUp(true), THREAD_POLL_CEILING_MS);
-    return () => clearTimeout(timer);
-  }, [id, isChatId]);
-  const resolved = thread.data?.threadId ?? null;
+  // Addressed by a chat session id: wait for the transcript the proxy is writing, then replace the
+  // URL with the thread id so a reload or a shared link still lands on the transcript.
+  const { threadId: resolved, gaveUp } = useChatThread(id, isChatId);
   useEffect(() => {
     if (resolved) navigate({ to: "/sessions/$id", params: { id: resolved }, replace: true });
   }, [resolved, navigate]);

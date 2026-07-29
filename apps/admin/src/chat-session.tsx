@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ChatSendResponse, PermissionMode } from "./api";
-import { endChat, sendChatMessage, startChat, stopChat } from "./api";
+import { endChat, getChatThread, sendChatMessage, startChat, stopChat } from "./api";
 
 /** The one dashboard-started chat, held above the router so it outlives the page it was typed on. */
 export interface ChatSessionValue {
@@ -121,4 +121,37 @@ export function useChatSession(): ChatSessionValue {
   const value = useContext(ChatSessionContext);
   if (!value) throw new Error("useChatSession must be used inside a ChatSessionProvider");
   return value;
+}
+
+/** How often to re-ask which transcript a just-started chat became. */
+const THREAD_POLL_MS = 2_000;
+/**
+ * How long to keep asking. The transcript appears within seconds of the first request — well
+ * inside this — so past it the session is one that never started, or an id that was never ours.
+ */
+const THREAD_POLL_CEILING_MS = 120_000;
+
+/**
+ * The transcript a chat session id became, asked for until the proxy has written it. Lands within
+ * seconds of the first request, so it resolves mid-turn rather than when the turn finishes.
+ */
+export function useChatThread(sessionId: string, enabled: boolean): { threadId: string | null; gaveUp: boolean } {
+  const [gaveUp, setGaveUp] = useState(false);
+
+  useEffect(() => {
+    setGaveUp(false);
+    if (!enabled) return;
+    const timer = setTimeout(() => setGaveUp(true), THREAD_POLL_CEILING_MS);
+    return () => clearTimeout(timer);
+  }, [sessionId, enabled]);
+
+  const query = useQuery({
+    queryKey: ["chat", "thread", sessionId],
+    queryFn: () => getChatThread(sessionId),
+    enabled: enabled && !gaveUp,
+    // A thread id never changes once the proxy has answered, so stop asking.
+    refetchInterval: (q) => (q.state.data?.threadId ? false : THREAD_POLL_MS),
+  });
+
+  return { threadId: query.data?.threadId ?? null, gaveUp };
 }

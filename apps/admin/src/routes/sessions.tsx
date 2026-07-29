@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import type { PermissionMode } from "../api";
 import { getChatConfig, getSessions, PERMISSION_MODES } from "../api";
-import { useChatSession } from "../chat-session";
+import { useChatSession, useChatThread } from "../chat-session";
 import { ChatConversation } from "../components/ChatConversation";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { QueryState } from "../components/QueryState";
@@ -12,27 +12,36 @@ import { useLiveQuery } from "../useLiveQuery";
 /**
  * Sessions, laid out the way a chat client is: the transcripts as a scrolling rail on
  * the left, and the chat you start from here filling the pane beside it.
+ *
+ * Sending and replying both happen here — the page never follows the session onto its own
+ * transcript page. The rail marks it instead, and the transcript is a link away.
  */
 export function SessionsPage() {
   const query = useQuery({ queryKey: ["sessions"], queryFn: getSessions });
   // Live: the server re-lists whenever the sessions dir changes; query is the fallback.
   const live = useLiveQuery("/api/sessions/stream", ["sessions"]);
-  const { chat, pendingPrompt, reset: newChat } = useChatSession();
+  const { sessionId, chat, pendingPrompt, reset: newChat } = useChatSession();
   const sessions = query.data?.sessions;
+
+  const started = chat !== null || pendingPrompt !== null;
+  // The reply carries the thread id, but a turn can run for an hour — ask the proxy directly so
+  // the rail can mark the session mid-turn.
+  const { threadId: resolved } = useChatThread(sessionId, started && !chat?.session.threadId);
+  const threadId = chat?.session.threadId ?? resolved ?? undefined;
 
   return (
     <section className="sessions-shell">
       <QueryState isLoading={query.isLoading} error={query.error}>
         <SessionsSidenav
           sessions={sessions ?? []}
-          activeId={chat?.session.threadId ?? undefined}
-          isDrafting={chat === null && pendingPrompt === null}
+          activeId={threadId}
+          isDrafting={!started}
           onNewChat={newChat}
         />
       </QueryState>
 
       <div className="sessions-main">
-        <ChatPane sessionsDir={query.data?.meta.sessionsDir} live={live} />
+        <ChatPane sessionsDir={query.data?.meta.sessionsDir} live={live} threadId={threadId} />
       </div>
     </section>
   );
@@ -54,14 +63,15 @@ const PERMISSION_NOTE: Record<PermissionMode, string> = {
 function ChatPane({
   sessionsDir,
   live,
+  threadId,
 }: {
   sessionsDir?: string;
   live: ReturnType<typeof useLiveQuery>;
+  /** The transcript this chat became, once the proxy has written it. */
+  threadId?: string;
 }) {
   const config = useQuery({ queryKey: ["chat", "config"], queryFn: getChatConfig, staleTime: 60_000 });
-  const navigate = useNavigate();
   const {
-    sessionId,
     chat,
     pendingPrompt,
     isSending,
@@ -74,7 +84,6 @@ function ChatPane({
   const started = chat !== null || pendingPrompt !== null;
 
   const unconfigured = config.data && !config.data.ready;
-  const threadId = chat?.session.threadId;
   const agent = config.data?.agent;
   const permission = (chat?.session.permissionMode ??
     pickedPermission ??
@@ -90,10 +99,6 @@ function ChatPane({
       placeholder={started ? "Reply…" : "Ask Claude to do something — /task works here"}
       disabled={!!unconfigured}
       emptyState={<ChatEmptyState />}
-      // The first send moves you to the session's own page, where the reply lands.
-      onSend={() => {
-        if (!started) navigate({ to: "/sessions/$id", params: { id: sessionId } });
-      }}
       // The session's own settings, carried in the input's toolbar.
       inputOptions={
         <>
@@ -139,7 +144,7 @@ function ChatPane({
         </>
       }
       footExtras={
-        chat && (
+        started && (
           <>
             {threadId && (
               <Link to="/sessions/$id" params={{ id: threadId }} className="link mono-break">
