@@ -73,9 +73,19 @@ parent did while the branch was in flight.
   exist (the agent linkage is built from its positions, so the merge preserves every `index`).
   The two are not positionally aligned — a transcript accumulates every request ever seen, so it
   also carries turns no single body holds, notably Claude Code's one-shot spinner prompts landing
-  mid-thread — so a captured request is treated as a *subsequence* and matched by expanding each
-  gist (`isSameStep` allows for the `…`, which for a tool call sits inside the parens). A step
-  with no match keeps its abbreviated transcript text, so the graph degrades rather than breaks.
+  mid-thread, and a captured body can equally hold turns the transcript gisted differently. So the
+  merge walks both streams and pairs by expanding each gist (`isSameStep` allows for the `…`, which
+  for a tool call sits inside the parens); where they disagree it *re-syncs*, searching outward
+  along growing diagonals for the nearest pairing that skips fewest steps on either side, within a
+  24-step window. Drift is measured in steps because that is what causes it — a whole turn one side
+  holds and the other doesn't. Advancing only the transcript on a mismatch (the earlier behaviour)
+  desynced the streams permanently: one differently-worded step stranded every later one at its
+  gist, which is why equal-length 132/132 streams matched only 100. A step with no pairing keeps
+  its abbreviated transcript text, so the graph degrades rather than breaks.
+- **Each step carries its message index** — `deriveSessionNodes` records the `messages[]` position
+  a step was read from on the node itself (`message`), so the drawer can name the exact turn behind
+  a step rather than only the request as a whole. It is `null` on a step read off a transcript,
+  which records no such position, and the merge carries the derived value through.
 - **Interruptions and side trails** — a run can be cut off two ways, and both land in the same
   grammar. Pressing **Esc** in Claude Code makes the CLI prepend `[Request interrupted by user]`
   (or `… for tool use`) to the next user turn, which `proxy/session.mjs` already writes into the
@@ -102,6 +112,14 @@ parent did while the branch was in flight.
   **Spawned by**, **First task**, tasks/tools/errors stats, thread id, **Model**, **Started**,
   **Updated**, **Open transcript →**, and **Open request breakdown →** for the captured request
   the step text came from (or a note that none matched).
+- **The whole turn, in the drawer** — a step's line is still only the one line the grammar keeps of
+  it, so a step that paired with a captured request also gets a **Request message** field: the turn
+  it was read out of, whole, fetched per open drawer from the same endpoint the
+  [Request breakdown](context-size-analytics.md)'s drill-down uses, labelled *#n of N · role*, and
+  clamped like any other long value (an expanded one scrolls inside the drawer rather than growing
+  it). **Open this step's message →** links straight to `/context/$file/message/$index` — that
+  step's own message in the breakdown, not just the request's front page. A step that paired with
+  nothing says so, so a gisted step is legible as gisted rather than silently short.
 - **Expanding the details** — untruncated step text runs to thousands of characters, so the
   drawer opens up two ways: **⇤** / **⇥** in its header widens it from 360 px to 720 px (sticky
   across selections), and any value past 280 characters folds to six lines behind a **Show all
@@ -148,6 +166,11 @@ Step text takes a second path over the same logs. `GET /api/sessions/graph/nodes
 scans the sidecars carrying the family's session ids **newest-first** capped at 60 requests, and
 hashes each body back to the thread that produced it with `threadIdForBody` — the server-side
 mirror of the `threadIdFor` in `proxy/session.mjs` that named the transcript in the first place.
+The scan's floor is the family's earliest transcript `started`, backed off a day: that start is a
+UTC instant, but the sidecar reader narrows by *reporting* day in `REPORT_TZ`, so a session opened
+after midnight UTC reports on the day before its own timestamp and a floor taken straight off the
+UTC prefix excluded every request the family ever made — every session started in that nightly
+window found no captured request at all and stayed wholly at its transcript gists.
 The richest snapshot found per thread supplies its `deriveSessionNodes` stream, returned as
 `{ rootThreadId, threads: [{ threadId, file, messageCount, nodes }], meta }`. The admin page
 fetches it per canvased session on a 20 s interval — far heavier than the 4 s transcript poll,
@@ -187,9 +210,16 @@ left are simply absent from `threads`, and keep their transcript text.
 - [x] Step text is re-read from the captured requests, so a prompt or command line the
       transcript gisted to 160 chars shows in full.
 - [x] `mergeSessionNodes` preserves every transcript `index` (the agent linkage depends on
-      them) and realigns across turns a single captured request never held.
+      them) and re-syncs across turns either side holds alone, so one differently-worded step
+      no longer strands every later step at its gist.
 - [x] `GET /api/sessions/graph/nodes` resolves the canvased session *and* its subagents to
       their own captured requests, and 404s an unknown thread id.
+- [x] A session whose `started` falls after midnight UTC but on the previous reporting day still
+      finds its requests (`server/test/session-graph-nodes.test.ts`).
+- [x] Each expanded step carries the `messages[]` index it was read from, the drawer shows that
+      whole message, and **Open this step's message →** deep-links to it in the Request breakdown.
+- [x] With larger nodes on, every box keeps a fixed height and clips its label — a step holding
+      thousands of characters does not grow its box.
 - [x] **Fit** frames the graph into the area left free by the rail *and* the details drawer.
 - [x] The drawer widens on demand, and long values expand behind a **Show all** toggle.
 - [x] `parseSessionNodes`, `spawnAgentType`, `linkAgentSessions`, `deriveSessionNodes`,
@@ -230,6 +260,13 @@ left are simply absent from `threads`, and keep their transcript text.
   adjacent same-type steps sharing a 160-char prefix are indistinguishable; and after context
   compaction the richest captured request may predate steps the transcript already has, which
   simply keep their gisted text. Neither case is marked in the UI.
+- The re-sync window is a fixed 24 steps, picked to cover the turn-level drift seen in practice
+  rather than derived from anything. Past it the merge gives up and the rest of the run stays
+  gisted — silently, since nothing in the UI distinguishes "no captured request" from "the
+  streams drifted too far apart".
+- Derived steps that pair with nothing go unplaced entirely: node indices count transcript
+  positions because the agent linkage is built from them, so a step only the captured request
+  knows about has no index to sit at and is dropped rather than inserted.
 
 ## Related
 
