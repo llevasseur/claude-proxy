@@ -364,14 +364,13 @@ export async function buildJobFile(jobsDir: string, id: string, file: string): P
 
 export interface JobDeleteResponse {
   deleted: JobDeleteResult;
-  /** The listing as it stands after the delete — the page re-renders from this. */
+  /** The listing as it stands after the delete. */
   jobs: JobsResponse;
 }
 
 /**
- * Delete one job directory from disk, then hand back the refreshed listing so the
- * caller never renders a row that no longer exists. `id` is validated downstream,
- * which also refuses a still-running job and a symlinked directory.
+ * Delete one job directory from disk, then hand back the refreshed listing. `id` is
+ * validated downstream, which also refuses a still-running job and a symlinked directory.
  */
 export async function buildJobDelete(jobsDir: string, id: string): Promise<JobDeleteResponse> {
   const deleted = await deleteJob(jobsDir, id);

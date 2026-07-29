@@ -165,7 +165,7 @@ describe("readJobFile", () => {
   });
 });
 
-/** True when the path is still on disk — the assertion a delete test turns on. */
+/** True when the path is still on disk. */
 async function exists(target: string): Promise<boolean> {
   return access(target).then(
     () => true,

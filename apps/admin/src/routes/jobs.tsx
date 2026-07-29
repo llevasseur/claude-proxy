@@ -15,11 +15,9 @@ import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
  * passes through the proxy, so this page reports what is *on disk* — including the
  * directories left behind after their job is gone.
  *
- * It is also the one page that can *change* the disk: each row can delete its job
- * directory outright. That is the point of the page — husks accumulate and nothing
- * else reaps them — so the delete is real (`rm -r` on the directory, no trash to
- * restore from), armed by a second click, and refused by the server while the job is
- * still running.
+ * It is also the one page that can *change* the disk: each row deletes its job
+ * directory for real (`rm -r`, no trash), armed by a second click, and refused by the
+ * server while the job is still running.
  */
 
 /** Badge class per state tone; the tones themselves come from core. */
@@ -149,7 +147,7 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
     onSuccess: (res) => {
       setArmed(null);
       setDeleted(res.deleted);
-      // The server already re-listed after removing, so seed rather than refetch.
+      // The server already re-listed after removing — seed rather than refetch.
       client.setQueryData(["jobs"], res.jobs);
     },
   });
@@ -247,10 +245,9 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
 }
 
 /**
- * The per-row delete CTA. Two clicks, never one: the first arms the row and the
- * second does it, because the thing on the other side is an `rm -r` of a directory
- * with no copy anywhere. A running job has no armed state at all — the server would
- * refuse it, so the button says why instead of failing after the fact.
+ * The per-row delete CTA. Two clicks, never one: the first arms the row, the second
+ * does it. A running job has no armed state at all — the server would refuse it, so
+ * the button says why instead of failing after the fact.
  */
 function DeleteControl({
   job,

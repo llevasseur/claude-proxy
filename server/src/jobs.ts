@@ -260,24 +260,23 @@ export async function readJob(jobsDir: string, id: string): Promise<{ job: JobSu
 /** What a delete removed, read off the directory just before it went. */
 export interface JobDeleteResult {
   id: string;
-  /** The directory that was removed — the absolute path, so the caller can say what went. */
+  /** Absolute path of the directory that was removed. */
   path: string;
   files: number;
   bytes: number;
-  /** What its `state.json` last said, for the "deleted <name>" confirmation. */
+  /** What its `state.json` last said. */
   name: string;
   state: string;
 }
 
 /**
- * Delete one job directory and everything under it. This is the only destructive
- * operation in the API, so it is deliberately narrow:
+ * Delete one job directory and everything under it. The only destructive operation in
+ * the API, so it is deliberately narrow:
  *
  * - the id is validated and re-confirmed to resolve directly inside `jobsDir`;
- * - a symlinked job directory is refused outright rather than followed — removing
- *   the link would leave the target, and following it would delete outside the root;
- * - a job whose state reads as `busy` is refused: its daemon is still writing there,
- *   and pulling the directory out from under it loses the run's own record of itself.
+ * - a symlinked job directory is refused outright rather than followed — following it
+ *   would delete outside the root;
+ * - a job whose state reads as `busy` is refused: its daemon is still writing there.
  *
  * Returns what was on disk immediately before removal. Throws a labelled error the
  * server maps to 400 (bad id) / 404 (no such directory) / 409 (still running).
@@ -291,7 +290,7 @@ export async function deleteJob(jobsDir: string, id: string): Promise<JobDeleteR
   if (info.isSymbolicLink()) throw new Error(`job directory is a symlink, refusing to delete: ${id}`);
   if (!info.isDirectory()) throw new Error(`job not found: ${id}`);
 
-  // Belt and braces: the id check above is textual, this confirms where it lands.
+  // The id check above is textual; this confirms where it lands.
   const [real, realRoot] = await Promise.all([realpath(jobDir), realpath(jobsDir)]);
   if (path.dirname(real) !== realRoot) throw new Error(`invalid job id: ${id}`);
 

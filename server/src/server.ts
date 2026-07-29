@@ -441,8 +441,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       // Removes the directory for real. POST only, and through the origin-checked
-      // write CORS — a `*` origin on a destructive route would let any page in the
-      // browser wipe the device's job history.
+      // write CORS rather than the read routes' `*`.
       case JOB_DELETE_ROUTE:
         await servePost(
           req,

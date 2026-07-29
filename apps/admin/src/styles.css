@@ -2867,8 +2867,7 @@ button.sessions-new.is-active {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-/* Delete: the only destructive control in the dashboard, so it reads as one —
-   outlined in the "bad" hue at rest, filled once the row is armed. */
+/* Delete: outlined in the "bad" hue at rest, filled once the row is armed. */
 .job-delete-head {
   width: 1%;
 }
