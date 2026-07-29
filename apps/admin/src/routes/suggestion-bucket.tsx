@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type {
@@ -11,12 +10,22 @@ import { getSessionSuggestionBucket, getSuggestionStatus, type SessionSummary } 
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
 import {
+  Skeleton,
+  type SkeletonColumn,
+  SkeletonCardList,
+  SkeletonStats,
+  SkeletonTable,
+  SkeletonTableCard,
+  SkeletonText,
+} from "../components/Skeleton";
+import {
   isResolved,
   SUGGESTION_STATUS_KEY,
   SuggestionStatusBadge,
   SuggestionStatusControl,
 } from "../components/SuggestionStatus";
 import { fmtBytes, fmtInt, fmtLocalTsShort, fmtPct } from "../format";
+import { useTransitionState } from "../useTransitionState";
 
 const SEV_LABEL = { high: "High", warn: "Warn", info: "Info" } as const;
 
@@ -40,7 +49,7 @@ export function SuggestionBucketPage() {
     queryFn: () => getSuggestionStatus({ range: String(index) }),
     enabled: Number.isInteger(index) && index >= 1,
   });
-  const [hideResolved, setHideResolved] = useState(false);
+  const [hideResolved, setHideResolved, isFiltering] = useTransitionState(false);
   const data = query.data;
   const statusById = new Map((statusQuery.data?.rows ?? []).map((row) => [row.id, row]));
   const counts = statusQuery.data?.meta.counts;
@@ -66,7 +75,7 @@ export function SuggestionBucketPage() {
         )}
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<BucketSkeleton />}>
         {data && (
           <>
             <div className="grid stats">
@@ -99,7 +108,7 @@ export function SuggestionBucketPage() {
                 </button>
               )}
             </div>
-            <div className="advice-list wide">
+            <div className={isFiltering ? "advice-list wide is-stale" : "advice-list wide"}>
               {suggestions.map((s) => (
                 <SuggestionCard key={s.id} suggestion={s} bucket={index} status={statusById.get(s.id)} />
               ))}
@@ -128,6 +137,51 @@ export function SuggestionBucketPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** Region or tool, four numeric columns, then the share bar. */
+const PATTERN_COLUMNS: readonly SkeletonColumn[] = [
+  { cell: "58%" },
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+  { className: "bar-col" },
+];
+
+/** Session, when it started, then its three counts. */
+const SESSION_COLUMNS: readonly SkeletonColumn[] = [
+  { cell: "64%" },
+  { cell: "48%" },
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+];
+
+/**
+ * A window's four stat tiles, its suggestions, the breakdown patterns, and the ten
+ * sessions it covers — a bucket is always ten.
+ */
+function BucketSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={4} />
+      <div className="card-head" aria-hidden>
+        <Skeleton w="18%" h="0.95em" />
+        <Skeleton w="30%" />
+      </div>
+      <SkeletonCardList count={3} lines={3} />
+      <div className="card">
+        <div className="card-head">
+          <Skeleton w="36%" h="0.95em" />
+          <Skeleton w="28%" />
+        </div>
+        <SkeletonText lines={2} />
+        <SkeletonTable columns={PATTERN_COLUMNS} rows={6} />
+      </div>
+      <SkeletonTableCard title="Sessions in this window" columns={SESSION_COLUMNS} rows={10} />
+    </>
   );
 }
 

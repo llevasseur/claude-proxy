@@ -1,21 +1,33 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { useState } from "react";
 import { getTrends } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
+import { DAY_WINDOWS, Segmented } from "../components/Segmented";
+import { type SkeletonColumn, SkeletonChartCard, SkeletonTableCard } from "../components/Skeleton";
 import { SeriesLineChart } from "../components/SeriesLineChart";
 import { findMetric, REPORT_TZ_ABBR } from "../metrics";
+import { useTransitionState } from "../useTransitionState";
 
-const WINDOWS = [7, 14, 30];
+/** The tall chart this page leads with, in px. */
+const CHART_HEIGHT = 340;
+
+/** Date and the metric's own value. */
+const BY_DAY_COLUMNS: readonly SkeletonColumn[] = [{}, { className: "num" }];
 
 /** Large-scale trend for one Overview statistic, reached by clicking its card. */
 export function TrendDetailPage() {
   const { metric } = useParams({ from: "/trends/$metric" });
   const def = findMetric(metric);
-  const [days, setDays] = useState(30);
-  const query = useQuery({ queryKey: ["trends", days], queryFn: () => getTrends(days), enabled: !!def });
+  const [days, selectDays, isSwitching] = useTransitionState(30);
+  const query = useQuery({
+    queryKey: ["trends", days],
+    queryFn: () => getTrends(days),
+    enabled: !!def,
+    placeholderData: keepPreviousData,
+  });
   const digests = query.data?.digests ?? [];
+  const busy = isSwitching || query.isFetching;
 
   if (!def) {
     return (
@@ -50,16 +62,15 @@ export function TrendDetailPage() {
           <h1>{def.title ?? def.label}</h1>
           <div className="muted">{def.description}</div>
         </div>
-        <div className="segmented">
-          {WINDOWS.map((w) => (
-            <button key={w} className={w === days ? "active" : ""} onClick={() => setDays(w)}>
-              {w}d
-            </button>
-          ))}
-        </div>
+        <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label="Trend window" busy={busy} />
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState
+        isLoading={query.isLoading}
+        error={query.error}
+        skeleton={<TrendDetailSkeleton days={days} label={def.label} />}
+        busy={busy}
+      >
         {digests.length === 0 ? (
           <div className="card empty">No usage captured in the last {days} days.</div>
         ) : (
@@ -74,7 +85,7 @@ export function TrendDetailPage() {
                 series={[{ dataKey: "value", name: def.label, color: def.color }]}
                 xKey="label"
                 format={def.format}
-                height={340}
+                height={CHART_HEIGHT}
               />
             </div>
 
@@ -101,5 +112,15 @@ export function TrendDetailPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** The chart and its by-day table in the loaded page's two-up grid — one row and point per day. */
+function TrendDetailSkeleton({ days, label }: { days: number; label: string }) {
+  return (
+    <div className="grid wide-two chart-lead">
+      <SkeletonChartCard title={`${label} / day`} height={CHART_HEIGHT} bars={days} />
+      <SkeletonTableCard title="By day" columns={BY_DAY_COLUMNS} rows={days} />
+    </div>
   );
 }

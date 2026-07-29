@@ -4,6 +4,7 @@ import type { SessionBucket, SuggestionStatus } from "@claude-proxy/core";
 import { getSessionSuggestions, getSuggestionStatus, getSummary } from "../api";
 import { AdviceCard } from "../components/AdviceCard";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, SkeletonCardList } from "../components/Skeleton";
 import { isResolved, STATUS_LABEL, SUGGESTION_STATUS_KEY } from "../components/SuggestionStatus";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
@@ -18,7 +19,11 @@ export function AdvicePage() {
         <div className="muted">{query.data?.digest.date} · deterministic coaching from today's digest</div>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState
+        isLoading={query.isLoading}
+        error={query.error}
+        skeleton={<SkeletonCardList count={3} lines={3} />}
+      >
         <div className="advice-list wide">
           {advice.map((a) => (
             <AdviceCard key={a.id} advice={a} />
@@ -58,7 +63,7 @@ function SessionSuggestions() {
         {statusQuery.error && <span className="error">flags unavailable: {(statusQuery.error as Error).message}</span>}
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<BucketListSkeleton />}>
         {buckets.length === 0 ? (
           <div className="card empty">No session transcripts yet.</div>
         ) : (
@@ -70,6 +75,37 @@ function SessionSuggestions() {
         )}
       </QueryState>
     </>
+  );
+}
+
+/** Bucket rows at the shape `BucketRow` fills: a head, its suggestions, then the stats line. */
+function BucketListSkeleton({ rows = 4, suggestions = 3 }: { rows?: number; suggestions?: number }) {
+  return (
+    <div className="bucket-list" aria-hidden>
+      {Array.from({ length: rows }, (_, i) => (
+        <div className="card bucket-row" key={i}>
+          <div className="bucket-row-head">
+            <span className="bucket-label">
+              <Skeleton w="8rem" />
+            </span>
+            <Skeleton w="3rem" />
+            <span className="muted bucket-range">
+              <Skeleton w="12rem" />
+            </span>
+          </div>
+          <ul className="bucket-suggestions">
+            {Array.from({ length: suggestions }, (_, s) => (
+              <li key={s}>
+                <Skeleton w={`${64 - s * 8}%`} />
+              </li>
+            ))}
+          </ul>
+          <div className="bucket-stats muted">
+            <Skeleton w="58%" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

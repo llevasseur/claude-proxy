@@ -1,7 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { getTools } from "../api";
 import { QueryState } from "../components/QueryState";
+import { type SkeletonColumn, SkeletonTableCard } from "../components/Skeleton";
 import { fmtBytes, fmtInt, fmtPct } from "../format";
+
+/** Tool, three numeric columns, then the share bar. */
+const TOOL_COLUMNS: readonly SkeletonColumn[] = [
+  { cell: "56%" },
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+  { className: "bar-col" },
+];
 
 export function ToolsPage() {
   const query = useQuery({ queryKey: ["tools"], queryFn: () => getTools() });
@@ -15,7 +25,11 @@ export function ToolsPage() {
         <div className="muted">{query.data?.date} · ranked by bytes per request payload</div>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState
+        isLoading={query.isLoading}
+        error={query.error}
+        skeleton={<SkeletonTableCard columns={TOOL_COLUMNS} rows={10} />}
+      >
         {tools.length === 0 ? (
           <div className="card empty">No tool data for this day.</div>
         ) : (

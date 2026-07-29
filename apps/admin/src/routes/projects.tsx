@@ -1,10 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ProjectSummary } from "../api";
 import { getProjects } from "../api";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, type SkeletonColumn, SkeletonTable } from "../components/Skeleton";
 import { fmtInt } from "../format";
+import { useTransitionState } from "../useTransitionState";
+
+/** Project name, its memory count, then the share bar. */
+const PROJECT_COLUMNS: readonly SkeletonColumn[] = [{ cell: "62%" }, { className: "num" }, { className: "bar-col" }];
 
 export function ProjectsPage() {
   const query = useQuery({ queryKey: ["projects"], queryFn: getProjects });
@@ -17,7 +22,7 @@ export function ProjectsPage() {
         <span className="muted">Claude Code projects with saved memories</span>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ProjectsSkeleton />}>
         {!projects || projects.length === 0 ? (
           <div className="card empty">No projects with memories found.</div>
         ) : (
@@ -30,6 +35,24 @@ export function ProjectsPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** The projects directory line, then the table. */
+function ProjectsSkeleton() {
+  return (
+    <>
+      <div className="muted" style={{ marginBottom: "0.75rem" }} aria-hidden>
+        <Skeleton w="26rem" />
+      </div>
+      <div className="card">
+        <div className="card-head">
+          <Skeleton w="22%" h="0.95em" />
+          <Skeleton w="30%" />
+        </div>
+        <SkeletonTable columns={PROJECT_COLUMNS} rows={9} />
+      </div>
+    </>
   );
 }
 
@@ -55,7 +78,10 @@ function compare(a: ProjectSummary, b: ProjectSummary, key: SortKey): number {
 function ProjectsTable({ projects }: { projects: ProjectSummary[] }) {
   const navigate = useNavigate();
   const max = Math.max(1, ...projects.map((p) => p.memoryCount));
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "memoryCount", dir: "desc" });
+  const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
+    key: "memoryCount",
+    dir: "desc",
+  });
 
   const sorted = useMemo(() => {
     const rows = [...projects];
@@ -79,7 +105,7 @@ function ProjectsTable({ projects }: { projects: ProjectSummary[] }) {
         </h2>
         <span className="muted">click a column to sort · click a row for its memories</span>
       </div>
-      <table className="table">
+      <table className={isSorting ? "table is-stale" : "table"} aria-busy={isSorting || undefined}>
         <thead>
           <tr>
             <SortHeader label="Project" sortKey="name" sort={sort} onSort={onSort} />

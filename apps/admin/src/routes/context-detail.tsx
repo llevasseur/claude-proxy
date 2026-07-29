@@ -5,8 +5,10 @@ import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from "@claude-
 import { getContextDetail } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from "../components/Skeleton";
 import { fmtBytes, fmtInt, fmtPct } from "../format";
 import { useRestoredScroll } from "../useRestoredScroll";
+import { useTransitionState } from "../useTransitionState";
 
 export function ContextDetailPage() {
   const { file } = useParams({ from: "/context/$file" });
@@ -27,10 +29,61 @@ export function ContextDetailPage() {
       </div>
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<BreakdownSkeleton />}>
         {data && <DetailBody file={file} breakdown={data.breakdown} raw={data.raw} truncated={data.truncated} />}
       </QueryState>
     </section>
+  );
+}
+
+/** Region, bytes, share of the request, then the bar. */
+const REGION_COLUMNS: readonly SkeletonColumn[] = [
+  { cell: "62%" },
+  { className: "num" },
+  { className: "num" },
+  { className: "bar-col" },
+];
+
+/** Index, role, two numeric columns, then the bar — the messages and tools tables. */
+const BREAKDOWN_COLUMNS: readonly SkeletonColumn[] = [
+  { className: "num", cell: "40%" },
+  { cell: "56%" },
+  { className: "num" },
+  { className: "num" },
+  { className: "bar-col" },
+];
+
+/**
+ * The whole breakdown at the height it will occupy: four tiles, the region table
+ * (always exactly three rows — conversation, tools, system prompt), the messages and
+ * tools tables side by side, and the collapsed raw-JSON card. Long enough a document
+ * for `useRestoredScroll` to have an offset to restore on a Back navigation.
+ */
+function BreakdownSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={4} />
+      <div className="card">
+        <Skeleton w="30%" className="skeleton-h2" />
+        <SkeletonTable columns={REGION_COLUMNS} rows={3} />
+      </div>
+      <div className="grid two">
+        <div className="card">
+          <Skeleton w="42%" className="skeleton-h2" />
+          <SkeletonTable columns={BREAKDOWN_COLUMNS} rows={8} />
+        </div>
+        <div className="card">
+          <Skeleton w="38%" className="skeleton-h2" />
+          <SkeletonTable columns={BREAKDOWN_COLUMNS} rows={8} />
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-head">
+          <Skeleton w="34%" h="0.95em" />
+          <Skeleton w="4rem" />
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -118,7 +171,10 @@ function sortValue(m: BreakdownMessage, key: SortKey): number {
 
 function MessagesTable({ file, messages }: { file: string; messages: BreakdownMessage[] }) {
   const navigate = useNavigate();
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "index", dir: "asc" });
+  const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
+    key: "index",
+    dir: "asc",
+  });
   const msgMax = Math.max(1, ...messages.map((m) => m.bytes));
 
   const sorted = useMemo(() => {
@@ -141,7 +197,7 @@ function MessagesTable({ file, messages }: { file: string; messages: BreakdownMe
       {messages.length === 0 ? (
         <div className="empty">No messages in this request.</div>
       ) : (
-        <table className="table">
+        <table className={isSorting ? "table is-stale" : "table"} aria-busy={isSorting || undefined}>
           <thead>
             <tr>
               <SortHeader label="#" sortKey="index" sort={sort} onSort={onSort} className="num" />

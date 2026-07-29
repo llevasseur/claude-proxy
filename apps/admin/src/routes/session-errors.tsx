@@ -4,6 +4,7 @@ import type { LinkedSessionError } from "@claude-proxy/core";
 import { getSessionErrors } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, SkeletonMsgBlocks } from "../components/Skeleton";
 
 /** Per-session drill-down listing every errored tool result, re-linked to its task and tool call. */
 export function SessionErrorsPage() {
@@ -30,10 +31,22 @@ export function SessionErrorsPage() {
         <span className="muted">Errored tool results captured in this session</span>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ErrorsSkeleton />}>
         {data && <ErrorsBody errors={data.errors} />}
       </QueryState>
     </section>
+  );
+}
+
+/** The count line and the error blocks beneath it, at their loaded height. */
+function ErrorsSkeleton() {
+  return (
+    <>
+      <div className="card-head" aria-hidden>
+        <Skeleton w="16%" h="0.95em" />
+      </div>
+      <SkeletonMsgBlocks count={3} lines={4} />
+    </>
   );
 }
 

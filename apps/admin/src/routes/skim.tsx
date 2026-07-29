@@ -1,17 +1,33 @@
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import type { SkimDigest } from "@claude-proxy/core";
 import { getSkim, getSkimTrend } from "../api";
-import { BarChart } from "../components/BarChart";
+import { BAR_CHART_HEIGHT, BarChart } from "../components/BarChart";
 import { QueryState } from "../components/QueryState";
+import { DAY_WINDOWS, Segmented } from "../components/Segmented";
+import {
+  type SkeletonColumn,
+  SkeletonChartCard,
+  SkeletonStats,
+  SkeletonTableCard,
+} from "../components/Skeleton";
 import { type Series, SeriesLineChart } from "../components/SeriesLineChart";
 import { StatCard } from "../components/StatCard";
 import { fmtInt, fmtPct, fmtUsd } from "../format";
-
-const WINDOWS = [7, 14, 30];
+import { useTransitionState } from "../useTransitionState";
 
 const HIT_RATE_SERIES: Series[] = [{ dataKey: "hitRate", name: "Hit rate", color: "var(--good)" }];
 const SAVED_SERIES: Series[] = [{ dataKey: "cumUsd", name: "Cumulative saved", color: "var(--accent-2)" }];
+
+/** Cache key, the request, then four numeric columns. */
+const SHAPE_COLUMNS: readonly SkeletonColumn[] = [
+  { cell: "72%" },
+  {},
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+];
 
 const shortKey = (k: string): string => (k.length > 12 ? `${k.slice(0, 12)}…` : k);
 
@@ -28,8 +44,12 @@ function toCumulativeRows(digests: SkimDigest[]) {
 }
 
 export function SkimPage() {
-  const [days, setDays] = useState(14);
-  const trendQuery = useQuery({ queryKey: ["skim-trend", days], queryFn: () => getSkimTrend(days) });
+  const [days, selectDays, isSwitching] = useTransitionState(14);
+  const trendQuery = useQuery({
+    queryKey: ["skim-trend", days],
+    queryFn: () => getSkimTrend(days),
+    placeholderData: keepPreviousData,
+  });
   const dayQuery = useQuery({ queryKey: ["skim-day"], queryFn: () => getSkim() });
 
   const digests = trendQuery.data?.digests ?? [];
@@ -38,21 +58,21 @@ export function SkimPage() {
   const hitRateRows = useMemo(() => digests.map(toHitRateRow), [digests]);
   const cumulativeRows = useMemo(() => toCumulativeRows(digests), [digests]);
   const windowTotalUsd = digests.reduce((n, d) => n + d.estSavedUsd, 0);
+  const busy = isSwitching || trendQuery.isFetching;
 
   return (
     <section>
       <div className="pagehead">
         <h1>Skim</h1>
-        <div className="segmented">
-          {WINDOWS.map((w) => (
-            <button key={w} className={w === days ? "active" : ""} onClick={() => setDays(w)}>
-              {w}d
-            </button>
-          ))}
-        </div>
+        <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label="Skim window" busy={busy} />
       </div>
 
-      <QueryState isLoading={trendQuery.isLoading} error={trendQuery.error}>
+      <QueryState
+        isLoading={trendQuery.isLoading || dayQuery.isLoading}
+        error={trendQuery.error}
+        skeleton={<SkimSkeleton days={days} stats={!dayQuery.isError} />}
+        busy={busy}
+      >
         {today && (
           <div className="grid stats">
             <StatCard
@@ -150,5 +170,23 @@ export function SkimPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/**
+ * Today's four tiles, the two trend charts side by side, then the shape breakdown.
+ * `stats` is false once the day query has failed — those tiles are never coming.
+ */
+function SkimSkeleton({ days, stats = true }: { days: number; stats?: boolean }) {
+  return (
+    <>
+      {stats && <SkeletonStats count={4} />}
+      <div className="grid wide-two">
+        <SkeletonChartCard title="Hit-rate over time" bars={days} />
+        <SkeletonChartCard title="Cumulative $ saved" bars={days} />
+      </div>
+      <SkeletonChartCard title={`Top repeated request shapes (${days}d)`} height={BAR_CHART_HEIGHT} bars={12} />
+      <SkeletonTableCard title="By shape" columns={SHAPE_COLUMNS} rows={8} />
+    </>
   );
 }

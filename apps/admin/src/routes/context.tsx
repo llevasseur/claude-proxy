@@ -1,33 +1,43 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ContextEntry } from "@claude-proxy/core";
 import { getContext } from "../api";
 import { QueryState } from "../components/QueryState";
+import { DAY_WINDOWS, Segmented } from "../components/Segmented";
+import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from "../components/Skeleton";
 import { StatCard } from "../components/StatCard";
 import { fmtBytes, fmtInt, fmtLocalTs, LOCAL_TZ_ABBR } from "../format";
+import { useTransitionState } from "../useTransitionState";
 
-const WINDOWS = [7, 14, 30];
+/** When, model, three numeric columns, then the size bar. */
+const REQUEST_COLUMNS: readonly SkeletonColumn[] = [
+  { cell: "70%" },
+  { cell: "58%" },
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+  { className: "bar-col" },
+];
 
 export function ContextPage() {
-  const [days, setDays] = useState(14);
-  const query = useQuery({ queryKey: ["context", days], queryFn: () => getContext(days) });
+  const [days, selectDays, isSwitching] = useTransitionState(14);
+  const query = useQuery({
+    queryKey: ["context", days],
+    queryFn: () => getContext(days),
+    placeholderData: keepPreviousData,
+  });
   const summary = query.data?.summary;
+  const busy = isSwitching || query.isFetching;
 
   return (
     <section>
       <div className="pagehead">
         <h1>Context size</h1>
-        <div className="segmented">
-          {WINDOWS.map((w) => (
-            <button key={w} className={w === days ? "active" : ""} onClick={() => setDays(w)}>
-              {w}d
-            </button>
-          ))}
-        </div>
+        <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label="Context window" busy={busy} />
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ContextSkeleton />} busy={busy}>
         {!summary || summary.requestCount === 0 ? (
           <div className="card empty">No context captured in the last {days} days.</div>
         ) : (
@@ -49,6 +59,25 @@ export function ContextPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** The caption, four stat tiles, and the requests table, all at their loaded size. */
+function ContextSkeleton() {
+  return (
+    <>
+      <div className="muted" style={{ marginBottom: "0.75rem" }} aria-hidden>
+        <Skeleton w="34rem" />
+      </div>
+      <SkeletonStats count={4} />
+      <div className="card">
+        <div className="card-head">
+          <Skeleton w="18%" h="0.95em" />
+          <Skeleton w="34%" />
+        </div>
+        <SkeletonTable columns={REQUEST_COLUMNS} rows={12} />
+      </div>
+    </>
   );
 }
 
@@ -83,7 +112,10 @@ function compare(a: ContextEntry, b: ContextEntry, key: SortKey): number {
 }
 
 function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; maxRealInput: number }) {
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "when", dir: "desc" });
+  const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
+    key: "when",
+    dir: "desc",
+  });
   const max = Math.max(1, ...entries.map((e) => e.realInput));
 
   const sorted = useMemo(() => {
@@ -106,7 +138,7 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
         <h2>Requests</h2>
         <span className="muted">click a column to sort · click a row for the breakdown</span>
       </div>
-      <table className="table">
+      <table className={isSorting ? "table is-stale" : "table"} aria-busy={isSorting || undefined}>
         <thead>
           <tr>
             <SortHeader label={`When (${LOCAL_TZ_ABBR})`} sortKey="when" sort={sort} onSort={onSort} />
