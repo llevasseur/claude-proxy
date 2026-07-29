@@ -12,6 +12,17 @@ This project has not cut a release yet, so everything below sits under
 
 ### Added
 
+- **Repository-wide tool preconditions for agent edits and reads** — `AGENTS.md`
+  now requires an existing target to pass through the `Read` tool before its first
+  `Edit` — or the first `Write` that overwrites it — even when shell output or
+  inherited context already exposed the file, and keeps paginated `Read` calls
+  schema-valid by requiring integer `offset` and `limit` values while leaving the
+  `pages` range a string. The read-before-write bullet names itself as the
+  exception to the neighbouring rule against rereading an unchanged file, so the
+  two read in either order. These guardrails extend beyond the task command to
+  ordinary and god-mode sessions, where the same avoidable tool failures also
+  recurred.
+
 - **Repository agent guidance for efficient, ownership-aware workflows** — `AGENTS.md`
   now batches independent read-only discovery, avoids unchanged whole-file rereads,
   treats expected search misses as successful discovery, tracks how worktrees were
