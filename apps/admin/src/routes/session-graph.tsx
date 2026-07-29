@@ -50,9 +50,8 @@ const sizes = (rootW: number, rootH: number, nodeW: number, nodeH: number): Size
 /** The default: as many steps on screen as the fold allows, each a two-line gist. */
 const COMPACT = sizes(224, 96, 168, 64);
 /**
- * The "larger nodes" toggle: boxes roomy enough to hold a step's whole label rather than
- * clamping it to two lines. Toggling re-lays out at the same zoom, so the boxes genuinely
- * grow on screen instead of being scaled back down by a refit.
+ * The "larger nodes" toggle: boxes roomy enough for a step's whole label. Toggling re-lays
+ * out at the same zoom — a refit would scale the bigger boxes straight back down.
  */
 const ROOMY = sizes(360, 232, 320, 216);
 
@@ -611,7 +610,6 @@ export function SessionGraphPage() {
   const entry = useMemo(() => all.find((s) => s.threadId === selectedId) ?? null, [all, selectedId]);
 
   const [cols, setCols] = useState(7);
-  /** Whether boxes are drawn roomy enough to read a step's whole label. */
   const [roomy, setRoomy] = useState(false);
   const size = roomy ? ROOMY : COMPACT;
   const { boxes, edges, bands, trails, contentW, contentH } = useMemo(

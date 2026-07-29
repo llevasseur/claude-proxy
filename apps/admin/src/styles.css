@@ -1725,8 +1725,7 @@ button.link {
   font-weight: 600;
   -webkit-line-clamp: 2;
 }
-/* Larger nodes: the boxes are laid out roomier, so let each label run out rather than
-   clamping it to the two lines a compact box has space for. */
+/* Larger nodes: boxes are laid out roomier, so let each label run past the compact clamp. */
 .graph-canvas.is-roomy .gnode {
   gap: 5px;
   padding: 12px 15px;
@@ -1848,7 +1847,6 @@ button.link {
   border-color: var(--signal);
   color: var(--signal);
 }
-/* Icon-only controls: centered glyph, and lit while the mode they toggle is on. */
 .graph-btns .graph-icon-btn {
   display: inline-flex;
   align-items: center;
