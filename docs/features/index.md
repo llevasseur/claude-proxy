@@ -20,5 +20,6 @@ Add one with `okq new feature "<title>"`.
 | Project memory browser | [project-memory-browser.md](project-memory-browser.md) |
 | Session suggestions | [session-suggestions.md](session-suggestions.md) |
 | Session transcripts | [session-transcripts.md](session-transcripts.md) |
+| Skeleton loading | [skeleton-loading.md](skeleton-loading.md) |
 | Skim response cache | [skim-response-cache.md](skim-response-cache.md) |
 <!-- okq:index:end -->
