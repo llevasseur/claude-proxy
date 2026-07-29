@@ -841,9 +841,8 @@ export interface RequestErrorSite {
 
 /**
  * Every errored tool result a captured request carries, tagged with the message
- * holding it, in the order {@link deriveSessionNodes} emits its `error` nodes — one
- * entry per block, since a single user turn can return several failed results. A
- * body with no `messages` array yields none.
+ * holding it — one entry per block, in the order {@link deriveSessionNodes} emits its
+ * `error` nodes. A body with no `messages` array yields none.
  */
 export function deriveRequestErrors(body: unknown): RequestErrorSite[] {
   const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
@@ -864,12 +863,11 @@ export function deriveRequestErrors(body: unknown): RequestErrorSite[] {
  * Match a transcript's errors to the request messages that hold them, returning one
  * message index per error — `null` where the request has no counterpart.
  *
- * The transcript is the authority on which errors exist, and a captured request holds
- * only the turns that were in flight when it was sent, so the two align as
- * subsequences rather than positionally: a request sent mid-session misses the errors
- * that came after it, and one sent after a compaction misses the errors before it.
- * Both are walked in order, each site claiming the next transcript line it expands, so
- * a partial overlap links what it covers instead of nothing.
+ * A captured request holds only the turns in flight when it was sent, so the two align
+ * as subsequences rather than positionally — a request sent mid-session misses the
+ * errors after it, one sent after a compaction the errors before it. Both are walked in
+ * order, each site claiming the next transcript line it expands, so a partial overlap
+ * links what it covers instead of nothing.
  */
 export function linkRequestErrors(
   errors: readonly SessionError[],

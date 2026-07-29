@@ -85,9 +85,8 @@ function ErrorEntry({ error }: { error: LinkedSessionError }) {
 
 /**
  * The way into the failed turn itself: the Message details page for the request
- * message that carried this result, reached through the Request breakdown the
- * session already links to. Absent when no captured request still holds the turn —
- * the request may predate a compaction, or have been sent before the error happened.
+ * message that carried this result. Absent when no captured request still holds the
+ * turn.
  */
 function ErrorTurnLink({ link }: { link: LinkedSessionError["link"] }) {
   if (!link) {

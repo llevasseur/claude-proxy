@@ -352,8 +352,7 @@ export interface SessionErrorsResponse {
  * {@link readSession}, which validates `id` and maps to 400/404.
  *
  * An error the session's captures can't account for comes back with no link rather
- * than failing the page — a long session can outlive the sidecars of its early
- * requests, and a transcript with no session id has nothing to match on at all.
+ * than failing the page.
  */
 export async function buildSessionErrors(
   logDir: string,
@@ -369,16 +368,15 @@ export async function buildSessionErrors(
 }
 
 /**
- * How many request bodies one errors page will open. A busy session can capture
- * hundreds, each up to megabytes of JSON, so the scan is bounded and stops early as
- * soon as every error has found a home. See {@link requestsToScan} for which ones.
+ * How many request bodies one errors page will open — a busy session captures hundreds,
+ * each up to megabytes of JSON. See {@link requestsToScan} for which ones.
  */
 const MAX_ERROR_REQUEST_SCANS = 6;
 
 /**
  * Find the request message behind each error. Each body links whichever errors it can
- * and later ones only fill the gaps, so an error keeps the first scanned request that
- * holds it and different errors can point at different requests.
+ * and later ones only fill the gaps, so different errors can point at different
+ * requests, and the scan stops once every error has a home.
  */
 async function linkErrorsToRequests(
   logDir: string,
@@ -408,13 +406,12 @@ async function linkErrorsToRequests(
  * Which of a session's requests to open: the peak, then an even walk along the
  * session's timeline.
  *
- * Taking the largest few instead is the wrong shape. A request holds the turns that
- * were in flight when it went out, so the biggest bodies cluster at the end of a run
- * and, once a session has compacted, they are precisely the ones that have dropped its
- * early failures — on a real 193-request session the only body still holding the first
- * error ranked 43rd by size, well past any budget worth spending. Errors are spread
- * through a session, so sampling its timeline reaches them at a fraction of the reads.
- * The peak leads because it is the single body most likely to carry a turn at all.
+ * Taking the largest few instead is the wrong shape: the biggest bodies cluster at the
+ * end of a run and, once a session has compacted, are precisely the ones that have
+ * dropped its early failures — on a 193-request session the only body still holding the
+ * first error ranked 43rd by size. Errors are spread through a session, so sampling its
+ * timeline reaches them in far fewer reads. The peak leads as the body most likely to
+ * carry a turn at all.
  */
 function requestsToScan(requests: readonly ContextEntry[]): ContextEntry[] {
   if (requests.length <= MAX_ERROR_REQUEST_SCANS) {
