@@ -4,6 +4,7 @@ title: Admin dashboard for claude-proxy usage
 description: A local web dashboard that monitors Claude Code usage, context size, sessions, cache savings, and advice from the proxy's audit logs.
 tags: [dashboard, usage, trends, advice]
 timestamp: 2026-07-24
+dirty: true
 ---
 
 # Admin dashboard for claude-proxy usage
@@ -48,15 +49,19 @@ Twelve stations in the side rail, several with drill-down subpages beneath them:
   the CLI cannot be configured to.
 - **Projects** (`/projects`) — per-project auto-memory files, with a page per project and
   per memory. See [Project memory browser](project-memory-browser.md).
-- **Sessions** (`/sessions`) — per-thread transcripts, listed live over SSE, with a detail
-  page and its errored tool calls. See [Session transcripts](session-transcripts.md).
+- **Sessions** (`/sessions`) — a two-pane chat client over per-thread transcripts, listed
+  live over SSE, with controls to start and continue local agent sessions plus detail and
+  error pages. See [Session transcripts](session-transcripts.md) and
+  [Dashboard chat sessions](dashboard-chat-sessions.md).
 - **Live graph** (`/sessions/graph`) — a full-bleed graph of sessions and their subagent
   branches, refreshed on a 4-second poll (this page does not use SSE). See
   [Live session graph](live-session-graph.md).
 - **Hooks & Plugins** (`/hooks-plugins`) — the hooks and plugins the device's settings
   declare. The last three stations share one doc: [Config inventory](config-inventory.md).
 - **Advice** (`/advice`) — coaching cards derived deterministically from the day's digest
-  (dominant tool, tool overhead, low cache-hit, large system prompt, high cost).
+  (dominant tool, tool overhead, low cache-hit, large system prompt, high cost), plus
+  ten-session suggestion buckets with persistent pending/done/skipped flags. See
+  [Session suggestions](session-suggestions.md).
 
 Each station carries a [lucide](https://lucide.dev) icon. A toggle in the rail head
 collapses the rail to a 64px icon-only strip and back; the choice is persisted in
@@ -66,11 +71,20 @@ tooltips. Below 860px the rail already folds into a top bar, where collapsing me
 nothing — there the toggle is hidden and the persisted state is ignored, and each
 station keeps its icon alongside the label.
 
-Data comes from the `server` API — 22 read-only routes (20 JSON plus the two SSE streams
-`/api/sessions/stream` and `/api/sessions/session/stream`) — which computes everything via
-`packages/core`. Advice is produced by a `HeuristicAdviceProvider` behind an
-`AdviceProvider` seam, so an LLM/agent-backed provider can replace it later without
-changing the UI or API.
+Every day-bucketed value uses the shared `REPORT_TZ` (`America/New_York`, following EST/EDT),
+so Overview, Trends, busiest hour, and Skim roll over at Eastern midnight rather than at the
+UTC date in a sidecar filename. A reporting day can span two UTC archive folders;
+`readArchivedDay` merges both and filters by each sidecar's timestamp. Individual event
+timestamps still render in the viewer's local zone.
+
+Data comes from the `server` API. Most routes are read-only JSON views, with two SSE streams
+for the sessions list and detail page. The deliberately small write surface starts,
+continues, stops, or ends dashboard chat sessions and records suggestion flags; those POSTs
+use an explicit allowlist and origin-checked CORS. See
+[ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md).
+Analysis is computed via `packages/core`. Advice is produced by a
+`HeuristicAdviceProvider` behind an `AdviceProvider` seam, so an LLM/agent-backed provider
+can replace it later without changing the UI or API.
 
 ## Acceptance criteria
 
@@ -79,6 +93,8 @@ changing the UI or API.
 - [x] `server` serves `/api/*` over the real `logs/` dir; the dashboard renders
       token burn, trends, tool bloat, and advice from live data.
 - [x] The proxy still runs with bare `node proxy/proxy.mjs` (zero deps).
+- [x] Day buckets and busiest-hour labels use `America/New_York`, including the EST/EDT
+      boundary and late-evening requests whose UTC date is already the next day.
 - [x] `okq validate` passes on this bundle.
 
 ## Open questions

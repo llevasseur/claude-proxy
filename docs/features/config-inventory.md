@@ -4,6 +4,7 @@ title: Config inventory
 description: Three dashboard pages showing what this device's config and the proxy itself keep out of every Claude Code request.
 tags: [dashboard, usage, architecture]
 timestamp: 2026-07-24
+dirty: true
 ---
 
 # Config inventory
@@ -116,8 +117,9 @@ explicit "couldn't read" state rather than an empty table. The endpoints are `GE
       *expectations*, never observed firing.
 - [x] All three views are read-only and never write settings: `server/src/settings.ts` and
       `server/src/shell-rc.ts` only `readFile`, there is no write path to `~/.claude` or the
-      shell rc, and the server exposes no POST route (only `GET` handlers plus an `OPTIONS`
-      preflight).
+      shell rc, and their `/api/withheld`, `/api/hooks-plugins`, and `/api/filters` endpoints
+      are GET-only. The server's unrelated chat and suggestion-status POST routes do not
+      touch device settings.
 - [x] `CLAUDE_SETTINGS` and `CLAUDE_SHELL_RC` override the two file paths; a missing or
       unreadable file degrades to an explicit "couldn't read" state instead of an error.
 - [x] `packages/core` helpers for withheld rules, launch-alias posture, filters, and

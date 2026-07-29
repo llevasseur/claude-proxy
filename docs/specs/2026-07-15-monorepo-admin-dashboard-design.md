@@ -4,6 +4,7 @@ title: Monorepo + Admin Dashboard — Design Spec
 description: Turn the single-file proxy into a pnpm monorepo with a Node API and a TanStack admin dashboard.
 tags: [monorepo, dashboard, design, architecture]
 timestamp: 2026-07-15
+dirty: true
 ---
 
 # Monorepo + Admin Dashboard — Design Spec
@@ -13,7 +14,7 @@ timestamp: 2026-07-15
 **Builds on:** [`docs/2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md)
 **Decision record:** [`adrs/0002-monorepo-with-pnpm-tanstack-and-node.md`](../adrs/0002-monorepo-with-pnpm-tanstack-and-node.md)
 
-**Current state (2026-07-24):** shipped, with three departures from this spec. The proxy is no
+**Current state (2026-07-28):** shipped, with several departures from this spec. The proxy is no
 longer a byte-for-byte pass-through — it strips withheld tool schemas (`EndConversation`) and
 harness-injected reminders from outbound requests (`proxy/proxy.mjs`,
 `packages/core/src/filters.ts`); it is still zero-dependency and runs under bare `node`.
@@ -21,9 +22,11 @@ Session-level attribution, listed out of scope below, was later built (`proxy/se
 `packages/core/src/sessions.ts`, the `/api/sessions*` routes) — see
 [Session transcripts](../features/session-transcripts.md). The proxy now carries its own
 `node --test` suite, so `packages/core` is no longer the only tested code. The server has grown
-from the four read-only routes below to 22 (20 JSON + 2 SSE streams); the
-[admin dashboard feature doc](../features/admin-dashboard-for-claude-proxy-usage.md) tracks the
-current surface. Read the rest as point-in-time design history.
+well beyond the four read-only routes below and now has narrowly scoped chat and
+suggestion-status writes, superseding the read-only part of ADR 0002; see
+[ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md).
+The [admin dashboard feature doc](../features/admin-dashboard-for-claude-proxy-usage.md)
+tracks the current surface. Read the rest as point-in-time design history.
 
 ## Goal
 

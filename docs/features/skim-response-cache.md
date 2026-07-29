@@ -4,6 +4,7 @@ title: Skim response cache
 description: An opt-in, byte-exact response cache in the proxy that replays a repeat streamed /v1/messages reply from disk with zero upstream call, plus a dashboard page measuring hit-rate and dollars saved.
 tags: [backend, dashboard, usage]
 timestamp: 2026-07-24
+dirty: true
 ---
 
 # Skim response cache
@@ -80,7 +81,9 @@ the sidecar data is what decides whether a smarter key is worth building.
   denominator), `savedInputTokens`, `estSavedUsd`, and `topShapes`. Dollars saved are
   estimated per hit as `savedInputTokens / 1e6 × priceFor(model).input` — the sidecar's own
   model at that model's **input**-token rate, so it is a conservative floor that ignores the
-  output tokens a hit also avoids. `skimDigestsByDay` buckets by UTC day, oldest first.
+  output tokens a hit also avoids. `skimDigestsByDay` buckets by the dashboard's shared
+  reporting zone (`America/New_York`, following EST/EDT), oldest first, so Skim and the
+  Overview/Trends windows roll over together at Eastern midnight.
 - **Shapes** — any request with a `cacheKey` accumulates into a per-key `SkimShape`
   (`requests`, `hits`, `savedInputTokens`, `estSavedUsd`, plus a `requestText` label),
   ranked by request count. `requestText` is **not** a sidecar field: `server/src/logs.ts`
@@ -128,7 +131,8 @@ already-captured sidecars.
       tokens, estimates dollars at each model's input rate, and ranks repeated shapes —
       all unit-tested in `packages/core/test/skim.test.ts` (empty input, hit/miss counting,
       disabled-request exclusion, dollar estimation, shape ranking, request-text retention,
-      `topN`, malformed sidecars, and UTC day splitting).
+      `topN`, malformed sidecars, and reporting-zone day splitting, including a
+      late-evening request whose UTC date is already the next day).
 - [x] `GET /api/skim` and `GET /api/skim/trend` serve the digests, and `/skim` charts
       hit-rate, cumulative dollars saved, and top repeated shapes.
 

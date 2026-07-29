@@ -4,6 +4,7 @@ title: Dashboard chat sessions
 description: A prompt input on the Sessions page that starts a real session through the proxy — by a headless Claude Code process in local dev, or a keyed HTTP client in a deployment — so the proxy logs and transcribes it and the new thread appears in the sessions list. Runs either as a full agent at parity with the device's own CLI, or in a sandboxed chat posture with no tools.
 tags: [dashboard, backend, usage, auth]
 timestamp: 2026-07-24
+dirty: true
 ---
 
 # Dashboard chat sessions
@@ -390,12 +391,13 @@ server accepts; everything else stays read-only.
   Code's own system prompt and its out-of-band titling request, so a CLI-started chat gets a
   real title in the sessions list and an `api` one does not. Comparing token counts across
   the two is not comparing like with like.
-- **Agent mode has no authentication in front of it.** The server is read-only apart from
-  the chat routes and binds locally, and those routes now answer only the dashboard's
-  origin — but an origin check is a browser-side control, and the mode's whole premise is
-  that a POST body can cause work on the machine. Anything that can reach the port directly
-  is unaffected by it. Exposing this port — a tunnel, a bind to `0.0.0.0` — still needs a
-  real auth story, and there isn't one yet. `CHAT_MODE=chat` is the answer in the meantime.
+- **Agent mode has no authentication in front of it.** Apart from chat and
+  suggestion-status writes, the server is read-only and binds locally. Both write surfaces
+  answer only the dashboard's origin — but an origin check is a browser-side control, and
+  the mode's whole premise is that a POST body can cause work on the machine. Anything that
+  can reach the port directly is unaffected by it. Exposing this port — a tunnel, a bind to
+  `0.0.0.0` — still needs a real auth story, and there isn't one yet. `CHAT_MODE=chat` is the
+  answer in the meantime.
 - **Tool activity is summarized, not streamed.** Chips name the tools a turn ran, mark
   failures and say why; arguments and full results are only in the proxy's transcript. A
   long agent turn still shows nothing until it finishes or is stopped.
