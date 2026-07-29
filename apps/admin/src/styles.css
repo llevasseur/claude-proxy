@@ -1079,6 +1079,28 @@ button.link {
   background: var(--surface-2);
   color: var(--muted);
 }
+/* A claimed fix that did not hold — the one flag state that means work. */
+.badge.recurrence-regressed {
+  background: rgba(255, 107, 129, 0.16);
+  color: var(--coral);
+}
+.badge.recurrence-mixed {
+  background: rgba(244, 177, 90, 0.16);
+  color: var(--amber);
+}
+.badge.recurrence-historical {
+  background: var(--surface-2);
+  color: var(--faint);
+}
+/* Regressed is the actionable state, so it stays at full contrast — these rules sit
+   after the .is-resolved dimming above and share its specificity, so they win. */
+.advice.is-regressed {
+  opacity: 1;
+  border-color: var(--coral);
+}
+.bucket-suggestions li.is-regressed {
+  color: var(--coral);
+}
 .rule-name {
   font-family: var(--font-mono);
   font-size: 12.5px;
