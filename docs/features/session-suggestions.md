@@ -95,18 +95,37 @@ or not anyone acted on it. A flag per suggestion records that someone did:
 - **The key is `(bucket index, suggestion id)`.** Both halves are stable — buckets are fixed
   windows numbered oldest-first, and a suggestion's id is its rule's id — so a flag survives the
   recomputation that happens on every load. Marking a suggestion `done` sticks even after the rule
-  stops tripping, and a rule that starts tripping again in the same window is *not* re-flagged.
+  stops tripping.
+- **A `done` is read as a dated claim.** Because a window is frozen, a rule that tripped on
+  sessions recorded last week will trip on them forever — no fix reaches backwards into recorded
+  history, so "still tripping" was never evidence that a fix failed. Each flag's `updated`
+  timestamp is therefore compared against the window's own session span, and every window gets a
+  **recurrence** state:
+  - `historical` — every session in the window predates the claim. Expected to keep tripping;
+    nothing left to act on.
+  - `regressed` — every session started *after* the claim and the rule tripped anyway. The change
+    did not hold. This is the signal, and the row names the bucket and date of the claim it broke.
+  - `mixed` — the window straddles the claim, so its evidence is part pre-fix and proves nothing.
+  - `none` — no dated `done` for that rule, or the dates needed to compare are missing.
+
+  The claim is **rule-wide, not per window**: `ruleResolutions` keeps the most recent `done` for
+  each suggestion id, whichever bucket recorded it, so one mark carries forward to every window
+  recorded afterwards instead of needing one mark per bucket. Only `done` counts — `skipped`
+  records a decision not to act, which asserts nothing about behaviour changing, so it never
+  produces a `regressed`. An undated flag is ignored rather than used to invent a regression.
 - **Where they live** — `<logDir>/suggestion-status.json`, beside the transcripts they describe, so
   they travel with a `LOG_DIR` override and stay device-local (`logs/` is gitignored). Only
   decisions are written: setting a suggestion back to `pending` deletes its entry, so an empty file
   and a missing one both mean "nothing done yet". Writes go through a temp file and a rename, and a
   corrupt file reads as empty rather than taking the page down with it.
-- **The lean list** — `GET /api/sessions/suggestions/status[?range=&status=]` returns one row per
-  suggestion (`bucket`, `label`, `id`, `severity`, `title`, `status`, and `updated`/`note` once
-  set), oldest bucket first. `range` accepts one bucket (`9`), a list (`2,3,9`), a span (`2-9`) or
-  a mix; `status` accepts a comma-separated subset of the flags. This is the list an agent reads to
+- **The lean list** — `GET /api/sessions/suggestions/status[?range=&status=&recurrence=]` returns
+  one row per suggestion (`bucket`, `label`, `id`, `severity`, `title`, `status`, `recurrence`, and
+  `updated`/`note`/`resolved` once set), oldest bucket first. `range` accepts one bucket (`9`), a
+  list (`2,3,9`), a span (`2-9`) or a mix; `status` accepts a comma-separated subset of the flags;
+  `recurrence` a comma-separated subset of the four states. `meta.counts` totals the flags and
+  `meta.recurrences` the states, both over the rows returned. This is the list an agent reads to
   find what is still pending in a range without pulling each bucket's full drill-down. A malformed
-  range is a 400.
+  range, flag or state is a 400.
 - **Opt-in detail** — `&detail=1` adds each suggestion's `detail`, `evidence` and `sources` to the
   rows. Scanning a wide range stays lean by default; a caller about to act on what it found gets the
   whole claim in the same call rather than one drill-down request per bucket.
@@ -118,14 +137,21 @@ or not anyone acted on it. A flag per suggestion records that someone did:
   (restored to full contrast on hover/focus, so nothing becomes unreadable), and gives each one a
   `Pending / Done / Skipped` control. `Pending` is the undo: it clears the entry, the same write the
   API and CLI make. A write re-reads the status list rather than patching the row locally, so what
-  the page shows is what the file says. A **hide resolved** toggle appears once anything is flagged,
-  and the Advice bucket list marks resolved suggestions and reports how many are still open per
-  window. The breakdown-derived suggestions carry no control — they are computed per request rather
-  than per bucket, so the store has no row for them.
-- **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>] [-d]` and
-  `pnpm --filter server suggestions mark -r <bucket> -i <ids> -s <flag> [-n <note>]`, both with
-  `--json` for the API's own shape. The CLI reads the log directory directly, so it needs no
-  running server.
+  the page shows is what the file says. A **hide resolved** toggle appears once anything is
+  *settled* — acted on, or in a window the rule's own fix predates — and the Advice bucket list
+  counts only unsettled suggestions as open. A recurrence badge sits next to the flag, and a
+  `regressed` suggestion is never dimmed and takes a coral border, since it is the one state that
+  means work; a regressed control also names the bucket and date of the claim it broke. Both pages
+  show a `N regressed` badge in their header. The breakdown-derived suggestions carry no control —
+  they are computed per request rather than per bucket, so the store has no row for them.
+- **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>]
+  [--recurrence <states>] [-d]` and `pnpm --filter server suggestions mark -r <bucket> -i <ids>
+  -s <flag> [-n <note>]`, both with `--json` for the API's own shape. The CLI reads the log
+  directory directly, so it needs no running server. **`list` hides `historical` rows by default**,
+  since a window that predates its rule's `done` can no longer be acted on — the count of what was
+  hidden is printed, so the suppression is visible rather than silent, and `--recurrence historical`
+  brings them back. Regressed rows are marked `⚠ REGRESSED since <date>` and totalled above the
+  table.
 
 The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
 `packages/core/src/suggestions.ts` (pure: `sessionSuggestionBuckets`, `suggestBucket`,
@@ -159,6 +185,13 @@ The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
       hideable but still reachable.
 - [x] The flag store is unit-tested pure (`packages/core/test/suggestion-status.test.ts`) and its
       file handling is tested in `server/test/suggestion-status.test.ts`.
+- [x] A `done` is dated, and one mark carries to every window recorded after it, so a window whose
+      sessions predate the fix reads as `historical` rather than as unaddressed work.
+- [x] A rule that trips in a window recorded entirely *after* its own `done` reads as `regressed`,
+      naming the bucket and date of the claim, so a fix that did not hold cannot be mistaken for a
+      new finding.
+- [x] `historical` rows are excluded from the CLI's default `list`, with the hidden count reported
+      and reachable via `--recurrence`.
 
 ## Open questions
 
@@ -181,6 +214,14 @@ The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
   `GET /api/sessions/suggestions` if that stops being true.
 - A flag's write is read-modify-write on one JSON file, so two writers racing lose one flag. One
   dashboard and one agent at a time is the actual usage; a lock would be cheap if that changes.
+- The recurrence date is when someone *marked* the suggestion, not when the change actually landed.
+  Marking right after the PR returns keeps the two within minutes of each other, but a flag set a
+  week late reads the sessions in between as `historical` when they were really post-fix. A
+  `landed` timestamp on the entry, separate from `updated`, would decouple them.
+- `regressed` needs the window to sit *entirely* after the claim, so the first window to span a fix
+  reports `mixed` and a genuine regression inside it waits for the next full window of ten. That is
+  the conservative direction — it never cries regression on pre-fix evidence — but it does delay the
+  signal by up to ten sessions.
 
 ## Related
 
