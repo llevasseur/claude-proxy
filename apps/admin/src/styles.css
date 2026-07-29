@@ -2888,3 +2888,86 @@ button.sessions-new.is-active {
     animation: none;
   }
 }
+
+/* skeletons — placeholders that sit inside the loaded content's own boxes, so a page
+   loads in place instead of pushing itself around. A block is inline, so the element
+   holding it keeps its own strut and line box: a skeleton `.stat-value` is as tall as
+   a filled one with neither side naming a pixel height. */
+.skeleton {
+  display: inline-block;
+  vertical-align: middle;
+  width: 100%;
+  height: 0.72em;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--surface-2) 8%, var(--line) 38%, var(--surface-2) 68%);
+  background-size: 260% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+/* The global reduce rule stops the shimmer; without a flat fill it would freeze
+   mid-sweep, leaving the blocks unevenly lit. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    background: var(--surface-2);
+  }
+}
+/* Stands in for an `h2`, so the card head keeps the height the heading will have. */
+.skeleton-h2 {
+  height: 0.95em;
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+.skeleton-text {
+  display: grid;
+  gap: 9px;
+  /* Track `.msg-text`/`.card` body copy so reserved lines match rendered ones. */
+  font-size: 13px;
+  line-height: 1.65;
+}
+/* Bars sit on the baseline of a box the real chart also fixes, so the plot area is
+   the same height before and after the data arrives. */
+.skeleton-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 10px 0 18px;
+  box-sizing: border-box;
+}
+.skeleton-bar {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  border-radius: 4px 4px 2px 2px;
+}
+/* A row in the sessions rail, shaped like `.snav-item`. */
+.skeleton-rail {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px;
+}
+/* Content that is on screen but superseded: it stays exactly where it is and dims,
+   which is the whole point of loading in place. */
+.is-stale {
+  opacity: 0.48;
+  transition: opacity 140ms ease;
+}
+/* Announced, not shown — and out of flow, so it can sit in a grid or flex container
+   without becoming an item in it. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
