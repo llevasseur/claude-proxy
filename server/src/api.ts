@@ -706,7 +706,7 @@ export async function buildSessionGraphNodes(
   }
 
   // A family's requests never predate its earliest transcript, and `readSidecars`
-  // narrows by *reporting* day — so the floor is derived on that clock too.
+  // narrows by *reporting* day, so the floor is derived on that clock too.
   const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
   const since = (starts.length > 0 && reportDay(starts.sort()[0]!)) || undefined;
 

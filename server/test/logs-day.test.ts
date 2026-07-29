@@ -47,10 +47,8 @@ describe("readSidecars date filtering", () => {
   });
 });
 
-// The callers that floor a scan at a session's own start (its breakdown, its
-// suggestion bucket's peaks, its family's requests) hand that start to `since`,
-// which compares against reporting days. Deriving it in UTC drops the session's
-// own captures for anything worked on after 8pm Eastern.
+// `since` compares against reporting days, so a floor derived in UTC drops the
+// session's own captures for anything started after 8pm Eastern.
 describe("a session's own start as a `since` floor", () => {
   it("keeps the captures of a session that started in the Eastern evening", async () => {
     const { sidecars } = await readSidecars(logDir, { since: reportDay(EVENING_15TH)! });
