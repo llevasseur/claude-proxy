@@ -20,6 +20,7 @@ import {
   reportDay,
   sessionContextPeak,
   sessionSuggestionBuckets,
+  countSuggestionRecurrences,
   countSuggestionStatuses,
   suggestionStatusRows,
   suggestFromBreakdown,
@@ -47,6 +48,7 @@ import {
   type SessionMeta,
   type SessionNode,
   type SessionSuggestion,
+  type SuggestionRecurrence,
   type SuggestionStatus,
   type SuggestionStatusRow,
   type SuggestionStatusUpdate,
@@ -586,6 +588,12 @@ export interface SuggestionStatusResponse {
     missing: number[];
     /** Row counts per flag, over the rows returned. */
     counts: Record<SuggestionStatus, number>;
+    /**
+     * Row counts per recurrence state, over the rows returned. `regressed` is the
+     * one to read first: a fix was claimed for that rule and these sessions, all
+     * recorded afterwards, tripped it anyway.
+     */
+    recurrences: Record<SuggestionRecurrence, number>;
   };
 }
 
@@ -595,13 +603,19 @@ export interface SuggestionStatusResponse {
  * `pending` in a range of buckets without pulling each bucket's full drill-down —
  * the row carries only what it takes to decide and the handle to mark it after.
  *
- * `buckets` omitted means every bucket; `statuses` omitted means all three flags.
- * `detail` adds each suggestion's detail, evidence and sources — what a caller
- * about to act on one needs, at the cost of a much larger response.
+ * `buckets` omitted means every bucket; `statuses` omitted means all three flags;
+ * `recurrences` omitted means all four states. `detail` adds each suggestion's
+ * detail, evidence and sources — what a caller about to act on one needs, at the
+ * cost of a much larger response.
  */
 export async function buildSuggestionStatus(
   logDir: string,
-  filter: { buckets?: readonly number[]; statuses?: readonly SuggestionStatus[]; detail?: boolean } = {},
+  filter: {
+    buckets?: readonly number[];
+    statuses?: readonly SuggestionStatus[];
+    recurrences?: readonly SuggestionRecurrence[];
+    detail?: boolean;
+  } = {},
 ): Promise<SuggestionStatusResponse> {
   const [sessions, store] = await Promise.all([listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
   const buckets = sessionSuggestionBuckets(sessions);
@@ -614,6 +628,7 @@ export async function buildSuggestionStatus(
       buckets: existing,
       missing: (filter.buckets ?? []).filter((i) => !existing.includes(i)),
       counts: countSuggestionStatuses(rows),
+      recurrences: countSuggestionRecurrences(rows),
     },
   };
 }
