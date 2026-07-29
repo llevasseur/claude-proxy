@@ -233,20 +233,28 @@ renders an "open transcript" link straight to `/sessions/$id`. It is not predict
 proxy fingerprints a thread from the first user message *as it went over the wire*, which
 the CLI wraps in harness context this side never sees.
 
-**Starting a session goes to that session's page.** The turn *is* the session, so watching
-it from a list of every other session buries it; a send now navigates straight to
-`/sessions/$id` and the reply lands there. The complication is that at the moment of
-navigating there is no thread id to navigate to — see above, it is a fingerprint of a
-request that has not been sent yet. So the session route accepts the *chat session id* as
-well, which the dashboard chose before the first turn: it is a uuid, and a thread id is 16
-hex characters, so the two can never be confused. That page polls
-`GET /api/chat/thread?sessionId=`, which answers from the sessions dir rather than the
-in-memory map — so it survives a server restart and outlives the turn — and replaces the URL
-with the thread id the moment the transcript exists. Measured at ~2s on a real turn, which
-is while the turn is still running rather than after it. Until then the page says it is
-waiting for the transcript, and it gives up after two minutes — far past the moment a real
-session writes its first request — so a start that never happened stops polling and says so. A reload on the pre-resolution URL still lands on the transcript,
-because the lookup reads from disk and needs nothing the tab was holding.
+**Starting a session keeps you in the chat you started it from.** A send used to navigate
+straight to `/sessions/$id`, and that page then replaced its own URL with the thread id as
+soon as the transcript existed — two hops out of the pane the prompt was typed in, with the
+reply landing on a different page than the prompt. The send and the reply both stay in the
+Sessions pane now: the rail marks the running session, and its transcript is an "open
+transcript" link away rather than somewhere the page takes you. Marking it still needs the
+thread id, which at the moment of the send does not exist — see above, it is a fingerprint of
+a request that has not been sent yet — so the pane asks `GET /api/chat/thread?sessionId=` for
+it through a shared `useChatThread(sessionId, enabled)` hook. That answers from the sessions
+dir rather than the in-memory map, so it survives a server restart and outlives the turn, and
+it resolves ~2s into a real turn: the rail highlight and the transcript link both arrive while
+the turn is still running rather than after the answer lands.
+
+**The session route still accepts a chat session id**, which the dashboard chose before the
+first turn: it is a uuid, and a thread id is 16 hex characters, so the two can never be
+confused. Nothing navigates there on a send any more, but a link that was bookmarked or shared
+before the transcript existed still resolves — that page runs the same hook and replaces the
+URL with the thread id the moment the transcript is written. Until then it says it is waiting
+for the transcript, and it gives up after two minutes — far past the moment a real session
+writes its first request — so a uuid that never started stops polling and says so. A reload on
+the pre-resolution URL still lands on the transcript, because the lookup reads from disk and
+needs nothing the tab was holding.
 
 **The conversation follows you there.** It used to live in the Sessions page's own component
 state, which made starting a session and *reading* it mutually exclusive: navigating to the
@@ -265,8 +273,8 @@ the prompt is already on screen as a turn, and on "New chat", with the session i
 to.
 
 **The prompt in flight is shown as a turn.** The server returns history only once the turn
-resolves and an agent turn can run for an hour, so a page you were just navigated to would
-otherwise sit empty with nothing saying what it is working on. The prompt is rendered as a
+resolves and an agent turn can run for an hour, so the pane would otherwise sit empty with
+nothing saying what it is working on. The prompt is rendered as a
 user turn the moment it is handed off, above a `Working…` placeholder. For the same reason
 the session page suppresses its own running-turn Stop bar when *this* tab is the one running
 the turn — the chat section already offers that turn's Stop, and two of them invite pressing
@@ -347,8 +355,9 @@ server accepts; everything else stays read-only.
       real tool, and the proxy's transcript shows both — proven end to end, on turn one.
 - [x] A `chat` turn on the same server still reports zero tools, so the mode is additive.
 - [x] `agent` requested over `CHAT_TRANSPORT=api` is rejected rather than downgraded.
-- [x] Starting a session navigates to `/sessions/$id` immediately, addressed by the chat
-      session id, without waiting on the turn.
+- [x] Starting a session stays on `/sessions` — the send does not navigate, and the reply
+      lands in the pane the prompt was typed in. The rail marks the running session and the
+      "open transcript" link appears once the thread id resolves, mid-turn.
 - [x] `GET /api/chat/thread?sessionId=` answers the transcript's thread id, `null` while it
       has yet to be written, `400` with no `sessionId`, and `400` for a `sessionId` that is
       not a uuid — the same shape the POST routes validate. Confirmed live against an
@@ -363,11 +372,11 @@ server accepts; everything else stays read-only.
       the prompt that was sent and the reply when it lands, and an input that continues the
       session from there. Confirmed live that the resolved transcript's `- session:` id is
       the chat's own session id, which is what attaches the section to the page.
-- [x] The conversation survives the navigation — turn log, usage, tool chips, Stop, the
-      prompt in flight and an unsent draft in the composer — because it is held above the
-      router rather than in the Sessions page's state.
-- [x] A start that fails after navigating still shows its error on the session page rather
-      than dropping the section for want of a turn.
+- [x] The conversation survives navigating to a session or the graph — turn log, usage, tool
+      chips, Stop, the prompt in flight and an unsent draft in the composer — because it is
+      held above the router rather than in the Sessions page's state.
+- [x] A start that fails shows its error in the pane it was typed in, and on the session page
+      when the chat is opened there, rather than dropping the section for want of a turn.
 
 ## Open questions
 
