@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InterruptionKind, SessionNode } from "@claude-proxy/core";
 import { mergeSessionNodes, sessionName, spawnAgentType } from "@claude-proxy/core";
 import type { SessionGraphEntry } from "../api";
-import { getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from "../api";
+import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from "../api";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 /**
@@ -1233,6 +1233,7 @@ function InspectorBody({
               />
             </Field>
             <Field label="Step">#{node.index}</Field>
+            {source && node.message !== null ? <RequestMessage file={source} index={node.message} /> : null}
             {node.interrupted ? (
               <Field label="Cut off">
                 <span className="gi-cut">the run was interrupted here — it picks up on the trail below</span>
@@ -1286,14 +1287,52 @@ function InspectorBody({
           Open transcript →
         </Link>
         {source ? (
-          <Link to="/context/$file" params={{ file: source }} className="link gi-open">
-            Open request breakdown →
-          </Link>
+          <>
+            {node && node.message !== null ? (
+              <Link
+                to="/context/$file/message/$index"
+                params={{ file: source, index: String(node.message) }}
+                className="link gi-open"
+              >
+                Open this step's message →
+              </Link>
+            ) : null}
+            <Link to="/context/$file" params={{ file: source }} className="link gi-open">
+              Open request breakdown →
+            </Link>
+            {node && node.message === null ? (
+              <span className="gi-note muted">
+                This step pairs with nothing in the captured request, so its text is the transcript's gist.
+              </span>
+            ) : null}
+          </>
         ) : (
           <span className="gi-note muted">Text from the transcript — no captured request matched.</span>
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * The turn a step was read out of, whole — the same message the Request breakdown's drill-down
+ * shows, rather than the one line the step stream keeps of it. Fetched per open drawer and
+ * clamped like any other long value; a request that has since rotated away omits the field.
+ */
+function RequestMessage({ file, index }: { file: string; index: number }) {
+  const query = useQuery({
+    queryKey: ["context-message", file, index],
+    queryFn: () => getContextMessage(file, index),
+  });
+  const message = query.data?.message;
+  if (!message) return null;
+  return (
+    <Field label="Request message">
+      <span className="gi-note muted">
+        #{fmtInt(message.index + 1)} of {fmtInt(message.messageCount)} · {message.role}
+      </span>
+      <LongText key={`m:${file}:${index}`} text={message.content} mono />
+    </Field>
   );
 }
 

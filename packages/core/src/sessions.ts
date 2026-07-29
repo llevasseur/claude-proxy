@@ -318,6 +318,11 @@ export interface SessionNode {
   interruption: InterruptionKind | null;
   /** True when the run was cut off *at* this step: the interruption landed right after it. */
   interrupted: boolean;
+  /**
+   * Index into the captured request's `messages[]` this step was read from. Null on a step
+   * read back off a transcript, which records no such position.
+   */
+  message: number | null;
 }
 
 const DECIDED_TEXT_RE = /^- decided:\s*(.*)$/;
@@ -341,7 +346,7 @@ export function parseSessionNodes(content: string): SessionNode[] {
   let pending: InterruptionKind | null = null;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
-    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false });
+    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false, message: null });
     pending = null;
   };
 
@@ -723,13 +728,17 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
   let task: string | null = null;
   let lastTool: string | null = null;
   let pending: InterruptionKind | null = null;
+  /** The `messages[]` position being read, carried onto every step it yields. */
+  let message = 0;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
-    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false });
+    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false, message });
     pending = null;
   };
 
-  for (const raw of messages) {
+  for (let m = 0; m < messages.length; m++) {
+    message = m;
+    const raw = messages[m];
     const msg = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
     const blocks = asBlocks(msg.content);
 
@@ -794,33 +803,76 @@ export function isSameStep(gisted: string, full: string): boolean {
   return cut > 0 && one.startsWith(gisted.slice(0, cut));
 }
 
+/** Whether a derived step is the untruncated original of a transcript one. */
+const pairs = (step: SessionNode, cand: SessionNode): boolean =>
+  cand.type === step.type && isSameStep(step.text, cand.text);
+
+/**
+ * How far apart in steps the two streams may drift before the merge stops looking for its
+ * place again; past this the transcript carries the rest alone.
+ */
+const RESYNC_WINDOW = 24;
+
+/**
+ * The nearest pairing at or after (`t`, `d`), searched along growing diagonals so the
+ * alignment that skips fewest steps on either side wins. Null when the streams don't meet
+ * again inside {@link RESYNC_WINDOW}.
+ */
+function resync(
+  transcript: SessionNode[],
+  t: number,
+  derived: SessionNode[],
+  d: number,
+): { t: number; d: number } | null {
+  for (let span = 1; span < RESYNC_WINDOW; span++) {
+    for (let i = 0; i <= span; i++) {
+      const ti = t + i;
+      const di = d + (span - i);
+      if (ti >= transcript.length || di >= derived.length) continue;
+      if (pairs(transcript[ti]!, derived[di]!)) return { t: ti, d: di };
+    }
+  }
+  return null;
+}
+
 /**
  * Lay request-derived steps over a transcript's. The transcript stays the authority on which
  * steps exist — the agent linkage (spawn/return indices) is built from its positions — so the
- * result is always its length, with the same `index` on every node.
+ * result is always its length, with the same `index` on every node. Everything else about a
+ * step, including which request message it came from, comes from the request.
  *
  * The two are not positionally aligned: a transcript accumulates every request the proxy ever
  * saw, so it carries turns no single body holds (Claude Code's one-shot spinner prompts land
- * mid-thread and shift everything after them). A captured request is therefore a
- * *subsequence* — take a derived step only where it matches the transcript line it expands,
- * and otherwise keep the transcript's abbreviated text.
+ * mid-thread and shift everything after them), and a step whose text the two record
+ * differently pairs with nothing at all. So the walk re-synchronizes rather than running in
+ * lockstep: on a mismatch it looks ahead on *both* sides for where the streams meet again,
+ * hands the steps in between their transcript text, and carries on from there.
  */
 export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNode[]): SessionNode[] {
   if (derived.length === 0) return transcript;
 
   const merged: SessionNode[] = [];
+  let t = 0;
   let d = 0;
-  for (const step of transcript) {
+  while (t < transcript.length) {
+    const step = transcript[t]!;
     const cand = derived[d];
-    if (cand && cand.type === step.type && isSameStep(step.text, cand.text)) {
+    if (cand && pairs(step, cand)) {
       // Text comes from the request; which steps exist — and where the run was cut —
       // stays the transcript's, since it alone carries the dashboard's own stops.
       merged.push({ ...cand, index: step.index, interruption: step.interruption, interrupted: step.interrupted });
+      t += 1;
       d += 1;
-    } else {
-      merged.push(step);
+      continue;
     }
+    const at = resync(transcript, t, derived, d);
+    if (!at) break;
+    // Unpaired transcript steps keep their gist; unpaired derived steps have no transcript
+    // position to sit at, so they go unplaced.
+    for (; t < at.t; t++) merged.push(transcript[t]!);
+    d = at.d;
   }
+  for (; t < transcript.length; t++) merged.push(transcript[t]!);
   return merged;
 }
 

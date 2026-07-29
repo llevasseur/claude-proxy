@@ -704,9 +704,11 @@ export async function buildSessionGraphNodes(
     return { rootThreadId: id, threads: [], meta: { files: 0, parseErrors: 0, requestsRead: 0, capped: false } };
   }
 
-  // A family's requests never predate its earliest transcript.
+  // A family's requests never predate its earliest transcript. That start is a UTC instant,
+  // but `readSidecars` narrows by *reporting* day, so a session opened after midnight UTC
+  // reports on the day before its own timestamp — back the floor off a day to cover it.
   const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
-  const since = starts.length > 0 ? starts.sort()[0]!.slice(0, 10) : undefined;
+  const since = starts.length > 0 ? shiftDay(starts.sort()[0]!.slice(0, 10), -1) : undefined;
 
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
   const candidates = toContextEntries(sidecars)
