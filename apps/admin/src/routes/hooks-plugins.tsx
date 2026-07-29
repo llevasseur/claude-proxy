@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { AliasLoadExpectation } from "@claude-proxy/core";
 import { getHooksPlugins } from "../api";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, type SkeletonColumn, SkeletonTable } from "../components/Skeleton";
 
 /**
  * "Hooks & Plugins" — config inventory of the device's `~/.claude/settings.json`
@@ -51,7 +52,7 @@ export function HooksPluginsPage() {
         </div>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<HooksPluginsSkeleton />}>
         {!data?.settingsReadable ? (
           <div className="card empty">
             Couldn't read device settings at <span className="rule-name">{data?.settingsPath}</span>.
@@ -178,5 +179,30 @@ export function HooksPluginsPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** Every table on this page is three columns wide. */
+const CONFIG_COLUMNS: readonly SkeletonColumn[] = [{ cell: "62%" }, { cell: "48%" }, {}];
+
+/**
+ * The three inventory cards — hooks, plugins, and the per-alias load expectations —
+ * each holding the count line and table it will fill.
+ */
+function HooksPluginsSkeleton() {
+  return (
+    <>
+      {[3, 2, 4].map((rows, i) => (
+        <div className="card" style={{ marginBottom: 16 }} key={i}>
+          <div className="muted" aria-hidden>
+            <Skeleton w="42%" />
+          </div>
+          {/* The real tables carry this offset themselves. */}
+          <div style={{ marginTop: 12 }}>
+            <SkeletonTable columns={CONFIG_COLUMNS} rows={rows} />
+          </div>
+        </div>
+      ))}
+    </>
   );
 }

@@ -2,11 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Expand, Maximize2, Minimize2, Shrink } from "lucide-react";
 import type { CSSProperties, ReactNode, Ref } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InterruptionKind, SessionNode } from "@claude-proxy/core";
 import { mergeSessionNodes, sessionName, spawnAgentType } from "@claude-proxy/core";
 import type { SessionGraphEntry } from "../api";
 import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from "../api";
+import { Skeleton, SkeletonStatus } from "../components/Skeleton";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 /**
@@ -512,6 +513,55 @@ function boxStyle(box: Box): CSSProperties {
   } as CSSProperties;
 }
 
+/**
+ * Ghost boxes on the canvas while the first poll is in flight, laid out from the same
+ * `COMPACT` geometry and gaps the real snake uses — a session box with its steps
+ * trailing to the right. The canvas is pannable and the boxes are absolutely placed,
+ * so this reserves nothing the layout has to give back: the real boxes replace these
+ * at the same size, in the same place.
+ */
+function GraphSkeleton({ rows = 2, steps = 4 }: { rows?: number; steps?: number }) {
+  const s = COMPACT;
+  const ghost = (x: number, y: number, w: number, h: number, key: string): ReactNode => (
+    <div
+      key={key}
+      className="gnode"
+      style={{ left: x, top: y, width: w, height: h, "--gc": color("decision") } as CSSProperties}
+      aria-hidden
+    >
+      <span className="gnode-kind">
+        <Skeleton w="3.5rem" />
+      </span>
+      <span className="gnode-title">
+        <Skeleton w="82%" />
+      </span>
+    </div>
+  );
+
+  return (
+    <>
+      {Array.from({ length: rows }, (_, r) => {
+        const y = PAD + r * (s.rootH + GAP_Y);
+        const stepY = y + (s.rootH - s.nodeH) / 2;
+        return (
+          <Fragment key={r}>
+            {ghost(PAD, y, s.rootW, s.rootH, `root-${r}`)}
+            {Array.from({ length: steps }, (_, i) =>
+              ghost(
+                PAD + s.rootW + GAP_X + i * (s.nodeW + GAP_X),
+                stepY,
+                s.nodeW,
+                s.nodeH,
+                `step-${r}-${i}`,
+              ),
+            )}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 /** The extra layer a step wears when the run was cut off on it, or resumed on it. */
 function cutClass(node: SessionNode): string {
   return `${node.interrupted ? " is-cut" : ""}${node.interruption ? " is-resumed" : ""}`;
@@ -809,6 +859,7 @@ export function SessionGraphPage() {
 
   return (
     <section className="graph-page">
+      {query.isLoading ? <SkeletonStatus label="Loading the session graph" /> : null}
       <div
         ref={viewportRef}
         className={`graph-viewport${isFull ? " is-full" : ""}${dragging ? " is-dragging" : ""}`}
@@ -819,6 +870,7 @@ export function SessionGraphPage() {
         onPointerCancel={endPan}
       >
         <div className={`graph-canvas${roomy ? " is-roomy" : ""}`} style={canvasStyle}>
+          {query.isLoading ? <GraphSkeleton /> : null}
           {/* Branch frames sit behind the edges and boxes they enclose. */}
           {bands.map((band) => (
             <div

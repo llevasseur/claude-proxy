@@ -1,11 +1,13 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { RequestMessageDetail } from "@claude-proxy/core";
 import { getContextMessage } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
+import { PRETTY_RAW, type PrettyRawView, Segmented } from "../components/Segmented";
+import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from "../components/Skeleton";
 import { fmtBytes, fmtInt } from "../format";
+import { useTransitionState } from "../useTransitionState";
 
 export function ContextMessagePage() {
   const { file, index } = useParams({ from: "/context/$file/message/$index" });
@@ -32,15 +34,39 @@ export function ContextMessagePage() {
       </div>
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<MessageSkeleton />}>
         {message && <MessageBody file={file} message={message} />}
       </QueryState>
     </section>
   );
 }
 
+/** The pager, three stat tiles, and the message card — a whole turn's worth of room. */
+function MessageSkeleton() {
+  return (
+    <>
+      <nav className="pager" aria-hidden>
+        <Skeleton w="6rem" />
+        <Skeleton w="7rem" />
+        <Skeleton w="6rem" />
+      </nav>
+      <SkeletonStats count={3} />
+      <div className="card">
+        <div className="card-head">
+          <Skeleton w="22%" h="0.95em" />
+          <Skeleton w="7rem" />
+        </div>
+        <SkeletonMsgBlocks count={3} lines={5} />
+      </div>
+    </>
+  );
+}
+
 function MessageBody({ file, message: m }: { file: string; message: RequestMessageDetail }) {
-  const [view, setView] = useState<"pretty" | "raw">("pretty");
+  // A whole turn is a lot to lay out either way — parsed blocks or one long `<pre>` —
+  // so the switch runs as a transition and the current view stays put until the other
+  // one is ready to take its place.
+  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
 
   return (
     <>
@@ -55,16 +81,11 @@ function MessageBody({ file, message: m }: { file: string; message: RequestMessa
       <div className="card">
         <div className="card-head">
           <h2>Full message</h2>
-          <div className="segmented">
-            <button className={view === "pretty" ? "active" : ""} onClick={() => setView("pretty")}>
-              Pretty
-            </button>
-            <button className={view === "raw" ? "active" : ""} onClick={() => setView("raw")}>
-              Raw
-            </button>
-          </div>
+          <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label="Message view" busy={isSwitching} />
         </div>
-        {view === "pretty" ? <PrettyMessage content={m.content} /> : <pre className="rawjson wrap">{m.content}</pre>}
+        <div className={isSwitching ? "is-stale" : undefined}>
+          {view === "pretty" ? <PrettyMessage content={m.content} /> : <pre className="rawjson wrap">{m.content}</pre>}
+        </div>
       </div>
     </>
   );

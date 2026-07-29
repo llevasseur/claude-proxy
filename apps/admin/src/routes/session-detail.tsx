@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { sessionName } from "@claude-proxy/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
@@ -10,8 +10,11 @@ import { ChatConversation } from "../components/ChatConversation";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { Markdown } from "../components/Markdown";
 import { QueryState } from "../components/QueryState";
+import { PRETTY_RAW, type PrettyRawView, Segmented } from "../components/Segmented";
+import { Skeleton, SkeletonStats, SkeletonText } from "../components/Skeleton";
 import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
 import { useLiveQuery } from "../useLiveQuery";
+import { useTransitionState } from "../useTransitionState";
 
 /**
  * A chat session id, which this route also accepts: a dashboard chat can be linked or bookmarked
@@ -69,11 +72,31 @@ export function SessionDetailPage() {
       {isChatId ? (
         <StartingBody sessionId={id} gaveUp={gaveUp} />
       ) : (
-        <QueryState isLoading={query.isLoading} error={query.error}>
+        <QueryState isLoading={query.isLoading} error={query.error} skeleton={<SessionSkeleton />}>
           {session && <SessionBody session={session} />}
         </QueryState>
       )}
     </section>
+  );
+}
+
+/**
+ * The session's seven stat tiles and its transcript card. The tile count is fixed by
+ * the page rather than the data, so the grid is already the right height and the
+ * transcript below it does not slide up when the numbers arrive.
+ */
+function SessionSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={7} />
+      <div className="card">
+        <div className="card-head">
+          <Skeleton w="20%" h="0.95em" />
+          <Skeleton w="7rem" />
+        </div>
+        <SkeletonText lines={12} />
+      </div>
+    </>
   );
 }
 
@@ -92,7 +115,11 @@ function StartingBody({ sessionId, gaveUp }: { sessionId: string; gaveUp: boolea
 }
 
 function SessionBody({ session }: { session: SessionDetail }) {
-  const [view, setView] = useState<"pretty" | "raw">("pretty");
+  // A transcript is the largest document the dashboard renders, and both views are
+  // expensive — Markdown one way, the whole file in a `<pre>` the other. Switching as
+  // a transition keeps the toggle responsive and leaves the current view in place,
+  // dimmed, instead of blanking the card while the other one lays out.
+  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
   const { meta } = session;
   const name = sessionName(meta);
 
@@ -129,22 +156,17 @@ function SessionBody({ session }: { session: SessionDetail }) {
       <div className="card">
         <div className="card-head">
           <h2>Transcript</h2>
-          <div className="segmented">
-            <button className={view === "pretty" ? "active" : ""} onClick={() => setView("pretty")}>
-              Pretty
-            </button>
-            <button className={view === "raw" ? "active" : ""} onClick={() => setView("raw")}>
-              Raw
-            </button>
-          </div>
+          <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label="Transcript view" busy={isSwitching} />
         </div>
-        {view === "pretty" ? (
-          <div className="memory-pretty">
-            <Markdown source={session.content} />
-          </div>
-        ) : (
-          <pre className="rawjson wrap">{session.content}</pre>
-        )}
+        <div className={isSwitching ? "is-stale" : undefined}>
+          {view === "pretty" ? (
+            <div className="memory-pretty">
+              <Markdown source={session.content} />
+            </div>
+          ) : (
+            <pre className="rawjson wrap">{session.content}</pre>
+          )}
+        </div>
       </div>
     </>
   );

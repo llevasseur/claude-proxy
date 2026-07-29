@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ProxyFilterEntry, ProxyFilterKind } from "@claude-proxy/core";
 import { getFilters } from "../api";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, type SkeletonColumn, SkeletonTable } from "../components/Skeleton";
 
 /**
  * "Proxy filters" — the inventory of what `proxy/proxy.mjs` strips out of every
@@ -30,6 +31,9 @@ const GROUPS: { kind: ProxyFilterKind; title: string; badge: string; blurb: stri
       "Harness-injected text with no suppression setting. The proxy removes the matching text from message content before forwarding.",
   },
 ];
+
+/** What, why, and how — the three columns each group's table carries. */
+const FILTER_COLUMNS: readonly SkeletonColumn[] = [{ cell: "48%" }, {}, {}];
 
 function FilterTable({ badge, filters }: { badge: string; filters: ProxyFilterEntry[] }) {
   return (
@@ -80,7 +84,7 @@ export function FiltersPage() {
         </div>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<FiltersSkeleton />}>
         {filters.length === 0 ? (
           <div className="card empty">The proxy isn't stripping anything from requests right now.</div>
         ) : (
@@ -99,5 +103,24 @@ export function FiltersPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** One card per filter kind — the groups are fixed, so both are reserved up front. */
+function FiltersSkeleton() {
+  return (
+    <>
+      {GROUPS.map((g) => (
+        <div className="card" style={{ marginBottom: 16 }} key={g.kind}>
+          <div className="muted" aria-hidden>
+            <Skeleton w="78%" />
+          </div>
+          {/* The real table carries this offset itself; matching it keeps the card's height. */}
+          <div style={{ marginTop: 12 }}>
+            <SkeletonTable columns={FILTER_COLUMNS} rows={3} />
+          </div>
+        </div>
+      ))}
+    </>
   );
 }
