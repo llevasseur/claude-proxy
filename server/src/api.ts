@@ -17,6 +17,7 @@ import {
   normalizePlugins,
   hookPluginLoadExpectations,
   parseSessionErrors,
+  reportDay,
   sessionContextPeak,
   sessionSuggestionBuckets,
   countSuggestionStatuses,
@@ -464,7 +465,7 @@ async function resolveSessionRequests(
     return { sessionId: null, requests: [], requestCount: 0, peak: null, files: 0, parseErrors: 0 };
   }
 
-  const since = meta.started ? meta.started.slice(0, 10) : undefined;
+  const since = (meta.started && reportDay(meta.started)) || undefined;
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
   const entries = toContextEntries(sidecars);
 
@@ -546,7 +547,7 @@ export async function buildSessionSuggestionBucket(
     .map(({ nodes: _nodes, ...row }) => row as SessionSummary);
 
   // A session's requests never predate it, so the earliest start bounds the scan.
-  const since = bucket.startedFirst ? bucket.startedFirst.slice(0, 10) : undefined;
+  const since = (bucket.startedFirst && reportDay(bucket.startedFirst)) || undefined;
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
   const entries = toContextEntries(sidecars);
 
@@ -704,11 +705,10 @@ export async function buildSessionGraphNodes(
     return { rootThreadId: id, threads: [], meta: { files: 0, parseErrors: 0, requestsRead: 0, capped: false } };
   }
 
-  // A family's requests never predate its earliest transcript. That start is a UTC instant,
-  // but `readSidecars` narrows by *reporting* day, so a session opened after midnight UTC
-  // reports on the day before its own timestamp — back the floor off a day to cover it.
+  // A family's requests never predate its earliest transcript, and `readSidecars`
+  // narrows by *reporting* day, so the floor is derived on that clock too.
   const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
-  const since = starts.length > 0 ? shiftDay(starts.sort()[0]!.slice(0, 10), -1) : undefined;
+  const since = (starts.length > 0 && reportDay(starts.sort()[0]!)) || undefined;
 
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
   const candidates = toContextEntries(sidecars)
