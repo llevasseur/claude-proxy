@@ -56,7 +56,15 @@ import {
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
 import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
-import { listJobs, readJob, readJobFile, type JobFileDetail, type JobSummary } from "./jobs.js";
+import {
+  deleteJob,
+  listJobs,
+  readJob,
+  readJobFile,
+  type JobDeleteResult,
+  type JobFileDetail,
+  type JobSummary,
+} from "./jobs.js";
 import {
   listProjectMemories,
   listProjects,
@@ -352,6 +360,22 @@ export interface JobFileResponse {
  * validated downstream, where the path is also confirmed to stay inside the job. */
 export async function buildJobFile(jobsDir: string, id: string, file: string): Promise<JobFileResponse> {
   return { file: await readJobFile(jobsDir, id, file) };
+}
+
+export interface JobDeleteResponse {
+  deleted: JobDeleteResult;
+  /** The listing as it stands after the delete — the page re-renders from this. */
+  jobs: JobsResponse;
+}
+
+/**
+ * Delete one job directory from disk, then hand back the refreshed listing so the
+ * caller never renders a row that no longer exists. `id` is validated downstream,
+ * which also refuses a still-running job and a symlinked directory.
+ */
+export async function buildJobDelete(jobsDir: string, id: string): Promise<JobDeleteResponse> {
+  const deleted = await deleteJob(jobsDir, id);
+  return { deleted, jobs: await buildJobs(jobsDir) };
 }
 
 export interface SessionsResponse {

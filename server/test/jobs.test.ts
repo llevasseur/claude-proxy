@@ -1,8 +1,8 @@
-import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { listJobs, readJob, readJobFile, resolveJobsDir } from "../src/jobs.js";
+import { deleteJob, listJobs, readJob, readJobFile, resolveJobsDir } from "../src/jobs.js";
 
 let jobsDir: string;
 /** A directory outside the jobs root, for the escape attempts to aim at. */
@@ -162,5 +162,88 @@ describe("readJobFile", () => {
 
   it("rejects a bad job id before touching disk", async () => {
     await expect(readJobFile(jobsDir, "../outside", "secret.txt")).rejects.toThrow(/invalid job id/);
+  });
+});
+
+/** True when the path is still on disk — the assertion a delete test turns on. */
+async function exists(target: string): Promise<boolean> {
+  return access(target).then(
+    () => true,
+    () => false,
+  );
+}
+
+describe("deleteJob", () => {
+  /** A throwaway jobs root per test: these mutate the disk, so nothing is shared. */
+  async function fixture(): Promise<{ root: string; jobs: string; outside: string }> {
+    const root = await mkdtemp(path.join(tmpdir(), "jobs-delete-"));
+    const jobs = path.join(root, "jobs");
+    const outside = path.join(root, "outside");
+    await mkdir(jobs, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, "keep.txt"), "still here", "utf8");
+
+    const done = path.join(jobs, "dddd4444");
+    await mkdir(path.join(done, "tmp"), { recursive: true });
+    await writeFile(path.join(done, "state.json"), JSON.stringify({ ...STATE, state: "done" }), "utf8");
+    await writeFile(path.join(done, "tmp", "out.log"), "finished\n", "utf8");
+
+    const running = path.join(jobs, "eeee5555");
+    await mkdir(running, { recursive: true });
+    await writeFile(path.join(running, "state.json"), JSON.stringify(STATE), "utf8");
+
+    const husk = path.join(jobs, "ffff6666");
+    await mkdir(husk, { recursive: true });
+    await writeFile(path.join(husk, "leftover.log"), "old output\n", "utf8");
+
+    return { root, jobs, outside };
+  }
+
+  it("removes the directory and everything under it, reporting what went", async () => {
+    const { jobs } = await fixture();
+    const result = await deleteJob(jobs, "dddd4444");
+
+    expect(result.id).toBe("dddd4444");
+    expect(result.name).toBe("a named job");
+    expect(result.state).toBe("done");
+    expect(result.files).toBe(2); // state.json + tmp/out.log
+    expect(result.bytes).toBeGreaterThan(0);
+    expect(await exists(path.join(jobs, "dddd4444"))).toBe(false);
+    expect((await listJobs(jobs)).map((j) => j.id).sort()).toEqual(["eeee5555", "ffff6666"]);
+  });
+
+  it("deletes a husk, which is the whole point of the control", async () => {
+    const { jobs } = await fixture();
+    const result = await deleteJob(jobs, "ffff6666");
+    expect(result.files).toBe(1);
+    expect(result.state).toBe("");
+    expect(await exists(path.join(jobs, "ffff6666"))).toBe(false);
+  });
+
+  it("refuses a job that is still running, leaving it on disk", async () => {
+    const { jobs } = await fixture();
+    await expect(deleteJob(jobs, "eeee5555")).rejects.toThrow(/job is still running/);
+    expect(await exists(path.join(jobs, "eeee5555"))).toBe(true);
+  });
+
+  it("refuses a symlinked job directory rather than following it", async () => {
+    const { jobs, outside } = await fixture();
+    await symlink(outside, path.join(jobs, "gggg7777"));
+    await expect(deleteJob(jobs, "gggg7777")).rejects.toThrow(/symlink/);
+    expect(await exists(path.join(outside, "keep.txt"))).toBe(true);
+    expect(await exists(path.join(jobs, "gggg7777"))).toBe(true);
+  });
+
+  it("rejects an id that could escape the jobs root, before touching disk", async () => {
+    const { jobs, outside } = await fixture();
+    for (const id of ["../outside", "a/b", "..", ""]) {
+      await expect(deleteJob(jobs, id)).rejects.toThrow(/invalid job id/);
+    }
+    expect(await exists(outside)).toBe(true);
+  });
+
+  it("404s a job directory that isn't there", async () => {
+    const { jobs } = await fixture();
+    await expect(deleteJob(jobs, "hhhh8888")).rejects.toThrow(/job not found/);
   });
 });
