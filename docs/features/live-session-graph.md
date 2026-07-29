@@ -48,8 +48,8 @@ parent did while the branch was in flight.
 - **Canvas** — the selected session's root box then its steps (`task` / `decision` / `tool` /
   `error` / `done`) folded boustrophedon-style, so a long run wraps instead of running off
   the right. Rows-per-fold follow the viewport: 1 (vertical, mobile), 3, 5, or 7. Drag to
-  pan, wheel to zoom about the cursor, plus **−**, **+**, **Fit**, and **Fullscreen** /
-  **Exit**. A spawn step is labelled by the agent type it started rather than its raw signature.
+  pan, wheel to zoom about the cursor, plus **Fit**, a larger-nodes toggle, and fullscreen.
+  A spawn step is labelled by the agent type it started rather than its raw signature.
 - **Subagent branches** — `layoutTree` recurses: a step that spawned a subagent hangs that
   subagent's own snake beneath its row inside an indented band, and the parent's later rows
   resume below the band, so what the parent did while the branch ran stays visible beside it.
@@ -114,7 +114,18 @@ parent did while the branch was in flight.
   the explicit control.
 - **Toolbar** — a live dot beside a count of sessions, the canvased session's steps, and its
   subagents with how many are in flight; a legend for **task**, **decision**, **tool**,
-  **subagent**, **error**, **done**.
+  **subagent**, **error**, **done**. Its controls are **Fit** and two icon toggles: larger
+  nodes, and fullscreen. There are no **−** / **+** buttons — zoom is the wheel (⌘-scroll or
+  pinch), which the **Fit** button's tooltip spells out, and the space they held went to the
+  larger-nodes toggle.
+- **Larger nodes** — steps are drawn as two-line gists by default, which is what fits a
+  compact box. The toggle re-lays the canvas out at a roomier box size (a step goes 168×64 →
+  320×216) and lifts the title clamp from 2 lines to 8, so a step's whole label reads on the
+  canvas instead of only in the drawer. Geometry is a `Sizes` preset threaded through
+  `layout` / `layoutTree` / `layoutRun` rather than module constants, so both sizes share one
+  layout path. Toggling deliberately does **not** refit: a refit would scale the bigger boxes
+  straight back down and cancel out the point, so the zoom is left alone and the boxes simply
+  grow on screen. **Fit** is there when the user does want to reframe.
 - **Staying live** — the page re-fetches `GET /api/sessions/graph` every 4 s (the dot lights
   while a fetch is in flight) and only refits the view when the session or fold width changes,
   so arriving steps never yank the viewport. Note this page polls; the SSE streams
@@ -146,7 +157,9 @@ left are simply absent from `threads`, and keep their transcript text.
 ## Acceptance criteria
 
 - [x] `/sessions/graph` renders one session's steps as a folding snake, full-bleed, with pan,
-      cursor-anchored zoom, **Fit**, and fullscreen.
+      cursor-anchored zoom, **Fit**, a larger-nodes toggle, and fullscreen.
+- [x] The larger-nodes toggle grows every box and unclamps its label so a step's whole text
+      reads on the canvas, and toggling back restores the compact layout.
 - [x] `spawnAgentType` / `isAgentSpawn` detect an `Agent(…)` / `Task(…)` step and read its
       `subagent_type`; a spawn with no recorded type still counts as a spawn.
 - [x] `linkAgentSessions` reconstructs parent, spawn index, agent type, return index, depth,

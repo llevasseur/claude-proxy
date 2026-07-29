@@ -1725,6 +1725,20 @@ button.link {
   font-weight: 600;
   -webkit-line-clamp: 2;
 }
+/* Larger nodes: boxes are laid out roomier, so let each label run past the compact clamp. */
+.graph-canvas.is-roomy .gnode {
+  gap: 5px;
+  padding: 12px 15px;
+}
+.graph-canvas.is-roomy .gnode-title {
+  font-size: 13.5px;
+  line-height: 1.45;
+  -webkit-line-clamp: 8;
+}
+.graph-canvas.is-roomy .gnode--root .gnode-title,
+.graph-canvas.is-roomy .gnode--agent .gnode-title {
+  -webkit-line-clamp: 5;
+}
 .gnode-sub {
   font-size: 10.5px;
   color: var(--muted);
@@ -1830,6 +1844,16 @@ button.link {
   cursor: pointer;
 }
 .graph-btns button:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+.graph-btns .graph-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+}
+.graph-btns .graph-icon-btn[aria-pressed="true"] {
   border-color: var(--signal);
   color: var(--signal);
 }
