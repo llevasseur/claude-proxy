@@ -139,6 +139,20 @@ export interface JobResponse {
   tree: JobTreeNode[];
   meta: { entries: number; truncated: boolean };
 }
+/** What a delete removed, as the directory read immediately before it went. */
+export interface JobDeleteResult {
+  id: string;
+  path: string;
+  files: number;
+  bytes: number;
+  name: string;
+  state: string;
+}
+export interface JobDeleteResponse {
+  deleted: JobDeleteResult;
+  /** The listing after the delete, so the page never re-renders the removed row. */
+  jobs: JobsResponse;
+}
 /** One file inside a job directory, as the pretty/raw viewer receives it. */
 export interface JobFileDetail {
   id: string;
@@ -354,7 +368,7 @@ async function get<T>(path: string): Promise<T> {
   return unwrap<T>(await fetch(`${API_BASE}${path}`));
 }
 
-/** The chat routes and the suggestion flags are the only writes the API accepts. */
+/** The chat routes, the suggestion flags and the job delete are the only writes the API accepts. */
 async function post<T>(path: string, body: unknown): Promise<T> {
   return unwrap<T>(
     await fetch(`${API_BASE}${path}`, {
@@ -389,6 +403,11 @@ export const getJob = (id: string) => get<JobResponse>(`/api/jobs/job?id=${encod
 /** One file from a job directory — `file` is a path relative to that directory. */
 export const getJobFile = (id: string, file: string) =>
   get<JobFileResponse>(`/api/jobs/file?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`);
+/**
+ * Delete one job directory from `~/.claude/jobs`. Really removes it — there is no
+ * trash to restore from. The server refuses a job that is still running.
+ */
+export const deleteJob = (id: string) => post<JobDeleteResponse>("/api/jobs/delete", { id });
 export const getSessions = () => get<SessionsResponse>("/api/sessions");
 export const getSessionsGraph = () => get<SessionsGraphResponse>("/api/sessions/graph");
 export const getSessionGraphNodes = (id: string) =>

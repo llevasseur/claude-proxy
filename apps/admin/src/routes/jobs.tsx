@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { jobStateTone, type JobTone } from "@claude-proxy/core";
-import type { JobSummary } from "../api";
-import { getJobs } from "../api";
+import type { JobDeleteResult, JobSummary } from "../api";
+import { deleteJob, getJobs } from "../api";
 import { QueryState } from "../components/QueryState";
 import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
 
@@ -14,6 +14,12 @@ import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
  * space for a background session, written by the daemon on the machine. Nothing here
  * passes through the proxy, so this page reports what is *on disk* — including the
  * directories left behind after their job is gone.
+ *
+ * It is also the one page that can *change* the disk: each row can delete its job
+ * directory outright. That is the point of the page — husks accumulate and nothing
+ * else reaps them — so the delete is real (`rm -r` on the directory, no trash to
+ * restore from), armed by a second click, and refused by the server while the job is
+ * still running.
  */
 
 /** Badge class per state tone; the tones themselves come from core. */
@@ -61,6 +67,12 @@ export function JobsPage() {
           <span className="rule-name">tmp/</span> holding whatever the run built. The daemon writes all of it locally,
           so unlike the rest of the dashboard none of it comes through the proxy. Directories whose job is gone stay
           behind, and are listed here as <strong>husks</strong>.
+        </div>
+        <div className="leak-note danger-note">
+          <strong>Deleting is permanent.</strong> The <span className="rule-name">Delete</span> on a row removes that
+          job's whole directory from <span className="rule-name">~/.claude/jobs</span> — its state, its timeline and
+          everything under its <span className="rule-name">tmp/</span>. There is no trash and no undo. A job that is
+          still running can't be deleted: stop it first, or its daemon loses the record it is writing.
         </div>
       </div>
 
@@ -126,7 +138,21 @@ function compare(a: JobSummary, b: JobSummary, key: SortKey): number {
 
 function JobsTable({ jobs }: { jobs: JobSummary[] }) {
   const navigate = useNavigate();
+  const client = useQueryClient();
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "activity", dir: "desc" });
+  /** The row whose delete is armed — one at a time, cleared on any outcome. */
+  const [armed, setArmed] = useState<string | null>(null);
+  const [deleted, setDeleted] = useState<JobDeleteResult | null>(null);
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteJob(id),
+    onSuccess: (res) => {
+      setArmed(null);
+      setDeleted(res.deleted);
+      // The server already re-listed after removing, so seed rather than refetch.
+      client.setQueryData(["jobs"], res.jobs);
+    },
+  });
 
   const sorted = useMemo(() => {
     const rows = [...jobs];
@@ -150,6 +176,17 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
         </h2>
         <span className="muted">click a column to sort · click a row to browse its files</span>
       </div>
+      {deleted && (
+        <div className="job-delete-done">
+          Deleted <strong>{deleted.name || deleted.id}</strong> — {fmtInt(deleted.files)} file
+          {deleted.files === 1 ? "" : "s"}, {fmtBytes(deleted.bytes)} freed from{" "}
+          <span className="rule-name">{deleted.path}</span>.
+          <button type="button" className="link" onClick={() => setDeleted(null)}>
+            dismiss
+          </button>
+        </div>
+      )}
+      {remove.error && <div className="job-delete-error">Delete failed — {(remove.error as Error).message}</div>}
       <table className="table">
         <thead>
           <tr>
@@ -159,6 +196,7 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
             <SortHeader label="Files" sortKey="files" sort={sort} onSort={onSort} className="num" />
             <SortHeader label="Size" sortKey="bytes" sort={sort} onSort={onSort} className="num" />
             <SortHeader label="Last active" sortKey="activity" sort={sort} onSort={onSort} className="num" />
+            <th className="job-delete-head" aria-label="Delete" />
           </tr>
         </thead>
         <tbody>
@@ -186,11 +224,77 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
               <td className="num">{fmtInt(job.files)}</td>
               <td className="num">{fmtBytes(job.bytes)}</td>
               <td className="num muted">{fmtLocalTsShort(job.activity)}</td>
+              <td className="job-delete-cell" onClick={(e) => e.stopPropagation()}>
+                <DeleteControl
+                  job={job}
+                  armed={armed === job.id}
+                  pending={remove.isPending && remove.variables === job.id}
+                  onArm={() => {
+                    setDeleted(null);
+                    remove.reset();
+                    setArmed(job.id);
+                  }}
+                  onCancel={() => setArmed(null)}
+                  onConfirm={() => remove.mutate(job.id)}
+                />
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * The per-row delete CTA. Two clicks, never one: the first arms the row and the
+ * second does it, because the thing on the other side is an `rm -r` of a directory
+ * with no copy anywhere. A running job has no armed state at all — the server would
+ * refuse it, so the button says why instead of failing after the fact.
+ */
+function DeleteControl({
+  job,
+  armed,
+  pending,
+  onArm,
+  onCancel,
+  onConfirm,
+}: {
+  job: JobSummary;
+  armed: boolean;
+  pending: boolean;
+  onArm: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const running = jobStateTone(job.state) === "busy";
+
+  if (running) {
+    return (
+      <button type="button" className="btn-danger" disabled title="still running — stop it before deleting">
+        Delete
+      </button>
+    );
+  }
+
+  if (!armed) {
+    return (
+      <button type="button" className="btn-danger" onClick={onArm} title={`Delete ${job.id} from ~/.claude/jobs`}>
+        Delete
+      </button>
+    );
+  }
+
+  return (
+    <span className="job-delete-confirm">
+      <span className="muted">Delete {fmtBytes(job.bytes)}?</span>
+      <button type="button" className="btn-danger armed" disabled={pending} onClick={onConfirm}>
+        {pending ? "Deleting…" : "Yes, delete"}
+      </button>
+      <button type="button" className="link" disabled={pending} onClick={onCancel}>
+        cancel
+      </button>
+    </span>
   );
 }
 
