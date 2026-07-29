@@ -2360,8 +2360,8 @@ button.gi-open {
   display: grid;
   place-items: center;
 }
-/* Centred in the pane, so the block padding has to be even — the log's asymmetric
-   bottom padding would otherwise ride the empty state a few pixels high. */
+/* Even block padding for the centered state — the log's asymmetric bottom padding
+   would otherwise ride it high. */
 .chat-panel--fill .chat-log--empty {
   padding-block: 12px;
 }
