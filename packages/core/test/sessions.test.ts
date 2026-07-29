@@ -695,8 +695,6 @@ describe("mergeSessionNodes", () => {
 
   it("keeps expanding the run past a step the two record differently", () => {
     // The streams are the same length and line up one-to-one, but step 1's texts disagree.
-    // Advancing only the transcript would leave the request a step behind for good, so every
-    // step after the hiccup would fall back to its gist.
     const transcript: SessionNode[] = [
       node({ index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" }),
       node({ index: 1, type: "decision", text: "A line the request words otherwise", tool: null, task: "Do the thing" }),

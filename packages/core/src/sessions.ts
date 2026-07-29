@@ -319,9 +319,8 @@ export interface SessionNode {
   /** True when the run was cut off *at* this step: the interruption landed right after it. */
   interrupted: boolean;
   /**
-   * Index into the captured request's `messages[]` this step was read from — the handle the
-   * Request breakdown's message drill-down takes. Null on a step read back off a transcript,
-   * which records no such position.
+   * Index into the captured request's `messages[]` this step was read from. Null on a step
+   * read back off a transcript, which records no such position.
    */
   message: number | null;
 }
@@ -809,10 +808,8 @@ const pairs = (step: SessionNode, cand: SessionNode): boolean =>
   cand.type === step.type && isSameStep(step.text, cand.text);
 
 /**
- * How far the two streams may drift apart before the merge stops looking for its place again.
- * Drift comes from whole turns one side holds and the other doesn't, so it is measured in
- * steps, not characters; past this the streams are treated as unrelated and the transcript
- * carries the rest alone.
+ * How far apart in steps the two streams may drift before the merge stops looking for its
+ * place again; past this the transcript carries the rest alone.
  */
 const RESYNC_WINDOW = 24;
 
@@ -849,9 +846,7 @@ function resync(
  * mid-thread and shift everything after them), and a step whose text the two record
  * differently pairs with nothing at all. So the walk re-synchronizes rather than running in
  * lockstep: on a mismatch it looks ahead on *both* sides for where the streams meet again,
- * hands the steps in between their transcript text, and carries on from there. Advancing only
- * the transcript would strand every later request step behind one bad pairing, which is the
- * difference between a graph that reads whole and one that reverts to gists partway down.
+ * hands the steps in between their transcript text, and carries on from there.
  */
 export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNode[]): SessionNode[] {
   if (derived.length === 0) return transcript;
@@ -872,8 +867,8 @@ export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNod
     }
     const at = resync(transcript, t, derived, d);
     if (!at) break;
-    // Unpaired transcript steps keep their gist; unpaired derived steps have no index to sit
-    // at, since the linkage counts transcript positions, so they go unplaced.
+    // Unpaired transcript steps keep their gist; unpaired derived steps have no transcript
+    // position to sit at, so they go unplaced.
     for (; t < at.t; t++) merged.push(transcript[t]!);
     d = at.d;
   }

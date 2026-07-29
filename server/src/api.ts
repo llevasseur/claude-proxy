@@ -706,8 +706,7 @@ export async function buildSessionGraphNodes(
 
   // A family's requests never predate its earliest transcript. That start is a UTC instant,
   // but `readSidecars` narrows by *reporting* day, so a session opened after midnight UTC
-  // reports on the day before its own timestamp — and a floor taken straight off the prefix
-  // would exclude every request the family ever made. Back it off a day to cover the offset.
+  // reports on the day before its own timestamp — back the floor off a day to cover it.
   const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
   const since = starts.length > 0 ? shiftDay(starts.sort()[0]!.slice(0, 10), -1) : undefined;
 

@@ -48,9 +48,8 @@ describe("threadIdForBody", () => {
 });
 
 // A session opened after midnight UTC but before it in the reporting zone: the transcript's
-// `started` reads 07-29 while every request it makes reports on 07-28. Taking the scan's
-// floor straight off that UTC prefix put the whole family outside the window, so the graph
-// found no captured request at all and every step stayed at its transcript gist.
+// `started` reads 07-29 while every request it makes reports on 07-28, so a scan floor taken
+// straight off that UTC prefix puts the whole family outside the window.
 const SESSION = "be4b71b3-ccaf-4350-b1aa-b0cf0218897a";
 const BODY = {
   messages: [
@@ -105,7 +104,7 @@ describe("buildSessionGraphNodes", () => {
     const { threads } = await buildSessionGraphNodes(dir, THREAD, new Date("2026-07-29T03:00:00.000Z"));
 
     expect(threads.map((t) => t.threadId)).toEqual([THREAD]);
-    // And the steps come back whole, which is the point of finding the request at all.
+    // And the steps come back whole.
     expect(threads[0]?.nodes.map((n) => n.text)).toEqual([
       "Fix the login bug",
       "Bash(command=npm test --runInBand --verbose)",

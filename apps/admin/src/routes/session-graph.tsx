@@ -1315,10 +1315,9 @@ function InspectorBody({
 }
 
 /**
- * The turn a step was read out of, whole — the same message the Request breakdown's
- * drill-down shows, so the drawer holds a step's full tool input and result rather than only
- * the one line the step stream keeps of it. Fetched per open drawer and clamped like any
- * other long value; a request that has since rotated away simply omits the field.
+ * The turn a step was read out of, whole — the same message the Request breakdown's drill-down
+ * shows, rather than the one line the step stream keeps of it. Fetched per open drawer and
+ * clamped like any other long value; a request that has since rotated away omits the field.
  */
 function RequestMessage({ file, index }: { file: string; index: number }) {
   const query = useQuery({
