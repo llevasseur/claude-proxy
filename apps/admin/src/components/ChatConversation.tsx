@@ -101,6 +101,8 @@ export function ChatConversation({
           </div>
         )}
 
+        {footnote && <div className="muted chat-footnote">{footnote}</div>}
+
         <PromptInput
           value={draft}
           onValueChange={setDraft}
@@ -127,8 +129,6 @@ export function ChatConversation({
           )}
           {footExtras}
         </div>
-
-        {footnote && <div className="muted chat-footnote">{footnote}</div>}
       </div>
     </div>
   );
