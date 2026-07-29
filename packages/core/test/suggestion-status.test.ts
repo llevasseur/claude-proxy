@@ -2,25 +2,28 @@ import { describe, expect, it } from "vitest";
 import type { SessionBucket } from "../src/suggestions.js";
 import {
   applySuggestionStatusUpdates,
+  countSuggestionRecurrences,
   countSuggestionStatuses,
   emptySuggestionStatusStore,
   parseBucketRange,
   parseSuggestionStatusStore,
   parseSuggestionStatusUpdates,
+  ruleResolutions,
+  suggestionRecurrence,
   suggestionStatusOf,
   suggestionStatusRows,
 } from "../src/suggestion-status.js";
 
 /** A bucket carrying just what the status join reads off it. */
-function bucket(index: number, ids: string[]): SessionBucket {
+function bucket(index: number, ids: string[], span?: { first: string; last: string }): SessionBucket {
   const from = (index - 1) * 10 + 1;
   return {
     index,
     from,
     to: from + 9,
     label: `${from}–${from + 9}`,
-    startedFirst: null,
-    startedLast: null,
+    startedFirst: span?.first ?? null,
+    startedLast: span?.last ?? null,
     threadIds: [],
     stats: {
       sessions: 10,
@@ -166,5 +169,113 @@ describe("parseSuggestionStatusUpdates", () => {
     expect(() => parseSuggestionStatusUpdates([{ bucket: 1, id: "", status: "done" }])).toThrow(/updates\[0\].id/);
     expect(() => parseSuggestionStatusUpdates([{ bucket: 1, id: "a", status: "finished" }])).toThrow(/updates\[0\].status/);
     expect(() => parseSuggestionStatusUpdates([{ bucket: 1, id: "a", status: "done", note: 7 }])).toThrow(/updates\[0\].note/);
+  });
+});
+
+// A window is frozen, so "the rule still trips" only means something once you know
+// whether the sessions it tripped on were recorded before or after the fix landed.
+describe("recurrence against a dated fix", () => {
+  const fixedAt = new Date("2026-07-20T00:00:00.000Z");
+  const before = { first: "2026-07-01T00:00:00.000Z", last: "2026-07-05T00:00:00.000Z" };
+  const straddling = { first: "2026-07-15T00:00:00.000Z", last: "2026-07-25T00:00:00.000Z" };
+  const after = { first: "2026-07-22T00:00:00.000Z", last: "2026-07-28T00:00:00.000Z" };
+
+  const dated = [
+    bucket(1, ["serial-discovery"], before),
+    bucket(2, ["serial-discovery"], straddling),
+    bucket(3, ["serial-discovery", "redundant-reads"], after),
+  ];
+  const fixed = applySuggestionStatusUpdates(
+    emptySuggestionStatusStore(),
+    [{ bucket: 1, id: "serial-discovery", status: "done", note: "PR #84" }],
+    fixedAt,
+  );
+
+  it("carries one window's mark across every window, dated", () => {
+    const rows = suggestionStatusRows(dated, fixed);
+    expect(rows.map((r) => `${r.bucket}/${r.id}:${r.recurrence}`)).toEqual([
+      "1/serial-discovery:historical",
+      "2/serial-discovery:mixed",
+      "3/serial-discovery:regressed",
+      "3/redundant-reads:none",
+    ]);
+  });
+
+  it("names the claim a regression broke, so it is not mistaken for a new finding", () => {
+    const [regressed] = suggestionStatusRows(dated, fixed, { buckets: [3], recurrences: ["regressed"] });
+    expect(regressed).toMatchObject({ bucket: 3, id: "serial-discovery", status: "pending", recurrence: "regressed" });
+    expect(regressed?.resolved).toEqual({ bucket: 1, updated: fixedAt.toISOString(), note: "PR #84" });
+  });
+
+  it("leaves an unclaimed rule alone — no recurrence, no claim", () => {
+    const [row] = suggestionStatusRows(dated, fixed, { buckets: [3], statuses: ["pending"], recurrences: ["none"] });
+    expect(row).toMatchObject({ id: "redundant-reads", recurrence: "none" });
+    expect(row?.resolved).toBeUndefined();
+  });
+
+  it("treats skipped as a decision, not a claim, so nothing regresses off it", () => {
+    const skipped = applySuggestionStatusUpdates(
+      emptySuggestionStatusStore(),
+      [{ bucket: 1, id: "serial-discovery", status: "skipped" }],
+      fixedAt,
+    );
+    expect(ruleResolutions(skipped).size).toBe(0);
+    expect(suggestionStatusRows(dated, skipped).every((r) => r.recurrence === "none")).toBe(true);
+  });
+
+  it("ignores an undated flag rather than inventing a regression from it", () => {
+    const undated = parseSuggestionStatusStore({
+      version: 1,
+      buckets: { "1": { "serial-discovery": { status: "done" } } },
+    });
+    expect(undated.buckets["1"]?.["serial-discovery"]?.updated).toBe("");
+    expect(ruleResolutions(undated).size).toBe(0);
+    expect(suggestionStatusRows(dated, undated).every((r) => r.recurrence === "none")).toBe(true);
+  });
+
+  it("cannot place a window whose sessions carry no start", () => {
+    const rows = suggestionStatusRows([bucket(1, ["serial-discovery"])], fixed);
+    expect(rows[0]?.recurrence).toBe("none");
+  });
+
+  it("keeps the most recent done when several windows carry one", () => {
+    const again = applySuggestionStatusUpdates(
+      fixed,
+      [{ bucket: 2, id: "serial-discovery", status: "done", note: "PR #91" }],
+      new Date("2026-07-27T00:00:00.000Z"),
+    );
+    expect(ruleResolutions(again).get("serial-discovery")).toEqual({
+      bucket: 2,
+      updated: "2026-07-27T00:00:00.000Z",
+      note: "PR #91",
+    });
+    // Bucket 3 ran 07-22 → 07-28, so it now straddles the later claim rather than following it.
+    const rows = suggestionStatusRows(dated, again, { buckets: [3], recurrences: ["mixed"] });
+    expect(rows.map((r) => r.id)).toEqual(["serial-discovery"]);
+  });
+
+  it("counts a session recorded at the moment of the mark as before it", () => {
+    const claim = { bucket: 1, updated: fixedAt.toISOString() };
+    expect(suggestionRecurrence({ startedFirst: before.first, startedLast: claim.updated }, claim)).toBe("historical");
+    expect(suggestionRecurrence({ startedFirst: claim.updated, startedLast: after.last }, claim)).toBe("regressed");
+    expect(suggestionRecurrence({ startedFirst: before.first, startedLast: after.last }, undefined)).toBe("none");
+  });
+
+  it("counts each recurrence state over the rows it returned", () => {
+    expect(countSuggestionRecurrences(suggestionStatusRows(dated, fixed))).toEqual({
+      none: 1,
+      historical: 1,
+      mixed: 1,
+      regressed: 1,
+    });
+  });
+
+  it("filters out the windows a fix predates, which is what leaves only actionable work", () => {
+    const rows = suggestionStatusRows(dated, fixed, { recurrences: ["none", "mixed", "regressed"] });
+    expect(rows.map((r) => `${r.bucket}/${r.id}`)).toEqual([
+      "2/serial-discovery",
+      "3/serial-discovery",
+      "3/redundant-reads",
+    ]);
   });
 });
