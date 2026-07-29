@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Read-only API over the proxy's audit logs, plus a headless daily-summary job.",
+  "description": "API over proxy logs with scoped local writes, plus a headless daily-summary job.",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",

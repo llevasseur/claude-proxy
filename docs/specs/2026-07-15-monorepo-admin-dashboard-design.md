@@ -13,25 +13,23 @@ timestamp: 2026-07-15
 **Builds on:** [`docs/2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md)
 **Decision record:** [`adrs/0002-monorepo-with-pnpm-tanstack-and-node.md`](../adrs/0002-monorepo-with-pnpm-tanstack-and-node.md)
 
-**Current state (2026-07-24):** shipped, with three departures from this spec. The proxy is no
-longer a byte-for-byte pass-through — it strips withheld tool schemas (`EndConversation`) and
-harness-injected reminders from outbound requests (`proxy/proxy.mjs`,
-`packages/core/src/filters.ts`); it is still zero-dependency and runs under bare `node`.
-Session-level attribution, listed out of scope below, was later built (`proxy/session.mjs`,
-`packages/core/src/sessions.ts`, the `/api/sessions*` routes) — see
-[Session transcripts](../features/session-transcripts.md). The proxy now carries its own
-`node --test` suite, so `packages/core` is no longer the only tested code. The server has grown
-from the four read-only routes below to 22 (20 JSON + 2 SSE streams); the
-[admin dashboard feature doc](../features/admin-dashboard-for-claude-proxy-usage.md) tracks the
-current surface. Read the rest as point-in-time design history.
+**Current state (2026-07-28):** shipped with several departures. The zero-dependency,
+bare-`node` proxy now strips `EndConversation` and harness-injected reminders
+(`proxy/proxy.mjs`, `packages/core/src/filters.ts`). Session attribution was added via
+`proxy/session.mjs`, `packages/core/src/sessions.ts`, and `/api/sessions*`; see
+[Session transcripts](../features/session-transcripts.md). The proxy has a `node --test`
+suite, so `packages/core` is no longer the only tested code. The server grew beyond
+these four read-only routes to scoped chat and
+suggestion-status writes, superseding ADR 0002's read-only clause; see
+[ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md).
+The [dashboard feature](../features/admin-dashboard-for-claude-proxy-usage.md) tracks
+current behavior; the rest is point-in-time design history.
 
 ## Goal
 
-Turn the single-file `claude-proxy` repo into a **pnpm monorepo** with a **Node API backend**
-and a **TanStack admin dashboard frontend**. The dashboard reads the `.audit.json` sidecars the
-proxy already writes and surfaces **usage, trends, and advice** — the same four insight areas as
-the daily-summary spec (token burn & cost, context-bloat culprits, activity, coaching), but as a
-live browser dashboard rather than a once-daily macOS notification.
+Turn `claude-proxy` into a **pnpm monorepo** with a **Node API** and **TanStack
+dashboard** over its `.audit.json` sidecars, surfacing the daily-summary spec's four
+areas—token burn/cost, context bloat, activity, and coaching—in a live browser.
 
 The proxy stays a transparent, zero-dependency pass-through (unchanged behavior). All new analysis
 is read-only over the logs it produces. No credentials are ever read or stored.
@@ -68,16 +66,14 @@ claude-proxy/                 (monorepo root — pnpm workspaces)
   logs/                       proxy capture output (gitignored)
 ```
 
-**Why proxy and server are separate packages:** they are separate processes with separate
-concerns. The proxy is a load-bearing, always-up, zero-dep pass-through that must never gain
-dependencies or crash risk. The server is a read-only analysis API that can restart freely. They
-communicate only through the `logs/` directory on disk.
+**Why proxy and server are separate:** the load-bearing, always-up, zero-dependency
+proxy must not gain dependencies or crash risk; the read-only analysis server can restart.
+They communicate only through `logs/`.
 
 ## Package manager & tooling
 
-- **pnpm workspaces** (pnpm 11, installed). Root `package.json` declares workspaces; each package
-  has its own `package.json`. No Turborepo — 4 packages don't need a task-graph orchestrator; root
-  scripts fan out with `pnpm -r`.
+- **pnpm workspaces** (pnpm 11, installed). Root and package `package.json` files define
+  workspaces; four packages need no Turborepo, and root scripts use `pnpm -r`.
 - **TypeScript** for `packages/core`, `server`, and `apps/admin`. The proxy stays plain `.mjs`
   (zero-dep, no build step) to preserve its "runs with bare `node`" guarantee.
 - **vitest** for unit tests (fast, TS-native, works in `packages/core`).
@@ -86,7 +82,7 @@ communicate only through the `logs/` directory on disk.
 
 ### `packages/core` — pure analysis library (the heart, fully tested)
 
-Extracts the deterministic logic from the daily-summary spec into a reusable, unit-tested module.
+Reusable, unit-tested deterministic logic from the daily-summary spec.
 
 - **`types.ts`** — the `AuditSidecar` TypeScript type, matching exactly what `proxy.mjs` writes
   (`timestamp`, `model`, `endpoint`, `statusCode`, `tokens{…}`, `request{…}`, `tools[]`).
@@ -109,8 +105,8 @@ Extracts the deterministic logic from the daily-summary spec into a reusable, un
 
 - Reads `.audit.json` sidecars from `LOG_DIR` (env, default `../logs` relative to repo root, i.e.
   the proxy's real output dir). Uses `packages/core` for all computation.
-- Built on **Node's built-in `http`** with a tiny router (keeps deps minimal, matches repo ethos;
-  no framework needed for a handful of read-only JSON routes). CORS enabled for the dev SPA.
+- Built on **Node's built-in `http`** with a tiny router; no framework is needed for four
+  read-only JSON routes. CORS is enabled for the dev SPA.
 - Routes (all `--json`-style, read-only):
   - `GET /api/health` — liveness + resolved `LOG_DIR` + sidecar count.
   - `GET /api/summary?date=YYYY-MM-DD` — one day's `UsageDigest` + advice (defaults to today; trend
@@ -123,7 +119,7 @@ Extracts the deterministic logic from the daily-summary spec into a reusable, un
 
 ### `apps/admin` — TanStack dashboard
 
-- **Vite + React + TanStack Router (code-defined route tree) + TanStack Query** (data fetching/caching).
+- **Vite + React + TanStack Router** (code-defined routes) + **TanStack Query**.
 - Talks to the server API (base URL via `VITE_API_BASE`, default `http://localhost:8788`).
 - Views:
   - **Overview** — today's token burn & est. cost, cache-hit ratio, request count, busiest hour,
