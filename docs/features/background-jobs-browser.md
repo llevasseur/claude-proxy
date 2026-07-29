@@ -15,6 +15,8 @@ Two pages in the [admin dashboard](admin-dashboard-for-claude-proxy-usage.md) ov
 **Jobs** (`/jobs`) lists every one of them device-wide, whichever project it ran in; a job's
 page (`/jobs/$id`) shows what its `state.json` says and presents the directory as a browsable
 **folder tree**, where selecting any file opens it in a viewer with a **Pretty / Raw** toggle.
+The listing can also **delete** a job — really remove its directory from `~/.claude/jobs` — which
+is the one place in the dashboard that changes the disk rather than reporting on it.
 
 Like the [config inventory](config-inventory.md) and the
 [project memory browser](project-memory-browser.md), and unlike the rest of the dashboard, this
@@ -54,6 +56,15 @@ escapes *were* the problem, that the JSON does not actually parse — you need t
   busy, `done` as done, `failed` as failed, and anything unrecognised stays neutral instead of
   being forced into one of them. A directory with no readable `state.json` is still listed, as a
   **husk**: its job is gone, its scratch space isn't, and hiding it would misreport the disk.
+- **Delete** — each row carries a `Delete` that removes that job's directory and everything under
+  it. Husks accumulate and nothing else reaps them, so listing them without a way to act is half a
+  feature. It is a real `rm -r` with no trash behind it, so the control is deliberately awkward in
+  proportion: the first click *arms* the row (`Delete 4.2 MB?` / `Yes, delete` / `cancel`), only
+  one row is armed at a time, and a job the server would refuse is disabled up front rather than
+  failing after the click. What was removed is then stated — name, file count, bytes freed and the
+  path — above the table it just changed. A **running** job cannot be deleted at all: its daemon is
+  still writing there, and pulling the directory out from under it destroys the run's own record of
+  itself. Stop it first.
 - **A job** (`/jobs/$id`) — **State / Files / Started / Last write** tiles, then a **Job** card
   with the prompt it was given and a field grid (state, detail, working directory, agent, model,
   template, backend, session id, when it first finished). **What it produced** lists the links
@@ -87,8 +98,9 @@ directory and reads files (`server/src/jobs.ts`); the shaping is pure and lives 
 `packages/core/src/jobs.ts`, and the viewer transforms `stripAnsi`, `prettifyLog`,
 `formatJsonText`, `codeSyntax` and `highlightSource` in `packages/core/src/code-view.ts`. The
 jobs directory is `~/.claude/jobs`, overridable with `CLAUDE_JOBS`. Endpoints are `GET /api/jobs`
-(the list), `GET /api/jobs/job?id=` (state + tree) and `GET /api/jobs/file?id=&file=` (one
-file's contents).
+(the list), `GET /api/jobs/job?id=` (state + tree), `GET /api/jobs/file?id=&file=` (one
+file's contents) and `POST /api/jobs/delete` (remove one directory). The delete replies with the
+refreshed listing as well as what it removed, so the page never re-renders a row that is gone.
 
 `highlightSource` is deliberately a tokenizer over *conventions*, not languages — `c-like`
 (`//`, `/* */`, back-tick strings), `hash` (`#` comments), `json` (keys apart from values) and
@@ -109,11 +121,21 @@ and the read is confined to the job directory three ways over:
   to read the rest of the filesystem. Both sides are resolved so a symlinked home does not read
   as an escape.
 
-Everything is read-only: `server/src/jobs.ts` only `readdir`/`stat`/`readFile`/`realpath`, there
-is no write path to `~/.claude/jobs`, and the routes are GETs under the same read-only CORS as
-their neighbours. Text is capped at 512 KB (marked truncated) and an inlined image at 4 MB, so no
-single file can exhaust the response. A file whose bytes contain a NUL is reported as binary and
-not read out, regardless of what its extension claimed.
+Every read is read-only: `server/src/jobs.ts` uses only `readdir`/`stat`/`readFile`/`realpath` for
+them, and the read routes are GETs under the same open CORS as their neighbours. Text is capped at
+512 KB (marked truncated) and an inlined image at 4 MB, so no single file can exhaust the response.
+A file whose bytes contain a NUL is reported as binary and not read out, regardless of what its
+extension claimed.
+
+**Delete is the one write, and it is fenced accordingly.** `POST /api/jobs/delete` goes through the
+origin-checked write CORS the chat routes use, not the read routes' `*` — a wildcard origin on a
+destructive route would let any page open in the browser wipe the device's job history. Before
+`rm -r` runs, `deleteJob` re-establishes the target from scratch: the id passes the same
+`^[0-9A-Za-z][0-9A-Za-z._-]*$` check and direct-child test, an `lstat` refuses a **symlinked job
+directory** outright (removing the link would leave the target; following it would delete outside
+the root), and the realpath'd directory is confirmed to still be a direct child of the realpath'd
+jobs root. A job whose state reads as `busy` is refused with a 409. Bad or missing id is a 400, a
+directory that isn't there a 404.
 
 ## Acceptance criteria
 
@@ -132,6 +154,13 @@ not read out, regardless of what its extension claimed.
       pretty).
 - [x] A `..` in the id or the file path, and a symlink pointing outside the job, are all refused
       with a 400 rather than read.
+- [x] A row can delete its job directory, and the directory is actually gone from `~/.claude/jobs`
+      afterwards — contents included.
+- [x] The delete takes two clicks, states what it removed, and refreshes the listing from the same
+      response.
+- [x] A running job cannot be deleted (disabled in the UI, 409 from the API), and a symlinked job
+      directory is refused rather than followed.
+- [x] The delete route is POST-only under the origin-checked write CORS, not the read routes' `*`.
 - [x] A half-written `state.json` or `timeline.jsonl` degrades to a husk / a skipped-line count
       instead of failing the page.
 - [x] Core's job shaping, tree building and viewer transforms are unit-tested, the server's walk

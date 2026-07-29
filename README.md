@@ -319,9 +319,18 @@ strips terminal escapes and progress redraws out of a build log, numbers and
 colours source, and inlines a screenshot; raw is the bytes on disk, for when you
 suspect the pretty view of hiding something.
 
+Each row also carries a **Delete** (`POST /api/jobs/delete`) that removes that job's
+directory and everything under it — husks pile up and nothing else clears them.
+It is a real `rm -r` with no trash behind it, so the first click arms the row and
+the second does it, and the reply carries the refreshed listing plus what was
+freed. A **running** job can't be deleted: its daemon is still writing there, so
+the button is disabled and the API answers 409. Stop it first.
+
 Reading is confined to the job directory — the id and every path segment are
 validated, and the resolved path is `realpath`'d and re-checked, so a symlink left
-in a job's `tmp/` can't read the rest of the filesystem. Point it elsewhere with
+in a job's `tmp/` can't read the rest of the filesystem. The delete re-runs that
+check and refuses a symlinked job directory outright, and unlike the read routes it
+answers only POST under the origin-checked write CORS. Point it elsewhere with
 `CLAUDE_JOBS=/path/to/jobs`.
 
 Prefer the terminal? The same digest + advice as a one-shot text report:
@@ -344,6 +353,7 @@ pnpm --filter server summary 2026-07-14   # a specific day
 | `GET /api/jobs` | every background job directory under `~/.claude/jobs`, newest activity first |
 | `GET /api/jobs/job?id=` | one job's state plus its directory as a folder tree |
 | `GET /api/jobs/file?id=&file=` | one file inside a job directory, for the pretty/raw viewer |
+| `POST /api/jobs/delete` | delete one job directory from `~/.claude/jobs` (`{ id }`); refuses a running job |
 
 ## Ports
 
