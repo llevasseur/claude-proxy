@@ -9,6 +9,7 @@ import type {
   JobTreeNode,
   LaunchAlias,
   LaunchAliasPosture,
+  LinkedSessionError,
   PluginRow,
   ProxyFilterEntry,
   RequestBreakdown,
@@ -17,7 +18,6 @@ import type {
   SessionAgentLink,
   SessionBucket,
   SessionContextPeak,
-  SessionError,
   SessionMeta,
   SessionNode,
   SessionSuggestion,
@@ -217,7 +217,7 @@ export interface SessionResponse {
 export interface SessionErrorsResponse {
   threadId: string;
   meta: SessionMeta;
-  errors: SessionError[];
+  errors: LinkedSessionError[];
 }
 /** The session's largest captured request — the handle for its Request breakdown page. */
 export interface SessionBreakdownResponse extends SessionContextPeak {

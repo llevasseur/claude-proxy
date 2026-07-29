@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveRequestErrors,
   deriveSessionName,
   deriveSessionNodes,
   firstUserText,
@@ -7,6 +8,7 @@ import {
   isAgentSpawn,
   isSameStep,
   linkAgentSessions,
+  linkRequestErrors,
   mergeSessionNodes,
   parseSessionErrors,
   parseSessionNodes,
@@ -16,14 +18,16 @@ import {
   spawnAgentType,
   splitInterruption,
   type LinkableSession,
+  type SessionError,
   type SessionMeta,
   type SessionNode,
 } from "../src/sessions.js";
 
 /** A node fixture, with the interruption fields these cases don't exercise defaulted off. */
-const node = (n: Omit<SessionNode, "interruption" | "interrupted">): SessionNode => ({
+const node = (n: Omit<SessionNode, "interruption" | "interrupted" | "message"> & { message?: number | null }): SessionNode => ({
   interruption: null,
   interrupted: false,
+  message: null,
   ...n,
 });
 
@@ -689,6 +693,46 @@ describe("mergeSessionNodes", () => {
     expect(merged[2]?.text).toBe("Reading the handler first, then the router."); // and the tail still expands
   });
 
+  it("keeps expanding the run past a step the two record differently", () => {
+    // The streams are the same length and line up one-to-one, but step 1's texts disagree.
+    const transcript: SessionNode[] = [
+      node({ index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" }),
+      node({ index: 1, type: "decision", text: "A line the request words otherwise", tool: null, task: "Do the thing" }),
+      node({ index: 2, type: "decision", text: "Reading the handler fir…", tool: null, task: "Do the thing" }),
+      node({ index: 3, type: "decision", text: "Then editing the rout…", tool: null, task: "Do the thing" }),
+    ];
+    const derived: SessionNode[] = [
+      node({ index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" }),
+      node({ index: 1, type: "decision", text: "Worded another way entirely", tool: null, task: "Do the thing" }),
+      node({ index: 2, type: "decision", text: "Reading the handler first, then the router.", tool: null, task: "Do the thing" }),
+      node({ index: 3, type: "decision", text: "Then editing the router itself.", tool: null, task: "Do the thing" }),
+    ];
+
+    const merged = mergeSessionNodes(transcript, derived);
+    expect(merged.map((n) => n.index)).toEqual([0, 1, 2, 3]);
+    expect(merged[1]?.text).toBe("A line the request words otherwise"); // unpaired, so it keeps its own
+    expect(merged[2]?.text).toBe("Reading the handler first, then the router.");
+    expect(merged[3]?.text).toBe("Then editing the router itself.");
+  });
+
+  it("carries the request message each expanded step was read from", () => {
+    const transcript: SessionNode[] = [
+      node({ index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" }),
+      node({ index: 1, type: "tool", text: "Read(file_path=/auth.ts)", tool: "Read(file_path=/auth.ts)", task: "Do the thing" }),
+    ];
+    const derived = derivedFor({
+      messages: [
+        { role: "user", content: "Do the thing" },
+        { role: "assistant", content: [{ type: "tool_use", name: "Read", input: { file_path: "/auth.ts" } }] },
+      ],
+    });
+
+    const merged = mergeSessionNodes(transcript, derived);
+    expect(merged.map((n) => n.message)).toEqual([0, 1]);
+    // A step with no captured request behind it has no message to point at.
+    expect(mergeSessionNodes(transcript, []).map((n) => n.message)).toEqual([null, null]);
+  });
+
   it("expands a tool call whose gist was cut inside its parens", () => {
     const gisted = 'Bash(command=grep -n "session" server/src/chat.ts | head…)';
     const full = 'Bash(command=grep -n "session" server/src/chat.ts | head -50 && echo done)';
@@ -721,5 +765,119 @@ describe("mergeSessionNodes", () => {
   it("leaves the transcript untouched when there is nothing to lay over it", () => {
     const transcript = parseSessionNodes(TRANSCRIPT);
     expect(mergeSessionNodes(transcript, [])).toBe(transcript);
+  });
+});
+
+describe("deriveRequestErrors", () => {
+  it("locates each errored result at the message that carries it", () => {
+    const sites = deriveRequestErrors({
+      messages: [
+        { role: "user", content: "Go" },
+        { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "false" } }] },
+        { role: "user", content: [{ type: "tool_result", is_error: true, content: "boom" }] },
+        { role: "assistant", content: [{ type: "text", text: "Recovered." }] },
+        { role: "user", content: [{ type: "tool_result", is_error: true, content: "second failure" }] },
+      ],
+    });
+
+    expect(sites).toEqual([
+      { messageIndex: 2, text: "boom" },
+      { messageIndex: 4, text: "second failure" },
+    ]);
+  });
+
+  it("keeps both results when one turn returns two failures", () => {
+    const sites = deriveRequestErrors({
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", is_error: true, content: "first" },
+            { type: "tool_result", is_error: true, content: "second" },
+          ],
+        },
+      ],
+    });
+
+    expect(sites).toEqual([
+      { messageIndex: 0, text: "first" },
+      { messageIndex: 0, text: "second" },
+    ]);
+  });
+
+  it("ignores results that succeeded, and assistant turns entirely", () => {
+    const sites = deriveRequestErrors({
+      messages: [
+        { role: "user", content: [{ type: "tool_result", content: "fine" }] },
+        { role: "user", content: [{ type: "tool_result", is_error: false, content: "also fine" }] },
+        { role: "assistant", content: [{ type: "tool_result", is_error: true, content: "wrong role" }] },
+      ],
+    });
+
+    expect(sites).toEqual([]);
+  });
+
+  it("reads a result whose content is a nested block array, and yields none for a bad body", () => {
+    const [site] = deriveRequestErrors({
+      messages: [
+        { role: "user", content: [{ type: "tool_result", is_error: true, content: [{ type: "text", text: "nested boom" }] }] },
+      ],
+    });
+
+    expect(site).toEqual({ messageIndex: 0, text: "nested boom" });
+    expect(deriveRequestErrors({})).toEqual([]);
+    expect(deriveRequestErrors(null)).toEqual([]);
+  });
+});
+
+describe("linkRequestErrors", () => {
+  const err = (index: number, text: string): SessionError => ({ index, task: null, tool: null, text });
+
+  it("gives each transcript error the message its full result sits in", () => {
+    const linked = linkRequestErrors(
+      [err(0, "ENOENT: no such file"), err(1, "boom")],
+      [
+        { messageIndex: 2, text: "ENOENT: no such file" },
+        { messageIndex: 6, text: "boom" },
+      ],
+    );
+
+    expect(linked).toEqual([2, 6]);
+  });
+
+  it("matches a transcript line the proxy had gisted", () => {
+    const full = `Command failed: ${"x".repeat(300)}`;
+    const gisted = `${full.slice(0, 159)}…`;
+
+    expect(linkRequestErrors([err(0, gisted)], [{ messageIndex: 4, text: full }])).toEqual([4]);
+  });
+
+  it("links only the errors the request still covers", () => {
+    // The request went out before the second failure happened.
+    const linked = linkRequestErrors(
+      [err(0, "first"), err(1, "second")],
+      [{ messageIndex: 3, text: "first" }],
+    );
+
+    expect(linked).toEqual([3, null]);
+  });
+
+  it("skips past the errors a compacted request dropped", () => {
+    // The body opens after the first failure, so its sites start mid-transcript.
+    const linked = linkRequestErrors(
+      [err(0, "first"), err(1, "second"), err(2, "third")],
+      [
+        { messageIndex: 1, text: "second" },
+        { messageIndex: 5, text: "third" },
+      ],
+    );
+
+    expect(linked).toEqual([null, 1, 5]);
+  });
+
+  it("links nothing when the request has no errors, or the texts never line up", () => {
+    expect(linkRequestErrors([err(0, "boom")], [])).toEqual([null]);
+    expect(linkRequestErrors([err(0, "boom")], [{ messageIndex: 2, text: "unrelated" }])).toEqual([null]);
+    expect(linkRequestErrors([], [{ messageIndex: 2, text: "boom" }])).toEqual([]);
   });
 });

@@ -7,7 +7,7 @@ proxy captures.
 ```
 proxy/          zero-dep capture proxy (the original proxy.mjs)
 packages/core/  pure, tested library: usage digest, cost, advice
-server/         read-only Node API over the logs + daily-summary CLI
+server/         Node API over logs + scoped local writes + daily-summary CLI
 apps/admin/     TanStack (Router + Query) + Vite dashboard
 docs/           okq (Open Knowledge Format) bundle — ADRs, features, design specs
 ```
@@ -165,10 +165,11 @@ block as `ANTHROPIC_BASE_URL` above to cover those:
 
 ## 2. The dashboard — monitor usage
 
-The `server` package reads those `.audit.json` sidecars and serves a read-only
-JSON API; `apps/admin` renders it as a dashboard (token burn & estimated cost,
-day-over-day trends, ranked tool bloat, and deterministic coaching advice). All
-analysis lives in `packages/core` and is unit-tested.
+The `server` package reads those `.audit.json` sidecars and serves a JSON API
+whose analysis surface is read-only, with a small allowlist of local chat and
+suggestion-status writes. `apps/admin` renders it as a dashboard (token burn &
+estimated cost, day-over-day trends, ranked tool bloat, and deterministic
+coaching advice). All analysis lives in `packages/core` and is unit-tested.
 
 ```bash
 pnpm install                  # wire the workspace (pnpm 11, Node 18+)
@@ -246,16 +247,18 @@ its own process group, so the shells and subagents it started go with it instead
 of being orphaned in the repo. Failed tool chips carry the reason from the tool's
 own result, so a permission denial reads as a denial.
 
-There is no auth in front of that. The server binds locally and every other route
-is read-only, but before exposing this port anywhere, switch to the sandboxed
-posture — no tools, no device config, a scratch directory:
+There is no auth in front of that. The server binds locally and, apart from
+suggestion-status flags, every other route is read-only. Before exposing this
+port anywhere, switch to the sandboxed posture — no tools, no device config, a
+scratch directory:
 
 ```bash
 CHAT_MODE=chat pnpm server
 ```
 
-The chat routes are the only writes the server accepts, and they do not answer
-CORS `*` like the read-only ones: they echo only `CHAT_ALLOWED_ORIGINS`
+The chat routes and suggestion-status updates are the only writes the server
+accepts, and they do not answer CORS `*` like the read-only ones: they echo only
+`CHAT_ALLOWED_ORIGINS`
 (`http://localhost:5173` and its `127.0.0.1` form by default) and refuse a request
 declaring any other origin with `403`. Serve the dashboard from somewhere else and
 that origin has to be named there. It scopes the browser reach of the write
@@ -404,9 +407,9 @@ okq --bundle docs find --type adr
 okq --bundle docs search "advice"
 ```
 
-It holds the architecture decisions, feature specs, and the two design docs:
-device-wide daily summary (`docs/2026-07-13-…`) and this monorepo + dashboard
-(`docs/superpowers/specs/2026-07-15-…`).
+It holds architecture decisions, feature specs, design specs, and the historical
+Wayfinder campaign artifacts. Generated indexes under each folder list the
+current concepts.
 
 ## Changelog
 
@@ -420,8 +423,9 @@ originating PR number on each entry. Add an entry with the work, not after it �
 ## Notes
 
 - **Enterprise-safe:** the proxy is a near-transparent pass-through to
-  `api.anthropic.com` (its only edit is stripping `WITHHELD_TOOLS`); it copies no
-  credential and redacts auth headers. See
+  `api.anthropic.com`; its only request-body edits strip the small
+  `WITHHELD_TOOLS` and `INJECTED_REMINDERS` inventories documented on the Proxy
+  filters page. It copies no credential and redacts auth headers. See
   `docs/2026-07-13-claude-usage-summary-design.md`.
 - Costs shown are **estimates** from an editable per-model price map in
   `packages/core/src/pricing.ts`.

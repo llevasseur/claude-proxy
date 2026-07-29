@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Expand, Maximize2, Minimize2, Shrink } from "lucide-react";
 import type { CSSProperties, ReactNode, Ref } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InterruptionKind, SessionNode } from "@claude-proxy/core";
 import { mergeSessionNodes, sessionName, spawnAgentType } from "@claude-proxy/core";
 import type { SessionGraphEntry } from "../api";
-import { getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from "../api";
+import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from "../api";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 /**
@@ -26,13 +27,34 @@ import { fmtInt, fmtLocalTsShort } from "../format";
  * text comes from the canvased family's Request breakdown, where the same steps are whole.
  */
 
-// Layout geometry, in canvas px (pre-transform).
-const ROOT_W = 224;
-const ROOT_H = 96;
-const NODE_W = 168;
-const NODE_H = 64;
-const CELL_W = ROOT_W; // uniform grid cell; boxes are centered within it
-const CELL_H = ROOT_H;
+/** Box geometry, in canvas px (pre-transform). The gaps and insets below don't vary with it. */
+interface Sizes {
+  rootW: number;
+  rootH: number;
+  nodeW: number;
+  nodeH: number;
+  /** Uniform grid cell; boxes are centered within it. */
+  cellW: number;
+  cellH: number;
+}
+
+const sizes = (rootW: number, rootH: number, nodeW: number, nodeH: number): Sizes => ({
+  rootW,
+  rootH,
+  nodeW,
+  nodeH,
+  cellW: rootW,
+  cellH: rootH,
+});
+
+/** The default: as many steps on screen as the fold allows, each a two-line gist. */
+const COMPACT = sizes(224, 96, 168, 64);
+/**
+ * The "larger nodes" toggle: boxes roomy enough for a step's whole label. Toggling re-lays
+ * out at the same zoom — a refit would scale the bigger boxes straight back down.
+ */
+const ROOMY = sizes(360, 232, 320, 216);
+
 const GAP_X = 44;
 const GAP_Y = 58;
 const PAD = 64;
@@ -279,6 +301,7 @@ function layoutRun(
   index: ChildIndex,
   depth: number,
   runKey: string,
+  size: Sizes,
 ): Placed {
   const spawned = index.get(entry.threadId);
 
@@ -297,22 +320,22 @@ function layoutRun(
 
     for (let i = from; i < to; i++) {
       const it = items[i]!;
-      const cellX = x0 + cell(i, cols).col * (CELL_W + GAP_X);
-      const w = it.kind === "node" ? NODE_W : ROOT_W;
-      const h = it.kind === "node" ? NODE_H : ROOT_H;
+      const cellX = x0 + cell(i, cols).col * (size.cellW + GAP_X);
+      const w = it.kind === "node" ? size.nodeW : size.rootW;
+      const h = it.kind === "node" ? size.nodeH : size.rootH;
       boxes.push({
         key: it.node ? `${entry.threadId}:${it.node.index}` : `r:${entry.threadId}`,
         kind: it.kind,
-        x: cellX + (CELL_W - w) / 2,
-        y: rowTop + (CELL_H - h) / 2,
+        x: cellX + (size.cellW - w) / 2,
+        y: rowTop + (size.cellH - h) / 2,
         w,
         h,
         entry,
         node: it.node,
       });
-      right = Math.max(right, cellX + CELL_W);
+      right = Math.max(right, cellX + size.cellW);
     }
-    y = rowTop + CELL_H;
+    y = rowTop + size.cellH;
 
     // Branch bands for any spawns that landed in this row, in spawn order.
     for (let i = from; i < to; i++) {
@@ -321,7 +344,7 @@ function layoutRun(
       if (!child) continue;
 
       const bandTop = y + BAND_GAP;
-      const inner = layoutTree(child, Math.max(1, cols - 1), x0 + BAND_INSET + BAND_PAD, bandTop + BAND_HEAD, index, depth + 1);
+      const inner = layoutTree(child, Math.max(1, cols - 1), x0 + BAND_INSET + BAND_PAD, bandTop + BAND_HEAD, index, depth + 1, size);
       const bandRight = inner.right + BAND_PAD;
       bands.push({
         key: `b:${child.threadId}`,
@@ -376,6 +399,7 @@ function layoutTree(
   y0: number,
   index: ChildIndex,
   depth: number,
+  size: Sizes,
 ): Placed {
   const runs = runsOf(entry.nodes);
   const head: Item[] = [
@@ -383,7 +407,7 @@ function layoutTree(
     ...runs[0]!.map((node) => ({ kind: "node" as const, node })),
   ];
 
-  const placed = layoutRun(entry, head, cols, x0, y0, index, depth, `${entry.threadId}:0`);
+  const placed = layoutRun(entry, head, cols, x0, y0, index, depth, `${entry.threadId}:0`, size);
   const boxes = [...placed.boxes];
   const edges = [...placed.edges];
   const bands = [...placed.bands];
@@ -405,6 +429,7 @@ function layoutTree(
       index,
       depth,
       `${entry.threadId}:${r}`,
+      size,
     );
     const trailRight = inner.right + BAND_PAD;
     trails.push({
@@ -442,10 +467,10 @@ function layoutTree(
  * last step → the parent step its result flows into). Those wait until every box is
  * placed, since a return can land on a row below the branch.
  */
-function layout(entry: SessionGraphEntry | null, cols: number, index: ChildIndex) {
+function layout(entry: SessionGraphEntry | null, cols: number, index: ChildIndex, size: Sizes) {
   if (!entry) return { boxes: [], edges: [], bands: [], trails: [], contentW: 0, contentH: 0 };
 
-  const placed = layoutTree(entry, cols, PAD, PAD, index, 0);
+  const placed = layoutTree(entry, cols, PAD, PAD, index, 0, size);
   const boxAt = new Map(placed.boxes.map((b) => [b.key, b]));
   const edges = [...placed.edges];
 
@@ -585,9 +610,11 @@ export function SessionGraphPage() {
   const entry = useMemo(() => all.find((s) => s.threadId === selectedId) ?? null, [all, selectedId]);
 
   const [cols, setCols] = useState(7);
+  const [roomy, setRoomy] = useState(false);
+  const size = roomy ? ROOMY : COMPACT;
   const { boxes, edges, bands, trails, contentW, contentH } = useMemo(
-    () => layout(entry, cols, childIndex),
-    [entry, cols, childIndex],
+    () => layout(entry, cols, childIndex, size),
+    [entry, cols, childIndex, size],
   );
 
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -719,18 +746,6 @@ export function SessionGraphPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const zoomBy = (factor: number) => {
-    const el = viewportRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const mx = rect.width / 2;
-    const my = rect.height / 2;
-    setView((v) => {
-      const k = clamp(v.k * factor, 0.1, 3);
-      return { k, x: mx - (mx - v.x) * (k / v.k), y: my - (my - v.y) * (k / v.k) };
-    });
-  };
-
   const toggleFull = () => {
     const el = viewportRef.current;
     if (!el) return;
@@ -803,7 +818,7 @@ export function SessionGraphPage() {
         onPointerUp={endPan}
         onPointerCancel={endPan}
       >
-        <div className="graph-canvas" style={canvasStyle}>
+        <div className={`graph-canvas${roomy ? " is-roomy" : ""}`} style={canvasStyle}>
           {/* Branch frames sit behind the edges and boxes they enclose. */}
           {bands.map((band) => (
             <div
@@ -920,17 +935,28 @@ export function SessionGraphPage() {
             ) : null}
           </span>
           <div className="graph-btns">
-            <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out" title={ZOOM_HINT}>
-              −
-            </button>
-            <button type="button" onClick={() => zoomBy(1.2)} aria-label="Zoom in" title={ZOOM_HINT}>
-              +
-            </button>
-            <button type="button" onClick={fit}>
+            <button type="button" onClick={fit} title={ZOOM_HINT}>
               Fit
             </button>
-            <button type="button" onClick={toggleFull}>
-              {isFull ? "Exit" : "Fullscreen"}
+            <button
+              type="button"
+              className="graph-icon-btn"
+              onClick={() => setRoomy((r) => !r)}
+              aria-pressed={roomy}
+              aria-label={roomy ? "Smaller nodes" : "Larger nodes"}
+              title={roomy ? "Smaller nodes" : "Larger nodes — room for each step's whole text"}
+            >
+              {roomy ? <Shrink size={15} aria-hidden /> : <Expand size={15} aria-hidden />}
+            </button>
+            <button
+              type="button"
+              className="graph-icon-btn"
+              onClick={toggleFull}
+              aria-pressed={isFull}
+              aria-label={isFull ? "Exit fullscreen" : "Fullscreen"}
+              title={isFull ? "Exit fullscreen" : "Fullscreen"}
+            >
+              {isFull ? <Minimize2 size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}
             </button>
           </div>
           <div className="graph-legend">
@@ -1207,6 +1233,7 @@ function InspectorBody({
               />
             </Field>
             <Field label="Step">#{node.index}</Field>
+            {source && node.message !== null ? <RequestMessage file={source} index={node.message} /> : null}
             {node.interrupted ? (
               <Field label="Cut off">
                 <span className="gi-cut">the run was interrupted here — it picks up on the trail below</span>
@@ -1260,14 +1287,52 @@ function InspectorBody({
           Open transcript →
         </Link>
         {source ? (
-          <Link to="/context/$file" params={{ file: source }} className="link gi-open">
-            Open request breakdown →
-          </Link>
+          <>
+            {node && node.message !== null ? (
+              <Link
+                to="/context/$file/message/$index"
+                params={{ file: source, index: String(node.message) }}
+                className="link gi-open"
+              >
+                Open this step's message →
+              </Link>
+            ) : null}
+            <Link to="/context/$file" params={{ file: source }} className="link gi-open">
+              Open request breakdown →
+            </Link>
+            {node && node.message === null ? (
+              <span className="gi-note muted">
+                This step pairs with nothing in the captured request, so its text is the transcript's gist.
+              </span>
+            ) : null}
+          </>
         ) : (
           <span className="gi-note muted">Text from the transcript — no captured request matched.</span>
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * The turn a step was read out of, whole — the same message the Request breakdown's drill-down
+ * shows, rather than the one line the step stream keeps of it. Fetched per open drawer and
+ * clamped like any other long value; a request that has since rotated away omits the field.
+ */
+function RequestMessage({ file, index }: { file: string; index: number }) {
+  const query = useQuery({
+    queryKey: ["context-message", file, index],
+    queryFn: () => getContextMessage(file, index),
+  });
+  const message = query.data?.message;
+  if (!message) return null;
+  return (
+    <Field label="Request message">
+      <span className="gi-note muted">
+        #{fmtInt(message.index + 1)} of {fmtInt(message.messageCount)} · {message.role}
+      </span>
+      <LongText key={`m:${file}:${index}`} text={message.content} mono />
+    </Field>
   );
 }
 

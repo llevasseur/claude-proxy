@@ -318,6 +318,11 @@ export interface SessionNode {
   interruption: InterruptionKind | null;
   /** True when the run was cut off *at* this step: the interruption landed right after it. */
   interrupted: boolean;
+  /**
+   * Index into the captured request's `messages[]` this step was read from. Null on a step
+   * read back off a transcript, which records no such position.
+   */
+  message: number | null;
 }
 
 const DECIDED_TEXT_RE = /^- decided:\s*(.*)$/;
@@ -341,7 +346,7 @@ export function parseSessionNodes(content: string): SessionNode[] {
   let pending: InterruptionKind | null = null;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
-    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false });
+    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false, message: null });
     pending = null;
   };
 
@@ -723,13 +728,17 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
   let task: string | null = null;
   let lastTool: string | null = null;
   let pending: InterruptionKind | null = null;
+  /** The `messages[]` position being read, carried onto every step it yields. */
+  let message = 0;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
-    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false });
+    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false, message });
     pending = null;
   };
 
-  for (const raw of messages) {
+  for (let m = 0; m < messages.length; m++) {
+    message = m;
+    const raw = messages[m];
     const msg = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
     const blocks = asBlocks(msg.content);
 
@@ -794,32 +803,148 @@ export function isSameStep(gisted: string, full: string): boolean {
   return cut > 0 && one.startsWith(gisted.slice(0, cut));
 }
 
+/** Whether a derived step is the untruncated original of a transcript one. */
+const pairs = (step: SessionNode, cand: SessionNode): boolean =>
+  cand.type === step.type && isSameStep(step.text, cand.text);
+
+/**
+ * How far apart in steps the two streams may drift before the merge stops looking for its
+ * place again; past this the transcript carries the rest alone.
+ */
+const RESYNC_WINDOW = 24;
+
+/**
+ * The nearest pairing at or after (`t`, `d`), searched along growing diagonals so the
+ * alignment that skips fewest steps on either side wins. Null when the streams don't meet
+ * again inside {@link RESYNC_WINDOW}.
+ */
+function resync(
+  transcript: SessionNode[],
+  t: number,
+  derived: SessionNode[],
+  d: number,
+): { t: number; d: number } | null {
+  for (let span = 1; span < RESYNC_WINDOW; span++) {
+    for (let i = 0; i <= span; i++) {
+      const ti = t + i;
+      const di = d + (span - i);
+      if (ti >= transcript.length || di >= derived.length) continue;
+      if (pairs(transcript[ti]!, derived[di]!)) return { t: ti, d: di };
+    }
+  }
+  return null;
+}
+
 /**
  * Lay request-derived steps over a transcript's. The transcript stays the authority on which
  * steps exist — the agent linkage (spawn/return indices) is built from its positions — so the
- * result is always its length, with the same `index` on every node.
+ * result is always its length, with the same `index` on every node. Everything else about a
+ * step, including which request message it came from, comes from the request.
  *
  * The two are not positionally aligned: a transcript accumulates every request the proxy ever
  * saw, so it carries turns no single body holds (Claude Code's one-shot spinner prompts land
- * mid-thread and shift everything after them). A captured request is therefore a
- * *subsequence* — take a derived step only where it matches the transcript line it expands,
- * and otherwise keep the transcript's abbreviated text.
+ * mid-thread and shift everything after them), and a step whose text the two record
+ * differently pairs with nothing at all. So the walk re-synchronizes rather than running in
+ * lockstep: on a mismatch it looks ahead on *both* sides for where the streams meet again,
+ * hands the steps in between their transcript text, and carries on from there.
  */
 export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNode[]): SessionNode[] {
   if (derived.length === 0) return transcript;
 
   const merged: SessionNode[] = [];
+  let t = 0;
   let d = 0;
-  for (const step of transcript) {
+  while (t < transcript.length) {
+    const step = transcript[t]!;
     const cand = derived[d];
-    if (cand && cand.type === step.type && isSameStep(step.text, cand.text)) {
+    if (cand && pairs(step, cand)) {
       // Text comes from the request; which steps exist — and where the run was cut —
       // stays the transcript's, since it alone carries the dashboard's own stops.
       merged.push({ ...cand, index: step.index, interruption: step.interruption, interrupted: step.interrupted });
+      t += 1;
       d += 1;
-    } else {
-      merged.push(step);
+      continue;
     }
+    const at = resync(transcript, t, derived, d);
+    if (!at) break;
+    // Unpaired transcript steps keep their gist; unpaired derived steps have no transcript
+    // position to sit at, so they go unplaced.
+    for (; t < at.t; t++) merged.push(transcript[t]!);
+    d = at.d;
   }
+  for (; t < transcript.length; t++) merged.push(transcript[t]!);
   return merged;
+}
+
+// --- Linking a transcript's errors back into a captured request -------------
+//
+// A transcript records an error as one gisted line, with no handle on the turn it
+// came from. The same turn is a `tool_result` block inside a captured request's
+// `messages[]`, and that array position is exactly what the Message details
+// drill-down takes — so locating the block gives the error a deep link.
+
+/** Where one errored tool result sits inside a captured request's `messages[]`. */
+export interface RequestErrorSite {
+  /** Index into the request's `messages[]` — the drill-down handle. */
+  messageIndex: number;
+  /** The tool result's text, at full length. */
+  text: string;
+}
+
+/**
+ * Every errored tool result a captured request carries, tagged with the message
+ * holding it — one entry per block, in the order {@link deriveSessionNodes} emits its
+ * `error` nodes. A body with no `messages` array yields none.
+ */
+export function deriveRequestErrors(body: unknown): RequestErrorSite[] {
+  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const messages = Array.isArray(obj.messages) ? obj.messages : [];
+
+  const sites: RequestErrorSite[] = [];
+  messages.forEach((raw, messageIndex) => {
+    const msg = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+    if (msg.role !== "user") return;
+    for (const b of asBlocks(msg.content)) {
+      if (b.type === "tool_result" && b.is_error === true) sites.push({ messageIndex, text: resultText(b) });
+    }
+  });
+  return sites;
+}
+
+/**
+ * Match a transcript's errors to the request messages that hold them, returning one
+ * message index per error — `null` where the request has no counterpart.
+ *
+ * A captured request holds only the turns in flight when it was sent, so the two align
+ * as subsequences rather than positionally — a request sent mid-session misses the
+ * errors after it, one sent after a compaction the errors before it. Both are walked in
+ * order, each site claiming the next transcript line it expands, so a partial overlap
+ * links what it covers instead of nothing.
+ */
+export function linkRequestErrors(
+  errors: readonly SessionError[],
+  sites: readonly RequestErrorSite[],
+): (number | null)[] {
+  const linked: (number | null)[] = errors.map(() => null);
+  let e = 0;
+  for (const site of sites) {
+    while (e < errors.length && !isSameStep(errors[e]!.text, site.text)) e += 1;
+    if (e >= errors.length) break;
+    linked[e] = site.messageIndex;
+    e += 1;
+  }
+  return linked;
+}
+
+/** The captured-request message behind one error — the Message details route's two params. */
+export interface SessionErrorLink {
+  /** The request's file handle, the `$file` route param. */
+  file: string;
+  /** 0-based position in that request's `messages[]`, the `$index` route param. */
+  messageIndex: number;
+}
+
+/** A transcript error with the turn it came from, when a captured request still holds it. */
+export interface LinkedSessionError extends SessionError {
+  link: SessionErrorLink | null;
 }

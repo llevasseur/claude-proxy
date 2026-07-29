@@ -10,37 +10,30 @@ timestamp: 2026-07-24
 
 ## Summary
 
-Three pages in the [admin dashboard](admin-dashboard-for-claude-proxy-usage.md) that answer
-**"what is being kept out of my requests, and what does this device declare?"** — **Not added**
-(`/withheld`) for the device's withheld-tool policy, **Proxy filters** (`/filters`) for the
-proxy's own strip inventory, and **Hooks & Plugins** (`/hooks-plugins`) for the declared hooks
-and plugins. Unlike the rest of the dashboard, these read `~/.claude/settings.json` and
-`~/.zshrc` rather than analyzing captured traffic: they describe *configuration*, and only
-cross-reference traffic where traffic can actually confirm the config.
+Three [dashboard](admin-dashboard-for-claude-proxy-usage.md) configuration pages:
+**Not added** (`/withheld`) for withheld-tool policy, **Proxy filters** (`/filters`)
+for the proxy's strip inventory, and **Hooks & Plugins** (`/hooks-plugins`) for
+declared hooks/plugins. They read `~/.claude/settings.json` and `~/.zshrc`, using
+captured traffic only where it can confirm configuration.
 
 ## Motivation
 
-A tool that never reaches the model costs nothing — and is therefore invisible. There is no
-line item for a schema you successfully suppressed, so the only way to know a suppression is
-working is to look for the *absence*. The same blind spot applies in reverse to hooks and
-plugins: one you declared but that never loads leaves no trace anywhere.
+A suppressed tool is visible only by its absence; a declared hook/plugin that never
+loads likewise leaves no trace.
 
-The doc's real job is keeping two different mechanisms straight, because they are easy to
-conflate and only one of them is the proxy's:
+Two mechanisms must remain distinct:
 
 - **The CLI's own schema stripping — device config, not the proxy.** A bare tool name in
   `permissions.deny` (or a bare-name glob like `mcp__*`) makes Claude Code drop that tool's
   schema from the request entirely; a *scoped* rule like `Bash(rm *)` does not — it only blocks
   matching calls at execution time, and the schema still ships. A boolean `disable*` setting
   (`disableWorkflows` → `Workflow`, `disableArtifact` → `Artifact`) does the same stripping with
-  no `permissions.deny` entry to see. All of this happens in the CLI before the request exists;
-  the proxy is merely a witness that the tool is gone.
-- **The small set the proxy strips itself — because the CLI cannot be configured to.** Some
-  tools are *deny-exempt*: `EndConversation` is ignored by `permissions.deny`, so its schema
-  ships every turn no matter what settings say. And harness-injected reminder text (the
-  task-tools nudge) has no suppression setting at all, and a `CLAUDE.md` instruction does not
-  reliably stop it. These two are the entire reason `proxy/proxy.mjs` edits a request body at
-  all; everything else it forwards untouched.
+  no `permissions.deny` entry. This happens before the request exists; the proxy only
+  witnesses the absence.
+- **Proxy stripping for CLI exceptions.** `EndConversation` is deny-exempt, so its schema
+  always ships; the harness-injected task-tools nudge has no suppression setting and is
+  not reliably stopped by `CLAUDE.md`. These are the only reasons `proxy/proxy.mjs`
+  edits request bodies; everything else is forwarded untouched.
 
 ## Behavior
 
@@ -85,16 +78,14 @@ conflate and only one of them is the proxy's:
   hooks-via-`--settings` is undocumented), or **expected** (dynamically injected and supported,
   but not confirmed here).
 
-Data flows `~/.claude/settings.json` + `~/.zshrc` → `packages/core` → `server` → `apps/admin`.
-The server reads both files (`readDeviceSettings`, `readLaunchAliases`) and passes their parsed
-values into pure `packages/core` helpers — `withheldReport`, `computeAliasPosture`,
-`flattenHooks`, `normalizePlugins`, `hookPluginLoadExpectations` — none of which do I/O. The
-settings path is `~/.claude/settings.json`, overridable via the `CLAUDE_SETTINGS` env var; the
-shell rc is `~/.zshrc`, overridable via `CLAUDE_SHELL_RC`. Both readers are non-throwing: a
-missing or malformed file yields an empty, "unreadable" result that each page renders as an
-explicit "couldn't read" state rather than an empty table. The endpoints are `GET
-/api/withheld?days=…` (computed per request from live settings + sidecars), `GET
-/api/hooks-plugins` (computed from live settings, no traffic), and `GET /api/filters` (static).
+Data flows `~/.claude/settings.json` + `~/.zshrc` → `packages/core` → `server` →
+`apps/admin`. `readDeviceSettings` and `readLaunchAliases` feed the pure, I/O-free
+`withheldReport`, `computeAliasPosture`, `flattenHooks`, `normalizePlugins`, and
+`hookPluginLoadExpectations` helpers. `CLAUDE_SETTINGS` and `CLAUDE_SHELL_RC` override
+the default paths. Both readers are non-throwing: missing/malformed files produce an
+explicit "couldn't read" state, not an empty table. Endpoints: `GET
+/api/withheld?days=…` (live settings + sidecars), `GET /api/hooks-plugins` (live
+settings, no traffic), and static `GET /api/filters`.
 
 ## Acceptance criteria
 
@@ -116,8 +107,9 @@ explicit "couldn't read" state rather than an empty table. The endpoints are `GE
       *expectations*, never observed firing.
 - [x] All three views are read-only and never write settings: `server/src/settings.ts` and
       `server/src/shell-rc.ts` only `readFile`, there is no write path to `~/.claude` or the
-      shell rc, and the server exposes no POST route (only `GET` handlers plus an `OPTIONS`
-      preflight).
+      shell rc, and their `/api/withheld`, `/api/hooks-plugins`, and `/api/filters` endpoints
+      are GET-only. The server's unrelated chat and suggestion-status POST routes do not
+      touch device settings.
 - [x] `CLAUDE_SETTINGS` and `CLAUDE_SHELL_RC` override the two file paths; a missing or
       unreadable file degrades to an explicit "couldn't read" state instead of an error.
 - [x] `packages/core` helpers for withheld rules, launch-alias posture, filters, and
@@ -125,26 +117,23 @@ explicit "couldn't read" state rather than an empty table. The endpoints are `GE
 
 ## Open questions
 
-- Nothing enforces the "keep the two in sync" pairing between `PROXY_FILTER_INVENTORY` in
+- Nothing enforces parity between `PROXY_FILTER_INVENTORY` in
   `packages/core/src/filters.ts` and `WITHHELD_TOOLS` / `INJECTED_REMINDERS` in
-  `proxy/proxy.mjs`. Both sides *are* tested, but independently and against hardcoded
-  expectations — `packages/core/test/filters.test.ts` asserts the inventory contains
-  `EndConversation` and `task-tools`; `proxy/proxy.test.mjs` asserts the same two names against
-  the runtime constants — and neither test imports the other module, so adding a third withheld
-  tool or reminder to the proxy leaves the dashboard silently under-reporting with a green
-  suite. Worth a single assertion that derives one list from the other.
+  `proxy/proxy.mjs`. Independent hardcoded tests assert `EndConversation` and
+  `task-tools`—`packages/core/test/filters.test.ts` against the inventory and
+  `proxy/proxy.test.mjs` against runtime constants—but neither imports the other module.
+  A third runtime filter would leave the dashboard under-reporting with a green suite;
+  one assertion should derive one list from the other.
 - `DISABLE_SCHEMA_TOOLS` maps only `disableWorkflows` and `disableArtifact`; any other
   schema-stripping `disable*` key the CLI gains has to be added by hand or **Not added** will
   miss it.
-- The launch-alias posture reads only the device's `user` settings, not the `project` / `local`
-  settings of whatever directory a session starts in — so an alias shown **on** for a tool may
-  be **off** in a project that re-denies it. Whether to read project settings too is open.
+- Launch-alias posture reads only device `user` settings, not the session directory's
+  `project` / `local` settings; a tool shown **on** may be **off** in a project that
+  re-denies it. Reading project settings remains open.
 - `hooks: "unverified"` exists because hooks-via-`--settings` is undocumented; confirming the
   actual behavior once would let that state collapse into `native` or `not-loaded`.
 
 ## Related
 
-- [Admin dashboard for claude-proxy usage](admin-dashboard-for-claude-proxy-usage.md) — the
-  dashboard these three pages live in.
-- [Project memory browser](project-memory-browser.md) — the sibling view over the other half of
-  the local `~/.claude` config surface.
+- [Admin dashboard for claude-proxy usage](admin-dashboard-for-claude-proxy-usage.md)
+- [Project memory browser](project-memory-browser.md) — the sibling local `~/.claude` view

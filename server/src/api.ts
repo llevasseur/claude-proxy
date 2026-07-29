@@ -1,7 +1,9 @@
 import {
   analyzeRequestBody,
   computeDigest,
+  deriveRequestErrors,
   deriveSessionNodes,
+  linkRequestErrors,
   extractRequestMessage,
   extractRequestTool,
   computeSkimDigest,
@@ -16,6 +18,7 @@ import {
   hookPluginLoadExpectations,
   jobStateTone,
   parseSessionErrors,
+  reportDay,
   sessionContextPeak,
   sessionSuggestionBuckets,
   countSuggestionStatuses,
@@ -36,9 +39,12 @@ import {
   type RequestToolDetail,
   type BucketBreakdownInput,
   type BucketBreakdownSummary,
+  type LinkedSessionError,
+  type RequestErrorSite,
   type SessionBucket,
   type SessionContextPeak,
   type SessionError,
+  type SessionErrorLink,
   type SessionMeta,
   type SessionNode,
   type JobTreeNode,
@@ -422,16 +428,100 @@ export async function buildSession(logDir: string, id: string): Promise<SessionR
 export interface SessionErrorsResponse {
   threadId: string;
   meta: SessionMeta;
-  errors: SessionError[];
+  errors: LinkedSessionError[];
 }
 
 /**
- * Every errored tool result in one session, re-linked to its task and tool call.
- * Reuses {@link readSession}, which validates `id` and maps to 400/404.
+ * Every errored tool result in one session, re-linked to its task and tool call, and
+ * where possible to the request message that holds the failed turn. Reuses
+ * {@link readSession}, which validates `id` and maps to 400/404.
+ *
+ * An error the session's captures can't account for comes back with no link rather
+ * than failing the page.
  */
-export async function buildSessionErrors(logDir: string, id: string): Promise<SessionErrorsResponse> {
+export async function buildSessionErrors(
+  logDir: string,
+  id: string,
+  now: Date = new Date(),
+): Promise<SessionErrorsResponse> {
   const { meta, content } = await readSession(logDir, id);
-  return { threadId: id, meta, errors: parseSessionErrors(content) };
+  const errors = parseSessionErrors(content);
+  const { requests } = await resolveSessionRequests(logDir, meta, now);
+  const links = await linkErrorsToRequests(logDir, requests, errors);
+
+  return { threadId: id, meta, errors: errors.map((error, i) => ({ ...error, link: links[i] ?? null })) };
+}
+
+/**
+ * How many request bodies one errors page will open — a busy session captures hundreds,
+ * each up to megabytes of JSON. See {@link requestsToScan} for which ones.
+ */
+const MAX_ERROR_REQUEST_SCANS = 6;
+
+/**
+ * Find the request message behind each error. Each body links whichever errors it can
+ * and later ones only fill the gaps, so different errors can point at different
+ * requests, and the scan stops once every error has a home.
+ */
+async function linkErrorsToRequests(
+  logDir: string,
+  requests: readonly ContextEntry[],
+  errors: readonly SessionError[],
+): Promise<(SessionErrorLink | null)[]> {
+  const links: (SessionErrorLink | null)[] = errors.map(() => null);
+  if (errors.length === 0) return links;
+
+  for (const request of requestsToScan(requests)) {
+    const sites = await readRequestErrorSites(logDir, request.file);
+    if (sites.length === 0) continue;
+
+    const found = linkRequestErrors(errors, sites);
+    let unlinked = 0;
+    for (let i = 0; i < links.length; i += 1) {
+      const messageIndex = found[i];
+      if (links[i] === null && messageIndex != null) links[i] = { file: request.file, messageIndex };
+      if (links[i] === null) unlinked += 1;
+    }
+    if (unlinked === 0) break;
+  }
+  return links;
+}
+
+/**
+ * Which of a session's requests to open: the peak, then an even walk along the
+ * session's timeline.
+ *
+ * Taking the largest few instead is the wrong shape: the biggest bodies cluster at the
+ * end of a run and, once a session has compacted, are precisely the ones that have
+ * dropped its early failures — on a 193-request session the only body still holding the
+ * first error ranked 43rd by size. Errors are spread through a session, so sampling its
+ * timeline reaches them in far fewer reads. The peak leads as the body most likely to
+ * carry a turn at all.
+ */
+function requestsToScan(requests: readonly ContextEntry[]): ContextEntry[] {
+  if (requests.length <= MAX_ERROR_REQUEST_SCANS) {
+    return [...requests].sort((a, b) => b.realInput - a.realInput);
+  }
+
+  const byTime = [...requests].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const picked = [requests.reduce((max, e) => (e.realInput > max.realInput ? e : max))];
+
+  const samples = MAX_ERROR_REQUEST_SCANS - 1;
+  for (let i = 1; i <= samples; i += 1) {
+    const entry = byTime[Math.round((i / samples) * (byTime.length - 1))]!;
+    if (!picked.some((p) => p.file === entry.file)) picked.push(entry);
+  }
+  return picked;
+}
+
+/** A captured request's errored tool results, or none when the body has gone or won't parse. */
+async function readRequestErrorSites(logDir: string, file: string): Promise<RequestErrorSite[]> {
+  try {
+    const { body } = await readRequestBody(logDir, file);
+    return deriveRequestErrors(body);
+  } catch {
+    return [];
+  }
 }
 
 export interface SessionBreakdownResponse extends SessionContextPeak {
@@ -442,9 +532,39 @@ export interface SessionBreakdownResponse extends SessionContextPeak {
 }
 
 /**
+ * Every request sent under a session's id, plus the largest of them and the sidecar
+ * counts behind the scan. Reads from the session's start date onward — a session's
+ * requests never predate it — or the whole log when it has no start. A transcript with
+ * no session id has nothing to match on and scans nothing.
+ */
+async function resolveSessionRequests(
+  logDir: string,
+  meta: SessionMeta,
+  now: Date,
+): Promise<
+  SessionContextPeak & { sessionId: string | null; requests: ContextEntry[]; files: number; parseErrors: number }
+> {
+  const sessionId = meta.sessionId;
+  if (!sessionId) {
+    return { sessionId: null, requests: [], requestCount: 0, peak: null, files: 0, parseErrors: 0 };
+  }
+
+  const since = (meta.started && reportDay(meta.started)) || undefined;
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const entries = toContextEntries(sidecars);
+
+  return {
+    sessionId,
+    requests: entries.filter((e) => e.sessionId === sessionId),
+    ...sessionContextPeak(entries, sessionId),
+    files,
+    parseErrors,
+  };
+}
+
+/**
  * The captured request a session links to for its breakdown: the largest one sent
- * under its session id. Scans sidecars from the session's start date onward — a
- * session's requests never predate it — or the whole log when it has no start.
+ * under its session id.
  */
 export async function buildSessionBreakdown(
   logDir: string,
@@ -452,16 +572,9 @@ export async function buildSessionBreakdown(
   now: Date = new Date(),
 ): Promise<SessionBreakdownResponse> {
   const { meta } = await readSession(logDir, id);
-  const sessionId = meta.sessionId;
-  if (!sessionId) {
-    return { threadId: id, sessionId: null, requestCount: 0, peak: null, meta: { files: 0, parseErrors: 0 } };
-  }
+  const { sessionId, requestCount, peak, files, parseErrors } = await resolveSessionRequests(logDir, meta, now);
 
-  const since = meta.started ? meta.started.slice(0, 10) : undefined;
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
-  const entries = toContextEntries(sidecars);
-
-  return { threadId: id, sessionId, ...sessionContextPeak(entries, sessionId), meta: { files, parseErrors } };
+  return { threadId: id, sessionId, requestCount, peak, meta: { files, parseErrors } };
 }
 
 export interface SessionSuggestionsResponse {
@@ -518,7 +631,7 @@ export async function buildSessionSuggestionBucket(
     .map(({ nodes: _nodes, ...row }) => row as SessionSummary);
 
   // A session's requests never predate it, so the earliest start bounds the scan.
-  const since = bucket.startedFirst ? bucket.startedFirst.slice(0, 10) : undefined;
+  const since = (bucket.startedFirst && reportDay(bucket.startedFirst)) || undefined;
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
   const entries = toContextEntries(sidecars);
 
@@ -676,9 +789,10 @@ export async function buildSessionGraphNodes(
     return { rootThreadId: id, threads: [], meta: { files: 0, parseErrors: 0, requestsRead: 0, capped: false } };
   }
 
-  // A family's requests never predate its earliest transcript.
+  // A family's requests never predate its earliest transcript, and `readSidecars`
+  // narrows by *reporting* day, so the floor is derived on that clock too.
   const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
-  const since = starts.length > 0 ? starts.sort()[0]!.slice(0, 10) : undefined;
+  const since = (starts.length > 0 && reportDay(starts.sort()[0]!)) || undefined;
 
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
   const candidates = toContextEntries(sidecars)

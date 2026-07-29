@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { SessionError } from "@claude-proxy/core";
+import type { LinkedSessionError } from "@claude-proxy/core";
 import { getSessionErrors } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
@@ -37,7 +37,7 @@ export function SessionErrorsPage() {
   );
 }
 
-function ErrorsBody({ errors }: { errors: SessionError[] }) {
+function ErrorsBody({ errors }: { errors: LinkedSessionError[] }) {
   if (errors.length === 0) {
     return <div className="card empty">No errors recorded in this session.</div>;
   }
@@ -58,7 +58,7 @@ function ErrorsBody({ errors }: { errors: SessionError[] }) {
   );
 }
 
-function ErrorEntry({ error }: { error: SessionError }) {
+function ErrorEntry({ error }: { error: LinkedSessionError }) {
   return (
     <div id={`error-${error.index}`} className="msg-block error-entry">
       <div className="msg-block-head">
@@ -78,6 +78,34 @@ function ErrorEntry({ error }: { error: SessionError }) {
         </div>
       </div>
       <div className="msg-text error-text">{error.text}</div>
+      <ErrorTurnLink link={error.link} />
+    </div>
+  );
+}
+
+/**
+ * The way into the failed turn itself: the Message details page for the request
+ * message that carried this result. Absent when no captured request still holds the
+ * turn.
+ */
+function ErrorTurnLink({ link }: { link: LinkedSessionError["link"] }) {
+  if (!link) {
+    return (
+      <div className="error-cta-row muted" title="No captured request covers this turn.">
+        full turn unavailable
+      </div>
+    );
+  }
+
+  return (
+    <div className="error-cta-row">
+      <Link
+        to="/context/$file/message/$index"
+        params={{ file: link.file, index: String(link.messageIndex) }}
+        className="error-cta"
+      >
+        View the full turn · message #{link.messageIndex + 1} →
+      </Link>
     </div>
   );
 }
