@@ -14,9 +14,9 @@ import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
 import { useLiveQuery } from "../useLiveQuery";
 
 /**
- * A chat session id, which this route also accepts: a dashboard chat navigates here before its
- * thread id exists, since the proxy fingerprints a thread from the first request over the wire.
- * Thread ids are 16 hex characters, so a uuid is unambiguously the other kind of id.
+ * A chat session id, which this route also accepts: a dashboard chat can be linked or bookmarked
+ * before its thread id exists, since the proxy fingerprints a thread from the first request over
+ * the wire. Thread ids are 16 hex characters, so a uuid is unambiguously the other kind of id.
  */
 const CHAT_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,9 +25,8 @@ export function SessionDetailPage() {
   const navigate = useNavigate();
   const isChatId = CHAT_SESSION_ID_RE.test(id);
 
-  // Addressed by a chat session id — someone opened this page on purpose. Wait for the transcript
-  // the proxy is writing, then replace the URL with the thread id so a reload or a shared link
-  // still lands on the transcript.
+  // Addressed by a chat session id: wait for the transcript the proxy is writing, then replace the
+  // URL with the thread id so a reload or a shared link still lands on the transcript.
   const { threadId: resolved, gaveUp } = useChatThread(id, isChatId);
   useEffect(() => {
     if (resolved) navigate({ to: "/sessions/$id", params: { id: resolved }, replace: true });

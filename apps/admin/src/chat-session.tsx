@@ -132,11 +132,8 @@ const THREAD_POLL_MS = 2_000;
 const THREAD_POLL_CEILING_MS = 120_000;
 
 /**
- * The transcript a chat session id became, asked for until the proxy has written it.
- *
- * A turn can run for an hour, but the thread id lands within seconds of its first request — so
- * this is what lets the rail mark the running session and the transcript link open, while the
- * chat you started it from stays on screen.
+ * The transcript a chat session id became, asked for until the proxy has written it. Lands within
+ * seconds of the first request, so it resolves mid-turn rather than when the turn finishes.
  */
 export function useChatThread(sessionId: string, enabled: boolean): { threadId: string | null; gaveUp: boolean } {
   const [gaveUp, setGaveUp] = useState(false);

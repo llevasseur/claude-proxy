@@ -23,10 +23,9 @@ export function SessionsPage() {
   const { sessionId, chat, pendingPrompt, reset: newChat } = useChatSession();
   const sessions = query.data?.sessions;
 
-  // Once a turn has been handed off the session exists; only the first one starts it.
   const started = chat !== null || pendingPrompt !== null;
-  // The reply carries the thread id, but a turn can run for an hour — so ask the proxy directly
-  // and let the rail highlight the session it is still working on.
+  // The reply carries the thread id, but a turn can run for an hour — ask the proxy directly so
+  // the rail can mark the session mid-turn.
   const { threadId: resolved } = useChatThread(sessionId, started && !chat?.session.threadId);
   const threadId = chat?.session.threadId ?? resolved ?? undefined;
 

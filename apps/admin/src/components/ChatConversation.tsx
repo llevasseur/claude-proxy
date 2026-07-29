@@ -104,7 +104,6 @@ export function ChatConversation({
         <PromptInput
           value={draft}
           onValueChange={setDraft}
-          // `send` clears the draft — the prompt is already on screen as a turn.
           onSubmit={send}
           placeholder={placeholder}
           disabled={disabled}
