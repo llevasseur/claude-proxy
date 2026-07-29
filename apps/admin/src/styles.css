@@ -1437,6 +1437,21 @@ button.link {
 .error-text {
   color: var(--coral);
 }
+/* The way from an error into the request message that carried it. */
+.error-cta-row {
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.error-cta {
+  color: var(--signal);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.12s ease;
+}
+.error-cta:hover {
+  border-bottom-color: var(--signal);
+}
 
 /* live session graph */
 /* Fills the full-bleed content area; the viewport is the whole page. */

@@ -92,6 +92,31 @@ carried the fix.
   produced it (that call is in a prior turn), so `parseSessionErrors` re-links them, blaming
   each call at most once. Each entry carries a stable `error-<index>` anchor for deep links.
   Empty state: **"No errors recorded in this session."**
+- **From an error into the turn that produced it** — each entry ends with a **"View the full
+  turn · message #n →"** link onto `/context/$file/message/$index`, the Request breakdown's
+  Message details page, where the failed `tool_result` is rendered in full instead of the
+  transcript's one-line gist. The handle is recovered rather than stored: a transcript error
+  carries no pointer back to a request. `deriveRequestErrors` walks a captured body's
+  `messages[]` for `tool_result` blocks flagged `is_error`, recording each one's array position
+  (one entry per block — a single user turn can return several failures), and
+  `linkRequestErrors` matches those against the transcript's errors using `isSameStep`, the
+  gist-aware comparison `mergeSessionNodes` already uses to recognise a truncated line's full
+  original. Both are walked in order as *subsequences*, because a request holds only the turns
+  in flight when it went out: one sent before a failure never saw it, one sent after a
+  compaction has lost the failures before it, so a partial overlap links what it covers instead
+  of nothing.
+- **Which requests the errors page opens** — `resolveSessionRequests` (shared with
+  `buildSessionBreakdown`) returns every capture matching the session id, and
+  `requestsToScan` picks at most **6** to read: the peak first, then an even walk along the
+  session's timeline. Largest-first is the wrong shape here — the biggest bodies cluster at the
+  end of a run, and once a session has compacted they are exactly the ones that dropped its
+  early failures. On a real 193-request session the only body still holding the first error
+  ranked **43rd by size**, past any budget worth spending, while a six-sample walk of the
+  timeline found it. Each body links whatever it can and later ones only fill the gaps, so
+  different errors can point at different requests and the scan stops as soon as every error
+  has a home. Errors that budget can't account for — along with every error on a transcript
+  carrying no session id, or whose captures have been pruned or won't parse — read a muted
+  **"full turn unavailable"**; a missing link never fails the page.
 - **Live streaming over SSE** — `GET /api/sessions/stream` watches the `sessions/` directory and
   re-lists with a **400 ms** debounce; `GET /api/sessions/session/stream?id=<threadId>` watches
   that one transcript file with a **150 ms** debounce. Both send the current value as a

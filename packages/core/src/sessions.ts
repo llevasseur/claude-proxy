@@ -823,3 +823,76 @@ export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNod
   }
   return merged;
 }
+
+// --- Linking a transcript's errors back into a captured request -------------
+//
+// A transcript records an error as one gisted line, with no handle on the turn it
+// came from. The same turn is a `tool_result` block inside a captured request's
+// `messages[]`, and that array position is exactly what the Message details
+// drill-down takes — so locating the block gives the error a deep link.
+
+/** Where one errored tool result sits inside a captured request's `messages[]`. */
+export interface RequestErrorSite {
+  /** Index into the request's `messages[]` — the drill-down handle. */
+  messageIndex: number;
+  /** The tool result's text, at full length. */
+  text: string;
+}
+
+/**
+ * Every errored tool result a captured request carries, tagged with the message
+ * holding it — one entry per block, in the order {@link deriveSessionNodes} emits its
+ * `error` nodes. A body with no `messages` array yields none.
+ */
+export function deriveRequestErrors(body: unknown): RequestErrorSite[] {
+  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const messages = Array.isArray(obj.messages) ? obj.messages : [];
+
+  const sites: RequestErrorSite[] = [];
+  messages.forEach((raw, messageIndex) => {
+    const msg = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+    if (msg.role !== "user") return;
+    for (const b of asBlocks(msg.content)) {
+      if (b.type === "tool_result" && b.is_error === true) sites.push({ messageIndex, text: resultText(b) });
+    }
+  });
+  return sites;
+}
+
+/**
+ * Match a transcript's errors to the request messages that hold them, returning one
+ * message index per error — `null` where the request has no counterpart.
+ *
+ * A captured request holds only the turns in flight when it was sent, so the two align
+ * as subsequences rather than positionally — a request sent mid-session misses the
+ * errors after it, one sent after a compaction the errors before it. Both are walked in
+ * order, each site claiming the next transcript line it expands, so a partial overlap
+ * links what it covers instead of nothing.
+ */
+export function linkRequestErrors(
+  errors: readonly SessionError[],
+  sites: readonly RequestErrorSite[],
+): (number | null)[] {
+  const linked: (number | null)[] = errors.map(() => null);
+  let e = 0;
+  for (const site of sites) {
+    while (e < errors.length && !isSameStep(errors[e]!.text, site.text)) e += 1;
+    if (e >= errors.length) break;
+    linked[e] = site.messageIndex;
+    e += 1;
+  }
+  return linked;
+}
+
+/** The captured-request message behind one error — the Message details route's two params. */
+export interface SessionErrorLink {
+  /** The request's file handle, the `$file` route param. */
+  file: string;
+  /** 0-based position in that request's `messages[]`, the `$index` route param. */
+  messageIndex: number;
+}
+
+/** A transcript error with the turn it came from, when a captured request still holds it. */
+export interface LinkedSessionError extends SessionError {
+  link: SessionErrorLink | null;
+}

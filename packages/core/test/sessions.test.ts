@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveRequestErrors,
   deriveSessionName,
   deriveSessionNodes,
   firstUserText,
@@ -7,6 +8,7 @@ import {
   isAgentSpawn,
   isSameStep,
   linkAgentSessions,
+  linkRequestErrors,
   mergeSessionNodes,
   parseSessionErrors,
   parseSessionNodes,
@@ -16,6 +18,7 @@ import {
   spawnAgentType,
   splitInterruption,
   type LinkableSession,
+  type SessionError,
   type SessionMeta,
   type SessionNode,
 } from "../src/sessions.js";
@@ -721,5 +724,119 @@ describe("mergeSessionNodes", () => {
   it("leaves the transcript untouched when there is nothing to lay over it", () => {
     const transcript = parseSessionNodes(TRANSCRIPT);
     expect(mergeSessionNodes(transcript, [])).toBe(transcript);
+  });
+});
+
+describe("deriveRequestErrors", () => {
+  it("locates each errored result at the message that carries it", () => {
+    const sites = deriveRequestErrors({
+      messages: [
+        { role: "user", content: "Go" },
+        { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "false" } }] },
+        { role: "user", content: [{ type: "tool_result", is_error: true, content: "boom" }] },
+        { role: "assistant", content: [{ type: "text", text: "Recovered." }] },
+        { role: "user", content: [{ type: "tool_result", is_error: true, content: "second failure" }] },
+      ],
+    });
+
+    expect(sites).toEqual([
+      { messageIndex: 2, text: "boom" },
+      { messageIndex: 4, text: "second failure" },
+    ]);
+  });
+
+  it("keeps both results when one turn returns two failures", () => {
+    const sites = deriveRequestErrors({
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", is_error: true, content: "first" },
+            { type: "tool_result", is_error: true, content: "second" },
+          ],
+        },
+      ],
+    });
+
+    expect(sites).toEqual([
+      { messageIndex: 0, text: "first" },
+      { messageIndex: 0, text: "second" },
+    ]);
+  });
+
+  it("ignores results that succeeded, and assistant turns entirely", () => {
+    const sites = deriveRequestErrors({
+      messages: [
+        { role: "user", content: [{ type: "tool_result", content: "fine" }] },
+        { role: "user", content: [{ type: "tool_result", is_error: false, content: "also fine" }] },
+        { role: "assistant", content: [{ type: "tool_result", is_error: true, content: "wrong role" }] },
+      ],
+    });
+
+    expect(sites).toEqual([]);
+  });
+
+  it("reads a result whose content is a nested block array, and yields none for a bad body", () => {
+    const [site] = deriveRequestErrors({
+      messages: [
+        { role: "user", content: [{ type: "tool_result", is_error: true, content: [{ type: "text", text: "nested boom" }] }] },
+      ],
+    });
+
+    expect(site).toEqual({ messageIndex: 0, text: "nested boom" });
+    expect(deriveRequestErrors({})).toEqual([]);
+    expect(deriveRequestErrors(null)).toEqual([]);
+  });
+});
+
+describe("linkRequestErrors", () => {
+  const err = (index: number, text: string): SessionError => ({ index, task: null, tool: null, text });
+
+  it("gives each transcript error the message its full result sits in", () => {
+    const linked = linkRequestErrors(
+      [err(0, "ENOENT: no such file"), err(1, "boom")],
+      [
+        { messageIndex: 2, text: "ENOENT: no such file" },
+        { messageIndex: 6, text: "boom" },
+      ],
+    );
+
+    expect(linked).toEqual([2, 6]);
+  });
+
+  it("matches a transcript line the proxy had gisted", () => {
+    const full = `Command failed: ${"x".repeat(300)}`;
+    const gisted = `${full.slice(0, 159)}…`;
+
+    expect(linkRequestErrors([err(0, gisted)], [{ messageIndex: 4, text: full }])).toEqual([4]);
+  });
+
+  it("links only the errors the request still covers", () => {
+    // The request went out before the second failure happened.
+    const linked = linkRequestErrors(
+      [err(0, "first"), err(1, "second")],
+      [{ messageIndex: 3, text: "first" }],
+    );
+
+    expect(linked).toEqual([3, null]);
+  });
+
+  it("skips past the errors a compacted request dropped", () => {
+    // The body opens after the first failure, so its sites start mid-transcript.
+    const linked = linkRequestErrors(
+      [err(0, "first"), err(1, "second"), err(2, "third")],
+      [
+        { messageIndex: 1, text: "second" },
+        { messageIndex: 5, text: "third" },
+      ],
+    );
+
+    expect(linked).toEqual([null, 1, 5]);
+  });
+
+  it("links nothing when the request has no errors, or the texts never line up", () => {
+    expect(linkRequestErrors([err(0, "boom")], [])).toEqual([null]);
+    expect(linkRequestErrors([err(0, "boom")], [{ messageIndex: 2, text: "unrelated" }])).toEqual([null]);
+    expect(linkRequestErrors([], [{ messageIndex: 2, text: "boom" }])).toEqual([]);
   });
 });
