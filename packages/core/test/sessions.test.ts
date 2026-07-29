@@ -24,9 +24,10 @@ import {
 } from "../src/sessions.js";
 
 /** A node fixture, with the interruption fields these cases don't exercise defaulted off. */
-const node = (n: Omit<SessionNode, "interruption" | "interrupted">): SessionNode => ({
+const node = (n: Omit<SessionNode, "interruption" | "interrupted" | "message"> & { message?: number | null }): SessionNode => ({
   interruption: null,
   interrupted: false,
+  message: null,
   ...n,
 });
 
@@ -690,6 +691,48 @@ describe("mergeSessionNodes", () => {
     expect(merged.map((n) => n.index)).toEqual([0, 1, 2]);
     expect(merged[1]?.text).toBe("Describe your most recent action…"); // the interleaved turn survives
     expect(merged[2]?.text).toBe("Reading the handler first, then the router."); // and the tail still expands
+  });
+
+  it("keeps expanding the run past a step the two record differently", () => {
+    // The streams are the same length and line up one-to-one, but step 1's texts disagree.
+    // Advancing only the transcript would leave the request a step behind for good, so every
+    // step after the hiccup would fall back to its gist.
+    const transcript: SessionNode[] = [
+      node({ index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" }),
+      node({ index: 1, type: "decision", text: "A line the request words otherwise", tool: null, task: "Do the thing" }),
+      node({ index: 2, type: "decision", text: "Reading the handler fir…", tool: null, task: "Do the thing" }),
+      node({ index: 3, type: "decision", text: "Then editing the rout…", tool: null, task: "Do the thing" }),
+    ];
+    const derived: SessionNode[] = [
+      node({ index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" }),
+      node({ index: 1, type: "decision", text: "Worded another way entirely", tool: null, task: "Do the thing" }),
+      node({ index: 2, type: "decision", text: "Reading the handler first, then the router.", tool: null, task: "Do the thing" }),
+      node({ index: 3, type: "decision", text: "Then editing the router itself.", tool: null, task: "Do the thing" }),
+    ];
+
+    const merged = mergeSessionNodes(transcript, derived);
+    expect(merged.map((n) => n.index)).toEqual([0, 1, 2, 3]);
+    expect(merged[1]?.text).toBe("A line the request words otherwise"); // unpaired, so it keeps its own
+    expect(merged[2]?.text).toBe("Reading the handler first, then the router.");
+    expect(merged[3]?.text).toBe("Then editing the router itself.");
+  });
+
+  it("carries the request message each expanded step was read from", () => {
+    const transcript: SessionNode[] = [
+      node({ index: 0, type: "task", text: "Do the thing", tool: null, task: "Do the thing" }),
+      node({ index: 1, type: "tool", text: "Read(file_path=/auth.ts)", tool: "Read(file_path=/auth.ts)", task: "Do the thing" }),
+    ];
+    const derived = derivedFor({
+      messages: [
+        { role: "user", content: "Do the thing" },
+        { role: "assistant", content: [{ type: "tool_use", name: "Read", input: { file_path: "/auth.ts" } }] },
+      ],
+    });
+
+    const merged = mergeSessionNodes(transcript, derived);
+    expect(merged.map((n) => n.message)).toEqual([0, 1]);
+    // A step with no captured request behind it has no message to point at.
+    expect(mergeSessionNodes(transcript, []).map((n) => n.message)).toEqual([null, null]);
   });
 
   it("expands a tool call whose gist was cut inside its parens", () => {
