@@ -639,12 +639,11 @@ a.pager-btn:hover {
   font-size: 12px;
 }
 
-/* bar chart */
+/* bar chart — height comes from `BAR_CHART_HEIGHT`, so a skeleton can reserve it. */
 .barchart {
   display: flex;
   align-items: flex-end;
   gap: 6px;
-  height: 200px;
 }
 .barcol {
   flex: 1;

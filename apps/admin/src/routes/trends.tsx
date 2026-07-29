@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { UsageDigest } from "@claude-proxy/core";
 import { getTrends } from "../api";
-import { BarChart } from "../components/BarChart";
+import { BAR_CHART_HEIGHT, BarChart } from "../components/BarChart";
 import { QueryState } from "../components/QueryState";
 import { DAY_WINDOWS, Segmented } from "../components/Segmented";
 import { type SkeletonColumn, SkeletonChartCard, SkeletonTableCard } from "../components/Skeleton";
@@ -117,9 +117,10 @@ export function TrendsPage() {
 function TrendsSkeleton({ days }: { days: number }) {
   return (
     <>
-      <SkeletonChartCard title="Tokens per request" bars={days} />
-      <SkeletonChartCard title="Real input tokens / day" height={200} bars={days} />
-      <SkeletonChartCard title="Estimated cost / day" height={200} bars={days} />
+      {/* The per-request card carries a legend under its plot; reserve those rows too. */}
+      <SkeletonChartCard title="Tokens per request" bars={days} legend={PER_REQUEST_SERIES.length} />
+      <SkeletonChartCard title="Real input tokens / day" height={BAR_CHART_HEIGHT} bars={days} />
+      <SkeletonChartCard title="Estimated cost / day" height={BAR_CHART_HEIGHT} bars={days} />
       <SkeletonTableCard title="By day" columns={BY_DAY_COLUMNS} rows={days} />
     </>
   );

@@ -26,13 +26,20 @@ export function OverviewPage() {
     <section>
       <PageHead
         data={data}
+        loading={summary.isLoading}
         days={days}
         onDays={selectDays}
         // Only the mini charts follow this window; the headline numbers come from
         // today's digest, so the switcher marks itself and the cards stay at full strength.
         busy={isSwitching || trends.isFetching}
       />
-      <QueryState isLoading={summary.isLoading} error={summary.error} skeleton={<OverviewSkeleton />}>
+      {/* Both queries gate the skeleton: the tiles carry a mini chart drawn from the
+          trends window, so landing them separately would grow the row twice. */}
+      <QueryState
+        isLoading={summary.isLoading || trends.isLoading}
+        error={summary.error}
+        skeleton={<OverviewSkeleton />}
+      >
         {data && <OverviewBody data={data} digests={trends.data?.digests ?? []} />}
       </QueryState>
     </section>
@@ -43,7 +50,7 @@ export function OverviewPage() {
 function OverviewSkeleton() {
   return (
     <>
-      <SkeletonStats count={METRICS.length} />
+      <SkeletonStats count={METRICS.length} spark />
       <div className="grid two" aria-hidden>
         <div className="card">
           <div className="card-head">
@@ -149,11 +156,13 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
  */
 function PageHead({
   data,
+  loading,
   days,
   onDays,
   busy,
 }: {
   data?: SummaryResponse;
+  loading: boolean;
   days: number;
   onDays: (d: number) => void;
   busy?: boolean;
@@ -168,9 +177,9 @@ function PageHead({
               {data.digest.date} ({REPORT_TZ_ABBR}) · {data.meta.files} request{data.meta.files === 1 ? "" : "s"}
               {data.meta.parseErrors > 0 && ` · ${data.meta.parseErrors} skipped`}
             </>
-          ) : (
+          ) : loading ? (
             <Skeleton w="14rem" />
-          )}
+          ) : null}
         </div>
       </div>
       <Segmented options={DAY_WINDOWS} value={days} onSelect={onDays} label="Mini-chart window" busy={busy} />

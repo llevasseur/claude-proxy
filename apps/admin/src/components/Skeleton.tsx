@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { SPARKLINE_HEIGHT } from "./Sparkline";
 
 /**
  * Loading placeholders built from the classes the real page uses — `.card`,
@@ -53,8 +54,8 @@ export function SkeletonStatus({ label = "Loading" }: { label?: string }) {
   );
 }
 
-/** A `.grid.stats` row of stat cards. */
-export function SkeletonStats({ count = 4 }: { count?: number }) {
+/** A `.grid.stats` row of stat cards. `spark` reserves the mini chart a card can carry. */
+export function SkeletonStats({ count = 4, spark = false }: { count?: number; spark?: boolean }) {
   return (
     <div className="grid stats" aria-hidden>
       {Array.from({ length: count }, (_, i) => (
@@ -68,6 +69,11 @@ export function SkeletonStats({ count = 4 }: { count?: number }) {
           <div className="stat-foot">
             <Skeleton w="46%" />
           </div>
+          {spark && (
+            <div className="sparkline" style={{ height: SPARKLINE_HEIGHT }}>
+              <Skeleton h="100%" />
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -139,15 +145,21 @@ export function SkeletonTableCard({
   );
 }
 
-/** A chart card. `height` must match the real chart's fixed height (`SeriesLineChart` defaults to 220). */
+/**
+ * A chart card. `height` must match the real chart's fixed height (`SeriesLineChart`
+ * defaults to 220; a `BarChart` is `BAR_CHART_HEIGHT`). `legend` reserves that many
+ * `.chartlegend` entries beneath the plot.
+ */
 export function SkeletonChartCard({
   title,
   height = 220,
   bars = 14,
+  legend = 0,
 }: {
   title?: string;
   height?: number;
   bars?: number;
+  legend?: number;
 }) {
   // Deterministic sawtooth, so the bars don't flicker between renders.
   const heights = Array.from({ length: bars }, (_, i) => 34 + ((i * 37) % 61));
@@ -159,6 +171,15 @@ export function SkeletonChartCard({
           <span className="skeleton skeleton-bar" key={i} style={{ height: `${h}%` }} />
         ))}
       </div>
+      {legend > 0 && (
+        <div className="chartlegend" aria-hidden>
+          {Array.from({ length: legend }, (_, i) => (
+            <span className="chartlegend-item" key={i}>
+              <Skeleton w="4.5rem" />
+            </span>
+          ))}
+        </div>
+      )}
     </SkeletonCard>
   );
 }

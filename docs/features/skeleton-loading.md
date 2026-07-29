@@ -51,6 +51,16 @@ the selected window, a suggestion bucket reserves ten session rows because a buc
 always ten sessions, and a session's stat grid reserves seven tiles because the page — not
 the data — fixes that number.
 
+**A card is reserved with everything it carries, and lands once.** A stat tile on Overview
+holds a sparkline under its value and the per-request chart holds a legend under its plot,
+so the skeleton reserves those boxes too — otherwise the card is the right height until the
+extra part appears and pushes the page down anyway. For the same reason the plot heights are
+exported as `BAR_CHART_HEIGHT` and `SPARKLINE_HEIGHT` and read by both the chart and its
+placeholder, rather than being duplicated in the stylesheet where the two could drift apart.
+And where a view is assembled from two queries — Overview's tiles draw their mini charts from
+the trends window, Skim's tiles from a second day query — the skeleton is gated on both, so
+the row lands complete instead of arriving and then growing.
+
 **Every page is covered.** All 21 `QueryState` call sites pass a skeleton, so the
 `Loading…` text is now only a fallback for a caller that supplies none. The two pages that
 are not a padded column are handled in their own shape: the Sessions rail loads as ghost

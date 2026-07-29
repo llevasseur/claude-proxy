@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { SkimDigest } from "@claude-proxy/core";
 import { getSkim, getSkimTrend } from "../api";
-import { BarChart } from "../components/BarChart";
+import { BAR_CHART_HEIGHT, BarChart } from "../components/BarChart";
 import { QueryState } from "../components/QueryState";
 import { DAY_WINDOWS, Segmented } from "../components/Segmented";
 import {
@@ -68,9 +68,9 @@ export function SkimPage() {
       </div>
 
       <QueryState
-        isLoading={trendQuery.isLoading}
+        isLoading={trendQuery.isLoading || dayQuery.isLoading}
         error={trendQuery.error}
-        skeleton={<SkimSkeleton days={days} />}
+        skeleton={<SkimSkeleton days={days} stats={!dayQuery.isError} />}
         busy={busy}
       >
         {today && (
@@ -173,16 +173,19 @@ export function SkimPage() {
   );
 }
 
-/** Today's four tiles, the two trend charts side by side, then the shape breakdown. */
-function SkimSkeleton({ days }: { days: number }) {
+/**
+ * Today's four tiles, the two trend charts side by side, then the shape breakdown.
+ * `stats` is false once the day query has failed — those tiles are never coming.
+ */
+function SkimSkeleton({ days, stats = true }: { days: number; stats?: boolean }) {
   return (
     <>
-      <SkeletonStats count={4} />
+      {stats && <SkeletonStats count={4} />}
       <div className="grid wide-two">
         <SkeletonChartCard title="Hit-rate over time" bars={days} />
         <SkeletonChartCard title="Cumulative $ saved" bars={days} />
       </div>
-      <SkeletonChartCard title={`Top repeated request shapes (${days}d)`} height={200} bars={12} />
+      <SkeletonChartCard title={`Top repeated request shapes (${days}d)`} height={BAR_CHART_HEIGHT} bars={12} />
       <SkeletonTableCard title="By shape" columns={SHAPE_COLUMNS} rows={8} />
     </>
   );
