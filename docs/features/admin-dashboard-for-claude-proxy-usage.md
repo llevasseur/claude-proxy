@@ -4,24 +4,20 @@ title: Admin dashboard for claude-proxy usage
 description: A local web dashboard that monitors Claude Code usage, context size, sessions, cache savings, and advice from the proxy's audit logs.
 tags: [dashboard, usage, trends, advice]
 timestamp: 2026-07-24
-dirty: true
 ---
 
 # Admin dashboard for claude-proxy usage
 
 ## Summary
 
-A local, single-user web dashboard that reads the proxy's `.audit.json` sidecars —
-plus an archive of finalized digests for days the live `logs/` dir no longer holds —
-and shows token burn & estimated cost, context-bloat culprits, day-over-day trends,
-session transcripts, cache savings, and deterministic coaching advice.
+A local, single-user dashboard over the proxy's `.audit.json` sidecars and
+finalized-digest archive, showing token burn and estimated cost, context bloat,
+day-over-day trends, transcripts, cache savings, and deterministic advice.
 
 ## Motivation
 
-The proxy already captures every request and its token accounting, but the data
-only lived as thousands of Markdown/JSON files. This turns that pile into an
-at-a-glance view of where context and money are going, and what to do about it.
-It is the live, browsable counterpart to the daily end-of-day summary specced in
+The proxy's request and token records otherwise live in thousands of Markdown/JSON
+files. This is the browsable counterpart to the end-of-day summary in
 [`2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md),
 and was designed in
 [`2026-07-15-monorepo-admin-dashboard-design.md`](../specs/2026-07-15-monorepo-admin-dashboard-design.md).
@@ -63,24 +59,20 @@ Twelve stations in the side rail, several with drill-down subpages beneath them:
   ten-session suggestion buckets with persistent pending/done/skipped flags. See
   [Session suggestions](session-suggestions.md).
 
-Each station carries a [lucide](https://lucide.dev) icon. A toggle in the rail head
-collapses the rail to a 64px icon-only strip and back; the choice is persisted in
-`localStorage` under `admin:rail-collapsed`, so it survives a reload. Collapsed labels
-stay in the accessibility tree (visually hidden, not removed) and surface as hover
-tooltips. Below 860px the rail already folds into a top bar, where collapsing means
-nothing — there the toggle is hidden and the persisted state is ignored, and each
-station keeps its icon alongside the label.
+Each station has a [lucide](https://lucide.dev) icon. The rail toggles between full and
+a 64px icon-only strip; `localStorage` key `admin:rail-collapsed` persists the choice.
+Collapsed labels remain visually hidden in the accessibility tree and appear as hover
+tooltips. Below 860px, the rail becomes a top bar: the toggle and persisted state are
+ignored, while icons remain beside labels.
 
-Every day-bucketed value uses the shared `REPORT_TZ` (`America/New_York`, following EST/EDT),
-so Overview, Trends, busiest hour, and Skim roll over at Eastern midnight rather than at the
-UTC date in a sidecar filename. A reporting day can span two UTC archive folders;
-`readArchivedDay` merges both and filters by each sidecar's timestamp. Individual event
-timestamps still render in the viewer's local zone.
+Day-bucketed values use `REPORT_TZ` (`America/New_York`, following EST/EDT), so
+Overview, Trends, busiest hour, and Skim roll over at Eastern midnight, not the UTC
+filename date. `readArchivedDay` merges the two UTC archive folders a reporting day can
+span, then filters by sidecar timestamp. Individual events use the viewer's local zone.
 
-Data comes from the `server` API. Most routes are read-only JSON views, with two SSE streams
-for the sessions list and detail page. The deliberately small write surface starts,
-continues, stops, or ends dashboard chat sessions and records suggestion flags; those POSTs
-use an explicit allowlist and origin-checked CORS. See
+Most `server` routes are read-only JSON views; two SSE streams feed session list/detail.
+An explicit POST allowlist with origin-checked CORS starts, continues, stops, or ends
+dashboard chats and records suggestion flags. See
 [ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md).
 Analysis is computed via `packages/core`. Advice is produced by a
 `HeuristicAdviceProvider` behind an `AdviceProvider` seam, so an LLM/agent-backed provider
@@ -99,5 +91,5 @@ can replace it later without changing the UI or API.
 
 ## Open questions
 
-- Whether advice graduates from heuristics to an in-repo `agents/` LLM provider
-  (the interface is ready; wiring is out of scope for the first cut).
+- Whether to replace heuristics with an in-repo `agents/` LLM provider; the interface
+  exists, but wiring was out of scope.

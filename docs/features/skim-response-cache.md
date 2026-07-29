@@ -4,39 +4,31 @@ title: Skim response cache
 description: An opt-in, byte-exact response cache in the proxy that replays a repeat streamed /v1/messages reply from disk with zero upstream call, plus a dashboard page measuring hit-rate and dollars saved.
 tags: [backend, dashboard, usage]
 timestamp: 2026-07-24
-dirty: true
 ---
 
 # Skim response cache
 
 ## Summary
 
-An opt-in, byte-exact **response** cache inside the proxy. When a streamed
-`POST /v1/messages` body arrives whose bytes exactly match one already seen, the proxy
-replays the stored SSE reply from disk and makes **zero** call to Anthropic — the entire
-API call is saved, not just its input tokens. Every request (hit or miss) records a `skim`
-block in its audit sidecar, which the [admin dashboard](admin-dashboard-for-claude-proxy-usage.md)
-aggregates into hit-rate and estimated dollars saved on a **Skim** page. The skim is
-**off by default**; the proxy stays a transparent pass-through unless `SKIM_CACHE` is set.
-Charted in [map-proxy-skim](../wayfinder/map-proxy-skim.md).
+An opt-in, byte-exact proxy **response** cache. A streamed `POST /v1/messages`
+whose bytes match a prior body replays its stored SSE with **zero** Anthropic API call,
+saving input, output, and latency. Every request records a `skim` audit-sidecar
+block; the [dashboard](admin-dashboard-for-claude-proxy-usage.md) aggregates hit rate
+and estimated savings. It is **off by default** unless `SKIM_CACHE` is set. See
+[map-proxy-skim](../wayfinder/map-proxy-skim.md).
 
 ## Motivation
 
-Two cache layers are easy to conflate, and the effort's first job was separating them.
-Anthropic's **prefix cache** is server-side transformer KV-state living on their GPUs: it
-takes ~90% off *input* tokens, and it cannot be moved into the proxy without self-hosting
-the model. The skim is an **app-layer response cache**: it caches the model's *output*, so
-a hit skips the request entirely — no input tokens, no output tokens, no latency, and it
-works cross-session. That is the lever a proxy can actually pull.
+Anthropic's **prefix cache** is server-side transformer KV-state on its GPUs that saves
+~90% of *input* tokens and cannot move into the proxy without self-hosting. The skim is an
+**app-layer response cache**: it caches output, skips the whole request, and works
+cross-session.
 
-The payoff is deliberately not overstated. [Cacheability research](../wayfinder/research-002-cacheability.md)
-measured a real 1787-body corpus and found the byte-exact hit-rate floor is **~1.1%
-overall and ~0.6% for the streamed traffic the skim can replay** — every request is salted
-with a per-session UUID and stamped with live git status, dates, and `tool_result` output,
-so semantically-repeat requests almost never hash the same. What the corpus *does* show is
-that ~99% of requests fall into ~63 recurring *shapes*, which is why byte-exact keying
-ships as the safe floor and the instrumentation matters more than the current hit-rate:
-the sidecar data is what decides whether a smarter key is worth building.
+[Cacheability research](../wayfinder/research-002-cacheability.md) measured 1,787
+bodies: byte-exact hits were **~1.1% overall and ~0.6% for replayable streamed
+traffic** because session UUIDs, git status, dates, and `tool_result` output salt
+requests. Yet ~99% fall into ~63 recurring shapes. Byte-exact keying is the safe
+floor; instrumentation determines whether a smarter key is worthwhile.
 
 ## Behavior
 
@@ -138,12 +130,11 @@ already-captured sidecars.
 
 ## Open questions
 
-- **The semantic skim layer is not built.** Byte-exact keying is the conservative floor;
-  matching "same or similar task" instead would need an embedding/similarity threshold plus
-  scope keys (cwd, host, git HEAD) and a policy for excluding answer-irrelevant volatility
-  (`session_id`, embedded dates, `cache_control`). The research points the first version at
-  the small stateless utility calls — the quota ping, the CLAUDE.md classifier, the
-  title/label jobs — not the 64k-token agent turns.
+- **The semantic skim layer is not built.** Matching "same or similar task" needs an
+  embedding/similarity threshold, scope keys (cwd, host, git HEAD), and a policy for
+  answer-irrelevant volatility (`session_id`, embedded dates, `cache_control`). Research
+  favors small stateless utility calls—quota ping, CLAUDE.md classifier, title/label
+  jobs—not 64k-token agent turns.
 - **`SKIM_MAX_ENTRIES` and eviction were proposed but never implemented.**
   [Correctness guardrails](../wayfinder/decision-004-guardrails.md) recommends a max entry
   count with LRU/oldest-first eviction plus opportunistic deletion of expired files; none of
@@ -155,9 +146,8 @@ already-captured sidecars.
   to add, alongside a stream-completeness check (a truncated-but-`200` SSE is currently
   stored as if whole) — and that whole decision doc is still `status: proposed`, awaiting
   human ratification.
-- **Default TTL.** Decision 004 argues 1 hour is too long for a key that cannot tell a
-  stable question from one whose answer depends on live state, and suggests ~5–15 minutes.
-  The exact number is unratified.
+- **Default TTL.** Decision 004 says 1 hour is too long when keys cannot distinguish
+  stable from live-state questions and suggests ~5–15 minutes; the value is unratified.
 
 ## Related
 

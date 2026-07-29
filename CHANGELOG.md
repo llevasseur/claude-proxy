@@ -35,7 +35,8 @@ This project has not cut a release yet, so everything below sits under
   against the current API; and adds ADR 0003 to supersede ADR 0002's read-only-server constraint
   with the explicit chat and suggestion-status write allowlist. The root README and server
   package description now use the same architecture and point at the bundle's generated indexes
-  instead of a stale design-doc count and removed path.
+  instead of a stale design-doc count and removed path. All six queued concepts were then
+  density-reviewed without changing their claims, clearing the bundle's `dirty` work queue.
 
 - **Starting a session keeps you in the chat you started it from** — sending the first message on `/sessions` used to navigate to `/sessions/<chat-session-id>`, and that page then replaced its own URL with the thread id as soon as the proxy wrote the transcript. So a single send took you two hops out of the pane you were typing in, and the reply landed on a different page than the prompt: the chat client behaved like a redirect. The `navigate` on first send is gone, and the conversation now begins, continues and answers in place — `ChatSessionProvider` already lives above the router and holds the turns, so the pane was never the reason the page moved. What the detour was quietly providing is the thread id, which only reaches the pane on the reply, and an agent turn can run for an hour: the polling that resolved it moved out of the session page into a shared `useChatThread(sessionId, enabled)` hook, so the rail highlights the running session and the "open transcript" link works while the turn is still going, rather than after it lands. The session page keeps the same hook and the same URL canonicalization for a chat id someone opens deliberately — a bookmarked or shared link still resolves onto the transcript. `ChatConversation`'s `onSend` prop went with the navigation; it had no other caller.
 
