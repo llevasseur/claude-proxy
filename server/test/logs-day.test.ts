@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { reportDay } from "@claude-proxy/core";
 import { readArchivedDay, readSidecars, today } from "../src/logs.js";
 
 /** A sidecar whose filename prefix is its UTC instant, exactly as the proxy writes it. */
@@ -43,6 +44,22 @@ describe("readSidecars date filtering", () => {
   it("excludes pre-window evenings from a `since` range", async () => {
     const { sidecars } = await readSidecars(logDir, { since: "2026-07-16" });
     expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).toEqual([MORNING_16TH]);
+  });
+});
+
+// The callers that floor a scan at a session's own start (its breakdown, its
+// suggestion bucket's peaks, its family's requests) hand that start to `since`,
+// which compares against reporting days. Deriving it in UTC drops the session's
+// own captures for anything worked on after 8pm Eastern.
+describe("a session's own start as a `since` floor", () => {
+  it("keeps the captures of a session that started in the Eastern evening", async () => {
+    const { sidecars } = await readSidecars(logDir, { since: reportDay(EVENING_15TH)! });
+    expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).toContain(EVENING_15TH);
+  });
+
+  it("drops them when the floor is the raw UTC day", async () => {
+    const { sidecars } = await readSidecars(logDir, { since: EVENING_15TH.slice(0, 10) });
+    expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).not.toContain(EVENING_15TH);
   });
 });
 
