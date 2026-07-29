@@ -1,5 +1,26 @@
 # Repository Agent Instructions
 
+## Repository map
+
+Read this instead of walking the tree. Four pnpm workspace packages: `proxy/` (the
+logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
+`packages/core/` (`@claude-proxy/core`, pure logic, no runtime deps), `apps/admin/`
+(React/TanStack dashboard).
+
+- `server/src/server.ts` dispatches on pathname; the `build*` handlers behind those
+  routes live in `server/src/api.ts`. CLI entry points are
+  `server/src/suggestions-cli.ts` (`pnpm --filter server suggestions`),
+  `daily-summary.ts`, and `chat-cli.ts`.
+- `logs/` holds roughly today only: per-request triples
+  (`<timestamp>_anthropic.audit.json` / `.md` / `.request.txt`),
+  `logs/sessions/<threadId>.md` transcripts with `.nodes.jsonl` and `.state.json`
+  sidecars, `logs/suggestion-status.json`, `logs/.chat/`, and `logs/archive/`.
+- Verify with `my-command-tools verify`; it runs the root `typecheck`, `test`,
+  `build`, and `check:env` scripts.
+- `docs/` is an OKF bundle declared in `docs/index.md` frontmatter —
+  `docs/features/`, `docs/specs/`, `docs/adrs/`, `docs/wayfinder/`. Go there for
+  depth rather than re-deriving it from source.
+
 ## Efficient discovery
 
 - Batch independent read-only questions when no result can change the next query.
@@ -21,9 +42,37 @@
   genuinely needed again.
 - Prefer `rg` and `rg --files` over recursive `grep`, `find`, or multi-directory
   `ls` probes. When no match is an acceptable discovery result, make that explicit
-  for that read-only search (`rg ... || true`). Check an optional directory exists
-  before listing it so an absent path does not turn useful discovery into a failed
-  tool result.
+  for that read-only search (`rg ... || true`). Confirm an optional path exists
+  before listing a directory or reading, `sed`-ing, or otherwise transforming a
+  file, so an absent path does not turn useful discovery into a failed tool result.
+- When a question needs a fan-out across many files or directories, hand it to one
+  search agent and keep the conclusion instead of issuing the reads serially. Name
+  the target files up front when they are already known.
+
+## Shell command forms
+
+- Address files by absolute path, or `git -C <absolute path>`, rather than `cd`-ing
+  to a relative subdirectory — the working directory is often a worktree, not the
+  main checkout. When a directory must be entered, enter it by absolute path.
+- The shell is zsh, where an unmatched unquoted glob aborts the whole command
+  (`no matches found`). Quote every pattern the invoked program should expand, and
+  prefer `rg -g '<pattern>'` / `rg --files -g '<pattern>'`; `grep --include=*.ts`
+  fails here, `rg -g '*.ts'` is the working form.
+- Do not read `@{u}` on a branch that may never have been pushed. Push with `-u`
+  first, or tolerate the missing upstream explicitly.
+
+## Environment-specific failures
+
+- `1Password: failed to fill whole buffer` with `fatal: failed to write commit
+  object` is an unapproved signing prompt, not a repository problem: the commit did
+  not happen and the tree is untouched. Retry the same commit once after the prompt
+  is approved. Never rewrite the commit, pass `--no-gpg-sign`, or change the repo's
+  signing configuration to get around it.
+- `gh`'s GraphQL-backed writes (`gh pr create`, `gh pr edit`) resolve to an account
+  that is not a collaborator on `llevasseur`-owned repos, while REST succeeds. A
+  `must be a collaborator` GraphQL error means the wrong identity, not a permission
+  to request: select the right account (`gh auth switch`, or
+  `GH_TOKEN="$(gh auth token --user llevasseur)"`) or use the REST equivalent.
 
 ## Worktree ownership
 
@@ -43,6 +92,14 @@
   inspection, and local branch deletion as individual shell calls. Put status
   output, pipes, and follow-up verification in separate read-only calls.
 - A classifier refusal is not evidence that repository protections should be
-  weakened. Inspect the refused command first; when the intended operation is
-  safe, retry only the smallest exact command instead of allowlisting a broader
-  Bash pattern or changing permission settings.
+  weakened. Inspect the refused command first; when the intended operation is safe
+  and the refusal looks incidental to the command's shape — an over-broad chain,
+  pipe, or extra flag — retry only the smallest exact command, never an allowlisted
+  Bash pattern or a permission-settings change.
+- A refusal of a **PR merge or a remote-ref deletion is final.** Surface it to the
+  human and carry on with the rest of the work. Re-expressing the same operation is
+  refused for the same reason and costs a second turn:
+  `gh api -X PUT .../pulls/N/merge` is `gh pr merge`, and
+  `gh api --method DELETE .../git/refs/heads/...` is `git push origin --delete`, so
+  neither is the narrow retry the bullet above permits — nor is re-running one under
+  `GH_TOKEN=...`.
