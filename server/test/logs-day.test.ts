@@ -54,11 +54,6 @@ describe("a session's own start as a `since` floor", () => {
     const { sidecars } = await readSidecars(logDir, { since: reportDay(EVENING_15TH)! });
     expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).toContain(EVENING_15TH);
   });
-
-  it("drops them when the floor is the raw UTC day", async () => {
-    const { sidecars } = await readSidecars(logDir, { since: EVENING_15TH.slice(0, 10) });
-    expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).not.toContain(EVENING_15TH);
-  });
 });
 
 describe("readArchivedDay", () => {

@@ -166,11 +166,12 @@ Step text takes a second path over the same logs. `GET /api/sessions/graph/nodes
 scans the sidecars carrying the family's session ids **newest-first** capped at 60 requests, and
 hashes each body back to the thread that produced it with `threadIdForBody` — the server-side
 mirror of the `threadIdFor` in `proxy/session.mjs` that named the transcript in the first place.
-The scan's floor is the family's earliest transcript `started`, backed off a day: that start is a
-UTC instant, but the sidecar reader narrows by *reporting* day in `REPORT_TZ`, so a session opened
-after midnight UTC reports on the day before its own timestamp and a floor taken straight off the
-UTC prefix excluded every request the family ever made — every session started in that nightly
-window found no captured request at all and stayed wholly at its transcript gists.
+The scan's floor is the family's earliest transcript `started`, read through `reportDay`: that start
+is a UTC instant, but the sidecar reader narrows by *reporting* day in `REPORT_TZ`, so the floor is
+derived on the same clock the filter compares against. A floor taken straight off the UTC prefix
+excluded every request the family ever made — Eastern runs behind UTC, so a session opened in the
+evening carries a `started` whose UTC day is already tomorrow, and every session started in that
+nightly window found no captured request at all and stayed wholly at its transcript gists.
 The richest snapshot found per thread supplies its `deriveSessionNodes` stream, returned as
 `{ rootThreadId, threads: [{ threadId, file, messageCount, nodes }], meta }`. The admin page
 fetches it per canvased session on a 20 s interval — far heavier than the 4 s transcript poll,
