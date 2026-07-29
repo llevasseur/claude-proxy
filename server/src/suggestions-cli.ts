@@ -17,11 +17,9 @@
  * in one bucket. `--json` on either prints the API's own response, which is the
  * shape callers should parse.
  *
- * **`list` hides `historical` rows by default.** A bucket is a frozen window, so a
- * rule marked `done` after those sessions were recorded keeps tripping on them with
- * nothing left to act on — serving those rows is what made a fixed finding look
- * unfixed. They are counted in the header and reachable with `--recurrence`, so the
- * suppression is visible rather than silent.
+ * **`list` hides `historical` rows by default** — windows a rule's `done` postdates,
+ * with nothing left to act on. They are counted in the header and reachable with
+ * `--recurrence`.
  */
 import {
   countSuggestionRecurrences,
@@ -48,12 +46,7 @@ const USAGE = `usage:
            predate the rule's own 'done' can no longer be acted on
   <ids>    comma-separated suggestion ids, as printed by list`;
 
-/**
- * What `list` shows when `--recurrence` is not given: everything a caller can still
- * do something about. `historical` is excluded because the window is frozen — the
- * fix landed after those transcripts were written, so the rule will trip on them
- * forever no matter what changes next.
- */
+/** What `list` shows without `--recurrence`: every state but the frozen `historical` windows. */
 const ACTIONABLE_RECURRENCES: readonly SuggestionRecurrence[] = SUGGESTION_RECURRENCES.filter(
   (r) => r !== "historical",
 );
@@ -108,10 +101,7 @@ function parseRecurrences(raw: string): SuggestionRecurrence[] {
   });
 }
 
-/**
- * The recurrence marker on a row. `regressed` shouts because it is the one state
- * that means work: the fix was claimed, and these sessions were recorded after it.
- */
+/** The recurrence marker on a row — blank for `none`, loud for `regressed`. */
 function renderRecurrence(row: SuggestionStatusRow): string {
   if (row.recurrence === "none") return "";
   const since = row.resolved ? ` since ${row.resolved.updated.slice(0, 10)}` : "";
@@ -141,8 +131,7 @@ async function run(argv: readonly string[]): Promise<void> {
 
   if (command === "list") {
     const wanted = new Set(flags.recurrence ? parseRecurrences(flags.recurrence) : ACTIONABLE_RECURRENCES);
-    // Read every recurrence state, then narrow here. The rows left out are still
-    // worth counting — hiding them without saying so is the failure being fixed.
+    // Read every recurrence state, then narrow here, so the rows left out can be counted.
     const full = await buildSuggestionStatus(logDir, {
       buckets: flags.range ? parseBucketRange(flags.range) : undefined,
       statuses: flags.status ? parseStatuses(flags.status) : undefined,
@@ -150,8 +139,7 @@ async function run(argv: readonly string[]): Promise<void> {
     });
     const rows = full.rows.filter((row) => wanted.has(row.recurrence));
     const hidden = full.rows.length - rows.length;
-    // Split the hidden count: the frozen windows earn their own explanation, the rest
-    // were simply not asked for.
+    // Split the hidden count: frozen windows get their own line, the rest were just not asked for.
     const hiddenHistorical = wanted.has("historical") ? 0 : countSuggestionRecurrences(full.rows).historical;
     const result: SuggestionStatusResponse = {
       rows,

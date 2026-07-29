@@ -33,12 +33,7 @@ export const RECURRENCE_LABEL: Record<SuggestionRecurrence, string> = {
   regressed: "Regressed",
 };
 
-/**
- * Nothing left to do about this window: either someone acted on it, or its sessions
- * were all recorded before the rule's own `done` and so will trip forever. The
- * second half is why an untouched `pending` row can still be settled — the window is
- * frozen, and no fix reaches backwards into it.
- */
+/** Nothing left to do: acted on, or a frozen window the rule's own `done` postdates. */
 export const isSettled = (row: Pick<SuggestionStatusRow, "status" | "recurrence"> | undefined): boolean =>
   row ? isResolved(row.status) || row.recurrence === "historical" : false;
 
@@ -48,10 +43,7 @@ export function SuggestionStatusBadge({ status }: { status: SuggestionStatus }) 
   return <span className={`badge status-${status}`}>{STATUS_LABEL[status]}</span>;
 }
 
-/**
- * Where this window stands against the rule's dated `done`. Silent for `none`, which
- * is every suggestion until someone marks its rule somewhere.
- */
+/** Where this window stands against the rule's dated `done`. Silent for `none`. */
 export function SuggestionRecurrenceBadge({ row }: { row: Pick<SuggestionStatusRow, "recurrence" | "resolved"> }) {
   if (row.recurrence === "none") return null;
   const when = row.resolved ? fmtLocalTsShort(row.resolved.updated) : "";
@@ -104,7 +96,6 @@ export function SuggestionStatusControl({
           {STATUS_LABEL[status].toLowerCase()} {fmtLocalTsShort(row.updated)}
         </span>
       )}
-      {/* Only when the claim came from another window — otherwise the line above already said it. */}
       {row?.resolved && row.resolved.bucket !== bucket && (
         <span className="muted suggestion-mark-when">
           {row.recurrence === "regressed"

@@ -55,7 +55,6 @@ function SessionSuggestions() {
   const statusByKey = new Map((statusQuery.data?.rows ?? []).map((row) => [`${row.bucket}:${row.id}`, row] as const));
   const counts = statusQuery.data?.meta.counts;
   const resolved = (counts?.done ?? 0) + (counts?.skipped ?? 0);
-  // A fix was claimed for these rules and the windows recorded since tripped anyway.
   const regressed = statusQuery.data?.meta.recurrences.regressed ?? 0;
 
   return (
@@ -131,7 +130,7 @@ function BucketRow({
 }) {
   const worst = bucket.suggestions[0];
   const rowOf = (id: string): SuggestionStatusRow | undefined => statusByKey.get(`${bucket.index}:${id}`);
-  // Open means still actionable, so a window that predates its rule's fix is not open.
+  // Open counts what is still actionable, so a window predating its rule's fix isn't open.
   const open = bucket.suggestions.filter((s) => !isSettled(rowOf(s.id))).length;
   return (
     <Link to="/advice/sessions/$bucket" params={{ bucket: String(bucket.index) }} className="card bucket-row">

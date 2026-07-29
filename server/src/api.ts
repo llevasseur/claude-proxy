@@ -588,11 +588,7 @@ export interface SuggestionStatusResponse {
     missing: number[];
     /** Row counts per flag, over the rows returned. */
     counts: Record<SuggestionStatus, number>;
-    /**
-     * Row counts per recurrence state, over the rows returned. `regressed` is the
-     * one to read first: a fix was claimed for that rule and these sessions, all
-     * recorded afterwards, tripped it anyway.
-     */
+    /** Row counts per recurrence state, over the rows returned. */
     recurrences: Record<SuggestionRecurrence, number>;
   };
 }

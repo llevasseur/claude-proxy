@@ -1079,7 +1079,6 @@ button.link {
   background: var(--surface-2);
   color: var(--muted);
 }
-/* A claimed fix that did not hold — the one flag state that means work. */
 .badge.recurrence-regressed {
   background: rgba(255, 107, 129, 0.16);
   color: var(--coral);
@@ -1092,8 +1091,7 @@ button.link {
   background: var(--surface-2);
   color: var(--faint);
 }
-/* Regressed is the actionable state, so it stays at full contrast — these rules sit
-   after the .is-resolved dimming above and share its specificity, so they win. */
+/* Undims regressed rows: sits after the .is-resolved dimming and shares its specificity. */
 .advice.is-regressed {
   opacity: 1;
   border-color: var(--coral);

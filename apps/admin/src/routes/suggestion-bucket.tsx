@@ -56,7 +56,7 @@ export function SuggestionBucketPage() {
   const counts = statusQuery.data?.meta.counts;
   const recurrences = statusQuery.data?.meta.recurrences;
   const regressed = recurrences?.regressed ?? 0;
-  // "Resolved" here means settled: acted on, or a window its rule's fix predates.
+  // "Resolved" counts settled rows: acted on, or a window its rule's fix predates.
   const resolvedCount = (statusQuery.data?.rows ?? []).filter((row) => isSettled(row)).length;
   const suggestions = (data?.bucket.suggestions ?? []).filter(
     (s) => !hideResolved || !isSettled(statusById.get(s.id)),

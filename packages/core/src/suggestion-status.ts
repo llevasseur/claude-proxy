@@ -12,11 +12,9 @@
  * ten transcripts forever, and a suggestion's id is its rule's id, so the same
  * finding in the same window is the same row across recomputations.
  *
- * That stability has a consequence worth naming: because a window is frozen, a
- * rule that tripped on sessions recorded last week will trip on them forever, no
- * matter what changed since. A flag is therefore read as a *dated* claim — see
- * {@link suggestionRecurrence} — so "still tripping on old evidence" and "tripping
- * again on evidence recorded after the fix" stop looking like the same finding.
+ * Because a window is frozen, a rule that tripped on sessions recorded last week
+ * will trip on them forever, whatever changed since. A flag is therefore read as a
+ * *dated* claim — see {@link suggestionRecurrence}.
  *
  * `pending` is the default and is never persisted — the file only carries
  * decisions, so it stays small and an empty file means "nothing done yet".
@@ -102,25 +100,15 @@ export function suggestionStatusOf(store: SuggestionStatusStore, bucket: number,
 }
 
 /**
- * How a window's evidence stands against the dated claim its rule carries.
+ * How a window's evidence stands against the dated `done` its rule carries.
  *
- * `done` is a claim about a moment: someone changed something at time T. A bucket
- * is a frozen window of ten transcripts, so a rule that tripped on sessions from
- * before T will keep tripping on them forever — no fix reaches back into recorded
- * history. That makes "still tripping" two different findings, and only one of them
- * is worth anyone's attention:
+ * - `historical` — every session in the window predates the claim; nothing left to
+ *   do about this window.
+ * - `regressed` — every session started after the claim and the rule tripped anyway.
+ * - `mixed` — the window straddles the claim, so its evidence proves nothing either way.
+ * - `none` — no dated `done` for this rule, or the dates to compare are missing.
  *
- * - `historical` — every session in the window predates the claim. Expected to keep
- *   tripping; there is nothing left to do about this window.
- * - `regressed` — every session in the window started after the claim, and the rule
- *   tripped anyway. The change did not hold. This is the signal.
- * - `mixed` — the window straddles the claim, so its evidence is part pre-fix and
- *   the recurrence proves nothing either way.
- * - `none` — no dated `done` for this rule, or the dates needed to compare are
- *   missing. The ordinary case, where the flag alone says where things stand.
- *
- * Only `done` is a claim. `skipped` records a decision *not* to act, which asserts
- * nothing about behaviour changing, so it never produces a `regressed`.
+ * Only `done` is a claim; `skipped` never produces a `regressed`.
  */
 export const SUGGESTION_RECURRENCES = ["none", "historical", "mixed", "regressed"] as const;
 
@@ -142,12 +130,10 @@ export interface SuggestionResolution {
 
 /**
  * Collapse the store into one dated claim per rule id, keeping the most recent
- * `done`. This is what lets a single mark carry across windows: the flag is
- * recorded per bucket, but what it describes is a change to how the agent works,
- * and every window recorded afterwards is evidence about whether it took.
+ * `done`, so one mark carries across every window recorded afterwards.
  *
- * Entries with no parseable `updated` are skipped — an undated claim cannot be
- * compared against a window, and inventing a date would invent a regression.
+ * Entries with no parseable `updated` are skipped — an undated claim can't be
+ * placed against a window.
  */
 export function ruleResolutions(store: SuggestionStatusStore): Map<string, SuggestionResolution> {
   const latest = new Map<string, SuggestionResolution>();
@@ -166,11 +152,7 @@ export function ruleResolutions(store: SuggestionStatusStore): Map<string, Sugge
   return latest;
 }
 
-/**
- * Place one window against one rule's dated claim. Undated on either side reads as
- * `none`: a window whose sessions carry no `started` cannot be said to predate
- * anything.
- */
+/** Place one window against one rule's dated claim. Undated on either side reads as `none`. */
 export function suggestionRecurrence(
   bucket: Pick<SessionBucket, "startedFirst" | "startedLast">,
   resolution: SuggestionResolution | undefined,
@@ -298,10 +280,7 @@ export interface SuggestionStatusRow {
   /** ISO timestamp of the flag's last write; absent while pending. */
   updated?: string;
   note?: string;
-  /**
-   * How this window's evidence stands against the dated `done` its rule carries —
-   * `none` until some bucket records one. See {@link suggestionRecurrence}.
-   */
+  /** How this window stands against its rule's dated `done`. See {@link suggestionRecurrence}. */
   recurrence: SuggestionRecurrence;
   /** The dated claim `recurrence` was measured against. Absent when there is none. */
   resolved?: SuggestionResolution;
@@ -318,11 +297,7 @@ export interface SuggestionStatusFilter {
   buckets?: readonly number[];
   /** Only suggestions carrying one of these flags. Omit for all three. */
   statuses?: readonly SuggestionStatus[];
-  /**
-   * Only suggestions in one of these recurrence states. Omit for all four. Passing
-   * everything but `historical` is how a caller asks for the findings it can still
-   * act on, rather than the ones frozen into windows that predate the fix.
-   */
+  /** Only suggestions in one of these recurrence states. Omit for all four. */
   recurrences?: readonly SuggestionRecurrence[];
   /** Include each suggestion's detail, evidence and sources. Off by default. */
   detail?: boolean;
@@ -344,7 +319,7 @@ export function suggestionStatusRows(
   const wanted = filter.buckets ? new Set(filter.buckets) : null;
   const statuses = filter.statuses ? new Set<SuggestionStatus>(filter.statuses) : null;
   const recurrences = filter.recurrences ? new Set<SuggestionRecurrence>(filter.recurrences) : null;
-  // One pass over the store, not one per row: the claims are rule-wide, not per bucket.
+  // Claims are rule-wide, so resolve the whole store once rather than per row.
   const resolutions = ruleResolutions(store);
 
   return buckets
@@ -386,10 +361,7 @@ export function countSuggestionStatuses(rows: readonly SuggestionStatusRow[]): R
   return counts;
 }
 
-/**
- * How many rows sit in each recurrence state. `regressed` is the number worth
- * reading first — it counts findings whose fix was claimed and did not hold.
- */
+/** How many rows sit in each recurrence state. */
 export function countSuggestionRecurrences(
   rows: readonly SuggestionStatusRow[],
 ): Record<SuggestionRecurrence, number> {

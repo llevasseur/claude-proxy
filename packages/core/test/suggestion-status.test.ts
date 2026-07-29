@@ -172,8 +172,6 @@ describe("parseSuggestionStatusUpdates", () => {
   });
 });
 
-// A window is frozen, so "the rule still trips" only means something once you know
-// whether the sessions it tripped on were recorded before or after the fix landed.
 describe("recurrence against a dated fix", () => {
   const fixedAt = new Date("2026-07-20T00:00:00.000Z");
   const before = { first: "2026-07-01T00:00:00.000Z", last: "2026-07-05T00:00:00.000Z" };
