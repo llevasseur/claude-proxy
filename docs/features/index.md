@@ -22,4 +22,5 @@ Add one with `okq new feature "<title>"`.
 | Session transcripts | [session-transcripts.md](session-transcripts.md) |
 | Skeleton loading | [skeleton-loading.md](skeleton-loading.md) |
 | Skim response cache | [skim-response-cache.md](skim-response-cache.md) |
+| Usage limit meters | [usage-limit-meters.md](usage-limit-meters.md) |
 <!-- okq:index:end -->

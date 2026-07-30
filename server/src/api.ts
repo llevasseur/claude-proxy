@@ -6,6 +6,7 @@ import {
   linkRequestErrors,
   extractRequestMessage,
   extractRequestTool,
+  buildUsageLimits,
   computeSkimDigest,
   digestsByDay,
   heuristicAdvice,
@@ -54,6 +55,8 @@ import {
   type SkimShape,
   type TopTool,
   type UsageDigest,
+  type UsageLimitConfig,
+  type UsageLimitsSnapshot,
   type WithheldReport,
   PROXY_FILTER_INVENTORY,
   type FiltersResponse,
@@ -101,6 +104,25 @@ export async function buildSummary(logDir: string, date?: string, now: Date = ne
   const digest = computeDigest(cur.sidecars, { date: day, priorDigest });
   const advice = await heuristicAdvice.advise(digest);
   return { digest, advice, meta: { date: day, files: cur.files, parseErrors: cur.parseErrors } };
+}
+
+export interface UsageResponse {
+  usage: UsageLimitsSnapshot;
+  meta: { files: number; parseErrors: number };
+}
+
+/**
+ * The live usage meters, off one pass over the trailing week — the widest window
+ * any meter spans. `sinceDays: 8` rather than 7 because the filter is day-granular
+ * while the windows are instant-granular; the extra day covers the partial day.
+ */
+export async function buildUsage(
+  logDir: string,
+  limits: UsageLimitConfig,
+  now: Date = new Date(),
+): Promise<UsageResponse> {
+  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: 8 }, now);
+  return { usage: buildUsageLimits(sidecars, { limits, now }), meta: { files, parseErrors } };
 }
 
 export interface TrendsResponse {

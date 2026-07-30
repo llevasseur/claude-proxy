@@ -302,6 +302,13 @@ button:focus-visible {
   padding-bottom: 18px;
   border-bottom: 1px solid var(--line);
 }
+/* Right-hand cluster of a pagehead: live badge alongside a window switcher. */
+.pagehead-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
 .pagehead h1 {
   font-family: var(--font-display);
   font-size: 27px;
@@ -469,6 +476,108 @@ button:focus-visible {
 }
 .delta.flat {
   color: var(--muted);
+}
+
+/* usage meters — subscription allowances on the Overview. Each card carries its
+   tone via `.tone-*`, so bar, chip and blurb share one colour from one class. */
+.usage-meter {
+  --tone: var(--good);
+  margin: 0;
+}
+.usage-meter.tone-good {
+  --tone: var(--good);
+}
+.usage-meter.tone-signal {
+  --tone: var(--signal);
+}
+.usage-meter.tone-warn {
+  --tone: var(--amber);
+}
+.usage-meter.tone-bad {
+  --tone: var(--coral);
+}
+.usage-meter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.usage-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  color: var(--tone);
+  white-space: nowrap;
+}
+.usage-meter-value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 10px 0 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tone);
+}
+.usage-meter-unit {
+  font-size: 15px;
+  margin-left: 2px;
+  color: var(--muted);
+}
+.usage-bar {
+  position: relative;
+  height: 7px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.usage-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--tone);
+  transition: width 0.3s ease;
+}
+/* Projection sits behind the actual fill as a faint extension of it. */
+.usage-bar-projected {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--tone);
+  opacity: 0.24;
+  transition: width 0.3s ease;
+}
+.usage-meter-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+/* An estimate the retained logs can't fully back. */
+.usage-partial {
+  color: var(--amber);
+}
+.usage-blurb {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  /* Legible without outshouting the number. */
+  opacity: 0.82;
+}
+/* Wider than `.grid.stats`: each meter carries a sentence, not just a number. */
+.grid.usage {
+  grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
+}
+.usage-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0;
 }
 
 /* stat card: mini chart + clickable drill-down + hover popover */
