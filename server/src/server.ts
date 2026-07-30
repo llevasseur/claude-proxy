@@ -25,6 +25,7 @@ import {
   buildSummary,
   buildTools,
   buildTrends,
+  buildUsage,
   buildWithheld,
   buildHooksPlugins,
   buildFilters,
@@ -43,12 +44,14 @@ import {
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
+import { resolveUsageLimits } from "./usage-config.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default
 const LOG_DIR = resolveLogDir();
 const ARCHIVE_DIR = resolveArchiveDir();
 const PROJECTS_DIR = resolveProjectsDir();
+const USAGE_LIMITS = resolveUsageLimits();
 
 /** Everything but the chat routes is a read-only view of already-captured logs. */
 const CORS = {
@@ -280,8 +283,31 @@ const server = http.createServer(async (req, res) => {
       case "/api/summary":
         send(res, 200, await buildSummary(LOG_DIR, date));
         return;
+      // Today's digest moves with every captured request, so the Overview can
+      // follow the log directory the same way the usage meters do.
+      case "/api/summary/stream":
+        await serveSse(req, res, {
+          watchPath: LOG_DIR,
+          build: () => buildSummary(LOG_DIR, date),
+          debounceMs: 600,
+        });
+        return;
       case "/api/trends":
         send(res, 200, await buildTrends(LOG_DIR, parseDays(url.searchParams.get("days")), new Date(), ARCHIVE_DIR));
+        return;
+      case "/api/usage":
+        send(res, 200, await buildUsage(LOG_DIR, USAGE_LIMITS));
+        return;
+      // The meters move with every captured request, so they follow the log
+      // directory itself rather than any one file. Debounced generously: a busy
+      // session writes three files per request and the numbers barely move
+      // between them.
+      case "/api/usage/stream":
+        await serveSse(req, res, {
+          watchPath: LOG_DIR,
+          build: () => buildUsage(LOG_DIR, USAGE_LIMITS),
+          debounceMs: 600,
+        });
         return;
       case "/api/tools":
         send(res, 200, await buildTools(LOG_DIR, date));
