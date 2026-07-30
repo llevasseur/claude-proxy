@@ -2,10 +2,8 @@ import type { UsagePaceStatus, UsageWindowMeter } from "@claude-proxy/core";
 import { fmtInt } from "../format";
 
 /**
- * Meter tone tracks the *pace*, not the fill level — a bar can be nearly full and
- * still be fine late in a window, while a modest bar early on can already be a
- * problem. Mapped onto the palette's existing semantics so it reads the same way
- * as every other status colour in the dashboard.
+ * Tone tracks the pace, not the fill level: a nearly-full bar is fine late in a
+ * window, while a modest one early on can already be a problem.
  */
 const TONE: Record<UsagePaceStatus, string> = {
   safe: "good",
@@ -21,7 +19,7 @@ const STATUS_LABEL: Record<UsagePaceStatus, string> = {
   exhausted: "Limit reached",
 };
 
-/** Local clock time for a reset instant, e.g. `18:20`. */
+/** Local 24-hour clock time for a reset instant. */
 const resetClock = (iso: string): string => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
@@ -33,8 +31,8 @@ const resetClock = (iso: string): string => {
 export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
   const tone = TONE[w.pace.status];
   const utilPct = w.utilization * 100;
-  // The bar caps at 100% so an over-budget estimate can't overflow the track;
-  // the headline number still reports the true figure.
+  // Capped so an over-budget estimate can't overflow the track; the headline
+  // number still reports the true figure.
   const fill = Math.min(100, Math.max(0, utilPct));
   const projected = w.pace.projected == null ? null : Math.min(100, w.pace.projected * 100);
 
@@ -59,7 +57,7 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
         aria-label={`${w.label} allowance used`}
       >
         <div className="usage-bar-fill" style={{ width: `${fill}%` }} />
-        {/* Where this rate lands by the reset — the thing to steer by. */}
+        {/* Projection: where this rate lands by the reset. */}
         {projected != null && projected > fill && (
           <div className="usage-bar-projected" style={{ width: `${projected}%` }} title="Projected by reset" />
         )}

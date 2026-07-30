@@ -283,8 +283,8 @@ const server = http.createServer(async (req, res) => {
       case "/api/summary":
         send(res, 200, await buildSummary(LOG_DIR, date));
         return;
-      // Today's digest moves with every captured request, so the Overview can
-      // follow the log directory the same way the usage meters do.
+      // Today's digest moves with every captured request, so this follows the log
+      // directory rather than any one file.
       case "/api/summary/stream":
         await serveSse(req, res, {
           watchPath: LOG_DIR,
@@ -298,10 +298,8 @@ const server = http.createServer(async (req, res) => {
       case "/api/usage":
         send(res, 200, await buildUsage(LOG_DIR, USAGE_LIMITS));
         return;
-      // The meters move with every captured request, so they follow the log
-      // directory itself rather than any one file. Debounced generously: a busy
-      // session writes three files per request and the numbers barely move
-      // between them.
+      // Debounced generously: a busy session writes three files per request and
+      // the numbers barely move between them.
       case "/api/usage/stream":
         await serveSse(req, res, {
           watchPath: LOG_DIR,

@@ -71,10 +71,9 @@ export interface AuditSidecar {
   /** Present on sidecars written since ticket 001. */
   skim?: AuditSkim;
   /**
-   * Upstream `anthropic-ratelimit-*` response headers, names lowercased and kept
-   * verbatim. This is Anthropic's own account of the subscription's remaining
-   * allowance, so it drives the usage meters when present. Absent on sidecars
-   * written before capture existed, and on responses that carried no such header.
+   * Upstream `anthropic-ratelimit-*` response headers, verbatim with lowercased
+   * names — the authoritative remaining allowance behind the usage meters. Absent
+   * on older sidecars and on responses that carried no such header.
    */
   rateLimit?: Record<string, string>;
 }

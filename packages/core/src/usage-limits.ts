@@ -3,19 +3,17 @@ import { isAuditSidecar, type AuditSidecar, type AuditTokens } from "./types.js"
 /**
  * Usage meters for the rolling allowances a Claude subscription meters separately.
  *
- * Two sources, in order of preference. When the proxy has captured Anthropic's
- * own `anthropic-ratelimit-*` response headers, those are the authority: they
- * carry the real allowance and the real reset instant, and need no configuration.
- * Otherwise the numbers are *estimated* from the logged token counts against a
- * ceiling the operator supplies. With neither, a window is omitted rather than
- * shown against an invented denominator.
+ * Captured `anthropic-ratelimit-*` response headers win when present: they carry
+ * the real allowance and reset instant. Otherwise the numbers are estimated from
+ * logged tokens against an operator-supplied ceiling. With neither, a window is
+ * omitted rather than shown against an invented denominator.
  */
 
 /** The separately-metered allowances, in display order. */
 export const USAGE_WINDOWS = ["5h", "week", "weekFable"] as const;
 export type UsageWindowKind = (typeof USAGE_WINDOWS)[number];
 
-/** Nominal span of each window — the denominator every pace calculation divides by. */
+/** Nominal span of each window; every pace calculation divides by it. */
 export const USAGE_WINDOW_MS: Record<UsageWindowKind, number> = {
   "5h": 5 * 60 * 60 * 1000,
   week: 7 * 24 * 60 * 60 * 1000,
@@ -28,15 +26,10 @@ const WINDOW_LABELS: Record<UsageWindowKind, string> = {
   weekFable: "Weekly Fable",
 };
 
-/**
- * Weighted tokens — the unit both the estimate and its configured ceiling are in.
- * Cache reads bill at roughly a tenth of fresh input, so they weigh a tenth here;
- * counting them at par would let a cache-heavy hour dwarf every real request.
- * `input` (not `realInput`) is used so cached tokens aren't counted twice.
- */
+/** Cache reads bill at roughly a tenth of fresh input. */
 const CACHE_READ_WEIGHT = 0.1;
 
-/** Weighted usage units for one request. */
+/** Weighted usage units for one request; `input`, not `realInput`, to avoid double-counting. */
 export function usageUnits(t: AuditTokens): number {
   return t.input + t.output + t.cacheCreation + t.cacheRead * CACHE_READ_WEIGHT;
 }
@@ -72,10 +65,8 @@ export interface UsageWindowMeter {
   usedUnits: number | null;
   limitUnits: number | null;
   /**
-   * Fraction of the window actually backed by captured requests (estimated path).
-   * Below 1 the reading is a floor, not a total: this repo's `logs/` keeps only
-   * the recent past, so a weekly estimate routinely can't see the whole window.
-   * Always 1 on the header path, where Anthropic counts the window itself.
+   * Fraction of the window backed by retained logs (estimated path). Below 1 the
+   * reading is a floor, not a total. Always 1 on the header path.
    */
   coverage: number;
   pace: UsagePace;
@@ -95,18 +86,13 @@ export interface UsageLimitsSnapshot {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Header parsing
-//
-// The unified header names are matched by shape rather than by an exact list, so
-// a renamed or newly-added window still lands on the right meter: one segment
-// names the span (`5h`, `7d`/`week`), an optional one narrows it to a model
-// family, and the last names the field.
-// ---------------------------------------------------------------------------
+// Header names are matched by shape, not against an exact list, so a renamed or
+// newly-added window still lands on the right meter: one segment names the span,
+// an optional one narrows it to a model family, and the last names the field.
 
 const FIVE_HOUR_RE = /(^|[^a-z0-9])(5h|5_?hour|five_?hour)([^a-z0-9]|$)/;
 const WEEKLY_RE = /(^|[^a-z0-9])(7d|7_?day|seven_?day|week(ly)?)([^a-z0-9]|$)/;
-/** Fable is the top tier; Anthropic has historically named this window after Opus. */
+/** Fable is the current top tier; Anthropic has historically named this window after Opus. */
 const TOP_TIER_RE = /(fable|opus)/;
 const FIELD_RE = /(utilization|remaining|limit|reset|used|status)$/;
 
@@ -199,10 +185,6 @@ function headerUtilization(f: HeaderFields): number | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Pace
-// ---------------------------------------------------------------------------
-
 /** Above this projected utilization the window runs out before it resets. */
 const AGGRESSIVE_PROJECTION = 1;
 /** Above this it is close enough to the ceiling to be worth saying so. */
@@ -210,7 +192,7 @@ const ON_PACE_PROJECTION = 0.8;
 /** At or above this the allowance is effectively spent. */
 const EXHAUSTED_UTILIZATION = 0.995;
 
-/** `3h 40m` / `12m` / `2d 4h` — a duration at blurb width. */
+/** A duration at blurb width, down to the minute. */
 export function fmtDuration(ms: number): string {
   const total = Math.max(0, Math.round(ms / 60_000));
   const days = Math.floor(total / (60 * 24));
@@ -224,12 +206,12 @@ export function fmtDuration(ms: number): string {
 const pct = (n: number): string => `${Math.round(n * 100)}%`;
 
 /**
- * Read the rate against the window. The sustainable rate is spending the whole
- * allowance over the whole window, so `utilization / elapsed` is what this
- * projects forward — above 1 means running dry before the reset.
+ * Read the rate against the window. The sustainable rate spends the whole
+ * allowance over the whole window, so `utilization / elapsed` projected forward
+ * above 1 means running dry before the reset.
  *
- * A trailing estimate has no reset to run up against: the window *is* the last
- * N hours, so `elapsed` is 1 and the projection is simply where it already sits.
+ * A trailing estimate has no reset to run up against — the window *is* the last
+ * N hours — so `elapsed` is 1 and the projection is where it already sits.
  */
 function assessPace(args: {
   kind: UsageWindowKind;
@@ -248,12 +230,11 @@ function assessPace(args: {
 
   const projected = elapsed > 0 ? utilization / elapsed : null;
 
-  // A trailing estimate is measured against a ceiling the operator supplied, so
-  // it gets its own vocabulary throughout: exceeding it means the estimate has
-  // passed a configured budget, *not* that Anthropic is refusing anything.
+  // A trailing estimate measures against an operator-supplied ceiling, so it gets
+  // its own vocabulary: exceeding it means passing a configured budget, not that
+  // Anthropic is refusing anything.
   if (trailing) {
-    // A partly-covered window can only ever read low, so say so rather than
-    // letting a reassuring number stand on incomplete data.
+    // A partly-covered window can only read low, so the blurb says so.
     const coverage = args.coverage ?? 1;
     const caveat =
       coverage < 0.95
@@ -283,7 +264,7 @@ function assessPace(args: {
     };
   }
 
-  // Header path: Anthropic reported this, so the allowance really does bind.
+  // Header path: the allowance really does bind.
   if (utilization >= EXHAUSTED_UTILIZATION) {
     return {
       status: "exhausted",
@@ -342,10 +323,6 @@ function assessPace(args: {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Snapshot
-// ---------------------------------------------------------------------------
-
 /** A sidecar's captured response rate-limit headers, if the proxy recorded any. */
 function rateLimitHeaders(s: AuditSidecar): Record<string, string> | null {
   const raw = (s as { rateLimit?: unknown }).rateLimit;
@@ -365,8 +342,7 @@ export interface BuildUsageLimitsOptions {
  * Build the Overview's usage meters from captured requests.
  *
  * Pass sidecars covering at least the weekly window; anything older is ignored.
- * Malformed entries are skipped rather than failing the whole snapshot, matching
- * the digest's tolerance for a half-written file.
+ * Malformed entries are skipped rather than failing the whole snapshot.
  */
 export function buildUsageLimits(
   sidecars: readonly unknown[],
@@ -387,8 +363,8 @@ export function buildUsageLimits(
   valid.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   const newest = valid.at(-1) ?? null;
-  // Headers only describe the moment they were returned, so only the most recent
-  // request's are current. Older ones would understate everything since.
+  // Headers describe only the moment they were returned, so only the newest
+  // request's are current.
   const headerGroups = newest ? groupHeaders(rateLimitHeaders(newest) ?? {}, now) : new Map();
 
   const windows: UsageWindowMeter[] = [];
@@ -402,7 +378,7 @@ export function buildUsageLimits(
 
     if (fields && utilFromHeaders != null) {
       const resetsAt = fields.resetsAt ?? null;
-      // Elapsed follows from the reset instant: a window resetting in 1h of 5h is 80% gone.
+      // Elapsed follows from the reset instant against the nominal span.
       const elapsed = resetsAt
         ? clamp01(1 - (new Date(resetsAt).getTime() - nowMs) / windowMs)
         : 0;
@@ -423,8 +399,8 @@ export function buildUsageLimits(
 
     const limitUnits = limits[kind];
     if (limitUnits == null || !(limitUnits > 0)) continue; // no allowance to measure against
-    // Nothing captured means nothing to estimate from — a 0% meter here would
-    // report "well within limits" when the truth is "we cannot see".
+    // Nothing captured means nothing to estimate from; a 0% meter would read as
+    // "well within limits" when the truth is "we cannot see".
     if (valid.length === 0) continue;
 
     const since = nowMs - windowMs;

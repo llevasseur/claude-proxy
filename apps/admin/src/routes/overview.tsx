@@ -24,9 +24,8 @@ export function OverviewPage() {
     placeholderData: keepPreviousData,
   });
   const usage = useQuery({ queryKey: ["usage"], queryFn: () => getUsage() });
-  // Both streams watch the log directory, so a request in flight moves the
-  // meters and today's digest without a reload. The one-shot queries above stay
-  // in charge whenever SSE is unavailable.
+  // Both streams watch the log directory, so a request in flight moves the meters
+  // and today's digest without a reload; the queries above cover SSE being down.
   const usageLive = useLiveQuery<UsageResponse>("/api/usage/stream", ["usage"]);
   const summaryLive = useLiveQuery<SummaryResponse>("/api/summary/stream", ["summary"]);
   const data = summary.data;
@@ -62,7 +61,7 @@ export function OverviewPage() {
   );
 }
 
-/** The less healthy of the two stream states — one badge speaks for both. */
+/** The less healthy of two stream states — one badge speaks for both. */
 function worstStatus(a: LiveStatus, b: LiveStatus): LiveStatus {
   if (a === "offline" || b === "offline") return "offline";
   if (a === "connecting" || b === "connecting") return "connecting";
@@ -70,12 +69,9 @@ function worstStatus(a: LiveStatus, b: LiveStatus): LiveStatus {
 }
 
 /**
- * The subscription allowances, above the day's statistics — when a limit is the
- * thing about to bite, it should be the first thing on the page.
- *
- * Renders nothing at all when no window can be measured *and* nothing went
- * wrong: an operator with neither captured rate-limit headers nor configured
- * ceilings is better served by the rest of the page than by an empty meter.
+ * The subscription allowances, above the day's statistics. Renders nothing when
+ * no window can be measured and nothing went wrong — neither captured headers
+ * nor configured ceilings means there is no meter worth showing.
  */
 function UsageSection({
   data,

@@ -328,8 +328,7 @@ describe("buildUsageLimits — nothing to measure", () => {
   });
 
   it("says so plainly when there are no recent requests at all", () => {
-    // A 0%-used meter would read as "well within limits" when the truth is that
-    // nothing was observed, so no window is emitted even with a ceiling set.
+    // A 0%-used meter would read as "well within limits", so none is emitted.
     const snap = buildUsageLimits([], { now: NOW, limits: { "5h": 1000 } });
     expect(snap.windows).toEqual([]);
     expect(snap.unavailable).toMatch(/no requests captured/i);

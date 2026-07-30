@@ -1,16 +1,12 @@
 import type { UsageLimitConfig } from "@claude-proxy/core";
 
 /**
- * Ceilings for the usage meters' estimated fallback, read from the environment.
+ * Ceilings for the usage meters' estimated fallback, consulted only for windows
+ * Anthropic's rate-limit headers don't cover. Anthropic doesn't publish
+ * subscription quotas as token counts, so there is deliberately no default: an
+ * unset window is omitted rather than measured against an invented number.
  *
- * These are only consulted for a window Anthropic's own rate-limit headers don't
- * cover — with headers the real allowance is already known. Anthropic doesn't
- * publish subscription quotas as token counts, so there is deliberately no
- * built-in default: an unset window is omitted from the dashboard rather than
- * measured against a number this repo made up.
- *
- * Values are in the weighted units `usageUnits` counts (cache reads at a tenth).
- * `k`/`m` suffixes are accepted since the useful magnitudes are large.
+ * Values are in the weighted units `usageUnits` counts, with `k`/`m` suffixes.
  */
 const ENV_KEYS: Record<keyof UsageLimitConfig, string> = {
   "5h": "USAGE_LIMIT_5H",
@@ -18,7 +14,7 @@ const ENV_KEYS: Record<keyof UsageLimitConfig, string> = {
   weekFable: "USAGE_LIMIT_WEEK_FABLE",
 };
 
-/** Parse `2_500_000`, `2.5m`, or `900k`; null when absent or not a positive number. */
+/** Parse a digit-group or `k`/`m`-suffixed count; null unless it is a positive number. */
 export function parseLimit(raw: string | undefined): number | null {
   if (!raw) return null;
   const cleaned = raw.trim().toLowerCase().replace(/[_,]/g, "");

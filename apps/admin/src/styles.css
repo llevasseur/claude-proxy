@@ -478,9 +478,8 @@ button:focus-visible {
   color: var(--muted);
 }
 
-/* usage meters — 5-hour / weekly / weekly-Fable allowances on the Overview.
-   Each card carries its own tone via `.tone-*`, so the bar, chip and blurb all
-   pick up one colour from a single class on the card. */
+/* usage meters — subscription allowances on the Overview. Each card carries its
+   tone via `.tone-*`, so bar, chip and blurb share one colour from one class. */
 .usage-meter {
   --tone: var(--good);
   margin: 0;
@@ -567,7 +566,7 @@ button:focus-visible {
   font-size: 12px;
   line-height: 1.5;
   color: var(--text);
-  /* The blurb is the point of the card, but shouldn't outshout the number. */
+  /* Legible without outshouting the number. */
   opacity: 0.82;
 }
 /* Wider than `.grid.stats`: each meter carries a sentence, not just a number. */

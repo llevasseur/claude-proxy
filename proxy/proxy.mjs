@@ -209,11 +209,11 @@ function extractSession(headers, reqJson) {
 }
 
 /**
- * Anthropic's rate-limit headers off the upstream *response* — how much of the
- * subscription's 5-hour and weekly allowances is left. Kept verbatim (names
- * lowercased) rather than parsed into fixed fields, so a renamed or newly-added
- * window still reaches the dashboard without a proxy change. Carries no auth:
- * only `anthropic-ratelimit-*` and `x-ratelimit-*` names are copied.
+ * Rate-limit headers off the upstream *response* — how much of the subscription's
+ * allowances is left. Kept verbatim (names lowercased) rather than parsed into
+ * fixed fields, so a renamed or newly-added window still reaches the dashboard
+ * without a proxy change. Only `anthropic-ratelimit-*` and `x-ratelimit-*` names
+ * are copied, so no auth comes with them.
  */
 function extractRateLimit(respHeaders) {
   if (!respHeaders) return null;
@@ -257,8 +257,7 @@ function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPa
     skim: skimInfo ?? { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey: null },
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
-  // Omitted entirely when upstream sent none, so a sidecar never implies a
-  // reading it doesn't have.
+  // Omitted when upstream sent none, so a sidecar never implies a reading it lacks.
   if (rateLimit) sidecar.rateLimit = rateLimit;
   return JSON.stringify(sidecar, null, 2);
 }

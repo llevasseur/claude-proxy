@@ -112,10 +112,9 @@ export interface UsageResponse {
 }
 
 /**
- * The live usage meters. Reads the trailing week of sidecars — the widest window
- * any meter spans — so the weekly and 5-hour readings come from one pass.
- * `sinceDays: 8` rather than 7 because the filter is day-granular while the
- * windows are instant-granular: the extra day covers the partial day at the edge.
+ * The live usage meters, off one pass over the trailing week — the widest window
+ * any meter spans. `sinceDays: 8` rather than 7 because the filter is day-granular
+ * while the windows are instant-granular; the extra day covers the partial day.
  */
 export async function buildUsage(
   logDir: string,
