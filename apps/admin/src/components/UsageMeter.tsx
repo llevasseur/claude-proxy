@@ -19,12 +19,25 @@ const STATUS_LABEL: Record<UsagePaceStatus, string> = {
   exhausted: "Limit reached",
 };
 
-/** Local 24-hour clock time for a reset instant. */
-const resetClock = (iso: string): string => {
+/** Beyond this the weekday is needed to say which day's reset is meant. */
+const DAY_QUALIFIER_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Local 24-hour clock time for a reset instant, prefixed with the weekday once the
+ * reset is far enough out that the time alone is ambiguous — a weekly window resets
+ * days away.
+ */
+const resetClock = (iso: string, now: Date = new Date()): string => {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+  if (Number.isNaN(d.getTime())) return iso;
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(d);
+  if (d.getTime() - now.getTime() <= DAY_QUALIFIER_MS) return time;
+  const day = new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(d);
+  return `${day} ${time}`;
 };
 
 /** One window's allowance: a bar, the headline number, and the pace read. */
@@ -51,9 +64,12 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
       <div
         className="usage-bar"
         role="meter"
-        aria-valuenow={Math.round(utilPct)}
+        // An over-budget estimate exceeds 100%, which `aria-valuenow` may not; the
+        // true figure rides along in `aria-valuetext`.
+        aria-valuenow={Math.round(fill)}
         aria-valuemin={0}
         aria-valuemax={100}
+        aria-valuetext={`${Math.round(utilPct)}% used`}
         aria-label={`${w.label} allowance used`}
       >
         <div className="usage-bar-fill" style={{ width: `${fill}%` }} />

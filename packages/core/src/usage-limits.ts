@@ -61,8 +61,13 @@ export interface UsageWindowMeter {
   resetsAt: string | null;
   /** `headers` is Anthropic's accounting; `estimated` is ours, from logged tokens. */
   source: "headers" | "estimated";
-  /** Units counted and the ceiling measured against — estimated path only. */
+  /** Weighted {@link usageUnits} counted; estimated path only. */
   usedUnits: number | null;
+  /**
+   * The ceiling measured against. On the estimated path this is the configured
+   * limit in {@link usageUnits}; on the header path it is Anthropic's own reported
+   * limit, in Anthropic's units — the two are not comparable.
+   */
   limitUnits: number | null;
   /**
    * Fraction of the window backed by retained logs (estimated path). Below 1 the
@@ -325,7 +330,7 @@ function assessPace(args: {
 
 /** A sidecar's captured response rate-limit headers, if the proxy recorded any. */
 function rateLimitHeaders(s: AuditSidecar): Record<string, string> | null {
-  const raw = (s as { rateLimit?: unknown }).rateLimit;
+  const raw: unknown = s.rateLimit;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
   return raw as Record<string, string>;
 }
@@ -427,8 +432,8 @@ export function buildUsageLimits(
     });
   }
 
-  const weekAgo = nowMs - USAGE_WINDOW_MS.week;
-  const requests = valid.filter((s) => new Date(s.timestamp).getTime() >= weekAgo).length;
+  // `valid` is already trimmed to the weekly window.
+  const requests = valid.length;
 
   let unavailable: string | null = null;
   if (windows.length === 0) {
