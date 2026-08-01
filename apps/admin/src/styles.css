@@ -25,8 +25,11 @@
   --info: var(--signal);
 
   /* type */
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display:
+    "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  --font-body:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   font-family: var(--font-body);
@@ -119,7 +122,9 @@ button:focus-visible {
 .station-icon {
   flex: none;
   color: var(--faint);
-  transition: color 0.15s ease, filter 0.15s ease;
+  transition:
+    color 0.15s ease,
+    filter 0.15s ease;
 }
 .station-label {
   font-size: 13.5px;
@@ -171,7 +176,9 @@ button:focus-visible {
   border: 1px solid var(--line);
   border-radius: 7px;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 .rail-toggle:hover {
   color: var(--text);
@@ -577,7 +584,7 @@ button:focus-visible {
   font-size: 12px;
   line-height: 1.5;
   color: var(--muted);
-  margin: 0;
+  margin: 0 0 22px;
 }
 
 /* stat card: mini chart + clickable drill-down + hover popover */
@@ -592,7 +599,9 @@ button:focus-visible {
   display: block;
   text-decoration: none;
   color: inherit;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 .stat-link:hover {
   border-color: var(--signal-dim);
@@ -613,7 +622,10 @@ button:focus-visible {
   opacity: 0;
   visibility: hidden;
   transform: translateY(-4px);
-  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease,
+    visibility 0.12s ease;
   pointer-events: none;
 }
 .stat-link:hover .stat-popover,
@@ -655,7 +667,11 @@ button:focus-visible {
 }
 /* The day under the cursor — on this row or on the mini chart's node. */
 .stat-popover-list li.is-active {
-  background: color-mix(in srgb, var(--spark-color, var(--signal)) 18%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--spark-color, var(--signal)) 18%,
+    transparent
+  );
 }
 .stat-popover-date {
   color: var(--muted);
@@ -1484,7 +1500,9 @@ button.link {
   text-decoration: none;
   color: inherit;
   border-color: rgba(255, 107, 129, 0.4);
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 .stat-error:hover {
   border-color: var(--coral);
@@ -1505,7 +1523,9 @@ button.link {
   text-decoration: none;
   color: inherit;
   border-color: rgba(70, 224, 192, 0.4);
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 .stat-drill:hover {
   border-color: var(--signal);
@@ -3006,7 +3026,12 @@ button.sessions-new.is-active {
   width: 100%;
   height: 0.72em;
   border-radius: 5px;
-  background: linear-gradient(90deg, var(--surface-2) 8%, var(--line) 38%, var(--surface-2) 68%);
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 8%,
+    var(--line) 38%,
+    var(--surface-2) 68%
+  );
   background-size: 260% 100%;
   animation: skeleton-shimmer 1.6s ease-in-out infinite;
 }
