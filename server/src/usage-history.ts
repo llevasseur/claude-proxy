@@ -8,7 +8,8 @@ import { rawArchiveDayDir, readArchivedDay, readSidecars, shiftDay, today } from
  *
  * The live log directory holds roughly a day and cannot span a completed weekly
  * window, so the archive is the only place either can come from. Both passes are
- * expensive and slow-moving, hence the memos.
+ * expensive and slow-moving, hence the memos — and both read a day through the
+ * same one, so the span they overlap on is parsed once rather than once each.
  */
 
 /** Four weeks — room for three completed weekly windows, without reading the whole archive. */
@@ -24,6 +25,42 @@ export function clearLearnedCeilingsCache(): void {
   cache = null;
 }
 
+// A finalized day never changes, so each is parsed once and held for the process
+// lifetime rather than re-read on every SSE tick. An *absent* day is deliberately
+// not cached: the archive job may not have run yet, and a sticky miss would pin
+// the gap in place until restart.
+const dayCache = new Map<string, { sidecars: unknown[]; parseErrors: number }>();
+
+/** Test-only: drop the per-day archived-sidecar memo. */
+export function clearArchivedUsageCache(): void {
+  dayCache.clear();
+}
+
+/**
+ * One archived day, parsed at most once per process, plus whether it is retained
+ * at all — its own directory being on disk is what makes it so.
+ *
+ * Both passes read through here, and the count's span sits inside the ceiling's,
+ * so a day both reach into is parsed once rather than once each.
+ */
+async function readArchivedDayMemo(
+  logDir: string,
+  day: string,
+): Promise<{ sidecars: unknown[]; parseErrors: number; retained: boolean }> {
+  const key = `${logDir}\n${day}`;
+  const hit = dayCache.get(key);
+  if (hit) return { ...hit, retained: true };
+  try {
+    await access(rawArchiveDayDir(logDir, day));
+  } catch {
+    return { sidecars: [], parseErrors: 0, retained: false }; // never archived, or pruned
+  }
+  const read = await readArchivedDay(logDir, day, { includeFile: true });
+  const entry = { sidecars: read.sidecars, parseErrors: read.parseErrors };
+  dayCache.set(key, entry);
+  return { ...entry, retained: true };
+}
+
 /**
  * Every sidecar in the learning span, live plus archived. A day directory that
  * was never written or has been pruned contributes nothing.
@@ -34,7 +71,7 @@ async function readLearningCorpus(logDir: string, now: Date): Promise<unknown[]>
   let day = today(now);
   for (let i = 0; i < LEARN_DAYS; i += 1) {
     day = shiftDay(day, -1);
-    const archived = await readArchivedDay(logDir, day);
+    const archived = await readArchivedDayMemo(logDir, day);
     corpus.push(...archived.sidecars);
   }
   return corpus;
@@ -54,17 +91,6 @@ export async function loadLearnedCeilings(logDir: string, now: Date = new Date()
 
 /** Archived days the meters reach into — the widest window, plus the day the live read overlaps. */
 const USAGE_DAYS = 8;
-
-// A finalized day never changes, so each is parsed once and held for the process
-// lifetime rather than re-read on every SSE tick. An *absent* day is deliberately
-// not cached: the archive job may not have run yet, and a sticky miss would pin
-// the gap in place until restart.
-const dayCache = new Map<string, { sidecars: unknown[]; parseErrors: number }>();
-
-/** Test-only: drop the per-day archived-sidecar memo. */
-export function clearArchivedUsageCache(): void {
-  dayCache.clear();
-}
 
 export interface ArchivedUsage {
   sidecars: unknown[];
@@ -87,22 +113,11 @@ export async function loadArchivedUsage(logDir: string, now: Date = new Date()):
   let day = today(now);
   for (let i = 0; i < USAGE_DAYS; i += 1) {
     day = shiftDay(day, -1);
-    try {
-      await access(rawArchiveDayDir(logDir, day));
-    } catch {
-      continue; // never archived, or pruned — a real hole in the window
-    }
+    const archived = await readArchivedDayMemo(logDir, day);
+    if (!archived.retained) continue; // a real hole in the window
     out.retainedDays.push(day);
-
-    const key = `${logDir}\n${day}`;
-    let hit = dayCache.get(key);
-    if (!hit) {
-      const r = await readArchivedDay(logDir, day, { includeFile: true });
-      hit = { sidecars: r.sidecars, parseErrors: r.parseErrors };
-      dayCache.set(key, hit);
-    }
-    out.sidecars.push(...hit.sidecars);
-    out.parseErrors += hit.parseErrors;
+    out.sidecars.push(...archived.sidecars);
+    out.parseErrors += archived.parseErrors;
   }
   return out;
 }
