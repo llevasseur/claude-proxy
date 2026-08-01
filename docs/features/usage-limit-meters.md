@@ -81,20 +81,42 @@ at par would let a cache-heavy hour dwarf every real request. `input` is used ra
 double-count. As a sense of scale, an active coding day on this device runs ~14M units per
 5-hour window.
 
-## Coverage — why an estimated weekly window reads low
+## Coverage — how much of a window is actually on disk
 
 `logs/` retains roughly the current day; older days are relocated by an external job into
 `logs/archive/<date>/`, which keeps the full per-request sidecar triples. The live directory
-alone therefore cannot see a whole weekly span, and a weekly window drawn from it would
-silently under-report.
+alone therefore cannot see a whole weekly span — measured at 3% of the window on this device,
+a weekly figure drawn from about five hours of logs.
 
-The archive is what makes a *learned* weekly ceiling possible at all, and reading weeks of it
-is why that pass is cached rather than run per request.
+So both halves of the estimate read the archive. `buildUsage` unions the live directory with
+the archived days the windows reach into, which is the count itself; `learnCeilings` reads
+four weeks of it for the ceiling that count is divided by. Both are cached rather than run per
+request — `/api/usage/stream` rebuilds on a 600ms debounce, and re-reading thousands of
+sidecar files per tick is not affordable. Archived days are memoised individually for the
+process lifetime because a finalized day cannot change; an *absent* day is deliberately not
+cached, since the archive job may simply not have run yet and a sticky miss would pin the gap
+in place until restart. Live and archived reads are deduped by source filename, so an archiver
+that copies rather than moves cannot double every request in the seam.
 
 Each estimated window reports `coverage`, the fraction of the window actually backed by
 retained logs. Below 0.95 the meter is labelled `partial` in amber and the blurb says the real
 figure is higher — so a reassuring number never stands unqualified on incomplete data. The
 header path is always `coverage: 1`, since Anthropic counts the window itself.
+
+**Coverage counts the days held, not the span back to the oldest surviving request.** The
+distinction is the difference between a warning and a lie. Measuring from the oldest record
+reads a hole in the middle of a window as full coverage, and the `partial` marking disappears
+with it — so backfilling the archive *without* this change would have replaced a visibly wrong
+number with an invisibly wrong one. Days are the unit because rotation is day-granular: a
+quiet stretch inside a retained day is genuinely quiet, while a missing day directory is a
+hole. Day ends resolve as the next day's start, so the two DST changeover days keep their real
+23 and 25 hours.
+
+A day counts as retained when its own directory is on disk. Because a reporting day can
+straddle `<date>` and `<date + 1>` — archive folders are named for the UTC day the job moved —
+requiring the day's own folder can understate coverage at that seam. That is the safe
+direction: it marks the window `partial` rather than presenting an incomplete count as a
+total.
 
 ## The pace read
 
@@ -128,10 +150,17 @@ requests were captured at all no estimated window is emitted, because a 0% meter
 ## Where it lives
 
 - `packages/core/src/usage-limits.ts` — header parsing, the weighted unit, coverage, the pace
-  assessment, and `learnCeilings`. Pure; `buildUsageLimits(sidecars, { limits, learned, now })`
-  takes an injected `now`, so every threshold is testable. `USAGE_LIMIT_ENV_SUFFIX` is the one
-  source of truth for the env-var names, shared with the server so a blurb cannot name a
-  variable the server doesn't read.
+  assessment, and `learnCeilings`. Pure;
+  `buildUsageLimits(sidecars, { limits, learned, retainedDays, now })` takes an injected `now`,
+  so every threshold is testable. `retainedDays` is what switches coverage from the oldest-record
+  span to the days actually held; omitted, it falls back to that span, which is all a caller
+  with no retention map can honestly claim. `USAGE_LIMIT_ENV_SUFFIX` is the one source of truth
+  for the env-var names, shared with the server so a blurb cannot name a variable the server
+  doesn't read.
+- `packages/core/src/time.ts` — `dayStartMs` resolves a day label to the instant local midnight
+  opens it, applying the zone offset twice so the changeover days land right.
+- `server/src/usage-history.ts` — `loadArchivedUsage` (the archived sidecars plus which days are
+  retained) and `loadLearnedCeilings` (the inferred ceiling), each with its own memo.
 - `proxy/proxy.mjs` — `extractRateLimit` copies only `anthropic-ratelimit-*` / `x-ratelimit-*`
   names off the upstream response, so no auth can ride along. The field is omitted entirely
   when upstream sent none, and a skim-cache-served request records none because no upstream
