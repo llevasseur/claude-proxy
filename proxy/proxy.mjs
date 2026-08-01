@@ -27,6 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as skim from "./skim.mjs";
 import * as session from "./session.mjs";
+import { noteAuth, startUsagePolling } from "./usage-live.mjs";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default; set HOST="" to bind all interfaces
@@ -476,6 +477,9 @@ function handle(req, res) {
     const timestamp = new Date().toISOString();
     const base = baseName();
 
+    // Kept in memory for the usage poll; never logged or written to a sidecar.
+    noteAuth(req.headers);
+
     // Parse the request body once — the skim gate and the logging both need it.
     let reqJson = null;
     try { reqJson = JSON.parse(body.toString("utf8")); } catch { /* non-JSON body */ }
@@ -582,6 +586,9 @@ if (isMain) {
     console.log(`[agent-proxy] listening on http://${HOST || "0.0.0.0"}:${PORT}`);
     console.log(`[agent-proxy] point Claude Code at it:  ANTHROPIC_BASE_URL=http://localhost:${PORT} claude`);
   });
+  // Nothing to ask for until a request has gone through and handed us a token,
+  // so the first tick is a minute out rather than immediate.
+  startUsagePolling(LOG_DIR);
 }
 
 // Exported for unit tests.

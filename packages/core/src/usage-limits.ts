@@ -1,3 +1,4 @@
+import { dayStartMs, shiftDay } from "./time.js";
 import { isAuditSidecar, type AuditSidecar, type AuditTokens } from "./types.js";
 
 /**
@@ -44,6 +45,31 @@ export function usageUnits(t: AuditTokens): number {
 /** Per-window ceilings for the estimated path, in {@link usageUnits}. */
 export type UsageLimitConfig = Partial<Record<UsageWindowKind, number>>;
 
+/** One window as Anthropic's own usage endpoint reports it. */
+export interface LiveUsageWindow {
+  /** Fraction of the allowance consumed, `percent / 100`. */
+  utilization: number;
+  resetsAt: string | null;
+}
+
+/** Windows read from `/api/oauth/usage`, keyed the way this module keys them. */
+export type LiveUsage = Partial<Record<UsageWindowKind, LiveUsageWindow>>;
+
+/**
+ * `kind` values the usage endpoint emits, mapped onto our windows. `weekly_scoped`
+ * carries the model in `scope.model.display_name` instead of in the kind.
+ *
+ * Both the `session`/`weekly_all` spelling the endpoint returns and the
+ * `five_hour`/`seven_day` one the client also accepts are matched.
+ */
+const LIVE_KINDS: Record<string, UsageWindowKind> = {
+  session: "5h",
+  weekly_all: "week",
+  five_hour: "5h",
+  seven_day: "week",
+  seven_day_opus: "weekFable",
+};
+
 /**
  * A ceiling inferred from history: the busiest completed window we have logs for.
  *
@@ -89,7 +115,7 @@ export interface UsageWindowMeter {
    * Where the ceiling came from: Anthropic's own accounting, an operator-supplied
    * limit, or {@link LearnedCeiling}.
    */
-  source: "headers" | "estimated" | "learned";
+  source: "live" | "headers" | "estimated" | "learned";
   /** How the ceiling was inferred; null unless `source` is `learned`. */
   learned: LearnedCeiling | null;
   /** Weighted {@link usageUnits} counted; estimated path only. */
@@ -117,7 +143,11 @@ export interface UsageLimitsSnapshot {
   meta: {
     /** Requests counted in the weekly window. */
     requests: number;
-    /** Windows sourced from Anthropic's headers rather than estimated. */
+    /**
+     * Windows Anthropic reported itself — the polled endpoint or the response
+     * headers — rather than ones estimated against a configured or learned
+     * ceiling. Named for the headers, which were once the only such source.
+     */
     fromHeaders: number;
   };
 }
@@ -164,6 +194,67 @@ function parseReset(raw: string, now: Date): string | null {
 }
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
+
+/** Is this `weekly_scoped` entry the Fable window? */
+function isFableScope(entry: Record<string, unknown>): boolean {
+  const scope = entry.scope as { model?: { display_name?: unknown } } | undefined;
+  const name = scope?.model?.display_name;
+  return typeof name === "string" && /fable/i.test(name);
+}
+
+/**
+ * Windows out of an `/api/oauth/usage` payload: an array of entries carrying a
+ * `kind`, a `percent`, and a `resets_at`.
+ *
+ * Unknown kinds are skipped rather than guessed at, so a window Anthropic adds
+ * falls through to the estimate instead of landing on the wrong meter. Entries
+ * without a usable `percent` are dropped for the same reason.
+ */
+export function parseLiveUsage(raw: unknown, now: Date = new Date()): LiveUsage {
+  const entries = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { limits?: unknown })?.limits)
+      ? ((raw as { limits: unknown[] }).limits)
+      : [];
+  const out: LiveUsage = {};
+  for (const e of entries) {
+    if (!e || typeof e !== "object") continue;
+    const entry = e as Record<string, unknown>;
+    const rawKind = entry.kind;
+    if (typeof rawKind !== "string") continue;
+    const kind =
+      rawKind === "weekly_scoped" ? (isFableScope(entry) ? "weekFable" : null) : (LIVE_KINDS[rawKind] ?? null);
+    if (!kind) continue;
+    const percent = Number(entry.percent);
+    if (!Number.isFinite(percent)) continue;
+    const reset = entry.resets_at;
+    out[kind] = {
+      utilization: Math.max(0, percent / 100),
+      resetsAt: reset == null ? null : parseReset(String(reset), now),
+    };
+  }
+  return out;
+}
+
+/**
+ * Fraction of the window `[since, now]` whose logs are actually on disk.
+ *
+ * Counts the days held, not the span back to the oldest surviving request:
+ * measuring from the oldest record reads a hole in the middle of the window as
+ * complete coverage, taking the `partial` marking with it. Days are the unit
+ * because rotation is day-granular, so a quiet stretch inside a retained day is
+ * genuinely quiet. Day ends resolve as the next day's start, so the two DST days
+ * keep their real 23 and 25 hours.
+ */
+function retainedCoverage(days: ReadonlySet<string>, since: number, now: number, windowMs: number): number {
+  let covered = 0;
+  for (const day of days) {
+    const start = dayStartMs(day);
+    if (Number.isNaN(start)) continue;
+    covered += Math.max(0, Math.min(dayStartMs(shiftDay(day, 1)), now) - Math.max(start, since));
+  }
+  return clamp01(covered / windowMs);
+}
 
 function num(raw: string): number | undefined {
   const n = Number(raw);
@@ -257,11 +348,19 @@ function assessPace(args: {
   resetsAt: string | null;
   now: Date;
   trailing: boolean;
+  /**
+   * The span runs from a known reset instant rather than backwards from now.
+   * Set alongside `trailing`, which picks the estimate's vocabulary rather than
+   * naming which end of the span is pinned.
+   */
+  anchored?: boolean;
   coverage?: number;
   learned?: LearnedCeiling | null;
+  /** Span actually measured; shorter than the nominal window once anchored to a reset. */
+  spanMs?: number;
 }): UsagePace {
   const { label, utilization, elapsed, resetsAt, now, trailing } = args;
-  const windowMs = USAGE_WINDOW_MS[args.kind];
+  const windowMs = args.spanMs ?? USAGE_WINDOW_MS[args.kind];
   const untilReset = resetsAt ? Math.max(0, new Date(resetsAt).getTime() - now.getTime()) : null;
   const resetPhrase = untilReset != null ? `resets in ${fmtDuration(untilReset)}` : "no reset time reported";
 
@@ -278,6 +377,10 @@ function assessPace(args: {
         ? ` Counts only the ${fmtDuration(coverage * windowMs)} of logs still on disk, so the real figure is higher.`
         : "";
     const span = fmtDuration(windowMs);
+    // An anchored span is measured from the instant the window opened, so
+    // "trailing" would name the wrong end of it.
+    const spanPhrase = args.anchored ? `the ${span} since it reset` : `the trailing ${span}`;
+    const resetTail = args.anchored && untilReset != null ? ` It ${resetPhrase}.` : "";
     const learned = args.learned ?? null;
 
     // Its own vocabulary: readings are against the most we have seen, and passing
@@ -290,7 +393,7 @@ function assessPace(args: {
           elapsed,
           projected: utilization,
           exhaustsInMs: 0,
-          blurb: `Busiest ${label} on record — ${pct(utilization)} of ${basis}. The real allowance is unknown and may be higher; this only says you are in new territory.${caveat}`,
+          blurb: `Busiest ${label} on record — ${pct(utilization)} of ${basis}. The real allowance is unknown and may be higher; this only says you are in new territory.${resetTail}${caveat}`,
         };
       }
       const status: UsagePaceStatus = utilization >= ON_PACE_PROJECTION ? "on-pace" : "safe";
@@ -299,7 +402,7 @@ function assessPace(args: {
         elapsed,
         projected,
         exhaustsInMs: null,
-        blurb: `${pct(utilization)} of ${basis}. That bar is a floor on the real allowance, not the allowance — set USAGE_LIMIT_${USAGE_LIMIT_ENV_SUFFIX[args.kind]} if you know the true ceiling.${caveat}`,
+        blurb: `${pct(utilization)} of ${basis}. That bar is a floor on the real allowance, not the allowance — set USAGE_LIMIT_${USAGE_LIMIT_ENV_SUFFIX[args.kind]} if you know the true ceiling.${resetTail}${caveat}`,
       };
     }
 
@@ -309,7 +412,7 @@ function assessPace(args: {
         elapsed,
         projected: utilization,
         exhaustsInMs: 0,
-        blurb: `Over the configured ${label} budget — ${pct(utilization)} of it used in the trailing ${span}. Either the rate is unsustainable or the budget is set too low.${caveat}`,
+        blurb: `Over the configured ${label} budget — ${pct(utilization)} of it used in ${spanPhrase}. Either the rate is unsustainable or the budget is set too low.${resetTail}${caveat}`,
       };
     }
 
@@ -321,7 +424,7 @@ function assessPace(args: {
       elapsed,
       projected,
       exhaustsInMs: null,
-      blurb: `${pct(utilization)} of the ${label} budget used over the trailing ${span} — ${tail}.${caveat}`,
+      blurb: `${pct(utilization)} of the ${label} budget used over ${spanPhrase} — ${tail}.${resetTail}${caveat}`,
     };
   }
 
@@ -453,6 +556,22 @@ export interface BuildUsageLimitsOptions {
   history?: readonly unknown[];
   /** Ceilings already learned, for callers that cache the pass. Wins over `history`. */
   learned?: LearnedCeilings;
+  /** Anthropic's own figures, from `/api/oauth/usage`. Wins over every other source. */
+  live?: LiveUsage;
+  /**
+   * Reset instants for windows `live` cannot currently answer for, newest known.
+   *
+   * Anthropic's weekly allowance is a *fixed* window resetting at a published
+   * instant, not a trailing 7 days; without an anchor the estimate sweeps up the
+   * whole preceding week and overcounts several-fold. A stale live reading still
+   * carries a usable anchor, so it is kept after its percentages have expired.
+   */
+  anchors?: Partial<Record<UsageWindowKind, string>>;
+  /**
+   * Day labels (`YYYY-MM-DD`, reporting zone) whose logs are retained — live or
+   * archived. Omitted, `coverage` falls back to the oldest-record span.
+   */
+  retainedDays?: readonly string[];
   now?: Date;
 }
 
@@ -481,6 +600,7 @@ export function buildUsageLimits(
   valid.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   const learnedAll = opts.learned ?? learnCeilings(opts.history ?? sidecars, now);
+  const retainedDays = opts.retainedDays ? new Set(opts.retainedDays) : null;
 
   const newest = valid.at(-1) ?? null;
   // Headers describe only the moment they were returned, so only the newest
@@ -495,6 +615,28 @@ export function buildUsageLimits(
     const windowMs = USAGE_WINDOW_MS[kind];
     const fields = headerGroups.get(kind);
     const utilFromHeaders = fields ? headerUtilization(fields) : null;
+
+    // The only source that knows the real allowance on subscription OAuth
+    // traffic, where no rate-limit headers are ever returned.
+    const fromLive = opts.live?.[kind];
+    if (fromLive) {
+      const resetsAt = fromLive.resetsAt;
+      const elapsed = resetsAt ? clamp01(1 - (new Date(resetsAt).getTime() - nowMs) / windowMs) : 0;
+      windows.push({
+        kind,
+        label,
+        utilization: fromLive.utilization,
+        resetsAt,
+        source: "live",
+        learned: null,
+        usedUnits: null,
+        limitUnits: null,
+        coverage: 1,
+        pace: assessPace({ kind, label, utilization: fromLive.utilization, elapsed, resetsAt, now, trailing: false }),
+      });
+      fromHeaders += 1;
+      continue;
+    }
 
     if (fields && utilFromHeaders != null) {
       const resetsAt = fields.resetsAt ?? null;
@@ -528,28 +670,52 @@ export function buildUsageLimits(
     // "well within limits" when the truth is "we cannot see".
     if (valid.length === 0) continue;
 
-    const since = nowMs - windowMs;
+    // A known reset instant makes the window fixed rather than trailing: count
+    // from where it actually opened, not from `windowMs` ago. An anchor whose
+    // window has not opened yet is dropped outright, so the count and the
+    // reported reset cannot disagree.
+    const anchor = opts.anchors?.[kind];
+    const anchorMs = anchor ? new Date(anchor).getTime() : Number.NaN;
+    const anchoredSince = Number.isNaN(anchorMs) || anchorMs - windowMs > nowMs ? null : anchorMs - windowMs;
+    const anchoredResetsAt = anchoredSince != null ? (anchor ?? null) : null;
+    const since = anchoredSince ?? nowMs - windowMs;
     let usedUnits = 0;
     for (const s of valid) {
       if (new Date(s.timestamp).getTime() < since) continue;
       if (kind === "weekFable" && !isFable(s.model)) continue;
       usedUnits += usageUnits(s.tokens);
     }
-    // Oldest retained request bounds how far back the count can actually see.
-    const oldest = new Date(valid[0]!.timestamp).getTime();
-    const coverage = clamp01((nowMs - Math.max(oldest, since)) / windowMs);
+    // An anchored window has only run since it opened, so coverage is measured
+    // against the elapsed part rather than the full nominal span.
+    const spanMs = Math.max(1, Math.min(windowMs, nowMs - since));
+    const coverage = retainedDays
+      ? retainedCoverage(retainedDays, since, nowMs, spanMs)
+      : // No retention map, so the oldest surviving request is the only bound available.
+        clamp01((nowMs - Math.max(new Date(valid[0]!.timestamp).getTime(), since)) / spanMs);
     const utilization = usedUnits / limitUnits;
     windows.push({
       kind,
       label,
       utilization,
-      resetsAt: null,
+      resetsAt: anchoredResetsAt,
       source: learned ? "learned" : "estimated",
       learned,
       usedUnits,
       limitUnits,
       coverage,
-      pace: assessPace({ kind, label, utilization, elapsed: 1, resetsAt: null, now, trailing: true, coverage, learned }),
+      pace: assessPace({
+        kind,
+        label,
+        utilization,
+        elapsed: 1,
+        resetsAt: anchoredResetsAt,
+        now,
+        trailing: true,
+        anchored: anchoredSince != null,
+        coverage,
+        learned,
+        spanMs,
+      }),
     });
   }
 

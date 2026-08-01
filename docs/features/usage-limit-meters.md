@@ -22,9 +22,27 @@ fine late in a window, while a modest bar early on can already be a problem — 
 comes from where the rate is heading, and a faint extension of the bar marks the utilization
 the current rate projects to by reset.
 
-## Three sources, in order of preference
+## Four sources, in order of preference
 
-**Anthropic's own accounting, when available.** The proxy now records every
+**Anthropic's own figures, polled.** The proxy asks
+`GET https://api.anthropic.com/api/oauth/usage` — the endpoint Claude Code's own `/usage`
+panel reads — once a minute, and writes the answer to `logs/usage-live.json`. A window
+sourced from it is exact: Anthropic's percentage and Anthropic's reset instant, no ceiling
+guessed at and no coverage caveat. This is the only exact source on a subscription account,
+because such traffic comes back with no rate-limit headers at all.
+
+The call needs the user's OAuth token, so the poll lives **in the proxy**, where that token
+is already in memory to be forwarded. Only the resulting numbers reach disk — the credential
+is never written, logged, or put in a sidecar. Requests authenticated with an `x-api-key` are
+ignored: the endpoint is OAuth-only, and such accounts get real headers instead.
+
+Polling is on a fixed 60-second timer rather than per request or per SSE tick — a busy
+session would otherwise hammer it hundreds of times a minute. Writing the file also wakes the
+existing log-directory watcher, so the Overview updates over SSE with no extra plumbing. A
+failed poll leaves the previous file in place; readings older than five minutes stop being
+used as percentages but keep serving as window anchors (below).
+
+**Captured response headers, next.** The proxy records every
 `anthropic-ratelimit-*` / `x-ratelimit-*` response header into the request's sidecar as
 `rateLimit`, names lowercased and values verbatim. Those headers carry the real allowance and
 the real reset instant, so a window sourced from them needs no configuration and is exact.
@@ -81,20 +99,59 @@ at par would let a cache-heavy hour dwarf every real request. `input` is used ra
 double-count. As a sense of scale, an active coding day on this device runs ~14M units per
 5-hour window.
 
-## Coverage — why an estimated weekly window reads low
+## Fixed windows, not trailing ones
+
+Anthropic's weekly allowance is a **fixed** window that resets at a published instant — "resets
+Aug 8 at 8am" — not a trailing seven days. Estimating over a trailing week therefore sweeps up
+everything since last Friday and counts it against an allowance that reset on Saturday. On this
+device that was a **5.6× overcount**: 83.0M weighted units counted where 14.9M actually belonged
+to the window in progress.
+
+So the estimate anchors to the real reset instant whenever one is known. The anchor comes from
+the live poll and **outlives it**: allowances reset on a fixed cadence, so an instant that has
+already passed is rolled forward by whole windows and still marks where the current one opened.
+A week-old reading is enough to keep the estimate anchored. With no anchor ever seen, the window
+falls back to trailing — wrong in a known direction rather than unknowably.
+
+Coverage for an anchored window is measured against the part that has *elapsed*, not the nominal
+span. A weekly window seven hours old with all seven hours retained is completely covered; judging
+it against 168 hours would read 4% and stamp `partial` on a complete count.
+
+## Coverage — how much of a window is actually on disk
 
 `logs/` retains roughly the current day; older days are relocated by an external job into
 `logs/archive/<date>/`, which keeps the full per-request sidecar triples. The live directory
-alone therefore cannot see a whole weekly span, and a weekly window drawn from it would
-silently under-report.
+alone therefore cannot see a whole weekly span — measured at 3% of the window on this device,
+a weekly figure drawn from about five hours of logs.
 
-The archive is what makes a *learned* weekly ceiling possible at all, and reading weeks of it
-is why that pass is cached rather than run per request.
+So both halves of the estimate read the archive. `buildUsage` unions the live directory with
+the archived days the windows reach into, which is the count itself; `learnCeilings` reads
+four weeks of it for the ceiling that count is divided by. Both are cached rather than run per
+request — `/api/usage/stream` rebuilds on a 600ms debounce, and re-reading thousands of
+sidecar files per tick is not affordable. Archived days are memoised individually for the
+process lifetime, and both passes read a day through that one memo, so a day inside both spans
+is parsed once. An *absent* day is deliberately not cached: the archive job may simply not have
+run yet, and a sticky miss would pin the gap in place until restart. Live and archived reads
+are deduped by source filename, so an archiver that copies rather than moves cannot double
+every request in the seam.
 
 Each estimated window reports `coverage`, the fraction of the window actually backed by
 retained logs. Below 0.95 the meter is labelled `partial` in amber and the blurb says the real
 figure is higher — so a reassuring number never stands unqualified on incomplete data. The
 header path is always `coverage: 1`, since Anthropic counts the window itself.
+
+**Coverage counts the days held, not the span back to the oldest surviving request.** Measuring
+from the oldest record reads a hole in the middle of a window as full coverage, taking the
+`partial` marking with it. Days are the unit because rotation is day-granular: a quiet stretch
+inside a retained day is genuinely quiet, while a missing day directory is a hole. Day ends
+resolve as the next day's start, so the two DST changeover days keep their real 23 and 25
+hours.
+
+A day counts as retained when its own directory is on disk. Because a reporting day can
+straddle `<date>` and `<date + 1>` — archive folders are named for the UTC day the job moved —
+requiring the day's own folder can understate coverage at that seam. That is the safe
+direction: it marks the window `partial` rather than presenting an incomplete count as a
+total.
 
 ## The pace read
 
@@ -128,19 +185,36 @@ requests were captured at all no estimated window is emitted, because a 0% meter
 ## Where it lives
 
 - `packages/core/src/usage-limits.ts` — header parsing, the weighted unit, coverage, the pace
-  assessment, and `learnCeilings`. Pure; `buildUsageLimits(sidecars, { limits, learned, now })`
-  takes an injected `now`, so every threshold is testable. `USAGE_LIMIT_ENV_SUFFIX` is the one
+  assessment, and `learnCeilings`. Pure;
+  `buildUsageLimits(sidecars, { limits, learned, retainedDays, live, anchors, now })` takes an
+  injected `now`, so every threshold is testable. `retainedDays` switches coverage from the
+  oldest-record span to the days actually held; omitted, it falls back to that span, which is
+  all a caller with no retention map can honestly claim. `USAGE_LIMIT_ENV_SUFFIX` is the one
   source of truth for the env-var names, shared with the server so a blurb cannot name a
   variable the server doesn't read.
+  `parseLiveUsage` maps the endpoint's `kind` values onto the meters: `session` and `weekly_all`
+  are the spellings it returns today, `five_hour`, `seven_day` and `seven_day_opus` are accepted
+  alongside them, and `weekly_scoped` is narrowed by `scope.model.display_name`. An unrecognised
+  kind is skipped rather than guessed at, so a window Anthropic adds falls through to the
+  estimate instead of landing on the wrong meter.
+- `packages/core/src/time.ts` — `dayStartMs` resolves a day label to the instant local midnight
+  opens it, applying the zone offset twice so the changeover days land right.
+- `proxy/usage-live.mjs` — the 60-second poll and the token it holds in memory. `noteAuth` takes
+  the bearer off each forwarded request; `pollOnce` writes `usage-live.json` atomically and
+  leaves the old file alone on failure.
+- `server/src/usage-live.ts` — reads that file, expires the percentages after five minutes, and
+  rolls stale reset instants forward into the current window.
+- `server/src/usage-history.ts` — `loadArchivedUsage` (the archived sidecars plus which days are
+  retained) and `loadLearnedCeilings`, which reads 28 days of live plus archived sidecars and
+  learns the fallback ceilings from them. Four weeks leaves room for three completed weekly
+  windows. That result can only change when a window completes, so it is memoised for an hour
+  rather than recomputed per request; `clearLearnedCeilingsCache()` drops the memo. Both passes
+  share one per-day archive memo, cleared by `clearArchivedUsageCache()`.
 - `proxy/proxy.mjs` — `extractRateLimit` copies only `anthropic-ratelimit-*` / `x-ratelimit-*`
   names off the upstream response, so no auth can ride along. The field is omitted entirely
   when upstream sent none, and a skim-cache-served request records none because no upstream
   call happened.
 - `server/src/usage-config.ts` — resolves the configured ceilings from the environment.
-- `server/src/usage-history.ts` — reads 28 days of live plus archived sidecars and learns the
-  fallback ceilings from them. Four weeks leaves room for three completed weekly windows. The
-  result can only change when a window completes, so it is memoised for an hour rather than
-  recomputed per request; `clearLearnedCeilingsCache()` drops the memo.
 - `server/src/api.ts` — `buildUsage` reads the trailing 8 days of sidecars (a day wider than
   the weekly window, since the file filter is day-granular while the windows are instant-granular)
   and hands `buildUsageLimits` the cached ceilings alongside them.
@@ -158,5 +232,10 @@ estimate until fresh traffic arrives.
 Restarting is not always enough. Anthropic returns `anthropic-ratelimit-*` headers on
 API-key traffic; requests authenticated with a subscription OAuth token (`authorization:
 Bearer`, with `oauth-…` in `anthropic-beta`) come back without them. On such an account the
-header path never fires no matter how fresh the proxy is, which is precisely the case the
-learned ceiling exists to cover.
+header path never fires no matter how fresh the proxy is — measured here, 0 of 12,929 captured
+sidecars carried a `rateLimit` field. That is precisely the gap the polled endpoint closes, and
+why the learned ceiling had to exist before it.
+
+The poll needs a token, and the proxy only has one once a request has passed through it. So a
+freshly-started proxy shows the estimate until the first request, then the real figures a minute
+later.

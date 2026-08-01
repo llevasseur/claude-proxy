@@ -65,7 +65,8 @@ import {
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
 import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
-import { loadLearnedCeilings } from "./usage-history.js";
+import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
+import { loadLiveUsage } from "./usage-live.js";
 import {
   deleteJob,
   listJobs,
@@ -124,21 +125,72 @@ export interface UsageResponse {
 }
 
 /**
- * The live usage meters, off one pass over the trailing week — the widest window
- * any meter spans. `sinceDays: 8` rather than 7 because the filter is day-granular
- * while the windows are instant-granular; the extra day covers the partial day.
+ * One sidecar per source file, first occurrence winning.
  *
- * Ceilings for windows `limits` leaves unset come from a much wider slice of the
- * archive, so they arrive precomputed and cached — see `usage-history.ts`.
+ * Archiving is expected to *move* files, so live and archived reads should not
+ * overlap — but a copy-based archiver would double every request in the seam.
+ * Entries without a `__file` are passed through rather than collapsed together.
+ */
+function dedupeByFile(sidecars: readonly unknown[]): unknown[] {
+  const seen = new Set<string>();
+  const out: unknown[] = [];
+  for (const s of sidecars) {
+    const file = (s as { __file?: unknown })?.__file;
+    if (typeof file !== "string") {
+      out.push(s);
+      continue;
+    }
+    if (seen.has(file)) continue;
+    seen.add(file);
+    out.push(s);
+  }
+  return out;
+}
+
+/**
+ * The live usage meters, over the trailing week — the widest window any meter
+ * spans. `sinceDays: 8` rather than 7 because the filter is day-granular while the
+ * windows are instant-granular; the extra day covers the partial day.
+ *
+ * The live directory holds roughly a day, so on its own it leaves a weekly window
+ * counting a few hours and calling it a week. Archived days are read alongside it,
+ * and the retained days passed through so `coverage` can see a hole in the window.
+ * Ceilings come from a wider slice again, precomputed and cached — see
+ * `usage-history.ts`.
  */
 export async function buildUsage(
   logDir: string,
   limits: UsageLimitConfig,
   now: Date = new Date(),
 ): Promise<UsageResponse> {
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: 8 }, now);
+  const live = await readSidecars(logDir, { sinceDays: 8, includeFile: true }, now);
+  const archived = await loadArchivedUsage(logDir, now);
   const learned = await loadLearnedCeilings(logDir, now);
-  return { usage: buildUsageLimits(sidecars, { limits, learned, now }), meta: { files, parseErrors } };
+
+  const liveUsage = await loadLiveUsage(logDir, now);
+
+  const sidecars = dedupeByFile([...live.sidecars, ...archived.sidecars]);
+  // The live directory is the current day's destination, so that day is retained
+  // whether or not anything landed in it; days a live sidecar names are retained
+  // too, for a deployment that rotates less eagerly than the default.
+  const retainedDays = new Set<string>([today(now), ...archived.retainedDays]);
+  for (const s of live.sidecars) {
+    const ts = (s as { timestamp?: unknown })?.timestamp;
+    const day = typeof ts === "string" ? reportDay(ts) : null;
+    if (day) retainedDays.add(day);
+  }
+
+  return {
+    usage: buildUsageLimits(sidecars, {
+      limits,
+      learned,
+      retainedDays: [...retainedDays],
+      live: liveUsage.live,
+      anchors: liveUsage.anchors,
+      now,
+    }),
+    meta: { files: sidecars.length, parseErrors: live.parseErrors + archived.parseErrors },
+  };
 }
 
 export interface TrendsResponse {

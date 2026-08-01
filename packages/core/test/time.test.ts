@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reportDay, reportHour, reportTzAbbr, shiftDay } from "../src/time.js";
+import { dayStartMs, reportDay, reportHour, reportTzAbbr, shiftDay } from "../src/time.js";
 
 describe("reportDay", () => {
   it("keeps a late-evening UTC-next-day instant on the local day", () => {
@@ -50,5 +50,32 @@ describe("shiftDay", () => {
     expect(shiftDay("2026-07-15", 1)).toBe("2026-07-16");
     expect(shiftDay("2026-07-01", -1)).toBe("2026-06-30");
     expect(shiftDay("2026-03-01", -1)).toBe("2026-02-28");
+  });
+});
+
+describe("dayStartMs", () => {
+  const iso = (ms: number): string => new Date(ms).toISOString();
+
+  it("opens the day at local midnight in both offsets", () => {
+    expect(iso(dayStartMs("2026-07-15"))).toBe("2026-07-15T04:00:00.000Z"); // EDT, UTC-4
+    expect(iso(dayStartMs("2026-01-15"))).toBe("2026-01-15T05:00:00.000Z"); // EST, UTC-5
+  });
+
+  it("agrees with reportDay on the instant it returns", () => {
+    for (const day of ["2026-07-15", "2026-01-15", "2026-03-08", "2026-11-01"]) {
+      expect(reportDay(new Date(dayStartMs(day)))).toBe(day);
+      expect(reportDay(new Date(dayStartMs(day) - 1))).toBe(shiftDay(day, -1));
+    }
+  });
+
+  it("gives the changeover days their real 23 and 25 hours", () => {
+    const hours = (day: string): number => (dayStartMs(shiftDay(day, 1)) - dayStartMs(day)) / 3_600_000;
+    expect(hours("2026-03-08")).toBe(23); // spring forward
+    expect(hours("2026-11-01")).toBe(25); // fall back
+    expect(hours("2026-07-15")).toBe(24);
+  });
+
+  it("returns NaN for an unparseable label", () => {
+    expect(dayStartMs("not-a-day")).toBeNaN();
   });
 });

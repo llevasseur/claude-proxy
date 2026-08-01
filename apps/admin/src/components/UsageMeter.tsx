@@ -114,7 +114,11 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
           </span>
         ) : (
           <span className="muted">
-            {w.source === "headers" ? "reported by Anthropic" : w.source === "learned" ? "inferred" : "estimated"}
+            {w.source === "live" || w.source === "headers"
+              ? "reported by Anthropic"
+              : w.source === "learned"
+                ? "inferred"
+                : "estimated"}
           </span>
         )}
       </div>

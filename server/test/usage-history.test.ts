@@ -2,7 +2,12 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { clearLearnedCeilingsCache, loadLearnedCeilings } from "../src/usage-history.js";
+import {
+  clearArchivedUsageCache,
+  clearLearnedCeilingsCache,
+  loadArchivedUsage,
+  loadLearnedCeilings,
+} from "../src/usage-history.js";
 
 const NOW = new Date("2026-07-30T18:00:00.000Z");
 
@@ -41,6 +46,7 @@ let logDir: string;
 beforeEach(async () => {
   logDir = await mkdtemp(path.join(tmpdir(), "usage-history-"));
   clearLearnedCeilingsCache();
+  clearArchivedUsageCache();
 });
 
 describe("loadLearnedCeilings", () => {
@@ -79,5 +85,50 @@ describe("loadLearnedCeilings", () => {
     // Past the TTL it is recomputed, and the week now totals both requests.
     const later = new Date(NOW.getTime() + 2 * 3_600_000);
     expect((await loadLearnedCeilings(logDir, later)).week?.units).toBe(5700);
+  });
+});
+
+describe("loadArchivedUsage", () => {
+  it("returns the archived sidecars and the days they came from", async () => {
+    await archive(logDir, hoursBefore(24 * 2), 100);
+    await archive(logDir, hoursBefore(24 * 5), 200);
+
+    const got = await loadArchivedUsage(logDir, NOW);
+    expect(got.sidecars).toHaveLength(2);
+    expect(got.retainedDays).toEqual(["2026-07-28", "2026-07-25"]);
+  });
+
+  it("leaves a day with no directory out of the retained set", async () => {
+    await archive(logDir, hoursBefore(24 * 2), 100);
+    // The gap is the point: an unarchived day is a hole, not a quiet day.
+    expect((await loadArchivedUsage(logDir, NOW)).retainedDays).not.toContain("2026-07-29");
+  });
+
+  it("survives an archive directory that was never created", async () => {
+    await expect(loadArchivedUsage(logDir, NOW)).resolves.toEqual({
+      sidecars: [],
+      retainedDays: [],
+      parseErrors: 0,
+    });
+  });
+
+  it("serves a day it has already read from the memo", async () => {
+    await archive(logDir, hoursBefore(24 * 2), 100);
+    expect((await loadArchivedUsage(logDir, NOW)).sidecars).toHaveLength(1);
+
+    // A finalized day does not change, so a second write to it is not re-read.
+    await archive(logDir, hoursBefore(24 * 2 + 1), 100);
+    expect((await loadArchivedUsage(logDir, NOW)).sidecars).toHaveLength(1);
+
+    clearArchivedUsageCache();
+    expect((await loadArchivedUsage(logDir, NOW)).sidecars).toHaveLength(2);
+  });
+
+  it("does not cache an absent day, so a later archive run is picked up", async () => {
+    expect((await loadArchivedUsage(logDir, NOW)).retainedDays).toEqual([]);
+
+    // The archive job runs late rather than never; the miss must not be sticky.
+    await archive(logDir, hoursBefore(24 * 2), 100);
+    expect((await loadArchivedUsage(logDir, NOW)).retainedDays).toEqual(["2026-07-28"]);
   });
 });

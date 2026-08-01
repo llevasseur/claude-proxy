@@ -291,6 +291,56 @@ describe("buildUsageLimits — estimated from logged tokens", () => {
     expect(w.pace.blurb).not.toMatch(/still on disk/);
   });
 
+  // NOW is 14:00 EDT on 2026-07-30, so the 5h window sits inside that one day and
+  // the weekly window opens mid-afternoon on 2026-07-23.
+  const WEEK_DAYS = ["23", "24", "25", "26", "27", "28", "29", "30"].map((d) => `2026-07-${d}`);
+
+  it("counts the days retained rather than the span back to the oldest log", () => {
+    // One request 30m ago, but the whole day's logs are held: nothing rotated out,
+    // so the quiet stretch before it is genuinely quiet.
+    const snap = buildUsageLimits([sidecar({ at: agoMin(30), tokens })], {
+      now: NOW,
+      limits: { "5h": 10_000 },
+      retainedDays: ["2026-07-30"],
+    });
+    const w = only(snap, "5h");
+    expect(w.coverage).toBe(1);
+    expect(w.pace.blurb).not.toMatch(/still on disk/);
+  });
+
+  it("reports a hole in the middle of the window instead of hiding it", () => {
+    const logs = [sidecar({ at: agoMin(7 * 24 * 60 - 60), tokens }), sidecar({ at: agoMin(30), tokens })];
+    const retainedDays = WEEK_DAYS.filter((d) => d !== "2026-07-26" && d !== "2026-07-27");
+
+    // Measuring back to the oldest survivor spans the window, clearing the 0.95
+    // threshold and dropping the `partial` marking along with it.
+    const spanned = only(buildUsageLimits(logs, { now: NOW, limits: { week: 10_000 } }), "week");
+    expect(spanned.coverage).toBeGreaterThan(0.95);
+    expect(spanned.pace.blurb).not.toMatch(/still on disk/);
+
+    const w = only(buildUsageLimits(logs, { now: NOW, limits: { week: 10_000 }, retainedDays }), "week");
+    expect(w.coverage).toBeCloseTo(5 / 7, 2); // two of seven days missing
+    expect(w.pace.blurb).toMatch(/still on disk, so the real figure is higher/);
+  });
+
+  it("reads a fully retained week as complete coverage", () => {
+    const snap = buildUsageLimits([sidecar({ at: agoMin(30), tokens })], {
+      now: NOW,
+      limits: { week: 10_000 },
+      retainedDays: WEEK_DAYS,
+    });
+    expect(only(snap, "week").coverage).toBe(1);
+  });
+
+  it("ignores retained days outside the window and unparseable labels", () => {
+    const snap = buildUsageLimits([sidecar({ at: agoMin(30), tokens })], {
+      now: NOW,
+      limits: { "5h": 10_000 },
+      retainedDays: ["2026-07-30", "2026-07-30", "2026-01-01", "not-a-day"],
+    });
+    expect(only(snap, "5h").coverage).toBe(1);
+  });
+
   it("reports going over the ceiling as exhausted, without claiming requests are refused", () => {
     const snap = buildUsageLimits([sidecar({ at: agoMin(10), tokens })], { now: NOW, limits: { "5h": 2000 } });
     const w = only(snap, "5h");
