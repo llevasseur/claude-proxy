@@ -564,6 +564,12 @@ button:focus-visible {
   font-family: var(--font-mono);
   font-size: 11px;
 }
+/* A denominator inferred from history; the dotted underline invites the hover. */
+.usage-learned {
+  color: var(--muted);
+  border-bottom: 1px dotted var(--line);
+  cursor: help;
+}
 /* An estimate the retained logs can't fully back. */
 .usage-partial {
   color: var(--amber);

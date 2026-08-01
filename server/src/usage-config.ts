@@ -1,18 +1,18 @@
-import type { UsageLimitConfig } from "@claude-proxy/core";
+import { USAGE_LIMIT_ENV_SUFFIX, type UsageLimitConfig, type UsageWindowKind } from "@claude-proxy/core";
 
 /**
  * Ceilings for the usage meters' estimated fallback, consulted only for windows
  * Anthropic's rate-limit headers don't cover. Anthropic doesn't publish
  * subscription quotas as token counts, so there is deliberately no default: an
- * unset window is omitted rather than measured against an invented number.
+ * unset window falls back to a ceiling learned from history, and failing that is
+ * omitted rather than measured against an invented number. Setting one overrides
+ * that learned floor.
  *
  * Values are in the weighted units `usageUnits` counts, with `k`/`m` suffixes.
  */
-const ENV_KEYS: Record<keyof UsageLimitConfig, string> = {
-  "5h": "USAGE_LIMIT_5H",
-  week: "USAGE_LIMIT_WEEK",
-  weekFable: "USAGE_LIMIT_WEEK_FABLE",
-};
+const ENV_KEYS = Object.fromEntries(
+  Object.entries(USAGE_LIMIT_ENV_SUFFIX).map(([kind, suffix]) => [kind, `USAGE_LIMIT_${suffix}`]),
+) as Record<UsageWindowKind, string>;
 
 /** Parse a digit-group or `k`/`m`-suffixed count; null unless it is a positive number. */
 export function parseLimit(raw: string | undefined): number | null {

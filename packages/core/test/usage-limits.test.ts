@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildUsageLimits, fmtDuration, usageUnits, windowOfHeader } from "../src/usage-limits.js";
+import { buildUsageLimits, fmtDuration, learnCeilings, usageUnits, windowOfHeader } from "../src/usage-limits.js";
 
 const NOW = new Date("2026-07-30T18:00:00.000Z");
 
@@ -345,5 +345,201 @@ describe("buildUsageLimits — nothing to measure", () => {
   it("ignores a request stamped in the future", () => {
     const snap = buildUsageLimits([sidecar({ at: inMin(120) })], { now: NOW, limits: { "5h": 10_000 } });
     expect(snap.meta.requests).toBe(0);
+  });
+});
+
+/** Hours before NOW, as an ISO stamp. */
+const agoHr = (h: number): string => new Date(NOW.getTime() - h * 3_600_000).toISOString();
+
+/**
+ * A token-free request far enough back to establish how long the logs reach.
+ * The window holding the oldest request is never fully spanned, so without an
+ * anchor a fixture's peak lands in exactly the window that gets excluded.
+ */
+const anchor = (h: number) => sidecar({ at: agoHr(h) });
+
+describe("learnCeilings", () => {
+  it("takes the peak of the completed windows and ignores the one in progress", () => {
+    // 25h is five 5h windows, four of them complete, peaking at 900. The
+    // in-progress one is the largest, so counting it would be visibly wrong.
+    const learned = learnCeilings(
+      [
+        sidecar({ at: agoHr(25), tokens: { input: 100 } }),
+        sidecar({ at: agoHr(12), tokens: { input: 900 } }),
+        sidecar({ at: agoHr(7), tokens: { input: 300 } }),
+        sidecar({ at: agoHr(1), tokens: { input: 5000 } }),
+      ],
+      NOW,
+    );
+    expect(learned["5h"]?.units).toBe(900);
+    expect(learned["5h"]?.windows).toBe(4);
+  });
+
+  it("sums every request inside one window rather than taking the largest single request", () => {
+    const learned = learnCeilings(
+      [
+        anchor(20),
+        sidecar({ at: agoHr(13), tokens: { input: 40 } }),
+        sidecar({ at: agoHr(12), tokens: { input: 60 } }),
+        sidecar({ at: agoHr(7), tokens: { input: 80 } }),
+      ],
+      NOW,
+    );
+    expect(learned["5h"]?.units).toBe(100);
+  });
+
+  it("weights the peak the same way the meter counts usage", () => {
+    const learned = learnCeilings([anchor(20), sidecar({ at: agoHr(12), tokens: { cacheRead: 1000, output: 50 } })], NOW);
+    expect(learned["5h"]?.units).toBe(usageUnits({ input: 0, output: 50, cacheRead: 1000, cacheCreation: 0, realInput: 0 }));
+  });
+
+  it("excludes the window holding the oldest request, which the logs only partly span", () => {
+    // With no anchor the 900 sits in the earliest, partially-covered window.
+    const learned = learnCeilings(
+      [sidecar({ at: agoHr(12), tokens: { input: 900 } }), sidecar({ at: agoHr(7), tokens: { input: 80 } })],
+      NOW,
+    );
+    expect(learned["5h"]?.units).toBe(80);
+  });
+
+  it("says nothing when the history has not completed a single window", () => {
+    // Under 10h of logs cannot close a 5h window and leave one in progress.
+    const learned = learnCeilings([sidecar({ at: agoHr(4), tokens: { input: 500 } })], NOW);
+    expect(learned["5h"]).toBeUndefined();
+    expect(learned.week).toBeUndefined();
+  });
+
+  it("learns a weekly ceiling only once the archive spans more than one week", () => {
+    const thin = learnCeilings([sidecar({ at: agoHr(24 * 6), tokens: { input: 500 } })], NOW);
+    expect(thin.week).toBeUndefined();
+
+    const wide = learnCeilings(
+      [
+        anchor(24 * 25),
+        sidecar({ at: agoHr(24 * 20), tokens: { input: 700 } }),
+        sidecar({ at: agoHr(24 * 9), tokens: { input: 400 } }),
+      ],
+      NOW,
+    );
+    expect(wide.week?.units).toBe(700);
+  });
+
+  it("counts only Fable traffic toward the Fable window, and learns nothing without any", () => {
+    const sonnetOnly = learnCeilings(
+      [anchor(24 * 25), sidecar({ at: agoHr(24 * 20), model: "claude-sonnet-5", tokens: { input: 900 } })],
+      NOW,
+    );
+    expect(sonnetOnly.week?.units).toBe(900);
+    expect(sonnetOnly.weekFable).toBeUndefined();
+
+    const withFable = learnCeilings(
+      [
+        anchor(24 * 25),
+        sidecar({ at: agoHr(24 * 20), model: "claude-sonnet-5", tokens: { input: 900 } }),
+        sidecar({ at: agoHr(24 * 19), model: "claude-fable-5", tokens: { input: 250 } }),
+      ],
+      NOW,
+    );
+    expect(withFable.weekFable?.units).toBe(250);
+  });
+
+  it("skips malformed and clock-skewed entries", () => {
+    const learned = learnCeilings(
+      [
+        "junk",
+        null,
+        { nope: true },
+        anchor(20),
+        sidecar({ at: inMin(600), tokens: { input: 9999 } }),
+        sidecar({ at: agoHr(12), tokens: { input: 120 } }),
+      ],
+      NOW,
+    );
+    expect(learned["5h"]?.units).toBe(120);
+  });
+});
+
+describe("buildUsageLimits — against a learned ceiling", () => {
+  /** Enough history to close several 5h windows, peaking at 1000 units. */
+  const history = [
+    sidecar({ at: agoHr(25), tokens: { input: 200 } }),
+    sidecar({ at: agoHr(12), tokens: { input: 1000 } }),
+    sidecar({ at: agoHr(7), tokens: { input: 400 } }),
+  ];
+
+  it("measures against the busiest completed window when nothing is configured", () => {
+    const snap = buildUsageLimits([sidecar({ at: agoMin(10), tokens: { input: 250 } })], {
+      now: NOW,
+      history: [...history, sidecar({ at: agoMin(10), tokens: { input: 250 } })],
+    });
+    const w = only(snap, "5h");
+    expect(w.source).toBe("learned");
+    expect(w.limitUnits).toBe(1000);
+    expect(w.usedUnits).toBe(250);
+    expect(w.utilization).toBeCloseTo(0.25);
+    expect(w.learned?.windows).toBe(4);
+  });
+
+  it("never claims the account is within a limit it was never told", () => {
+    const snap = buildUsageLimits([sidecar({ at: agoMin(10), tokens: { input: 250 } })], {
+      now: NOW,
+      history: [...history, sidecar({ at: agoMin(10), tokens: { input: 250 } })],
+    });
+    const w = only(snap, "5h");
+    expect(w.pace.blurb).not.toMatch(/within limits|sustainable/i);
+    expect(w.pace.blurb).toMatch(/floor on the real allowance/i);
+    expect(w.pace.blurb).toMatch(/USAGE_LIMIT_5H/);
+  });
+
+  it("calls passing the record new territory rather than a refusal", () => {
+    const snap = buildUsageLimits([sidecar({ at: agoMin(10), tokens: { input: 4000 } })], {
+      now: NOW,
+      history: [...history, sidecar({ at: agoMin(10), tokens: { input: 4000 } })],
+    });
+    const w = only(snap, "5h");
+    expect(w.pace.status).toBe("exhausted");
+    expect(w.pace.blurb).toMatch(/new territory/i);
+    expect(w.pace.blurb).not.toMatch(/refus/i);
+  });
+
+  it("lets a configured ceiling override what history would have inferred", () => {
+    const snap = buildUsageLimits([sidecar({ at: agoMin(10), tokens: { input: 250 } })], {
+      now: NOW,
+      limits: { "5h": 5000 },
+      history: [...history, sidecar({ at: agoMin(10), tokens: { input: 250 } })],
+    });
+    const w = only(snap, "5h");
+    expect(w.source).toBe("estimated");
+    expect(w.limitUnits).toBe(5000);
+    expect(w.learned).toBeNull();
+  });
+
+  it("still prefers captured headers over a learned ceiling", () => {
+    const head = sidecar({
+      at: agoMin(5),
+      tokens: { input: 250 },
+      rateLimit: { "anthropic-ratelimit-unified-5h-limit": "100", "anthropic-ratelimit-unified-5h-remaining": "10" },
+    });
+    const snap = buildUsageLimits([head], { now: NOW, history: [...history, head] });
+    const w = only(snap, "5h");
+    expect(w.source).toBe("headers");
+    expect(w.learned).toBeNull();
+  });
+
+  it("accepts ceilings the caller learned earlier instead of re-reading history", () => {
+    const snap = buildUsageLimits([sidecar({ at: agoMin(10), tokens: { input: 300 } })], {
+      now: NOW,
+      learned: { "5h": { units: 1200, windows: 9, observedMs: 48 * 3_600_000 } },
+    });
+    const w = only(snap, "5h");
+    expect(w.source).toBe("learned");
+    expect(w.limitUnits).toBe(1200);
+    expect(w.utilization).toBeCloseTo(0.25);
+    expect(w.pace.blurb).toMatch(/9 completed/);
+  });
+
+  it("falls back to the visible sidecars when no wider history is supplied", () => {
+    const snap = buildUsageLimits(history, { now: NOW });
+    expect(only(snap, "5h").source).toBe("learned");
   });
 });

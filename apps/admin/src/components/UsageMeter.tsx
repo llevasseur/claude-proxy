@@ -19,6 +19,14 @@ const STATUS_LABEL: Record<UsagePaceStatus, string> = {
   exhausted: "Limit reached",
 };
 
+/** An inferred ceiling can speak only to the busiest window on record, not the limit. */
+const LEARNED_STATUS_LABEL: Record<UsagePaceStatus, string> = {
+  safe: "Below record",
+  "on-pace": "Near record",
+  aggressive: "Near record",
+  exhausted: "New record",
+};
+
 /** Beyond this the weekday is needed to say which day's reset is meant. */
 const DAY_QUALIFIER_MS = 12 * 60 * 60 * 1000;
 
@@ -53,7 +61,9 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
     <div className={`card usage-meter tone-${tone}`}>
       <div className="usage-meter-head">
         <span className="stat-label">{w.label}</span>
-        <span className={`usage-chip ${tone}`}>{STATUS_LABEL[w.pace.status]}</span>
+        <span className={`usage-chip ${tone}`}>
+          {(w.learned ? LEARNED_STATUS_LABEL : STATUS_LABEL)[w.pace.status]}
+        </span>
       </div>
 
       <div className="usage-meter-value">
@@ -87,15 +97,25 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
           <span className="usage-partial" title="Older logs have rotated out — this is a floor, not a total">
             partial · {Math.round(w.coverage * 100)}% of window
           </span>
+        ) : w.learned ? (
+          // The denominator is a floor too, so this reads high rather than low.
+          <span
+            className="usage-learned"
+            title={`No allowance was reported or configured, so this is measured against the busiest of ${w.learned.windows} completed windows on record. The real ceiling can only be higher, so the percentage overstates how close you are.`}
+          >
+            inferred · {w.learned.windows} windows seen
+          </span>
         ) : (
           <span className="muted">trailing window</span>
         )}
-        {w.source === "estimated" && w.usedUnits != null && w.limitUnits != null ? (
+        {(w.source === "estimated" || w.source === "learned") && w.usedUnits != null && w.limitUnits != null ? (
           <span className="muted">
             ~{fmtInt(w.usedUnits)} / {fmtInt(w.limitUnits)} units
           </span>
         ) : (
-          <span className="muted">{w.source === "headers" ? "reported by Anthropic" : "estimated"}</span>
+          <span className="muted">
+            {w.source === "headers" ? "reported by Anthropic" : w.source === "learned" ? "inferred" : "estimated"}
+          </span>
         )}
       </div>
 
