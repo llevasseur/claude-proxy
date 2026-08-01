@@ -129,24 +129,23 @@ the archived days the windows reach into, which is the count itself; `learnCeili
 four weeks of it for the ceiling that count is divided by. Both are cached rather than run per
 request — `/api/usage/stream` rebuilds on a 600ms debounce, and re-reading thousands of
 sidecar files per tick is not affordable. Archived days are memoised individually for the
-process lifetime because a finalized day cannot change; an *absent* day is deliberately not
-cached, since the archive job may simply not have run yet and a sticky miss would pin the gap
-in place until restart. Live and archived reads are deduped by source filename, so an archiver
-that copies rather than moves cannot double every request in the seam.
+process lifetime, and both passes read a day through that one memo, so a day inside both spans
+is parsed once. An *absent* day is deliberately not cached: the archive job may simply not have
+run yet, and a sticky miss would pin the gap in place until restart. Live and archived reads
+are deduped by source filename, so an archiver that copies rather than moves cannot double
+every request in the seam.
 
 Each estimated window reports `coverage`, the fraction of the window actually backed by
 retained logs. Below 0.95 the meter is labelled `partial` in amber and the blurb says the real
 figure is higher — so a reassuring number never stands unqualified on incomplete data. The
 header path is always `coverage: 1`, since Anthropic counts the window itself.
 
-**Coverage counts the days held, not the span back to the oldest surviving request.** The
-distinction is the difference between a warning and a lie. Measuring from the oldest record
-reads a hole in the middle of a window as full coverage, and the `partial` marking disappears
-with it — so backfilling the archive *without* this change would have replaced a visibly wrong
-number with an invisibly wrong one. Days are the unit because rotation is day-granular: a
-quiet stretch inside a retained day is genuinely quiet, while a missing day directory is a
-hole. Day ends resolve as the next day's start, so the two DST changeover days keep their real
-23 and 25 hours.
+**Coverage counts the days held, not the span back to the oldest surviving request.** Measuring
+from the oldest record reads a hole in the middle of a window as full coverage, taking the
+`partial` marking with it. Days are the unit because rotation is day-granular: a quiet stretch
+inside a retained day is genuinely quiet, while a missing day directory is a hole. Day ends
+resolve as the next day's start, so the two DST changeover days keep their real 23 and 25
+hours.
 
 A day counts as retained when its own directory is on disk. Because a reporting day can
 straddle `<date>` and `<date + 1>` — archive folders are named for the UTC day the job moved —
@@ -188,12 +187,11 @@ requests were captured at all no estimated window is emitted, because a 0% meter
 - `packages/core/src/usage-limits.ts` — header parsing, the weighted unit, coverage, the pace
   assessment, and `learnCeilings`. Pure;
   `buildUsageLimits(sidecars, { limits, learned, retainedDays, live, anchors, now })` takes an
-  injected `now`,
-  so every threshold is testable. `retainedDays` is what switches coverage from the oldest-record
-  span to the days actually held; omitted, it falls back to that span, which is all a caller
-  with no retention map can honestly claim. `USAGE_LIMIT_ENV_SUFFIX` is the one source of truth
-  for the env-var names, shared with the server so a blurb cannot name a variable the server
-  doesn't read.
+  injected `now`, so every threshold is testable. `retainedDays` switches coverage from the
+  oldest-record span to the days actually held; omitted, it falls back to that span, which is
+  all a caller with no retention map can honestly claim. `USAGE_LIMIT_ENV_SUFFIX` is the one
+  source of truth for the env-var names, shared with the server so a blurb cannot name a
+  variable the server doesn't read.
   `parseLiveUsage` maps the endpoint's `kind` values onto the meters: `session` and `weekly_all`
   are the spellings it returns today, `five_hour`, `seven_day` and `seven_day_opus` are accepted
   alongside them, and `weekly_scoped` is narrowed by `scope.model.display_name`. An unrecognised
@@ -207,16 +205,16 @@ requests were captured at all no estimated window is emitted, because a 0% meter
 - `server/src/usage-live.ts` — reads that file, expires the percentages after five minutes, and
   rolls stale reset instants forward into the current window.
 - `server/src/usage-history.ts` — `loadArchivedUsage` (the archived sidecars plus which days are
-  retained) and `loadLearnedCeilings` (the inferred ceiling), each with its own memo.
+  retained) and `loadLearnedCeilings`, which reads 28 days of live plus archived sidecars and
+  learns the fallback ceilings from them. Four weeks leaves room for three completed weekly
+  windows. That result can only change when a window completes, so it is memoised for an hour
+  rather than recomputed per request; `clearLearnedCeilingsCache()` drops the memo. Both passes
+  share one per-day archive memo, cleared by `clearArchivedUsageCache()`.
 - `proxy/proxy.mjs` — `extractRateLimit` copies only `anthropic-ratelimit-*` / `x-ratelimit-*`
   names off the upstream response, so no auth can ride along. The field is omitted entirely
   when upstream sent none, and a skim-cache-served request records none because no upstream
   call happened.
 - `server/src/usage-config.ts` — resolves the configured ceilings from the environment.
-- `server/src/usage-history.ts` — reads 28 days of live plus archived sidecars and learns the
-  fallback ceilings from them. Four weeks leaves room for three completed weekly windows. The
-  result can only change when a window completes, so it is memoised for an hour rather than
-  recomputed per request; `clearLearnedCeilingsCache()` drops the memo.
 - `server/src/api.ts` — `buildUsage` reads the trailing 8 days of sidecars (a day wider than
   the weekly window, since the file filter is day-granular while the windows are instant-granular)
   and hands `buildUsageLimits` the cached ceilings alongside them.
