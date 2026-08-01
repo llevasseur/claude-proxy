@@ -13,3 +13,5 @@ export * from "./context.js";
 export * from "./sessions.js";
 export * from "./suggestions.js";
 export * from "./suggestion-status.js";
+export * from "./jobs.js";
+export * from "./code-view.js";

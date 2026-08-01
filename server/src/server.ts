@@ -6,6 +6,10 @@ import {
   buildContextDetail,
   buildContextMessage,
   buildContextTool,
+  buildJob,
+  buildJobDelete,
+  buildJobFile,
+  buildJobs,
   buildMemory,
   buildProjectMemories,
   buildProjects,
@@ -41,6 +45,7 @@ import {
   stopChat,
   UUID_RE,
 } from "./chat.js";
+import { resolveJobsDir } from "./jobs.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
@@ -51,6 +56,7 @@ const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default
 const LOG_DIR = resolveLogDir();
 const ARCHIVE_DIR = resolveArchiveDir();
 const PROJECTS_DIR = resolveProjectsDir();
+const JOBS_DIR = resolveJobsDir();
 const USAGE_LIMITS = resolveUsageLimits();
 
 /** Everything but the chat routes is a read-only view of already-captured logs. */
@@ -66,8 +72,11 @@ const CHAT_ROUTES = new Set(["/api/chat/sessions", "/api/chat/sessions/message",
 /** The suggestion flags: a GET list under the open read CORS, a POST that writes them. */
 const SUGGESTION_STATUS_ROUTE = "/api/sessions/suggestions/status";
 
+/** The one destructive route: removes a `~/.claude/jobs/<id>` directory from disk. */
+const JOB_DELETE_ROUTE = "/api/jobs/delete";
+
 /** Paths whose POST goes through the origin-checked write CORS. */
-const WRITE_ROUTES = new Set([...CHAT_ROUTES, SUGGESTION_STATUS_ROUTE]);
+const WRITE_ROUTES = new Set([...CHAT_ROUTES, SUGGESTION_STATUS_ROUTE, JOB_DELETE_ROUTE]);
 
 /**
  * Origins allowed to POST those routes — the dashboard's dev server by default,
@@ -411,6 +420,68 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      // The device's background jobs: `~/.claude/jobs`. Reads are open like their
+      // neighbours; the delete below is the one route here that changes the disk.
+      case "/api/jobs":
+        send(res, 200, await buildJobs(JOBS_DIR));
+        return;
+      case "/api/jobs/job": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildJob(JOBS_DIR, id));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid job id")) send(res, 400, { error: msg });
+          else if (msg.startsWith("job not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/jobs/file": {
+        const id = url.searchParams.get("id");
+        const file = url.searchParams.get("file");
+        if (!id || !file) {
+          send(res, 400, { error: "missing ?id= or ?file=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildJobFile(JOBS_DIR, id, file));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (
+            msg.startsWith("invalid job id") ||
+            msg.startsWith("invalid job file path") ||
+            msg.startsWith("job file is a directory")
+          ) {
+            send(res, 400, { error: msg });
+          } else if (msg.startsWith("job not found") || msg.startsWith("job file not found")) {
+            send(res, 404, { error: msg });
+          } else throw err;
+        }
+        return;
+      }
+      // Removes the directory for real. POST only, and through the origin-checked
+      // write CORS rather than the read routes' `*`.
+      case JOB_DELETE_ROUTE:
+        await servePost(
+          req,
+          res,
+          async (body) => {
+            const id = body.id;
+            if (typeof id !== "string" || id === "") throw new Error("missing id");
+            return buildJobDelete(JOBS_DIR, id);
+          },
+          (msg) => {
+            if (msg.startsWith("job not found")) return 404;
+            if (msg.startsWith("job is still running")) return 409;
+            return 400; // invalid/missing id, or a symlinked directory
+          },
+        );
+        return;
       case "/api/sessions":
         send(res, 200, await buildSessions(LOG_DIR));
         return;

@@ -12,6 +12,7 @@ Add one with `okq new feature "<title>"`.
 | Title | File |
 |-------|------|
 | Admin dashboard for claude-proxy usage | [admin-dashboard-for-claude-proxy-usage.md](admin-dashboard-for-claude-proxy-usage.md) |
+| Background jobs browser | [background-jobs-browser.md](background-jobs-browser.md) |
 | Config inventory | [config-inventory.md](config-inventory.md) |
 | Context-size analytics | [context-size-analytics.md](context-size-analytics.md) |
 | Dashboard chat sessions | [dashboard-chat-sessions.md](dashboard-chat-sessions.md) |

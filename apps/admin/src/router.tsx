@@ -10,6 +10,7 @@ import {
   EyeOff,
   FolderGit2,
   Gauge,
+  HardDrive,
   Lightbulb,
   ListFilter,
   MessagesSquare,
@@ -32,6 +33,8 @@ import { ContextToolPage } from "./routes/context-tool";
 import { ContextPage } from "./routes/context";
 import { FiltersPage } from "./routes/filters";
 import { HooksPluginsPage } from "./routes/hooks-plugins";
+import { JobDetailPage } from "./routes/job-detail";
+import { JobsPage } from "./routes/jobs";
 import { MemoryDetailPage } from "./routes/memory-detail";
 import { OverviewPage } from "./routes/overview";
 import { ProjectDetailPage } from "./routes/project-detail";
@@ -59,6 +62,7 @@ const STATIONS = [
   { to: "/projects", label: "Projects", hint: "memory", exact: false, icon: FolderGit2 },
   { to: "/sessions", label: "Sessions", hint: "transcripts", exact: true, icon: MessagesSquare },
   { to: "/sessions/graph", label: "Live graph", hint: "sessions", exact: false, icon: Network },
+  { to: "/jobs", label: "Jobs", hint: "device", exact: false, icon: HardDrive },
   { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false, icon: Puzzle },
   { to: "/advice", label: "Advice", hint: "coaching", exact: false, icon: Lightbulb },
 ] as const;
@@ -241,6 +245,18 @@ const sessionErrorsRoute = createRoute({
   component: SessionErrorsPage,
   staticData: { title: "Session errors" },
 });
+const jobsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/jobs",
+  component: JobsPage,
+  staticData: { title: "Jobs" },
+});
+const jobDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/jobs/$id",
+  component: JobDetailPage,
+  staticData: { title: "Job" },
+});
 const toolsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tools",
@@ -299,6 +315,8 @@ const routeTree = rootRoute.addChildren([
   sessionGraphRoute,
   sessionDetailRoute,
   sessionErrorsRoute,
+  jobsRoute,
+  jobDetailRoute,
   toolsRoute,
   skimRoute,
   withheldRoute,

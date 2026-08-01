@@ -4,6 +4,9 @@ import type {
   BucketBreakdownSummary,
   ContextSummary,
   HookRow,
+  JobFileKind,
+  JobStateFields,
+  JobTreeNode,
   LaunchAlias,
   LaunchAliasPosture,
   LinkedSessionError,
@@ -122,6 +125,57 @@ export interface HooksPluginsResponse {
   loadExpectations: AliasLoadExpectation[];
   launchRcPath: string;
   launchRcReadable: boolean;
+}
+/** One `~/.claude/jobs/<id>` directory: what its state file says plus what it holds. */
+export interface JobSummary extends JobStateFields {
+  id: string;
+  stateReadable: boolean;
+  files: number;
+  bytes: number;
+  modified: string;
+  /** Newest of `updatedAt` and `modified` — what the listing sorts by. */
+  activity: string;
+}
+export interface JobsResponse {
+  jobs: JobSummary[];
+  meta: { jobsDir: string; total: number; running: number; husks: number; files: number; bytes: number };
+}
+export interface JobResponse {
+  job: JobSummary;
+  tree: JobTreeNode[];
+  meta: { entries: number; truncated: boolean };
+}
+/** What a delete removed, as the directory read immediately before it went. */
+export interface JobDeleteResult {
+  id: string;
+  path: string;
+  files: number;
+  bytes: number;
+  name: string;
+  state: string;
+}
+export interface JobDeleteResponse {
+  deleted: JobDeleteResult;
+  /** The listing as it stands after the delete. */
+  jobs: JobsResponse;
+}
+/** One file inside a job directory, as the pretty/raw viewer receives it. */
+export interface JobFileDetail {
+  id: string;
+  path: string;
+  name: string;
+  kind: JobFileKind;
+  bytes: number;
+  modified: string;
+  encoding: "utf8" | "base64";
+  content: string;
+  mime: string | null;
+  truncated: boolean;
+  binary: boolean;
+  note: string | null;
+}
+export interface JobFileResponse {
+  file: JobFileDetail;
 }
 export interface SessionSummary extends SessionMeta {
   bytes: number;
@@ -320,7 +374,7 @@ async function get<T>(path: string): Promise<T> {
   return unwrap<T>(await fetch(`${API_BASE}${path}`));
 }
 
-/** The chat routes and the suggestion flags are the only writes the API accepts. */
+/** The chat routes, the suggestion flags and the job delete are the only writes the API accepts. */
 async function post<T>(path: string, body: unknown): Promise<T> {
   return unwrap<T>(
     await fetch(`${API_BASE}${path}`, {
@@ -351,6 +405,14 @@ export const getProjectMemories = (project: string) =>
   get<ProjectMemoriesResponse>(`/api/projects/memories?project=${encodeURIComponent(project)}`);
 export const getMemory = (project: string, name: string) =>
   get<MemoryResponse>(`/api/projects/memory?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`);
+/** Every background job directory on the device, newest activity first. */
+export const getJobs = () => get<JobsResponse>("/api/jobs");
+export const getJob = (id: string) => get<JobResponse>(`/api/jobs/job?id=${encodeURIComponent(id)}`);
+/** One file from a job directory — `file` is a path relative to that directory. */
+export const getJobFile = (id: string, file: string) =>
+  get<JobFileResponse>(`/api/jobs/file?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`);
+/** Delete one job directory from `~/.claude/jobs` — no trash, and a running job is refused. */
+export const deleteJob = (id: string) => post<JobDeleteResponse>("/api/jobs/delete", { id });
 export const getSessions = () => get<SessionsResponse>("/api/sessions");
 export const getSessionsGraph = () => get<SessionsGraphResponse>("/api/sessions/graph");
 export const getSessionGraphNodes = (id: string) =>
