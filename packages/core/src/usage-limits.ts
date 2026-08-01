@@ -58,8 +58,13 @@ export type LiveUsage = Partial<Record<UsageWindowKind, LiveUsageWindow>>;
 /**
  * `kind` values the usage endpoint emits, mapped onto our windows. `weekly_scoped`
  * carries the model in `scope.model.display_name` instead of in the kind.
+ *
+ * Both the `session`/`weekly_all` spelling the endpoint returns and the
+ * `five_hour`/`seven_day` one the client also accepts are matched.
  */
 const LIVE_KINDS: Record<string, UsageWindowKind> = {
+  session: "5h",
+  weekly_all: "week",
   five_hour: "5h",
   seven_day: "week",
   seven_day_opus: "weekFable",

@@ -38,6 +38,22 @@ describe("parseLiveUsage", () => {
     expect(got["5h"]?.resetsAt).toBe(inMin(60));
   });
 
+  it("maps a real captured payload, whose kinds are spelled differently", () => {
+    // Verbatim shape of a live /api/oauth/usage response.
+    const got = parseLiveUsage(
+      [
+        { kind: "session", percent: 24, resets_at: "2026-08-02T00:50:00.191996+00:00" },
+        { kind: "weekly_all", percent: 8, resets_at: "2026-08-08T12:00:00.192018+00:00" },
+        { kind: "weekly_scoped", percent: 0, scope: { model: { display_name: "Fable" } } },
+      ],
+      NOW,
+    );
+    expect(got["5h"]?.utilization).toBeCloseTo(0.24, 5);
+    expect(got.week?.utilization).toBeCloseTo(0.08, 5);
+    expect(got.weekFable?.utilization).toBe(0);
+    expect(got.week?.resetsAt).toBe("2026-08-08T12:00:00.192Z");
+  });
+
   it("reads the Fable window off the scoped entry's model name", () => {
     const got = parseLiveUsage(
       [{ kind: "weekly_scoped", percent: 0, scope: { model: { display_name: "Fable" } }, resets_at: inMin(10) }],
