@@ -28,6 +28,7 @@ import type {
   SuggestionStatusUpdate,
   TopTool,
   UsageDigest,
+  UsageLimitsSnapshot,
   WithheldReport,
 } from "@claude-proxy/core";
 
@@ -38,6 +39,11 @@ export interface SummaryResponse {
   digest: UsageDigest;
   advice: Advice[];
   meta: { date: string; files: number; parseErrors: number };
+}
+/** The 5-hour / weekly / weekly-Fable meters, as of the newest captured request. */
+export interface UsageResponse {
+  usage: UsageLimitsSnapshot;
+  meta: { files: number; parseErrors: number };
 }
 export interface TrendsResponse {
   digests: UsageDigest[];
@@ -384,6 +390,8 @@ const qs = (date?: string) => (date ? `?date=${encodeURIComponent(date)}` : "");
 export const getHealth = () => get<HealthResponse>("/api/health");
 export const getSummary = (date?: string) => get<SummaryResponse>(`/api/summary${qs(date)}`);
 export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days=${days}`);
+/** Paired with the `/api/usage/stream` SSE subscription, which pushes the same shape. */
+export const getUsage = () => get<UsageResponse>("/api/usage");
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);
 export const getContext = (days: number) => get<ContextResponse>(`/api/context?days=${days}`);
 export const getContextDetail = (file: string) =>

@@ -1,58 +1,168 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
 import type { UsageDigest } from "@claude-proxy/core";
-import { getSummary, getTrends, type SummaryResponse } from "../api";
+import { getSummary, getTrends, getUsage, type SummaryResponse, type UsageResponse } from "../api";
 import { AdviceCard } from "../components/AdviceCard";
+import { LiveIndicator } from "../components/LiveIndicator";
 import { QueryState } from "../components/QueryState";
+import { DAY_WINDOWS, Segmented } from "../components/Segmented";
+import { Skeleton, SkeletonStats, SkeletonText } from "../components/Skeleton";
 import { StatCard } from "../components/StatCard";
+import { UsageMeter } from "../components/UsageMeter";
 import { fmtInt, fmtPct } from "../format";
 import { METRICS, REPORT_TZ_ABBR } from "../metrics";
-
-const WINDOWS = [7, 14, 30];
+import { useLiveQuery, type LiveStatus } from "../useLiveQuery";
+import { useTransitionState } from "../useTransitionState";
 
 export function OverviewPage() {
-  const [days, setDays] = useState(7);
+  const [days, selectDays, isSwitching] = useTransitionState(7);
   const summary = useQuery({ queryKey: ["summary"], queryFn: () => getSummary() });
   // Per-day history feeds every card's mini chart; shares cache with /trends.
-  const trends = useQuery({ queryKey: ["trends", days], queryFn: () => getTrends(days) });
+  const trends = useQuery({
+    queryKey: ["trends", days],
+    queryFn: () => getTrends(days),
+    placeholderData: keepPreviousData,
+  });
+  const usage = useQuery({ queryKey: ["usage"], queryFn: () => getUsage() });
+  // Both streams watch the log directory, so a request in flight moves the meters
+  // and today's digest without a reload; the queries above cover SSE being down.
+  const usageLive = useLiveQuery<UsageResponse>("/api/usage/stream", ["usage"]);
+  const summaryLive = useLiveQuery<SummaryResponse>("/api/summary/stream", ["summary"]);
   const data = summary.data;
 
   return (
-    <QueryState isLoading={summary.isLoading} error={summary.error}>
-      {data && (
-        <OverviewBody data={data} digests={trends.data?.digests ?? []} days={days} onDays={setDays} />
-      )}
-    </QueryState>
+    <section>
+      <PageHead
+        data={data}
+        loading={summary.isLoading}
+        days={days}
+        onDays={selectDays}
+        // Only the mini charts follow this window; the headline numbers come from
+        // today's digest, so the switcher marks itself and the cards stay at full strength.
+        busy={isSwitching || trends.isFetching}
+        live={worstStatus(usageLive, summaryLive)}
+      />
+
+      <UsageSection
+        data={usage.data}
+        isLoading={usage.isLoading}
+        error={usage.error}
+      />
+      {/* Both queries gate the skeleton: the tiles carry a mini chart drawn from the
+          trends window, so landing them separately would grow the row twice. */}
+      <QueryState
+        isLoading={summary.isLoading || trends.isLoading}
+        error={summary.error}
+        skeleton={<OverviewSkeleton />}
+      >
+        {data && <OverviewBody data={data} digests={trends.data?.digests ?? []} />}
+      </QueryState>
+    </section>
   );
 }
 
-function OverviewBody({
+/** The less healthy of two stream states — one badge speaks for both. */
+function worstStatus(a: LiveStatus, b: LiveStatus): LiveStatus {
+  if (a === "offline" || b === "offline") return "offline";
+  if (a === "connecting" || b === "connecting") return "connecting";
+  return "live";
+}
+
+/**
+ * The subscription allowances, above the day's statistics. Renders nothing when
+ * no window can be measured and nothing went wrong — neither captured headers
+ * nor configured ceilings means there is no meter worth showing.
+ */
+function UsageSection({
   data,
-  digests,
-  days,
-  onDays,
+  isLoading,
+  error,
 }: {
-  data: SummaryResponse;
-  digests: UsageDigest[];
-  days: number;
-  onDays: (d: number) => void;
+  data?: UsageResponse;
+  isLoading: boolean;
+  error: Error | null;
 }) {
+  if (isLoading) {
+    return (
+      <div className="grid usage" aria-hidden>
+        {Array.from({ length: 2 }, (_, i) => (
+          <div className="card usage-meter" key={i}>
+            <Skeleton w="42%" h="0.8em" />
+            <div style={{ margin: "10px 0" }}>
+              <Skeleton w="30%" h="1.6em" />
+            </div>
+            <Skeleton w="100%" h="7px" />
+            <SkeletonText lines={2} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  // A failed usage read must not take the whole Overview down with it.
+  if (error) return <div className="card usage-note">Usage limits unavailable: {error.message}</div>;
+  if (!data) return null;
+
+  const { windows, unavailable } = data.usage;
+  if (windows.length === 0) {
+    return unavailable ? <div className="card usage-note">{unavailable}</div> : null;
+  }
+
+  return (
+    <div className="grid usage">
+      {windows.map((w) => (
+        <UsageMeter key={w.kind} meter={w} />
+      ))}
+    </div>
+  );
+}
+
+/** The cards and panels this page loads into, at their loaded size. */
+function OverviewSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={METRICS.length} spark />
+      <div className="grid two" aria-hidden>
+        <div className="card">
+          <div className="card-head">
+            <Skeleton w="52%" h="0.95em" />
+          </div>
+          <ul className="minilist">
+            {Array.from({ length: 5 }, (_, i) => (
+              <li key={i}>
+                <Skeleton w="34%" />
+                <Skeleton w="28%" />
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="card">
+          <div className="card-head">
+            <Skeleton w="30%" h="0.95em" />
+          </div>
+          <div className="advice-list">
+            {Array.from({ length: 2 }, (_, i) => (
+              <div className="card" key={i}>
+                <Skeleton w="56%" className="skeleton-h2" />
+                <SkeletonText lines={2} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function OverviewBody({ data, digests }: { data: SummaryResponse; digests: UsageDigest[] }) {
   const d = data.digest;
   const delta = Object.fromEntries((d.trend ?? []).map((t) => [t.field, t.deltaPct]));
 
   if (d.requestCount === 0) {
-    return (
-      <section>
-        <PageHead date={d.date} meta={data.meta} days={days} onDays={onDays} />
-        <div className="card empty">No Claude activity captured for {d.date}.</div>
-      </section>
-    );
+    return <div className="card empty">No Claude activity captured for {d.date}.</div>;
   }
 
   return (
-    <section>
-      <PageHead date={d.date} meta={data.meta} days={days} onDays={onDays} />
+    <>
       <div className="grid stats">
         {METRICS.map((m) => (
           <StatCard
@@ -106,36 +216,47 @@ function OverviewBody({
           </div>
         </div>
       </div>
-    </section>
+    </>
   );
 }
 
+/**
+ * The page head, above the loading boundary: title and window switcher stay usable
+ * while the digest loads, and only the day's request-count line waits for data.
+ */
 function PageHead({
-  date,
-  meta,
+  data,
+  loading,
   days,
   onDays,
+  busy,
+  live,
 }: {
-  date: string;
-  meta: { files: number; parseErrors: number };
+  data?: SummaryResponse;
+  loading: boolean;
   days: number;
   onDays: (d: number) => void;
+  busy?: boolean;
+  live: LiveStatus;
 }) {
   return (
     <div className="pagehead">
       <div>
         <h1>Overview</h1>
         <div className="muted">
-          {date} ({REPORT_TZ_ABBR}) · {meta.files} request{meta.files === 1 ? "" : "s"}
-          {meta.parseErrors > 0 && ` · ${meta.parseErrors} skipped`}
+          {data ? (
+            <>
+              {data.digest.date} ({REPORT_TZ_ABBR}) · {data.meta.files} request{data.meta.files === 1 ? "" : "s"}
+              {data.meta.parseErrors > 0 && ` · ${data.meta.parseErrors} skipped`}
+            </>
+          ) : loading ? (
+            <Skeleton w="14rem" />
+          ) : null}
         </div>
       </div>
-      <div className="segmented" aria-label="Mini-chart window">
-        {WINDOWS.map((w) => (
-          <button key={w} className={w === days ? "active" : ""} onClick={() => onDays(w)}>
-            {w}d
-          </button>
-        ))}
+      <div className="pagehead-controls">
+        <LiveIndicator status={live} />
+        <Segmented options={DAY_WINDOWS} value={days} onSelect={onDays} label="Mini-chart window" busy={busy} />
       </div>
     </div>
   );

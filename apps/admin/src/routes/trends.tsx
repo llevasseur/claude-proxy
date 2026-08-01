@@ -1,20 +1,30 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { UsageDigest } from "@claude-proxy/core";
 import { getTrends } from "../api";
-import { BarChart } from "../components/BarChart";
+import { BAR_CHART_HEIGHT, BarChart } from "../components/BarChart";
 import { QueryState } from "../components/QueryState";
+import { DAY_WINDOWS, Segmented } from "../components/Segmented";
+import { type SkeletonColumn, SkeletonChartCard, SkeletonTableCard } from "../components/Skeleton";
 import { type Series, SeriesLineChart } from "../components/SeriesLineChart";
 import { fmtInt, fmtUsd } from "../format";
 import { REPORT_TZ_ABBR } from "../metrics";
-
-const WINDOWS = [7, 14, 30];
+import { useTransitionState } from "../useTransitionState";
 
 /** Per-request token series. */
 const PER_REQUEST_SERIES: Series[] = [
   { dataKey: "realInput", name: "Real input", color: "var(--accent)" },
   { dataKey: "output", name: "Output", color: "var(--good)" },
   { dataKey: "cache", name: "Cache", color: "var(--accent-2)" },
+];
+
+/** Date, then five numeric columns — the by-day table's shape. */
+const BY_DAY_COLUMNS: readonly SkeletonColumn[] = [
+  {},
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
 ];
 
 const perReq = (total: number, requests: number) => (requests > 0 ? Math.round(total / requests) : 0);
@@ -30,24 +40,28 @@ function toPerRequestRow(d: UsageDigest) {
 }
 
 export function TrendsPage() {
-  const [days, setDays] = useState(7);
-  const query = useQuery({ queryKey: ["trends", days], queryFn: () => getTrends(days) });
+  const [days, selectDays, isSwitching] = useTransitionState(7);
+  const query = useQuery({
+    queryKey: ["trends", days],
+    queryFn: () => getTrends(days),
+    placeholderData: keepPreviousData,
+  });
   const digests = query.data?.digests ?? [];
+  const busy = isSwitching || query.isFetching;
 
   return (
     <section>
       <div className="pagehead">
         <h1>Trends</h1>
-        <div className="segmented">
-          {WINDOWS.map((w) => (
-            <button key={w} className={w === days ? "active" : ""} onClick={() => setDays(w)}>
-              {w}d
-            </button>
-          ))}
-        </div>
+        <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label="Trend window" busy={busy} />
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState
+        isLoading={query.isLoading}
+        error={query.error}
+        skeleton={<TrendsSkeleton days={days} />}
+        busy={busy}
+      >
         {digests.length === 0 ? (
           <div className="card empty">No usage captured in the last {days} days.</div>
         ) : (
@@ -96,6 +110,19 @@ export function TrendsPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** The four cards at the selected window's size: one row and one bar per day. */
+function TrendsSkeleton({ days }: { days: number }) {
+  return (
+    <>
+      {/* The per-request card carries a legend under its plot; reserve those rows too. */}
+      <SkeletonChartCard title="Tokens per request" bars={days} legend={PER_REQUEST_SERIES.length} />
+      <SkeletonChartCard title="Real input tokens / day" height={BAR_CHART_HEIGHT} bars={days} />
+      <SkeletonChartCard title="Estimated cost / day" height={BAR_CHART_HEIGHT} bars={days} />
+      <SkeletonTableCard title="By day" columns={BY_DAY_COLUMNS} rows={days} />
+    </>
   );
 }
 

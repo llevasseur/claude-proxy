@@ -221,6 +221,54 @@ test("sidecar carries real tokens, session, and model for a non-streaming call",
   assert.equal(parsed.session.account, "acct456");
 });
 
+/** A sidecar built from the given upstream response headers. */
+function sidecarWithRespHeaders(respHeaders) {
+  const { usage, inputTokens, model } = decodeResponse(nonStreamingBody);
+  const reqJson = {};
+  return JSON.parse(
+    writeAuditSidecar({
+      timestamp: "2026-07-20T01:15:22.069Z",
+      reqJson,
+      statusCode: 200,
+      method: "POST",
+      path: "/v1/messages",
+      audit: auditRequest(reqJson, inputTokens),
+      inputTokens,
+      usage,
+      respModel: model,
+      headers: {},
+      respHeaders,
+      skim: null,
+    }),
+  );
+}
+
+test("sidecar records only rate-limit response headers, so no auth rides along", () => {
+  const parsed = sidecarWithRespHeaders({
+    "Anthropic-RateLimit-Unified-5h-Utilization": "0.42",
+    "x-ratelimit-limit": "100",
+    "anthropic-organization-id": "org-1",
+    authorization: "Bearer sk-secret",
+    "set-cookie": ["a=1", "b=2"],
+    "content-type": "application/json",
+  });
+  assert.deepEqual(parsed.rateLimit, {
+    "anthropic-ratelimit-unified-5h-utilization": "0.42", // name lowercased, value verbatim
+    "x-ratelimit-limit": "100",
+  });
+});
+
+test("sidecar joins repeated rate-limit header values", () => {
+  const parsed = sidecarWithRespHeaders({ "anthropic-ratelimit-unified-5h-reset": ["60", "90"] });
+  assert.equal(parsed.rateLimit["anthropic-ratelimit-unified-5h-reset"], "60, 90");
+});
+
+test("sidecar omits rateLimit when upstream sent none", () => {
+  assert.equal("rateLimit" in sidecarWithRespHeaders({ "content-type": "application/json" }), false);
+  // The skim-cache path serves without an upstream call, so it passes no headers.
+  assert.equal("rateLimit" in sidecarWithRespHeaders(undefined), false);
+});
+
 // ---------------------------------------------------------------------------
 // Session transcripts (session.mjs)
 // ---------------------------------------------------------------------------

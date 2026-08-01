@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getWithheld } from "../api";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, type SkeletonColumn, SkeletonTable, SkeletonText } from "../components/Skeleton";
 import { fmtInt, fmtLocalTsShort, LOCAL_TZ_ABBR } from "../format";
 
 const WINDOW_DAYS = 14;
@@ -42,7 +43,7 @@ export function WithheldPage() {
         </div>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<WithheldSkeleton />}>
         {!data?.settingsReadable ? (
           <div className="card empty">
             Couldn't read device settings at <span className="rule-name">{data?.settingsPath}</span>. Nothing withheld.
@@ -341,5 +342,32 @@ export function WithheldPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** Rule, how it matches, and its traffic status. */
+const RULE_COLUMNS: readonly SkeletonColumn[] = [{ cell: "58%" }, { cell: "40%" }, {}];
+
+/** The summary card, the deny-rule table, and the launch-alias card. */
+function WithheldSkeleton() {
+  return (
+    <>
+      <div className="card" style={{ marginBottom: 16 }} aria-hidden>
+        <div className="muted">
+          <Skeleton w="72%" />
+        </div>
+      </div>
+      <div className="card">
+        <SkeletonTable columns={RULE_COLUMNS} rows={5} />
+      </div>
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="muted" aria-hidden>
+          <SkeletonText lines={2} />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <SkeletonTable columns={RULE_COLUMNS} rows={4} />
+        </div>
+      </div>
+    </>
   );
 }

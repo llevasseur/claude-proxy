@@ -10,6 +10,9 @@ export interface SparkPoint {
 /** Plot inset. Mirrored in `indexAtClientX` so hit-testing matches the scale. */
 const MARGIN = { top: 3, right: 2, bottom: 3, left: 2 };
 
+/** Default plot height, in px. Shared so a placeholder reserves the same box. */
+export const SPARKLINE_HEIGHT = 40;
+
 export interface SparklineProps {
   points: SparkPoint[];
   /** Stroke colour (a CSS custom property). */
@@ -27,7 +30,13 @@ export interface SparklineProps {
  *
  * Hovering marks the nearest day and reports it upward.
  */
-export function Sparkline({ points, color, height = 40, activeIndex = null, onActiveIndexChange }: SparklineProps) {
+export function Sparkline({
+  points,
+  color,
+  height = SPARKLINE_HEIGHT,
+  activeIndex = null,
+  onActiveIndexChange,
+}: SparklineProps) {
   // A single day can't form a line; show a dot instead.
   const single = points.length === 1;
   const active = activeIndex === null ? undefined : points[activeIndex];

@@ -70,6 +70,12 @@ export interface AuditSidecar {
   tools: AuditTool[];
   /** Present on sidecars written since ticket 001. */
   skim?: AuditSkim;
+  /**
+   * Upstream `anthropic-ratelimit-*` response headers, verbatim with lowercased
+   * names — the authoritative remaining allowance behind the usage meters. Absent
+   * on older sidecars and on responses that carried no such header.
+   */
+  rateLimit?: Record<string, string>;
 }
 
 /**

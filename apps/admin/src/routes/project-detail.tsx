@@ -1,11 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { MemoryFileSummary } from "../api";
 import { getProjectMemories } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, type SkeletonColumn, SkeletonTable } from "../components/Skeleton";
 import { fmtBytes, fmtLocalTsShort } from "../format";
+import { useTransitionState } from "../useTransitionState";
+
+/** File name, size, and modified time. */
+const MEMORY_COLUMNS: readonly SkeletonColumn[] = [{ cell: "54%" }, { className: "num" }, { className: "num" }];
 
 export function ProjectDetailPage() {
   const { project } = useParams({ from: "/projects/$project" });
@@ -30,7 +35,7 @@ export function ProjectDetailPage() {
         {project}
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<MemoriesSkeleton />}>
         {!files || files.length === 0 ? (
           <div className="card empty">This project has no memory files.</div>
         ) : (
@@ -38,6 +43,19 @@ export function ProjectDetailPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** The memories card and the table it holds. */
+function MemoriesSkeleton() {
+  return (
+    <div className="card">
+      <div className="card-head">
+        <Skeleton w="24%" h="0.95em" />
+        <Skeleton w="34%" />
+      </div>
+      <SkeletonTable columns={MEMORY_COLUMNS} rows={7} />
+    </div>
   );
 }
 
@@ -65,7 +83,10 @@ function compare(a: MemoryFileSummary, b: MemoryFileSummary, key: SortKey): numb
 
 function MemoriesTable({ project, files }: { project: string; files: MemoryFileSummary[] }) {
   const navigate = useNavigate();
-  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "bytes", dir: "desc" });
+  const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
+    key: "bytes",
+    dir: "desc",
+  });
 
   const sorted = useMemo(() => {
     const rows = [...files];
@@ -89,7 +110,7 @@ function MemoriesTable({ project, files }: { project: string; files: MemoryFileS
         </h2>
         <span className="muted">click a column to sort · click a row to read it</span>
       </div>
-      <table className="table">
+      <table className={isSorting ? "table is-stale" : "table"} aria-busy={isSorting || undefined}>
         <thead>
           <tr>
             <SortHeader label="File" sortKey="name" sort={sort} onSort={onSort} />

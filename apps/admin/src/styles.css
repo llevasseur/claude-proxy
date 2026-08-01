@@ -25,8 +25,11 @@
   --info: var(--signal);
 
   /* type */
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display:
+    "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  --font-body:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   font-family: var(--font-body);
@@ -119,7 +122,9 @@ button:focus-visible {
 .station-icon {
   flex: none;
   color: var(--faint);
-  transition: color 0.15s ease, filter 0.15s ease;
+  transition:
+    color 0.15s ease,
+    filter 0.15s ease;
 }
 .station-label {
   font-size: 13.5px;
@@ -171,7 +176,9 @@ button:focus-visible {
   border: 1px solid var(--line);
   border-radius: 7px;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 .rail-toggle:hover {
   color: var(--text);
@@ -301,6 +308,13 @@ button:focus-visible {
   margin-bottom: 26px;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--line);
+}
+/* Right-hand cluster of a pagehead: live badge alongside a window switcher. */
+.pagehead-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
 }
 .pagehead h1 {
   font-family: var(--font-display);
@@ -471,6 +485,114 @@ button:focus-visible {
   color: var(--muted);
 }
 
+/* usage meters — subscription allowances on the Overview. Each card carries its
+   tone via `.tone-*`, so bar, chip and blurb share one colour from one class. */
+.usage-meter {
+  --tone: var(--good);
+  margin: 0;
+}
+.usage-meter.tone-good {
+  --tone: var(--good);
+}
+.usage-meter.tone-signal {
+  --tone: var(--signal);
+}
+.usage-meter.tone-warn {
+  --tone: var(--amber);
+}
+.usage-meter.tone-bad {
+  --tone: var(--coral);
+}
+.usage-meter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.usage-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  color: var(--tone);
+  white-space: nowrap;
+}
+.usage-meter-value {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 10px 0 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tone);
+}
+.usage-meter-unit {
+  font-size: 15px;
+  margin-left: 2px;
+  color: var(--muted);
+}
+.usage-bar {
+  position: relative;
+  height: 7px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.usage-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--tone);
+  transition: width 0.3s ease;
+}
+/* Projection sits behind the actual fill as a faint extension of it. */
+.usage-bar-projected {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--tone);
+  opacity: 0.24;
+  transition: width 0.3s ease;
+}
+.usage-meter-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+/* A denominator inferred from history; the dotted underline invites the hover. */
+.usage-learned {
+  color: var(--muted);
+  border-bottom: 1px dotted var(--line);
+  cursor: help;
+}
+/* An estimate the retained logs can't fully back. */
+.usage-partial {
+  color: var(--amber);
+}
+.usage-blurb {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  /* Legible without outshouting the number. */
+  opacity: 0.82;
+}
+/* Wider than `.grid.stats`: each meter carries a sentence, not just a number. */
+.grid.usage {
+  grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
+}
+.usage-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 22px;
+}
+
 /* stat card: mini chart + clickable drill-down + hover popover */
 .sparkline {
   margin-top: 14px;
@@ -483,7 +605,9 @@ button:focus-visible {
   display: block;
   text-decoration: none;
   color: inherit;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 .stat-link:hover {
   border-color: var(--signal-dim);
@@ -504,7 +628,10 @@ button:focus-visible {
   opacity: 0;
   visibility: hidden;
   transform: translateY(-4px);
-  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease,
+    visibility 0.12s ease;
   pointer-events: none;
 }
 .stat-link:hover .stat-popover,
@@ -546,7 +673,11 @@ button:focus-visible {
 }
 /* The day under the cursor — on this row or on the mini chart's node. */
 .stat-popover-list li.is-active {
-  background: color-mix(in srgb, var(--spark-color, var(--signal)) 18%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--spark-color, var(--signal)) 18%,
+    transparent
+  );
 }
 .stat-popover-date {
   color: var(--muted);
@@ -639,12 +770,11 @@ a.pager-btn:hover {
   font-size: 12px;
 }
 
-/* bar chart */
+/* bar chart — height comes from `BAR_CHART_HEIGHT`, so a skeleton can reserve it. */
 .barchart {
   display: flex;
   align-items: flex-end;
   gap: 6px;
-  height: 200px;
 }
 .barcol {
   flex: 1;
@@ -1377,7 +1507,9 @@ button.link {
   text-decoration: none;
   color: inherit;
   border-color: rgba(255, 107, 129, 0.4);
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 .stat-error:hover {
   border-color: var(--coral);
@@ -1398,7 +1530,9 @@ button.link {
   text-decoration: none;
   color: inherit;
   border-color: rgba(70, 224, 192, 0.4);
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 .stat-drill:hover {
   border-color: var(--signal);
@@ -3227,4 +3361,87 @@ button.btn-danger.armed {
   .jobtree {
     max-height: 40vh;
   }
+}
+
+/* skeletons — placeholders that sit inside the loaded content's own boxes. A block is
+   inline, so the element holding it keeps its own strut and line box, and neither side
+   names a pixel height. */
+.skeleton {
+  display: inline-block;
+  vertical-align: middle;
+  width: 100%;
+  height: 0.72em;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 8%,
+    var(--line) 38%,
+    var(--surface-2) 68%
+  );
+  background-size: 260% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+/* Flat fill, or the halted animation freezes mid-sweep and lights blocks unevenly. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    background: var(--surface-2);
+  }
+}
+/* Stands in for an `h2`, at the height the heading will have. */
+.skeleton-h2 {
+  height: 0.95em;
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+.skeleton-text {
+  display: grid;
+  gap: 9px;
+  /* Track `.msg-text`/`.card` body copy so reserved lines match rendered ones. */
+  font-size: 13px;
+  line-height: 1.65;
+}
+/* Bars sit on the baseline of a box sized to the real chart's fixed height. */
+.skeleton-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 10px 0 18px;
+  box-sizing: border-box;
+}
+.skeleton-bar {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  border-radius: 4px 4px 2px 2px;
+}
+/* A row in the sessions rail, shaped like `.snav-item`. */
+.skeleton-rail {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px;
+}
+/* Content on screen but superseded: it stays where it is and dims. */
+.is-stale {
+  opacity: 0.48;
+  transition: opacity 140ms ease;
+}
+/* Announced, not shown — and out of flow, so it never becomes a grid or flex item. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

@@ -1,11 +1,13 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { RequestToolDetail } from "@claude-proxy/core";
 import { getContextTool } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
+import { PRETTY_RAW, type PrettyRawView, Segmented } from "../components/Segmented";
+import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from "../components/Skeleton";
 import { fmtBytes, fmtInt } from "../format";
+import { useTransitionState } from "../useTransitionState";
 
 export function ContextToolPage() {
   const { file, index } = useParams({ from: "/context/$file/tool/$index" });
@@ -32,15 +34,31 @@ export function ContextToolPage() {
       </div>
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ToolSkeleton />}>
         {tool && <ToolBody tool={tool} />}
       </QueryState>
     </section>
   );
 }
 
+/** Three stat tiles and the schema card, sized for a tool's name, description and parameters. */
+function ToolSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={3} />
+      <div className="card">
+        <div className="card-head">
+          <Skeleton w="20%" h="0.95em" />
+          <Skeleton w="7rem" />
+        </div>
+        <SkeletonMsgBlocks count={3} lines={4} />
+      </div>
+    </>
+  );
+}
+
 function ToolBody({ tool: t }: { tool: RequestToolDetail }) {
-  const [view, setView] = useState<"pretty" | "raw">("pretty");
+  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
 
   return (
     <>
@@ -53,16 +71,11 @@ function ToolBody({ tool: t }: { tool: RequestToolDetail }) {
       <div className="card">
         <div className="card-head">
           <h2>Tool schema</h2>
-          <div className="segmented">
-            <button className={view === "pretty" ? "active" : ""} onClick={() => setView("pretty")}>
-              Pretty
-            </button>
-            <button className={view === "raw" ? "active" : ""} onClick={() => setView("raw")}>
-              Raw
-            </button>
-          </div>
+          <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label="Schema view" busy={isSwitching} />
         </div>
-        {view === "pretty" ? <PrettyTool content={t.content} /> : <pre className="rawjson wrap">{t.content}</pre>}
+        <div className={isSwitching ? "is-stale" : undefined}>
+          {view === "pretty" ? <PrettyTool content={t.content} /> : <pre className="rawjson wrap">{t.content}</pre>}
+        </div>
       </div>
     </>
   );
