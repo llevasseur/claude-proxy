@@ -348,24 +348,20 @@ describe("buildUsageLimits — nothing to measure", () => {
   });
 });
 
-/** Hours before NOW, as an ISO stamp — the 5h window's natural unit. */
+/** Hours before NOW, as an ISO stamp. */
 const agoHr = (h: number): string => new Date(NOW.getTime() - h * 3_600_000).toISOString();
 
 /**
  * A token-free request far enough back to establish how long the logs reach.
- *
- * Learning admits only windows the history fully spans, and the window holding
- * the oldest request never is — it starts before the logs do. Fixtures therefore
- * need an anchor older than the window under test, or the peak they place lands
- * in exactly the window that gets excluded.
+ * The window holding the oldest request is never fully spanned, so without an
+ * anchor a fixture's peak lands in exactly the window that gets excluded.
  */
 const anchor = (h: number) => sidecar({ at: agoHr(h) });
 
 describe("learnCeilings", () => {
   it("takes the peak of the completed windows and ignores the one in progress", () => {
-    // 25h of history is five whole 5h windows, so four are complete. The busiest
-    // of those carries 900 units; the in-progress one is deliberately the largest
-    // so a ceiling that counted it would be visibly wrong.
+    // 25h is five 5h windows, four of them complete, peaking at 900. The
+    // in-progress one is the largest, so counting it would be visibly wrong.
     const learned = learnCeilings(
       [
         sidecar({ at: agoHr(25), tokens: { input: 100 } }),
@@ -398,8 +394,7 @@ describe("learnCeilings", () => {
   });
 
   it("excludes the window holding the oldest request, which the logs only partly span", () => {
-    // Without an anchor the 900 sits in the earliest, partially-covered window,
-    // and counting it would pass off a fragment of a window as a whole one.
+    // With no anchor the 900 sits in the earliest, partially-covered window.
     const learned = learnCeilings(
       [sidecar({ at: agoHr(12), tokens: { input: 900 } }), sidecar({ at: agoHr(7), tokens: { input: 80 } })],
       NOW,

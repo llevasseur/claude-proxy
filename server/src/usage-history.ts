@@ -4,18 +4,12 @@ import { readArchivedDay, readSidecars, shiftDay, today } from "./logs.js";
 /**
  * Ceilings learned from the archive, for the windows no env var pins down.
  *
- * The live log directory holds roughly a day, so on its own it cannot span even
- * one completed weekly window — the archive is the only place a weekly ceiling
- * can come from. That makes this pass expensive (thousands of sidecars across
- * weeks of day directories), and the answer barely moves: it can only change
- * when a window completes. So it is computed rarely and cached.
+ * The live log directory holds roughly a day and cannot span a completed weekly
+ * window, so the archive is the only place a weekly ceiling can come from. That
+ * makes the pass expensive and the answer slow-moving, hence the memo.
  */
 
-/**
- * How far back to read. Four weeks leaves room for three completed weekly
- * windows, so the weekly ceiling rests on more than a single observation, while
- * still bounding how much of the archive one pass touches.
- */
+/** Four weeks — room for three completed weekly windows, without reading the whole archive. */
 const LEARN_DAYS = 28;
 
 /** Long enough that the cost is amortised, short enough that a new peak lands the same day. */
@@ -29,11 +23,8 @@ export function clearLearnedCeilingsCache(): void {
 }
 
 /**
- * Every sidecar in the learning span, live plus archived.
- *
- * Day directories that were never archived or have been pruned simply
- * contribute nothing; a gap is indistinguishable from a quiet day here, which
- * only ever costs the learned peak, never inflates it.
+ * Every sidecar in the learning span, live plus archived. A day directory that
+ * was never written or has been pruned contributes nothing.
  */
 async function readLearningCorpus(logDir: string, now: Date): Promise<unknown[]> {
   const { sidecars } = await readSidecars(logDir, { sinceDays: LEARN_DAYS }, now);

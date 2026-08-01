@@ -5,8 +5,8 @@ import { USAGE_LIMIT_ENV_SUFFIX, type UsageLimitConfig, type UsageWindowKind } f
  * Anthropic's rate-limit headers don't cover. Anthropic doesn't publish
  * subscription quotas as token counts, so there is deliberately no default: an
  * unset window falls back to a ceiling learned from history, and failing that is
- * omitted rather than measured against an invented number. Setting one of these
- * overrides the learned floor with a figure that actually knows the allowance.
+ * omitted rather than measured against an invented number. Setting one overrides
+ * that learned floor.
  *
  * Values are in the weighted units `usageUnits` counts, with `k`/`m` suffixes.
  */

@@ -19,10 +19,7 @@ const STATUS_LABEL: Record<UsagePaceStatus, string> = {
   exhausted: "Limit reached",
 };
 
-/**
- * An inferred ceiling supports no claim about the actual limit — only about the
- * busiest window on record — so the chip talks about that record instead.
- */
+/** An inferred ceiling can speak only to the busiest window on record, not the limit. */
 const LEARNED_STATUS_LABEL: Record<UsagePaceStatus, string> = {
   safe: "Below record",
   "on-pace": "Near record",
@@ -101,8 +98,7 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
             partial · {Math.round(w.coverage * 100)}% of window
           </span>
         ) : w.learned ? (
-          // The denominator is a floor too, in the other direction: measuring
-          // against the busiest window on record makes this read high, not low.
+          // The denominator is a floor too, so this reads high rather than low.
           <span
             className="usage-learned"
             title={`No allowance was reported or configured, so this is measured against the busiest of ${w.learned.windows} completed windows on record. The real ceiling can only be higher, so the percentage overstates how close you are.`}

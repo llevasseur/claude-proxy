@@ -117,9 +117,8 @@ export interface UsageResponse {
  * any meter spans. `sinceDays: 8` rather than 7 because the filter is day-granular
  * while the windows are instant-granular; the extra day covers the partial day.
  *
- * Ceilings for windows `limits` leaves unset are learned from a much wider slice
- * of the archive, which is why they arrive precomputed and cached rather than
- * off this pass — see `usage-history.ts`.
+ * Ceilings for windows `limits` leaves unset come from a much wider slice of the
+ * archive, so they arrive precomputed and cached — see `usage-history.ts`.
  */
 export async function buildUsage(
   logDir: string,

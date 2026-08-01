@@ -20,11 +20,7 @@ export const USAGE_WINDOW_MS: Record<UsageWindowKind, number> = {
   weekFable: 7 * 24 * 60 * 60 * 1000,
 };
 
-/**
- * Suffix each window's override env var carries; the server builds
- * `USAGE_LIMIT_<suffix>` from this so the name a blurb suggests and the name the
- * server actually reads cannot drift apart.
- */
+/** Suffix of each window's override env var; the server builds `USAGE_LIMIT_<suffix>` from this. */
 export const USAGE_LIMIT_ENV_SUFFIX: Record<UsageWindowKind, string> = {
   "5h": "5H",
   week: "WEEK",
@@ -49,15 +45,11 @@ export function usageUnits(t: AuditTokens): number {
 export type UsageLimitConfig = Partial<Record<UsageWindowKind, number>>;
 
 /**
- * A ceiling inferred from history rather than supplied: the busiest completed
- * window we have logs for.
+ * A ceiling inferred from history: the busiest completed window we have logs for.
  *
- * This is a *lower bound* on the real allowance, never the allowance itself —
- * Anthropic never told us the limit, so the most we can say is "at least this
- * much was possible". The bound is therefore conservative in one direction only:
- * dividing by a ceiling that is too low makes utilization read too *high*, so a
- * learned meter overstates how close the account is to its limit and cannot
- * lull anyone into thinking there is headroom that isn't there.
+ * A *lower bound* on the real allowance, never the allowance. The error runs one
+ * way only — dividing by a ceiling that is too low reads too *high*, so a learned
+ * meter overstates closeness to the limit and cannot invent headroom.
  */
 export interface LearnedCeiling {
   /** Peak weighted {@link usageUnits} seen in any single completed window. */
@@ -94,10 +86,8 @@ export interface UsageWindowMeter {
   /** When the allowance resets (ISO 8601); null when the source cannot say. */
   resetsAt: string | null;
   /**
-   * `headers` is Anthropic's accounting; `estimated` is ours, from logged tokens
-   * against an operator-supplied ceiling; `learned` is ours against a ceiling
-   * inferred from history — see {@link LearnedCeiling} for what that can and
-   * cannot claim.
+   * Where the ceiling came from: Anthropic's own accounting, an operator-supplied
+   * limit, or {@link LearnedCeiling}.
    */
   source: "headers" | "estimated" | "learned";
   /** How the ceiling was inferred; null unless `source` is `learned`. */
@@ -290,9 +280,8 @@ function assessPace(args: {
     const span = fmtDuration(windowMs);
     const learned = args.learned ?? null;
 
-    // A learned ceiling is the busiest window on record, not the allowance, so
-    // the vocabulary can never promise headroom: every reading is "against the
-    // most we have seen", and going past it means a new record, not a refusal.
+    // Its own vocabulary: readings are against the most we have seen, and passing
+    // the bar is a new record, not a refusal.
     if (learned) {
       const basis = `the busiest of ${learned.windows} completed ${label.toLowerCase()}s in ${fmtDuration(learned.observedMs)} of logs`;
       if (utilization >= EXHAUSTED_UTILIZATION) {
@@ -407,15 +396,12 @@ const isFable = (model: string): boolean => model.toLowerCase().includes("fable"
 /**
  * Infer each window's ceiling from the busiest completed window on record.
  *
- * Only *completed* windows count: the one in progress is by definition still
- * filling, so letting it set the bar would peg every meter at 100%. And only
- * windows the logs fully span count — a window that starts before the oldest
- * retained request is a partial count, and admitting it would drag the peak
- * down toward whatever fragment survived rotation.
+ * Only *completed* windows count — the one in progress is still filling and would
+ * peg every meter at 100% — and only windows the logs fully span, since one that
+ * starts before the oldest retained request is a fragment, not a window.
  *
- * What this cannot see is a gap *inside* the retained span: no requests and no
- * logs look identical from here. That only ever costs us peak, never invents
- * one, so the result stays a lower bound either way — see {@link LearnedCeiling}.
+ * A gap *inside* the retained span is indistinguishable from a quiet stretch, but
+ * that only costs peak, never invents one — see {@link LearnedCeiling}.
  */
 export function learnCeilings(sidecars: readonly unknown[], now: Date = new Date()): LearnedCeilings {
   const nowMs = now.getTime();
@@ -435,9 +421,8 @@ export function learnCeilings(sidecars: readonly unknown[], now: Date = new Date
 
   for (const kind of USAGE_WINDOWS) {
     const windowMs = USAGE_WINDOW_MS[kind];
-    // Index 0 is the window still in progress; 1 is the most recent completed
-    // one. The last fully-spanned index is however many whole windows fit in the
-    // history, minus that in-progress one.
+    // Index 0 is the window in progress, 1 the most recent completed one; the last
+    // fully-spanned index is the whole windows in the history minus that one.
     const complete = Math.floor(observedMs / windowMs) - 1;
     if (complete < 1) continue; // not one whole window of history yet — say nothing
 
@@ -451,8 +436,7 @@ export function learnCeilings(sidecars: readonly unknown[], now: Date = new Date
 
     // `totals[0]` is the in-progress window and was never filled.
     const units = Math.max(...totals.slice(1));
-    // A window kind with no traffic at all (an account that never touches Fable)
-    // learns nothing rather than a ceiling of zero.
+    // A window kind with no traffic learns nothing rather than a ceiling of zero.
     if (!(units > 0)) continue;
     out[kind] = { units, windows: complete, observedMs };
   }
@@ -463,15 +447,11 @@ export interface BuildUsageLimitsOptions {
   /** Ceilings for windows that must fall back to an estimate. */
   limits?: UsageLimitConfig;
   /**
-   * Sidecars reaching further back than `sidecars` does, used only to learn a
-   * ceiling for windows `limits` doesn't cover. Defaults to `sidecars`, which
-   * on its own rarely spans a completed weekly window.
+   * Sidecars reaching further back than `sidecars`, for learning ceilings where
+   * `limits` is unset. Defaults to `sidecars`, which rarely spans a whole week.
    */
   history?: readonly unknown[];
-  /**
-   * Ceilings already learned, for callers that cache the result rather than
-   * hand over weeks of sidecars on every build. Wins over `history`.
-   */
+  /** Ceilings already learned, for callers that cache the pass. Wins over `history`. */
   learned?: LearnedCeilings;
   now?: Date;
 }
@@ -500,8 +480,6 @@ export function buildUsageLimits(
   }
   valid.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-  // Learned ceilings come off the wider corpus; an operator-supplied limit still
-  // wins, so this is only consulted for the windows `limits` leaves open.
   const learnedAll = opts.learned ?? learnCeilings(opts.history ?? sidecars, now);
 
   const newest = valid.at(-1) ?? null;
@@ -540,9 +518,8 @@ export function buildUsageLimits(
       continue;
     }
 
-    // Configured first, learned only where nothing was configured: an explicit
-    // ceiling is a statement about the real allowance, a learned one is a guess
-    // at its floor, and the statement wins.
+    // A configured ceiling states the allowance; a learned one guesses at its
+    // floor, so the statement wins.
     const configured = limits[kind];
     const learned = configured != null && configured > 0 ? null : (learnedAll[kind] ?? null);
     const limitUnits = configured != null && configured > 0 ? configured : learned?.units;
