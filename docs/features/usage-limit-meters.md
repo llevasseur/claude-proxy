@@ -194,10 +194,11 @@ requests were captured at all no estimated window is emitted, because a 0% meter
   with no retention map can honestly claim. `USAGE_LIMIT_ENV_SUFFIX` is the one source of truth
   for the env-var names, shared with the server so a blurb cannot name a variable the server
   doesn't read.
-  `parseLiveUsage` maps the endpoint's `kind` values (`five_hour`, `seven_day`, and
-  `weekly_scoped` narrowed by `scope.model.display_name`) onto the meters; an unrecognised kind
-  is skipped rather than guessed at, so a window Anthropic adds falls through to the estimate
-  instead of landing on the wrong meter.
+  `parseLiveUsage` maps the endpoint's `kind` values onto the meters: `session` and `weekly_all`
+  are the spellings it returns today, `five_hour`, `seven_day` and `seven_day_opus` are accepted
+  alongside them, and `weekly_scoped` is narrowed by `scope.model.display_name`. An unrecognised
+  kind is skipped rather than guessed at, so a window Anthropic adds falls through to the
+  estimate instead of landing on the wrong meter.
 - `packages/core/src/time.ts` — `dayStartMs` resolves a day label to the instant local midnight
   opens it, applying the zone offset twice so the changeover days land right.
 - `proxy/usage-live.mjs` — the 60-second poll and the token it holds in memory. `noteAuth` takes

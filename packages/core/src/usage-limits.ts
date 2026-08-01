@@ -143,7 +143,12 @@ export interface UsageLimitsSnapshot {
   meta: {
     /** Requests counted in the weekly window. */
     requests: number;
-    /** Windows sourced from Anthropic's headers rather than estimated. */
+    /**
+     * Windows Anthropic reported itself — the polled endpoint or the response
+     * headers — rather than ones estimated against a configured or learned
+     * ceiling. Named for the headers because they were the only such source
+     * before the poll existed.
+     */
     fromHeaders: number;
   };
 }
@@ -344,6 +349,13 @@ function assessPace(args: {
   resetsAt: string | null;
   now: Date;
   trailing: boolean;
+  /**
+   * The measured span runs from a known reset instant rather than backwards from
+   * now. `trailing` stays set alongside it: that flag picks the estimate's
+   * vocabulary — a ceiling that is configured or inferred rather than binding —
+   * while this one only says which end of the span is pinned.
+   */
+  anchored?: boolean;
   coverage?: number;
   learned?: LearnedCeiling | null;
   /** Span actually measured; shorter than the nominal window once anchored to a reset. */
@@ -367,6 +379,10 @@ function assessPace(args: {
         ? ` Counts only the ${fmtDuration(coverage * windowMs)} of logs still on disk, so the real figure is higher.`
         : "";
     const span = fmtDuration(windowMs);
+    // An anchored window is measured from the instant it opened, so calling that
+    // span "trailing" would describe the wrong end of it.
+    const spanPhrase = args.anchored ? `the ${span} since it reset` : `the trailing ${span}`;
+    const resetTail = args.anchored && untilReset != null ? ` It ${resetPhrase}.` : "";
     const learned = args.learned ?? null;
 
     // Its own vocabulary: readings are against the most we have seen, and passing
@@ -379,7 +395,7 @@ function assessPace(args: {
           elapsed,
           projected: utilization,
           exhaustsInMs: 0,
-          blurb: `Busiest ${label} on record — ${pct(utilization)} of ${basis}. The real allowance is unknown and may be higher; this only says you are in new territory.${caveat}`,
+          blurb: `Busiest ${label} on record — ${pct(utilization)} of ${basis}. The real allowance is unknown and may be higher; this only says you are in new territory.${resetTail}${caveat}`,
         };
       }
       const status: UsagePaceStatus = utilization >= ON_PACE_PROJECTION ? "on-pace" : "safe";
@@ -388,7 +404,7 @@ function assessPace(args: {
         elapsed,
         projected,
         exhaustsInMs: null,
-        blurb: `${pct(utilization)} of ${basis}. That bar is a floor on the real allowance, not the allowance — set USAGE_LIMIT_${USAGE_LIMIT_ENV_SUFFIX[args.kind]} if you know the true ceiling.${caveat}`,
+        blurb: `${pct(utilization)} of ${basis}. That bar is a floor on the real allowance, not the allowance — set USAGE_LIMIT_${USAGE_LIMIT_ENV_SUFFIX[args.kind]} if you know the true ceiling.${resetTail}${caveat}`,
       };
     }
 
@@ -398,7 +414,7 @@ function assessPace(args: {
         elapsed,
         projected: utilization,
         exhaustsInMs: 0,
-        blurb: `Over the configured ${label} budget — ${pct(utilization)} of it used in the trailing ${span}. Either the rate is unsustainable or the budget is set too low.${caveat}`,
+        blurb: `Over the configured ${label} budget — ${pct(utilization)} of it used in ${spanPhrase}. Either the rate is unsustainable or the budget is set too low.${resetTail}${caveat}`,
       };
     }
 
@@ -410,7 +426,7 @@ function assessPace(args: {
       elapsed,
       projected,
       exhaustsInMs: null,
-      blurb: `${pct(utilization)} of the ${label} budget used over the trailing ${span} — ${tail}.${caveat}`,
+      blurb: `${pct(utilization)} of the ${label} budget used over ${spanPhrase} — ${tail}.${resetTail}${caveat}`,
     };
   }
 
@@ -657,11 +673,14 @@ export function buildUsageLimits(
     if (valid.length === 0) continue;
 
     // A known reset instant makes the window fixed rather than trailing: count
-    // from where it actually opened, not from `windowMs` ago.
+    // from where it actually opened, not from `windowMs` ago. An anchor whose
+    // window has not opened yet describes no elapsed span, so it is dropped
+    // outright rather than left to stamp a reset instant on a trailing count.
     const anchor = opts.anchors?.[kind];
     const anchorMs = anchor ? new Date(anchor).getTime() : Number.NaN;
-    const anchoredSince = Number.isNaN(anchorMs) ? null : anchorMs - windowMs;
-    const since = anchoredSince != null && anchoredSince <= nowMs ? anchoredSince : nowMs - windowMs;
+    const anchoredSince = Number.isNaN(anchorMs) || anchorMs - windowMs > nowMs ? null : anchorMs - windowMs;
+    const anchoredResetsAt = anchoredSince != null ? (anchor ?? null) : null;
+    const since = anchoredSince ?? nowMs - windowMs;
     let usedUnits = 0;
     for (const s of valid) {
       if (new Date(s.timestamp).getTime() < since) continue;
@@ -680,13 +699,25 @@ export function buildUsageLimits(
       kind,
       label,
       utilization,
-      resetsAt: anchoredSince != null ? (anchor ?? null) : null,
+      resetsAt: anchoredResetsAt,
       source: learned ? "learned" : "estimated",
       learned,
       usedUnits,
       limitUnits,
       coverage,
-      pace: assessPace({ kind, label, utilization, elapsed: 1, resetsAt: null, now, trailing: true, coverage, learned, spanMs }),
+      pace: assessPace({
+        kind,
+        label,
+        utilization,
+        elapsed: 1,
+        resetsAt: anchoredResetsAt,
+        now,
+        trailing: true,
+        anchored: anchoredSince != null,
+        coverage,
+        learned,
+        spanMs,
+      }),
     });
   }
 

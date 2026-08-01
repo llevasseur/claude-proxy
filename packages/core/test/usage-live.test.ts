@@ -155,5 +155,29 @@ describe("buildUsageLimits — fixed-window anchors", () => {
     const bad = only(buildUsageLimits(logs, { now: NOW, limits: { week: 10_000 }, anchors: { week: "nonsense" } }), "week");
     expect(bad.usedUnits).toBe(1700);
     expect(bad.resetsAt).toBeNull();
+
+    // More than a window out, so the span it describes has not opened yet. It
+    // must not stamp a reset instant on the trailing count it falls back to.
+    const future = only(
+      buildUsageLimits(logs, { now: NOW, limits: { week: 10_000 }, anchors: { week: inMin(60 * 24 * 9) } }),
+      "week",
+    );
+    expect(future.usedUnits).toBe(1700);
+    expect(future.resetsAt).toBeNull();
+  });
+
+  it("words an anchored window from its reset, not as a trailing span", () => {
+    const anchored = only(
+      buildUsageLimits(logs, { now: NOW, limits: { week: 10_000 }, anchors: { week: resetsAt } }),
+      "week",
+    );
+    expect(anchored.pace.blurb).not.toMatch(/trailing/);
+    expect(anchored.pace.blurb).toMatch(/since it reset/);
+    expect(anchored.pace.blurb).toMatch(/resets in/);
+
+    // Unanchored, the span really is trailing and there is no reset to report.
+    const trailing = only(buildUsageLimits(logs, { now: NOW, limits: { week: 10_000 } }), "week");
+    expect(trailing.pace.blurb).toMatch(/trailing/);
+    expect(trailing.pace.blurb).not.toMatch(/resets in/);
   });
 });
