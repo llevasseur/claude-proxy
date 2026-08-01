@@ -66,6 +66,7 @@ import {
 import { loadArchivedDigest } from "./archive.js";
 import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
 import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
+import { loadLiveUsage } from "./usage-live.js";
 import {
   deleteJob,
   listJobs,
@@ -166,6 +167,8 @@ export async function buildUsage(
   const archived = await loadArchivedUsage(logDir, now);
   const learned = await loadLearnedCeilings(logDir, now);
 
+  const liveUsage = await loadLiveUsage(logDir, now);
+
   const sidecars = dedupeByFile([...live.sidecars, ...archived.sidecars]);
   // The live directory is the current day's destination, so that day is retained
   // whether or not anything landed in it; days a live sidecar names are retained
@@ -178,7 +181,14 @@ export async function buildUsage(
   }
 
   return {
-    usage: buildUsageLimits(sidecars, { limits, learned, retainedDays: [...retainedDays], now }),
+    usage: buildUsageLimits(sidecars, {
+      limits,
+      learned,
+      retainedDays: [...retainedDays],
+      live: liveUsage.live,
+      anchors: liveUsage.anchors,
+      now,
+    }),
     meta: { files: sidecars.length, parseErrors: live.parseErrors + archived.parseErrors },
   };
 }
