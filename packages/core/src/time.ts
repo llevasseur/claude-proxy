@@ -48,6 +48,47 @@ export function reportTzAbbr(at: Date = new Date()): string {
   return abbrFmt.formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "ET";
 }
 
+// Wall-clock components of an instant, for turning a day label back into one.
+const wallFmt = new Intl.DateTimeFormat("en-US", {
+  timeZone: REPORT_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+/** Milliseconds to add to a UTC instant to reach {@link REPORT_TZ} wall time. */
+function zoneOffsetMs(at: number): number {
+  const p: Record<string, string> = {};
+  for (const part of wallFmt.formatToParts(new Date(at))) p[part.type] = part.value;
+  const wall = Date.UTC(
+    Number(p.year),
+    Number(p.month) - 1,
+    Number(p.day),
+    Number(p.hour),
+    Number(p.minute),
+    Number(p.second),
+  );
+  return wall - at;
+}
+
+/**
+ * The instant local midnight opens the day labelled `day`, in {@link REPORT_TZ};
+ * `NaN` when the label is unparseable.
+ *
+ * The offset is itself a function of the instant, so it is applied twice: the
+ * first pass lands within a day of the answer, the second uses the offset actually
+ * in force there. That second pass is what keeps the two DST changeovers right.
+ */
+export function dayStartMs(day: string): number {
+  const naive = Date.parse(`${day}T00:00:00.000Z`);
+  if (Number.isNaN(naive)) return NaN;
+  return naive - zoneOffsetMs(naive - zoneOffsetMs(naive));
+}
+
 /** `YYYY-MM-DD` for `n` days from the label `from`. Pure label arithmetic — no timezone of its own. */
 export function shiftDay(from: string, n: number): string {
   const d = new Date(`${from}T00:00:00.000Z`);

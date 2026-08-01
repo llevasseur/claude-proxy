@@ -1,3 +1,4 @@
+import { dayStartMs, shiftDay } from "./time.js";
 import { isAuditSidecar, type AuditSidecar, type AuditTokens } from "./types.js";
 
 /**
@@ -103,6 +104,10 @@ export interface UsageWindowMeter {
   /**
    * Fraction of the window backed by retained logs (estimated path). Below 1 the
    * reading is a floor, not a total. Always 1 on the header path.
+   *
+   * Counts the days actually held when the caller supplies a retention map, so a
+   * gap in the middle of the window is reported rather than papered over; without
+   * one it can only measure back to the oldest surviving request.
    */
   coverage: number;
   pace: UsagePace;
@@ -164,6 +169,27 @@ function parseReset(raw: string, now: Date): string | null {
 }
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
+
+/**
+ * Fraction of the window `[since, now]` whose logs are actually on disk.
+ *
+ * Retention is the signal, not the span between the first and last surviving
+ * request: measuring from the oldest record reads a hole in the middle of the
+ * window as complete coverage — precisely the case where the count is most wrong
+ * and least visibly so, because the `partial` marking disappears with it. Days are
+ * the unit because rotation is day-granular, so a quiet stretch inside a retained
+ * day is genuinely quiet rather than missing. Day ends are resolved as the next
+ * day's start, so the two DST days keep their real 23 and 25 hours.
+ */
+function retainedCoverage(days: ReadonlySet<string>, since: number, now: number, windowMs: number): number {
+  let covered = 0;
+  for (const day of days) {
+    const start = dayStartMs(day);
+    if (Number.isNaN(start)) continue;
+    covered += Math.max(0, Math.min(dayStartMs(shiftDay(day, 1)), now) - Math.max(start, since));
+  }
+  return clamp01(covered / windowMs);
+}
 
 function num(raw: string): number | undefined {
   const n = Number(raw);
@@ -453,6 +479,12 @@ export interface BuildUsageLimitsOptions {
   history?: readonly unknown[];
   /** Ceilings already learned, for callers that cache the pass. Wins over `history`. */
   learned?: LearnedCeilings;
+  /**
+   * Day labels (`YYYY-MM-DD`, reporting zone) whose logs are retained — live or
+   * archived. Supplied, `coverage` counts the days actually held; omitted, it can
+   * only measure back to the oldest surviving request and so cannot see a gap.
+   */
+  retainedDays?: readonly string[];
   now?: Date;
 }
 
@@ -481,6 +513,7 @@ export function buildUsageLimits(
   valid.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
   const learnedAll = opts.learned ?? learnCeilings(opts.history ?? sidecars, now);
+  const retainedDays = opts.retainedDays ? new Set(opts.retainedDays) : null;
 
   const newest = valid.at(-1) ?? null;
   // Headers describe only the moment they were returned, so only the newest
@@ -535,9 +568,10 @@ export function buildUsageLimits(
       if (kind === "weekFable" && !isFable(s.model)) continue;
       usedUnits += usageUnits(s.tokens);
     }
-    // Oldest retained request bounds how far back the count can actually see.
-    const oldest = new Date(valid[0]!.timestamp).getTime();
-    const coverage = clamp01((nowMs - Math.max(oldest, since)) / windowMs);
+    const coverage = retainedDays
+      ? retainedCoverage(retainedDays, since, nowMs, windowMs)
+      : // No retention map, so the oldest surviving request is the only bound available.
+        clamp01((nowMs - Math.max(new Date(valid[0]!.timestamp).getTime(), since)) / windowMs);
     const utilization = usedUnits / limitUnits;
     windows.push({
       kind,
