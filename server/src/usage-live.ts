@@ -28,9 +28,8 @@ export interface LiveUsageSnapshot {
 const EMPTY: LiveUsageSnapshot = { live: {}, anchors: {}, fetchedAt: null };
 
 /**
- * A reset instant stays useful long after the reading it came with: allowances
- * reset on a fixed cadence, so an old instant rolled forward by whole windows
- * still marks where the current one opened.
+ * Advance a past reset instant by whole windows, so an old reading still marks
+ * where the current window opened.
  */
 function rollForward(resetsAt: string, kind: UsageWindowKind, nowMs: number): string | null {
   const span = USAGE_WINDOW_MS[kind];

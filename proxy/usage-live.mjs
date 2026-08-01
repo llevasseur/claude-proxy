@@ -4,11 +4,9 @@ import path from "node:path";
 /**
  * Anthropic's own usage figures, polled and written next to the logs.
  *
- * Subscription OAuth traffic comes back with no `anthropic-ratelimit-*` headers,
- * so the only exact source is the endpoint Claude Code's own `/usage` panel reads.
- * That call needs the user's OAuth token, which this proxy already forwards — so
- * the poll lives here, where the token is in memory anyway, and only the resulting
- * numbers reach disk. The token is never written, logged, or exported.
+ * The endpoint needs the user's OAuth token, which this proxy already forwards, so
+ * the poll lives here and only the resulting numbers reach disk. The token is never
+ * written, logged, or exported.
  */
 
 const USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
@@ -50,11 +48,8 @@ async function fetchUsage(fetchImpl) {
 }
 
 /**
- * Poll once and write `<logDir>/usage-live.json` on success.
- *
- * A failed poll leaves the previous file alone: a stale reading still carries a
- * usable reset instant, which is what keeps the fallback estimate anchored to the
- * real window rather than a trailing seven days.
+ * Poll once and write `<logDir>/usage-live.json` on success. A failed poll leaves
+ * the previous file alone — a stale reading still carries a usable reset instant.
  */
 export async function pollOnce(logDir, fetchImpl = globalThis.fetch) {
   let payload;

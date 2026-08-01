@@ -597,9 +597,8 @@ export function buildUsageLimits(
     const fields = headerGroups.get(kind);
     const utilFromHeaders = fields ? headerUtilization(fields) : null;
 
-    // Anthropic's own accounting, fetched rather than inferred: exact, and the
-    // only source that knows the real allowance on subscription OAuth traffic,
-    // where no rate-limit headers are ever returned.
+    // The only source that knows the real allowance on subscription OAuth
+    // traffic, where no rate-limit headers are ever returned.
     const fromLive = opts.live?.[kind];
     if (fromLive) {
       const resetsAt = fromLive.resetsAt;
@@ -665,8 +664,7 @@ export function buildUsageLimits(
       usedUnits += usageUnits(s.tokens);
     }
     // An anchored window has only run since it opened, so coverage is measured
-    // against the elapsed part; judging it against the full nominal span would
-    // mark a freshly-reset week `partial` when every one of its logs is present.
+    // against the elapsed part rather than the full nominal span.
     const spanMs = Math.max(1, Math.min(windowMs, nowMs - since));
     const coverage = retainedDays
       ? retainedCoverage(retainedDays, since, nowMs, spanMs)
