@@ -63,6 +63,7 @@ import {
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
 import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
+import { loadLearnedCeilings } from "./usage-history.js";
 import {
   listProjectMemories,
   listProjects,
@@ -115,6 +116,10 @@ export interface UsageResponse {
  * The live usage meters, off one pass over the trailing week — the widest window
  * any meter spans. `sinceDays: 8` rather than 7 because the filter is day-granular
  * while the windows are instant-granular; the extra day covers the partial day.
+ *
+ * Ceilings for windows `limits` leaves unset are learned from a much wider slice
+ * of the archive, which is why they arrive precomputed and cached rather than
+ * off this pass — see `usage-history.ts`.
  */
 export async function buildUsage(
   logDir: string,
@@ -122,7 +127,8 @@ export async function buildUsage(
   now: Date = new Date(),
 ): Promise<UsageResponse> {
   const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: 8 }, now);
-  return { usage: buildUsageLimits(sidecars, { limits, now }), meta: { files, parseErrors } };
+  const learned = await loadLearnedCeilings(logDir, now);
+  return { usage: buildUsageLimits(sidecars, { limits, learned, now }), meta: { files, parseErrors } };
 }
 
 export interface TrendsResponse {

@@ -564,6 +564,13 @@ button:focus-visible {
   font-family: var(--font-mono);
   font-size: 11px;
 }
+/* A denominator inferred from history rather than reported or configured. The
+   dotted underline marks it as hovering for the caveat, not a live figure. */
+.usage-learned {
+  color: var(--muted);
+  border-bottom: 1px dotted var(--line);
+  cursor: help;
+}
 /* An estimate the retained logs can't fully back. */
 .usage-partial {
   color: var(--amber);
