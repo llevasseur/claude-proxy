@@ -55,11 +55,10 @@ export async function loadLearnedCeilings(logDir: string, now: Date = new Date()
 /** Archived days the meters reach into — the widest window, plus the day the live read overlaps. */
 const USAGE_DAYS = 8;
 
-// A finalized day never changes, and re-reading thousands of sidecar files on
-// every SSE tick is not affordable, so each day is parsed once and held for the
-// process lifetime. An *absent* day is deliberately not cached: the archive job
-// may simply not have run yet, and caching the miss would pin the gap in place
-// until a restart.
+// A finalized day never changes, so each is parsed once and held for the process
+// lifetime rather than re-read on every SSE tick. An *absent* day is deliberately
+// not cached: the archive job may not have run yet, and a sticky miss would pin
+// the gap in place until restart.
 const dayCache = new Map<string, { sidecars: unknown[]; parseErrors: number }>();
 
 /** Test-only: drop the per-day archived-sidecar memo. */
@@ -78,11 +77,10 @@ export interface ArchivedUsage {
  * Archived sidecars for the days the usage windows reach back into, and which of
  * those days are retained at all.
  *
- * A day counts as retained when its own directory exists. A reporting day can
- * straddle `date` and `date + 1` — folders are named for the UTC day the job moved
- * — so requiring the day's own folder can understate coverage at that seam. That
- * is the safe direction: it marks the window `partial` rather than presenting an
- * incomplete count as a total.
+ * A day counts as retained when its own directory exists. Folders are named for
+ * the UTC day the job moved, so a reporting day straddling `date` and `date + 1`
+ * can read as understated at that seam — the safe direction, marking the window
+ * `partial` rather than passing an incomplete count off as a total.
  */
 export async function loadArchivedUsage(logDir: string, now: Date = new Date()): Promise<ArchivedUsage> {
   const out: ArchivedUsage = { sidecars: [], retainedDays: [], parseErrors: 0 };

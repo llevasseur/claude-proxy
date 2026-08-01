@@ -127,9 +127,8 @@ export interface UsageResponse {
  * One sidecar per source file, first occurrence winning.
  *
  * Archiving is expected to *move* files, so live and archived reads should not
- * overlap — but a copy-based archiver would silently double every request in the
- * seam, inflating the very number the meters exist to report. Entries without a
- * `__file` are passed through rather than collapsed onto each other.
+ * overlap — but a copy-based archiver would double every request in the seam.
+ * Entries without a `__file` are passed through rather than collapsed together.
  */
 function dedupeByFile(sidecars: readonly unknown[]): unknown[] {
   const seen = new Set<string>();
@@ -153,11 +152,10 @@ function dedupeByFile(sidecars: readonly unknown[]): unknown[] {
  * windows are instant-granular; the extra day covers the partial day.
  *
  * The live directory holds roughly a day, so on its own it leaves a weekly window
- * counting a few hours and calling it a week. The archived days are therefore read
- * alongside it and the retained days passed through, which is what lets `coverage`
- * report a hole in the window instead of measuring back to the oldest survivor and
- * declaring the window complete. Ceilings come from a wider slice again, so they
- * arrive precomputed and cached — see `usage-history.ts`.
+ * counting a few hours and calling it a week. Archived days are read alongside it,
+ * and the retained days passed through so `coverage` can see a hole in the window.
+ * Ceilings come from a wider slice again, precomputed and cached — see
+ * `usage-history.ts`.
  */
 export async function buildUsage(
   logDir: string,

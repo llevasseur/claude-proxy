@@ -95,8 +95,7 @@ describe("buildUsage — archived backfill", () => {
 
   it("counts a request once when it is both live and archived", async () => {
     await live(logDir, daysBefore(0), 50);
-    // A copy-based archiver leaves the same file in both places; counting it twice
-    // would inflate the very number the meters exist to report.
+    // A copy-based archiver leaves the same file in both places.
     await live(logDir, daysBefore(1), 100);
     await archive(logDir, daysBefore(1), 100);
 

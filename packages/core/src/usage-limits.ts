@@ -104,10 +104,6 @@ export interface UsageWindowMeter {
   /**
    * Fraction of the window backed by retained logs (estimated path). Below 1 the
    * reading is a floor, not a total. Always 1 on the header path.
-   *
-   * Counts the days actually held when the caller supplies a retention map, so a
-   * gap in the middle of the window is reported rather than papered over; without
-   * one it can only measure back to the oldest surviving request.
    */
   coverage: number;
   pace: UsagePace;
@@ -173,13 +169,12 @@ const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 /**
  * Fraction of the window `[since, now]` whose logs are actually on disk.
  *
- * Retention is the signal, not the span between the first and last surviving
- * request: measuring from the oldest record reads a hole in the middle of the
- * window as complete coverage — precisely the case where the count is most wrong
- * and least visibly so, because the `partial` marking disappears with it. Days are
- * the unit because rotation is day-granular, so a quiet stretch inside a retained
- * day is genuinely quiet rather than missing. Day ends are resolved as the next
- * day's start, so the two DST days keep their real 23 and 25 hours.
+ * Counts the days held, not the span back to the oldest surviving request:
+ * measuring from the oldest record reads a hole in the middle of the window as
+ * complete coverage, taking the `partial` marking with it. Days are the unit
+ * because rotation is day-granular, so a quiet stretch inside a retained day is
+ * genuinely quiet. Day ends resolve as the next day's start, so the two DST days
+ * keep their real 23 and 25 hours.
  */
 function retainedCoverage(days: ReadonlySet<string>, since: number, now: number, windowMs: number): number {
   let covered = 0;
@@ -481,8 +476,7 @@ export interface BuildUsageLimitsOptions {
   learned?: LearnedCeilings;
   /**
    * Day labels (`YYYY-MM-DD`, reporting zone) whose logs are retained — live or
-   * archived. Supplied, `coverage` counts the days actually held; omitted, it can
-   * only measure back to the oldest surviving request and so cannot see a gap.
+   * archived. Omitted, `coverage` falls back to the oldest-record span.
    */
   retainedDays?: readonly string[];
   now?: Date;
