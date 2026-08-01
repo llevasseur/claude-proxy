@@ -146,8 +146,7 @@ export interface UsageLimitsSnapshot {
     /**
      * Windows Anthropic reported itself — the polled endpoint or the response
      * headers — rather than ones estimated against a configured or learned
-     * ceiling. Named for the headers because they were the only such source
-     * before the poll existed.
+     * ceiling. Named for the headers, which were once the only such source.
      */
     fromHeaders: number;
   };
@@ -350,10 +349,9 @@ function assessPace(args: {
   now: Date;
   trailing: boolean;
   /**
-   * The measured span runs from a known reset instant rather than backwards from
-   * now. `trailing` stays set alongside it: that flag picks the estimate's
-   * vocabulary — a ceiling that is configured or inferred rather than binding —
-   * while this one only says which end of the span is pinned.
+   * The span runs from a known reset instant rather than backwards from now.
+   * Set alongside `trailing`, which picks the estimate's vocabulary rather than
+   * naming which end of the span is pinned.
    */
   anchored?: boolean;
   coverage?: number;
@@ -379,8 +377,8 @@ function assessPace(args: {
         ? ` Counts only the ${fmtDuration(coverage * windowMs)} of logs still on disk, so the real figure is higher.`
         : "";
     const span = fmtDuration(windowMs);
-    // An anchored window is measured from the instant it opened, so calling that
-    // span "trailing" would describe the wrong end of it.
+    // An anchored span is measured from the instant the window opened, so
+    // "trailing" would name the wrong end of it.
     const spanPhrase = args.anchored ? `the ${span} since it reset` : `the trailing ${span}`;
     const resetTail = args.anchored && untilReset != null ? ` It ${resetPhrase}.` : "";
     const learned = args.learned ?? null;
@@ -674,8 +672,8 @@ export function buildUsageLimits(
 
     // A known reset instant makes the window fixed rather than trailing: count
     // from where it actually opened, not from `windowMs` ago. An anchor whose
-    // window has not opened yet describes no elapsed span, so it is dropped
-    // outright rather than left to stamp a reset instant on a trailing count.
+    // window has not opened yet is dropped outright, so the count and the
+    // reported reset cannot disagree.
     const anchor = opts.anchors?.[kind];
     const anchorMs = anchor ? new Date(anchor).getTime() : Number.NaN;
     const anchoredSince = Number.isNaN(anchorMs) || anchorMs - windowMs > nowMs ? null : anchorMs - windowMs;

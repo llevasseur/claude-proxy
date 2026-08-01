@@ -8,8 +8,8 @@ import { rawArchiveDayDir, readArchivedDay, readSidecars, shiftDay, today } from
  *
  * The live log directory holds roughly a day and cannot span a completed weekly
  * window, so the archive is the only place either can come from. Both passes are
- * expensive and slow-moving, hence the memos — and both read a day through the
- * same one, so the span they overlap on is parsed once rather than once each.
+ * expensive and slow-moving, hence the memos, and both read a day through the
+ * same one, so an overlapping day is parsed once rather than once each.
  */
 
 /** Four weeks — room for three completed weekly windows, without reading the whole archive. */
@@ -37,11 +37,8 @@ export function clearArchivedUsageCache(): void {
 }
 
 /**
- * One archived day, parsed at most once per process, plus whether it is retained
+ * One archived day, parsed at most once per process, and whether it is retained
  * at all — its own directory being on disk is what makes it so.
- *
- * Both passes read through here, and the count's span sits inside the ceiling's,
- * so a day both reach into is parsed once rather than once each.
  */
 async function readArchivedDayMemo(
   logDir: string,
