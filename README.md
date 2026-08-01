@@ -32,14 +32,14 @@ dashboard's **Proxy filters** page (`GET /api/filters`) lists the full inventory
 with the reason each one needs the proxy.
 
 ```bash
-PORT=8036 node proxy/proxy.mjs   # zero deps, Node 18+ (PORT defaults to 8787)
+node proxy/proxy.mjs   # zero deps, Node 18+ (PORT defaults to 8787)
 # point Claude Code at it in another terminal:
-ANTHROPIC_BASE_URL=http://localhost:8036 claude
+ANTHROPIC_BASE_URL=http://localhost:8787 claude
 ```
 
 The proxy binds `PORT` (default `8787`). Override it — `PORT=8036 pnpm proxy` —
 when that port is taken, and point `ANTHROPIC_BASE_URL` at the same port. The
-zellij dev layout already launches the proxy on `8036`.
+zellij dev layout launches the proxy on the default port.
 
 Each request lands in `./logs/<timestamp>_anthropic.{md,request.txt,audit.json}`.
 The proxy still runs with bare `node` — no install required.
@@ -69,9 +69,9 @@ sidecar records progress so a proxy restart resumes instead of re-appending.
 
 ### Device setup (route every `claude` invocation through the proxy)
 
-This is how it's set up on this machine: the proxy runs on `PORT=8036`,
-and Claude Code's own `env` config — not a shell alias — points every
-`claude` invocation at it. There's no zshrc change; Claude Code reads
+This is how it's set up on this machine: the proxy runs on the default
+`8787` under zellij, and Claude Code's own `env` config — not a shell
+alias — points every `claude` invocation at it. There's no zshrc change; Claude Code reads
 `ANTHROPIC_BASE_URL` from its settings file on every launch.
 
 1. Clone and install:
@@ -85,11 +85,11 @@ and Claude Code's own `env` config — not a shell alias — points every
 2. Start the proxy (pick one):
 
    ```bash
-   PORT=8036 node proxy/proxy.mjs          # bare, no deps, no install needed
+   node proxy/proxy.mjs                    # bare, no deps, no install needed
    # or, keep it running in the background:
-   PORT=8036 node proxy/proxy.mjs &disown
+   node proxy/proxy.mjs &disown
    # or, launch it alongside server + dashboard in one zellij session:
-   pnpm zellij                             # zellij dev layout already uses 8036
+   pnpm zellij                             # preferred: zellij owns the proxy
    ```
 
 3. Point Claude Code at it via `~/.claude/settings.json` (device-wide,
@@ -99,7 +99,7 @@ and Claude Code's own `env` config — not a shell alias — points every
    // ~/.claude/settings.json
    {
      "env": {
-       "ANTHROPIC_BASE_URL": "http://localhost:8036"
+       "ANTHROPIC_BASE_URL": "http://localhost:8787"
      }
    }
    ```
@@ -157,7 +157,7 @@ block as `ANTHROPIC_BASE_URL` above to cover those:
 ```jsonc
 {
   "env": {
-    "ANTHROPIC_BASE_URL": "http://localhost:8036",
+    "ANTHROPIC_BASE_URL": "http://localhost:8787",
     "CLAUDE_PROXY_STORE": "/Users/you/Documents/ghub/claude-proxy/logs/sessions"
   }
 }
@@ -362,7 +362,7 @@ pnpm --filter server summary 2026-07-14   # a specific day
 
 | | Port | Env var |
 |---|---|---|
-| proxy | 8787 (dev layout uses 8036) | `PORT` |
+| proxy | 8787 | `PORT` |
 | server API | 8788 | `PORT` |
 | admin (Vite dev) | 5173 | — (`VITE_API_BASE` → server) |
 
