@@ -173,7 +173,9 @@ export async function readCommandRuns(logDir: string): Promise<CommandRun[]> {
     if (!isCommandRun(parsed)) continue;
     byThread.set(parsed.threadId, parsed); // later line supersedes earlier
   }
-  return [...byThread.values()].sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
+  return [...byThread.values()]
+    .filter((run) => !run.retired) // a retracted record: written once, then read as gone
+    .sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
 }
 
 /** Append records to the store, creating `logs/commands/` on first write. */
@@ -254,7 +256,19 @@ export async function reconcileCommandRuns(
     const envelope = parseCommandEnvelope(await readRootPrompt(logDir, graph.threadId));
     if (envelope) roots.push({ graph, envelope });
   }
-  if (roots.length === 0) return { written: 0, runs: existing.length, requestsRead: 0, capped: false };
+  // Records whose thread is still on disk but no longer reads as a run — what a session
+  // recorded under an earlier parse leaves behind, e.g. one opened by `/clear`. Retiring
+  // is what a store that can only append has instead of a delete, and it happens whether
+  // or not there is anything left to reconcile.
+  const runThreads = new Set(roots.map((r) => r.graph.threadId));
+  const retired = existing
+    .filter((run) => byThread.has(run.threadId) && !runThreads.has(run.threadId))
+    .map((run): CommandRun => ({ ...run, retired: true, updatedAt: now.toISOString() }));
+  if (retired.length > 0) await appendCommandRuns(logDir, retired);
+
+  if (roots.length === 0) {
+    return { written: retired.length, runs: existing.length - retired.length, requestsRead: 0, capped: false };
+  }
 
   // One sidecar sweep for every run, from the earliest run's reporting day, narrowed to
   // the session ids the runs and their subagents were captured under. The session id is
@@ -326,9 +340,11 @@ export async function reconcileCommandRuns(
   }
 
   await appendCommandRuns(logDir, written);
+  const live = new Set([...priorByThread.keys(), ...written.map((r) => r.threadId)]);
+  for (const run of retired) live.delete(run.threadId);
   return {
-    written: written.length,
-    runs: new Set([...priorByThread.keys(), ...written.map((r) => r.threadId)]).size,
+    written: written.length + retired.length,
+    runs: live.size,
     requestsRead,
     capped: pending.length > requestsRead,
   };
