@@ -65,6 +65,7 @@ import {
   PROXY_FILTER_INVENTORY,
   filterRunsByFlags,
   patternFrequency,
+  runKey,
   runTotals,
   stepReach,
   summarizeCommands,
@@ -1156,6 +1157,11 @@ export async function buildCommands(
  * reads and which dominate a record's size.
  */
 export interface CommandRunListItem {
+  /** The record's key, and the run route's param — see `runKey`. */
+  runId: string;
+  /** Set when this run was invoked by another; the row links back to it. */
+  parentRunId: string | null;
+  parentCommand: string | null;
   threadId: string;
   command: string;
   args: string;
@@ -1258,6 +1264,9 @@ export async function buildCommand(
 function toListItem(run: CommandRun): CommandRunListItem {
   const reached = (run.stepStats ?? []).filter((s) => s.step !== null && s.reached);
   return {
+    runId: runKey(run),
+    parentRunId: run.parentRunId ?? null,
+    parentCommand: run.parentCommand ?? null,
     threadId: run.threadId,
     command: run.command,
     args: run.args ?? "",
@@ -1303,12 +1312,14 @@ export interface CommandRunResponse {
  */
 export async function buildCommandRun(
   logDir: string,
-  threadId: string,
+  runId: string,
   source: SidecarSource = fileSource,
 ): Promise<CommandRunResponse> {
   const runs = await source.readCommandRuns(logDir);
-  const run = runs.find((r) => r.threadId === threadId);
-  if (!run) throw new Error(`command run not found: ${threadId}`);
+  // By run id, so a nested run resolves rather than its host answering for it. A
+  // top-level run's id *is* its thread id, so old links keep working.
+  const run = runs.find((r) => runKey(r) === runId);
+  if (!run) throw new Error(`command run not found: ${runId}`);
 
   const family = new Set(run.threadIds ?? [run.threadId]);
   const sessions = await source.listSessionGraphs(logDir);

@@ -7,6 +7,7 @@ import {
   type CommandRunStepStats,
   type CommandRunTurn,
   type CommandPattern,
+  runKey,
 } from "@claude-proxy/core";
 import { commandStorePath, parseCommandRunStore } from "../command-runs.js";
 
@@ -48,7 +49,7 @@ function prepare(db: DatabaseSync): CommandStatements {
   return {
     insertRun: db.prepare(`
       INSERT INTO command_run (
-        thread_id, ord, command, args, prompt, command_hash, schema_version,
+        run_id, ord, command, args, prompt, command_hash, schema_version,
         model, started, ended, outcome, interruption, reached_end, retired,
         totals_input, totals_output, totals_cache_read, totals_cache_creation, totals_real_input,
         totals_cost, totals_turns, totals_tool_calls, totals_duration_ms,
@@ -56,18 +57,18 @@ function prepare(db: DatabaseSync): CommandStatements {
         updated_at, document
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
-    insertFlag: db.prepare("INSERT INTO command_run_flag (thread_id, ord, flag) VALUES (?, ?, ?)"),
-    insertThread: db.prepare("INSERT INTO command_run_thread (thread_id, ord, member_thread_id) VALUES (?, ?, ?)"),
+    insertFlag: db.prepare("INSERT INTO command_run_flag (run_id, ord, flag) VALUES (?, ?, ?)"),
+    insertThread: db.prepare("INSERT INTO command_run_thread (run_id, ord, member_thread_id) VALUES (?, ?, ?)"),
     insertTurn: db.prepare(`
       INSERT INTO command_run_turn (
-        thread_id, ord, file, timestamp, turn_thread_id, step, node,
+        run_id, ord, file, timestamp, turn_thread_id, step, node,
         tokens_input, tokens_output, tokens_cache_read, tokens_cache_creation, tokens_real_input,
         system_bytes, tools_bytes, tool_count, message_count
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
     insertStep: db.prepare(`
       INSERT INTO command_run_step (
-        thread_id, ord, step, title, reached, confidence,
+        run_id, ord, step, title, reached, confidence,
         tokens_input, tokens_output, tokens_cache_read, tokens_cache_creation, tokens_real_input,
         cost, turns, nodes, tool_calls,
         waste_errored_tools, waste_duplicate_reads, waste_retried_after_error,
@@ -75,7 +76,7 @@ function prepare(db: DatabaseSync): CommandStatements {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
     insertPattern: db.prepare(`
-      INSERT INTO command_run_pattern (thread_id, ord, pattern_id, title, detail, step, node)
+      INSERT INTO command_run_pattern (run_id, ord, pattern_id, title, detail, step, node)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `),
     watermark: db.prepare(`
@@ -114,12 +115,15 @@ function tokensOf(value: unknown): AuditTokens {
  * record itself intact.
  */
 function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
+  // The record's key, not its thread: a nested run shares its host's thread id,
+  // so keying on that would collide on the second run of a transcript.
+  const id = runKey(run);
   const totals = run.totals ?? undefined;
   const tokens = tokensOf(totals?.tokens);
   const meta = run.meta ?? undefined;
 
   st.insertRun.run(
-    run.threadId,
+    id,
     ord,
     run.command,
     run.args ?? null,
@@ -152,13 +156,13 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
     JSON.stringify(run),
   );
 
-  (run.flags ?? []).forEach((flag, i) => st.insertFlag.run(run.threadId, i, flag));
-  (run.threadIds ?? []).forEach((id, i) => st.insertThread.run(run.threadId, i, id));
+  (run.flags ?? []).forEach((flag, i) => st.insertFlag.run(id, i, flag));
+  (run.threadIds ?? []).forEach((member, i) => st.insertThread.run(id, i, member));
 
   (run.turns ?? []).forEach((turn: CommandRunTurn, i) => {
     const t = tokensOf(turn.tokens);
     st.insertTurn.run(
-      run.threadId,
+      id,
       i,
       turn.file,
       turn.timestamp ?? null,
@@ -181,7 +185,7 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
     const t = tokensOf(step.tokens);
     const waste = { ...ZERO_WASTE, ...(step.waste ?? {}) };
     st.insertStep.run(
-      run.threadId,
+      id,
       i,
       step.step ?? null,
       step.title ?? null,
@@ -206,7 +210,7 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
 
   (run.patterns ?? []).forEach((pattern: CommandPattern, i) => {
     st.insertPattern.run(
-      run.threadId,
+      id,
       i,
       pattern.id,
       pattern.title ?? null,

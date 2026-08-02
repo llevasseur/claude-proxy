@@ -318,7 +318,8 @@ const commandDetailRoute = createRoute({
 });
 const commandRunRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/commands/$command/$threadId",
+  // The run id, not the thread id: a nested run shares its host's session.
+  path: "/commands/$command/$runId",
   component: CommandRunPage,
   staticData: { title: "Command run" },
 });

@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import type { UsageLimitConfig } from "@claude-proxy/core";
+import { runKey, type UsageLimitConfig } from "@claude-proxy/core";
 import {
   buildCommand,
   buildCommandRun,
@@ -383,8 +383,10 @@ export const PARITY_ROUTES: ParityRoute[] = [
     cases: async (ctx) => {
       const runs = await fileSource.readCommandRuns(ctx.logDir);
       return runs.slice(0, PER_THREAD_CASES).map((run) => ({
-        label: `/api/commands/run?id=${run.threadId}`,
-        run: (source) => buildCommandRun(ctx.logDir, run.threadId, source),
+        // By run id, the same key the route takes: a nested run's id is not its
+        // thread id, and asking by thread would replay its host instead.
+        label: `/api/commands/run?id=${runKey(run)}`,
+        run: (source) => buildCommandRun(ctx.logDir, runKey(run), source),
       }));
     },
   },

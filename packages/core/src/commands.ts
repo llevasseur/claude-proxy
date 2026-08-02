@@ -3,7 +3,9 @@
  * its declared steps the tokens went to, and where it stopped.
  *
  * A **run** is any session whose opening prompt carries the CLI's `<command-name>`
- * envelope. Capture is passive — every real invocation is a run, with no tagging.
+ * envelope, plus every command a run invokes inside itself, which is a run of its own
+ * *and* part of its parent. Capture is passive: every real invocation is a run, with no
+ * tagging. A nested one is found on its `Skill(…)` call — see {@link findNestedInvocations}.
  *
  * The **step catalogue** is the `## Step N` headings of the installed command file
  * (`~/.claude/commands/<name>.md`). It is snapshotted into each run record along with
@@ -32,7 +34,7 @@ import type { InterruptionKind, SessionNode } from "./sessions.js";
  * Readers keep older records and render what they carry — see {@link isCommandRun},
  * which validates only the identity fields every version has had.
  */
-export const COMMAND_RUN_SCHEMA = 1;
+export const COMMAND_RUN_SCHEMA = 2;
 
 /** The bucket holding turns and steps no anchor could place. Never a real step id. */
 export const UNATTRIBUTED = null;
@@ -454,6 +456,67 @@ export function stepConfidence(attributions: readonly StepAttribution[], step: s
   return best;
 }
 
+// --- Nested runs -----------------------------------------------------------
+//
+// A command invoked mid-session carries no envelope: the CLI expands the call itself,
+// injecting the command file's body as an ordinary user turn with `$ARGUMENTS`
+// substituted and the `<command-name>` tags stripped. The `Skill(skill=…)` call the
+// transcript already records is the only durable marker.
+
+/**
+ * The command a node invokes as a nested run, or null when it invokes none.
+ *
+ * `Skill` also launches plain skills, so only names `isCommand` knows open a run.
+ */
+export function nestedCommandOf(node: SessionNode, isCommand: (name: string) => boolean): string | null {
+  if (node.type !== "tool" || !node.tool) return null;
+  const call = SKILL_CALL_RE.exec(node.tool);
+  if (!call) return null;
+  const name = call[1]!.toLowerCase();
+  return isCommand(name) ? name : null;
+}
+
+/** One command invoked inside a run, and the span of its host's transcript it covers. */
+export interface NestedInvocation {
+  command: string;
+  /** Index of the `Skill(…)` node that opened it. */
+  from: number;
+  /** One past its last node. */
+  to: number;
+}
+
+/**
+ * Every command a transcript invokes inside itself, in order, each holding the nodes
+ * from its call until the next nested command opens — or, for the last one, to the end.
+ *
+ * Nothing marks where a nested command *finishes* — it returns by the agent simply
+ * carrying on in the same thread — so a span runs to the next invocation, which never
+ * charges a node to two nested runs.
+ */
+export function findNestedInvocations(
+  nodes: readonly SessionNode[],
+  isCommand: (name: string) => boolean,
+): NestedInvocation[] {
+  const end = nodes.length === 0 ? 0 : nodes[nodes.length - 1]!.index + 1;
+  const found: NestedInvocation[] = [];
+  for (const node of nodes) {
+    const command = nestedCommandOf(node, isCommand);
+    if (!command) continue;
+    const previous = found[found.length - 1];
+    if (previous) previous.to = node.index;
+    found.push({ command, from: node.index, to: end });
+  }
+  return found;
+}
+
+/**
+ * A nested run's id: its host thread and the node its call sits on. `~` is unreserved
+ * in a URL path, so the id doubles as the route param.
+ */
+export function nestedRunId(threadId: string, node: number): string {
+  return `${threadId}~${node}`;
+}
+
 // --- Waste & rework --------------------------------------------------------
 
 /**
@@ -745,7 +808,21 @@ export interface CommandRunStepStats {
 /** One command invocation, as stored. Append-only and versioned — see {@link COMMAND_RUN_SCHEMA}. */
 export interface CommandRun {
   schema: number;
-  /** The top-level session's thread id — the record's key. */
+  /**
+   * The record's key: the thread id for a top-level run, {@link nestedRunId} for a
+   * nested one. Absent on records written before nested runs existed — read it through
+   * {@link runKey}, which falls back to the thread id those records were keyed by.
+   */
+  runId: string;
+  /** The run that invoked this one, or null when nothing did. */
+  parentRunId: string | null;
+  /** That run's command, so a nested record can name and link its parent on its own. */
+  parentCommand: string | null;
+  /** The host node holding the `Skill(…)` call that opened it; null at top level. */
+  spawnNode: number | null;
+  /** The host transcript's nodes this run covers, `[from, to)`; null when it covers all of them. */
+  nodeRange: { from: number; to: number } | null;
+  /** The session this run ran in. A nested run shares its host's. */
   threadId: string;
   command: string;
   args: string;
@@ -799,6 +876,15 @@ export function isCommandRun(value: unknown): value is CommandRun {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   return typeof v.threadId === "string" && typeof v.command === "string" && typeof v.schema === "number";
+}
+
+/**
+ * A record's store key. Records written before nested runs carry no `runId` and were
+ * keyed by thread id, which for a top-level run is the same string, so the upsert stays
+ * stable across the schema bump.
+ */
+export function runKey(run: CommandRun): string {
+  return run.runId || run.threadId;
 }
 
 /** A record's totals, defaulted — an older record missing the block still lists and sums. */

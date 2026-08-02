@@ -389,7 +389,7 @@ describe("route parity over a synthetic corpus", () => {
     ).toEqual(["here", "sub"]);
     // The `/task` run's family is the parent plus the subagent it spawned.
     expect(
-      (db.prepare("SELECT count(*) c FROM command_run_thread WHERE thread_id = ?").get("00000000000000a1") as {
+      (db.prepare("SELECT count(*) c FROM command_run_thread WHERE run_id = ?").get("00000000000000a1") as {
         c: number;
       }).c,
     ).toBe(2);
@@ -492,7 +492,7 @@ describe("route parity over a synthetic corpus", () => {
     const nodes = db.prepare("SELECT * FROM session_node ORDER BY thread_id, idx").all();
     const texts = db.prepare("SELECT * FROM session_node_text ORDER BY thread_id, idx").all();
     const commandRuns = db.prepare("SELECT * FROM command_run ORDER BY ord").all();
-    const commandSteps = db.prepare("SELECT * FROM command_run_step ORDER BY thread_id, ord").all();
+    const commandSteps = db.prepare("SELECT * FROM command_run_step ORDER BY run_id, ord").all();
 
     // The total-recovery path: drop everything, re-ingest, get the same view
     // back.
@@ -512,7 +512,7 @@ describe("route parity over a synthetic corpus", () => {
     expect(db.prepare("SELECT * FROM session_node ORDER BY thread_id, idx").all()).toEqual(nodes);
     expect(db.prepare("SELECT * FROM session_node_text ORDER BY thread_id, idx").all()).toEqual(texts);
     expect(db.prepare("SELECT * FROM command_run ORDER BY ord").all()).toEqual(commandRuns);
-    expect(db.prepare("SELECT * FROM command_run_step ORDER BY thread_id, ord").all()).toEqual(commandSteps);
+    expect(db.prepare("SELECT * FROM command_run_step ORDER BY run_id, ord").all()).toEqual(commandSteps);
   });
 
   // A harness that cannot fail proves nothing, so make it fail on purpose.

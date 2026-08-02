@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -220,11 +220,14 @@ CREATE TABLE IF NOT EXISTS session_node_text (
  * The store stays the source of truth: every row, `document` included, is
  * rebuilt by re-reading `runs.jsonl`.
  */
-const SCHEMA_V3 = `
+const COMMAND_TABLES = `
 CREATE TABLE IF NOT EXISTS command_run (
-  thread_id       TEXT PRIMARY KEY,
+  -- The record's own id: a thread id for a top-level run, \`<threadId>~<node>\`
+  -- for a nested one. Not the thread id, because a nested run is a *slice* of
+  -- its host's transcript and so shares that thread with it.
+  run_id          TEXT PRIMARY KEY,
   -- Position of the record's *first* line in the store. The file reader keys a
-  -- Map by thread id and sorts it stably, so first-appearance order is what
+  -- Map by run id and sorts it stably, so first-appearance order is what
   -- breaks ties between two runs with the same "started".
   ord             INTEGER NOT NULL,
   command         TEXT NOT NULL,
@@ -266,10 +269,10 @@ CREATE INDEX IF NOT EXISTS command_run_outcome_idx ON command_run(outcome);
 
 -- The facet the command page filters on, one row per flag.
 CREATE TABLE IF NOT EXISTS command_run_flag (
-  thread_id TEXT NOT NULL REFERENCES command_run(thread_id) ON DELETE CASCADE,
+  run_id    TEXT NOT NULL REFERENCES command_run(run_id) ON DELETE CASCADE,
   ord       INTEGER NOT NULL,
   flag      TEXT NOT NULL,
-  PRIMARY KEY (thread_id, ord)
+  PRIMARY KEY (run_id, ord)
 );
 
 CREATE INDEX IF NOT EXISTS command_run_flag_flag_idx ON command_run_flag(flag);
@@ -277,10 +280,10 @@ CREATE INDEX IF NOT EXISTS command_run_flag_flag_idx ON command_run_flag(flag);
 -- The run's agent family, root first: the root session plus every subagent
 -- beneath it, at any depth. The join back to slice 2's session rows.
 CREATE TABLE IF NOT EXISTS command_run_thread (
-  thread_id        TEXT NOT NULL REFERENCES command_run(thread_id) ON DELETE CASCADE,
+  run_id           TEXT NOT NULL REFERENCES command_run(run_id) ON DELETE CASCADE,
   ord              INTEGER NOT NULL,
   member_thread_id TEXT NOT NULL,
-  PRIMARY KEY (thread_id, ord)
+  PRIMARY KEY (run_id, ord)
 );
 
 CREATE INDEX IF NOT EXISTS command_run_thread_member_idx ON command_run_thread(member_thread_id);
@@ -290,7 +293,7 @@ CREATE INDEX IF NOT EXISTS command_run_thread_member_idx ON command_run_thread(m
 -- request(id) while that day is still on disk and dangles once it is pruned —
 -- the run record outlives its evidence by design, so this is not a foreign key.
 CREATE TABLE IF NOT EXISTS command_run_turn (
-  thread_id      TEXT NOT NULL REFERENCES command_run(thread_id) ON DELETE CASCADE,
+  run_id         TEXT NOT NULL REFERENCES command_run(run_id) ON DELETE CASCADE,
   ord            INTEGER NOT NULL,
   file           TEXT NOT NULL,
   timestamp      TEXT,
@@ -306,7 +309,7 @@ CREATE TABLE IF NOT EXISTS command_run_turn (
   tools_bytes    INTEGER NOT NULL DEFAULT 0,
   tool_count     INTEGER NOT NULL DEFAULT 0,
   message_count  INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (thread_id, ord)
+  PRIMARY KEY (run_id, ord)
 );
 
 CREATE INDEX IF NOT EXISTS command_run_turn_file_idx ON command_run_turn(file);
@@ -316,7 +319,7 @@ CREATE INDEX IF NOT EXISTS command_run_turn_step_idx ON command_run_turn(step);
 -- "step" is null for the unattributed bucket, which the UI shows rather than
 -- hides, so it cannot be the key on its own.
 CREATE TABLE IF NOT EXISTS command_run_step (
-  thread_id  TEXT NOT NULL REFERENCES command_run(thread_id) ON DELETE CASCADE,
+  run_id     TEXT NOT NULL REFERENCES command_run(run_id) ON DELETE CASCADE,
   ord        INTEGER NOT NULL,
   step       TEXT,
   title      TEXT,
@@ -336,7 +339,7 @@ CREATE TABLE IF NOT EXISTS command_run_step (
   waste_retried_after_error INTEGER NOT NULL DEFAULT 0,
   waste_no_op_turns       INTEGER NOT NULL DEFAULT 0,
   waste_cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (thread_id, ord)
+  PRIMARY KEY (run_id, ord)
 );
 
 CREATE INDEX IF NOT EXISTS command_run_step_step_idx ON command_run_step(step);
@@ -344,14 +347,14 @@ CREATE INDEX IF NOT EXISTS command_run_step_step_idx ON command_run_step(step);
 -- Which deterministic rules fired, and where. The cross-run frequency the run
 -- page shows is a GROUP BY over this.
 CREATE TABLE IF NOT EXISTS command_run_pattern (
-  thread_id  TEXT NOT NULL REFERENCES command_run(thread_id) ON DELETE CASCADE,
+  run_id     TEXT NOT NULL REFERENCES command_run(run_id) ON DELETE CASCADE,
   ord        INTEGER NOT NULL,
   pattern_id TEXT NOT NULL,
   title      TEXT,
   detail     TEXT,
   step       TEXT,
   node       INTEGER,
-  PRIMARY KEY (thread_id, ord)
+  PRIMARY KEY (run_id, ord)
 );
 
 CREATE INDEX IF NOT EXISTS command_run_pattern_id_idx ON command_run_pattern(pattern_id);
@@ -365,6 +368,30 @@ CREATE TABLE IF NOT EXISTS file_watermark (
   modified   TEXT NOT NULL,
   scanned_at TEXT NOT NULL
 );
+`;
+
+/**
+ * Slice 3 rekeyed — the command tables key on the record's **run id**, not its
+ * thread id. A nested run (`/clean` invoked inside `/task`) is a slice of its
+ * host's transcript and shares that host's thread, so a thread id stopped being
+ * unique the moment nested runs were recorded and `command_run`'s primary key
+ * would have collided on the second row of a thread.
+ *
+ * The tables are dropped and rebuilt rather than altered: the substrate is a
+ * disposable view, so the cheapest correct migration is to throw the rows away
+ * and re-ingest. The store's `file_watermark` row goes with them, or the next
+ * pass would see an unchanged `stat` and skip the re-parse, leaving the tables
+ * empty.
+ */
+const SCHEMA_V4 = `
+DROP TABLE IF EXISTS command_run_pattern;
+DROP TABLE IF EXISTS command_run_step;
+DROP TABLE IF EXISTS command_run_turn;
+DROP TABLE IF EXISTS command_run_thread;
+DROP TABLE IF EXISTS command_run_flag;
+DROP TABLE IF EXISTS command_run;
+DELETE FROM file_watermark WHERE path = 'commands/runs.jsonl';
+${COMMAND_TABLES}
 `;
 
 /**
@@ -389,7 +416,8 @@ function migrate(db: DatabaseSync): void {
 
   if (from < 1) db.exec(SCHEMA_V1);
   if (from < 2) db.exec(SCHEMA_V2);
-  if (from < 3) db.exec(SCHEMA_V3);
+  if (from < 3) db.exec(COMMAND_TABLES);
+  if (from < 4) db.exec(SCHEMA_V4);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

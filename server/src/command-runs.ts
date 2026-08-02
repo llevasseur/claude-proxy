@@ -27,10 +27,13 @@ import {
   COMMAND_RUN_SCHEMA,
   deriveSessionNodes,
   estimateCost,
+  findNestedInvocations,
   isAuditSidecar,
   isCommandRun,
+  nestedRunId,
   parseCommandEnvelope,
   parseCommandSteps,
+  runKey,
   detectPatterns,
   reachedEnd as didReachEnd,
   reportDay,
@@ -146,7 +149,10 @@ export async function listInstalledCommands(dir: string): Promise<InstalledComma
 }
 
 /**
- * Read the store, newest record per thread id winning.
+ * Read the store, newest record per run id winning.
+ *
+ * Keying on {@link runKey} rather than the thread id lets a nested run share its host's
+ * session without colliding with it, and leaves older records keyed as they were.
  *
  * Every layer here is tolerant, because the file is append-only and long-lived: a line
  * that doesn't parse is skipped, and a record from a different schema version is
@@ -173,7 +179,7 @@ async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
 }
 
 /**
- * The store's text as the newest record per thread id, **in first-appearance
+ * The store's text as the newest record per {@link runKey}, **in first-appearance
  * order** — a `Map` keeps the position a key was first inserted at, so a later
  * line supersedes an earlier one's contents without moving it.
  *
@@ -182,7 +188,7 @@ async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
  * substrate stores it as `command_run.ord` to reproduce the same listing.
  */
 export function parseCommandRunStore(text: string): CommandRun[] {
-  const byThread = new Map<string, CommandRun>();
+  const byKey = new Map<string, CommandRun>();
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     let parsed: unknown;
@@ -192,9 +198,9 @@ export function parseCommandRunStore(text: string): CommandRun[] {
       continue; // a torn final line from an interrupted append
     }
     if (!isCommandRun(parsed)) continue;
-    byThread.set(parsed.threadId, parsed); // later line supersedes earlier
+    byKey.set(runKey(parsed), parsed); // later line supersedes earlier
   }
-  return [...byThread.values()];
+  return [...byKey.values()];
 }
 
 /** Newest run first. Stable, so records with equal `started` keep store order. */
@@ -255,10 +261,25 @@ export interface ReconcileResult {
   capped: boolean;
 }
 
+/** What a record says it is, before its transcript and turns are read. */
+interface RunIdentity {
+  /** The store key — see {@link runKey}. */
+  runId: string;
+  parentRunId: string | null;
+  parentCommand: string | null;
+  spawnNode: number | null;
+  /** The host nodes this run covers, or null for the whole transcript. */
+  range: { from: number; to: number } | null;
+  command: string;
+  args: string;
+  flags: string[];
+  prompt: string;
+}
+
 /**
  * Distil every command run visible in the log directory into the store.
  *
- * Keyed by thread id and upsert-only, so re-running is safe and cheap: a record's turns
+ * Keyed by run id and upsert-only, so re-running is safe and cheap: a record's turns
  * are reused wholesale, and only request bodies that have appeared since the last pass
  * are opened. A run is rewritten whenever its transcript has grown, which is what lets
  * the page follow a run as it happens.
@@ -281,46 +302,84 @@ export async function reconcileCommandRuns(
   const existing = records.filter((run) => !run.retired);
   const byThread = new Map(graphs.map((g) => [g.threadId, g]));
   const byCommand = new Map(installed.map((c) => [c.command, c]));
-  const priorByThread = new Map(records.map((r) => [r.threadId, r]));
+  const priorByKey = new Map(records.map((r) => [runKey(r), r]));
+  const liveKeys = new Set(existing.map(runKey));
 
-  // A run is any session whose opening prompt carries the command envelope. A nested
-  // `/command` with its own session is a run in its own right and still rolls up into
-  // its parent — both readings are wanted.
-  const roots: { graph: SessionGraph; envelope: NonNullable<ReturnType<typeof parseCommandEnvelope>> }[] = [];
+  // A run is any session whose opening prompt carries the command envelope, and any
+  // command that session invokes inside itself. A nested one is a *slice* of its
+  // parent's transcript rather than a separate one, so it is a run in its own right and
+  // still rolls up — both readings are wanted, and they agree rather than double-count.
+  const targets: { graph: SessionGraph; identity: RunIdentity }[] = [];
   const judged = new Set<string>();
   for (const graph of graphs) {
     const root = await readRootPrompt(logDir, graph.threadId);
     if (!root.read) continue; // no prompt to judge by — leave whatever is on record alone
     judged.add(graph.threadId);
     const envelope = parseCommandEnvelope(root.prompt);
-    if (envelope) roots.push({ graph, envelope });
+    if (!envelope) continue;
+    targets.push({
+      graph,
+      identity: {
+        runId: graph.threadId,
+        parentRunId: null,
+        parentCommand: null,
+        spawnNode: null,
+        range: null,
+        command: envelope.command,
+        args: envelope.args,
+        flags: envelope.flags,
+        prompt: envelope.prompt,
+      },
+    });
+    for (const nested of findNestedInvocations(graph.nodes, (name) => byCommand.has(name))) {
+      targets.push({
+        graph,
+        identity: {
+          runId: nestedRunId(graph.threadId, nested.from),
+          parentRunId: graph.threadId,
+          parentCommand: envelope.command,
+          spawnNode: nested.from,
+          range: { from: nested.from, to: nested.to },
+          command: nested.command,
+          // No envelope survives a nested call, so there is nothing to record here.
+          args: "",
+          flags: [],
+          prompt: "",
+        },
+      });
+    }
   }
+
   // Records whose opening prompt we still hold and it no longer reads as a run — what an
   // earlier parse leaves behind. A transcript whose `.state.json` is gone is absence of
-  // evidence, not evidence the run never happened. Retired before the early return, so a
+  // evidence, not evidence the run never happened. Keyed on the run rather than the
+  // thread, so a nested run whose `Skill` call is no longer in its host's transcript
+  // retracts on the same terms as a top-level one. Retired before the early return, so a
   // log window with no runs left still retracts them.
-  const runThreads = new Set(roots.map((r) => r.graph.threadId));
+  const targetKeys = new Set(targets.map((t) => t.identity.runId));
   const retired = existing
-    .filter((run) => judged.has(run.threadId) && !runThreads.has(run.threadId))
+    .filter((run) => judged.has(run.threadId) && !targetKeys.has(runKey(run)))
     .map((run): CommandRun => ({ ...run, retired: true, updatedAt: now.toISOString() }));
   if (retired.length > 0) await appendCommandRuns(logDir, retired);
 
-  if (roots.length === 0) {
-    return { written: retired.length, runs: existing.length - retired.length, requestsRead: 0, capped: false };
+  if (targets.length === 0) {
+    return { written: retired.length, runs: liveKeys.size - retired.length, requestsRead: 0, capped: false };
   }
 
   // One sidecar sweep for every run, from the earliest run's reporting day, narrowed to
   // the session ids the runs and their subagents were captured under. The session id is
   // on the sidecar, so this rules out most of the day's requests before any body opens.
+  // Nested runs share their host's sessions, so the sweep is the hosts', deduped.
+  const hosts = [...new Map(targets.map((t) => [t.graph.threadId, t.graph])).values()];
   const runSessionIds = new Set<string>();
-  for (const { graph } of roots) {
+  for (const graph of hosts) {
     for (const threadId of familyOf(graph.threadId, byThread)) {
       const sessionId = byThread.get(threadId)?.sessionId;
       if (sessionId) runSessionIds.add(sessionId);
     }
   }
 
-  const starts = roots.map((r) => r.graph.started).filter((s): s is string => !!s).sort();
+  const starts = hosts.map((g) => g.started).filter((s): s is string => !!s).sort();
   const since = (starts[0] && reportDay(starts[0])) || undefined;
   const { sidecars } = await readSidecars(logDir, { since, includeFile: true }, now);
   const audits = sidecars
@@ -354,16 +413,16 @@ export async function reconcileCommandRuns(
 
   // Build a record per run and append the ones that changed.
   const written: CommandRun[] = [];
-  for (const { graph, envelope } of roots) {
-    const spec = byCommand.get(envelope.command);
+  for (const { graph, identity } of targets) {
+    const spec = byCommand.get(identity.command);
     // Prefer the installed catalogue; fall back to whatever this run recorded before, so
     // a command uninstalled since capture still renders against the steps it ran under.
-    const prior = priorByThread.get(graph.threadId);
+    const prior = priorByKey.get(identity.runId);
     const steps = spec?.steps ?? prior?.steps ?? [];
 
     const run = buildRun({
       graph,
-      envelope,
+      identity,
       steps,
       commandHash: spec?.commandHash ?? prior?.commandHash ?? null,
       byThread,
@@ -379,8 +438,8 @@ export async function reconcileCommandRuns(
   }
 
   await appendCommandRuns(logDir, written);
-  const live = new Set([...priorByThread.keys(), ...written.map((r) => r.threadId)]);
-  for (const run of retired) live.delete(run.threadId);
+  const live = new Set([...liveKeys, ...written.map(runKey)]);
+  for (const run of retired) live.delete(runKey(run));
   return {
     written: written.length + retired.length,
     runs: live.size,
@@ -394,10 +453,17 @@ function sameRun(a: CommandRun, b: CommandRun): boolean {
   return JSON.stringify({ ...a, updatedAt: "" }) === JSON.stringify({ ...b, updatedAt: "" });
 }
 
-/** Assemble one run record from its family's transcripts and captured requests. */
+/**
+ * Assemble one run record from its family's transcripts and captured requests.
+ *
+ * A nested run is built by the same code against a slice of the same transcript:
+ * `identity.range` narrows which nodes are the run's spine, which subagents belong to
+ * it, and which of the host thread's turns it is charged. A top-level run has no range
+ * and takes the lot.
+ */
 function buildRun(input: {
   graph: SessionGraph;
-  envelope: NonNullable<ReturnType<typeof parseCommandEnvelope>>;
+  identity: RunIdentity;
   steps: CommandStep[];
   commandHash: string | null;
   byThread: Map<string, SessionGraph>;
@@ -406,14 +472,23 @@ function buildRun(input: {
   prior: CommandRun | undefined;
   now: Date;
 }): CommandRun {
-  const { graph, envelope, steps, byThread, audits, index, prior, now } = input;
+  const { graph, identity, steps, byThread, audits, index, prior, now } = input;
+  const range = identity.range;
 
-  // The family: this session plus every subagent beneath it, at any depth.
-  const family = familyOf(graph.threadId, byThread);
+  /** Does a host node belong to this run? Always, when it covers the whole transcript. */
+  const covers = (node: number | null): boolean =>
+    range === null || (node !== null && node >= range.from && node < range.to);
+
+  // The family: this session plus the subagents beneath it — for a nested run, only the
+  // ones it spawned itself.
+  const family = range ? nestedFamily(graph.threadId, byThread, range) : familyOf(graph.threadId, byThread);
   const familySet = new Set(family);
 
-  // The root transcript is the spine the declared steps are laid against.
-  const nodes = graph.nodes;
+  // The transcript is the spine the declared steps are laid against — the run's slice of
+  // it. The full stream stays in hand because a turn is placed by how many nodes the
+  // *thread* had produced when it went out.
+  const allNodes = graph.nodes;
+  const nodes = range ? allNodes.filter((n) => covers(n.index)) : allNodes;
   const attributions = attributeSteps(nodes, steps);
   const stepOfNode = new Map(attributions.map((a) => [a.node, a.step]));
 
@@ -471,7 +546,7 @@ function buildRun(input: {
       // The step current when the request went out: for the root, the last node it had
       // produced by then; for a subagent, the step it was spawned under.
       if (turn.threadId === graph.threadId) {
-        const node = fact.nodeCount > 0 ? Math.min(fact.nodeCount, nodes.length) - 1 : null;
+        const node = fact.nodeCount > 0 ? Math.min(fact.nodeCount, allNodes.length) - 1 : null;
         return { ...turn, node, step: node === null ? null : (stepOfNode.get(node) ?? null) };
       }
       return {
@@ -480,6 +555,9 @@ function buildRun(input: {
         step: stepOfThread.get(turn.threadId) ?? null,
       };
     })
+    // The host thread's turns are shared with every run in it, so a nested one keeps only
+    // those issued inside its span. A subagent's turns are already its own.
+    .filter((turn) => turn.threadId !== graph.threadId || covers(turn.node))
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const turnsUnmapped = turns.filter((t) => t.step === null).length;
 
@@ -489,22 +567,37 @@ function buildRun(input: {
   const priced = model ?? prior?.model ?? graph.model ?? "";
 
   const tokens = turns.reduce((acc, t) => addTokens(acc, t.tokens), ZERO_TOKENS);
-  const familyNodes = family.flatMap((t) => byThread.get(t)?.nodes ?? []);
+  const familyNodes = [
+    ...nodes,
+    ...family.filter((t) => t !== graph.threadId).flatMap((t) => byThread.get(t)?.nodes ?? []),
+  ];
   const interruption = lastInterruption(familyNodes);
   const reached = didReachEnd(steps, attributions, nodes);
   const modified = graph.modified;
-  const active = !!modified && now.getTime() - new Date(modified).getTime() < ACTIVE_WINDOW_MS;
+  // A nested run is only still going if it is the last one in a transcript still growing;
+  // an earlier one ended the moment the next command opened.
+  const active =
+    !!modified &&
+    now.getTime() - new Date(modified).getTime() < ACTIVE_WINDOW_MS &&
+    (range === null || range.to === allNodes.length);
 
-  const started = turns[0]?.timestamp ?? graph.started ?? null;
-  const ended = turns[turns.length - 1]?.timestamp ?? modified ?? null;
+  // A transcript's own start and end bracket the whole session, so they answer for a
+  // top-level run only. A nested run with no surviving turns has no times to give.
+  const started = turns[0]?.timestamp ?? (range ? null : graph.started) ?? null;
+  const ended = turns[turns.length - 1]?.timestamp ?? (range ? null : modified) ?? null;
 
   return {
     schema: COMMAND_RUN_SCHEMA,
+    runId: identity.runId,
+    parentRunId: identity.parentRunId,
+    parentCommand: identity.parentCommand,
+    spawnNode: identity.spawnNode,
+    nodeRange: range,
     threadId: graph.threadId,
-    command: envelope.command,
-    args: envelope.args,
-    flags: envelope.flags,
-    prompt: envelope.prompt,
+    command: identity.command,
+    args: identity.args,
+    flags: identity.flags,
+    prompt: identity.prompt,
     commandHash: input.commandHash,
     steps,
     model: priced || null,
@@ -555,6 +648,29 @@ function familyOf(threadId: string, byThread: Map<string, SessionGraph>): string
     for (const kid of byThread.get(id)?.childThreadIds ?? []) walk(kid);
   };
   walk(threadId);
+  return family;
+}
+
+/**
+ * A nested run's thread family: its host session plus only the subagents spawned inside
+ * its span, each with everything beneath it.
+ */
+function nestedFamily(
+  threadId: string,
+  byThread: Map<string, SessionGraph>,
+  range: { from: number; to: number },
+): string[] {
+  const family = [threadId];
+  const seen = new Set(family);
+  for (const kid of byThread.get(threadId)?.childThreadIds ?? []) {
+    const spawn = byThread.get(kid)?.spawnIndex;
+    if (spawn == null || spawn < range.from || spawn >= range.to) continue;
+    for (const id of familyOf(kid, byThread)) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      family.push(id);
+    }
+  }
   return family;
 }
 
