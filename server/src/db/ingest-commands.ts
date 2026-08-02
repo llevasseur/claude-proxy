@@ -23,7 +23,7 @@ import { commandStorePath, parseCommandRunStore } from "../command-runs.js";
  */
 
 /** The store's path relative to `logDir` — the `file_watermark` key. */
-const STORE_PATH = "commands/runs.jsonl";
+export const STORE_PATH = "commands/runs.jsonl";
 
 export interface CommandIngestStats {
   /** Runs the store holds, retired ones included. */

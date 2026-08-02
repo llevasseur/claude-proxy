@@ -47,7 +47,7 @@ import {
 import { resolveArchiveDir } from "./archive.js";
 import { reconcileCommandRuns, resolveCommandsDir } from "./command-runs.js";
 import { resolveDbPath } from "./db/open.js";
-import { startSubstrate, stopSubstrate, substrateSource } from "./db/runtime.js";
+import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from "./db/runtime.js";
 import type { SidecarSource } from "./db/source.js";
 import { shadowCheck, shadowEnabled } from "./parity.js";
 import {
@@ -101,8 +101,11 @@ async function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Shadow mode: the response has already been sent from the files; ask the
- * SQLite substrate the same question and log any disagreement.
+ * Shadow mode: the response has already been sent; ask the backing it did *not*
+ * come from the same question and log any disagreement.
+ *
+ * Normally that is the file scan checking the substrate, and the substrate
+ * checking the files under `DB_READS=0`.
  *
  * Off unless `SHADOW_DB=1`. It cannot change what was served: the send has
  * happened, the comparison is a later tick, and `shadowCheck` swallows its own
@@ -110,9 +113,9 @@ async function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
  * masquerade as a mismatch.
  */
 function shadow<T>(label: string, served: T, build: (source: SidecarSource) => Promise<T>): void {
-  const source = substrateSource();
-  if (!source) return;
-  shadowCheck(label, served, () => build(source));
+  const other = shadowSource();
+  if (!other) return;
+  shadowCheck(label, served, () => build(other), readSource().kind);
 }
 
 /** Everything but the chat routes is a read-only view of already-captured logs. */
@@ -355,7 +358,7 @@ const server = http.createServer(async (req, res) => {
       }
       case "/api/summary": {
         const now = new Date();
-        const summary = await buildSummary(LOG_DIR, date, now);
+        const summary = await buildSummary(LOG_DIR, date, now, readSource());
         send(res, 200, summary);
         shadow("/api/summary", summary, (source) => buildSummary(LOG_DIR, date, now, source));
         return;
@@ -365,21 +368,21 @@ const server = http.createServer(async (req, res) => {
       case "/api/summary/stream":
         await serveSse(req, res, {
           watchPath: LOG_DIR,
-          build: () => buildSummary(LOG_DIR, date),
+          build: () => buildSummary(LOG_DIR, date, new Date(), readSource()),
           debounceMs: 600,
         });
         return;
       case "/api/trends": {
         const days = parseDays(url.searchParams.get("days"));
         const now = new Date();
-        const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR);
+        const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, readSource());
         send(res, 200, trends);
         shadow("/api/trends", trends, (source) => buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, source));
         return;
       }
       case "/api/usage": {
         const now = new Date();
-        const usage = await buildUsage(LOG_DIR, USAGE_LIMITS, now);
+        const usage = await buildUsage(LOG_DIR, USAGE_LIMITS, now, readSource());
         send(res, 200, usage);
         shadow("/api/usage", usage, (source) => buildUsage(LOG_DIR, USAGE_LIMITS, now, source));
         return;
@@ -389,13 +392,13 @@ const server = http.createServer(async (req, res) => {
       case "/api/usage/stream":
         await serveSse(req, res, {
           watchPath: LOG_DIR,
-          build: () => buildUsage(LOG_DIR, USAGE_LIMITS),
+          build: () => buildUsage(LOG_DIR, USAGE_LIMITS, new Date(), readSource()),
           debounceMs: 600,
         });
         return;
       case "/api/tools": {
         const now = new Date();
-        const tools = await buildTools(LOG_DIR, date, now);
+        const tools = await buildTools(LOG_DIR, date, now, readSource());
         send(res, 200, tools);
         shadow("/api/tools", tools, (source) => buildTools(LOG_DIR, date, now, source));
         return;
@@ -403,7 +406,7 @@ const server = http.createServer(async (req, res) => {
       case "/api/context": {
         const days = parseDays(url.searchParams.get("days"));
         const now = new Date();
-        const context = await buildContext(LOG_DIR, days, now);
+        const context = await buildContext(LOG_DIR, days, now, readSource());
         send(res, 200, context);
         shadow("/api/context", context, (source) => buildContext(LOG_DIR, days, now, source));
         return;
@@ -569,7 +572,7 @@ const server = http.createServer(async (req, res) => {
         );
         return;
       case "/api/sessions": {
-        const sessions = await buildSessions(LOG_DIR);
+        const sessions = await buildSessions(LOG_DIR, readSource());
         send(res, 200, sessions);
         shadow("/api/sessions", sessions, (source) => buildSessions(LOG_DIR, source));
         return;
@@ -577,7 +580,7 @@ const server = http.createServer(async (req, res) => {
       case "/api/sessions/stream":
         await serveSse(req, res, {
           watchPath: resolveSessionsDir(LOG_DIR),
-          build: () => buildSessions(LOG_DIR),
+          build: () => buildSessions(LOG_DIR, readSource()),
           debounceMs: 400,
         });
         return;
@@ -594,11 +597,11 @@ const server = http.createServer(async (req, res) => {
           send(res, 400, { error: (err as Error).message });
           return;
         }
-        await serveSse(req, res, { watchPath: file, build: () => buildSession(LOG_DIR, id), debounceMs: 150 });
+        await serveSse(req, res, { watchPath: file, build: () => buildSession(LOG_DIR, id, readSource()), debounceMs: 150 });
         return;
       }
       case "/api/sessions/graph": {
-        const graph = await buildSessionsGraph(LOG_DIR);
+        const graph = await buildSessionsGraph(LOG_DIR, readSource());
         send(res, 200, graph);
         shadow("/api/sessions/graph", graph, (source) => buildSessionsGraph(LOG_DIR, source));
         return;
@@ -610,7 +613,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          const texts = await buildSessionNodeTexts(LOG_DIR, id);
+          const texts = await buildSessionNodeTexts(LOG_DIR, id, readSource());
           send(res, 200, texts);
           shadow("/api/sessions/node-text", texts, (source) => buildSessionNodeTexts(LOG_DIR, id, source));
         } catch (err) {
@@ -628,7 +631,7 @@ const server = http.createServer(async (req, res) => {
         }
         try {
           const now = new Date();
-          const nodes = await buildSessionGraphNodes(LOG_DIR, id, now);
+          const nodes = await buildSessionGraphNodes(LOG_DIR, id, now, readSource());
           send(res, 200, nodes);
           shadow("/api/sessions/graph/nodes", nodes, (source) => buildSessionGraphNodes(LOG_DIR, id, now, source));
         } catch (err) {
@@ -646,7 +649,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          const session = await buildSession(LOG_DIR, id);
+          const session = await buildSession(LOG_DIR, id, readSource());
           send(res, 200, session);
           shadow("/api/sessions/session", session, (source) => buildSession(LOG_DIR, id, source));
         } catch (err) {
@@ -665,7 +668,7 @@ const server = http.createServer(async (req, res) => {
         }
         try {
           const now = new Date();
-          const breakdown = await buildSessionBreakdown(LOG_DIR, id, now);
+          const breakdown = await buildSessionBreakdown(LOG_DIR, id, now, readSource());
           send(res, 200, breakdown);
           shadow("/api/sessions/breakdown", breakdown, (source) => buildSessionBreakdown(LOG_DIR, id, now, source));
         } catch (err) {
@@ -680,8 +683,11 @@ const server = http.createServer(async (req, res) => {
       // even on a cold server, and the streams follow a run as it happens.
       case "/api/commands": {
         // The shadow read deliberately skips `withCommandReconcile`: the served
-        // read already reconciled, and the store it wrote is what ingest sees.
-        const commands = await withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR));
+        // read already reconciled, and reconciling twice would write again. Both
+        // sides then read the store that write produced — the DB side through
+        // `readCommandRuns`'s watermark check, which re-reads the file until
+        // ingest catches up.
+        const commands = await withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR, readSource()));
         send(res, 200, commands);
         shadow("/api/commands", commands, (source) => buildCommands(LOG_DIR, COMMANDS_DIR, source));
         return;
@@ -689,7 +695,7 @@ const server = http.createServer(async (req, res) => {
       case "/api/commands/stream":
         await serveSse(req, res, {
           watchPath: LOG_DIR,
-          build: () => withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR)),
+          build: () => withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR, readSource())),
           debounceMs: 600,
         });
         return;
@@ -701,7 +707,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         const flags = (url.searchParams.get("flags") ?? "").split(",").filter(Boolean);
-        const build = () => withCommandReconcile(() => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags));
+        const build = () => withCommandReconcile(() => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags, readSource()));
         if (url.pathname.endsWith("/stream")) {
           await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
           return;
@@ -726,7 +732,7 @@ const server = http.createServer(async (req, res) => {
           send(res, 400, { error: "missing ?id=" });
           return;
         }
-        const build = () => withCommandReconcile(() => buildCommandRun(LOG_DIR, id));
+        const build = () => withCommandReconcile(() => buildCommandRun(LOG_DIR, id, readSource()));
         if (url.pathname.endsWith("/stream")) {
           await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
           return;
@@ -743,7 +749,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       case "/api/sessions/suggestions": {
-        const suggestions = await buildSessionSuggestions(LOG_DIR);
+        const suggestions = await buildSessionSuggestions(LOG_DIR, readSource());
         send(res, 200, suggestions);
         shadow("/api/sessions/suggestions", suggestions, (source) => buildSessionSuggestions(LOG_DIR, source));
         return;
@@ -756,7 +762,7 @@ const server = http.createServer(async (req, res) => {
         }
         try {
           const now = new Date();
-          const bucket = await buildSessionSuggestionBucket(LOG_DIR, index, now);
+          const bucket = await buildSessionSuggestionBucket(LOG_DIR, index, now, readSource());
           send(res, 200, bucket);
           shadow("/api/sessions/suggestions/bucket", bucket, (source) =>
             buildSessionSuggestionBucket(LOG_DIR, index, now, source),
@@ -778,7 +784,11 @@ const server = http.createServer(async (req, res) => {
           await servePost(
             req,
             res,
-            (body) => applySuggestionStatus(LOG_DIR, parseSuggestionStatusUpdates(body.updates)),
+            // The flags stay a JSON file; what goes through the seam is the
+            // derived half this echoes back — the bucket/suggestion join — so
+            // the response cannot describe a different corpus than the GET.
+            (body) =>
+              applySuggestionStatus(LOG_DIR, parseSuggestionStatusUpdates(body.updates), new Date(), readSource()),
             () => 400,
           );
           return;
@@ -816,7 +826,7 @@ const server = http.createServer(async (req, res) => {
           recurrences,
           detail: detail === "1" || detail === "true",
         };
-        const status = await buildSuggestionStatus(LOG_DIR, filter);
+        const status = await buildSuggestionStatus(LOG_DIR, filter, readSource());
         send(res, 200, status);
         shadow(SUGGESTION_STATUS_ROUTE, status, (source) => buildSuggestionStatus(LOG_DIR, filter, source));
         return;
@@ -829,7 +839,7 @@ const server = http.createServer(async (req, res) => {
         }
         try {
           const now = new Date();
-          const errors = await buildSessionErrors(LOG_DIR, id, now);
+          const errors = await buildSessionErrors(LOG_DIR, id, now, readSource());
           send(res, 200, errors);
           shadow("/api/sessions/errors", errors, (source) => buildSessionErrors(LOG_DIR, id, now, source));
         } catch (err) {
@@ -895,7 +905,7 @@ const server = http.createServer(async (req, res) => {
         return;
       case "/api/skim": {
         const now = new Date();
-        const skim = await buildSkim(LOG_DIR, date, now);
+        const skim = await buildSkim(LOG_DIR, date, now, readSource());
         send(res, 200, skim);
         shadow("/api/skim", skim, (source) => buildSkim(LOG_DIR, date, now, source));
         return;
@@ -903,7 +913,7 @@ const server = http.createServer(async (req, res) => {
       case "/api/skim/trend": {
         const now = new Date();
         const days = parseDays(url.searchParams.get("days"));
-        const trend = await buildSkimTrend(LOG_DIR, days, now);
+        const trend = await buildSkimTrend(LOG_DIR, days, now, readSource());
         send(res, 200, trend);
         shadow("/api/skim/trend", trend, (source) => buildSkimTrend(LOG_DIR, days, now, source));
         return;
@@ -911,7 +921,7 @@ const server = http.createServer(async (req, res) => {
       case "/api/withheld": {
         const now = new Date();
         const days = parseDays(url.searchParams.get("days"));
-        const withheld = await buildWithheld(LOG_DIR, days, SETTINGS_PATH, now);
+        const withheld = await buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, readSource());
         send(res, 200, withheld);
         shadow("/api/withheld", withheld, (source) => buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, source));
         return;
@@ -934,14 +944,20 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, async () => {
   console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
-  // The SQLite view of those logs, kept current by a watcher. Reads still come
-  // from the files; this exists so the substrate can be compared against them.
+  // The SQLite view of those logs, kept current by a watcher, and what the
+  // routes read. Report which side is serving — a substrate that failed to open
+  // falls back silently otherwise.
   const substrate = startSubstrate(LOG_DIR, (err) => console.warn(`[claude-proxy-server] ingest: ${err.message}`));
   console.log(
     substrate
       ? `[claude-proxy-server] ingesting into ${resolveDbPath(LOG_DIR)}` +
           (shadowEnabled() ? " (shadow comparison on)" : " (set SHADOW_DB=1 to compare it against the files)")
       : "[claude-proxy-server] sqlite substrate unavailable — serving from the log files only",
+  );
+  console.log(
+    readSource().kind === "db"
+      ? "[claude-proxy-server] serving reads from the substrate (set DB_READS=0 to fall back to the file scan)"
+      : `[claude-proxy-server] serving reads from the file scan${dbReadsEnabled() ? "" : " (DB_READS=0)"}`,
   );
   // Release the watcher and the WAL handle on the way out.
   for (const signal of ["SIGINT", "SIGTERM"] as const) {

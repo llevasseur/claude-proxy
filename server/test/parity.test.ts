@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
-import { buildSessionSuggestions } from "../src/api.js";
+import { applySuggestionStatus, buildSessionSuggestions } from "../src/api.js";
 import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from "../src/command-runs.js";
 import { ingest } from "../src/db/ingest.js";
 import { openDb } from "../src/db/open.js";
@@ -527,6 +527,100 @@ describe("route parity over a synthetic corpus", () => {
       db.prepare("UPDATE request SET model = ? WHERE id = ?").run(victim.model, victim.id);
     }
     expect(await mismatches(ctx, db)).toEqual([]);
+  });
+
+  // The harness cannot reach this by construction: it freezes the corpus so
+  // nothing is appended mid-replay, which is the only way a row falls behind.
+  it("re-reads a transcript the row is behind, rather than pairing stale metadata with fresh content", async () => {
+    const id = "00000000000000a1";
+    const file = path.join(ctx.logDir, "sessions", `${id}.md`);
+    const fresh = await dbSource(db).readSession(ctx.logDir, id);
+    expect(fresh.bytes).toBe(Buffer.byteLength(fresh.content));
+
+    // An append since the last ingest leaves the row's `bytes` counting a
+    // shorter transcript than `content` holds.
+    const stale = db.prepare("SELECT tasks, bytes FROM session WHERE thread_id = ?").get(id) as {
+      tasks: number;
+      bytes: number;
+    };
+    await appendFile(file, "## Task: appended after ingest\n", "utf8");
+    const fromDb = await dbSource(db).readSession(ctx.logDir, id);
+    const fromFiles = await fileSource.readSession(ctx.logDir, id);
+    expect(fromDb).toEqual(fromFiles);
+    expect(fromDb.bytes).toBe(Buffer.byteLength(fromDb.content));
+    expect(fromDb.content).toContain("appended after ingest");
+    // The row is genuinely behind: this is what would have been served beside
+    // the longer content.
+    expect(stale.bytes).toBeLessThan(fromDb.bytes);
+    expect(fromDb.meta.tasks).toBe(stale.tasks + 1);
+
+    // A transcript with no row at all still reads, rather than 404-ing a
+    // session that exists on disk.
+    const unseen = "00000000000000e5";
+    const unseenFile = path.join(ctx.logDir, "sessions", `${unseen}.md`);
+    await writeFile(unseenFile, "- session: s-9\n- started: 2026-07-15T19:00:00.000Z\n## Task: never ingested\n", "utf8");
+    expect(await dbSource(db).readSession(ctx.logDir, unseen)).toEqual(await fileSource.readSession(ctx.logDir, unseen));
+
+    // A transcript that is not there is still not there.
+    await rm(unseenFile);
+    await expect(dbSource(db).readSession(ctx.logDir, unseen)).rejects.toThrow(/session not found/);
+
+    // Catch the corpus up, and the whole replay is still byte-identical.
+    await ingest(db, ctx.logDir);
+    expect(await mismatches(ctx, db)).toEqual([]);
+  });
+
+  // `withCommandReconcile` writes the store and reads it back in the same
+  // request, so rows behind the file would serve the pre-reconcile view. The
+  // harness cannot reach that either — it reconciles once, before ingesting.
+  it("re-reads the command store the rows are behind, rather than answering pre-reconcile", async () => {
+    const store = commandStorePath(ctx.logDir);
+    expect(await dbSource(db).readCommandRuns(ctx.logDir)).toEqual(await fileSource.readCommandRuns(ctx.logDir));
+
+    // What a reconcile appends between two ingests: an existing run rewritten
+    // as finished, which supersedes the row still in the table.
+    const victim = (await fileSource.readCommandRuns(ctx.logDir)).find((r) => r.command === "task");
+    expect(victim, "the corpus should hold a run to close out").toBeDefined();
+    const closed = { ...victim!, ended: "2026-07-19T00:00:00.000Z" };
+    await appendFile(store, `${JSON.stringify(closed)}\n`, "utf8");
+
+    const fromDb = await dbSource(db).readCommandRuns(ctx.logDir);
+    expect(fromDb).toEqual(await fileSource.readCommandRuns(ctx.logDir));
+    expect(fromDb.find((r) => r.command === "task")?.ended).toBe(closed.ended);
+    const row = db.prepare("SELECT ended FROM command_run WHERE thread_id = ?").get(victim!.threadId) as {
+      ended: string | null;
+    };
+    expect(row.ended).toBe(victim!.ended);
+
+    // Catch the corpus up, and the whole replay is still byte-identical.
+    await ingest(db, ctx.logDir);
+    expect(await mismatches(ctx, db)).toEqual([]);
+  });
+
+  /**
+   * The one write route through the seam. It stays out of `PARITY_ROUTES` —
+   * replaying it against the real-corpus snapshot would write through a
+   * hardlinked `suggestion-status.json` — so its agreement is asserted here,
+   * where the write is ours to make.
+   */
+  it("answers the suggestion-status write the same way through either backing", async () => {
+    const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
+    const bucket = buckets[0];
+    const suggestion = bucket?.suggestions[0];
+    expect(suggestion, "the corpus should hold a suggestion to flag").toBeDefined();
+    if (!bucket || !suggestion) return;
+
+    // Only the derived half — the bucket/suggestion join the response echoes
+    // back — goes through the seam; the flags stay a JSON file either way. Same
+    // clock and same update twice: the write is idempotent, which is what makes
+    // the two answers comparable.
+    const at = new Date("2026-07-18T00:00:00.000Z");
+    const updates = [{ bucket: bucket.index, id: suggestion.id, status: "done" as const, note: "handled" }];
+    const fromFiles = await applySuggestionStatus(ctx.logDir, updates, at, fileSource);
+    const fromDb = await applySuggestionStatus(ctx.logDir, updates, at, dbSource(db));
+    expect(JSON.stringify(fromDb)).toBe(JSON.stringify(fromFiles));
+    expect(fromDb.rows).toHaveLength(1);
+    expect(fromDb.meta.unknown).toEqual([]);
   });
 
   it("needs no normalization to agree", () => {

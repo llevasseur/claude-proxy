@@ -364,9 +364,13 @@ rm logs/claude-proxy.db && pnpm --filter server ingest   # rebuild from logs/
 pnpm --filter server ingest                              # or just top it up
 ```
 
-Reads are still served from the files — nothing depends on the database yet.
-Set `SHADOW_DB=1` to have the server compute each answer both ways and log any
-disagreement, without touching the response it serves. See
+Reads are served from the database, and the way back is one flag: **`DB_READS=0`
+puts every route back on the directory scan** it used before. That is the whole
+rollback — the log files were never touched, so the scan still answers
+everything. The server also falls back on its own if the database cannot be
+opened. Set `SHADOW_DB=1` to have it compute each answer both ways and log any
+disagreement; it checks whichever side did *not* serve, and never touches the
+response. See
 [ADR 0004](docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md) and the
 [migration map](docs/wayfinder/map-sqlite-substrate.md).
 

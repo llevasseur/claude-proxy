@@ -1,8 +1,18 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { linkAgentSessions, reportDay, type CommandRun, type SessionNode } from "@claude-proxy/core";
-import { readCommandRuns as readCommandRunsFromFiles, sortCommandRuns } from "../command-runs.js";
+import {
+  linkAgentSessions,
+  parseSessionTranscript,
+  reportDay,
+  type CommandRun,
+  type SessionNode,
+} from "@claude-proxy/core";
+import {
+  commandStorePath,
+  readCommandRuns as readCommandRunsFromFiles,
+  sortCommandRuns,
+} from "../command-runs.js";
 import {
   readArchivedDay as readArchivedDayFromFiles,
   readSidecars as readSidecarsFromFiles,
@@ -22,6 +32,7 @@ import {
   type SessionNodeTexts,
   type SessionSummary,
 } from "../sessions.js";
+import { STORE_PATH as COMMAND_STORE_PATH } from "./ingest-commands.js";
 
 /**
  * One interface, two backings — the seam the migration turns on. Every read
@@ -472,20 +483,35 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       // Validates the URL-supplied id and confirms the path stays inside
       // `sessions/`, as the file reader does.
       const full = resolveSessionFile(logDir, id);
-      const row = db.prepare(`SELECT ${SESSION_COLUMNS} FROM session WHERE thread_id = ?`).get(id) as unknown as
-        | SessionRow
-        | undefined;
-      if (!row) throw new Error(`session not found: ${id}`);
 
-      // Metadata out of SQL, content off the file: the row holds a pointer.
+      // The row holds a pointer, not the transcript, so the content comes off
+      // the file either way. `stat` it in the same breath: the file's own size
+      // and mtime decide which metadata belongs beside that content.
       let content: string;
+      let info: Awaited<ReturnType<typeof stat>>;
       try {
-        content = await readFile(full, "utf8");
+        [content, info] = await Promise.all([readFile(full, "utf8"), stat(full)]);
       } catch {
         throw new Error(`session not found: ${id}`);
       }
-      const { bytes, modified, ...meta } = toSummary(row);
-      return { meta, content, bytes, modified };
+      const bytes = info.size;
+      const modified = info.mtime.toISOString();
+
+      const row = db.prepare(`SELECT ${SESSION_COLUMNS} FROM session WHERE thread_id = ?`).get(id) as unknown as
+        | SessionRow
+        | undefined;
+      if (row) {
+        const { bytes: rowBytes, modified: rowModified, ...meta } = toSummary(row);
+        // The row carries the exact watermark it was parsed from, so this is the
+        // same equality `ingest` uses to decide a transcript is unchanged.
+        if (rowBytes === bytes && rowModified === modified) return { meta, content, bytes, modified };
+      }
+
+      // The row is behind the file, or absent. Pairing its metadata with this
+      // content would return an object that disagrees with itself — `bytes`
+      // counting a shorter transcript than `content` holds. Re-parse instead,
+      // which is what the file reader would have answered.
+      return { meta: parseSessionTranscript(id, content), content, bytes, modified };
     },
     readSessionNodeTexts: async (logDir, id) => {
       // A bad id throws; a transcript with no sidecar reads as empty, not 404 —
@@ -500,7 +526,24 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return { threadId: id, texts };
     },
     // The store is indexed whole, so this reads no file at all.
-    readCommandRuns: async () => commandRunsFromDb(db),
+    readCommandRuns: async (logDir) => {
+      // The server reconciles the store and reads it back inside the same
+      // request, so rows behind the file would answer with the pre-reconcile
+      // view. Same watermark equality `ingestCommandRuns` uses; anything else
+      // re-reads the store, which is what the file reader would have answered.
+      const mark = db.prepare("SELECT bytes, modified FROM file_watermark WHERE path = ?").get(COMMAND_STORE_PATH) as
+        | { bytes: number; modified: string }
+        | undefined;
+      if (mark) {
+        try {
+          const info = await stat(commandStorePath(logDir));
+          if (mark.bytes === info.size && mark.modified === info.mtime.toISOString()) return commandRunsFromDb(db);
+        } catch {
+          // No store on disk — the file reader answers that as no runs.
+        }
+      }
+      return readCommandRunsFromFiles(logDir);
+    },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
     readArchivedDay: async (logDir, date, opts = {}) => {
       const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0 };
