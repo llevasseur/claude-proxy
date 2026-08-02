@@ -22,12 +22,12 @@ The [Sessions](session-transcripts.md) list is flat — one row per transcript, 
 But a Claude Code session spawns subagents, and each subagent runs under its parent's
 session id with its own conversation root, so the proxy writes it as a *separate*
 transcript with its own thread id. In a list, a delegated run is indistinguishable from a
-top-level one: nothing tells you which row was the parent, which of nine rows were its
-fan-out, how deep the nesting went, or which are still running. The relationship *is*
-inferable from the observed request stream — a parent's `Agent(…)` step, and sibling
-transcripts in the same session id — and the graph is where that inference is drawn:
-parentage, spawn order, depth, where each branch's result rejoined the parent, and what the
-parent did while the branch was in flight.
+top-level one: nothing tells you which row was the parent, which rows were its fan-out, how
+deep the nesting went, or which are still running. The relationship *is* inferable from the
+observed request stream — a parent's `Agent(…)` step, and sibling transcripts in the same
+session id — and the graph is where that inference is drawn: parentage, spawn order, depth,
+where each branch's result rejoined the parent, and what the parent did while the branch was
+in flight.
 
 ## Behavior
 
@@ -77,16 +77,15 @@ parent did while the branch was in flight.
   merge walks both streams and pairs by expanding each gist (`isSameStep` allows for the `…`, which
   for a tool call sits inside the parens); where they disagree it *re-syncs*, searching outward
   along growing diagonals for the nearest pairing that skips fewest steps on either side, within a
-  24-step window. Drift is measured in steps because that is what causes it — a whole turn one side
-  holds and the other doesn't. Advancing only the transcript on a mismatch (the earlier behaviour)
-  desynced the streams permanently: one differently-worded step stranded every later one at its
-  gist, which is why equal-length 132/132 streams matched only 100. A step with no pairing keeps
-  its abbreviated transcript text, so the graph degrades rather than breaks.
+  24-step window. Advancing only the transcript on a mismatch (the earlier behaviour) desynced the
+  streams permanently: one differently-worded step stranded every later one at its gist, which is
+  why equal-length 132/132 streams matched only 100. A step with no pairing keeps its abbreviated
+  transcript text, so the graph degrades rather than breaks.
 - **Each step carries its message index** — `deriveSessionNodes` records the `messages[]` position
   a step was read from on the node itself (`message`), so the drawer can name the exact turn behind
   a step rather than only the request as a whole. It is `null` on a step read off a transcript,
   which records no such position, and the merge carries the derived value through.
-- **Interruptions and side trails** — a run can be cut off two ways, and both land in the same
+- **Interruptions and side trails** — a run can be cut off two ways, both landing in the same
   grammar. Pressing **Esc** in Claude Code makes the CLI prepend `[Request interrupted by user]`
   (or `… for tool use`) to the next user turn, which `proxy/session.mjs` already writes into the
   transcript; `splitInterruption` strips that marker off the task text and reports `user` /
@@ -112,14 +111,18 @@ parent did while the branch was in flight.
   **Spawned by**, **First task**, tasks/tools/errors stats, thread id, **Model**, **Started**,
   **Updated**, **Open transcript →**, and **Open request breakdown →** for the captured request
   the step text came from (or a note that none matched).
-- **The whole turn, in the drawer** — a step's line is still only the one line the grammar keeps of
-  it, so a step that paired with a captured request also gets a **Request message** field: the turn
+- **The whole turn, in the drawer** — a step's line is only the one line the grammar keeps of it,
+  so a step that paired with a captured request also gets a **Request message** field: the turn
   it was read out of, whole, fetched per open drawer from the same endpoint the
   [Request breakdown](context-size-analytics.md)'s drill-down uses, labelled *#n of N · role*, and
   clamped like any other long value (an expanded one scrolls inside the drawer rather than growing
   it). **Open this step's message →** links straight to `/context/$file/message/$index` — that
   step's own message in the breakdown, not just the request's front page. A step that paired with
   nothing says so, so a gisted step is legible as gisted rather than silently short.
+- **Where the drawer's step text comes from** — not the captured-request merge. The drawer asks
+  `getSessionNodeTexts` (`GET /api/sessions/node-text?id=`) for the thread's `.nodes.jsonl`
+  sidecar, which the proxy writes as it appends the transcript, so a selected step's full text is
+  one indexed lookup rather than a scan. The canvas still uses the merge for the gist-level view.
 - **Expanding the details** — untruncated step text runs to thousands of characters, so the
   drawer opens up two ways: **⇤** / **⇥** in its header widens it from 360 px to 720 px (sticky
   across selections), and any value past 280 characters folds to six lines behind a **Show all
@@ -128,22 +131,19 @@ parent did while the branch was in flight.
   rather than shrinking it, so **Fit** measures the slice they leave free (both widths read live,
   since each animates and the drawer is absent when nothing is selected) and frames the graph
   there. A widened drawer on a narrow viewport can't squeeze the free area to nothing. Opening
-  the drawer does not itself refit — that would yank the canvas on every node click; **Fit** is
-  the explicit control.
+  the drawer does not itself refit; **Fit** is the explicit control.
 - **Toolbar** — a live dot beside a count of sessions, the canvased session's steps, and its
   subagents with how many are in flight; a legend for **task**, **decision**, **tool**,
   **subagent**, **error**, **done**. Its controls are **Fit** and two icon toggles: larger
   nodes, and fullscreen. There are no **−** / **+** buttons — zoom is the wheel (⌘-scroll or
-  pinch), which the **Fit** button's tooltip spells out, and the space they held went to the
-  larger-nodes toggle.
-- **Larger nodes** — steps are drawn as two-line gists by default, which is what fits a
-  compact box. The toggle re-lays the canvas out at a roomier box size (a step goes 168×64 →
-  320×216) and lifts the title clamp from 2 lines to 8, so a step's whole label reads on the
-  canvas instead of only in the drawer. Geometry is a `Sizes` preset threaded through
-  `layout` / `layoutTree` / `layoutRun` rather than module constants, so both sizes share one
-  layout path. Toggling deliberately does **not** refit: a refit would scale the bigger boxes
-  straight back down and cancel out the point, so the zoom is left alone and the boxes simply
-  grow on screen. **Fit** is there when the user does want to reframe.
+  pinch), which the **Fit** button's tooltip spells out.
+- **Larger nodes** — steps are drawn as two-line gists by default. The toggle re-lays the
+  canvas out at a roomier box size (a step goes 168×64 → 320×216) and lifts the title clamp
+  from 2 lines to 8, so a step's whole label reads on the canvas instead of only in the
+  drawer. Geometry is a `Sizes` preset threaded through `layout` / `layoutTree` / `layoutRun`
+  rather than module constants, so both sizes share one layout path. Toggling deliberately
+  does **not** refit — the zoom is left alone and the boxes simply grow on screen; **Fit**
+  reframes on demand.
 - **Staying live** — the page re-fetches `GET /api/sessions/graph` every 4 s (the dot lights
   while a fetch is in flight) and only refits the view when the session or fold width changes,
   so arriving steps never yank the viewport. Note this page polls; the SSE streams
@@ -155,8 +155,10 @@ transcript into `SessionMeta` plus an ordered `SessionNode[]` (`parseSessionNode
 reconstructs the family tree (`linkAgentSessions`); the server's `listSessionGraphs` reads
 every transcript once and merges the two into `SessionGraph` rows, which `buildSessionsGraph`
 serves from `GET /api/sessions/graph` as `{ sessions, meta: { sessionsDir, total } }`; the
-admin page lays those rows out and draws them. The browser never parses raw Markdown, and the
-proxy is untouched — this reads the transcripts it already writes. The one write back is
+admin page lays those rows out and draws them. The browser never parses raw Markdown. The graph
+itself reads only the transcripts the proxy already writes; the drawer's full step text is the
+one part that needed the proxy, which now emits a `<threadId>.nodes.jsonl` sidecar alongside the
+transcript. The one write back from the dashboard is
 `recordInterruption` appending a dashboard **Stop** to an existing transcript; it never creates
 one, so a thread the proxy hasn't flushed yet is skipped rather than left headerless, and the
 proxy tracks its own progress by message count, not file offset, so the extra line can't desync it.
@@ -169,9 +171,9 @@ mirror of the `threadIdFor` in `proxy/session.mjs` that named the transcript in 
 The scan's floor is the family's earliest transcript `started`, read through `reportDay`: that start
 is a UTC instant, but the sidecar reader narrows by *reporting* day in `REPORT_TZ`, so the floor is
 derived on the same clock the filter compares against. A floor taken straight off the UTC prefix
-excluded every request the family ever made — Eastern runs behind UTC, so a session opened in the
-evening carries a `started` whose UTC day is already tomorrow, and every session started in that
-nightly window found no captured request at all and stayed wholly at its transcript gists.
+excluded every request the family ever made: Eastern runs behind UTC, so an evening session carries
+a `started` whose UTC day is already tomorrow, and every session started in that nightly window
+stayed wholly at its transcript gists.
 The richest snapshot found per thread supplies its `deriveSessionNodes` stream, returned as
 `{ rootThreadId, threads: [{ threadId, file, messageCount, nodes }], meta }`. The admin page
 fetches it per canvased session on a 20 s interval — far heavier than the 4 s transcript poll,
@@ -197,8 +199,9 @@ left are simply absent from `threads`, and keep their transcript text.
 - [x] The rail nests subagents with fold toggles, and **«** collapses it to a 38 px strip with
       an explicit **»** to reopen.
 - [x] New steps appear without a reload, and the view does not re-fit or re-center on refresh.
-- [x] No proxy changes; the feature reads existing session transcripts, and its only write is
-      appending a dashboard **Stop** to a transcript that already exists.
+- [x] The graph reads existing session transcripts; the drawer's step text reads the proxy's
+      `.nodes.jsonl` sidecar over `/api/sessions/node-text`, and the dashboard's only write is
+      appending a **Stop** to a transcript that already exists.
 - [x] A Claude Code **Esc** (`[Request interrupted by user]`, with and without ` for tool use`)
       and a dashboard **Stop** (`- interrupted: stopped` / `timeout` / `limit`) both parse into
       the same `interrupted` / `interruption` flags, and the marker is stripped from the step text.
@@ -251,7 +254,8 @@ left are simply absent from `threads`, and keep their transcript text.
   single transcript — one branch instead of two.
 - Whether the canvas should ever show more than one top-level family at a time (today it draws
   the selected session and its descendants only).
-- What the step-text scan should cost. It reads up to 60 whole request bodies per canvased
+- What the step-text scan should cost — now only for the canvas's merged view, since the drawer
+  reads the `.nodes.jsonl` sidecar directly. It reads up to 60 whole request bodies per canvased
   family, newest-first, and re-runs every 20 s — cheap on a local log dir (~120 ms in practice)
   but unbounded in the wrong direction as the log grows, and `meta.capped` is the only signal
   that older requests went unread. A thread whose activity falls outside that window keeps its

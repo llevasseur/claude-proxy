@@ -11,21 +11,18 @@ timestamp: 2026-07-24
 ## Summary
 
 A **Projects** section in the [admin dashboard](admin-dashboard-for-claude-proxy-usage.md)
-that browses Claude Code's own per-project auto-memory files on this device: every project
-that has written memories, that project's `*.md` memory files with size and mtime, and any
-single file rendered in full. Three levels — `/projects`, `/projects/$project`,
-`/projects/$project/memory/$name` — served by three read-only `GET` endpoints over
-`~/.claude/projects`. It never writes.
+that browses Claude Code's own per-project auto-memory files on this device, across three
+levels — `/projects`, `/projects/$project`, `/projects/$project/memory/$name` — served by
+three read-only `GET` endpoints over `~/.claude/projects`. It never writes.
 
 ## Motivation
 
 Claude Code accumulates auto-memory as flat `*.md` files under its own state directory,
 one `memory/` dir per project (with `MEMORY.md` as the index). Those files shape what
 Claude recalls in later sessions, but they live in path-encoded directories like
-`-Users-me-Documents-app` — unlistable by eye, easy to forget, and hard to compare across
-projects. Reading them in one place answers the questions the filesystem hides: *which
-projects have memory at all, how much, which files are stale, and what does a given memory
-actually say* — before you wonder why Claude "remembers" something surprising.
+`-Users-me-Documents-app` — unlistable by eye and hard to compare across projects. One
+place to read them answers which projects have memory, how much, which files are stale,
+and what a given memory says.
 
 Unlike the rest of the analytics, this reads **device config, not proxy traffic**: its data
 comes from files Claude Code writes for itself, never from the proxy's audit logs. It shares
@@ -96,15 +93,16 @@ sidecars are read anywhere along it.
       inside the projects root / the project's `memory/` dir before any read; bad names are
       400 and missing ones 404.
 - [x] Read-only: the three routes are `GET`-only JSON reads, there is no POST/PUT/DELETE
-      route for memories and no write call anywhere in `server/src`, so the dashboard can
-      never create, edit, or delete a memory file.
+      route for memories and no write call on the projects path (`server/src/projects.ts`
+      uses only `readdir`/`stat`/`readFile`). The one destructive route in `server/src` is
+      the unrelated `POST /api/jobs/delete`.
 - [x] Reads device config only — no audit-log or sidecar data feeds this section.
 
 ## Open questions
 
-- `server/src/projects.ts` has no unit tests (the repo's tests live under
-  `packages/core/test/`), so the path-safety checks — the one security-relevant part of this
-  feature — are unverified by CI.
+- `server/src/projects.ts` has no unit tests — `server/test/` covers jobs, chat, sessions
+  and usage but not projects — so the path-safety checks, the one security-relevant part of
+  this feature, are unverified by CI.
 - `CLAUDE_PROJECTS` is referenced nowhere but `server/src/projects.ts`: no README, env
   sample, or doc mentions it, so the override is effectively undiscoverable.
 - Memory discovery is deliberately flat (`*.md` directly in `memory/`); whether nested

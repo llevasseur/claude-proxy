@@ -10,7 +10,7 @@ timestamp: 2026-07-24
 
 ## Summary
 
-Every Claude Code request carries the full running `messages[]`, so the proxy can keep a
+Every Claude Code request carries the full running `messages[]`, so the proxy keeps a
 durable, append-only record of what each agent did with no agent-side hook: one distilled
 Markdown transcript per conversation thread under `logs/sessions/`. The
 [admin dashboard](admin-dashboard-for-claude-proxy-usage.md) lists those transcripts, reads
@@ -19,60 +19,65 @@ transcript grows on screen while the agent is still working.
 
 ## Motivation
 
-The audit sidecars are per-*request*: one `.audit.json` per `/v1/messages` call, excellent
-for token/cost/context math and useless for "what did that agent actually do?" — a
-conversation is a thread of many requests. Session-level attribution was explicitly listed
-**out of scope** in [`2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md)
-("**Sessions** are intentionally omitted — the logs carry no reliable session ID", and again
-under Out of scope: "Session-level attribution (no session ID in logs)"). Two observations
-made it possible after all. First, Claude Code *does* send `x-claude-code-session-id` on every
-request — `extractSession` in `proxy/proxy.mjs` reads it (alongside the `account_uuid` /
-`session_id` / `device_id` ids inside the `metadata.user_id` blob). Second, that header alone
-is not enough, because one session id covers the main agent, its subagents, and one-shot
-helpers; but since each request replays the whole conversation, `proxy/session.mjs` can key a
-thread by *(session id + a fingerprint of its first user message)* and separate them. The
-"no reliable session ID" blocker was really a granularity problem, and the wire already
-carried the fix.
+The audit sidecars are per-*request*: one `.audit.json` per `/v1/messages` call, good for
+token/cost/context math and useless for "what did that agent actually do?" — a conversation
+is a thread of many requests. Session-level attribution was listed **out of scope** in
+[`2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md)
+("Session-level attribution (no session ID in logs)"). Two observations made it possible
+after all. First, Claude Code *does* send `x-claude-code-session-id` on every request —
+`extractSession` in `proxy/proxy.mjs` reads it (alongside the `account_uuid` / `session_id` /
+`device_id` ids inside the `metadata.user_id` blob). Second, that header alone is not enough,
+because one session id covers the main agent, its subagents, and one-shot helpers; but since
+each request replays the whole conversation, `proxy/session.mjs` keys a thread by *(session id
++ a fingerprint of its first user message)* and separates them. The "no reliable session ID"
+blocker was really a granularity problem.
 
 ## Behavior
 
 - **Thread identity** — `threadIdFor` hashes `sessionId` + the thread's first real user text
   (SHA-256, first 16 hex chars). Transcripts are written to `<LOG_DIR>/sessions/<threadId>.md`,
   with a `<threadId>.state.json` progress sidecar so a proxy restart resumes instead of
-  re-appending. Growth is the filter for noise: a thread's first sighting is buffered in memory
-  and only flushed once it reappears larger, so a one-shot helper seen exactly once never
-  reaches disk.
+  re-appending, and a `<threadId>.nodes.jsonl` sidecar of `{"i":<index>,"text":…}` records the
+  full text behind each numbered step so a reader can retrieve it without re-reading the
+  captured request. Growth filters noise: a thread's first sighting is buffered in memory and
+  only flushed once it reappears larger, so a one-shot helper seen exactly once never reaches
+  disk.
 - **What a line records** — the header is written once (`# Session <threadId>`, then
   `- model:`, `- session:`, `- started:`, optionally `- title:` and `- subtitle:`), and each
   subsequent request appends only its new turns (`messages.slice(lastSeenCount)`), distilled to
   `## Task:` headings, `- decided:` (assistant text before a tool call), tool lines like
   `- Bash(command=…)` (name plus at most one allowlisted identifying arg, truncated),
   `- ✗ …` for an errored tool result, and `- done:` for an outcome. Never the system prompt,
-  tool schemas, tool-result payloads, or full prose.
+  tool schemas, or tool-result payloads. The `.md` line stays a distilled one-liner; the full
+  prose behind it lives only in the `.nodes.jsonl` sidecar.
 - **Title and subtitle** — the **subtitle** is the thread's opening prompt with its injected
   `<system-reminder>` blocks stripped and whitespace collapsed, known at first sighting. The
   **title** is the CLI's own generated chat title, which arrives out of band: the CLI asks for
   it in a *separate* `/v1/messages` request under a *different* session id, so
   `isTitleRequest` recognizes it by its system prompt, `extractTitle` pulls the `{"title": …}`
   reply, and it is linked back by content (the titling request's `<session>…</session>` payload
-  opens with the thread's reminder-free root prompt). A title that arrives *before* its thread
-  is confirmed is held and rides into the header; a title that arrives *after* the header was
-  flushed is appended as a standalone `- title:` line — which is why the parser in
+  opens with the thread's reminder-free root prompt). A title arriving *before* its thread is
+  confirmed is held and rides into the header; one arriving *after* the header was flushed is
+  appended as a standalone `- title:` line — which is why the parser in
   `packages/core/src/sessions.ts` does not confine `- title:` to the header block. A user
-  *renaming* a chat is local to the CLI and never hits the wire, so only generated titles are
-  observable.
-- **Sessions list** (`/sessions`) — **"Append-only agent transcripts the proxy captured"**, the
-  resolved `sessions/` path, and a card headed **"N sessions"** ("click a column to sort · click
-  a row to read the transcript"). Columns: **Session** (the generated title over the linked
-  thread id, with the subtitle — or first task — as a preview line), **Model**, **Tasks**,
-  **Tools**, **Errors**, **Updated**. Default order is **Updated** newest-first; every column
-  sorts, and clicking again flips direction. A non-zero **Errors** count links straight to that
-  session's errors page. Empty state: **"No session transcripts yet."**
-- **Session detail** (`/sessions/$id`) — title and subtitle as a heading, then stat tiles for
-  **Model**, **Started**, **Tasks**, **Tools**, **Decisions**, **Errors** (the Errors tile
-  is itself a link — **"view details →"** — when non-zero), and **Peak context**, the underlying
-  session id and file size, and a **"Transcript"** card with a **Pretty** / **Raw** toggle
-  (rendered Markdown vs. the raw file).
+  *renaming* a chat never hits the wire, so only generated titles are observable.
+- **Sessions list** (`/sessions`) — a chat client, not a table: a `SessionsSidenav` rail of
+  transcripts beside the chat pane, split into **Active** and **Resolved** sections, with a
+  **Search sessions** box, a **+** button to start a new chat, a draggable divider between rail
+  and pane, and a footer counting **"N active · M resolved"**. Each row shows the session's name
+  over a preview line. The resolved sessions directory is a footnote under the chat
+  (`logs → <dir>`). Empty state: **"No session transcripts yet."**
+- **Session detail** (`/sessions/$id`) — `$id` accepts either a thread id or a dashboard chat
+  session uuid, which redirects to the thread the chat became. Title and subtitle as a heading,
+  then stat tiles for **Model**, **Started**, **Tasks**, **Tools**, **Decisions**, **Errors**
+  (the Errors tile is itself a link — **"view details →"** — when non-zero), and **Peak
+  context**, the underlying session id and file size, a **"live graph →"** link into the
+  [live session graph](live-session-graph.md), a live chat panel for a thread still running, and
+  a **"Transcript"** card with a **Pretty** / **Raw** toggle (rendered Markdown vs. the raw file).
+- **What a session is called** — `sessionName` takes the first of the CLI's generated **title**,
+  the **derived name** `deriveSessionName` computes into `meta.derivedTitle`, the **subtitle**,
+  and the **first task**. The derived rank exists because a thread the CLI never titled would
+  otherwise fall to a raw opening prompt.
 - **Peak context → Request breakdown** — the **Peak context** tile links into the Context
   section's [request breakdown](context-size-analytics.md) (`/context/$file`) for this session's
   largest captured request, showing its real input tokens over **"request breakdown →"** and how
@@ -95,7 +100,7 @@ carried the fix.
 - **From an error into the turn that produced it** — each entry ends with a **"View the full
   turn · message #n →"** link onto `/context/$file/message/$index`, the Request breakdown's
   Message details page, where the failed `tool_result` is rendered in full instead of the
-  transcript's one-line gist. The handle is recovered rather than stored: a transcript error
+  transcript's one-line gist. The handle is recovered rather than stored — a transcript error
   carries no pointer back to a request. `deriveRequestErrors` walks a captured body's
   `messages[]` for `tool_result` blocks flagged `is_error`, recording each one's array position
   (one entry per block — a single user turn can return several failures), and
@@ -108,11 +113,11 @@ carried the fix.
 - **Which requests the errors page opens** — `resolveSessionRequests` (shared with
   `buildSessionBreakdown`) returns every capture matching the session id, and
   `requestsToScan` picks at most **6** to read: the peak first, then an even walk along the
-  session's timeline. Largest-first is the wrong shape here — the biggest bodies cluster at the
-  end of a run, and once a session has compacted they are exactly the ones that dropped its
-  early failures. On a real 193-request session the only body still holding the first error
-  ranked **43rd by size**, past any budget worth spending, while a six-sample walk of the
-  timeline found it. Each body links whatever it can and later ones only fill the gaps, so
+  session's timeline. Largest-first is the wrong shape — the biggest bodies cluster at the end
+  of a run, and once a session has compacted they are exactly the ones that dropped its early
+  failures. On a real 193-request session the only body still holding the first error ranked
+  **43rd by size**, while a six-sample walk of the timeline found it. Each body links whatever
+  it can and later ones only fill the gaps, so
   different errors can point at different requests and the scan stops as soon as every error
   has a home. Errors that budget can't account for — along with every error on a transcript
   carrying no session id, or whose captures have been pruned or won't parse — read a muted
@@ -130,9 +135,11 @@ carried the fix.
   pulsing teal, amber, or coral dot.
 
 The data path is `proxy/session.mjs` (best-effort append on every observed request) →
-`logs/sessions/<threadId>.md` → `packages/core/src/sessions.ts` (`parseSessionTranscript`,
-`parseSessionErrors`) → `server` (`listSessions` / `readSession` behind `GET /api/sessions`,
-`/api/sessions/session`, `/api/sessions/errors` and the two SSE routes) → `apps/admin`. Thread
+`logs/sessions/<threadId>.md` plus its `.nodes.jsonl` sidecar →
+`packages/core/src/sessions.ts` (`parseSessionTranscript`, `parseSessionErrors`,
+`deriveSessionName`) → `server` (`listSessions` / `readSession` behind `GET /api/sessions`,
+`/api/sessions/session`, `/api/sessions/errors`, `/api/sessions/node-text?id=` for the sidecar's
+step texts, and the two SSE routes) → `apps/admin`. Thread
 ids come from the URL, so `resolveSessionFile` requires a 16-hex-char stem and confirms the
 resolved path stays inside `sessions/` — no traversal, 400 for a bad id and 404 for a missing
 transcript.
@@ -151,10 +158,10 @@ transcript.
       system prompts, tool schemas, or tool-result payloads.
 - [x] A title captured after the header was flushed is appended as its own `- title:` line and
       still parses.
-- [x] `/sessions` lists every transcript with tasks/tools/errors counts, sortable columns, and
-      newest-updated first; `/sessions/$id` shows the stat tiles plus the transcript in pretty
-      or raw form; `/sessions/$id/errors` lists every errored tool result with its task and
-      likely tool.
+- [x] `/sessions` shows every transcript in a searchable Active/Resolved rail beside a chat pane;
+      `/sessions/$id` shows the stat tiles plus the transcript in pretty or raw form, accepting a
+      chat session uuid as well as a thread id; `/sessions/$id/errors` lists every errored tool
+      result with its task and likely tool.
 - [x] The sessions list and one session both update live over SSE (400 ms / 150 ms debounce,
       25 s heartbeat), with the connection state shown on screen and the one-shot query as
       fallback.

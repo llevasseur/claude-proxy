@@ -38,7 +38,7 @@ allowed to do:
   capability; its filesystem scope is the server's checkout.
 - **`chat`.** The sandboxed posture: no tools, no device customizations, a scratch cwd.
   Nothing a prompt says can reach the filesystem. Select it with `CHAT_MODE=chat` or per
-  request; it is unchanged and remains fully supported.
+  request.
 
 `api` is always `chat` — a bare `/v1/messages` call has no harness to run a tool with, so
 asking for `agent` over it is rejected rather than silently downgraded. Design detail:
@@ -46,9 +46,9 @@ asking for `agent` over it is rejected rather than silently downgraded. Design d
 
 ## Motivation
 
-Sending through the proxy makes the dashboard both producer and reader: one client can
-exercise chat → live row → transcript end to end. A direct `api.anthropic.com` call would
-be invisible; proxied turns use production logging, redaction, Skim eligibility, and
+Sending through the proxy makes the dashboard both producer and reader: one client
+exercises chat → live row → transcript end to end. A direct `api.anthropic.com` call would
+be invisible; proxied turns get production logging, redaction, Skim eligibility, and
 transcription.
 
 ## Behavior
@@ -63,10 +63,9 @@ shows the hint, and returns `503`.
 **The headless `chat` child** uses no tools (`--tools ""`; audits show `0 tools`), a
 scratch cwd, and no device customizations: `--safe-mode --strict-mcp-config` disables
 CLAUDE.md, skills, plugins, hooks, MCP servers, custom commands, and subagents. The proxy
-URL goes through `--settings`, preventing a settings-file `env` block from overriding it.
-The repository README setup writes that block, so this override is expected.
-The first turn uses `--session-id <uuid>`, later turns `--resume`; `stream-json` output is
-decoded from the terminal `result`.
+URL goes through `--settings`, preventing a settings-file `env` block (which the repository
+README setup writes) from overriding it. The first turn uses `--session-id <uuid>`, later
+turns `--resume`; `stream-json` output is decoded from the terminal `result`.
 
 **The headless `agent` child** drops those three isolation flags so normal setting
 sources load, then applies flags parsed from the user's `claude` alias; withheld tools
@@ -79,8 +78,7 @@ is appended to Claude Code's own. Both modes strip `ANTHROPIC_API_KEY` /
 **Permission mode is per-session.** The start form chooses the standing
 `--permission-mode` for a headless `--print` child and pins it for the session.
 `CHAT_AGENT_PERMISSION_MODE` sets the form default. Values outside the four are warned,
-ignored, and replaced by `bypassPermissions`, avoiding a later CLI rejection and an
-unmatched select value.
+ignored, and replaced by `bypassPermissions`.
 
 - **`bypassPermissions` (the default).** Nothing is asked and nothing is denied: commands
   and git writes run. `/task` needs this, so the form opens on it.
@@ -105,9 +103,8 @@ the detached child's whole process group: SIGTERM, then SIGKILL after 3s. Shells
 subagents are not orphaned. The in-flight send returns received text/tool chips tagged
 `interrupted: "stopped"`; clock interruptions preserve output through the same path.
 
-**Turns are timed on silence.** A healthy `/revive` streamed for 294s but the old 300s
-elapsed cap killed it with an unapplied edit. Under `--output-format stream-json`, wedged
-tools/prompts instead stop emitting. `cli` therefore uses `CHAT_IDLE_TIMEOUT_MS` (default
+**Turns are timed on silence.** Under `--output-format stream-json`, wedged tools/prompts
+stop emitting rather than running long. `cli` therefore uses `CHAT_IDLE_TIMEOUT_MS` (default
 5m, re-armed by stdout/stderr; `interrupted: "timeout"`) plus `CHAT_MAX_TURN_MS` (default
 1h ceiling; `"limit"`). If the idle variable is unset, `CHAT_TIMEOUT_MS` supplies it for
 backward compatibility. Under `api`, `CHAT_TIMEOUT_MS` remains a total-elapsed HTTP cap.
@@ -120,15 +117,14 @@ idle, exposes no content, and keeps open GET CORS.
 **Effective permission mode is reported.** The opening `system`/`init` event is read
 immediately and returned as `effectivePermissionMode` beside requested `permissionMode`.
 The start form and running bar expose divergence, such as an older server pinning its
-default, instead of making denials look like a broken agent.
+default.
 
-**Mode and permission mode are pinned at start** and cannot change later, so the first
-request records what the session could do.
+**Mode and permission mode are pinned at start** and cannot change later.
 
 **Sessions are evicted.** "New chat" calls `POST /api/chat/sessions/end`, stops any
 in-flight turn, and removes the session from memory. The dashboard chooses and sends the
-session id at start because it is the `stop` handle; waiting for the response would make
-the first, potentially long, turn unstoppable.
+session id at start because it is the `stop` handle; waiting for the response would leave
+the first turn unstoppable.
 
 **Request shape** under `api` is copied from a captured Claude Code request and defaulted to it:
 `model: claude-opus-5`, `max_tokens: 64000`, `stream: true`,
@@ -145,7 +141,8 @@ turns, and `CHAT_ALLOWED_ORIGINS` for the write surface — and per-request by
 start.
 
 **Chat routes do not answer `*`.** Read routes serve
-`access-control-allow-origin: *`; the four command-capable POSTs echo only allowed
+`access-control-allow-origin: *`; the six command-capable POSTs (the four chat routes,
+suggestion status, job delete) echo only allowed
 origins—`http://localhost:5173` and `http://127.0.0.1:5173` by default, overridden by
 comma-separated `CHAT_ALLOWED_ORIGINS`. A declared foreign origin gets `403`; no-Origin
 clients such as curl/tests are unaffected. This scopes browsers but is not authentication.
@@ -167,8 +164,8 @@ transcript" link to `/sessions/$id`. It cannot predict the fingerprint because t
 wraps the first user message in unseen harness context.
 
 **Starts stay in their pane.** Send and reply remain on Sessions; the rail marks the run
-and exposes an "open transcript" link instead of navigating first to `/sessions/$id` and
-then replacing that URL. Because the unsent request has no thread fingerprint yet,
+and exposes an "open transcript" link rather than navigating to `/sessions/$id`. Because
+the unsent request has no thread fingerprint yet,
 `useChatThread(sessionId, enabled)` asks `GET /api/chat/thread?sessionId=`. The lookup
 reads the sessions directory, survives server restart, outlives the turn, and resolves
 ~2s into a real run so highlighting/linking appear before the answer.
@@ -194,8 +191,8 @@ plain-CSS app has no Tailwind or `components.json`, so `shadcn add` cannot be us
 
 Flow: `apps/admin` (Sessions page `PromptInput`) → `server` (`/api/chat/*`, `chat.ts`,
 `chat-cli.ts`) → `claude --print` *or* a keyed `fetch` → `proxy` (`/v1/messages`, logging +
-`session.mjs`) → `api.anthropic.com`. The chat routes are the only non-`GET` routes the
-server accepts; everything else stays read-only.
+`session.mjs`) → `api.anthropic.com`. The chat POSTs are four of the server's six write
+routes — suggestion status and job delete are the others; every other route stays read-only.
 
 ## Acceptance criteria
 
@@ -236,7 +233,7 @@ server accepts; everything else stays read-only.
 - [x] `POST /api/chat/stop` ends the turn in flight and the send returns the partial stream
       — text and tool chips — tagged `interrupted`, rather than an error. The whole process
       group goes, so tools the CLI started are not orphaned; covered against a stand-in CLI
-      that spawns a child of its own, and confirmed live against a real agent turn.
+      that spawns a child of its own.
 - [x] A timeout returns the same partial result rather than discarding stdout.
 - [x] The idle clock is re-armed by the child's own output, so a turn that keeps streaming
       outlives the window many times over and only the ceiling ends it; a turn that goes
@@ -249,8 +246,7 @@ server accepts; everything else stays read-only.
       with its partial tools, and left the list.
 - [x] The permission mode the child reports at startup is returned as
       `effectivePermissionMode`, while the turn is still running rather than after it, and a
-      divergence from the requested mode is shown rather than left to be inferred from a
-      turn full of denials.
+      divergence from the requested mode is shown.
 - [x] A failed tool chip carries its `tool_result` text, so a permission denial reads as a
       denial. Confirmed live: the chip shows `This command requires approval`.
 - [x] The chat POST routes answer only the dashboard origin, refuse a declared foreign
@@ -267,12 +263,9 @@ server accepts; everything else stays read-only.
       "open transcript" link appears once the thread id resolves, mid-turn.
 - [x] `GET /api/chat/thread?sessionId=` answers the transcript's thread id, `null` while it
       has yet to be written, `400` with no `sessionId`, and `400` for a `sessionId` that is
-      not a uuid — the same shape the POST routes validate. Confirmed live against an
-      existing transcript, an unknown id, and a real turn — which resolved ~2s in, while the
-      turn was still running.
+      not a uuid — the same shape the POST routes validate.
 - [x] The poll is bounded: after two minutes with no transcript the page stops asking and
-      says none arrived, rather than polling forever on a start that failed or on a uuid
-      someone typed into the address bar.
+      says none arrived.
 - [x] That page replaces its URL with the thread id once it resolves, so the address bar,
       a reload and a shared link all end on the transcript.
 - [x] The session page carries a chat section between the stats and the transcript showing
@@ -283,7 +276,7 @@ server accepts; everything else stays read-only.
       chips, Stop, the prompt in flight and an unsent draft in the composer — because it is
       held above the router rather than in the Sessions page's state.
 - [x] A start that fails shows its error in the pane it was typed in, and on the session page
-      when the chat is opened there, rather than dropping the section for want of a turn.
+      when the chat is opened there.
 
 ## Open questions
 
@@ -297,27 +290,25 @@ server accepts; everything else stays read-only.
   Code's own system prompt and its out-of-band titling request, so a CLI-started chat gets a
   real title in the sessions list and an `api` one does not. Comparing token counts across
   the two is not comparing like with like.
-- **Agent mode has no authentication.** Apart from chat and suggestion-status writes,
-  the locally bound server is read-only. Origin checks constrain browsers, not direct
+- **Agent mode has no authentication.** Apart from chat, suggestion-status and job-delete
+  writes, the locally bound server is read-only. Origin checks constrain browsers, not direct
   callers; exposing the port (tunnel or `0.0.0.0`) still needs authentication. Until then,
   use `CHAT_MODE=chat`.
 - **Tool activity is summarized, not streamed.** Chips name the tools a turn ran, mark
   failures and say why; arguments and full results are only in the proxy's transcript. A
   long agent turn still shows nothing until it finishes or is stopped.
 - **Permission mode is a standing answer, not a judgment.** A headless child cannot ask;
-  per-session choice narrows scope from server process to task, but `bypassPermissions`
-  remains all-or-nothing for anything reaching the port. Real approval requires streaming
-  permission requests to and from the dashboard.
+  `bypassPermissions` remains all-or-nothing for anything reaching the port. Real approval
+  requires streaming permission requests to and from the dashboard.
 - **Stopping is not resuming.** A stopped turn returns what it had, and the session stays
-  open for a follow-up, but the CLI's own view of that turn ended mid-flight; the next turn
-  resumes a session whose last turn was cut off rather than continuing the work in place.
+  open for a follow-up, but the next turn resumes a session whose last turn was cut off
+  rather than continuing the work in place.
 - **No UI screenshot evidence.** Browser automation was unavailable; verification used
-  API, typecheck, and build. Navigation seams were proven against a real transcript/turn
-  and the id attaching chat to the session page, but the flow was not watched visually.
-- **The chat is one at a time, and in memory.** Held above the router now rather than in a
-  page, so it survives navigation, but not a reload and not a second concurrent chat.
-  "New chat" still evicts it. A tab reloaded onto a pre-resolution URL recovers the
-  transcript and loses the turn log.
+  API, typecheck, and build. The flow was not watched visually.
+- **The chat is one at a time, and in memory.** Held above the router, so it survives
+  navigation, but not a reload and not a second concurrent chat. "New chat" still evicts
+  it. A tab reloaded onto a pre-resolution URL recovers the transcript and loses the turn
+  log.
 
 ## Related
 
