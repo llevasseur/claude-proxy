@@ -108,7 +108,51 @@ cutover.
   the substrate serves by default and `DB_READS=0` puts every route back on the
   scan. That is still reversible in the sense this decision meant — the log
   files are untouched, so the fallback needs no migration to undo.
-- Slice 6 — the proxy writing rows and content-addressed blobs, authored state
-  moving in, `/revive` taught the DB — is the irreversible step and is
-  deliberately left unspecified until slice 5 proves the schema. See
-  [Map: SQLite as the query substrate](../wayfinder/map-sqlite-substrate.md).
+- Slice 6 was left unspecified until slice 5 proved the schema. It was then
+  specified as retention and lifecycle ownership, **not** the cutover — see the
+  next section. The disposable view is therefore permanent architecture, not a
+  staging state. See
+  [Map: SQLite as the query substrate](../wayfinder/map-sqlite-substrate.md) and
+  [Retention lifecycle](../features/retention-lifecycle.md).
+
+## Considered and rejected — the proxy as writer
+
+Slice 6 was sketched above as the irreversible cutover: the proxy writing rows
+directly, request bodies moving into content-addressed blobs, authored state
+(suggestion status, chat) moving into the DB, and `/revive` taught to read it.
+With slice 5 shipped and the corpus measured, that cutover was **rejected**.
+
+The measurement, across 16,581 captured request triples:
+
+| What | Bytes | Share |
+|------|-------|-------|
+| `.request.txt` bodies | 3.45 GB | 51% |
+| `.md` bodies | 3.05 GB | 45% |
+| `.audit.json` sidecars | 0.07 GB | 1% |
+| `logs/sessions/` transcripts | 6.8 MB | ~0% |
+
+And the sidecars are **losslessly** represented in the schema: across 1,500 live
+sidecars, every field path that occurs — timestamp, model, endpoint, status, all
+five token fields, all four request fields, tools, all six session fields, all
+four skim fields, all 15 distinct rate-limit headers — maps to a column.
+
+That combination is what kills the cutover. Simply **evicting the bodies past a
+retention window buys 98.6% of the disk win at zero irreversibility**: the
+sidecars stay, so `rm logs/claude-proxy.db && pnpm --filter server ingest` still
+reconstructs the whole database from files, and no data lives only inside SQLite.
+Content-addressed blobs would buy the remaining 1.4% by making the DB the sole
+home of data that cannot be re-derived — trading the recovery path for a rounding
+error.
+
+The same reasoning disposes of the rest of the sketch. Making the proxy a writer
+puts a database write on the request path of the thing that must never break, in
+exchange for freshness the ingest already provides. Moving authored state in
+gives up plain-file editability for tables nothing queries in aggregate. And
+teaching `/revive` to read the DB removes the property that makes it trustworthy:
+it works off disk, with no server and no schema, which is exactly when a run needs
+recovering.
+
+What shipped instead is retention and lifecycle ownership: this repo archives and
+evicts its own logs, keeps every sidecar forever, and reports an evicted body as a
+typed state carrying the retained metrics. The campaign is complete at slice 6;
+the substrate stays a disposable view of the files, permanently.
