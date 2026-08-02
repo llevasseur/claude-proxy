@@ -64,6 +64,7 @@ import { resolveJobsDir } from "./jobs.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
+import { resolveSettingsPath } from "./settings.js";
 import { resolveUsageLimits } from "./usage-config.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
@@ -808,16 +809,17 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         const detail = url.searchParams.get("detail");
-        send(
-          res,
-          200,
-          await buildSuggestionStatus(LOG_DIR, {
-            buckets,
-            statuses,
-            recurrences,
-            detail: detail === "1" || detail === "true",
-          }),
-        );
+        const filter = {
+          buckets,
+          statuses,
+          recurrences,
+          detail: detail === "1" || detail === "true",
+        };
+        const status = await buildSuggestionStatus(LOG_DIR, filter);
+        send(res, 200, status);
+        // Only the derived half has a DB path; the authored status file is read
+        // identically either way, so a mismatch here is a substrate bug.
+        shadow(SUGGESTION_STATUS_ROUTE, status, (source) => buildSuggestionStatus(LOG_DIR, filter, source));
         return;
       }
       case "/api/sessions/errors": {
@@ -892,15 +894,33 @@ const server = http.createServer(async (req, res) => {
       case "/api/chat/sessions/end":
         await servePost(req, res, async (body) => endChat({ sessionId: body.sessionId }));
         return;
-      case "/api/skim":
-        send(res, 200, await buildSkim(LOG_DIR, date));
+      // The three below pin `now` rather than letting the builder default it, so
+      // the shadow read is evaluated against the same clock as the served answer
+      // and a day boundary crossed between them cannot look like a mismatch.
+      case "/api/skim": {
+        const now = new Date();
+        const skim = await buildSkim(LOG_DIR, date, now);
+        send(res, 200, skim);
+        shadow("/api/skim", skim, (source) => buildSkim(LOG_DIR, date, now, source));
         return;
-      case "/api/skim/trend":
-        send(res, 200, await buildSkimTrend(LOG_DIR, parseDays(url.searchParams.get("days"))));
+      }
+      case "/api/skim/trend": {
+        const now = new Date();
+        const days = parseDays(url.searchParams.get("days"));
+        const trend = await buildSkimTrend(LOG_DIR, days, now);
+        send(res, 200, trend);
+        shadow("/api/skim/trend", trend, (source) => buildSkimTrend(LOG_DIR, days, now, source));
         return;
-      case "/api/withheld":
-        send(res, 200, await buildWithheld(LOG_DIR, parseDays(url.searchParams.get("days"))));
+      }
+      case "/api/withheld": {
+        const now = new Date();
+        const days = parseDays(url.searchParams.get("days"));
+        const settingsPath = resolveSettingsPath();
+        const withheld = await buildWithheld(LOG_DIR, days, settingsPath, now);
+        send(res, 200, withheld);
+        shadow("/api/withheld", withheld, (source) => buildWithheld(LOG_DIR, days, settingsPath, now, source));
         return;
+      }
       case "/api/hooks-plugins":
         send(res, 200, await buildHooksPlugins());
         return;

@@ -3,11 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { buildSessionSuggestions } from "../src/api.js";
 import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from "../src/command-runs.js";
 import { ingest } from "../src/db/ingest.js";
 import { openDb } from "../src/db/open.js";
 import { dbSource, fileSource } from "../src/db/source.js";
 import { resolveLogDir } from "../src/logs.js";
+import { resolveSettingsPath } from "../src/settings.js";
+import { updateSuggestionStatusStore } from "../src/suggestion-status.js";
 import {
   archivedDays,
   NORMALIZATIONS,
@@ -88,7 +91,14 @@ async function writeTriple(dir: string, iso: string, opts: SidecarOpts & { blobs
   await writeFile(path.join(dir, `${stem}.audit.json`), JSON.stringify(sidecarBody(iso, opts)), "utf8");
   if (opts.blobs !== false) {
     await writeFile(path.join(dir, `${stem}.md`), `# ${iso}\n`, "utf8");
-    await writeFile(path.join(dir, `${stem}.request.txt`), JSON.stringify({ messages: [] }), "utf8");
+    // A real last-user-turn, distinct per request: `/api/skim` reads it out of
+    // this body, so an empty `messages` would make the skim text uniformly null
+    // and the route's parity vacuous.
+    await writeFile(
+      path.join(dir, `${stem}.request.txt`),
+      JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: `ask at ${iso}` }] }] }),
+      "utf8",
+    );
   }
 }
 
@@ -256,6 +266,43 @@ async function buildCorpus(): Promise<string> {
   return logDir;
 }
 
+/**
+ * A device settings file for `/api/withheld` to read its deny-list from. Written
+ * into the corpus and pinned on the context so the replay does not depend on
+ * whatever this machine's `~/.claude/settings.json` happens to hold.
+ */
+async function writeSettings(logDir: string): Promise<string> {
+  const file = path.join(logDir, "settings.json");
+  await writeFile(
+    file,
+    JSON.stringify({
+      permissions: { deny: ["WebSearch", "Bash(rm:*)"] },
+      disableAllHooks: true,
+      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo hi" }] }] },
+      enabledPlugins: { "example@marketplace": true },
+    }),
+    "utf8",
+  );
+  return file;
+}
+
+/**
+ * Flag one suggestion, so `/api/sessions/suggestions/status` replays a real join
+ * rather than an all-unflagged one. The flags themselves are authored state and
+ * never enter the DB — the join's *left* side is what the substrate supplies.
+ */
+async function flagOneSuggestion(logDir: string): Promise<void> {
+  const { buckets } = await buildSessionSuggestions(logDir, fileSource);
+  const bucket = buckets[0];
+  const suggestion = bucket?.suggestions[0];
+  if (!bucket || !suggestion) return;
+  await updateSuggestionStatusStore(
+    logDir,
+    [{ bucket: bucket.index, id: suggestion.id, status: "done", note: "handled" }],
+    new Date("2026-07-18T00:00:00.000Z"),
+  );
+}
+
 /** Replay every registered route's every case, and return the ones that differed. */
 async function mismatches(ctx: ParityContext, db: DatabaseSync): Promise<string[]> {
   const fromDb = dbSource(db);
@@ -288,7 +335,8 @@ describe("route parity over a synthetic corpus", () => {
     // The store under test is the one the reconcile pass writes, not a fixture, so
     // the record shapes are whatever the real distiller produces.
     await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-18T00:00:00.000Z"));
-    ctx = { logDir, limits: resolveUsageLimits({}), commandsDir };
+    await flagOneSuggestion(logDir);
+    ctx = { logDir, limits: resolveUsageLimits({}), commandsDir, settingsPath: await writeSettings(logDir) };
     db = openDb(logDir);
     await ingest(db, logDir);
   });
@@ -489,8 +537,14 @@ describe("route parity over a synthetic corpus", () => {
   });
 });
 
-/** The inputs a wired route reads out of the log directory. */
-const SNAPSHOT_SUFFIXES = [".audit.json"];
+/**
+ * The inputs a wired route reads out of the log directory.
+ *
+ * `.request.txt` joined in slice 4: `/api/skim` parses the captured body for the
+ * last user turn, so leaving it out would make both sides read `null` and the
+ * route's parity vacuous. It is write-once, so a hardlink freezes it.
+ */
+const SNAPSHOT_SUFFIXES = [".audit.json", ".request.txt"];
 
 /**
  * What `sessions/` contributes. Separate from {@link SNAPSHOT_SUFFIXES} because
@@ -500,8 +554,16 @@ const SNAPSHOT_SUFFIXES = [".audit.json"];
  */
 const SESSION_SUFFIXES = [".md", ".nodes.jsonl", ".state.json"];
 
-/** Live files a route reads that are not sidecars, and that the proxy rewrites. */
-const SNAPSHOT_FILES = ["usage-live.json"];
+/**
+ * Live files a route reads that are not sidecars, and that get rewritten.
+ *
+ * Both are written temp-file-then-rename, so a hardlink genuinely freezes them:
+ * the rename swaps the directory entry and leaves the inode this snapshot holds
+ * untouched. `suggestion-status.json` is authored state that never enters the
+ * DB — it is the right-hand side of the join `/api/sessions/suggestions/status`
+ * replays.
+ */
+const SNAPSHOT_FILES = ["usage-live.json", "suggestion-status.json"];
 
 /**
  * Hardlink `from`'s snapshot-worthy files into `to`, copying across filesystems.
@@ -548,12 +610,12 @@ async function linkInto(
  * landing before the DB side reads shows up as a one-request mismatch that has
  * nothing to do with the substrate.
  *
- * Hardlinks the audit sidecars and `usage-live.json`, so the snapshot costs
- * directory entries rather than the corpus. `sessions/` is *copied* instead:
- * transcripts are appended to for the life of a run, and a hardlink would carry
- * those appends straight into the snapshot. The `.md` / `.request.txt` request
- * bodies are left out: no wired route reads them. A later slice that wires a
- * blob-reading route has to widen {@link SNAPSHOT_SUFFIXES}.
+ * Hardlinks the audit sidecars, the `.request.txt` bodies and the rewritten-by-
+ * rename files, so the snapshot costs directory entries rather than the corpus.
+ * `sessions/` is *copied* instead: transcripts are appended to for the life of a
+ * run, and a hardlink would carry those appends straight into the snapshot. The
+ * rendered `.md` bodies are still left out — no wired route reads them, and
+ * taking them would change which requests read as blob-evicted.
  *
  * `commands/runs.jsonl` is *copied* for the same reason `sessions/` is: the
  * reconcile pass appends to it while a run is in flight, and a hardlink would
@@ -588,6 +650,24 @@ async function snapshotCommandsDir(): Promise<string> {
 }
 
 /**
+ * A frozen copy of this machine's device settings, for `/api/withheld`.
+ *
+ * The shell rc that route also reads has no injection point, so it is read live
+ * by both replays. That is a settled non-risk: an rc edit landing in the
+ * milliseconds between the two reads would be a genuine difference in the input,
+ * and the file is not one anything writes automatically.
+ */
+async function snapshotSettings(): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), "parity-real-settings-"));
+  const dest = path.join(dir, "settings.json");
+  await copyFile(resolveSettingsPath(), dest).catch(() => {
+    // No settings on this machine: an unreadable file is a state the route
+    // already handles, and both sides see it alike.
+  });
+  return dest;
+}
+
+/**
  * The same replay against this machine's real archive, snapshotted first.
  * Skipped where there is no archive to replay — a clean clone, or CI.
  */
@@ -595,6 +675,7 @@ describe("route parity over the real logs/archive", () => {
   let days: string[] = [];
   let snapshot: string | null = null;
   let commandsDir: string | null = null;
+  let settingsPath: string | null = null;
   let db: DatabaseSync | null = null;
 
   beforeAll(async () => {
@@ -603,6 +684,7 @@ describe("route parity over the real logs/archive", () => {
     if (!days.length) return;
     snapshot = await snapshotLogs(logDir, days);
     commandsDir = await snapshotCommandsDir();
+    settingsPath = await snapshotSettings();
     db = openDb(snapshot);
     await ingest(db, snapshot);
   }, 300_000);
@@ -625,7 +707,15 @@ describe("route parity over the real logs/archive", () => {
       return;
     }
     expect(
-      await mismatches({ logDir: snapshot, limits: resolveUsageLimits({}), commandsDir: commandsDir ?? undefined }, db),
+      await mismatches(
+        {
+          logDir: snapshot,
+          limits: resolveUsageLimits({}),
+          commandsDir: commandsDir ?? undefined,
+          settingsPath: settingsPath ?? undefined,
+        },
+        db,
+      ),
     ).toEqual([]);
   }, 600_000);
 });
