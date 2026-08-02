@@ -151,9 +151,8 @@ export async function listInstalledCommands(dir: string): Promise<InstalledComma
 /**
  * Read the store, newest record per run id winning.
  *
- * Keying on {@link runKey} rather than the thread id is what lets a nested run share its
- * host's session without colliding with it, and it leaves records written before nested
- * runs existed keyed exactly as they were.
+ * Keying on {@link runKey} rather than the thread id lets a nested run share its host's
+ * session without colliding with it, and leaves older records keyed as they were.
  *
  * Every layer here is tolerant, because the file is append-only and long-lived: a line
  * that doesn't parse is skipped, and a record from a different schema version is
@@ -268,11 +267,10 @@ export async function reconcileCommandRuns(
   const byCommand = new Map(installed.map((c) => [c.command, c]));
   const priorByKey = new Map(existing.map((r) => [runKey(r), r]));
 
-  // A run is any session whose opening prompt carries the command envelope — and any
-  // command that session invokes inside itself. A nested `/clean` is a run in its own
-  // right and still rolls up into its parent, because it is a *slice* of the parent's
-  // own transcript rather than a separate one: both readings are wanted, and taking the
-  // slice twice is what makes them agree instead of double-counting.
+  // A run is any session whose opening prompt carries the command envelope, and any
+  // command that session invokes inside itself. A nested one is a *slice* of its
+  // parent's transcript rather than a separate one, so it is a run in its own right and
+  // still rolls up — both readings are wanted, and they agree rather than double-count.
   const targets: { graph: SessionGraph; identity: RunIdentity }[] = [];
   for (const graph of graphs) {
     const envelope = parseCommandEnvelope(await readRootPrompt(logDir, graph.threadId));
@@ -301,8 +299,7 @@ export async function reconcileCommandRuns(
           spawnNode: nested.from,
           range: { from: nested.from, to: nested.to },
           command: nested.command,
-          // The CLI substitutes a nested command's arguments into the body it injects and
-          // keeps no envelope, so there is nothing here to record rather than guess at.
+          // No envelope survives a nested call, so there is nothing to record here.
           args: "",
           flags: [],
           prompt: "",
@@ -403,7 +400,7 @@ function sameRun(a: CommandRun, b: CommandRun): boolean {
  * A nested run is built by the same code against a slice of the same transcript:
  * `identity.range` narrows which nodes are the run's spine, which subagents belong to
  * it, and which of the host thread's turns it is charged. A top-level run has no range
- * and takes the lot, so the two readings sum rather than compete.
+ * and takes the lot.
  */
 function buildRun(input: {
   graph: SessionGraph;
@@ -424,8 +421,7 @@ function buildRun(input: {
     range === null || (node !== null && node >= range.from && node < range.to);
 
   // The family: this session plus the subagents beneath it — for a nested run, only the
-  // ones it spawned itself, so a delegation its parent made before invoking it isn't
-  // charged here.
+  // ones it spawned itself.
   const family = range ? nestedFamily(graph.threadId, byThread, range) : familyOf(graph.threadId, byThread);
   const familySet = new Set(family);
 
@@ -598,8 +594,7 @@ function familyOf(threadId: string, byThread: Map<string, SessionGraph>): string
 
 /**
  * A nested run's thread family: its host session plus only the subagents spawned inside
- * its span, each with everything beneath it. A `/task` that delegated before invoking
- * `/clean` keeps that subagent for itself.
+ * its span, each with everything beneath it.
  */
 function nestedFamily(
   threadId: string,

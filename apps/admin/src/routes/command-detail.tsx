@@ -555,8 +555,7 @@ function RunList({
               onClick={() => navigate({ to: "/commands/$command/$runId", params: { command, runId: r.runId } })}
             >
               <td className="num muted">{r.started ? fmtLocalTsShort(r.started) : "—"}</td>
-              {/* A nested run has no prompt of its own — the CLI substitutes its arguments
-                  away — so it is named by the run that invoked it instead. */}
+              {/* A nested run has no prompt of its own, so it is named by its parent. */}
               <td className="runprompt">
                 {r.prompt || (
                   <span className="muted">{r.parentCommand ? `nested in /${r.parentCommand}` : "no prompt recorded"}</span>

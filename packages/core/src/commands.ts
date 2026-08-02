@@ -3,10 +3,9 @@
  * its declared steps the tokens went to, and where it stopped.
  *
  * A **run** is any session whose opening prompt carries the CLI's `<command-name>`
- * envelope, plus every command a run invokes inside itself — a `/clean` under a
- * `/task` is a run of its own *and* part of its parent. Capture is passive: every real
- * invocation is a run, with no tagging. See {@link findNestedInvocations} for why a
- * nested one is found on its `Skill(…)` call rather than on an envelope.
+ * envelope, plus every command a run invokes inside itself, which is a run of its own
+ * *and* part of its parent. Capture is passive: every real invocation is a run, with no
+ * tagging. A nested one is found on its `Skill(…)` call — see {@link findNestedInvocations}.
  *
  * The **step catalogue** is the `## Step N` headings of the installed command file
  * (`~/.claude/commands/<name>.md`). It is snapshotted into each run record along with
@@ -418,18 +417,15 @@ export function stepConfidence(attributions: readonly StepAttribution[], step: s
 
 // --- Nested runs -----------------------------------------------------------
 //
-// A command the agent invokes mid-session carries no envelope to find it by. The CLI
-// expands the call itself: it injects the command file's body as an ordinary user turn
-// with `$ARGUMENTS` already substituted, and strips the `<command-name>` tags the typed
-// form arrives with. So the `Skill(skill=…)` call the agent made is the only durable
-// marker, and it is one the transcript already records.
+// A command invoked mid-session carries no envelope: the CLI expands the call itself,
+// injecting the command file's body as an ordinary user turn with `$ARGUMENTS`
+// substituted and the `<command-name>` tags stripped. The `Skill(skill=…)` call the
+// transcript already records is the only durable marker.
 
 /**
  * The command a node invokes as a nested run, or null when it invokes none.
  *
- * `isCommand` is what keeps this honest: `Skill` also launches plain skills, which are
- * not commands and have no step catalogue, so only names the installed catalogue knows
- * open a run.
+ * `Skill` also launches plain skills, so only names `isCommand` knows open a run.
  */
 export function nestedCommandOf(node: SessionNode, isCommand: (name: string) => boolean): string | null {
   if (node.type !== "tool" || !node.tool) return null;
@@ -452,10 +448,9 @@ export interface NestedInvocation {
  * Every command a transcript invokes inside itself, in order, each holding the nodes
  * from its call until the next nested command opens — or, for the last one, to the end.
  *
- * Nothing marks where a nested command *finishes*: it returns by the agent simply
- * carrying on in the same thread. Running each span to the next invocation is the
- * reading that matters in practice, since the pattern being measured is `/clean` then
- * `/pr` at the tail of a `/task`, and it never charges a node to two nested runs.
+ * Nothing marks where a nested command *finishes* — it returns by the agent simply
+ * carrying on in the same thread — so a span runs to the next invocation, which never
+ * charges a node to two nested runs.
  */
 export function findNestedInvocations(
   nodes: readonly SessionNode[],
@@ -780,11 +775,7 @@ export interface CommandRun {
   runId: string;
   /** The run that invoked this one, or null when nothing did. */
   parentRunId: string | null;
-  /**
-   * That run's command, so a nested record can name and link its parent on its own. The
-   * store has to stand without the raw logs, and the parent's record may be filtered out
-   * of whatever view is asking.
-   */
+  /** That run's command, so a nested record can name and link its parent on its own. */
   parentCommand: string | null;
   /** The host node holding the `Skill(…)` call that opened it; null at top level. */
   spawnNode: number | null;
@@ -842,8 +833,8 @@ export function isCommandRun(value: unknown): value is CommandRun {
 
 /**
  * A record's store key. Records written before nested runs carry no `runId` and were
- * keyed by thread id, which for a top-level run is the same string — so the upsert stays
- * stable across the schema bump rather than duplicating every run already written.
+ * keyed by thread id, which for a top-level run is the same string, so the upsert stays
+ * stable across the schema bump.
  */
 export function runKey(run: CommandRun): string {
   return run.runId || run.threadId;
