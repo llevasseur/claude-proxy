@@ -437,8 +437,9 @@ const server = http.createServer(async (req, res) => {
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid request file name")) send(res, 400, { error: msg });
-          else if (msg.startsWith("request file not found")) send(res, 404, { error: msg });
-          else throw err;
+          else if (msg.startsWith("request file not found") || msg.startsWith("request body evicted")) {
+            send(res, 404, { error: msg });
+          } else throw err;
         }
         return;
       }
@@ -458,8 +459,9 @@ const server = http.createServer(async (req, res) => {
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid request file name")) send(res, 400, { error: msg });
-          else if (msg.startsWith("request file not found")) send(res, 404, { error: msg });
-          else if (msg.startsWith("message index out of range")) send(res, 404, { error: msg });
+          else if (msg.startsWith("request file not found") || msg.startsWith("request body evicted")) {
+            send(res, 404, { error: msg });
+          } else if (msg.startsWith("message index out of range")) send(res, 404, { error: msg });
           else throw err;
         }
         return;
@@ -480,8 +482,9 @@ const server = http.createServer(async (req, res) => {
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid request file name")) send(res, 400, { error: msg });
-          else if (msg.startsWith("request file not found")) send(res, 404, { error: msg });
-          else if (msg.startsWith("tool index out of range")) send(res, 404, { error: msg });
+          else if (msg.startsWith("request file not found") || msg.startsWith("request body evicted")) {
+            send(res, 404, { error: msg });
+          } else if (msg.startsWith("tool index out of range")) send(res, 404, { error: msg });
           else throw err;
         }
         return;

@@ -28,8 +28,9 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
 - `logs/` is the sole source of truth. The DB is a **disposable materialized
   view** — every table reconstructible by re-ingesting, total recovery is
   `rm logs/claude-proxy.db && pnpm --filter server ingest`.
-- **Authored state never goes in** (until slice 6 says otherwise, explicitly):
-  `logs/suggestion-status.json` and device settings stay JSON files.
+- **Authored state never goes in.** `logs/suggestion-status.json` and device
+  settings stay JSON files. Slice 6 was the one slice allowed to overturn this,
+  and it explicitly declined to — see its entry.
 - **Do not touch `proxy/`.** It is load-bearing — if it breaks, Claude Code
   stops working. The server does all ingest.
 - No new dependencies: `node:sqlite`, raw SQL, prepared statements,
@@ -153,14 +154,39 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
       the corpus precisely to freeze those appends. It has its own test now,
       which does the append the harness exists to prevent.*
 
-- [ ] **Slice 6 — Cutover. DELIBERATELY UNSPECIFIED.**
-      The shape is known: the proxy writes rows plus content-addressed blobs at
-      `blobs/<sha256>`, authored state moves in, and `/revive` is taught to read
-      the DB. The details are **not** to be designed until slice 5 has proven
-      the schema against real traffic, because this is the one irreversible
-      step — it is where the log files stop being the source of truth, and a
-      schema mistake carried into it cannot be fixed by deleting the database.
-      Do not pre-plan it here.
+- [x] **Slice 6 — Retention and lifecycle ownership.**
+      This repo takes over its own log lifecycle. A new
+      `pnpm --filter server maintain` (dry run by default, `--apply` to act)
+      archives past-day logs into `logs/archive/<date>/`, evicts `.md` and
+      `.request.txt` past `RETENTION_DAYS` (default 30) **per file inside an
+      archived day**, and prints the digest through `buildSummary` — no model
+      call, no network. Every `.audit.json` is kept forever and no day directory
+      is ever removed. The planner in `server/src/retention.ts` is pure, so it is
+      tested over a fixture corpus and no test can delete a real log. On the read
+      side, a missing body stopped being an error: the three context routes
+      return a discriminated union carrying the retained sidecar metrics, the
+      dashboard renders "Body evicted after 30 days — metrics retained", and
+      `/api/skim` reports `meta.bodiesEvicted` derived identically by both
+      backings so parity stays byte-identical. The launchd agent is under version
+      control at `scripts/com.llevasseur.claude-proxy.maintain.plist`.
+      *This is deliberately **not** the cutover sketched below it. The proxy as
+      writer, content-addressed blobs, authored state moving in, and `/revive`
+      reading the DB were all **considered and rejected on measurement**: audit
+      sidecars are 1% of bytes and losslessly indexed, so eviction buys 98.6% of
+      the disk win at zero irreversibility. The reasoning is recorded in
+      [ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md#considered-and-rejected--the-proxy-as-writer);
+      the behaviour in
+      [Retention lifecycle](../features/retention-lifecycle.md).*
+      *What this replaced: an out-of-repo script
+      (`com.llevasseur.claude-usage-summary`) that had silently stopped archiving,
+      and whose pruner would have begun `rm -rf`-ing whole `archive/<date>/`
+      directories — sidecars included — around 2026-08-12, taking the DB rows for
+      that source directory with them.*
+
+**Campaign COMPLETE.** All six slices are checked. The substrate serves every
+read by default with `DB_READS=0` as the fallback, the log files remain the sole
+source of truth, and the DB stays a disposable view — permanently, not as a
+staging state.
 
 ## Resume runbook
 

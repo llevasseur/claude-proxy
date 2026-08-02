@@ -1,5 +1,6 @@
 import {
   analyzeRequestBody,
+  type AuditSidecar,
   computeDigest,
   deriveRequestErrors,
   deriveSessionNodes,
@@ -84,7 +85,16 @@ import {
 import { loadArchivedDigest } from "./archive.js";
 import { listInstalledCommands } from "./command-runs.js";
 import { fileSource, type SidecarSource } from "./db/source.js";
-import { readArchivedDay, readRequestBody, shiftDay, today } from "./logs.js";
+import {
+  locateRequestBody,
+  readArchivedDay,
+  readRequestBody,
+  readRetainedSidecar,
+  type RequestBodyLocation,
+  shiftDay,
+  today,
+} from "./logs.js";
+import { resolveRetentionDays } from "./retention.js";
 import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
 import { loadLiveUsage } from "./usage-live.js";
 import {
@@ -343,28 +353,76 @@ export async function buildContext(
   return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
 }
 
-export interface ContextDetailResponse {
+/**
+ * What every body-reading drill-down answers when retention has evicted the body
+ * it would have parsed. A normal terminal state, not an error: the sidecar is
+ * kept, so only the verbatim text is gone.
+ */
+export interface EvictedBodyResponse {
   file: string;
+  evicted: true;
+  /** The archived day the sidecar was filed under; `null` if it is still live. */
+  day: string | null;
+  /** The window bodies are kept for, so the UI can name it rather than assume it. */
+  retentionDays: number;
+  /** Everything the audit sidecar retains; `null` only if it is unreadable. */
+  retained: AuditSidecar | null;
+}
+
+/**
+ * Turn a location into the evicted response, or throw for `missing` (a 404).
+ * Returns `null` when the body is present and the caller should just read it.
+ */
+async function evictedOr404(
+  logDir: string,
+  file: string,
+  location: RequestBodyLocation,
+): Promise<EvictedBodyResponse | null> {
+  if (location.status === "present") return null;
+  if (location.status === "missing") throw new Error(`request file not found: ${file}`);
+  return {
+    file,
+    evicted: true,
+    day: location.day,
+    retentionDays: resolveRetentionDays(),
+    retained: await readRetainedSidecar(logDir, file, location.dir),
+  };
+}
+
+export interface ContextDetailPresent {
+  file: string;
+  evicted: false;
   breakdown: RequestBreakdown;
   /** Full request JSON, pretty-printed (possibly truncated). */
   raw: string;
   truncated: boolean;
 }
 
+export type ContextDetailResponse = ContextDetailPresent | EvictedBodyResponse;
+
 /**
  * The "why was it so large?" drill-down for one captured request: its
  * system/tools/message breakdown plus the raw request JSON. Reads exactly one
- * `.request.txt`. `file` is validated in {@link readRequestBody}.
+ * `.request.txt`, from the live directory or its archived day. `file` is validated
+ * in {@link locateRequestBody}. Answers {@link EvictedBodyResponse} once retention
+ * has evicted the body.
  */
 export async function buildContextDetail(logDir: string, file: string): Promise<ContextDetailResponse> {
+  const location = await locateRequestBody(logDir, file);
+  const evicted = await evictedOr404(logDir, file, location);
+  if (evicted) return evicted;
+
   const { body, raw, truncated } = await readRequestBody(logDir, file);
-  return { file, breakdown: analyzeRequestBody(body), raw, truncated };
+  return { file, evicted: false, breakdown: analyzeRequestBody(body), raw, truncated };
 }
 
-export interface ContextMessageResponse {
+export interface ContextMessagePresent {
   file: string;
+  evicted: false;
   message: RequestMessageDetail;
 }
+
+export type ContextMessageResponse = ContextMessagePresent | EvictedBodyResponse;
 
 /**
  * The full content of one conversation message from a captured request. Reads
@@ -374,16 +432,23 @@ export interface ContextMessageResponse {
  * Throws a labelled error the server maps to 404 when `index` is out of range.
  */
 export async function buildContextMessage(logDir: string, file: string, index: number): Promise<ContextMessageResponse> {
+  const location = await locateRequestBody(logDir, file);
+  const evicted = await evictedOr404(logDir, file, location);
+  if (evicted) return evicted;
+
   const { body } = await readRequestBody(logDir, file);
   const message = extractRequestMessage(body, index);
   if (!message) throw new Error(`message index out of range: ${index}`);
-  return { file, message };
+  return { file, evicted: false, message };
 }
 
-export interface ContextToolResponse {
+export interface ContextToolPresent {
   file: string;
+  evicted: false;
   tool: RequestToolDetail;
 }
+
+export type ContextToolResponse = ContextToolPresent | EvictedBodyResponse;
 
 /**
  * The full schema of one tool from a captured request. Reads exactly one
@@ -393,10 +458,14 @@ export interface ContextToolResponse {
  * error the server maps to 404 when `index` is out of range.
  */
 export async function buildContextTool(logDir: string, file: string, index: number): Promise<ContextToolResponse> {
+  const location = await locateRequestBody(logDir, file);
+  const evicted = await evictedOr404(logDir, file, location);
+  if (evicted) return evicted;
+
   const { body } = await readRequestBody(logDir, file);
   const tool = extractRequestTool(body, index);
   if (!tool) throw new Error(`tool index out of range: ${index}`);
-  return { file, tool };
+  return { file, evicted: false, tool };
 }
 
 export interface ProjectsResponse {
@@ -990,7 +1059,12 @@ export async function buildSessionGraphNodes(
 export interface SkimResponse {
   date: string;
   skim: SkimDigest;
-  meta: { files: number; parseErrors: number };
+  /**
+   * `bodiesEvicted` counts the sidecars here whose `.request.txt` is gone. Skim
+   * parses bodies for the last user turn, so an evicted one otherwise reads as a
+   * request that never had any text.
+   */
+  meta: { files: number; parseErrors: number; bodiesEvicted: number };
 }
 
 export async function buildSkim(
@@ -1000,19 +1074,20 @@ export async function buildSkim(
   source: SidecarSource = fileSource,
 ): Promise<SkimResponse> {
   const day = date ?? today(now);
-  const { sidecars, files, parseErrors } = await source.readSidecars(
+  const { sidecars, files, parseErrors, bodiesEvicted } = await source.readSidecars(
     logDir,
     { date: day, includeSkimRequests: true },
     now,
   );
   const skim = computeSkimDigest(sidecars, { date: day, topN: 50 });
-  return { date: day, skim, meta: { files, parseErrors } };
+  return { date: day, skim, meta: { files, parseErrors, bodiesEvicted: bodiesEvicted ?? 0 } };
 }
 
 export interface SkimTrendResponse {
   digests: SkimDigest[];
   topShapes: SkimShape[];
-  meta: { days: number; files: number; parseErrors: number };
+  /** `bodiesEvicted` as in {@link SkimResponse}, across the whole window. */
+  meta: { days: number; files: number; parseErrors: number; bodiesEvicted: number };
 }
 
 export async function buildSkimTrend(
@@ -1021,13 +1096,17 @@ export async function buildSkimTrend(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<SkimTrendResponse> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(
+  const { sidecars, files, parseErrors, bodiesEvicted } = await source.readSidecars(
     logDir,
     { sinceDays: days, includeSkimRequests: true },
     now,
   );
   const topShapes = computeSkimDigest(sidecars, { date: `${days}d`, topN: 50 }).topShapes;
-  return { digests: skimDigestsByDay(sidecars), topShapes, meta: { days, files, parseErrors } };
+  return {
+    digests: skimDigestsByDay(sidecars),
+    topShapes,
+    meta: { days, files, parseErrors, bodiesEvicted: bodiesEvicted ?? 0 },
+  };
 }
 
 export interface WithheldResponse {

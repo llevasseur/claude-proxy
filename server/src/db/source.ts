@@ -323,18 +323,31 @@ async function readDir(
   const sidecars: unknown[] = [];
   let parseErrors = 0;
   let kept = 0;
+  let bodiesEvicted = 0;
   for (const entry of entries) {
     if (keepDay && !keepDay(entry.day)) continue;
     const sidecar = entry.make();
     if (entry.parseError) parseErrors += 1;
     if (opts.includeSkimRequests && !entry.parseError) {
-      // The bodies stay on disk; the DB holds a pointer, not the blob.
+      // The bodies stay on disk; the DB holds a pointer, not the blob. The
+      // eviction count is read off the disk here too — a row's `blob_evicted` is
+      // only as fresh as the last ingest, and parity needs both sides answering
+      // from the same observation.
       const rel = sourceDir === LIVE ? `${entry.stem}.request.txt` : `${sourceDir}/${entry.stem}.request.txt`;
-      let text: string | null = null;
+      let raw: string | null = null;
       try {
-        text = latestUserText(JSON.parse(await readFile(path.join(logDir, rel), "utf8")));
+        raw = await readFile(path.join(logDir, rel), "utf8");
       } catch {
-        text = null;
+        raw = null;
+      }
+      let text: string | null = null;
+      if (raw === null) bodiesEvicted += 1;
+      else {
+        try {
+          text = latestUserText(JSON.parse(raw));
+        } catch {
+          text = null;
+        }
       }
       sidecar.skimRequestText = text ?? undefined;
     }
@@ -342,7 +355,7 @@ async function readDir(
     kept += 1;
     sidecars.push(sidecar);
   }
-  return { sidecars, files: kept, parseErrors };
+  return { sidecars, files: kept, parseErrors, bodiesEvicted };
 }
 
 /* ------------------------------------------------------------------ *
@@ -546,7 +559,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
     },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
     readArchivedDay: async (logDir, date, opts = {}) => {
-      const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0 };
+      const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0, bodiesEvicted: 0 };
       // Archive folders are named for the UTC day the summary job moved, so one
       // reporting day straddles two of them. Read both, keep only `date`.
       for (const day of [date, shiftDay(date, 1)]) {
@@ -554,6 +567,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
         out.sidecars.push(...r.sidecars);
         out.files += r.files;
         out.parseErrors += r.parseErrors;
+        out.bodiesEvicted = (out.bodiesEvicted ?? 0) + (r.bodiesEvicted ?? 0);
       }
       return out;
     },
