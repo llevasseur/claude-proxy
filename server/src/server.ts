@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import http from "node:http";
-import { isSuggestionStatus, parseBucketRange, parseSuggestionStatusUpdates, type SuggestionStatus } from "@claude-proxy/core";
+import {
+  isSuggestionRecurrence,
+  isSuggestionStatus,
+  parseBucketRange,
+  parseSuggestionStatusUpdates,
+  type SuggestionRecurrence,
+  type SuggestionStatus,
+} from "@claude-proxy/core";
 import {
   buildCommand,
   buildCommandRun,
@@ -690,8 +697,10 @@ const server = http.createServer(async (req, res) => {
         }
         const rangeParam = url.searchParams.get("range");
         const statusParam = url.searchParams.get("status");
+        const recurrenceParam = url.searchParams.get("recurrence");
         let buckets: number[] | undefined;
         let statuses: SuggestionStatus[] | undefined;
+        let recurrences: SuggestionRecurrence[] | undefined;
         try {
           if (rangeParam) buckets = parseBucketRange(rangeParam);
           if (statusParam) {
@@ -701,12 +710,28 @@ const server = http.createServer(async (req, res) => {
               return status;
             });
           }
+          if (recurrenceParam) {
+            recurrences = recurrenceParam.split(",").map((s) => {
+              const recurrence = s.trim();
+              if (!isSuggestionRecurrence(recurrence)) throw new Error(`invalid recurrence: ${recurrence}`);
+              return recurrence;
+            });
+          }
         } catch (err) {
           send(res, 400, { error: (err as Error).message });
           return;
         }
         const detail = url.searchParams.get("detail");
-        send(res, 200, await buildSuggestionStatus(LOG_DIR, { buckets, statuses, detail: detail === "1" || detail === "true" }));
+        send(
+          res,
+          200,
+          await buildSuggestionStatus(LOG_DIR, {
+            buckets,
+            statuses,
+            recurrences,
+            detail: detail === "1" || detail === "true",
+          }),
+        );
         return;
       }
       case "/api/sessions/errors": {

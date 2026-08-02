@@ -32,6 +32,7 @@ import type {
   SessionSuggestion,
   SkimDigest,
   SkimShape,
+  SuggestionRecurrence,
   SuggestionStatus,
   SuggestionStatusRow,
   SuggestionStatusUpdate,
@@ -314,6 +315,8 @@ export interface SuggestionStatusResponse {
     buckets: number[];
     missing: number[];
     counts: Record<SuggestionStatus, number>;
+    /** How the returned rows stand against their rules' dated `done`. */
+    recurrences: Record<SuggestionRecurrence, number>;
   };
 }
 /** The rows a write touched, re-read through the same join the list uses. */
@@ -501,11 +504,22 @@ export const getCommandRun = (threadId: string) =>
 export const getSessionSuggestions = () => get<SessionSuggestionsResponse>("/api/sessions/suggestions");
 export const getSessionSuggestionBucket = (index: number) =>
   get<SessionSuggestionBucketResponse>(`/api/sessions/suggestions/bucket?index=${index}`);
-/** The flags on those suggestions. `range` narrows to a bucket, list or span. */
-export const getSuggestionStatus = (opts: { range?: string; statuses?: SuggestionStatus[]; detail?: boolean } = {}) => {
+/**
+ * The flags on those suggestions. `range` narrows to a bucket, list or span;
+ * `recurrences` narrows by how each window stands against its rule's dated `done`.
+ */
+export const getSuggestionStatus = (
+  opts: {
+    range?: string;
+    statuses?: SuggestionStatus[];
+    recurrences?: SuggestionRecurrence[];
+    detail?: boolean;
+  } = {},
+) => {
   const params = new URLSearchParams();
   if (opts.range) params.set("range", opts.range);
   if (opts.statuses?.length) params.set("status", opts.statuses.join(","));
+  if (opts.recurrences?.length) params.set("recurrence", opts.recurrences.join(","));
   if (opts.detail) params.set("detail", "1");
   const query = params.toString();
   return get<SuggestionStatusResponse>(`/api/sessions/suggestions/status${query ? `?${query}` : ""}`);

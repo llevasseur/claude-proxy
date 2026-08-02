@@ -19,8 +19,9 @@ import {
   SkeletonText,
 } from "../components/Skeleton";
 import {
-  isResolved,
+  isSettled,
   SUGGESTION_STATUS_KEY,
+  SuggestionRecurrenceBadge,
   SuggestionStatusBadge,
   SuggestionStatusControl,
 } from "../components/SuggestionStatus";
@@ -53,9 +54,12 @@ export function SuggestionBucketPage() {
   const data = query.data;
   const statusById = new Map((statusQuery.data?.rows ?? []).map((row) => [row.id, row]));
   const counts = statusQuery.data?.meta.counts;
-  const resolvedCount = (counts?.done ?? 0) + (counts?.skipped ?? 0);
+  const recurrences = statusQuery.data?.meta.recurrences;
+  const regressed = recurrences?.regressed ?? 0;
+  // "Resolved" counts settled rows: acted on, or a window its rule's fix predates.
+  const resolvedCount = (statusQuery.data?.rows ?? []).filter((row) => isSettled(row)).length;
   const suggestions = (data?.bucket.suggestions ?? []).filter(
-    (s) => !hideResolved || !isResolved(statusById.get(s.id)?.status ?? "pending"),
+    (s) => !hideResolved || !isSettled(statusById.get(s.id)),
   );
 
   return (
@@ -98,7 +102,16 @@ export function SuggestionBucketPage() {
               <span className="muted">
                 from these {data.bucket.stats.sessions} transcripts
                 {resolvedCount > 0 && ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped`}
+                {(recurrences?.historical ?? 0) > 0 && ` · ${recurrences?.historical} predating the fix`}
               </span>
+              {regressed > 0 && (
+                <span
+                  className="badge recurrence-regressed"
+                  title="these sessions were all recorded after the rule was marked done"
+                >
+                  {regressed} regressed
+                </span>
+              )}
               {statusQuery.error && (
                 <span className="error">flags unavailable: {(statusQuery.error as Error).message}</span>
               )}
@@ -113,7 +126,7 @@ export function SuggestionBucketPage() {
                 <SuggestionCard key={s.id} suggestion={s} bucket={index} status={statusById.get(s.id)} />
               ))}
               {suggestions.length === 0 && data.bucket.suggestions.length > 0 && (
-                <div className="card empty">Every suggestion in this window has been acted on.</div>
+                <div className="card empty">Nothing left to act on in this window.</div>
               )}
             </div>
 
@@ -199,13 +212,17 @@ function SuggestionCard({
   bucket?: number;
   status?: SuggestionStatusRow;
 }) {
-  const resolved = isResolved(status?.status ?? "pending");
+  const settled = isSettled(status);
+  const regressed = status?.recurrence === "regressed";
   return (
-    <div className={`card advice sev-${s.severity}${resolved ? " is-resolved" : ""}`}>
+    <div
+      className={`card advice sev-${s.severity}${settled ? " is-resolved" : ""}${regressed ? " is-regressed" : ""}`}
+    >
       <div className="advice-head">
         <span className={`badge sev-${s.severity}`}>{SEV_LABEL[s.severity]}</span>
         <h3>{s.title}</h3>
         {status && <SuggestionStatusBadge status={status.status} />}
+        {status && <SuggestionRecurrenceBadge row={status} />}
       </div>
       <p>{s.detail}</p>
       <div className="advice-metric muted">evidence: {s.evidence}</div>

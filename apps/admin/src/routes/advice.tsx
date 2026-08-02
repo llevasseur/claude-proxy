@@ -1,11 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { SessionBucket, SuggestionStatus } from "@claude-proxy/core";
+import type { SessionBucket, SuggestionStatusRow } from "@claude-proxy/core";
 import { getSessionSuggestions, getSuggestionStatus, getSummary } from "../api";
 import { AdviceCard } from "../components/AdviceCard";
 import { QueryState } from "../components/QueryState";
 import { Skeleton, SkeletonCardList } from "../components/Skeleton";
-import { isResolved, STATUS_LABEL, SUGGESTION_STATUS_KEY } from "../components/SuggestionStatus";
+import {
+  isResolved,
+  isSettled,
+  RECURRENCE_LABEL,
+  STATUS_LABEL,
+  SUGGESTION_STATUS_KEY,
+} from "../components/SuggestionStatus";
 import { fmtInt, fmtLocalTsShort } from "../format";
 
 export function AdvicePage() {
@@ -46,11 +52,10 @@ function SessionSuggestions() {
   // Every bucket's flags in one lean call. Marking happens on the detail page.
   const statusQuery = useQuery({ queryKey: [SUGGESTION_STATUS_KEY, "all"], queryFn: () => getSuggestionStatus() });
   const buckets = query.data?.buckets ?? [];
-  const statusByKey = new Map(
-    (statusQuery.data?.rows ?? []).map((row) => [`${row.bucket}:${row.id}`, row.status] as const),
-  );
+  const statusByKey = new Map((statusQuery.data?.rows ?? []).map((row) => [`${row.bucket}:${row.id}`, row] as const));
   const counts = statusQuery.data?.meta.counts;
   const resolved = (counts?.done ?? 0) + (counts?.skipped ?? 0);
+  const regressed = statusQuery.data?.meta.recurrences.regressed ?? 0;
 
   return (
     <>
@@ -60,6 +65,11 @@ function SessionSuggestions() {
           {query.data ? `${fmtInt(query.data.meta.sessions)} sessions in ${query.data.meta.buckets} windows of 10` : ""}
           {resolved > 0 && ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped`}
         </span>
+        {regressed > 0 && (
+          <span className="badge recurrence-regressed" title="marked done, still tripping in windows recorded since">
+            {regressed} regressed
+          </span>
+        )}
         {statusQuery.error && <span className="error">flags unavailable: {(statusQuery.error as Error).message}</span>}
       </div>
 
@@ -116,11 +126,12 @@ function BucketRow({
   statusByKey,
 }: {
   bucket: SessionBucket;
-  statusByKey: Map<string, SuggestionStatus>;
+  statusByKey: Map<string, SuggestionStatusRow>;
 }) {
   const worst = bucket.suggestions[0];
-  const statusOf = (id: string): SuggestionStatus => statusByKey.get(`${bucket.index}:${id}`) ?? "pending";
-  const open = bucket.suggestions.filter((s) => !isResolved(statusOf(s.id))).length;
+  const rowOf = (id: string): SuggestionStatusRow | undefined => statusByKey.get(`${bucket.index}:${id}`);
+  // Open counts what is still actionable, so a window predating its rule's fix isn't open.
+  const open = bucket.suggestions.filter((s) => !isSettled(rowOf(s.id))).length;
   return (
     <Link to="/advice/sessions/$bucket" params={{ bucket: String(bucket.index) }} className="card bucket-row">
       <div className="bucket-row-head">
@@ -132,12 +143,22 @@ function BucketRow({
       </div>
       <ul className="bucket-suggestions">
         {bucket.suggestions.map((s) => {
-          const status = statusOf(s.id);
+          const row = rowOf(s.id);
+          const status = row?.status ?? "pending";
+          const recurrence = row?.recurrence ?? "none";
           return (
-            <li key={s.id} className={isResolved(status) ? "is-resolved" : undefined}>
+            <li
+              key={s.id}
+              className={[isSettled(row) ? "is-resolved" : "", recurrence === "regressed" ? "is-regressed" : ""]
+                .filter(Boolean)
+                .join(" ")}
+            >
               <span className={`dot sev-${s.severity}`} aria-hidden />
               {s.title}
               {isResolved(status) && <span className="suggestion-flag">{STATUS_LABEL[status].toLowerCase()}</span>}
+              {recurrence !== "none" && (
+                <span className="suggestion-flag">{RECURRENCE_LABEL[recurrence].toLowerCase()}</span>
+              )}
             </li>
           );
         })}

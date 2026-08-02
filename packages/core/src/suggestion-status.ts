@@ -12,6 +12,10 @@
  * ten transcripts forever, and a suggestion's id is its rule's id, so the same
  * finding in the same window is the same row across recomputations.
  *
+ * Because a window is frozen, a rule that tripped on sessions recorded last week
+ * will trip on them forever, whatever changed since. A flag is therefore read as a
+ * *dated* claim — see {@link suggestionRecurrence}.
+ *
  * `pending` is the default and is never persisted — the file only carries
  * decisions, so it stays small and an empty file means "nothing done yet".
  *
@@ -93,6 +97,74 @@ export function parseSuggestionStatusStore(raw: unknown): SuggestionStatusStore 
 export function suggestionStatusOf(store: SuggestionStatusStore, bucket: number, id: string): SuggestionStatusEntry {
   const entry = store.buckets[String(bucket)]?.[id];
   return entry ?? { status: DEFAULT_SUGGESTION_STATUS, updated: "" };
+}
+
+/**
+ * How a window's evidence stands against the dated `done` its rule carries.
+ *
+ * - `historical` — every session in the window predates the claim; nothing left to
+ *   do about this window.
+ * - `regressed` — every session started after the claim and the rule tripped anyway.
+ * - `mixed` — the window straddles the claim, so its evidence proves nothing either way.
+ * - `none` — no dated `done` for this rule, or the dates to compare are missing.
+ *
+ * Only `done` is a claim; `skipped` never produces a `regressed`.
+ */
+export const SUGGESTION_RECURRENCES = ["none", "historical", "mixed", "regressed"] as const;
+
+export type SuggestionRecurrence = (typeof SUGGESTION_RECURRENCES)[number];
+
+/** True when `value` names one of the four recurrence states. */
+export function isSuggestionRecurrence(value: unknown): value is SuggestionRecurrence {
+  return typeof value === "string" && (SUGGESTION_RECURRENCES as readonly string[]).includes(value);
+}
+
+/** The claim a rule carries: the latest dated `done` recorded for it, in any bucket. */
+export interface SuggestionResolution {
+  /** The bucket whose flag carried the claim. */
+  bucket: number;
+  /** ISO timestamp of that write — when the fix is claimed to have landed. */
+  updated: string;
+  note?: string;
+}
+
+/**
+ * Collapse the store into one dated claim per rule id, keeping the most recent
+ * `done`, so one mark carries across every window recorded afterwards.
+ *
+ * Entries with no parseable `updated` are skipped — an undated claim can't be
+ * placed against a window.
+ */
+export function ruleResolutions(store: SuggestionStatusStore): Map<string, SuggestionResolution> {
+  const latest = new Map<string, SuggestionResolution>();
+  for (const [bucketKey, entries] of Object.entries(store.buckets)) {
+    const bucket = Number(bucketKey);
+    if (!Number.isInteger(bucket)) continue;
+    for (const [id, entry] of Object.entries(entries)) {
+      if (entry.status !== "done") continue;
+      const at = Date.parse(entry.updated);
+      if (Number.isNaN(at)) continue;
+      const held = latest.get(id);
+      if (held && Date.parse(held.updated) >= at) continue;
+      latest.set(id, { bucket, updated: entry.updated, ...(entry.note ? { note: entry.note } : {}) });
+    }
+  }
+  return latest;
+}
+
+/** Place one window against one rule's dated claim. Undated on either side reads as `none`. */
+export function suggestionRecurrence(
+  bucket: Pick<SessionBucket, "startedFirst" | "startedLast">,
+  resolution: SuggestionResolution | undefined,
+): SuggestionRecurrence {
+  if (!resolution) return "none";
+  const claimed = Date.parse(resolution.updated);
+  const first = Date.parse(bucket.startedFirst ?? "");
+  const last = Date.parse(bucket.startedLast ?? "");
+  if (Number.isNaN(claimed) || Number.isNaN(first) || Number.isNaN(last)) return "none";
+  if (last <= claimed) return "historical";
+  if (first >= claimed) return "regressed";
+  return "mixed";
 }
 
 /** One requested flag change. */
@@ -208,6 +280,10 @@ export interface SuggestionStatusRow {
   /** ISO timestamp of the flag's last write; absent while pending. */
   updated?: string;
   note?: string;
+  /** How this window stands against its rule's dated `done`. See {@link suggestionRecurrence}. */
+  recurrence: SuggestionRecurrence;
+  /** The dated claim `recurrence` was measured against. Absent when there is none. */
+  resolved?: SuggestionResolution;
   /** What to change, in the user's terms. Only with `detail`. */
   detail?: string;
   /** What the rule counted — the claim's arithmetic. Only with `detail`. */
@@ -221,6 +297,8 @@ export interface SuggestionStatusFilter {
   buckets?: readonly number[];
   /** Only suggestions carrying one of these flags. Omit for all three. */
   statuses?: readonly SuggestionStatus[];
+  /** Only suggestions in one of these recurrence states. Omit for all four. */
+  recurrences?: readonly SuggestionRecurrence[];
   /** Include each suggestion's detail, evidence and sources. Off by default. */
   detail?: boolean;
 }
@@ -240,6 +318,9 @@ export function suggestionStatusRows(
 ): SuggestionStatusRow[] {
   const wanted = filter.buckets ? new Set(filter.buckets) : null;
   const statuses = filter.statuses ? new Set<SuggestionStatus>(filter.statuses) : null;
+  const recurrences = filter.recurrences ? new Set<SuggestionRecurrence>(filter.recurrences) : null;
+  // Claims are rule-wide, so resolve the whole store once rather than per row.
+  const resolutions = ruleResolutions(store);
 
   return buckets
     .filter((bucket) => !wanted || wanted.has(bucket.index))
@@ -248,6 +329,8 @@ export function suggestionStatusRows(
     .flatMap((bucket) =>
       bucket.suggestions.map((suggestion) => {
         const entry = suggestionStatusOf(store, bucket.index, suggestion.id);
+        const resolution = resolutions.get(suggestion.id);
+        const recurrence = suggestionRecurrence(bucket, resolution);
         const row: SuggestionStatusRow = {
           bucket: bucket.index,
           label: bucket.label,
@@ -255,9 +338,11 @@ export function suggestionStatusRows(
           severity: suggestion.severity,
           title: suggestion.title,
           status: entry.status,
+          recurrence,
         };
         if (entry.updated) row.updated = entry.updated;
         if (entry.note) row.note = entry.note;
+        if (recurrence !== "none" && resolution) row.resolved = resolution;
         if (filter.detail) {
           row.detail = suggestion.detail;
           row.evidence = suggestion.evidence;
@@ -266,12 +351,21 @@ export function suggestionStatusRows(
         return row;
       }),
     )
-    .filter((row) => !statuses || statuses.has(row.status));
+    .filter((row) => (!statuses || statuses.has(row.status)) && (!recurrences || recurrences.has(row.recurrence)));
 }
 
 /** How many rows carry each flag — the one-line summary a caller prints. */
 export function countSuggestionStatuses(rows: readonly SuggestionStatusRow[]): Record<SuggestionStatus, number> {
   const counts: Record<SuggestionStatus, number> = { pending: 0, done: 0, skipped: 0 };
   for (const row of rows) counts[row.status]++;
+  return counts;
+}
+
+/** How many rows sit in each recurrence state. */
+export function countSuggestionRecurrences(
+  rows: readonly SuggestionStatusRow[],
+): Record<SuggestionRecurrence, number> {
+  const counts: Record<SuggestionRecurrence, number> = { none: 0, historical: 0, mixed: 0, regressed: 0 };
+  for (const row of rows) counts[row.recurrence]++;
   return counts;
 }

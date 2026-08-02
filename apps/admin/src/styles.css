@@ -1210,6 +1210,26 @@ button.link {
   background: var(--surface-2);
   color: var(--muted);
 }
+.badge.recurrence-regressed {
+  background: rgba(255, 107, 129, 0.16);
+  color: var(--coral);
+}
+.badge.recurrence-mixed {
+  background: rgba(244, 177, 90, 0.16);
+  color: var(--amber);
+}
+.badge.recurrence-historical {
+  background: var(--surface-2);
+  color: var(--faint);
+}
+/* Undims regressed rows: sits after the .is-resolved dimming and shares its specificity. */
+.advice.is-regressed {
+  opacity: 1;
+  border-color: var(--coral);
+}
+.bucket-suggestions li.is-regressed {
+  color: var(--coral);
+}
 .rule-name {
   font-family: var(--font-mono);
   font-size: 12.5px;
