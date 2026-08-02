@@ -4,6 +4,7 @@ import type { CommandSummary } from "@claude-proxy/core";
 import { getCommands } from "../api";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, SkeletonStats, SkeletonTable, type SkeletonColumn } from "../components/Skeleton";
 import { Sparkline } from "../components/Sparkline";
 import { StatCard } from "../components/StatCard";
 import { useLiveQuery } from "../useLiveQuery";
@@ -59,7 +60,7 @@ export function CommandsPage() {
         <LiveIndicator status={live} />
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<CommandsSkeleton />}>
         {!data ? null : (
           <>
             <div className="grid stats">
@@ -85,6 +86,33 @@ export function CommandsPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** The columns `CommandsTable` draws, so the placeholder rows line up with the real ones. */
+const COMMAND_COLUMNS: SkeletonColumn[] = [
+  { cell: "42%" },
+  { className: "num", cell: "34%" },
+  { className: "num", cell: "34%" },
+  { className: "num", cell: "44%" },
+  { className: "num", cell: "52%" },
+  { className: "num", cell: "44%" },
+  { cell: "62%" },
+  { className: "num", cell: "56%" },
+];
+
+function CommandsSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={4} />
+      <div className="card">
+        <div className="card-head">
+          <Skeleton w="20%" h="0.95em" />
+          <Skeleton w="34%" />
+        </div>
+        <SkeletonTable columns={COMMAND_COLUMNS} rows={8} />
+      </div>
+    </>
   );
 }
 

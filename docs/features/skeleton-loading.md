@@ -61,7 +61,7 @@ And where a view is assembled from two queries — Overview's tiles draw their m
 the trends window, Skim's tiles from a second day query — the skeleton is gated on both, so
 the row lands complete instead of arriving and then growing.
 
-**Every page is covered.** All 21 `QueryState` call sites pass a skeleton, so the
+**Every page is covered.** All 27 `QueryState` call sites pass a skeleton, so the
 `Loading…` text is now only a fallback for a caller that supplies none. The two pages that
 are not a padded column are handled in their own shape: the Sessions rail loads as ghost
 transcript rows into a grid column whose width is already fixed (the chat beside it is

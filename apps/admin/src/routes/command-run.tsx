@@ -6,6 +6,14 @@ import { type CommandRunResponse, getCommandRun, getContextMessage } from "../ap
 import { CodeBlock } from "../components/CodeBlock";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { QueryState } from "../components/QueryState";
+import {
+  SkeletonCard,
+  SkeletonStats,
+  SkeletonTableCard,
+  SkeletonText,
+  SkeletonTextCard,
+  type SkeletonColumn,
+} from "../components/Skeleton";
 import { StatCard } from "../components/StatCard";
 import { useLiveQuery } from "../useLiveQuery";
 import { fmtFlag } from "./command-detail";
@@ -65,10 +73,41 @@ export function CommandRunPage() {
         {running ? <LiveIndicator status={live} /> : <span className="muted">this run has finished</span>}
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<RunSkeleton />}>
         {!data ? null : <RunBody data={data} />}
       </QueryState>
     </section>
+  );
+}
+
+const WASTE_COLUMNS: SkeletonColumn[] = [
+  { cell: "56%" },
+  { className: "num", cell: "34%" },
+  { className: "num", cell: "34%" },
+  { className: "num", cell: "34%" },
+  { className: "num", cell: "34%" },
+  { className: "num", cell: "44%" },
+];
+
+/**
+ * `RunBody`'s spine: the stat row, the prompt, the attribution note, the step tree and
+ * the waste table. The turn inspector and the patterns card only appear once there is
+ * something to show, so neither is reserved.
+ */
+function RunSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={4} />
+      <SkeletonTextCard title="The prompt" lines={5} />
+      <SkeletonTextCard title="How much of this is guessed" lines={3} />
+      <SkeletonCard title="Step tree">
+        <SkeletonText lines={6} />
+      </SkeletonCard>
+      <SkeletonTableCard title="Waste and rework" columns={WASTE_COLUMNS} rows={5} />
+      <SkeletonCard title="Suggestions for this session">
+        <SkeletonText lines={4} />
+      </SkeletonCard>
+    </>
   );
 }
 

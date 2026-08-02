@@ -16,6 +16,12 @@ import type { CommandRunOutcome, CommandStep, StepReach } from "@claude-proxy/co
 import { type CommandResponse, type CommandRunListItem, getCommand } from "../api";
 import { LiveIndicator } from "../components/LiveIndicator";
 import { QueryState } from "../components/QueryState";
+import {
+  SkeletonChartCard,
+  SkeletonStats,
+  SkeletonTableCard,
+  type SkeletonColumn,
+} from "../components/Skeleton";
 import { StatCard } from "../components/StatCard";
 import { useLiveQuery } from "../useLiveQuery";
 import { fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from "../format";
@@ -76,7 +82,7 @@ export function CommandDetailPage() {
         <LiveIndicator status={live} />
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<CommandDetailSkeleton />}>
         {!data ? null : data.meta.totalRuns === 0 ? (
           <div className="card empty">
             No runs of <span className="rule-name">/{command}</span> captured yet. It has{" "}
@@ -88,6 +94,47 @@ export function CommandDetailPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** The scatter's own fixed height, so its placeholder box is exactly as tall. */
+const SCATTER_HEIGHT = 300;
+
+const STEP_COLUMNS: SkeletonColumn[] = [
+  { cell: "56%" },
+  { className: "num", cell: "40%" },
+  { className: "num", cell: "48%" },
+  { className: "num", cell: "40%" },
+  { className: "num", cell: "36%" },
+];
+
+const PATTERN_COLUMNS: SkeletonColumn[] = [
+  { cell: "64%" },
+  { className: "num", cell: "34%" },
+  { className: "num", cell: "34%" },
+];
+
+const RUN_COLUMNS: SkeletonColumn[] = [
+  { cell: "58%" },
+  { cell: "82%" },
+  { cell: "40%" },
+  { cell: "48%" },
+  { className: "num", cell: "36%" },
+  { className: "num", cell: "32%" },
+  { className: "num", cell: "48%" },
+  { className: "num", cell: "40%" },
+];
+
+/** Everything `CommandBody` lays out, in the same order — the flags card is optional, so it is left out. */
+function CommandDetailSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={4} />
+      <SkeletonChartCard title="Runs over time" height={SCATTER_HEIGHT} bars={18} />
+      <SkeletonTableCard title="Tokens by step" columns={STEP_COLUMNS} rows={6} />
+      <SkeletonTableCard title="Patterns" columns={PATTERN_COLUMNS} rows={4} />
+      <SkeletonTableCard title="Runs" columns={RUN_COLUMNS} rows={8} />
+    </>
   );
 }
 

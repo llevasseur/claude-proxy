@@ -5,6 +5,7 @@ import { jobStateTone, type JobTone } from "@claude-proxy/core";
 import type { JobDeleteResult, JobSummary } from "../api";
 import { deleteJob, getJobs } from "../api";
 import { QueryState } from "../components/QueryState";
+import { SkeletonStats, SkeletonTable, type SkeletonColumn } from "../components/Skeleton";
 import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
 
 /**
@@ -74,7 +75,7 @@ export function JobsPage() {
         </div>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<JobsSkeleton />}>
         {!data ? null : (
           <>
             <div className="grid stats">
@@ -95,6 +96,28 @@ export function JobsPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** `JobsTable`'s columns, down to the delete button's own narrow one. */
+const JOB_COLUMNS: SkeletonColumn[] = [
+  { cell: "58%" },
+  { cell: "40%" },
+  { cell: "46%" },
+  { className: "num", cell: "34%" },
+  { className: "num", cell: "44%" },
+  { className: "num", cell: "56%" },
+  { className: "job-delete-head", head: "0", cell: "3.5rem" },
+];
+
+function JobsSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={4} />
+      <div className="card">
+        <SkeletonTable columns={JOB_COLUMNS} rows={8} />
+      </div>
+    </>
   );
 }
 
