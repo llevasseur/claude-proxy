@@ -591,19 +591,22 @@ async function linkErrorsToRequests(
  * timeline reaches them in far fewer reads. The peak leads as the body most likely to
  * carry a turn at all.
  */
-function requestsToScan(requests: readonly ContextEntry[]): ContextEntry[] {
-  if (requests.length <= MAX_ERROR_REQUEST_SCANS) {
-    return [...requests].sort((a, b) => b.realInput - a.realInput);
-  }
+export function requestsToScan(requests: readonly ContextEntry[]): ContextEntry[] {
+  if (requests.length === 0) return [];
 
   const byTime = [...requests].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const picked = [requests.reduce((max, e) => (e.realInput > max.realInput ? e : max))];
+  const take = (entry: ContextEntry): void => {
+    if (!picked.some((p) => p.file === entry.file)) picked.push(entry);
+  };
 
   const samples = MAX_ERROR_REQUEST_SCANS - 1;
-  for (let i = 1; i <= samples; i += 1) {
-    const entry = byTime[Math.round((i / samples) * (byTime.length - 1))]!;
-    if (!picked.some((p) => p.file === entry.file)) picked.push(entry);
-  }
+  for (let i = 1; i <= samples; i += 1) take(byTime[Math.round((i / samples) * (byTime.length - 1))]!);
+
+  // A set that fits the budget leaves the walk landing on the same body twice, so the
+  // rest of the timeline fills the spare reads rather than going unopened. The order
+  // stays peak-first: a small set is scanned in the same shape as a large one.
+  if (requests.length <= MAX_ERROR_REQUEST_SCANS) for (const entry of byTime) take(entry);
   return picked;
 }
 
@@ -811,6 +814,13 @@ export interface SuggestionStatusUpdateResponse {
 }
 
 /**
+ * Set key for a bucket/id pair. The bucket is a number and the id has no control
+ * characters, so a unit separator cannot appear in either half and the key collides
+ * only on a genuinely equal pair.
+ */
+const suggestionKey = (v: { bucket: number; id: string }): string => `${v.bucket}\u001f${v.id}`;
+
+/**
  * Record flags for suggestions. Every update is applied — a suggestion whose rule
  * has since stopped tripping keeps its flag rather than being dropped, so marking
  * something done is not undone by the next recomputation. Updates naming a
@@ -827,13 +837,13 @@ export async function applySuggestionStatus(
   const buckets = sessionSuggestionBuckets(await listSessionGraphs(logDir));
   const touched = [...new Set(updates.map((u) => u.bucket))];
   const rows = suggestionStatusRows(buckets, store, { buckets: touched });
-  const known = new Set(rows.map((r) => `${r.bucket} ${r.id}`));
+  const known = new Set(rows.map((r) => suggestionKey(r)));
   return {
     rows: rows.filter((r) => updates.some((u) => u.bucket === r.bucket && u.id === r.id)),
     meta: {
       statusFile: resolveSuggestionStatusPath(logDir),
       updated: updates.length,
-      unknown: updates.filter((u) => !known.has(`${u.bucket} ${u.id}`)).map((u) => ({ bucket: u.bucket, id: u.id })),
+      unknown: updates.filter((u) => !known.has(suggestionKey(u))).map((u) => ({ bucket: u.bucket, id: u.id })),
     },
   };
 }
