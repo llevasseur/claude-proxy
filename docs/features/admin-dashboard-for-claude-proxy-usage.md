@@ -16,33 +16,33 @@ day-over-day trends, transcripts, cache savings, and deterministic advice.
 
 ## Motivation
 
-The proxy's request and token records otherwise live in thousands of Markdown/JSON
-files. This is the browsable counterpart to the end-of-day summary in
-[`2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md),
-and was designed in
+Browsable counterpart to the end-of-day summary in
+[`2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md);
+designed in
 [`2026-07-15-monorepo-admin-dashboard-design.md`](../specs/2026-07-15-monorepo-admin-dashboard-design.md).
 
 ## Behavior
 
-Twelve stations in the side rail, several with drill-down subpages beneath them:
+Fourteen stations in the side rail, several with drill-down subpages beneath them:
 
 - **Overview** (`/`) — today's real input / output tokens, estimated cost, cache-hit
   ratio, request count, busiest hour, tool overhead, and average system prompt, each
-  with a day-over-day delta and a 7/14/30-day sparkline.
+  with a day-over-day delta and a 7/14/30-day sparkline, above the plan's session and
+  weekly [usage limit meters](usage-limit-meters.md).
 - **Trends** (`/trends`) — per-day tokens and cost over a 7/14/30-day window (bar
   charts + table), a tokens-per-request line chart, and a per-metric drill-down
   (`/trends/$metric`).
 - **Context size** (`/context`) — how large the prompt to the model gets, and why the
   largest was so large. See [Context-size analytics](context-size-analytics.md) and
   [Message drill-down](message-drill-down.md).
-- **Tool bloat** (`/tools`) — every tool ranked by bytes / est-tokens / share of the request.
+- **Tool bloat** (`/tools`) — every tool ranked by bytes, est-tokens, and share of the
+  tool payload. See [Tool bloat](tool-bloat.md).
 - **Skim** (`/skim`) — the proxy's opt-in reply cache: hit rate over time, tokens and
   dollars saved, and the most-repeated request shapes. See
   [Skim response cache](skim-response-cache.md).
 - **Not added** (`/withheld`) — tools the device's settings keep out of every request,
   cross-referenced against tools recently observed in traffic.
-- **Proxy filters** (`/filters`) — the inventory of what the proxy itself strips, because
-  the CLI cannot be configured to.
+- **Proxy filters** (`/filters`) — the inventory of what the proxy itself strips.
 - **Projects** (`/projects`) — per-project auto-memory files, with a page per project and
   per memory. See [Project memory browser](project-memory-browser.md).
 - **Sessions** (`/sessions`) — a two-pane chat client over per-thread transcripts, listed
@@ -52,8 +52,14 @@ Twelve stations in the side rail, several with drill-down subpages beneath them:
 - **Live graph** (`/sessions/graph`) — a full-bleed graph of sessions and their subagent
   branches, refreshed on a 4-second poll (this page does not use SSE). See
   [Live session graph](live-session-graph.md).
+- **Jobs** (`/jobs`) — the device's `~/.claude` background jobs, with a per-job file tree
+  and viewer. See [Background jobs browser](background-jobs-browser.md).
 - **Hooks & Plugins** (`/hooks-plugins`) — the hooks and plugins the device's settings
-  declare. The last three stations share one doc: [Config inventory](config-inventory.md).
+  declare. This station, Not added, and Proxy filters share one doc:
+  [Config inventory](config-inventory.md).
+- **Commands** (`/commands`) — what each slash command costs per declared step and where
+  its runs stop, with a page per command and per run. See
+  [Commands eval](commands-eval.md).
 - **Advice** (`/advice`) — coaching cards derived deterministically from the day's digest
   (dominant tool, tool overhead, low cache-hit, large system prompt, high cost), plus
   ten-session suggestion buckets with persistent pending/done/skipped flags. See
@@ -70,13 +76,15 @@ Overview, Trends, busiest hour, and Skim roll over at Eastern midnight, not the 
 filename date. `readArchivedDay` merges the two UTC archive folders a reporting day can
 span, then filters by sidecar timestamp. Individual events use the viewer's local zone.
 
-Most `server` routes are read-only JSON views; two SSE streams feed session list/detail.
-An explicit POST allowlist with origin-checked CORS starts, continues, stops, or ends
-dashboard chats and records suggestion flags. See
+Most `server` routes are read-only JSON views; SSE streams feed the Overview summary and
+usage meters, the session list and detail, and the commands pages. An explicit POST
+allowlist with origin-checked CORS starts, continues, stops, or ends dashboard chats,
+records suggestion flags, and deletes a background job. See
 [ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md).
-Analysis is computed via `packages/core`. Advice is produced by a
-`HeuristicAdviceProvider` behind an `AdviceProvider` seam, so an LLM/agent-backed provider
-can replace it later without changing the UI or API.
+A page waiting on any of those routes renders a shaped placeholder rather than a spinner —
+see [Skeleton loading](skeleton-loading.md). Analysis is computed via `packages/core`.
+Advice comes from a `HeuristicAdviceProvider` behind an `AdviceProvider` seam, so an
+LLM/agent-backed provider can replace it without changing the UI or API.
 
 ## Acceptance criteria
 

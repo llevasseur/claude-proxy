@@ -34,13 +34,13 @@ floor; instrumentation determines whether a smarter key is worthwhile.
 
 - **Off by default** — `proxy/skim.mjs` reads `SKIM_CACHE` once at startup and only treats
   `1`, `true`, `yes`, or `on` (case-insensitive) as enabled. Unset means `cacheable()`
-  returns `false` for everything, so nothing is stored and nothing is served.
+  returns `false` for everything: nothing stored, nothing served.
 - **Env vars** — `SKIM_CACHE` (enable flag, default off), `SKIM_TTL_MS` (entry lifetime,
   default `3600000` = 1 hour), `SKIM_DIR` (cache directory, default `<LOG_DIR>/../.skim-cache`,
   a sibling of the logs dir). Zero runtime dependencies — Node built-ins only.
 - **The gate** — `cacheable()` admits a request only when all three hold: the skim is
   enabled, the path contains `/v1/messages`, and the parsed body has `stream === true`
-  (the replay path can only re-emit raw SSE, so non-streaming replies are never cached).
+  (replay can only re-emit raw SSE, so non-streaming replies are never cached).
   `proxy.mjs` separately excludes `count_tokens` via `isTokenCount` before calling the gate.
 - **Cache key** — `sha256` of the exact forwarded request body (`keyFor(rawBody)`), taken
   *after* the proxy's own tool/reminder stripping so the key matches what was actually sent.
@@ -65,17 +65,17 @@ floor; instrumentation determines whether a smarter key is worthwhile.
 - **Sidecar instrumentation on every request** — `writeAuditSidecar` always emits a `skim`
   block with exactly four fields: `enabled`, `servedFromCache`, `savedInputTokens`, and
   `cacheKey` (`null` when the request wasn't cacheable). Legacy or malformed blocks are
-  normalized to an all-off default in `packages/core`, so old sidecars simply count as
+  normalized to an all-off default in `packages/core`, so old sidecars count as
   skim-disabled traffic.
 - **Aggregation** (`packages/core/src/skim.ts`) — `computeSkimDigest` walks a day's
   sidecars and produces `requestCount`, `enabledRequests`, `hits`, `misses`, `hitRate`
   (hits ÷ enabled requests, `0` with no enabled traffic — disabled requests stay out of the
   denominator), `savedInputTokens`, `estSavedUsd`, and `topShapes`. Dollars saved are
   estimated per hit as `savedInputTokens / 1e6 × priceFor(model).input` — the sidecar's own
-  model at that model's **input**-token rate, so it is a conservative floor that ignores the
-  output tokens a hit also avoids. `skimDigestsByDay` buckets by the dashboard's shared
-  reporting zone (`America/New_York`, following EST/EDT), oldest first, so Skim and the
-  Overview/Trends windows roll over together at Eastern midnight.
+  model at that model's **input**-token rate, a conservative floor that ignores the output
+  tokens a hit also avoids. `skimDigestsByDay` buckets by the dashboard's shared reporting
+  zone (`America/New_York`, EST/EDT), oldest first, so Skim and the Overview/Trends windows
+  roll over together at Eastern midnight.
 - **Shapes** — any request with a `cacheKey` accumulates into a per-key `SkimShape`
   (`requests`, `hits`, `savedInputTokens`, `estSavedUsd`, plus a `requestText` label),
   ranked by request count. `requestText` is **not** a sidecar field: `server/src/logs.ts`
@@ -84,8 +84,8 @@ floor; instrumentation determines whether a smarter key is worthwhile.
   surviving request log simply has no label.
 - **Endpoints** — `GET /api/skim?date=YYYY-MM-DD` (one day, defaults to today; invalid
   dates are ignored) and `GET /api/skim/trend?days=N` (`N` defaults to 14 and is clamped to
-  1–365). Both request `topN: 50` shapes and both enable the request-text enrichment; the
-  trend response carries per-day `digests` plus one cross-window `topShapes` list.
+  1–365). Both enable the request-text enrichment; `/api/skim` and the trend's cross-window
+  `topShapes` request `topN: 50`, while the trend's per-day `digests` keep the default 12.
 - **Skim page** (`/skim`) — a 7/14/30-day window selector and four stat tiles:
   **Hit rate (today)** (with `hits / enabled` underneath), **Saved today**,
   **Saved (Nd)**, and **Saved input tokens (today)**. Two charts follow —
@@ -96,11 +96,10 @@ floor; instrumentation determines whether a smarter key is worthwhile.
   captured user text, or reads *"Request log unavailable"* when the log is gone. With no
   captured activity the page shows *"No skim activity captured in the last N days."*
 
-The data path is `proxy/skim.mjs` (gate, key, store, replay) → the `.audit.json` sidecar's
+Data path: `proxy/skim.mjs` (gate, key, store, replay) → the `.audit.json` sidecar's
 `skim` block → `packages/core/src/skim.ts` (`computeSkimDigest` / `skimDigestsByDay`) →
-`server` (`/api/skim`, `/api/skim/trend`) → `apps/admin` (the **Skim** page). The proxy side
-is the only part that touches live traffic; everything downstream is read-only over
-already-captured sidecars.
+`server` (`/api/skim`, `/api/skim/trend`) → `apps/admin` (the **Skim** page). Only the proxy
+side touches live traffic; everything downstream is read-only over captured sidecars.
 
 ## Acceptance criteria
 

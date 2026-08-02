@@ -11,16 +11,15 @@ timestamp: 2026-07-30
 ## Summary
 
 The Overview opens with a meter per metered allowance — the rolling **5-hour** window, the
-**weekly** window, and, when it applies, the **weekly Fable** window — and each one carries a
+**weekly** window, and, when it applies, the **weekly Fable** window — each carrying a
 sentence saying whether the current rate is comfortable, close to the ceiling, or on track to
 run out early. The meters and the day's statistics both update while a session is running,
 over Server-Sent Events, so the page reflects requests as the proxy captures them rather
 than at the last reload.
 
-The bar's colour tracks the *pace*, not the fill level. A bar can be nearly full and still be
-fine late in a window, while a modest bar early on can already be a problem — so the tone
-comes from where the rate is heading, and a faint extension of the bar marks the utilization
-the current rate projects to by reset.
+The bar's colour tracks the *pace*, not the fill level: a bar can be nearly full and still be
+fine late in a window, while a modest bar early on can already be a problem. A faint extension
+of the bar marks the utilization the current rate projects to by reset.
 
 ## Four sources, in order of preference
 
@@ -28,7 +27,7 @@ the current rate projects to by reset.
 `GET https://api.anthropic.com/api/oauth/usage` — the endpoint Claude Code's own `/usage`
 panel reads — once a minute, and writes the answer to `logs/usage-live.json`. A window
 sourced from it is exact: Anthropic's percentage and Anthropic's reset instant, no ceiling
-guessed at and no coverage caveat. This is the only exact source on a subscription account,
+guessed at and no coverage caveat. It is the only exact source on a subscription account,
 because such traffic comes back with no rate-limit headers at all.
 
 The call needs the user's OAuth token, so the poll lives **in the proxy**, where that token
@@ -51,13 +50,13 @@ everything since.
 
 Header names are matched by shape rather than against a fixed list: one segment names the
 span (`5h`, `7d`/`week`), an optional one narrows it to a model family, and the last names the
-field (`limit`, `remaining`, `used`, `utilization`, `reset`). A renamed or newly-added window
+field (`limit`, `remaining`, `used`, `utilization`, `reset`, `status`). A renamed or newly-added window
 therefore reaches the dashboard without a proxy change. Reset values are accepted as an ISO
 instant, epoch seconds, epoch milliseconds, or seconds-from-now.
 
 **A configured ceiling, next.** Anthropic does not publish subscription quotas as token
-counts, so there is deliberately **no built-in default ceiling** — nothing here is measured
-against a number this repo invented. Set one to state the real allowance:
+counts, so there is deliberately **no built-in default ceiling**. Set one to state the real
+allowance:
 
 | Variable | Window |
 |----------|--------|
@@ -66,8 +65,8 @@ against a number this repo invented. Set one to state the real allowance:
 | `USAGE_LIMIT_WEEK_FABLE` | weekly, Fable requests only |
 
 Values accept `_`/`,` separators and `k`/`m` suffixes (`2.5m`, `900k`). A configured ceiling
-always wins over a learned one: it is a statement about the allowance, where the learned
-figure is only a guess at its floor.
+always wins over a learned one: it states the allowance, where the learned figure only guesses
+at its floor.
 
 **A ceiling learned from history, otherwise.** Requiring an env var per device meant a fresh
 checkout showed no meters at all, so a window with neither headers nor configuration falls
@@ -76,13 +75,12 @@ progress is still filling, and letting it set the bar would peg every meter at 1
 windows the retained logs fully span, since a window starting before the oldest retained
 request is a fragment, not a window.
 
-This is a **lower bound on the allowance, never the allowance**. Anthropic never told us the
-limit, so the most that can be said is "at least this much was possible". The error therefore
-runs in one direction only: dividing by a ceiling that is too low makes utilization read too
-*high*, so a learned meter overstates how close the account is to its limit and cannot invent
-headroom that isn't there. The UI says so — the meter is marked `inferred`, the status chip
-talks about records rather than limits (`Below record`, `New record`), and the blurb points at
-the env var for anyone who knows the true ceiling.
+This is a **lower bound on the allowance, never the allowance**: the most that can be said is
+"at least this much was possible". The error runs in one direction only — dividing by a ceiling
+that is too low makes utilization read too *high*, so a learned meter overstates how close the
+account is to its limit and cannot invent headroom that isn't there. The UI says so: the meter
+is marked `inferred`, the status chip talks about records rather than limits (`Below record`,
+`New record`), and the blurb points at the env var for anyone who knows the true ceiling.
 
 A window kind with no traffic at all learns nothing rather than a ceiling of zero, which is
 how the Fable meter stays absent on plans that never touch it.
@@ -93,19 +91,17 @@ Both the estimate and its ceiling are in **weighted tokens**:
 
     input + output + cacheCreation + (cacheRead × 0.1)
 
-Cache reads bill at roughly a tenth of fresh input, so they weigh a tenth here; counting them
-at par would let a cache-heavy hour dwarf every real request. `input` is used rather than
-`realInput` because `realInput` already sums input + cacheRead + cacheCreation and would
-double-count. As a sense of scale, an active coding day on this device runs ~14M units per
-5-hour window.
+Cache reads bill at roughly a tenth of fresh input, so they weigh a tenth here. `input` is used
+rather than `realInput` because `realInput` already sums input + cacheRead + cacheCreation and
+would double-count. For scale, an active coding day on this device runs ~14M units per 5-hour
+window.
 
 ## Fixed windows, not trailing ones
 
 Anthropic's weekly allowance is a **fixed** window that resets at a published instant — "resets
-Aug 8 at 8am" — not a trailing seven days. Estimating over a trailing week therefore sweeps up
-everything since last Friday and counts it against an allowance that reset on Saturday. On this
-device that was a **5.6× overcount**: 83.0M weighted units counted where 14.9M actually belonged
-to the window in progress.
+Aug 8 at 8am" — not a trailing seven days. Estimating over a trailing week counts usage against
+an allowance that already reset: on this device a **5.6× overcount**, 83.0M weighted units where
+14.9M actually belonged to the window in progress.
 
 So the estimate anchors to the real reset instant whenever one is known. The anchor comes from
 the live poll and **outlives it**: allowances reset on a fixed cadence, so an instant that has
@@ -137,8 +133,8 @@ every request in the seam.
 
 Each estimated window reports `coverage`, the fraction of the window actually backed by
 retained logs. Below 0.95 the meter is labelled `partial` in amber and the blurb says the real
-figure is higher — so a reassuring number never stands unqualified on incomplete data. The
-header path is always `coverage: 1`, since Anthropic counts the window itself.
+figure is higher. The header path is always `coverage: 1`, since Anthropic counts the window
+itself.
 
 **Coverage counts the days held, not the span back to the oldest surviving request.** Measuring
 from the oldest record reads a hole in the middle of a window as full coverage, taking the
@@ -164,7 +160,7 @@ in 1h of 5h is 80% gone. Statuses:
 | `safe` | projects under 80% by reset | `--good` |
 | `on-pace` | projects 80–100% | `--signal` |
 | `aggressive` | projects over 100% — runs out before reset | `--amber` |
-| `exhausted` | allowance spent | `--coral` |
+| `exhausted` | allowance spent (utilization ≥ 99.5%) | `--coral` |
 
 A trailing estimate has no reset to run up against — the window *is* the last N hours — so
 `elapsed` is 1 and the projection is simply where it already sits. It also gets its own
@@ -172,10 +168,10 @@ vocabulary: passing a configured ceiling means the estimate exceeded a budget th
 chose, **not** that Anthropic is refusing anything, and only the header path says requests
 will be refused.
 
-A learned ceiling gets a third vocabulary, weaker still. It can support no claim about the
-actual limit, so `safe` reads as "below the busiest window on record" rather than "within
-limits", and passing the bar is called new territory, not exhaustion — it means a new record,
-not a refusal.
+A learned ceiling gets a third vocabulary, weaker still, since it can support no claim about
+the actual limit: `safe` reads as "below the busiest window on record" rather than "within
+limits", and passing the bar is called new territory, not exhaustion — a new record, not a
+refusal.
 
 Two states are deliberately *not* shown as reassuring zeroes: a window with no headers, no
 configured ceiling, and too little history to complete a window is omitted, and when no
@@ -188,15 +184,14 @@ requests were captured at all no estimated window is emitted, because a 0% meter
   assessment, and `learnCeilings`. Pure;
   `buildUsageLimits(sidecars, { limits, learned, retainedDays, live, anchors, now })` takes an
   injected `now`, so every threshold is testable. `retainedDays` switches coverage from the
-  oldest-record span to the days actually held; omitted, it falls back to that span, which is
-  all a caller with no retention map can honestly claim. `USAGE_LIMIT_ENV_SUFFIX` is the one
-  source of truth for the env-var names, shared with the server so a blurb cannot name a
-  variable the server doesn't read.
+  oldest-record span to the days actually held; omitted, it falls back to that span.
+  `USAGE_LIMIT_ENV_SUFFIX` is the one source of truth for the env-var names, shared with the
+  server so a blurb cannot name a variable the server doesn't read.
   `parseLiveUsage` maps the endpoint's `kind` values onto the meters: `session` and `weekly_all`
   are the spellings it returns today, `five_hour`, `seven_day` and `seven_day_opus` are accepted
   alongside them, and `weekly_scoped` is narrowed by `scope.model.display_name`. An unrecognised
   kind is skipped rather than guessed at, so a window Anthropic adds falls through to the
-  estimate instead of landing on the wrong meter.
+  estimate rather than landing on the wrong meter.
 - `packages/core/src/time.ts` — `dayStartMs` resolves a day label to the instant local midnight
   opens it, applying the zone offset twice so the changeover days land right.
 - `proxy/usage-live.mjs` — the 60-second poll and the token it holds in memory. `noteAuth` takes
@@ -233,9 +228,9 @@ Restarting is not always enough. Anthropic returns `anthropic-ratelimit-*` heade
 API-key traffic; requests authenticated with a subscription OAuth token (`authorization:
 Bearer`, with `oauth-…` in `anthropic-beta`) come back without them. On such an account the
 header path never fires no matter how fresh the proxy is — measured here, 0 of 12,929 captured
-sidecars carried a `rateLimit` field. That is precisely the gap the polled endpoint closes, and
-why the learned ceiling had to exist before it.
+sidecars carried a `rateLimit` field. That is the gap the polled endpoint closes, and why the
+learned ceiling had to exist before it.
 
-The poll needs a token, and the proxy only has one once a request has passed through it. So a
+The poll needs a token, and the proxy only has one once a request has passed through it: a
 freshly-started proxy shows the estimate until the first request, then the real figures a minute
 later.

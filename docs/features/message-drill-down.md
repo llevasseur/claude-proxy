@@ -14,17 +14,15 @@ A pair of subpages under the [Request breakdown](context-size-analytics.md) dril
 clicking a row in the **"Messages by size"** table opens `/context/$file/message/$index`,
 and clicking one in **"Tools by size"** opens `/context/$file/tool/$index`. Each shows that
 one entry in full — its role or name, byte/token size, and its complete content, rendered
-either as readable blocks (**Pretty**) or as raw JSON. It answers the next question after
-"which message was largest?": **what was actually in it.**
+either as readable blocks (**Pretty**) or as raw JSON.
 
 ## Motivation
 
 The [Context-size analytics](context-size-analytics.md) breakdown ranks a request's messages
-by size but only shows each one's index, role, and byte count — never its content. To see
-what made a message heavy you had to expand the whole request's raw JSON (capped at 2 MB) and
-hunt for the right entry. This turns each row into a direct link to just that message, read
-straight from the captured request body so it resolves even when the request's raw-JSON view
-was truncated.
+by size but only shows each one's index, role, and byte count — never its content. Seeing what
+made a message heavy meant expanding the whole request's raw JSON (capped at 2 MB). Each row is
+now a direct link to just that message, read straight from the captured request body so it
+resolves even when the request's raw-JSON view was truncated.
 
 ## Behavior
 
@@ -69,8 +67,3 @@ entry 0 rather than erroring.
 - [x] Navigating back to the breakdown restores the scroll position it was left at.
 - [x] No proxy changes; the feature is read-only over existing request logs.
 - [x] `extractRequestMessage` is unit-tested; `pnpm typecheck` and `pnpm test` pass.
-
-## Open questions
-
-- Whether to render text/tool-use content blocks more readably instead of raw JSON.
-- Whether to add prev/next navigation between messages within a request.

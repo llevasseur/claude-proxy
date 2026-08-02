@@ -106,10 +106,11 @@ settings, no traffic), and static `GET /api/filters`.
 - [x] The page states that hooks have no API footprint, so it reports declared config and load
       *expectations*, never observed firing.
 - [x] All three views are read-only and never write settings: `server/src/settings.ts` and
-      `server/src/shell-rc.ts` only `readFile`, there is no write path to `~/.claude` or the
-      shell rc, and their `/api/withheld`, `/api/hooks-plugins`, and `/api/filters` endpoints
-      are GET-only. The server's unrelated chat and suggestion-status POST routes do not
-      touch device settings.
+      `server/src/shell-rc.ts` only `readFile`, there is no write path to
+      `~/.claude/settings.json` or the shell rc, and their `/api/withheld`,
+      `/api/hooks-plugins`, and `/api/filters` endpoints are GET-only. The server's other
+      POST routes — chat, suggestion status, and the jobs delete (which removes a
+      `~/.claude/jobs/<id>` directory) — do not touch device settings.
 - [x] `CLAUDE_SETTINGS` and `CLAUDE_SHELL_RC` override the two file paths; a missing or
       unreadable file degrades to an explicit "couldn't read" state instead of an error.
 - [x] `packages/core` helpers for withheld rules, launch-alias posture, filters, and

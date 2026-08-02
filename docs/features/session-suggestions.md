@@ -10,29 +10,23 @@ timestamp: 2026-07-25
 
 ## Summary
 
-The proxy already writes one [transcript](session-transcripts.md) per conversation thread and
-one audit sidecar per request. Read across a run of sessions rather than one at a time, those
-records answer a question no single session can: *what does this agent keep doing the slow way?*
-The Advice page now carries a **Session suggestions** section that groups every transcript into
-fixed windows of ten — sessions 1–10, 11–20, … — and lists, per window, what would have reached
-the same outcome faster. Each window has a detail page with the full suggestions, the sessions
-behind them, and the [Request Breakdown](context-size-analytics.md) patterns that recur across
-those sessions' largest captured requests.
+The proxy writes one [transcript](session-transcripts.md) per conversation thread and one audit
+sidecar per request. Read across a run of sessions, those records answer what no single session
+can: *what does this agent keep doing the slow way?* The Advice page carries a **Session
+suggestions** section that groups every transcript into fixed windows of ten — sessions 1–10,
+11–20, … — and lists, per window, what would have reached the same outcome faster. Each window
+has a detail page with the full suggestions, the sessions behind them, and the
+[Request Breakdown](context-size-analytics.md) patterns that recur across those sessions'
+largest captured requests.
 
 ## Motivation
 
 The existing [advice](admin-dashboard-for-claude-proxy-usage.md) is computed from one day's
 digest: token and cost aggregates, with no notion of what an agent *did*. The transcripts carry
-that — the step sequence, the refusals, the errors — but reading them one by one is exactly the
-work the dashboard exists to avoid, and a single session is too small a sample to tell a habit
-from an accident. Ten is enough for a pattern to repeat and small enough that the window still
-points at a specific stretch of work.
-
-The improvements worth finding are the ones that cost nothing to adopt: a guardrail that refuses
-a call the agent had already decided to make (a turn spent, then retried), an error rediscovered
-in session after session because nothing wrote the answer down, four independent reads issued
-one at a time instead of together, a tool schema shipped on every request that these sessions
-never called.
+that — the step sequence, the refusals, the errors — but reading them one by one is the work the
+dashboard exists to avoid, and a single session is too small a sample to tell a habit from an
+accident. Ten is enough for a pattern to repeat and small enough that the window still points at
+a specific stretch of work.
 
 ## Behavior
 
@@ -41,8 +35,8 @@ never called.
   as new ones arrive; the last bucket keeps the remainder and narrows its label (`"21–23"`)
   rather than claiming a full ten. The list shows the newest bucket first.
 - **Backfill on load** — the whole history is recomputed from every transcript on each request to
-  `GET /api/sessions/suggestions`. There is no incremental state, so a first load and a refresh
-  do identical work and a window that gains its tenth session simply appears on the next fetch.
+  `GET /api/sessions/suggestions`. There is no incremental state, so a window that gains its
+  tenth session appears on the next fetch.
 - **Transcript rules** — eight independent rules, each returning one suggestion or nothing, with
   the thresholds collected in `SUGGESTION_THRESHOLDS`:
   - **Guardrails refused calls these sessions needed** (*high*) — `- ✗` lines whose text reads as
@@ -53,33 +47,32 @@ never called.
     signature, reported when a signature recurs.
   - **Read-only calls went out one at a time** (*warn*) — runs of 4+ consecutive discovery calls
     (`Read`, `Grep`, `Glob`, `WebFetch`, `WebSearch`, or a `Bash` running an inspecting verb like
-    `ls`/`git status`) with no decision or error between them, which makes them independent by
-    construction.
+    `ls`/`git status`) with no decision or error between them.
   - **Files were re-read inside one session** (*info*) — the same `Read` signature 3+ times.
-  - **Tasks are taking a lot of steps** (*warn*) — above 25 tool calls per task across the window.
+  - **Tasks are taking a lot of steps** (*warn*) — 25 or more tool calls per task across the window.
   - **Tasks ended without a recorded outcome** (*info*) — a `## Task:` with no `- done:` before
     the next one, at 2+ per window; points at `/revive <thread id>`.
   - **Most calls were spent locating code, not changing it** (*info*) — 55%+ of a window's tool
     calls are discovery, over a floor of 20 calls.
-  - **One tool accounts for most failures** (*warn*) — a single tool owning 40%+ of a window's
-    errors, over a floor of 3.
+  - **&lt;tool&gt; accounts for most failures** (*warn*, titled with the tool's own name) — a single
+    tool owning 40%+ of a window's errors, over a floor of 3.
   - When nothing trips a threshold the window reports **"Nothing to trim in these sessions"** with
-    its counts, so an empty result is still evidence.
+    its counts.
 - **Sources** — every suggestion names the sessions it was counted in, strongest first, each with
   the number of steps that matched and one representative line quoted verbatim. Session names
-  link to the transcript, so every claim on the page is checkable against its source.
+  link to the transcript.
 - **Bucket detail** (`/advice/sessions/$bucket`) — stat tiles (sessions, tasks + unfinished, tool
   calls + per-task, errors + discovery share), the window's suggestions, the breakdown-derived
   suggestions, the **Request breakdown patterns** table, and the sessions in the window.
 - **Request Breakdown patterns** — each session in the window contributes its **largest** captured
   request (its peak, matched on the transcript's session id, the same join the Peak context tile
-  uses), so the roll-up compares like with like and reads at most ten request bodies. The table
-  ranks the system prompt, the conversation, and each tool schema by mean bytes, showing how many
-  of the window's peak requests carried each and its mean share. A region carried by *all* of them
-  is a fixed cost on every turn those sessions took.
+  uses), so the roll-up reads at most ten request bodies. The table ranks the system prompt, the
+  conversation, and each tool schema by mean bytes, showing how many of the window's peak requests
+  carried each and its mean share.
 - **Breakdown suggestions** — two claims the transcripts cannot support on their own: tool schemas
   reaching 40%+ of the average request, and a single tool schema present in **every** peak request
-  at 12%+ of it. Their sources are the captured requests the numbers were measured from.
+  at 12%+ of it. The single-schema claim names the captured requests it was measured from; the
+  whole-schema one is measured over the window's averages and names none.
 - **Missing bodies** — raw `.request.txt` captures age out of the log before the sidecars do, so a
   session may have a peak with no readable body. Those are skipped, counted in
   `meta.requestsMissing`, and reported next to the table; a window with none left says so instead
@@ -96,11 +89,10 @@ or not anyone acted on it. A flag per suggestion records that someone did:
   windows numbered oldest-first, and a suggestion's id is its rule's id — so a flag survives the
   recomputation that happens on every load. Marking a suggestion `done` sticks even after the rule
   stops tripping.
-- **A `done` is read as a dated claim.** Because a window is frozen, a rule that tripped on
-  sessions recorded last week will trip on them forever — no fix reaches backwards into recorded
-  history, so "still tripping" was never evidence that a fix failed. Each flag's `updated`
-  timestamp is therefore compared against the window's own session span, and every window gets a
-  **recurrence** state:
+- **A `done` is read as a dated claim.** A window is frozen, so a rule that tripped on sessions
+  recorded last week trips on them forever — "still tripping" is not evidence that a fix failed.
+  Each flag's `updated` timestamp is compared against the window's own session span, and every
+  window gets a **recurrence** state:
   - `historical` — every session in the window predates the claim. Expected to keep tripping;
     nothing left to act on.
   - `regressed` — every session started *after* the claim and the rule tripped anyway. The change
@@ -111,8 +103,7 @@ or not anyone acted on it. A flag per suggestion records that someone did:
   The claim is **rule-wide, not per window**: `ruleResolutions` keeps the most recent `done` for
   each suggestion id, whichever bucket recorded it, so one mark carries forward to every window
   recorded afterwards instead of needing one mark per bucket. Only `done` counts — `skipped`
-  records a decision not to act, which asserts nothing about behaviour changing, so it never
-  produces a `regressed`. An undated flag is ignored rather than used to invent a regression.
+  never produces a `regressed`. An undated flag is ignored rather than used to invent a regression.
 - **Where they live** — `<logDir>/suggestion-status.json`, beside the transcripts they describe, so
   they travel with a `LOG_DIR` override and stay device-local (`logs/` is gitignored). Only
   decisions are written: setting a suggestion back to `pending` deletes its entry, so an empty file
@@ -123,12 +114,10 @@ or not anyone acted on it. A flag per suggestion records that someone did:
   `updated`/`note`/`resolved` once set), oldest bucket first. `range` accepts one bucket (`9`), a
   list (`2,3,9`), a span (`2-9`) or a mix; `status` accepts a comma-separated subset of the flags;
   `recurrence` a comma-separated subset of the four states. `meta.counts` totals the flags and
-  `meta.recurrences` the states, both over the rows returned. This is the list an agent reads to
-  find what is still pending in a range without pulling each bucket's full drill-down. A malformed
-  range, flag or state is a 400.
+  `meta.recurrences` the states, both over the rows returned. A malformed range, flag or state is
+  a 400.
 - **Opt-in detail** — `&detail=1` adds each suggestion's `detail`, `evidence` and `sources` to the
-  rows. Scanning a wide range stays lean by default; a caller about to act on what it found gets the
-  whole claim in the same call rather than one drill-down request per bucket.
+  rows; scanning a wide range stays lean by default.
 - **Recording** — `POST /api/sessions/suggestions/status` with `{ "updates": [{ bucket, id, status,
   note? }] }`. It goes through the same origin-checked CORS the chat routes use, since it writes.
   An update naming a suggestion no rule currently produces is still written and reported under
@@ -136,22 +125,21 @@ or not anyone acted on it. A flag per suggestion records that someone did:
 - **In the dashboard** — the bucket detail badges every flagged suggestion, dims the ones acted on
   (restored to full contrast on hover/focus, so nothing becomes unreadable), and gives each one a
   `Pending / Done / Skipped` control. `Pending` is the undo: it clears the entry, the same write the
-  API and CLI make. A write re-reads the status list rather than patching the row locally, so what
-  the page shows is what the file says. A **hide resolved** toggle appears once anything is
-  *settled* — acted on, or in a window the rule's own fix predates — and the Advice bucket list
-  counts only unsettled suggestions as open. A recurrence badge sits next to the flag, and a
-  `regressed` suggestion is never dimmed and takes a coral border, since it is the one state that
-  means work; a regressed control also names the bucket and date of the claim it broke. Both pages
-  show a `N regressed` badge in their header. The breakdown-derived suggestions carry no control —
+  API and CLI make. A write re-reads the status list rather than patching the row locally. A
+  **hide resolved** toggle appears once anything is *settled* — acted on, or in a window the rule's
+  own fix predates — and the Advice bucket list counts only unsettled suggestions as open. A
+  recurrence badge sits next to the flag, and a `regressed` suggestion is never dimmed and takes a
+  coral border; a regressed control also names the bucket and date of the claim it broke when that
+  claim was recorded in another bucket. Both pages show a `N regressed` badge in their header. The
+  breakdown-derived suggestions carry no control —
   they are computed per request rather than per bucket, so the store has no row for them.
 - **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>]
   [--recurrence <states>] [-d]` and `pnpm --filter server suggestions mark -r <bucket> -i <ids>
   -s <flag> [-n <note>]`, both with `--json` for the API's own shape. The CLI reads the log
   directory directly, so it needs no running server. **`list` hides `historical` rows by default**,
   since a window that predates its rule's `done` can no longer be acted on — the count of what was
-  hidden is printed, so the suppression is visible rather than silent, and `--recurrence historical`
-  brings them back. Regressed rows are marked `⚠ REGRESSED since <date>` and totalled above the
-  table.
+  hidden is printed, and `--recurrence historical` brings them back. Regressed rows are marked
+  `⚠ REGRESSED since <date>` and totalled above the table.
 
 The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
 `packages/core/src/suggestions.ts` (pure: `sessionSuggestionBuckets`, `suggestBucket`,

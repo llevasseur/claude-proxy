@@ -11,9 +11,8 @@ timestamp: 2026-07-24
 ## Summary
 
 A "Context size" page in the [admin dashboard](admin-dashboard-for-claude-proxy-usage.md)
-that answers three questions about how large the prompt sent to the model gets:
-**what is the average context size, when was it largest, and why was the largest so
-large.** The "why" is a raw-data drill-down for any of the largest requests. Designed in
+answering **what the average context size is, when it was largest, and why the largest was
+so large** — the "why" being a raw-data drill-down for any of the largest requests. Designed in
 [`2026-07-21-context-size-analytics-design.md`](../specs/2026-07-21-context-size-analytics-design.md).
 
 ## Motivation
@@ -21,9 +20,8 @@ large.** The "why" is a raw-data drill-down for any of the largest requests. Des
 The proxy already records, per request, the true prompt size that fills the model's
 context window (`tokens.realInput` = input + cache-read + cache-creation) plus the byte
 sizes of the system prompt, each tool schema, and the full request body. Nothing surfaced
-*how big context gets over time* or *what made a given request so large* — a recurring
-question when a session feels heavy or costs spike. This turns the already-captured data
-into a direct answer without touching the passive-observer proxy.
+*how big context gets over time* or *what made a given request so large*. This turns the
+already-captured data into a direct answer without touching the passive-observer proxy.
 
 ## Behavior
 
@@ -35,7 +33,8 @@ into a direct answer without touching the passive-observer proxy.
   **Real input**, **System**, **Tools**, and **Size** (click a column to sort and again to
   flip direction). The peak request is tagged in place.
 - **Request breakdown** (`/context/$file`) — the "why so large" drill-down for one captured
-  request: totals (bytes, message count, tool count), a **region table** (conversation
+  request: totals (request bytes, message count, tool count, system-prompt bytes), a
+  **region table** (conversation
   messages vs. tool schemas vs. system prompt as shares of the request), a
   **messages-by-size** table (each row opens the [Message drill-down](message-drill-down.md)
   for that message; the **#** column numbers messages from 1 while the route stays 0-based;
