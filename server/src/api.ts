@@ -78,6 +78,7 @@ import {
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
 import { listInstalledCommands, readCommandRuns } from "./command-runs.js";
+import { fileSource, type SidecarSource } from "./db/source.js";
 import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
 import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
 import { loadLiveUsage } from "./usage-live.js";
@@ -119,13 +120,24 @@ export interface SummaryResponse {
   meta: { date: string; files: number; parseErrors: number };
 }
 
-/** One day's digest + advice, with the trend computed against the prior day. */
-export async function buildSummary(logDir: string, date?: string, now: Date = new Date()): Promise<SummaryResponse> {
+/**
+ * One day's digest + advice, with the trend computed against the prior day.
+ *
+ * `source` selects where the sidecars come from — the directory scan by
+ * default, the SQLite substrate when the parity harness or shadow mode asks for
+ * it. Same corpus either way; see `server/src/db/source.ts`.
+ */
+export async function buildSummary(
+  logDir: string,
+  date?: string,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<SummaryResponse> {
   const day = date ?? today(now);
   const prevDay = shiftDay(day, -1);
   const [cur, prev] = await Promise.all([
-    readSidecars(logDir, { date: day }, now),
-    readSidecars(logDir, { date: prevDay }, now),
+    source.readSidecars(logDir, { date: day }, now),
+    source.readSidecars(logDir, { date: prevDay }, now),
   ]);
   const priorDigest = computeDigest(prev.sidecars, { date: prevDay });
   const digest = computeDigest(cur.sidecars, { date: day, priorDigest });
@@ -176,10 +188,11 @@ export async function buildUsage(
   logDir: string,
   limits: UsageLimitConfig,
   now: Date = new Date(),
+  source: SidecarSource = fileSource,
 ): Promise<UsageResponse> {
-  const live = await readSidecars(logDir, { sinceDays: 8, includeFile: true }, now);
-  const archived = await loadArchivedUsage(logDir, now);
-  const learned = await loadLearnedCeilings(logDir, now);
+  const live = await source.readSidecars(logDir, { sinceDays: 8, includeFile: true }, now);
+  const archived = await loadArchivedUsage(logDir, now, source);
+  const learned = await loadLearnedCeilings(logDir, now, source);
 
   const liveUsage = await loadLiveUsage(logDir, now);
 
@@ -225,12 +238,15 @@ export function clearRawArchiveCache(): void {
  * One archived day's digest, computed from the raw sidecars the summary job
  * moved into `<logDir>/archive/<date>/`. `null` when that day isn't archived.
  */
-async function rawArchivedDigest(logDir: string, date: string): Promise<UsageDigest | null> {
-  const key = `${logDir} ${date}`;
+async function rawArchivedDigest(logDir: string, date: string, source: SidecarSource): Promise<UsageDigest | null> {
+  // Keyed by backing as well as day: the parity harness computes both, and a
+  // shared entry would hand the second run the first one's answer and call it a
+  // match.
+  const key = `${source.kind} ${logDir} ${date}`;
   const hit = rawArchiveDigests.get(key);
   if (hit) return hit;
 
-  const { sidecars, files } = await readArchivedDay(logDir, date);
+  const { sidecars, files } = await source.readArchivedDay(logDir, date);
   if (files === 0) return null;
 
   const digest = computeDigest(sidecars, { date });
@@ -249,8 +265,9 @@ export async function buildTrends(
   days: number,
   now: Date = new Date(),
   archiveDir?: string,
+  source: SidecarSource = fileSource,
 ): Promise<TrendsResponse> {
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days }, now);
+  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days }, now);
   const byDate = new Map<string, UsageDigest>();
   for (const d of digestsByDay(sidecars)) byDate.set(d.date, d);
 
@@ -260,7 +277,7 @@ export async function buildTrends(
     const date = shiftDay(end, -i);
     if (byDate.has(date)) continue;
     const digest =
-      (await rawArchivedDigest(logDir, date)) ?? (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
+      (await rawArchivedDigest(logDir, date, source)) ?? (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
     if (digest) {
       byDate.set(date, digest);
       archivedDays += 1;
@@ -278,9 +295,14 @@ export interface ToolsResponse {
 }
 
 /** The full ranked tool-bloat table for a day. */
-export async function buildTools(logDir: string, date?: string, now: Date = new Date()): Promise<ToolsResponse> {
+export async function buildTools(
+  logDir: string,
+  date?: string,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<ToolsResponse> {
   const day = date ?? today(now);
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day }, now);
+  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { date: day }, now);
   const digest = computeDigest(sidecars, { date: day, topN: 200 });
   return { date: day, topTools: digest.topTools, meta: { files, parseErrors } };
 }
