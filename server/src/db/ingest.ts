@@ -3,7 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { isAuditSidecar, type AuditSidecar } from "@claude-proxy/core";
+import { commandStorePath } from "../command-runs.js";
 import { resolveSessionsDir } from "../sessions.js";
+import { ingestCommandRuns } from "./ingest-commands.js";
 import { ingestSessions } from "./ingest-sessions.js";
 
 /**
@@ -37,10 +39,24 @@ export interface IngestStats {
   sessions: number;
   /** Transcripts parsed this pass — new, or appended to since the last one. */
   sessionsParsed: number;
+  /** Command runs the store holds, retired ones included. */
+  commandRuns: number;
+  /** True when the command store had changed and was re-parsed this pass. */
+  commandRunsParsed: boolean;
 }
 
 function emptyStats(): IngestStats {
-  return { dirs: 0, dirsSkipped: 0, inserted: 0, deleted: 0, skipped: 0, sessions: 0, sessionsParsed: 0 };
+  return {
+    dirs: 0,
+    dirsSkipped: 0,
+    inserted: 0,
+    deleted: 0,
+    skipped: 0,
+    sessions: 0,
+    sessionsParsed: 0,
+    commandRuns: 0,
+    commandRunsParsed: false,
+  };
 }
 
 /** Absolute path of a `source_dir`. */
@@ -361,6 +377,13 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
   stats.sessions = sessions.seen;
   stats.sessionsParsed = sessions.parsed;
   stats.deleted += sessions.deleted;
+
+  // The command store is one mutable file, so its watermark is a `file_watermark`
+  // row rather than this dir-level one or the session row's.
+  const commands = await ingestCommandRuns(db, logDir);
+  stats.commandRuns = commands.runs;
+  stats.commandRunsParsed = commands.parsed;
+  stats.deleted += commands.deleted;
   return stats;
 }
 
@@ -372,8 +395,9 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
  * event of its own and is reconciled by the next pass. Archiving a day is
  * visible either way, since the files leave the live directory.
  *
- * `sessions/` gets a watcher of its own: the proxy appends to a transcript
- * throughout a run without touching `logDir` itself.
+ * `sessions/` and `commands/` get watchers of their own: the proxy appends to a
+ * transcript throughout a run, and the reconcile pass appends to the command
+ * store, without either touching `logDir` itself.
  *
  * Returns a stop function. Passes never overlap: a change arriving mid-pass
  * schedules one more rather than starting a second writer.
@@ -420,9 +444,9 @@ export function watchAndIngest(
   void run();
 
   const watchers: fs.FSWatcher[] = [];
-  // A missing `sessions/` dir is normal until the proxy writes its first
-  // transcript.
-  for (const dir of [logDir, resolveSessionsDir(logDir)]) {
+  // A missing `sessions/` or `commands/` dir is normal until the proxy writes
+  // its first transcript and the first run is reconciled.
+  for (const dir of [logDir, resolveSessionsDir(logDir), path.dirname(commandStorePath(logDir))]) {
     try {
       const watcher = fs.watch(dir, { persistent: false }, schedule);
       watcher.on("error", (err) => onError(err as Error));

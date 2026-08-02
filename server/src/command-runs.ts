@@ -169,7 +169,23 @@ async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
   } catch {
     return []; // nothing recorded yet — an empty page, not an error
   }
+  return sortCommandRuns(parseCommandRunStore(text));
+}
 
+/**
+ * The store's text as the newest record per thread id, **in first-appearance
+ * order** — a `Map` keeps the position a key was first inserted at, so a later
+ * line supersedes an earlier one's contents without moving it.
+ *
+ * That order is load-bearing, not incidental: {@link sortCommandRuns} sorts on
+ * `started` alone, and `Array.prototype.sort` is stable, so first appearance is
+ * what breaks ties. The substrate stores it as `command_run.ord` to reproduce
+ * the same listing.
+ *
+ * Exported so the SQLite ingest reads the store through exactly this parser
+ * rather than a second copy of these rules.
+ */
+export function parseCommandRunStore(text: string): CommandRun[] {
   const byThread = new Map<string, CommandRun>();
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
@@ -182,7 +198,12 @@ async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
     if (!isCommandRun(parsed)) continue;
     byThread.set(parsed.threadId, parsed); // later line supersedes earlier
   }
-  return [...byThread.values()].sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
+  return [...byThread.values()];
+}
+
+/** Newest run first. Stable, so records with equal `started` keep store order. */
+export function sortCommandRuns(runs: CommandRun[]): CommandRun[] {
+  return runs.sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
 }
 
 /** Append records to the store, creating `logs/commands/` on first write. */

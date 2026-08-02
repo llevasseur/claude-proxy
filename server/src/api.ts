@@ -77,7 +77,7 @@ import {
   type StepReach,
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
-import { listInstalledCommands, readCommandRuns } from "./command-runs.js";
+import { listInstalledCommands } from "./command-runs.js";
 import { fileSource, type SidecarSource } from "./db/source.js";
 import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
 import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
@@ -1109,8 +1109,12 @@ export interface CommandsResponse {
  * command the store has runs for, so a command that a `/sync` removed keeps its history
  * instead of taking it off the page.
  */
-export async function buildCommands(logDir: string, commandsDir: string): Promise<CommandsResponse> {
-  const [installed, runs] = await Promise.all([listInstalledCommands(commandsDir), readCommandRuns(logDir)]);
+export async function buildCommands(
+  logDir: string,
+  commandsDir: string,
+  source: SidecarSource = fileSource,
+): Promise<CommandsResponse> {
+  const [installed, runs] = await Promise.all([listInstalledCommands(commandsDir), source.readCommandRuns(logDir)]);
   return {
     commands: summarizeCommands(installed, runs),
     meta: {
@@ -1188,8 +1192,9 @@ export async function buildCommand(
   commandsDir: string,
   command: string,
   flags: readonly string[] = [],
+  source: SidecarSource = fileSource,
 ): Promise<CommandResponse> {
-  const [installed, allRuns] = await Promise.all([listInstalledCommands(commandsDir), readCommandRuns(logDir)]);
+  const [installed, allRuns] = await Promise.all([listInstalledCommands(commandsDir), source.readCommandRuns(logDir)]);
   const spec = installed.find((c) => c.command === command);
   const own = allRuns
     .filter((r) => r.command === command)
@@ -1272,13 +1277,17 @@ export interface CommandRunResponse {
  * suggestions engine's read on the sessions it spans. Throws a labelled error the
  * server maps to 404 when the store has no such run.
  */
-export async function buildCommandRun(logDir: string, threadId: string): Promise<CommandRunResponse> {
-  const runs = await readCommandRuns(logDir);
+export async function buildCommandRun(
+  logDir: string,
+  threadId: string,
+  source: SidecarSource = fileSource,
+): Promise<CommandRunResponse> {
+  const runs = await source.readCommandRuns(logDir);
   const run = runs.find((r) => r.threadId === threadId);
   if (!run) throw new Error(`command run not found: ${threadId}`);
 
   const family = new Set(run.threadIds ?? [run.threadId]);
-  const sessions = await listSessionGraphs(logDir);
+  const sessions = await source.listSessionGraphs(logDir);
   const present = sessions.filter((s) => family.has(s.threadId));
   const buckets = present.length === 0 ? [] : sessionSuggestionBuckets(sessions);
 

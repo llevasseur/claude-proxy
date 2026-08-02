@@ -676,9 +676,14 @@ const server = http.createServer(async (req, res) => {
       }
       // The Commands eval page. Every read reconciles first, so the store is current
       // even on a cold server, and the streams follow a run as it happens.
-      case "/api/commands":
-        send(res, 200, await withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR)));
+      case "/api/commands": {
+        // The shadow read deliberately skips `withCommandReconcile`: the served
+        // read already reconciled, and the store it wrote is what ingest sees.
+        const commands = await withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR));
+        send(res, 200, commands);
+        shadow("/api/commands", commands, (source) => buildCommands(LOG_DIR, COMMANDS_DIR, source));
         return;
+      }
       case "/api/commands/stream":
         await serveSse(req, res, {
           watchPath: LOG_DIR,
@@ -700,7 +705,11 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          send(res, 200, await build());
+          const command = await build();
+          send(res, 200, command);
+          shadow("/api/commands/command", command, (source) =>
+            buildCommand(LOG_DIR, COMMANDS_DIR, name, flags, source),
+          );
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("command not found")) send(res, 404, { error: msg });
@@ -721,7 +730,9 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          send(res, 200, await build());
+          const run = await build();
+          send(res, 200, run);
+          shadow("/api/commands/run", run, (source) => buildCommandRun(LOG_DIR, id, source));
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("command run not found")) send(res, 404, { error: msg });

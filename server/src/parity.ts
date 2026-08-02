@@ -2,6 +2,9 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { UsageLimitConfig } from "@claude-proxy/core";
 import {
+  buildCommand,
+  buildCommandRun,
+  buildCommands,
   buildContext,
   buildSession,
   buildSessionBreakdown,
@@ -19,6 +22,7 @@ import {
   clearRawArchiveCache,
 } from "./api.js";
 import { clearArchiveCache } from "./archive.js";
+import { resolveCommandsDir } from "./command-runs.js";
 import { fileSource, type SidecarSource } from "./db/source.js";
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from "./usage-history.js";
 
@@ -38,6 +42,14 @@ export interface ParityContext {
   logDir: string;
   archiveDir?: string;
   limits: UsageLimitConfig;
+  /**
+   * The installed command catalogue (`~/.claude/commands` by default). Pinned on
+   * the context rather than resolved per call so both replays read the same
+   * directory: it sits outside `logs/`, so it is not the substrate's to mirror
+   * and both backings read it identically — but it still has to be *fixed* for a
+   * comparison to mean anything.
+   */
+  commandsDir?: string;
 }
 
 /** One replayable request: a label for the failure message, and how to answer it. */
@@ -311,6 +323,57 @@ export const PARITY_ROUTES: ParityRoute[] = [
       }));
     },
   },
+
+  /* --- Slice 3: command runs --- *
+   *
+   * Enumerated from the file side for the same reason slice 2's routes are: the
+   * DB is asked about every command and every run the store knows, not only the
+   * ones it managed to index. A run the substrate missed surfaces as a
+   * `command run not found` throw against a case the files answered.
+   *
+   * The `/stream` variants are absent: SSE re-serves the same builder on a
+   * watch, so the payload under test is the non-streaming one.
+   */
+  {
+    name: "/api/commands",
+    cases: async (ctx) => [
+      { label: "/api/commands", run: (source) => buildCommands(ctx.logDir, commandsDirOf(ctx), source) },
+    ],
+  },
+  {
+    name: "/api/commands/command",
+    cases: async (ctx) => {
+      const commandsDir = commandsDirOf(ctx);
+      const { commands } = await buildCommands(ctx.logDir, commandsDir, fileSource);
+      const cases: ParityCase[] = [];
+      for (const summary of commands) {
+        cases.push({
+          label: `/api/commands/command?name=${summary.command}`,
+          run: (source) => buildCommand(ctx.logDir, commandsDir, summary.command, [], source),
+        });
+        // One facet per command, so the flag filter is exercised rather than
+        // only the unfiltered aggregate.
+        const facet = summary.flags[0];
+        if (facet) {
+          cases.push({
+            label: `/api/commands/command?name=${summary.command}&flags=${facet}`,
+            run: (source) => buildCommand(ctx.logDir, commandsDir, summary.command, [facet], source),
+          });
+        }
+      }
+      return cases;
+    },
+  },
+  {
+    name: "/api/commands/run",
+    cases: async (ctx) => {
+      const runs = await fileSource.readCommandRuns(ctx.logDir);
+      return runs.slice(0, PER_THREAD_CASES).map((run) => ({
+        label: `/api/commands/run?id=${run.threadId}`,
+        run: (source) => buildCommandRun(ctx.logDir, run.threadId, source),
+      }));
+    },
+  },
   {
     name: "/api/context",
     cases: async (ctx) => {
@@ -336,6 +399,11 @@ export const PARITY_ROUTES: ParityRoute[] = [
  * only the routes that re-read request bodies per thread.
  */
 const PER_THREAD_CASES = 20;
+
+/** The catalogue a run replays against — pinned on the context, else the installed one. */
+function commandsDirOf(ctx: ParityContext): string {
+  return ctx.commandsDir ?? resolveCommandsDir();
+}
 
 /** The newest transcripts the *files* know about, in the listing's own order. */
 async function threadIds(ctx: ParityContext): Promise<string[]> {
