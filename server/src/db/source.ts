@@ -40,10 +40,8 @@ export interface SidecarSource {
 
   /* --- Session transcripts (slice 2) --- *
    *
-   * The transcript body is a blob and stays on disk: {@link readSession} returns
-   * the same `content` either way, and only the metadata around it moves into
-   * SQL. The DB backing never stops those files being written — `/revive` reads
-   * them directly, with no API and no database.
+   * The transcript body stays on disk: {@link readSession} returns the same
+   * `content` either way, and only the metadata around it moves into SQL.
    */
   listSessions(logDir: string): Promise<SessionSummary[]>;
   listSessionGraphs(logDir: string): Promise<SessionGraph[]>;
@@ -428,30 +426,27 @@ function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
 export function dbSource(db: DatabaseSync): SidecarSource {
   return {
     kind: "db",
-    // Both listings answer from the tables alone — no directory is read, which
-    // is the whole point of the slice.
+    // Both listings answer from the tables alone — no directory is read.
     listSessions: async () => sortListing(sessionRows(db).map(toSummary)),
     listSessionGraphs: async () => {
       const nodes = nodesByThread(db);
       const rows = sessionRows(db).map((row) => ({ ...toSummary(row), nodes: nodes.get(row.thread_id) ?? [] }));
-      // The agent tree is a derivation, not a stored fact: it is rebuilt from the
-      // same rows by the same function the file reader uses. `linkAgentSessions`
-      // sorts each family internally, so the result does not depend on the order
-      // rows arrive in — which is what lets SQL supply them.
+      // The agent tree is derived, not stored — same function the file reader
+      // uses. `linkAgentSessions` sorts each family internally, so the result
+      // does not depend on the order rows arrive in.
       const links = linkAgentSessions(rows);
       return sortListing(rows.map((row) => ({ ...row, ...links.get(row.threadId)! })));
     },
     readSession: async (logDir, id) => {
       // Validates the URL-supplied id and confirms the path stays inside
-      // `sessions/`, exactly as the file reader does, before anything is read.
+      // `sessions/`, as the file reader does.
       const full = resolveSessionFile(logDir, id);
       const row = db.prepare(`SELECT ${SESSION_COLUMNS} FROM session WHERE thread_id = ?`).get(id) as unknown as
         | SessionRow
         | undefined;
       if (!row) throw new Error(`session not found: ${id}`);
 
-      // The transcript body stays on disk — the row holds a pointer, not the
-      // blob — so the metadata comes out of SQL and the content off the file.
+      // Metadata out of SQL, content off the file: the row holds a pointer.
       let content: string;
       try {
         content = await readFile(full, "utf8");
@@ -462,8 +457,8 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return { meta, content, bytes, modified };
     },
     readSessionNodeTexts: async (logDir, id) => {
-      // A bad id throws; a transcript with no sidecar reads as empty rather than
-      // 404, which is the file reader's contract too.
+      // A bad id throws; a transcript with no sidecar reads as empty, not 404 —
+      // the file reader's contract.
       resolveSessionFile(logDir, id);
       const texts: Record<number, string> = {};
       for (const row of db

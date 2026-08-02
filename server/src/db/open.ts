@@ -139,16 +139,12 @@ CREATE TABLE IF NOT EXISTS ingest_watermark (
  * carrying the header metadata `parseSessionTranscript` derives, the listing's
  * `bytes` / `modified`, and the opening prompt off the `.state.json` sidecar.
  *
- * The transcript body itself stays on disk and `md_path` points at it. Unlike a
- * `request` row, eviction is not a separate state here: the transcript *is* this
- * row's source, so a body that goes away takes the row with it on the next pass.
- * `/revive` reads those files straight off disk and nothing here changes that.
+ * The transcript body stays on disk and `md_path` points at it. Eviction is not
+ * a separate state here as it is for `request`: a body that goes away takes the
+ * row with it on the next pass.
  *
- * `bytes` and `modified` double as the per-file watermark. A transcript is
- * mutable in a way an audit sidecar is not — the proxy appends to it for the life
- * of the run — so "seen this stem already" is not enough to skip it. An append
- * always moves the size, so size plus mtime is a sufficient change detector and
- * costs a `stat` rather than a re-read.
+ * `bytes` and `modified` double as the per-file watermark — a transcript is
+ * mutable, so "seen this stem already" is not enough to skip it.
  */
 const SCHEMA_V2 = `
 CREATE TABLE IF NOT EXISTS session (
@@ -168,9 +164,7 @@ CREATE TABLE IF NOT EXISTS session (
   modified      TEXT NOT NULL,
   md_path       TEXT,
   -- The untruncated opening prompt from <threadId>.state.json, null when the
-  -- sidecar is absent or carries no "root" — the two states no reader tells
-  -- apart. Slice 3's run tree reads it; indexing it here is what stops that
-  -- being another file scan.
+  -- sidecar is absent or carries no "root" — two states no reader tells apart.
   root_prompt   TEXT
 );
 
@@ -179,8 +173,8 @@ CREATE INDEX IF NOT EXISTS session_session_id_idx ON session(session_id);
 CREATE INDEX IF NOT EXISTS session_started_idx    ON session(started);
 
 -- The appended step stream, in transcript line order. "idx" is the node's own
--- 0-based position, which the agent linkage and the graph's deep links both
--- address by, so it is stored rather than re-derived from row order.
+-- 0-based position, stored rather than re-derived: the agent linkage and the
+-- graph's deep links both address by it.
 CREATE TABLE IF NOT EXISTS session_node (
   thread_id    TEXT NOT NULL REFERENCES session(thread_id) ON DELETE CASCADE,
   idx          INTEGER NOT NULL,
@@ -197,9 +191,9 @@ CREATE TABLE IF NOT EXISTS session_node (
 CREATE INDEX IF NOT EXISTS session_node_type_idx ON session_node(type);
 
 -- The <threadId>.nodes.jsonl sidecar: the untruncated text behind a gisted
--- node line. Deliberately *not* a column on session_node and not keyed to it —
--- the sidecar is sparse and can name an index the transcript no longer has, and
--- the file reader returns such an entry rather than dropping it.
+-- node line. Not a column on session_node and not keyed to it — the sidecar is
+-- sparse and can name an index the transcript no longer has, which the file
+-- reader returns rather than drops.
 CREATE TABLE IF NOT EXISTS session_node_text (
   thread_id TEXT NOT NULL REFERENCES session(thread_id) ON DELETE CASCADE,
   idx       INTEGER NOT NULL,

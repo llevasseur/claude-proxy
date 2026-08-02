@@ -355,8 +355,7 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
     await ingestDir(db, st, logDir, sourceDir, stats);
   }
 
-  // The session transcripts, which live under `sessions/` and are mutable, so
-  // they carry their own per-file watermark rather than this dir-level one.
+  // Transcripts carry their own per-file watermark, not this dir-level one.
   const sessions = await ingestSessions(db, logDir);
   stats.sessions = sessions.seen;
   stats.sessionsParsed = sessions.parsed;
@@ -372,10 +371,8 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
  * event of its own and is reconciled by the next pass. Archiving a day is
  * visible either way, since the files leave the live directory.
  *
- * `sessions/` gets a watcher of its own because it is the opposite case: the
- * proxy appends to a transcript throughout a run without touching `logDir`
- * itself, so leaving it to the next pass would mean the session tables trail the
- * files for as long as a run lasts.
+ * `sessions/` gets a watcher of its own: the proxy appends to a transcript
+ * throughout a run without touching `logDir` itself.
  *
  * Returns a stop function. Passes never overlap: a change arriving mid-pass
  * schedules one more rather than starting a second writer.
@@ -422,8 +419,8 @@ export function watchAndIngest(
   void run();
 
   const watchers: fs.FSWatcher[] = [];
-  // A missing `sessions/` dir is normal on a fresh clone: the proxy creates it
-  // with the first transcript, and until then there is nothing to watch.
+  // A missing `sessions/` dir is normal until the proxy writes its first
+  // transcript.
   for (const dir of [logDir, path.join(logDir, "sessions")]) {
     try {
       const watcher = fs.watch(dir, { persistent: false }, schedule);

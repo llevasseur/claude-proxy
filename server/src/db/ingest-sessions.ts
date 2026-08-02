@@ -8,18 +8,10 @@ import { resolveSessionsDir, SESSION_FILE_RE } from "../sessions.js";
  * Index `logs/sessions/` into the `session`, `session_node` and
  * `session_node_text` tables.
  *
- * The transcripts are the one part of `logs/` that is **mutable**: the proxy
- * appends to a transcript for the whole life of the run it is recording. So the
- * audit sidecars' "this stem is already a row, skip it" is not a sufficient
- * watermark here — a row can be correct one second and short the next.
- *
- * The watermark is therefore per file rather than per directory: the row keeps
- * the `bytes` and `modified` it was parsed from, and a file whose `stat` still
- * matches is left alone. An append always moves the size, so this costs one
- * `stat` per transcript instead of a re-read, and re-running is still a no-op.
- *
- * As everywhere else in the substrate, `logs/` stays the source of truth: these
- * tables are rebuilt wholesale by deleting the database and re-ingesting.
+ * Transcripts are mutable — the proxy appends for the life of a run — so the
+ * watermark is per file rather than per directory: a row keeps the `bytes` and
+ * `modified` it was parsed from, and a file whose `stat` still matches is
+ * skipped.
  */
 
 /** `<threadId>.md` relative to `logDir` — the pointer stored on the row. */
@@ -47,8 +39,7 @@ interface SessionStatements {
 
 function prepare(db: DatabaseSync): SessionStatements {
   return {
-    // A transcript is re-parsed on every append, so this is an upsert of the
-    // whole row rather than the audit sidecars' insert-once.
+    // Upsert rather than insert-once: a transcript is re-parsed on every append.
     insertSession: db.prepare(`
       INSERT INTO session (
         thread_id, model, session_id, started,
@@ -68,8 +59,8 @@ function prepare(db: DatabaseSync): SessionStatements {
       INSERT INTO session_node (thread_id, idx, type, text, tool, task, interruption, interrupted, message)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
-    // A `.nodes.jsonl` that names the same index twice reads as the last entry
-    // winning, because the file reader assigns into a plain object.
+    // A `.nodes.jsonl` naming the same index twice: last entry wins, matching
+    // the file reader's plain-object assignment.
     insertNodeText: db.prepare(`
       INSERT INTO session_node_text (thread_id, idx, text) VALUES (?, ?, ?)
       ON CONFLICT(thread_id, idx) DO UPDATE SET text = excluded.text
@@ -148,9 +139,7 @@ function writeSession(st: SessionStatements, parsed: ParsedSession): void {
     parsed.rootPrompt,
   );
 
-  // The stream is rewritten rather than appended to. A transcript can be
-  // rewritten as well as extended, and "delete then insert" is the only form
-  // that is correct for both.
+  // Delete then insert: a transcript can be rewritten, not only extended.
   st.clearNodes.run(parsed.threadId);
   for (const node of parseSessionNodes(parsed.content)) {
     st.insertNode.run(
@@ -178,7 +167,7 @@ const BATCH = 100;
 /**
  * Bring the session tables level with `logs/sessions/`. Safe to call repeatedly:
  * an unchanged transcript is not re-read, and a part-way failure leaves the
- * committed batches in place for the next pass to resume from.
+ * committed batches for the next pass to resume from.
  */
 export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<SessionIngestStats> {
   const stats: SessionIngestStats = { seen: 0, parsed: 0, deleted: 0 };
@@ -188,8 +177,7 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
   try {
     names = await readdir(dir);
   } catch {
-    // No `sessions/` dir — the proxy has not written one. Not an error, but any
-    // rows left from a directory that has since gone are no longer backed.
+    // No `sessions/` dir. Not an error, but any rows left over are unbacked.
     const st = prepare(db);
     for (const row of db.prepare("SELECT thread_id FROM session").all() as Array<{ thread_id: string }>) {
       st.deleteSession.run(row.thread_id);
@@ -231,8 +219,7 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
     known.set(row.thread_id, { bytes: row.bytes, modified: row.modified });
   }
 
-  // The per-file watermark. `stat` on every transcript is the cost of noticing an
-  // append; parsing is what it buys us out of.
+  // The per-file watermark: one `stat` per transcript in place of a re-parse.
   const stale: string[] = [];
   for (const threadId of threadIds) {
     const mark = known.get(threadId);

@@ -233,8 +233,8 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * `session not found` throw against a case the files answered.
    *
    * `/api/context/detail`, `/api/context/message` and `/api/context/tool` are
-   * deliberately absent. They read a `.request.txt` body straight off disk and
-   * touch no indexed column, so there is no DB path for them to disagree on.
+   * absent: they read a `.request.txt` body off disk and touch no indexed
+   * column, so there is no DB path to disagree on.
    */
   {
     name: "/api/sessions",
@@ -303,7 +303,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     cases: async (ctx) => {
       const now = new Date();
       // Bucket numbering is derived from the transcripts, so the indices to
-      // replay come from the file side's own answer rather than a guess.
+      // replay come from the file side's own answer.
       const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
       return buckets.map((bucket) => ({
         label: `/api/sessions/suggestions/bucket?index=${bucket.index}`,
@@ -331,11 +331,9 @@ export const PARITY_ROUTES: ParityRoute[] = [
 /**
  * How many transcripts the per-thread routes replay, newest first.
  *
- * Not a weakening of the comparison: `/api/sessions` and `/api/sessions/graph`
- * are replayed whole and carry *every* transcript's metadata and node stream, so
- * a row the substrate got wrong fails there whether or not it is in this window.
- * The cap bounds the routes that re-read request bodies per thread, which on a
- * real archive is thousands of reads for no additional coverage.
+ * Coverage is not lost: `/api/sessions` and `/api/sessions/graph` are replayed
+ * whole and carry every transcript's metadata and node stream. The cap bounds
+ * only the routes that re-read request bodies per thread.
  */
 const PER_THREAD_CASES = 20;
 

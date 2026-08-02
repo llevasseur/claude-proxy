@@ -380,18 +380,29 @@ describe("route parity over a synthetic corpus", () => {
 const SNAPSHOT_SUFFIXES = [".audit.json"];
 
 /**
- * What `sessions/` contributes. Kept separate from {@link SNAPSHOT_SUFFIXES}
- * because `.md` means two different things in this tree: a transcript under
- * `sessions/`, and a request's rendered body beside its audit sidecar. Taking
- * the latter would change which requests read as blob-evicted.
+ * What `sessions/` contributes. Separate from {@link SNAPSHOT_SUFFIXES} because
+ * `.md` means two things in this tree: a transcript under `sessions/`, and a
+ * request's rendered body beside its audit sidecar. Taking the latter would
+ * change which requests read as blob-evicted.
  */
 const SESSION_SUFFIXES = [".md", ".nodes.jsonl", ".state.json"];
 
 /** Live files a route reads that are not sidecars, and that the proxy rewrites. */
 const SNAPSHOT_FILES = ["usage-live.json"];
 
-/** Hardlink `from`'s snapshot-worthy files into `to`, copying across filesystems. */
-async function linkInto(from: string, to: string, suffixes: string[] = SNAPSHOT_SUFFIXES): Promise<void> {
+/**
+ * Hardlink `from`'s snapshot-worthy files into `to`, copying across filesystems.
+ *
+ * `freeze` copies instead. A hardlink shares the inode, so it freezes which
+ * files exist but not their contents — enough for write-once audit sidecars,
+ * not for a transcript the proxy is still appending to.
+ */
+async function linkInto(
+  from: string,
+  to: string,
+  suffixes: string[] = SNAPSHOT_SUFFIXES,
+  freeze = false,
+): Promise<void> {
   let names: string[];
   try {
     names = await readdir(from);
@@ -403,7 +414,8 @@ async function linkInto(from: string, to: string, suffixes: string[] = SNAPSHOT_
     const src = path.join(from, name);
     const dest = path.join(to, name);
     try {
-      await link(src, dest);
+      if (freeze) await copyFile(src, dest);
+      else await link(src, dest);
     } catch {
       try {
         await copyFile(src, dest);
@@ -423,19 +435,19 @@ async function linkInto(from: string, to: string, suffixes: string[] = SNAPSHOT_
  * landing before the DB side reads shows up as a one-request mismatch that has
  * nothing to do with the substrate.
  *
- * Hardlinks, so the snapshot costs directory entries rather than the corpus. It
- * carries the audit sidecars, `usage-live.json`, and the whole `sessions/`
- * directory — the transcripts are appended to for the life of a run, so they are
- * exactly the race this exists to close. The `.md` / `.request.txt` request
- * bodies are still left out: no wired route reads them. A later slice that wires
- * a blob-reading route has to widen {@link SNAPSHOT_SUFFIXES}.
+ * Hardlinks the audit sidecars and `usage-live.json`, so the snapshot costs
+ * directory entries rather than the corpus. `sessions/` is *copied* instead:
+ * transcripts are appended to for the life of a run, and a hardlink would carry
+ * those appends straight into the snapshot. The `.md` / `.request.txt` request
+ * bodies are left out: no wired route reads them. A later slice that wires a
+ * blob-reading route has to widen {@link SNAPSHOT_SUFFIXES}.
  */
 async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
   const snap = await mkdtemp(path.join(tmpdir(), "parity-real-"));
   await linkInto(logDir, snap);
   const sessions = path.join(snap, "sessions");
   await mkdir(sessions, { recursive: true });
-  await linkInto(path.join(logDir, "sessions"), sessions, SESSION_SUFFIXES);
+  await linkInto(path.join(logDir, "sessions"), sessions, SESSION_SUFFIXES, true);
   for (const day of days) {
     const dest = path.join(snap, "archive", day);
     await mkdir(dest, { recursive: true });
