@@ -5,20 +5,15 @@ import type { DatabaseSync } from "node:sqlite";
 import { isAuditSidecar, type AuditSidecar } from "@claude-proxy/core";
 
 /**
- * Ingest: fill the substrate from `logs/`, and keep it filled.
- *
- * Two properties are load-bearing, because this runs unattended on server start
- * and again on every filesystem event:
+ * Fill the substrate from `logs/`, and keep it filled. Runs unattended on server
+ * start and on every filesystem event, so:
  *
  * - **Idempotent.** Rows are keyed on the sidecar's filename stem and inserted
- *   with `ON CONFLICT DO NOTHING`, so "ingest ran twice" is a no-op.
- * - **Watermarked.** Each scanned directory records what it last saw, so
- *   "ingest died halfway" resumes rather than restarts, and an untouched
- *   archived day is skipped wholesale.
+ *   with `ON CONFLICT DO NOTHING`.
+ * - **Watermarked.** Each scanned directory records what it last saw, so a
+ *   half-finished pass resumes and an untouched archived day is skipped whole.
  *
- * The proxy is not involved. It is load-bearing — if it breaks, Claude Code
- * itself stops working — so it keeps writing files exactly as it does today and
- * the server does all of the ingesting.
+ * The proxy never writes here; the server does all of the ingesting.
  */
 
 /** The live log directory, as a `source_dir` value. Archived days are `archive/<YYYY-MM-DD>`. */
@@ -48,10 +43,9 @@ function dirPath(logDir: string, sourceDir: string): string {
 }
 
 /**
- * Every directory that holds sidecars: the live one, plus each archived day.
- *
- * An archive directory that was never written, or has been pruned, simply does
- * not appear — the same way the file-backed readers treat it.
+ * Every directory that holds sidecars: the live one, plus each archived day. A
+ * missing or pruned archive directory simply does not appear, matching the
+ * file-backed readers.
  */
 async function sourceDirs(logDir: string): Promise<string[]> {
   const dirs = [LIVE];
@@ -130,12 +124,10 @@ interface Statements {
 
 function prepare(db: DatabaseSync): Statements {
   return {
-    // `DO UPDATE ... WHERE source_dir <> excluded.source_dir` is still a no-op
-    // for a re-ingest of an unchanged file. It exists for exactly one event: the
-    // summary job *moves* a sidecar from the live directory into
-    // `archive/<day>/`. The stem is unchanged, so a plain DO NOTHING would leave
-    // the row claiming to live where it no longer does, and archived-day reads
-    // would then miss it.
+    // The `DO UPDATE ... WHERE source_dir <> excluded.source_dir` handles one
+    // event only: the summary job moving a sidecar from live into
+    // `archive/<day>/`. The stem is unchanged, so DO NOTHING would leave the row
+    // pointing at a directory it no longer lives in.
     insertRequest: db.prepare(`
       INSERT INTO request (
         id, source_dir, timestamp, model, endpoint, status_code,
@@ -171,9 +163,8 @@ function prepare(db: DatabaseSync): Statements {
       WHERE request_skipped.source_dir <> excluded.source_dir
     `),
     refreshBlobs: db.prepare("UPDATE request SET md_path = ?, request_path = ?, blob_evicted = ? WHERE id = ?"),
-    // Scoped by `source_dir` as well as id: a stem that has already been
-    // relocated to the archive by an earlier directory in this same pass must
-    // not be deleted by the live directory noticing the file is gone.
+    // Scoped by `source_dir` as well as id, so a stem already relocated to the
+    // archive earlier in this pass is not deleted by the live directory.
     deleteRequest: db.prepare("DELETE FROM request WHERE id = ? AND source_dir = ?"),
     deleteSkipped: db.prepare("DELETE FROM request_skipped WHERE id = ? AND source_dir = ?"),
     unskip: db.prepare("DELETE FROM request_skipped WHERE id = ?"),
@@ -241,8 +232,8 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
           st.insertRateLimit.run(row.stem, ord, name, String(value));
         });
       }
-      // A stem that failed to parse on an earlier pass — a sidecar caught
-      // mid-write, say — and parses now stops being a skipped file.
+      // A stem that failed to parse on an earlier pass and parses now stops
+      // being a skipped file.
       st.unskip.run(row.stem);
       stats.inserted += 1;
     }
@@ -294,10 +285,9 @@ async function ingestDir(db: DatabaseSync, st: Statements, logDir: string, sourc
     knownSkipped.add(r.id);
   }
 
-  // Rows whose file left this directory — pruned by retention, or moved into the
-  // archive. A move re-inserts under the new `source_dir` when that directory is
-  // scanned; the ordering of `sourceDirs` (live first) means the same pass sees
-  // both halves.
+  // Rows whose file left this directory: pruned by retention, or moved into the
+  // archive. A move re-inserts under the new `source_dir`, and `sourceDirs`
+  // ordering (live first) means one pass sees both halves.
   const present = new Set(stems);
   db.exec("BEGIN");
   try {
@@ -336,9 +326,9 @@ async function ingestDir(db: DatabaseSync, st: Statements, logDir: string, sourc
     throw err;
   }
 
-  // The live directory re-reads what it previously skipped: a sidecar caught
-  // mid-write parses as garbage once and correctly ever after. An archived day
-  // is settled, so a skip there stays a skip until a full rebuild.
+  // The live directory re-reads what it previously skipped — a sidecar caught
+  // mid-write parses correctly later. An archived day is settled, so a skip
+  // there stays a skip until a full rebuild.
   const fresh = stems.filter((s) => !known.has(s) && (sourceDir === LIVE || !knownSkipped.has(s)));
   for (let i = 0; i < fresh.length; i += BATCH) {
     const batch = await Promise.all(fresh.slice(i, i + BATCH).map((stem) => readRow(dir, sourceDir, stem, nameSet)));
@@ -350,8 +340,8 @@ async function ingestDir(db: DatabaseSync, st: Statements, logDir: string, sourc
 
 /**
  * Bring the substrate level with `logDir`. Safe to call repeatedly and
- * concurrently with reads; a failure part-way leaves the batches already
- * committed in place and the next run picks up from there.
+ * concurrently with reads; a part-way failure leaves committed batches in place
+ * and the next run resumes from there.
  */
 export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestStats> {
   const stats = emptyStats();

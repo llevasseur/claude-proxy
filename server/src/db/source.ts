@@ -12,18 +12,15 @@ import {
 } from "../logs.js";
 
 /**
- * One interface, two backings.
+ * One interface, two backings — the seam the migration turns on. Every read
+ * route reaches the log corpus through these two calls: {@link fileSource} is
+ * the readdir + readFile scan, {@link dbSource} answers the same questions with
+ * indexed SQL. Nothing above this line knows which one it has.
  *
- * Every read route reaches the log corpus through exactly these two calls, so
- * this is the seam the migration turns on: {@link fileSource} is the readdir +
- * readFile scan the server has always done, {@link dbSource} answers the same
- * questions with indexed SQL. Nothing above this line knows which one it has.
- *
- * The DB-backed implementation deliberately reproduces the file-backed one
- * *including its quirks* — filename-order iteration, unparseable files counted
- * rather than dropped, the live/archive directory split. Those quirks are
- * observable in the JSON the routes return, and slice 1's whole claim is that
- * the two are byte-identical. See `server/src/parity.ts`.
+ * The DB-backed implementation reproduces the file-backed one *including its
+ * quirks* — filename-order iteration, unparseable files counted rather than
+ * dropped, the live/archive directory split. Those quirks are observable in the
+ * JSON the routes return. See `server/src/parity.ts`.
  */
 export interface SidecarSource {
   readonly kind: "files" | "db";
@@ -78,11 +75,9 @@ interface SkippedRow {
 }
 
 /**
- * Rebuild the sidecar object a file read would have produced.
- *
- * `tools` and `rateLimit` keep their original order (`ord`), because that order
- * is observable: the digest's tool table breaks ties by first appearance, so a
- * reshuffle here would reorder `topTools` in the response.
+ * Rebuild the sidecar object a file read would have produced. `tools` and
+ * `rateLimit` keep their original `ord`: the digest's tool table breaks ties by
+ * first appearance, so a reshuffle here reorders `topTools` in the response.
  */
 function toSidecar(
   row: RequestRow,
@@ -136,12 +131,10 @@ function toSidecar(
 }
 
 /**
- * The stand-in for a file that is on disk but is not a usable audit row.
- *
- * It must fail `isAuditSidecar`, exactly like the real thing did — the digest
- * counts it under `skipped`, `digestsByDay` drops it, and the usage meters
- * ignore it. Storing the original malformed body would buy nothing: no consumer
- * reads any field of it beyond the timestamp used to place it in a day.
+ * Stand-in for a file on disk that is not a usable audit row. It must fail
+ * `isAuditSidecar` like the real thing: the digest counts it under `skipped`,
+ * `digestsByDay` drops it, the usage meters ignore it. No consumer reads any
+ * field beyond the timestamp used to place it in a day.
  */
 function invalidSidecar(stem: string, timestamp: string | null): Record<string, unknown> {
   const out: Record<string, unknown> = { __invalidSidecar: stem };
@@ -197,11 +190,10 @@ function latestUserText(request: unknown): string | null {
 }
 
 /**
- * One directory's worth of sidecars, straight out of SQLite.
- *
- * Valid rows and skipped files are merged back into a single filename-ordered
- * stream, because that is the order a `readdir(...).sort()` produced and the
- * digest's model map, tool ties, and busiest hour all inherit it.
+ * One directory's worth of sidecars, straight out of SQLite. Valid rows and
+ * skipped files merge back into a single filename-ordered stream — the order
+ * `readdir(...).sort()` produced, which the digest's model map, tool ties, and
+ * busiest hour all inherit.
  */
 async function readDir(
   db: DatabaseSync,
@@ -213,8 +205,7 @@ async function readDir(
   const { keepDay, from, to } = dayFilter(opts, now);
 
   // The stem carries the proxy's UTC date prefix, so a range on the primary key
-  // is the same prefilter the file reader does on filenames — and here it is an
-  // index seek rather than a directory scan.
+  // is the same prefilter the file reader does on filenames, as an index seek.
   const where: string[] = ["source_dir = ?"];
   const args: unknown[] = [sourceDir];
   if (from) {
@@ -236,8 +227,8 @@ async function readDir(
   const toolsById = new Map<string, Array<{ name: string; bytes: number; est_tokens: number }>>();
   const rateById = new Map<string, Array<{ header_name: string; header_value: string }>>();
   if (ids.length) {
-    // One join per read rather than one query per request — the point of the
-    // exercise. Chunked to stay under SQLite's bound-parameter ceiling.
+    // One join per read rather than one query per request. Chunked to stay
+    // under SQLite's bound-parameter ceiling.
     for (let i = 0; i < ids.length; i += 400) {
       const chunk = ids.slice(i, i + 400);
       const holes = chunk.map(() => "?").join(",");
@@ -291,7 +282,7 @@ async function readDir(
     const sidecar = entry.make();
     if (entry.parseError) parseErrors += 1;
     if (opts.includeSkimRequests && !entry.parseError) {
-      // The bodies stay on disk by design; the DB holds a pointer, not the blob.
+      // The bodies stay on disk; the DB holds a pointer, not the blob.
       const rel = sourceDir === LIVE ? `${entry.stem}.request.txt` : `${sourceDir}/${entry.stem}.request.txt`;
       let text: string | null = null;
       try {
@@ -316,8 +307,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
     readArchivedDay: async (logDir, date, opts = {}) => {
       const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0 };
       // Archive folders are named for the UTC day the summary job moved, so one
-      // reporting day straddles two of them — read both, keep only `date`, in
-      // that directory order.
+      // reporting day straddles two of them. Read both, keep only `date`.
       for (const day of [date, shiftDay(date, 1)]) {
         const r = await readDir(db, logDir, `archive/${day}`, { ...opts, date }, new Date());
         out.sidecars.push(...r.sidecars);

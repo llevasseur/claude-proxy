@@ -4,12 +4,9 @@ import { openDb } from "./open.js";
 import { dbSource, type SidecarSource } from "./source.js";
 
 /**
- * The server's handle on the substrate.
- *
- * Opening it is best-effort by design. The DB is a disposable view over
- * `logs/`, so a failure to open or ingest costs the shadow comparison and
- * nothing else — every route still answers from the files, exactly as it did
- * before this existed.
+ * The server's handle on the substrate. Opening it is best-effort: a failure to
+ * open or ingest costs the shadow comparison and nothing else, since every route
+ * still answers from the files.
  */
 
 let handle: { db: DatabaseSync; source: SidecarSource; stop: () => void } | null = null;

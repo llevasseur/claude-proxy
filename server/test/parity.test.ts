@@ -18,16 +18,14 @@ import {
 import { resolveUsageLimits } from "../src/usage-config.js";
 
 /**
- * The parity harness in anger: every wired route, replayed against the same
- * corpus through the file scan and through SQLite, asserting the full JSON is
- * identical — not a row count, not a summary.
+ * Every wired route, replayed against the same corpus through the file scan and
+ * through SQLite, asserting the full JSON is identical.
  *
- * Two corpora. The synthetic one runs everywhere and is built to be nasty: a
- * legacy sidecar with no session/skim/rateLimit, a file that will not parse, a
- * structurally invalid one, a request whose bodies have been evicted, and two
- * requests sharing a tool name so the digest's tie-breaking order is exercised.
- * The real one is whatever `logs/archive` holds on this machine, which is the
- * only place the shape of a year of real traffic can be checked.
+ * Two corpora. The synthetic one runs everywhere: a legacy sidecar with no
+ * session/skim/rateLimit, a file that will not parse, a structurally invalid
+ * one, a request whose bodies have been evicted, and two requests sharing a tool
+ * name so the digest's tie-breaking order is exercised. The real one is whatever
+ * `logs/archive` holds on this machine.
  */
 
 /** A sidecar filename prefix that is its UTC instant, exactly as the proxy writes it. */
@@ -109,8 +107,8 @@ async function buildCorpus(): Promise<string> {
   await mkdir(dayTwo, { recursive: true });
 
   await writeTriple(dayOne, "2026-07-15T14:00:00.000Z");
-  // Same tool name as the request above, different byte weight — the digest
-  // accumulates them into one row, and ties are broken by first appearance.
+  // Same tool name as the request above, different byte weight: the digest
+  // accumulates them into one row, and ties break by first appearance.
   await writeTriple(dayOne, "2026-07-15T15:00:00.000Z", {
     tools: [
       { name: "Bash", bytes: 900, estTokens: 225 },
@@ -126,8 +124,8 @@ async function buildCorpus(): Promise<string> {
   await writeRaw(dayOne, "2026-07-15T18:00:00.000Z", "{ this is not json");
   // JSON, but not an audit sidecar — the digest counts it under `skipped`.
   await writeRaw(dayOne, "2026-07-15T19:00:00.000Z", JSON.stringify({ timestamp: "2026-07-15T19:00:00.000Z", nope: 1 }));
-  // 21:30 Eastern on the 15th is 01:30Z on the 16th, so it is filed under the
-  // next UTC folder while belonging to the 15th's reporting day.
+  // 01:30Z on the 16th is filed under the next UTC folder while belonging to
+  // the 15th's reporting day.
   await writeTriple(dayTwo, "2026-07-16T01:30:00.000Z");
   await writeTriple(dayTwo, "2026-07-16T14:00:00.000Z", { model: "claude-haiku-4-5-20251001" });
 
@@ -202,8 +200,8 @@ describe("route parity over a synthetic corpus", () => {
     const before = db.prepare("SELECT id, timestamp, model, tokens_real_input FROM request ORDER BY id").all();
     const tools = db.prepare("SELECT request_id, ord, name, bytes FROM request_tool ORDER BY request_id, ord").all();
 
-    // The supported total-recovery path: drop everything, re-ingest, get the
-    // same view back. Nothing here is authored, so nothing is lost.
+    // The total-recovery path: drop everything, re-ingest, get the same view
+    // back.
     db.exec("DELETE FROM request_rate_limit");
     db.exec("DELETE FROM request_tool");
     db.exec("DELETE FROM request");
@@ -230,10 +228,9 @@ describe("route parity over a synthetic corpus", () => {
   });
 
   it("needs no normalization to agree", () => {
-    // Every entry here has to name the mechanism that makes a difference
-    // benign. The DB reader reproduces the file reader's filename ordering
-    // rather than sorting differently and compensating, so the list is empty —
-    // and an unexplainable diff is a bug, not a candidate for this array.
+    // Every entry has to name the mechanism that makes a difference benign. The
+    // DB reader reproduces the file reader's filename ordering rather than
+    // compensating for a different one, so the list is empty.
     expect(NORMALIZATIONS.map((n) => `${n.name}: ${n.why}`)).toEqual([]);
   });
 });

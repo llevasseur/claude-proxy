@@ -5,14 +5,9 @@ import { resolveLogDir } from "./logs.js";
 /**
  * `pnpm --filter server ingest` — rebuild the SQLite view from `logs/`.
  *
- * The server ingests on start and on every log change, so this is for the times
- * you want it explicitly: after pulling a schema change, or as the second half
- * of the supported total-recovery path
- *
- *     rm logs/claude-proxy.db && pnpm --filter server ingest
- *
- * which is always safe, because the DB holds nothing that `logs/` cannot
- * reproduce.
+ * The server ingests on start and on every log change, so this is for running it
+ * explicitly: after pulling a schema change, or as the second half of
+ * `rm logs/claude-proxy.db && pnpm --filter server ingest`.
  */
 async function main(): Promise<void> {
   const logDir = resolveLogDir();

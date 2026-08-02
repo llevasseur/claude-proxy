@@ -51,8 +51,8 @@ async function readArchivedDayMemo(
   const key = `${source.kind}\n${logDir}\n${day}`;
   const hit = dayCache.get(key);
   if (hit) return { ...hit, retained: true };
-  // Retention is a fact about the filesystem, not about the substrate: a day is
-  // retained when its own directory is on disk, whichever backing reads it.
+  // Retention is a fact about the filesystem: a day is retained when its own
+  // directory is on disk, whichever backing reads it.
   try {
     await access(rawArchiveDayDir(logDir, day));
   } catch {

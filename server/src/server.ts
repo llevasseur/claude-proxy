@@ -102,10 +102,10 @@ async function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
  * Shadow mode: the response has already been sent from the files; ask the
  * SQLite substrate the same question and log any disagreement.
  *
- * Off unless `SHADOW_DB=1`. It cannot change what was served — the send has
+ * Off unless `SHADOW_DB=1`. It cannot change what was served: the send has
  * happened, the comparison is a later tick, and `shadowCheck` swallows its own
- * failures. Both sides are handed the identical `now` by the callers, so a
- * clock tick between them can never masquerade as a mismatch.
+ * failures. Callers hand both sides the identical `now`, so a clock tick cannot
+ * masquerade as a mismatch.
  */
 function shadow<T>(label: string, served: T, build: (source: SidecarSource) => Promise<T>): void {
   const source = substrateSource();

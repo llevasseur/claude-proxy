@@ -10,13 +10,12 @@ import { clearArchivedUsageCache, clearLearnedCeilingsCache } from "./usage-hist
  * The parity harness: proof that the SQLite substrate answers a route with the
  * *same bytes* the file scan does.
  *
- * This is the artifact the migration rests on. Nothing flips to DB-backed reads
- * until a route is green here for every archived day, and the comparison is of
- * the full JSON — never a row count, never a summary. A diff that cannot be
- * named is a bug in the substrate, not a reason to relax the check.
+ * Nothing flips to DB-backed reads until a route is green here for every
+ * archived day, and the comparison is of the full JSON — never a row count,
+ * never a summary. A diff that cannot be named is a bug in the substrate.
  *
- * Routes register themselves in {@link PARITY_ROUTES}. Later slices add their
- * routes to that array and inherit the whole apparatus.
+ * Routes register themselves in {@link PARITY_ROUTES}; later slices push onto
+ * that array and inherit the apparatus.
  */
 
 export interface ParityContext {
@@ -38,13 +37,10 @@ export interface ParityRoute {
 }
 
 /**
- * A named, justified transform applied to **both** sides before comparison.
- *
- * The bar is deliberately high: a normalization has to name the mechanism that
- * makes the difference benign. "The numbers look close enough" is not one. The
- * list is empty today — the DB reader reproduces the file reader's iteration
- * order rather than papering over a different one — and it should stay empty
- * unless something genuinely unorderable appears.
+ * A named, justified transform applied to **both** sides before comparison. Each
+ * entry has to name the mechanism that makes the difference benign. The list is
+ * empty — the DB reader reproduces the file reader's iteration order rather than
+ * papering over a different one — and should stay that way.
  */
 export interface Normalization {
   name: string;
@@ -123,11 +119,10 @@ function wire(value: unknown): string {
 /**
  * Replay one case both ways and compare.
  *
- * The per-process memos are deliberately *not* dropped between the two sides.
- * Every one of them is keyed by the backing that filled it, so a warm cache
- * cannot hand the DB run the file run's answer — and re-reading twenty archived
- * days per case would make replaying the whole archive impractical, which is
- * exactly the thing worth doing. Call {@link resetCaches} once before a run.
+ * The per-process memos are *not* dropped between the two sides: each is keyed
+ * by the backing that filled it, so a warm cache cannot hand the DB run the file
+ * run's answer, and dropping them would make replaying the whole archive
+ * impractical. Call {@link resetCaches} once before a run.
  */
 export async function runCase(
   route: ParityRoute,
@@ -166,7 +161,7 @@ export async function archivedDays(logDir: string): Promise<string[]> {
 /**
  * A fixed instant late in `day`, so a window-based route (usage, trends) is
  * evaluated as of that archived day rather than as of now. Both sides get the
- * identical clock, which is what makes the comparison meaningful.
+ * identical clock.
  */
 function endOf(day: string): Date {
   return new Date(`${day}T23:59:00.000Z`);
@@ -222,11 +217,9 @@ export const PARITY_ROUTES: ParityRoute[] = [
 
 /**
  * Shadow mode: answer from the files exactly as today, compute the DB answer
- * alongside, and log any disagreement.
- *
- * Off unless `SHADOW_DB` is set. It is strictly an observer — the response has
- * already been written by the time the comparison starts, and every failure
- * inside it is swallowed. A broken substrate must not be able to break a page.
+ * alongside, and log any disagreement. Off unless `SHADOW_DB` is set, and
+ * strictly an observer — the response is already written when the comparison
+ * starts, and every failure inside it is swallowed.
  */
 export function shadowEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const v = env.SHADOW_DB;

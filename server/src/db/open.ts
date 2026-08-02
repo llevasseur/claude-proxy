@@ -3,13 +3,10 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
 /**
- * `node:sqlite` is loaded through `createRequire` rather than imported.
- *
- * It is a Node builtin — that is the whole point, it costs the project no new
- * dependency — but it is newer than the builtin list Vite ships, so a static
- * import makes Vitest try to resolve a package called `sqlite` and fail. A
- * runtime require is invisible to that analysis and reaches Node directly. The
- * `import type` above is erased before any bundler sees it.
+ * `node:sqlite` is required at runtime, not imported: it is newer than the
+ * builtin list Vite ships, so a static import makes Vitest try to resolve a
+ * package called `sqlite` and fail. The `import type` above is erased before any
+ * bundler sees it.
  */
 const sqlite = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
 
@@ -17,13 +14,12 @@ const sqlite = createRequire(import.meta.url)("node:sqlite") as typeof import("n
  * The SQLite query substrate: a **disposable materialized view** over `logs/`.
  *
  * `logs/` stays the sole source of truth. Every table here is reconstructible by
- * re-ingesting the sidecars, so the supported total-recovery path is simply
- *
- *     rm logs/claude-proxy.db && pnpm --filter server ingest
+ * re-ingesting the sidecars, so total recovery is
+ * `rm logs/claude-proxy.db && pnpm --filter server ingest`.
  *
  * Nothing authored lives here. `logs/suggestion-status.json` and the device
- * settings file stay JSON on disk precisely because they are *not* derivable
- * from the logs, and a disposable view may not hold the only copy of anything.
+ * settings file stay JSON on disk because they are not derivable from the logs,
+ * and a disposable view may not hold the only copy of anything.
  *
  * See `docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md`.
  */
@@ -35,27 +31,25 @@ export function resolveDbPath(logDir: string): string {
 
 /**
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
- * step below when the shape changes; a view can always be rebuilt instead, but a
- * migration keeps an existing file usable across a `git pull`.
+ * step below when the shape changes, so an existing file survives a `git pull`.
  */
 export const SCHEMA_VERSION = 1;
 
 /**
- * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies (the vast
- * majority of the bytes on disk) stay where they are; the DB stores pointers.
+ * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
+ * the DB stores pointers.
  *
- * `md_path` / `request_path` are nullable and paired with `blob_evicted`, so
- * "retention deleted the body but we kept the metrics" is a queryable state
- * rather than a path that silently dangles.
+ * `md_path` / `request_path` are nullable and paired with `blob_evicted`, making
+ * "retention deleted the body but the metrics survived" a queryable state rather
+ * than a dangling path.
  *
- * `source_dir` is `''` for the live log directory and `archive/<YYYY-MM-DD>`
- * for an archived day, always relative to `logDir`. It is what lets a read
- * reproduce `readSidecars` (live) and `readArchivedDay` (archived) exactly.
+ * `source_dir` is `''` for the live log directory and `archive/<YYYY-MM-DD>` for
+ * an archived day, relative to `logDir`. It lets a read reproduce `readSidecars`
+ * and `readArchivedDay` exactly.
  *
- * The `*_present` flags exist because absent and all-null are different facts on
- * disk: a legacy sidecar has no `session` object at all, while a current one can
- * carry a session whose every field is null. Reconstruction has to tell them
- * apart to stay lossless.
+ * The `*_present` flags keep absent and all-null distinct: a legacy sidecar has
+ * no `session` object, while a current one can carry a session whose every field
+ * is null.
  */
 const SCHEMA_V1 = `
 CREATE TABLE IF NOT EXISTS request (
@@ -118,10 +112,9 @@ CREATE TABLE IF NOT EXISTS request_rate_limit (
   PRIMARY KEY (request_id, ord)
 );
 
--- Files that are on disk but are not usable audit rows. They still have to be
--- counted: the file-backed readers tally an unparseable file under
--- parseErrors and a structurally invalid one under the digest's skipped count,
--- and a view that quietly dropped them would not reproduce those numbers.
+-- Files on disk that are not usable audit rows. They are still counted: the
+-- file-backed readers tally an unparseable file under parseErrors and a
+-- structurally invalid one under the digest's skipped count.
 CREATE TABLE IF NOT EXISTS request_skipped (
   id         TEXT PRIMARY KEY,
   source_dir TEXT NOT NULL,
@@ -142,11 +135,9 @@ CREATE TABLE IF NOT EXISTS ingest_watermark (
 `;
 
 /**
- * Open (creating if needed) the substrate for `logDir` in WAL mode.
- *
- * WAL is what lets the server read while an ingest pass writes, which is the
- * normal state of affairs: the watcher ingests whenever the proxy drops a new
- * sidecar, including mid-request.
+ * Open (creating if needed) the substrate for `logDir` in WAL mode. WAL lets the
+ * server read while an ingest pass writes, which is the normal state: the
+ * watcher ingests whenever the proxy drops a new sidecar.
  */
 export function openDb(logDir: string): DatabaseSync {
   const db = new sqlite.DatabaseSync(resolveDbPath(logDir));
@@ -165,7 +156,6 @@ function migrate(db: DatabaseSync): void {
 
   if (from < 1) db.exec(SCHEMA_V1);
 
-  // `PRAGMA user_version` takes no bind parameters, hence the interpolation of
-  // a module-private integer constant.
+  // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }

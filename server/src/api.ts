@@ -123,9 +123,9 @@ export interface SummaryResponse {
 /**
  * One day's digest + advice, with the trend computed against the prior day.
  *
- * `source` selects where the sidecars come from — the directory scan by
- * default, the SQLite substrate when the parity harness or shadow mode asks for
- * it. Same corpus either way; see `server/src/db/source.ts`.
+ * `source` selects where the sidecars come from: the directory scan by default,
+ * the SQLite substrate when the parity harness or shadow mode asks for it. See
+ * `server/src/db/source.ts`.
  */
 export async function buildSummary(
   logDir: string,
@@ -240,8 +240,7 @@ export function clearRawArchiveCache(): void {
  */
 async function rawArchivedDigest(logDir: string, date: string, source: SidecarSource): Promise<UsageDigest | null> {
   // Keyed by backing as well as day: the parity harness computes both, and a
-  // shared entry would hand the second run the first one's answer and call it a
-  // match.
+  // shared entry would hand the second run the first one's answer.
   const key = `${source.kind} ${logDir} ${date}`;
   const hit = rawArchiveDigests.get(key);
   if (hit) return hit;
