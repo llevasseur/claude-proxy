@@ -1,9 +1,25 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { UsageLimitConfig } from "@claude-proxy/core";
-import { buildSummary, buildTools, buildTrends, buildUsage, clearRawArchiveCache } from "./api.js";
+import {
+  buildContext,
+  buildSession,
+  buildSessionBreakdown,
+  buildSessionErrors,
+  buildSessionGraphNodes,
+  buildSessionNodeTexts,
+  buildSessions,
+  buildSessionsGraph,
+  buildSessionSuggestionBucket,
+  buildSessionSuggestions,
+  buildSummary,
+  buildTools,
+  buildTrends,
+  buildUsage,
+  clearRawArchiveCache,
+} from "./api.js";
 import { clearArchiveCache } from "./archive.js";
-import type { SidecarSource } from "./db/source.js";
+import { fileSource, type SidecarSource } from "./db/source.js";
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from "./usage-history.js";
 
 /**
@@ -209,7 +225,122 @@ export const PARITY_ROUTES: ParityRoute[] = [
         run: (source) => buildUsage(ctx.logDir, ctx.limits, endOf(day), source),
       })),
   },
+
+  /* --- Slice 2: session transcripts --- *
+   *
+   * Enumerated from the *file* side, so the DB side is never asked only about
+   * threads it happens to know: a transcript the substrate missed shows up as a
+   * `session not found` throw against a case the files answered.
+   *
+   * `/api/context/detail`, `/api/context/message` and `/api/context/tool` are
+   * absent: they read a `.request.txt` body off disk and touch no indexed
+   * column, so there is no DB path to disagree on.
+   */
+  {
+    name: "/api/sessions",
+    cases: async (ctx) => [{ label: "/api/sessions", run: (source) => buildSessions(ctx.logDir, source) }],
+  },
+  {
+    name: "/api/sessions/graph",
+    cases: async (ctx) => [{ label: "/api/sessions/graph", run: (source) => buildSessionsGraph(ctx.logDir, source) }],
+  },
+  {
+    name: "/api/sessions/session",
+    cases: async (ctx) =>
+      (await threadIds(ctx)).map((id) => ({
+        label: `/api/sessions/session?id=${id}`,
+        run: (source) => buildSession(ctx.logDir, id, source),
+      })),
+  },
+  {
+    name: "/api/sessions/node-text",
+    cases: async (ctx) =>
+      (await threadIds(ctx)).map((id) => ({
+        label: `/api/sessions/node-text?id=${id}`,
+        run: (source) => buildSessionNodeTexts(ctx.logDir, id, source),
+      })),
+  },
+  {
+    name: "/api/sessions/breakdown",
+    cases: async (ctx) => {
+      // One clock for every case and both sides, so the live/archive split a
+      // request falls on cannot move between the two replays.
+      const now = new Date();
+      return (await threadIds(ctx)).map((id) => ({
+        label: `/api/sessions/breakdown?id=${id}`,
+        run: (source) => buildSessionBreakdown(ctx.logDir, id, now, source),
+      }));
+    },
+  },
+  {
+    name: "/api/sessions/errors",
+    cases: async (ctx) => {
+      const now = new Date();
+      return (await threadIds(ctx)).map((id) => ({
+        label: `/api/sessions/errors?id=${id}`,
+        run: (source) => buildSessionErrors(ctx.logDir, id, now, source),
+      }));
+    },
+  },
+  {
+    name: "/api/sessions/graph/nodes",
+    cases: async (ctx) => {
+      const now = new Date();
+      return (await threadIds(ctx)).map((id) => ({
+        label: `/api/sessions/graph/nodes?id=${id}`,
+        run: (source) => buildSessionGraphNodes(ctx.logDir, id, now, source),
+      }));
+    },
+  },
+  {
+    name: "/api/sessions/suggestions",
+    cases: async (ctx) => [
+      { label: "/api/sessions/suggestions", run: (source) => buildSessionSuggestions(ctx.logDir, source) },
+    ],
+  },
+  {
+    name: "/api/sessions/suggestions/bucket",
+    cases: async (ctx) => {
+      const now = new Date();
+      // Bucket numbering is derived from the transcripts, so the indices to
+      // replay come from the file side's own answer.
+      const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
+      return buckets.map((bucket) => ({
+        label: `/api/sessions/suggestions/bucket?index=${bucket.index}`,
+        run: (source) => buildSessionSuggestionBucket(ctx.logDir, bucket.index, now, source),
+      }));
+    },
+  },
+  {
+    name: "/api/context",
+    cases: async (ctx) => {
+      const cases: ParityCase[] = [];
+      for (const day of await archivedDays(ctx.logDir)) {
+        for (const window of [7, 30]) {
+          cases.push({
+            label: `/api/context?days=${window} as of ${day}`,
+            run: (source) => buildContext(ctx.logDir, window, endOf(day), source),
+          });
+        }
+      }
+      return cases;
+    },
+  },
 ];
+
+/**
+ * How many transcripts the per-thread routes replay, newest first.
+ *
+ * Coverage is not lost: `/api/sessions` and `/api/sessions/graph` are replayed
+ * whole and carry every transcript's metadata and node stream. The cap bounds
+ * only the routes that re-read request bodies per thread.
+ */
+const PER_THREAD_CASES = 20;
+
+/** The newest transcripts the *files* know about, in the listing's own order. */
+async function threadIds(ctx: ParityContext): Promise<string[]> {
+  return (await buildSessions(ctx.logDir, fileSource)).sessions.slice(0, PER_THREAD_CASES).map((s) => s.threadId);
+}
 
 /* ------------------------------------------------------------------ *
  * Shadow mode

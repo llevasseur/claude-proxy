@@ -33,8 +33,9 @@ export function resolveSessionsDir(logDir: string): string {
 }
 
 /** A thread id is a 16-hex-char stem; the transcript is `<id>.md`. The name comes
- * from the URL, so traversal must be impossible — reject anything else. */
-const SESSION_FILE_RE = /^[0-9a-f]{16}\.md$/;
+ * from the URL, so traversal must be impossible — reject anything else. Exported
+ * so the substrate's ingest picks exactly the files this module's listings do. */
+export const SESSION_FILE_RE = /^[0-9a-f]{16}\.md$/;
 const THREAD_ID_RE = /^[0-9a-f]{16}$/;
 
 /** One transcript's listing row: parsed metadata plus size and mtime. */

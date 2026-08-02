@@ -1,4 +1,4 @@
-import { copyFile, link, mkdtemp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, link, mkdtemp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -96,6 +96,82 @@ async function writeRaw(dir: string, iso: string, contents: string): Promise<voi
 }
 
 /**
+ * The transcripts, plus the `.nodes.jsonl` / `.state.json` sidecars beside them.
+ *
+ * Three threads under one session id: a parent that spawns a subagent, the
+ * subagent itself, and a legacy transcript with no header, no sidecars and an
+ * interruption. Between them they cover the agent tree, the header fields, an
+ * absent `state.json`, and a node-text entry naming an index the transcript does
+ * not have — which the file reader returns rather than dropping.
+ */
+async function writeSessions(logDir: string): Promise<void> {
+  const dir = path.join(logDir, "sessions");
+  await mkdir(dir, { recursive: true });
+
+  const parent = "00000000000000a1";
+  await writeFile(
+    path.join(dir, `${parent}.md`),
+    [
+      "- model: claude-opus-5",
+      "- session: s-1",
+      "- started: 2026-07-15T14:00:00.000Z",
+      "- title: Index the logs",
+      "- subtitle: Move the audit sidecars into SQLite",
+      "",
+      "## Task: Index the logs",
+      "- decided: keep logs/ the source of truth",
+      "- Bash(pnpm test)",
+      "- ✗ typecheck failed",
+      "- Agent(subagent_type=Explore, description=find the readers)",
+      "- Read(server/src/api.ts)",
+      "- done: indexed",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeFile(
+    path.join(dir, `${parent}.state.json`),
+    JSON.stringify({ root: "Move the audit sidecars into SQLite, but keep the files authoritative." }),
+    "utf8",
+  );
+  await writeFile(
+    path.join(dir, `${parent}.nodes.jsonl`),
+    [
+      JSON.stringify({ i: 1, text: "keep logs/ the source of truth, because a view may not hold the only copy" }),
+      "{ torn line",
+      // Index 99 is past the end of the transcript: the sidecar is sparse and
+      // outlives edits, and both readers hand the entry back regardless.
+      JSON.stringify({ i: 99, text: "an index this transcript no longer has" }),
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const child = "00000000000000b2";
+  await writeFile(
+    path.join(dir, `${child}.md`),
+    [
+      "- model: claude-opus-5",
+      "- session: s-1",
+      "- started: 2026-07-15T14:05:00.000Z",
+      "",
+      "## Task: find the readers",
+      "- Grep(readSidecars)",
+      "- done: found four",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  // No header, no sidecars, and cut off mid-run.
+  await writeFile(
+    path.join(dir, "00000000000000c3.md"),
+    ["## Task: something older", "- Bash(ls)", "- interrupted: user", "- done: resumed and finished", ""].join("\n"),
+    "utf8",
+  );
+}
+
+/**
  * A corpus with two archived days and a live day, carrying every awkward case
  * the real logs contain.
  */
@@ -133,6 +209,8 @@ async function buildCorpus(): Promise<string> {
   await writeTriple(logDir, "2026-07-17T14:00:00.000Z", {
     session: { sessionId: null, app: null, userAgent: null, account: null, metadataSessionId: null, deviceId: null },
   });
+
+  await writeSessions(logDir);
   return logDir;
 }
 
@@ -184,21 +262,80 @@ describe("route parity over a synthetic corpus", () => {
     ).toBe(1);
   });
 
+  it("indexes every transcript, its nodes, and its sparse node texts", () => {
+    expect((db.prepare("SELECT count(*) c FROM session").get() as { c: number }).c).toBe(3);
+    // Seven appended lines under the parent; the interruption on the legacy
+    // transcript is a flag on a node, not a node of its own.
+    expect(
+      (db.prepare("SELECT count(*) c FROM session_node WHERE thread_id = ?").get("00000000000000a1") as { c: number }).c,
+    ).toBe(7);
+    expect((db.prepare("SELECT count(*) c FROM session_node WHERE interrupted = 1").get() as { c: number }).c).toBe(1);
+    // The torn line is dropped, the out-of-range index is kept.
+    expect(
+      (db.prepare("SELECT count(*) c FROM session_node_text").get() as { c: number }).c,
+    ).toBe(2);
+    // An absent `state.json` and one carrying no `root` read the same: null.
+    expect(
+      (db.prepare("SELECT count(*) c FROM session WHERE root_prompt IS NOT NULL").get() as { c: number }).c,
+    ).toBe(1);
+  });
+
   it("answers every wired route byte-identically from SQLite", async () => {
     expect(await mismatches(ctx, db)).toEqual([]);
   });
 
   it("is idempotent: a second ingest changes nothing", async () => {
     const before = db.prepare("SELECT id, timestamp, model FROM request ORDER BY id").all();
+    const sessions = db.prepare("SELECT thread_id, bytes, modified, root_prompt FROM session ORDER BY thread_id").all();
+    const nodes = db.prepare("SELECT thread_id, idx, type, text FROM session_node ORDER BY thread_id, idx").all();
     const stats = await ingest(db, ctx.logDir);
     expect(stats.inserted).toBe(0);
     expect(stats.deleted).toBe(0);
+    // Nothing was appended between the passes, so the per-file watermark skips
+    // every transcript rather than re-reading it.
+    expect(stats.sessions).toBe(3);
+    expect(stats.sessionsParsed).toBe(0);
     expect(db.prepare("SELECT id, timestamp, model FROM request ORDER BY id").all()).toEqual(before);
+    expect(db.prepare("SELECT thread_id, bytes, modified, root_prompt FROM session ORDER BY thread_id").all()).toEqual(
+      sessions,
+    );
+    expect(db.prepare("SELECT thread_id, idx, type, text FROM session_node ORDER BY thread_id, idx").all()).toEqual(nodes);
+  });
+
+  it("re-reads a transcript that grew, and drops one that left", async () => {
+    const dir = path.join(ctx.logDir, "sessions");
+    const extra = path.join(dir, "00000000000000d4.md");
+    await writeFile(extra, ["- session: s-1", "- started: 2026-07-15T18:00:00.000Z", "## Task: transient", ""].join("\n"), "utf8");
+    let stats = await ingest(db, ctx.logDir);
+    expect(stats.sessions).toBe(4);
+    expect(stats.sessionsParsed).toBe(1);
+
+    // An append moves the size, which is what the watermark keys on.
+    await appendFile(extra, "- done: appended\n", "utf8");
+    stats = await ingest(db, ctx.logDir);
+    expect(stats.sessionsParsed).toBe(1);
+    expect(
+      (db.prepare("SELECT count(*) c FROM session_node WHERE thread_id = ?").get("00000000000000d4") as { c: number }).c,
+    ).toBe(2);
+    expect(await mismatches(ctx, db)).toEqual([]);
+
+    // The transcript is the row's source: losing it takes the row and, by
+    // cascade, its nodes.
+    await rm(extra);
+    stats = await ingest(db, ctx.logDir);
+    expect(stats.sessions).toBe(3);
+    expect((db.prepare("SELECT count(*) c FROM session").get() as { c: number }).c).toBe(3);
+    expect(
+      (db.prepare("SELECT count(*) c FROM session_node WHERE thread_id = ?").get("00000000000000d4") as { c: number }).c,
+    ).toBe(0);
   });
 
   it("rebuilds identically from an empty database", async () => {
     const before = db.prepare("SELECT id, timestamp, model, tokens_real_input FROM request ORDER BY id").all();
     const tools = db.prepare("SELECT request_id, ord, name, bytes FROM request_tool ORDER BY request_id, ord").all();
+    const sessions = db.prepare("SELECT * FROM session ORDER BY thread_id").all();
+    const nodes = db.prepare("SELECT * FROM session_node ORDER BY thread_id, idx").all();
+    const texts = db.prepare("SELECT * FROM session_node_text ORDER BY thread_id, idx").all();
 
     // The total-recovery path: drop everything, re-ingest, get the same view
     // back.
@@ -207,10 +344,14 @@ describe("route parity over a synthetic corpus", () => {
     db.exec("DELETE FROM request");
     db.exec("DELETE FROM request_skipped");
     db.exec("DELETE FROM ingest_watermark");
+    db.exec("DELETE FROM session");
     await ingest(db, ctx.logDir);
 
     expect(db.prepare("SELECT id, timestamp, model, tokens_real_input FROM request ORDER BY id").all()).toEqual(before);
     expect(db.prepare("SELECT request_id, ord, name, bytes FROM request_tool ORDER BY request_id, ord").all()).toEqual(tools);
+    expect(db.prepare("SELECT * FROM session ORDER BY thread_id").all()).toEqual(sessions);
+    expect(db.prepare("SELECT * FROM session_node ORDER BY thread_id, idx").all()).toEqual(nodes);
+    expect(db.prepare("SELECT * FROM session_node_text ORDER BY thread_id, idx").all()).toEqual(texts);
   });
 
   // A harness that cannot fail proves nothing, so make it fail on purpose.
@@ -238,11 +379,30 @@ describe("route parity over a synthetic corpus", () => {
 /** The inputs a wired route reads out of the log directory. */
 const SNAPSHOT_SUFFIXES = [".audit.json"];
 
+/**
+ * What `sessions/` contributes. Separate from {@link SNAPSHOT_SUFFIXES} because
+ * `.md` means two things in this tree: a transcript under `sessions/`, and a
+ * request's rendered body beside its audit sidecar. Taking the latter would
+ * change which requests read as blob-evicted.
+ */
+const SESSION_SUFFIXES = [".md", ".nodes.jsonl", ".state.json"];
+
 /** Live files a route reads that are not sidecars, and that the proxy rewrites. */
 const SNAPSHOT_FILES = ["usage-live.json"];
 
-/** Hardlink `from`'s snapshot-worthy files into `to`, copying across filesystems. */
-async function linkInto(from: string, to: string): Promise<void> {
+/**
+ * Hardlink `from`'s snapshot-worthy files into `to`, copying across filesystems.
+ *
+ * `freeze` copies instead. A hardlink shares the inode, so it freezes which
+ * files exist but not their contents — enough for write-once audit sidecars,
+ * not for a transcript the proxy is still appending to.
+ */
+async function linkInto(
+  from: string,
+  to: string,
+  suffixes: string[] = SNAPSHOT_SUFFIXES,
+  freeze = false,
+): Promise<void> {
   let names: string[];
   try {
     names = await readdir(from);
@@ -250,11 +410,12 @@ async function linkInto(from: string, to: string): Promise<void> {
     return;
   }
   for (const name of names) {
-    if (!SNAPSHOT_SUFFIXES.some((s) => name.endsWith(s)) && !SNAPSHOT_FILES.includes(name)) continue;
+    if (!suffixes.some((s) => name.endsWith(s)) && !SNAPSHOT_FILES.includes(name)) continue;
     const src = path.join(from, name);
     const dest = path.join(to, name);
     try {
-      await link(src, dest);
+      if (freeze) await copyFile(src, dest);
+      else await link(src, dest);
     } catch {
       try {
         await copyFile(src, dest);
@@ -274,14 +435,19 @@ async function linkInto(from: string, to: string): Promise<void> {
  * landing before the DB side reads shows up as a one-request mismatch that has
  * nothing to do with the substrate.
  *
- * Hardlinks, so the snapshot costs directory entries rather than the corpus. It
- * carries the audit sidecars and `usage-live.json`; no wired route reads the
- * `.md` / `.request.txt` bodies. A later slice that wires a blob-reading route
- * has to widen {@link SNAPSHOT_SUFFIXES}.
+ * Hardlinks the audit sidecars and `usage-live.json`, so the snapshot costs
+ * directory entries rather than the corpus. `sessions/` is *copied* instead:
+ * transcripts are appended to for the life of a run, and a hardlink would carry
+ * those appends straight into the snapshot. The `.md` / `.request.txt` request
+ * bodies are left out: no wired route reads them. A later slice that wires a
+ * blob-reading route has to widen {@link SNAPSHOT_SUFFIXES}.
  */
 async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
   const snap = await mkdtemp(path.join(tmpdir(), "parity-real-"));
   await linkInto(logDir, snap);
+  const sessions = path.join(snap, "sessions");
+  await mkdir(sessions, { recursive: true });
+  await linkInto(path.join(logDir, "sessions"), sessions, SESSION_SUFFIXES, true);
   for (const day of days) {
     const dest = path.join(snap, "archive", day);
     await mkdir(dest, { recursive: true });
