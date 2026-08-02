@@ -34,11 +34,8 @@
     <dict>
         <key>PATH</key>
         <string>/Users/llevasseur/Library/pnpm/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <!-- LOG_DIR is the variable the CLI reads (resolveLogDir in server/src/logs.ts);
-             CLAUDE_PROXY_LOGS is set alongside it as the documented name. -->
+        <!-- LOG_DIR is the variable the CLI reads (resolveLogDir in server/src/logs.ts). -->
         <key>LOG_DIR</key>
-        <string>/Users/llevasseur/Documents/ghub/claude-proxy/logs</string>
-        <key>CLAUDE_PROXY_LOGS</key>
         <string>/Users/llevasseur/Documents/ghub/claude-proxy/logs</string>
         <key>RETENTION_DAYS</key>
         <string>30</string>

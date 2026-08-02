@@ -74,6 +74,12 @@ audit sidecar's metrics. The dashboard renders **"Body evicted after 30 days —
 retained"** with the retained token counts, byte totals and tool table. A body that was
 never captured at all still 404s, so real bugs stay visible.
 
+Those routes also resolve a body inside `logs/archive/<date>/`, not just the live directory.
+This is load-bearing. Archiving had stopped, so every body was live; once the job starts
+moving days again, a drill-down that only looked in `logs/` would 404 every past day.
+The archive candidate comes from the filename's own date prefix, so it is one lookup, not a
+scan.
+
 `/api/skim` reports `meta.bodiesEvicted` — requests counted from their sidecar whose body is
 gone. Both read backings derive it from the same disk observation, so the parity harness
 stays byte-identical.

@@ -110,7 +110,7 @@ export interface SkimResponse {
 export interface SkimTrendResponse {
   digests: SkimDigest[];
   topShapes: SkimShape[];
-  meta: { days: number; files: number; parseErrors: number };
+  meta: { days: number; files: number; parseErrors: number; bodiesEvicted: number };
 }
 export interface WithheldResponse {
   settingsPath: string;
