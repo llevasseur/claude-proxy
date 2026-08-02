@@ -529,19 +529,16 @@ describe("route parity over a synthetic corpus", () => {
     expect(await mismatches(ctx, db)).toEqual([]);
   });
 
-  // The blocker slice 2 recorded and slice 5 had to settle. The parity harness
-  // cannot reach it by construction: it freezes the corpus precisely so nothing
-  // is appended mid-replay, which is the only way the row can fall behind.
+  // The harness cannot reach this by construction: it freezes the corpus so
+  // nothing is appended mid-replay, which is the only way a row falls behind.
   it("re-reads a transcript the row is behind, rather than pairing stale metadata with fresh content", async () => {
     const id = "00000000000000a1";
     const file = path.join(ctx.logDir, "sessions", `${id}.md`);
     const fresh = await dbSource(db).readSession(ctx.logDir, id);
     expect(fresh.bytes).toBe(Buffer.byteLength(fresh.content));
 
-    // An append since the last ingest: the row's `bytes` now counts a shorter
-    // transcript than `content` holds, and its `meta` describes a header the
-    // content has moved past. Serving that pair would be an object that
-    // disagrees with itself.
+    // An append since the last ingest leaves the row's `bytes` counting a
+    // shorter transcript than `content` holds.
     const stale = db.prepare("SELECT tasks, bytes FROM session WHERE thread_id = ?").get(id) as {
       tasks: number;
       bytes: number;
@@ -552,13 +549,13 @@ describe("route parity over a synthetic corpus", () => {
     expect(fromDb).toEqual(fromFiles);
     expect(fromDb.bytes).toBe(Buffer.byteLength(fromDb.content));
     expect(fromDb.content).toContain("appended after ingest");
-    // The row is genuinely behind — this is the metadata that would have been
-    // served beside the longer content.
+    // The row is genuinely behind: this is what would have been served beside
+    // the longer content.
     expect(stale.bytes).toBeLessThan(fromDb.bytes);
     expect(fromDb.meta.tasks).toBe(stale.tasks + 1);
 
-    // And a transcript with no row at all still reads, rather than 404-ing a
-    // session that plainly exists on disk.
+    // A transcript with no row at all still reads, rather than 404-ing a
+    // session that exists on disk.
     const unseen = "00000000000000e5";
     const unseenFile = path.join(ctx.logDir, "sessions", `${unseen}.md`);
     await writeFile(unseenFile, "- session: s-9\n- started: 2026-07-15T19:00:00.000Z\n## Task: never ingested\n", "utf8");
@@ -576,8 +573,8 @@ describe("route parity over a synthetic corpus", () => {
   /**
    * The one write route through the seam. It stays out of `PARITY_ROUTES` —
    * replaying it against the real-corpus snapshot would write through a
-   * hardlinked `suggestion-status.json` — so its agreement is asserted here, on
-   * the synthetic corpus, where the write is ours to make.
+   * hardlinked `suggestion-status.json` — so its agreement is asserted here,
+   * where the write is ours to make.
    */
   it("answers the suggestion-status write the same way through either backing", async () => {
     const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
@@ -586,11 +583,10 @@ describe("route parity over a synthetic corpus", () => {
     expect(suggestion, "the corpus should hold a suggestion to flag").toBeDefined();
     if (!bucket || !suggestion) return;
 
-    // The flags are authored state and stay a JSON file either way. What goes
-    // through the seam is the derived half — the bucket/suggestion join the
-    // response echoes back — so the POST cannot describe a different corpus
-    // than the GET beside it. Same clock, same update: the write is idempotent,
-    // so applying it twice is what makes the two answers comparable.
+    // Only the derived half — the bucket/suggestion join the response echoes
+    // back — goes through the seam; the flags stay a JSON file either way. Same
+    // clock and same update twice: the write is idempotent, which is what makes
+    // the two answers comparable.
     const at = new Date("2026-07-18T00:00:00.000Z");
     const updates = [{ bucket: bucket.index, id: suggestion.id, status: "done" as const, note: "handled" }];
     const fromFiles = await applySuggestionStatus(ctx.logDir, updates, at, fileSource);

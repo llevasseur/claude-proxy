@@ -67,9 +67,9 @@ describe("shadowCheck", () => {
     const diffs: JsonDiff[] = [];
     setShadowHooks({ onMismatch: (_label, diff) => diffs.push(diff) });
 
-    // Slice 5 flipped which side serves, so the served answer is now the DB's
-    // and the shadow computes the files'. A reported diff still has to name each
-    // side for what it is, or the report points at the wrong backing.
+    // The served answer is the DB's and the shadow computes the files'. A
+    // reported diff still has to name each side for what it is, or it points at
+    // the wrong backing.
     shadowCheck(
       "/api/summary",
       { digest: { requestCount: 11 } },

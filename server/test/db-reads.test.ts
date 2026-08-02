@@ -5,11 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from "../src/db/runtime.js";
 
 /**
- * Which backing answers a read, and how to take it back.
- *
- * Slice 5 flipped the default to the substrate. The reversal has to stay one
- * flag and nothing else — no migration to undo, because the log files were never
- * touched and the file scan still answers every route.
+ * Which backing answers a read, and how to take it back. The default is the
+ * substrate, and the reversal has to stay one flag and nothing else.
  */
 
 afterEach(() => {
@@ -37,8 +34,7 @@ describe("readSource", () => {
     try {
       expect(startSubstrate(logDir)).not.toBeNull();
       expect(readSource().kind).toBe("db");
-      // Shadow mode is always the side that did *not* serve, which is what keeps
-      // it meaningful after the flip.
+      // The shadow is always the side that did *not* serve.
       expect(shadowSource()?.kind).toBe("files");
 
       process.env.DB_READS = "0";

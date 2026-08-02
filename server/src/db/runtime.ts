@@ -34,12 +34,9 @@ export function substrateSource(): SidecarSource | null {
 }
 
 /**
- * The reversal, in one flag.
- *
- * Slice 5 flipped reads to the substrate, so this is on unless it is turned off:
- * `DB_READS=0` puts every route back on the directory scan it used through
- * slices 1–4. That is the whole rollback — the log files were never touched, so
- * the file scan still answers every route with no migration to undo.
+ * The reversal, in one flag: on unless `DB_READS=0`, which puts every route back
+ * on the directory scan. There is no migration to undo — the log files were
+ * never touched, so the file scan still answers every route.
  */
 export function dbReadsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const v = env.DB_READS;
@@ -48,8 +45,8 @@ export function dbReadsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
 
 /**
  * The source a route reads through: the substrate by default, the files when the
- * flag says so or when the substrate could not be opened at all. A route never
- * chooses for itself, so the two cannot drift apart per-endpoint.
+ * flag says so or when the substrate could not be opened at all. The single
+ * place that choice is made, so no route can drift from the rest.
  */
 export function readSource(): SidecarSource {
   return dbReadsEnabled() ? (handle?.source ?? fileSource) : fileSource;
@@ -57,8 +54,8 @@ export function readSource(): SidecarSource {
 
 /**
  * The side that was *not* served, for shadow mode to check the served answer
- * against. `null` when there is no second opinion to be had — the substrate
- * never opened, so both would be the files.
+ * against. `null` when the substrate never opened and both sides would be the
+ * files.
  */
 export function shadowSource(): SidecarSource | null {
   if (readSource().kind === "db") return fileSource;

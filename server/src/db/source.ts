@@ -479,9 +479,9 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       // `sessions/`, as the file reader does.
       const full = resolveSessionFile(logDir, id);
 
-      // The content comes off the file either way — the row holds a pointer, not
-      // the transcript — so `stat` it in the same breath and let the file's own
-      // size and mtime be the authority on which metadata belongs beside it.
+      // The row holds a pointer, not the transcript, so the content comes off
+      // the file either way. `stat` it in the same breath: the file's own size
+      // and mtime decide which metadata belongs beside that content.
       let content: string;
       let info: Awaited<ReturnType<typeof stat>>;
       try {
@@ -502,12 +502,10 @@ export function dbSource(db: DatabaseSync): SidecarSource {
         if (rowBytes === bytes && rowModified === modified) return { meta, content, bytes, modified };
       }
 
-      // The row is behind the file — an append since the last ingest, or a
-      // transcript the substrate has not reached yet. Pairing its metadata with
-      // this content would return an object that disagrees with itself: `bytes`
-      // counting a shorter transcript than `content` holds, `meta` describing a
-      // header the content may have moved past. Re-parse instead, which is
-      // exactly what the file reader would have answered.
+      // The row is behind the file, or absent. Pairing its metadata with this
+      // content would return an object that disagrees with itself — `bytes`
+      // counting a shorter transcript than `content` holds. Re-parse instead,
+      // which is what the file reader would have answered.
       return { meta: parseSessionTranscript(id, content), content, bytes, modified };
     },
     readSessionNodeTexts: async (logDir, id) => {

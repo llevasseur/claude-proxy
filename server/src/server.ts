@@ -104,9 +104,8 @@ async function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
  * Shadow mode: the response has already been sent; ask the backing it did *not*
  * come from the same question and log any disagreement.
  *
- * Since slice 5 that is normally the file scan checking the substrate, and under
- * `DB_READS=0` it is the substrate checking the files — either way it is a
- * second opinion rather than the same one twice.
+ * Normally that is the file scan checking the substrate, and the substrate
+ * checking the files under `DB_READS=0`.
  *
  * Off unless `SHADOW_DB=1`. It cannot change what was served: the send has
  * happened, the comparison is a later tick, and `shadowCheck` swallows its own
@@ -782,10 +781,9 @@ const server = http.createServer(async (req, res) => {
           await servePost(
             req,
             res,
-            // The flags themselves are authored state and stay a JSON file. What
-            // goes through the seam is the derived half this echoes back — the
-            // bucket/suggestion join — so the POST's response cannot describe a
-            // different corpus than the GET beside it.
+            // The flags stay a JSON file; what goes through the seam is the
+            // derived half this echoes back — the bucket/suggestion join — so
+            // the response cannot describe a different corpus than the GET.
             (body) =>
               applySuggestionStatus(LOG_DIR, parseSuggestionStatusUpdates(body.updates), new Date(), readSource()),
             () => 400,
@@ -943,9 +941,9 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, async () => {
   console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
-  // The SQLite view of those logs, kept current by a watcher. Since slice 5 it
-  // is also what the routes read, so say plainly which side is serving — a
-  // substrate that failed to open silently falls back, and that is worth seeing.
+  // The SQLite view of those logs, kept current by a watcher, and what the
+  // routes read. Report which side is serving — a substrate that failed to open
+  // falls back silently otherwise.
   const substrate = startSubstrate(LOG_DIR, (err) => console.warn(`[claude-proxy-server] ingest: ${err.message}`));
   console.log(
     substrate
