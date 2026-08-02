@@ -1,9 +1,12 @@
-import { readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { reportDay, shiftDay } from "@claude-proxy/core";
+import { type AuditSidecar, isAuditSidecar, reportDay, shiftDay } from "@claude-proxy/core";
 
 export { shiftDay };
+
+/** The sidecar suffix, which retention keeps forever. */
+const AUDIT_SUFFIX = ".audit.json";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // server/src
 
@@ -22,6 +25,14 @@ export interface LoadResult {
   files: number;
   /** Files that failed to JSON-parse (already reflected as skipped in the digest). */
   parseErrors: number;
+  /**
+   * Sidecars in this result whose `.request.txt` body is no longer on disk —
+   * retention evicted it, keeping the metrics. Only counted when the read asked
+   * for the bodies (`includeSkimRequests`); otherwise nothing looked, so 0 means
+   * "not measured" rather than "none". This is the same definition the substrate's
+   * `blob_evicted` column uses: the sidecar is here, the body is not.
+   */
+  bodiesEvicted?: number;
 }
 
 /** Count `*.audit.json` files without reading their contents (for health). */
@@ -67,12 +78,26 @@ function latestUserText(request: unknown): string | null {
   return null;
 }
 
-async function skimRequestText(logDir: string, auditFile: string): Promise<string | null> {
+/**
+ * The last user turn from a captured body, plus whether the body was on disk at
+ * all. The two are different facts: a body that parsed but holds no user text
+ * yields `null` text with `bodyPresent: true`, while a body retention has evicted
+ * yields `null` text with `bodyPresent: false`. Only the second is countable as an
+ * eviction, and both backings must draw the line in the same place or `/api/skim`
+ * loses parity.
+ */
+async function skimRequestText(logDir: string, auditFile: string): Promise<{ text: string | null; bodyPresent: boolean }> {
   const requestFile = auditFile.replace(/\.audit\.json$/, ".request.txt");
+  let raw: string;
   try {
-    return latestUserText(JSON.parse(await readFile(path.join(logDir, requestFile), "utf8")));
+    raw = await readFile(path.join(logDir, requestFile), "utf8");
   } catch {
-    return null;
+    return { text: null, bodyPresent: false };
+  }
+  try {
+    return { text: latestUserText(JSON.parse(raw)), bodyPresent: true };
+  } catch {
+    return { text: null, bodyPresent: true };
   }
 }
 
@@ -132,6 +157,7 @@ export async function readSidecars(
   const sidecars: unknown[] = [];
   let parseErrors = 0;
   let kept = 0;
+  let bodiesEvicted = 0;
   for (const f of files) {
     let sidecar: unknown;
     try {
@@ -152,7 +178,9 @@ export async function readSidecars(
 
     if (typeof sidecar === "object" && sidecar !== null) {
       if (opts.includeSkimRequests) {
-        (sidecar as { skimRequestText?: string }).skimRequestText = (await skimRequestText(logDir, f)) ?? undefined;
+        const { text, bodyPresent } = await skimRequestText(logDir, f);
+        (sidecar as { skimRequestText?: string }).skimRequestText = text ?? undefined;
+        if (!bodyPresent) bodiesEvicted += 1;
       }
       if (opts.includeFile) {
         (sidecar as { __file?: string }).__file = f.replace(/\.audit\.json$/, "");
@@ -161,7 +189,7 @@ export async function readSidecars(
     kept += 1;
     sidecars.push(sidecar);
   }
-  return { sidecars, files: kept, parseErrors };
+  return { sidecars, files: kept, parseErrors, bodiesEvicted };
 }
 
 /** `<logDir>/archive/<YYYY-MM-DD>/` — where the summary job parks each past day's sidecars. */
@@ -182,13 +210,14 @@ export async function readArchivedDay(
   date: string,
   opts: Omit<ReadOptions, "date" | "sinceDays"> = {},
 ): Promise<LoadResult> {
-  const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0 };
+  const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0, bodiesEvicted: 0 };
   for (const day of [date, shiftDay(date, 1)]) {
     try {
       const r = await readSidecars(rawArchiveDayDir(logDir, day), { ...opts, date });
       out.sidecars.push(...r.sidecars);
       out.files += r.files;
       out.parseErrors += r.parseErrors;
+      out.bodiesEvicted = (out.bodiesEvicted ?? 0) + (r.bodiesEvicted ?? 0);
     } catch {
       // Never archived or already pruned — contributes nothing.
     }
@@ -210,6 +239,29 @@ const REQUEST_FILE_RE = /^[0-9A-Za-z:_.\-]+_anthropic$/;
  * multi-megabyte body; the commands reconcile pass opens bodies in bulk.
  */
 export async function readRequestBodyParsed(logDir: string, file: string): Promise<unknown> {
+  const live = liveRequestPath(logDir, file);
+
+  // Fast path: the body is in the live directory, which is where all of today's
+  // are. The bulk commands reconcile opens bodies by the thousand, so this stays a
+  // single read with no `stat` in front of it.
+  let text: string | null = null;
+  try {
+    text = await readFile(live, "utf8");
+  } catch {
+    text = null;
+  }
+  if (text !== null) return JSON.parse(text) as unknown;
+
+  // Slow path: archived, evicted, or never captured — {@link locateRequestBody}
+  // tells the three apart.
+  const location = await locateRequestBody(logDir, file);
+  if (location.status === "present") return JSON.parse(await readFile(location.path, "utf8")) as unknown;
+  if (location.status === "evicted") throw new Error(`request body evicted: ${file}`);
+  throw new Error(`request file not found: ${file}`);
+}
+
+/** The live directory's path for a request body, with `file` validated. */
+function liveRequestPath(logDir: string, file: string): string {
   if (!REQUEST_FILE_RE.test(file)) {
     throw new Error(`invalid request file name: ${file}`);
   }
@@ -217,14 +269,78 @@ export async function readRequestBodyParsed(logDir: string, file: string): Promi
   if (path.dirname(full) !== path.resolve(logDir)) {
     throw new Error(`invalid request file name: ${file}`);
   }
+  return full;
+}
 
-  let text: string;
+/** Whether a path exists and is readable. Never throws. */
+async function exists(file: string): Promise<boolean> {
   try {
-    text = await readFile(full, "utf8");
+    await access(file);
+    return true;
   } catch {
-    throw new Error(`request file not found: ${file}`);
+    return false;
   }
-  return JSON.parse(text) as unknown;
+}
+
+/**
+ * Where one captured request's files are, and what state the body is in.
+ *
+ * - `present` — the body is on disk, in the live directory or its archived day.
+ * - `evicted` — the audit sidecar is retained but the body is gone. Retention
+ *   deletes bodies at `RETENTION_DAYS` and keeps sidecars forever, so this is an
+ *   expected, permanent state rather than a fault.
+ * - `missing` — neither file is there. That is the only case worth a 404.
+ *
+ * Before this existed a caller could not tell the last two apart: every absent
+ * body raised "request file not found", so an evicted body and a bug read alike.
+ */
+export type RequestBodyLocation =
+  | { status: "present"; dir: string; path: string }
+  | { status: "evicted"; dir: string; day: string | null }
+  | { status: "missing" };
+
+/**
+ * The directories a request's files can live in, in lookup order: the live
+ * directory, then `archive/<day>/` for the day its own filename carries. Archiving
+ * files a log under the date its name starts with, so there is exactly one archive
+ * candidate and no scan.
+ */
+function requestDirs(logDir: string, file: string): { dir: string; day: string | null }[] {
+  const root = path.resolve(logDir);
+  const dirs: { dir: string; day: string | null }[] = [{ dir: root, day: null }];
+  const day = file.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(day)) dirs.push({ dir: path.join(root, "archive", day), day });
+  return dirs;
+}
+
+/** Locate one request's body. `file` is validated exactly as for a direct read. */
+export async function locateRequestBody(logDir: string, file: string): Promise<RequestBodyLocation> {
+  liveRequestPath(logDir, file); // validates `file`; the path itself is re-derived below
+  let sidecar: { dir: string; day: string | null } | null = null;
+
+  for (const candidate of requestDirs(logDir, file)) {
+    const body = path.join(candidate.dir, `${file}.request.txt`);
+    if (await exists(body)) return { status: "present", dir: candidate.dir, path: body };
+    if (!sidecar && (await exists(path.join(candidate.dir, `${file}${AUDIT_SUFFIX}`)))) sidecar = candidate;
+  }
+
+  if (sidecar) return { status: "evicted", dir: sidecar.dir, day: sidecar.day };
+  return { status: "missing" };
+}
+
+/**
+ * The audit sidecar that outlived an evicted body — every metric the request is
+ * still known by. Returns `null` when it is unreadable or malformed, so a caller
+ * reporting an eviction never fails on top of it.
+ */
+export async function readRetainedSidecar(logDir: string, file: string, dir: string): Promise<AuditSidecar | null> {
+  if (!REQUEST_FILE_RE.test(file)) return null;
+  try {
+    const raw: unknown = JSON.parse(await readFile(path.join(dir, `${file}${AUDIT_SUFFIX}`), "utf8"));
+    return isAuditSidecar(raw) ? raw : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface RequestBodyResult {

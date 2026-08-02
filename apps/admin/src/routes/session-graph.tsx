@@ -1374,7 +1374,9 @@ function RequestMessage({ file, index }: { file: string; index: number }) {
     queryKey: ["context-message", file, index],
     queryFn: () => getContextMessage(file, index),
   });
-  const message = query.data?.message;
+  // An evicted body has no message to show; the drawer simply omits the field,
+  // exactly as it does for a request that rotated away.
+  const message = query.data && !query.data.evicted ? query.data.message : undefined;
   if (!message) return null;
   return (
     <Field label="Request message">

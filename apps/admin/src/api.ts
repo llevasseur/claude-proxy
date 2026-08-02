@@ -1,6 +1,7 @@
 import type {
   Advice,
   AliasLoadExpectation,
+  AuditSidecar,
   BucketBreakdownSummary,
   CommandPatternId,
   CommandRun,
@@ -68,24 +69,44 @@ export interface ContextResponse {
   summary: ContextSummary;
   meta: { days: number; files: number; parseErrors: number };
 }
-export interface ContextDetailResponse {
+/**
+ * A drill-down whose captured body retention has evicted. The audit sidecar is
+ * kept forever, so the request is still described by its metrics — `retained`
+ * carries them. Discriminate on `evicted` before reading anything else.
+ */
+export interface EvictedBodyResponse {
   file: string;
+  evicted: true;
+  /** The archived day the sidecar sits in; `null` while it is still live. */
+  day: string | null;
+  /** The server's retention window, so the message names the real number. */
+  retentionDays: number;
+  retained: AuditSidecar | null;
+}
+export interface ContextDetailPresent {
+  file: string;
+  evicted: false;
   breakdown: RequestBreakdown;
   raw: string;
   truncated: boolean;
 }
-export interface ContextMessageResponse {
+export type ContextDetailResponse = ContextDetailPresent | EvictedBodyResponse;
+export interface ContextMessagePresent {
   file: string;
+  evicted: false;
   message: RequestMessageDetail;
 }
-export interface ContextToolResponse {
+export type ContextMessageResponse = ContextMessagePresent | EvictedBodyResponse;
+export interface ContextToolPresent {
   file: string;
+  evicted: false;
   tool: RequestToolDetail;
 }
+export type ContextToolResponse = ContextToolPresent | EvictedBodyResponse;
 export interface SkimResponse {
   date: string;
   skim: SkimDigest;
-  meta: { files: number; parseErrors: number };
+  meta: { files: number; parseErrors: number; bodiesEvicted: number };
 }
 export interface SkimTrendResponse {
   digests: SkimDigest[];

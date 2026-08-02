@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import type { RequestToolDetail } from "@claude-proxy/core";
 import { getContextTool } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { EvictedBody } from "../components/EvictedBody";
 import { QueryState } from "../components/QueryState";
 import { PRETTY_RAW, type PrettyRawView, Segmented } from "../components/Segmented";
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from "../components/Skeleton";
@@ -16,7 +17,8 @@ export function ContextToolPage() {
     queryKey: ["context-tool", file, idx],
     queryFn: () => getContextTool(file, idx),
   });
-  const tool = query.data?.tool;
+  const data = query.data;
+  const tool = data && !data.evicted ? data.tool : undefined;
 
   return (
     <section>
@@ -35,6 +37,7 @@ export function ContextToolPage() {
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ToolSkeleton />}>
+        {data?.evicted && <EvictedBody data={data} />}
         {tool && <ToolBody tool={tool} />}
       </QueryState>
     </section>

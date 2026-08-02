@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from "@claude-proxy/core";
 import { getContextDetail } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { EvictedBody } from "../components/EvictedBody";
 import { QueryState } from "../components/QueryState";
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from "../components/Skeleton";
 import { fmtBytes, fmtInt, fmtPct } from "../format";
@@ -30,7 +31,12 @@ export function ContextDetailPage() {
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<BreakdownSkeleton />}>
-        {data && <DetailBody file={file} breakdown={data.breakdown} raw={data.raw} truncated={data.truncated} />}
+        {data &&
+          (data.evicted ? (
+            <EvictedBody data={data} />
+          ) : (
+            <DetailBody file={file} breakdown={data.breakdown} raw={data.raw} truncated={data.truncated} />
+          ))}
       </QueryState>
     </section>
   );

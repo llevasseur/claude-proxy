@@ -392,7 +392,9 @@ function TurnInspector({ turn, agedOut }: { turn: CommandRunTurn | null; agedOut
           sub={`${fmtBytes(turn.toolsBytes)} of tools · ${turn.toolCount} tools · ${turn.messageCount} messages`}
         />
       </div>
-      {message.isError || (message.isSuccess && !message.data) ? (
+      {/* An evicted body is the expected end state, not a failure: retention deletes
+          the body and keeps the sidecar, so the tokens above survive it. */}
+      {message.isError || (message.isSuccess && (!message.data || message.data.evicted)) ? (
         <div className="leak-note">
           This turn's request body is no longer on disk, so its newest message cannot be shown. The token figures above
           come from the run store and are unaffected.
@@ -401,7 +403,7 @@ function TurnInspector({ turn, agedOut }: { turn: CommandRunTurn | null; agedOut
         <div className="leak-note">Some of this run's bodies have aged out; this one may be among them.</div>
       ) : message.isLoading ? (
         <div className="muted">Loading the message…</div>
-      ) : message.data ? (
+      ) : message.data && !message.data.evicted ? (
         <>
           <div className="muted" style={{ marginBottom: 8 }}>
             Message {message.data.message.index + 1} of {message.data.message.messageCount} — the newest in this turn ·{" "}

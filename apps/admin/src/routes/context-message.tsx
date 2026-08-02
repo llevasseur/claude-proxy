@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import type { RequestMessageDetail } from "@claude-proxy/core";
 import { getContextMessage } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { EvictedBody } from "../components/EvictedBody";
 import { QueryState } from "../components/QueryState";
 import { PRETTY_RAW, type PrettyRawView, Segmented } from "../components/Segmented";
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from "../components/Skeleton";
@@ -16,7 +17,8 @@ export function ContextMessagePage() {
     queryKey: ["context-message", file, idx],
     queryFn: () => getContextMessage(file, idx),
   });
-  const message = query.data?.message;
+  const data = query.data;
+  const message = data && !data.evicted ? data.message : undefined;
 
   return (
     <section>
@@ -35,6 +37,7 @@ export function ContextMessagePage() {
       <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<MessageSkeleton />}>
+        {data?.evicted && <EvictedBody data={data} />}
         {message && <MessageBody file={file} message={message} />}
       </QueryState>
     </section>
