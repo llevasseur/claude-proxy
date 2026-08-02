@@ -44,10 +44,8 @@ export interface ParityContext {
   limits: UsageLimitConfig;
   /**
    * The installed command catalogue (`~/.claude/commands` by default). Pinned on
-   * the context rather than resolved per call so both replays read the same
-   * directory: it sits outside `logs/`, so it is not the substrate's to mirror
-   * and both backings read it identically — but it still has to be *fixed* for a
-   * comparison to mean anything.
+   * the context rather than resolved per call, so both replays read the same
+   * directory even though it sits outside `logs/`.
    */
   commandsDir?: string;
 }
@@ -326,10 +324,10 @@ export const PARITY_ROUTES: ParityRoute[] = [
 
   /* --- Slice 3: command runs --- *
    *
-   * Enumerated from the file side for the same reason slice 2's routes are: the
-   * DB is asked about every command and every run the store knows, not only the
-   * ones it managed to index. A run the substrate missed surfaces as a
-   * `command run not found` throw against a case the files answered.
+   * Enumerated from the file side, like slice 2's routes: the DB is asked about
+   * every command and run the store knows, not only the ones it managed to
+   * index. A run the substrate missed surfaces as a `command run not found`
+   * throw against a case the files answered.
    *
    * The `/stream` variants are absent: SSE re-serves the same builder on a
    * watch, so the payload under test is the non-streaming one.

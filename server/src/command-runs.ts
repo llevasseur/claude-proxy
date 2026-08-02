@@ -177,13 +177,9 @@ async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
  * order** — a `Map` keeps the position a key was first inserted at, so a later
  * line supersedes an earlier one's contents without moving it.
  *
- * That order is load-bearing, not incidental: {@link sortCommandRuns} sorts on
- * `started` alone, and `Array.prototype.sort` is stable, so first appearance is
- * what breaks ties. The substrate stores it as `command_run.ord` to reproduce
- * the same listing.
- *
- * Exported so the SQLite ingest reads the store through exactly this parser
- * rather than a second copy of these rules.
+ * That order is load-bearing: {@link sortCommandRuns} sorts on `started` alone
+ * and `Array.prototype.sort` is stable, so first appearance breaks ties. The
+ * substrate stores it as `command_run.ord` to reproduce the same listing.
  */
 export function parseCommandRunStore(text: string): CommandRun[] {
   const byThread = new Map<string, CommandRun>();

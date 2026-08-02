@@ -53,8 +53,7 @@ export interface SidecarSource {
    *
    * The live view of `logs/commands/runs.jsonl`: newest run first, retired
    * records dropped. The installed command catalogue is deliberately *not* here
-   * — it is read from `~/.claude/commands`, outside `logs/`, so it is not the
-   * substrate's to mirror and both backings read it the same way.
+   * — it lives outside `logs/`, so both backings read it the same way.
    */
   readCommandRuns(logDir: string): Promise<CommandRun[]>;
 }
@@ -440,16 +439,12 @@ function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
 /**
  * The store's live view, out of SQLite.
  *
- * `ORDER BY ord` restores the order the store's own reader gets from its `Map`
- * — first appearance of each thread id — and then the *same* sort and the same
- * retired filter run on top, so the tie-breaking cannot drift from the file
+ * `ORDER BY ord` restores first-appearance order, then the *same* sort and the
+ * same retired filter run on top, so the tie-breaking cannot drift from the file
  * side's.
  *
  * The record comes back through `document` rather than being rebuilt from the
- * columns beside it. That is the deliberate shape of this table: a run is a
- * stored document whose optional fields distinguish "absent" from "defaulted",
- * and whose unknown-schema records `readCommandRuns` keeps intact. See the
- * schema note in `open.ts`.
+ * columns beside it — see the schema note in `open.ts`.
  */
 function commandRunsFromDb(db: DatabaseSync): CommandRun[] {
   const rows = db.prepare("SELECT document FROM command_run ORDER BY ord").all() as unknown as Array<{

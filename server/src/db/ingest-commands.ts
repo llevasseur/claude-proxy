@@ -13,16 +13,13 @@ import { commandStorePath, parseCommandRunStore } from "../command-runs.js";
 /**
  * Index `logs/commands/runs.jsonl` into the `command_run` tree.
  *
- * The store is one append-only file rather than a directory of many, so the
- * watermark is a single `file_watermark` row: `bytes` + `modified`, the same
- * pair slice 2 keys a transcript on. A store whose `stat` still matches is not
- * even opened.
+ * The store is one file rather than a directory of many, so the watermark is a
+ * single `file_watermark` row: `bytes` + `modified`, the same pair slice 2 keys
+ * a transcript on. A store whose `stat` still matches is not even opened.
  *
- * When it *has* changed the whole file is re-parsed and every row replaced. The
- * store is append-only in normal operation, but it is also rotated and
- * truncated, and a run's record is rewritten wholesale each time its transcript
- * grows — so "re-read it all" is both the simplest correct answer and a bounded
- * one: the table holds one row per run, not one per line.
+ * A changed store is re-parsed whole and every row replaced: it is rotated and
+ * truncated as well as appended to, and a run's record is rewritten wholesale
+ * each time its transcript grows. Bounded — one row per run, not per line.
  */
 
 /** The store's path relative to `logDir` — the `file_watermark` key. */
@@ -111,10 +108,10 @@ function tokensOf(value: unknown): AuditTokens {
 /**
  * Write one record's row and its four child streams.
  *
- * Every field is read defensively and every child list defaults to empty: the
- * store is versioned and long-lived, and `readCommandRuns` keeps a record from a
- * writer this code does not know. A field that record does not carry becomes a
- * column default here, while `document` keeps the record itself intact.
+ * Every field is read defensively and every child list defaults to empty:
+ * `readCommandRuns` keeps records from a writer this code does not know. A field
+ * such a record lacks becomes a column default here, while `document` keeps the
+ * record itself intact.
  */
 function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
   const totals = run.totals ?? undefined;
@@ -150,9 +147,8 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
     meta?.attributed ?? 0,
     meta?.anchored ?? 0,
     run.updatedAt ?? null,
-    // Re-serialized rather than the raw line: `JSON.stringify` preserves the
-    // key order `JSON.parse` produced, so re-parsing this yields an object
-    // indistinguishable from the one the file reader parses.
+    // Re-serialized rather than the raw line: `JSON.stringify` preserves the key
+    // order `JSON.parse` produced, so re-parsing matches the file reader's object.
     JSON.stringify(run),
   );
 

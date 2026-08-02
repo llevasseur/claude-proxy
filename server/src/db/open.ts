@@ -207,19 +207,15 @@ CREATE TABLE IF NOT EXISTS session_node_text (
  * append-only store `reconcileCommandRuns` distils out of the transcripts and
  * the captured requests before they age out.
  *
- * **Why a `document` column sits beside the normalized tree.** Unlike a sidecar
- * or a transcript, a run is not re-derived from its source on every read — it is
- * a *stored document*, and `readCommandRuns` deliberately hands back records it
- * does not fully understand: `isCommandRun` checks three identity fields, so a
- * record written by a newer or older writer is kept and rendered from what it
- * has. Half the record's fields are optional for exactly that reason
- * (`retired?`, `CommandStep.artifacts?`, and every field `runTotals` and
- * `toListItem` default). Rebuilding one from columns cannot reproduce "this key
- * was absent" versus "this key held the default", and it would silently drop a
- * future writer's fields the moment slice 5 flips reads to DB-backed. So the
- * record round-trips through `document`, and the tables below exist to be
- * *queried* — "which step burns the most tokens across every run of /task" is a
- * GROUP BY here and a full re-parse of the store otherwise.
+ * **Why a `document` column sits beside the normalized tree.** A run is a
+ * *stored document*, not something re-derived from its source on every read:
+ * `isCommandRun` checks three identity fields, so a record from a newer or older
+ * writer is kept and rendered from what it has, and half the record's fields are
+ * optional for that reason. Rebuilding one from columns cannot reproduce "this
+ * key was absent" versus "this key held the default", and would silently drop a
+ * future writer's fields once slice 5 flips reads to DB-backed. So the record
+ * round-trips through `document`, and the tables below exist to be *queried* —
+ * cross-run step aggregates are a GROUP BY here and a full re-parse otherwise.
  *
  * The store stays the source of truth: every row, `document` included, is
  * rebuilt by re-reading `runs.jsonl`.

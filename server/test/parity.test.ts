@@ -130,9 +130,8 @@ async function writeSessions(logDir: string): Promise<void> {
     ].join("\n"),
     "utf8",
   );
-  // The root prompt carries a command envelope, so `reconcileCommandRuns` reads
-  // this thread as a run of `/task` and the command store has something real in
-  // it rather than a hand-authored record.
+  // A command envelope in the root prompt, so `reconcileCommandRuns` reads this
+  // thread as a run of `/task` rather than the store needing a hand-authored record.
   await writeFile(
     path.join(dir, `${parent}.state.json`),
     JSON.stringify({ root: envelope("task", "--sub Move the audit sidecars into SQLite, but keep the files authoritative.") }),
@@ -286,9 +285,8 @@ describe("route parity over a synthetic corpus", () => {
   beforeAll(async () => {
     const logDir = await buildCorpus();
     const commandsDir = await writeCommandsDir();
-    // The store under test is the one the reconcile pass writes, not a fixture:
-    // the record shapes the substrate has to round-trip are whatever the real
-    // distiller produces.
+    // The store under test is the one the reconcile pass writes, not a fixture, so
+    // the record shapes are whatever the real distiller produces.
     await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-18T00:00:00.000Z"));
     ctx = { logDir, limits: resolveUsageLimits({}), commandsDir };
     db = openDb(logDir);
@@ -414,9 +412,8 @@ describe("route parity over a synthetic corpus", () => {
     const victim = runs.find((r) => r.command === "retired-command");
     expect(victim, "the corpus should hold a run to retire").toBeDefined();
 
-    // The store is append-only: retracting a record means writing it again with
-    // the tombstone set. The row stays — it is what the file holds — and the
-    // live view drops it on both sides.
+    // Retracting a record means appending it again with the tombstone set. The row
+    // stays — it is what the file holds — and the live view drops it on both sides.
     await appendFile(store, `${JSON.stringify({ ...victim!, retired: true })}\n`, "utf8");
     let stats = await ingest(db, ctx.logDir);
     expect(stats.commandRunsParsed).toBe(true);
@@ -581,12 +578,7 @@ async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
 }
 
 /**
- * The same replay against this machine's real archive, snapshotted first.
- * Skipped where there is no archive to replay — a clean clone, or CI.
- */
-/**
- * A frozen copy of the installed command catalogue. It lives outside `logs/`, so
- * the substrate does not mirror it and both backings read it the same way — but
+ * A frozen copy of the installed command catalogue. It lives outside `logs/`, but
  * a `/sync` landing between the two replays would still move it under them.
  */
 async function snapshotCommandsDir(): Promise<string> {
@@ -595,6 +587,10 @@ async function snapshotCommandsDir(): Promise<string> {
   return snap;
 }
 
+/**
+ * The same replay against this machine's real archive, snapshotted first.
+ * Skipped where there is no archive to replay — a clean clone, or CI.
+ */
 describe("route parity over the real logs/archive", () => {
   let days: string[] = [];
   let snapshot: string | null = null;
