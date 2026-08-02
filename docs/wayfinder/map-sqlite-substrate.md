@@ -64,16 +64,54 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
       deliberately unregistered: they read a `.request.txt` body off disk and
       touch no indexed column.*
 
-- [ ] **Slice 3 — Command runs. DEPENDS ON SLICE 2.**
+- [x] **Slice 3 — Command runs. DEPENDS ON SLICE 2.**
       The run / turn / step tree, plus waste and patterns from
       `packages/core/src/commands.ts`. Registers `/api/commands*`. It needs the
       session rows from slice 2 to hang the tree off, so it cannot start early.
+      *Landed against `logs/commands/runs.jsonl` rather than the transcripts: a
+      run is **distilled** by `reconcileCommandRuns` and then **stored**, so the
+      store is the source the substrate mirrors. That is why `command_run`
+      carries a `document` column beside the normalized tree —
+      `readCommandRuns` deliberately keeps records it does not fully understand
+      (`isCommandRun` checks three identity fields), and half a record's fields
+      are optional, so rebuilding one from columns could not tell "key absent"
+      from "key held the default" and would drop a future writer's fields the
+      moment slice 5 flips reads. The tables exist to be *queried*; the document
+      is what is *served*. One mutable file means a third watermark shape, a
+      `file_watermark` row keyed on the path — and its own `fs.watch`, since
+      `logs/commands/` is not covered by the non-recursive watch on `logs/`. The
+      installed catalogue under `~/.claude/commands` is **not** indexed: it lives
+      outside `logs/`, so both backings read it identically — but the parity
+      harness pins it on `ParityContext.commandsDir` so a `/sync` cannot move it
+      between the two replays.*
 
-- [ ] **Slice 4 — The remainder.**
+- [x] **Slice 4 — The remainder.**
       Projects, jobs, suggestions, errors, skim, withheld, filters. Whatever
       read path is still scanning after slice 3 gets a table and a registered
       parity route. Authored suggestion *status* still stays out — only the
       derived suggestion data is indexed.
+      *Landed with **no new tables**. Every read path still scanning after slice
+      3 turned out to be a different aggregation over rows slices 1 and 2 already
+      hold, so the work was threading `SidecarSource` through the last five
+      builders (`buildSkim`, `buildSkimTrend`, `buildWithheld`,
+      `buildSuggestionStatus`, `applySuggestionStatus`) and registering
+      `/api/skim`, `/api/skim/trend`, `/api/withheld` and
+      `/api/sessions/suggestions/status`. Errors were already wired by slice 2.
+      Four of the names on this list are deliberately **out of scope** rather
+      than overlooked: `/api/projects`, `/api/jobs` and `/api/hooks-plugins` read
+      `~/.claude/projects`, `~/.claude/jobs` and `~/.claude/settings.json` — all
+      outside `logs/`, which ADR 0004 scopes the substrate to, and none of them
+      rebuildable by re-ingesting, so indexing them would put the only copy of
+      something in a disposable view. `/api/filters` is a static inventory with
+      no disk read at all. That is the same boundary that kept
+      `~/.claude/commands` unindexed in slice 3. The suggestion-status route is
+      registered for its **derived** half only: the bucket/suggestion join comes
+      from the indexed transcripts, while the flags stay in
+      `logs/suggestion-status.json` and are read as a file on both sides. The
+      real-corpus snapshot grew accordingly — `.request.txt` bodies are now
+      hardlinked in, because `/api/skim` parses them for the last user turn and
+      omitting them would have made both sides read `null` and the route's parity
+      vacuous.*
 
 - [ ] **Slice 5 — Graduation.**
       Parity green across **all** routes for **every** archived day. Only then

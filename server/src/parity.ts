@@ -1,7 +1,10 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import type { UsageLimitConfig } from "@claude-proxy/core";
+import { runKey, type UsageLimitConfig } from "@claude-proxy/core";
 import {
+  buildCommand,
+  buildCommandRun,
+  buildCommands,
   buildContext,
   buildSession,
   buildSessionBreakdown,
@@ -12,14 +15,20 @@ import {
   buildSessionsGraph,
   buildSessionSuggestionBucket,
   buildSessionSuggestions,
+  buildSkim,
+  buildSkimTrend,
+  buildSuggestionStatus,
   buildSummary,
   buildTools,
   buildTrends,
   buildUsage,
+  buildWithheld,
   clearRawArchiveCache,
 } from "./api.js";
 import { clearArchiveCache } from "./archive.js";
+import { resolveCommandsDir } from "./command-runs.js";
 import { fileSource, type SidecarSource } from "./db/source.js";
+import { resolveSettingsPath } from "./settings.js";
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from "./usage-history.js";
 
 /**
@@ -38,6 +47,18 @@ export interface ParityContext {
   logDir: string;
   archiveDir?: string;
   limits: UsageLimitConfig;
+  /**
+   * The installed command catalogue (`~/.claude/commands` by default). Pinned on
+   * the context rather than resolved per call, so both replays read the same
+   * directory even though it sits outside `logs/`.
+   */
+  commandsDir?: string;
+  /**
+   * The device settings file `/api/withheld` reads its deny-list from. Pinned for
+   * the same reason `commandsDir` is: it is authored state outside `logs/`, and
+   * both replays have to see the same bytes.
+   */
+  settingsPath?: string;
 }
 
 /** One replayable request: a label for the failure message, and how to answer it. */
@@ -311,6 +332,135 @@ export const PARITY_ROUTES: ParityRoute[] = [
       }));
     },
   },
+
+  /* --- Slice 3: command runs --- *
+   *
+   * Enumerated from the file side, like slice 2's routes: the DB is asked about
+   * every command and run the store knows, not only the ones it managed to
+   * index. A run the substrate missed surfaces as a `command run not found`
+   * throw against a case the files answered.
+   *
+   * The `/stream` variants are absent: SSE re-serves the same builder on a
+   * watch, so the payload under test is the non-streaming one.
+   */
+  {
+    name: "/api/commands",
+    cases: async (ctx) => [
+      { label: "/api/commands", run: (source) => buildCommands(ctx.logDir, commandsDirOf(ctx), source) },
+    ],
+  },
+  {
+    name: "/api/commands/command",
+    cases: async (ctx) => {
+      const commandsDir = commandsDirOf(ctx);
+      const { commands } = await buildCommands(ctx.logDir, commandsDir, fileSource);
+      const cases: ParityCase[] = [];
+      for (const summary of commands) {
+        cases.push({
+          label: `/api/commands/command?name=${summary.command}`,
+          run: (source) => buildCommand(ctx.logDir, commandsDir, summary.command, [], source),
+        });
+        // One facet per command, so the flag filter is exercised rather than
+        // only the unfiltered aggregate.
+        const facet = summary.flags[0];
+        if (facet) {
+          cases.push({
+            label: `/api/commands/command?name=${summary.command}&flags=${facet}`,
+            run: (source) => buildCommand(ctx.logDir, commandsDir, summary.command, [facet], source),
+          });
+        }
+      }
+      return cases;
+    },
+  },
+  {
+    name: "/api/commands/run",
+    cases: async (ctx) => {
+      const runs = await fileSource.readCommandRuns(ctx.logDir);
+      return runs.slice(0, PER_THREAD_CASES).map((run) => ({
+        // By run id, the same key the route takes: a nested run's id is not its
+        // thread id, and asking by thread would replay its host instead.
+        label: `/api/commands/run?id=${runKey(run)}`,
+        run: (source) => buildCommandRun(ctx.logDir, runKey(run), source),
+      }));
+    },
+  },
+
+  /* --- Slice 4: the remainder --- *
+   *
+   * The read paths still scanning after slice 3. None needed a new table: each
+   * is a different aggregation over the sidecars and session graphs slices 1 and
+   * 2 already index.
+   *
+   * `/api/projects`, `/api/jobs` and `/api/hooks-plugins` are deliberately
+   * absent: they read `~/.claude/projects`, `~/.claude/jobs` and
+   * `~/.claude/settings.json`, all outside the `logs/` scope ADR 0004 gives the
+   * substrate and none re-derivable by re-ingesting. Indexing one would put the
+   * only copy of something in a disposable view — the same boundary that kept
+   * `~/.claude/commands` out in slice 3. `/api/filters` reads no disk.
+   *
+   * `/api/skim` replays as of *every* archived day; the two window-shaped routes
+   * below only as of the newest. A window aggregates the same per-day reads, so
+   * replaying each window as of each day re-reads the corpus quadratically for
+   * coverage that is already there.
+   */
+  {
+    name: "/api/skim",
+    cases: async (ctx) =>
+      (await archivedDays(ctx.logDir)).map((day) => ({
+        label: `/api/skim?date=${day}`,
+        run: (source) => buildSkim(ctx.logDir, day, endOf(day), source),
+      })),
+  },
+  {
+    name: "/api/skim/trend",
+    cases: async (ctx) => {
+      const last = (await archivedDays(ctx.logDir)).at(-1);
+      if (!last) return [];
+      return [7, 30].map((window) => ({
+        label: `/api/skim/trend?days=${window} as of ${last}`,
+        run: (source) => buildSkimTrend(ctx.logDir, window, endOf(last), source),
+      }));
+    },
+  },
+  {
+    name: "/api/withheld",
+    cases: async (ctx) => {
+      const settingsPath = ctx.settingsPath ?? resolveSettingsPath();
+      const last = (await archivedDays(ctx.logDir)).at(-1);
+      if (!last) return [];
+      return [7, 30].map((window) => ({
+        label: `/api/withheld?days=${window} as of ${last}`,
+        run: (source) => buildWithheld(ctx.logDir, window, settingsPath, endOf(last), source),
+      }));
+    },
+  },
+  {
+    // Only the derived half has a DB path: the bucket/suggestion join comes from
+    // the indexed session graphs, while the flags stay a file on both sides.
+    name: "/api/sessions/suggestions/status",
+    cases: async (ctx) => {
+      const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
+      const cases: ParityCase[] = [
+        {
+          label: "/api/sessions/suggestions/status",
+          run: (source) => buildSuggestionStatus(ctx.logDir, {}, source),
+        },
+        {
+          label: "/api/sessions/suggestions/status?detail=1",
+          run: (source) => buildSuggestionStatus(ctx.logDir, { detail: true }, source),
+        },
+      ];
+      const first = buckets[0];
+      if (first) {
+        cases.push({
+          label: `/api/sessions/suggestions/status?range=${first.index}`,
+          run: (source) => buildSuggestionStatus(ctx.logDir, { buckets: [first.index], detail: true }, source),
+        });
+      }
+      return cases;
+    },
+  },
   {
     name: "/api/context",
     cases: async (ctx) => {
@@ -336,6 +486,11 @@ export const PARITY_ROUTES: ParityRoute[] = [
  * only the routes that re-read request bodies per thread.
  */
 const PER_THREAD_CASES = 20;
+
+/** The catalogue a run replays against — pinned on the context, else the installed one. */
+function commandsDirOf(ctx: ParityContext): string {
+  return ctx.commandsDir ?? resolveCommandsDir();
+}
 
 /** The newest transcripts the *files* know about, in the listing's own order. */
 async function threadIds(ctx: ParityContext): Promise<string[]> {

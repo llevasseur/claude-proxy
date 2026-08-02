@@ -175,7 +175,19 @@ async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
   } catch {
     return []; // nothing recorded yet — an empty page, not an error
   }
+  return sortCommandRuns(parseCommandRunStore(text));
+}
 
+/**
+ * The store's text as the newest record per {@link runKey}, **in first-appearance
+ * order** — a `Map` keeps the position a key was first inserted at, so a later
+ * line supersedes an earlier one's contents without moving it.
+ *
+ * That order is load-bearing: {@link sortCommandRuns} sorts on `started` alone
+ * and `Array.prototype.sort` is stable, so first appearance breaks ties. The
+ * substrate stores it as `command_run.ord` to reproduce the same listing.
+ */
+export function parseCommandRunStore(text: string): CommandRun[] {
   const byKey = new Map<string, CommandRun>();
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
@@ -188,7 +200,12 @@ async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
     if (!isCommandRun(parsed)) continue;
     byKey.set(runKey(parsed), parsed); // later line supersedes earlier
   }
-  return [...byKey.values()].sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
+  return [...byKey.values()];
+}
+
+/** Newest run first. Stable, so records with equal `started` keep store order. */
+export function sortCommandRuns(runs: CommandRun[]): CommandRun[] {
+  return runs.sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
 }
 
 /** Append records to the store, creating `logs/commands/` on first write. */

@@ -78,9 +78,9 @@ import {
   type StepReach,
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
-import { listInstalledCommands, readCommandRuns } from "./command-runs.js";
+import { listInstalledCommands } from "./command-runs.js";
 import { fileSource, type SidecarSource } from "./db/source.js";
-import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
+import { readArchivedDay, readRequestBody, shiftDay, today } from "./logs.js";
 import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
 import { loadLiveUsage } from "./usage-live.js";
 import {
@@ -101,7 +101,6 @@ import {
   type ProjectSummary,
 } from "./projects.js";
 import {
-  listSessionGraphs,
   threadIdForBody,
   type SessionDetail,
   type SessionGraph,
@@ -828,8 +827,11 @@ export async function buildSuggestionStatus(
     recurrences?: readonly SuggestionRecurrence[];
     detail?: boolean;
   } = {},
+  source: SidecarSource = fileSource,
 ): Promise<SuggestionStatusResponse> {
-  const [sessions, store] = await Promise.all([listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
+  // Only the *derived* half goes through the seam. The status store is authored
+  // state, so it stays a JSON file read directly on both sides of parity.
+  const [sessions, store] = await Promise.all([source.listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
   const buckets = sessionSuggestionBuckets(sessions);
   const existing = buckets.map((b) => b.index).sort((a, b) => a - b);
   const rows = suggestionStatusRows(buckets, store, filter);
@@ -868,10 +870,11 @@ export async function applySuggestionStatus(
   logDir: string,
   updates: readonly SuggestionStatusUpdate[],
   now: Date = new Date(),
+  source: SidecarSource = fileSource,
 ): Promise<SuggestionStatusUpdateResponse> {
   if (updates.length === 0) throw new Error("no suggestion status updates given");
   const store = await updateSuggestionStatusStore(logDir, updates, now);
-  const buckets = sessionSuggestionBuckets(await listSessionGraphs(logDir));
+  const buckets = sessionSuggestionBuckets(await source.listSessionGraphs(logDir));
   const touched = [...new Set(updates.map((u) => u.bucket))];
   const rows = suggestionStatusRows(buckets, store, { buckets: touched });
   const known = new Set(rows.map((r) => suggestionKey(r)));
@@ -985,9 +988,18 @@ export interface SkimResponse {
   meta: { files: number; parseErrors: number };
 }
 
-export async function buildSkim(logDir: string, date?: string, now: Date = new Date()): Promise<SkimResponse> {
+export async function buildSkim(
+  logDir: string,
+  date?: string,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<SkimResponse> {
   const day = date ?? today(now);
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day, includeSkimRequests: true }, now);
+  const { sidecars, files, parseErrors } = await source.readSidecars(
+    logDir,
+    { date: day, includeSkimRequests: true },
+    now,
+  );
   const skim = computeSkimDigest(sidecars, { date: day, topN: 50 });
   return { date: day, skim, meta: { files, parseErrors } };
 }
@@ -998,8 +1010,17 @@ export interface SkimTrendResponse {
   meta: { days: number; files: number; parseErrors: number };
 }
 
-export async function buildSkimTrend(logDir: string, days: number, now: Date = new Date()): Promise<SkimTrendResponse> {
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeSkimRequests: true }, now);
+export async function buildSkimTrend(
+  logDir: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<SkimTrendResponse> {
+  const { sidecars, files, parseErrors } = await source.readSidecars(
+    logDir,
+    { sinceDays: days, includeSkimRequests: true },
+    now,
+  );
   const topShapes = computeSkimDigest(sidecars, { date: `${days}d`, topN: 50 }).topShapes;
   return { digests: skimDigestsByDay(sidecars), topShapes, meta: { days, files, parseErrors } };
 }
@@ -1035,9 +1056,12 @@ export async function buildWithheld(
   days: number,
   settingsPath: string = resolveSettingsPath(),
   now: Date = new Date(),
+  source: SidecarSource = fileSource,
 ): Promise<WithheldResponse> {
+  // The traffic half goes through the seam; the device settings and the shell rc
+  // are authored files outside `logs/`, read the same way by both backings.
   const [{ sidecars, files, parseErrors }, settings, launchAliases] = await Promise.all([
-    readSidecars(logDir, { sinceDays: days }, now),
+    source.readSidecars(logDir, { sinceDays: days }, now),
     readDeviceSettings(settingsPath),
     readLaunchAliases(),
   ]);
@@ -1110,8 +1134,12 @@ export interface CommandsResponse {
  * command the store has runs for, so a command that a `/sync` removed keeps its history
  * instead of taking it off the page.
  */
-export async function buildCommands(logDir: string, commandsDir: string): Promise<CommandsResponse> {
-  const [installed, runs] = await Promise.all([listInstalledCommands(commandsDir), readCommandRuns(logDir)]);
+export async function buildCommands(
+  logDir: string,
+  commandsDir: string,
+  source: SidecarSource = fileSource,
+): Promise<CommandsResponse> {
+  const [installed, runs] = await Promise.all([listInstalledCommands(commandsDir), source.readCommandRuns(logDir)]);
   return {
     commands: summarizeCommands(installed, runs),
     meta: {
@@ -1194,8 +1222,9 @@ export async function buildCommand(
   commandsDir: string,
   command: string,
   flags: readonly string[] = [],
+  source: SidecarSource = fileSource,
 ): Promise<CommandResponse> {
-  const [installed, allRuns] = await Promise.all([listInstalledCommands(commandsDir), readCommandRuns(logDir)]);
+  const [installed, allRuns] = await Promise.all([listInstalledCommands(commandsDir), source.readCommandRuns(logDir)]);
   const spec = installed.find((c) => c.command === command);
   const own = allRuns
     .filter((r) => r.command === command)
@@ -1281,15 +1310,19 @@ export interface CommandRunResponse {
  * suggestions engine's read on the sessions it spans. Throws a labelled error the
  * server maps to 404 when the store has no such run.
  */
-export async function buildCommandRun(logDir: string, runId: string): Promise<CommandRunResponse> {
-  const runs = await readCommandRuns(logDir);
+export async function buildCommandRun(
+  logDir: string,
+  runId: string,
+  source: SidecarSource = fileSource,
+): Promise<CommandRunResponse> {
+  const runs = await source.readCommandRuns(logDir);
   // By run id, so a nested run resolves rather than its host answering for it. A
   // top-level run's id *is* its thread id, so old links keep working.
   const run = runs.find((r) => runKey(r) === runId);
   if (!run) throw new Error(`command run not found: ${runId}`);
 
   const family = new Set(run.threadIds ?? [run.threadId]);
-  const sessions = await listSessionGraphs(logDir);
+  const sessions = await source.listSessionGraphs(logDir);
   const present = sessions.filter((s) => family.has(s.threadId));
   const buckets = present.length === 0 ? [] : sessionSuggestionBuckets(sessions);
 

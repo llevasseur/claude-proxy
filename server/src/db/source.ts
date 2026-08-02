@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { linkAgentSessions, reportDay, type SessionNode } from "@claude-proxy/core";
+import { linkAgentSessions, reportDay, type CommandRun, type SessionNode } from "@claude-proxy/core";
+import { readCommandRuns as readCommandRunsFromFiles, sortCommandRuns } from "../command-runs.js";
 import {
   readArchivedDay as readArchivedDayFromFiles,
   readSidecars as readSidecarsFromFiles,
@@ -47,6 +48,14 @@ export interface SidecarSource {
   listSessionGraphs(logDir: string): Promise<SessionGraph[]>;
   readSession(logDir: string, id: string): Promise<SessionDetail>;
   readSessionNodeTexts(logDir: string, id: string): Promise<SessionNodeTexts>;
+
+  /* --- Command runs (slice 3) --- *
+   *
+   * The live view of `logs/commands/runs.jsonl`: newest run first, retired
+   * records dropped. The installed command catalogue is deliberately *not* here
+   * — it lives outside `logs/`, so both backings read it the same way.
+   */
+  readCommandRuns(logDir: string): Promise<CommandRun[]>;
 }
 
 /** The behaviour the server has today: scan the directory, parse every file. */
@@ -58,6 +67,7 @@ export const fileSource: SidecarSource = {
   listSessionGraphs: (logDir) => listSessionGraphsFromFiles(logDir),
   readSession: (logDir, id) => readSessionFromFiles(logDir, id),
   readSessionNodeTexts: (logDir, id) => readSessionNodeTextsFromFiles(logDir, id),
+  readCommandRuns: (logDir) => readCommandRunsFromFiles(logDir),
 };
 
 /** The live log directory's `source_dir`; archived days are `archive/<YYYY-MM-DD>`. */
@@ -422,6 +432,27 @@ function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
   return out;
 }
 
+/* ------------------------------------------------------------------ *
+ * Command runs
+ * ------------------------------------------------------------------ */
+
+/**
+ * The store's live view, out of SQLite.
+ *
+ * `ORDER BY ord` restores first-appearance order, then the *same* sort and the
+ * same retired filter run on top, so the tie-breaking cannot drift from the file
+ * side's.
+ *
+ * The record comes back through `document` rather than being rebuilt from the
+ * columns beside it — see the schema note in `open.ts`.
+ */
+function commandRunsFromDb(db: DatabaseSync): CommandRun[] {
+  const rows = db.prepare("SELECT document FROM command_run ORDER BY ord").all() as unknown as Array<{
+    document: string;
+  }>;
+  return sortCommandRuns(rows.map((row) => JSON.parse(row.document) as CommandRun)).filter((run) => !run.retired);
+}
+
 /** The same reads, answered from the substrate. */
 export function dbSource(db: DatabaseSync): SidecarSource {
   return {
@@ -468,6 +499,8 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       }
       return { threadId: id, texts };
     },
+    // The store is indexed whole, so this reads no file at all.
+    readCommandRuns: async () => commandRunsFromDb(db),
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
     readArchivedDay: async (logDir, date, opts = {}) => {
       const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0 };
