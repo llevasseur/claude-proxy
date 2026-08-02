@@ -34,6 +34,19 @@ prescribed it.
   envelope and any injected `<system-reminder>` stripped. Only the *leading* run of flag
   tokens is parsed and nothing knows which flags take a value, so `--base main` records
   `base` and stops at `main`.
+- **A locally-run command is not a run** — `/clear` and `/compact` execute in the CLI and
+  never reach the model, but the CLI still sends their envelope as the first thing in the
+  turn they opened, so a session begun with one used to root on it and be charged for
+  everything typed after. The parser walks the envelopes in order and takes the first
+  **non-local** one — the real command when there was one, no run at all when there wasn't
+  — reading each envelope's `<command-args>` from its own block rather than the first in
+  the prompt. Locality is pure adjacency: the caveat has to sit directly ahead of the
+  envelope, with only its own `<command-message>` between, because that caveat text
+  survives into compaction summaries far from any envelope it describes.
+- **A record can be retracted** — the store only appends, so a thread that stops parsing as
+  a run is rewritten with `retired: true` and dropped by `readCommandRuns`. The reconcile
+  pass retires only threads whose transcript is still on disk; one that has aged out is
+  left alone, since a missing transcript is not evidence the run never happened.
 - **The step catalogue comes from the installed file** — `parseCommandSteps` takes the
   `## Step N — Title` headings of `~/.claude/commands/<name>.md` (override the directory
   with `COMMANDS_DIR`, which exists for tests). Ordinals are kept as written, so `1.5`
@@ -97,6 +110,8 @@ reads the files and captured requests and hands the pieces to it.
 
 - [x] Every session whose opening prompt carries a `<command-name>` envelope is captured as
       a run, with no tagging and no harness.
+- [x] A locally-run command is never a run, and never carries the cost of what followed it:
+      a session opened by `/clear` is the run of whatever was typed after, or no run at all.
 - [x] Steps come from the `## Step N` headings of the installed command file, snapshotted
       per run with the file's content hash.
 - [x] A command with no declared steps is still a valid run, with everything unattributed.
