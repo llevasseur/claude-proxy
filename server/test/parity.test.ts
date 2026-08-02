@@ -587,7 +587,8 @@ describe("route parity over a synthetic corpus", () => {
     const fromDb = await dbSource(db).readCommandRuns(ctx.logDir);
     expect(fromDb).toEqual(await fileSource.readCommandRuns(ctx.logDir));
     expect(fromDb.find((r) => r.command === "task")?.ended).toBe(closed.ended);
-    const row = db.prepare("SELECT ended FROM command_run WHERE thread_id = ?").get(victim!.threadId) as {
+    // A top-level run's `run_id` is its thread id; a nested one is `<threadId>~<node>`.
+    const row = db.prepare("SELECT ended FROM command_run WHERE run_id = ?").get(victim!.threadId) as {
       ended: string | null;
     };
     expect(row.ended).toBe(victim!.ended);
