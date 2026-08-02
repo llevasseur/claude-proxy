@@ -2,7 +2,7 @@
 // reads. The gate lives in the request dispatch, so these drive the real server over a
 // socket rather than a handler stub.
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,8 @@ const PORT = 8801 + Math.floor(Math.random() * 100);
 const BASE = `http://127.0.0.1:${PORT}`;
 
 let child: ChildProcess;
+/** The device system prompt this server edits — a temp file, never the real one. */
+let promptPath: string;
 
 /** Poll `/api/health` until the listener answers, so a slow `tsx` start isn't a failure. */
 async function waitForListening(deadlineMs = 30_000): Promise<void> {
@@ -32,8 +34,15 @@ async function waitForListening(deadlineMs = 30_000): Promise<void> {
 
 beforeAll(async () => {
   const logDir = await mkdtemp(path.join(tmpdir(), "route-methods-"));
+  promptPath = path.join(logDir, "CLAUDE.md");
   child = spawn("npx", ["tsx", ENTRY], {
-    env: { ...process.env, PORT: String(PORT), HOST: "127.0.0.1", LOG_DIR: logDir },
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      HOST: "127.0.0.1",
+      LOG_DIR: logDir,
+      CLAUDE_SYSTEM_PROMPT: promptPath,
+    },
     stdio: "ignore",
   });
   await waitForListening();
@@ -62,6 +71,42 @@ describe("read routes", () => {
   it("still answers the GET it exists for", async () => {
     const res = await fetch(`${BASE}/api/withheld`);
     expect(res.status).toBe(200);
+  });
+
+  it("serves the system prompt as a GET, and refuses a save from a foreign origin", async () => {
+    const read = await fetch(`${BASE}/api/system-prompt`);
+    expect(read.status).toBe(200);
+    expect((await read.json()).prompt).toMatchObject({ path: promptPath, exists: false });
+
+    // On the write allowlist, so the origin check owns it rather than the 405 gate.
+    const foreign = await fetch(`${BASE}/api/system-prompt`, {
+      method: "POST",
+      headers: { origin: "http://evil.example", "content-type": "application/json" },
+      body: JSON.stringify({ text: "# owned\n" }),
+    });
+    expect(foreign.status).toBe(403);
+  });
+
+  it("writes the prompt through the save route", async () => {
+    const res = await fetch(`${BASE}/api/system-prompt`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "# Device rules\r\n" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).prompt).toMatchObject({ exists: true, text: "# Device rules\n" });
+    expect(await readFile(promptPath, "utf8")).toBe("# Device rules\n");
+  });
+
+  it("refuses a save whose body isn't a string", async () => {
+    const res = await fetch(`${BASE}/api/system-prompt`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: 42 }),
+    });
+
+    expect(res.status).toBe(400);
   });
 
   it("leaves the write allowlist to its own origin check", async () => {

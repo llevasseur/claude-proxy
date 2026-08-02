@@ -43,6 +43,8 @@ import {
   buildWithheld,
   buildHooksPlugins,
   buildFilters,
+  buildSystemPrompt,
+  buildSystemPromptUpdate,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
 import { reconcileCommandRuns, resolveCommandsDir } from "./command-runs.js";
@@ -65,6 +67,7 @@ import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
 import { resolveSettingsPath } from "./settings.js";
+import { resolveSystemPromptPath } from "./system-prompt.js";
 import { resolveUsageLimits } from "./usage-config.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
@@ -76,6 +79,7 @@ const JOBS_DIR = resolveJobsDir();
 const USAGE_LIMITS = resolveUsageLimits();
 const COMMANDS_DIR = resolveCommandsDir();
 const SETTINGS_PATH = resolveSettingsPath();
+const SYSTEM_PROMPT_PATH = resolveSystemPromptPath();
 
 /**
  * Bring the command-run store up to date, then build.
@@ -134,8 +138,11 @@ const SUGGESTION_STATUS_ROUTE = "/api/sessions/suggestions/status";
 /** The one destructive route: removes a `~/.claude/jobs/<id>` directory from disk. */
 const JOB_DELETE_ROUTE = "/api/jobs/delete";
 
+/** The device system prompt: a GET of `~/.claude/CLAUDE.md`, a POST that rewrites it. */
+const SYSTEM_PROMPT_ROUTE = "/api/system-prompt";
+
 /** Paths whose POST goes through the origin-checked write CORS. */
-const WRITE_ROUTES = new Set([...CHAT_ROUTES, SUGGESTION_STATUS_ROUTE, JOB_DELETE_ROUTE]);
+const WRITE_ROUTES = new Set([...CHAT_ROUTES, SUGGESTION_STATUS_ROUTE, JOB_DELETE_ROUTE, SYSTEM_PROMPT_ROUTE]);
 
 /**
  * Origins allowed to POST those routes — the dashboard's dev server by default,
@@ -929,6 +936,22 @@ const server = http.createServer(async (req, res) => {
       case "/api/hooks-plugins":
         send(res, 200, await buildHooksPlugins());
         return;
+      case SYSTEM_PROMPT_ROUTE: {
+        // The GET is the read every other route is; anything else is the save, which
+        // rewrites a file every session on this device loads — so it goes through the
+        // origin-checked write path rather than the open read CORS.
+        if (req.method !== "GET") {
+          await servePost(
+            req,
+            res,
+            (body) => buildSystemPromptUpdate(SYSTEM_PROMPT_PATH, body.text),
+            () => 400, // the only failures are the body's: not a string, or over the ceiling
+          );
+          return;
+        }
+        send(res, 200, await buildSystemPrompt(SYSTEM_PROMPT_PATH));
+        return;
+      }
       case "/api/filters":
         send(res, 200, buildFilters());
         return;
