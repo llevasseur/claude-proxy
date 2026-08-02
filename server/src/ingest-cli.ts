@@ -23,6 +23,10 @@ async function main(): Promise<void> {
       `, ${stats.skipped} file${stats.skipped === 1 ? "" : "s"} unusable` +
       ` in ${seconds}s`,
   );
+  console.log(
+    `[ingest] ${stats.sessions} session transcript${stats.sessions === 1 ? "" : "s"}` +
+      `, ${stats.sessionsParsed} parsed`,
+  );
 }
 
 main().catch((err: unknown) => {

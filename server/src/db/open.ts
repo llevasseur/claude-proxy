@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -135,6 +135,74 @@ CREATE TABLE IF NOT EXISTS ingest_watermark (
 `;
 
 /**
+ * Slice 2 — session transcripts. One row per `logs/sessions/<threadId>.md`,
+ * carrying the header metadata `parseSessionTranscript` derives, the listing's
+ * `bytes` / `modified`, and the opening prompt off the `.state.json` sidecar.
+ *
+ * The transcript body stays on disk and `md_path` points at it. Eviction is not
+ * a separate state here as it is for `request`: a body that goes away takes the
+ * row with it on the next pass.
+ *
+ * `bytes` and `modified` double as the per-file watermark — a transcript is
+ * mutable, so "seen this stem already" is not enough to skip it.
+ */
+const SCHEMA_V2 = `
+CREATE TABLE IF NOT EXISTS session (
+  thread_id     TEXT PRIMARY KEY,
+  model         TEXT,
+  session_id    TEXT,
+  started       TEXT,
+  tasks         INTEGER NOT NULL,
+  decisions     INTEGER NOT NULL,
+  tools         INTEGER NOT NULL,
+  errors        INTEGER NOT NULL,
+  first_task    TEXT,
+  title         TEXT,
+  subtitle      TEXT,
+  derived_title TEXT,
+  bytes         INTEGER NOT NULL,
+  modified      TEXT NOT NULL,
+  md_path       TEXT,
+  -- The untruncated opening prompt from <threadId>.state.json, null when the
+  -- sidecar is absent or carries no "root" — two states no reader tells apart.
+  root_prompt   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS session_modified_idx   ON session(modified);
+CREATE INDEX IF NOT EXISTS session_session_id_idx ON session(session_id);
+CREATE INDEX IF NOT EXISTS session_started_idx    ON session(started);
+
+-- The appended step stream, in transcript line order. "idx" is the node's own
+-- 0-based position, stored rather than re-derived: the agent linkage and the
+-- graph's deep links both address by it.
+CREATE TABLE IF NOT EXISTS session_node (
+  thread_id    TEXT NOT NULL REFERENCES session(thread_id) ON DELETE CASCADE,
+  idx          INTEGER NOT NULL,
+  type         TEXT NOT NULL,
+  text         TEXT NOT NULL,
+  tool         TEXT,
+  task         TEXT,
+  interruption TEXT,
+  interrupted  INTEGER NOT NULL,
+  message      INTEGER,
+  PRIMARY KEY (thread_id, idx)
+);
+
+CREATE INDEX IF NOT EXISTS session_node_type_idx ON session_node(type);
+
+-- The <threadId>.nodes.jsonl sidecar: the untruncated text behind a gisted
+-- node line. Not a column on session_node and not keyed to it — the sidecar is
+-- sparse and can name an index the transcript no longer has, which the file
+-- reader returns rather than drops.
+CREATE TABLE IF NOT EXISTS session_node_text (
+  thread_id TEXT NOT NULL REFERENCES session(thread_id) ON DELETE CASCADE,
+  idx       INTEGER NOT NULL,
+  text      TEXT NOT NULL,
+  PRIMARY KEY (thread_id, idx)
+);
+`;
+
+/**
  * Open (creating if needed) the substrate for `logDir` in WAL mode. WAL lets the
  * server read while an ingest pass writes, which is the normal state: the
  * watcher ingests whenever the proxy drops a new sidecar.
@@ -155,6 +223,7 @@ function migrate(db: DatabaseSync): void {
   if (from >= SCHEMA_VERSION) return;
 
   if (from < 1) db.exec(SCHEMA_V1);
+  if (from < 2) db.exec(SCHEMA_V2);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

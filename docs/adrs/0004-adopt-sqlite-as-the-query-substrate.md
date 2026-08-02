@@ -49,8 +49,13 @@ is allowed to be authoritative about.
 - **The DB is a disposable view first.** `logs/` remains the sole source of
   truth; every table is fully reconstructible by re-ingesting, so the supported
   total-recovery path is `rm logs/claude-proxy.db && pnpm --filter server ingest`
-  and nothing is lost. Ingest is idempotent and watermarked, keyed on the sidecar
-  filename stem, so "ran twice" and "died halfway" are both harmless. Becoming
+  and nothing is lost. Ingest is idempotent and watermarked, so "ran twice" and
+  "died halfway" are both harmless. The watermark is keyed on the sidecar
+  filename stem for the audit sidecars, which are written once and never
+  changed; the session transcripts are the mutable part of `logs/` — the proxy
+  appends to one for the life of the run it records — so they carry a *per-file*
+  watermark (`bytes` + `modified`) instead, an append always moving the size.
+  Becoming
   the source of truth is a *later, staged* decision — the view has to be proven
   byte-identical across every archived route first.
 - **Authored state stays out.** `logs/suggestion-status.json` and the device

@@ -194,8 +194,22 @@ export function contentHash(text: string): string {
 
 // --- The prompt envelope ---------------------------------------------------
 
-const COMMAND_NAME_RE = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/i;
-const COMMAND_ARGS_RE = /<command-args>([\s\S]*?)<\/command-args>/i;
+/**
+ * Every envelope in a prompt, in order. A prompt carries more than one when a local
+ * command opens the turn the real command was typed into, so the first is not the run's.
+ */
+const COMMAND_NAME_RE = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/gi;
+const ARGS_OPEN_RE = /<command-args>/gi;
+const ARGS_CLOSE_RE = /<\/command-args>/gi;
+/**
+ * The CLI's caveat sitting immediately ahead of an envelope, marking that envelope a
+ * **locally-run** command — `/clear`, `/compact`.
+ *
+ * Adjacency is the whole test: the caveat's text also survives into compaction summaries,
+ * thousands of characters from an unrelated envelope it says nothing about. Nothing may sit
+ * between the two — the CLI emits `<command-name>` first behind the caveat.
+ */
+const LOCAL_ENVELOPE_RE = /<\/local-command-caveat>\s*$/i;
 /** The caveat the CLI prepends to a locally-run command, and the leftover envelope tags. */
 const COMMAND_NOISE_RE = /<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<\/?command-[a-z-]+>/gi;
 const REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/gi;
@@ -223,30 +237,57 @@ export interface CommandEnvelope {
 }
 
 /**
+ * One envelope's own `<command-args>` body, from `from` to the `next` envelope.
+ *
+ * The block ends at its **closing tag**, not at the next envelope, since criteria quote
+ * envelopes all the time. The *opening* tag is what has to fall ahead of the next envelope;
+ * past it the block belongs to that envelope and this one carried no args. A block left
+ * unclosed by a truncated prompt falls back to that bound.
+ */
+function readArgs(text: string, from: number, next: number): string {
+  ARGS_OPEN_RE.lastIndex = from;
+  const open = ARGS_OPEN_RE.exec(text);
+  if (!open || open.index >= next) return "";
+
+  const body = open.index + open[0].length;
+  ARGS_CLOSE_RE.lastIndex = body;
+  return text.slice(body, ARGS_CLOSE_RE.exec(text)?.index ?? next).trim();
+}
+
+/**
  * Read a run's command, arguments and flags off its opening prompt, or null when the
- * prompt carries no `<command-name>` — i.e. it is an ordinary session, not a run.
+ * prompt declares no command the model was asked to carry out — i.e. it is an ordinary
+ * session, not a run.
+ *
+ * The **first non-local** envelope wins: a session opened by `/clear` is the run of
+ * whatever was typed after it, or no run at all when nothing was. Each envelope's args
+ * are read from its own block, not the first in the prompt — a skipped local command
+ * carries args too.
  */
 export function parseCommandEnvelope(prompt: string | null | undefined): CommandEnvelope | null {
   if (!prompt) return null;
   const text = prompt.replace(REMINDER_RE, "").replace(/<system-reminder>[\s\S]*$/i, "");
 
-  const name = COMMAND_NAME_RE.exec(text);
-  if (!name) return null;
+  const names = [...text.matchAll(COMMAND_NAME_RE)];
+  for (const [i, name] of names.entries()) {
+    if (LOCAL_ENVELOPE_RE.test(text.slice(0, name.index))) continue;
 
-  const args = (COMMAND_ARGS_RE.exec(text)?.[1] ?? "").trim();
-  const flags: string[] = [];
-  for (const token of args.split(/\s+/)) {
-    const flag = FLAG_RE.exec(token);
-    if (!flag) break; // the first non-flag token starts the criteria
-    flags.push(flag[1]!);
+    const args = readArgs(text, name.index + name[0].length, names[i + 1]?.index ?? text.length);
+    const flags: string[] = [];
+    for (const token of args.split(/\s+/)) {
+      const flag = FLAG_RE.exec(token);
+      if (!flag) break; // the first non-flag token starts the criteria
+      flags.push(flag[1]!);
+    }
+
+    return {
+      command: name[1]!.toLowerCase(),
+      args,
+      flags,
+      prompt: args.replace(COMMAND_NOISE_RE, "").replace(/\s+/g, " ").trim(),
+    };
   }
-
-  return {
-    command: name[1]!.toLowerCase(),
-    args,
-    flags,
-    prompt: args.replace(COMMAND_NOISE_RE, "").replace(/\s+/g, " ").trim(),
-  };
+  return null;
 }
 
 // --- Step attribution ------------------------------------------------------
@@ -803,6 +844,12 @@ export interface CommandRun {
   /** Per declared step, plus the unattributed bucket last. */
   stepStats: CommandRunStepStats[];
   outcome: CommandRunOutcome;
+  /**
+   * A tombstone: this thread was recorded as a run and no longer parses as one. The store
+   * is append-only, so retracting a record means writing it again with this set, and
+   * readers drop it — see `readCommandRuns`.
+   */
+  retired?: true;
   interruption: InterruptionKind | null;
   /** The last declared step was attributed *and* the transcript emitted `- done:`. */
   reachedEnd: boolean;
