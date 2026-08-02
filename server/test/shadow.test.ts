@@ -62,6 +62,25 @@ describe("shadowCheck", () => {
     expect(diffs[0]!.diff).toMatchObject({ path: "digest.requestCount", files: 10, db: 11 });
   });
 
+  it("keeps the two sides labelled correctly once the substrate is the one serving", async () => {
+    process.env.SHADOW_DB = "1";
+    const diffs: JsonDiff[] = [];
+    setShadowHooks({ onMismatch: (_label, diff) => diffs.push(diff) });
+
+    // Slice 5 flipped which side serves, so the served answer is now the DB's
+    // and the shadow computes the files'. A reported diff still has to name each
+    // side for what it is, or the report points at the wrong backing.
+    shadowCheck(
+      "/api/summary",
+      { digest: { requestCount: 11 } },
+      async () => ({ digest: { requestCount: 10 } }),
+      "db",
+    );
+    await settle();
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0]!).toMatchObject({ path: "digest.requestCount", files: 10, db: 11 });
+  });
+
   it("notices a key that only one side has, rather than comparing loosely", async () => {
     process.env.SHADOW_DB = "1";
     const diffs: JsonDiff[] = [];

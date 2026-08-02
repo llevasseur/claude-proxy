@@ -1,7 +1,13 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { linkAgentSessions, reportDay, type CommandRun, type SessionNode } from "@claude-proxy/core";
+import {
+  linkAgentSessions,
+  parseSessionTranscript,
+  reportDay,
+  type CommandRun,
+  type SessionNode,
+} from "@claude-proxy/core";
 import { readCommandRuns as readCommandRunsFromFiles, sortCommandRuns } from "../command-runs.js";
 import {
   readArchivedDay as readArchivedDayFromFiles,
@@ -472,20 +478,37 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       // Validates the URL-supplied id and confirms the path stays inside
       // `sessions/`, as the file reader does.
       const full = resolveSessionFile(logDir, id);
-      const row = db.prepare(`SELECT ${SESSION_COLUMNS} FROM session WHERE thread_id = ?`).get(id) as unknown as
-        | SessionRow
-        | undefined;
-      if (!row) throw new Error(`session not found: ${id}`);
 
-      // Metadata out of SQL, content off the file: the row holds a pointer.
+      // The content comes off the file either way — the row holds a pointer, not
+      // the transcript — so `stat` it in the same breath and let the file's own
+      // size and mtime be the authority on which metadata belongs beside it.
       let content: string;
+      let info: Awaited<ReturnType<typeof stat>>;
       try {
-        content = await readFile(full, "utf8");
+        [content, info] = await Promise.all([readFile(full, "utf8"), stat(full)]);
       } catch {
         throw new Error(`session not found: ${id}`);
       }
-      const { bytes, modified, ...meta } = toSummary(row);
-      return { meta, content, bytes, modified };
+      const bytes = info.size;
+      const modified = info.mtime.toISOString();
+
+      const row = db.prepare(`SELECT ${SESSION_COLUMNS} FROM session WHERE thread_id = ?`).get(id) as unknown as
+        | SessionRow
+        | undefined;
+      if (row) {
+        const { bytes: rowBytes, modified: rowModified, ...meta } = toSummary(row);
+        // The row carries the exact watermark it was parsed from, so this is the
+        // same equality `ingest` uses to decide a transcript is unchanged.
+        if (rowBytes === bytes && rowModified === modified) return { meta, content, bytes, modified };
+      }
+
+      // The row is behind the file — an append since the last ingest, or a
+      // transcript the substrate has not reached yet. Pairing its metadata with
+      // this content would return an object that disagrees with itself: `bytes`
+      // counting a shorter transcript than `content` holds, `meta` describing a
+      // header the content may have moved past. Re-parse instead, which is
+      // exactly what the file reader would have answered.
+      return { meta: parseSessionTranscript(id, content), content, bytes, modified };
     },
     readSessionNodeTexts: async (logDir, id) => {
       // A bad id throws; a transcript with no sidecar reads as empty, not 404 —

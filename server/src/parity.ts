@@ -253,6 +253,12 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * threads it happens to know: a transcript the substrate missed shows up as a
    * `session not found` throw against a case the files answered.
    *
+   * `/api/sessions/session` is the exception, and deliberately so — slice 5 gave
+   * it a per-read fallback, so a transcript with no row reads off the file
+   * rather than 404-ing a session that plainly exists. The listing routes below
+   * are what still catch a missed transcript: `/api/sessions` replays whole, and
+   * a row the substrate never wrote is a length difference there.
+   *
    * `/api/context/detail`, `/api/context/message` and `/api/context/tool` are
    * absent: they read a `.request.txt` body off disk and touch no indexed
    * column, so there is no DB path to disagree on.
@@ -500,10 +506,14 @@ async function threadIds(ctx: ParityContext): Promise<string[]> {
  * ------------------------------------------------------------------ */
 
 /**
- * Shadow mode: answer from the files exactly as today, compute the DB answer
- * alongside, and log any disagreement. Off unless `SHADOW_DB` is set, and
- * strictly an observer — the response is already written when the comparison
- * starts, and every failure inside it is swallowed.
+ * Shadow mode: serve the answer, compute the *other* backing's answer alongside,
+ * and log any disagreement. Off unless `SHADOW_DB` is set, and strictly an
+ * observer — the response is already written when the comparison starts, and
+ * every failure inside it is swallowed.
+ *
+ * Slice 5 flipped which side is served, so the shadow is the file scan by
+ * default and the substrate under `DB_READS=0`. That is what keeps it meaningful
+ * after the flip: it is always the opinion the response did *not* come from.
  */
 export function shadowEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const v = env.SHADOW_DB;
@@ -541,16 +551,26 @@ function reportError(label: string, err: Error): void {
 }
 
 /**
- * Compare an already-served response against what the substrate would have
+ * Compare an already-served response against what the other backing would have
  * said. Returns immediately; the check runs on a later tick and never rejects.
+ *
+ * `servedKind` says which backing produced `served`, so a reported diff keeps
+ * naming the file answer under `files` and the substrate's under `db` whichever
+ * way round the server is currently serving.
  */
-export function shadowCheck(label: string, served: unknown, compute: () => Promise<unknown>): void {
+export function shadowCheck(
+  label: string,
+  served: unknown,
+  compute: () => Promise<unknown>,
+  servedKind: SidecarSource["kind"] = "files",
+): void {
   if (!shadowEnabled()) return;
   queueMicrotask(() => {
     void (async () => {
       try {
-        const fromDb = await compute();
-        const diff = diffJson(normalize(served), normalize(fromDb));
+        const other = normalize(await compute());
+        const mine = normalize(served);
+        const diff = servedKind === "db" ? diffJson(other, mine) : diffJson(mine, other);
         if (diff) reportMismatch(label, diff);
       } catch (err) {
         reportError(label, err as Error);
