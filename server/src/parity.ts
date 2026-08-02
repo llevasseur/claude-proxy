@@ -15,15 +15,20 @@ import {
   buildSessionsGraph,
   buildSessionSuggestionBucket,
   buildSessionSuggestions,
+  buildSkim,
+  buildSkimTrend,
+  buildSuggestionStatus,
   buildSummary,
   buildTools,
   buildTrends,
   buildUsage,
+  buildWithheld,
   clearRawArchiveCache,
 } from "./api.js";
 import { clearArchiveCache } from "./archive.js";
 import { resolveCommandsDir } from "./command-runs.js";
 import { fileSource, type SidecarSource } from "./db/source.js";
+import { resolveSettingsPath } from "./settings.js";
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from "./usage-history.js";
 
 /**
@@ -48,6 +53,12 @@ export interface ParityContext {
    * directory even though it sits outside `logs/`.
    */
   commandsDir?: string;
+  /**
+   * The device settings file `/api/withheld` reads its deny-list from. Pinned for
+   * the same reason `commandsDir` is: it is authored state outside `logs/`, and
+   * both replays have to see the same bytes.
+   */
+  settingsPath?: string;
 }
 
 /** One replayable request: a label for the failure message, and how to answer it. */
@@ -370,6 +381,82 @@ export const PARITY_ROUTES: ParityRoute[] = [
         label: `/api/commands/run?id=${run.threadId}`,
         run: (source) => buildCommandRun(ctx.logDir, run.threadId, source),
       }));
+    },
+  },
+
+  /* --- Slice 4: the remainder --- *
+   *
+   * The read paths still scanning after slice 3. None needed a new table: each
+   * is a different aggregation over the sidecars and session graphs slices 1 and
+   * 2 already index.
+   *
+   * `/api/projects`, `/api/jobs` and `/api/hooks-plugins` are deliberately
+   * absent: they read `~/.claude/projects`, `~/.claude/jobs` and
+   * `~/.claude/settings.json`, all outside the `logs/` scope ADR 0004 gives the
+   * substrate and none re-derivable by re-ingesting. Indexing one would put the
+   * only copy of something in a disposable view — the same boundary that kept
+   * `~/.claude/commands` out in slice 3. `/api/filters` reads no disk.
+   *
+   * `/api/skim` replays as of *every* archived day; the two window-shaped routes
+   * below only as of the newest. A window aggregates the same per-day reads, so
+   * replaying each window as of each day re-reads the corpus quadratically for
+   * coverage that is already there.
+   */
+  {
+    name: "/api/skim",
+    cases: async (ctx) =>
+      (await archivedDays(ctx.logDir)).map((day) => ({
+        label: `/api/skim?date=${day}`,
+        run: (source) => buildSkim(ctx.logDir, day, endOf(day), source),
+      })),
+  },
+  {
+    name: "/api/skim/trend",
+    cases: async (ctx) => {
+      const last = (await archivedDays(ctx.logDir)).at(-1);
+      if (!last) return [];
+      return [7, 30].map((window) => ({
+        label: `/api/skim/trend?days=${window} as of ${last}`,
+        run: (source) => buildSkimTrend(ctx.logDir, window, endOf(last), source),
+      }));
+    },
+  },
+  {
+    name: "/api/withheld",
+    cases: async (ctx) => {
+      const settingsPath = ctx.settingsPath ?? resolveSettingsPath();
+      const last = (await archivedDays(ctx.logDir)).at(-1);
+      if (!last) return [];
+      return [7, 30].map((window) => ({
+        label: `/api/withheld?days=${window} as of ${last}`,
+        run: (source) => buildWithheld(ctx.logDir, window, settingsPath, endOf(last), source),
+      }));
+    },
+  },
+  {
+    // Only the derived half has a DB path: the bucket/suggestion join comes from
+    // the indexed session graphs, while the flags stay a file on both sides.
+    name: "/api/sessions/suggestions/status",
+    cases: async (ctx) => {
+      const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
+      const cases: ParityCase[] = [
+        {
+          label: "/api/sessions/suggestions/status",
+          run: (source) => buildSuggestionStatus(ctx.logDir, {}, source),
+        },
+        {
+          label: "/api/sessions/suggestions/status?detail=1",
+          run: (source) => buildSuggestionStatus(ctx.logDir, { detail: true }, source),
+        },
+      ];
+      const first = buckets[0];
+      if (first) {
+        cases.push({
+          label: `/api/sessions/suggestions/status?range=${first.index}`,
+          run: (source) => buildSuggestionStatus(ctx.logDir, { buckets: [first.index], detail: true }, source),
+        });
+      }
+      return cases;
     },
   },
   {

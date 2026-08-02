@@ -79,7 +79,7 @@ import {
 import { loadArchivedDigest } from "./archive.js";
 import { listInstalledCommands } from "./command-runs.js";
 import { fileSource, type SidecarSource } from "./db/source.js";
-import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
+import { readArchivedDay, readRequestBody, shiftDay, today } from "./logs.js";
 import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
 import { loadLiveUsage } from "./usage-live.js";
 import {
@@ -100,7 +100,6 @@ import {
   type ProjectSummary,
 } from "./projects.js";
 import {
-  listSessionGraphs,
   threadIdForBody,
   type SessionDetail,
   type SessionGraph,
@@ -827,8 +826,11 @@ export async function buildSuggestionStatus(
     recurrences?: readonly SuggestionRecurrence[];
     detail?: boolean;
   } = {},
+  source: SidecarSource = fileSource,
 ): Promise<SuggestionStatusResponse> {
-  const [sessions, store] = await Promise.all([listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
+  // Only the *derived* half goes through the seam. The status store is authored
+  // state, so it stays a JSON file read directly on both sides of parity.
+  const [sessions, store] = await Promise.all([source.listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
   const buckets = sessionSuggestionBuckets(sessions);
   const existing = buckets.map((b) => b.index).sort((a, b) => a - b);
   const rows = suggestionStatusRows(buckets, store, filter);
@@ -867,10 +869,11 @@ export async function applySuggestionStatus(
   logDir: string,
   updates: readonly SuggestionStatusUpdate[],
   now: Date = new Date(),
+  source: SidecarSource = fileSource,
 ): Promise<SuggestionStatusUpdateResponse> {
   if (updates.length === 0) throw new Error("no suggestion status updates given");
   const store = await updateSuggestionStatusStore(logDir, updates, now);
-  const buckets = sessionSuggestionBuckets(await listSessionGraphs(logDir));
+  const buckets = sessionSuggestionBuckets(await source.listSessionGraphs(logDir));
   const touched = [...new Set(updates.map((u) => u.bucket))];
   const rows = suggestionStatusRows(buckets, store, { buckets: touched });
   const known = new Set(rows.map((r) => suggestionKey(r)));
@@ -984,9 +987,18 @@ export interface SkimResponse {
   meta: { files: number; parseErrors: number };
 }
 
-export async function buildSkim(logDir: string, date?: string, now: Date = new Date()): Promise<SkimResponse> {
+export async function buildSkim(
+  logDir: string,
+  date?: string,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<SkimResponse> {
   const day = date ?? today(now);
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { date: day, includeSkimRequests: true }, now);
+  const { sidecars, files, parseErrors } = await source.readSidecars(
+    logDir,
+    { date: day, includeSkimRequests: true },
+    now,
+  );
   const skim = computeSkimDigest(sidecars, { date: day, topN: 50 });
   return { date: day, skim, meta: { files, parseErrors } };
 }
@@ -997,8 +1009,17 @@ export interface SkimTrendResponse {
   meta: { days: number; files: number; parseErrors: number };
 }
 
-export async function buildSkimTrend(logDir: string, days: number, now: Date = new Date()): Promise<SkimTrendResponse> {
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeSkimRequests: true }, now);
+export async function buildSkimTrend(
+  logDir: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<SkimTrendResponse> {
+  const { sidecars, files, parseErrors } = await source.readSidecars(
+    logDir,
+    { sinceDays: days, includeSkimRequests: true },
+    now,
+  );
   const topShapes = computeSkimDigest(sidecars, { date: `${days}d`, topN: 50 }).topShapes;
   return { digests: skimDigestsByDay(sidecars), topShapes, meta: { days, files, parseErrors } };
 }
@@ -1034,9 +1055,12 @@ export async function buildWithheld(
   days: number,
   settingsPath: string = resolveSettingsPath(),
   now: Date = new Date(),
+  source: SidecarSource = fileSource,
 ): Promise<WithheldResponse> {
+  // The traffic half goes through the seam; the device settings and the shell rc
+  // are authored files outside `logs/`, read the same way by both backings.
   const [{ sidecars, files, parseErrors }, settings, launchAliases] = await Promise.all([
-    readSidecars(logDir, { sinceDays: days }, now),
+    source.readSidecars(logDir, { sinceDays: days }, now),
     readDeviceSettings(settingsPath),
     readLaunchAliases(),
   ]);
