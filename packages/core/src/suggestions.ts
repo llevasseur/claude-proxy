@@ -589,6 +589,11 @@ export interface BucketBreakdownSummary {
   maxRealInput: number;
   /** Regions and tool schemas, largest average contribution first. */
   patterns: BreakdownPattern[];
+  /**
+   * The requests `avgToolsBytes` was averaged over, heaviest schemas first, capped at
+   * 10 — a whole-request claim has no single pattern to borrow sources from.
+   */
+  toolsSources: { threadId: string; file: string; bytes: number }[];
 }
 
 const mean = (values: readonly number[]): number =>
@@ -604,6 +609,7 @@ const EMPTY_BREAKDOWN_SUMMARY: BucketBreakdownSummary = {
   avgMessageCount: 0,
   maxRealInput: 0,
   patterns: [],
+  toolsSources: [],
 };
 
 /**
@@ -662,6 +668,11 @@ export function summarizeBreakdownPatterns(inputs: readonly BucketBreakdownInput
     avgMessageCount: mean(inputs.map((i) => i.breakdown.messageCount)),
     maxRealInput: Math.max(...inputs.map((i) => i.realInput)),
     patterns,
+    toolsSources: inputs
+      .filter((i) => i.breakdown.toolsBytes > 0)
+      .map((i) => ({ threadId: i.threadId, file: i.file, bytes: i.breakdown.toolsBytes }))
+      .sort((a, b) => b.bytes - a.bytes)
+      .slice(0, 10),
   };
 }
 
@@ -682,7 +693,12 @@ export function suggestFromBreakdown(summary: BucketBreakdownSummary): SessionSu
       title: "Tool schemas dominate these requests",
       detail: `Tool definitions are ~${toolsPct.toFixed(0)}% of the average request in this bucket, on every turn, whether or not the tools get used. Withholding the ones these sessions never called is the largest single context cut available.`,
       evidence: `~${summary.avgToolsBytes.toLocaleString()} of ~${summary.avgTotalBytes.toLocaleString()} average bytes, over ${summary.requests} request${summary.requests === 1 ? "" : "s"}`,
-      sources: [],
+      sources: summary.toolsSources.map((s) => ({
+        threadId: s.threadId,
+        label: s.file,
+        nodeIndexes: [],
+        sample: `${s.bytes.toLocaleString()} bytes of tool schemas`,
+      })),
     });
   }
 
