@@ -2,8 +2,20 @@ import type {
   Advice,
   AliasLoadExpectation,
   BucketBreakdownSummary,
+  CommandPatternId,
+  CommandRun,
+  CommandRunOutcome,
+  CommandRunTotals,
+  CommandStep,
+  CommandSummary,
   ContextSummary,
   HookRow,
+  InterruptionKind,
+  PatternFrequency,
+  StepReach,
+  JobFileKind,
+  JobStateFields,
+  JobTreeNode,
   LaunchAlias,
   LaunchAliasPosture,
   LinkedSessionError,
@@ -26,6 +38,7 @@ import type {
   SuggestionStatusUpdate,
   TopTool,
   UsageDigest,
+  UsageLimitsSnapshot,
   WithheldReport,
 } from "@claude-proxy/core";
 
@@ -36,6 +49,11 @@ export interface SummaryResponse {
   digest: UsageDigest;
   advice: Advice[];
   meta: { date: string; files: number; parseErrors: number };
+}
+/** The 5-hour / weekly / weekly-Fable meters, as of the newest captured request. */
+export interface UsageResponse {
+  usage: UsageLimitsSnapshot;
+  meta: { files: number; parseErrors: number };
 }
 export interface TrendsResponse {
   digests: UsageDigest[];
@@ -118,6 +136,57 @@ export interface HooksPluginsResponse {
   launchRcPath: string;
   launchRcReadable: boolean;
 }
+/** One `~/.claude/jobs/<id>` directory: what its state file says plus what it holds. */
+export interface JobSummary extends JobStateFields {
+  id: string;
+  stateReadable: boolean;
+  files: number;
+  bytes: number;
+  modified: string;
+  /** Newest of `updatedAt` and `modified` — what the listing sorts by. */
+  activity: string;
+}
+export interface JobsResponse {
+  jobs: JobSummary[];
+  meta: { jobsDir: string; total: number; running: number; husks: number; files: number; bytes: number };
+}
+export interface JobResponse {
+  job: JobSummary;
+  tree: JobTreeNode[];
+  meta: { entries: number; truncated: boolean };
+}
+/** What a delete removed, as the directory read immediately before it went. */
+export interface JobDeleteResult {
+  id: string;
+  path: string;
+  files: number;
+  bytes: number;
+  name: string;
+  state: string;
+}
+export interface JobDeleteResponse {
+  deleted: JobDeleteResult;
+  /** The listing as it stands after the delete. */
+  jobs: JobsResponse;
+}
+/** One file inside a job directory, as the pretty/raw viewer receives it. */
+export interface JobFileDetail {
+  id: string;
+  path: string;
+  name: string;
+  kind: JobFileKind;
+  bytes: number;
+  modified: string;
+  encoding: "utf8" | "base64";
+  content: string;
+  mime: string | null;
+  truncated: boolean;
+  binary: boolean;
+  note: string | null;
+}
+export interface JobFileResponse {
+  file: JobFileDetail;
+}
 export interface SessionSummary extends SessionMeta {
   bytes: number;
   modified: string;
@@ -172,6 +241,59 @@ export interface SessionBreakdownResponse extends SessionContextPeak {
   sessionId: string | null;
   meta: { files: number; parseErrors: number };
 }
+// The Commands eval page. Records are read defensively throughout: the store is
+// append-only and versioned, so a row written by another schema version must degrade
+// the page's detail rather than empty it.
+/** One installed command's row on `/commands`. */
+export interface CommandsResponse {
+  commands: CommandSummary[];
+  meta: { commandsDir: string; storePath: string; runs: number; installed: number };
+}
+/** One run as the command page lists it — no per-turn series, no per-step breakdown. */
+export interface CommandRunListItem {
+  threadId: string;
+  command: string;
+  args: string;
+  flags: string[];
+  prompt: string;
+  commandHash: string | null;
+  model: string | null;
+  started: string | null;
+  ended: string | null;
+  outcome: CommandRunOutcome;
+  interruption: InterruptionKind | null;
+  reachedEnd: boolean;
+  totals: CommandRunTotals;
+  patterns: CommandPatternId[];
+  lastStep: string | null;
+  meta: CommandRun["meta"];
+}
+/** Where the command file's content changed between two runs — the scatter's `/sync` marker. */
+export interface CommandHashMarker {
+  at: string;
+  hash: string | null;
+  previous: string | null;
+}
+export interface CommandResponse {
+  command: string;
+  installed: boolean;
+  steps: CommandStep[];
+  commandHash: string | null;
+  flags: string[];
+  appliedFlags: string[];
+  runs: CommandRunListItem[];
+  stepReach: StepReach[];
+  patterns: PatternFrequency[];
+  hashMarkers: CommandHashMarker[];
+  meta: { totalRuns: number; filteredRuns: number };
+}
+export interface CommandRunResponse {
+  run: CommandRun;
+  patterns: PatternFrequency[];
+  suggestions: SessionSuggestion[];
+  meta: { transcriptsPresent: number; transcripts: number; requestsAgedOut: boolean };
+}
+
 /** Every ten-session window with its suggestions, newest bucket first. */
 export interface SessionSuggestionsResponse {
   buckets: SessionBucket[];
@@ -317,7 +439,7 @@ async function get<T>(path: string): Promise<T> {
   return unwrap<T>(await fetch(`${API_BASE}${path}`));
 }
 
-/** The chat routes and the suggestion flags are the only writes the API accepts. */
+/** The chat routes, the suggestion flags and the job delete are the only writes the API accepts. */
 async function post<T>(path: string, body: unknown): Promise<T> {
   return unwrap<T>(
     await fetch(`${API_BASE}${path}`, {
@@ -333,6 +455,8 @@ const qs = (date?: string) => (date ? `?date=${encodeURIComponent(date)}` : "");
 export const getHealth = () => get<HealthResponse>("/api/health");
 export const getSummary = (date?: string) => get<SummaryResponse>(`/api/summary${qs(date)}`);
 export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days=${days}`);
+/** Paired with the `/api/usage/stream` SSE subscription, which pushes the same shape. */
+export const getUsage = () => get<UsageResponse>("/api/usage");
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);
 export const getContext = (days: number) => get<ContextResponse>(`/api/context?days=${days}`);
 export const getContextDetail = (file: string) =>
@@ -346,6 +470,14 @@ export const getProjectMemories = (project: string) =>
   get<ProjectMemoriesResponse>(`/api/projects/memories?project=${encodeURIComponent(project)}`);
 export const getMemory = (project: string, name: string) =>
   get<MemoryResponse>(`/api/projects/memory?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`);
+/** Every background job directory on the device, newest activity first. */
+export const getJobs = () => get<JobsResponse>("/api/jobs");
+export const getJob = (id: string) => get<JobResponse>(`/api/jobs/job?id=${encodeURIComponent(id)}`);
+/** One file from a job directory — `file` is a path relative to that directory. */
+export const getJobFile = (id: string, file: string) =>
+  get<JobFileResponse>(`/api/jobs/file?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`);
+/** Delete one job directory from `~/.claude/jobs` — no trash, and a running job is refused. */
+export const deleteJob = (id: string) => post<JobDeleteResponse>("/api/jobs/delete", { id });
 export const getSessions = () => get<SessionsResponse>("/api/sessions");
 export const getSessionsGraph = () => get<SessionsGraphResponse>("/api/sessions/graph");
 export const getSessionGraphNodes = (id: string) =>
@@ -358,6 +490,16 @@ export const getSessionNodeTexts = (id: string) =>
   get<SessionNodeTextsResponse>(`/api/sessions/node-text?id=${encodeURIComponent(id)}`);
 export const getSessionBreakdown = (id: string) =>
   get<SessionBreakdownResponse>(`/api/sessions/breakdown?id=${encodeURIComponent(id)}`);
+export const getCommands = () => get<CommandsResponse>("/api/commands");
+/** `flags` narrows which runs are aggregated; it never splits the command into variants. */
+export const getCommand = (command: string, flags: readonly string[] = []) => {
+  const params = new URLSearchParams({ name: command });
+  if (flags.length) params.set("flags", flags.join(","));
+  return get<CommandResponse>(`/api/commands/command?${params.toString()}`);
+};
+export const getCommandRun = (threadId: string) =>
+  get<CommandRunResponse>(`/api/commands/run?id=${encodeURIComponent(threadId)}`);
+
 /** Every ten-session window, recomputed server-side on each load — this is the backfill. */
 export const getSessionSuggestions = () => get<SessionSuggestionsResponse>("/api/sessions/suggestions");
 export const getSessionSuggestionBucket = (index: number) =>

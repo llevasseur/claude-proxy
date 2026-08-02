@@ -9,10 +9,17 @@ import {
   type SuggestionStatus,
 } from "@claude-proxy/core";
 import {
+  buildCommand,
+  buildCommandRun,
+  buildCommands,
   buildContext,
   buildContextDetail,
   buildContextMessage,
   buildContextTool,
+  buildJob,
+  buildJobDelete,
+  buildJobFile,
+  buildJobs,
   buildMemory,
   buildProjectMemories,
   buildProjects,
@@ -32,11 +39,13 @@ import {
   buildSummary,
   buildTools,
   buildTrends,
+  buildUsage,
   buildWithheld,
   buildHooksPlugins,
   buildFilters,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
+import { reconcileCommandRuns, resolveCommandsDir } from "./command-runs.js";
 import {
   continueChat,
   endChat,
@@ -47,15 +56,43 @@ import {
   stopChat,
   UUID_RE,
 } from "./chat.js";
+import { resolveJobsDir } from "./jobs.js";
 import { countSidecarFiles, resolveLogDir } from "./logs.js";
 import { resolveProjectsDir } from "./projects.js";
 import { resolveSessionFile, resolveSessionsDir } from "./sessions.js";
+import { resolveUsageLimits } from "./usage-config.js";
 
 const PORT = Number(process.env.PORT ?? 8788);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default
 const LOG_DIR = resolveLogDir();
 const ARCHIVE_DIR = resolveArchiveDir();
 const PROJECTS_DIR = resolveProjectsDir();
+const JOBS_DIR = resolveJobsDir();
+const USAGE_LIMITS = resolveUsageLimits();
+const COMMANDS_DIR = resolveCommandsDir();
+
+/**
+ * Bring the command-run store up to date, then build.
+ *
+ * The reconcile pass is the only writer, so concurrent requests — and the SSE watcher
+ * firing on the same log change that woke a request — share one in-flight pass rather
+ * than racing to append the same records. A failure is swallowed: the store is a cache
+ * of the logs, and serving it slightly stale beats 500-ing the page.
+ */
+let reconciling: Promise<unknown> | null = null;
+function reconcileCommands(): Promise<unknown> {
+  reconciling ??= reconcileCommandRuns(LOG_DIR, COMMANDS_DIR)
+    .catch(() => undefined)
+    .finally(() => {
+      reconciling = null;
+    });
+  return reconciling;
+}
+
+async function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
+  await reconcileCommands();
+  return build();
+}
 
 /** Everything but the chat routes is a read-only view of already-captured logs. */
 const CORS = {
@@ -70,8 +107,11 @@ const CHAT_ROUTES = new Set(["/api/chat/sessions", "/api/chat/sessions/message",
 /** The suggestion flags: a GET list under the open read CORS, a POST that writes them. */
 const SUGGESTION_STATUS_ROUTE = "/api/sessions/suggestions/status";
 
+/** The one destructive route: removes a `~/.claude/jobs/<id>` directory from disk. */
+const JOB_DELETE_ROUTE = "/api/jobs/delete";
+
 /** Paths whose POST goes through the origin-checked write CORS. */
-const WRITE_ROUTES = new Set([...CHAT_ROUTES, SUGGESTION_STATUS_ROUTE]);
+const WRITE_ROUTES = new Set([...CHAT_ROUTES, SUGGESTION_STATUS_ROUTE, JOB_DELETE_ROUTE]);
 
 /**
  * Origins allowed to POST those routes — the dashboard's dev server by default,
@@ -138,7 +178,7 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
     snapshot = await stream.build();
   } catch (err) {
     const msg = (err as Error).message;
-    send(res, msg.startsWith("session not found") ? 404 : 500, { error: msg });
+    send(res, /(^|\b)not found:/.test(msg) ? 404 : 500, { error: msg });
     return;
   }
 
@@ -287,8 +327,29 @@ const server = http.createServer(async (req, res) => {
       case "/api/summary":
         send(res, 200, await buildSummary(LOG_DIR, date));
         return;
+      // Today's digest moves with every captured request, so this follows the log
+      // directory rather than any one file.
+      case "/api/summary/stream":
+        await serveSse(req, res, {
+          watchPath: LOG_DIR,
+          build: () => buildSummary(LOG_DIR, date),
+          debounceMs: 600,
+        });
+        return;
       case "/api/trends":
         send(res, 200, await buildTrends(LOG_DIR, parseDays(url.searchParams.get("days")), new Date(), ARCHIVE_DIR));
+        return;
+      case "/api/usage":
+        send(res, 200, await buildUsage(LOG_DIR, USAGE_LIMITS));
+        return;
+      // Debounced generously: a busy session writes three files per request and
+      // the numbers barely move between them.
+      case "/api/usage/stream":
+        await serveSse(req, res, {
+          watchPath: LOG_DIR,
+          build: () => buildUsage(LOG_DIR, USAGE_LIMITS),
+          debounceMs: 600,
+        });
         return;
       case "/api/tools":
         send(res, 200, await buildTools(LOG_DIR, date));
@@ -394,6 +455,68 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      // The device's background jobs: `~/.claude/jobs`. Reads are open like their
+      // neighbours; the delete below is the one route here that changes the disk.
+      case "/api/jobs":
+        send(res, 200, await buildJobs(JOBS_DIR));
+        return;
+      case "/api/jobs/job": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildJob(JOBS_DIR, id));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("invalid job id")) send(res, 400, { error: msg });
+          else if (msg.startsWith("job not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/jobs/file": {
+        const id = url.searchParams.get("id");
+        const file = url.searchParams.get("file");
+        if (!id || !file) {
+          send(res, 400, { error: "missing ?id= or ?file=" });
+          return;
+        }
+        try {
+          send(res, 200, await buildJobFile(JOBS_DIR, id, file));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (
+            msg.startsWith("invalid job id") ||
+            msg.startsWith("invalid job file path") ||
+            msg.startsWith("job file is a directory")
+          ) {
+            send(res, 400, { error: msg });
+          } else if (msg.startsWith("job not found") || msg.startsWith("job file not found")) {
+            send(res, 404, { error: msg });
+          } else throw err;
+        }
+        return;
+      }
+      // Removes the directory for real. POST only, and through the origin-checked
+      // write CORS rather than the read routes' `*`.
+      case JOB_DELETE_ROUTE:
+        await servePost(
+          req,
+          res,
+          async (body) => {
+            const id = body.id;
+            if (typeof id !== "string" || id === "") throw new Error("missing id");
+            return buildJobDelete(JOBS_DIR, id);
+          },
+          (msg) => {
+            if (msg.startsWith("job not found")) return 404;
+            if (msg.startsWith("job is still running")) return 409;
+            return 400; // invalid/missing id, or a symlinked directory
+          },
+        );
+        return;
       case "/api/sessions":
         send(res, 200, await buildSessions(LOG_DIR));
         return;
@@ -482,6 +605,61 @@ const server = http.createServer(async (req, res) => {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
           else if (msg.startsWith("session not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      // The Commands eval page. Every read reconciles first, so the store is current
+      // even on a cold server, and the streams follow a run as it happens.
+      case "/api/commands":
+        send(res, 200, await withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR)));
+        return;
+      case "/api/commands/stream":
+        await serveSse(req, res, {
+          watchPath: LOG_DIR,
+          build: () => withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR)),
+          debounceMs: 600,
+        });
+        return;
+      case "/api/commands/command":
+      case "/api/commands/command/stream": {
+        const name = url.searchParams.get("name");
+        if (!name) {
+          send(res, 400, { error: "missing ?name=" });
+          return;
+        }
+        const flags = (url.searchParams.get("flags") ?? "").split(",").filter(Boolean);
+        const build = () => withCommandReconcile(() => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags));
+        if (url.pathname.endsWith("/stream")) {
+          await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+          return;
+        }
+        try {
+          send(res, 200, await build());
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("command not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/commands/run":
+      case "/api/commands/run/stream": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        const build = () => withCommandReconcile(() => buildCommandRun(LOG_DIR, id));
+        if (url.pathname.endsWith("/stream")) {
+          await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+          return;
+        }
+        try {
+          send(res, 200, await build());
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("command run not found")) send(res, 404, { error: msg });
           else throw err;
         }
         return;

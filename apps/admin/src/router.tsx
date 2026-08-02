@@ -10,6 +10,7 @@ import {
   EyeOff,
   FolderGit2,
   Gauge,
+  HardDrive,
   Lightbulb,
   ListFilter,
   MessagesSquare,
@@ -18,6 +19,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Puzzle,
+  TerminalSquare,
   TrendingUp,
   Wrench,
   Zap,
@@ -26,12 +28,17 @@ import { useEffect } from "react";
 import { HealthBadge } from "./components/HealthBadge";
 import { useRailCollapsed } from "./useRailCollapsed";
 import { AdvicePage } from "./routes/advice";
+import { CommandDetailPage } from "./routes/command-detail";
+import { CommandRunPage } from "./routes/command-run";
+import { CommandsPage } from "./routes/commands";
 import { ContextDetailPage } from "./routes/context-detail";
 import { ContextMessagePage } from "./routes/context-message";
 import { ContextToolPage } from "./routes/context-tool";
 import { ContextPage } from "./routes/context";
 import { FiltersPage } from "./routes/filters";
 import { HooksPluginsPage } from "./routes/hooks-plugins";
+import { JobDetailPage } from "./routes/job-detail";
+import { JobsPage } from "./routes/jobs";
 import { MemoryDetailPage } from "./routes/memory-detail";
 import { OverviewPage } from "./routes/overview";
 import { ProjectDetailPage } from "./routes/project-detail";
@@ -59,7 +66,9 @@ const STATIONS = [
   { to: "/projects", label: "Projects", hint: "memory", exact: false, icon: FolderGit2 },
   { to: "/sessions", label: "Sessions", hint: "transcripts", exact: true, icon: MessagesSquare },
   { to: "/sessions/graph", label: "Live graph", hint: "sessions", exact: false, icon: Network },
+  { to: "/jobs", label: "Jobs", hint: "device", exact: false, icon: HardDrive },
   { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false, icon: Puzzle },
+  { to: "/commands", label: "Commands", hint: "per step", exact: false, icon: TerminalSquare },
   { to: "/advice", label: "Advice", hint: "coaching", exact: false, icon: Lightbulb },
 ] as const;
 
@@ -241,6 +250,18 @@ const sessionErrorsRoute = createRoute({
   component: SessionErrorsPage,
   staticData: { title: "Session errors" },
 });
+const jobsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/jobs",
+  component: JobsPage,
+  staticData: { title: "Jobs" },
+});
+const jobDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/jobs/$id",
+  component: JobDetailPage,
+  staticData: { title: "Job" },
+});
 const toolsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tools",
@@ -283,6 +304,24 @@ const suggestionBucketRoute = createRoute({
   component: SuggestionBucketPage,
   staticData: { title: "Session suggestions" },
 });
+const commandsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/commands",
+  component: CommandsPage,
+  staticData: { title: "Commands" },
+});
+const commandDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/commands/$command",
+  component: CommandDetailPage,
+  staticData: { title: "Command" },
+});
+const commandRunRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/commands/$command/$threadId",
+  component: CommandRunPage,
+  staticData: { title: "Command run" },
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -299,6 +338,8 @@ const routeTree = rootRoute.addChildren([
   sessionGraphRoute,
   sessionDetailRoute,
   sessionErrorsRoute,
+  jobsRoute,
+  jobDetailRoute,
   toolsRoute,
   skimRoute,
   withheldRoute,
@@ -306,6 +347,9 @@ const routeTree = rootRoute.addChildren([
   hooksPluginsRoute,
   adviceRoute,
   suggestionBucketRoute,
+  commandsRoute,
+  commandDetailRoute,
+  commandRunRoute,
 ]);
 
 // `scrollRestoration` snapshots scroll per history entry, so a Back returns to the offset it

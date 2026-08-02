@@ -9,6 +9,6 @@
   },
   "scripts": {
     "start": "node proxy.mjs",
-    "test": "node --test proxy.test.mjs"
+    "test": "node --test proxy.test.mjs usage-live.test.mjs"
   }
 }

@@ -27,6 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as skim from "./skim.mjs";
 import * as session from "./session.mjs";
+import { noteAuth, startUsagePolling } from "./usage-live.mjs";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "127.0.0.1"; // localhost-only by default; set HOST="" to bind all interfaces
@@ -208,11 +209,31 @@ function extractSession(headers, reqJson) {
   };
 }
 
+/**
+ * Rate-limit headers off the upstream *response* — how much of the subscription's
+ * allowances is left. Kept verbatim (names lowercased) rather than parsed into
+ * fixed fields, so a renamed or newly-added window still reaches the dashboard
+ * without a proxy change. Only `anthropic-ratelimit-*` and `x-ratelimit-*` names
+ * are copied, so no auth comes with them.
+ */
+function extractRateLimit(respHeaders) {
+  if (!respHeaders) return null;
+  const out = {};
+  for (const [name, value] of Object.entries(respHeaders)) {
+    const key = name.toLowerCase();
+    if (!key.startsWith("anthropic-ratelimit") && !key.startsWith("x-ratelimit")) continue;
+    // Node lowercases header names and may hand back an array for repeats.
+    out[key] = Array.isArray(value) ? value.join(", ") : String(value);
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** Structured sidecar next to each `.md` — the machine-readable facts the daily
  * usage-summary reads (token/cost, context bloat, activity). The `.md` stays for
  * humans; this is stable JSON for tooling. Auth is never included. */
-function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPath, audit, inputTokens, usage, respModel, headers, skim: skimInfo }) {
+function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPath, audit, inputTokens, usage, respModel, headers, respHeaders, skim: skimInfo }) {
   const u = usage ?? {};
+  const rateLimit = extractRateLimit(respHeaders);
   const sidecar = {
     timestamp,
     model: reqJson?.model ?? respModel ?? "unknown",
@@ -237,6 +258,8 @@ function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPa
     skim: skimInfo ?? { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey: null },
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
+  // Omitted when upstream sent none, so a sidecar never implies a reading it lacks.
+  if (rateLimit) sidecar.rateLimit = rateLimit;
   return JSON.stringify(sidecar, null, 2);
 }
 
@@ -454,6 +477,9 @@ function handle(req, res) {
     const timestamp = new Date().toISOString();
     const base = baseName();
 
+    // Kept in memory for the usage poll; never logged or written to a sidecar.
+    noteAuth(req.headers);
+
     // Parse the request body once — the skim gate and the logging both need it.
     let reqJson = null;
     try { reqJson = JSON.parse(body.toString("utf8")); } catch { /* non-JSON body */ }
@@ -534,7 +560,7 @@ function handle(req, res) {
             fs.mkdirSync(LOG_DIR, { recursive: true });
             fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString("utf8"));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
-            fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, respModel, headers: req.headers, skim: skimInfo }));
+            fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, respModel, headers: req.headers, respHeaders: up.headers, skim: skimInfo }));
             session.appendSession({ logDir: LOG_DIR, reqPath, reqJson, headers: req.headers, responseText: markdown });
             printAudit(audit, base);
           } catch (err) {
@@ -560,6 +586,9 @@ if (isMain) {
     console.log(`[agent-proxy] listening on http://${HOST || "0.0.0.0"}:${PORT}`);
     console.log(`[agent-proxy] point Claude Code at it:  ANTHROPIC_BASE_URL=http://localhost:${PORT} claude`);
   });
+  // Nothing to ask for until a request has gone through and handed us a token,
+  // so the first tick is a minute out rather than immediate.
+  startUsagePolling(LOG_DIR);
 }
 
 // Exported for unit tests.

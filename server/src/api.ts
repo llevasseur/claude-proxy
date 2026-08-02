@@ -6,6 +6,7 @@ import {
   linkRequestErrors,
   extractRequestMessage,
   extractRequestTool,
+  buildUsageLimits,
   computeSkimDigest,
   digestsByDay,
   heuristicAdvice,
@@ -16,6 +17,7 @@ import {
   flattenHooks,
   normalizePlugins,
   hookPluginLoadExpectations,
+  jobStateTone,
   parseSessionErrors,
   reportDay,
   sessionContextPeak,
@@ -47,6 +49,7 @@ import {
   type SessionErrorLink,
   type SessionMeta,
   type SessionNode,
+  type JobTreeNode,
   type SessionSuggestion,
   type SuggestionRecurrence,
   type SuggestionStatus,
@@ -56,12 +59,37 @@ import {
   type SkimShape,
   type TopTool,
   type UsageDigest,
+  type UsageLimitConfig,
+  type UsageLimitsSnapshot,
   type WithheldReport,
   PROXY_FILTER_INVENTORY,
+  filterRunsByFlags,
+  patternFrequency,
+  runTotals,
+  stepReach,
+  summarizeCommands,
+  type CommandPattern,
+  type CommandRun,
+  type CommandStep,
+  type CommandSummary,
   type FiltersResponse,
+  type PatternFrequency,
+  type StepReach,
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
+import { listInstalledCommands, readCommandRuns } from "./command-runs.js";
 import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
+import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
+import { loadLiveUsage } from "./usage-live.js";
+import {
+  deleteJob,
+  listJobs,
+  readJob,
+  readJobFile,
+  type JobDeleteResult,
+  type JobFileDetail,
+  type JobSummary,
+} from "./jobs.js";
 import {
   listProjectMemories,
   listProjects,
@@ -103,6 +131,80 @@ export async function buildSummary(logDir: string, date?: string, now: Date = ne
   const digest = computeDigest(cur.sidecars, { date: day, priorDigest });
   const advice = await heuristicAdvice.advise(digest);
   return { digest, advice, meta: { date: day, files: cur.files, parseErrors: cur.parseErrors } };
+}
+
+export interface UsageResponse {
+  usage: UsageLimitsSnapshot;
+  meta: { files: number; parseErrors: number };
+}
+
+/**
+ * One sidecar per source file, first occurrence winning.
+ *
+ * Archiving is expected to *move* files, so live and archived reads should not
+ * overlap — but a copy-based archiver would double every request in the seam.
+ * Entries without a `__file` are passed through rather than collapsed together.
+ */
+function dedupeByFile(sidecars: readonly unknown[]): unknown[] {
+  const seen = new Set<string>();
+  const out: unknown[] = [];
+  for (const s of sidecars) {
+    const file = (s as { __file?: unknown })?.__file;
+    if (typeof file !== "string") {
+      out.push(s);
+      continue;
+    }
+    if (seen.has(file)) continue;
+    seen.add(file);
+    out.push(s);
+  }
+  return out;
+}
+
+/**
+ * The live usage meters, over the trailing week — the widest window any meter
+ * spans. `sinceDays: 8` rather than 7 because the filter is day-granular while the
+ * windows are instant-granular; the extra day covers the partial day.
+ *
+ * The live directory holds roughly a day, so on its own it leaves a weekly window
+ * counting a few hours and calling it a week. Archived days are read alongside it,
+ * and the retained days passed through so `coverage` can see a hole in the window.
+ * Ceilings come from a wider slice again, precomputed and cached — see
+ * `usage-history.ts`.
+ */
+export async function buildUsage(
+  logDir: string,
+  limits: UsageLimitConfig,
+  now: Date = new Date(),
+): Promise<UsageResponse> {
+  const live = await readSidecars(logDir, { sinceDays: 8, includeFile: true }, now);
+  const archived = await loadArchivedUsage(logDir, now);
+  const learned = await loadLearnedCeilings(logDir, now);
+
+  const liveUsage = await loadLiveUsage(logDir, now);
+
+  const sidecars = dedupeByFile([...live.sidecars, ...archived.sidecars]);
+  // The live directory is the current day's destination, so that day is retained
+  // whether or not anything landed in it; days a live sidecar names are retained
+  // too, for a deployment that rotates less eagerly than the default.
+  const retainedDays = new Set<string>([today(now), ...archived.retainedDays]);
+  for (const s of live.sidecars) {
+    const ts = (s as { timestamp?: unknown })?.timestamp;
+    const day = typeof ts === "string" ? reportDay(ts) : null;
+    if (day) retainedDays.add(day);
+  }
+
+  return {
+    usage: buildUsageLimits(sidecars, {
+      limits,
+      learned,
+      retainedDays: [...retainedDays],
+      live: liveUsage.live,
+      anchors: liveUsage.anchors,
+      now,
+    }),
+    meta: { files: sidecars.length, parseErrors: live.parseErrors + archived.parseErrors },
+  };
 }
 
 export interface TrendsResponse {
@@ -299,6 +401,79 @@ export interface MemoryResponse {
 /** One memory file's full contents. `project`/`name` are validated downstream. */
 export async function buildMemory(projectsDir: string, project: string, name: string): Promise<MemoryResponse> {
   return { memory: await readMemory(projectsDir, project, name) };
+}
+
+export interface JobsResponse {
+  jobs: JobSummary[];
+  meta: {
+    jobsDir: string;
+    total: number;
+    /** How many are in a `busy` state right now. */
+    running: number;
+    /** Directories with no readable `state.json` — scratch space outliving its job. */
+    husks: number;
+    /** Files across every job, and their total bytes. */
+    files: number;
+    bytes: number;
+  };
+}
+
+/**
+ * Every background job directory on the device, newest activity first. A device
+ * view, not a traffic one: these directories are Claude Code's own scratch space,
+ * so nothing here comes from the captured logs.
+ */
+export async function buildJobs(jobsDir: string): Promise<JobsResponse> {
+  const jobs = await listJobs(jobsDir);
+  return {
+    jobs,
+    meta: {
+      jobsDir,
+      total: jobs.length,
+      running: jobs.filter((j) => jobStateTone(j.state) === "busy").length,
+      husks: jobs.filter((j) => !j.stateReadable).length,
+      files: jobs.reduce((sum, j) => sum + j.files, 0),
+      bytes: jobs.reduce((sum, j) => sum + j.bytes, 0),
+    },
+  };
+}
+
+export interface JobResponse {
+  job: JobSummary;
+  /** The job directory as a folder tree, directories before files. */
+  tree: JobTreeNode[];
+  meta: { entries: number; truncated: boolean };
+}
+
+/** One job's state plus its folder tree. `id` is validated downstream. */
+export async function buildJob(jobsDir: string, id: string): Promise<JobResponse> {
+  const { job, tree } = await readJob(jobsDir, id);
+  return { job, tree: tree.tree, meta: { entries: tree.entries, truncated: tree.truncated } };
+}
+
+export interface JobFileResponse {
+  file: JobFileDetail;
+}
+
+/** One file inside a job directory, for the pretty/raw viewer. Both params are
+ * validated downstream, where the path is also confirmed to stay inside the job. */
+export async function buildJobFile(jobsDir: string, id: string, file: string): Promise<JobFileResponse> {
+  return { file: await readJobFile(jobsDir, id, file) };
+}
+
+export interface JobDeleteResponse {
+  deleted: JobDeleteResult;
+  /** The listing as it stands after the delete. */
+  jobs: JobsResponse;
+}
+
+/**
+ * Delete one job directory from disk, then hand back the refreshed listing. `id` is
+ * validated downstream, which also refuses a still-running job and a symlinked directory.
+ */
+export async function buildJobDelete(jobsDir: string, id: string): Promise<JobDeleteResponse> {
+  const deleted = await deleteJob(jobsDir, id);
+  return { deleted, jobs: await buildJobs(jobsDir) };
 }
 
 export interface SessionsResponse {
@@ -875,4 +1050,201 @@ export async function buildHooksPlugins(
  */
 export function buildFilters(now: Date = new Date()): FiltersResponse {
   return { generatedAt: now.toISOString(), filters: PROXY_FILTER_INVENTORY };
+}
+
+export interface CommandsResponse {
+  commands: CommandSummary[];
+  meta: { commandsDir: string; storePath: string; runs: number; installed: number };
+}
+
+/**
+ * The `/commands` index. Rows come from the installed catalogue unioned with every
+ * command the store has runs for, so a command that a `/sync` removed keeps its history
+ * instead of taking it off the page.
+ */
+export async function buildCommands(logDir: string, commandsDir: string): Promise<CommandsResponse> {
+  const [installed, runs] = await Promise.all([listInstalledCommands(commandsDir), readCommandRuns(logDir)]);
+  return {
+    commands: summarizeCommands(installed, runs),
+    meta: {
+      commandsDir,
+      storePath: `${logDir}/commands/runs.jsonl`,
+      runs: runs.length,
+      installed: installed.length,
+    },
+  };
+}
+
+/**
+ * One run as the command page lists it: everything the scatter and the run list need,
+ * without the per-turn series or the per-step breakdown, which only the detail view
+ * reads and which dominate a record's size.
+ */
+export interface CommandRunListItem {
+  threadId: string;
+  command: string;
+  args: string;
+  flags: string[];
+  prompt: string;
+  commandHash: string | null;
+  model: string | null;
+  started: string | null;
+  ended: string | null;
+  outcome: CommandRun["outcome"];
+  interruption: CommandRun["interruption"];
+  reachedEnd: boolean;
+  totals: CommandRun["totals"];
+  /** Which rules fired, for the run list's badges. The details stay on the run page. */
+  patterns: CommandPattern["id"][];
+  /** The furthest declared step anything was attributed to, or null. */
+  lastStep: string | null;
+  meta: CommandRun["meta"];
+}
+
+/** Where the command file's content changed between two consecutive runs — the `/sync` marker. */
+export interface CommandHashMarker {
+  /** The first run that ran under the new hash. */
+  at: string;
+  hash: string | null;
+  previous: string | null;
+}
+
+export interface CommandResponse {
+  command: string;
+  installed: boolean;
+  /** The catalogue as installed now — the spine the funnel and the stacked bar use. */
+  steps: CommandStep[];
+  commandHash: string | null;
+  /** Every flag any run used, for the facet control. Unfiltered by the current facet. */
+  flags: string[];
+  /** The facet actually applied. */
+  appliedFlags: string[];
+  runs: CommandRunListItem[];
+  stepReach: StepReach[];
+  patterns: PatternFrequency[];
+  hashMarkers: CommandHashMarker[];
+  meta: { totalRuns: number; filteredRuns: number };
+}
+
+/**
+ * One command's page: its runs as scatter points, the drop-off funnel and stacked
+ * tokens-by-step over them, and how often each pattern fires across them.
+ *
+ * `flags` narrows which runs are aggregated — the facet answers "is `--sub` cheaper than
+ * inline?" without splitting the command into per-flag variants, so the flag list and
+ * the hash markers are always computed over *all* of the command's runs. Throws a
+ * labelled error the server maps to 404 when neither the catalogue nor the store knows
+ * the name.
+ */
+export async function buildCommand(
+  logDir: string,
+  commandsDir: string,
+  command: string,
+  flags: readonly string[] = [],
+): Promise<CommandResponse> {
+  const [installed, allRuns] = await Promise.all([listInstalledCommands(commandsDir), readCommandRuns(logDir)]);
+  const spec = installed.find((c) => c.command === command);
+  const own = allRuns
+    .filter((r) => r.command === command)
+    .sort((a, b) => (a.started ?? "").localeCompare(b.started ?? ""));
+  if (!spec && own.length === 0) throw new Error(`command not found: ${command}`);
+
+  // The current catalogue is the stable spine; fall back to the newest run's snapshot so
+  // an uninstalled command still renders against the steps it actually ran under.
+  const steps = spec?.steps ?? own[own.length - 1]?.steps ?? [];
+  const filtered = filterRunsByFlags(own, flags);
+
+  const markers: CommandHashMarker[] = [];
+  let previous: string | null | undefined;
+  for (const run of own) {
+    const hash = run.commandHash ?? null;
+    if (previous !== undefined && hash !== previous && run.started) {
+      markers.push({ at: run.started, hash, previous });
+    }
+    previous = hash;
+  }
+
+  return {
+    command,
+    installed: !!spec,
+    steps,
+    commandHash: spec?.commandHash ?? null,
+    flags: [...new Set(own.flatMap((r) => r.flags ?? []))].sort(),
+    appliedFlags: [...flags],
+    runs: filtered.map(toListItem).reverse(), // newest first for the list; the scatter re-sorts
+    stepReach: stepReach(steps, filtered),
+    patterns: patternFrequency(filtered),
+    hashMarkers: markers,
+    meta: { totalRuns: own.length, filteredRuns: filtered.length },
+  };
+}
+
+function toListItem(run: CommandRun): CommandRunListItem {
+  const reached = (run.stepStats ?? []).filter((s) => s.step !== null && s.reached);
+  return {
+    threadId: run.threadId,
+    command: run.command,
+    args: run.args ?? "",
+    flags: run.flags ?? [],
+    prompt: run.prompt ?? "",
+    commandHash: run.commandHash ?? null,
+    model: run.model ?? null,
+    started: run.started ?? null,
+    ended: run.ended ?? null,
+    outcome: run.outcome ?? "interrupted",
+    interruption: run.interruption ?? null,
+    reachedEnd: !!run.reachedEnd,
+    totals: runTotals(run),
+    patterns: [...new Set((run.patterns ?? []).map((p) => p.id))],
+    lastStep: reached[reached.length - 1]?.step ?? null,
+    meta: run.meta ?? { turnsUnmapped: 0, nodes: 0, attributed: 0, anchored: 0 },
+  };
+}
+
+export interface CommandRunResponse {
+  run: CommandRun;
+  /** How often this run's patterns fire across the rest of the command's runs. */
+  patterns: PatternFrequency[];
+  /**
+   * The existing per-session suggestions covering this run's window, as prose-level
+   * diagnosis. Empty once the transcripts behind them have aged out — the run record
+   * survives them, and this deliberately does not.
+   */
+  suggestions: SessionSuggestion[];
+  meta: {
+    /** Transcripts of this run's family still on disk — the graph can only draw these. */
+    transcriptsPresent: number;
+    transcripts: number;
+    /** True when no captured request survives, so the delta inspector must say so. */
+    requestsAgedOut: boolean;
+  };
+}
+
+/**
+ * One run's detail: the full record, its patterns' cross-run frequency, and the
+ * suggestions engine's read on the sessions it spans. Throws a labelled error the
+ * server maps to 404 when the store has no such run.
+ */
+export async function buildCommandRun(logDir: string, threadId: string): Promise<CommandRunResponse> {
+  const runs = await readCommandRuns(logDir);
+  const run = runs.find((r) => r.threadId === threadId);
+  if (!run) throw new Error(`command run not found: ${threadId}`);
+
+  const family = new Set(run.threadIds ?? [run.threadId]);
+  const sessions = await listSessionGraphs(logDir);
+  const present = sessions.filter((s) => family.has(s.threadId));
+  const buckets = present.length === 0 ? [] : sessionSuggestionBuckets(sessions);
+
+  return {
+    run,
+    patterns: patternFrequency(runs.filter((r) => r.command === run.command)),
+    suggestions: buckets
+      .filter((b) => b.threadIds.some((id) => family.has(id)))
+      .flatMap((b) => b.suggestions),
+    meta: {
+      transcriptsPresent: present.length,
+      transcripts: family.size,
+      requestsAgedOut: (run.turns ?? []).length === 0,
+    },
+  };
 }
