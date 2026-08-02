@@ -817,8 +817,6 @@ const server = http.createServer(async (req, res) => {
         };
         const status = await buildSuggestionStatus(LOG_DIR, filter);
         send(res, 200, status);
-        // Only the derived half has a DB path; the authored status file is read
-        // identically either way, so a mismatch here is a substrate bug.
         shadow(SUGGESTION_STATUS_ROUTE, status, (source) => buildSuggestionStatus(LOG_DIR, filter, source));
         return;
       }
@@ -894,9 +892,6 @@ const server = http.createServer(async (req, res) => {
       case "/api/chat/sessions/end":
         await servePost(req, res, async (body) => endChat({ sessionId: body.sessionId }));
         return;
-      // The three below pin `now` rather than letting the builder default it, so
-      // the shadow read is evaluated against the same clock as the served answer
-      // and a day boundary crossed between them cannot look like a mismatch.
       case "/api/skim": {
         const now = new Date();
         const skim = await buildSkim(LOG_DIR, date, now);

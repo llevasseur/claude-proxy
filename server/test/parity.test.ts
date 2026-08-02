@@ -91,9 +91,8 @@ async function writeTriple(dir: string, iso: string, opts: SidecarOpts & { blobs
   await writeFile(path.join(dir, `${stem}.audit.json`), JSON.stringify(sidecarBody(iso, opts)), "utf8");
   if (opts.blobs !== false) {
     await writeFile(path.join(dir, `${stem}.md`), `# ${iso}\n`, "utf8");
-    // A real last-user-turn, distinct per request: `/api/skim` reads it out of
-    // this body, so an empty `messages` would make the skim text uniformly null
-    // and the route's parity vacuous.
+    // A distinct last-user-turn per request: `/api/skim` reads its text out of
+    // this body, and empty `messages` would make that route's parity vacuous.
     await writeFile(
       path.join(dir, `${stem}.request.txt`),
       JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: `ask at ${iso}` }] }] }),
@@ -267,9 +266,8 @@ async function buildCorpus(): Promise<string> {
 }
 
 /**
- * A device settings file for `/api/withheld` to read its deny-list from. Written
- * into the corpus and pinned on the context so the replay does not depend on
- * whatever this machine's `~/.claude/settings.json` happens to hold.
+ * A device settings file for `/api/withheld` to read its deny-list from. Pinned
+ * on the context so the replay does not depend on this machine's own settings.
  */
 async function writeSettings(logDir: string): Promise<string> {
   const file = path.join(logDir, "settings.json");
@@ -288,8 +286,8 @@ async function writeSettings(logDir: string): Promise<string> {
 
 /**
  * Flag one suggestion, so `/api/sessions/suggestions/status` replays a real join
- * rather than an all-unflagged one. The flags themselves are authored state and
- * never enter the DB — the join's *left* side is what the substrate supplies.
+ * rather than an all-unflagged one. The flags never enter the DB; the join's
+ * *left* side is what the substrate supplies.
  */
 async function flagOneSuggestion(logDir: string): Promise<void> {
   const { buckets } = await buildSessionSuggestions(logDir, fileSource);
@@ -541,8 +539,7 @@ describe("route parity over a synthetic corpus", () => {
  * The inputs a wired route reads out of the log directory.
  *
  * `.request.txt` joined in slice 4: `/api/skim` parses the captured body for the
- * last user turn, so leaving it out would make both sides read `null` and the
- * route's parity vacuous. It is write-once, so a hardlink freezes it.
+ * last user turn. It is write-once, so a hardlink freezes it.
  */
 const SNAPSHOT_SUFFIXES = [".audit.json", ".request.txt"];
 
@@ -558,10 +555,9 @@ const SESSION_SUFFIXES = [".md", ".nodes.jsonl", ".state.json"];
  * Live files a route reads that are not sidecars, and that get rewritten.
  *
  * Both are written temp-file-then-rename, so a hardlink genuinely freezes them:
- * the rename swaps the directory entry and leaves the inode this snapshot holds
- * untouched. `suggestion-status.json` is authored state that never enters the
- * DB — it is the right-hand side of the join `/api/sessions/suggestions/status`
- * replays.
+ * the rename swaps the directory entry and leaves this snapshot's inode
+ * untouched. `suggestion-status.json` never enters the DB — it is the right-hand
+ * side of the join `/api/sessions/suggestions/status` replays.
  */
 const SNAPSHOT_FILES = ["usage-live.json", "suggestion-status.json"];
 
@@ -653,16 +649,15 @@ async function snapshotCommandsDir(): Promise<string> {
  * A frozen copy of this machine's device settings, for `/api/withheld`.
  *
  * The shell rc that route also reads has no injection point, so it is read live
- * by both replays. That is a settled non-risk: an rc edit landing in the
- * milliseconds between the two reads would be a genuine difference in the input,
- * and the file is not one anything writes automatically.
+ * by both replays — nothing writes it automatically, so an edit landing between
+ * the two reads would be a genuine difference in the input.
  */
 async function snapshotSettings(): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "parity-real-settings-"));
   const dest = path.join(dir, "settings.json");
   await copyFile(resolveSettingsPath(), dest).catch(() => {
-    // No settings on this machine: an unreadable file is a state the route
-    // already handles, and both sides see it alike.
+    // No settings on this machine: a state the route already handles, and both
+    // sides see it alike.
   });
   return dest;
 }

@@ -386,27 +386,21 @@ export const PARITY_ROUTES: ParityRoute[] = [
 
   /* --- Slice 4: the remainder --- *
    *
-   * The read paths still scanning after slice 3. None of them needed a new
-   * table: every one is a different aggregation over the audit sidecars and the
-   * session graphs slices 1 and 2 already index, so wiring them is threading the
-   * seam through and registering here.
+   * The read paths still scanning after slice 3. None needed a new table: each
+   * is a different aggregation over the sidecars and session graphs slices 1 and
+   * 2 already index.
    *
-   * `/api/projects`, `/api/jobs`, `/api/hooks-plugins` and `/api/filters` are
-   * deliberately absent rather than overlooked. The first three read
-   * `~/.claude/projects`, `~/.claude/jobs` and `~/.claude/settings.json` — all
-   * outside `logs/`, which ADR 0004 scopes the substrate to, and none of them
-   * re-derivable by re-ingesting the logs. `/api/filters` is a static inventory
-   * with no disk read at all. Indexing any of them would put the only copy of
-   * something in a disposable view, which is the one thing this substrate may
-   * not do; the same boundary kept `~/.claude/commands` unindexed in slice 3.
+   * `/api/projects`, `/api/jobs` and `/api/hooks-plugins` are deliberately
+   * absent: they read `~/.claude/projects`, `~/.claude/jobs` and
+   * `~/.claude/settings.json`, all outside the `logs/` scope ADR 0004 gives the
+   * substrate and none re-derivable by re-ingesting. Indexing one would put the
+   * only copy of something in a disposable view — the same boundary that kept
+   * `~/.claude/commands` out in slice 3. `/api/filters` reads no disk.
    *
-   * `/api/skim` is replayed as of *every* archived day; the two window-shaped
-   * routes below are replayed only as of the newest one. A window is an
-   * aggregate over the same per-day reads — `/api/skim` covers every day for the
-   * digest, `/api/summary` and `/api/trends` cover every day for the sidecars —
-   * so re-running each window as of each day re-reads the corpus quadratically
-   * for coverage that is already there. `/api/skim` in particular parses the
-   * `.request.txt` bodies rather than the sidecars alone.
+   * `/api/skim` replays as of *every* archived day; the two window-shaped routes
+   * below only as of the newest. A window aggregates the same per-day reads, so
+   * replaying each window as of each day re-reads the corpus quadratically for
+   * coverage that is already there.
    */
   {
     name: "/api/skim",
@@ -441,10 +435,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     // Only the derived half has a DB path: the bucket/suggestion join comes from
-    // the indexed session graphs, while the flags come from
-    // `logs/suggestion-status.json`, which is authored state and stays a file on
-    // both sides. A mismatch here is therefore a substrate bug, never a
-    // status-file difference.
+    // the indexed session graphs, while the flags stay a file on both sides.
     name: "/api/sessions/suggestions/status",
     cases: async (ctx) => {
       const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
