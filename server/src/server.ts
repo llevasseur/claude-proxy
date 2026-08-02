@@ -46,6 +46,10 @@ import {
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
 import { reconcileCommandRuns, resolveCommandsDir } from "./command-runs.js";
+import { resolveDbPath } from "./db/open.js";
+import { startSubstrate, stopSubstrate, substrateSource } from "./db/runtime.js";
+import type { SidecarSource } from "./db/source.js";
+import { shadowCheck, shadowEnabled } from "./parity.js";
 import {
   continueChat,
   endChat,
@@ -92,6 +96,21 @@ function reconcileCommands(): Promise<unknown> {
 async function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
   await reconcileCommands();
   return build();
+}
+
+/**
+ * Shadow mode: the response has already been sent from the files; ask the
+ * SQLite substrate the same question and log any disagreement.
+ *
+ * Off unless `SHADOW_DB=1`. It cannot change what was served: the send has
+ * happened, the comparison is a later tick, and `shadowCheck` swallows its own
+ * failures. Callers hand both sides the identical `now`, so a clock tick cannot
+ * masquerade as a mismatch.
+ */
+function shadow<T>(label: string, served: T, build: (source: SidecarSource) => Promise<T>): void {
+  const source = substrateSource();
+  if (!source) return;
+  shadowCheck(label, served, () => build(source));
 }
 
 /** Everything but the chat routes is a read-only view of already-captured logs. */
@@ -332,9 +351,13 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, { ok: logDirReadable, logDir: LOG_DIR, logDirReadable, sidecarCount });
         return;
       }
-      case "/api/summary":
-        send(res, 200, await buildSummary(LOG_DIR, date));
+      case "/api/summary": {
+        const now = new Date();
+        const summary = await buildSummary(LOG_DIR, date, now);
+        send(res, 200, summary);
+        shadow("/api/summary", summary, (source) => buildSummary(LOG_DIR, date, now, source));
         return;
+      }
       // Today's digest moves with every captured request, so this follows the log
       // directory rather than any one file.
       case "/api/summary/stream":
@@ -344,12 +367,21 @@ const server = http.createServer(async (req, res) => {
           debounceMs: 600,
         });
         return;
-      case "/api/trends":
-        send(res, 200, await buildTrends(LOG_DIR, parseDays(url.searchParams.get("days")), new Date(), ARCHIVE_DIR));
+      case "/api/trends": {
+        const days = parseDays(url.searchParams.get("days"));
+        const now = new Date();
+        const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR);
+        send(res, 200, trends);
+        shadow("/api/trends", trends, (source) => buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, source));
         return;
-      case "/api/usage":
-        send(res, 200, await buildUsage(LOG_DIR, USAGE_LIMITS));
+      }
+      case "/api/usage": {
+        const now = new Date();
+        const usage = await buildUsage(LOG_DIR, USAGE_LIMITS, now);
+        send(res, 200, usage);
+        shadow("/api/usage", usage, (source) => buildUsage(LOG_DIR, USAGE_LIMITS, now, source));
         return;
+      }
       // Debounced generously: a busy session writes three files per request and
       // the numbers barely move between them.
       case "/api/usage/stream":
@@ -359,9 +391,13 @@ const server = http.createServer(async (req, res) => {
           debounceMs: 600,
         });
         return;
-      case "/api/tools":
-        send(res, 200, await buildTools(LOG_DIR, date));
+      case "/api/tools": {
+        const now = new Date();
+        const tools = await buildTools(LOG_DIR, date, now);
+        send(res, 200, tools);
+        shadow("/api/tools", tools, (source) => buildTools(LOG_DIR, date, now, source));
         return;
+      }
       case "/api/context":
         send(res, 200, await buildContext(LOG_DIR, parseDays(url.searchParams.get("days"))));
         return;
@@ -840,6 +876,22 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, async () => {
   console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
+  // The SQLite view of those logs, kept current by a watcher. Reads still come
+  // from the files; this exists so the substrate can be compared against them.
+  const substrate = startSubstrate(LOG_DIR, (err) => console.warn(`[claude-proxy-server] ingest: ${err.message}`));
+  console.log(
+    substrate
+      ? `[claude-proxy-server] ingesting into ${resolveDbPath(LOG_DIR)}` +
+          (shadowEnabled() ? " (shadow comparison on)" : " (set SHADOW_DB=1 to compare it against the files)")
+      : "[claude-proxy-server] sqlite substrate unavailable — serving from the log files only",
+  );
+  // Release the watcher and the WAL handle on the way out.
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      stopSubstrate();
+      process.exit(0);
+    });
+  }
   const chat = await resolveChatConfig();
   console.log(
     `[claude-proxy-server] chat sends ${chat.model} through ${chat.baseUrl} over the ${chat.transport} transport` +
