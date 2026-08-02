@@ -332,3 +332,129 @@ describe("reconcileCommandRuns", () => {
     expect(run!.totals.tokens.realInput).toBe(0);
   });
 });
+
+// A `/clean` or `/pr` never opens a session — it is invoked from inside a `/task`, and the
+// CLI expands it client-side, so there is no envelope to find. The `Skill(...)` node is the
+// only durable evidence, and each nested run is a slice of its host's own transcript.
+describe("nested runs", () => {
+  /** A `/task` that verifies, then hands off to `/clean` and `/pr`. */
+  const NESTED_BODY = [
+    "- decided: starting",
+    "- Bash(command=my-command-tools verify)",
+    "- Skill(skill=clean)",
+    "- Edit(file_path=/repo/a.ts)",
+    "- Skill(skill=/pr)",
+    "- Bash(command=git push -u origin HEAD)",
+    "- done: opened the PR",
+  ].join("\n");
+
+  beforeEach(async () => {
+    await writeFile(path.join(commandsDir, "clean.md"), "---\ndescription: Tidy up.\n---\n\nTidy.\n", "utf8");
+    await writeFile(path.join(commandsDir, "pr.md"), "---\ndescription: Open a PR.\n---\n\nShip.\n", "utf8");
+  });
+
+  it("opens a child run per invocation, parented to the run that made it", async () => {
+    await writeSession(THREAD_ID, SESSION_ID, ROOT, NESTED_BODY);
+    const result = await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+    expect(result).toMatchObject({ written: 3, runs: 3 });
+
+    const runs = await readCommandRuns(logDir);
+    const parent = runs.find((r) => r.command === "task")!;
+    const clean = runs.find((r) => r.command === "clean")!;
+    const pr = runs.find((r) => r.command === "pr")!;
+
+    // The parent keeps its thread id as its key, so links written before this schema still resolve.
+    expect(parent.runId).toBe(THREAD_ID);
+    expect(parent.parentRunId).toBeNull();
+    expect(parent.nodeRange).toBeNull();
+
+    for (const child of [clean, pr]) {
+      expect(child.runId).toBe(`${THREAD_ID}~${child.spawnNode}`);
+      expect(child.parentRunId).toBe(THREAD_ID);
+      expect(child.parentCommand).toBe("task");
+      expect(child.threadId).toBe(THREAD_ID);
+    }
+    // Each span starts on its own `Skill` node and ends where the next one begins.
+    expect(clean.nodeRange!.to).toBe(pr.nodeRange!.from);
+    expect(clean.nodeRange!.from).toBeLessThan(clean.nodeRange!.to);
+    expect(pr.spawnNode).toBe(pr.nodeRange!.from);
+  });
+
+  it("ignores a plain skill that isn't an installed command", async () => {
+    await writeSession(THREAD_ID, SESSION_ID, ROOT, "- Skill(skill=grilling)\n- done: ok");
+    await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+    expect(await readCommandRuns(logDir)).toHaveLength(1);
+  });
+
+  it("partitions the host's turns without charging one twice, while the parent still totals them all", async () => {
+    await writeSession(THREAD_ID, SESSION_ID, ROOT, NESTED_BODY);
+    // One capture before `/clean`, one inside it, one inside `/pr`.
+    await writeCapture({ iso: "2026-07-15T14:01:00.000Z", sessionId: SESSION_ID, root: ROOT, nodes: 2 });
+    await writeCapture({ iso: "2026-07-15T14:02:00.000Z", sessionId: SESSION_ID, root: ROOT, nodes: 4 });
+    await writeCapture({ iso: "2026-07-15T14:03:00.000Z", sessionId: SESSION_ID, root: ROOT, nodes: 6 });
+
+    await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+    const runs = await readCommandRuns(logDir);
+    const parent = runs.find((r) => r.command === "task")!;
+    const clean = runs.find((r) => r.command === "clean")!;
+    const pr = runs.find((r) => r.command === "pr")!;
+
+    expect(parent.totals.turns).toBe(3);
+    expect(clean.totals.turns + pr.totals.turns).toBeLessThanOrEqual(parent.totals.turns);
+    const nodes = [...clean.turns, ...pr.turns].map((t) => t.node);
+    expect(new Set(nodes).size).toBe(nodes.length);
+    for (const turn of clean.turns) {
+      expect(turn.node).toBeGreaterThanOrEqual(clean.nodeRange!.from);
+      expect(turn.node).toBeLessThan(clean.nodeRange!.to);
+    }
+    // The child's cost is real, not a copy of its parent's.
+    expect(pr.totals.tokens.realInput).toBeLessThan(parent.totals.tokens.realInput);
+  });
+
+  it("upserts child runs too: a second pass writes nothing and reopens no bodies", async () => {
+    await writeSession(THREAD_ID, SESSION_ID, ROOT, NESTED_BODY);
+    await writeCapture({ iso: "2026-07-15T14:02:00.000Z", sessionId: SESSION_ID, root: ROOT, nodes: 4 });
+
+    const now = new Date("2026-07-15T18:00:00.000Z");
+    expect(await reconcileCommandRuns(logDir, commandsDir, now)).toMatchObject({ written: 3, requestsRead: 1 });
+    expect(await reconcileCommandRuns(logDir, commandsDir, now)).toMatchObject({ written: 0, requestsRead: 0 });
+    expect(await readCommandRuns(logDir)).toHaveLength(3);
+  });
+
+  it("gives a child only the subagents spawned inside its own span", async () => {
+    const subRoot = "review the diff";
+    const subThread = threadIdFor(SESSION_ID, subRoot);
+    await writeSession(
+      THREAD_ID,
+      SESSION_ID,
+      ROOT,
+      [
+        "- decided: starting",
+        "- Skill(skill=clean)",
+        `- Agent(subagent_type=Explore, threadId=${subThread})`,
+        "- done: ok",
+      ].join("\n"),
+    );
+    await writeSession(subThread, SESSION_ID, subRoot, "- decided: reviewing");
+
+    await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+    const runs = await readCommandRuns(logDir);
+    expect(runs.find((r) => r.command === "clean")!.threadIds).toContain(subThread);
+    // And the parent still owns it, because a nested run is a slice of the parent, not a hole in it.
+    expect(runs.find((r) => r.command === "task")!.threadIds).toContain(subThread);
+  });
+
+  // `/clean` and `/pr` declare no `## Step N` headings, so a child has one unattributed
+  // bucket. Its duration, cost, and outcome are still its own.
+  it("still records a child whose command declares no steps", async () => {
+    await writeSession(THREAD_ID, SESSION_ID, ROOT, "- Skill(skill=clean)\n- done: ok");
+    await writeCapture({ iso: "2026-07-15T14:02:00.000Z", sessionId: SESSION_ID, root: ROOT, nodes: 3 });
+    await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+
+    const clean = (await readCommandRuns(logDir)).find((r) => r.command === "clean")!;
+    expect(clean.steps).toEqual([]);
+    expect(clean.turns.every((t) => t.step === null)).toBe(true);
+    expect(clean.totals.tokens.realInput).toBeGreaterThan(0);
+    expect(clean.prompt).toBe("");
+  });
+});
