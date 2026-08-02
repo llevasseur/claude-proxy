@@ -392,8 +392,7 @@ function TurnInspector({ turn, agedOut }: { turn: CommandRunTurn | null; agedOut
           sub={`${fmtBytes(turn.toolsBytes)} of tools · ${turn.toolCount} tools · ${turn.messageCount} messages`}
         />
       </div>
-      {/* An evicted body is the expected end state, not a failure: retention deletes
-          the body and keeps the sidecar, so the tokens above survive it. */}
+      {/* An evicted body is an expected end state, not a failure — the tokens above survive it. */}
       {message.isError || (message.isSuccess && (!message.data || message.data.evicted)) ? (
         <div className="leak-note">
           This turn's request body is no longer on disk, so its newest message cannot be shown. The token figures above

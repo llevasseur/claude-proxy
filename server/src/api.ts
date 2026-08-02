@@ -350,28 +350,23 @@ export async function buildContext(
 
 /**
  * What every body-reading drill-down answers when retention has evicted the body
- * it would have parsed. The sidecar beside it is kept forever, and every field it
- * holds maps to a column in the substrate, so the request is still fully described
- * by its metrics — only the verbatim text is gone.
- *
- * This is a normal terminal state, not an error. Before it existed the routes
- * raised "request file not found", which read identically to a bug.
+ * it would have parsed. A normal terminal state, not an error: the sidecar is
+ * kept, so only the verbatim text is gone.
  */
 export interface EvictedBodyResponse {
   file: string;
   evicted: true;
   /** The archived day the sidecar was filed under; `null` if it is still live. */
   day: string | null;
-  /** The window bodies are kept for, so the UI can name it instead of assuming it. */
+  /** The window bodies are kept for, so the UI can name it rather than assume it. */
   retentionDays: number;
   /** Everything the audit sidecar retains; `null` only if it is unreadable. */
   retained: AuditSidecar | null;
 }
 
 /**
- * Resolve a captured body before reading it, so the three outcomes stay distinct:
- * present (read it), evicted (answer with the retained metrics), missing (404).
- * Returns `null` when the body is there and the caller should just read it.
+ * Turn a location into the evicted response, or throw for `missing` (a 404).
+ * Returns `null` when the body is present and the caller should just read it.
  */
 async function evictedOr404(
   logDir: string,
@@ -1060,10 +1055,9 @@ export interface SkimResponse {
   date: string;
   skim: SkimDigest;
   /**
-   * `bodiesEvicted` counts the sidecars in this window whose `.request.txt` is no
-   * longer on disk. Skim parses those bodies for the last user turn, so an evicted
-   * one shows up as a request with no text — this says how many, rather than
-   * letting them read as requests that never had any.
+   * `bodiesEvicted` counts the sidecars here whose `.request.txt` is gone. Skim
+   * parses bodies for the last user turn, so an evicted one otherwise reads as a
+   * request that never had any text.
    */
   meta: { files: number; parseErrors: number; bodiesEvicted: number };
 }

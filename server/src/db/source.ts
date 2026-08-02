@@ -329,10 +329,10 @@ async function readDir(
     const sidecar = entry.make();
     if (entry.parseError) parseErrors += 1;
     if (opts.includeSkimRequests && !entry.parseError) {
-      // The bodies stay on disk; the DB holds a pointer, not the blob. So the
-      // eviction count is read off the disk here too, exactly as the file reader
-      // does it — a row's `blob_evicted` is only as fresh as the last ingest, and
-      // parity requires both sides to answer from the same observation.
+      // The bodies stay on disk; the DB holds a pointer, not the blob. The
+      // eviction count is read off the disk here too — a row's `blob_evicted` is
+      // only as fresh as the last ingest, and parity needs both sides answering
+      // from the same observation.
       const rel = sourceDir === LIVE ? `${entry.stem}.request.txt` : `${sourceDir}/${entry.stem}.request.txt`;
       let raw: string | null = null;
       try {

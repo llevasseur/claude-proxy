@@ -10,9 +10,8 @@ import {
 } from "../src/retention.js";
 
 /**
- * The planner is pure, so every case here is a listing rather than a directory.
- * That is deliberate: the thing under test decides what to *delete*, and no test
- * should be able to delete a real log to prove it works.
+ * Every case here is a listing rather than a directory: the planner is pure, and
+ * no test should be able to delete a real log to prove it works.
  */
 
 const TODAY = "2026-08-02";

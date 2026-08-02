@@ -1,9 +1,7 @@
 /**
- * The text rendering of a day's digest, shared by the two headless CLIs that print
- * one: `daily-summary` (the digest on its own) and `maintain` (the digest as the
- * closing step of the retention job). It lives apart from both because each is a
- * script with top-level side effects — importing one to reuse its renderer would
- * run its job.
+ * The text rendering of a day's digest, shared by `daily-summary` and `maintain`.
+ * It lives apart from both because each is a script with top-level side effects —
+ * importing one to reuse its renderer would run its job.
  */
 import { reportTzAbbr, type UsageDigest } from "@claude-proxy/core";
 import type { SummaryResponse } from "./api.js";

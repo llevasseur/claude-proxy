@@ -1,25 +1,15 @@
 /**
- * Headless log maintenance — the scheduled job that owns `logs/`' lifecycle.
- *
- *   pnpm --filter server maintain           # dry run: print the plan, touch nothing
- *   pnpm --filter server maintain --apply   # perform it
- *
- * Three steps, in order:
+ * Headless log maintenance — `pnpm --filter server maintain`, the scheduled job
+ * that owns `logs/`' lifecycle. Three steps, in order:
  *
  *   1. **Archive** every past day out of the live directory into `archive/<date>/`.
  *   2. **Evict** the `.md` and `.request.txt` bodies inside archived days older than
  *      `RETENTION_DAYS`, keeping every `.audit.json`.
- *   3. **Digest** — print the day's summary through `buildSummary`, the same path
- *      the dashboard and `daily-summary` use.
+ *   3. **Digest** — print the day's summary through `buildSummary`. No LLM call,
+ *      no network.
  *
- * Dry run is the default because step 2 deletes. The plan printed by a dry run is
- * the same object `--apply` executes, so what you read is what would happen.
- *
- * This replaces an out-of-repo script that did steps 1 and 3 and, for step 2,
- * removed whole day directories — sidecars included. See `retention.ts` for why
- * that changed, and `docs/features/log-retention-lifecycle.md` for the shape of it.
- * Step 3 is deliberately `buildSummary` alone: no LLM call, no network, no import
- * from the replaced script's repo.
+ * Dry run is the default; `--apply` performs it. A dry run prints the same plan
+ * object `--apply` executes. See `docs/features/retention-lifecycle.md`.
  */
 import { buildSummary } from "./api.js";
 import { resolveLogDir } from "./logs.js";
@@ -49,7 +39,6 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** The plan as text. Identical whether or not it is about to be executed. */
 function renderPlan(plan: RetentionPlan, apply: boolean): string {
   const lines: string[] = [];
   const mode = apply ? "apply" : "dry run — nothing will be changed";
@@ -81,11 +70,9 @@ function renderPlan(plan: RetentionPlan, apply: boolean): string {
 }
 
 /**
- * Distil any command runs still visible into `logs/commands/runs.jsonl` before the
- * files move. The dashboard reconciles on every read, but only while it is running;
- * this is the backstop for a machine whose server is off, and it has to happen
- * *before* archiving relocates the transcripts and bodies it reads. Dry runs skip
- * it — it writes. Never fatal: maintenance is the job's actual output.
+ * Distil any still-visible command runs into `logs/commands/runs.jsonl`. Must run
+ * *before* archiving relocates the transcripts and bodies it reads. Skipped on a
+ * dry run — it writes. Never fatal.
  */
 async function reconcileRuns(logDir: string): Promise<void> {
   try {

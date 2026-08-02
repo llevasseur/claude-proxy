@@ -2,13 +2,9 @@ import type { EvictedBodyResponse } from "../api";
 import { fmtBytes, fmtInt } from "../format";
 
 /**
- * What a body-reading drill-down shows once retention has evicted the body.
- *
- * The captured `.request.txt` is deleted after the retention window; the audit
- * sidecar beside it is kept forever, and every field it holds is indexed. So this
- * is not an error state — the request is still fully described by its metrics, and
- * only the verbatim text is gone. Saying so explicitly is the point: the routes
- * used to answer a plain 404, which read exactly like a bug.
+ * What a body-reading drill-down shows once retention has evicted the body. Not
+ * an error state: the sidecar is kept, so the request is still fully described by
+ * its metrics and only the verbatim text is gone.
  */
 export function EvictedBody({ data }: { data: EvictedBodyResponse }) {
   const r = data.retained;

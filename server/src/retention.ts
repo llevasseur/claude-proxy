@@ -1,39 +1,21 @@
 /**
- * Retention and lifecycle ownership for `logs/`.
+ * Retention and lifecycle ownership for `logs/`: archive past days, then evict
+ * body files inside expired archived days. **Eviction is per file, and
+ * `.audit.json` is never evicted** — the sidecars are the metrics, and every field
+ * in them maps to a column in the substrate. See
+ * `docs/features/retention-lifecycle.md`.
  *
- * Until this module existed, nothing in this repo ever deleted or archived a log.
- * Both jobs were done by an out-of-repo script (`usage-summary.ts`, launchd job
- * `com.llevasseur.claude-usage-summary`), which moved each past day out of the live
- * directory and then `rm -rf`-ed whole `archive/<date>/` directories past
- * `RETENTION_DAYS`. That is the behaviour this module replaces, with one deliberate
- * change: **eviction is per file, and `.audit.json` is never evicted.**
- *
- * The change is a measurement, not a preference. Across 16,581 captured request
- * triples the bodies are ~96% of the bytes (`.request.txt` 3.45 GB, `.md` 3.05 GB)
- * and the audit sidecars are ~1% (0.07 GB). Every field path that occurs in a
- * sidecar maps to a column in the SQLite substrate, so keeping them costs a
- * rounding error and preserves the total-recovery path
- * (`rm logs/claude-proxy.db && pnpm --filter server ingest`). Deleting the day
- * directory would have destroyed both copies of the metrics at once — the sidecar
- * *and*, via the pruning pass in `db/ingest.ts`, every row derived from it.
- *
- * The planner here is **pure**: it takes a listing and returns the moves and
- * deletions it would make, so it can be tested over a fixture corpus without a
- * disk. {@link collectRetentionCorpus} reads the listing and {@link applyRetention}
- * performs the plan; neither decides anything.
+ * The planner is pure: it takes a listing and returns the moves and deletions it
+ * would make. {@link collectRetentionCorpus} reads the listing and
+ * {@link applyRetention} performs the plan; neither decides anything.
  */
 import { mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { REPORT_TZ } from "@claude-proxy/core";
 
-/** Default retention window, in days. Same name and default as the job this replaces. */
 export const DEFAULT_RETENTION_DAYS = 30;
 
-/**
- * The two body files a captured request writes beside its sidecar. These are what
- * eviction removes; anything else in an archived day — above all `.audit.json` — is
- * kept forever.
- */
+/** The only files eviction removes; everything else in an archived day is kept forever. */
 export const EVICTABLE_SUFFIXES = [".md", ".request.txt"] as const;
 
 /** The sidecar suffix. Named here so the "never evict this" rule is greppable. */
@@ -45,7 +27,6 @@ const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})/;
 /** An archive directory name — exactly a date, nothing else. */
 const DAY_DIR_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** One file, as the planner sees it: a name and a size. No paths, no handles. */
 export interface FileEntry {
   name: string;
   bytes: number;
@@ -70,7 +51,6 @@ export interface ArchiveMove {
   bytes: number;
 }
 
-/** A body file to delete from `archive/<day>/`. */
 export interface EvictFile {
   day: string;
   name: string;
@@ -93,7 +73,7 @@ export interface RetentionPlan {
   evict: {
     files: EvictFile[];
     days: string[];
-    /** Bytes actually reclaimed. This is the number the job exists to produce. */
+    /** Bytes reclaimed. */
     bytes: number;
   };
 }
@@ -105,11 +85,7 @@ export function shiftDate(date: string, deltaDays: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/**
- * Today in the reporting zone. `TIMEZONE` overrides it, which is the same knob the
- * replaced job took; its `America/Toronto` and this repo's `America/New_York` are
- * the same wall clock, so the day boundary is unchanged either way.
- */
+/** Today in the reporting zone; `TIMEZONE` overrides it. */
 export function resolveToday(env: NodeJS.ProcessEnv = process.env, now: Date = new Date()): string {
   const tz = env.TIMEZONE || REPORT_TZ;
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -136,19 +112,16 @@ export function isEvictable(name: string): boolean {
 /**
  * Decide what to archive and what to evict. Pure — same input, same plan, no disk.
  *
- * Archiving keeps the replaced job's rule exactly: a file is moved only when its
- * name carries a date and that date is **strictly before** `today`. Everything else
- * stays where it is, which covers today's traffic and, deliberately, every name
- * with no date prefix at all — `sessions/`, `commands/`, `.chat/`,
- * `suggestion-status.json` and the database are never candidates because they
- * cannot match `DATE_PREFIX_RE`. Filenames carry the proxy's UTC prefix and UTC
- * runs ahead of the reporting zone, so "strictly before" also protects the
- * tomorrow-stamped files that belong to today's reporting day.
+ * A file is moved only when its name carries a date **strictly before** `today`.
+ * A name with no date prefix is never a candidate, which is what keeps
+ * `sessions/`, `commands/`, `.chat/`, `suggestion-status.json` and the database
+ * out of it. Filenames carry the proxy's UTC prefix and UTC runs ahead of the
+ * reporting zone, so "strictly before" also protects tomorrow-stamped files that
+ * belong to today's reporting day.
  *
- * Eviction then runs over the archive **as it will be after the moves**, because
- * the two steps happen in one pass: a body that lands in an already-expired day
- * must not survive until the next run. Only the day directory's own name decides
- * expiry, and the directory itself is never removed — it still holds the sidecars.
+ * Eviction runs over the archive as it will be *after* the moves, so a body
+ * landing in an already-expired day does not survive until the next run. Only the
+ * day directory's name decides expiry, and the directory is never removed.
  */
 export function planRetention(input: {
   corpus: RetentionCorpus;
@@ -166,8 +139,7 @@ export function planRetention(input: {
   }
   moves.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
-  // The archive as the eviction pass will find it: what is on disk, plus what this
-  // same run is about to move in.
+  // The archive as the eviction pass will find it: on disk, plus this run's moves.
   const byDay = new Map<string, FileEntry[]>();
   for (const entry of corpus.archive) {
     if (!DAY_DIR_RE.test(entry.day)) continue;
@@ -218,8 +190,7 @@ async function listFiles(dir: string): Promise<FileEntry[]> {
   for (const name of names) {
     try {
       const s = await stat(path.join(dir, name));
-      // Directories are skipped rather than moved: `archive/` is one, and a
-      // date-named directory in the live dir would otherwise be relocated whole.
+      // Directories are skipped, not moved — `archive/` itself is one.
       if (s.isFile()) out.push({ name, bytes: s.size });
     } catch {
       // Vanished between listing and stat — the proxy is writing concurrently.
@@ -228,7 +199,7 @@ async function listFiles(dir: string): Promise<FileEntry[]> {
   return out;
 }
 
-/** Read the live directory and every archived day. The only disk read in this module. */
+/** Read the live directory and every archived day. */
 export async function collectRetentionCorpus(logDir: string): Promise<RetentionCorpus> {
   const live = await listFiles(logDir);
   const archiveRoot = path.join(logDir, "archive");
@@ -248,7 +219,7 @@ export async function collectRetentionCorpus(logDir: string): Promise<RetentionC
 export interface RetentionResult {
   archived: number;
   evicted: number;
-  /** Bytes actually reclaimed by the deletions that succeeded. */
+  /** Bytes reclaimed by the deletions that succeeded. */
   bytesReclaimed: number;
   /** Per-file failures, as `<what>: <message>`. Never fatal — the next run retries. */
   errors: string[];
@@ -256,9 +227,8 @@ export interface RetentionResult {
 
 /**
  * Perform a plan. Archiving runs first and in full, so eviction only ever deletes
- * from inside `archive/<day>/` — a body is moved out of the live directory before
- * anything is allowed to delete it. A file that fails to move is recorded and its
- * eviction is skipped, because the plan's path for it no longer describes the disk.
+ * from inside `archive/<day>/`. A file that fails to move has its eviction
+ * skipped — the plan's path for it no longer describes the disk.
  */
 export async function applyRetention(logDir: string, plan: RetentionPlan): Promise<RetentionResult> {
   const result: RetentionResult = { archived: 0, evicted: 0, bytesReclaimed: 0, errors: [] };

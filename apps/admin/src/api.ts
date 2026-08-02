@@ -70,16 +70,15 @@ export interface ContextResponse {
   meta: { days: number; files: number; parseErrors: number };
 }
 /**
- * A drill-down whose captured body retention has evicted. The audit sidecar is
- * kept forever, so the request is still described by its metrics — `retained`
- * carries them. Discriminate on `evicted` before reading anything else.
+ * A drill-down whose captured body retention has evicted. The sidecar is kept, so
+ * `retained` still carries the metrics. Discriminate on `evicted` first.
  */
 export interface EvictedBodyResponse {
   file: string;
   evicted: true;
   /** The archived day the sidecar sits in; `null` while it is still live. */
   day: string | null;
-  /** The server's retention window, so the message names the real number. */
+  /** The server's retention window, so the message can name the real number. */
   retentionDays: number;
   retained: AuditSidecar | null;
 }

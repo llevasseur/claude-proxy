@@ -16,9 +16,8 @@ import { applyRetention, planRetention, collectRetentionCorpus } from "../src/re
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from "../src/usage-history.js";
 
 /**
- * The claim this slice rests on: evicting a day's bodies costs nothing a metrics
- * route can see. Everything here runs against a temp corpus — the eviction under
- * test is the real {@link applyRetention}, pointed at a fixture, never at `logs/`.
+ * Evicting a day's bodies costs nothing a metrics route can see. The real
+ * {@link applyRetention} runs here, pointed at a temp fixture, never at `logs/`.
  */
 
 /** 14:00 EDT. The fixture day below is 40 days back, well past the 30-day window. */
@@ -126,8 +125,7 @@ describe("skim counts a missing body rather than dropping the request", () => {
   it("still counts the request, and says the body is gone", async () => {
     await writeLive(false);
     const skim = await buildSkim(logDir, TODAY, NOW);
-    // An evicted body is a request whose text is gone, not a request that never
-    // happened — the difference is exactly what this meta field exists to say.
+    // An evicted body is a request whose text is gone, not one that never happened.
     expect(skim.meta.files).toBe(1);
     expect(skim.meta.bodiesEvicted).toBe(1);
   });
