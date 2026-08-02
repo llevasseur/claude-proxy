@@ -154,6 +154,15 @@ export async function listInstalledCommands(dir: string): Promise<InstalledComma
  * degrades the page's detail rather than emptying it. A missing store reads as empty.
  */
 export async function readCommandRuns(logDir: string): Promise<CommandRun[]> {
+  return (await readCommandRunRecords(logDir)).filter((run) => !run.retired);
+}
+
+/**
+ * Every record the store holds, **retired ones included** — {@link readCommandRuns} is the
+ * view the page reads. A retired record is still the only surviving evidence of its run's
+ * turns, so reconciliation carries it forward rather than reading past it.
+ */
+async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
   let text: string;
   try {
     text = await readFile(commandStorePath(logDir), "utf8");
@@ -173,9 +182,7 @@ export async function readCommandRuns(logDir: string): Promise<CommandRun[]> {
     if (!isCommandRun(parsed)) continue;
     byThread.set(parsed.threadId, parsed); // later line supersedes earlier
   }
-  return [...byThread.values()]
-    .filter((run) => !run.retired)
-    .sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
+  return [...byThread.values()].sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
 }
 
 /** Append records to the store, creating `logs/commands/` on first write. */
@@ -196,14 +203,23 @@ const MAX_NEW_REQUEST_READS = 500;
 /** A transcript still being appended to is a run still going. */
 const ACTIVE_WINDOW_MS = 15 * 60 * 1000;
 
+/**
+ * A root prompt that was actually read, versus one there is no evidence either way about.
+ *
+ * The distinction is what makes retirement safe: only a prompt we hold can testify that a
+ * session is not a run. A sidecar that is missing, torn, or carries no `root` at all — the
+ * proxy only records one once it has a prompt to record — says nothing.
+ */
+type RootPrompt = { read: true; prompt: string } | { read: false };
+
 /** A run's opening prompt: the transcript's `.state.json` holds it untruncated. */
-async function readRootPrompt(logDir: string, threadId: string): Promise<string | null> {
+async function readRootPrompt(logDir: string, threadId: string): Promise<RootPrompt> {
   try {
     const raw = await readFile(path.join(resolveSessionsDir(logDir), `${threadId}.state.json`), "utf8");
     const state = JSON.parse(raw) as { root?: unknown };
-    return typeof state.root === "string" ? state.root : null;
+    return typeof state.root === "string" ? { read: true, prompt: state.root } : { read: false };
   } catch {
-    return null; // no sidecar, or it went away — this session simply isn't a run
+    return { read: false }; // no sidecar, or it went away
   }
 }
 
@@ -237,31 +253,41 @@ export async function reconcileCommandRuns(
   commandsDir: string = resolveCommandsDir(),
   now: Date = new Date(),
 ): Promise<ReconcileResult> {
-  const [graphs, installed, existing, index] = await Promise.all([
+  const [graphs, installed, records, index] = await Promise.all([
     listSessionGraphs(logDir),
     listInstalledCommands(commandsDir),
-    readCommandRuns(logDir),
+    readCommandRunRecords(logDir),
     readRequestIndex(logDir),
   ]);
 
+  // Retirement reads the live view, so a record already retired is never retired twice.
+  // Carry-forward reads every record, retired or not: a thread that parses as a run again
+  // keeps its turns instead of starting over from whatever sidecars still exist.
+  const existing = records.filter((run) => !run.retired);
   const byThread = new Map(graphs.map((g) => [g.threadId, g]));
   const byCommand = new Map(installed.map((c) => [c.command, c]));
-  const priorByThread = new Map(existing.map((r) => [r.threadId, r]));
+  const priorByThread = new Map(records.map((r) => [r.threadId, r]));
 
   // A run is any session whose opening prompt carries the command envelope. A nested
   // `/command` with its own session is a run in its own right and still rolls up into
   // its parent — both readings are wanted.
   const roots: { graph: SessionGraph; envelope: NonNullable<ReturnType<typeof parseCommandEnvelope>> }[] = [];
+  const judged = new Set<string>();
   for (const graph of graphs) {
-    const envelope = parseCommandEnvelope(await readRootPrompt(logDir, graph.threadId));
+    const root = await readRootPrompt(logDir, graph.threadId);
+    if (!root.read) continue; // no prompt to judge by — leave whatever is on record alone
+    judged.add(graph.threadId);
+    const envelope = parseCommandEnvelope(root.prompt);
     if (envelope) roots.push({ graph, envelope });
   }
-  // Records whose thread is still on disk but no longer reads as a run — what an earlier
-  // parse leaves behind. Retired before the early return, so a log window with no runs
-  // left still retracts them.
+  // Records whose opening prompt we still hold and it no longer reads as a run — what an
+  // earlier parse leaves behind. Only a prompt that was actually read retracts a record: a
+  // transcript on disk whose `.state.json` is gone is absence of evidence, not evidence the
+  // run never happened. Retired before the early return, so a log window with no runs left
+  // still retracts them.
   const runThreads = new Set(roots.map((r) => r.graph.threadId));
   const retired = existing
-    .filter((run) => byThread.has(run.threadId) && !runThreads.has(run.threadId))
+    .filter((run) => judged.has(run.threadId) && !runThreads.has(run.threadId))
     .map((run): CommandRun => ({ ...run, retired: true, updatedAt: now.toISOString() }));
   if (retired.length > 0) await appendCommandRuns(logDir, retired);
 

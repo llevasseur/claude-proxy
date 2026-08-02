@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -380,6 +380,46 @@ describe("reconcileCommandRuns", () => {
       expect(await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"))).toMatchObject({
         written: 0,
       });
+    });
+
+    // Retirement testifies from the opening prompt. Without one there is nothing to testify
+    // with, and the record is the only surviving account of the run.
+    it("keeps a record whose transcript survives but whose opening prompt does not", async () => {
+      await writeSession(THREAD_ID, SESSION_ID, ROOT, "- done: ok");
+      await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+      expect(await readCommandRuns(logDir)).toHaveLength(1);
+
+      const sidecar = path.join(logDir, "sessions", `${THREAD_ID}.state.json`);
+      await rm(sidecar);
+      expect(await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"))).toMatchObject({
+        written: 0,
+      });
+      expect(await readCommandRuns(logDir)).toHaveLength(1);
+
+      // The proxy only records `root` once it has a prompt to record, so a sidecar without
+      // one is the same silence as no sidecar at all.
+      await writeFile(sidecar, JSON.stringify({ count: 1, root: null }), "utf8");
+      await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+      expect(await readCommandRuns(logDir)).toHaveLength(1);
+    });
+
+    it("carries a retired record's turns back if its thread reads as a run again", async () => {
+      await writeSession(THREAD_ID, SESSION_ID, ROOT, "- Bash(command=my-command-tools verify)\n- done: ok");
+      await writeCapture({ iso: "2026-07-15T14:01:00.000Z", sessionId: SESSION_ID, root: ROOT, nodes: 2 });
+      await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+      expect((await readCommandRuns(logDir))[0]!.totals.turns).toBe(1);
+
+      const sidecar = path.join(logDir, "sessions", `${THREAD_ID}.state.json`);
+      const state = await readFile(sidecar, "utf8");
+      await writeFile(sidecar, JSON.stringify({ count: 1, root: "just a normal prompt" }), "utf8");
+      await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+      expect(await readCommandRuns(logDir)).toEqual([]);
+
+      // The request body was already indexed, so the turns can only come from the record.
+      await writeFile(sidecar, state, "utf8");
+      await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));
+      const [run] = await readCommandRuns(logDir);
+      expect(run!.totals.turns).toBe(1);
     });
 
     it("leaves a record alone when its transcript has aged out of the log window", async () => {

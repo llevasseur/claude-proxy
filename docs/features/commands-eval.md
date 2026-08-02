@@ -40,13 +40,16 @@ prescribed it.
   everything typed after. The parser walks the envelopes in order and takes the first
   **non-local** one — the real command when there was one, no run at all when there wasn't
   — reading each envelope's `<command-args>` from its own block rather than the first in
-  the prompt. Locality is pure adjacency: the caveat has to sit directly ahead of the
-  envelope, with only its own `<command-message>` between, because that caveat text
-  survives into compaction summaries far from any envelope it describes.
+  the prompt. That block ends at its own closing tag, not at the next envelope: criteria
+  quote envelopes all the time, and cutting there empties the args. Locality is pure
+  adjacency — the caveat has to sit directly ahead of the envelope — because that caveat
+  text survives into compaction summaries far from any envelope it describes.
 - **A record can be retracted** — the store only appends, so a thread that stops parsing as
-  a run is rewritten with `retired: true` and dropped by `readCommandRuns`. The reconcile
-  pass retires only threads whose transcript is still on disk; one that has aged out is
-  left alone, since a missing transcript is not evidence the run never happened.
+  a run is rewritten with `retired: true` and dropped by `readCommandRuns`. Only a thread
+  whose **opening prompt was read** is retired: a transcript that aged out, or one whose
+  `.state.json` is missing or never captured a prompt, is absence of evidence rather than
+  evidence the run never happened. Reconciliation carries retired records forward, so a
+  thread that reads as a run again keeps the turns only the record still remembers.
 - **The step catalogue comes from the installed file** — `parseCommandSteps` takes the
   `## Step N — Title` headings of `~/.claude/commands/<name>.md` (override the directory
   with `COMMANDS_DIR`, which exists for tests). Ordinals are kept as written, so `1.5`
