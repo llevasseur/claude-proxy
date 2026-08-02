@@ -50,12 +50,19 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
       `/api/summary`, `/api/trends`, generalized so later slices register
       routes. Shadow mode behind `SHADOW_DB`. Reads stay file-backed.
 
-- [ ] **Slice 2 — Sessions.**
+- [x] **Slice 2 — Sessions.**
       `session` and `session_node` tables from `logs/sessions/<threadId>.md`
       and its `.nodes.jsonl` / `.state.json` sidecars. Registers
       `/api/sessions*` and `/api/context*` with the parity harness. Reads stay
       file-backed. Note the `/revive` constraint: the session `.md` files keep
       being written, no exceptions.
+      *Landed with a third table, `session_node_text`, for the sparse
+      `.nodes.jsonl` sidecar — it can name an index the transcript no longer has,
+      so it cannot hang off `session_node`. Transcripts are the mutable part of
+      `logs/`, so their watermark is per-file (`bytes` + `modified`) rather than
+      the dir-level one slice 1 uses. `/api/context/detail|message|tool` are
+      deliberately unregistered: they read a `.request.txt` body off disk and
+      touch no indexed column.*
 
 - [ ] **Slice 3 — Command runs. DEPENDS ON SLICE 2.**
       The run / turn / step tree, plus waste and patterns from

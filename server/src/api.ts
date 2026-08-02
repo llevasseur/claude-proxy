@@ -101,9 +101,6 @@ import {
 } from "./projects.js";
 import {
   listSessionGraphs,
-  listSessions,
-  readSession,
-  readSessionNodeTexts,
   threadIdForBody,
   type SessionDetail,
   type SessionGraph,
@@ -331,8 +328,13 @@ function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
  * input tokens, plus the largest requests (each with a `file` handle for the
  * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
  */
-export async function buildContext(logDir: string, days: number, now: Date = new Date()): Promise<ContextResponse> {
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+export async function buildContext(
+  logDir: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<ContextResponse> {
+  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
   return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
 }
 
@@ -503,8 +505,8 @@ export interface SessionsResponse {
 }
 
 /** Every session transcript the proxy has written, newest first. */
-export async function buildSessions(logDir: string): Promise<SessionsResponse> {
-  const sessions = await listSessions(logDir);
+export async function buildSessions(logDir: string, source: SidecarSource = fileSource): Promise<SessionsResponse> {
+  const sessions = await source.listSessions(logDir);
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
 }
 
@@ -514,8 +516,8 @@ export interface SessionsGraphResponse {
 }
 
 /** Every session transcript with its structured node stream, newest first — feeds the live graph. */
-export async function buildSessionsGraph(logDir: string): Promise<SessionsGraphResponse> {
-  const sessions = await listSessionGraphs(logDir);
+export async function buildSessionsGraph(logDir: string, source: SidecarSource = fileSource): Promise<SessionsGraphResponse> {
+  const sessions = await source.listSessionGraphs(logDir);
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
 }
 
@@ -526,8 +528,12 @@ export type SessionNodeTextsResponse = SessionNodeTexts;
  * polling `/api/sessions/graph`, where it would dwarf the gists. `id` is validated
  * downstream.
  */
-export async function buildSessionNodeTexts(logDir: string, id: string): Promise<SessionNodeTextsResponse> {
-  return readSessionNodeTexts(logDir, id);
+export async function buildSessionNodeTexts(
+  logDir: string,
+  id: string,
+  source: SidecarSource = fileSource,
+): Promise<SessionNodeTextsResponse> {
+  return source.readSessionNodeTexts(logDir, id);
 }
 
 export interface SessionResponse {
@@ -535,8 +541,12 @@ export interface SessionResponse {
 }
 
 /** One session transcript's full contents. `id` is validated downstream. */
-export async function buildSession(logDir: string, id: string): Promise<SessionResponse> {
-  return { session: await readSession(logDir, id) };
+export async function buildSession(
+  logDir: string,
+  id: string,
+  source: SidecarSource = fileSource,
+): Promise<SessionResponse> {
+  return { session: await source.readSession(logDir, id) };
 }
 
 export interface SessionErrorsResponse {
@@ -557,10 +567,11 @@ export async function buildSessionErrors(
   logDir: string,
   id: string,
   now: Date = new Date(),
+  source: SidecarSource = fileSource,
 ): Promise<SessionErrorsResponse> {
-  const { meta, content } = await readSession(logDir, id);
+  const { meta, content } = await source.readSession(logDir, id);
   const errors = parseSessionErrors(content);
-  const { requests } = await resolveSessionRequests(logDir, meta, now);
+  const { requests } = await resolveSessionRequests(logDir, meta, now, source);
   const links = await linkErrorsToRequests(logDir, requests, errors);
 
   return { threadId: id, meta, errors: errors.map((error, i) => ({ ...error, link: links[i] ?? null })) };
@@ -657,6 +668,7 @@ async function resolveSessionRequests(
   logDir: string,
   meta: SessionMeta,
   now: Date,
+  source: SidecarSource,
 ): Promise<
   SessionContextPeak & { sessionId: string | null; requests: ContextEntry[]; files: number; parseErrors: number }
 > {
@@ -666,7 +678,7 @@ async function resolveSessionRequests(
   }
 
   const since = (meta.started && reportDay(meta.started)) || undefined;
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { since, includeFile: true }, now);
   const entries = toContextEntries(sidecars);
 
   return {
@@ -686,9 +698,10 @@ export async function buildSessionBreakdown(
   logDir: string,
   id: string,
   now: Date = new Date(),
+  source: SidecarSource = fileSource,
 ): Promise<SessionBreakdownResponse> {
-  const { meta } = await readSession(logDir, id);
-  const { sessionId, requestCount, peak, files, parseErrors } = await resolveSessionRequests(logDir, meta, now);
+  const { meta } = await source.readSession(logDir, id);
+  const { sessionId, requestCount, peak, files, parseErrors } = await resolveSessionRequests(logDir, meta, now, source);
 
   return { threadId: id, sessionId, requestCount, peak, meta: { files, parseErrors } };
 }
@@ -703,8 +716,11 @@ export interface SessionSuggestionsResponse {
  * reaching the same outcome in fewer steps. Recomputed from every transcript on
  * each call — there is no backfill state to keep in sync.
  */
-export async function buildSessionSuggestions(logDir: string): Promise<SessionSuggestionsResponse> {
-  const sessions = await listSessionGraphs(logDir);
+export async function buildSessionSuggestions(
+  logDir: string,
+  source: SidecarSource = fileSource,
+): Promise<SessionSuggestionsResponse> {
+  const sessions = await source.listSessionGraphs(logDir);
   const buckets = sessionSuggestionBuckets(sessions);
   return {
     buckets,
@@ -734,8 +750,9 @@ export async function buildSessionSuggestionBucket(
   logDir: string,
   index: number,
   now: Date = new Date(),
+  source: SidecarSource = fileSource,
 ): Promise<SessionSuggestionBucketResponse> {
-  const graphs = await listSessionGraphs(logDir);
+  const graphs = await source.listSessionGraphs(logDir);
   const bucket = sessionSuggestionBuckets(graphs).find((b) => b.index === index);
   if (!bucket) throw new Error(`suggestion bucket not found: ${index}`);
 
@@ -748,7 +765,7 @@ export async function buildSessionSuggestionBucket(
 
   // A session's requests never predate it, so the earliest start bounds the scan.
   const since = (bucket.startedFirst && reportDay(bucket.startedFirst)) || undefined;
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { since, includeFile: true }, now);
   const entries = toContextEntries(sidecars);
 
   const peaks = sessions
@@ -901,8 +918,9 @@ export async function buildSessionGraphNodes(
   logDir: string,
   id: string,
   now: Date = new Date(),
+  source: SidecarSource = fileSource,
 ): Promise<SessionGraphNodesResponse> {
-  const graphs = await listSessionGraphs(logDir);
+  const graphs = await source.listSessionGraphs(logDir);
   const byId = new Map(graphs.map((g) => [g.threadId, g]));
   if (!byId.has(id)) throw new Error(`session not found: ${id}`);
 
@@ -925,7 +943,7 @@ export async function buildSessionGraphNodes(
   const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
   const since = (starts.length > 0 && reportDay(starts.sort()[0]!)) || undefined;
 
-  const { sidecars, files, parseErrors } = await readSidecars(logDir, { since, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { since, includeFile: true }, now);
   const candidates = toContextEntries(sidecars)
     .filter((e) => e.sessionId !== null && sessionIds.has(e.sessionId))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))

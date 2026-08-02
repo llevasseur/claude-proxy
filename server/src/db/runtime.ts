@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { ingest, watchAndIngest } from "./ingest.js";
+import { ingest, watchAndIngest, type IngestStats } from "./ingest.js";
 import { openDb } from "./open.js";
 import { dbSource, type SidecarSource } from "./source.js";
 
@@ -41,7 +41,7 @@ export function stopSubstrate(): void {
 }
 
 /** One-shot ingest against a freshly opened database. The `ingest` script's body. */
-export async function ingestOnce(logDir: string): Promise<{ inserted: number; deleted: number; skipped: number; dirs: number; dirsSkipped: number }> {
+export async function ingestOnce(logDir: string): Promise<IngestStats> {
   const db = openDb(logDir);
   try {
     return await ingest(db, logDir);

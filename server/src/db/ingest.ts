@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { isAuditSidecar, type AuditSidecar } from "@claude-proxy/core";
+import { ingestSessions } from "./ingest-sessions.js";
 
 /**
  * Fill the substrate from `logs/`, and keep it filled. Runs unattended on server
@@ -31,10 +32,14 @@ export interface IngestStats {
   deleted: number;
   /** Files that were on disk but could not become a `request` row. */
   skipped: number;
+  /** Session transcripts on disk. */
+  sessions: number;
+  /** Transcripts parsed this pass — new, or appended to since the last one. */
+  sessionsParsed: number;
 }
 
 function emptyStats(): IngestStats {
-  return { dirs: 0, dirsSkipped: 0, inserted: 0, deleted: 0, skipped: 0 };
+  return { dirs: 0, dirsSkipped: 0, inserted: 0, deleted: 0, skipped: 0, sessions: 0, sessionsParsed: 0 };
 }
 
 /** Absolute path of a `source_dir`. */
@@ -349,15 +354,28 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
   for (const sourceDir of await sourceDirs(logDir)) {
     await ingestDir(db, st, logDir, sourceDir, stats);
   }
+
+  // The session transcripts, which live under `sessions/` and are mutable, so
+  // they carry their own per-file watermark rather than this dir-level one.
+  const sessions = await ingestSessions(db, logDir);
+  stats.sessions = sessions.seen;
+  stats.sessionsParsed = sessions.parsed;
+  stats.deleted += sessions.deleted;
   return stats;
 }
 
 /**
- * Ingest now, then again on every change to `logDir`, debounced.
+ * Ingest now, then again on every change to `logDir` and to `logDir/sessions`,
+ * debounced.
  *
  * The watch is not recursive, so a file pruned inside `archive/<day>/` fires no
  * event of its own and is reconciled by the next pass. Archiving a day is
  * visible either way, since the files leave the live directory.
+ *
+ * `sessions/` gets a watcher of its own because it is the opposite case: the
+ * proxy appends to a transcript throughout a run without touching `logDir`
+ * itself, so leaving it to the next pass would mean the session tables trail the
+ * files for as long as a run lasts.
  *
  * Returns a stop function. Passes never overlap: a change arriving mid-pass
  * schedules one more rather than starting a second writer.
@@ -403,16 +421,21 @@ export function watchAndIngest(
 
   void run();
 
-  let watcher: fs.FSWatcher | null = null;
-  try {
-    watcher = fs.watch(logDir, { persistent: false }, schedule);
-    watcher.on("error", (err) => onError(err as Error));
-  } catch (err) {
-    onError(err as Error);
+  const watchers: fs.FSWatcher[] = [];
+  // A missing `sessions/` dir is normal on a fresh clone: the proxy creates it
+  // with the first transcript, and until then there is nothing to watch.
+  for (const dir of [logDir, path.join(logDir, "sessions")]) {
+    try {
+      const watcher = fs.watch(dir, { persistent: false }, schedule);
+      watcher.on("error", (err) => onError(err as Error));
+      watchers.push(watcher);
+    } catch (err) {
+      onError(err as Error);
+    }
   }
 
   return () => {
     if (timer) clearTimeout(timer);
-    watcher?.close();
+    for (const watcher of watchers) watcher.close();
   };
 }

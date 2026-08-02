@@ -398,9 +398,14 @@ const server = http.createServer(async (req, res) => {
         shadow("/api/tools", tools, (source) => buildTools(LOG_DIR, date, now, source));
         return;
       }
-      case "/api/context":
-        send(res, 200, await buildContext(LOG_DIR, parseDays(url.searchParams.get("days"))));
+      case "/api/context": {
+        const days = parseDays(url.searchParams.get("days"));
+        const now = new Date();
+        const context = await buildContext(LOG_DIR, days, now);
+        send(res, 200, context);
+        shadow("/api/context", context, (source) => buildContext(LOG_DIR, days, now, source));
         return;
+      }
       case "/api/context/detail": {
         const file = url.searchParams.get("file");
         if (!file) {
@@ -561,9 +566,12 @@ const server = http.createServer(async (req, res) => {
           },
         );
         return;
-      case "/api/sessions":
-        send(res, 200, await buildSessions(LOG_DIR));
+      case "/api/sessions": {
+        const sessions = await buildSessions(LOG_DIR);
+        send(res, 200, sessions);
+        shadow("/api/sessions", sessions, (source) => buildSessions(LOG_DIR, source));
         return;
+      }
       case "/api/sessions/stream":
         await serveSse(req, res, {
           watchPath: resolveSessionsDir(LOG_DIR),
@@ -587,9 +595,12 @@ const server = http.createServer(async (req, res) => {
         await serveSse(req, res, { watchPath: file, build: () => buildSession(LOG_DIR, id), debounceMs: 150 });
         return;
       }
-      case "/api/sessions/graph":
-        send(res, 200, await buildSessionsGraph(LOG_DIR));
+      case "/api/sessions/graph": {
+        const graph = await buildSessionsGraph(LOG_DIR);
+        send(res, 200, graph);
+        shadow("/api/sessions/graph", graph, (source) => buildSessionsGraph(LOG_DIR, source));
         return;
+      }
       case "/api/sessions/node-text": {
         const id = url.searchParams.get("id");
         if (!id) {
@@ -597,7 +608,9 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          send(res, 200, await buildSessionNodeTexts(LOG_DIR, id));
+          const texts = await buildSessionNodeTexts(LOG_DIR, id);
+          send(res, 200, texts);
+          shadow("/api/sessions/node-text", texts, (source) => buildSessionNodeTexts(LOG_DIR, id, source));
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
@@ -612,7 +625,10 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          send(res, 200, await buildSessionGraphNodes(LOG_DIR, id));
+          const now = new Date();
+          const nodes = await buildSessionGraphNodes(LOG_DIR, id, now);
+          send(res, 200, nodes);
+          shadow("/api/sessions/graph/nodes", nodes, (source) => buildSessionGraphNodes(LOG_DIR, id, now, source));
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
@@ -628,7 +644,9 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          send(res, 200, await buildSession(LOG_DIR, id));
+          const session = await buildSession(LOG_DIR, id);
+          send(res, 200, session);
+          shadow("/api/sessions/session", session, (source) => buildSession(LOG_DIR, id, source));
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
@@ -644,7 +662,10 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          send(res, 200, await buildSessionBreakdown(LOG_DIR, id));
+          const now = new Date();
+          const breakdown = await buildSessionBreakdown(LOG_DIR, id, now);
+          send(res, 200, breakdown);
+          shadow("/api/sessions/breakdown", breakdown, (source) => buildSessionBreakdown(LOG_DIR, id, now, source));
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
@@ -708,9 +729,12 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
-      case "/api/sessions/suggestions":
-        send(res, 200, await buildSessionSuggestions(LOG_DIR));
+      case "/api/sessions/suggestions": {
+        const suggestions = await buildSessionSuggestions(LOG_DIR);
+        send(res, 200, suggestions);
+        shadow("/api/sessions/suggestions", suggestions, (source) => buildSessionSuggestions(LOG_DIR, source));
         return;
+      }
       case "/api/sessions/suggestions/bucket": {
         const index = Number(url.searchParams.get("index"));
         if (!Number.isInteger(index) || index < 1) {
@@ -718,7 +742,12 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          send(res, 200, await buildSessionSuggestionBucket(LOG_DIR, index));
+          const now = new Date();
+          const bucket = await buildSessionSuggestionBucket(LOG_DIR, index, now);
+          send(res, 200, bucket);
+          shadow("/api/sessions/suggestions/bucket", bucket, (source) =>
+            buildSessionSuggestionBucket(LOG_DIR, index, now, source),
+          );
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("suggestion bucket not found")) send(res, 404, { error: msg });
@@ -787,7 +816,10 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try {
-          send(res, 200, await buildSessionErrors(LOG_DIR, id));
+          const now = new Date();
+          const errors = await buildSessionErrors(LOG_DIR, id, now);
+          send(res, 200, errors);
+          shadow("/api/sessions/errors", errors, (source) => buildSessionErrors(LOG_DIR, id, now, source));
         } catch (err) {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });

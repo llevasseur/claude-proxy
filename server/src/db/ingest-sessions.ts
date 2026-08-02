@@ -1,0 +1,269 @@
+import { readdir, readFile, stat } from "node:fs/promises";
+import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
+import { parseSessionNodeTexts, parseSessionNodes, parseSessionTranscript } from "@claude-proxy/core";
+import { resolveSessionsDir, SESSION_FILE_RE } from "../sessions.js";
+
+/**
+ * Index `logs/sessions/` into the `session`, `session_node` and
+ * `session_node_text` tables.
+ *
+ * The transcripts are the one part of `logs/` that is **mutable**: the proxy
+ * appends to a transcript for the whole life of the run it is recording. So the
+ * audit sidecars' "this stem is already a row, skip it" is not a sufficient
+ * watermark here — a row can be correct one second and short the next.
+ *
+ * The watermark is therefore per file rather than per directory: the row keeps
+ * the `bytes` and `modified` it was parsed from, and a file whose `stat` still
+ * matches is left alone. An append always moves the size, so this costs one
+ * `stat` per transcript instead of a re-read, and re-running is still a no-op.
+ *
+ * As everywhere else in the substrate, `logs/` stays the source of truth: these
+ * tables are rebuilt wholesale by deleting the database and re-ingesting.
+ */
+
+/** `<threadId>.md` relative to `logDir` — the pointer stored on the row. */
+function mdPath(threadId: string): string {
+  return `sessions/${threadId}.md`;
+}
+
+export interface SessionIngestStats {
+  /** Transcripts on disk this pass. */
+  seen: number;
+  /** Transcripts parsed — new, or changed since their row was written. */
+  parsed: number;
+  /** Rows dropped because their transcript is no longer on disk. */
+  deleted: number;
+}
+
+interface SessionStatements {
+  insertSession: ReturnType<DatabaseSync["prepare"]>;
+  insertNode: ReturnType<DatabaseSync["prepare"]>;
+  insertNodeText: ReturnType<DatabaseSync["prepare"]>;
+  clearNodes: ReturnType<DatabaseSync["prepare"]>;
+  clearNodeTexts: ReturnType<DatabaseSync["prepare"]>;
+  deleteSession: ReturnType<DatabaseSync["prepare"]>;
+}
+
+function prepare(db: DatabaseSync): SessionStatements {
+  return {
+    // A transcript is re-parsed on every append, so this is an upsert of the
+    // whole row rather than the audit sidecars' insert-once.
+    insertSession: db.prepare(`
+      INSERT INTO session (
+        thread_id, model, session_id, started,
+        tasks, decisions, tools, errors,
+        first_task, title, subtitle, derived_title,
+        bytes, modified, md_path, root_prompt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(thread_id) DO UPDATE SET
+        model = excluded.model, session_id = excluded.session_id, started = excluded.started,
+        tasks = excluded.tasks, decisions = excluded.decisions, tools = excluded.tools,
+        errors = excluded.errors, first_task = excluded.first_task, title = excluded.title,
+        subtitle = excluded.subtitle, derived_title = excluded.derived_title,
+        bytes = excluded.bytes, modified = excluded.modified, md_path = excluded.md_path,
+        root_prompt = excluded.root_prompt
+    `),
+    insertNode: db.prepare(`
+      INSERT INTO session_node (thread_id, idx, type, text, tool, task, interruption, interrupted, message)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `),
+    // A `.nodes.jsonl` that names the same index twice reads as the last entry
+    // winning, because the file reader assigns into a plain object.
+    insertNodeText: db.prepare(`
+      INSERT INTO session_node_text (thread_id, idx, text) VALUES (?, ?, ?)
+      ON CONFLICT(thread_id, idx) DO UPDATE SET text = excluded.text
+    `),
+    clearNodes: db.prepare("DELETE FROM session_node WHERE thread_id = ?"),
+    clearNodeTexts: db.prepare("DELETE FROM session_node_text WHERE thread_id = ?"),
+    deleteSession: db.prepare("DELETE FROM session WHERE thread_id = ?"),
+  };
+}
+
+/** What one transcript and its sidecars parse to, ready to write. */
+interface ParsedSession {
+  threadId: string;
+  content: string;
+  bytes: number;
+  modified: string;
+  rootPrompt: string | null;
+  nodeTexts: Record<number, string>;
+}
+
+/** The untruncated opening prompt, mirroring `readRootPrompt` in `command-runs.ts`. */
+async function readRootPrompt(dir: string, threadId: string): Promise<string | null> {
+  try {
+    const state = JSON.parse(await readFile(path.join(dir, `${threadId}.state.json`), "utf8")) as { root?: unknown };
+    return typeof state.root === "string" ? state.root : null;
+  } catch {
+    return null; // no sidecar, or it went away
+  }
+}
+
+/** The sparse untruncated node texts, or none when the sidecar is absent. */
+async function readNodeTexts(dir: string, threadId: string): Promise<Record<number, string>> {
+  try {
+    return parseSessionNodeTexts(await readFile(path.join(dir, `${threadId}.nodes.jsonl`), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+/** Read one transcript plus its two sidecars, or null if it vanished mid-pass. */
+async function readSessionFiles(dir: string, threadId: string): Promise<ParsedSession | null> {
+  let content: string;
+  let bytes: number;
+  let modified: string;
+  try {
+    const [text, info] = await Promise.all([readFile(path.join(dir, `${threadId}.md`), "utf8"), stat(path.join(dir, `${threadId}.md`))]);
+    content = text;
+    bytes = info.size;
+    modified = info.mtime.toISOString();
+  } catch {
+    return null;
+  }
+  const [rootPrompt, nodeTexts] = await Promise.all([readRootPrompt(dir, threadId), readNodeTexts(dir, threadId)]);
+  return { threadId, content, bytes, modified, rootPrompt, nodeTexts };
+}
+
+/** Write one transcript's row and its node stream, replacing whatever was there. */
+function writeSession(st: SessionStatements, parsed: ParsedSession): void {
+  const meta = parseSessionTranscript(parsed.threadId, parsed.content);
+  st.insertSession.run(
+    meta.threadId,
+    meta.model,
+    meta.sessionId,
+    meta.started,
+    meta.tasks,
+    meta.decisions,
+    meta.tools,
+    meta.errors,
+    meta.firstTask,
+    meta.title,
+    meta.subtitle,
+    meta.derivedTitle,
+    parsed.bytes,
+    parsed.modified,
+    mdPath(parsed.threadId),
+    parsed.rootPrompt,
+  );
+
+  // The stream is rewritten rather than appended to. A transcript can be
+  // rewritten as well as extended, and "delete then insert" is the only form
+  // that is correct for both.
+  st.clearNodes.run(parsed.threadId);
+  for (const node of parseSessionNodes(parsed.content)) {
+    st.insertNode.run(
+      parsed.threadId,
+      node.index,
+      node.type,
+      node.text,
+      node.tool,
+      node.task,
+      node.interruption,
+      node.interrupted ? 1 : 0,
+      node.message,
+    );
+  }
+
+  st.clearNodeTexts.run(parsed.threadId);
+  for (const [idx, text] of Object.entries(parsed.nodeTexts)) {
+    st.insertNodeText.run(parsed.threadId, Number(idx), text);
+  }
+}
+
+/** How many transcripts to read before writing a batch. */
+const BATCH = 100;
+
+/**
+ * Bring the session tables level with `logs/sessions/`. Safe to call repeatedly:
+ * an unchanged transcript is not re-read, and a part-way failure leaves the
+ * committed batches in place for the next pass to resume from.
+ */
+export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<SessionIngestStats> {
+  const stats: SessionIngestStats = { seen: 0, parsed: 0, deleted: 0 };
+  const dir = resolveSessionsDir(logDir);
+
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    // No `sessions/` dir — the proxy has not written one. Not an error, but any
+    // rows left from a directory that has since gone are no longer backed.
+    const st = prepare(db);
+    for (const row of db.prepare("SELECT thread_id FROM session").all() as Array<{ thread_id: string }>) {
+      st.deleteSession.run(row.thread_id);
+      stats.deleted += 1;
+    }
+    return stats;
+  }
+
+  const threadIds = names
+    .filter((n) => SESSION_FILE_RE.test(n))
+    .map((n) => n.slice(0, -".md".length))
+    .sort();
+  stats.seen = threadIds.length;
+
+  const st = prepare(db);
+
+  // Rows whose transcript left the directory. `ON DELETE CASCADE` takes the node
+  // stream and node texts with them.
+  const present = new Set(threadIds);
+  db.exec("BEGIN");
+  try {
+    for (const row of db.prepare("SELECT thread_id FROM session").all() as Array<{ thread_id: string }>) {
+      if (present.has(row.thread_id)) continue;
+      st.deleteSession.run(row.thread_id);
+      stats.deleted += 1;
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+
+  const known = new Map<string, { bytes: number; modified: string }>();
+  for (const row of db.prepare("SELECT thread_id, bytes, modified FROM session").all() as Array<{
+    thread_id: string;
+    bytes: number;
+    modified: string;
+  }>) {
+    known.set(row.thread_id, { bytes: row.bytes, modified: row.modified });
+  }
+
+  // The per-file watermark. `stat` on every transcript is the cost of noticing an
+  // append; parsing is what it buys us out of.
+  const stale: string[] = [];
+  for (const threadId of threadIds) {
+    const mark = known.get(threadId);
+    if (!mark) {
+      stale.push(threadId);
+      continue;
+    }
+    try {
+      const info = await stat(path.join(dir, `${threadId}.md`));
+      if (info.size !== mark.bytes || info.mtime.toISOString() !== mark.modified) stale.push(threadId);
+    } catch {
+      // Vanished between the listing and the stat; the next pass reconciles it.
+    }
+  }
+
+  for (let i = 0; i < stale.length; i += BATCH) {
+    const batch = (await Promise.all(stale.slice(i, i + BATCH).map((id) => readSessionFiles(dir, id)))).filter(
+      (p): p is ParsedSession => p !== null,
+    );
+    db.exec("BEGIN");
+    try {
+      for (const parsed of batch) {
+        writeSession(st, parsed);
+        stats.parsed += 1;
+      }
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  return stats;
+}

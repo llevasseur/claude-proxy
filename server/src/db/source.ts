@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { reportDay } from "@claude-proxy/core";
+import { linkAgentSessions, reportDay, type SessionNode } from "@claude-proxy/core";
 import {
   readArchivedDay as readArchivedDayFromFiles,
   readSidecars as readSidecarsFromFiles,
@@ -10,6 +10,17 @@ import {
   type LoadResult,
   type ReadOptions,
 } from "../logs.js";
+import {
+  listSessionGraphs as listSessionGraphsFromFiles,
+  listSessions as listSessionsFromFiles,
+  readSession as readSessionFromFiles,
+  readSessionNodeTexts as readSessionNodeTextsFromFiles,
+  resolveSessionFile,
+  type SessionDetail,
+  type SessionGraph,
+  type SessionNodeTexts,
+  type SessionSummary,
+} from "../sessions.js";
 
 /**
  * One interface, two backings — the seam the migration turns on. Every read
@@ -26,6 +37,18 @@ export interface SidecarSource {
   readonly kind: "files" | "db";
   readSidecars(logDir: string, opts?: ReadOptions, now?: Date): Promise<LoadResult>;
   readArchivedDay(logDir: string, date: string, opts?: Omit<ReadOptions, "date" | "sinceDays">): Promise<LoadResult>;
+
+  /* --- Session transcripts (slice 2) --- *
+   *
+   * The transcript body is a blob and stays on disk: {@link readSession} returns
+   * the same `content` either way, and only the metadata around it moves into
+   * SQL. The DB backing never stops those files being written — `/revive` reads
+   * them directly, with no API and no database.
+   */
+  listSessions(logDir: string): Promise<SessionSummary[]>;
+  listSessionGraphs(logDir: string): Promise<SessionGraph[]>;
+  readSession(logDir: string, id: string): Promise<SessionDetail>;
+  readSessionNodeTexts(logDir: string, id: string): Promise<SessionNodeTexts>;
 }
 
 /** The behaviour the server has today: scan the directory, parse every file. */
@@ -33,6 +56,10 @@ export const fileSource: SidecarSource = {
   kind: "files",
   readSidecars: (logDir, opts, now) => readSidecarsFromFiles(logDir, opts, now),
   readArchivedDay: (logDir, date, opts) => readArchivedDayFromFiles(logDir, date, opts),
+  listSessions: (logDir) => listSessionsFromFiles(logDir),
+  listSessionGraphs: (logDir) => listSessionGraphsFromFiles(logDir),
+  readSession: (logDir, id) => readSessionFromFiles(logDir, id),
+  readSessionNodeTexts: (logDir, id) => readSessionNodeTextsFromFiles(logDir, id),
 };
 
 /** The live log directory's `source_dir`; archived days are `archive/<YYYY-MM-DD>`. */
@@ -299,10 +326,153 @@ async function readDir(
   return { sidecars, files: kept, parseErrors };
 }
 
+/* ------------------------------------------------------------------ *
+ * Session transcripts
+ * ------------------------------------------------------------------ */
+
+interface SessionRow {
+  thread_id: string;
+  model: string | null;
+  session_id: string | null;
+  started: string | null;
+  tasks: number;
+  decisions: number;
+  tools: number;
+  errors: number;
+  first_task: string | null;
+  title: string | null;
+  subtitle: string | null;
+  derived_title: string | null;
+  bytes: number;
+  modified: string;
+}
+
+interface NodeRow {
+  thread_id: string;
+  idx: number;
+  type: string;
+  text: string;
+  tool: string | null;
+  task: string | null;
+  interruption: string | null;
+  interrupted: number;
+  message: number | null;
+}
+
+/**
+ * Rebuild the listing row a transcript parse would have produced. The key order
+ * is `parseSessionTranscript`'s object literal followed by the listing's own two
+ * fields, because that order is on the wire.
+ */
+function toSummary(row: SessionRow): SessionSummary {
+  return {
+    threadId: row.thread_id,
+    model: row.model,
+    sessionId: row.session_id,
+    started: row.started,
+    tasks: row.tasks,
+    decisions: row.decisions,
+    tools: row.tools,
+    errors: row.errors,
+    firstTask: row.first_task,
+    title: row.title,
+    subtitle: row.subtitle,
+    derivedTitle: row.derived_title,
+    bytes: row.bytes,
+    modified: row.modified,
+  };
+}
+
+/** One appended step, in `parseSessionNodes`' key order. */
+function toNode(row: NodeRow): SessionNode {
+  return {
+    index: row.idx,
+    type: row.type as SessionNode["type"],
+    text: row.text,
+    tool: row.tool,
+    task: row.task,
+    interruption: row.interruption as SessionNode["interruption"],
+    interrupted: row.interrupted === 1,
+    message: row.message,
+  };
+}
+
+/** Newest first, ties broken by thread id — the order both listings return. */
+function sortListing<T extends { modified: string; threadId: string }>(rows: T[]): T[] {
+  rows.sort((a, b) => b.modified.localeCompare(a.modified) || a.threadId.localeCompare(b.threadId));
+  return rows;
+}
+
+const SESSION_COLUMNS =
+  "thread_id, model, session_id, started, tasks, decisions, tools, errors, " +
+  "first_task, title, subtitle, derived_title, bytes, modified";
+
+function sessionRows(db: DatabaseSync): SessionRow[] {
+  return db.prepare(`SELECT ${SESSION_COLUMNS} FROM session`).all() as unknown as SessionRow[];
+}
+
+/** Every transcript's node stream, keyed by thread id and in transcript order. */
+function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
+  const out = new Map<string, SessionNode[]>();
+  for (const row of db
+    .prepare("SELECT thread_id, idx, type, text, tool, task, interruption, interrupted, message FROM session_node ORDER BY thread_id, idx")
+    .all() as unknown as NodeRow[]) {
+    const list = out.get(row.thread_id) ?? [];
+    list.push(toNode(row));
+    out.set(row.thread_id, list);
+  }
+  return out;
+}
+
 /** The same reads, answered from the substrate. */
 export function dbSource(db: DatabaseSync): SidecarSource {
   return {
     kind: "db",
+    // Both listings answer from the tables alone — no directory is read, which
+    // is the whole point of the slice.
+    listSessions: async () => sortListing(sessionRows(db).map(toSummary)),
+    listSessionGraphs: async () => {
+      const nodes = nodesByThread(db);
+      const rows = sessionRows(db).map((row) => ({ ...toSummary(row), nodes: nodes.get(row.thread_id) ?? [] }));
+      // The agent tree is a derivation, not a stored fact: it is rebuilt from the
+      // same rows by the same function the file reader uses. `linkAgentSessions`
+      // sorts each family internally, so the result does not depend on the order
+      // rows arrive in — which is what lets SQL supply them.
+      const links = linkAgentSessions(rows);
+      return sortListing(rows.map((row) => ({ ...row, ...links.get(row.threadId)! })));
+    },
+    readSession: async (logDir, id) => {
+      // Validates the URL-supplied id and confirms the path stays inside
+      // `sessions/`, exactly as the file reader does, before anything is read.
+      const full = resolveSessionFile(logDir, id);
+      const row = db.prepare(`SELECT ${SESSION_COLUMNS} FROM session WHERE thread_id = ?`).get(id) as unknown as
+        | SessionRow
+        | undefined;
+      if (!row) throw new Error(`session not found: ${id}`);
+
+      // The transcript body stays on disk — the row holds a pointer, not the
+      // blob — so the metadata comes out of SQL and the content off the file.
+      let content: string;
+      try {
+        content = await readFile(full, "utf8");
+      } catch {
+        throw new Error(`session not found: ${id}`);
+      }
+      const { bytes, modified, ...meta } = toSummary(row);
+      return { meta, content, bytes, modified };
+    },
+    readSessionNodeTexts: async (logDir, id) => {
+      // A bad id throws; a transcript with no sidecar reads as empty rather than
+      // 404, which is the file reader's contract too.
+      resolveSessionFile(logDir, id);
+      const texts: Record<number, string> = {};
+      for (const row of db
+        .prepare("SELECT idx, text FROM session_node_text WHERE thread_id = ? ORDER BY idx")
+        .all(id) as unknown as Array<{ idx: number; text: string }>) {
+        texts[row.idx] = row.text;
+      }
+      return { threadId: id, texts };
+    },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
     readArchivedDay: async (logDir, date, opts = {}) => {
       const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0 };
