@@ -2,8 +2,17 @@ import type {
   Advice,
   AliasLoadExpectation,
   BucketBreakdownSummary,
+  CommandPatternId,
+  CommandRun,
+  CommandRunOutcome,
+  CommandRunTotals,
+  CommandStep,
+  CommandSummary,
   ContextSummary,
   HookRow,
+  InterruptionKind,
+  PatternFrequency,
+  StepReach,
   JobFileKind,
   JobStateFields,
   JobTreeNode,
@@ -231,6 +240,59 @@ export interface SessionBreakdownResponse extends SessionContextPeak {
   sessionId: string | null;
   meta: { files: number; parseErrors: number };
 }
+// The Commands eval page. Records are read defensively throughout: the store is
+// append-only and versioned, so a row written by another schema version must degrade
+// the page's detail rather than empty it.
+/** One installed command's row on `/commands`. */
+export interface CommandsResponse {
+  commands: CommandSummary[];
+  meta: { commandsDir: string; storePath: string; runs: number; installed: number };
+}
+/** One run as the command page lists it — no per-turn series, no per-step breakdown. */
+export interface CommandRunListItem {
+  threadId: string;
+  command: string;
+  args: string;
+  flags: string[];
+  prompt: string;
+  commandHash: string | null;
+  model: string | null;
+  started: string | null;
+  ended: string | null;
+  outcome: CommandRunOutcome;
+  interruption: InterruptionKind | null;
+  reachedEnd: boolean;
+  totals: CommandRunTotals;
+  patterns: CommandPatternId[];
+  lastStep: string | null;
+  meta: CommandRun["meta"];
+}
+/** Where the command file's content changed between two runs — the scatter's `/sync` marker. */
+export interface CommandHashMarker {
+  at: string;
+  hash: string | null;
+  previous: string | null;
+}
+export interface CommandResponse {
+  command: string;
+  installed: boolean;
+  steps: CommandStep[];
+  commandHash: string | null;
+  flags: string[];
+  appliedFlags: string[];
+  runs: CommandRunListItem[];
+  stepReach: StepReach[];
+  patterns: PatternFrequency[];
+  hashMarkers: CommandHashMarker[];
+  meta: { totalRuns: number; filteredRuns: number };
+}
+export interface CommandRunResponse {
+  run: CommandRun;
+  patterns: PatternFrequency[];
+  suggestions: SessionSuggestion[];
+  meta: { transcriptsPresent: number; transcripts: number; requestsAgedOut: boolean };
+}
+
 /** Every ten-session window with its suggestions, newest bucket first. */
 export interface SessionSuggestionsResponse {
   buckets: SessionBucket[];
@@ -425,6 +487,16 @@ export const getSessionNodeTexts = (id: string) =>
   get<SessionNodeTextsResponse>(`/api/sessions/node-text?id=${encodeURIComponent(id)}`);
 export const getSessionBreakdown = (id: string) =>
   get<SessionBreakdownResponse>(`/api/sessions/breakdown?id=${encodeURIComponent(id)}`);
+export const getCommands = () => get<CommandsResponse>("/api/commands");
+/** `flags` narrows which runs are aggregated; it never splits the command into variants. */
+export const getCommand = (command: string, flags: readonly string[] = []) => {
+  const params = new URLSearchParams({ name: command });
+  if (flags.length) params.set("flags", flags.join(","));
+  return get<CommandResponse>(`/api/commands/command?${params.toString()}`);
+};
+export const getCommandRun = (threadId: string) =>
+  get<CommandRunResponse>(`/api/commands/run?id=${encodeURIComponent(threadId)}`);
+
 /** Every ten-session window, recomputed server-side on each load — this is the backfill. */
 export const getSessionSuggestions = () => get<SessionSuggestionsResponse>("/api/sessions/suggestions");
 export const getSessionSuggestionBucket = (index: number) =>

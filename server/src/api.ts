@@ -61,9 +61,21 @@ import {
   type UsageLimitsSnapshot,
   type WithheldReport,
   PROXY_FILTER_INVENTORY,
+  filterRunsByFlags,
+  patternFrequency,
+  runTotals,
+  stepReach,
+  summarizeCommands,
+  type CommandPattern,
+  type CommandRun,
+  type CommandStep,
+  type CommandSummary,
   type FiltersResponse,
+  type PatternFrequency,
+  type StepReach,
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
+import { listInstalledCommands, readCommandRuns } from "./command-runs.js";
 import { readArchivedDay, readRequestBody, readSidecars, shiftDay, today } from "./logs.js";
 import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
 import { loadLiveUsage } from "./usage-live.js";
@@ -1027,4 +1039,201 @@ export async function buildHooksPlugins(
  */
 export function buildFilters(now: Date = new Date()): FiltersResponse {
   return { generatedAt: now.toISOString(), filters: PROXY_FILTER_INVENTORY };
+}
+
+export interface CommandsResponse {
+  commands: CommandSummary[];
+  meta: { commandsDir: string; storePath: string; runs: number; installed: number };
+}
+
+/**
+ * The `/commands` index. Rows come from the installed catalogue unioned with every
+ * command the store has runs for, so a command that a `/sync` removed keeps its history
+ * instead of taking it off the page.
+ */
+export async function buildCommands(logDir: string, commandsDir: string): Promise<CommandsResponse> {
+  const [installed, runs] = await Promise.all([listInstalledCommands(commandsDir), readCommandRuns(logDir)]);
+  return {
+    commands: summarizeCommands(installed, runs),
+    meta: {
+      commandsDir,
+      storePath: `${logDir}/commands/runs.jsonl`,
+      runs: runs.length,
+      installed: installed.length,
+    },
+  };
+}
+
+/**
+ * One run as the command page lists it: everything the scatter and the run list need,
+ * without the per-turn series or the per-step breakdown, which only the detail view
+ * reads and which dominate a record's size.
+ */
+export interface CommandRunListItem {
+  threadId: string;
+  command: string;
+  args: string;
+  flags: string[];
+  prompt: string;
+  commandHash: string | null;
+  model: string | null;
+  started: string | null;
+  ended: string | null;
+  outcome: CommandRun["outcome"];
+  interruption: CommandRun["interruption"];
+  reachedEnd: boolean;
+  totals: CommandRun["totals"];
+  /** Which rules fired, for the run list's badges. The details stay on the run page. */
+  patterns: CommandPattern["id"][];
+  /** The furthest declared step anything was attributed to, or null. */
+  lastStep: string | null;
+  meta: CommandRun["meta"];
+}
+
+/** Where the command file's content changed between two consecutive runs — the `/sync` marker. */
+export interface CommandHashMarker {
+  /** The first run that ran under the new hash. */
+  at: string;
+  hash: string | null;
+  previous: string | null;
+}
+
+export interface CommandResponse {
+  command: string;
+  installed: boolean;
+  /** The catalogue as installed now — the spine the funnel and the stacked bar use. */
+  steps: CommandStep[];
+  commandHash: string | null;
+  /** Every flag any run used, for the facet control. Unfiltered by the current facet. */
+  flags: string[];
+  /** The facet actually applied. */
+  appliedFlags: string[];
+  runs: CommandRunListItem[];
+  stepReach: StepReach[];
+  patterns: PatternFrequency[];
+  hashMarkers: CommandHashMarker[];
+  meta: { totalRuns: number; filteredRuns: number };
+}
+
+/**
+ * One command's page: its runs as scatter points, the drop-off funnel and stacked
+ * tokens-by-step over them, and how often each pattern fires across them.
+ *
+ * `flags` narrows which runs are aggregated — the facet answers "is `--sub` cheaper than
+ * inline?" without splitting the command into per-flag variants, so the flag list and
+ * the hash markers are always computed over *all* of the command's runs. Throws a
+ * labelled error the server maps to 404 when neither the catalogue nor the store knows
+ * the name.
+ */
+export async function buildCommand(
+  logDir: string,
+  commandsDir: string,
+  command: string,
+  flags: readonly string[] = [],
+): Promise<CommandResponse> {
+  const [installed, allRuns] = await Promise.all([listInstalledCommands(commandsDir), readCommandRuns(logDir)]);
+  const spec = installed.find((c) => c.command === command);
+  const own = allRuns
+    .filter((r) => r.command === command)
+    .sort((a, b) => (a.started ?? "").localeCompare(b.started ?? ""));
+  if (!spec && own.length === 0) throw new Error(`command not found: ${command}`);
+
+  // The current catalogue is the stable spine; fall back to the newest run's snapshot so
+  // an uninstalled command still renders against the steps it actually ran under.
+  const steps = spec?.steps ?? own[own.length - 1]?.steps ?? [];
+  const filtered = filterRunsByFlags(own, flags);
+
+  const markers: CommandHashMarker[] = [];
+  let previous: string | null | undefined;
+  for (const run of own) {
+    const hash = run.commandHash ?? null;
+    if (previous !== undefined && hash !== previous && run.started) {
+      markers.push({ at: run.started, hash, previous });
+    }
+    previous = hash;
+  }
+
+  return {
+    command,
+    installed: !!spec,
+    steps,
+    commandHash: spec?.commandHash ?? null,
+    flags: [...new Set(own.flatMap((r) => r.flags ?? []))].sort(),
+    appliedFlags: [...flags],
+    runs: filtered.map(toListItem).reverse(), // newest first for the list; the scatter re-sorts
+    stepReach: stepReach(steps, filtered),
+    patterns: patternFrequency(filtered),
+    hashMarkers: markers,
+    meta: { totalRuns: own.length, filteredRuns: filtered.length },
+  };
+}
+
+function toListItem(run: CommandRun): CommandRunListItem {
+  const reached = (run.stepStats ?? []).filter((s) => s.step !== null && s.reached);
+  return {
+    threadId: run.threadId,
+    command: run.command,
+    args: run.args ?? "",
+    flags: run.flags ?? [],
+    prompt: run.prompt ?? "",
+    commandHash: run.commandHash ?? null,
+    model: run.model ?? null,
+    started: run.started ?? null,
+    ended: run.ended ?? null,
+    outcome: run.outcome ?? "interrupted",
+    interruption: run.interruption ?? null,
+    reachedEnd: !!run.reachedEnd,
+    totals: runTotals(run),
+    patterns: [...new Set((run.patterns ?? []).map((p) => p.id))],
+    lastStep: reached[reached.length - 1]?.step ?? null,
+    meta: run.meta ?? { turnsUnmapped: 0, nodes: 0, attributed: 0, anchored: 0 },
+  };
+}
+
+export interface CommandRunResponse {
+  run: CommandRun;
+  /** How often this run's patterns fire across the rest of the command's runs. */
+  patterns: PatternFrequency[];
+  /**
+   * The existing per-session suggestions covering this run's window, as prose-level
+   * diagnosis. Empty once the transcripts behind them have aged out — the run record
+   * survives them, and this deliberately does not.
+   */
+  suggestions: SessionSuggestion[];
+  meta: {
+    /** Transcripts of this run's family still on disk — the graph can only draw these. */
+    transcriptsPresent: number;
+    transcripts: number;
+    /** True when no captured request survives, so the delta inspector must say so. */
+    requestsAgedOut: boolean;
+  };
+}
+
+/**
+ * One run's detail: the full record, its patterns' cross-run frequency, and the
+ * suggestions engine's read on the sessions it spans. Throws a labelled error the
+ * server maps to 404 when the store has no such run.
+ */
+export async function buildCommandRun(logDir: string, threadId: string): Promise<CommandRunResponse> {
+  const runs = await readCommandRuns(logDir);
+  const run = runs.find((r) => r.threadId === threadId);
+  if (!run) throw new Error(`command run not found: ${threadId}`);
+
+  const family = new Set(run.threadIds ?? [run.threadId]);
+  const sessions = await listSessionGraphs(logDir);
+  const present = sessions.filter((s) => family.has(s.threadId));
+  const buckets = present.length === 0 ? [] : sessionSuggestionBuckets(sessions);
+
+  return {
+    run,
+    patterns: patternFrequency(runs.filter((r) => r.command === run.command)),
+    suggestions: buckets
+      .filter((b) => b.threadIds.some((id) => family.has(id)))
+      .flatMap((b) => b.suggestions),
+    meta: {
+      transcriptsPresent: present.length,
+      transcripts: family.size,
+      requestsAgedOut: (run.turns ?? []).length === 0,
+    },
+  };
 }

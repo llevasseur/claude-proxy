@@ -19,6 +19,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Puzzle,
+  TerminalSquare,
   TrendingUp,
   Wrench,
   Zap,
@@ -27,6 +28,9 @@ import { useEffect } from "react";
 import { HealthBadge } from "./components/HealthBadge";
 import { useRailCollapsed } from "./useRailCollapsed";
 import { AdvicePage } from "./routes/advice";
+import { CommandDetailPage } from "./routes/command-detail";
+import { CommandRunPage } from "./routes/command-run";
+import { CommandsPage } from "./routes/commands";
 import { ContextDetailPage } from "./routes/context-detail";
 import { ContextMessagePage } from "./routes/context-message";
 import { ContextToolPage } from "./routes/context-tool";
@@ -64,6 +68,7 @@ const STATIONS = [
   { to: "/sessions/graph", label: "Live graph", hint: "sessions", exact: false, icon: Network },
   { to: "/jobs", label: "Jobs", hint: "device", exact: false, icon: HardDrive },
   { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false, icon: Puzzle },
+  { to: "/commands", label: "Commands", hint: "per step", exact: false, icon: TerminalSquare },
   { to: "/advice", label: "Advice", hint: "coaching", exact: false, icon: Lightbulb },
 ] as const;
 
@@ -299,6 +304,24 @@ const suggestionBucketRoute = createRoute({
   component: SuggestionBucketPage,
   staticData: { title: "Session suggestions" },
 });
+const commandsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/commands",
+  component: CommandsPage,
+  staticData: { title: "Commands" },
+});
+const commandDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/commands/$command",
+  component: CommandDetailPage,
+  staticData: { title: "Command" },
+});
+const commandRunRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/commands/$command/$threadId",
+  component: CommandRunPage,
+  staticData: { title: "Command run" },
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -324,6 +347,9 @@ const routeTree = rootRoute.addChildren([
   hooksPluginsRoute,
   adviceRoute,
   suggestionBucketRoute,
+  commandsRoute,
+  commandDetailRoute,
+  commandRunRoute,
 ]);
 
 // `scrollRestoration` snapshots scroll per history entry, so a Back returns to the offset it

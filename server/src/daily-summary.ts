@@ -64,8 +64,27 @@ function render({ digest: d, advice, meta }: SummaryResponse): string {
   return lines.join("\n");
 }
 
+/**
+ * Distil any command runs still visible into `logs/commands/runs.jsonl` before the day
+ * rolls. The dashboard reconciles on every read, but only while it is running — this is
+ * the backstop for a machine whose server is off, and it has to happen before the raw
+ * transcripts and request bodies age out. Same idempotent pass, so it costs nothing when
+ * the dashboard already did it. Never fatal: the summary is the job's actual output.
+ */
+async function reconcileRuns(logDir: string): Promise<void> {
+  try {
+    const { reconcileCommandRuns } = await import("./command-runs.js");
+    const { written, runs } = await reconcileCommandRuns(logDir);
+    if (written > 0) console.log(`[daily-summary] command runs: ${written} record(s) written, ${runs} stored\n`);
+  } catch (err) {
+    console.error(`[daily-summary] command runs skipped: ${(err as Error).message}`);
+  }
+}
+
 const dateArg = process.argv[2];
-buildSummary(resolveLogDir(), dateArg)
+const logDir = resolveLogDir();
+reconcileRuns(logDir)
+  .then(() => buildSummary(logDir, dateArg))
   .then((summary: SummaryResponse) => {
     console.log(render(summary));
   })
