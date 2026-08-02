@@ -32,7 +32,7 @@ const OUTCOME_ORDER: CommandRunOutcome[] = ["completed", "interrupted", "errored
 
 /** The unattributed bucket's colour — deliberately distinct from any step's. */
 const UNATTRIBUTED_COLOR = "var(--faint)";
-/** Step colours, cycled. Steps are few, so the cycle rarely wraps. */
+/** Step colours, cycled. */
 const STEP_COLORS = ["var(--signal)", "var(--good)", "var(--amber)", "var(--violet)", "var(--coral)"];
 
 function stepColor(step: string | null, index: number): string {
@@ -42,11 +42,9 @@ function stepColor(step: string | null, index: number): string {
 /**
  * One command's runs — cost and shape over time, where runs stop, and what goes wrong.
  *
- * The scatter is the primary view because the question is distributional: how much a run
- * of this command costs is not one number, it is a spread, and the spread is the finding.
- * Nothing here is normalized by files touched or diff size — a cheap run that did nothing
- * and a cheap run that shipped a feature both plot at the same y, and that is the honest
- * rendering of what the store knows.
+ * The scatter is the primary view because the question is distributional: what a run of
+ * this command costs is a spread, not one number, and the spread is the finding. Nothing
+ * here is normalized by files touched or diff size.
  */
 export function CommandDetailPage() {
   const { command } = useParams({ from: "/commands/$command" });
@@ -531,8 +529,7 @@ function RunList({
 }
 
 /**
- * A flag as it was typed. The store keeps the bare name so `-d` and `--d` face together;
- * the dashes come back here because a lone "d" in a filter control is unreadable.
+ * A flag as it was typed. The store keeps the bare name so `-d` and `--d` face together.
  */
 export function fmtFlag(flag: string): string {
   return flag.length === 1 ? `-${flag}` : `--${flag}`;

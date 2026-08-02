@@ -76,8 +76,6 @@ export interface RequestFacts {
  *
  * This is what makes the reconcile pass incremental rather than quadratic: a body is
  * opened at most once, ever, whether or not it turned out to belong to a command run.
- * Without it every pass re-opened every request that mapped outside a run family — the
- * majority — which is both slow and, because the pass runs on every log change, constant.
  *
  * It also outlives the bodies. `.request.txt` files rotate out within a day, so an entry
  * recorded while the body existed is the only remaining way to place that request's
@@ -248,9 +246,9 @@ export async function reconcileCommandRuns(
   const byCommand = new Map(installed.map((c) => [c.command, c]));
   const priorByThread = new Map(existing.map((r) => [r.threadId, r]));
 
-  // 1. Which sessions are runs? Any whose opening prompt carries the command envelope.
-  //    A nested `/command` that got its own session is a run in its own right, and also
-  //    still rolls up into its parent — both readings are wanted.
+  // A run is any session whose opening prompt carries the command envelope. A nested
+  // `/command` with its own session is a run in its own right and still rolls up into
+  // its parent — both readings are wanted.
   const roots: { graph: SessionGraph; envelope: NonNullable<ReturnType<typeof parseCommandEnvelope>> }[] = [];
   for (const graph of graphs) {
     const envelope = parseCommandEnvelope(await readRootPrompt(logDir, graph.threadId));
@@ -258,10 +256,9 @@ export async function reconcileCommandRuns(
   }
   if (roots.length === 0) return { written: 0, runs: existing.length, requestsRead: 0, capped: false };
 
-  // 2. One sidecar sweep for every run, from the earliest run's reporting day, narrowed
-  //    to the session ids the runs and their subagents were captured under. A session id
-  //    is on the sidecar itself, so this rules out the bulk of the day's requests before
-  //    any body is opened.
+  // One sidecar sweep for every run, from the earliest run's reporting day, narrowed to
+  // the session ids the runs and their subagents were captured under. The session id is
+  // on the sidecar, so this rules out most of the day's requests before any body opens.
   const runSessionIds = new Set<string>();
   for (const { graph } of roots) {
     for (const threadId of familyOf(graph.threadId, byThread)) {
@@ -277,8 +274,8 @@ export async function reconcileCommandRuns(
     .filter(isAuditSidecar)
     .filter((s) => sidecarFile(s) !== null && s.session?.sessionId && runSessionIds.has(s.session.sessionId));
 
-  // 3. Open only bodies the index has never seen. Newest first, so a live run's latest
-  //    turns land first if the cap bites.
+  // Open only bodies the index has never seen. Newest first, so a live run's latest
+  // turns land first if the cap bites.
   const pending = audits
     .filter((s) => !(sidecarFile(s)! in index.entries))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
@@ -302,7 +299,7 @@ export async function reconcileCommandRuns(
   }
   if (requestsRead > 0) await writeRequestIndex(logDir, index);
 
-  // 4. Build a record per run and append the ones that changed.
+  // Build a record per run and append the ones that changed.
   const written: CommandRun[] = [];
   for (const { graph, envelope } of roots) {
     const spec = byCommand.get(envelope.command);

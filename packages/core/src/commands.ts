@@ -81,13 +81,9 @@ const NOT_LITERAL_RE = /[<>…|;&*"']/;
 const TOOL_SPAN_RE = /^[A-Z][a-z]+(?:[A-Z][a-z]+)*$/;
 
 /**
- * Tools every step can use, so naming one marks nothing.
- *
- * Command files mention these constantly as advice on *how* to work ("read each file
- * immediately before `Edit`"), not as the act of a particular step. Taken as anchors
- * they swamp everything else — `Edit` alone matched 211 calls across the `/task` runs
- * in the log window, which would have bound every edit anywhere, `/clean`'s included,
- * to whichever step happened to mention the tool.
+ * Tools every step can use, so naming one marks nothing. Command files mention these
+ * as advice on *how* to work rather than as the act of a particular step; taken as
+ * anchors they swamp everything else.
  */
 const AMBIENT_TOOLS = new Set([
   "Read", "Write", "Edit", "NotebookEdit", "Bash", "Grep", "Glob", "Skill", "Agent",
@@ -97,11 +93,9 @@ const AMBIENT_TOOLS = new Set([
 /**
  * Turn one code span into an artifact, or null when it names nothing invocable.
  *
- * A shell line is cut at its first flag or placeholder, because that prefix is the
- * stable part — `my-command-tools worktree begin --branch <name>` is invoked with a
- * real branch name, so only `my-command-tools worktree begin` can be matched literally.
- * What survives must still be two words, which is what keeps bare nouns like `path`,
- * `base` and `main` — of which these files are full — out of the vocabulary.
+ * A shell line is cut at its first flag or placeholder, the prefix being the only part
+ * invoked literally. What survives must still be two words, which keeps the bare nouns
+ * these files are full of out of the vocabulary.
  */
 function toArtifact(raw: string): StepArtifact | null {
   const span = raw.trim().replace(/[.,:;]+$/, "");
@@ -291,16 +285,14 @@ export interface StepAttribution {
 const STEP_MARKER_RE = /\bSTEP\s+(\d+(?:\.\d+)?)\s*\/\s*\d+/;
 
 /**
- * The agent naming a step in prose. A digit is required, which is what rejects the
- * false friends that otherwise dominate: "as its own step", "the obvious next step",
- * "then the merge steps" — all stepless.
+ * The agent naming a step in prose. A digit is required, which rejects the stepless
+ * false friends that otherwise dominate.
  */
 const STEP_NARRATION_RE = /\bstep\s+(\d+(?:\.\d+)?)\b/i;
 
 /**
  * How far into a line a step mention still reads as *entering* that step rather than
- * referring to it. Real openers are short and lead with it — "Step 1 — creating a
- * worktree", "Now step 2, the PR." — while references trail the sentence.
+ * referring to it. Openers lead with it; references trail the sentence.
  */
 const ENTERING_WINDOW = 48;
 
@@ -339,14 +331,11 @@ function callMatches(sig: string, lower: string, artifact: StepArtifact): boolea
 }
 
 /**
- * The step a call implies, from the artifacts each step's body prescribes:
- * `Skill(skill=pr)` belongs to the step that says to run `/pr`, and
- * `Bash(command=my-command-tools verify …)` to the step that says to verify.
+ * The step a call implies, from the artifacts each step's body prescribes.
  *
- * The **longest** matching artifact wins, which is what resolves the overlaps these
- * files are full of — one step naming `worktree begin` in passing does not outrank the
- * step that spells out `my-command-tools worktree begin`. A tie across two steps is
- * genuinely ambiguous and anchors nothing.
+ * The **longest** matching artifact wins, which resolves the overlaps these files are
+ * full of: a step naming something in passing does not outrank the step that spells it
+ * out. A tie across two steps is genuinely ambiguous and anchors nothing.
  */
 function boundaryAnchor(tool: string | null, steps: readonly CommandStep[]): Anchor | null {
   if (!tool) return null;
