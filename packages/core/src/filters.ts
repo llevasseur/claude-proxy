@@ -49,8 +49,8 @@ export const PROXY_FILTER_INVENTORY: ProxyFilterEntry[] = [
     id: "task-tools",
     label: "Task-tools nudge",
     reason:
-      "A harness-injected reminder to use TaskCreate/TaskUpdate. No CLI setting suppresses it, and a CLAUDE.md instruction doesn't reliably stop it — so it can only be removed at the proxy.",
+      "A harness-injected note that the task tools haven't been used recently, closing with an invitation to ignore it. No CLI setting suppresses it, and a CLAUDE.md instruction doesn't reliably stop it — so it can only be removed at the proxy.",
     mechanism:
-      "Matching text is removed from message content before forwarding; a message left empty is dropped.",
+      "A regex anchored on the note's opening and closing phrases is cut from every text block in `messages`, and the blank-line run it leaves behind is collapsed. A block emptied by the cut is dropped, and so is a message left with no content. Text nothing matched is forwarded byte-for-byte.",
   },
 ];
