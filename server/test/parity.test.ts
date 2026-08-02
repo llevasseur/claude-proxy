@@ -259,8 +259,8 @@ async function linkInto(from: string, to: string): Promise<void> {
       try {
         await copyFile(src, dest);
       } catch {
-        // Vanished between the listing and the link — retention, or the
-        // summary job moving it. It is simply not part of this snapshot.
+        // Vanished between the listing and the link, so it is not part of
+        // this snapshot.
       }
     }
   }
@@ -269,17 +269,15 @@ async function linkInto(from: string, to: string): Promise<void> {
 /**
  * A frozen copy of the real log directory.
  *
- * The live directory is written to continuously by the proxy, so replaying
- * against it directly is a race: {@link runCase} reads the file side first, and
- * a sidecar landing before the DB side reads would show up as a one-request
- * mismatch that has nothing to do with the substrate. Freezing the listing is
- * what makes this test mean something.
+ * The proxy writes to the live directory continuously, so replaying against it
+ * directly is a race: {@link runCase} reads the file side first, and a sidecar
+ * landing before the DB side reads shows up as a one-request mismatch that has
+ * nothing to do with the substrate.
  *
  * Hardlinks, so the snapshot costs directory entries rather than the corpus. It
- * carries the audit sidecars and `usage-live.json` — no wired route reads the
- * `.md` / `.request.txt` bodies, and `blob_evicted` is not part of any wired
- * route's response. A later slice that wires a blob-reading route has to widen
- * {@link SNAPSHOT_SUFFIXES}.
+ * carries the audit sidecars and `usage-live.json`; no wired route reads the
+ * `.md` / `.request.txt` bodies. A later slice that wires a blob-reading route
+ * has to widen {@link SNAPSHOT_SUFFIXES}.
  */
 async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
   const snap = await mkdtemp(path.join(tmpdir(), "parity-real-"));

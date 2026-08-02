@@ -885,8 +885,7 @@ server.listen(PORT, HOST, async () => {
           (shadowEnabled() ? " (shadow comparison on)" : " (set SHADOW_DB=1 to compare it against the files)")
       : "[claude-proxy-server] sqlite substrate unavailable — serving from the log files only",
   );
-  // Release the watcher and the WAL handle on the way out; the process had no
-  // signal handler before, so the default terminate is preserved.
+  // Release the watcher and the WAL handle on the way out.
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.once(signal, () => {
       stopSubstrate();
