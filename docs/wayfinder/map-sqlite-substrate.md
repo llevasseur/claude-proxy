@@ -113,21 +113,42 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
       omitting them would have made both sides read `null` and the route's parity
       vacuous.*
 
-- [ ] **Slice 5 — Graduation.**
+- [x] **Slice 5 — Graduation.**
       Parity green across **all** routes for **every** archived day. Only then
       flip reads to DB-backed by default, with the file scan retained as a
       fallback. This is the slice where the substrate starts doing real work,
       and it is still reversible: the files are untouched and the fallback is
       one flag away.
-      *Known blocker to resolve here, from slice 2: `dbSource.readSession`
-      returns row-derived `meta` / `bytes` / `modified` alongside a freshly-read
-      `content`. A transcript appended to since the last ingest therefore yields
+      *Landed as one flag and one resolver: `DB_READS=0` puts every route back
+      on the directory scan, and `readSource()` in `server/src/db/runtime.ts` is
+      the only place that chooses, so no endpoint can drift onto a different
+      backing than its neighbours. It also falls back on its own when the
+      substrate never opened. The known blocker below was settled by re-`stat`ing:
+      `dbSource.readSession` now reads `content` and `stat` together and lets the
+      file's own size and mtime be the authority, using the row's metadata only
+      when its watermark matches exactly — the same equality `ingest` uses. A row
+      that is behind, or missing entirely, re-parses the content instead, which
+      is exactly what the file reader would have answered; the cost is that
+      `/api/sessions/session` stops being a detector of a missed transcript, so
+      `/api/sessions` (replayed whole, length-sensitive) is what catches that
+      now. Shadow mode became the side that did **not** serve — the files check
+      the substrate by default, the substrate checks the files under `DB_READS=0`
+      — so it still means something after the flip. `applySuggestionStatus` got
+      the non-default caller slice 4's review flagged: the POST handler passes
+      `readSource()`, so the response's derived half cannot describe a different
+      corpus than the GET beside it, while the flags themselves stay a JSON file.
+      It stays out of `PARITY_ROUTES` — it is a write, and replaying it against
+      the real-corpus snapshot would write through a hardlinked
+      `suggestion-status.json` — and is covered instead by a both-backings
+      agreement test on the synthetic corpus.*
+      *Known blocker resolved here, from slice 2: `dbSource.readSession`
+      returned row-derived `meta` / `bytes` / `modified` alongside a freshly-read
+      `content`. A transcript appended to since the last ingest therefore yielded
       an internally inconsistent object — `bytes` disagreeing with the content's
-      length, `meta` trailing it. Reads being file-backed makes that harmless
-      today, and the parity harness cannot catch it by construction, because it
-      snapshots the corpus precisely to freeze those appends. Flipping this
-      route to DB-backed reads has to settle it: either serve the whole answer
-      from one read, or re-`stat` and re-parse when the row is behind the file.*
+      length, `meta` trailing it. Reads being file-backed made that harmless, and
+      the parity harness could not catch it by construction, because it snapshots
+      the corpus precisely to freeze those appends. It has its own test now,
+      which does the append the harness exists to prevent.*
 
 - [ ] **Slice 6 — Cutover. DELIBERATELY UNSPECIFIED.**
       The shape is known: the proxy writes rows plus content-addressed blobs at

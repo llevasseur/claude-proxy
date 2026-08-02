@@ -104,7 +104,10 @@ cutover.
 - The project now requires Node 22. That is the only thing a contributor has to
   change about their machine.
 - Reads stay file-backed until parity is green for a route, so the migration is
-  reversible per route rather than as one flip.
+  reversible per route rather than as one flip. Slice 5 has since flipped them:
+  the substrate serves by default and `DB_READS=0` puts every route back on the
+  scan. That is still reversible in the sense this decision meant — the log
+  files are untouched, so the fallback needs no migration to undo.
 - Slice 6 — the proxy writing rows and content-addressed blobs, authored state
   moving in, `/revive` taught the DB — is the irreversible step and is
   deliberately left unspecified until slice 5 proves the schema. See
