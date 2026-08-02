@@ -89,7 +89,7 @@ export function CommandsPage() {
   );
 }
 
-/** The columns `CommandsTable` draws, so the placeholder rows line up with the real ones. */
+/** The columns `CommandsTable` draws. */
 const COMMAND_COLUMNS: SkeletonColumn[] = [
   { cell: "42%" },
   { className: "num", cell: "34%" },

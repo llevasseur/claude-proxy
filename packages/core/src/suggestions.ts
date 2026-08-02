@@ -589,10 +589,7 @@ export interface BucketBreakdownSummary {
   maxRealInput: number;
   /** Regions and tool schemas, largest average contribution first. */
   patterns: BreakdownPattern[];
-  /**
-   * The requests `avgToolsBytes` was averaged over, heaviest schemas first, capped at
-   * 10 — a whole-request claim has no single pattern to borrow sources from.
-   */
+  /** The requests `avgToolsBytes` was averaged over, heaviest schemas first, capped at 10. */
   toolsSources: { threadId: string; file: string; bytes: number }[];
 }
 

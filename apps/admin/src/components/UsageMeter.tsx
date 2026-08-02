@@ -20,9 +20,8 @@ const STATUS_LABEL: Record<UsagePaceStatus, string> = {
 };
 
 /**
- * An inferred ceiling can speak only to the busiest window on record, not the limit —
- * so passing it is new territory rather than a refusal. `aggressive` still projects
- * *past* the record by reset, which `on-pace` does not, and says so.
+ * An inferred ceiling can speak only to the busiest window on record, not the limit.
+ * `aggressive` projects *past* that record by reset; `on-pace` does not.
  */
 const LEARNED_STATUS_LABEL: Record<UsagePaceStatus, string> = {
   safe: "Below record",

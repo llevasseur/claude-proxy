@@ -311,7 +311,7 @@ const server = http.createServer(async (req, res) => {
 
   // Everything outside the write allowlist is a read, and the open `*` CORS it answers
   // under is only safe while it stays one. The allowlist gates its own methods inside
-  // `servePost`, where a non-POST is refused under the origin-checked CORS instead.
+  // `servePost`, under the origin-checked CORS instead.
   if (req.method !== "GET" && !WRITE_ROUTES.has(url.pathname)) {
     send(res, 405, { error: `method not allowed: ${req.method}` }, { ...CORS, allow: "GET, OPTIONS" });
     return;
@@ -694,8 +694,8 @@ const server = http.createServer(async (req, res) => {
       // as read-only as its neighbours; the POST writes a file, so it goes through the
       // origin-checked write CORS the chat routes use.
       case SUGGESTION_STATUS_ROUTE: {
-        // Anything that isn't the GET goes through the write path, so a method that is
-        // neither is refused there rather than falling through to the list.
+        // Anything that isn't the GET goes through the write path, which refuses a
+        // method that is neither rather than letting it fall through to the list.
         if (req.method !== "GET") {
           await servePost(
             req,

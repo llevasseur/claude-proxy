@@ -603,9 +603,8 @@ export function requestsToScan(requests: readonly ContextEntry[]): ContextEntry[
   const samples = MAX_ERROR_REQUEST_SCANS - 1;
   for (let i = 1; i <= samples; i += 1) take(byTime[Math.round((i / samples) * (byTime.length - 1))]!);
 
-  // A set that fits the budget leaves the walk landing on the same body twice, so the
-  // rest of the timeline fills the spare reads rather than going unopened. The order
-  // stays peak-first: a small set is scanned in the same shape as a large one.
+  // A set inside the budget repeats samples, so the rest of the timeline fills the
+  // spare reads. Order stays peak-first, the same shape a large set is scanned in.
   if (requests.length <= MAX_ERROR_REQUEST_SCANS) for (const entry of byTime) take(entry);
   return picked;
 }
@@ -814,9 +813,8 @@ export interface SuggestionStatusUpdateResponse {
 }
 
 /**
- * Set key for a bucket/id pair. The bucket is a number and the id has no control
- * characters, so a unit separator cannot appear in either half and the key collides
- * only on a genuinely equal pair.
+ * Set key for a bucket/id pair. Neither a number nor an id can contain a unit
+ * separator, so two equal keys mean a genuinely equal pair.
  */
 const suggestionKey = (v: { bucket: number; id: string }): string => `${v.bucket}\u001f${v.id}`;
 

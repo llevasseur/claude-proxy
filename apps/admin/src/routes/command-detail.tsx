@@ -97,7 +97,7 @@ export function CommandDetailPage() {
   );
 }
 
-/** The scatter's own fixed height, so its placeholder box is exactly as tall. */
+/** The scatter's fixed height, read by the chart and its placeholder alike. */
 const SCATTER_HEIGHT = 300;
 
 const STEP_COLUMNS: SkeletonColumn[] = [
@@ -125,7 +125,7 @@ const RUN_COLUMNS: SkeletonColumn[] = [
   { className: "num", cell: "40%" },
 ];
 
-/** Everything `CommandBody` lays out, in the same order — the flags card is optional, so it is left out. */
+/** `CommandBody`'s cards in the order it lays them out; the optional flags card is not reserved. */
 function CommandDetailSkeleton() {
   return (
     <>

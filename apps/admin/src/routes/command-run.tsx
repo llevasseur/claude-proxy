@@ -90,9 +90,8 @@ const WASTE_COLUMNS: SkeletonColumn[] = [
 ];
 
 /**
- * `RunBody`'s spine: the stat row, the prompt, the attribution note, the step tree and
- * the waste table. The turn inspector and the patterns card only appear once there is
- * something to show, so neither is reserved.
+ * `RunBody`'s spine: stats, the prompt, the attribution note, the step tree, the waste
+ * table. The turn inspector and the patterns card are conditional, so neither is reserved.
  */
 function RunSkeleton() {
   return (

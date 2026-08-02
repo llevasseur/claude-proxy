@@ -136,11 +136,7 @@ export function JobDetailPage() {
   );
 }
 
-/**
- * The page down to the file browser. The tree's column width is fixed by `.jobfiles`,
- * so reserving rows on the left and a viewer on the right keeps the split from
- * snapping into place once the walk lands.
- */
+/** The page down to the file browser, including both sides of the `.jobfiles` split. */
 function JobDetailSkeleton() {
   return (
     <>

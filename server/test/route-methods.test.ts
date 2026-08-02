@@ -1,6 +1,6 @@
 // The read routes answer under an open `*` CORS, which is only safe while they stay
-// reads. These drive the real server over a socket rather than a handler stub, because
-// the gate lives in the request dispatch and a stub would not exercise it.
+// reads. The gate lives in the request dispatch, so these drive the real server over a
+// socket rather than a handler stub.
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -66,7 +66,7 @@ describe("read routes", () => {
 
   it("leaves the write allowlist to its own origin check", async () => {
     // Not 405: the write path owns this route's methods, and refuses a foreign origin
-    // under the origin-checked CORS instead of the read routes' `*`.
+    // under its own origin-checked CORS.
     const res = await fetch(`${BASE}/api/chat/sessions`, {
       method: "POST",
       headers: { origin: "http://evil.example" },

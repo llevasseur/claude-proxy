@@ -1,6 +1,6 @@
-// Which request bodies the errors page opens. The shape matters more than the count:
-// the biggest bodies cluster at the end of a run, so a size-ordered scan reads the
-// requests a compacted session has already dropped its early failures from.
+// Which request bodies the errors page opens. The biggest bodies cluster at the end of
+// a run, so a size-ordered scan reads only what a compacted session already dropped its
+// early failures from.
 import type { ContextEntry } from "@claude-proxy/core";
 import { describe, expect, it } from "vitest";
 import { requestsToScan } from "../src/api.js";
@@ -36,8 +36,8 @@ describe("requestsToScan", () => {
   it("leads a small set with the peak, then walks the timeline", () => {
     const picked = requestsToScan(growing(5)).map((e) => e.file);
 
-    // The same walk the general path takes: the peak, then evenly spaced samples, then
-    // the timeline fills whatever budget the walk's repeats left over.
+    // The general path's walk: the peak, evenly spaced samples, then the timeline
+    // filling whatever budget the walk's repeats left over.
     expect(picked).toEqual(["req-005", "req-002", "req-003", "req-004", "req-001"]);
   });
 
@@ -54,8 +54,8 @@ describe("requestsToScan", () => {
     // own dedupe spends one fewer read here.
     expect(picked.length).toBeLessThanOrEqual(6);
     expect(picked[0]?.file).toBe("req-200"); // the peak leads
-    // The samples reach back into the first quarter of the run, where a size-ordered
-    // scan of a growing session never gets — its top six are the last six.
+    // Back into the first quarter, where a size-ordered scan of a growing run never
+    // gets — its top six are the last six.
     const ranks = picked.slice(1).map((e) => Number(e.file.slice(4)));
     expect(Math.min(...ranks)).toBeLessThan(50);
   });
