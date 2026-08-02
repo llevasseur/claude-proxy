@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { runKey } from "@claude-proxy/core";
 import { applySuggestionStatus, buildSessionSuggestions } from "../src/api.js";
 import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from "../src/command-runs.js";
 import { ingest } from "../src/db/ingest.js";
@@ -587,7 +588,9 @@ describe("route parity over a synthetic corpus", () => {
     const fromDb = await dbSource(db).readCommandRuns(ctx.logDir);
     expect(fromDb).toEqual(await fileSource.readCommandRuns(ctx.logDir));
     expect(fromDb.find((r) => r.command === "task")?.ended).toBe(closed.ended);
-    const row = db.prepare("SELECT ended FROM command_run WHERE thread_id = ?").get(victim!.threadId) as {
+    // Keyed by the record's own id, which is what the table stores: a nested run
+    // shares its host's thread, so the thread id is not a key here.
+    const row = db.prepare("SELECT ended FROM command_run WHERE run_id = ?").get(runKey(victim!)) as {
       ended: string | null;
     };
     expect(row.ended).toBe(victim!.ended);
