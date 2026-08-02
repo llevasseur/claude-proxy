@@ -244,6 +244,16 @@ describe("summarizeBreakdownPatterns", () => {
     expect(constant.sources).toHaveLength(2);
   });
 
+  it("names the requests the schema-heavy claim was measured from", () => {
+    const summary = summarizeBreakdownPatterns([input("a", 400), input("b", 500)]);
+    expect(summary.toolsSources.map((s) => s.threadId)).toEqual(["b", "a"]); // heaviest first
+
+    const heavy = suggestFromBreakdown(summary).find((s) => s.id === "bucket-tool-schema-heavy")!;
+    expect(heavy.sources.map((s) => s.threadId)).toEqual(["b", "a"]);
+    expect(heavy.sources.map((s) => s.label)).toEqual(["b.request.txt", "a.request.txt"]);
+    expect(heavy.sources[0]!.sample).toBe("500 bytes of tool schemas");
+  });
+
   it("suggests nothing from an empty breakdown", () => {
     expect(suggestFromBreakdown(summarizeBreakdownPatterns([]))).toEqual([]);
   });

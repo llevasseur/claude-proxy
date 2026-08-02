@@ -8,6 +8,7 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { JobFileTree } from "../components/JobFileTree";
 import { JobFileView } from "../components/JobFileView";
 import { QueryState } from "../components/QueryState";
+import { Skeleton, SkeletonStats, SkeletonText, SkeletonTextCard } from "../components/Skeleton";
 import { fmtBytes, fmtInt, fmtLocalTs } from "../format";
 import { cwdLabel, StateBadge } from "./jobs";
 
@@ -63,7 +64,7 @@ export function JobDetailPage() {
         </div>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error}>
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<JobDetailSkeleton />}>
         {!job || !data ? null : (
           <>
             <div className="grid stats">
@@ -117,7 +118,11 @@ export function JobDetailPage() {
                   {selected === null ? (
                     <div className="empty">Pick a file to read it.</div>
                   ) : (
-                    <QueryState isLoading={fileQuery.isLoading} error={fileQuery.error}>
+                    <QueryState
+                      isLoading={fileQuery.isLoading}
+                      error={fileQuery.error}
+                      skeleton={<JobFileSkeleton />}
+                    >
                       {fileQuery.data && <JobFileView file={fileQuery.data.file} />}
                     </QueryState>
                   )}
@@ -128,6 +133,45 @@ export function JobDetailPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** The page down to the file browser, including both sides of the `.jobfiles` split. */
+function JobDetailSkeleton() {
+  return (
+    <>
+      <SkeletonStats count={4} />
+      <SkeletonTextCard title="Job" lines={5} />
+      <div className="card">
+        <div className="card-head">
+          <h2>Files</h2>
+          <Skeleton w="20%" />
+        </div>
+        <div className="jobfiles">
+          <div className="jobtree" aria-hidden>
+            <SkeletonText lines={9} />
+          </div>
+          <div className="jobfiles-view">
+            <JobFileSkeleton />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** `JobFileView`'s own frame: its head row, then the document it is about to show. */
+function JobFileSkeleton() {
+  return (
+    <div className="jobview" aria-hidden>
+      <div className="jobview-head">
+        <div className="jobview-title">
+          <Skeleton w="14rem" />
+        </div>
+        <Skeleton w="7rem" />
+      </div>
+      <SkeletonText lines={10} />
+    </div>
   );
 }
 
