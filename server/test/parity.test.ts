@@ -292,7 +292,9 @@ async function writeSettings(logDir: string): Promise<string> {
 async function flagOneSuggestion(logDir: string): Promise<void> {
   const { buckets } = await buildSessionSuggestions(logDir, fileSource);
   const bucket = buckets[0];
+  expect(bucket, "the corpus should hold a suggestion bucket to flag").toBeDefined();
   const suggestion = bucket?.suggestions[0];
+  expect(suggestion, "the corpus should hold a suggestion to flag").toBeDefined();
   if (!bucket || !suggestion) return;
   await updateSuggestionStatusStore(
     logDir,

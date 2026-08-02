@@ -75,6 +75,7 @@ const PROJECTS_DIR = resolveProjectsDir();
 const JOBS_DIR = resolveJobsDir();
 const USAGE_LIMITS = resolveUsageLimits();
 const COMMANDS_DIR = resolveCommandsDir();
+const SETTINGS_PATH = resolveSettingsPath();
 
 /**
  * Bring the command-run store up to date, then build.
@@ -910,10 +911,9 @@ const server = http.createServer(async (req, res) => {
       case "/api/withheld": {
         const now = new Date();
         const days = parseDays(url.searchParams.get("days"));
-        const settingsPath = resolveSettingsPath();
-        const withheld = await buildWithheld(LOG_DIR, days, settingsPath, now);
+        const withheld = await buildWithheld(LOG_DIR, days, SETTINGS_PATH, now);
         send(res, 200, withheld);
-        shadow("/api/withheld", withheld, (source) => buildWithheld(LOG_DIR, days, settingsPath, now, source));
+        shadow("/api/withheld", withheld, (source) => buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, source));
         return;
       }
       case "/api/hooks-plugins":
