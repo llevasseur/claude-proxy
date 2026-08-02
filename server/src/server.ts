@@ -47,7 +47,7 @@ import {
 import { resolveArchiveDir } from "./archive.js";
 import { reconcileCommandRuns, resolveCommandsDir } from "./command-runs.js";
 import { resolveDbPath } from "./db/open.js";
-import { startSubstrate, substrateSource } from "./db/runtime.js";
+import { startSubstrate, stopSubstrate, substrateSource } from "./db/runtime.js";
 import type { SidecarSource } from "./db/source.js";
 import { shadowCheck, shadowEnabled } from "./parity.js";
 import {
@@ -885,6 +885,14 @@ server.listen(PORT, HOST, async () => {
           (shadowEnabled() ? " (shadow comparison on)" : " (set SHADOW_DB=1 to compare it against the files)")
       : "[claude-proxy-server] sqlite substrate unavailable — serving from the log files only",
   );
+  // Release the watcher and the WAL handle on the way out; the process had no
+  // signal handler before, so the default terminate is preserved.
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.once(signal, () => {
+      stopSubstrate();
+      process.exit(0);
+    });
+  }
   const chat = await resolveChatConfig();
   console.log(
     `[claude-proxy-server] chat sends ${chat.model} through ${chat.baseUrl} over the ${chat.transport} transport` +

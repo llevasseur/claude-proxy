@@ -353,7 +353,12 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
 }
 
 /**
- * Ingest now, then again on every change under `logDir`, debounced.
+ * Ingest now, then again on every change to `logDir`, debounced.
+ *
+ * The watch is not recursive, so a file pruned inside `archive/<day>/` fires no
+ * event of its own; the next pass triggered by the live directory reconciles it.
+ * Archiving a day is visible either way, since the files leave the live
+ * directory.
  *
  * Returns a stop function. Passes never overlap: a change arriving mid-pass
  * schedules one more rather than starting a second writer.

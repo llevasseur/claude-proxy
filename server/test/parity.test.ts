@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdtemp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -235,31 +235,97 @@ describe("route parity over a synthetic corpus", () => {
   });
 });
 
+/** The inputs a wired route reads out of the log directory. */
+const SNAPSHOT_SUFFIXES = [".audit.json"];
+
+/** Live files a route reads that are not sidecars, and that the proxy rewrites. */
+const SNAPSHOT_FILES = ["usage-live.json"];
+
+/** Hardlink `from`'s snapshot-worthy files into `to`, copying across filesystems. */
+async function linkInto(from: string, to: string): Promise<void> {
+  let names: string[];
+  try {
+    names = await readdir(from);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (!SNAPSHOT_SUFFIXES.some((s) => name.endsWith(s)) && !SNAPSHOT_FILES.includes(name)) continue;
+    const src = path.join(from, name);
+    const dest = path.join(to, name);
+    try {
+      await link(src, dest);
+    } catch {
+      try {
+        await copyFile(src, dest);
+      } catch {
+        // Vanished between the listing and the link — retention, or the
+        // summary job moving it. It is simply not part of this snapshot.
+      }
+    }
+  }
+}
+
 /**
- * The same replay against this machine's real archive. Skipped where there is
- * no archive to replay — a clean clone, or CI.
+ * A frozen copy of the real log directory.
+ *
+ * The live directory is written to continuously by the proxy, so replaying
+ * against it directly is a race: {@link runCase} reads the file side first, and
+ * a sidecar landing before the DB side reads would show up as a one-request
+ * mismatch that has nothing to do with the substrate. Freezing the listing is
+ * what makes this test mean something.
+ *
+ * Hardlinks, so the snapshot costs directory entries rather than the corpus. It
+ * carries the audit sidecars and `usage-live.json` — no wired route reads the
+ * `.md` / `.request.txt` bodies, and `blob_evicted` is not part of any wired
+ * route's response. A later slice that wires a blob-reading route has to widen
+ * {@link SNAPSHOT_SUFFIXES}.
+ */
+async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
+  const snap = await mkdtemp(path.join(tmpdir(), "parity-real-"));
+  await linkInto(logDir, snap);
+  for (const day of days) {
+    const dest = path.join(snap, "archive", day);
+    await mkdir(dest, { recursive: true });
+    await linkInto(path.join(logDir, "archive", day), dest);
+  }
+  return snap;
+}
+
+/**
+ * The same replay against this machine's real archive, snapshotted first.
+ * Skipped where there is no archive to replay — a clean clone, or CI.
  */
 describe("route parity over the real logs/archive", () => {
-  const logDir = resolveLogDir();
   let days: string[] = [];
+  let snapshot: string | null = null;
   let db: DatabaseSync | null = null;
 
   beforeAll(async () => {
+    const logDir = resolveLogDir();
     days = await archivedDays(logDir);
     if (!days.length) return;
-    db = openDb(logDir);
-    await ingest(db, logDir);
+    snapshot = await snapshotLogs(logDir, days);
+    db = openDb(snapshot);
+    await ingest(db, snapshot);
   }, 300_000);
 
-  afterAll(() => {
+  afterAll(async () => {
     db?.close();
+    if (snapshot) await rm(snapshot, { recursive: true, force: true });
+  });
+
+  it("snapshots the archive it is about to replay", async () => {
+    if (!days.length || !snapshot) return;
+    expect(await archivedDays(snapshot)).toEqual(days);
+    expect((await stat(path.join(snapshot, "archive", days[0]!))).isDirectory()).toBe(true);
   });
 
   it("answers every wired route byte-identically for every archived day", async () => {
-    if (!days.length || !db) {
+    if (!days.length || !db || !snapshot) {
       expect(days).toEqual([]);
       return;
     }
-    expect(await mismatches({ logDir, limits: resolveUsageLimits({}) }, db)).toEqual([]);
+    expect(await mismatches({ logDir: snapshot, limits: resolveUsageLimits({}) }, db)).toEqual([]);
   }, 600_000);
 });
