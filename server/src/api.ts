@@ -70,6 +70,10 @@ import {
   runTotals,
   stepReach,
   summarizeCommands,
+  summarizeSystemPrompt,
+  parseSystemPromptText,
+  SYSTEM_PROMPT_MAX_BYTES,
+  type SystemPromptDoc,
   type CommandPattern,
   type CommandRun,
   type CommandStep,
@@ -118,6 +122,7 @@ import {
   type SessionSummary,
 } from "./sessions.js";
 import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
+import { readSystemPromptFile, resolveSystemPromptPath, writeSystemPromptFile } from "./system-prompt.js";
 import { readSuggestionStatusStore, resolveSuggestionStatusPath, updateSuggestionStatusStore } from "./suggestion-status.js";
 import { readLaunchAliases } from "./shell-rc.js";
 
@@ -1189,6 +1194,52 @@ export async function buildHooksPlugins(
     loadExpectations: hookPluginLoadExpectations(posture),
     launchRcPath: launchAliases.rcPath,
     launchRcReadable: launchAliases.rcReadable,
+  };
+}
+
+export interface SystemPromptResponse {
+  prompt: SystemPromptDoc;
+  /** Ceiling the save route enforces, so the editor can show it before a refusal. */
+  maxBytes: number;
+}
+
+/**
+ * The device system prompt — `~/.claude/CLAUDE.md` as it is on disk right now.
+ * A device view, not a traffic one: nothing here comes from the captured logs.
+ */
+export async function buildSystemPrompt(
+  promptPath: string = resolveSystemPromptPath(),
+): Promise<SystemPromptResponse> {
+  const file = await readSystemPromptFile(promptPath);
+  return {
+    prompt: summarizeSystemPrompt({ path: file.promptPath, exists: file.exists, text: file.text, modified: file.modified }),
+    maxBytes: SYSTEM_PROMPT_MAX_BYTES,
+  };
+}
+
+export interface SystemPromptUpdateResponse extends SystemPromptResponse {
+  /** The `.bak` holding the previous contents, or null on the save that created the file. */
+  backupPath: string | null;
+}
+
+/**
+ * Replace the device system prompt with `text` and answer with a fresh read of the
+ * file, not an echo. Invalid input throws before anything is written.
+ */
+export async function buildSystemPromptUpdate(
+  promptPath: string,
+  text: unknown,
+): Promise<SystemPromptUpdateResponse> {
+  const written = await writeSystemPromptFile(promptPath, parseSystemPromptText(text));
+  return {
+    prompt: summarizeSystemPrompt({
+      path: written.promptPath,
+      exists: written.exists,
+      text: written.text,
+      modified: written.modified,
+    }),
+    maxBytes: SYSTEM_PROMPT_MAX_BYTES,
+    backupPath: written.backupPath,
   };
 }
 

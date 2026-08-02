@@ -19,6 +19,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Puzzle,
+  ScrollText,
   TerminalSquare,
   TrendingUp,
   Wrench,
@@ -49,6 +50,7 @@ import { SessionGraphPage } from "./routes/session-graph";
 import { SessionsPage } from "./routes/sessions";
 import { SkimPage } from "./routes/skim";
 import { SuggestionBucketPage } from "./routes/suggestion-bucket";
+import { SystemPromptPage } from "./routes/system-prompt";
 import { ToolsPage } from "./routes/tools";
 import { TrendDetailPage } from "./routes/trend-detail";
 import { TrendsPage } from "./routes/trends";
@@ -68,6 +70,7 @@ const STATIONS = [
   { to: "/sessions/graph", label: "Live graph", hint: "sessions", exact: false, icon: Network },
   { to: "/jobs", label: "Jobs", hint: "device", exact: false, icon: HardDrive },
   { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false, icon: Puzzle },
+  { to: "/system-prompt", label: "System prompt", hint: "device", exact: false, icon: ScrollText },
   { to: "/commands", label: "Commands", hint: "per step", exact: false, icon: TerminalSquare },
   { to: "/advice", label: "Advice", hint: "coaching", exact: false, icon: Lightbulb },
 ] as const;
@@ -292,6 +295,12 @@ const hooksPluginsRoute = createRoute({
   component: HooksPluginsPage,
   staticData: { title: "Hooks & Plugins" },
 });
+const systemPromptRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/system-prompt",
+  component: SystemPromptPage,
+  staticData: { title: "System prompt" },
+});
 const adviceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/advice",
@@ -346,6 +355,7 @@ const routeTree = rootRoute.addChildren([
   withheldRoute,
   filtersRoute,
   hooksPluginsRoute,
+  systemPromptRoute,
   adviceRoute,
   suggestionBucketRoute,
   commandsRoute,

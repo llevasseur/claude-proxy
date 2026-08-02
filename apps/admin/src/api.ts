@@ -37,6 +37,7 @@ import type {
   SuggestionStatus,
   SuggestionStatusRow,
   SuggestionStatusUpdate,
+  SystemPromptDoc,
   TopTool,
   UsageDigest,
   UsageLimitsSnapshot,
@@ -155,6 +156,16 @@ export interface HooksPluginsResponse {
   loadExpectations: AliasLoadExpectation[];
   launchRcPath: string;
   launchRcReadable: boolean;
+}
+/** `~/.claude/CLAUDE.md` — the instructions every session on this device loads. */
+export interface SystemPromptResponse {
+  prompt: SystemPromptDoc;
+  /** Ceiling the save enforces, shown before an over-long edit is refused. */
+  maxBytes: number;
+}
+export interface SystemPromptUpdateResponse extends SystemPromptResponse {
+  /** The `.bak` the save left behind, or null when it created the file. */
+  backupPath: string | null;
 }
 /** One `~/.claude/jobs/<id>` directory: what its state file says plus what it holds. */
 export interface JobSummary extends JobStateFields {
@@ -463,7 +474,7 @@ async function get<T>(path: string): Promise<T> {
   return unwrap<T>(await fetch(`${API_BASE}${path}`));
 }
 
-/** The chat routes, the suggestion flags and the job delete are the only writes the API accepts. */
+/** The chat routes, the suggestion flags, the job delete and the system-prompt save are the only writes the API accepts. */
 async function post<T>(path: string, body: unknown): Promise<T> {
   return unwrap<T>(
     await fetch(`${API_BASE}${path}`, {
@@ -555,6 +566,11 @@ export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
+/** The device system prompt as it is on disk — `~/.claude/CLAUDE.md`. */
+export const getSystemPrompt = () => get<SystemPromptResponse>("/api/system-prompt");
+/** Overwrite it. The server keeps the previous contents in a `.bak` beside the file. */
+export const saveSystemPrompt = (text: string) =>
+  post<SystemPromptUpdateResponse>("/api/system-prompt", { text });
 export const getFilters = () => get<FiltersResponse>("/api/filters");
 export const getChatConfig = () => get<ChatConfigResponse>("/api/chat/config");
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */
