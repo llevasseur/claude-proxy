@@ -100,6 +100,12 @@ The write is the whole of the risk surface here, and it is fenced the same way t
 - The body is **validated before the file is touched**: `parseSystemPromptText` rejects a
   non-string with `must be a string` and anything past `SYSTEM_PROMPT_MAX_BYTES` (200 KB) with
   `larger than`, both mapped to a 400, and the 1 MB body cap applies as it does to every write.
+  Only those failures are 400s: a write that fails on the filesystem — no permission, no space —
+  is a 500, so the editor is not sent looking for a typo in text that was fine.
+- **An unreadable file is an error, not an empty one.** Only `ENOENT` reads as "no file yet";
+  any other read failure propagates, because rendering it as absent would invite a save over a
+  file the server never managed to read. A backup that fails for any reason other than there
+  being no previous file stops the save for the same reason.
 - No path arrives from the request. The file is resolved **once at server start** from the
   environment, so there is no id or filename to traverse with — unlike the jobs routes, this one
   cannot be pointed anywhere.

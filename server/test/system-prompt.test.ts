@@ -41,6 +41,10 @@ describe("buildSystemPrompt", () => {
     expect(prompt.sections.map((s) => s.heading)).toEqual(["Device rules"]);
     expect(prompt.modified).not.toBeNull();
   });
+
+  it("fails loudly when the path is unreadable, rather than passing for absent", async () => {
+    await expect(buildSystemPrompt(dir)).rejects.toThrow();
+  });
 });
 
 describe("buildSystemPromptUpdate", () => {

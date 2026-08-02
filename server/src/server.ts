@@ -303,6 +303,14 @@ function chatErrorStatus(msg: string): number {
 }
 
 /**
+ * A rejected save is the body's fault; anything else — a permission error, a full
+ * disk — is the server's, and a 400 would send the editor looking for a typo.
+ */
+function systemPromptErrorStatus(msg: string): number {
+  return /^(system prompt text|request body)\b/.test(msg) ? 400 : 500;
+}
+
+/**
  * A POST route: the same origin check, method check and JSON body the chat routes
  * have, with the failure→status mapping left to the caller since each write
  * surface fails in its own vocabulary.
@@ -944,7 +952,7 @@ const server = http.createServer(async (req, res) => {
             req,
             res,
             (body) => buildSystemPromptUpdate(SYSTEM_PROMPT_PATH, body.text),
-            () => 400, // every failure here is the body's: not a string, or over the ceiling
+            systemPromptErrorStatus,
           );
           return;
         }

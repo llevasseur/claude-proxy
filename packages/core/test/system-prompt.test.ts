@@ -61,8 +61,16 @@ describe("summarizeSystemPrompt", () => {
 
     expect(doc.bytes).toBe(19);
     expect(doc.estTokens).toBe(5);
-    expect(doc.lines).toBe(4);
+    expect(doc.lines).toBe(3);
     expect(doc.sections.map((s) => s.heading)).toEqual(["Rules"]);
+  });
+
+  it("counts the same lines with or without the closing newline", () => {
+    const withNewline = summarizeSystemPrompt({ path: "/x", exists: true, text: "a\nb\n", modified: null });
+    const without = summarizeSystemPrompt({ path: "/x", exists: true, text: "a\nb", modified: null });
+
+    expect(withNewline.lines).toBe(2);
+    expect(without.lines).toBe(2);
   });
 });
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { estTokens, outlineSystemPrompt, utf8Bytes } from "@claude-proxy/core";
+import { countLines, estTokens, outlineSystemPrompt, utf8Bytes } from "@claude-proxy/core";
 import type { SystemPromptResponse } from "../api";
 import { getSystemPrompt, saveSystemPrompt } from "../api";
 import { Markdown } from "../components/Markdown";
@@ -46,7 +46,7 @@ export function SystemPromptPage() {
 
   const bytes = useMemo(() => utf8Bytes(text), [text]);
   const sections = useMemo(() => outlineSystemPrompt(text), [text]);
-  const lines = text === "" ? 0 : text.split("\n").length;
+  const lines = countLines(text);
   const tooLong = maxBytes !== undefined && bytes > maxBytes;
   // Emptying the prompt is unrecoverable from this page, so it takes a second click
   // the way the job delete does.

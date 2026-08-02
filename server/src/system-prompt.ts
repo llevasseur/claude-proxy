@@ -22,14 +22,17 @@ export interface SystemPromptFile {
 }
 
 /**
- * Read the prompt file. Never throws: an absent file is a legitimate state and
- * reports as `exists: false` with empty text, which is what the editor opens on.
+ * Read the prompt file. An absent file is a legitimate state and reports as
+ * `exists: false` with empty text, which is what the editor opens on. Any other
+ * failure — unreadable, a directory — throws rather than passing for absent, which
+ * would invite a save over a file this never managed to read.
  */
 export async function readSystemPromptFile(promptPath: string): Promise<SystemPromptFile> {
   try {
     const [text, info] = await Promise.all([readFile(promptPath, "utf8"), stat(promptPath)]);
     return { promptPath, exists: true, text, modified: info.mtime.toISOString() };
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     return { promptPath, exists: false, text: "", modified: null };
   }
 }
@@ -58,8 +61,10 @@ export async function writeSystemPromptFile(promptPath: string, text: string): P
   try {
     await copyFile(promptPath, backupPath);
     backedUp = true;
-  } catch {
-    /* nothing there yet — no previous version to keep */
+  } catch (err) {
+    // Nothing there yet is the first save; a backup that failed for any other reason
+    // is not something to overwrite the original on top of.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
 
   const temp = `${promptPath}.${process.pid}.tmp`;

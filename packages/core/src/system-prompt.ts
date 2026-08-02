@@ -90,6 +90,15 @@ export function outlineSystemPrompt(text: string): SystemPromptSection[] {
   }));
 }
 
+/**
+ * Lines in a document. The newline every saved prompt closes with ends the last
+ * line rather than starting another.
+ */
+export function countLines(text: string): number {
+  if (text === "") return 0;
+  return (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n").length;
+}
+
 /** Shape a file's text (and metadata) into the document the dashboard renders. */
 export function summarizeSystemPrompt(input: {
   path: string;
@@ -104,7 +113,7 @@ export function summarizeSystemPrompt(input: {
     text: input.text,
     bytes,
     estTokens: estTokens(bytes),
-    lines: input.text === "" ? 0 : input.text.split("\n").length,
+    lines: countLines(input.text),
     sections: outlineSystemPrompt(input.text),
     modified: input.modified,
   };
