@@ -343,6 +343,33 @@ pnpm summary                  # today
 pnpm --filter server summary 2026-07-14   # a specific day
 ```
 
+### The query substrate (SQLite)
+
+`logs/` is doc-shaped, so every read is a full directory scan. The server also
+indexes the audit sidecars into **`logs/claude-proxy.db`** — SQLite via
+`node:sqlite`, which is built into Node and therefore adds no dependency (it is
+why the engines floor is `>=22`). Ingest runs on server start and again on any
+change to the log directory; it is idempotent and watermarked, so running it
+twice or having it die halfway are both harmless.
+
+The database is a **disposable materialized view**. `logs/` stays the sole
+source of truth, the `.md` and `.request.txt` bodies are never copied into it
+(only pointers, plus a `blob_evicted` flag for bodies retention has removed),
+and nothing authored lives there — `logs/suggestion-status.json` and device
+settings stay JSON files. So every table is reconstructible, and the supported
+total-recovery path is simply to throw it away:
+
+```bash
+rm logs/claude-proxy.db && pnpm --filter server ingest   # rebuild from logs/
+pnpm --filter server ingest                              # or just top it up
+```
+
+Reads are still served from the files — nothing depends on the database yet.
+Set `SHADOW_DB=1` to have the server compute each answer both ways and log any
+disagreement, without touching the response it serves. See
+[ADR 0004](docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md) and the
+[migration map](docs/wayfinder/map-sqlite-substrate.md).
+
 ### API
 
 | Route | Returns |
