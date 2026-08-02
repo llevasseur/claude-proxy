@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   attributeSteps,
   classifyOutcome,
+  COMMAND_RUN_SCHEMA,
   contentHash,
   countWaste,
   detectPatterns,
   filterRunsByFlags,
+  findNestedInvocations,
   isCommandRun,
+  nestedCommandOf,
+  nestedRunId,
   parseCommandEnvelope,
   parseCommandSteps,
   patternFrequency,
   reachedEnd,
+  runKey,
   runTotals,
   stepReach,
   summarizeCommands,
@@ -490,11 +495,66 @@ describe("detectPatterns", () => {
   });
 });
 
+// --- Nested runs -----------------------------------------------------------
+
+describe("findNestedInvocations", () => {
+  const installed = (name: string) => ["clean", "pr", "review"].includes(name);
+
+  it("reads the command off a Skill call, but only for an installed one", () => {
+    expect(nestedCommandOf(tool(0, "Skill(skill=clean)"), installed)).toBe("clean");
+    expect(nestedCommandOf(tool(0, "Skill(skill=/pr)"), installed)).toBe("pr");
+    expect(nestedCommandOf(tool(0, "Skill(skill=grilling)"), installed)).toBe(null);
+    expect(nestedCommandOf(tool(0, "Bash(command=git status)"), installed)).toBe(null);
+    expect(nestedCommandOf(decision(0, "running Skill(skill=clean) next"), installed)).toBe(null);
+  });
+
+  it("splits a /task tail into one span per nested command", () => {
+    const nodes = [
+      decision(0, "Step 2 — implement"),
+      tool(1, "Edit(file_path=/a.ts)"),
+      tool(2, "Skill(skill=clean)"),
+      tool(3, "Bash(command=git diff)"),
+      tool(4, "Skill(skill=pr)"),
+      tool(5, "Bash(command=git push)"),
+      node(6, "done", "shipped"),
+    ];
+    expect(findNestedInvocations(nodes, installed)).toEqual([
+      { command: "clean", from: 2, to: 4 },
+      { command: "pr", from: 4, to: 7 },
+    ]);
+  });
+
+  it("finds nothing in a run that invokes no command", () => {
+    const nodes = [tool(0, "Skill(skill=grilling)"), node(1, "done", "shipped")];
+    expect(findNestedInvocations(nodes, installed)).toEqual([]);
+    expect(findNestedInvocations([], installed)).toEqual([]);
+  });
+});
+
+describe("runKey", () => {
+  it("keys a nested run apart from the host it shares a thread with", () => {
+    const host = run();
+    const nested = run({ runId: nestedRunId(host.threadId, 4), parentRunId: host.threadId, command: "clean" });
+    expect(runKey(nested)).not.toBe(runKey(host));
+    expect(nestedRunId(host.threadId, 4)).toBe(`${host.threadId}~4`);
+  });
+
+  it("falls back to the thread id a record written before nested runs was keyed by", () => {
+    const { runId: _dropped, ...legacy } = run();
+    expect(runKey(legacy as CommandRun)).toBe("0000000000000001");
+  });
+});
+
 // --- Store-level aggregation ----------------------------------------------
 
 function run(over: Partial<CommandRun> = {}): CommandRun {
   return {
-    schema: 1,
+    schema: COMMAND_RUN_SCHEMA,
+    runId: "0000000000000001",
+    parentRunId: null,
+    parentCommand: null,
+    spawnNode: null,
+    nodeRange: null,
     threadId: "0000000000000001",
     command: "task",
     args: "",
