@@ -182,9 +182,9 @@ async function writeSessions(logDir: string): Promise<void> {
 }
 
 /**
- * A commands catalogue: one installed command with a step tree, and one the
- * store will have runs for that is *not* installed, so `/api/commands` exercises
- * both halves of its union.
+ * A commands catalogue holding the one installed command, with a step tree. The
+ * corpus also has runs of a command that is *not* here, so `/api/commands`
+ * exercises both halves of its union.
  */
 async function writeCommandsDir(): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "parity-commands-"));

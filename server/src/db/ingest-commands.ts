@@ -226,7 +226,6 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
 export async function ingestCommandRuns(db: DatabaseSync, logDir: string): Promise<CommandIngestStats> {
   const stats: CommandIngestStats = { runs: 0, parsed: false, deleted: 0 };
   const file = commandStorePath(logDir);
-  const st = prepare(db);
 
   let bytes: number;
   let modified: string;
@@ -260,6 +259,7 @@ export async function ingestCommandRuns(db: DatabaseSync, logDir: string): Promi
 
   // Parsed through the store's own reader, so the two sides cannot drift.
   const runs = parseCommandRunStore(await readFile(file, "utf8"));
+  const st = prepare(db);
 
   db.exec("BEGIN");
   try {
