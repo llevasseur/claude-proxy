@@ -160,7 +160,7 @@ export async function readCommandRuns(logDir: string): Promise<CommandRun[]> {
 /**
  * Every record the store holds, **retired ones included** — {@link readCommandRuns} is the
  * view the page reads. A retired record is still the only surviving evidence of its run's
- * turns, so reconciliation carries it forward rather than reading past it.
+ * turns, so reconciliation carries it forward.
  */
 async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
   let text: string;
@@ -205,10 +205,8 @@ const ACTIVE_WINDOW_MS = 15 * 60 * 1000;
 
 /**
  * A root prompt that was actually read, versus one there is no evidence either way about.
- *
- * The distinction is what makes retirement safe: only a prompt we hold can testify that a
- * session is not a run. A sidecar that is missing, torn, or carries no `root` at all — the
- * proxy only records one once it has a prompt to record — says nothing.
+ * A sidecar that is missing, torn, or carries no `root` — the proxy records one only once it
+ * has a prompt to record — says nothing, and only a prompt we hold can retire a record.
  */
 type RootPrompt = { read: true; prompt: string } | { read: false };
 
@@ -281,10 +279,9 @@ export async function reconcileCommandRuns(
     if (envelope) roots.push({ graph, envelope });
   }
   // Records whose opening prompt we still hold and it no longer reads as a run — what an
-  // earlier parse leaves behind. Only a prompt that was actually read retracts a record: a
-  // transcript on disk whose `.state.json` is gone is absence of evidence, not evidence the
-  // run never happened. Retired before the early return, so a log window with no runs left
-  // still retracts them.
+  // earlier parse leaves behind. A transcript whose `.state.json` is gone is absence of
+  // evidence, not evidence the run never happened. Retired before the early return, so a
+  // log window with no runs left still retracts them.
   const runThreads = new Set(roots.map((r) => r.graph.threadId));
   const retired = existing
     .filter((run) => judged.has(run.threadId) && !runThreads.has(run.threadId))

@@ -382,8 +382,8 @@ describe("reconcileCommandRuns", () => {
       });
     });
 
-    // Retirement testifies from the opening prompt. Without one there is nothing to testify
-    // with, and the record is the only surviving account of the run.
+    // Without an opening prompt there is nothing to retire the record on, and the record is
+    // the only surviving account of the run.
     it("keeps a record whose transcript survives but whose opening prompt does not", async () => {
       await writeSession(THREAD_ID, SESSION_ID, ROOT, "- done: ok");
       await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-15T18:00:00.000Z"));

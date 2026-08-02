@@ -203,8 +203,7 @@ describe("parseCommandEnvelope", () => {
     });
   });
 
-  // Real shape, from a `/task` run whose criteria were about making nested commands
-  // trackable: an envelope quoted inside the args is criteria prose, not the next run.
+  // An envelope quoted inside the args is criteria prose, not the next run.
   it("keeps args that quote another envelope inside them", () => {
     const parsed = parseCommandEnvelope(
       envelope("task", "make <command-name>/clean</command-name> and <command-name>/pr</command-name> trackable"),

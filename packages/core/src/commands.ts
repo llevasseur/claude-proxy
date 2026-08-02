@@ -205,8 +205,7 @@ const ARGS_CLOSE_RE = /<\/command-args>/gi;
  *
  * Adjacency is the whole test: the caveat's text also survives into compaction summaries,
  * thousands of characters from an unrelated envelope it says nothing about. Nothing may sit
- * between the two: across every caveat in the captured logs the CLI emits `<command-name>`
- * first, so an envelope held off by any other tag is a command in its own right.
+ * between the two — the CLI emits `<command-name>` first behind the caveat.
  */
 const LOCAL_ENVELOPE_RE = /<\/local-command-caveat>\s*$/i;
 /** The caveat the CLI prepends to a locally-run command, and the leftover envelope tags. */
@@ -238,11 +237,10 @@ export interface CommandEnvelope {
 /**
  * One envelope's own `<command-args>` body, from `from` to the `next` envelope.
  *
- * The block ends at its **closing tag**, not at the next envelope: criteria quote envelopes
- * all the time — a `/task` run describing `<command-name>/clean</command-name>` — and cutting
- * there loses the whole block. The *opening* tag is what has to fall ahead of the next
- * envelope; past it the block belongs to that envelope and this one simply carried no args.
- * A block left unclosed by a truncated prompt falls back to that bound.
+ * The block ends at its **closing tag**, not at the next envelope, since criteria quote
+ * envelopes all the time. The *opening* tag is what has to fall ahead of the next envelope;
+ * past it the block belongs to that envelope and this one carried no args. A block left
+ * unclosed by a truncated prompt falls back to that bound.
  */
 function readArgs(text: string, from: number, next: number): string {
   ARGS_OPEN_RE.lastIndex = from;
