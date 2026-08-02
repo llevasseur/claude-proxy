@@ -81,6 +81,15 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
       fallback. This is the slice where the substrate starts doing real work,
       and it is still reversible: the files are untouched and the fallback is
       one flag away.
+      *Known blocker to resolve here, from slice 2: `dbSource.readSession`
+      returns row-derived `meta` / `bytes` / `modified` alongside a freshly-read
+      `content`. A transcript appended to since the last ingest therefore yields
+      an internally inconsistent object — `bytes` disagreeing with the content's
+      length, `meta` trailing it. Reads being file-backed makes that harmless
+      today, and the parity harness cannot catch it by construction, because it
+      snapshots the corpus precisely to freeze those appends. Flipping this
+      route to DB-backed reads has to settle it: either serve the whole answer
+      from one read, or re-`stat` and re-parse when the row is behind the file.*
 
 - [ ] **Slice 6 — Cutover. DELIBERATELY UNSPECIFIED.**
       The shape is known: the proxy writes rows plus content-addressed blobs at

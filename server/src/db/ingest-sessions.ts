@@ -176,12 +176,21 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
   let names: string[];
   try {
     names = await readdir(dir);
-  } catch {
-    // No `sessions/` dir. Not an error, but any rows left over are unbacked.
+  } catch (err) {
+    // Only a *missing* `sessions/` means the rows are unbacked. Any other error
+    // says nothing about what is on disk, so it must not drop the tables.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     const st = prepare(db);
-    for (const row of db.prepare("SELECT thread_id FROM session").all() as Array<{ thread_id: string }>) {
-      st.deleteSession.run(row.thread_id);
-      stats.deleted += 1;
+    db.exec("BEGIN");
+    try {
+      for (const row of db.prepare("SELECT thread_id FROM session").all() as Array<{ thread_id: string }>) {
+        st.deleteSession.run(row.thread_id);
+        stats.deleted += 1;
+      }
+      db.exec("COMMIT");
+    } catch (txErr) {
+      db.exec("ROLLBACK");
+      throw txErr;
     }
     return stats;
   }

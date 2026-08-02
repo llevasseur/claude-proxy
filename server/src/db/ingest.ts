@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { isAuditSidecar, type AuditSidecar } from "@claude-proxy/core";
+import { resolveSessionsDir } from "../sessions.js";
 import { ingestSessions } from "./ingest-sessions.js";
 
 /**
@@ -421,7 +422,7 @@ export function watchAndIngest(
   const watchers: fs.FSWatcher[] = [];
   // A missing `sessions/` dir is normal until the proxy writes its first
   // transcript.
-  for (const dir of [logDir, path.join(logDir, "sessions")]) {
+  for (const dir of [logDir, resolveSessionsDir(logDir)]) {
     try {
       const watcher = fs.watch(dir, { persistent: false }, schedule);
       watcher.on("error", (err) => onError(err as Error));
