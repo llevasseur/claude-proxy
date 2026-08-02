@@ -937,15 +937,14 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, await buildHooksPlugins());
         return;
       case SYSTEM_PROMPT_ROUTE: {
-        // The GET is the read every other route is; anything else is the save, which
-        // rewrites a file every session on this device loads — so it goes through the
-        // origin-checked write path rather than the open read CORS.
+        // Anything but a GET is the save, which takes the origin-checked write path
+        // rather than the open read CORS.
         if (req.method !== "GET") {
           await servePost(
             req,
             res,
             (body) => buildSystemPromptUpdate(SYSTEM_PROMPT_PATH, body.text),
-            () => 400, // the only failures are the body's: not a string, or over the ceiling
+            () => 400, // every failure here is the body's: not a string, or over the ceiling
           );
           return;
         }

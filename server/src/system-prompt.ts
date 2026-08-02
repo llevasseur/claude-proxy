@@ -4,8 +4,8 @@ import path from "node:path";
 
 /**
  * The device system prompt — `~/.claude/CLAUDE.md`, the instructions Claude Code
- * loads into every session's system prompt on this machine. Override the path with
- * `CLAUDE_SYSTEM_PROMPT` (handy for tests and non-standard homes).
+ * loads into every session's system prompt on this machine. `CLAUDE_SYSTEM_PROMPT`
+ * overrides the path.
  */
 export function resolveSystemPromptPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.CLAUDE_SYSTEM_PROMPT
@@ -22,9 +22,8 @@ export interface SystemPromptFile {
 }
 
 /**
- * Read the prompt file. Never throws: an absent file is a legitimate state (the
- * device simply has no global instructions yet) and reports as `exists: false`
- * with empty text, which is what the editor opens on.
+ * Read the prompt file. Never throws: an absent file is a legitimate state and
+ * reports as `exists: false` with empty text, which is what the editor opens on.
  */
 export async function readSystemPromptFile(promptPath: string): Promise<SystemPromptFile> {
   try {
@@ -46,13 +45,10 @@ export interface SystemPromptWrite extends SystemPromptFile {
 }
 
 /**
- * Replace the prompt file with `text`.
- *
- * Two safeguards, because this overwrites a file the user did not necessarily open
- * in this tab: the previous contents are copied to `<path>.bak` first, so a bad save
- * is recoverable outside the app; and the new contents land via a temp file plus
- * `rename`, so a crash mid-write can't leave a half-written system prompt that every
- * later session would load.
+ * Replace the prompt file with `text`. The previous contents are copied to
+ * `<path>.bak` first, so a bad save is recoverable outside the app, and the new
+ * contents land via a temp file plus `rename`, so a crash mid-write can't leave a
+ * half-written prompt for every later session to load.
  */
 export async function writeSystemPromptFile(promptPath: string, text: string): Promise<SystemPromptWrite> {
   await mkdir(path.dirname(promptPath), { recursive: true });
@@ -63,7 +59,7 @@ export async function writeSystemPromptFile(promptPath: string, text: string): P
     await copyFile(promptPath, backupPath);
     backedUp = true;
   } catch {
-    /* nothing there yet — the first save has no previous version to keep */
+    /* nothing there yet — no previous version to keep */
   }
 
   const temp = `${promptPath}.${process.pid}.tmp`;

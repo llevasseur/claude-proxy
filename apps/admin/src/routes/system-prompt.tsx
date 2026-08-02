@@ -15,9 +15,8 @@ import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
  * that writes back to it.
  *
  * A device view, not a traffic one: the proxy never records the system prompt, so
- * the file on disk is the only readable copy. What the editor shows is what the
- * next session will load — every byte of it is charged to every request, which is
- * why the size and token tiles sit above the editor rather than under it.
+ * the file on disk is the only readable copy. Every byte of it is charged to every
+ * request on this device.
  */
 
 const SYSTEM_PROMPT_KEY = ["system-prompt"] as const;
@@ -49,8 +48,8 @@ export function SystemPromptPage() {
   const sections = useMemo(() => outlineSystemPrompt(text), [text]);
   const lines = text === "" ? 0 : text.split("\n").length;
   const tooLong = maxBytes !== undefined && bytes > maxBytes;
-  // Clearing the device prompt is legitimate but unrecoverable from this page, so it
-  // takes a second click the way the job delete does.
+  // Emptying the prompt is unrecoverable from this page, so it takes a second click
+  // the way the job delete does.
   const clearsPrompt = text.trim() === "" && onDisk.trim() !== "";
 
   const save = useMutation({
@@ -134,7 +133,7 @@ export function SystemPromptPage() {
                     setSaved(null);
                   }}
                   onKeyDown={(e) => {
-                    // ⌘S / Ctrl-S saves, the way every other editor this replaces does.
+                    // ⌘S / Ctrl-S saves.
                     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
                       e.preventDefault();
                       submit();

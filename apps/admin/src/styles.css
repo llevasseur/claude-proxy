@@ -3572,8 +3572,7 @@ button.btn-danger.armed {
 }
 
 /* --- System prompt editor -------------------------------------------------- */
-/* The device system prompt is edited in place, so the textarea is the document:
-   full width, monospace, and tall enough to work in without a scroll chase. */
+/* The textarea is the document: full width, monospace, tall enough to work in. */
 .sysprompt-editor {
   width: 100%;
   min-height: 26rem;

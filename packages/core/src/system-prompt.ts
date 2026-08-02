@@ -2,14 +2,11 @@
  * The device system prompt — `~/.claude/CLAUDE.md`, the instruction file every
  * Claude Code session on this machine loads into its system prompt.
  *
- * A device view, not a traffic one: nothing here comes from the captured logs.
- * The proxy never records the system prompt itself (see `docs/features/
- * session-transcripts.md`), so the file on disk is the only place this text is
- * readable — and the only place editing it can happen.
+ * Device view, not traffic: the proxy never records the system prompt, so the file
+ * on disk is the only readable copy.
  *
- * Everything in this module is pure: shaping text into an outline, sizing it, and
- * deciding whether a proposed replacement is acceptable. Reading and writing the
- * file is the server's job.
+ * Pure: shaping text into an outline, sizing it, and validating a proposed
+ * replacement. Reading and writing the file is the server's job.
  */
 import { estTokens } from "./context.js";
 
@@ -46,12 +43,11 @@ export interface SystemPromptDoc {
 
 /**
  * Ceiling on a saved prompt. Well under the server's 1 MB body limit, and far past
- * anything a useful instruction file reaches — a prompt this large is a mistake
- * worth refusing rather than a preference worth honouring.
+ * anything a useful instruction file reaches.
  */
 export const SYSTEM_PROMPT_MAX_BYTES = 200_000;
 
-/** UTF-8 size of a string, the same unit the file is measured in. */
+/** UTF-8 size of a string — the unit the file is measured in. */
 export function utf8Bytes(text: string): number {
   return new TextEncoder().encode(text).length;
 }
@@ -116,8 +112,7 @@ export function summarizeSystemPrompt(input: {
 
 /**
  * Canonical on-disk form of an edited prompt: LF line endings, no trailing blank
- * lines, and exactly one closing newline. Editing through a browser textarea is
- * how CRLF and a stray trailing blank line get in; neither should be a diff.
+ * lines, and exactly one closing newline — a browser textarea introduces all three.
  */
 export function normalizeSystemPromptText(text: string): string {
   const body = text.replace(/\r\n?/g, "\n").replace(/\s+$/, "");
@@ -125,9 +120,8 @@ export function normalizeSystemPromptText(text: string): string {
 }
 
 /**
- * Validate a proposed replacement and return its canonical form. Throws with a
- * message the route maps to a 400 — every failure here is the caller's input,
- * never the file's state.
+ * Validate a proposed replacement and return its canonical form. Throws on a
+ * non-string or anything past the ceiling — the route maps that to a 400.
  */
 export function parseSystemPromptText(value: unknown): string {
   if (typeof value !== "string") throw new Error("system prompt text must be a string");

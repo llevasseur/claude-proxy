@@ -1126,8 +1126,7 @@ export interface SystemPromptResponse {
 
 /**
  * The device system prompt — `~/.claude/CLAUDE.md` as it is on disk right now.
- * A device view, not a traffic one: the proxy never records the system prompt, so
- * the file is the only readable copy.
+ * A device view, not a traffic one: nothing here comes from the captured logs.
  */
 export async function buildSystemPrompt(
   promptPath: string = resolveSystemPromptPath(),
@@ -1145,9 +1144,8 @@ export interface SystemPromptUpdateResponse extends SystemPromptResponse {
 }
 
 /**
- * Replace the device system prompt with `text` and answer with the file as it now
- * reads — the response is a fresh read, not an echo, so the page can never show a
- * save that didn't land. Invalid input throws before anything is written.
+ * Replace the device system prompt with `text` and answer with a fresh read of the
+ * file, not an echo. Invalid input throws before anything is written.
  */
 export async function buildSystemPromptUpdate(
   promptPath: string,
