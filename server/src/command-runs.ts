@@ -174,7 +174,7 @@ export async function readCommandRuns(logDir: string): Promise<CommandRun[]> {
     byThread.set(parsed.threadId, parsed); // later line supersedes earlier
   }
   return [...byThread.values()]
-    .filter((run) => !run.retired) // a retracted record: written once, then read as gone
+    .filter((run) => !run.retired)
     .sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
 }
 
@@ -256,10 +256,9 @@ export async function reconcileCommandRuns(
     const envelope = parseCommandEnvelope(await readRootPrompt(logDir, graph.threadId));
     if (envelope) roots.push({ graph, envelope });
   }
-  // Records whose thread is still on disk but no longer reads as a run — what a session
-  // recorded under an earlier parse leaves behind, e.g. one opened by `/clear`. Retiring
-  // is what a store that can only append has instead of a delete, and it happens whether
-  // or not there is anything left to reconcile.
+  // Records whose thread is still on disk but no longer reads as a run — what an earlier
+  // parse leaves behind. Retired before the early return, so a log window with no runs
+  // left still retracts them.
   const runThreads = new Set(roots.map((r) => r.graph.threadId));
   const retired = existing
     .filter((run) => byThread.has(run.threadId) && !runThreads.has(run.threadId))

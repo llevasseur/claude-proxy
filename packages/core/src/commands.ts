@@ -193,22 +193,17 @@ export function contentHash(text: string): string {
 // --- The prompt envelope ---------------------------------------------------
 
 /**
- * Every envelope in a prompt, in order. A prompt carries more than one whenever a local
- * command opens the turn the real command was typed into — `/clear` then `/mc` arrive as
- * one user message, so the first envelope is not necessarily the run's.
+ * Every envelope in a prompt, in order. A prompt carries more than one when a local
+ * command opens the turn the real command was typed into, so the first is not the run's.
  */
 const COMMAND_NAME_RE = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/gi;
 const COMMAND_ARGS_RE = /<command-args>([\s\S]*?)<\/command-args>/i;
 /**
- * The CLI's caveat sitting immediately ahead of an envelope, which is what marks that
- * envelope as a **locally-run** command — `/clear`, `/compact`. Those execute in the CLI,
- * never reach the model and cost nothing, so they are not runs; the tokens in a session
- * they opened belong to whatever was asked next.
+ * The CLI's caveat sitting immediately ahead of an envelope, marking that envelope a
+ * **locally-run** command — `/clear`, `/compact`.
  *
- * Adjacency is the whole test. The caveat's text also survives into compaction summaries,
- * where it sits thousands of characters away from an unrelated envelope, so only a caveat
- * this envelope directly follows — with nothing but its own `<command-message>` between —
- * says anything about it.
+ * Adjacency is the whole test: the caveat's text also survives into compaction summaries,
+ * thousands of characters from an unrelated envelope it says nothing about.
  */
 const LOCAL_ENVELOPE_RE = /<\/local-command-caveat>(?:\s|<command-message>[^<]*<\/command-message>)*$/i;
 /** The caveat the CLI prepends to a locally-run command, and the leftover envelope tags. */
@@ -242,11 +237,10 @@ export interface CommandEnvelope {
  * prompt declares no command the model was asked to carry out — i.e. it is an ordinary
  * session, not a run.
  *
- * The **first non-local** envelope wins. Local commands are skipped rather than accepted,
- * so a session opened by `/clear` is the run of whatever was typed after it, or no run at
- * all when nothing was — which is what keeps `/clear` off the index and stops it being
- * charged for the work that followed it. Each envelope's args are read from its own
- * block, not the first one in the prompt, since the skipped local command has args too.
+ * The **first non-local** envelope wins: a session opened by `/clear` is the run of
+ * whatever was typed after it, or no run at all when nothing was. Each envelope's args
+ * are read from its own block, not the first in the prompt — a skipped local command
+ * carries args too.
  */
 export function parseCommandEnvelope(prompt: string | null | undefined): CommandEnvelope | null {
   if (!prompt) return null;
@@ -256,7 +250,6 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
   for (const [i, name] of names.entries()) {
     if (LOCAL_ENVELOPE_RE.test(text.slice(0, name.index))) continue;
 
-    // This envelope's own args: after its name, and before the next envelope begins.
     const body = text.slice(name.index + name[0].length, names[i + 1]?.index ?? text.length);
     const args = (COMMAND_ARGS_RE.exec(body)?.[1] ?? "").trim();
     const flags: string[] = [];
@@ -756,9 +749,9 @@ export interface CommandRun {
   stepStats: CommandRunStepStats[];
   outcome: CommandRunOutcome;
   /**
-   * A tombstone: this thread was recorded as a run and no longer parses as one, so
-   * readers drop it. The store is append-only and cannot forget a line, so retracting a
-   * record means writing it again with this set — see `readCommandRuns`.
+   * A tombstone: this thread was recorded as a run and no longer parses as one. The store
+   * is append-only, so retracting a record means writing it again with this set, and
+   * readers drop it — see `readCommandRuns`.
    */
   retired?: true;
   interruption: InterruptionKind | null;
