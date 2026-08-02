@@ -140,7 +140,10 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
       It stays out of `PARITY_ROUTES` — it is a write, and replaying it against
       the real-corpus snapshot would write through a hardlinked
       `suggestion-status.json` — and is covered instead by a both-backings
-      agreement test on the synthetic corpus.*
+      agreement test on the synthetic corpus. `readCommandRuns` got the same
+      watermark treatment as `readSession`, for the same reason: the server
+      reconciles `logs/commands/runs.jsonl` and reads it back in one request, so
+      rows behind the file would have served the pre-reconcile view.*
       *Known blocker resolved here, from slice 2: `dbSource.readSession`
       returned row-derived `meta` / `bytes` / `modified` alongside a freshly-read
       `content`. A transcript appended to since the last ingest therefore yielded

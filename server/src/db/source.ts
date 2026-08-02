@@ -8,7 +8,11 @@ import {
   type CommandRun,
   type SessionNode,
 } from "@claude-proxy/core";
-import { readCommandRuns as readCommandRunsFromFiles, sortCommandRuns } from "../command-runs.js";
+import {
+  commandStorePath,
+  readCommandRuns as readCommandRunsFromFiles,
+  sortCommandRuns,
+} from "../command-runs.js";
 import {
   readArchivedDay as readArchivedDayFromFiles,
   readSidecars as readSidecarsFromFiles,
@@ -28,6 +32,7 @@ import {
   type SessionNodeTexts,
   type SessionSummary,
 } from "../sessions.js";
+import { STORE_PATH as COMMAND_STORE_PATH } from "./ingest-commands.js";
 
 /**
  * One interface, two backings — the seam the migration turns on. Every read
@@ -521,7 +526,24 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return { threadId: id, texts };
     },
     // The store is indexed whole, so this reads no file at all.
-    readCommandRuns: async () => commandRunsFromDb(db),
+    readCommandRuns: async (logDir) => {
+      // The server reconciles the store and reads it back inside the same
+      // request, so rows behind the file would answer with the pre-reconcile
+      // view. Same watermark equality `ingestCommandRuns` uses; anything else
+      // re-reads the store, which is what the file reader would have answered.
+      const mark = db.prepare("SELECT bytes, modified FROM file_watermark WHERE path = ?").get(COMMAND_STORE_PATH) as
+        | { bytes: number; modified: string }
+        | undefined;
+      if (mark) {
+        try {
+          const info = await stat(commandStorePath(logDir));
+          if (mark.bytes === info.size && mark.modified === info.mtime.toISOString()) return commandRunsFromDb(db);
+        } catch {
+          // No store on disk — the file reader answers that as no runs.
+        }
+      }
+      return readCommandRunsFromFiles(logDir);
+    },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
     readArchivedDay: async (logDir, date, opts = {}) => {
       const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0 };

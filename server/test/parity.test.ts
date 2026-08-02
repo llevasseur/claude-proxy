@@ -570,6 +570,33 @@ describe("route parity over a synthetic corpus", () => {
     expect(await mismatches(ctx, db)).toEqual([]);
   });
 
+  // `withCommandReconcile` writes the store and reads it back in the same
+  // request, so rows behind the file would serve the pre-reconcile view. The
+  // harness cannot reach that either — it reconciles once, before ingesting.
+  it("re-reads the command store the rows are behind, rather than answering pre-reconcile", async () => {
+    const store = commandStorePath(ctx.logDir);
+    expect(await dbSource(db).readCommandRuns(ctx.logDir)).toEqual(await fileSource.readCommandRuns(ctx.logDir));
+
+    // What a reconcile appends between two ingests: an existing run rewritten
+    // as finished, which supersedes the row still in the table.
+    const victim = (await fileSource.readCommandRuns(ctx.logDir)).find((r) => r.command === "task");
+    expect(victim, "the corpus should hold a run to close out").toBeDefined();
+    const closed = { ...victim!, ended: "2026-07-19T00:00:00.000Z" };
+    await appendFile(store, `${JSON.stringify(closed)}\n`, "utf8");
+
+    const fromDb = await dbSource(db).readCommandRuns(ctx.logDir);
+    expect(fromDb).toEqual(await fileSource.readCommandRuns(ctx.logDir));
+    expect(fromDb.find((r) => r.command === "task")?.ended).toBe(closed.ended);
+    const row = db.prepare("SELECT ended FROM command_run WHERE thread_id = ?").get(victim!.threadId) as {
+      ended: string | null;
+    };
+    expect(row.ended).toBe(victim!.ended);
+
+    // Catch the corpus up, and the whole replay is still byte-identical.
+    await ingest(db, ctx.logDir);
+    expect(await mismatches(ctx, db)).toEqual([]);
+  });
+
   /**
    * The one write route through the seam. It stays out of `PARITY_ROUTES` —
    * replaying it against the real-corpus snapshot would write through a

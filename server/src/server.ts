@@ -683,7 +683,10 @@ const server = http.createServer(async (req, res) => {
       // even on a cold server, and the streams follow a run as it happens.
       case "/api/commands": {
         // The shadow read deliberately skips `withCommandReconcile`: the served
-        // read already reconciled, and the store it wrote is what ingest sees.
+        // read already reconciled, and reconciling twice would write again. Both
+        // sides then read the store that write produced — the DB side through
+        // `readCommandRuns`'s watermark check, which re-reads the file until
+        // ingest catches up.
         const commands = await withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR, readSource()));
         send(res, 200, commands);
         shadow("/api/commands", commands, (source) => buildCommands(LOG_DIR, COMMANDS_DIR, source));
