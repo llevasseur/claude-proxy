@@ -9,6 +9,7 @@
     "start": "tsx --env-file-if-exists=.env src/server.ts",
     "summary": "tsx src/daily-summary.ts",
     "suggestions": "tsx src/suggestions-cli.ts",
+    "ingest": "tsx --env-file-if-exists=.env src/ingest-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

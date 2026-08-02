@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "pnpm@11.5.2",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "setup:env": "bash scripts/proxy-store-env.sh --setup",
