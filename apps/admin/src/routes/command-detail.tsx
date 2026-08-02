@@ -223,7 +223,7 @@ interface ScatterPoint {
   x: number;
   y: number;
   z: number;
-  threadId: string;
+  runId: string;
   started: string | null;
   cost: number;
   turns: number;
@@ -244,7 +244,7 @@ function RunScatter({ data, command }: { data: CommandResponse; command: string 
       x: new Date(r.started as string).getTime(),
       y: r.totals.tokens.realInput + r.totals.tokens.output,
       z: Math.max(1, r.totals.turns),
-      threadId: r.threadId,
+      runId: r.runId,
       started: r.started,
       cost: r.totals.cost,
       turns: r.totals.turns,
@@ -318,8 +318,8 @@ function RunScatter({ data, command }: { data: CommandResponse; command: string 
                 isAnimationActive={false}
                 onClick={(p: unknown) =>
                   navigate({
-                    to: "/commands/$command/$threadId",
-                    params: { command, threadId: (p as ScatterPoint).threadId },
+                    to: "/commands/$command/$runId",
+                    params: { command, runId: (p as ScatterPoint).runId },
                   })
                 }
                 style={{ cursor: "pointer" }}
@@ -548,16 +548,20 @@ function RunList({
         <tbody>
           {runs.map((r) => (
             <tr
-              key={r.threadId}
+              key={r.runId}
               className="clickable"
               onMouseEnter={() => onHover(r)}
               onMouseLeave={() => onHover(null)}
-              onClick={() =>
-                navigate({ to: "/commands/$command/$threadId", params: { command, threadId: r.threadId } })
-              }
+              onClick={() => navigate({ to: "/commands/$command/$runId", params: { command, runId: r.runId } })}
             >
               <td className="num muted">{r.started ? fmtLocalTsShort(r.started) : "—"}</td>
-              <td className="runprompt">{r.prompt || <span className="muted">no prompt recorded</span>}</td>
+              {/* A nested run has no prompt of its own — the CLI substitutes its arguments
+                  away — so it is named by the run that invoked it instead. */}
+              <td className="runprompt">
+                {r.prompt || (
+                  <span className="muted">{r.parentCommand ? `nested in /${r.parentCommand}` : "no prompt recorded"}</span>
+                )}
+              </td>
               <td>{r.flags.length === 0 ? <span className="muted">—</span> : r.flags.map(fmtFlag).join(" ")}</td>
               <td className="nowrap">
                 <span className="charttip-dot" style={{ background: OUTCOME_COLOR[r.outcome] }} /> {r.outcome}

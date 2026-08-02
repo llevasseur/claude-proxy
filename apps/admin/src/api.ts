@@ -251,6 +251,10 @@ export interface CommandsResponse {
 }
 /** One run as the command page lists it — no per-turn series, no per-step breakdown. */
 export interface CommandRunListItem {
+  /** A thread id for a top-level run, `<threadId>~<node>` for one nested inside another. */
+  runId: string;
+  parentRunId: string | null;
+  parentCommand: string | null;
   threadId: string;
   command: string;
   args: string;

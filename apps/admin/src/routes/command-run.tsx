@@ -40,14 +40,14 @@ function stepColor(step: string | null, index: number): string {
  * anchored on anything the run actually did.
  */
 export function CommandRunPage() {
-  const { command, threadId } = useParams({ from: "/commands/$command/$threadId" });
-  const key = ["command-run", threadId];
-  const query = useQuery({ queryKey: key, queryFn: () => getCommandRun(threadId) });
+  const { command, runId } = useParams({ from: "/commands/$command/$runId" });
+  const key = ["command-run", runId];
+  const query = useQuery({ queryKey: key, queryFn: () => getCommandRun(runId) });
   // A finished run cannot change, so it holds no stream open. Only a run still in flight
   // subscribes — that is the case the tree is meant to grow through.
   const running = query.data?.run.outcome === "running";
   const live = useLiveQuery<CommandRunResponse>(
-    `/api/commands/run/stream?id=${encodeURIComponent(threadId)}`,
+    `/api/commands/run/stream?id=${encodeURIComponent(runId)}`,
     key,
     running,
   );
@@ -65,7 +65,19 @@ export function CommandRunPage() {
           <Link to="/commands/$command" params={{ command }} className="link">
             /{command}
           </Link>{" "}
-          · <span className="rule-name">{threadId}</span>
+          · <span className="rule-name">{runId}</span>
+          {data?.run.parentRunId && data.run.parentCommand && (
+            <>
+              {" · nested in "}
+              <Link
+                to="/commands/$command/$runId"
+                params={{ command: data.run.parentCommand, runId: data.run.parentRunId }}
+                className="link"
+              >
+                /{data.run.parentCommand}
+              </Link>
+            </>
+          )}
         </div>
       </div>
 
