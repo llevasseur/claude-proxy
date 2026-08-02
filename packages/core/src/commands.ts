@@ -197,15 +197,18 @@ export function contentHash(text: string): string {
  * command opens the turn the real command was typed into, so the first is not the run's.
  */
 const COMMAND_NAME_RE = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/gi;
-const COMMAND_ARGS_RE = /<command-args>([\s\S]*?)<\/command-args>/i;
+const ARGS_OPEN_RE = /<command-args>/gi;
+const ARGS_CLOSE_RE = /<\/command-args>/gi;
 /**
  * The CLI's caveat sitting immediately ahead of an envelope, marking that envelope a
  * **locally-run** command — `/clear`, `/compact`.
  *
  * Adjacency is the whole test: the caveat's text also survives into compaction summaries,
- * thousands of characters from an unrelated envelope it says nothing about.
+ * thousands of characters from an unrelated envelope it says nothing about. Nothing may sit
+ * between the two: across every caveat in the captured logs the CLI emits `<command-name>`
+ * first, so an envelope held off by any other tag is a command in its own right.
  */
-const LOCAL_ENVELOPE_RE = /<\/local-command-caveat>(?:\s|<command-message>[^<]*<\/command-message>)*$/i;
+const LOCAL_ENVELOPE_RE = /<\/local-command-caveat>\s*$/i;
 /** The caveat the CLI prepends to a locally-run command, and the leftover envelope tags. */
 const COMMAND_NOISE_RE = /<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<\/?command-[a-z-]+>/gi;
 const REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/gi;
@@ -233,6 +236,25 @@ export interface CommandEnvelope {
 }
 
 /**
+ * One envelope's own `<command-args>` body, from `from` to the `next` envelope.
+ *
+ * The block ends at its **closing tag**, not at the next envelope: criteria quote envelopes
+ * all the time — a `/task` run describing `<command-name>/clean</command-name>` — and cutting
+ * there loses the whole block. The *opening* tag is what has to fall ahead of the next
+ * envelope; past it the block belongs to that envelope and this one simply carried no args.
+ * A block left unclosed by a truncated prompt falls back to that bound.
+ */
+function readArgs(text: string, from: number, next: number): string {
+  ARGS_OPEN_RE.lastIndex = from;
+  const open = ARGS_OPEN_RE.exec(text);
+  if (!open || open.index >= next) return "";
+
+  const body = open.index + open[0].length;
+  ARGS_CLOSE_RE.lastIndex = body;
+  return text.slice(body, ARGS_CLOSE_RE.exec(text)?.index ?? next).trim();
+}
+
+/**
  * Read a run's command, arguments and flags off its opening prompt, or null when the
  * prompt declares no command the model was asked to carry out — i.e. it is an ordinary
  * session, not a run.
@@ -250,8 +272,7 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
   for (const [i, name] of names.entries()) {
     if (LOCAL_ENVELOPE_RE.test(text.slice(0, name.index))) continue;
 
-    const body = text.slice(name.index + name[0].length, names[i + 1]?.index ?? text.length);
-    const args = (COMMAND_ARGS_RE.exec(body)?.[1] ?? "").trim();
+    const args = readArgs(text, name.index + name[0].length, names[i + 1]?.index ?? text.length);
     const flags: string[] = [];
     for (const token of args.split(/\s+/)) {
       const flag = FLAG_RE.exec(token);
