@@ -397,10 +397,10 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * is a different aggregation over the sidecars and session graphs slices 1 and
    * 2 already index.
    *
-   * `/api/projects`, `/api/jobs` and `/api/hooks-plugins` are deliberately
-   * absent: they read `~/.claude/projects`, `~/.claude/jobs` and
-   * `~/.claude/settings.json`, all outside the `logs/` scope ADR 0004 gives the
-   * substrate and none re-derivable by re-ingesting. Indexing one would put the
+   * `/api/projects`, `/api/jobs`, `/api/hooks-plugins` and `/api/system-prompt`
+   * are deliberately absent: they read `~/.claude/projects`, `~/.claude/jobs`,
+   * `~/.claude/settings.json` and `~/.claude/CLAUDE.md`, all outside the `logs/`
+   * scope ADR 0004 gives the substrate and none re-derivable by re-ingesting. Indexing one would put the
    * only copy of something in a disposable view — the same boundary that kept
    * `~/.claude/commands` out in slice 3. `/api/filters` reads no disk.
    *
