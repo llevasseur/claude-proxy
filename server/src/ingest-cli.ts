@@ -27,6 +27,10 @@ async function main(): Promise<void> {
     `[ingest] ${stats.sessions} session transcript${stats.sessions === 1 ? "" : "s"}` +
       `, ${stats.sessionsParsed} parsed`,
   );
+  console.log(
+    `[ingest] ${stats.commandRuns} command run${stats.commandRuns === 1 ? "" : "s"}` +
+      `, store ${stats.commandRunsParsed ? "re-read" : "unchanged"}`,
+  );
 }
 
 main().catch((err: unknown) => {

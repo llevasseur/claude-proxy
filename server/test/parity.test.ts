@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from "../src/command-runs.js";
 import { ingest } from "../src/db/ingest.js";
 import { openDb } from "../src/db/open.js";
 import { dbSource, fileSource } from "../src/db/source.js";
@@ -129,9 +130,11 @@ async function writeSessions(logDir: string): Promise<void> {
     ].join("\n"),
     "utf8",
   );
+  // A command envelope in the root prompt, so `reconcileCommandRuns` reads this
+  // thread as a run of `/task` rather than the store needing a hand-authored record.
   await writeFile(
     path.join(dir, `${parent}.state.json`),
-    JSON.stringify({ root: "Move the audit sidecars into SQLite, but keep the files authoritative." }),
+    JSON.stringify({ root: envelope("task", "--sub Move the audit sidecars into SQLite, but keep the files authoritative.") }),
     "utf8",
   );
   await writeFile(
@@ -163,12 +166,51 @@ async function writeSessions(logDir: string): Promise<void> {
     "utf8",
   );
 
-  // No header, no sidecars, and cut off mid-run.
+  // No header and cut off mid-run. It gets a root prompt naming a command that
+  // is *not* installed, so `/api/commands` carries a row the catalogue does not
+  // know — history a `/sync` removed.
   await writeFile(
     path.join(dir, "00000000000000c3.md"),
     ["## Task: something older", "- Bash(ls)", "- interrupted: user", "- done: resumed and finished", ""].join("\n"),
     "utf8",
   );
+  await writeFile(
+    path.join(dir, "00000000000000c3.state.json"),
+    JSON.stringify({ root: envelope("retired-command", "--here tidy up") }),
+    "utf8",
+  );
+}
+
+/**
+ * A commands catalogue holding the one installed command, with a step tree. The
+ * corpus also has runs of a command that is *not* here, so `/api/commands`
+ * exercises both halves of its union.
+ */
+async function writeCommandsDir(): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), "parity-commands-"));
+  await writeFile(
+    path.join(dir, "task.md"),
+    [
+      "Take a task to an open PR.",
+      "",
+      "## Step 1 — Set up the workspace",
+      "Create a worktree with `my-command-tools worktree begin`.",
+      "",
+      "## Step 2 — Implement the task",
+      "Verify with `my-command-tools verify`.",
+      "",
+      "## Step 3 — Clean, then PR",
+      "Run `/clean`, then `/pr`.",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return dir;
+}
+
+/** A root prompt as the CLI records it for a slash command. */
+function envelope(command: string, args: string): string {
+  return `<command-name>/${command}</command-name>\n<command-args>${args}</command-args>`;
 }
 
 /**
@@ -242,13 +284,18 @@ describe("route parity over a synthetic corpus", () => {
 
   beforeAll(async () => {
     const logDir = await buildCorpus();
-    ctx = { logDir, limits: resolveUsageLimits({}) };
+    const commandsDir = await writeCommandsDir();
+    // The store under test is the one the reconcile pass writes, not a fixture, so
+    // the record shapes are whatever the real distiller produces.
+    await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-18T00:00:00.000Z"));
+    ctx = { logDir, limits: resolveUsageLimits({}), commandsDir };
     db = openDb(logDir);
     await ingest(db, logDir);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     db?.close();
+    if (ctx?.commandsDir) await rm(ctx.commandsDir, { recursive: true, force: true });
   });
 
   it("ingests every sidecar, and files that are not sidecars separately", () => {
@@ -274,10 +321,35 @@ describe("route parity over a synthetic corpus", () => {
     expect(
       (db.prepare("SELECT count(*) c FROM session_node_text").get() as { c: number }).c,
     ).toBe(2);
-    // An absent `state.json` and one carrying no `root` read the same: null.
+    // The subagent has no `state.json` at all, which reads the same as one
+    // carrying no `root`: null.
     expect(
       (db.prepare("SELECT count(*) c FROM session WHERE root_prompt IS NOT NULL").get() as { c: number }).c,
-    ).toBe(1);
+    ).toBe(2);
+  });
+
+  it("indexes every command run, its tree, and the document it round-trips", () => {
+    // Both root prompts read as runs: one of an installed command, one of a
+    // command the catalogue no longer has.
+    expect((db.prepare("SELECT count(*) c FROM command_run").get() as { c: number }).c).toBe(2);
+    expect(
+      db.prepare("SELECT command FROM command_run ORDER BY command").all().map((r) => (r as { command: string }).command),
+    ).toEqual(["retired-command", "task"]);
+    // The envelope's leading flags are indexed as their own rows.
+    expect(
+      db.prepare("SELECT flag FROM command_run_flag ORDER BY flag").all().map((r) => (r as { flag: string }).flag),
+    ).toEqual(["here", "sub"]);
+    // The `/task` run's family is the parent plus the subagent it spawned.
+    expect(
+      (db.prepare("SELECT count(*) c FROM command_run_thread WHERE thread_id = ?").get("00000000000000a1") as {
+        c: number;
+      }).c,
+    ).toBe(2);
+    // Every row's document re-parses into the record the file reader hands back.
+    const documents = db.prepare("SELECT document FROM command_run ORDER BY ord").all();
+    for (const row of documents) {
+      expect(() => JSON.parse((row as { document: string }).document)).not.toThrow();
+    }
   });
 
   it("answers every wired route byte-identically from SQLite", async () => {
@@ -295,6 +367,10 @@ describe("route parity over a synthetic corpus", () => {
     // every transcript rather than re-reading it.
     expect(stats.sessions).toBe(3);
     expect(stats.sessionsParsed).toBe(0);
+    // The store did not move either, so its `file_watermark` row skips it
+    // without the file being opened.
+    expect(stats.commandRuns).toBe(2);
+    expect(stats.commandRunsParsed).toBe(false);
     expect(db.prepare("SELECT id, timestamp, model FROM request ORDER BY id").all()).toEqual(before);
     expect(db.prepare("SELECT thread_id, bytes, modified, root_prompt FROM session ORDER BY thread_id").all()).toEqual(
       sessions,
@@ -330,12 +406,45 @@ describe("route parity over a synthetic corpus", () => {
     ).toBe(0);
   });
 
+  it("re-reads a command store that grew, and drops the rows when it leaves", async () => {
+    const store = commandStorePath(ctx.logDir);
+    const runs = await fileSource.readCommandRuns(ctx.logDir);
+    const victim = runs.find((r) => r.command === "retired-command");
+    expect(victim, "the corpus should hold a run to retire").toBeDefined();
+
+    // Retracting a record means appending it again with the tombstone set. The row
+    // stays — it is what the file holds — and the live view drops it on both sides.
+    await appendFile(store, `${JSON.stringify({ ...victim!, retired: true })}\n`, "utf8");
+    let stats = await ingest(db, ctx.logDir);
+    expect(stats.commandRunsParsed).toBe(true);
+    expect(stats.commandRuns).toBe(2);
+    expect((db.prepare("SELECT count(*) c FROM command_run WHERE retired = 1").get() as { c: number }).c).toBe(1);
+    expect((await fileSource.readCommandRuns(ctx.logDir)).map((r) => r.command)).toEqual(["task"]);
+    expect(await mismatches(ctx, db)).toEqual([]);
+
+    // The store is the rows' only source: losing it takes them, and the
+    // children cascade.
+    await rm(store);
+    stats = await ingest(db, ctx.logDir);
+    expect(stats.commandRuns).toBe(0);
+    expect((db.prepare("SELECT count(*) c FROM command_run").get() as { c: number }).c).toBe(0);
+    expect((db.prepare("SELECT count(*) c FROM command_run_turn").get() as { c: number }).c).toBe(0);
+    expect(await mismatches(ctx, db)).toEqual([]);
+
+    // Put it back, so the rebuild below has a store to rebuild from.
+    await reconcileCommandRuns(ctx.logDir, ctx.commandsDir!, new Date("2026-07-18T00:00:00.000Z"));
+    await ingest(db, ctx.logDir);
+    expect((db.prepare("SELECT count(*) c FROM command_run").get() as { c: number }).c).toBe(2);
+  });
+
   it("rebuilds identically from an empty database", async () => {
     const before = db.prepare("SELECT id, timestamp, model, tokens_real_input FROM request ORDER BY id").all();
     const tools = db.prepare("SELECT request_id, ord, name, bytes FROM request_tool ORDER BY request_id, ord").all();
     const sessions = db.prepare("SELECT * FROM session ORDER BY thread_id").all();
     const nodes = db.prepare("SELECT * FROM session_node ORDER BY thread_id, idx").all();
     const texts = db.prepare("SELECT * FROM session_node_text ORDER BY thread_id, idx").all();
+    const commandRuns = db.prepare("SELECT * FROM command_run ORDER BY ord").all();
+    const commandSteps = db.prepare("SELECT * FROM command_run_step ORDER BY thread_id, ord").all();
 
     // The total-recovery path: drop everything, re-ingest, get the same view
     // back.
@@ -345,6 +454,8 @@ describe("route parity over a synthetic corpus", () => {
     db.exec("DELETE FROM request_skipped");
     db.exec("DELETE FROM ingest_watermark");
     db.exec("DELETE FROM session");
+    db.exec("DELETE FROM command_run");
+    db.exec("DELETE FROM file_watermark");
     await ingest(db, ctx.logDir);
 
     expect(db.prepare("SELECT id, timestamp, model, tokens_real_input FROM request ORDER BY id").all()).toEqual(before);
@@ -352,6 +463,8 @@ describe("route parity over a synthetic corpus", () => {
     expect(db.prepare("SELECT * FROM session ORDER BY thread_id").all()).toEqual(sessions);
     expect(db.prepare("SELECT * FROM session_node ORDER BY thread_id, idx").all()).toEqual(nodes);
     expect(db.prepare("SELECT * FROM session_node_text ORDER BY thread_id, idx").all()).toEqual(texts);
+    expect(db.prepare("SELECT * FROM command_run ORDER BY ord").all()).toEqual(commandRuns);
+    expect(db.prepare("SELECT * FROM command_run_step ORDER BY thread_id, ord").all()).toEqual(commandSteps);
   });
 
   // A harness that cannot fail proves nothing, so make it fail on purpose.
@@ -441,6 +554,10 @@ async function linkInto(
  * those appends straight into the snapshot. The `.md` / `.request.txt` request
  * bodies are left out: no wired route reads them. A later slice that wires a
  * blob-reading route has to widen {@link SNAPSHOT_SUFFIXES}.
+ *
+ * `commands/runs.jsonl` is *copied* for the same reason `sessions/` is: the
+ * reconcile pass appends to it while a run is in flight, and a hardlink would
+ * carry those appends into the snapshot.
  */
 async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
   const snap = await mkdtemp(path.join(tmpdir(), "parity-real-"));
@@ -448,11 +565,25 @@ async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
   const sessions = path.join(snap, "sessions");
   await mkdir(sessions, { recursive: true });
   await linkInto(path.join(logDir, "sessions"), sessions, SESSION_SUFFIXES, true);
+  await mkdir(path.join(snap, "commands"), { recursive: true });
+  await copyFile(commandStorePath(logDir), commandStorePath(snap)).catch(() => {
+    // No store on this machine yet: an empty commands page, not a failure.
+  });
   for (const day of days) {
     const dest = path.join(snap, "archive", day);
     await mkdir(dest, { recursive: true });
     await linkInto(path.join(logDir, "archive", day), dest);
   }
+  return snap;
+}
+
+/**
+ * A frozen copy of the installed command catalogue. It lives outside `logs/`, but
+ * a `/sync` landing between the two replays would still move it under them.
+ */
+async function snapshotCommandsDir(): Promise<string> {
+  const snap = await mkdtemp(path.join(tmpdir(), "parity-real-commands-"));
+  await linkInto(resolveCommandsDir(), snap, [".md"], true);
   return snap;
 }
 
@@ -463,6 +594,7 @@ async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
 describe("route parity over the real logs/archive", () => {
   let days: string[] = [];
   let snapshot: string | null = null;
+  let commandsDir: string | null = null;
   let db: DatabaseSync | null = null;
 
   beforeAll(async () => {
@@ -470,6 +602,7 @@ describe("route parity over the real logs/archive", () => {
     days = await archivedDays(logDir);
     if (!days.length) return;
     snapshot = await snapshotLogs(logDir, days);
+    commandsDir = await snapshotCommandsDir();
     db = openDb(snapshot);
     await ingest(db, snapshot);
   }, 300_000);
@@ -477,6 +610,7 @@ describe("route parity over the real logs/archive", () => {
   afterAll(async () => {
     db?.close();
     if (snapshot) await rm(snapshot, { recursive: true, force: true });
+    if (commandsDir) await rm(commandsDir, { recursive: true, force: true });
   });
 
   it("snapshots the archive it is about to replay", async () => {
@@ -490,6 +624,8 @@ describe("route parity over the real logs/archive", () => {
       expect(days).toEqual([]);
       return;
     }
-    expect(await mismatches({ logDir: snapshot, limits: resolveUsageLimits({}) }, db)).toEqual([]);
+    expect(
+      await mismatches({ logDir: snapshot, limits: resolveUsageLimits({}), commandsDir: commandsDir ?? undefined }, db),
+    ).toEqual([]);
   }, 600_000);
 });

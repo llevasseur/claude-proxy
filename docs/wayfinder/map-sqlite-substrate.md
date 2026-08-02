@@ -64,10 +64,26 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
       deliberately unregistered: they read a `.request.txt` body off disk and
       touch no indexed column.*
 
-- [ ] **Slice 3 — Command runs. DEPENDS ON SLICE 2.**
+- [x] **Slice 3 — Command runs. DEPENDS ON SLICE 2.**
       The run / turn / step tree, plus waste and patterns from
       `packages/core/src/commands.ts`. Registers `/api/commands*`. It needs the
       session rows from slice 2 to hang the tree off, so it cannot start early.
+      *Landed against `logs/commands/runs.jsonl` rather than the transcripts: a
+      run is **distilled** by `reconcileCommandRuns` and then **stored**, so the
+      store is the source the substrate mirrors. That is why `command_run`
+      carries a `document` column beside the normalized tree —
+      `readCommandRuns` deliberately keeps records it does not fully understand
+      (`isCommandRun` checks three identity fields), and half a record's fields
+      are optional, so rebuilding one from columns could not tell "key absent"
+      from "key held the default" and would drop a future writer's fields the
+      moment slice 5 flips reads. The tables exist to be *queried*; the document
+      is what is *served*. One mutable file means a third watermark shape, a
+      `file_watermark` row keyed on the path — and its own `fs.watch`, since
+      `logs/commands/` is not covered by the non-recursive watch on `logs/`. The
+      installed catalogue under `~/.claude/commands` is **not** indexed: it lives
+      outside `logs/`, so both backings read it identically — but the parity
+      harness pins it on `ParityContext.commandsDir` so a `/sync` cannot move it
+      between the two replays.*
 
 - [ ] **Slice 4 — The remainder.**
       Projects, jobs, suggestions, errors, skim, withheld, filters. Whatever
