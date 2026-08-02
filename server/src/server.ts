@@ -2,6 +2,9 @@ import fs from "node:fs";
 import http from "node:http";
 import { isSuggestionStatus, parseBucketRange, parseSuggestionStatusUpdates, type SuggestionStatus } from "@claude-proxy/core";
 import {
+  buildCommand,
+  buildCommandRun,
+  buildCommands,
   buildContext,
   buildContextDetail,
   buildContextMessage,
@@ -35,6 +38,7 @@ import {
   buildFilters,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
+import { reconcileCommandRuns, resolveCommandsDir } from "./command-runs.js";
 import {
   continueChat,
   endChat,
@@ -58,6 +62,30 @@ const ARCHIVE_DIR = resolveArchiveDir();
 const PROJECTS_DIR = resolveProjectsDir();
 const JOBS_DIR = resolveJobsDir();
 const USAGE_LIMITS = resolveUsageLimits();
+const COMMANDS_DIR = resolveCommandsDir();
+
+/**
+ * Bring the command-run store up to date, then build.
+ *
+ * The reconcile pass is the only writer, so concurrent requests — and the SSE watcher
+ * firing on the same log change that woke a request — share one in-flight pass rather
+ * than racing to append the same records. A failure is swallowed: the store is a cache
+ * of the logs, and serving it slightly stale beats 500-ing the page.
+ */
+let reconciling: Promise<unknown> | null = null;
+function reconcileCommands(): Promise<unknown> {
+  reconciling ??= reconcileCommandRuns(LOG_DIR, COMMANDS_DIR)
+    .catch(() => undefined)
+    .finally(() => {
+      reconciling = null;
+    });
+  return reconciling;
+}
+
+async function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
+  await reconcileCommands();
+  return build();
+}
 
 /** Everything but the chat routes is a read-only view of already-captured logs. */
 const CORS = {
@@ -143,7 +171,7 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
     snapshot = await stream.build();
   } catch (err) {
     const msg = (err as Error).message;
-    send(res, msg.startsWith("session not found") ? 404 : 500, { error: msg });
+    send(res, /(^|\b)not found:/.test(msg) ? 404 : 500, { error: msg });
     return;
   }
 
@@ -570,6 +598,61 @@ const server = http.createServer(async (req, res) => {
           const msg = (err as Error).message;
           if (msg.startsWith("invalid session id")) send(res, 400, { error: msg });
           else if (msg.startsWith("session not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      // The Commands eval page. Every read reconciles first, so the store is current
+      // even on a cold server, and the streams follow a run as it happens.
+      case "/api/commands":
+        send(res, 200, await withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR)));
+        return;
+      case "/api/commands/stream":
+        await serveSse(req, res, {
+          watchPath: LOG_DIR,
+          build: () => withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR)),
+          debounceMs: 600,
+        });
+        return;
+      case "/api/commands/command":
+      case "/api/commands/command/stream": {
+        const name = url.searchParams.get("name");
+        if (!name) {
+          send(res, 400, { error: "missing ?name=" });
+          return;
+        }
+        const flags = (url.searchParams.get("flags") ?? "").split(",").filter(Boolean);
+        const build = () => withCommandReconcile(() => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags));
+        if (url.pathname.endsWith("/stream")) {
+          await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+          return;
+        }
+        try {
+          send(res, 200, await build());
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("command not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
+      case "/api/commands/run":
+      case "/api/commands/run/stream": {
+        const id = url.searchParams.get("id");
+        if (!id) {
+          send(res, 400, { error: "missing ?id=" });
+          return;
+        }
+        const build = () => withCommandReconcile(() => buildCommandRun(LOG_DIR, id));
+        if (url.pathname.endsWith("/stream")) {
+          await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+          return;
+        }
+        try {
+          send(res, 200, await build());
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("command run not found")) send(res, 404, { error: msg });
           else throw err;
         }
         return;

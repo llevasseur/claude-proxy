@@ -200,6 +200,33 @@ export async function readArchivedDay(
  * `T`, `:` (legacy), `.`, `_`, `-` only — no path separators, no `..`. */
 const REQUEST_FILE_RE = /^[0-9A-Za-z:_.\-]+_anthropic$/;
 
+/**
+ * Read and parse one captured request body, without rendering it for display.
+ *
+ * Validates `file` against {@link REQUEST_FILE_RE} and confirms the resolved path stays
+ * inside `logDir` before touching the disk — the base name comes from the client, so
+ * path traversal must be impossible. Callers that only need the parsed object use this
+ * rather than {@link readRequestBody}, whose pretty-printing doubles the cost of a
+ * multi-megabyte body; the commands reconcile pass opens bodies in bulk.
+ */
+export async function readRequestBodyParsed(logDir: string, file: string): Promise<unknown> {
+  if (!REQUEST_FILE_RE.test(file)) {
+    throw new Error(`invalid request file name: ${file}`);
+  }
+  const full = path.resolve(logDir, `${file}.request.txt`);
+  if (path.dirname(full) !== path.resolve(logDir)) {
+    throw new Error(`invalid request file name: ${file}`);
+  }
+
+  let text: string;
+  try {
+    text = await readFile(full, "utf8");
+  } catch {
+    throw new Error(`request file not found: ${file}`);
+  }
+  return JSON.parse(text) as unknown;
+}
+
 export interface RequestBodyResult {
   /** The parsed request body (untrusted — analyzed downstream). */
   body: unknown;
@@ -221,22 +248,7 @@ export async function readRequestBody(
   file: string,
   maxRawBytes = 2_000_000,
 ): Promise<RequestBodyResult> {
-  if (!REQUEST_FILE_RE.test(file)) {
-    throw new Error(`invalid request file name: ${file}`);
-  }
-  const full = path.resolve(logDir, `${file}.request.txt`);
-  if (path.dirname(full) !== path.resolve(logDir)) {
-    throw new Error(`invalid request file name: ${file}`);
-  }
-
-  let text: string;
-  try {
-    text = await readFile(full, "utf8");
-  } catch {
-    throw new Error(`request file not found: ${file}`);
-  }
-
-  const body = JSON.parse(text) as unknown;
+  const body = await readRequestBodyParsed(logDir, file);
   const pretty = JSON.stringify(body, null, 2);
   const truncated = pretty.length > maxRawBytes;
   return { body, raw: truncated ? pretty.slice(0, maxRawBytes) : pretty, truncated };
