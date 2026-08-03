@@ -21,18 +21,36 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
   `usage-limits.ts`, …) re-exported from `index.ts`. It ships **no build**: its
   `exports` map points straight at `./src/index.ts`, so consumers import TypeScript
   source and `packages/core/dist` never exists.
-- `proxy/` is zero-dependency plain `.mjs` — `proxy.mjs` (bin `claude-proxy`), plus
-  `session.mjs`, `skim.mjs`, `usage-live.mjs`.
+- `proxy/` is TypeScript with **zero runtime dependencies** — `proxy.ts` (bin
+  `claude-proxy`), plus `wire.ts`, `session.ts`, `skim.ts`, `usage-live.ts`.
+  TypeScript is a devDependency only; the bin is executed directly by node, which
+  strips the types itself, so there is no build step and no `dist`. Imports carry
+  explicit `.ts` extensions (`allowImportingTsExtensions`) — that is deliberate,
+  not a mistake to "fix".
 - Tests sit beside their package, never in a top-level `test/`:
   `packages/core/test/*.test.ts` and `server/test/*.test.ts` (both vitest),
-  `proxy/*.test.mjs` (node's built-in runner). `apps/admin` has no test suite —
-  `typecheck` is its only gate.
+  `proxy/*.test.ts` (node's built-in runner, `node --test`). `apps/admin` has no
+  test suite — `typecheck` is its only gate.
 - `logs/` holds roughly today only: per-request triples
   (`<timestamp>_anthropic.audit.json` / `.md` / `.request.txt`),
   `logs/sessions/<threadId>.md` transcripts with `.nodes.jsonl` and `.state.json`
   sidecars, `logs/suggestion-status.json`, `logs/.chat/`, and `logs/archive/`.
 - Verify with `my-command-tools verify`; it runs the root `typecheck`, `test`,
-  `build`, and `check:env` scripts.
+  `build`, `check`, and `check:env` scripts. `check` is Biome (`biome check .` —
+  lint plus format plus import sorting, read-only); `format` (`biome check --write
+  .`) is the fixer and `lint` (`biome lint .`) narrows to the linter alone.
+- Biome is configured by `biome.json` at the repo root. Two things there are
+  deliberate and should not be "tidied" away:
+  - `!logs` in `files.includes` skips traversal of `logs/` outright. That
+    directory holds captured audit JSON with non-UTF-8 bytes; `!logs/**` would
+    still walk it.
+  - `style/noNonNullAssertion` is **off**. It fired at 255 sites, essentially all
+    of them the direct consequence of `noUncheckedIndexedAccess` being on
+    repo-wide — the assertion is how an already-bounds-checked index access is
+    narrowed. `biome.json` is strict JSON and cannot carry a comment saying so,
+    which is why it says so here.
+  Everything else is suppressed per site with a stated reason rather than turned
+  off; prefer that when a new rule fires on deliberate code.
 - `docs/` is an OKF bundle declared in `docs/index.md` frontmatter —
   `docs/features/`, `docs/specs/`, `docs/adrs/`, `docs/wayfinder/`. Go there for
   depth rather than re-deriving it from source.
