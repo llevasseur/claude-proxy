@@ -9,14 +9,17 @@ import { SkeletonNote, SkeletonTable, type SkeletonColumn } from "./Skeleton";
 const TOP_COHORTS = 8;
 const TOP_MOVES = 10;
 
-/** Both tables are a name followed by four figures. */
+/** Both tables are a name followed by four figures; the name wraps in its column. */
 const MIX_COLUMNS: readonly SkeletonColumn[] = [
-  {},
+  { lines: 2 },
   { className: "num" },
   { className: "num" },
   { className: "num" },
   { className: "num" },
 ];
+
+/** Rows to reserve — the tables run to `TOP_COHORTS` before the tail is folded away. */
+const SKELETON_ROWS = 7;
 
 /** Signed byte delta. */
 function fmtDelta(bytes: number): string {
@@ -88,14 +91,15 @@ export function PromptMixSkeleton() {
           <h2>Where the number comes from</h2>
           <span className="muted">click a prompt for its breakdown</span>
         </div>
-        <SkeletonNote className="muted mix-note" />
-        <SkeletonTable columns={MIX_COLUMNS} rows={TOP_COHORTS} />
+        {/* `Composition` runs to three clauses; `Attribution` is one long sentence. */}
+        <SkeletonNote className="muted mix-note" lines={6} />
+        <SkeletonTable columns={MIX_COLUMNS} rows={SKELETON_ROWS} />
       </div>
 
       <div className="card">
         <h2>Why it changed</h2>
-        <SkeletonNote className="muted mix-note" />
-        <SkeletonTable columns={MIX_COLUMNS} rows={TOP_COHORTS} />
+        <SkeletonNote className="muted mix-note" lines={4} />
+        <SkeletonTable columns={MIX_COLUMNS} rows={SKELETON_ROWS} />
       </div>
     </div>
   );

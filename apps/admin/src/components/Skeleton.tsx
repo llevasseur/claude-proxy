@@ -103,6 +103,12 @@ export interface SkeletonColumn {
   head?: Len;
   /** Body cell width. */
   cell?: Len;
+  /**
+   * Lines the real cell wraps to. A long label in a narrow column is what sets the
+   * row's height, so reserving one line where the page renders three leaves the
+   * table short by the difference on every row.
+   */
+  lines?: number;
 }
 
 /** A `.table` of placeholder rows, for dropping inside a card. */
@@ -123,7 +129,9 @@ export function SkeletonTable({ columns, rows = 6 }: { columns: readonly Skeleto
           <tr key={r}>
             {columns.map((c, i) => (
               <td key={i} className={c.className}>
-                <Skeleton w={c.cell ?? "78%"} />
+                {Array.from({ length: c.lines ?? 1 }, (_, l) => (
+                  <Skeleton key={l} w={l === 0 ? (c.cell ?? "78%") : "54%"} />
+                ))}
               </td>
             ))}
           </tr>
