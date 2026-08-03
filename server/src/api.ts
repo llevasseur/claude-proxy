@@ -18,11 +18,13 @@ import {
   attributePromptMix,
   pairPromptRevisions,
   promptMixByDay,
+  sectionShares,
   summarizePromptMix,
   type MixAttribution,
   type PromptMixDay,
   type PromptRevision,
   type SectionMove,
+  type SectionShare,
   type StoredWirePrompt,
   heuristicAdvice,
   skimDigestsByDay,
@@ -109,7 +111,7 @@ import {
   shiftDay,
   today,
 } from "./logs.js";
-import { readStoredPrompts } from "./prompt-store.js";
+import { readStoredPrompt, readStoredPrompts } from "./prompt-store.js";
 import { resolveRetentionDays } from "./retention.js";
 import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
 import { loadLiveUsage } from "./usage-live.js";
@@ -336,22 +338,28 @@ export interface PromptMixResponse {
   meta: { days: number; files: number; parseErrors: number; archivedDays: number; outlinesFound: number };
 }
 
+/** One day of prompt cohorts, oldest first, plus what it cost to read them. */
+interface PromptMixWindow {
+  mix: PromptMixDay[];
+  files: number;
+  parseErrors: number;
+  archivedDays: number;
+}
+
 /**
- * Why `avgSystemPromptBytes` sits where it does: the day's cohorts, the move
- * since the day before split into traffic mix and prompt size, and the sections
- * that changed when a prompt was rewritten.
+ * The window both prompt routes decompose. The live dir holds a day or two; the
+ * rest of the window is archived sidecars, summarized the same way.
  */
-export async function buildPromptMix(
+async function promptMixWindow(
   logDir: string,
   days: number,
-  now: Date = new Date(),
-  source: SidecarSource = fileSource,
-): Promise<PromptMixResponse> {
+  now: Date,
+  source: SidecarSource,
+): Promise<PromptMixWindow> {
   const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days }, now);
   const byDate = new Map<string, PromptMixDay>();
   for (const d of promptMixByDay(sidecars)) byDate.set(d.date, d);
 
-  // The live dir holds a day or two; the rest of the window is archived sidecars.
   let archivedDays = 0;
   const end = today(now);
   for (let i = 0; i < days; i += 1) {
@@ -363,7 +371,21 @@ export async function buildPromptMix(
     archivedDays += 1;
   }
 
-  const mix = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return { mix: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)), files, parseErrors, archivedDays };
+}
+
+/**
+ * Why `avgSystemPromptBytes` sits where it does: the day's cohorts, the move
+ * since the day before split into traffic mix and prompt size, and the sections
+ * that changed when a prompt was rewritten.
+ */
+export async function buildPromptMix(
+  logDir: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<PromptMixResponse> {
+  const { mix, files, parseErrors, archivedDays } = await promptMixWindow(logDir, days, now, source);
   const current = mix.at(-1);
   const prior = mix.at(-2);
   const attribution = current && prior ? attributePromptMix(prior, current) : null;
@@ -387,6 +409,82 @@ export async function buildPromptMix(
     revisions,
     partial: current && isPartialDay(current.date, now) ? { date: current.date, elapsed: dayElapsedFraction(current.date, now) } : null,
     meta: { days, files, parseErrors, archivedDays, outlinesFound },
+  };
+}
+
+/** One day this prompt ran, and what it did to that day's mean. */
+export interface PromptDayUsage {
+  date: string;
+  requests: number;
+  /** Fraction of that day's requests, 0–1. */
+  share: number;
+  meanBytes: number;
+  /** `share × meanBytes` — this prompt's bytes of the day's mean. */
+  contribution: number;
+  /** The whole day's mean, so the contribution reads as a fraction of it. */
+  dayMeanBytes: number;
+}
+
+export interface PromptDetailResponse {
+  hash: string;
+  /** The cohort's own label, e.g. `claude-opus-5 · 1a2b3c4d`; the short hash alone when unseen. */
+  label: string;
+  /** Models that sent it, most requests first. */
+  models: string[];
+  /** null when the store has no outline — the prompt ran before capture existed. */
+  outline: StoredWirePrompt | null;
+  /** Largest share first; empty without an outline. */
+  sections: SectionShare[];
+  /** Oldest first, one entry per day of the window that sent this prompt. */
+  usage: PromptDayUsage[];
+  meta: { days: number; files: number; parseErrors: number; archivedDays: number };
+}
+
+/**
+ * One prompt from the cohort table, opened up: the sections it is made of and
+ * the days it ran. The cohort table says which prompt pulls the mean up; this
+ * says which of its sections the bytes are actually in.
+ *
+ * Only identified cohorts have a page — a legacy cohort is keyed by model and
+ * size band, so there is no single prompt to outline. Those come back with an
+ * empty `usage` and a null `outline` rather than an error.
+ */
+export async function buildPromptDetail(
+  logDir: string,
+  hash: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<PromptDetailResponse> {
+  const { mix, files, parseErrors, archivedDays } = await promptMixWindow(logDir, days, now, source);
+
+  const usage: PromptDayUsage[] = [];
+  const models = new Map<string, number>();
+  let label = hash.slice(0, 8);
+  for (const day of mix) {
+    const cohort = day.cohorts.find((c) => c.key === hash);
+    if (!cohort) continue;
+    label = cohort.label;
+    for (const model of cohort.models) models.set(model, (models.get(model) ?? 0) + cohort.requests);
+    usage.push({
+      date: day.date,
+      requests: cohort.requests,
+      share: cohort.share,
+      meanBytes: cohort.meanBytes,
+      contribution: cohort.contribution,
+      dayMeanBytes: day.meanBytes,
+    });
+  }
+
+  const outline = await readStoredPrompt(logDir, hash);
+  return {
+    hash,
+    label,
+    models: [...models.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m),
+    outline,
+    sections: outline ? sectionShares(outline) : [],
+    usage,
+    meta: { days, files, parseErrors, archivedDays },
   };
 }
 

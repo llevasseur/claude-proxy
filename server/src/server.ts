@@ -23,6 +23,7 @@ import {
   buildMemory,
   buildProjectMemories,
   buildProjects,
+  buildPromptDetail,
   buildSession,
   buildSessionBreakdown,
   buildSessionErrors,
@@ -404,6 +405,20 @@ const server = http.createServer(async (req, res) => {
         const mix = await buildPromptMix(LOG_DIR, days, now, readSource());
         send(res, 200, mix);
         shadow("/api/prompt-mix", mix, (source) => buildPromptMix(LOG_DIR, days, now, source));
+        return;
+      }
+      // One cohort from that mix, opened up — which sections its bytes are in.
+      case "/api/prompt": {
+        const hash = url.searchParams.get("hash");
+        if (!hash) {
+          send(res, 400, { error: "missing ?hash=" });
+          return;
+        }
+        const days = parseDays(url.searchParams.get("days"));
+        const now = new Date();
+        const detail = await buildPromptDetail(LOG_DIR, hash, days, now, readSource());
+        send(res, 200, detail);
+        shadow("/api/prompt", detail, (source) => buildPromptDetail(LOG_DIR, hash, days, now, source));
         return;
       }
       case "/api/usage": {

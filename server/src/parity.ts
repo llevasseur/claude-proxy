@@ -22,6 +22,7 @@ import {
   buildSuggestionStatus,
   buildSummary,
   buildTools,
+  buildPromptDetail,
   buildPromptMix,
   buildTrends,
   buildUsage,
@@ -248,6 +249,22 @@ export const PARITY_ROUTES: ParityRoute[] = [
         label: `/api/prompt-mix?days=7 as of ${day}`,
         run: (source) => buildPromptMix(ctx.logDir, 7, endOf(day), source),
       })),
+  },
+  /* Enumerated from the mix the file side reports, so the hashes replayed are
+   * exactly the ones the cohort table can link to. Identified cohorts only: a
+   * legacy cohort is keyed by model and band, and has no prompt to open. */
+  {
+    name: "/api/prompt",
+    cases: async (ctx) => {
+      const last = (await archivedDays(ctx.logDir)).at(-1);
+      if (!last) return [];
+      const { days } = await buildPromptMix(ctx.logDir, 7, endOf(last), fileSource);
+      const hashes = new Set(days.flatMap((d) => d.cohorts.flatMap((c) => (c.hash ? [c.hash] : []))));
+      return [...hashes].map((hash) => ({
+        label: `/api/prompt?hash=${hash}&days=7 as of ${last}`,
+        run: (source: SidecarSource) => buildPromptDetail(ctx.logDir, hash, 7, endOf(last), source),
+      }));
+    },
   },
   {
     name: "/api/usage",
