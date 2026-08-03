@@ -956,6 +956,120 @@ a.pager-btn:hover {
   color: var(--muted);
 }
 
+/* trend carousel */
+.trend-carousel {
+  margin-bottom: 22px;
+}
+.trend-carousel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+/* The chooser: one chip per graph, so a metric is picked by name rather than by
+   counting anonymous dots. */
+.trend-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.trend-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  /* Stated rather than inherited, because a `<button>` takes `normal` from the UA
+     while the skeleton's `<span>` takes the page's 1.55 — a 2.5px difference per
+     chip, and the strip wraps to two rows. */
+  line-height: 1.45;
+}
+.trend-chip:hover {
+  color: var(--text);
+  border-color: var(--signal-dim);
+}
+.trend-chip.active {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--signal);
+}
+.trend-carousel-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.trend-carousel-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.trend-carousel-nav button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--signal-dim);
+}
+.trend-carousel-nav button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* One row of slides, scrolled sideways and snapped so a slide always comes to
+   rest flush with the left edge. Grid columns rather than flex basis: every
+   slide is the same width whatever it holds, so the track's height is settled
+   before any data arrives. */
+.trend-track {
+  /* Load-bearing: it makes the track each slide's offset parent, so `offsetLeft`
+     is the scroll position that brings that slide to the edge. Unpositioned, the
+     offsets are measured from a page-level ancestor and every scroll target — and
+     the nearest-slide sync reading them back — is off by that constant. */
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 100%;
+  gap: 22px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  /* The chips and arrows are the control; a scrollbar under them is noise. */
+  scrollbar-width: none;
+}
+.trend-track::-webkit-scrollbar {
+  display: none;
+}
+@media (min-width: 1080px) {
+  /* Two up, with the gap taken out of each column so both land whole. */
+  .trend-track {
+    grid-auto-columns: calc(50% - 11px);
+  }
+}
+.trend-slide {
+  scroll-snap-align: start;
+  min-width: 0;
+}
+/* Clamped to two lines: a longer description must not make one slide taller
+   than the one beside it. */
+.trend-slide-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  height: 3em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 /* tables */
 .table {
   width: 100%;
