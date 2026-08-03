@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useMemo } from "react";
 import type { UsageDigest } from "@claude-proxy/core";
 import { getSummary, getTrends, getUsage, type SummaryResponse, type UsageResponse } from "../api";
 import { AdviceCard } from "../components/AdviceCard";
@@ -153,9 +154,21 @@ function OverviewSkeleton() {
   );
 }
 
+/**
+ * Today's digest as the summary stream last reported it, spliced into the trends
+ * window. `/api/trends` is a one-shot read, so the mini charts and their popovers
+ * would otherwise hold today's load-time values while the headline moved on.
+ */
+function withLiveToday(digests: UsageDigest[], today: UsageDigest): UsageDigest[] {
+  const at = digests.findIndex((x) => x.date === today.date);
+  if (at === -1) return [...digests, today];
+  return digests.map((x, i) => (i === at ? today : x));
+}
+
 function OverviewBody({ data, digests }: { data: SummaryResponse; digests: UsageDigest[] }) {
   const d = data.digest;
   const delta = Object.fromEntries((d.trend ?? []).map((t) => [t.field, t.deltaPct]));
+  const series = useMemo(() => withLiveToday(digests, d), [digests, d]);
 
   if (d.requestCount === 0) {
     return <div className="card empty">No Claude activity captured for {d.date}.</div>;
@@ -174,7 +187,7 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
             increaseIsBad={m.increaseIsBad}
             metric={m.key}
             spark={{
-              points: digests.map((x) => ({ date: x.date, value: m.value(x) })),
+              points: series.map((x) => ({ date: x.date, value: m.value(x) })),
               color: m.color,
               format: m.format,
             }}
