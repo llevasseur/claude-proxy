@@ -45,6 +45,7 @@ import {
   buildFilters,
   buildSystemPrompt,
   buildSystemPromptUpdate,
+  buildConcepts,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
 import { reconcileCommandRuns, resolveCommandsDir } from "./command-runs.js";
@@ -766,6 +767,21 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      // The Concepts page. `/teach` appends to the store from outside this
+      // process, so the stream watches the log dir the store sits in.
+      case "/api/concepts": {
+        const concepts = await buildConcepts(LOG_DIR, readSource());
+        send(res, 200, concepts);
+        shadow("/api/concepts", concepts, (source) => buildConcepts(LOG_DIR, source));
+        return;
+      }
+      case "/api/concepts/stream":
+        await serveSse(req, res, {
+          watchPath: LOG_DIR,
+          build: () => buildConcepts(LOG_DIR, readSource()),
+          debounceMs: 600,
+        });
+        return;
       case "/api/sessions/suggestions": {
         const suggestions = await buildSessionSuggestions(LOG_DIR, readSource());
         send(res, 200, suggestions);

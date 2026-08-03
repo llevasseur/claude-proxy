@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -395,6 +395,49 @@ ${COMMAND_TABLES}
 `;
 
 /**
+ * Slice 7 — concepts. The source is `logs/concepts.jsonl`, the append-only store
+ * `/teach` writes one record to at the end of a run.
+ *
+ * The store has no key and nothing ever retracts a line, so a record's identity
+ * *is* its position in the file: `ord` is the primary key, and the table is
+ * replaced wholesale whenever the store changes rather than upserted into. Two
+ * runs may save the same term twice, and both rows are kept — that is the file's
+ * own reading of itself.
+ *
+ * `document` sits beside the normalized columns for the same reason it does on
+ * `command_run`: the record round-trips through it, so a read answers with what
+ * the file said rather than something rebuilt from columns, while the columns
+ * beside it exist to be queried.
+ */
+const CONCEPT_TABLES = `
+CREATE TABLE IF NOT EXISTS concept (
+  -- Position of the record's line in the store. See the note above.
+  ord       INTEGER PRIMARY KEY,
+  term      TEXT NOT NULL,
+  sentence  TEXT NOT NULL,
+  field     TEXT NOT NULL,
+  saved_at  TEXT NOT NULL,
+  -- The record's own JSON, verbatim.
+  document  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS concept_term_idx     ON concept(term);
+CREATE INDEX IF NOT EXISTS concept_field_idx    ON concept(field);
+CREATE INDEX IF NOT EXISTS concept_saved_at_idx ON concept(saved_at);
+
+-- The skills consulted for one concept, one row each — the facet a listing can
+-- group by without unpacking every \`document\`.
+CREATE TABLE IF NOT EXISTS concept_skill (
+  ord       INTEGER NOT NULL REFERENCES concept(ord) ON DELETE CASCADE,
+  skill_ord INTEGER NOT NULL,
+  skill     TEXT NOT NULL,
+  PRIMARY KEY (ord, skill_ord)
+);
+
+CREATE INDEX IF NOT EXISTS concept_skill_skill_idx ON concept_skill(skill);
+`;
+
+/**
  * Open (creating if needed) the substrate for `logDir` in WAL mode. WAL lets the
  * server read while an ingest pass writes, which is the normal state: the
  * watcher ingests whenever the proxy drops a new sidecar.
@@ -418,6 +461,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 2) db.exec(SCHEMA_V2);
   if (from < 3) db.exec(COMMAND_TABLES);
   if (from < 4) db.exec(SCHEMA_V4);
+  if (from < 5) db.exec(CONCEPT_TABLES);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

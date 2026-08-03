@@ -7,6 +7,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import {
+  BookOpen,
   EyeOff,
   FolderGit2,
   Gauge,
@@ -32,6 +33,7 @@ import { AdvicePage } from "./routes/advice";
 import { CommandDetailPage } from "./routes/command-detail";
 import { CommandRunPage } from "./routes/command-run";
 import { CommandsPage } from "./routes/commands";
+import { ConceptsPage } from "./routes/concepts";
 import { ContextDetailPage } from "./routes/context-detail";
 import { ContextMessagePage } from "./routes/context-message";
 import { ContextToolPage } from "./routes/context-tool";
@@ -72,6 +74,7 @@ const STATIONS = [
   { to: "/hooks-plugins", label: "Hooks & Plugins", hint: "config", exact: false, icon: Puzzle },
   { to: "/system-prompt", label: "System prompt", hint: "device", exact: false, icon: ScrollText },
   { to: "/commands", label: "Commands", hint: "per step", exact: false, icon: TerminalSquare },
+  { to: "/concepts", label: "Concepts", hint: "/teach", exact: false, icon: BookOpen },
   { to: "/advice", label: "Advice", hint: "coaching", exact: false, icon: Lightbulb },
 ] as const;
 
@@ -301,6 +304,12 @@ const systemPromptRoute = createRoute({
   component: SystemPromptPage,
   staticData: { title: "System prompt" },
 });
+const conceptsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/concepts",
+  component: ConceptsPage,
+  staticData: { title: "Concepts" },
+});
 const adviceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/advice",
@@ -356,6 +365,7 @@ const routeTree = rootRoute.addChildren([
   filtersRoute,
   hooksPluginsRoute,
   systemPromptRoute,
+  conceptsRoute,
   adviceRoute,
   suggestionBucketRoute,
   commandsRoute,

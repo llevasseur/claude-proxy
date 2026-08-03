@@ -5,7 +5,9 @@ import {
   linkAgentSessions,
   parseSessionTranscript,
   reportDay,
+  sortConcepts,
   type CommandRun,
+  type Concept,
   type SessionNode,
 } from "@claude-proxy/core";
 import {
@@ -13,6 +15,7 @@ import {
   readCommandRuns as readCommandRunsFromFiles,
   sortCommandRuns,
 } from "../command-runs.js";
+import { conceptStorePath, readConcepts as readConceptsFromFiles } from "../concepts.js";
 import {
   readArchivedDay as readArchivedDayFromFiles,
   readSidecars as readSidecarsFromFiles,
@@ -33,6 +36,7 @@ import {
   type SessionSummary,
 } from "../sessions.js";
 import { STORE_PATH as COMMAND_STORE_PATH } from "./ingest-commands.js";
+import { STORE_PATH as CONCEPT_STORE_PATH } from "./ingest-concepts.js";
 
 /**
  * One interface, two backings — the seam the migration turns on. Every read
@@ -67,6 +71,13 @@ export interface SidecarSource {
    * — it lives outside `logs/`, so both backings read it the same way.
    */
   readCommandRuns(logDir: string): Promise<CommandRun[]>;
+
+  /* --- Concepts (slice 7) --- *
+   *
+   * The live view of `logs/concepts.jsonl`: newest concept first. Nothing
+   * retracts a line, so unlike the command store there is no filter to apply.
+   */
+  readConcepts(logDir: string): Promise<Concept[]>;
 }
 
 /** The behaviour the server has today: scan the directory, parse every file. */
@@ -79,6 +90,7 @@ export const fileSource: SidecarSource = {
   readSession: (logDir, id) => readSessionFromFiles(logDir, id),
   readSessionNodeTexts: (logDir, id) => readSessionNodeTextsFromFiles(logDir, id),
   readCommandRuns: (logDir) => readCommandRunsFromFiles(logDir),
+  readConcepts: (logDir) => readConceptsFromFiles(logDir),
 };
 
 /** The live log directory's `source_dir`; archived days are `archive/<YYYY-MM-DD>`. */
@@ -477,6 +489,25 @@ function commandRunsFromDb(db: DatabaseSync): CommandRun[] {
   return sortCommandRuns(rows.map((row) => JSON.parse(row.document) as CommandRun)).filter((run) => !run.retired);
 }
 
+/* ------------------------------------------------------------------ *
+ * Concepts
+ * ------------------------------------------------------------------ */
+
+/**
+ * The concept store's live view, out of SQLite.
+ *
+ * `ORDER BY ord` restores file order, then the *same* sort runs on top, so the
+ * tie-breaking between two concepts saved in the same millisecond cannot drift
+ * from the file side's. The record comes back through `document` rather than
+ * being rebuilt from the columns beside it — see the schema note in `open.ts`.
+ */
+function conceptsFromDb(db: DatabaseSync): Concept[] {
+  const rows = db.prepare("SELECT document FROM concept ORDER BY ord").all() as unknown as Array<{
+    document: string;
+  }>;
+  return sortConcepts(rows.map((row) => JSON.parse(row.document) as Concept));
+}
+
 /** The same reads, answered from the substrate. */
 export function dbSource(db: DatabaseSync): SidecarSource {
   return {
@@ -556,6 +587,25 @@ export function dbSource(db: DatabaseSync): SidecarSource {
         }
       }
       return readCommandRunsFromFiles(logDir);
+    },
+    // The store is indexed whole, so this reads no file at all — as long as the
+    // rows are provably current. `/teach` appends from outside the server, so a
+    // record can land between two ingest passes; the same watermark equality
+    // `ingestConcepts` uses decides, and anything else re-reads the file, which
+    // is what the file reader would have answered.
+    readConcepts: async (logDir) => {
+      const mark = db.prepare("SELECT bytes, modified FROM file_watermark WHERE path = ?").get(CONCEPT_STORE_PATH) as
+        | { bytes: number; modified: string }
+        | undefined;
+      if (mark) {
+        try {
+          const info = await stat(conceptStorePath(logDir));
+          if (mark.bytes === info.size && mark.modified === info.mtime.toISOString()) return conceptsFromDb(db);
+        } catch {
+          // No store on disk — the file reader answers that as no concepts.
+        }
+      }
+      return readConceptsFromFiles(logDir);
     },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
     readArchivedDay: async (logDir, date, opts = {}) => {

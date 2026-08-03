@@ -280,6 +280,20 @@ export interface CommandsResponse {
   commands: CommandSummary[];
   meta: { commandsDir: string; storePath: string; runs: number; installed: number };
 }
+/** One term `/teach` recorded, exactly as it sits in `logs/concepts.jsonl`. */
+export interface ConceptRow {
+  term: string;
+  sentence: string;
+  field: string;
+  skills: string[];
+  /** ISO timestamp. */
+  savedAt: string;
+}
+export interface ConceptsResponse {
+  /** Newest first. */
+  concepts: ConceptRow[];
+  meta: { storePath: string; total: number };
+}
 /** One run as the command page lists it — no per-turn series, no per-step breakdown. */
 export interface CommandRunListItem {
   /** A thread id for a top-level run, `<threadId>~<node>` for one nested inside another. */
@@ -566,6 +580,8 @@ export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
+/** Everything `/teach` has saved, newest first. */
+export const getConcepts = () => get<ConceptsResponse>("/api/concepts");
 /** The device system prompt as it is on disk — `~/.claude/CLAUDE.md`. */
 export const getSystemPrompt = () => get<SystemPromptResponse>("/api/system-prompt");
 /** Overwrite it. The server keeps the previous contents in a `.bak` beside the file. */
