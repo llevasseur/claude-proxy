@@ -16,7 +16,7 @@ import {
   YAxis,
   ZAxis,
 } from 'recharts';
-import { deltaLabel, deltaTone, fmtInt, fmtTokensShort, fmtUsd, fmtUsdPerMTok } from '../format';
+import { deltaLabel, deltaTone, fmtInt, fmtTokensShort, fmtUsd, fmtUsdCompact, fmtUsdPerMTok } from '../format';
 import { Skeleton, SkeletonCard } from './Skeleton';
 
 /** Plot height, in px. Matched by the skeleton so the card does not resize on load. */
@@ -120,9 +120,6 @@ function Verdict({ summary, priorDays }: { summary: ReturnType<typeof summarizeC
   );
 }
 
-/** `fmtUsd` gives sub-dollar values three decimals, which renders the zero tick as `$0.000`. */
-const fmtAxisUsd = (n: number): string => (n === 0 ? '$0' : fmtUsd(n));
-
 /** Up to the next quarter of a power of ten — 465.2M becomes 500M, 12.1M becomes 12.5M. */
 function roundUp(n: number): number {
   if (n <= 0) return 0;
@@ -175,11 +172,11 @@ function CostRateChart({ prior, today, baseline }: CostRateChartProps) {
             dataKey='cost'
             name='Est. cost'
             domain={[0, costMax]}
-            width={56}
+            width='auto'
             tick={{ fontSize: 11, fill: 'var(--muted)' }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={fmtAxisUsd}
+            tickFormatter={fmtUsdCompact}
           />
           <ZAxis type='number' dataKey='z' domain={[1, 3]} range={[55, 190]} />
           {baseline !== null && (

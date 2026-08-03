@@ -8,7 +8,7 @@ import { DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { type Series, SeriesLineChart } from '../components/SeriesLineChart';
 import { SkeletonChartCard, type SkeletonColumn, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
-import { fmtInt, fmtPct, fmtUsd } from '../format';
+import { fmtInt, fmtPct, fmtUsd, fmtUsdCompact } from '../format';
 import { useTransitionState } from '../useTransitionState';
 
 const HIT_RATE_SERIES: Series[] = [{ dataKey: 'hitRate', name: 'Hit rate', color: 'var(--good)' }];
@@ -98,7 +98,13 @@ export function SkimPage() {
 
               <div className='card'>
                 <h2>Cumulative $ saved</h2>
-                <SeriesLineChart data={cumulativeRows} series={SAVED_SERIES} xKey='label' format={fmtUsd} />
+                <SeriesLineChart
+                  data={cumulativeRows}
+                  series={SAVED_SERIES}
+                  xKey='label'
+                  format={fmtUsd}
+                  formatTick={fmtUsdCompact}
+                />
               </div>
             </div>
 

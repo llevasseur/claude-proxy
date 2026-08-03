@@ -18,7 +18,7 @@ import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { SkeletonChartCard, type SkeletonColumn, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
-import { fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
+import { fmtCompact, fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
 import { useLiveQuery } from '../useLiveQuery';
 
 /** One colour per outcome, shared by the scatter, its legend and the run list. */
@@ -282,11 +282,11 @@ function RunScatter({ data, command }: { data: CommandResponse; command: string 
             <YAxis
               type='number'
               dataKey='y'
-              width={56}
+              width='auto'
               tick={{ fontSize: 11, fill: 'var(--muted)' }}
               axisLine={false}
               tickLine={false}
-              tickFormatter={(v: number) => fmtInt(v)}
+              tickFormatter={fmtCompact}
             />
             <ZAxis type='number' dataKey='z' range={[30, 320]} />
             <Tooltip cursor={{ stroke: 'var(--line)' }} content={<ScatterTooltip />} />
