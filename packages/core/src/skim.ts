@@ -1,6 +1,6 @@
-import { isAuditSidecar, type AuditSidecar, type AuditSkim } from "./types.js";
-import { priceFor } from "./pricing.js";
-import { reportDay } from "./time.js";
+import { isAuditSidecar, type AuditSidecar, type AuditSkim } from './types.js';
+import { priceFor } from './pricing.js';
+import { reportDay } from './time.js';
 
 export interface SkimShape {
   cacheKey: string;
@@ -48,13 +48,13 @@ const NO_SKIM: AuditSkim = { enabled: false, servedFromCache: false, savedInputT
 /** Read legacy or malformed skim blocks with safe defaults. */
 function skimOf(sidecar: AuditSidecar): AuditSkim {
   const raw = (sidecar as { skim?: unknown }).skim;
-  if (typeof raw !== "object" || raw === null) return NO_SKIM;
+  if (typeof raw !== 'object' || raw === null) return NO_SKIM;
   const s = raw as Record<string, unknown>;
   return {
     enabled: s.enabled === true,
     servedFromCache: s.servedFromCache === true,
-    savedInputTokens: typeof s.savedInputTokens === "number" ? s.savedInputTokens : 0,
-    cacheKey: typeof s.cacheKey === "string" ? s.cacheKey : null,
+    savedInputTokens: typeof s.savedInputTokens === 'number' ? s.savedInputTokens : 0,
+    cacheKey: typeof s.cacheKey === 'string' ? s.cacheKey : null,
   };
 }
 
@@ -66,10 +66,7 @@ function savedUsd(tokens: number, model: string): number {
  * Aggregate a day's audit sidecars, skipping malformed entries and treating
  * legacy sidecars as skim-disabled traffic.
  */
-export function computeSkimDigest(
-  sidecars: readonly unknown[],
-  opts: ComputeSkimDigestOptions,
-): SkimDigest {
+export function computeSkimDigest(sidecars: readonly unknown[], opts: ComputeSkimDigestOptions): SkimDigest {
   const topN = opts.topN ?? 12;
   const valid: AuditSidecar[] = [];
   for (const s of sidecars) if (isAuditSidecar(s)) valid.push(s);
@@ -78,7 +75,10 @@ export function computeSkimDigest(
   let misses = 0;
   let savedInputTokens = 0;
   let estSavedUsd = 0;
-  const shapes = new Map<string, { requestText: string | null; requests: number; hits: number; savedInputTokens: number; estSavedUsd: number }>();
+  const shapes = new Map<
+    string,
+    { requestText: string | null; requests: number; hits: number; savedInputTokens: number; estSavedUsd: number }
+  >();
 
   for (const s of valid) {
     const skim = skimOf(s);
@@ -91,10 +91,17 @@ export function computeSkimDigest(
     }
 
     if (skim.cacheKey) {
-      const requestText = typeof (s as unknown as { skimRequestText?: unknown }).skimRequestText === "string"
-        ? (s as unknown as { skimRequestText: string }).skimRequestText
-        : null;
-      const acc = shapes.get(skim.cacheKey) ?? { requestText, requests: 0, hits: 0, savedInputTokens: 0, estSavedUsd: 0 };
+      const requestText =
+        typeof (s as unknown as { skimRequestText?: unknown }).skimRequestText === 'string'
+          ? (s as unknown as { skimRequestText: string }).skimRequestText
+          : null;
+      const acc = shapes.get(skim.cacheKey) ?? {
+        requestText,
+        requests: 0,
+        hits: 0,
+        savedInputTokens: 0,
+        estSavedUsd: 0,
+      };
       if (!acc.requestText && requestText) acc.requestText = requestText;
       acc.requests += 1;
       if (skim.servedFromCache) {
@@ -139,7 +146,5 @@ export function skimDigestsByDay(sidecars: readonly unknown[], topN?: number): S
     bucket.push(s);
     byDay.set(day, bucket);
   }
-  return [...byDay.keys()]
-    .sort()
-    .map((day) => computeSkimDigest(byDay.get(day)!, { date: day, topN }));
+  return [...byDay.keys()].sort().map((day) => computeSkimDigest(byDay.get(day)!, { date: day, topN }));
 }

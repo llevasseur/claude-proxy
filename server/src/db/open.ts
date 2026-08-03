@@ -1,6 +1,6 @@
-import { createRequire } from "node:module";
-import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 
 /**
  * `node:sqlite` is required at runtime, not imported: it is newer than the
@@ -8,7 +8,7 @@ import type { DatabaseSync } from "node:sqlite";
  * package called `sqlite` and fail. The `import type` above is erased before any
  * bundler sees it.
  */
-const sqlite = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
+const sqlite = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
 
 /**
  * The SQLite query substrate: a **disposable materialized view** over `logs/`.
@@ -26,7 +26,7 @@ const sqlite = createRequire(import.meta.url)("node:sqlite") as typeof import("n
 
 /** `<logDir>/claude-proxy.db`. `logs/` is gitignored, so the view ships with the logs it mirrors. */
 export function resolveDbPath(logDir: string): string {
-  return path.join(logDir, "claude-proxy.db");
+  return path.join(logDir, 'claude-proxy.db');
 }
 
 /**
@@ -476,16 +476,16 @@ DELETE FROM file_watermark WHERE path = 'concepts.jsonl';
  */
 export function openDb(logDir: string): DatabaseSync {
   const db = new sqlite.DatabaseSync(resolveDbPath(logDir));
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA synchronous = NORMAL");
-  db.exec("PRAGMA foreign_keys = ON");
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA synchronous = NORMAL');
+  db.exec('PRAGMA foreign_keys = ON');
   migrate(db);
   return db;
 }
 
 /** Apply any schema steps this file is newer than, then record the new version. */
 function migrate(db: DatabaseSync): void {
-  const row = db.prepare("PRAGMA user_version").get() as { user_version?: number } | undefined;
+  const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
   const from = Number(row?.user_version ?? 0);
   if (from >= SCHEMA_VERSION) return;
 

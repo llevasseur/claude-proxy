@@ -1,7 +1,7 @@
-import type { DatabaseSync } from "node:sqlite";
-import { ingest, watchAndIngest, type IngestStats } from "./ingest.js";
-import { openDb } from "./open.js";
-import { dbSource, fileSource, type SidecarSource } from "./source.js";
+import type { DatabaseSync } from 'node:sqlite';
+import { ingest, watchAndIngest, type IngestStats } from './ingest.js';
+import { openDb } from './open.js';
+import { dbSource, fileSource, type SidecarSource } from './source.js';
 
 /**
  * The server's handle on the substrate. Opening it is best-effort: a failure to
@@ -40,7 +40,7 @@ export function substrateSource(): SidecarSource | null {
  */
 export function dbReadsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const v = env.DB_READS;
-  return v !== "0" && v !== "false";
+  return v !== '0' && v !== 'false';
 }
 
 /**
@@ -58,7 +58,7 @@ export function readSource(): SidecarSource {
  * files.
  */
 export function shadowSource(): SidecarSource | null {
-  if (readSource().kind === "db") return fileSource;
+  if (readSource().kind === 'db') return fileSource;
   return handle?.source ?? null;
 }
 

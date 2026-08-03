@@ -27,17 +27,17 @@
  * the tool from Claude's context entirely") and
  * https://code.claude.com/docs/en/settings.md (the `disable*` keys).
  */
-import { isAuditSidecar } from "./types.js";
+import { isAuditSidecar } from './types.js';
 
 /** A deny rule is *scoped* (and so not schema-stripping) iff it has a `(...)`
  * specifier. Everything else — a bare name or a bare-name glob — strips schema. */
 export function isScopedRule(rule: string): boolean {
-  return rule.includes("(");
+  return rule.includes('(');
 }
 
 /** Does a schema-stripping deny rule contain a `*` wildcard? */
 export function isGlobRule(rule: string): boolean {
-  return rule.includes("*");
+  return rule.includes('*');
 }
 
 /**
@@ -47,7 +47,7 @@ export function isGlobRule(rule: string): boolean {
  */
 export function matchesRule(rule: string, toolName: string): boolean {
   if (!isGlobRule(rule)) return rule === toolName;
-  const escaped = rule.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+  const escaped = rule.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
   return new RegExp(`^${escaped}$`).test(toolName);
 }
 
@@ -63,7 +63,7 @@ export function classifyDenyRules(deny: readonly string[]): DenyRuleClassificati
   const schemaStripping: string[] = [];
   const scoped: string[] = [];
   for (const rule of deny) {
-    if (typeof rule !== "string" || rule.length === 0) continue;
+    if (typeof rule !== 'string' || rule.length === 0) continue;
     (isScopedRule(rule) ? scoped : schemaStripping).push(rule);
   }
   return { schemaStripping, scoped };
@@ -81,8 +81,8 @@ export function classifyDenyRules(deny: readonly string[]): DenyRuleClassificati
  * https://code.claude.com/docs/en/workflows.md ("disableWorkflows").
  */
 export const DISABLE_SCHEMA_TOOLS: Readonly<Record<string, readonly string[]>> = {
-  disableWorkflows: ["Workflow"],
-  disableArtifact: ["Artifact"],
+  disableWorkflows: ['Workflow'],
+  disableArtifact: ['Artifact'],
 };
 
 export interface DisableSchemaEntry {
@@ -125,7 +125,7 @@ export interface ObservedToolMatch {
  *   still reaching the model right now (a session predating the rule is still
  *   running, or the rule isn't matching: name typo / settings precedence).
  */
-export type WithheldStatus = "absent" | "was-present" | "still-present";
+export type WithheldStatus = 'absent' | 'was-present' | 'still-present';
 
 export interface WithheldRuleReport {
   rule: string;
@@ -201,7 +201,7 @@ export function withheldReport(
       latestRequestTs = s.timestamp;
     }
     for (const t of s.tools) {
-      const cur = observed.get(t.name) ?? { occurrences: 0, lastSeen: "", bytes: 0, estTokens: 0 };
+      const cur = observed.get(t.name) ?? { occurrences: 0, lastSeen: '', bytes: 0, estTokens: 0 };
       cur.occurrences += 1;
       cur.bytes += t.bytes;
       cur.estTokens += t.estTokens;
@@ -218,7 +218,7 @@ export function withheldReport(
       .map(([name, v]) => ({ name, ...v, inLatestRequest: latestRequestTs !== null && v.lastSeen === latestRequestTs }))
       .sort((a, b) => b.occurrences - a.occurrences || a.name.localeCompare(b.name));
     const status: WithheldStatus =
-      matches.length === 0 ? "absent" : matches.some((m) => m.inLatestRequest) ? "still-present" : "was-present";
+      matches.length === 0 ? 'absent' : matches.some((m) => m.inLatestRequest) ? 'still-present' : 'was-present';
     return { observed: matches, status };
   };
 
@@ -240,9 +240,9 @@ export function withheldReport(
     observedToolCount: observed.size,
     requestsSampled,
     latestRequestTs,
-    rulesStillPresent: rules.filter((r) => r.status === "still-present").length,
-    rulesWasPresent: rules.filter((r) => r.status === "was-present").length,
-    disableStillPresent: disableSchema.filter((d) => d.status === "still-present").length,
-    disableWasPresent: disableSchema.filter((d) => d.status === "was-present").length,
+    rulesStillPresent: rules.filter((r) => r.status === 'still-present').length,
+    rulesWasPresent: rules.filter((r) => r.status === 'was-present').length,
+    disableStillPresent: disableSchema.filter((d) => d.status === 'still-present').length,
+    disableWasPresent: disableSchema.filter((d) => d.status === 'was-present').length,
   };
 }

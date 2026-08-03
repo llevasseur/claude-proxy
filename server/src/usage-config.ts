@@ -1,4 +1,4 @@
-import { USAGE_LIMIT_ENV_SUFFIX, type UsageLimitConfig, type UsageWindowKind } from "@claude-proxy/core";
+import { USAGE_LIMIT_ENV_SUFFIX, type UsageLimitConfig, type UsageWindowKind } from '@claude-proxy/core';
 
 /**
  * Ceilings for the usage meters' estimated fallback, consulted only for windows
@@ -17,10 +17,10 @@ const ENV_KEYS = Object.fromEntries(
 /** Parse a digit-group or `k`/`m`-suffixed count; null unless it is a positive number. */
 export function parseLimit(raw: string | undefined): number | null {
   if (!raw) return null;
-  const cleaned = raw.trim().toLowerCase().replace(/[_,]/g, "");
+  const cleaned = raw.trim().toLowerCase().replace(/[_,]/g, '');
   const m = /^(\d+(?:\.\d+)?)([km])?$/.exec(cleaned);
   if (!m) return null;
-  const scale = m[2] === "m" ? 1e6 : m[2] === "k" ? 1e3 : 1;
+  const scale = m[2] === 'm' ? 1e6 : m[2] === 'k' ? 1e3 : 1;
   const n = Number(m[1]) * scale;
   return n > 0 ? n : null;
 }

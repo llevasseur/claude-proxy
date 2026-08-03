@@ -26,10 +26,10 @@
  * restart drops the ability to *continue* a chat, never its history.
  */
 
-import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { INTERRUPTION_LINE } from "@claude-proxy/core";
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { INTERRUPTION_LINE } from '@claude-proxy/core';
 import {
   type AgentLaunchFlags,
   type ChatMode,
@@ -41,27 +41,26 @@ import {
   resolveAgentCwd,
   resolveCliCwd,
   runCliTurn,
-} from "./chat-cli.js";
-import { listSessions, resolveSessionsDir } from "./sessions.js";
-import { readLaunchAliases } from "./shell-rc.js";
+} from './chat-cli.js';
+import { listSessions, resolveSessionsDir } from './sessions.js';
+import { readLaunchAliases } from './shell-rc.js';
 
-const ANTHROPIC_VERSION = "2023-06-01";
+const ANTHROPIC_VERSION = '2023-06-01';
 
 /** Defaults, each overridable per env. */
-const DEFAULT_BASE_URL = "http://127.0.0.1:8787"; // the proxy's own default PORT
-const DEFAULT_MODEL = "claude-opus-5";
+const DEFAULT_BASE_URL = 'http://127.0.0.1:8787'; // the proxy's own default PORT
+const DEFAULT_MODEL = 'claude-opus-5';
 const DEFAULT_MAX_TOKENS = 64_000;
-const DEFAULT_CLI_PATH = "claude";
+const DEFAULT_CLI_PATH = 'claude';
 const DEFAULT_SYSTEM =
-  "You are Claude, answering in a chat started from the claude-proxy dashboard. " +
-  "Be direct and concise.";
+  'You are Claude, answering in a chat started from the claude-proxy dashboard. ' + 'Be direct and concise.';
 /** Appended to Claude Code's own prompt in agent mode, never replacing it. */
 const DEFAULT_AGENT_SYSTEM =
-  "You are running as an agent started from the claude-proxy dashboard, in this " +
+  'You are running as an agent started from the claude-proxy dashboard, in this ' +
   "repository's checkout. Be direct and concise.";
 
 /** The shell alias an agent turn mirrors; the user's everyday `claude`. */
-const DEFAULT_AGENT_ALIAS = "claude";
+const DEFAULT_AGENT_ALIAS = 'claude';
 
 /**
  * The standing answers a `--print` child can be pinned to, since it has no one to ask.
@@ -75,11 +74,11 @@ const DEFAULT_AGENT_ALIAS = "claude";
  *     including git writes.
  *   - `plan` — read-only; the turn plans and does not act.
  */
-export const PERMISSION_MODES = ["default", "acceptEdits", "bypassPermissions", "plan"] as const;
+export const PERMISSION_MODES = ['default', 'acceptEdits', 'bypassPermissions', 'plan'] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
 /** Commands included; the default the start form opens on, so `/task` runs as-is. */
-const DEFAULT_PERMISSION_MODE: PermissionMode = "bypassPermissions";
+const DEFAULT_PERMISSION_MODE: PermissionMode = 'bypassPermissions';
 
 const MAX_PROMPT_CHARS = 100_000;
 
@@ -118,7 +117,7 @@ const THREAD_POLL_MS = 150;
 /** Markers older than this are swept whenever a chat starts. */
 const MARKER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type ChatTransport = "cli" | "api";
+export type ChatTransport = 'cli' | 'api';
 
 export type { ChatMode };
 
@@ -165,7 +164,7 @@ export interface ChatConfig {
 }
 
 export interface ChatTurn {
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   text: string;
 }
 
@@ -207,8 +206,8 @@ interface ChatSession {
 }
 
 interface AnthropicMessage {
-  role: "user" | "assistant";
-  content: { type: "text"; text: string }[];
+  role: 'user' | 'assistant';
+  content: { type: 'text'; text: string }[];
 }
 
 export interface ChatSendResult {
@@ -247,17 +246,17 @@ const sessions = new Map<string, ChatSession>();
  */
 export function resolveChatBaseUrl(): string {
   const raw = process.env.CHAT_BASE_URL ?? process.env.ANTHROPIC_BASE_URL ?? DEFAULT_BASE_URL;
-  return raw.replace(/\/+$/, "");
+  return raw.replace(/\/+$/, '');
 }
 
 /** `cli` unless `CHAT_TRANSPORT` says otherwise: local dev should not need a key. */
 export function resolveChatTransport(raw = process.env.CHAT_TRANSPORT): ChatTransport {
-  return raw?.trim().toLowerCase() === "api" ? "api" : "cli";
+  return raw?.trim().toLowerCase() === 'api' ? 'api' : 'cli';
 }
 
 /** `agent` unless `CHAT_MODE=chat` asks for the sandboxed posture. */
 export function resolveChatMode(raw = process.env.CHAT_MODE): ChatMode {
-  return raw?.trim().toLowerCase() === "chat" ? "chat" : "agent";
+  return raw?.trim().toLowerCase() === 'chat' ? 'chat' : 'agent';
 }
 
 /**
@@ -298,7 +297,7 @@ function resolveDefaultPermissionMode(raw: string | undefined): PermissionMode {
   if (!value) return DEFAULT_PERMISSION_MODE;
   if ((PERMISSION_MODES as readonly string[]).includes(value)) return value as PermissionMode;
   console.warn(
-    `[chat] ignoring CHAT_AGENT_PERMISSION_MODE=${value}: expected one of ${PERMISSION_MODES.join(", ")} — using ${DEFAULT_PERMISSION_MODE}`,
+    `[chat] ignoring CHAT_AGENT_PERMISSION_MODE=${value}: expected one of ${PERMISSION_MODES.join(', ')} — using ${DEFAULT_PERMISSION_MODE}`,
   );
   return DEFAULT_PERMISSION_MODE;
 }
@@ -307,19 +306,19 @@ export async function resolveChatConfig(): Promise<ChatConfig> {
   const transport = resolveChatTransport();
   const mode = resolveChatMode();
   const cliPath = process.env.CHAT_CLI_PATH ?? DEFAULT_CLI_PATH;
-  const cliFound = transport === "cli" ? findOnPath(cliPath) : null;
+  const cliFound = transport === 'cli' ? findOnPath(cliPath) : null;
   const apiKeySet = !!process.env.ANTHROPIC_API_KEY;
   // Only the CLI transport can be an agent — `api` is a bare `/v1/messages` call
   // with no harness to run tools or expand a slash command.
-  const agent = transport === "cli" ? await resolveAgentConfig() : null;
+  const agent = transport === 'cli' ? await resolveAgentConfig() : null;
 
   const readyHint =
-    transport === "api"
-      ? mode === "agent"
-        ? "agent mode needs the cli transport — unset CHAT_TRANSPORT=api, or set CHAT_MODE=chat"
+    transport === 'api'
+      ? mode === 'agent'
+        ? 'agent mode needs the cli transport — unset CHAT_TRANSPORT=api, or set CHAT_MODE=chat'
         : apiKeySet
           ? null
-          : "set ANTHROPIC_API_KEY — the proxy forwards credentials, it never supplies them"
+          : 'set ANTHROPIC_API_KEY — the proxy forwards credentials, it never supplies them'
       : cliFound
         ? null
         : `install Claude Code, or point CHAT_CLI_PATH at it (${cliPath} is not on PATH)`;
@@ -331,7 +330,7 @@ export async function resolveChatConfig(): Promise<ChatConfig> {
     baseUrl: resolveChatBaseUrl(),
     model: process.env.CHAT_MODEL ?? DEFAULT_MODEL,
     maxTokens: envInt(process.env.CHAT_MAX_TOKENS, DEFAULT_MAX_TOKENS),
-    system: process.env.CHAT_SYSTEM ?? (mode === "agent" ? DEFAULT_AGENT_SYSTEM : DEFAULT_SYSTEM),
+    system: process.env.CHAT_SYSTEM ?? (mode === 'agent' ? DEFAULT_AGENT_SYSTEM : DEFAULT_SYSTEM),
     anthropicVersion: ANTHROPIC_VERSION,
     beta: process.env.CHAT_BETA ?? null,
     apiKeySet,
@@ -343,21 +342,21 @@ export async function resolveChatConfig(): Promise<ChatConfig> {
 }
 
 function normalizePrompt(raw: unknown): string {
-  if (typeof raw !== "string") throw new Error("invalid prompt: expected a string");
+  if (typeof raw !== 'string') throw new Error('invalid prompt: expected a string');
   const prompt = raw.trim();
-  if (!prompt) throw new Error("invalid prompt: empty");
+  if (!prompt) throw new Error('invalid prompt: empty');
   if (prompt.length > MAX_PROMPT_CHARS) {
     throw new Error(`invalid prompt: longer than ${MAX_PROMPT_CHARS} characters`);
   }
   return prompt;
 }
 
-const textMessage = (role: "user" | "assistant", text: string): AnthropicMessage => ({
+const textMessage = (role: 'user' | 'assistant', text: string): AnthropicMessage => ({
   role,
-  content: [{ type: "text", text }],
+  content: [{ type: 'text', text }],
 });
 
-const publicSession = (s: ChatSession): ChatSendResult["session"] => ({
+const publicSession = (s: ChatSession): ChatSendResult['session'] => ({
   id: s.id,
   threadId: s.threadId,
   model: s.model,
@@ -369,7 +368,7 @@ const publicSession = (s: ChatSession): ChatSendResult["session"] => ({
 });
 
 const turnsOf = (s: ChatSession): ChatTurn[] =>
-  s.messages.map((m) => ({ role: m.role, text: m.content.map((b) => b.text).join("\n") }));
+  s.messages.map((m) => ({ role: m.role, text: m.content.map((b) => b.text).join('\n') }));
 
 // --- Declaring a chat to the proxy ------------------------------------------
 //
@@ -380,7 +379,7 @@ const turnsOf = (s: ChatSession): ChatTurn[] =>
 // out-of-band instead: a marker file per session id, which the proxy checks.
 
 /** Marker files live beside the store, not inside `sessions/` — that dir is watched. */
-export const chatMarkersDir = (logDir: string): string => path.join(logDir, ".chat");
+export const chatMarkersDir = (logDir: string): string => path.join(logDir, '.chat');
 
 /** Announce a session id as an interactive chat. Best-effort: a miss only delays
  * the transcript to the second turn. */
@@ -412,7 +411,11 @@ function pruneChatMarkers(dir: string, now = Date.now()): void {
  * wraps in harness context, so this cannot be computed here. Returns null while the
  * thread is still buffered — a first turn under the `api`-style growth filter.
  */
-export async function resolveThreadId(logDir: string, sessionId: string, waitMs = THREAD_WAIT_MS): Promise<string | null> {
+export async function resolveThreadId(
+  logDir: string,
+  sessionId: string,
+  waitMs = THREAD_WAIT_MS,
+): Promise<string | null> {
   const deadline = Date.now() + waitMs;
   for (;;) {
     // listSessions is newest-first, so a session id reused across threads resolves
@@ -462,22 +465,22 @@ interface StreamEvent {
  */
 export function decodeChatStream(raw: string): { text: string; usage: ChatUsage } {
   const usage: ChatUsage = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
-  let text = "";
+  let text = '';
   let apiError: string | null = null;
 
   for (const line of raw.split(/\r?\n/)) {
     const payload = /^data:\s?(.*)$/.exec(line)?.[1];
-    if (!payload?.trim() || payload === "[DONE]") continue;
+    if (!payload?.trim() || payload === '[DONE]') continue;
     let ev: StreamEvent;
     try {
       ev = JSON.parse(payload) as StreamEvent;
     } catch {
       continue;
     }
-    if (ev.type === "content_block_delta" && typeof ev.delta?.text === "string") text += ev.delta.text;
-    else if (ev.type === "message_start" && ev.message?.usage) applyUsage(usage, ev.message.usage);
-    else if (ev.type === "message_delta" && ev.usage) applyUsage(usage, ev.usage);
-    else if (ev.type === "error") apiError = ev.error?.message ?? "unknown streaming error";
+    if (ev.type === 'content_block_delta' && typeof ev.delta?.text === 'string') text += ev.delta.text;
+    else if (ev.type === 'message_start' && ev.message?.usage) applyUsage(usage, ev.message.usage);
+    else if (ev.type === 'message_delta' && ev.usage) applyUsage(usage, ev.usage);
+    else if (ev.type === 'error') apiError = ev.error?.message ?? 'unknown streaming error';
   }
 
   // A stream can carry an error event after a 200.
@@ -486,35 +489,35 @@ export function decodeChatStream(raw: string): { text: string; usage: ChatUsage 
 }
 
 function applyUsage(into: ChatUsage, u: Record<string, unknown>): void {
-  if (typeof u.input_tokens === "number") into.input = u.input_tokens;
-  if (typeof u.output_tokens === "number") into.output = u.output_tokens;
-  if (typeof u.cache_read_input_tokens === "number") into.cacheRead = u.cache_read_input_tokens;
-  if (typeof u.cache_creation_input_tokens === "number") into.cacheCreation = u.cache_creation_input_tokens;
+  if (typeof u.input_tokens === 'number') into.input = u.input_tokens;
+  if (typeof u.output_tokens === 'number') into.output = u.output_tokens;
+  if (typeof u.cache_read_input_tokens === 'number') into.cacheRead = u.cache_read_input_tokens;
+  if (typeof u.cache_creation_input_tokens === 'number') into.cacheCreation = u.cache_creation_input_tokens;
 }
 
 /** Headers a chat request carries — Claude Code's identifying set, minus its auth. */
 function chatHeaders(config: ChatConfig, apiKey: string, sessionId: string): Record<string, string> {
   const headers: Record<string, string> = {
-    accept: "application/json",
-    "content-type": "application/json",
-    "x-api-key": apiKey,
-    "anthropic-version": config.anthropicVersion,
+    accept: 'application/json',
+    'content-type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': config.anthropicVersion,
     // Read back by `extractSession` in proxy.mjs; "cli"/"cli-bg" stay Claude Code's.
-    "x-app": "dashboard",
+    'x-app': 'dashboard',
     // The proxy keys a transcript thread by (this header + the first user message).
-    "x-claude-code-session-id": sessionId,
+    'x-claude-code-session-id': sessionId,
     // Exempts the thread from the proxy's one-shot growth filter, so the transcript
     // exists after the first turn.
-    "x-claude-proxy-chat": "1",
-    "user-agent": "claude-proxy-dashboard/0.1.0",
+    'x-claude-proxy-chat': '1',
+    'user-agent': 'claude-proxy-dashboard/0.1.0',
   };
-  if (config.beta) headers["anthropic-beta"] = config.beta;
+  if (config.beta) headers['anthropic-beta'] = config.beta;
   return headers;
 }
 
 async function postTurn(config: ChatConfig, session: ChatSession): Promise<{ text: string; usage: ChatUsage }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error(`chat is not configured: ${config.readyHint ?? "missing ANTHROPIC_API_KEY"}`);
+  if (!apiKey) throw new Error(`chat is not configured: ${config.readyHint ?? 'missing ANTHROPIC_API_KEY'}`);
 
   const body = {
     model: session.model,
@@ -530,7 +533,7 @@ async function postTurn(config: ChatConfig, session: ChatSession): Promise<{ tex
   let res: Response;
   try {
     res = await fetch(url, {
-      method: "POST",
+      method: 'POST',
       headers: chatHeaders(config, apiKey, session.id),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -562,12 +565,18 @@ interface TurnResult {
 }
 
 async function runTurn(config: ChatConfig, session: ChatSession, prompt: string): Promise<TurnResult> {
-  if (session.transport === "api") {
-    return { ...(await postTurn(config, session)), tools: [], interrupted: null, cliSessionId: null, permissionMode: null };
+  if (session.transport === 'api') {
+    return {
+      ...(await postTurn(config, session)),
+      tools: [],
+      interrupted: null,
+      cliSessionId: null,
+      permissionMode: null,
+    };
   }
   if (!config.cliFound) throw new Error(`chat is not configured: ${config.readyHint}`);
 
-  const agent = session.mode === "agent" ? session.agent : null;
+  const agent = session.mode === 'agent' ? session.agent : null;
   try {
     const turn = await runCliTurn({
       cliPath: config.cliFound,
@@ -603,7 +612,7 @@ async function runTurn(config: ChatConfig, session: ChatSession, prompt: string)
 }
 
 async function send(session: ChatSession, config: ChatConfig, logDir: string, prompt: string): Promise<ChatSendResult> {
-  session.messages.push(textMessage("user", prompt));
+  session.messages.push(textMessage('user', prompt));
   let result: TurnResult;
   try {
     result = await runTurn(config, session, prompt);
@@ -613,9 +622,9 @@ async function send(session: ChatSession, config: ChatConfig, logDir: string, pr
   }
   // A turn killed before the child opened its session left nothing to `--resume`, so the
   // next turn has to open it instead.
-  if (session.transport !== "cli" || result.cliSessionId) session.sent += 1;
+  if (session.transport !== 'cli' || result.cliSessionId) session.sent += 1;
   if (result.permissionMode) session.effectivePermissionMode = result.permissionMode;
-  if (result.text) session.messages.push(textMessage("assistant", result.text));
+  if (result.text) session.messages.push(textMessage('assistant', result.text));
   // The proxy writes the transcript after it has answered us, so this is the first
   // moment the thread can exist. A first turn may still be buffered — try again next turn.
   if (!session.threadId) session.threadId = await resolveThreadId(logDir, session.id);
@@ -633,15 +642,15 @@ async function send(session: ChatSession, config: ChatConfig, logDir: string, pr
 /** A per-request `mode`, falling back to the configured default. */
 function pickMode(raw: unknown, fallback: ChatMode): ChatMode {
   if (raw === undefined || raw === null) return fallback;
-  if (raw !== "chat" && raw !== "agent") throw new Error(`invalid mode: expected "chat" or "agent"`);
+  if (raw !== 'chat' && raw !== 'agent') throw new Error(`invalid mode: expected "chat" or "agent"`);
   return raw;
 }
 
 /** A per-session `permissionMode`, falling back to the resolved default. */
 function pickPermissionMode(raw: unknown, fallback: PermissionMode): PermissionMode {
   if (raw === undefined || raw === null) return fallback;
-  if (typeof raw !== "string" || !(PERMISSION_MODES as readonly string[]).includes(raw)) {
-    throw new Error(`invalid permissionMode: expected one of ${PERMISSION_MODES.join(", ")}`);
+  if (typeof raw !== 'string' || !(PERMISSION_MODES as readonly string[]).includes(raw)) {
+    throw new Error(`invalid permissionMode: expected one of ${PERMISSION_MODES.join(', ')}`);
   }
   return raw as PermissionMode;
 }
@@ -656,7 +665,7 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  */
 function pickSessionId(raw: unknown): string {
   if (raw === undefined || raw === null) return crypto.randomUUID();
-  if (typeof raw !== "string" || !UUID_RE.test(raw)) throw new Error("invalid sessionId: expected a uuid");
+  if (typeof raw !== 'string' || !UUID_RE.test(raw)) throw new Error('invalid sessionId: expected a uuid');
   if (sessions.has(raw)) throw new Error(`invalid sessionId: already in use (${raw})`);
   return raw;
 }
@@ -676,33 +685,37 @@ export async function startChat(
   const prompt = normalizePrompt(input.prompt);
   const config = await resolveChatConfig();
   const mode = pickMode(input.mode, config.mode);
-  if (mode === "agent" && config.transport !== "cli") {
-    throw new Error("chat is not configured: agent mode needs the cli transport");
+  if (mode === 'agent' && config.transport !== 'cli') {
+    throw new Error('chat is not configured: agent mode needs the cli transport');
   }
   // `ready` is judged against the configured default; a request that opts into the
   // other mode must not inherit a hint about the one it isn't using.
-  if (!config.ready && !(mode === "chat" && config.transport === "cli" && config.cliFound)) {
+  if (!config.ready && !(mode === 'chat' && config.transport === 'cli' && config.cliFound)) {
     throw new Error(`chat is not configured: ${config.readyHint}`);
   }
 
   // Pinned at start, like the mode: what a session may do is fixed by its first request,
   // not by the environment as it is now.
-  const permissionMode = pickPermissionMode(input.permissionMode, config.agent?.permissionMode ?? DEFAULT_PERMISSION_MODE);
+  const permissionMode = pickPermissionMode(
+    input.permissionMode,
+    config.agent?.permissionMode ?? DEFAULT_PERMISSION_MODE,
+  );
 
   const session: ChatSession = {
     id: pickSessionId(input.sessionId),
     threadId: null,
     transport: config.transport,
     mode,
-    agent: mode === "agent" && config.agent ? { ...config.agent, permissionMode } : null,
-    model: typeof input.model === "string" && input.model.trim() ? input.model.trim() : config.model,
-    maxTokens: typeof input.maxTokens === "number" && input.maxTokens > 0 ? Math.floor(input.maxTokens) : config.maxTokens,
+    agent: mode === 'agent' && config.agent ? { ...config.agent, permissionMode } : null,
+    model: typeof input.model === 'string' && input.model.trim() ? input.model.trim() : config.model,
+    maxTokens:
+      typeof input.maxTokens === 'number' && input.maxTokens > 0 ? Math.floor(input.maxTokens) : config.maxTokens,
     // `config.system` is resolved for the *default* mode, so a request that opts into
     // the other one picks its own default directly.
     system:
-      typeof input.system === "string" && input.system.trim()
+      typeof input.system === 'string' && input.system.trim()
         ? input.system
-        : (process.env.CHAT_SYSTEM ?? (mode === "agent" ? DEFAULT_AGENT_SYSTEM : DEFAULT_SYSTEM)),
+        : (process.env.CHAT_SYSTEM ?? (mode === 'agent' ? DEFAULT_AGENT_SYSTEM : DEFAULT_SYSTEM)),
     createdAt: new Date().toISOString(),
     messages: [],
     sent: 0,
@@ -722,14 +735,17 @@ export async function startChat(
 }
 
 /** Continues where the transport left off: the CLI resumes, `api` replays the history. */
-export async function continueChat(input: { sessionId: unknown; prompt: unknown }, logDir: string): Promise<ChatSendResult> {
+export async function continueChat(
+  input: { sessionId: unknown; prompt: unknown },
+  logDir: string,
+): Promise<ChatSendResult> {
   const session = requireSession(input.sessionId);
   const prompt = normalizePrompt(input.prompt);
   return send(session, await resolveChatConfig(), logDir, prompt);
 }
 
 function requireSession(raw: unknown): ChatSession {
-  if (typeof raw !== "string" || !raw) throw new Error("missing sessionId");
+  if (typeof raw !== 'string' || !raw) throw new Error('missing sessionId');
   const session = sessions.get(raw);
   if (!session) throw new Error(`chat session not found: ${raw}`);
   return session;

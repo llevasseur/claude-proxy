@@ -35,7 +35,14 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { asArrayOf, type ContentBlock, firstHeader, type HeaderBag, type RequestBody, type WireMessage } from './wire.ts';
+import {
+  asArrayOf,
+  type ContentBlock,
+  firstHeader,
+  type HeaderBag,
+  type RequestBody,
+  type WireMessage,
+} from './wire.ts';
 
 /** One distilled transcript line, plus the untruncated text behind it (null when
  * the line already says the whole thing). */

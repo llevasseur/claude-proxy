@@ -83,11 +83,11 @@ import {
   type FiltersResponse,
   type PatternFrequency,
   type StepReach,
-} from "@claude-proxy/core";
-import { loadArchivedDigest } from "./archive.js";
-import { listInstalledCommands } from "./command-runs.js";
-import { conceptStorePath } from "./concepts.js";
-import { fileSource, type SidecarSource } from "./db/source.js";
+} from '@claude-proxy/core';
+import { loadArchivedDigest } from './archive.js';
+import { listInstalledCommands } from './command-runs.js';
+import { conceptStorePath } from './concepts.js';
+import { fileSource, type SidecarSource } from './db/source.js';
 import {
   locateRequestBody,
   readArchivedDay,
@@ -96,10 +96,10 @@ import {
   type RequestBodyLocation,
   shiftDay,
   today,
-} from "./logs.js";
-import { resolveRetentionDays } from "./retention.js";
-import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
-import { loadLiveUsage } from "./usage-live.js";
+} from './logs.js';
+import { resolveRetentionDays } from './retention.js';
+import { loadArchivedUsage, loadLearnedCeilings } from './usage-history.js';
+import { loadLiveUsage } from './usage-live.js';
 import {
   deleteJob,
   listJobs,
@@ -108,7 +108,7 @@ import {
   type JobDeleteResult,
   type JobFileDetail,
   type JobSummary,
-} from "./jobs.js";
+} from './jobs.js';
 import {
   listProjectMemories,
   listProjects,
@@ -116,18 +116,22 @@ import {
   type MemoryDetail,
   type MemoryFileSummary,
   type ProjectSummary,
-} from "./projects.js";
+} from './projects.js';
 import {
   threadIdForBody,
   type SessionDetail,
   type SessionGraph,
   type SessionNodeTexts,
   type SessionSummary,
-} from "./sessions.js";
-import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
-import { readSystemPromptFile, resolveSystemPromptPath, writeSystemPromptFile } from "./system-prompt.js";
-import { readSuggestionStatusStore, resolveSuggestionStatusPath, updateSuggestionStatusStore } from "./suggestion-status.js";
-import { readLaunchAliases } from "./shell-rc.js";
+} from './sessions.js';
+import { readDeviceSettings, resolveSettingsPath } from './settings.js';
+import { readSystemPromptFile, resolveSystemPromptPath, writeSystemPromptFile } from './system-prompt.js';
+import {
+  readSuggestionStatusStore,
+  resolveSuggestionStatusPath,
+  updateSuggestionStatusStore,
+} from './suggestion-status.js';
+import { readLaunchAliases } from './shell-rc.js';
 
 export interface SummaryResponse {
   digest: UsageDigest;
@@ -177,7 +181,7 @@ function dedupeByFile(sidecars: readonly unknown[]): unknown[] {
   const out: unknown[] = [];
   for (const s of sidecars) {
     const file = (s as { __file?: unknown })?.__file;
-    if (typeof file !== "string") {
+    if (typeof file !== 'string') {
       out.push(s);
       continue;
     }
@@ -218,7 +222,7 @@ export async function buildUsage(
   const retainedDays = new Set<string>([today(now), ...archived.retainedDays]);
   for (const s of live.sidecars) {
     const ts = (s as { timestamp?: unknown })?.timestamp;
-    const day = typeof ts === "string" ? reportDay(ts) : null;
+    const day = typeof ts === 'string' ? reportDay(ts) : null;
     if (day) retainedDays.add(day);
   }
 
@@ -291,7 +295,8 @@ export async function buildTrends(
     const date = shiftDay(end, -i);
     if (byDate.has(date)) continue;
     const digest =
-      (await rawArchivedDigest(logDir, date, source)) ?? (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
+      (await rawArchivedDigest(logDir, date, source)) ??
+      (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
     if (digest) {
       byDate.set(date, digest);
       archivedDays += 1;
@@ -352,7 +357,11 @@ export async function buildContext(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<ContextResponse> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await source.readSidecars(
+    logDir,
+    { sinceDays: days, includeFile: true },
+    now,
+  );
   return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
 }
 
@@ -381,8 +390,8 @@ async function evictedOr404(
   file: string,
   location: RequestBodyLocation,
 ): Promise<EvictedBodyResponse | null> {
-  if (location.status === "present") return null;
-  if (location.status === "missing") throw new Error(`request file not found: ${file}`);
+  if (location.status === 'present') return null;
+  if (location.status === 'missing') throw new Error(`request file not found: ${file}`);
   return {
     file,
     evicted: true,
@@ -434,7 +443,11 @@ export type ContextMessageResponse = ContextMessagePresent | EvictedBodyResponse
  * even when the drill-down's raw JSON was truncated, so any message resolves.
  * Throws a labelled error the server maps to 404 when `index` is out of range.
  */
-export async function buildContextMessage(logDir: string, file: string, index: number): Promise<ContextMessageResponse> {
+export async function buildContextMessage(
+  logDir: string,
+  file: string,
+  index: number,
+): Promise<ContextMessageResponse> {
   const location = await locateRequestBody(logDir, file);
   const evicted = await evictedOr404(logDir, file, location);
   if (evicted) return evicted;
@@ -530,7 +543,7 @@ export async function buildJobs(jobsDir: string): Promise<JobsResponse> {
     meta: {
       jobsDir,
       total: jobs.length,
-      running: jobs.filter((j) => jobStateTone(j.state) === "busy").length,
+      running: jobs.filter((j) => jobStateTone(j.state) === 'busy').length,
       husks: jobs.filter((j) => !j.stateReadable).length,
       files: jobs.reduce((sum, j) => sum + j.files, 0),
       bytes: jobs.reduce((sum, j) => sum + j.bytes, 0),
@@ -593,7 +606,10 @@ export interface SessionsGraphResponse {
 }
 
 /** Every session transcript with its structured node stream, newest first — feeds the live graph. */
-export async function buildSessionsGraph(logDir: string, source: SidecarSource = fileSource): Promise<SessionsGraphResponse> {
+export async function buildSessionsGraph(
+  logDir: string,
+  source: SidecarSource = fileSource,
+): Promise<SessionsGraphResponse> {
   const sessions = await source.listSessionGraphs(logDir);
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
 }
@@ -949,7 +965,7 @@ export async function applySuggestionStatus(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<SuggestionStatusUpdateResponse> {
-  if (updates.length === 0) throw new Error("no suggestion status updates given");
+  if (updates.length === 0) throw new Error('no suggestion status updates given');
   const store = await updateSuggestionStatusStore(logDir, updates, now);
   const buckets = sessionSuggestionBuckets(await source.listSessionGraphs(logDir));
   const touched = [...new Set(updates.map((u) => u.bucket))];
@@ -1184,9 +1200,7 @@ export interface HooksPluginsResponse {
  * the proxy can't confirm one fired — only what `~/.claude/settings.json` declares.
  * Load expectations reuse the launch-alias posture.
  */
-export async function buildHooksPlugins(
-  settingsPath: string = resolveSettingsPath(),
-): Promise<HooksPluginsResponse> {
+export async function buildHooksPlugins(settingsPath: string = resolveSettingsPath()): Promise<HooksPluginsResponse> {
   const [settings, launchAliases] = await Promise.all([readDeviceSettings(settingsPath), readLaunchAliases()]);
   const posture = computeAliasPosture(launchAliases.aliases, settings.denyRules, settings.enabledDisableKeys);
   return {
@@ -1210,12 +1224,15 @@ export interface SystemPromptResponse {
  * The device system prompt — `~/.claude/CLAUDE.md` as it is on disk right now.
  * A device view, not a traffic one: nothing here comes from the captured logs.
  */
-export async function buildSystemPrompt(
-  promptPath: string = resolveSystemPromptPath(),
-): Promise<SystemPromptResponse> {
+export async function buildSystemPrompt(promptPath: string = resolveSystemPromptPath()): Promise<SystemPromptResponse> {
   const file = await readSystemPromptFile(promptPath);
   return {
-    prompt: summarizeSystemPrompt({ path: file.promptPath, exists: file.exists, text: file.text, modified: file.modified }),
+    prompt: summarizeSystemPrompt({
+      path: file.promptPath,
+      exists: file.exists,
+      text: file.text,
+      modified: file.modified,
+    }),
     maxBytes: SYSTEM_PROMPT_MAX_BYTES,
   };
 }
@@ -1229,10 +1246,7 @@ export interface SystemPromptUpdateResponse extends SystemPromptResponse {
  * Replace the device system prompt with `text` and answer with a fresh read of the
  * file, not an echo. Invalid input throws before anything is written.
  */
-export async function buildSystemPromptUpdate(
-  promptPath: string,
-  text: unknown,
-): Promise<SystemPromptUpdateResponse> {
+export async function buildSystemPromptUpdate(promptPath: string, text: unknown): Promise<SystemPromptUpdateResponse> {
   const written = await writeSystemPromptFile(promptPath, parseSystemPromptText(text));
   return {
     prompt: summarizeSystemPrompt({
@@ -1304,15 +1318,15 @@ export interface CommandRunListItem {
   model: string | null;
   started: string | null;
   ended: string | null;
-  outcome: CommandRun["outcome"];
-  interruption: CommandRun["interruption"];
+  outcome: CommandRun['outcome'];
+  interruption: CommandRun['interruption'];
   reachedEnd: boolean;
-  totals: CommandRun["totals"];
+  totals: CommandRun['totals'];
   /** Which rules fired, for the run list's badges. The details stay on the run page. */
-  patterns: CommandPattern["id"][];
+  patterns: CommandPattern['id'][];
   /** The furthest declared step anything was attributed to, or null. */
   lastStep: string | null;
-  meta: CommandRun["meta"];
+  meta: CommandRun['meta'];
 }
 
 /** Where the command file's content changed between two consecutive runs — the `/sync` marker. */
@@ -1361,7 +1375,7 @@ export async function buildCommand(
   const spec = installed.find((c) => c.command === command);
   const own = allRuns
     .filter((r) => r.command === command)
-    .sort((a, b) => (a.started ?? "").localeCompare(b.started ?? ""));
+    .sort((a, b) => (a.started ?? '').localeCompare(b.started ?? ''));
   if (!spec && own.length === 0) throw new Error(`command not found: ${command}`);
 
   // The current catalogue is the stable spine; fall back to the newest run's snapshot so
@@ -1402,14 +1416,14 @@ function toListItem(run: CommandRun): CommandRunListItem {
     parentCommand: run.parentCommand ?? null,
     threadId: run.threadId,
     command: run.command,
-    args: run.args ?? "",
+    args: run.args ?? '',
     flags: run.flags ?? [],
-    prompt: run.prompt ?? "",
+    prompt: run.prompt ?? '',
     commandHash: run.commandHash ?? null,
     model: run.model ?? null,
     started: run.started ?? null,
     ended: run.ended ?? null,
-    outcome: run.outcome ?? "interrupted",
+    outcome: run.outcome ?? 'interrupted',
     interruption: run.interruption ?? null,
     reachedEnd: !!run.reachedEnd,
     totals: runTotals(run),
@@ -1462,9 +1476,7 @@ export async function buildCommandRun(
   return {
     run,
     patterns: patternFrequency(runs.filter((r) => r.command === run.command)),
-    suggestions: buckets
-      .filter((b) => b.threadIds.some((id) => family.has(id)))
-      .flatMap((b) => b.suggestions),
+    suggestions: buckets.filter((b) => b.threadIds.some((id) => family.has(id))).flatMap((b) => b.suggestions),
     meta: {
       transcriptsPresent: present.length,
       transcripts: family.size,
@@ -1503,10 +1515,7 @@ function toServedConcept(concept: StoredConcept): StoredConcept {
  * Everything `/teach` has recorded. The store is small and append-only, so the
  * whole list is returned rather than paged.
  */
-export async function buildConcepts(
-  logDir: string,
-  source: SidecarSource = fileSource,
-): Promise<ConceptsResponse> {
+export async function buildConcepts(logDir: string, source: SidecarSource = fileSource): Promise<ConceptsResponse> {
   const concepts = (await source.readConcepts(logDir)).map(toServedConcept);
   return { concepts, meta: { storePath: conceptStorePath(logDir), total: concepts.length } };
 }

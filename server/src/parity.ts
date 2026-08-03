@@ -1,6 +1,6 @@
-import { readdir } from "node:fs/promises";
-import path from "node:path";
-import { runKey, type UsageLimitConfig } from "@claude-proxy/core";
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
+import { runKey, type UsageLimitConfig } from '@claude-proxy/core';
 import {
   buildCommand,
   buildCommandRun,
@@ -26,12 +26,12 @@ import {
   buildUsage,
   buildWithheld,
   clearRawArchiveCache,
-} from "./api.js";
-import { clearArchiveCache } from "./archive.js";
-import { resolveCommandsDir } from "./command-runs.js";
-import { fileSource, type SidecarSource } from "./db/source.js";
-import { resolveSettingsPath } from "./settings.js";
-import { clearArchivedUsageCache, clearLearnedCeilingsCache } from "./usage-history.js";
+} from './api.js';
+import { clearArchiveCache } from './archive.js';
+import { resolveCommandsDir } from './command-runs.js';
+import { fileSource, type SidecarSource } from './db/source.js';
+import { resolveSettingsPath } from './settings.js';
+import { clearArchivedUsageCache, clearLearnedCeilingsCache } from './usage-history.js';
 
 /**
  * The parity harness: proof that the SQLite substrate answers a route with the
@@ -105,17 +105,17 @@ export interface JsonDiff {
  * are identical — including key order, which `JSON.stringify` preserves and the
  * dashboard's byte-for-byte responses depend on.
  */
-export function diffJson(a: unknown, b: unknown, at = ""): JsonDiff | null {
+export function diffJson(a: unknown, b: unknown, at = ''): JsonDiff | null {
   if (Object.is(a, b)) return null;
 
   const aIsArr = Array.isArray(a);
   const bIsArr = Array.isArray(b);
-  if (aIsArr !== bIsArr) return { path: at || "$", files: a, db: b };
+  if (aIsArr !== bIsArr) return { path: at || '$', files: a, db: b };
 
   if (aIsArr && bIsArr) {
     const arrA = a as unknown[];
     const arrB = b as unknown[];
-    if (arrA.length !== arrB.length) return { path: `${at || "$"}.length`, files: arrA.length, db: arrB.length };
+    if (arrA.length !== arrB.length) return { path: `${at || '$'}.length`, files: arrA.length, db: arrB.length };
     for (let i = 0; i < arrA.length; i += 1) {
       const d = diffJson(arrA[i], arrB[i], at ? `${at}.${i}` : String(i));
       if (d) return d;
@@ -123,15 +123,15 @@ export function diffJson(a: unknown, b: unknown, at = ""): JsonDiff | null {
     return null;
   }
 
-  const aIsObj = typeof a === "object" && a !== null;
-  const bIsObj = typeof b === "object" && b !== null;
+  const aIsObj = typeof a === 'object' && a !== null;
+  const bIsObj = typeof b === 'object' && b !== null;
   if (aIsObj && bIsObj) {
     const keysA = Object.keys(a as Record<string, unknown>);
     const keysB = Object.keys(b as Record<string, unknown>);
     // Key order is part of the payload: `JSON.stringify` emits insertion order,
     // and the digest's `models` map inherits it from the read order.
     if (keysA.length !== keysB.length || keysA.some((k, i) => k !== keysB[i])) {
-      return { path: `${at || "$"}{}`, files: keysA, db: keysB };
+      return { path: `${at || '$'}{}`, files: keysA, db: keysB };
     }
     for (const k of keysA) {
       const d = diffJson((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], at ? `${at}.${k}` : k);
@@ -140,7 +140,7 @@ export function diffJson(a: unknown, b: unknown, at = ""): JsonDiff | null {
     return null;
   }
 
-  return { path: at || "$", files: a, db: b };
+  return { path: at || '$', files: a, db: b };
 }
 
 export interface ParityResult {
@@ -174,7 +174,7 @@ export async function runCase(
 
   const a = normalize(fromFiles);
   const b = normalize(fromDb);
-  const diff = wire(a) === wire(b) ? null : (diffJson(a, b) ?? { path: "$", files: a, db: b });
+  const diff = wire(a) === wire(b) ? null : (diffJson(a, b) ?? { path: '$', files: a, db: b });
   return { route: route.name, label: testCase.label, diff };
 }
 
@@ -189,9 +189,7 @@ export function resetCaches(): void {
 /** Archived day directories on disk, oldest first. Empty when nothing is archived. */
 export async function archivedDays(logDir: string): Promise<string[]> {
   try {
-    return (await readdir(path.join(logDir, "archive")))
-      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-      .sort();
+    return (await readdir(path.join(logDir, 'archive'))).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
   } catch {
     return [];
   }
@@ -209,7 +207,7 @@ function endOf(day: string): Date {
 /** The routes wired to the substrate in slice 1. Later slices push onto this array. */
 export const PARITY_ROUTES: ParityRoute[] = [
   {
-    name: "/api/summary",
+    name: '/api/summary',
     cases: async (ctx) =>
       (await archivedDays(ctx.logDir)).map((day) => ({
         label: `/api/summary?date=${day}`,
@@ -217,7 +215,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
       })),
   },
   {
-    name: "/api/tools",
+    name: '/api/tools',
     cases: async (ctx) =>
       (await archivedDays(ctx.logDir)).map((day) => ({
         label: `/api/tools?date=${day}`,
@@ -225,7 +223,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
       })),
   },
   {
-    name: "/api/trends",
+    name: '/api/trends',
     cases: async (ctx) => {
       const days = await archivedDays(ctx.logDir);
       const cases: ParityCase[] = [];
@@ -241,7 +239,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     },
   },
   {
-    name: "/api/usage",
+    name: '/api/usage',
     cases: async (ctx) =>
       (await archivedDays(ctx.logDir)).map((day) => ({
         label: `/api/usage as of ${day}`,
@@ -265,15 +263,15 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * column, so there is no DB path to disagree on.
    */
   {
-    name: "/api/sessions",
-    cases: async (ctx) => [{ label: "/api/sessions", run: (source) => buildSessions(ctx.logDir, source) }],
+    name: '/api/sessions',
+    cases: async (ctx) => [{ label: '/api/sessions', run: (source) => buildSessions(ctx.logDir, source) }],
   },
   {
-    name: "/api/sessions/graph",
-    cases: async (ctx) => [{ label: "/api/sessions/graph", run: (source) => buildSessionsGraph(ctx.logDir, source) }],
+    name: '/api/sessions/graph',
+    cases: async (ctx) => [{ label: '/api/sessions/graph', run: (source) => buildSessionsGraph(ctx.logDir, source) }],
   },
   {
-    name: "/api/sessions/session",
+    name: '/api/sessions/session',
     cases: async (ctx) =>
       (await threadIds(ctx)).map((id) => ({
         label: `/api/sessions/session?id=${id}`,
@@ -281,7 +279,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
       })),
   },
   {
-    name: "/api/sessions/node-text",
+    name: '/api/sessions/node-text',
     cases: async (ctx) =>
       (await threadIds(ctx)).map((id) => ({
         label: `/api/sessions/node-text?id=${id}`,
@@ -289,7 +287,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
       })),
   },
   {
-    name: "/api/sessions/breakdown",
+    name: '/api/sessions/breakdown',
     cases: async (ctx) => {
       // One clock for every case and both sides, so the live/archive split a
       // request falls on cannot move between the two replays.
@@ -301,7 +299,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     },
   },
   {
-    name: "/api/sessions/errors",
+    name: '/api/sessions/errors',
     cases: async (ctx) => {
       const now = new Date();
       return (await threadIds(ctx)).map((id) => ({
@@ -311,7 +309,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     },
   },
   {
-    name: "/api/sessions/graph/nodes",
+    name: '/api/sessions/graph/nodes',
     cases: async (ctx) => {
       const now = new Date();
       return (await threadIds(ctx)).map((id) => ({
@@ -321,13 +319,13 @@ export const PARITY_ROUTES: ParityRoute[] = [
     },
   },
   {
-    name: "/api/sessions/suggestions",
+    name: '/api/sessions/suggestions',
     cases: async (ctx) => [
-      { label: "/api/sessions/suggestions", run: (source) => buildSessionSuggestions(ctx.logDir, source) },
+      { label: '/api/sessions/suggestions', run: (source) => buildSessionSuggestions(ctx.logDir, source) },
     ],
   },
   {
-    name: "/api/sessions/suggestions/bucket",
+    name: '/api/sessions/suggestions/bucket',
     cases: async (ctx) => {
       const now = new Date();
       // Bucket numbering is derived from the transcripts, so the indices to
@@ -351,13 +349,13 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * watch, so the payload under test is the non-streaming one.
    */
   {
-    name: "/api/commands",
+    name: '/api/commands',
     cases: async (ctx) => [
-      { label: "/api/commands", run: (source) => buildCommands(ctx.logDir, commandsDirOf(ctx), source) },
+      { label: '/api/commands', run: (source) => buildCommands(ctx.logDir, commandsDirOf(ctx), source) },
     ],
   },
   {
-    name: "/api/commands/command",
+    name: '/api/commands/command',
     cases: async (ctx) => {
       const commandsDir = commandsDirOf(ctx);
       const { commands } = await buildCommands(ctx.logDir, commandsDir, fileSource);
@@ -381,7 +379,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     },
   },
   {
-    name: "/api/commands/run",
+    name: '/api/commands/run',
     cases: async (ctx) => {
       const runs = await fileSource.readCommandRuns(ctx.logDir);
       return runs.slice(0, PER_THREAD_CASES).map((run) => ({
@@ -412,7 +410,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * coverage that is already there.
    */
   {
-    name: "/api/skim",
+    name: '/api/skim',
     cases: async (ctx) =>
       (await archivedDays(ctx.logDir)).map((day) => ({
         label: `/api/skim?date=${day}`,
@@ -420,7 +418,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
       })),
   },
   {
-    name: "/api/skim/trend",
+    name: '/api/skim/trend',
     cases: async (ctx) => {
       const last = (await archivedDays(ctx.logDir)).at(-1);
       if (!last) return [];
@@ -431,7 +429,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     },
   },
   {
-    name: "/api/withheld",
+    name: '/api/withheld',
     cases: async (ctx) => {
       const settingsPath = ctx.settingsPath ?? resolveSettingsPath();
       const last = (await archivedDays(ctx.logDir)).at(-1);
@@ -445,16 +443,16 @@ export const PARITY_ROUTES: ParityRoute[] = [
   {
     // Only the derived half has a DB path: the bucket/suggestion join comes from
     // the indexed session graphs, while the flags stay a file on both sides.
-    name: "/api/sessions/suggestions/status",
+    name: '/api/sessions/suggestions/status',
     cases: async (ctx) => {
       const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
       const cases: ParityCase[] = [
         {
-          label: "/api/sessions/suggestions/status",
+          label: '/api/sessions/suggestions/status',
           run: (source) => buildSuggestionStatus(ctx.logDir, {}, source),
         },
         {
-          label: "/api/sessions/suggestions/status?detail=1",
+          label: '/api/sessions/suggestions/status?detail=1',
           run: (source) => buildSuggestionStatus(ctx.logDir, { detail: true }, source),
         },
       ];
@@ -469,7 +467,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     },
   },
   {
-    name: "/api/context",
+    name: '/api/context',
     cases: async (ctx) => {
       const cases: ParityCase[] = [];
       for (const day of await archivedDays(ctx.logDir)) {
@@ -491,14 +489,14 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * file with no key and no filter, so there is nothing to enumerate over.
    */
   {
-    name: "/api/concepts",
-    cases: async (ctx) => [{ label: "/api/concepts", run: (source) => buildConcepts(ctx.logDir, source) }],
+    name: '/api/concepts',
+    cases: async (ctx) => [{ label: '/api/concepts', run: (source) => buildConcepts(ctx.logDir, source) }],
   },
 
   /* Enumerated from the store the list route returns, so the `ord` values
    * replayed are exactly the ones the page can link to. */
   {
-    name: "/api/concepts/concept",
+    name: '/api/concepts/concept',
     cases: async (ctx) => {
       const { concepts } = await buildConcepts(ctx.logDir);
       return concepts.map((concept) => ({
@@ -543,7 +541,7 @@ async function threadIds(ctx: ParityContext): Promise<string[]> {
  */
 export function shadowEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const v = env.SHADOW_DB;
-  return v === "1" || v === "true";
+  return v === '1' || v === 'true';
 }
 
 export interface ShadowHooks {
@@ -587,7 +585,7 @@ export function shadowCheck(
   label: string,
   served: unknown,
   compute: () => Promise<unknown>,
-  servedKind: SidecarSource["kind"] = "files",
+  servedKind: SidecarSource['kind'] = 'files',
 ): void {
   if (!shadowEnabled()) return;
   queueMicrotask(() => {
@@ -595,7 +593,7 @@ export function shadowCheck(
       try {
         const other = normalize(await compute());
         const mine = normalize(served);
-        const diff = servedKind === "db" ? diffJson(other, mine) : diffJson(mine, other);
+        const diff = servedKind === 'db' ? diffJson(other, mine) : diffJson(mine, other);
         if (diff) reportMismatch(label, diff);
       } catch (err) {
         reportError(label, err as Error);

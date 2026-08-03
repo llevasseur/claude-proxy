@@ -15,9 +15,9 @@
  * so a steady-state pass opens only the request bodies that have appeared since.
  */
 
-import { mkdir, readdir, readFile, appendFile, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { mkdir, readdir, readFile, appendFile, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   addTokens,
   analyzeRequestBody,
@@ -45,23 +45,23 @@ import {
   type CommandStep,
   type InterruptionKind,
   type SessionNode,
-} from "@claude-proxy/core";
-import { readRequestBodyParsed, readSidecars } from "./logs.js";
-import { listSessionGraphs, resolveSessionsDir, threadIdForBody, type SessionGraph } from "./sessions.js";
+} from '@claude-proxy/core';
+import { readRequestBodyParsed, readSidecars } from './logs.js';
+import { listSessionGraphs, resolveSessionsDir, threadIdForBody, type SessionGraph } from './sessions.js';
 
 /** Where the CLI installs user commands. `COMMANDS_DIR` overrides it, for tests. */
 export function resolveCommandsDir(env: NodeJS.ProcessEnv = process.env): string {
-  return env.COMMANDS_DIR ? path.resolve(env.COMMANDS_DIR) : path.join(os.homedir(), ".claude", "commands");
+  return env.COMMANDS_DIR ? path.resolve(env.COMMANDS_DIR) : path.join(os.homedir(), '.claude', 'commands');
 }
 
 /** The append-only run store. */
 export function commandStorePath(logDir: string): string {
-  return path.join(logDir, "commands", "runs.jsonl");
+  return path.join(logDir, 'commands', 'runs.jsonl');
 }
 
 /** The request index — see {@link RequestIndex}. */
 export function requestIndexPath(logDir: string): string {
-  return path.join(logDir, "commands", "requests.json");
+  return path.join(logDir, 'commands', 'requests.json');
 }
 
 /** What one captured request body told us, once, so it never has to be opened again. */
@@ -94,8 +94,8 @@ const REQUEST_INDEX_SCHEMA = 1;
 /** Read the request index, tolerating absence, corruption and a foreign schema. */
 export async function readRequestIndex(logDir: string): Promise<RequestIndex> {
   try {
-    const parsed = JSON.parse(await readFile(requestIndexPath(logDir), "utf8")) as RequestIndex;
-    if (parsed?.schema !== REQUEST_INDEX_SCHEMA || typeof parsed.entries !== "object" || parsed.entries === null) {
+    const parsed = JSON.parse(await readFile(requestIndexPath(logDir), 'utf8')) as RequestIndex;
+    if (parsed?.schema !== REQUEST_INDEX_SCHEMA || typeof parsed.entries !== 'object' || parsed.entries === null) {
       return { schema: REQUEST_INDEX_SCHEMA, entries: {} }; // rebuilt from scratch, which is safe
     }
     return { schema: REQUEST_INDEX_SCHEMA, entries: parsed.entries };
@@ -108,7 +108,7 @@ export async function readRequestIndex(logDir: string): Promise<RequestIndex> {
 export async function writeRequestIndex(logDir: string, index: RequestIndex): Promise<void> {
   const file = requestIndexPath(logDir);
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, JSON.stringify(index), "utf8");
+  await writeFile(file, JSON.stringify(index), 'utf8');
 }
 
 /** One installed command file, parsed. */
@@ -133,11 +133,11 @@ export async function listInstalledCommands(dir: string): Promise<InstalledComma
   }
 
   const out: InstalledCommand[] = [];
-  for (const name of names.filter((f) => f.endsWith(".md"))) {
+  for (const name of names.filter((f) => f.endsWith('.md'))) {
     try {
-      const content = await readFile(path.join(dir, name), "utf8");
+      const content = await readFile(path.join(dir, name), 'utf8');
       out.push({
-        command: name.replace(/\.md$/, "").toLowerCase(),
+        command: name.replace(/\.md$/, '').toLowerCase(),
         steps: parseCommandSteps(content),
         commandHash: contentHash(content),
       });
@@ -171,7 +171,7 @@ export async function readCommandRuns(logDir: string): Promise<CommandRun[]> {
 async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
   let text: string;
   try {
-    text = await readFile(commandStorePath(logDir), "utf8");
+    text = await readFile(commandStorePath(logDir), 'utf8');
   } catch {
     return []; // nothing recorded yet — an empty page, not an error
   }
@@ -189,7 +189,7 @@ async function readCommandRunRecords(logDir: string): Promise<CommandRun[]> {
  */
 export function parseCommandRunStore(text: string): CommandRun[] {
   const byKey = new Map<string, CommandRun>();
-  for (const line of text.split("\n")) {
+  for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     let parsed: unknown;
     try {
@@ -205,7 +205,7 @@ export function parseCommandRunStore(text: string): CommandRun[] {
 
 /** Newest run first. Stable, so records with equal `started` keep store order. */
 export function sortCommandRuns(runs: CommandRun[]): CommandRun[] {
-  return runs.sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
+  return runs.sort((a, b) => (b.started ?? '').localeCompare(a.started ?? ''));
 }
 
 /** Append records to the store, creating `logs/commands/` on first write. */
@@ -213,7 +213,7 @@ export async function appendCommandRuns(logDir: string, runs: readonly CommandRu
   if (runs.length === 0) return;
   const file = commandStorePath(logDir);
   await mkdir(path.dirname(file), { recursive: true });
-  await appendFile(file, `${runs.map((r) => JSON.stringify(r)).join("\n")}\n`, "utf8");
+  await appendFile(file, `${runs.map((r) => JSON.stringify(r)).join('\n')}\n`, 'utf8');
 }
 
 /**
@@ -236,9 +236,9 @@ type RootPrompt = { read: true; prompt: string } | { read: false };
 /** A run's opening prompt: the transcript's `.state.json` holds it untruncated. */
 async function readRootPrompt(logDir: string, threadId: string): Promise<RootPrompt> {
   try {
-    const raw = await readFile(path.join(resolveSessionsDir(logDir), `${threadId}.state.json`), "utf8");
+    const raw = await readFile(path.join(resolveSessionsDir(logDir), `${threadId}.state.json`), 'utf8');
     const state = JSON.parse(raw) as { root?: unknown };
-    return typeof state.root === "string" ? { read: true, prompt: state.root } : { read: false };
+    return typeof state.root === 'string' ? { read: true, prompt: state.root } : { read: false };
   } catch {
     return { read: false }; // no sidecar, or it went away
   }
@@ -247,7 +247,7 @@ async function readRootPrompt(logDir: string, threadId: string): Promise<RootPro
 /** The sidecar's own file stem, attached by `readSidecars({ includeFile: true })`. */
 function sidecarFile(sidecar: AuditSidecar): string | null {
   const file = (sidecar as { __file?: unknown }).__file;
-  return typeof file === "string" ? file : null;
+  return typeof file === 'string' ? file : null;
 }
 
 export interface ReconcileResult {
@@ -342,9 +342,9 @@ export async function reconcileCommandRuns(
           range: { from: nested.from, to: nested.to },
           command: nested.command,
           // No envelope survives a nested call, so there is nothing to record here.
-          args: "",
+          args: '',
           flags: [],
-          prompt: "",
+          prompt: '',
         },
       });
     }
@@ -379,7 +379,10 @@ export async function reconcileCommandRuns(
     }
   }
 
-  const starts = hosts.map((g) => g.started).filter((s): s is string => !!s).sort();
+  const starts = hosts
+    .map((g) => g.started)
+    .filter((s): s is string => !!s)
+    .sort();
   const since = (starts[0] && reportDay(starts[0])) || undefined;
   const { sidecars } = await readSidecars(logDir, { since, includeFile: true }, now);
   const audits = sidecars
@@ -450,7 +453,7 @@ export async function reconcileCommandRuns(
 
 /** Everything about a record except when it was written. */
 function sameRun(a: CommandRun, b: CommandRun): boolean {
-  return JSON.stringify({ ...a, updatedAt: "" }) === JSON.stringify({ ...b, updatedAt: "" });
+  return JSON.stringify({ ...a, updatedAt: '' }) === JSON.stringify({ ...b, updatedAt: '' });
 }
 
 /**
@@ -503,7 +506,9 @@ function buildRun(input: {
     const inherited =
       parent === graph.threadId && spawn != null
         ? (stepOfNode.get(spawn) ?? null)
-        : (parent ? (stepOfThread.get(parent) ?? null) : null);
+        : parent
+          ? (stepOfThread.get(parent) ?? null)
+          : null;
     stepOfThread.set(threadId, inherited);
   }
 
@@ -564,7 +569,7 @@ function buildRun(input: {
   // The model the run was priced under. A turn whose sidecar has aged out can't answer,
   // so fall back to what the last record settled on.
   const model = turns[0]?.file ? (audits.find((s) => sidecarFile(s) === turns[0]!.file)?.model ?? null) : null;
-  const priced = model ?? prior?.model ?? graph.model ?? "";
+  const priced = model ?? prior?.model ?? graph.model ?? '';
 
   const tokens = turns.reduce((acc, t) => addTokens(acc, t.tokens), ZERO_TOKENS);
   const familyNodes = [
@@ -608,7 +613,7 @@ function buildRun(input: {
       tokens,
       cost: estimateCost(tokens, priced).total,
       turns: turns.length,
-      toolCalls: familyNodes.filter((n) => n.type === "tool").length,
+      toolCalls: familyNodes.filter((n) => n.type === 'tool').length,
       durationMs: started && ended ? Math.max(0, new Date(ended).getTime() - new Date(started).getTime()) : 0,
     },
     turns,
@@ -630,7 +635,7 @@ function buildRun(input: {
       turnsUnmapped,
       nodes: nodes.length,
       attributed: attributions.filter((a) => a.step !== null).length,
-      anchored: attributions.filter((a) => a.confidence !== "inferred" && a.step !== null).length,
+      anchored: attributions.filter((a) => a.confidence !== 'inferred' && a.step !== null).length,
     },
     updatedAt: now.toISOString(),
   };

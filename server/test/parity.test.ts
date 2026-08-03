@@ -1,18 +1,18 @@
-import { appendFile, copyFile, link, mkdtemp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
-import { beforeAll, afterAll, describe, expect, it } from "vitest";
-import { runKey } from "@claude-proxy/core";
-import { applySuggestionStatus, buildSessionSuggestions } from "../src/api.js";
-import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from "../src/command-runs.js";
-import { conceptStorePath } from "../src/concepts.js";
-import { ingest } from "../src/db/ingest.js";
-import { openDb } from "../src/db/open.js";
-import { dbSource, fileSource } from "../src/db/source.js";
-import { resolveLogDir } from "../src/logs.js";
-import { resolveSettingsPath } from "../src/settings.js";
-import { updateSuggestionStatusStore } from "../src/suggestion-status.js";
+import { appendFile, copyFile, link, mkdtemp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
+import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { runKey } from '@claude-proxy/core';
+import { applySuggestionStatus, buildSessionSuggestions } from '../src/api.js';
+import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from '../src/command-runs.js';
+import { conceptStorePath } from '../src/concepts.js';
+import { ingest } from '../src/db/ingest.js';
+import { openDb } from '../src/db/open.js';
+import { dbSource, fileSource } from '../src/db/source.js';
+import { resolveLogDir } from '../src/logs.js';
+import { resolveSettingsPath } from '../src/settings.js';
+import { updateSuggestionStatusStore } from '../src/suggestion-status.js';
 import {
   archivedDays,
   NORMALIZATIONS,
@@ -20,8 +20,8 @@ import {
   resetCaches,
   runCase,
   type ParityContext,
-} from "../src/parity.js";
-import { resolveUsageLimits } from "../src/usage-config.js";
+} from '../src/parity.js';
+import { resolveUsageLimits } from '../src/usage-config.js';
 
 /**
  * Every wired route, replayed against the same corpus through the file scan and
@@ -36,7 +36,7 @@ import { resolveUsageLimits } from "../src/usage-config.js";
 
 /** A sidecar filename prefix that is its UTC instant, exactly as the proxy writes it. */
 function stemFor(iso: string): string {
-  return `${iso.replace(/:/g, "-").replace(".", "-").replace("Z", "")}_anthropic`;
+  return `${iso.replace(/:/g, '-').replace('.', '-').replace('Z', '')}_anthropic`;
 }
 
 interface SidecarOpts {
@@ -49,11 +49,11 @@ interface SidecarOpts {
 }
 
 function sidecarBody(iso: string, opts: SidecarOpts = {}): Record<string, unknown> {
-  const tools = opts.tools ?? [{ name: "Bash", bytes: 900, estTokens: 225 }];
+  const tools = opts.tools ?? [{ name: 'Bash', bytes: 900, estTokens: 225 }];
   const body: Record<string, unknown> = {
     timestamp: iso,
-    model: opts.model ?? "claude-opus-5",
-    endpoint: "/v1/messages",
+    model: opts.model ?? 'claude-opus-5',
+    endpoint: '/v1/messages',
     statusCode: 200,
     tokens: {
       input: 100,
@@ -67,12 +67,12 @@ function sidecarBody(iso: string, opts: SidecarOpts = {}): Record<string, unknow
   };
   if (opts.session !== null) {
     body.session = opts.session ?? {
-      sessionId: "s-1",
-      app: "claude-code",
-      userAgent: "claude-cli/2.0",
-      account: "someone@example.com",
-      metadataSessionId: "m-1",
-      deviceId: "d-1",
+      sessionId: 's-1',
+      app: 'claude-code',
+      userAgent: 'claude-cli/2.0',
+      account: 'someone@example.com',
+      metadataSessionId: 'm-1',
+      deviceId: 'd-1',
     };
   }
   if (opts.skim !== null) {
@@ -80,8 +80,8 @@ function sidecarBody(iso: string, opts: SidecarOpts = {}): Record<string, unknow
   }
   if (opts.rateLimit !== null) {
     body.rateLimit = opts.rateLimit ?? {
-      "anthropic-ratelimit-unified-status": "allowed",
-      "anthropic-ratelimit-unified-5h-remaining": "40000",
+      'anthropic-ratelimit-unified-status': 'allowed',
+      'anthropic-ratelimit-unified-5h-remaining': '40000',
     };
   }
   return body;
@@ -90,21 +90,21 @@ function sidecarBody(iso: string, opts: SidecarOpts = {}): Record<string, unknow
 /** Write the audit sidecar plus the `.md` / `.request.txt` blobs beside it. */
 async function writeTriple(dir: string, iso: string, opts: SidecarOpts & { blobs?: boolean } = {}): Promise<void> {
   const stem = stemFor(iso);
-  await writeFile(path.join(dir, `${stem}.audit.json`), JSON.stringify(sidecarBody(iso, opts)), "utf8");
+  await writeFile(path.join(dir, `${stem}.audit.json`), JSON.stringify(sidecarBody(iso, opts)), 'utf8');
   if (opts.blobs !== false) {
-    await writeFile(path.join(dir, `${stem}.md`), `# ${iso}\n`, "utf8");
+    await writeFile(path.join(dir, `${stem}.md`), `# ${iso}\n`, 'utf8');
     // A distinct last-user-turn per request: `/api/skim` reads its text out of
     // this body, and empty `messages` would make that route's parity vacuous.
     await writeFile(
       path.join(dir, `${stem}.request.txt`),
-      JSON.stringify({ messages: [{ role: "user", content: [{ type: "text", text: `ask at ${iso}` }] }] }),
-      "utf8",
+      JSON.stringify({ messages: [{ role: 'user', content: [{ type: 'text', text: `ask at ${iso}` }] }] }),
+      'utf8',
     );
   }
 }
 
 async function writeRaw(dir: string, iso: string, contents: string): Promise<void> {
-  await writeFile(path.join(dir, `${stemFor(iso)}.audit.json`), contents, "utf8");
+  await writeFile(path.join(dir, `${stemFor(iso)}.audit.json`), contents, 'utf8');
 }
 
 /**
@@ -117,78 +117,80 @@ async function writeRaw(dir: string, iso: string, contents: string): Promise<voi
  * not have — which the file reader returns rather than dropping.
  */
 async function writeSessions(logDir: string): Promise<void> {
-  const dir = path.join(logDir, "sessions");
+  const dir = path.join(logDir, 'sessions');
   await mkdir(dir, { recursive: true });
 
-  const parent = "00000000000000a1";
+  const parent = '00000000000000a1';
   await writeFile(
     path.join(dir, `${parent}.md`),
     [
-      "- model: claude-opus-5",
-      "- session: s-1",
-      "- started: 2026-07-15T14:00:00.000Z",
-      "- title: Index the logs",
-      "- subtitle: Move the audit sidecars into SQLite",
-      "",
-      "## Task: Index the logs",
-      "- decided: keep logs/ the source of truth",
-      "- Bash(pnpm test)",
-      "- ✗ typecheck failed",
-      "- Agent(subagent_type=Explore, description=find the readers)",
-      "- Read(server/src/api.ts)",
-      "- done: indexed",
-      "",
-    ].join("\n"),
-    "utf8",
+      '- model: claude-opus-5',
+      '- session: s-1',
+      '- started: 2026-07-15T14:00:00.000Z',
+      '- title: Index the logs',
+      '- subtitle: Move the audit sidecars into SQLite',
+      '',
+      '## Task: Index the logs',
+      '- decided: keep logs/ the source of truth',
+      '- Bash(pnpm test)',
+      '- ✗ typecheck failed',
+      '- Agent(subagent_type=Explore, description=find the readers)',
+      '- Read(server/src/api.ts)',
+      '- done: indexed',
+      '',
+    ].join('\n'),
+    'utf8',
   );
   // A command envelope in the root prompt, so `reconcileCommandRuns` reads this
   // thread as a run of `/task` rather than the store needing a hand-authored record.
   await writeFile(
     path.join(dir, `${parent}.state.json`),
-    JSON.stringify({ root: envelope("task", "--sub Move the audit sidecars into SQLite, but keep the files authoritative.") }),
-    "utf8",
+    JSON.stringify({
+      root: envelope('task', '--sub Move the audit sidecars into SQLite, but keep the files authoritative.'),
+    }),
+    'utf8',
   );
   await writeFile(
     path.join(dir, `${parent}.nodes.jsonl`),
     [
-      JSON.stringify({ i: 1, text: "keep logs/ the source of truth, because a view may not hold the only copy" }),
-      "{ torn line",
+      JSON.stringify({ i: 1, text: 'keep logs/ the source of truth, because a view may not hold the only copy' }),
+      '{ torn line',
       // Index 99 is past the end of the transcript: the sidecar is sparse and
       // outlives edits, and both readers hand the entry back regardless.
-      JSON.stringify({ i: 99, text: "an index this transcript no longer has" }),
-      "",
-    ].join("\n"),
-    "utf8",
+      JSON.stringify({ i: 99, text: 'an index this transcript no longer has' }),
+      '',
+    ].join('\n'),
+    'utf8',
   );
 
-  const child = "00000000000000b2";
+  const child = '00000000000000b2';
   await writeFile(
     path.join(dir, `${child}.md`),
     [
-      "- model: claude-opus-5",
-      "- session: s-1",
-      "- started: 2026-07-15T14:05:00.000Z",
-      "",
-      "## Task: find the readers",
-      "- Grep(readSidecars)",
-      "- done: found four",
-      "",
-    ].join("\n"),
-    "utf8",
+      '- model: claude-opus-5',
+      '- session: s-1',
+      '- started: 2026-07-15T14:05:00.000Z',
+      '',
+      '## Task: find the readers',
+      '- Grep(readSidecars)',
+      '- done: found four',
+      '',
+    ].join('\n'),
+    'utf8',
   );
 
   // No header and cut off mid-run. It gets a root prompt naming a command that
   // is *not* installed, so `/api/commands` carries a row the catalogue does not
   // know — history a `/sync` removed.
   await writeFile(
-    path.join(dir, "00000000000000c3.md"),
-    ["## Task: something older", "- Bash(ls)", "- interrupted: user", "- done: resumed and finished", ""].join("\n"),
-    "utf8",
+    path.join(dir, '00000000000000c3.md'),
+    ['## Task: something older', '- Bash(ls)', '- interrupted: user', '- done: resumed and finished', ''].join('\n'),
+    'utf8',
   );
   await writeFile(
-    path.join(dir, "00000000000000c3.state.json"),
-    JSON.stringify({ root: envelope("retired-command", "--here tidy up") }),
-    "utf8",
+    path.join(dir, '00000000000000c3.state.json'),
+    JSON.stringify({ root: envelope('retired-command', '--here tidy up') }),
+    'utf8',
   );
 }
 
@@ -198,23 +200,23 @@ async function writeSessions(logDir: string): Promise<void> {
  * exercises both halves of its union.
  */
 async function writeCommandsDir(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "parity-commands-"));
+  const dir = await mkdtemp(path.join(tmpdir(), 'parity-commands-'));
   await writeFile(
-    path.join(dir, "task.md"),
+    path.join(dir, 'task.md'),
     [
-      "Take a task to an open PR.",
-      "",
-      "## Step 1 — Set up the workspace",
-      "Create a worktree with `my-command-tools worktree begin`.",
-      "",
-      "## Step 2 — Implement the task",
-      "Verify with `my-command-tools verify`.",
-      "",
-      "## Step 3 — Clean, then PR",
-      "Run `/clean`, then `/pr`.",
-      "",
-    ].join("\n"),
-    "utf8",
+      'Take a task to an open PR.',
+      '',
+      '## Step 1 — Set up the workspace',
+      'Create a worktree with `my-command-tools worktree begin`.',
+      '',
+      '## Step 2 — Implement the task',
+      'Verify with `my-command-tools verify`.',
+      '',
+      '## Step 3 — Clean, then PR',
+      'Run `/clean`, then `/pr`.',
+      '',
+    ].join('\n'),
+    'utf8',
   );
   return dir;
 }
@@ -229,37 +231,41 @@ function envelope(command: string, args: string): string {
  * the real logs contain.
  */
 async function buildCorpus(): Promise<string> {
-  const logDir = await mkdtemp(path.join(tmpdir(), "parity-"));
-  const dayOne = path.join(logDir, "archive", "2026-07-15");
-  const dayTwo = path.join(logDir, "archive", "2026-07-16");
+  const logDir = await mkdtemp(path.join(tmpdir(), 'parity-'));
+  const dayOne = path.join(logDir, 'archive', '2026-07-15');
+  const dayTwo = path.join(logDir, 'archive', '2026-07-16');
   await mkdir(dayOne, { recursive: true });
   await mkdir(dayTwo, { recursive: true });
 
-  await writeTriple(dayOne, "2026-07-15T14:00:00.000Z");
+  await writeTriple(dayOne, '2026-07-15T14:00:00.000Z');
   // Same tool name as the request above, different byte weight: the digest
   // accumulates them into one row, and ties break by first appearance.
-  await writeTriple(dayOne, "2026-07-15T15:00:00.000Z", {
+  await writeTriple(dayOne, '2026-07-15T15:00:00.000Z', {
     tools: [
-      { name: "Bash", bytes: 900, estTokens: 225 },
-      { name: "Read", bytes: 900, estTokens: 300 },
+      { name: 'Bash', bytes: 900, estTokens: 225 },
+      { name: 'Read', bytes: 900, estTokens: 300 },
     ],
-    model: "claude-sonnet-5",
+    model: 'claude-sonnet-5',
   });
   // A legacy sidecar: no session, no skim, no rate-limit headers.
-  await writeTriple(dayOne, "2026-07-15T16:00:00.000Z", { session: null, skim: null, rateLimit: null });
+  await writeTriple(dayOne, '2026-07-15T16:00:00.000Z', { session: null, skim: null, rateLimit: null });
   // Retention took the bodies but the metrics survive.
-  await writeTriple(dayOne, "2026-07-15T17:00:00.000Z", { blobs: false });
+  await writeTriple(dayOne, '2026-07-15T17:00:00.000Z', { blobs: false });
   // Not JSON at all.
-  await writeRaw(dayOne, "2026-07-15T18:00:00.000Z", "{ this is not json");
+  await writeRaw(dayOne, '2026-07-15T18:00:00.000Z', '{ this is not json');
   // JSON, but not an audit sidecar — the digest counts it under `skipped`.
-  await writeRaw(dayOne, "2026-07-15T19:00:00.000Z", JSON.stringify({ timestamp: "2026-07-15T19:00:00.000Z", nope: 1 }));
+  await writeRaw(
+    dayOne,
+    '2026-07-15T19:00:00.000Z',
+    JSON.stringify({ timestamp: '2026-07-15T19:00:00.000Z', nope: 1 }),
+  );
   // 01:30Z on the 16th is filed under the next UTC folder while belonging to
   // the 15th's reporting day.
-  await writeTriple(dayTwo, "2026-07-16T01:30:00.000Z");
-  await writeTriple(dayTwo, "2026-07-16T14:00:00.000Z", { model: "claude-haiku-4-5-20251001" });
+  await writeTriple(dayTwo, '2026-07-16T01:30:00.000Z');
+  await writeTriple(dayTwo, '2026-07-16T14:00:00.000Z', { model: 'claude-haiku-4-5-20251001' });
 
   // A session all-null but present, which is a different fact from absent.
-  await writeTriple(logDir, "2026-07-17T14:00:00.000Z", {
+  await writeTriple(logDir, '2026-07-17T14:00:00.000Z', {
     session: { sessionId: null, app: null, userAgent: null, account: null, metadataSessionId: null, deviceId: null },
   });
 
@@ -275,28 +281,28 @@ async function buildCorpus(): Promise<string> {
 async function writeConcepts(logDir: string): Promise<void> {
   const records = [
     {
-      term: "carousel",
-      sentence: "A carousel shows one image at a time.",
-      field: "UI component vocabulary",
-      skills: ["animation-vocabulary"],
-      savedAt: "2026-07-15T18:30:00.000Z",
+      term: 'carousel',
+      sentence: 'A carousel shows one image at a time.',
+      field: 'UI component vocabulary',
+      skills: ['animation-vocabulary'],
+      savedAt: '2026-07-15T18:30:00.000Z',
     },
     {
-      term: "watermark",
-      sentence: "A watermark records how far a store was read.",
-      field: "Ingestion",
+      term: 'watermark',
+      sentence: 'A watermark records how far a store was read.',
+      field: 'Ingestion',
       skills: [],
-      savedAt: "2026-07-16T09:00:00.000Z",
+      savedAt: '2026-07-16T09:00:00.000Z',
     },
     {
-      term: "carousel",
-      sentence: "A carousel shows one image at a time.",
-      field: "UI component vocabulary",
-      skills: ["animation-vocabulary", "find-skills"],
-      savedAt: "2026-07-17T09:00:00.000Z",
+      term: 'carousel',
+      sentence: 'A carousel shows one image at a time.',
+      field: 'UI component vocabulary',
+      skills: ['animation-vocabulary', 'find-skills'],
+      savedAt: '2026-07-17T09:00:00.000Z',
     },
   ];
-  await writeFile(conceptStorePath(logDir), records.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
+  await writeFile(conceptStorePath(logDir), records.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf8');
 }
 
 /**
@@ -304,16 +310,16 @@ async function writeConcepts(logDir: string): Promise<void> {
  * on the context so the replay does not depend on this machine's own settings.
  */
 async function writeSettings(logDir: string): Promise<string> {
-  const file = path.join(logDir, "settings.json");
+  const file = path.join(logDir, 'settings.json');
   await writeFile(
     file,
     JSON.stringify({
-      permissions: { deny: ["WebSearch", "Bash(rm:*)"] },
+      permissions: { deny: ['WebSearch', 'Bash(rm:*)'] },
       disableAllHooks: true,
-      hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo hi" }] }] },
-      enabledPlugins: { "example@marketplace": true },
+      hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo hi' }] }] },
+      enabledPlugins: { 'example@marketplace': true },
     }),
-    "utf8",
+    'utf8',
   );
   return file;
 }
@@ -326,14 +332,14 @@ async function writeSettings(logDir: string): Promise<string> {
 async function flagOneSuggestion(logDir: string): Promise<void> {
   const { buckets } = await buildSessionSuggestions(logDir, fileSource);
   const bucket = buckets[0];
-  expect(bucket, "the corpus should hold a suggestion bucket to flag").toBeDefined();
+  expect(bucket, 'the corpus should hold a suggestion bucket to flag').toBeDefined();
   const suggestion = bucket?.suggestions[0];
-  expect(suggestion, "the corpus should hold a suggestion to flag").toBeDefined();
+  expect(suggestion, 'the corpus should hold a suggestion to flag').toBeDefined();
   if (!bucket || !suggestion) return;
   await updateSuggestionStatusStore(
     logDir,
-    [{ bucket: bucket.index, id: suggestion.id, status: "done", note: "handled" }],
-    new Date("2026-07-18T00:00:00.000Z"),
+    [{ bucket: bucket.index, id: suggestion.id, status: 'done', note: 'handled' }],
+    new Date('2026-07-18T00:00:00.000Z'),
   );
 }
 
@@ -355,11 +361,11 @@ async function mismatches(ctx: ParityContext, db: DatabaseSync): Promise<string[
       }
     }
   }
-  expect(cases, "the harness replayed nothing, so it proved nothing").toBeGreaterThan(0);
+  expect(cases, 'the harness replayed nothing, so it proved nothing').toBeGreaterThan(0);
   return out;
 }
 
-describe("route parity over a synthetic corpus", () => {
+describe('route parity over a synthetic corpus', () => {
   let ctx: ParityContext;
   let db: DatabaseSync;
 
@@ -368,7 +374,7 @@ describe("route parity over a synthetic corpus", () => {
     const commandsDir = await writeCommandsDir();
     // The store under test is the one the reconcile pass writes, not a fixture, so
     // the record shapes are whatever the real distiller produces.
-    await reconcileCommandRuns(logDir, commandsDir, new Date("2026-07-18T00:00:00.000Z"));
+    await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-18T00:00:00.000Z'));
     await flagOneSuggestion(logDir);
     ctx = { logDir, limits: resolveUsageLimits({}), commandsDir, settingsPath: await writeSettings(logDir) };
     db = openDb(logDir);
@@ -380,68 +386,79 @@ describe("route parity over a synthetic corpus", () => {
     if (ctx?.commandsDir) await rm(ctx.commandsDir, { recursive: true, force: true });
   });
 
-  it("ingests every sidecar, and files that are not sidecars separately", () => {
-    expect((db.prepare("SELECT count(*) c FROM request").get() as { c: number }).c).toBe(7);
-    expect((db.prepare("SELECT count(*) c FROM request_skipped").get() as { c: number }).c).toBe(2);
-    expect((db.prepare("SELECT count(*) c FROM request WHERE blob_evicted = 1").get() as { c: number }).c).toBe(1);
+  it('ingests every sidecar, and files that are not sidecars separately', () => {
+    expect((db.prepare('SELECT count(*) c FROM request').get() as { c: number }).c).toBe(7);
+    expect((db.prepare('SELECT count(*) c FROM request_skipped').get() as { c: number }).c).toBe(2);
+    expect((db.prepare('SELECT count(*) c FROM request WHERE blob_evicted = 1').get() as { c: number }).c).toBe(1);
     // Absent and all-null are stored as different facts.
-    expect((db.prepare("SELECT count(*) c FROM request WHERE session_present = 0").get() as { c: number }).c).toBe(1);
+    expect((db.prepare('SELECT count(*) c FROM request WHERE session_present = 0').get() as { c: number }).c).toBe(1);
     expect(
-      (db.prepare("SELECT count(*) c FROM request WHERE session_present = 1 AND session_id IS NULL").get() as { c: number }).c,
+      (
+        db.prepare('SELECT count(*) c FROM request WHERE session_present = 1 AND session_id IS NULL').get() as {
+          c: number;
+        }
+      ).c,
     ).toBe(1);
   });
 
-  it("indexes every transcript, its nodes, and its sparse node texts", () => {
-    expect((db.prepare("SELECT count(*) c FROM session").get() as { c: number }).c).toBe(3);
+  it('indexes every transcript, its nodes, and its sparse node texts', () => {
+    expect((db.prepare('SELECT count(*) c FROM session').get() as { c: number }).c).toBe(3);
     // Seven appended lines under the parent; the interruption on the legacy
     // transcript is a flag on a node, not a node of its own.
     expect(
-      (db.prepare("SELECT count(*) c FROM session_node WHERE thread_id = ?").get("00000000000000a1") as { c: number }).c,
+      (db.prepare('SELECT count(*) c FROM session_node WHERE thread_id = ?').get('00000000000000a1') as { c: number })
+        .c,
     ).toBe(7);
-    expect((db.prepare("SELECT count(*) c FROM session_node WHERE interrupted = 1").get() as { c: number }).c).toBe(1);
+    expect((db.prepare('SELECT count(*) c FROM session_node WHERE interrupted = 1').get() as { c: number }).c).toBe(1);
     // The torn line is dropped, the out-of-range index is kept.
-    expect(
-      (db.prepare("SELECT count(*) c FROM session_node_text").get() as { c: number }).c,
-    ).toBe(2);
+    expect((db.prepare('SELECT count(*) c FROM session_node_text').get() as { c: number }).c).toBe(2);
     // The subagent has no `state.json` at all, which reads the same as one
     // carrying no `root`: null.
-    expect(
-      (db.prepare("SELECT count(*) c FROM session WHERE root_prompt IS NOT NULL").get() as { c: number }).c,
-    ).toBe(2);
+    expect((db.prepare('SELECT count(*) c FROM session WHERE root_prompt IS NOT NULL').get() as { c: number }).c).toBe(
+      2,
+    );
   });
 
-  it("indexes every command run, its tree, and the document it round-trips", () => {
+  it('indexes every command run, its tree, and the document it round-trips', () => {
     // Both root prompts read as runs: one of an installed command, one of a
     // command the catalogue no longer has.
-    expect((db.prepare("SELECT count(*) c FROM command_run").get() as { c: number }).c).toBe(2);
+    expect((db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c).toBe(2);
     expect(
-      db.prepare("SELECT command FROM command_run ORDER BY command").all().map((r) => (r as { command: string }).command),
-    ).toEqual(["retired-command", "task"]);
+      db
+        .prepare('SELECT command FROM command_run ORDER BY command')
+        .all()
+        .map((r) => (r as { command: string }).command),
+    ).toEqual(['retired-command', 'task']);
     // The envelope's leading flags are indexed as their own rows.
     expect(
-      db.prepare("SELECT flag FROM command_run_flag ORDER BY flag").all().map((r) => (r as { flag: string }).flag),
-    ).toEqual(["here", "sub"]);
+      db
+        .prepare('SELECT flag FROM command_run_flag ORDER BY flag')
+        .all()
+        .map((r) => (r as { flag: string }).flag),
+    ).toEqual(['here', 'sub']);
     // The `/task` run's family is the parent plus the subagent it spawned.
     expect(
-      (db.prepare("SELECT count(*) c FROM command_run_thread WHERE run_id = ?").get("00000000000000a1") as {
-        c: number;
-      }).c,
+      (
+        db.prepare('SELECT count(*) c FROM command_run_thread WHERE run_id = ?').get('00000000000000a1') as {
+          c: number;
+        }
+      ).c,
     ).toBe(2);
     // Every row's document re-parses into the record the file reader hands back.
-    const documents = db.prepare("SELECT document FROM command_run ORDER BY ord").all();
+    const documents = db.prepare('SELECT document FROM command_run ORDER BY ord').all();
     for (const row of documents) {
       expect(() => JSON.parse((row as { document: string }).document)).not.toThrow();
     }
   });
 
-  it("answers every wired route byte-identically from SQLite", async () => {
+  it('answers every wired route byte-identically from SQLite', async () => {
     expect(await mismatches(ctx, db)).toEqual([]);
   });
 
-  it("is idempotent: a second ingest changes nothing", async () => {
-    const before = db.prepare("SELECT id, timestamp, model FROM request ORDER BY id").all();
-    const sessions = db.prepare("SELECT thread_id, bytes, modified, root_prompt FROM session ORDER BY thread_id").all();
-    const nodes = db.prepare("SELECT thread_id, idx, type, text FROM session_node ORDER BY thread_id, idx").all();
+  it('is idempotent: a second ingest changes nothing', async () => {
+    const before = db.prepare('SELECT id, timestamp, model FROM request ORDER BY id').all();
+    const sessions = db.prepare('SELECT thread_id, bytes, modified, root_prompt FROM session ORDER BY thread_id').all();
+    const nodes = db.prepare('SELECT thread_id, idx, type, text FROM session_node ORDER BY thread_id, idx').all();
     const stats = await ingest(db, ctx.logDir);
     expect(stats.inserted).toBe(0);
     expect(stats.deleted).toBe(0);
@@ -453,27 +470,34 @@ describe("route parity over a synthetic corpus", () => {
     // without the file being opened.
     expect(stats.commandRuns).toBe(2);
     expect(stats.commandRunsParsed).toBe(false);
-    expect(db.prepare("SELECT id, timestamp, model FROM request ORDER BY id").all()).toEqual(before);
-    expect(db.prepare("SELECT thread_id, bytes, modified, root_prompt FROM session ORDER BY thread_id").all()).toEqual(
+    expect(db.prepare('SELECT id, timestamp, model FROM request ORDER BY id').all()).toEqual(before);
+    expect(db.prepare('SELECT thread_id, bytes, modified, root_prompt FROM session ORDER BY thread_id').all()).toEqual(
       sessions,
     );
-    expect(db.prepare("SELECT thread_id, idx, type, text FROM session_node ORDER BY thread_id, idx").all()).toEqual(nodes);
+    expect(db.prepare('SELECT thread_id, idx, type, text FROM session_node ORDER BY thread_id, idx').all()).toEqual(
+      nodes,
+    );
   });
 
-  it("re-reads a transcript that grew, and drops one that left", async () => {
-    const dir = path.join(ctx.logDir, "sessions");
-    const extra = path.join(dir, "00000000000000d4.md");
-    await writeFile(extra, ["- session: s-1", "- started: 2026-07-15T18:00:00.000Z", "## Task: transient", ""].join("\n"), "utf8");
+  it('re-reads a transcript that grew, and drops one that left', async () => {
+    const dir = path.join(ctx.logDir, 'sessions');
+    const extra = path.join(dir, '00000000000000d4.md');
+    await writeFile(
+      extra,
+      ['- session: s-1', '- started: 2026-07-15T18:00:00.000Z', '## Task: transient', ''].join('\n'),
+      'utf8',
+    );
     let stats = await ingest(db, ctx.logDir);
     expect(stats.sessions).toBe(4);
     expect(stats.sessionsParsed).toBe(1);
 
     // An append moves the size, which is what the watermark keys on.
-    await appendFile(extra, "- done: appended\n", "utf8");
+    await appendFile(extra, '- done: appended\n', 'utf8');
     stats = await ingest(db, ctx.logDir);
     expect(stats.sessionsParsed).toBe(1);
     expect(
-      (db.prepare("SELECT count(*) c FROM session_node WHERE thread_id = ?").get("00000000000000d4") as { c: number }).c,
+      (db.prepare('SELECT count(*) c FROM session_node WHERE thread_id = ?').get('00000000000000d4') as { c: number })
+        .c,
     ).toBe(2);
     expect(await mismatches(ctx, db)).toEqual([]);
 
@@ -482,26 +506,27 @@ describe("route parity over a synthetic corpus", () => {
     await rm(extra);
     stats = await ingest(db, ctx.logDir);
     expect(stats.sessions).toBe(3);
-    expect((db.prepare("SELECT count(*) c FROM session").get() as { c: number }).c).toBe(3);
+    expect((db.prepare('SELECT count(*) c FROM session').get() as { c: number }).c).toBe(3);
     expect(
-      (db.prepare("SELECT count(*) c FROM session_node WHERE thread_id = ?").get("00000000000000d4") as { c: number }).c,
+      (db.prepare('SELECT count(*) c FROM session_node WHERE thread_id = ?').get('00000000000000d4') as { c: number })
+        .c,
     ).toBe(0);
   });
 
-  it("re-reads a command store that grew, and drops the rows when it leaves", async () => {
+  it('re-reads a command store that grew, and drops the rows when it leaves', async () => {
     const store = commandStorePath(ctx.logDir);
     const runs = await fileSource.readCommandRuns(ctx.logDir);
-    const victim = runs.find((r) => r.command === "retired-command");
-    expect(victim, "the corpus should hold a run to retire").toBeDefined();
+    const victim = runs.find((r) => r.command === 'retired-command');
+    expect(victim, 'the corpus should hold a run to retire').toBeDefined();
 
     // Retracting a record means appending it again with the tombstone set. The row
     // stays — it is what the file holds — and the live view drops it on both sides.
-    await appendFile(store, `${JSON.stringify({ ...victim!, retired: true })}\n`, "utf8");
+    await appendFile(store, `${JSON.stringify({ ...victim!, retired: true })}\n`, 'utf8');
     let stats = await ingest(db, ctx.logDir);
     expect(stats.commandRunsParsed).toBe(true);
     expect(stats.commandRuns).toBe(2);
-    expect((db.prepare("SELECT count(*) c FROM command_run WHERE retired = 1").get() as { c: number }).c).toBe(1);
-    expect((await fileSource.readCommandRuns(ctx.logDir)).map((r) => r.command)).toEqual(["task"]);
+    expect((db.prepare('SELECT count(*) c FROM command_run WHERE retired = 1').get() as { c: number }).c).toBe(1);
+    expect((await fileSource.readCommandRuns(ctx.logDir)).map((r) => r.command)).toEqual(['task']);
     expect(await mismatches(ctx, db)).toEqual([]);
 
     // The store is the rows' only source: losing it takes them, and the
@@ -509,80 +534,85 @@ describe("route parity over a synthetic corpus", () => {
     await rm(store);
     stats = await ingest(db, ctx.logDir);
     expect(stats.commandRuns).toBe(0);
-    expect((db.prepare("SELECT count(*) c FROM command_run").get() as { c: number }).c).toBe(0);
-    expect((db.prepare("SELECT count(*) c FROM command_run_turn").get() as { c: number }).c).toBe(0);
+    expect((db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c).toBe(0);
+    expect((db.prepare('SELECT count(*) c FROM command_run_turn').get() as { c: number }).c).toBe(0);
     expect(await mismatches(ctx, db)).toEqual([]);
 
     // Put it back, so the rebuild below has a store to rebuild from.
-    await reconcileCommandRuns(ctx.logDir, ctx.commandsDir!, new Date("2026-07-18T00:00:00.000Z"));
+    await reconcileCommandRuns(ctx.logDir, ctx.commandsDir!, new Date('2026-07-18T00:00:00.000Z'));
     await ingest(db, ctx.logDir);
-    expect((db.prepare("SELECT count(*) c FROM command_run").get() as { c: number }).c).toBe(2);
+    expect((db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c).toBe(2);
   });
 
-  it("rebuilds identically from an empty database", async () => {
-    const before = db.prepare("SELECT id, timestamp, model, tokens_real_input FROM request ORDER BY id").all();
-    const tools = db.prepare("SELECT request_id, ord, name, bytes FROM request_tool ORDER BY request_id, ord").all();
-    const sessions = db.prepare("SELECT * FROM session ORDER BY thread_id").all();
-    const nodes = db.prepare("SELECT * FROM session_node ORDER BY thread_id, idx").all();
-    const texts = db.prepare("SELECT * FROM session_node_text ORDER BY thread_id, idx").all();
-    const commandRuns = db.prepare("SELECT * FROM command_run ORDER BY ord").all();
-    const commandSteps = db.prepare("SELECT * FROM command_run_step ORDER BY run_id, ord").all();
+  it('rebuilds identically from an empty database', async () => {
+    const before = db.prepare('SELECT id, timestamp, model, tokens_real_input FROM request ORDER BY id').all();
+    const tools = db.prepare('SELECT request_id, ord, name, bytes FROM request_tool ORDER BY request_id, ord').all();
+    const sessions = db.prepare('SELECT * FROM session ORDER BY thread_id').all();
+    const nodes = db.prepare('SELECT * FROM session_node ORDER BY thread_id, idx').all();
+    const texts = db.prepare('SELECT * FROM session_node_text ORDER BY thread_id, idx').all();
+    const commandRuns = db.prepare('SELECT * FROM command_run ORDER BY ord').all();
+    const commandSteps = db.prepare('SELECT * FROM command_run_step ORDER BY run_id, ord').all();
 
     // The total-recovery path: drop everything, re-ingest, get the same view
     // back.
-    db.exec("DELETE FROM request_rate_limit");
-    db.exec("DELETE FROM request_tool");
-    db.exec("DELETE FROM request");
-    db.exec("DELETE FROM request_skipped");
-    db.exec("DELETE FROM ingest_watermark");
-    db.exec("DELETE FROM session");
-    db.exec("DELETE FROM command_run");
-    db.exec("DELETE FROM file_watermark");
+    db.exec('DELETE FROM request_rate_limit');
+    db.exec('DELETE FROM request_tool');
+    db.exec('DELETE FROM request');
+    db.exec('DELETE FROM request_skipped');
+    db.exec('DELETE FROM ingest_watermark');
+    db.exec('DELETE FROM session');
+    db.exec('DELETE FROM command_run');
+    db.exec('DELETE FROM file_watermark');
     await ingest(db, ctx.logDir);
 
-    expect(db.prepare("SELECT id, timestamp, model, tokens_real_input FROM request ORDER BY id").all()).toEqual(before);
-    expect(db.prepare("SELECT request_id, ord, name, bytes FROM request_tool ORDER BY request_id, ord").all()).toEqual(tools);
-    expect(db.prepare("SELECT * FROM session ORDER BY thread_id").all()).toEqual(sessions);
-    expect(db.prepare("SELECT * FROM session_node ORDER BY thread_id, idx").all()).toEqual(nodes);
-    expect(db.prepare("SELECT * FROM session_node_text ORDER BY thread_id, idx").all()).toEqual(texts);
-    expect(db.prepare("SELECT * FROM command_run ORDER BY ord").all()).toEqual(commandRuns);
-    expect(db.prepare("SELECT * FROM command_run_step ORDER BY run_id, ord").all()).toEqual(commandSteps);
+    expect(db.prepare('SELECT id, timestamp, model, tokens_real_input FROM request ORDER BY id').all()).toEqual(before);
+    expect(db.prepare('SELECT request_id, ord, name, bytes FROM request_tool ORDER BY request_id, ord').all()).toEqual(
+      tools,
+    );
+    expect(db.prepare('SELECT * FROM session ORDER BY thread_id').all()).toEqual(sessions);
+    expect(db.prepare('SELECT * FROM session_node ORDER BY thread_id, idx').all()).toEqual(nodes);
+    expect(db.prepare('SELECT * FROM session_node_text ORDER BY thread_id, idx').all()).toEqual(texts);
+    expect(db.prepare('SELECT * FROM command_run ORDER BY ord').all()).toEqual(commandRuns);
+    expect(db.prepare('SELECT * FROM command_run_step ORDER BY run_id, ord').all()).toEqual(commandSteps);
   });
 
   // A harness that cannot fail proves nothing, so make it fail on purpose.
-  it("detects a substrate that disagrees", async () => {
-    const victim = db.prepare("SELECT id, model FROM request ORDER BY id LIMIT 1").get() as { id: string; model: string };
-    db.prepare("UPDATE request SET model = ? WHERE id = ?").run("wrong-model", victim.id);
+  it('detects a substrate that disagrees', async () => {
+    const victim = db.prepare('SELECT id, model FROM request ORDER BY id LIMIT 1').get() as {
+      id: string;
+      model: string;
+    };
+    db.prepare('UPDATE request SET model = ? WHERE id = ?').run('wrong-model', victim.id);
     try {
       const found = await mismatches(ctx, db);
       expect(found.length).toBeGreaterThan(0);
-      expect(found.join("\n")).toContain("wrong-model");
+      expect(found.join('\n')).toContain('wrong-model');
     } finally {
-      db.prepare("UPDATE request SET model = ? WHERE id = ?").run(victim.model, victim.id);
+      db.prepare('UPDATE request SET model = ? WHERE id = ?').run(victim.model, victim.id);
     }
     expect(await mismatches(ctx, db)).toEqual([]);
   });
 
   // The harness cannot reach this by construction: it freezes the corpus so
   // nothing is appended mid-replay, which is the only way a row falls behind.
-  it("re-reads a transcript the row is behind, rather than pairing stale metadata with fresh content", async () => {
-    const id = "00000000000000a1";
-    const file = path.join(ctx.logDir, "sessions", `${id}.md`);
+  it('re-reads a transcript the row is behind, rather than pairing stale metadata with fresh content', async () => {
+    const id = '00000000000000a1';
+    const file = path.join(ctx.logDir, 'sessions', `${id}.md`);
     const fresh = await dbSource(db).readSession(ctx.logDir, id);
     expect(fresh.bytes).toBe(Buffer.byteLength(fresh.content));
 
     // An append since the last ingest leaves the row's `bytes` counting a
     // shorter transcript than `content` holds.
-    const stale = db.prepare("SELECT tasks, bytes FROM session WHERE thread_id = ?").get(id) as {
+    const stale = db.prepare('SELECT tasks, bytes FROM session WHERE thread_id = ?').get(id) as {
       tasks: number;
       bytes: number;
     };
-    await appendFile(file, "## Task: appended after ingest\n", "utf8");
+    await appendFile(file, '## Task: appended after ingest\n', 'utf8');
     const fromDb = await dbSource(db).readSession(ctx.logDir, id);
     const fromFiles = await fileSource.readSession(ctx.logDir, id);
     expect(fromDb).toEqual(fromFiles);
     expect(fromDb.bytes).toBe(Buffer.byteLength(fromDb.content));
-    expect(fromDb.content).toContain("appended after ingest");
+    expect(fromDb.content).toContain('appended after ingest');
     // The row is genuinely behind: this is what would have been served beside
     // the longer content.
     expect(stale.bytes).toBeLessThan(fromDb.bytes);
@@ -590,10 +620,16 @@ describe("route parity over a synthetic corpus", () => {
 
     // A transcript with no row at all still reads, rather than 404-ing a
     // session that exists on disk.
-    const unseen = "00000000000000e5";
-    const unseenFile = path.join(ctx.logDir, "sessions", `${unseen}.md`);
-    await writeFile(unseenFile, "- session: s-9\n- started: 2026-07-15T19:00:00.000Z\n## Task: never ingested\n", "utf8");
-    expect(await dbSource(db).readSession(ctx.logDir, unseen)).toEqual(await fileSource.readSession(ctx.logDir, unseen));
+    const unseen = '00000000000000e5';
+    const unseenFile = path.join(ctx.logDir, 'sessions', `${unseen}.md`);
+    await writeFile(
+      unseenFile,
+      '- session: s-9\n- started: 2026-07-15T19:00:00.000Z\n## Task: never ingested\n',
+      'utf8',
+    );
+    expect(await dbSource(db).readSession(ctx.logDir, unseen)).toEqual(
+      await fileSource.readSession(ctx.logDir, unseen),
+    );
 
     // A transcript that is not there is still not there.
     await rm(unseenFile);
@@ -607,23 +643,23 @@ describe("route parity over a synthetic corpus", () => {
   // `withCommandReconcile` writes the store and reads it back in the same
   // request, so rows behind the file would serve the pre-reconcile view. The
   // harness cannot reach that either — it reconciles once, before ingesting.
-  it("re-reads the command store the rows are behind, rather than answering pre-reconcile", async () => {
+  it('re-reads the command store the rows are behind, rather than answering pre-reconcile', async () => {
     const store = commandStorePath(ctx.logDir);
     expect(await dbSource(db).readCommandRuns(ctx.logDir)).toEqual(await fileSource.readCommandRuns(ctx.logDir));
 
     // What a reconcile appends between two ingests: an existing run rewritten
     // as finished, which supersedes the row still in the table.
-    const victim = (await fileSource.readCommandRuns(ctx.logDir)).find((r) => r.command === "task");
-    expect(victim, "the corpus should hold a run to close out").toBeDefined();
-    const closed = { ...victim!, ended: "2026-07-19T00:00:00.000Z" };
-    await appendFile(store, `${JSON.stringify(closed)}\n`, "utf8");
+    const victim = (await fileSource.readCommandRuns(ctx.logDir)).find((r) => r.command === 'task');
+    expect(victim, 'the corpus should hold a run to close out').toBeDefined();
+    const closed = { ...victim!, ended: '2026-07-19T00:00:00.000Z' };
+    await appendFile(store, `${JSON.stringify(closed)}\n`, 'utf8');
 
     const fromDb = await dbSource(db).readCommandRuns(ctx.logDir);
     expect(fromDb).toEqual(await fileSource.readCommandRuns(ctx.logDir));
-    expect(fromDb.find((r) => r.command === "task")?.ended).toBe(closed.ended);
+    expect(fromDb.find((r) => r.command === 'task')?.ended).toBe(closed.ended);
     // Keyed by the record's own id, which is what the table stores: a nested run
     // shares its host's thread, so the thread id is not a key here.
-    const row = db.prepare("SELECT ended FROM command_run WHERE run_id = ?").get(runKey(victim!)) as {
+    const row = db.prepare('SELECT ended FROM command_run WHERE run_id = ?').get(runKey(victim!)) as {
       ended: string | null;
     };
     expect(row.ended).toBe(victim!.ended);
@@ -639,19 +675,19 @@ describe("route parity over a synthetic corpus", () => {
    * hardlinked `suggestion-status.json` — so its agreement is asserted here,
    * where the write is ours to make.
    */
-  it("answers the suggestion-status write the same way through either backing", async () => {
+  it('answers the suggestion-status write the same way through either backing', async () => {
     const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
     const bucket = buckets[0];
     const suggestion = bucket?.suggestions[0];
-    expect(suggestion, "the corpus should hold a suggestion to flag").toBeDefined();
+    expect(suggestion, 'the corpus should hold a suggestion to flag').toBeDefined();
     if (!bucket || !suggestion) return;
 
     // Only the derived half — the bucket/suggestion join the response echoes
     // back — goes through the seam; the flags stay a JSON file either way. Same
     // clock and same update twice: the write is idempotent, which is what makes
     // the two answers comparable.
-    const at = new Date("2026-07-18T00:00:00.000Z");
-    const updates = [{ bucket: bucket.index, id: suggestion.id, status: "done" as const, note: "handled" }];
+    const at = new Date('2026-07-18T00:00:00.000Z');
+    const updates = [{ bucket: bucket.index, id: suggestion.id, status: 'done' as const, note: 'handled' }];
     const fromFiles = await applySuggestionStatus(ctx.logDir, updates, at, fileSource);
     const fromDb = await applySuggestionStatus(ctx.logDir, updates, at, dbSource(db));
     expect(JSON.stringify(fromDb)).toBe(JSON.stringify(fromFiles));
@@ -659,7 +695,7 @@ describe("route parity over a synthetic corpus", () => {
     expect(fromDb.meta.unknown).toEqual([]);
   });
 
-  it("needs no normalization to agree", () => {
+  it('needs no normalization to agree', () => {
     // Every entry has to name the mechanism that makes a difference benign. The
     // DB reader reproduces the file reader's filename ordering rather than
     // compensating for a different one, so the list is empty.
@@ -673,7 +709,7 @@ describe("route parity over a synthetic corpus", () => {
  * `.request.txt` joined in slice 4: `/api/skim` parses the captured body for the
  * last user turn. It is write-once, so a hardlink freezes it.
  */
-const SNAPSHOT_SUFFIXES = [".audit.json", ".request.txt"];
+const SNAPSHOT_SUFFIXES = ['.audit.json', '.request.txt'];
 
 /**
  * What `sessions/` contributes. Separate from {@link SNAPSHOT_SUFFIXES} because
@@ -681,7 +717,7 @@ const SNAPSHOT_SUFFIXES = [".audit.json", ".request.txt"];
  * request's rendered body beside its audit sidecar. Taking the latter would
  * change which requests read as blob-evicted.
  */
-const SESSION_SUFFIXES = [".md", ".nodes.jsonl", ".state.json"];
+const SESSION_SUFFIXES = ['.md', '.nodes.jsonl', '.state.json'];
 
 /**
  * Live files a route reads that are not sidecars, and that get rewritten.
@@ -691,7 +727,7 @@ const SESSION_SUFFIXES = [".md", ".nodes.jsonl", ".state.json"];
  * untouched. `suggestion-status.json` never enters the DB — it is the right-hand
  * side of the join `/api/sessions/suggestions/status` replays.
  */
-const SNAPSHOT_FILES = ["usage-live.json", "suggestion-status.json"];
+const SNAPSHOT_FILES = ['usage-live.json', 'suggestion-status.json'];
 
 /**
  * Hardlink `from`'s snapshot-worthy files into `to`, copying across filesystems.
@@ -750,19 +786,19 @@ async function linkInto(
  * carry those appends into the snapshot.
  */
 async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
-  const snap = await mkdtemp(path.join(tmpdir(), "parity-real-"));
+  const snap = await mkdtemp(path.join(tmpdir(), 'parity-real-'));
   await linkInto(logDir, snap);
-  const sessions = path.join(snap, "sessions");
+  const sessions = path.join(snap, 'sessions');
   await mkdir(sessions, { recursive: true });
-  await linkInto(path.join(logDir, "sessions"), sessions, SESSION_SUFFIXES, true);
-  await mkdir(path.join(snap, "commands"), { recursive: true });
+  await linkInto(path.join(logDir, 'sessions'), sessions, SESSION_SUFFIXES, true);
+  await mkdir(path.join(snap, 'commands'), { recursive: true });
   await copyFile(commandStorePath(logDir), commandStorePath(snap)).catch(() => {
     // No store on this machine yet: an empty commands page, not a failure.
   });
   for (const day of days) {
-    const dest = path.join(snap, "archive", day);
+    const dest = path.join(snap, 'archive', day);
     await mkdir(dest, { recursive: true });
-    await linkInto(path.join(logDir, "archive", day), dest);
+    await linkInto(path.join(logDir, 'archive', day), dest);
   }
   return snap;
 }
@@ -772,8 +808,8 @@ async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
  * a `/sync` landing between the two replays would still move it under them.
  */
 async function snapshotCommandsDir(): Promise<string> {
-  const snap = await mkdtemp(path.join(tmpdir(), "parity-real-commands-"));
-  await linkInto(resolveCommandsDir(), snap, [".md"], true);
+  const snap = await mkdtemp(path.join(tmpdir(), 'parity-real-commands-'));
+  await linkInto(resolveCommandsDir(), snap, ['.md'], true);
   return snap;
 }
 
@@ -785,8 +821,8 @@ async function snapshotCommandsDir(): Promise<string> {
  * the two reads would be a genuine difference in the input.
  */
 async function snapshotSettings(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "parity-real-settings-"));
-  const dest = path.join(dir, "settings.json");
+  const dir = await mkdtemp(path.join(tmpdir(), 'parity-real-settings-'));
+  const dest = path.join(dir, 'settings.json');
   await copyFile(resolveSettingsPath(), dest).catch(() => {
     // No settings on this machine: a state the route already handles, and both
     // sides see it alike.
@@ -798,7 +834,7 @@ async function snapshotSettings(): Promise<string> {
  * The same replay against this machine's real archive, snapshotted first.
  * Skipped where there is no archive to replay — a clean clone, or CI.
  */
-describe("route parity over the real logs/archive", () => {
+describe('route parity over the real logs/archive', () => {
   let days: string[] = [];
   let snapshot: string | null = null;
   let commandsDir: string | null = null;
@@ -822,13 +858,13 @@ describe("route parity over the real logs/archive", () => {
     if (commandsDir) await rm(commandsDir, { recursive: true, force: true });
   });
 
-  it("snapshots the archive it is about to replay", async () => {
+  it('snapshots the archive it is about to replay', async () => {
     if (!days.length || !snapshot) return;
     expect(await archivedDays(snapshot)).toEqual(days);
-    expect((await stat(path.join(snapshot, "archive", days[0]!))).isDirectory()).toBe(true);
+    expect((await stat(path.join(snapshot, 'archive', days[0]!))).isDirectory()).toBe(true);
   });
 
-  it("answers every wired route byte-identically for every archived day", async () => {
+  it('answers every wired route byte-identically for every archived day', async () => {
     if (!days.length || !db || !snapshot) {
       expect(days).toEqual([]);
       return;

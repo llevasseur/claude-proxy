@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { useQuery } from '@tanstack/react-query';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { useState } from 'react';
 import {
   CartesianGrid,
   ReferenceLine,
@@ -11,35 +11,30 @@ import {
   XAxis,
   YAxis,
   ZAxis,
-} from "recharts";
-import type { CommandRunOutcome, CommandStep, StepReach } from "@claude-proxy/core";
-import { type CommandResponse, type CommandRunListItem, getCommand } from "../api";
-import { LiveIndicator } from "../components/LiveIndicator";
-import { QueryState } from "../components/QueryState";
-import {
-  SkeletonChartCard,
-  SkeletonStats,
-  SkeletonTableCard,
-  type SkeletonColumn,
-} from "../components/Skeleton";
-import { StatCard } from "../components/StatCard";
-import { useLiveQuery } from "../useLiveQuery";
-import { fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from "../format";
+} from 'recharts';
+import type { CommandRunOutcome, CommandStep, StepReach } from '@claude-proxy/core';
+import { type CommandResponse, type CommandRunListItem, getCommand } from '../api';
+import { LiveIndicator } from '../components/LiveIndicator';
+import { QueryState } from '../components/QueryState';
+import { SkeletonChartCard, SkeletonStats, SkeletonTableCard, type SkeletonColumn } from '../components/Skeleton';
+import { StatCard } from '../components/StatCard';
+import { useLiveQuery } from '../useLiveQuery';
+import { fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
 
 /** One colour per outcome, shared by the scatter, its legend and the run list. */
 const OUTCOME_COLOR: Record<CommandRunOutcome, string> = {
-  completed: "var(--good)",
-  interrupted: "var(--amber)",
-  errored: "var(--coral)",
-  running: "var(--signal)",
+  completed: 'var(--good)',
+  interrupted: 'var(--amber)',
+  errored: 'var(--coral)',
+  running: 'var(--signal)',
 };
 
-const OUTCOME_ORDER: CommandRunOutcome[] = ["completed", "interrupted", "errored", "running"];
+const OUTCOME_ORDER: CommandRunOutcome[] = ['completed', 'interrupted', 'errored', 'running'];
 
 /** The unattributed bucket's colour — deliberately distinct from any step's. */
-const UNATTRIBUTED_COLOR = "var(--faint)";
+const UNATTRIBUTED_COLOR = 'var(--faint)';
 /** Step colours, cycled. */
-const STEP_COLORS = ["var(--signal)", "var(--good)", "var(--amber)", "var(--violet)", "var(--coral)"];
+const STEP_COLORS = ['var(--signal)', 'var(--good)', 'var(--amber)', 'var(--violet)', 'var(--coral)'];
 
 function stepColor(step: string | null, index: number): string {
   return step === null ? UNATTRIBUTED_COLOR : STEP_COLORS[index % STEP_COLORS.length]!;
@@ -53,12 +48,12 @@ function stepColor(step: string | null, index: number): string {
  * here is normalized by files touched or diff size.
  */
 export function CommandDetailPage() {
-  const { command } = useParams({ from: "/commands/$command" });
+  const { command } = useParams({ from: '/commands/$command' });
   const [flags, setFlags] = useState<string[]>([]);
-  const key = ["command", command, flags.join(",")];
+  const key = ['command', command, flags.join(',')];
   const query = useQuery({ queryKey: key, queryFn: () => getCommand(command, flags) });
   const streamPath = `/api/commands/command/stream?name=${encodeURIComponent(command)}${
-    flags.length ? `&flags=${encodeURIComponent(flags.join(","))}` : ""
+    flags.length ? `&flags=${encodeURIComponent(flags.join(','))}` : ''
   }`;
   const live = useLiveQuery<CommandResponse>(streamPath, key);
   const data = query.data;
@@ -68,25 +63,25 @@ export function CommandDetailPage() {
 
   return (
     <section>
-      <div className="pagehead">
+      <div className='pagehead'>
         <h1>/{command}</h1>
-        <div className="muted">
-          <Link to="/commands" className="link">
+        <div className='muted'>
+          <Link to='/commands' className='link'>
             All commands
           </Link>
           {data && !data.installed && <> · this command is no longer installed; its history is kept</>}
         </div>
       </div>
 
-      <div className="card-head" style={{ justifyContent: "flex-end", marginBottom: 8 }}>
+      <div className='card-head' style={{ justifyContent: 'flex-end', marginBottom: 8 }}>
         <LiveIndicator status={live} />
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<CommandDetailSkeleton />}>
         {!data ? null : data.meta.totalRuns === 0 ? (
-          <div className="card empty">
-            No runs of <span className="rule-name">/{command}</span> captured yet. It has{" "}
-            {data.steps.length === 0 ? "no declared steps" : `${data.steps.length} declared steps`}; numbers appear the
+          <div className='card empty'>
+            No runs of <span className='rule-name'>/{command}</span> captured yet. It has{' '}
+            {data.steps.length === 0 ? 'no declared steps' : `${data.steps.length} declared steps`}; numbers appear the
             next time it actually runs through the proxy.
           </div>
         ) : (
@@ -101,28 +96,28 @@ export function CommandDetailPage() {
 const SCATTER_HEIGHT = 300;
 
 const STEP_COLUMNS: SkeletonColumn[] = [
-  { cell: "56%" },
-  { className: "num", cell: "40%" },
-  { className: "num", cell: "48%" },
-  { className: "num", cell: "40%" },
-  { className: "num", cell: "36%" },
+  { cell: '56%' },
+  { className: 'num', cell: '40%' },
+  { className: 'num', cell: '48%' },
+  { className: 'num', cell: '40%' },
+  { className: 'num', cell: '36%' },
 ];
 
 const PATTERN_COLUMNS: SkeletonColumn[] = [
-  { cell: "64%" },
-  { className: "num", cell: "34%" },
-  { className: "num", cell: "34%" },
+  { cell: '64%' },
+  { className: 'num', cell: '34%' },
+  { className: 'num', cell: '34%' },
 ];
 
 const RUN_COLUMNS: SkeletonColumn[] = [
-  { cell: "58%" },
-  { cell: "82%" },
-  { cell: "40%" },
-  { cell: "48%" },
-  { className: "num", cell: "36%" },
-  { className: "num", cell: "32%" },
-  { className: "num", cell: "48%" },
-  { className: "num", cell: "40%" },
+  { cell: '58%' },
+  { cell: '82%' },
+  { cell: '40%' },
+  { cell: '48%' },
+  { className: 'num', cell: '36%' },
+  { className: 'num', cell: '32%' },
+  { className: 'num', cell: '48%' },
+  { className: 'num', cell: '40%' },
 ];
 
 /** `CommandBody`'s cards in the order it lays them out; the optional flags card is not reserved. */
@@ -130,10 +125,10 @@ function CommandDetailSkeleton() {
   return (
     <>
       <SkeletonStats count={4} />
-      <SkeletonChartCard title="Runs over time" height={SCATTER_HEIGHT} bars={18} />
-      <SkeletonTableCard title="Tokens by step" columns={STEP_COLUMNS} rows={6} />
-      <SkeletonTableCard title="Patterns" columns={PATTERN_COLUMNS} rows={4} />
-      <SkeletonTableCard title="Runs" columns={RUN_COLUMNS} rows={8} />
+      <SkeletonChartCard title='Runs over time' height={SCATTER_HEIGHT} bars={18} />
+      <SkeletonTableCard title='Tokens by step' columns={STEP_COLUMNS} rows={6} />
+      <SkeletonTableCard title='Patterns' columns={PATTERN_COLUMNS} rows={4} />
+      <SkeletonTableCard title='Runs' columns={RUN_COLUMNS} rows={8} />
     </>
   );
 }
@@ -153,66 +148,61 @@ function CommandBody({
   const [hoverRun, setHoverRun] = useState<CommandRunListItem | null>(null);
 
   const runs = data.runs;
-  const settled = runs.filter((r) => r.outcome !== "running");
+  const settled = runs.filter((r) => r.outcome !== 'running');
   const completed = settled.filter((r) => r.reachedEnd).length;
   const cost = runs.reduce((n, r) => n + r.totals.cost, 0);
   const tokens = runs.reduce((n, r) => n + r.totals.tokens.realInput + r.totals.tokens.output, 0);
 
   return (
     <>
-      <div className="grid stats">
+      <div className='grid stats'>
         <StatCard
-          label="Runs"
+          label='Runs'
           value={fmtInt(data.meta.filteredRuns)}
-          sub={data.meta.filteredRuns === data.meta.totalRuns ? "all captured" : `of ${data.meta.totalRuns} captured`}
+          sub={data.meta.filteredRuns === data.meta.totalRuns ? 'all captured' : `of ${data.meta.totalRuns} captured`}
         />
         <StatCard
-          label="Reached the end"
-          value={settled.length === 0 ? "—" : fmtPct((completed / settled.length) * 100)}
+          label='Reached the end'
+          value={settled.length === 0 ? '—' : fmtPct((completed / settled.length) * 100)}
           sub={`${completed} of ${settled.length} settled`}
         />
-        <StatCard label="Spent" value={fmtUsd(cost)} sub="across these runs" />
+        <StatCard label='Spent' value={fmtUsd(cost)} sub='across these runs' />
         <StatCard
-          label="Median run"
-          value={runs.length === 0 ? "—" : fmtUsd(median(runs.map((r) => r.totals.cost)))}
+          label='Median run'
+          value={runs.length === 0 ? '—' : fmtUsd(median(runs.map((r) => r.totals.cost)))}
           sub={`${fmtInt(tokens)} tokens in total`}
         />
       </div>
 
       {data.flags.length > 0 && (
-        <div className="card">
-          <div className="card-head">
+        <div className='card'>
+          <div className='card-head'>
             <h2>Flags</h2>
-            <span className="muted">narrows which runs are aggregated — it does not split the command</span>
+            <span className='muted'>narrows which runs are aggregated — it does not split the command</span>
           </div>
-          <div className="segmented" role="group" aria-label="Filter runs by flag">
+          <div className='segmented' role='group' aria-label='Filter runs by flag'>
             {data.flags.map((flag) => (
               <button
                 key={flag}
-                type="button"
-                className={flags.includes(flag) ? "active" : undefined}
+                type='button'
+                className={flags.includes(flag) ? 'active' : undefined}
                 aria-pressed={flags.includes(flag)}
-                onClick={() => onToggleFlag(flag)}
-              >
+                onClick={() => onToggleFlag(flag)}>
                 {fmtFlag(flag)}
               </button>
             ))}
           </div>
           {flags.length > 0 && (
-            <div className="muted" style={{ marginTop: 8 }}>
-              Showing runs that carried {flags.map(fmtFlag).join(" and ")} — {data.meta.filteredRuns} of {data.meta.totalRuns}.
+            <div className='muted' style={{ marginTop: 8 }}>
+              Showing runs that carried {flags.map(fmtFlag).join(' and ')} — {data.meta.filteredRuns} of{' '}
+              {data.meta.totalRuns}.
             </div>
           )}
         </div>
       )}
 
       <RunScatter data={data} command={command} />
-      <StepBar
-        steps={data.steps}
-        reach={data.stepReach}
-        run={hoverRun}
-        totalRuns={data.meta.filteredRuns}
-      />
+      <StepBar steps={data.steps} reach={data.stepReach} run={hoverRun} totalRuns={data.meta.filteredRuns} />
       <PatternTable data={data} />
       <RunList runs={runs} command={command} onHover={setHoverRun} />
     </>
@@ -254,7 +244,7 @@ function RunScatter({ data, command }: { data: CommandResponse; command: string 
 
   if (points.length === 0) {
     return (
-      <div className="card empty">
+      <div className='card empty'>
         No run in this selection has a captured request, so there is nothing to plot. The runs are still listed below.
       </div>
     );
@@ -268,44 +258,44 @@ function RunScatter({ data, command }: { data: CommandResponse; command: string 
   const markers = data.hashMarkers.filter((m) => m.previous !== null);
 
   return (
-    <div className="card">
-      <div className="card-head">
+    <div className='card'>
+      <div className='card-head'>
         <h2>Runs over time</h2>
-        <span className="muted">y = tokens · size = turns · click a run to open it</span>
+        <span className='muted'>y = tokens · size = turns · click a run to open it</span>
       </div>
       <div style={{ height: 300 }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width='100%' height='100%'>
           <ScatterChart margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
+            <CartesianGrid strokeDasharray='3 3' stroke='var(--line)' />
             <XAxis
-              type="number"
-              dataKey="x"
-              domain={["dataMin", "dataMax"]}
-              scale="time"
-              tick={{ fontSize: 11, fill: "var(--muted)" }}
+              type='number'
+              dataKey='x'
+              domain={['dataMin', 'dataMax']}
+              scale='time'
+              tick={{ fontSize: 11, fill: 'var(--muted)' }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(v: number) => fmtLocalTsShort(new Date(v).toISOString())}
               minTickGap={40}
             />
             <YAxis
-              type="number"
-              dataKey="y"
+              type='number'
+              dataKey='y'
               width={56}
-              tick={{ fontSize: 11, fill: "var(--muted)" }}
+              tick={{ fontSize: 11, fill: 'var(--muted)' }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(v: number) => fmtInt(v)}
             />
-            <ZAxis type="number" dataKey="z" range={[30, 320]} />
-            <Tooltip cursor={{ stroke: "var(--line)" }} content={<ScatterTooltip />} />
+            <ZAxis type='number' dataKey='z' range={[30, 320]} />
+            <Tooltip cursor={{ stroke: 'var(--line)' }} content={<ScatterTooltip />} />
             {markers.map((m) => (
               <ReferenceLine
                 key={`${m.at}-${m.hash}`}
                 x={new Date(m.at).getTime()}
-                stroke="var(--violet)"
-                strokeDasharray="4 3"
-                label={{ value: "edited", fill: "var(--violet)", fontSize: 10, position: "top" }}
+                stroke='var(--violet)'
+                strokeDasharray='4 3'
+                label={{ value: 'edited', fill: 'var(--violet)', fontSize: 10, position: 'top' }}
               />
             ))}
             {byOutcome.map((g) => (
@@ -318,26 +308,26 @@ function RunScatter({ data, command }: { data: CommandResponse; command: string 
                 isAnimationActive={false}
                 onClick={(p: unknown) =>
                   navigate({
-                    to: "/commands/$command/$runId",
+                    to: '/commands/$command/$runId',
                     params: { command, runId: (p as ScatterPoint).runId },
                   })
                 }
-                style={{ cursor: "pointer" }}
+                style={{ cursor: 'pointer' }}
               />
             ))}
           </ScatterChart>
         </ResponsiveContainer>
       </div>
-      <div className="chartlegend">
+      <div className='chartlegend'>
         {byOutcome.map((g) => (
-          <span className="chartlegend-item" key={g.outcome}>
-            <span className="charttip-dot" style={{ background: OUTCOME_COLOR[g.outcome] }} /> {g.outcome} (
+          <span className='chartlegend-item' key={g.outcome}>
+            <span className='charttip-dot' style={{ background: OUTCOME_COLOR[g.outcome] }} /> {g.outcome} (
             {g.points.length})
           </span>
         ))}
         {markers.length > 0 && (
-          <span className="chartlegend-item">
-            <span className="charttip-dot" style={{ background: "var(--violet)" }} /> command file edited (
+          <span className='chartlegend-item'>
+            <span className='charttip-dot' style={{ background: 'var(--violet)' }} /> command file edited (
             {markers.length})
           </span>
         )}
@@ -350,28 +340,28 @@ function ScatterTooltip({ active, payload }: { active?: boolean; payload?: { pay
   const p = payload?.[0]?.payload;
   if (!active || !p) return null;
   return (
-    <div className="charttip">
-      <div className="charttip-label">{p.started ? fmtLocalTs(p.started) : "—"}</div>
-      <div className="charttip-row">
-        <span className="charttip-name">tokens</span>
-        <span className="charttip-value">{fmtInt(p.y)}</span>
+    <div className='charttip'>
+      <div className='charttip-label'>{p.started ? fmtLocalTs(p.started) : '—'}</div>
+      <div className='charttip-row'>
+        <span className='charttip-name'>tokens</span>
+        <span className='charttip-value'>{fmtInt(p.y)}</span>
       </div>
-      <div className="charttip-row">
-        <span className="charttip-name">cost</span>
-        <span className="charttip-value">{fmtUsd(p.cost)}</span>
+      <div className='charttip-row'>
+        <span className='charttip-name'>cost</span>
+        <span className='charttip-value'>{fmtUsd(p.cost)}</span>
       </div>
-      <div className="charttip-row">
-        <span className="charttip-name">turns</span>
-        <span className="charttip-value">{fmtInt(p.turns)}</span>
+      <div className='charttip-row'>
+        <span className='charttip-name'>turns</span>
+        <span className='charttip-value'>{fmtInt(p.turns)}</span>
       </div>
-      <div className="charttip-row">
-        <span className="charttip-name">outcome</span>
-        <span className="charttip-value">{p.outcome}</span>
+      <div className='charttip-row'>
+        <span className='charttip-name'>outcome</span>
+        <span className='charttip-value'>{p.outcome}</span>
       </div>
       {p.flags.length > 0 && (
-        <div className="charttip-row">
-          <span className="charttip-name">flags</span>
-          <span className="charttip-value">{p.flags.map(fmtFlag).join(" ")}</span>
+        <div className='charttip-row'>
+          <span className='charttip-name'>flags</span>
+          <span className='charttip-value'>{p.flags.map(fmtFlag).join(' ')}</span>
         </div>
       )}
     </div>
@@ -407,71 +397,69 @@ function StepBar({
 
   if (steps.length === 0) {
     return (
-      <div className="card">
-        <div className="card-head">
+      <div className='card'>
+        <div className='card-head'>
           <h2>Tokens by step</h2>
         </div>
-        <div className="leak-note">
-          This command declares no <span className="rule-name">## Step N</span> headings, so there is nothing to
-          attribute against — every turn lands in the unattributed bucket. That is a property of the command file, not
-          a gap in the data.
+        <div className='leak-note'>
+          This command declares no <span className='rule-name'>## Step N</span> headings, so there is nothing to
+          attribute against — every turn lands in the unattributed bucket. That is a property of the command file, not a
+          gap in the data.
         </div>
       </div>
     );
   }
 
   return (
-    <div className="card">
-      <div className="card-head">
+    <div className='card'>
+      <div className='card-head'>
         <h2>Tokens by step</h2>
-        <span className="muted">
-          {run ? `run ${run.threadId.slice(0, 8)}` : `aggregate over ${totalRuns} run${totalRuns === 1 ? "" : "s"}`}
+        <span className='muted'>
+          {run ? `run ${run.threadId.slice(0, 8)}` : `aggregate over ${totalRuns} run${totalRuns === 1 ? '' : 's'}`}
         </span>
       </div>
 
       {total === 0 ? (
-        <div className="empty">No tokens attributed yet.</div>
+        <div className='empty'>No tokens attributed yet.</div>
       ) : (
-        <div className="stackbar">
+        <div className='stackbar'>
           {rows
             .filter((r) => r.tokens > 0)
             .map((r) => (
               <div
-                key={r.step ?? "unattributed"}
-                className="stackbar-seg"
+                key={r.step ?? 'unattributed'}
+                className='stackbar-seg'
                 style={{ width: `${(r.tokens / total) * 100}%`, background: r.color }}
-                title={`${r.step === null ? "unattributed" : `Step ${r.step}`}: ${fmtInt(r.tokens)} tokens`}
+                title={`${r.step === null ? 'unattributed' : `Step ${r.step}`}: ${fmtInt(r.tokens)} tokens`}
               />
             ))}
         </div>
       )}
 
-      <table className="table">
+      <table className='table'>
         <thead>
           <tr>
             <th>Step</th>
-            <th className="num">Runs that got here</th>
-            <th className="num">Tokens</th>
-            <th className="num">Cost</th>
-            <th className="num">Share</th>
+            <th className='num'>Runs that got here</th>
+            <th className='num'>Tokens</th>
+            <th className='num'>Cost</th>
+            <th className='num'>Share</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.step ?? "unattributed"} className={r.step === null ? "muted-row" : undefined}>
+            <tr key={r.step ?? 'unattributed'} className={r.step === null ? 'muted-row' : undefined}>
               <td>
-                <span className="charttip-dot" style={{ background: r.color }} />{" "}
+                <span className='charttip-dot' style={{ background: r.color }} />{' '}
                 {r.step === null ? <em>unattributed</em> : `${r.step} — ${r.title}`}
               </td>
-              <td className="num">
-                {r.ofRuns === 0 ? "—" : `${r.reached} / ${r.ofRuns}`}
-                {r.ofRuns > 0 && r.reached === 0 && r.step !== null && (
-                  <div className="muted">never reached</div>
-                )}
+              <td className='num'>
+                {r.ofRuns === 0 ? '—' : `${r.reached} / ${r.ofRuns}`}
+                {r.ofRuns > 0 && r.reached === 0 && r.step !== null && <div className='muted'>never reached</div>}
               </td>
-              <td className="num">{fmtInt(r.tokens)}</td>
-              <td className="num">{fmtUsd(r.cost)}</td>
-              <td className="num">{total === 0 ? "—" : fmtPct((r.tokens / total) * 100)}</td>
+              <td className='num'>{fmtInt(r.tokens)}</td>
+              <td className='num'>{fmtUsd(r.cost)}</td>
+              <td className='num'>{total === 0 ? '—' : fmtPct((r.tokens / total) * 100)}</td>
             </tr>
           ))}
         </tbody>
@@ -483,30 +471,30 @@ function StepBar({
 function PatternTable({ data }: { data: CommandResponse }) {
   const fired = data.patterns.filter((p) => p.runs > 0);
   return (
-    <div className="card">
-      <div className="card-head">
+    <div className='card'>
+      <div className='card-head'>
         <h2>Patterns</h2>
-        <span className="muted">deterministic rules, counted across runs</span>
+        <span className='muted'>deterministic rules, counted across runs</span>
       </div>
       {fired.length === 0 ? (
-        <div className="empty">No rule in the catalogue has fired for this command yet.</div>
+        <div className='empty'>No rule in the catalogue has fired for this command yet.</div>
       ) : (
-        <table className="table">
+        <table className='table'>
           <thead>
             <tr>
               <th>Pattern</th>
-              <th className="num">Runs</th>
-              <th className="num">Firings</th>
+              <th className='num'>Runs</th>
+              <th className='num'>Firings</th>
             </tr>
           </thead>
           <tbody>
             {fired.map((p) => (
               <tr key={p.id}>
                 <td>{p.title}</td>
-                <td className="num">
+                <td className='num'>
                   seen in {p.runs} of {p.ofRuns}
                 </td>
-                <td className="num">{fmtInt(p.hits)}</td>
+                <td className='num'>{fmtInt(p.hits)}</td>
               </tr>
             ))}
           </tbody>
@@ -527,49 +515,50 @@ function RunList({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="card">
-      <div className="card-head">
+    <div className='card'>
+      <div className='card-head'>
         <h2>Runs</h2>
-        <span className="muted">newest first · hover a row to break its tokens out above</span>
+        <span className='muted'>newest first · hover a row to break its tokens out above</span>
       </div>
-      <table className="table">
+      <table className='table'>
         <thead>
           <tr>
             <th>Started</th>
             <th>Prompt</th>
             <th>Flags</th>
             <th>Outcome</th>
-            <th className="num">Reached</th>
-            <th className="num">Turns</th>
-            <th className="num">Tokens</th>
-            <th className="num">Cost</th>
+            <th className='num'>Reached</th>
+            <th className='num'>Turns</th>
+            <th className='num'>Tokens</th>
+            <th className='num'>Cost</th>
           </tr>
         </thead>
         <tbody>
           {runs.map((r) => (
             <tr
               key={r.runId}
-              className="clickable"
+              className='clickable'
               onMouseEnter={() => onHover(r)}
               onMouseLeave={() => onHover(null)}
-              onClick={() => navigate({ to: "/commands/$command/$runId", params: { command, runId: r.runId } })}
-            >
-              <td className="num muted">{r.started ? fmtLocalTsShort(r.started) : "—"}</td>
+              onClick={() => navigate({ to: '/commands/$command/$runId', params: { command, runId: r.runId } })}>
+              <td className='num muted'>{r.started ? fmtLocalTsShort(r.started) : '—'}</td>
               {/* A nested run has no prompt of its own, so it is named by its parent. */}
-              <td className="runprompt">
+              <td className='runprompt'>
                 {r.prompt || (
-                  <span className="muted">{r.parentCommand ? `nested in /${r.parentCommand}` : "no prompt recorded"}</span>
+                  <span className='muted'>
+                    {r.parentCommand ? `nested in /${r.parentCommand}` : 'no prompt recorded'}
+                  </span>
                 )}
               </td>
-              <td>{r.flags.length === 0 ? <span className="muted">—</span> : r.flags.map(fmtFlag).join(" ")}</td>
-              <td className="nowrap">
-                <span className="charttip-dot" style={{ background: OUTCOME_COLOR[r.outcome] }} /> {r.outcome}
-                {r.interruption && <span className="muted"> · {r.interruption}</span>}
+              <td>{r.flags.length === 0 ? <span className='muted'>—</span> : r.flags.map(fmtFlag).join(' ')}</td>
+              <td className='nowrap'>
+                <span className='charttip-dot' style={{ background: OUTCOME_COLOR[r.outcome] }} /> {r.outcome}
+                {r.interruption && <span className='muted'> · {r.interruption}</span>}
               </td>
-              <td className="num">{r.lastStep === null ? <span className="muted">—</span> : r.lastStep}</td>
-              <td className="num">{fmtInt(r.totals.turns)}</td>
-              <td className="num">{fmtInt(r.totals.tokens.realInput + r.totals.tokens.output)}</td>
-              <td className="num">{fmtUsd(r.totals.cost)}</td>
+              <td className='num'>{r.lastStep === null ? <span className='muted'>—</span> : r.lastStep}</td>
+              <td className='num'>{fmtInt(r.totals.turns)}</td>
+              <td className='num'>{fmtInt(r.totals.tokens.realInput + r.totals.tokens.output)}</td>
+              <td className='num'>{fmtUsd(r.totals.cost)}</td>
             </tr>
           ))}
         </tbody>

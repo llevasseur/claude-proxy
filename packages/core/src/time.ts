@@ -3,23 +3,23 @@
  * Eastern proper — EST in winter, EDT in summer — so the day boundary stays at
  * local midnight year-round rather than following the sidecars' UTC stamps.
  */
-export const REPORT_TZ = "America/New_York";
+export const REPORT_TZ = 'America/New_York';
 
-const dayFmt = new Intl.DateTimeFormat("en-US", {
+const dayFmt = new Intl.DateTimeFormat('en-US', {
   timeZone: REPORT_TZ,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
 });
 
 // `hourCycle: "h23"` avoids V8's "24" for midnight.
-const hourFmt = new Intl.DateTimeFormat("en-US", {
+const hourFmt = new Intl.DateTimeFormat('en-US', {
   timeZone: REPORT_TZ,
-  hour: "2-digit",
-  hourCycle: "h23",
+  hour: '2-digit',
+  hourCycle: 'h23',
 });
 
-const abbrFmt = new Intl.DateTimeFormat("en-US", { timeZone: REPORT_TZ, timeZoneName: "short" });
+const abbrFmt = new Intl.DateTimeFormat('en-US', { timeZone: REPORT_TZ, timeZoneName: 'short' });
 
 function toDate(at: string | Date): Date | null {
   const d = at instanceof Date ? at : new Date(at);
@@ -45,19 +45,19 @@ export function reportHour(at: string | Date): number | null {
 
 /** Short zone label in effect at `at`, e.g. `"EST"` or `"EDT"`. */
 export function reportTzAbbr(at: Date = new Date()): string {
-  return abbrFmt.formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? "ET";
+  return abbrFmt.formatToParts(at).find((p) => p.type === 'timeZoneName')?.value ?? 'ET';
 }
 
 // Wall-clock components of an instant, for turning a day label back into one.
-const wallFmt = new Intl.DateTimeFormat("en-US", {
+const wallFmt = new Intl.DateTimeFormat('en-US', {
   timeZone: REPORT_TZ,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
 });
 
 /** Milliseconds to add to a UTC instant to reach {@link REPORT_TZ} wall time. */

@@ -1,6 +1,6 @@
-import { resolveDbPath } from "./db/open.js";
-import { ingestOnce } from "./db/runtime.js";
-import { resolveLogDir } from "./logs.js";
+import { resolveDbPath } from './db/open.js';
+import { ingestOnce } from './db/runtime.js';
+import { resolveLogDir } from './logs.js';
 
 /**
  * `pnpm --filter server ingest` — rebuild the SQLite view from `logs/`.
@@ -16,20 +16,20 @@ async function main(): Promise<void> {
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   console.log(`[ingest] ${resolveDbPath(logDir)}`);
   console.log(
-    `[ingest] ${stats.dirs} director${stats.dirs === 1 ? "y" : "ies"} scanned` +
+    `[ingest] ${stats.dirs} director${stats.dirs === 1 ? 'y' : 'ies'} scanned` +
       `, ${stats.dirsSkipped} unchanged` +
-      `, ${stats.inserted} request${stats.inserted === 1 ? "" : "s"} added` +
-      `, ${stats.deleted} row${stats.deleted === 1 ? "" : "s"} dropped` +
-      `, ${stats.skipped} file${stats.skipped === 1 ? "" : "s"} unusable` +
+      `, ${stats.inserted} request${stats.inserted === 1 ? '' : 's'} added` +
+      `, ${stats.deleted} row${stats.deleted === 1 ? '' : 's'} dropped` +
+      `, ${stats.skipped} file${stats.skipped === 1 ? '' : 's'} unusable` +
       ` in ${seconds}s`,
   );
   console.log(
-    `[ingest] ${stats.sessions} session transcript${stats.sessions === 1 ? "" : "s"}` +
+    `[ingest] ${stats.sessions} session transcript${stats.sessions === 1 ? '' : 's'}` +
       `, ${stats.sessionsParsed} parsed`,
   );
   console.log(
-    `[ingest] ${stats.commandRuns} command run${stats.commandRuns === 1 ? "" : "s"}` +
-      `, store ${stats.commandRunsParsed ? "re-read" : "unchanged"}`,
+    `[ingest] ${stats.commandRuns} command run${stats.commandRuns === 1 ? '' : 's'}` +
+      `, store ${stats.commandRunsParsed ? 're-read' : 'unchanged'}`,
   );
 }
 

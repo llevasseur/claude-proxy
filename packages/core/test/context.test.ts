@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest';
 import {
   analyzeRequestBody,
   extractRequestMessage,
@@ -7,14 +7,14 @@ import {
   summarizeContext,
   toContextEntry,
   type ContextEntry,
-} from "../src/context.js";
-import { makeSidecar } from "./helpers.js";
+} from '../src/context.js';
+import { makeSidecar } from './helpers.js';
 
 function entry(overrides: Partial<ContextEntry> = {}): ContextEntry {
   return {
-    file: "2026-07-20T13-31-00-278_anthropic",
-    timestamp: "2026-07-20T13:31:00.278Z",
-    model: "claude-opus-4-8",
+    file: '2026-07-20T13-31-00-278_anthropic',
+    timestamp: '2026-07-20T13:31:00.278Z',
+    model: 'claude-opus-4-8',
     sessionId: null,
     realInput: 10_000,
     systemBytes: 8_000,
@@ -25,8 +25,8 @@ function entry(overrides: Partial<ContextEntry> = {}): ContextEntry {
   };
 }
 
-describe("summarizeContext", () => {
-  it("returns a well-formed empty summary for no input", () => {
+describe('summarizeContext', () => {
+  it('returns a well-formed empty summary for no input', () => {
     const s = summarizeContext([]);
     expect(s.requestCount).toBe(0);
     expect(s.avgRealInput).toBe(0);
@@ -37,12 +37,8 @@ describe("summarizeContext", () => {
     expect(s.entries).toEqual([]);
   });
 
-  it("computes average, median, and max over several entries", () => {
-    const s = summarizeContext([
-      entry({ realInput: 10 }),
-      entry({ realInput: 20 }),
-      entry({ realInput: 60 }),
-    ]);
+  it('computes average, median, and max over several entries', () => {
+    const s = summarizeContext([entry({ realInput: 10 }), entry({ realInput: 20 }), entry({ realInput: 60 })]);
     expect(s.requestCount).toBe(3);
     expect(s.avgRealInput).toBe(30); // (10+20+60)/3
     expect(s.medianRealInput).toBe(20);
@@ -50,7 +46,7 @@ describe("summarizeContext", () => {
     expect(s.max?.realInput).toBe(60);
   });
 
-  it("averages the two middle values for an even count", () => {
+  it('averages the two middle values for an even count', () => {
     const s = summarizeContext([
       entry({ realInput: 10 }),
       entry({ realInput: 20 }),
@@ -60,89 +56,87 @@ describe("summarizeContext", () => {
     expect(s.medianRealInput).toBe(25); // round((20+30)/2)
   });
 
-  it("orders top by largest and caps at topN", () => {
-    const entries = [100, 500, 300, 200, 400].map((n, i) =>
-      entry({ realInput: n, file: `f${i}` }),
-    );
+  it('orders top by largest and caps at topN', () => {
+    const entries = [100, 500, 300, 200, 400].map((n, i) => entry({ realInput: n, file: `f${i}` }));
     const s = summarizeContext(entries, { topN: 3 });
     expect(s.top.map((e) => e.realInput)).toEqual([500, 400, 300]);
     expect(s.max?.realInput).toBe(500);
   });
 
-  it("returns every entry oldest-first, regardless of input order", () => {
+  it('returns every entry oldest-first, regardless of input order', () => {
     const s = summarizeContext([
-      entry({ file: "b", timestamp: "2026-07-20T13:31:02.000Z" }),
-      entry({ file: "a", timestamp: "2026-07-20T13:31:00.000Z" }),
-      entry({ file: "c", timestamp: "2026-07-20T13:31:01.000Z" }),
+      entry({ file: 'b', timestamp: '2026-07-20T13:31:02.000Z' }),
+      entry({ file: 'a', timestamp: '2026-07-20T13:31:00.000Z' }),
+      entry({ file: 'c', timestamp: '2026-07-20T13:31:01.000Z' }),
     ]);
-    expect(s.entries.map((e) => e.file)).toEqual(["a", "c", "b"]);
+    expect(s.entries.map((e) => e.file)).toEqual(['a', 'c', 'b']);
   });
 });
 
-describe("toContextEntry", () => {
-  it("maps a valid sidecar and keeps the file handle", () => {
-    const e = toContextEntry(makeSidecar(), "myfile_anthropic");
+describe('toContextEntry', () => {
+  it('maps a valid sidecar and keeps the file handle', () => {
+    const e = toContextEntry(makeSidecar(), 'myfile_anthropic');
     expect(e).not.toBeNull();
-    expect(e!.file).toBe("myfile_anthropic");
+    expect(e!.file).toBe('myfile_anthropic');
     expect(e!.realInput).toBe(9_100);
     expect(e!.systemBytes).toBe(8_000);
     expect(e!.toolCount).toBe(2);
   });
 
-  it("returns null for a malformed sidecar", () => {
-    expect(toContextEntry({ nope: true }, "x")).toBeNull();
+  it('returns null for a malformed sidecar', () => {
+    expect(toContextEntry({ nope: true }, 'x')).toBeNull();
   });
 
-  it("carries the session id through, and null when the sidecar predates it", () => {
+  it('carries the session id through, and null when the sidecar predates it', () => {
     const withSession = makeSidecar({
       session: {
-        sessionId: "abc-123",
-        app: "cli",
+        sessionId: 'abc-123',
+        app: 'cli',
         userAgent: null,
         account: null,
-        metadataSessionId: "abc-123",
+        metadataSessionId: 'abc-123',
         deviceId: null,
       },
     });
-    expect(toContextEntry(withSession, "f")!.sessionId).toBe("abc-123");
-    expect(toContextEntry(makeSidecar(), "f")!.sessionId).toBeNull();
+    expect(toContextEntry(withSession, 'f')!.sessionId).toBe('abc-123');
+    expect(toContextEntry(makeSidecar(), 'f')!.sessionId).toBeNull();
   });
 });
 
-describe("sessionContextPeak", () => {
+describe('sessionContextPeak', () => {
   const entries = [
-    entry({ file: "a", sessionId: "s1", realInput: 10_000 }),
-    entry({ file: "b", sessionId: "s2", realInput: 90_000 }),
-    entry({ file: "c", sessionId: "s1", realInput: 42_000 }),
-    entry({ file: "d", sessionId: null, realInput: 99_000 }),
+    entry({ file: 'a', sessionId: 's1', realInput: 10_000 }),
+    entry({ file: 'b', sessionId: 's2', realInput: 90_000 }),
+    entry({ file: 'c', sessionId: 's1', realInput: 42_000 }),
+    entry({ file: 'd', sessionId: null, realInput: 99_000 }),
   ];
 
-  it("picks the largest request carrying the session id", () => {
-    const { peak, requestCount } = sessionContextPeak(entries, "s1");
-    expect(peak!.file).toBe("c");
+  it('picks the largest request carrying the session id', () => {
+    const { peak, requestCount } = sessionContextPeak(entries, 's1');
+    expect(peak!.file).toBe('c');
     expect(requestCount).toBe(2);
   });
 
-  it("is empty for a null id, so legacy sidecars never match each other", () => {
+  it('is empty for a null id, so legacy sidecars never match each other', () => {
     expect(sessionContextPeak(entries, null)).toEqual({ requestCount: 0, peak: null });
   });
 
-  it("is empty for a session with no captured requests", () => {
-    expect(sessionContextPeak(entries, "s3")).toEqual({ requestCount: 0, peak: null });
+  it('is empty for a session with no captured requests', () => {
+    expect(sessionContextPeak(entries, 's3')).toEqual({ requestCount: 0, peak: null });
   });
 });
 
-describe("analyzeRequestBody", () => {
-  it("measures system, tools, and messages of a normal body", () => {
+describe('analyzeRequestBody', () => {
+  it('measures system, tools, and messages of a normal body', () => {
     const body = {
-      system: [{ type: "text", text: "you are helpful" }],
+      system: [{ type: 'text', text: 'you are helpful' }],
       tools: [
-        { name: "Bash", description: "run shell" },
-        { name: "Read", description: "read files" },
+        { name: 'Bash', description: 'run shell' },
+        { name: 'Read', description: 'read files' },
       ],
       messages: [
-        { role: "user", content: "hello" },
-        { role: "assistant", content: [{ type: "text", text: "hi there" }] },
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: [{ type: 'text', text: 'hi there' }] },
       ],
     };
     const b = analyzeRequestBody(body);
@@ -152,18 +146,18 @@ describe("analyzeRequestBody", () => {
     expect(b.toolsBytes).toBeGreaterThan(0);
     // Tools are ranked largest-first.
     expect(b.tools[0]!.bytes).toBeGreaterThanOrEqual(b.tools[1]!.bytes);
-    expect(b.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    expect(b.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
     expect(b.messages[0]!.index).toBe(0);
     expect(b.tools.every((t) => t.estTokens === Math.round(t.bytes / 4))).toBe(true);
   });
 
-  it("handles string content and missing names", () => {
-    const b = analyzeRequestBody({ tools: [{ description: "x" }], messages: [{ content: "no role" }] });
-    expect(b.tools[0]!.name).toBe("(unnamed)");
-    expect(b.messages[0]!.role).toBe("unknown");
+  it('handles string content and missing names', () => {
+    const b = analyzeRequestBody({ tools: [{ description: 'x' }], messages: [{ content: 'no role' }] });
+    expect(b.tools[0]!.name).toBe('(unnamed)');
+    expect(b.messages[0]!.role).toBe('unknown');
   });
 
-  it("is tolerant of an empty or malformed body", () => {
+  it('is tolerant of an empty or malformed body', () => {
     const empty = analyzeRequestBody({});
     expect(empty.toolCount).toBe(0);
     expect(empty.messageCount).toBe(0);
@@ -175,51 +169,51 @@ describe("analyzeRequestBody", () => {
   });
 });
 
-describe("extractRequestMessage", () => {
+describe('extractRequestMessage', () => {
   const body = {
     messages: [
-      { role: "user", content: "hello" },
-      { role: "assistant", content: [{ type: "text", text: "hi there" }] },
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: [{ type: 'text', text: 'hi there' }] },
     ],
   };
 
-  it("returns the full message content and size facts by index", () => {
+  it('returns the full message content and size facts by index', () => {
     const m = extractRequestMessage(body, 1);
     expect(m).not.toBeNull();
     expect(m!.index).toBe(1);
-    expect(m!.role).toBe("assistant");
+    expect(m!.role).toBe('assistant');
     expect(m!.messageCount).toBe(2);
     expect(m!.bytes).toBeGreaterThan(0);
     expect(m!.estTokens).toBe(Math.round(m!.bytes / 4));
     expect(JSON.parse(m!.content)).toEqual(body.messages[1]);
   });
 
-  it("returns null for an out-of-range or non-integer index", () => {
+  it('returns null for an out-of-range or non-integer index', () => {
     expect(extractRequestMessage(body, 2)).toBeNull();
     expect(extractRequestMessage(body, -1)).toBeNull();
     expect(extractRequestMessage(body, 0.5)).toBeNull();
   });
 
-  it("defaults role to unknown and tolerates a malformed body", () => {
-    expect(extractRequestMessage({ messages: [{ content: "no role" }] }, 0)!.role).toBe("unknown");
+  it('defaults role to unknown and tolerates a malformed body', () => {
+    expect(extractRequestMessage({ messages: [{ content: 'no role' }] }, 0)!.role).toBe('unknown');
     expect(extractRequestMessage({}, 0)).toBeNull();
     expect(extractRequestMessage(null, 0)).toBeNull();
   });
 });
 
-describe("extractRequestTool", () => {
+describe('extractRequestTool', () => {
   const body = {
     tools: [
-      { name: "Bash", description: "run shell" },
-      { name: "Read", description: "read files", input_schema: { type: "object" } },
+      { name: 'Bash', description: 'run shell' },
+      { name: 'Read', description: 'read files', input_schema: { type: 'object' } },
     ],
   };
 
-  it("returns the full tool schema and size facts by index", () => {
+  it('returns the full tool schema and size facts by index', () => {
     const t = extractRequestTool(body, 1);
     expect(t).not.toBeNull();
     expect(t!.index).toBe(1);
-    expect(t!.name).toBe("Read");
+    expect(t!.name).toBe('Read');
     expect(t!.toolCount).toBe(2);
     expect(t!.bytes).toBeGreaterThan(0);
     expect(t!.estTokens).toBe(Math.round(t!.bytes / 4));
@@ -235,14 +229,14 @@ describe("extractRequestTool", () => {
     }
   });
 
-  it("returns null for an out-of-range or non-integer index", () => {
+  it('returns null for an out-of-range or non-integer index', () => {
     expect(extractRequestTool(body, 2)).toBeNull();
     expect(extractRequestTool(body, -1)).toBeNull();
     expect(extractRequestTool(body, 0.5)).toBeNull();
   });
 
-  it("defaults name to (unnamed) and tolerates a malformed body", () => {
-    expect(extractRequestTool({ tools: [{ description: "no name" }] }, 0)!.name).toBe("(unnamed)");
+  it('defaults name to (unnamed) and tolerates a malformed body', () => {
+    expect(extractRequestTool({ tools: [{ description: 'no name' }] }, 0)!.name).toBe('(unnamed)');
     expect(extractRequestTool({}, 0)).toBeNull();
     expect(extractRequestTool(null, 0)).toBeNull();
   });

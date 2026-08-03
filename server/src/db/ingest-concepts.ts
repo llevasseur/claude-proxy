@@ -1,7 +1,7 @@
-import { readFile, stat } from "node:fs/promises";
-import type { DatabaseSync } from "node:sqlite";
-import type { Concept } from "@claude-proxy/core";
-import { conceptStorePath, parseConceptStore } from "../concepts.js";
+import { readFile, stat } from 'node:fs/promises';
+import type { DatabaseSync } from 'node:sqlite';
+import type { Concept } from '@claude-proxy/core';
+import { conceptStorePath, parseConceptStore } from '../concepts.js';
 
 /**
  * Index `logs/concepts.jsonl` into the `concept` table.
@@ -17,7 +17,7 @@ import { conceptStorePath, parseConceptStore } from "../concepts.js";
  */
 
 /** The store's path relative to `logDir` — the `file_watermark` key. */
-export const STORE_PATH = "concepts.jsonl";
+export const STORE_PATH = 'concepts.jsonl';
 
 export interface ConceptIngestStats {
   /** Concepts the store holds. */
@@ -29,19 +29,19 @@ export interface ConceptIngestStats {
 }
 
 interface ConceptStatements {
-  insertConcept: ReturnType<DatabaseSync["prepare"]>;
-  insertSkill: ReturnType<DatabaseSync["prepare"]>;
-  insertItem: ReturnType<DatabaseSync["prepare"]>;
-  watermark: ReturnType<DatabaseSync["prepare"]>;
+  insertConcept: ReturnType<DatabaseSync['prepare']>;
+  insertSkill: ReturnType<DatabaseSync['prepare']>;
+  insertItem: ReturnType<DatabaseSync['prepare']>;
+  watermark: ReturnType<DatabaseSync['prepare']>;
 }
 
 function prepare(db: DatabaseSync): ConceptStatements {
   return {
     insertConcept: db.prepare(
-      "INSERT INTO concept (ord, term, sentence, field, saved_at, notes, document) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      'INSERT INTO concept (ord, term, sentence, field, saved_at, notes, document) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ),
-    insertSkill: db.prepare("INSERT INTO concept_skill (ord, skill_ord, skill) VALUES (?, ?, ?)"),
-    insertItem: db.prepare("INSERT INTO concept_item (ord, kind, item_ord, item) VALUES (?, ?, ?, ?)"),
+    insertSkill: db.prepare('INSERT INTO concept_skill (ord, skill_ord, skill) VALUES (?, ?, ?)'),
+    insertItem: db.prepare('INSERT INTO concept_item (ord, kind, item_ord, item) VALUES (?, ?, ?, ?)'),
     watermark: db.prepare(`
       INSERT INTO file_watermark (path, bytes, modified, scanned_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(path) DO UPDATE SET
@@ -52,8 +52,8 @@ function prepare(db: DatabaseSync): ConceptStatements {
 
 /** Every row the store contributes is replaced together; the skills cascade. */
 function clearConcepts(db: DatabaseSync): number {
-  const before = (db.prepare("SELECT count(*) c FROM concept").get() as { c: number }).c;
-  db.exec("DELETE FROM concept");
+  const before = (db.prepare('SELECT count(*) c FROM concept').get() as { c: number }).c;
+  db.exec('DELETE FROM concept');
   return before;
 }
 
@@ -71,15 +71,15 @@ function writeConcept(st: ConceptStatements, concept: Concept, ord: number): voi
     concept.sentence,
     concept.field,
     concept.savedAt,
-    concept.notes ?? "",
+    concept.notes ?? '',
     // Re-serialized rather than the raw line: `JSON.stringify` preserves the key
     // order `JSON.parse` produced, so re-parsing matches the file reader's object.
     JSON.stringify(concept),
   );
   concept.skills.forEach((skill, i) => st.insertSkill.run(ord, i, skill));
-  writeItems(st, ord, "tip", concept.tips);
-  writeItems(st, ord, "source", concept.sources);
-  writeItems(st, ord, "surfaced_skill", concept.surfacedSkills);
+  writeItems(st, ord, 'tip', concept.tips);
+  writeItems(st, ord, 'source', concept.sources);
+  writeItems(st, ord, 'surfaced_skill', concept.surfacedSkills);
 }
 
 /** One `concept_item` row per entry, in the order the record listed them. */
@@ -106,39 +106,39 @@ export async function ingestConcepts(db: DatabaseSync, logDir: string): Promise<
   } catch (err) {
     // Only a *missing* store means the rows are unbacked. Any other error says
     // nothing about what is on disk, so it must not drop the table.
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    db.exec("BEGIN");
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    db.exec('BEGIN');
     try {
       stats.deleted = clearConcepts(db);
-      db.prepare("DELETE FROM file_watermark WHERE path = ?").run(STORE_PATH);
-      db.exec("COMMIT");
+      db.prepare('DELETE FROM file_watermark WHERE path = ?').run(STORE_PATH);
+      db.exec('COMMIT');
     } catch (txErr) {
-      db.exec("ROLLBACK");
+      db.exec('ROLLBACK');
       throw txErr;
     }
     return stats;
   }
 
-  const mark = db.prepare("SELECT bytes, modified FROM file_watermark WHERE path = ?").get(STORE_PATH) as
+  const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(STORE_PATH) as
     | { bytes: number; modified: string }
     | undefined;
   if (mark && mark.bytes === bytes && mark.modified === modified) {
-    stats.concepts = (db.prepare("SELECT count(*) c FROM concept").get() as { c: number }).c;
+    stats.concepts = (db.prepare('SELECT count(*) c FROM concept').get() as { c: number }).c;
     return stats;
   }
 
   // Parsed through the store's own reader, so the two sides cannot drift.
-  const concepts = parseConceptStore(await readFile(file, "utf8"));
+  const concepts = parseConceptStore(await readFile(file, 'utf8'));
   const st = prepare(db);
 
-  db.exec("BEGIN");
+  db.exec('BEGIN');
   try {
     clearConcepts(db);
     concepts.forEach((concept, ord) => writeConcept(st, concept, ord));
     st.watermark.run(STORE_PATH, bytes, modified, new Date().toISOString());
-    db.exec("COMMIT");
+    db.exec('COMMIT');
   } catch (err) {
-    db.exec("ROLLBACK");
+    db.exec('ROLLBACK');
     throw err;
   }
 

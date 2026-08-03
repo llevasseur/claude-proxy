@@ -1,10 +1,10 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { readdir, readFile, stat } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 /** Default location of Claude Code's per-project state: `~/.claude/projects`. */
 export function defaultProjectsDir(): string {
-  return path.join(os.homedir(), ".claude", "projects");
+  return path.join(os.homedir(), '.claude', 'projects');
 }
 
 /** Resolve the projects directory: `CLAUDE_PROJECTS` env override, else the default. */
@@ -58,7 +58,7 @@ function resolveMemoryDir(projectsDir: string, project: string): string {
   if (path.dirname(projectDir) !== path.resolve(projectsDir)) {
     throw new Error(`invalid project name: ${project}`);
   }
-  return path.join(projectDir, "memory");
+  return path.join(projectDir, 'memory');
 }
 
 /**
@@ -67,7 +67,7 @@ function resolveMemoryDir(projectsDir: string, project: string): string {
  * Throws only if the projects root itself cannot be read.
  */
 export async function listProjects(projectsDir: string): Promise<ProjectSummary[]> {
-  let entries: import("node:fs").Dirent[];
+  let entries: import('node:fs').Dirent[];
   try {
     entries = await readdir(projectsDir, { withFileTypes: true });
   } catch (err) {
@@ -77,7 +77,7 @@ export async function listProjects(projectsDir: string): Promise<ProjectSummary[
   const projects: ProjectSummary[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const memoryCount = await countMemoryFiles(path.join(projectsDir, entry.name, "memory"));
+    const memoryCount = await countMemoryFiles(path.join(projectsDir, entry.name, 'memory'));
     if (memoryCount === null) continue; // no memory/ dir
     projects.push({ name: entry.name, memoryCount });
   }
@@ -90,7 +90,7 @@ export async function listProjects(projectsDir: string): Promise<ProjectSummary[
 async function countMemoryFiles(memoryDir: string): Promise<number | null> {
   try {
     const files = await readdir(memoryDir);
-    return files.filter((f) => f.endsWith(".md")).length;
+    return files.filter((f) => f.endsWith('.md')).length;
   } catch {
     return null;
   }
@@ -119,7 +119,7 @@ export async function listProjectMemories(projectsDir: string, project: string):
     }
   }
 
-  const mdFiles = names.filter((f) => f.endsWith(".md"));
+  const mdFiles = names.filter((f) => f.endsWith('.md'));
   const files: MemoryFileSummary[] = await Promise.all(
     mdFiles.map(async (name) => {
       const info = await stat(path.join(memoryDir, name));
@@ -128,8 +128,8 @@ export async function listProjectMemories(projectsDir: string, project: string):
   );
 
   files.sort((a, b) => {
-    if (a.name === "MEMORY.md") return -1;
-    if (b.name === "MEMORY.md") return 1;
+    if (a.name === 'MEMORY.md') return -1;
+    if (b.name === 'MEMORY.md') return 1;
     return a.name.localeCompare(b.name);
   });
   return files;
@@ -152,9 +152,9 @@ export async function readMemory(projectsDir: string, project: string, name: str
   }
 
   let content: string;
-  let info: import("node:fs").Stats;
+  let info: import('node:fs').Stats;
   try {
-    [content, info] = await Promise.all([readFile(full, "utf8"), stat(full)]);
+    [content, info] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
   } catch {
     throw new Error(`memory file not found: ${name}`);
   }

@@ -645,7 +645,8 @@ function renderMarkdown(c: RenderContext, audit: Audit, responseMd: string): str
     renderAudit(audit),
     ['<headers>', '', '```', ...headers, '```', '', '</headers>'].join('\n'),
   ];
-  if (req?.system != null) parts.push(['<system-prompt>', '', renderSystem(req.system), '', '</system-prompt>'].join('\n'));
+  if (req?.system != null)
+    parts.push(['<system-prompt>', '', renderSystem(req.system), '', '</system-prompt>'].join('\n'));
   if (Array.isArray(req?.tools) && req.tools.length) parts.push(renderTools(req.tools as ToolDefinition[]));
   parts.push(renderMessages(req?.messages));
   parts.push(`<response>\n\n${responseMd}\n\n</response>`);

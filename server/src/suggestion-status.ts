@@ -1,12 +1,12 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import {
   applySuggestionStatusUpdates,
   emptySuggestionStatusStore,
   parseSuggestionStatusStore,
   type SuggestionStatusStore,
   type SuggestionStatusUpdate,
-} from "@claude-proxy/core";
+} from '@claude-proxy/core';
 
 /**
  * Where the suggestion flags live, and the only code that writes them.
@@ -19,7 +19,7 @@ import {
 
 /** The status file for a log directory. */
 export function resolveSuggestionStatusPath(logDir: string): string {
-  return path.join(logDir, "suggestion-status.json");
+  return path.join(logDir, 'suggestion-status.json');
 }
 
 /**
@@ -29,7 +29,7 @@ export function resolveSuggestionStatusPath(logDir: string): string {
  */
 export async function readSuggestionStatusStore(logDir: string): Promise<SuggestionStatusStore> {
   try {
-    return parseSuggestionStatusStore(JSON.parse(await readFile(resolveSuggestionStatusPath(logDir), "utf8")));
+    return parseSuggestionStatusStore(JSON.parse(await readFile(resolveSuggestionStatusPath(logDir), 'utf8')));
   } catch {
     return emptySuggestionStatusStore();
   }
@@ -44,7 +44,7 @@ export async function writeSuggestionStatusStore(logDir: string, store: Suggesti
   const file = resolveSuggestionStatusPath(logDir);
   await mkdir(logDir, { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+  await writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
   await rename(tmp, file);
   return file;
 }

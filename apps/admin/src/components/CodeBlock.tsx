@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { highlightSource, type CodeSyntax } from "@claude-proxy/core";
+import { useMemo } from 'react';
+import { highlightSource, type CodeSyntax } from '@claude-proxy/core';
 
 /** Lines rendered before the block gives up and points at the Raw view instead. A
  * capped job file is half a megabyte, which can be 15k lines — enough to cost a
@@ -26,12 +26,12 @@ export function CodeBlock({ source, syntax, wrap = false }: CodeBlockProps) {
 
   return (
     <>
-      <ol className={`codeblock${wrap ? " wrap" : ""}`}>
+      <ol className={`codeblock${wrap ? ' wrap' : ''}`}>
         {lines.map((tokens, n) => (
           // The index *is* the line number, and lines never reorder.
           <li key={n}>
             {tokens.map((token, i) =>
-              token.kind === "text" ? (
+              token.kind === 'text' ? (
                 token.text
               ) : (
                 <span key={i} className={`tok-${token.kind}`}>
@@ -43,8 +43,8 @@ export function CodeBlock({ source, syntax, wrap = false }: CodeBlockProps) {
         ))}
       </ol>
       {all.length > MAX_LINES && (
-        <div className="leak-note" style={{ marginTop: 8 }}>
-          Showing the first {MAX_LINES.toLocaleString()} of {all.length.toLocaleString()} lines — switch to{" "}
+        <div className='leak-note' style={{ marginTop: 8 }}>
+          Showing the first {MAX_LINES.toLocaleString()} of {all.length.toLocaleString()} lines — switch to{' '}
           <strong>Raw</strong> for the whole file.
         </div>
       )}

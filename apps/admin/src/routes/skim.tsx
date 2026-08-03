@@ -1,32 +1,27 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
-import type { SkimDigest } from "@claude-proxy/core";
-import { getSkim, getSkimTrend } from "../api";
-import { BAR_CHART_HEIGHT, BarChart } from "../components/BarChart";
-import { QueryState } from "../components/QueryState";
-import { DAY_WINDOWS, Segmented } from "../components/Segmented";
-import {
-  type SkeletonColumn,
-  SkeletonChartCard,
-  SkeletonStats,
-  SkeletonTableCard,
-} from "../components/Skeleton";
-import { type Series, SeriesLineChart } from "../components/SeriesLineChart";
-import { StatCard } from "../components/StatCard";
-import { fmtInt, fmtPct, fmtUsd } from "../format";
-import { useTransitionState } from "../useTransitionState";
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import type { SkimDigest } from '@claude-proxy/core';
+import { getSkim, getSkimTrend } from '../api';
+import { BAR_CHART_HEIGHT, BarChart } from '../components/BarChart';
+import { QueryState } from '../components/QueryState';
+import { DAY_WINDOWS, Segmented } from '../components/Segmented';
+import { type SkeletonColumn, SkeletonChartCard, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
+import { type Series, SeriesLineChart } from '../components/SeriesLineChart';
+import { StatCard } from '../components/StatCard';
+import { fmtInt, fmtPct, fmtUsd } from '../format';
+import { useTransitionState } from '../useTransitionState';
 
-const HIT_RATE_SERIES: Series[] = [{ dataKey: "hitRate", name: "Hit rate", color: "var(--good)" }];
-const SAVED_SERIES: Series[] = [{ dataKey: "cumUsd", name: "Cumulative saved", color: "var(--accent-2)" }];
+const HIT_RATE_SERIES: Series[] = [{ dataKey: 'hitRate', name: 'Hit rate', color: 'var(--good)' }];
+const SAVED_SERIES: Series[] = [{ dataKey: 'cumUsd', name: 'Cumulative saved', color: 'var(--accent-2)' }];
 
 /** Cache key, the request, then four numeric columns. */
 const SHAPE_COLUMNS: readonly SkeletonColumn[] = [
-  { cell: "72%" },
+  { cell: '72%' },
   {},
-  { className: "num" },
-  { className: "num" },
-  { className: "num" },
-  { className: "num" },
+  { className: 'num' },
+  { className: 'num' },
+  { className: 'num' },
+  { className: 'num' },
 ];
 
 const shortKey = (k: string): string => (k.length > 12 ? `${k.slice(0, 12)}…` : k);
@@ -46,11 +41,11 @@ function toCumulativeRows(digests: SkimDigest[]) {
 export function SkimPage() {
   const [days, selectDays, isSwitching] = useTransitionState(14);
   const trendQuery = useQuery({
-    queryKey: ["skim-trend", days],
+    queryKey: ['skim-trend', days],
     queryFn: () => getSkimTrend(days),
     placeholderData: keepPreviousData,
   });
-  const dayQuery = useQuery({ queryKey: ["skim-day"], queryFn: () => getSkim() });
+  const dayQuery = useQuery({ queryKey: ['skim-day'], queryFn: () => getSkim() });
 
   const digests = trendQuery.data?.digests ?? [];
   const topShapes = trendQuery.data?.topShapes ?? [];
@@ -62,103 +57,93 @@ export function SkimPage() {
 
   return (
     <section>
-      <div className="pagehead">
+      <div className='pagehead'>
         <h1>Skim</h1>
-        <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label="Skim window" busy={busy} />
+        <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label='Skim window' busy={busy} />
       </div>
 
       <QueryState
         isLoading={trendQuery.isLoading || dayQuery.isLoading}
         error={trendQuery.error}
         skeleton={<SkimSkeleton days={days} stats={!dayQuery.isError} />}
-        busy={busy}
-      >
+        busy={busy}>
         {today && (
-          <div className="grid stats">
+          <div className='grid stats'>
             <StatCard
-              label="Hit rate (today)"
+              label='Hit rate (today)'
               value={fmtPct(today.hitRate * 100, 1)}
               sub={`${fmtInt(today.hits)} / ${fmtInt(today.enabledRequests)} enabled`}
               increaseIsBad={false}
             />
-            <StatCard label="Saved today" value={fmtUsd(today.estSavedUsd)} sub="approx." increaseIsBad={false} />
-            <StatCard
-              label={`Saved (${days}d)`}
-              value={fmtUsd(windowTotalUsd)}
-              sub="approx."
-              increaseIsBad={false}
-            />
-            <StatCard
-              label="Saved input tokens (today)"
-              value={fmtInt(today.savedInputTokens)}
-              increaseIsBad={false}
-            />
+            <StatCard label='Saved today' value={fmtUsd(today.estSavedUsd)} sub='approx.' increaseIsBad={false} />
+            <StatCard label={`Saved (${days}d)`} value={fmtUsd(windowTotalUsd)} sub='approx.' increaseIsBad={false} />
+            <StatCard label='Saved input tokens (today)' value={fmtInt(today.savedInputTokens)} increaseIsBad={false} />
           </div>
         )}
 
         {digests.length === 0 ? (
-          <div className="card empty">No skim activity captured in the last {days} days.</div>
+          <div className='card empty'>No skim activity captured in the last {days} days.</div>
         ) : (
           <>
-            <div className="grid wide-two">
-              <div className="card">
+            <div className='grid wide-two'>
+              <div className='card'>
                 <h2>Hit-rate over time</h2>
                 <SeriesLineChart
                   data={hitRateRows}
                   series={HIT_RATE_SERIES}
-                  xKey="label"
+                  xKey='label'
                   format={(n) => fmtPct(n, 1)}
                 />
               </div>
 
-              <div className="card">
+              <div className='card'>
                 <h2>Cumulative $ saved</h2>
-                <SeriesLineChart data={cumulativeRows} series={SAVED_SERIES} xKey="label" format={fmtUsd} />
+                <SeriesLineChart data={cumulativeRows} series={SAVED_SERIES} xKey='label' format={fmtUsd} />
               </div>
             </div>
 
             {topShapes.length > 0 && (
               <>
-                <div className="card">
+                <div className='card'>
                   <h2>Top repeated request shapes ({days}d)</h2>
                   <BarChart
                     data={topShapes.slice(0, 12).map((s) => ({ label: shortKey(s.cacheKey), value: s.requests }))}
                     format={fmtInt}
-                    color="var(--accent)"
+                    color='var(--accent)'
                   />
                 </div>
 
-                <div className="card">
+                <div className='card'>
                   <h2>By shape</h2>
-                  <table className="table">
+                  <table className='table'>
                     <thead>
                       <tr>
                         <th>Cache key</th>
                         <th>Request</th>
-                        <th className="num">Requests</th>
-                        <th className="num">Hits</th>
-                        <th className="num">Saved tokens</th>
-                        <th className="num">Est. saved</th>
+                        <th className='num'>Requests</th>
+                        <th className='num'>Hits</th>
+                        <th className='num'>Saved tokens</th>
+                        <th className='num'>Est. saved</th>
                       </tr>
                     </thead>
                     <tbody>
                       {topShapes.map((s) => (
                         <tr key={s.cacheKey}>
                           <td title={s.cacheKey}>{shortKey(s.cacheKey)}</td>
-                          <td className="skim-request">
+                          <td className='skim-request'>
                             {s.requestText ? (
                               <details>
-                                <summary>{s.requestText.split("\n", 1)[0]}</summary>
+                                <summary>{s.requestText.split('\n', 1)[0]}</summary>
                                 <pre>{s.requestText}</pre>
                               </details>
                             ) : (
-                              <span className="muted">Request log unavailable</span>
+                              <span className='muted'>Request log unavailable</span>
                             )}
                           </td>
-                          <td className="num">{fmtInt(s.requests)}</td>
-                          <td className="num">{fmtInt(s.hits)}</td>
-                          <td className="num">{fmtInt(s.savedInputTokens)}</td>
-                          <td className="num">{fmtUsd(s.estSavedUsd)}</td>
+                          <td className='num'>{fmtInt(s.requests)}</td>
+                          <td className='num'>{fmtInt(s.hits)}</td>
+                          <td className='num'>{fmtInt(s.savedInputTokens)}</td>
+                          <td className='num'>{fmtUsd(s.estSavedUsd)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -181,12 +166,12 @@ function SkimSkeleton({ days, stats = true }: { days: number; stats?: boolean })
   return (
     <>
       {stats && <SkeletonStats count={4} />}
-      <div className="grid wide-two">
-        <SkeletonChartCard title="Hit-rate over time" bars={days} />
-        <SkeletonChartCard title="Cumulative $ saved" bars={days} />
+      <div className='grid wide-two'>
+        <SkeletonChartCard title='Hit-rate over time' bars={days} />
+        <SkeletonChartCard title='Cumulative $ saved' bars={days} />
       </div>
       <SkeletonChartCard title={`Top repeated request shapes (${days}d)`} height={BAR_CHART_HEIGHT} bars={12} />
-      <SkeletonTableCard title="By shape" columns={SHAPE_COLUMNS} rows={8} />
+      <SkeletonTableCard title='By shape' columns={SHAPE_COLUMNS} rows={8} />
     </>
   );
 }

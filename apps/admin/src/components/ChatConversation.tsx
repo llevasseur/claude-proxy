@@ -1,15 +1,15 @@
-import { useEffect, useRef, type ReactNode } from "react";
-import type { ChatInterruption, ChatToolUse } from "../api";
-import { useChatSession } from "../chat-session";
-import { fmtInt } from "../format";
-import { Markdown } from "./Markdown";
-import { PromptInput } from "./PromptInput";
+import { useEffect, useRef, type ReactNode } from 'react';
+import type { ChatInterruption, ChatToolUse } from '../api';
+import { useChatSession } from '../chat-session';
+import { fmtInt } from '../format';
+import { Markdown } from './Markdown';
+import { PromptInput } from './PromptInput';
 
 /** Why a turn ended early, in the terms that tell you what to do about it. */
 const INTERRUPTION_NOTE: Record<ChatInterruption, string> = {
-  stopped: "Turn stopped",
-  timeout: "Turn went quiet and was ended",
-  limit: "Turn hit the time limit for one turn",
+  stopped: 'Turn stopped',
+  timeout: 'Turn went quiet and was ended',
+  limit: 'Turn hit the time limit for one turn',
 };
 
 /**
@@ -56,21 +56,21 @@ export function ChatConversation({
   }, [chat, pendingPrompt]);
 
   return (
-    <div className={`chat-panel${fill ? " chat-panel--fill" : ""}`}>
+    <div className={`chat-panel${fill ? ' chat-panel--fill' : ''}`}>
       {started ? (
-        <div className="chat-log" ref={log}>
+        <div className='chat-log' ref={log}>
           {chat?.turns.map((turn, i) => (
             <ChatBubble key={i} role={turn.role}>
-              {turn.role === "assistant" ? <Markdown source={turn.text} /> : <p>{turn.text}</p>}
+              {turn.role === 'assistant' ? <Markdown source={turn.text} /> : <p>{turn.text}</p>}
             </ChatBubble>
           ))}
           {pendingPrompt && (
             <>
-              <ChatBubble role="user">
+              <ChatBubble role='user'>
                 <p>{pendingPrompt}</p>
               </ChatBubble>
-              <ChatBubble role="assistant">
-                <span className="chat-thinking" aria-label="Working">
+              <ChatBubble role='assistant'>
+                <span className='chat-thinking' aria-label='Working'>
                   <i />
                   <i />
                   <i />
@@ -80,28 +80,28 @@ export function ChatConversation({
           )}
         </div>
       ) : (
-        emptyState && <div className="chat-log chat-log--empty">{emptyState}</div>
+        emptyState && <div className='chat-log chat-log--empty'>{emptyState}</div>
       )}
 
-      <div className="chat-composer">
+      <div className='chat-composer'>
         {/* A cut-short turn's partial reply, labelled so it doesn't read as the answer. */}
         {chat?.interrupted && (
-          <p className="muted chat-note">
+          <p className='muted chat-note'>
             {INTERRUPTION_NOTE[chat.interrupted]} — this is what arrived before it ended.
           </p>
         )}
 
         {/* Tools the turn ran — agent turns only. */}
         {chat && chat.tools.length > 0 && (
-          <div className="chat-tools">
-            <span className="muted">ran</span>
+          <div className='chat-tools'>
+            <span className='muted'>ran</span>
             {chat.tools.map((t, i) => (
               <ToolChip key={i} tool={t} />
             ))}
           </div>
         )}
 
-        {footnote && <div className="muted chat-footnote">{footnote}</div>}
+        {footnote && <div className='muted chat-footnote'>{footnote}</div>}
 
         <PromptInput
           value={draft}
@@ -109,21 +109,21 @@ export function ChatConversation({
           onSubmit={send}
           placeholder={placeholder}
           disabled={disabled}
-          status={isSending ? "submitted" : sendError ? "error" : "ready"}
+          status={isSending ? 'submitted' : sendError ? 'error' : 'ready'}
           options={inputOptions}
         />
 
-        <div className="chat-foot">
-          {sendError && <span className="error">{sendError.message}</span>}
-          {stopError && <span className="error">{stopError.message}</span>}
+        <div className='chat-foot'>
+          {sendError && <span className='error'>{sendError.message}</span>}
+          {stopError && <span className='error'>{stopError.message}</span>}
           {isSending && (
-            <button type="button" className="chat-stop" onClick={stop} disabled={isStopping}>
-              {isStopping ? "Stopping…" : "Stop"}
+            <button type='button' className='chat-stop' onClick={stop} disabled={isStopping}>
+              {isStopping ? 'Stopping…' : 'Stop'}
             </button>
           )}
           {chat && (
-            <span className="muted">
-              {fmtInt(chat.usage.input + chat.usage.cacheRead + chat.usage.cacheCreation)} in ·{" "}
+            <span className='muted'>
+              {fmtInt(chat.usage.input + chat.usage.cacheRead + chat.usage.cacheCreation)} in ·{' '}
               {fmtInt(chat.usage.output)} out
             </span>
           )}
@@ -135,25 +135,25 @@ export function ChatConversation({
 }
 
 /** One turn: an avatar beside the message, the reader's own turns mirrored to the right. */
-function ChatBubble({ role, children }: { role: "user" | "assistant"; children: ReactNode }) {
+function ChatBubble({ role, children }: { role: 'user' | 'assistant'; children: ReactNode }) {
   return (
     <div className={`chat-turn ${role}`}>
-      <span className="chat-avatar" aria-hidden>
-        {role === "user" ? "You" : "C"}
+      <span className='chat-avatar' aria-hidden>
+        {role === 'user' ? 'You' : 'C'}
       </span>
-      <div className="chat-bubble">{children}</div>
+      <div className='chat-bubble'>{children}</div>
     </div>
   );
 }
 
 /** One tool the turn ran; a failure carries the first line of its `tool_result` text. */
 function ToolChip({ tool }: { tool: ChatToolUse }) {
-  const reason = tool.failed ? tool.error?.split("\n")[0]?.trim() : undefined;
+  const reason = tool.failed ? tool.error?.split('\n')[0]?.trim() : undefined;
   return (
-    <span className={`chat-tool${tool.failed ? " is-failed" : ""}`} title={tool.error}>
+    <span className={`chat-tool${tool.failed ? ' is-failed' : ''}`} title={tool.error}>
       {tool.name}
-      {tool.failed ? " ✗" : ""}
-      {reason && <span className="chat-tool-why">{reason}</span>}
+      {tool.failed ? ' ✗' : ''}
+      {reason && <span className='chat-tool-why'>{reason}</span>}
     </span>
   );
 }

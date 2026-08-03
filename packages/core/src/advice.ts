@@ -1,6 +1,6 @@
-import type { UsageDigest } from "./digest.js";
+import type { UsageDigest } from './digest.js';
 
-export type Severity = "info" | "warn" | "high";
+export type Severity = 'info' | 'warn' | 'high';
 
 export interface Advice {
   id: string;
@@ -42,11 +42,11 @@ export class HeuristicAdviceProvider implements AdviceProvider {
 
     if (d.requestCount === 0) {
       out.push({
-        id: "no-activity",
-        severity: "info",
-        title: "No Claude activity",
-        detail: "No requests were captured for this day.",
-        metric: "requestCount",
+        id: 'no-activity',
+        severity: 'info',
+        title: 'No Claude activity',
+        detail: 'No requests were captured for this day.',
+        metric: 'requestCount',
       });
       return out;
     }
@@ -54,21 +54,21 @@ export class HeuristicAdviceProvider implements AdviceProvider {
     const top = d.topTools[0];
     if (top && top.pctOfToolBytes >= ADVICE_THRESHOLDS.dominantToolPct) {
       out.push({
-        id: "dominant-tool",
-        severity: "warn",
+        id: 'dominant-tool',
+        severity: 'warn',
         title: `"${top.name}" dominates your tool payload`,
         detail: `${top.name} is ${top.pctOfToolBytes.toFixed(1)}% of all tool bytes (~${top.estTokens.toLocaleString()} tokens/day). If you rarely use it, disabling the tool trims every request's context.`,
-        metric: "topTools",
+        metric: 'topTools',
       });
     }
 
     if (d.toolOverheadPctOfInput >= ADVICE_THRESHOLDS.toolOverheadPct) {
       out.push({
-        id: "tool-overhead",
-        severity: "warn",
-        title: "Tool schemas are a large share of input",
+        id: 'tool-overhead',
+        severity: 'warn',
+        title: 'Tool schemas are a large share of input',
         detail: `Tool definitions account for ~${d.toolOverheadPctOfInput.toFixed(0)}% of your input tokens. Pruning unused tools / MCP servers is the highest-leverage context cut.`,
-        metric: "toolOverheadPctOfInput",
+        metric: 'toolOverheadPctOfInput',
       });
     }
 
@@ -77,40 +77,40 @@ export class HeuristicAdviceProvider implements AdviceProvider {
       d.tokens.cacheHitRatio < ADVICE_THRESHOLDS.lowCacheHitRatio
     ) {
       out.push({
-        id: "low-cache-hit",
-        severity: "info",
-        title: "Low prompt-cache hit ratio",
+        id: 'low-cache-hit',
+        severity: 'info',
+        title: 'Low prompt-cache hit ratio',
         detail: `Only ${(d.tokens.cacheHitRatio * 100).toFixed(0)}% of your input came from cache. Frequent context resets / new sessions re-send the prompt at full price — keep sessions alive to reuse the cache.`,
-        metric: "cacheHitRatio",
+        metric: 'cacheHitRatio',
       });
     }
 
     if (d.avgSystemPromptBytes >= ADVICE_THRESHOLDS.largeSystemPromptBytes) {
       out.push({
-        id: "large-system-prompt",
-        severity: "info",
-        title: "Large system prompt",
+        id: 'large-system-prompt',
+        severity: 'info',
+        title: 'Large system prompt',
         detail: `Your system prompt averages ${d.avgSystemPromptBytes.toLocaleString()} bytes/request. Trimming CLAUDE.md / project instructions reduces every request.`,
-        metric: "avgSystemPromptBytes",
+        metric: 'avgSystemPromptBytes',
       });
     }
 
     if (d.cost.total >= ADVICE_THRESHOLDS.highDailyCostUsd) {
       out.push({
-        id: "high-cost",
-        severity: "high",
-        title: "High estimated spend today",
+        id: 'high-cost',
+        severity: 'high',
+        title: 'High estimated spend today',
         detail: `Estimated ~$${d.cost.total.toFixed(2)} today. Output tokens (~$${d.cost.output.toFixed(2)}) and cache-writes (~$${d.cost.cacheWrite.toFixed(2)}) are usually the biggest levers.`,
-        metric: "cost",
+        metric: 'cost',
       });
     }
 
     if (out.length === 0) {
       out.push({
-        id: "healthy",
-        severity: "info",
-        title: "Usage looks healthy",
-        detail: "No context-bloat or cost thresholds were tripped for this day.",
+        id: 'healthy',
+        severity: 'info',
+        title: 'Usage looks healthy',
+        detail: 'No context-bloat or cost thresholds were tripped for this day.',
       });
     }
 

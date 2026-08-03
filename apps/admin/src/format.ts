@@ -1,4 +1,4 @@
-const nf = new Intl.NumberFormat("en-US");
+const nf = new Intl.NumberFormat('en-US');
 
 export const fmtInt = (n: number): string => nf.format(Math.round(n));
 export const fmtUsd = (n: number): string => `$${n.toFixed(n < 1 ? 3 : 2)}`;
@@ -11,7 +11,7 @@ export function fmtBytes(n: number): string {
 }
 
 export function deltaLabel(pct: number): string {
-  return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
+  return `${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`;
 }
 
 // Sidecars store timestamps in UTC (ISO 8601); these helpers render them
@@ -22,19 +22,19 @@ export const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /** Short zone label for the viewer's current timezone, e.g. `"EDT"`. */
 export const LOCAL_TZ_ABBR: string =
-  new Intl.DateTimeFormat("en-US", { timeZoneName: "short" })
+  new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
     .formatToParts(new Date())
-    .find((p) => p.type === "timeZoneName")?.value ?? "local";
+    .find((p) => p.type === 'timeZoneName')?.value ?? 'local';
 
 // `hourCycle: "h23"` avoids V8's "24:xx" quirk for midnight. Omitting
 // `timeZone` makes the formatter use the system zone.
-const tsFmt = new Intl.DateTimeFormat("en-US", {
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
+const tsFmt = new Intl.DateTimeFormat('en-US', {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
 });
 
 function tsParts(iso: string): Record<string, string> | null {
@@ -54,7 +54,7 @@ export function fmtLocalTs(iso: string): string {
 
 /** `MM-DD HH:MM` in the viewer's local timezone (compact); `"—"` when empty. */
 export function fmtLocalTsShort(iso: string): string {
-  if (!iso) return "—";
+  if (!iso) return '—';
   const p = tsParts(iso);
   if (!p) return iso;
   return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
@@ -62,11 +62,11 @@ export function fmtLocalTsShort(iso: string): string {
 
 /** `2m` / `3h` / `4d` / `MM-DD` — the age of a timestamp, at chat-list width. */
 export function fmtAgeShort(iso: string): string {
-  if (!iso) return "—";
+  if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const mins = Math.floor((Date.now() - d.getTime()) / 60_000);
-  if (mins < 1) return "now";
+  if (mins < 1) return 'now';
   if (mins < 60) return `${mins}m`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h`;
@@ -77,7 +77,7 @@ export function fmtAgeShort(iso: string): string {
 }
 
 /** For a metric where up is worse (cost, tokens): positive delta → "bad". */
-export function deltaTone(pct: number): "up" | "down" | "flat" {
-  if (Math.abs(pct) < 0.5) return "flat";
-  return pct > 0 ? "up" : "down";
+export function deltaTone(pct: number): 'up' | 'down' | 'flat' {
+  if (Math.abs(pct) < 0.5) return 'flat';
+  return pct > 0 ? 'up' : 'down';
 }
