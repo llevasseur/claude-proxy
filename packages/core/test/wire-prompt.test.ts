@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffWirePrompts, outlineWirePrompt, PREAMBLE, sectionsOfText } from "../src/wire-prompt.js";
+import { diffWirePrompts, outlineWirePrompt, PREAMBLE, sectionShares, sectionsOfText } from "../src/wire-prompt.js";
 
 const block = (text: string, ttl?: string) => ({
   type: "text",
@@ -48,6 +48,32 @@ describe("outlineWirePrompt", () => {
   it("counts multi-byte characters as their utf-8 length", () => {
     const [section] = sectionsOfText("# Héllo — ok", 0);
     expect(section!.bytes).toBe(Buffer.byteLength("# Héllo — ok"));
+  });
+});
+
+describe("sectionShares", () => {
+  it("ranks sections largest first, and the shares sum to one", () => {
+    const outline = outlineWirePrompt([block(`# Small\ntiny\n# Big\n${"x".repeat(500)}`)]);
+    const shares = sectionShares(outline);
+    expect(shares.map((s) => s.heading)).toEqual(["Big", "Small"]);
+    expect(shares.reduce((a, s) => a + s.share, 0)).toBeCloseTo(1, 10);
+    expect(shares[0]!.share).toBeGreaterThan(0.9);
+  });
+
+  it("sums a heading repeated across blocks into one row, recording both blocks", () => {
+    const outline = outlineWirePrompt([block("# Tools\nabc"), block("# Tools\ndefgh")]);
+    const [tools] = sectionShares(outline);
+    expect(tools).toMatchObject({ heading: "Tools", blocks: [0, 1], level: 1 });
+    expect(tools!.bytes).toBe(outline.sections.reduce((a, s) => a + s.bytes, 0));
+  });
+
+  it("keeps the shallowest depth when a heading appears at two levels", () => {
+    const outline = outlineWirePrompt([block("## Rules\na"), block("# Rules\nb")]);
+    expect(sectionShares(outline)[0]!.level).toBe(1);
+  });
+
+  it("returns nothing rather than dividing by zero for an empty prompt", () => {
+    expect(sectionShares({ sections: [] })).toEqual([]);
   });
 });
 
