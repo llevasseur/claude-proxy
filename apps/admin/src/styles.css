@@ -668,8 +668,8 @@ button:focus-visible {
     visibility 0.12s ease;
   pointer-events: none;
 }
-/* Flipped over the card: the panel would otherwise fall past the viewport's
-   bottom edge. The opening slide reverses with it, so it still travels outward. */
+/* Flipped over the card, for a panel the viewport would clip. The opening slide
+   reverses with it, so it still travels outward. */
 .stat-popover.is-above {
   top: auto;
   bottom: calc(100% + 8px);

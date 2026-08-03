@@ -44,14 +44,13 @@ export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, me
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [above, setAbove] = useState(false);
 
-  // The popover opens on hover, so its placement is decided as the cursor arrives:
-  // below by default, flipped over the card when the viewport would clip it.
+  // Placement is settled as the cursor arrives: below, or over the card when the
+  // viewport would clip it.
   const place = useCallback((event: SyntheticEvent<HTMLElement>) => {
     const popover = popoverRef.current;
     if (!popover) return;
     const box = event.currentTarget.getBoundingClientRect();
-    // The panel's own height, not its rect: it is laid out below the card, so the
-    // rect would move with the very placement this decides.
+    // Its height, not its rect — the rect moves with the placement being decided.
     const needed = popover.offsetHeight + POPOVER_GAP;
     const fitsBelow = box.bottom + needed <= window.innerHeight;
     setAbove(!fitsBelow && box.top - needed >= 0);
@@ -105,7 +104,7 @@ export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, me
 /**
  * Hover panel listing each day's value, newest first. Rows highlight the active
  * day and mark it on the mini chart. `above` flips it over the card, for a card
- * low enough that the panel would otherwise fall past the bottom of the viewport.
+ * low enough that the panel would fall past the bottom of the viewport.
  */
 function StatPopover({
   popoverRef,

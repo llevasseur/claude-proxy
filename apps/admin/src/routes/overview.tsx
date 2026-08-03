@@ -156,9 +156,8 @@ function OverviewSkeleton() {
 
 /**
  * Today's digest as the summary stream last reported it, spliced into the trends
- * window. `/api/trends` is a one-shot read, so without this the mini charts and
- * their popovers would hold the values today had when the page loaded while the
- * headline number moved on.
+ * window. `/api/trends` is a one-shot read, so the mini charts and their popovers
+ * would otherwise hold today's load-time values while the headline moved on.
  */
 function withLiveToday(digests: UsageDigest[], today: UsageDigest): UsageDigest[] {
   const at = digests.findIndex((x) => x.date === today.date);
