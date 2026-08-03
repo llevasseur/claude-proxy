@@ -401,10 +401,9 @@ button:focus-visible {
 .grid > .card {
   margin-bottom: 0;
 }
-/* Breathing room between stacked grids (e.g. stat cards → panels), and the same gap
-   when a grid is followed by a standalone card. While a view loads, `SkeletonStatus`
-   renders an out-of-flow `.sr-only` between the two, so adjacency has to see through
-   it or the skeleton sits flush against the block above. */
+/* Breathing room between a grid and the grid or standalone card stacked under it.
+   `SkeletonStatus` renders an out-of-flow `.sr-only` between them while a view loads,
+   so adjacency has to see through it. */
 .grid + .grid,
 .grid + .card,
 .grid + .sr-only + .grid,
