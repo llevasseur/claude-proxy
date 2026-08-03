@@ -5,17 +5,17 @@ export interface SegmentedOption<T> {
 
 /** The day windows the trend-shaped pages offer. */
 export const DAY_WINDOWS: readonly SegmentedOption<number>[] = [
-  { value: 7, label: "7d" },
-  { value: 14, label: "14d" },
-  { value: 30, label: "30d" },
+  { value: 7, label: '7d' },
+  { value: 14, label: '14d' },
+  { value: 30, label: '30d' },
 ];
 
-export type PrettyRawView = "pretty" | "raw";
+export type PrettyRawView = 'pretty' | 'raw';
 
 /** The rendered-or-source toggle the document-shaped pages carry. */
 export const PRETTY_RAW: readonly SegmentedOption<PrettyRawView>[] = [
-  { value: "pretty", label: "Pretty" },
-  { value: "raw", label: "Raw" },
+  { value: 'pretty', label: 'Pretty' },
+  { value: 'raw', label: 'Raw' },
 ];
 
 /**
@@ -36,15 +36,15 @@ export function Segmented<T extends string | number>({
   busy?: boolean;
 }) {
   return (
-    <div className="segmented" role="group" aria-label={label} aria-busy={busy || undefined}>
+    // biome-ignore lint/a11y/useSemanticElements: a <fieldset> brings its own box and legend layout; this control is styled from scratch
+    <div className='segmented' role='group' aria-label={label} aria-busy={busy || undefined}>
       {options.map((o) => (
         <button
           key={String(o.value)}
-          type="button"
-          className={o.value === value ? "active" : undefined}
+          type='button'
+          className={o.value === value ? 'active' : undefined}
           aria-pressed={o.value === value}
-          onClick={() => onSelect(o.value)}
-        >
+          onClick={() => onSelect(o.value)}>
           {o.label}
         </button>
       ))}

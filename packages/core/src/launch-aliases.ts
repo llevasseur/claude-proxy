@@ -21,7 +21,7 @@
  *
  * Pure: no I/O — the server reads the rc file and passes its text in.
  */
-import { activeDisableSchemaKeys, classifyDenyRules } from "./withheld.js";
+import { activeDisableSchemaKeys, classifyDenyRules } from './withheld.js';
 
 export interface LaunchAlias {
   /** The alias/function name, e.g. `claude`, `claude-design`. */
@@ -64,9 +64,9 @@ function extractDisallowed(body: string): string[] {
   const m = body.match(/--disallowed-?[tT]ools\s+(.+?)(?=\s+-|\s*["']?\$@|\s*;|\s*\}|$)/);
   if (!m) return [];
   const tools: string[] = [];
-  for (const raw of (m[1] ?? "").split(/[\s,]+/)) {
-    const t = raw.replace(/^['"]+|['"]+$/g, "");
-    if (t.length > 0 && !t.includes("$@") && !tools.includes(t)) tools.push(t);
+  for (const raw of (m[1] ?? '').split(/[\s,]+/)) {
+    const t = raw.replace(/^['"]+|['"]+$/g, '');
+    if (t.length > 0 && !t.includes('$@') && !tools.includes(t)) tools.push(t);
   }
   return tools;
 }
@@ -79,7 +79,7 @@ function extractDisallowed(body: string): string[] {
 function extractFlagArg(body: string, flagPattern: string): string | null {
   const m = body.match(new RegExp(`${flagPattern}\\s+('[^']*'|"[^"]*"|\\S+)`));
   if (!m) return null;
-  return (m[1] ?? "").replace(/^['"]|['"]$/g, "");
+  return (m[1] ?? '').replace(/^['"]|['"]$/g, '');
 }
 
 /**
@@ -87,10 +87,10 @@ function extractFlagArg(body: string, flagPattern: string): string | null {
  * `null` when the flag is absent (the default user+project+local set then loads).
  */
 function extractSettingSources(body: string): string[] | null {
-  const raw = extractFlagArg(body, "--setting-?[sS]ources");
+  const raw = extractFlagArg(body, '--setting-?[sS]ources');
   if (raw === null) return null;
   return raw
-    .split(",")
+    .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
@@ -105,12 +105,12 @@ function extractSettingSources(body: string): string[] | null {
  *     posture becomes indeterminate.
  */
 function extractSettings(body: string): { overrides: Record<string, unknown> | null; dynamic: boolean } {
-  const raw = extractFlagArg(body, "--settings");
+  const raw = extractFlagArg(body, '--settings');
   if (raw === null) return { overrides: null, dynamic: false };
-  if (raw.includes("$")) return { overrides: null, dynamic: true };
+  if (raw.includes('$')) return { overrides: null, dynamic: true };
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       return { overrides: parsed as Record<string, unknown>, dynamic: false };
     }
   } catch {
@@ -130,7 +130,7 @@ function extractDefs(rc: string): RawDef[] {
   const defs: RawDef[] = [];
   const lines = rc.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
+    const line = lines[i] ?? '';
 
     const aliasM = line.match(/^\s*alias\s+([A-Za-z0-9_-]+)=(['"])([\s\S]*?)\2\s*$/);
     if (aliasM) {
@@ -141,28 +141,28 @@ function extractDefs(rc: string): RawDef[] {
     const fnM = line.match(/^\s*(?:function\s+([A-Za-z0-9_-]+)|([A-Za-z0-9_-]+)\s*\(\))\s*(\{?)(.*)$/);
     if (!fnM) continue;
     const name = fnM[1] ?? fnM[2]!;
-    const rest = fnM[4] ?? "";
+    const rest = fnM[4] ?? '';
 
     // Single-line body: `name() { … }` — take everything before the last brace.
-    if (rest.includes("}")) {
-      defs.push({ name, body: rest.slice(0, rest.lastIndexOf("}")) });
+    if (rest.includes('}')) {
+      defs.push({ name, body: rest.slice(0, rest.lastIndexOf('}')) });
       continue;
     }
 
     // Multi-line body: accumulate until the closing brace, only when the header
     // actually opened one (`{`), so a bare `name()` with no block is skipped.
-    if (fnM[3] === "{" || rest.includes("{")) {
+    if (fnM[3] === '{' || rest.includes('{')) {
       const parts = [rest];
       let j = i + 1;
       for (; j < lines.length; j++) {
-        const l = lines[j] ?? "";
-        if (l.includes("}")) {
-          parts.push(l.slice(0, l.indexOf("}")));
+        const l = lines[j] ?? '';
+        if (l.includes('}')) {
+          parts.push(l.slice(0, l.indexOf('}')));
           break;
         }
         parts.push(l);
       }
-      defs.push({ name, body: parts.join(" ") });
+      defs.push({ name, body: parts.join(' ') });
       i = j;
     }
   }
@@ -230,7 +230,7 @@ export interface LaunchAliasPosture {
 /** Schema-stripping tools an alias withholds via `--disallowedTools` (bare names
  * only; scoped `Name(...)` rules don't strip a schema). */
 function disallowedSchemaTools(alias: LaunchAlias): string[] {
-  return alias.withheld.filter((t) => !t.includes("("));
+  return alias.withheld.filter((t) => !t.includes('('));
 }
 
 /** The `disable*` keys an alias turns into `true` via inline `--settings`, mapped
@@ -238,7 +238,7 @@ function disallowedSchemaTools(alias: LaunchAlias): string[] {
 function overriddenDisableTools(alias: LaunchAlias, enable: boolean): string[] {
   const overrides = alias.settingsOverrides ?? {};
   const keys = Object.entries(overrides)
-    .filter(([k, v]) => k.startsWith("disable") && v === enable)
+    .filter(([k, v]) => k.startsWith('disable') && v === enable)
     .map(([k]) => k);
   return activeDisableSchemaKeys(keys).flatMap((e) => e.tools);
 }
@@ -254,7 +254,7 @@ function effectiveWithheld(
   denyTools: readonly string[],
   enabledDisableKeys: readonly string[],
 ): { withheld: Set<string>; userSettingsLoaded: boolean } {
-  const userSettingsLoaded = alias.settingSources === null || alias.settingSources.includes("user");
+  const userSettingsLoaded = alias.settingSources === null || alias.settingSources.includes('user');
   const set = new Set<string>();
 
   if (userSettingsLoaded) for (const t of denyTools) set.add(t);
@@ -264,7 +264,7 @@ function effectiveWithheld(
   const disableKeys = new Set<string>(userSettingsLoaded ? enabledDisableKeys : []);
   const overrides = alias.settingsOverrides ?? {};
   for (const [k, v] of Object.entries(overrides)) {
-    if (!k.startsWith("disable")) continue;
+    if (!k.startsWith('disable')) continue;
     if (v === true) disableKeys.add(k);
     else if (v === false) disableKeys.delete(k);
   }
@@ -333,7 +333,7 @@ export function computeAliasPosture(
       return {
         name: alias.name,
         indeterminate: true,
-        userSettingsLoaded: alias.settingSources === null || alias.settingSources.includes("user"),
+        userSettingsLoaded: alias.settingSources === null || alias.settingSources.includes('user'),
         withheld: [],
         cells: {},
         alsoReenabled: [],

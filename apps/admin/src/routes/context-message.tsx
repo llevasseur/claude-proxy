@@ -1,20 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
-import type { RequestMessageDetail } from "@claude-proxy/core";
-import { getContextMessage } from "../api";
-import { Breadcrumbs } from "../components/Breadcrumbs";
-import { EvictedBody } from "../components/EvictedBody";
-import { QueryState } from "../components/QueryState";
-import { PRETTY_RAW, type PrettyRawView, Segmented } from "../components/Segmented";
-import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from "../components/Skeleton";
-import { fmtBytes, fmtInt } from "../format";
-import { useTransitionState } from "../useTransitionState";
+import type { RequestMessageDetail } from '@claude-proxy/core';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useParams } from '@tanstack/react-router';
+import { getContextMessage } from '../api';
+import { Breadcrumbs } from '../components/Breadcrumbs';
+import { EvictedBody } from '../components/EvictedBody';
+import { QueryState } from '../components/QueryState';
+import { PRETTY_RAW, type PrettyRawView, Segmented } from '../components/Segmented';
+import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
+import { fmtBytes, fmtInt } from '../format';
+import { useTransitionState } from '../useTransitionState';
 
 export function ContextMessagePage() {
-  const { file, index } = useParams({ from: "/context/$file/message/$index" });
+  const { file, index } = useParams({ from: '/context/$file/message/$index' });
   const idx = Number(index);
   const query = useQuery({
-    queryKey: ["context-message", file, idx],
+    queryKey: ['context-message', file, idx],
     queryFn: () => getContextMessage(file, idx),
   });
   const data = query.data;
@@ -23,18 +23,20 @@ export function ContextMessagePage() {
   return (
     <section>
       <Breadcrumbs>
-        <Link to="/context" className="link">
+        <Link to='/context' className='link'>
           Context size
         </Link>
-        <Link to="/context/$file" params={{ file }} className="link">
+        <Link to='/context/$file' params={{ file }} className='link'>
           Request breakdown
         </Link>
-        <span className="crumb-current">Message #{idx + 1}</span>
+        <span className='crumb-current'>Message #{idx + 1}</span>
       </Breadcrumbs>
-      <div className="pagehead">
+      <div className='pagehead'>
         <h1>Message #{idx + 1}</h1>
       </div>
-      <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
+      <div className='muted' style={{ marginBottom: '0.75rem', wordBreak: 'break-all' }}>
+        {file}
+      </div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<MessageSkeleton />}>
         {data?.evicted && <EvictedBody data={data} />}
@@ -48,16 +50,16 @@ export function ContextMessagePage() {
 function MessageSkeleton() {
   return (
     <>
-      <nav className="pager" aria-hidden>
-        <Skeleton w="6rem" />
-        <Skeleton w="7rem" />
-        <Skeleton w="6rem" />
+      <nav className='pager' aria-hidden>
+        <Skeleton w='6rem' />
+        <Skeleton w='7rem' />
+        <Skeleton w='6rem' />
       </nav>
       <SkeletonStats count={3} />
-      <div className="card">
-        <div className="card-head">
-          <Skeleton w="22%" h="0.95em" />
-          <Skeleton w="7rem" />
+      <div className='card'>
+        <div className='card-head'>
+          <Skeleton w='22%' h='0.95em' />
+          <Skeleton w='7rem' />
         </div>
         <SkeletonMsgBlocks count={3} lines={5} />
       </div>
@@ -66,25 +68,25 @@ function MessageSkeleton() {
 }
 
 function MessageBody({ file, message: m }: { file: string; message: RequestMessageDetail }) {
-  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
+  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>('pretty');
 
   return (
     <>
       <MessagePager file={file} index={m.index} messageCount={m.messageCount} />
 
-      <div className="grid stats">
-        <StatTile label="Position" value={`#${m.index + 1}`} sub={`of ${m.messageCount} messages`} />
-        <StatTile label="Role" value={m.role} />
-        <StatTile label="Size" value={fmtBytes(m.bytes)} sub={`~${fmtInt(m.estTokens)} tokens`} />
+      <div className='grid stats'>
+        <StatTile label='Position' value={`#${m.index + 1}`} sub={`of ${m.messageCount} messages`} />
+        <StatTile label='Role' value={m.role} />
+        <StatTile label='Size' value={fmtBytes(m.bytes)} sub={`~${fmtInt(m.estTokens)} tokens`} />
       </div>
 
-      <div className="card">
-        <div className="card-head">
+      <div className='card'>
+        <div className='card-head'>
           <h2>Full message</h2>
-          <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label="Message view" busy={isSwitching} />
+          <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label='Message view' busy={isSwitching} />
         </div>
-        <div className={isSwitching ? "is-stale" : undefined}>
-          {view === "pretty" ? <PrettyMessage content={m.content} /> : <pre className="rawjson wrap">{m.content}</pre>}
+        <div className={isSwitching ? 'is-stale' : undefined}>
+          {view === 'pretty' ? <PrettyMessage content={m.content} /> : <pre className='rawjson wrap'>{m.content}</pre>}
         </div>
       </div>
     </>
@@ -97,35 +99,27 @@ function MessagePager({ file, index, messageCount }: { file: string; index: numb
   const hasNext = index < messageCount - 1;
 
   return (
-    <nav className="pager" aria-label="Message navigation">
+    <nav className='pager' aria-label='Message navigation'>
       {hasPrev ? (
-        <Link
-          to="/context/$file/message/$index"
-          params={{ file, index: String(index - 1) }}
-          className="pager-btn"
-        >
+        <Link to='/context/$file/message/$index' params={{ file, index: String(index - 1) }} className='pager-btn'>
           ‹ Previous
         </Link>
       ) : (
-        <button className="pager-btn" disabled>
+        <button type='button' className='pager-btn' disabled>
           ‹ Previous
         </button>
       )}
 
-      <span className="pager-pos muted">
+      <span className='pager-pos muted'>
         #{index + 1} of {messageCount}
       </span>
 
       {hasNext ? (
-        <Link
-          to="/context/$file/message/$index"
-          params={{ file, index: String(index + 1) }}
-          className="pager-btn"
-        >
+        <Link to='/context/$file/message/$index' params={{ file, index: String(index + 1) }} className='pager-btn'>
           Next ›
         </Link>
       ) : (
-        <button className="pager-btn" disabled>
+        <button type='button' className='pager-btn' disabled>
           Next ›
         </button>
       )}
@@ -146,15 +140,16 @@ function PrettyMessage({ content }: { content: string }) {
   try {
     parsed = JSON.parse(content);
   } catch {
-    return <pre className="rawjson wrap">{content}</pre>;
+    return <pre className='rawjson wrap'>{content}</pre>;
   }
 
   const blocks = toBlocks((parsed as { content?: unknown } | null)?.content);
-  if (blocks.length === 0) return <pre className="rawjson wrap">{content}</pre>;
+  if (blocks.length === 0) return <pre className='rawjson wrap'>{content}</pre>;
 
   return (
-    <div className="msg-blocks">
+    <div className='msg-blocks'>
       {blocks.map((block, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a message's content blocks are positional and never reorder
         <BlockView key={i} block={block} />
       ))}
     </div>
@@ -163,46 +158,59 @@ function PrettyMessage({ content }: { content: string }) {
 
 /** Normalise a message's `content` into an array of blocks. */
 function toBlocks(content: unknown): Block[] {
-  if (typeof content === "string") return [{ type: "text", text: content }];
-  if (Array.isArray(content)) return content.map((b) => (typeof b === "string" ? { type: "text", text: b } : (b as Block)));
+  if (typeof content === 'string') return [{ type: 'text', text: content }];
+  if (Array.isArray(content))
+    return content.map((b) => (typeof b === 'string' ? { type: 'text', text: b } : (b as Block)));
   return [];
 }
 
 function BlockView({ block }: { block: Block }) {
-  const type = typeof block.type === "string" ? block.type : "unknown";
+  const type = typeof block.type === 'string' ? block.type : 'unknown';
 
   switch (type) {
-    case "text":
-      return <Section label="Text"><Prose text={str(block.text)} /></Section>;
-
-    case "thinking":
-      return <Section label="Thinking"><Prose text={str(block.thinking)} /></Section>;
-
-    case "tool_use":
+    case 'text':
       return (
-        <Section label={`Tool call · ${str(block.name) || "unknown"}`}>
-          <pre className="rawjson wrap">{stringify(block.input)}</pre>
+        <Section label='Text'>
+          <Prose text={str(block.text)} />
         </Section>
       );
 
-    case "tool_result": {
+    case 'thinking':
+      return (
+        <Section label='Thinking'>
+          <Prose text={str(block.thinking)} />
+        </Section>
+      );
+
+    case 'tool_use':
+      return (
+        <Section label={`Tool call · ${str(block.name) || 'unknown'}`}>
+          <pre className='rawjson wrap'>{stringify(block.input)}</pre>
+        </Section>
+      );
+
+    case 'tool_result': {
       const error = block.is_error === true;
       return (
-        <Section label="Tool result" badge={error ? "error" : undefined}>
+        <Section label='Tool result' badge={error ? 'error' : undefined}>
           {toBlocks(block.content).map((b, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a tool result's blocks are positional and never reorder
             <BlockView key={i} block={b} />
           ))}
         </Section>
       );
     }
 
-    case "image": {
+    case 'image': {
       const src = (block.source ?? {}) as Block;
-      const media = str(src.media_type) || "image";
-      const bytes = typeof src.data === "string" ? Math.floor((src.data.length * 3) / 4) : 0;
+      const media = str(src.media_type) || 'image';
+      const bytes = typeof src.data === 'string' ? Math.floor((src.data.length * 3) / 4) : 0;
       return (
-        <Section label="Image">
-          <div className="muted">{media}{bytes ? ` · ~${fmtBytes(bytes)} (data omitted)` : ""}</div>
+        <Section label='Image'>
+          <div className='muted'>
+            {media}
+            {bytes ? ` · ~${fmtBytes(bytes)} (data omitted)` : ''}
+          </div>
         </Section>
       );
     }
@@ -210,7 +218,7 @@ function BlockView({ block }: { block: Block }) {
     default:
       return (
         <Section label={type}>
-          <pre className="rawjson wrap">{stringify(block)}</pre>
+          <pre className='rawjson wrap'>{stringify(block)}</pre>
         </Section>
       );
   }
@@ -218,10 +226,10 @@ function BlockView({ block }: { block: Block }) {
 
 function Section({ label, badge, children }: { label: string; badge?: string; children: React.ReactNode }) {
   return (
-    <div className="msg-block">
-      <div className="msg-block-head">
-        <span className="msg-block-label">{label}</span>
-        {badge && <span className="msg-badge">{badge}</span>}
+    <div className='msg-block'>
+      <div className='msg-block-head'>
+        <span className='msg-block-label'>{label}</span>
+        {badge && <span className='msg-badge'>{badge}</span>}
       </div>
       {children}
     </div>
@@ -230,11 +238,11 @@ function Section({ label, badge, children }: { label: string; badge?: string; ch
 
 /** Wrapped, newline-preserving prose for text-ish values. */
 function Prose({ text }: { text: string }) {
-  return <div className="msg-text">{text}</div>;
+  return <div className='msg-text'>{text}</div>;
 }
 
 function str(v: unknown): string {
-  return typeof v === "string" ? v : "";
+  return typeof v === 'string' ? v : '';
 }
 
 function stringify(v: unknown): string {
@@ -247,10 +255,10 @@ function stringify(v: unknown): string {
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="card stat">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      <div className="stat-foot">{sub && <span className="muted">{sub}</span>}</div>
+    <div className='card stat'>
+      <div className='stat-label'>{label}</div>
+      <div className='stat-value'>{value}</div>
+      <div className='stat-foot'>{sub && <span className='muted'>{sub}</span>}</div>
     </div>
   );
 }

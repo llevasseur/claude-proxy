@@ -7,8 +7,9 @@
  * changing size at all. Splitting requests into cohorts — one per distinct
  * system prompt — separates the two.
  */
-import { isAuditSidecar, type AuditSidecar } from "./types.js";
-import { reportDay } from "./time.js";
+
+import { reportDay } from './time.js';
+import { type AuditSidecar, isAuditSidecar } from './types.js';
 
 /** Requests in a day that shared one system prompt. */
 export interface PromptCohort {
@@ -46,11 +47,11 @@ export interface PromptMixDay {
 
 /** Coarse size bands, wide enough that a prompt drifting a few KB stays put. */
 const BANDS: { max: number; label: string }[] = [
-  { max: 1_000, label: "<1 KB" },
-  { max: 8_000, label: "1–8 KB" },
-  { max: 32_000, label: "8–32 KB" },
-  { max: 128_000, label: "32–128 KB" },
-  { max: Number.POSITIVE_INFINITY, label: "128 KB+" },
+  { max: 1_000, label: '<1 KB' },
+  { max: 8_000, label: '1–8 KB' },
+  { max: 32_000, label: '8–32 KB' },
+  { max: 128_000, label: '32–128 KB' },
+  { max: Number.POSITIVE_INFINITY, label: '128 KB+' },
 ];
 
 function band(bytes: number): { max: number; label: string } {
@@ -149,7 +150,9 @@ export function promptMixByDay(sidecars: readonly unknown[]): PromptMixDay[] {
     if (list) list.push(s);
     else days.set(day, [s]);
   }
-  return [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, list]) => summarizePromptMix(list, date));
+  return [...days.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, list]) => summarizePromptMix(list, date));
 }
 
 /** A model's prompt replaced by a different one between two days. */

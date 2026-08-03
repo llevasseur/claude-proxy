@@ -1,4 +1,4 @@
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 export interface Series {
   /** Key into each data row. */
@@ -22,32 +22,32 @@ export interface SeriesLineChartProps {
 export function SeriesLineChart({ data, series, xKey, format, height = 220 }: SeriesLineChartProps) {
   return (
     <div style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width='100%' height='100%'>
         <LineChart data={data} margin={{ top: 6, right: 12, bottom: 2, left: 2 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <CartesianGrid strokeDasharray='3 3' stroke='var(--border)' />
           <XAxis
             dataKey={xKey}
-            tick={{ fontSize: 11, fill: "var(--muted)" }}
+            tick={{ fontSize: 11, fill: 'var(--muted)' }}
             axisLine={false}
             tickLine={false}
-            interval="preserveStartEnd"
+            interval='preserveStartEnd'
             minTickGap={24}
           />
           <YAxis
             width={48}
-            tick={{ fontSize: 11, fill: "var(--muted)" }}
+            tick={{ fontSize: 11, fill: 'var(--muted)' }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v) => (typeof v === "number" ? format(v) : String(v))}
+            tickFormatter={(v) => (typeof v === 'number' ? format(v) : String(v))}
           />
           <Tooltip
-            cursor={{ stroke: "var(--border)", strokeWidth: 1 }}
+            cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
             content={<SeriesTooltip series={series} format={format} />}
           />
           {series.map((s) => (
             <Line
               key={s.dataKey}
-              type="monotone"
+              type='monotone'
               name={s.name}
               dataKey={s.dataKey}
               stroke={s.color}
@@ -80,16 +80,16 @@ function SeriesTooltip({ series, format, active, label, payload }: SeriesTooltip
   if (!active || !payload?.length) return null;
   const valueFor = (key: string) => payload.find((p) => p.dataKey === key)?.value;
   return (
-    <div className="charttip">
-      <div className="charttip-label">{label}</div>
+    <div className='charttip'>
+      <div className='charttip-label'>{label}</div>
       {series.map((s) => {
         const value = valueFor(s.dataKey);
         if (value == null) return null;
         return (
-          <div className="charttip-row" key={s.dataKey}>
-            <span className="charttip-dot" style={{ background: s.color }} />
-            <span className="charttip-name">{s.name}</span>
-            <span className="charttip-value">{format(value)}</span>
+          <div className='charttip-row' key={s.dataKey}>
+            <span className='charttip-dot' style={{ background: s.color }} />
+            <span className='charttip-name'>{s.name}</span>
+            <span className='charttip-value'>{format(value)}</span>
           </div>
         );
       })}

@@ -3,14 +3,14 @@
 # Resolve and export CLAUDE_PROXY_STORE — the directory holding this checkout's
 # per-session transcripts — so `/revive --source proxy` never has to guess a path.
 #
-# The store is `<LOG_DIR>/sessions` (`sessionsDir` in proxy/session.mjs), where
+# The store is `<LOG_DIR>/sessions` (`sessionsDir` in proxy/session.ts), where
 # LOG_DIR defaults to `<repo>/logs`. This script derives it from its own location,
 # so it stays correct after a move, a rename, or a second clone.
 #
 # One correction on top of that: from a worktree under `.claude/worktrees/`, the
 # file's own location is the *worktree's* copy, but the proxy that actually writes
 # transcripts runs from the main checkout (LOG_DIR is `<dir of the running
-# proxy.mjs>/../logs`, proxy/proxy.mjs). Pointing at the worktree's `logs/sessions`
+# proxy.ts>/../logs`, proxy/proxy.ts). Pointing at the worktree's `logs/sessions`
 # would hand `/revive` an empty directory that vanishes with the worktree, so the
 # root is resolved back to the main checkout via `git rev-parse --git-common-dir`.
 # An explicit LOG_DIR still wins, and a non-git copy falls back to the file's own

@@ -8,12 +8,12 @@
  * Strictly additive: a sidecar already carrying `request.system` is left
  * untouched, and no field is ever removed or rewritten.
  */
-import { readFile, readdir, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { isAuditSidecar, outlineWirePrompt, type AuditSidecar } from "@claude-proxy/core";
-import { hashWirePrompt, readStoredPrompt, writeStoredPrompt } from "./prompt-store.js";
+import { readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { type AuditSidecar, isAuditSidecar, outlineWirePrompt } from '@claude-proxy/core';
+import { hashWirePrompt, readStoredPrompt, writeStoredPrompt } from './prompt-store.js';
 
-const AUDIT_SUFFIX = ".audit.json";
+const AUDIT_SUFFIX = '.audit.json';
 const DAY_DIR_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** One sidecar to consider, with the directory its body would share. */
@@ -67,7 +67,10 @@ export async function collectBackfillTargets(logDir: string): Promise<BackfillTa
 
   const bases = async (dir: string): Promise<string[]> => {
     try {
-      return (await readdir(dir)).filter((n) => n.endsWith(AUDIT_SUFFIX)).map((n) => n.slice(0, -AUDIT_SUFFIX.length)).sort();
+      return (await readdir(dir))
+        .filter((n) => n.endsWith(AUDIT_SUFFIX))
+        .map((n) => n.slice(0, -AUDIT_SUFFIX.length))
+        .sort();
     } catch {
       return [];
     }
@@ -75,12 +78,12 @@ export async function collectBackfillTargets(logDir: string): Promise<BackfillTa
 
   let days: string[];
   try {
-    days = (await readdir(path.join(root, "archive"))).filter((d) => DAY_DIR_RE.test(d)).sort();
+    days = (await readdir(path.join(root, 'archive'))).filter((d) => DAY_DIR_RE.test(d)).sort();
   } catch {
     days = [];
   }
   for (const day of days) {
-    const dir = path.join(root, "archive", day);
+    const dir = path.join(root, 'archive', day);
     for (const base of await bases(dir)) targets.push({ dir, base, day });
   }
   for (const base of await bases(root)) targets.push({ dir: root, base, day: null });
@@ -91,7 +94,7 @@ export async function collectBackfillTargets(logDir: string): Promise<BackfillTa
 /** Write a patched sidecar through a temp file, so a crash cannot truncate it. */
 async function writeSidecarAtomic(file: string, sidecar: AuditSidecar): Promise<void> {
   const temp = `${file}.${process.pid}.tmp`;
-  await writeFile(temp, `${JSON.stringify(sidecar, null, 2)}`, "utf8");
+  await writeFile(temp, `${JSON.stringify(sidecar, null, 2)}`, 'utf8');
   await rename(temp, file);
 }
 
@@ -117,7 +120,7 @@ export async function backfillPromptIdentity(
 
     const sidecarPath = path.join(target.dir, `${target.base}${AUDIT_SUFFIX}`);
     try {
-      const parsed: unknown = JSON.parse(await readFile(sidecarPath, "utf8"));
+      const parsed: unknown = JSON.parse(await readFile(sidecarPath, 'utf8'));
       if (!isAuditSidecar(parsed)) {
         report.unparseable += 1;
         continue;
@@ -130,9 +133,9 @@ export async function backfillPromptIdentity(
 
       let body: unknown;
       try {
-        body = JSON.parse(await readFile(path.join(target.dir, `${target.base}.request.txt`), "utf8"));
+        body = JSON.parse(await readFile(path.join(target.dir, `${target.base}.request.txt`), 'utf8'));
       } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") report.bodyMissing += 1;
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') report.bodyMissing += 1;
         else report.unparseable += 1;
         continue;
       }

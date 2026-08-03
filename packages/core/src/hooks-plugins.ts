@@ -8,7 +8,7 @@
  *
  * Pure: no I/O — the server reads settings.json and passes the parsed values in.
  */
-import type { LaunchAliasPosture } from "./launch-aliases.js";
+import type { LaunchAliasPosture } from './launch-aliases.js';
 
 /** One configured hook command, flattened out of the nested `hooks` object. */
 export interface HookRow {
@@ -39,23 +39,23 @@ export interface PluginRow {
  */
 export function flattenHooks(hooks: unknown): HookRow[] {
   const rows: HookRow[] = [];
-  if (!hooks || typeof hooks !== "object") return rows;
+  if (!hooks || typeof hooks !== 'object') return rows;
   for (const [event, groups] of Object.entries(hooks as Record<string, unknown>)) {
     if (!Array.isArray(groups)) continue;
     for (const group of groups) {
-      if (!group || typeof group !== "object") continue;
+      if (!group || typeof group !== 'object') continue;
       const g = group as { matcher?: unknown; hooks?: unknown };
-      const matcher = typeof g.matcher === "string" ? g.matcher : "";
+      const matcher = typeof g.matcher === 'string' ? g.matcher : '';
       if (!Array.isArray(g.hooks)) continue;
       for (const h of g.hooks) {
-        if (!h || typeof h !== "object") continue;
+        if (!h || typeof h !== 'object') continue;
         const hook = h as { command?: unknown; statusMessage?: unknown };
-        if (typeof hook.command !== "string") continue;
+        if (typeof hook.command !== 'string') continue;
         rows.push({
           event,
           matcher,
           command: hook.command,
-          ...(typeof hook.statusMessage === "string" ? { statusMessage: hook.statusMessage } : {}),
+          ...(typeof hook.statusMessage === 'string' ? { statusMessage: hook.statusMessage } : {}),
         });
       }
     }
@@ -70,19 +70,19 @@ export function flattenHooks(hooks: unknown): HookRow[] {
  */
 export function normalizePlugins(enabledPlugins: unknown): PluginRow[] {
   const rows: PluginRow[] = [];
-  if (!enabledPlugins || typeof enabledPlugins !== "object") return rows;
+  if (!enabledPlugins || typeof enabledPlugins !== 'object') return rows;
   for (const [key, value] of Object.entries(enabledPlugins as Record<string, unknown>)) {
-    if (typeof value !== "boolean") continue;
-    const at = key.lastIndexOf("@");
+    if (typeof value !== 'boolean') continue;
+    const at = key.lastIndexOf('@');
     const name = at >= 0 ? key.slice(0, at) : key;
-    const marketplace = at >= 0 ? key.slice(at + 1) : "";
+    const marketplace = at >= 0 ? key.slice(at + 1) : '';
     rows.push({ name, marketplace, enabled: value });
   }
   return rows;
 }
 
 /** Whether a launch mode's user hooks / plugins are expected to load. */
-export type LoadState = "native" | "not-loaded" | "unverified" | "expected";
+export type LoadState = 'native' | 'not-loaded' | 'unverified' | 'expected';
 
 export interface AliasLoadExpectation {
   /** The `claude*` alias name. */
@@ -107,8 +107,8 @@ export interface AliasLoadExpectation {
  */
 export function hookPluginLoadExpectations(posture: LaunchAliasPosture): AliasLoadExpectation[] {
   return posture.aliases.map((a) => {
-    if (a.indeterminate) return { name: a.name, hooks: "unverified", plugins: "expected" };
-    if (a.userSettingsLoaded) return { name: a.name, hooks: "native", plugins: "native" };
-    return { name: a.name, hooks: "not-loaded", plugins: "not-loaded" };
+    if (a.indeterminate) return { name: a.name, hooks: 'unverified', plugins: 'expected' };
+    if (a.userSettingsLoaded) return { name: a.name, hooks: 'native', plugins: 'native' };
+    return { name: a.name, hooks: 'not-loaded', plugins: 'not-loaded' };
   });
 }

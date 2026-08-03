@@ -1,20 +1,20 @@
-import { lstat, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { lstat, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   buildJobTree,
-  jobFileKind,
-  jobStateTone,
-  normalizeJobState,
   type JobFileEntry,
   type JobFileKind,
   type JobStateFields,
   type JobTreeNode,
-} from "@claude-proxy/core";
+  jobFileKind,
+  jobStateTone,
+  normalizeJobState,
+} from '@claude-proxy/core';
 
 /** Default location of Claude Code's background jobs: `~/.claude/jobs`. */
 export function defaultJobsDir(): string {
-  return path.join(os.homedir(), ".claude", "jobs");
+  return path.join(os.homedir(), '.claude', 'jobs');
 }
 
 /** Resolve the jobs directory: `CLAUDE_JOBS` env override, else the default. */
@@ -35,7 +35,7 @@ const MAX_TREE_DEPTH = 8;
 
 /** Directories listed but never descended into — thousands of files, none of them
  * the job's own work. */
-const NO_DESCEND = new Set(["node_modules", ".git", ".pnpm-store", ".cache"]);
+const NO_DESCEND = new Set(['node_modules', '.git', '.pnpm-store', '.cache']);
 
 /** How much of a text file the viewer is given. Beyond this it is truncated, and
  * the response says so. */
@@ -46,14 +46,14 @@ const MAX_IMAGE_BYTES = 4_000_000;
 
 /** Extension → mime type, for the images the viewer inlines. */
 const IMAGE_MIME: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  avif: "image/avif",
-  svg: "image/svg+xml",
-  ico: "image/x-icon",
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  svg: 'image/svg+xml',
+  ico: 'image/x-icon',
 };
 
 /** One job directory: what its `state.json` says, plus what the directory holds. */
@@ -93,7 +93,7 @@ export interface JobFileDetail {
   bytes: number;
   modified: string;
   /** `utf8` for text, `base64` for an inlined image. */
-  encoding: "utf8" | "base64";
+  encoding: 'utf8' | 'base64';
   /** The file's contents; "" when nothing was read (binary, or too large). */
   content: string;
   /** Set for an inlined image, so the client can build a data URL. */
@@ -125,11 +125,11 @@ function resolveJobDir(jobsDir: string, id: string): string {
 async function walkJobDir(jobDir: string): Promise<{ entries: JobFileEntry[]; truncated: boolean }> {
   const entries: JobFileEntry[] = [];
   let truncated = false;
-  const queue: { abs: string; rel: string; depth: number }[] = [{ abs: jobDir, rel: "", depth: 0 }];
+  const queue: { abs: string; rel: string; depth: number }[] = [{ abs: jobDir, rel: '', depth: 0 }];
 
   while (queue.length > 0) {
     const { abs, rel, depth } = queue.shift() as { abs: string; rel: string; depth: number };
-    let dirents: import("node:fs").Dirent[];
+    let dirents: import('node:fs').Dirent[];
     try {
       dirents = await readdir(abs, { withFileTypes: true });
     } catch {
@@ -142,11 +142,11 @@ async function walkJobDir(jobDir: string): Promise<{ entries: JobFileEntry[]; tr
         return { entries, truncated };
       }
 
-      const childRel = rel === "" ? dirent.name : `${rel}/${dirent.name}`;
+      const childRel = rel === '' ? dirent.name : `${rel}/${dirent.name}`;
       const childAbs = path.join(abs, dirent.name);
       const link = dirent.isSymbolicLink();
 
-      let info: import("node:fs").Stats;
+      let info: import('node:fs').Stats;
       try {
         info = await stat(childAbs);
       } catch {
@@ -176,7 +176,7 @@ async function walkJobDir(jobDir: string): Promise<{ entries: JobFileEntry[]; tr
  * file yields empty fields and `readable: false`. */
 async function readJobState(jobDir: string): Promise<{ state: JobStateFields; readable: boolean }> {
   try {
-    const parsed = JSON.parse(await readFile(path.join(jobDir, "state.json"), "utf8")) as unknown;
+    const parsed = JSON.parse(await readFile(path.join(jobDir, 'state.json'), 'utf8')) as unknown;
     return { state: normalizeJobState(parsed), readable: true };
   } catch {
     return { state: normalizeJobState(null), readable: false };
@@ -187,7 +187,7 @@ async function readJobState(jobDir: string): Promise<{ state: JobStateFields; re
 function tally(entries: readonly JobFileEntry[]): { files: number; bytes: number; modified: string } {
   let files = 0;
   let bytes = 0;
-  let modified = "";
+  let modified = '';
   for (const entry of entries) {
     if (entry.dir) continue;
     files += 1;
@@ -204,7 +204,7 @@ function tally(entries: readonly JobFileEntry[]): { files: number; bytes: number
  * disk. Throws only if the jobs root itself cannot be read.
  */
 export async function listJobs(jobsDir: string): Promise<JobSummary[]> {
-  let dirents: import("node:fs").Dirent[];
+  let dirents: import('node:fs').Dirent[];
   try {
     dirents = await readdir(jobsDir, { withFileTypes: true });
   } catch (err) {
@@ -238,7 +238,7 @@ export async function readJob(jobsDir: string, id: string): Promise<{ job: JobSu
   const jobDir = resolveJobDir(jobsDir, id);
   try {
     const info = await stat(jobDir);
-    if (!info.isDirectory()) throw new Error("not a directory");
+    if (!info.isDirectory()) throw new Error('not a directory');
   } catch {
     throw new Error(`job not found: ${id}`);
   }
@@ -295,7 +295,7 @@ export async function deleteJob(jobsDir: string, id: string): Promise<JobDeleteR
   if (path.dirname(real) !== realRoot) throw new Error(`invalid job id: ${id}`);
 
   const [{ state }, { entries }] = await Promise.all([readJobState(jobDir), walkJobDir(jobDir)]);
-  if (jobStateTone(state.state) === "busy") {
+  if (jobStateTone(state.state) === 'busy') {
     throw new Error(`job is still running, stop it before deleting: ${id}`);
   }
 
@@ -306,9 +306,9 @@ export async function deleteJob(jobsDir: string, id: string): Promise<JobDeleteR
 
 /** Validate a (URL-supplied) relative file path segment by segment. */
 function safeSegments(relPath: string): string[] {
-  const segments = relPath.split("/");
+  const segments = relPath.split('/');
   for (const segment of segments) {
-    if (segment === "" || segment === "." || segment === ".." || segment.includes("\\")) {
+    if (segment === '' || segment === '.' || segment === '..' || segment.includes('\\')) {
       throw new Error(`invalid job file path: ${relPath}`);
     }
   }
@@ -368,29 +368,29 @@ export async function readJobFile(jobsDir: string, id: string, relPath: string):
     note: null,
   };
 
-  if (kind === "image") {
-    const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  if (kind === 'image') {
+    const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase();
     if (info.size > MAX_IMAGE_BYTES) {
-      return { ...base, kind, encoding: "utf8", content: "", binary: true, note: "image too large to inline" };
+      return { ...base, kind, encoding: 'utf8', content: '', binary: true, note: 'image too large to inline' };
     }
     const buf = await readFile(real);
-    return { ...base, kind, encoding: "base64", content: buf.toString("base64"), mime: IMAGE_MIME[ext] ?? null };
+    return { ...base, kind, encoding: 'base64', content: buf.toString('base64'), mime: IMAGE_MIME[ext] ?? null };
   }
 
-  if (kind === "binary") {
-    return { ...base, kind, encoding: "utf8", content: "", binary: true, note: "binary file — not read" };
+  if (kind === 'binary') {
+    return { ...base, kind, encoding: 'utf8', content: '', binary: true, note: 'binary file — not read' };
   }
 
   const buf = await readFile(real);
   const slice = buf.subarray(0, MAX_TEXT_BYTES);
   if (looksBinary(slice)) {
-    return { ...base, kind: "binary", encoding: "utf8", content: "", binary: true, note: "binary file — not read" };
+    return { ...base, kind: 'binary', encoding: 'utf8', content: '', binary: true, note: 'binary file — not read' };
   }
   return {
     ...base,
     kind,
-    encoding: "utf8",
-    content: slice.toString("utf8"),
+    encoding: 'utf8',
+    content: slice.toString('utf8'),
     truncated: buf.length > slice.length,
   };
 }

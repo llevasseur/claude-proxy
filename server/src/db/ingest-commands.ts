@@ -1,15 +1,15 @@
-import { readFile, stat } from "node:fs/promises";
-import type { DatabaseSync } from "node:sqlite";
+import { readFile, stat } from 'node:fs/promises';
+import type { DatabaseSync } from 'node:sqlite';
 import {
-  ZERO_WASTE,
   type AuditTokens,
+  type CommandPattern,
   type CommandRun,
   type CommandRunStepStats,
   type CommandRunTurn,
-  type CommandPattern,
   runKey,
-} from "@claude-proxy/core";
-import { commandStorePath, parseCommandRunStore } from "../command-runs.js";
+  ZERO_WASTE,
+} from '@claude-proxy/core';
+import { commandStorePath, parseCommandRunStore } from '../command-runs.js';
 
 /**
  * Index `logs/commands/runs.jsonl` into the `command_run` tree.
@@ -24,7 +24,7 @@ import { commandStorePath, parseCommandRunStore } from "../command-runs.js";
  */
 
 /** The store's path relative to `logDir` — the `file_watermark` key. */
-export const STORE_PATH = "commands/runs.jsonl";
+export const STORE_PATH = 'commands/runs.jsonl';
 
 export interface CommandIngestStats {
   /** Runs the store holds, retired ones included. */
@@ -36,13 +36,13 @@ export interface CommandIngestStats {
 }
 
 interface CommandStatements {
-  insertRun: ReturnType<DatabaseSync["prepare"]>;
-  insertFlag: ReturnType<DatabaseSync["prepare"]>;
-  insertThread: ReturnType<DatabaseSync["prepare"]>;
-  insertTurn: ReturnType<DatabaseSync["prepare"]>;
-  insertStep: ReturnType<DatabaseSync["prepare"]>;
-  insertPattern: ReturnType<DatabaseSync["prepare"]>;
-  watermark: ReturnType<DatabaseSync["prepare"]>;
+  insertRun: ReturnType<DatabaseSync['prepare']>;
+  insertFlag: ReturnType<DatabaseSync['prepare']>;
+  insertThread: ReturnType<DatabaseSync['prepare']>;
+  insertTurn: ReturnType<DatabaseSync['prepare']>;
+  insertStep: ReturnType<DatabaseSync['prepare']>;
+  insertPattern: ReturnType<DatabaseSync['prepare']>;
+  watermark: ReturnType<DatabaseSync['prepare']>;
 }
 
 function prepare(db: DatabaseSync): CommandStatements {
@@ -57,8 +57,8 @@ function prepare(db: DatabaseSync): CommandStatements {
         updated_at, document
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
-    insertFlag: db.prepare("INSERT INTO command_run_flag (run_id, ord, flag) VALUES (?, ?, ?)"),
-    insertThread: db.prepare("INSERT INTO command_run_thread (run_id, ord, member_thread_id) VALUES (?, ?, ?)"),
+    insertFlag: db.prepare('INSERT INTO command_run_flag (run_id, ord, flag) VALUES (?, ?, ?)'),
+    insertThread: db.prepare('INSERT INTO command_run_thread (run_id, ord, member_thread_id) VALUES (?, ?, ?)'),
     insertTurn: db.prepare(`
       INSERT INTO command_run_turn (
         run_id, ord, file, timestamp, turn_thread_id, step, node,
@@ -89,8 +89,8 @@ function prepare(db: DatabaseSync): CommandStatements {
 
 /** Every row the store contributes is replaced together; the children cascade. */
 function clearRuns(db: DatabaseSync): number {
-  const before = (db.prepare("SELECT count(*) c FROM command_run").get() as { c: number }).c;
-  db.exec("DELETE FROM command_run");
+  const before = (db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c;
+  db.exec('DELETE FROM command_run');
   return before;
 }
 
@@ -156,8 +156,12 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
     JSON.stringify(run),
   );
 
-  (run.flags ?? []).forEach((flag, i) => st.insertFlag.run(id, i, flag));
-  (run.threadIds ?? []).forEach((member, i) => st.insertThread.run(id, i, member));
+  (run.flags ?? []).forEach((flag, i) => {
+    st.insertFlag.run(id, i, flag);
+  });
+  (run.threadIds ?? []).forEach((member, i) => {
+    st.insertThread.run(id, i, member);
+  });
 
   (run.turns ?? []).forEach((turn: CommandRunTurn, i) => {
     const t = tokensOf(turn.tokens);
@@ -240,39 +244,41 @@ export async function ingestCommandRuns(db: DatabaseSync, logDir: string): Promi
   } catch (err) {
     // Only a *missing* store means the rows are unbacked. Any other error says
     // nothing about what is on disk, so it must not drop the tables.
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    db.exec("BEGIN");
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    db.exec('BEGIN');
     try {
       stats.deleted = clearRuns(db);
-      db.prepare("DELETE FROM file_watermark WHERE path = ?").run(STORE_PATH);
-      db.exec("COMMIT");
+      db.prepare('DELETE FROM file_watermark WHERE path = ?').run(STORE_PATH);
+      db.exec('COMMIT');
     } catch (txErr) {
-      db.exec("ROLLBACK");
+      db.exec('ROLLBACK');
       throw txErr;
     }
     return stats;
   }
 
-  const mark = db.prepare("SELECT bytes, modified FROM file_watermark WHERE path = ?").get(STORE_PATH) as
+  const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(STORE_PATH) as
     | { bytes: number; modified: string }
     | undefined;
   if (mark && mark.bytes === bytes && mark.modified === modified) {
-    stats.runs = (db.prepare("SELECT count(*) c FROM command_run").get() as { c: number }).c;
+    stats.runs = (db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c;
     return stats;
   }
 
   // Parsed through the store's own reader, so the two sides cannot drift.
-  const runs = parseCommandRunStore(await readFile(file, "utf8"));
+  const runs = parseCommandRunStore(await readFile(file, 'utf8'));
   const st = prepare(db);
 
-  db.exec("BEGIN");
+  db.exec('BEGIN');
   try {
     clearRuns(db);
-    runs.forEach((run, ord) => writeRun(st, run, ord));
+    runs.forEach((run, ord) => {
+      writeRun(st, run, ord);
+    });
     st.watermark.run(STORE_PATH, bytes, modified, new Date().toISOString());
-    db.exec("COMMIT");
+    db.exec('COMMIT');
   } catch (err) {
-    db.exec("ROLLBACK");
+    db.exec('ROLLBACK');
     throw err;
   }
 

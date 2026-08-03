@@ -1,146 +1,149 @@
 import {
-  analyzeRequestBody,
-  type AuditSidecar,
-  type StoredConcept,
-  withoutMetaSkills,
-  computeDigest,
-  deriveRequestErrors,
-  deriveSessionNodes,
-  linkRequestErrors,
-  extractRequestMessage,
-  extractRequestTool,
-  buildUsageLimits,
-  computeSkimDigest,
-  dayElapsedFraction,
-  digestsByDay,
-  diffWirePrompts,
-  isPartialDay,
-  attributePromptMix,
-  pairPromptRevisions,
-  promptMixByDay,
-  summarizePromptMix,
-  type MixAttribution,
-  type PromptMixDay,
-  type PromptRevision,
-  type SectionMove,
-  type StoredWirePrompt,
-  heuristicAdvice,
-  skimDigestsByDay,
-  summarizeContext,
-  toContextEntry,
-  computeAliasPosture,
-  flattenHooks,
-  normalizePlugins,
-  hookPluginLoadExpectations,
-  jobStateTone,
-  parseSessionErrors,
-  reportDay,
-  sessionContextPeak,
-  sessionSuggestionBuckets,
-  countSuggestionRecurrences,
-  countSuggestionStatuses,
-  suggestionStatusRows,
-  suggestFromBreakdown,
-  summarizeBreakdownPatterns,
-  withheldReport,
   type Advice,
   type AliasLoadExpectation,
-  type ContextEntry,
-  type ContextSummary,
-  type HookRow,
-  type LaunchAlias,
-  type LaunchAliasPosture,
-  type PluginRow,
-  type RequestBreakdown,
-  type RequestMessageDetail,
-  type RequestToolDetail,
+  type AuditSidecar,
+  analyzeRequestBody,
+  attributePromptMix,
   type BucketBreakdownInput,
   type BucketBreakdownSummary,
+  buildUsageLimits,
+  type CommandPattern,
+  type CommandRun,
+  type CommandStep,
+  type CommandSummary,
+  type ContextEntry,
+  type ContextSummary,
+  computeAliasPosture,
+  computeDigest,
+  computeSkimDigest,
+  countSuggestionRecurrences,
+  countSuggestionStatuses,
+  dayElapsedFraction,
+  deriveRequestErrors,
+  deriveSessionNodes,
+  diffWirePrompts,
+  digestsByDay,
+  extractRequestMessage,
+  extractRequestTool,
+  type FiltersResponse,
+  filterRunsByFlags,
+  flattenHooks,
+  type HookRow,
+  heuristicAdvice,
+  hookPluginLoadExpectations,
+  isPartialDay,
+  type JobTreeNode,
+  jobStateTone,
+  type LaunchAlias,
+  type LaunchAliasPosture,
   type LinkedSessionError,
+  linkRequestErrors,
+  type MixAttribution,
+  normalizePlugins,
+  type PatternFrequency,
+  type PluginRow,
+  PROXY_FILTER_INVENTORY,
+  type PromptMixDay,
+  type PromptRevision,
+  pairPromptRevisions,
+  parseSessionErrors,
+  parseSystemPromptText,
+  patternFrequency,
+  promptMixByDay,
+  type RequestBreakdown,
   type RequestErrorSite,
+  type RequestMessageDetail,
+  type RequestToolDetail,
+  reportDay,
+  runKey,
+  runTotals,
+  type SectionMove,
   type SessionBucket,
   type SessionContextPeak,
   type SessionError,
   type SessionErrorLink,
   type SessionMeta,
   type SessionNode,
-  type JobTreeNode,
   type SessionSuggestion,
+  type SkimDigest,
+  type SkimShape,
+  type StepReach,
+  type StoredConcept,
+  type StoredWirePrompt,
   type SuggestionRecurrence,
   type SuggestionStatus,
   type SuggestionStatusRow,
   type SuggestionStatusUpdate,
-  type SkimDigest,
-  type SkimShape,
+  SYSTEM_PROMPT_MAX_BYTES,
+  type SystemPromptDoc,
+  sessionContextPeak,
+  sessionSuggestionBuckets,
+  skimDigestsByDay,
+  stepReach,
+  suggestFromBreakdown,
+  suggestionStatusRows,
+  summarizeBreakdownPatterns,
+  summarizeCommands,
+  summarizeContext,
+  summarizePromptMix,
+  summarizeSystemPrompt,
   type TopTool,
+  toContextEntry,
   type UsageDigest,
   type UsageLimitConfig,
   type UsageLimitsSnapshot,
   type WithheldReport,
-  PROXY_FILTER_INVENTORY,
-  filterRunsByFlags,
-  patternFrequency,
-  runKey,
-  runTotals,
-  stepReach,
-  summarizeCommands,
-  summarizeSystemPrompt,
-  parseSystemPromptText,
-  SYSTEM_PROMPT_MAX_BYTES,
-  type SystemPromptDoc,
-  type CommandPattern,
-  type CommandRun,
-  type CommandStep,
-  type CommandSummary,
-  type FiltersResponse,
-  type PatternFrequency,
-  type StepReach,
-} from "@claude-proxy/core";
-import { loadArchivedDigest } from "./archive.js";
-import { listInstalledCommands } from "./command-runs.js";
-import { conceptStorePath } from "./concepts.js";
-import { fileSource, type SidecarSource } from "./db/source.js";
-import {
-  locateRequestBody,
-  readArchivedDay,
-  readRequestBody,
-  readRetainedSidecar,
-  type RequestBodyLocation,
-  shiftDay,
-  today,
-} from "./logs.js";
-import { readStoredPrompts } from "./prompt-store.js";
-import { resolveRetentionDays } from "./retention.js";
-import { loadArchivedUsage, loadLearnedCeilings } from "./usage-history.js";
-import { loadLiveUsage } from "./usage-live.js";
+  withheldReport,
+  withoutMetaSkills,
+} from '@claude-proxy/core';
+import { loadArchivedDigest } from './archive.js';
+import { listInstalledCommands } from './command-runs.js';
+import { conceptStorePath } from './concepts.js';
+import { fileSource, type SidecarSource } from './db/source.js';
 import {
   deleteJob,
-  listJobs,
-  readJob,
-  readJobFile,
   type JobDeleteResult,
   type JobFileDetail,
   type JobSummary,
-} from "./jobs.js";
+  listJobs,
+  readJob,
+  readJobFile,
+} from './jobs.js';
+import {
+  locateRequestBody,
+  type RequestBodyLocation,
+  readRequestBody,
+  readRetainedSidecar,
+  shiftDay,
+  today,
+} from './logs.js';
 import {
   listProjectMemories,
   listProjects,
-  readMemory,
   type MemoryDetail,
   type MemoryFileSummary,
   type ProjectSummary,
-} from "./projects.js";
+  readMemory,
+} from './projects.js';
+import { readStoredPrompts } from './prompt-store.js';
+import { resolveRetentionDays } from './retention.js';
 import {
-  threadIdForBody,
   type SessionDetail,
   type SessionGraph,
   type SessionNodeTexts,
   type SessionSummary,
-} from "./sessions.js";
-import { readDeviceSettings, resolveSettingsPath } from "./settings.js";
-import { readSystemPromptFile, resolveSystemPromptPath, writeSystemPromptFile } from "./system-prompt.js";
-import { readSuggestionStatusStore, resolveSuggestionStatusPath, updateSuggestionStatusStore } from "./suggestion-status.js";
-import { readLaunchAliases } from "./shell-rc.js";
+  threadIdForBody,
+} from './sessions.js';
+import { readDeviceSettings, resolveSettingsPath } from './settings.js';
+import { readLaunchAliases } from './shell-rc.js';
+import {
+  readSuggestionStatusStore,
+  resolveSuggestionStatusPath,
+  updateSuggestionStatusStore,
+} from './suggestion-status.js';
+import { readSystemPromptFile, resolveSystemPromptPath, writeSystemPromptFile } from './system-prompt.js';
+import { loadArchivedUsage, loadLearnedCeilings } from './usage-history.js';
+import { loadLiveUsage } from './usage-live.js';
 
 export interface SummaryResponse {
   digest: UsageDigest;
@@ -190,7 +193,7 @@ function dedupeByFile(sidecars: readonly unknown[]): unknown[] {
   const out: unknown[] = [];
   for (const s of sidecars) {
     const file = (s as { __file?: unknown })?.__file;
-    if (typeof file !== "string") {
+    if (typeof file !== 'string') {
       out.push(s);
       continue;
     }
@@ -231,7 +234,7 @@ export async function buildUsage(
   const retainedDays = new Set<string>([today(now), ...archived.retainedDays]);
   for (const s of live.sidecars) {
     const ts = (s as { timestamp?: unknown })?.timestamp;
-    const day = typeof ts === "string" ? reportDay(ts) : null;
+    const day = typeof ts === 'string' ? reportDay(ts) : null;
     if (day) retainedDays.add(day);
   }
 
@@ -304,7 +307,8 @@ export async function buildTrends(
     const date = shiftDay(end, -i);
     if (byDate.has(date)) continue;
     const digest =
-      (await rawArchivedDigest(logDir, date, source)) ?? (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
+      (await rawArchivedDigest(logDir, date, source)) ??
+      (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
     if (digest) {
       byDate.set(date, digest);
       archivedDays += 1;
@@ -372,12 +376,20 @@ export async function buildPromptMix(
   let outlinesFound = 0;
   if (current && prior) {
     const paired = pairPromptRevisions(prior, current);
-    const outlines = await readStoredPrompts(logDir, paired.flatMap((r) => [r.priorHash, r.hash]));
+    const outlines = await readStoredPrompts(
+      logDir,
+      paired.flatMap((r) => [r.priorHash, r.hash]),
+    );
     outlinesFound = outlines.size;
     for (const revision of paired) {
       const before = outlines.get(revision.priorHash) ?? null;
       const after = outlines.get(revision.hash) ?? null;
-      revisions.push({ ...revision, prior: before, current: after, moves: before && after ? diffWirePrompts(before, after) : [] });
+      revisions.push({
+        ...revision,
+        prior: before,
+        current: after,
+        moves: before && after ? diffWirePrompts(before, after) : [],
+      });
     }
   }
 
@@ -385,7 +397,10 @@ export async function buildPromptMix(
     days: mix,
     attribution,
     revisions,
-    partial: current && isPartialDay(current.date, now) ? { date: current.date, elapsed: dayElapsedFraction(current.date, now) } : null,
+    partial:
+      current && isPartialDay(current.date, now)
+        ? { date: current.date, elapsed: dayElapsedFraction(current.date, now) }
+        : null,
     meta: { days, files, parseErrors, archivedDays, outlinesFound },
   };
 }
@@ -440,7 +455,11 @@ export async function buildContext(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<ContextResponse> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await source.readSidecars(
+    logDir,
+    { sinceDays: days, includeFile: true },
+    now,
+  );
   return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
 }
 
@@ -469,8 +488,8 @@ async function evictedOr404(
   file: string,
   location: RequestBodyLocation,
 ): Promise<EvictedBodyResponse | null> {
-  if (location.status === "present") return null;
-  if (location.status === "missing") throw new Error(`request file not found: ${file}`);
+  if (location.status === 'present') return null;
+  if (location.status === 'missing') throw new Error(`request file not found: ${file}`);
   return {
     file,
     evicted: true,
@@ -522,7 +541,11 @@ export type ContextMessageResponse = ContextMessagePresent | EvictedBodyResponse
  * even when the drill-down's raw JSON was truncated, so any message resolves.
  * Throws a labelled error the server maps to 404 when `index` is out of range.
  */
-export async function buildContextMessage(logDir: string, file: string, index: number): Promise<ContextMessageResponse> {
+export async function buildContextMessage(
+  logDir: string,
+  file: string,
+  index: number,
+): Promise<ContextMessageResponse> {
   const location = await locateRequestBody(logDir, file);
   const evicted = await evictedOr404(logDir, file, location);
   if (evicted) return evicted;
@@ -618,7 +641,7 @@ export async function buildJobs(jobsDir: string): Promise<JobsResponse> {
     meta: {
       jobsDir,
       total: jobs.length,
-      running: jobs.filter((j) => jobStateTone(j.state) === "busy").length,
+      running: jobs.filter((j) => jobStateTone(j.state) === 'busy').length,
       husks: jobs.filter((j) => !j.stateReadable).length,
       files: jobs.reduce((sum, j) => sum + j.files, 0),
       bytes: jobs.reduce((sum, j) => sum + j.bytes, 0),
@@ -681,7 +704,10 @@ export interface SessionsGraphResponse {
 }
 
 /** Every session transcript with its structured node stream, newest first — feeds the live graph. */
-export async function buildSessionsGraph(logDir: string, source: SidecarSource = fileSource): Promise<SessionsGraphResponse> {
+export async function buildSessionsGraph(
+  logDir: string,
+  source: SidecarSource = fileSource,
+): Promise<SessionsGraphResponse> {
   const sessions = await source.listSessionGraphs(logDir);
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
 }
@@ -1037,7 +1063,7 @@ export async function applySuggestionStatus(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<SuggestionStatusUpdateResponse> {
-  if (updates.length === 0) throw new Error("no suggestion status updates given");
+  if (updates.length === 0) throw new Error('no suggestion status updates given');
   const store = await updateSuggestionStatusStore(logDir, updates, now);
   const buckets = sessionSuggestionBuckets(await source.listSessionGraphs(logDir));
   const touched = [...new Set(updates.map((u) => u.bucket))];
@@ -1272,9 +1298,7 @@ export interface HooksPluginsResponse {
  * the proxy can't confirm one fired — only what `~/.claude/settings.json` declares.
  * Load expectations reuse the launch-alias posture.
  */
-export async function buildHooksPlugins(
-  settingsPath: string = resolveSettingsPath(),
-): Promise<HooksPluginsResponse> {
+export async function buildHooksPlugins(settingsPath: string = resolveSettingsPath()): Promise<HooksPluginsResponse> {
   const [settings, launchAliases] = await Promise.all([readDeviceSettings(settingsPath), readLaunchAliases()]);
   const posture = computeAliasPosture(launchAliases.aliases, settings.denyRules, settings.enabledDisableKeys);
   return {
@@ -1298,12 +1322,15 @@ export interface SystemPromptResponse {
  * The device system prompt — `~/.claude/CLAUDE.md` as it is on disk right now.
  * A device view, not a traffic one: nothing here comes from the captured logs.
  */
-export async function buildSystemPrompt(
-  promptPath: string = resolveSystemPromptPath(),
-): Promise<SystemPromptResponse> {
+export async function buildSystemPrompt(promptPath: string = resolveSystemPromptPath()): Promise<SystemPromptResponse> {
   const file = await readSystemPromptFile(promptPath);
   return {
-    prompt: summarizeSystemPrompt({ path: file.promptPath, exists: file.exists, text: file.text, modified: file.modified }),
+    prompt: summarizeSystemPrompt({
+      path: file.promptPath,
+      exists: file.exists,
+      text: file.text,
+      modified: file.modified,
+    }),
     maxBytes: SYSTEM_PROMPT_MAX_BYTES,
   };
 }
@@ -1317,10 +1344,7 @@ export interface SystemPromptUpdateResponse extends SystemPromptResponse {
  * Replace the device system prompt with `text` and answer with a fresh read of the
  * file, not an echo. Invalid input throws before anything is written.
  */
-export async function buildSystemPromptUpdate(
-  promptPath: string,
-  text: unknown,
-): Promise<SystemPromptUpdateResponse> {
+export async function buildSystemPromptUpdate(promptPath: string, text: unknown): Promise<SystemPromptUpdateResponse> {
   const written = await writeSystemPromptFile(promptPath, parseSystemPromptText(text));
   return {
     prompt: summarizeSystemPrompt({
@@ -1335,7 +1359,7 @@ export async function buildSystemPromptUpdate(
 }
 
 /**
- * The proxy's request-filter inventory: what `proxy/proxy.mjs` strips from every
+ * The proxy's request-filter inventory: what `proxy/proxy.ts` strips from every
  * request before forwarding. A static config view — these edits have no
  * per-request variation and can't be configured out of the CLI, so the proxy is
  * the only place they happen. Sourced from `PROXY_FILTER_INVENTORY` in core, which
@@ -1392,15 +1416,15 @@ export interface CommandRunListItem {
   model: string | null;
   started: string | null;
   ended: string | null;
-  outcome: CommandRun["outcome"];
-  interruption: CommandRun["interruption"];
+  outcome: CommandRun['outcome'];
+  interruption: CommandRun['interruption'];
   reachedEnd: boolean;
-  totals: CommandRun["totals"];
+  totals: CommandRun['totals'];
   /** Which rules fired, for the run list's badges. The details stay on the run page. */
-  patterns: CommandPattern["id"][];
+  patterns: CommandPattern['id'][];
   /** The furthest declared step anything was attributed to, or null. */
   lastStep: string | null;
-  meta: CommandRun["meta"];
+  meta: CommandRun['meta'];
 }
 
 /** Where the command file's content changed between two consecutive runs — the `/sync` marker. */
@@ -1449,7 +1473,7 @@ export async function buildCommand(
   const spec = installed.find((c) => c.command === command);
   const own = allRuns
     .filter((r) => r.command === command)
-    .sort((a, b) => (a.started ?? "").localeCompare(b.started ?? ""));
+    .sort((a, b) => (a.started ?? '').localeCompare(b.started ?? ''));
   if (!spec && own.length === 0) throw new Error(`command not found: ${command}`);
 
   // The current catalogue is the stable spine; fall back to the newest run's snapshot so
@@ -1490,14 +1514,14 @@ function toListItem(run: CommandRun): CommandRunListItem {
     parentCommand: run.parentCommand ?? null,
     threadId: run.threadId,
     command: run.command,
-    args: run.args ?? "",
+    args: run.args ?? '',
     flags: run.flags ?? [],
-    prompt: run.prompt ?? "",
+    prompt: run.prompt ?? '',
     commandHash: run.commandHash ?? null,
     model: run.model ?? null,
     started: run.started ?? null,
     ended: run.ended ?? null,
-    outcome: run.outcome ?? "interrupted",
+    outcome: run.outcome ?? 'interrupted',
     interruption: run.interruption ?? null,
     reachedEnd: !!run.reachedEnd,
     totals: runTotals(run),
@@ -1550,9 +1574,7 @@ export async function buildCommandRun(
   return {
     run,
     patterns: patternFrequency(runs.filter((r) => r.command === run.command)),
-    suggestions: buckets
-      .filter((b) => b.threadIds.some((id) => family.has(id)))
-      .flatMap((b) => b.suggestions),
+    suggestions: buckets.filter((b) => b.threadIds.some((id) => family.has(id))).flatMap((b) => b.suggestions),
     meta: {
       transcriptsPresent: present.length,
       transcripts: family.size,
@@ -1591,10 +1613,7 @@ function toServedConcept(concept: StoredConcept): StoredConcept {
  * Everything `/teach` has recorded. The store is small and append-only, so the
  * whole list is returned rather than paged.
  */
-export async function buildConcepts(
-  logDir: string,
-  source: SidecarSource = fileSource,
-): Promise<ConceptsResponse> {
+export async function buildConcepts(logDir: string, source: SidecarSource = fileSource): Promise<ConceptsResponse> {
   const concepts = (await source.readConcepts(logDir)).map(toServedConcept);
   return { concepts, meta: { storePath: conceptStorePath(logDir), total: concepts.length } };
 }

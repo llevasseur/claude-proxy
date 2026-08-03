@@ -8,7 +8,7 @@
  * Pure: shaping text into an outline, sizing it, and validating a proposed
  * replacement. Reading and writing the file is the server's job.
  */
-import { estTokens } from "./context.js";
+import { estTokens } from './context.js';
 
 /** One `#`-heading in the prompt, with the span of text it owns. */
 export interface SystemPromptSection {
@@ -60,8 +60,8 @@ const FENCE_RE = /^\s*(```|~~~)/;
  * skipped — a shell comment (`# do the thing`) is not a section.
  */
 export function outlineSystemPrompt(text: string): SystemPromptSection[] {
-  if (text === "") return [];
-  const lines = text.split("\n");
+  if (text === '') return [];
+  const lines = text.split('\n');
   const found: { heading: string; level: number; line: number; offset: number }[] = [];
   let fence: string | null = null;
   let offset = 0;
@@ -95,8 +95,8 @@ export function outlineSystemPrompt(text: string): SystemPromptSection[] {
  * line rather than starting another.
  */
 export function countLines(text: string): number {
-  if (text === "") return 0;
-  return (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n").length;
+  if (text === '') return 0;
+  return (text.endsWith('\n') ? text.slice(0, -1) : text).split('\n').length;
 }
 
 /** Shape a file's text (and metadata) into the document the dashboard renders. */
@@ -124,8 +124,8 @@ export function summarizeSystemPrompt(input: {
  * lines, and exactly one closing newline — a browser textarea introduces all three.
  */
 export function normalizeSystemPromptText(text: string): string {
-  const body = text.replace(/\r\n?/g, "\n").replace(/\s+$/, "");
-  return body === "" ? "" : `${body}\n`;
+  const body = text.replace(/\r\n?/g, '\n').replace(/\s+$/, '');
+  return body === '' ? '' : `${body}\n`;
 }
 
 /**
@@ -133,7 +133,7 @@ export function normalizeSystemPromptText(text: string): string {
  * non-string or anything past the ceiling — the route maps that to a 400.
  */
 export function parseSystemPromptText(value: unknown): string {
-  if (typeof value !== "string") throw new Error("system prompt text must be a string");
+  if (typeof value !== 'string') throw new Error('system prompt text must be a string');
   const normalized = normalizeSystemPromptText(value);
   const bytes = utf8Bytes(normalized);
   if (bytes > SYSTEM_PROMPT_MAX_BYTES) {

@@ -23,20 +23,20 @@
  * file lives in the server package.
  */
 
-import type { Severity } from "./advice.js";
-import type { SessionBucket, SuggestionSource } from "./suggestions.js";
+import type { Severity } from './advice.js';
+import type { SessionBucket, SuggestionSource } from './suggestions.js';
 
 /** The flags a suggestion can carry. `pending` is the default. */
-export const SUGGESTION_STATUSES = ["pending", "done", "skipped"] as const;
+export const SUGGESTION_STATUSES = ['pending', 'done', 'skipped'] as const;
 
 export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
 
 /** What a suggestion is until someone says otherwise. */
-export const DEFAULT_SUGGESTION_STATUS: SuggestionStatus = "pending";
+export const DEFAULT_SUGGESTION_STATUS: SuggestionStatus = 'pending';
 
 /** True when `value` names one of the three flags. */
 export function isSuggestionStatus(value: unknown): value is SuggestionStatus {
-  return typeof value === "string" && (SUGGESTION_STATUSES as readonly string[]).includes(value);
+  return typeof value === 'string' && (SUGGESTION_STATUSES as readonly string[]).includes(value);
 }
 
 /** One recorded decision about one suggestion. */
@@ -69,23 +69,23 @@ export function emptySuggestionStatusStore(): SuggestionStatusStore {
  */
 export function parseSuggestionStatusStore(raw: unknown): SuggestionStatusStore {
   const store = emptySuggestionStatusStore();
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return store;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return store;
   const buckets = (raw as { buckets?: unknown }).buckets;
-  if (!buckets || typeof buckets !== "object" || Array.isArray(buckets)) return store;
+  if (!buckets || typeof buckets !== 'object' || Array.isArray(buckets)) return store;
 
   for (const [bucketKey, entries] of Object.entries(buckets as Record<string, unknown>)) {
     const index = Number(bucketKey);
     if (!Number.isInteger(index) || index < 1) continue;
-    if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
     const kept: Record<string, SuggestionStatusEntry> = {};
     for (const [id, entry] of Object.entries(entries as Record<string, unknown>)) {
-      if (!id || !entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      if (!id || !entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
       const { status, updated, note } = entry as { status?: unknown; updated?: unknown; note?: unknown };
       if (!isSuggestionStatus(status) || status === DEFAULT_SUGGESTION_STATUS) continue;
       kept[id] = {
         status,
-        updated: typeof updated === "string" ? updated : "",
-        ...(typeof note === "string" && note ? { note } : {}),
+        updated: typeof updated === 'string' ? updated : '',
+        ...(typeof note === 'string' && note ? { note } : {}),
       };
     }
     if (Object.keys(kept).length > 0) store.buckets[String(index)] = kept;
@@ -96,7 +96,7 @@ export function parseSuggestionStatusStore(raw: unknown): SuggestionStatusStore 
 /** The flag recorded for one suggestion, or `pending` when none is. */
 export function suggestionStatusOf(store: SuggestionStatusStore, bucket: number, id: string): SuggestionStatusEntry {
   const entry = store.buckets[String(bucket)]?.[id];
-  return entry ?? { status: DEFAULT_SUGGESTION_STATUS, updated: "" };
+  return entry ?? { status: DEFAULT_SUGGESTION_STATUS, updated: '' };
 }
 
 /**
@@ -110,13 +110,13 @@ export function suggestionStatusOf(store: SuggestionStatusStore, bucket: number,
  *
  * Only `done` is a claim; `skipped` never produces a `regressed`.
  */
-export const SUGGESTION_RECURRENCES = ["none", "historical", "mixed", "regressed"] as const;
+export const SUGGESTION_RECURRENCES = ['none', 'historical', 'mixed', 'regressed'] as const;
 
 export type SuggestionRecurrence = (typeof SUGGESTION_RECURRENCES)[number];
 
 /** True when `value` names one of the four recurrence states. */
 export function isSuggestionRecurrence(value: unknown): value is SuggestionRecurrence {
-  return typeof value === "string" && (SUGGESTION_RECURRENCES as readonly string[]).includes(value);
+  return typeof value === 'string' && (SUGGESTION_RECURRENCES as readonly string[]).includes(value);
 }
 
 /** The claim a rule carries: the latest dated `done` recorded for it, in any bucket. */
@@ -141,7 +141,7 @@ export function ruleResolutions(store: SuggestionStatusStore): Map<string, Sugge
     const bucket = Number(bucketKey);
     if (!Number.isInteger(bucket)) continue;
     for (const [id, entry] of Object.entries(entries)) {
-      if (entry.status !== "done") continue;
+      if (entry.status !== 'done') continue;
       const at = Date.parse(entry.updated);
       if (Number.isNaN(at)) continue;
       const held = latest.get(id);
@@ -154,17 +154,17 @@ export function ruleResolutions(store: SuggestionStatusStore): Map<string, Sugge
 
 /** Place one window against one rule's dated claim. Undated on either side reads as `none`. */
 export function suggestionRecurrence(
-  bucket: Pick<SessionBucket, "startedFirst" | "startedLast">,
+  bucket: Pick<SessionBucket, 'startedFirst' | 'startedLast'>,
   resolution: SuggestionResolution | undefined,
 ): SuggestionRecurrence {
-  if (!resolution) return "none";
+  if (!resolution) return 'none';
   const claimed = Date.parse(resolution.updated);
-  const first = Date.parse(bucket.startedFirst ?? "");
-  const last = Date.parse(bucket.startedLast ?? "");
-  if (Number.isNaN(claimed) || Number.isNaN(first) || Number.isNaN(last)) return "none";
-  if (last <= claimed) return "historical";
-  if (first >= claimed) return "regressed";
-  return "mixed";
+  const first = Date.parse(bucket.startedFirst ?? '');
+  const last = Date.parse(bucket.startedLast ?? '');
+  if (Number.isNaN(claimed) || Number.isNaN(first) || Number.isNaN(last)) return 'none';
+  if (last <= claimed) return 'historical';
+  if (first >= claimed) return 'regressed';
+  return 'mixed';
 }
 
 /** One requested flag change. */
@@ -216,17 +216,18 @@ export function applySuggestionStatusUpdates(
  * exactly the same shapes.
  */
 export function parseSuggestionStatusUpdates(raw: unknown): SuggestionStatusUpdate[] {
-  if (!Array.isArray(raw)) throw new Error("updates must be an array");
-  if (raw.length === 0) throw new Error("updates must not be empty");
+  if (!Array.isArray(raw)) throw new Error('updates must be an array');
+  if (raw.length === 0) throw new Error('updates must not be empty');
 
   return raw.map((item, i) => {
     const where = `updates[${i}]`;
-    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`${where} must be an object`);
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
     const { bucket, id, status, note } = item as Record<string, unknown>;
     if (!Number.isInteger(bucket) || (bucket as number) < 1) throw new Error(`${where}.bucket must be an integer >= 1`);
-    if (typeof id !== "string" || !id.trim()) throw new Error(`${where}.id must be a non-empty string`);
-    if (!isSuggestionStatus(status)) throw new Error(`${where}.status must be one of ${SUGGESTION_STATUSES.join(", ")}`);
-    if (note !== undefined && typeof note !== "string") throw new Error(`${where}.note must be a string`);
+    if (typeof id !== 'string' || !id.trim()) throw new Error(`${where}.id must be a non-empty string`);
+    if (!isSuggestionStatus(status))
+      throw new Error(`${where}.status must be one of ${SUGGESTION_STATUSES.join(', ')}`);
+    if (note !== undefined && typeof note !== 'string') throw new Error(`${where}.note must be a string`);
     return { bucket: bucket as number, id: id.trim(), status, ...(note === undefined ? {} : { note }) };
   });
 }
@@ -241,7 +242,7 @@ export function parseSuggestionStatusUpdates(raw: unknown): SuggestionStatusUpda
  */
 export function parseBucketRange(spec: string): number[] {
   const out = new Set<number>();
-  for (const rawPart of spec.split(",")) {
+  for (const rawPart of spec.split(',')) {
     const part = rawPart.trim();
     if (!part) continue;
     const span = /^(\d+)\s*[-–]\s*(\d+)$/.exec(part);
@@ -258,7 +259,7 @@ export function parseBucketRange(spec: string): number[] {
     if (one < 1) throw new Error(`invalid bucket range: ${part} (buckets start at 1)`);
     out.add(one);
   }
-  if (out.size === 0) throw new Error("invalid bucket range: empty");
+  if (out.size === 0) throw new Error('invalid bucket range: empty');
   return [...out].sort((a, b) => a - b);
 }
 
@@ -342,7 +343,7 @@ export function suggestionStatusRows(
         };
         if (entry.updated) row.updated = entry.updated;
         if (entry.note) row.note = entry.note;
-        if (recurrence !== "none" && resolution) row.resolved = resolution;
+        if (recurrence !== 'none' && resolution) row.resolved = resolution;
         if (filter.detail) {
           row.detail = suggestion.detail;
           row.evidence = suggestion.evidence;
@@ -362,9 +363,7 @@ export function countSuggestionStatuses(rows: readonly SuggestionStatusRow[]): R
 }
 
 /** How many rows sit in each recurrence state. */
-export function countSuggestionRecurrences(
-  rows: readonly SuggestionStatusRow[],
-): Record<SuggestionRecurrence, number> {
+export function countSuggestionRecurrences(rows: readonly SuggestionStatusRow[]): Record<SuggestionRecurrence, number> {
   const counts: Record<SuggestionRecurrence, number> = { none: 0, historical: 0, mixed: 0, regressed: 0 };
   for (const row of rows) counts[row.recurrence]++;
   return counts;

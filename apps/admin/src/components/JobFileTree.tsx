@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react";
-import type { JobFileKind, JobTreeNode } from "@claude-proxy/core";
+import type { JobFileKind, JobTreeNode } from '@claude-proxy/core';
 import {
   ChevronDown,
   ChevronRight,
@@ -10,8 +9,9 @@ import {
   Folder,
   FolderOpen,
   Image as ImageIcon,
-} from "lucide-react";
-import { fmtBytes } from "../format";
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { fmtBytes } from '../format';
 
 /** Icon per file kind — the tree's only visual cue about what a row opens into. */
 const KIND_ICONS: Record<JobFileKind, typeof File> = {
@@ -68,25 +68,24 @@ export function JobFileTree({ nodes, selected, onSelect }: JobFileTreeProps) {
       return next;
     });
 
-  if (nodes.length === 0) return <div className="empty">This job directory is empty.</div>;
+  if (nodes.length === 0) return <div className='empty'>This job directory is empty.</div>;
 
   return (
-    <div className="jobtree" role="tree" aria-label="Job files">
+    <div className='jobtree' role='tree' aria-label='Job files'>
       {rows.map(({ node, expanded }) => {
-        const Icon = node.dir ? (expanded ? FolderOpen : Folder) : KIND_ICONS[node.kind ?? "binary"];
+        const Icon = node.dir ? (expanded ? FolderOpen : Folder) : KIND_ICONS[node.kind ?? 'binary'];
         const active = !node.dir && node.path === selected;
         return (
           <button
             key={node.path}
-            type="button"
-            role="treeitem"
+            type='button'
+            role='treeitem'
             aria-expanded={node.dir ? expanded : undefined}
             aria-selected={active}
-            className={`jobtree-row${active ? " active" : ""}${node.dir ? " is-dir" : ""}`}
+            className={`jobtree-row${active ? ' active' : ''}${node.dir ? ' is-dir' : ''}`}
             style={{ paddingLeft: 8 + node.depth * 14 }}
-            onClick={() => (node.dir ? toggle(node.path) : onSelect(node))}
-          >
-            <span className="jobtree-caret" aria-hidden>
+            onClick={() => (node.dir ? toggle(node.path) : onSelect(node))}>
+            <span className='jobtree-caret' aria-hidden>
               {node.dir && !node.skipped ? (
                 expanded ? (
                   <ChevronDown size={13} strokeWidth={2} />
@@ -95,15 +94,15 @@ export function JobFileTree({ nodes, selected, onSelect }: JobFileTreeProps) {
                 )
               ) : null}
             </span>
-            <Icon className="jobtree-icon" size={14} strokeWidth={1.75} aria-hidden />
-            <span className="jobtree-name">{node.name}</span>
-            {node.link && <span className="jobtree-tag">link</span>}
-            {node.skipped && <span className="jobtree-tag">not walked</span>}
-            <span className="jobtree-meta">
+            <Icon className='jobtree-icon' size={14} strokeWidth={1.75} aria-hidden />
+            <span className='jobtree-name'>{node.name}</span>
+            {node.link && <span className='jobtree-tag'>link</span>}
+            {node.skipped && <span className='jobtree-tag'>not walked</span>}
+            <span className='jobtree-meta'>
               {node.dir
                 ? node.skipped
-                  ? ""
-                  : `${node.files} file${node.files === 1 ? "" : "s"}`
+                  ? ''
+                  : `${node.files} file${node.files === 1 ? '' : 's'}`
                 : fmtBytes(node.bytes)}
             </span>
           </button>

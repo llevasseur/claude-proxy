@@ -73,34 +73,34 @@ export interface JobStateFields {
 
 /** A string field, or "" for anything that isn't one. */
 function str(value: unknown): string {
-  return typeof value === "string" ? value : "";
+  return typeof value === 'string' ? value : '';
 }
 
 /** A finite number field, or null. */
 function num(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 /** Epoch milliseconds as ISO 8601, or "" when the value isn't a usable instant. */
 function isoFromEpoch(value: unknown): string {
   const ms = num(value);
-  if (ms === null) return "";
+  if (ms === null) return '';
   const d = new Date(ms);
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 }
 
 /** The value following `flag` in a `respawnFlags` array, or "". */
 function flagValue(flags: unknown, flag: string): string {
-  if (!Array.isArray(flags)) return "";
+  if (!Array.isArray(flags)) return '';
   const at = flags.indexOf(flag);
-  return at >= 0 ? str(flags[at + 1]) : "";
+  return at >= 0 ? str(flags[at + 1]) : '';
 }
 
 function normalizeChildren(value: unknown): JobChild[] {
   if (!Array.isArray(value)) return [];
   const out: JobChild[] = [];
   for (const entry of value) {
-    if (!entry || typeof entry !== "object") continue;
+    if (!entry || typeof entry !== 'object') continue;
     const c = entry as { id?: unknown; kind?: unknown; href?: unknown };
     const href = str(c.href);
     if (!href) continue; // a child with nothing to open is not worth a row
@@ -113,17 +113,17 @@ function normalizeFan(value: unknown): JobFanTask[] {
   if (!Array.isArray(value)) return [];
   const out: JobFanTask[] = [];
   for (const entry of value) {
-    if (!entry || typeof entry !== "object") continue;
+    if (!entry || typeof entry !== 'object') continue;
     const f = entry as { id?: unknown; kind?: unknown; label?: unknown; startedAt?: unknown };
     out.push({ id: str(f.id), kind: str(f.kind), label: str(f.label), startedAt: isoFromEpoch(f.startedAt) });
   }
   return out;
 }
 
-function normalizeInFlight(value: unknown): JobStateFields["inFlight"] {
-  if (!value || typeof value !== "object") return null;
+function normalizeInFlight(value: unknown): JobStateFields['inFlight'] {
+  if (!value || typeof value !== 'object') return null;
   const f = value as { tasks?: unknown; queued?: unknown; kinds?: unknown };
-  const kinds = Array.isArray(f.kinds) ? f.kinds.filter((k): k is string => typeof k === "string") : [];
+  const kinds = Array.isArray(f.kinds) ? f.kinds.filter((k): k is string => typeof k === 'string') : [];
   return { tasks: num(f.tasks) ?? 0, queued: num(f.queued) ?? 0, kinds };
 }
 
@@ -133,7 +133,7 @@ function normalizeInFlight(value: unknown): JobStateFields["inFlight"] {
  * which is how a job directory left behind with no state renders as a husk.
  */
 export function normalizeJobState(raw: unknown): JobStateFields {
-  const s = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const s = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
     state: str(s.state),
     name: str(s.name),
@@ -146,8 +146,8 @@ export function normalizeJobState(raw: unknown): JobStateFields {
     backend: str(s.backend),
     template: str(s.template),
     cliVersion: str(s.cliVersion),
-    model: flagValue(s.respawnFlags, "--model"),
-    agent: flagValue(s.respawnFlags, "--agent"),
+    model: flagValue(s.respawnFlags, '--model'),
+    agent: flagValue(s.respawnFlags, '--agent'),
     tokens: num(s.tokens),
     createdAt: str(s.createdAt),
     updatedAt: str(s.updatedAt),
@@ -163,40 +163,43 @@ export function normalizeJobState(raw: unknown): JobStateFields {
  * state vocabulary and can add to it, so an unrecognised word is `unknown` rather
  * than forced into one of the others.
  */
-export type JobTone = "busy" | "done" | "blocked" | "failed" | "idle" | "unknown";
+export type JobTone = 'busy' | 'done' | 'blocked' | 'failed' | 'idle' | 'unknown';
 
 /** Known state words, after lowercasing and folding `_`/spaces to `-`. */
 const STATE_TONES: Record<string, JobTone> = {
-  working: "busy",
-  running: "busy",
-  active: "busy",
-  starting: "busy",
-  spawning: "busy",
-  done: "done",
-  complete: "done",
-  completed: "done",
-  finished: "done",
-  resolved: "done",
-  "needs-input": "blocked",
-  input: "blocked",
-  blocked: "blocked",
-  waiting: "blocked",
-  failed: "failed",
-  error: "failed",
-  errored: "failed",
-  crashed: "failed",
-  idle: "idle",
-  queued: "idle",
-  paused: "idle",
-  stopped: "idle",
-  cancelled: "idle",
-  canceled: "idle",
+  working: 'busy',
+  running: 'busy',
+  active: 'busy',
+  starting: 'busy',
+  spawning: 'busy',
+  done: 'done',
+  complete: 'done',
+  completed: 'done',
+  finished: 'done',
+  resolved: 'done',
+  'needs-input': 'blocked',
+  input: 'blocked',
+  blocked: 'blocked',
+  waiting: 'blocked',
+  failed: 'failed',
+  error: 'failed',
+  errored: 'failed',
+  crashed: 'failed',
+  idle: 'idle',
+  queued: 'idle',
+  paused: 'idle',
+  stopped: 'idle',
+  cancelled: 'idle',
+  canceled: 'idle',
 };
 
 /** Classify a raw `state` word into a {@link JobTone}. */
 export function jobStateTone(state: string): JobTone {
-  const key = state.trim().toLowerCase().replace(/[\s_]+/g, "-");
-  return STATE_TONES[key] ?? "unknown";
+  const key = state
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-');
+  return STATE_TONES[key] ?? 'unknown';
 }
 
 /** One record from a job's `timeline.jsonl`. */
@@ -219,10 +222,10 @@ export interface JobTimelineEntry {
 export function parseJobTimeline(content: string): { entries: JobTimelineEntry[]; skipped: number } {
   const entries: JobTimelineEntry[] = [];
   let skipped = 0;
-  const lines = content.split("\n");
+  const lines = content.split('\n');
   for (let i = 0; i < lines.length; i += 1) {
-    const raw = (lines[i] ?? "").trim();
-    if (raw === "") continue;
+    const raw = (lines[i] ?? '').trim();
+    if (raw === '') continue;
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
@@ -230,7 +233,7 @@ export function parseJobTimeline(content: string): { entries: JobTimelineEntry[]
       skipped += 1;
       continue;
     }
-    if (!parsed || typeof parsed !== "object") {
+    if (!parsed || typeof parsed !== 'object') {
       skipped += 1;
       continue;
     }
@@ -241,69 +244,69 @@ export function parseJobTimeline(content: string): { entries: JobTimelineEntry[]
 }
 
 /** How a viewer should render a job file. */
-export type JobFileKind = "json" | "jsonl" | "markdown" | "log" | "code" | "text" | "image" | "binary";
+export type JobFileKind = 'json' | 'jsonl' | 'markdown' | 'log' | 'code' | 'text' | 'image' | 'binary';
 
 /** Extension → kind. Anything unlisted is `binary` until the read proves otherwise. */
 const FILE_KINDS: Record<string, JobFileKind> = {
-  json: "json",
-  jsonl: "jsonl",
-  ndjson: "jsonl",
-  md: "markdown",
-  markdown: "markdown",
-  log: "log",
-  txt: "text",
-  trigger: "text",
-  lock: "text",
-  pid: "text",
-  env: "text",
-  csv: "text",
-  js: "code",
-  mjs: "code",
-  cjs: "code",
-  jsx: "code",
-  ts: "code",
-  tsx: "code",
-  mts: "code",
-  cts: "code",
-  sh: "code",
-  bash: "code",
-  zsh: "code",
-  fish: "code",
-  py: "code",
-  rb: "code",
-  go: "code",
-  rs: "code",
-  java: "code",
-  c: "code",
-  h: "code",
-  cc: "code",
-  cpp: "code",
-  css: "code",
-  scss: "code",
-  html: "code",
-  xml: "code",
-  yml: "code",
-  yaml: "code",
-  toml: "code",
-  ini: "code",
-  sql: "code",
-  patch: "code",
-  diff: "code",
-  png: "image",
-  jpg: "image",
-  jpeg: "image",
-  gif: "image",
-  webp: "image",
-  avif: "image",
-  svg: "image",
-  ico: "image",
+  json: 'json',
+  jsonl: 'jsonl',
+  ndjson: 'jsonl',
+  md: 'markdown',
+  markdown: 'markdown',
+  log: 'log',
+  txt: 'text',
+  trigger: 'text',
+  lock: 'text',
+  pid: 'text',
+  env: 'text',
+  csv: 'text',
+  js: 'code',
+  mjs: 'code',
+  cjs: 'code',
+  jsx: 'code',
+  ts: 'code',
+  tsx: 'code',
+  mts: 'code',
+  cts: 'code',
+  sh: 'code',
+  bash: 'code',
+  zsh: 'code',
+  fish: 'code',
+  py: 'code',
+  rb: 'code',
+  go: 'code',
+  rs: 'code',
+  java: 'code',
+  c: 'code',
+  h: 'code',
+  cc: 'code',
+  cpp: 'code',
+  css: 'code',
+  scss: 'code',
+  html: 'code',
+  xml: 'code',
+  yml: 'code',
+  yaml: 'code',
+  toml: 'code',
+  ini: 'code',
+  sql: 'code',
+  patch: 'code',
+  diff: 'code',
+  png: 'image',
+  jpg: 'image',
+  jpeg: 'image',
+  gif: 'image',
+  webp: 'image',
+  avif: 'image',
+  svg: 'image',
+  ico: 'image',
 };
 
 /** The lowercased extension of a file name, or "" when it has none. */
 export function fileExtension(name: string): string {
-  const base = name.slice(name.lastIndexOf("/") + 1);
-  const dot = base.lastIndexOf(".");
-  return dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
+  const base = name.slice(name.lastIndexOf('/') + 1);
+  const dot = base.lastIndexOf('.');
+  return dot > 0 ? base.slice(dot + 1).toLowerCase() : '';
 }
 
 /**
@@ -313,8 +316,8 @@ export function fileExtension(name: string): string {
  */
 export function jobFileKind(name: string): JobFileKind {
   const ext = fileExtension(name);
-  if (ext === "") return "text";
-  return FILE_KINDS[ext] ?? "binary";
+  if (ext === '') return 'text';
+  return FILE_KINDS[ext] ?? 'binary';
 }
 
 /** One entry from the walk of a job directory. */
@@ -348,13 +351,13 @@ export interface JobTreeNode extends JobFileEntry {
 
 /** A directory the walk implied but never listed (a file reported below it). */
 function syntheticDir(path: string): JobFileEntry {
-  return { path, dir: true, bytes: 0, modified: "", kind: null };
+  return { path, dir: true, bytes: 0, modified: '', kind: null };
 }
 
 /** The directory holding `path`, or "" when it sits at the job root. */
 function parentPath(path: string): string {
-  const cut = path.lastIndexOf("/");
-  return cut === -1 ? "" : path.slice(0, cut);
+  const cut = path.lastIndexOf('/');
+  return cut === -1 ? '' : path.slice(0, cut);
 }
 
 /**
@@ -370,10 +373,10 @@ export function buildJobTree(entries: readonly JobFileEntry[]): JobTreeNode[] {
     const existing = nodes.get(entry.path);
     // A real entry supersedes the placeholder its child created for it.
     if (existing) {
-      if (existing.modified === "" && entry.modified !== "") Object.assign(existing, entry);
+      if (existing.modified === '' && entry.modified !== '') Object.assign(existing, entry);
       return existing;
     }
-    const segments = entry.path.split("/");
+    const segments = entry.path.split('/');
     const node: JobTreeNode = {
       ...entry,
       name: segments[segments.length - 1] ?? entry.path,
@@ -387,11 +390,11 @@ export function buildJobTree(entries: readonly JobFileEntry[]): JobTreeNode[] {
   };
 
   for (const entry of entries) {
-    if (entry.path === "") continue;
+    if (entry.path === '') continue;
     ensure(entry);
     // Walk up so every ancestor exists before children are attached.
     let parent = parentPath(entry.path);
-    while (parent !== "" && !nodes.has(parent)) {
+    while (parent !== '' && !nodes.has(parent)) {
       ensure(syntheticDir(parent));
       parent = parentPath(parent);
     }

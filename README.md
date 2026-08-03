@@ -5,7 +5,7 @@ and an admin dashboard that monitors usage, trends, and advice from what the
 proxy captures.
 
 ```
-proxy/          zero-dep capture proxy (the original proxy.mjs)
+proxy/          zero-dep capture proxy (proxy.ts, run directly by node)
 packages/core/  pure, tested library: usage digest, cost, advice
 server/         Node API over logs + scoped local writes + daily-summary CLI
 apps/admin/     TanStack (Router + Query) + Vite dashboard
@@ -23,7 +23,7 @@ context** — plus a machine-readable `.audit.json` sidecar. Auth headers
 sensitive lands on disk.
 
 Its deliberate edits are the things the CLI can't be configured to keep out on
-its own, both defined in `proxy/proxy.mjs`: **withheld tools** (`WITHHELD_TOOLS`,
+its own, both defined in `proxy/proxy.ts`: **withheld tools** (`WITHHELD_TOOLS`,
 e.g. `EndConversation`) that the CLI exempts from `permissions.deny`, and
 **injected reminders** (`INJECTED_REMINDERS`, e.g. the task-tools nudge) that have
 no suppression setting at all. Both are stripped from the request before
@@ -32,7 +32,7 @@ dashboard's **Proxy filters** page (`GET /api/filters`) lists the full inventory
 with the reason each one needs the proxy.
 
 ```bash
-PORT=8036 node proxy/proxy.mjs   # zero deps, Node 18+ (PORT defaults to 8787)
+PORT=8036 node proxy/proxy.ts   # zero deps, Node 22.18+ (PORT defaults to 8787)
 # point Claude Code at it in another terminal:
 ANTHROPIC_BASE_URL=http://localhost:8036 claude
 ```
@@ -85,9 +85,9 @@ and Claude Code's own `env` config — not a shell alias — points every
 2. Start the proxy (pick one):
 
    ```bash
-   PORT=8036 node proxy/proxy.mjs          # bare, no deps, no install needed
+   PORT=8036 node proxy/proxy.ts           # bare, no deps, no install needed
    # or, keep it running in the background:
-   PORT=8036 node proxy/proxy.mjs &disown
+   PORT=8036 node proxy/proxy.ts &disown
    # or, launch it alongside server + dashboard in one zellij session:
    pnpm zellij                             # zellij dev layout already uses 8036
    ```
@@ -128,7 +128,7 @@ and only matters once whole days have been relocated out of the live `logs/` dir
 
 Run from a worktree, the resolution walks back to the main checkout
 (`git rev-parse --git-common-dir`). That is deliberate: `LOG_DIR` follows the
-*running* `proxy.mjs`, so every worktree's sessions land in the main checkout's
+*running* `proxy.ts`, so every worktree's sessions land in the main checkout's
 `logs/sessions`, and a worktree-local path would be an empty directory that
 disappears with the worktree. An explicit `LOG_DIR` still wins.
 
@@ -172,7 +172,7 @@ estimated cost, day-over-day trends, ranked tool bloat, and deterministic
 coaching advice). All analysis lives in `packages/core` and is unit-tested.
 
 ```bash
-pnpm install                  # wire the workspace (pnpm 11, Node 18+)
+pnpm install                  # wire the workspace (pnpm 11, Node 22.18+)
 
 pnpm server                   # API on http://localhost:8788 (reads ./logs)
 pnpm admin                    # dashboard on http://localhost:5173
@@ -348,7 +348,8 @@ pnpm --filter server summary 2026-07-14   # a specific day
 `logs/` is doc-shaped, so every read is a full directory scan. The server also
 indexes the audit sidecars into **`logs/claude-proxy.db`** — SQLite via
 `node:sqlite`, which is built into Node and therefore adds no dependency (it is
-why the engines floor is `>=22`). Ingest runs on server start and again on any
+what first raised the engines floor to `>=22`; the proxy's unflagged type
+stripping then took it to `>=22.18`). Ingest runs on server start and again on any
 change to the log directory; it is idempotent and watermarked, so running it
 twice or having it die halfway are both harmless.
 

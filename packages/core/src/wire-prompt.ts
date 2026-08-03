@@ -60,16 +60,16 @@ const HEADING_RE = /^(#{1,6})\s+(.*\S)\s*$/;
 const FENCE_RE = /^\s*(```|~~~)/;
 
 /** Name given to the span before a block's first heading. */
-export const PREAMBLE = "(preamble)";
+export const PREAMBLE = '(preamble)';
 
 /**
  * Split one block's text into heading spans. Lines inside a fenced code block
  * are skipped, so a shell comment is not a section. Mirrored in
- * `proxy/system-prompt.mjs`; the two are held together by
+ * `proxy/system-prompt.ts`; the two are held together by
  * `server/test/wire-prompt-parity.test.ts`.
  */
 export function sectionsOfText(text: string, block: number): WirePromptSection[] {
-  const lines = text.split("\n");
+  const lines = text.split('\n');
   const found: { heading: string; level: number; offset: number }[] = [];
   let fence: string | null = null;
   let offset = 0;
@@ -100,20 +100,20 @@ export function sectionsOfText(text: string, block: number): WirePromptSection[]
 
 /** Text of one `system` entry, for the shapes the API accepts. */
 function blockText(block: unknown): string {
-  if (typeof block === "string") return block;
-  if (typeof block === "object" && block !== null) {
+  if (typeof block === 'string') return block;
+  if (typeof block === 'object' && block !== null) {
     const t = (block as { text?: unknown }).text;
-    if (typeof t === "string") return t;
+    if (typeof t === 'string') return t;
   }
-  return "";
+  return '';
 }
 
 function blockCacheTtl(block: unknown): string | null {
-  if (typeof block !== "object" || block === null) return null;
+  if (typeof block !== 'object' || block === null) return null;
   const cc = (block as { cache_control?: unknown }).cache_control;
-  if (typeof cc !== "object" || cc === null) return null;
+  if (typeof cc !== 'object' || cc === null) return null;
   const ttl = (cc as { ttl?: unknown }).ttl;
-  return typeof ttl === "string" ? ttl : "ephemeral";
+  return typeof ttl === 'string' ? ttl : 'ephemeral';
 }
 
 /**
@@ -136,7 +136,7 @@ export function outlineWirePrompt(system: unknown): WirePromptOutline {
       textBytes: textBytes(text),
       cacheTtl: blockCacheTtl(block),
     });
-    if (text !== "") sections.push(...sectionsOfText(text, index));
+    if (text !== '') sections.push(...sectionsOfText(text, index));
   });
 
   return { bytes: jsonBytes(system), blocks, sections };
@@ -154,9 +154,11 @@ export interface StoredWirePrompt extends WirePromptOutline {
 
 /** Structural guard for a parsed-but-untrusted store record. */
 export function isStoredWirePrompt(value: unknown): value is StoredWirePrompt {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return typeof v.hash === "string" && typeof v.bytes === "number" && Array.isArray(v.blocks) && Array.isArray(v.sections);
+  return (
+    typeof v.hash === 'string' && typeof v.bytes === 'number' && Array.isArray(v.blocks) && Array.isArray(v.sections)
+  );
 }
 
 /** One section's movement between two versions of a prompt. */
@@ -167,7 +169,7 @@ export interface SectionMove {
   /** Bytes before; 0 when the section is new. */
   priorBytes: number;
   deltaBytes: number;
-  status: "added" | "removed" | "grew" | "shrank" | "same";
+  status: 'added' | 'removed' | 'grew' | 'shrank' | 'same';
 }
 
 /** Sum sections by heading, so a heading repeated across blocks reads as one row. */
@@ -183,8 +185,8 @@ function byHeading(sections: readonly WirePromptSection[]): Map<string, number> 
  * hash moves.
  */
 export function diffWirePrompts(
-  prior: Pick<WirePromptOutline, "sections">,
-  current: Pick<WirePromptOutline, "sections">,
+  prior: Pick<WirePromptOutline, 'sections'>,
+  current: Pick<WirePromptOutline, 'sections'>,
 ): SectionMove[] {
   const before = byHeading(prior.sections);
   const after = byHeading(current.sections);
@@ -194,8 +196,16 @@ export function diffWirePrompts(
     const priorBytes = before.get(heading) ?? 0;
     const bytes = after.get(heading) ?? 0;
     const deltaBytes = bytes - priorBytes;
-    const status: SectionMove["status"] =
-      priorBytes === 0 ? "added" : bytes === 0 ? "removed" : deltaBytes > 0 ? "grew" : deltaBytes < 0 ? "shrank" : "same";
+    const status: SectionMove['status'] =
+      priorBytes === 0
+        ? 'added'
+        : bytes === 0
+          ? 'removed'
+          : deltaBytes > 0
+            ? 'grew'
+            : deltaBytes < 0
+              ? 'shrank'
+              : 'same';
     moves.push({ heading, bytes, priorBytes, deltaBytes, status });
   }
   return moves.sort((a, b) => Math.abs(b.deltaBytes) - Math.abs(a.deltaBytes));

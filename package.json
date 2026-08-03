@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "pnpm@11.5.2",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "scripts": {
     "setup:env": "bash scripts/proxy-store-env.sh --setup",
@@ -14,10 +14,16 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
+    "lint": "biome lint .",
+    "format": "biome check --write .",
+    "check": "biome check .",
     "proxy": "pnpm --filter proxy start",
     "server": "pnpm --filter server dev",
     "admin": "pnpm --filter admin dev",
     "summary": "pnpm --filter server summary",
     "zellij": "bash scripts/zellij.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6"
   }
 }

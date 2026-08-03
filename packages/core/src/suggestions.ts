@@ -13,10 +13,10 @@
  * (see `context.ts`). No I/O, no clock.
  */
 
-import type { Severity } from "./advice.js";
-import type { RequestBreakdown } from "./context.js";
-import { estTokens } from "./context.js";
-import { sessionDisplayName, type SessionMeta, type SessionNode } from "./sessions.js";
+import type { Severity } from './advice.js';
+import type { RequestBreakdown } from './context.js';
+import { estTokens } from './context.js';
+import { type SessionMeta, type SessionNode, sessionDisplayName } from './sessions.js';
 
 /** How many sessions one bucket covers: 1–10, 11–20, … */
 export const SESSION_BUCKET_SIZE = 10;
@@ -94,7 +94,7 @@ export function toolName(signature: string | null): string | null {
 }
 
 /** Tools whose call only gathers information — safe to issue several at once. */
-const DISCOVERY_TOOLS = new Set(["Read", "Grep", "Glob", "WebFetch", "WebSearch", "NotebookRead"]);
+const DISCOVERY_TOOLS = new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'NotebookRead']);
 
 /** Shell verbs that only inspect the tree — a `Bash(…)` running one is discovery too. */
 const DISCOVERY_SHELL_RE = /\b(ls|find|cat|head|tail|wc|grep|rg|tree|stat|pwd|git\s+(status|log|diff|show))\b/;
@@ -104,7 +104,7 @@ export function isDiscoveryCall(signature: string | null): boolean {
   const name = toolName(signature);
   if (!name) return false;
   if (DISCOVERY_TOOLS.has(name)) return true;
-  return name === "Bash" && DISCOVERY_SHELL_RE.test(signature ?? "");
+  return name === 'Bash' && DISCOVERY_SHELL_RE.test(signature ?? '');
 }
 
 /** Error texts that mean a guardrail refused the call rather than the call failing. */
@@ -119,10 +119,10 @@ const BLOCKED_RE =
 export function errorSignature(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[/~][\w./+-]+/g, "<path>")
-    .replace(/\d+/g, "<n>")
-    .replace(/["'`][^"'`]*["'`]/g, "<str>")
-    .replace(/\s+/g, " ")
+    .replace(/[/~][\w./+-]+/g, '<path>')
+    .replace(/\d+/g, '<n>')
+    .replace(/["'`][^"'`]*["'`]/g, '<str>')
+    .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
 }
@@ -172,7 +172,7 @@ export interface SessionBucket {
 /** Order sessions the way the buckets number them: oldest first, ties by thread id. */
 function chronological<T extends { started: string | null; threadId: string }>(sessions: readonly T[]): T[] {
   return [...sessions].sort(
-    (a, b) => (a.started ?? "").localeCompare(b.started ?? "") || a.threadId.localeCompare(b.threadId),
+    (a, b) => (a.started ?? '').localeCompare(b.started ?? '') || a.threadId.localeCompare(b.threadId),
   );
 }
 
@@ -200,16 +200,16 @@ function bucketStats(sessions: readonly SuggestibleSession[]): SessionBucketStat
     // A task is finished once a `done:` follows it and before the next `## Task:`.
     let openTask = false;
     for (const node of s.nodes) {
-      if (node.type === "task") {
+      if (node.type === 'task') {
         if (openTask) unfinishedTasks += 1;
         openTask = true;
         continue;
       }
-      if (node.type === "done") {
+      if (node.type === 'done') {
         openTask = false;
         continue;
       }
-      if (node.type !== "tool") continue;
+      if (node.type !== 'tool') continue;
       tools += 1;
       if (isDiscoveryCall(node.tool)) discovery += 1;
       const name = toolName(node.tool);
@@ -244,9 +244,7 @@ function bucketStats(sessions: readonly SuggestibleSession[]): SessionBucketStat
 type Rule = (sessions: readonly SuggestibleSession[], stats: SessionBucketStats) => SessionSuggestion | null;
 
 /** Accumulate per-session hits into `SuggestionSource`s, strongest session first. */
-function collectSources(
-  hits: readonly { session: SuggestibleSession; node: SessionNode }[],
-): SuggestionSource[] {
+function collectSources(hits: readonly { session: SuggestibleSession; node: SessionNode }[]): SuggestionSource[] {
   const bySession = new Map<string, { session: SuggestibleSession; nodes: SessionNode[] }>();
   for (const hit of hits) {
     const entry = bySession.get(hit.session.threadId);
@@ -266,18 +264,18 @@ function collectSources(
 /** Guardrails that refused a call — the restrictions worth revisiting. */
 const blockedGuardrails: Rule = (sessions) => {
   const hits = sessions.flatMap((session) =>
-    session.nodes.filter((n) => n.type === "error" && BLOCKED_RE.test(n.text)).map((node) => ({ session, node })),
+    session.nodes.filter((n) => n.type === 'error' && BLOCKED_RE.test(n.text)).map((node) => ({ session, node })),
   );
   if (hits.length < SUGGESTION_THRESHOLDS.minBlockedErrors) return null;
 
   const sources = collectSources(hits);
   return {
-    id: "blocked-guardrails",
-    severity: "high",
-    title: "Guardrails refused calls these sessions needed",
+    id: 'blocked-guardrails',
+    severity: 'high',
+    title: 'Guardrails refused calls these sessions needed',
     detail:
       "Each of these was a step the agent had already decided to take, so the refusal cost a turn and a retry rather than preventing work. Allowlist the ones that are routine here (settings.json `permissions.allow`, or the launch alias's `--disallowedTools`) and the same outcome arrives several steps earlier.",
-    evidence: `${hits.length} refused tool result${hits.length === 1 ? "" : "s"} across ${sources.length} session${sources.length === 1 ? "" : "s"}`,
+    evidence: `${hits.length} refused tool result${hits.length === 1 ? '' : 's'} across ${sources.length} session${sources.length === 1 ? '' : 's'}`,
     sources,
   };
 };
@@ -287,7 +285,7 @@ const repeatedErrors: Rule = (sessions) => {
   const bySignature = new Map<string, { session: SuggestibleSession; node: SessionNode }[]>();
   for (const session of sessions) {
     for (const node of session.nodes) {
-      if (node.type !== "error") continue;
+      if (node.type !== 'error') continue;
       const sig = errorSignature(node.text);
       if (!sig) continue;
       const list = bySignature.get(sig);
@@ -304,11 +302,11 @@ const repeatedErrors: Rule = (sessions) => {
   const hits = repeated.flat();
   const worst = repeated[0]!;
   return {
-    id: "repeated-errors",
-    severity: "warn",
-    title: "The same error keeps being rediscovered",
+    id: 'repeated-errors',
+    severity: 'warn',
+    title: 'The same error keeps being rediscovered',
     detail: `"${worst[0]!.node.text}" recurred ${worst.length} times. An error that repeats is one the agent could not have known to avoid — write the answer into AGENTS.md / CLAUDE.md once and every later session skips the failed attempt.`,
-    evidence: `${repeated.length} error${repeated.length === 1 ? "" : "s"} recurred, ${hits.length} occurrence${hits.length === 1 ? "" : "s"} in total`,
+    evidence: `${repeated.length} error${repeated.length === 1 ? '' : 's'} recurred, ${hits.length} occurrence${hits.length === 1 ? '' : 's'} in total`,
     sources: collectSources(hits),
   };
 };
@@ -330,7 +328,7 @@ const serialDiscovery: Rule = (sessions) => {
     for (const node of session.nodes) {
       // Only an unbroken chain counts: a decision or an error between two calls
       // means the second depended on the first's answer.
-      if (node.type === "tool" && isDiscoveryCall(node.tool)) run.push(node);
+      if (node.type === 'tool' && isDiscoveryCall(node.tool)) run.push(node);
       else flush();
     }
     flush();
@@ -339,11 +337,11 @@ const serialDiscovery: Rule = (sessions) => {
   if (runs === 0) return null;
   const sources = collectSources(hits);
   return {
-    id: "serial-discovery",
-    severity: "warn",
-    title: "Read-only calls went out one at a time",
+    id: 'serial-discovery',
+    severity: 'warn',
+    title: 'Read-only calls went out one at a time',
     detail: `Runs of ${SUGGESTION_THRESHOLDS.serialRunLength}+ consecutive reads/greps with no decision between them are independent by construction — batching them into a single turn collapses that many round-trips into one, for the same steps and the same context.`,
-    evidence: `${runs} serial run${runs === 1 ? "" : "s"} covering ${hits.length} calls across ${sources.length} session${sources.length === 1 ? "" : "s"}`,
+    evidence: `${runs} serial run${runs === 1 ? '' : 's'} covering ${hits.length} calls across ${sources.length} session${sources.length === 1 ? '' : 's'}`,
     sources,
   };
 };
@@ -356,7 +354,7 @@ const redundantReads: Rule = (sessions) => {
   for (const session of sessions) {
     const seen = new Map<string, SessionNode[]>();
     for (const node of session.nodes) {
-      if (node.type !== "tool" || !node.tool || toolName(node.tool) !== "Read") continue;
+      if (node.type !== 'tool' || !node.tool || toolName(node.tool) !== 'Read') continue;
       const list = seen.get(node.tool);
       if (list) list.push(node);
       else seen.set(node.tool, [node]);
@@ -371,12 +369,12 @@ const redundantReads: Rule = (sessions) => {
   if (targets === 0) return null;
   const sources = collectSources(hits);
   return {
-    id: "redundant-reads",
-    severity: "info",
-    title: "Files were re-read inside one session",
+    id: 'redundant-reads',
+    severity: 'info',
+    title: 'Files were re-read inside one session',
     detail:
-      "A file already in the transcript is already in context — re-reading it pays for the same bytes twice and pushes the cache further out. Re-read only after an edit, and prefer a targeted offset/limit over the whole file.",
-    evidence: `${targets} file${targets === 1 ? "" : "s"} read ${SUGGESTION_THRESHOLDS.minRepeatReads + 1}+ times, ${hits.length} reads across ${sources.length} session${sources.length === 1 ? "" : "s"}`,
+      'A file already in the transcript is already in context — re-reading it pays for the same bytes twice and pushes the cache further out. Re-read only after an edit, and prefer a targeted offset/limit over the whole file.',
+    evidence: `${targets} file${targets === 1 ? '' : 's'} read ${SUGGESTION_THRESHOLDS.minRepeatReads + 1}+ times, ${hits.length} reads across ${sources.length} session${sources.length === 1 ? '' : 's'}`,
     sources,
   };
 };
@@ -384,20 +382,18 @@ const redundantReads: Rule = (sessions) => {
 /** Many steps per outcome — the "same result, fewer steps" lever. */
 const highToolChurn: Rule = (sessions, stats) => {
   if (stats.tasks === 0 || stats.toolsPerTask < SUGGESTION_THRESHOLDS.highToolsPerTask) return null;
-  const busiest = [...sessions]
-    .sort((a, b) => b.tools - a.tools || a.threadId.localeCompare(b.threadId))
-    .slice(0, 3);
+  const busiest = [...sessions].sort((a, b) => b.tools - a.tools || a.threadId.localeCompare(b.threadId)).slice(0, 3);
   return {
-    id: "high-tool-churn",
-    severity: "warn",
-    title: "Tasks are taking a lot of steps",
+    id: 'high-tool-churn',
+    severity: 'warn',
+    title: 'Tasks are taking a lot of steps',
     detail: `These sessions averaged ${stats.toolsPerTask} tool calls per task. Stating the target files up front, or handing the sweep to one search agent instead of walking the tree call by call, gets to the same answer in a fraction of the turns.`,
-    evidence: `${stats.tools} tool calls over ${stats.tasks} task${stats.tasks === 1 ? "" : "s"} (${stats.toolsPerTask}/task)`,
+    evidence: `${stats.tools} tool calls over ${stats.tasks} task${stats.tasks === 1 ? '' : 's'} (${stats.toolsPerTask}/task)`,
     sources: busiest.map((s) => ({
       threadId: s.threadId,
       label: sessionLabel(s),
       nodeIndexes: [],
-      sample: `${s.tools} tool calls, ${s.tasks} task${s.tasks === 1 ? "" : "s"}`,
+      sample: `${s.tools} tool calls, ${s.tasks} task${s.tasks === 1 ? '' : 's'}`,
     })),
   };
 };
@@ -409,20 +405,20 @@ const unfinishedTasks: Rule = (sessions, stats) => {
   for (const session of sessions) {
     let openTask: SessionNode | null = null;
     for (const node of session.nodes) {
-      if (node.type === "task") {
+      if (node.type === 'task') {
         if (openTask) hits.push({ session, node: openTask });
         openTask = node;
-      } else if (node.type === "done") openTask = null;
+      } else if (node.type === 'done') openTask = null;
     }
     if (openTask) hits.push({ session, node: openTask });
   }
   return {
-    id: "unfinished-tasks",
-    severity: "info",
-    title: "Tasks ended without a recorded outcome",
+    id: 'unfinished-tasks',
+    severity: 'info',
+    title: 'Tasks ended without a recorded outcome',
     detail:
-      "A task with no `done:` was interrupted, compacted away, or drifted past its scope. The work is usually still on a branch — `/revive <thread id>` picks it back up rather than starting the same task twice.",
-    evidence: `${stats.unfinishedTasks} of ${stats.tasks} task${stats.tasks === 1 ? "" : "s"} have no outcome line`,
+      'A task with no `done:` was interrupted, compacted away, or drifted past its scope. The work is usually still on a branch — `/revive <thread id>` picks it back up rather than starting the same task twice.',
+    evidence: `${stats.unfinishedTasks} of ${stats.tasks} task${stats.tasks === 1 ? '' : 's'} have no outcome line`,
     sources: collectSources(hits),
   };
 };
@@ -432,13 +428,11 @@ const discoveryHeavy: Rule = (sessions, stats) => {
   if (stats.tools < SUGGESTION_THRESHOLDS.minToolsForRatio) return null;
   if (stats.discoveryRatio < SUGGESTION_THRESHOLDS.discoveryRatio) return null;
   const pct = Math.round(stats.discoveryRatio * 100);
-  const busiest = [...sessions]
-    .sort((a, b) => b.tools - a.tools || a.threadId.localeCompare(b.threadId))
-    .slice(0, 3);
+  const busiest = [...sessions].sort((a, b) => b.tools - a.tools || a.threadId.localeCompare(b.threadId)).slice(0, 3);
   return {
-    id: "discovery-heavy",
-    severity: "info",
-    title: "Most calls were spent locating code, not changing it",
+    id: 'discovery-heavy',
+    severity: 'info',
+    title: 'Most calls were spent locating code, not changing it',
     detail: `${pct}% of tool calls only read or searched. Every session is re-deriving the same layout — an AGENTS.md that names the entry points, or a short map of the packages, converts that search into a single read.`,
     evidence: `${pct}% of ${stats.tools} tool calls were reads/searches`,
     sources: busiest.map((s) => ({
@@ -457,8 +451,8 @@ const errorProneTool: Rule = (sessions, stats) => {
   const byTool = new Map<string, { session: SuggestibleSession; node: SessionNode }[]>();
   for (const session of sessions) {
     for (const node of session.nodes) {
-      if (node.type !== "error") continue;
-      const name = toolName(node.tool) ?? "(unattributed)";
+      if (node.type !== 'error') continue;
+      const name = toolName(node.tool) ?? '(unattributed)';
       const list = byTool.get(name);
       if (list) list.push({ session, node });
       else byTool.set(name, [{ session, node }]);
@@ -467,14 +461,14 @@ const errorProneTool: Rule = (sessions, stats) => {
 
   const ranked = [...byTool].sort((a, b) => b[1].length - a[1].length);
   const top = ranked[0];
-  if (!top || top[0] === "(unattributed)") return null;
+  if (!top || top[0] === '(unattributed)') return null;
   const total = ranked.reduce((n, [, hits]) => n + hits.length, 0);
   const pct = Math.round((top[1].length / total) * 100);
   if (pct < SUGGESTION_THRESHOLDS.errorProneToolPct) return null;
 
   return {
-    id: "error-prone-tool",
-    severity: "warn",
+    id: 'error-prone-tool',
+    severity: 'warn',
     title: `${top[0]} accounts for most failures`,
     detail: `${pct}% of failed results came from ${top[0]}. Pinning down its usage — the exact command form, the flags that work in this repo — removes a whole class of retries.`,
     evidence: `${top[1].length} of ${total} errors came from ${top[0]}`,
@@ -505,11 +499,11 @@ export function suggestBucket(sessions: readonly SuggestibleSession[]): SessionS
 
   if (out.length === 0) {
     out.push({
-      id: "steady",
-      severity: "info",
-      title: "Nothing to trim in these sessions",
-      detail: "No blocked calls, repeated errors, serial reads, or step-count outliers tripped their thresholds.",
-      evidence: `${stats.sessions} session${stats.sessions === 1 ? "" : "s"}, ${stats.tools} tool calls, ${stats.errors} errors`,
+      id: 'steady',
+      severity: 'info',
+      title: 'Nothing to trim in these sessions',
+      detail: 'No blocked calls, repeated errors, serial reads, or step-count outliers tripped their thresholds.',
+      evidence: `${stats.sessions} session${stats.sessions === 1 ? '' : 's'}, ${stats.tools} tool calls, ${stats.errors} errors`,
       sources: [],
     });
   }
@@ -564,7 +558,7 @@ export interface BucketBreakdownInput {
 export interface BreakdownPattern {
   /** A tool schema's name, or the region's name for the non-tool parts. */
   name: string;
-  kind: "tool" | "region";
+  kind: 'tool' | 'region';
   /** How many of the bucket's peak requests carried it. */
   requests: number;
   /** Mean bytes it contributed, over the requests that carried it. */
@@ -618,13 +612,13 @@ export function summarizeBreakdownPatterns(inputs: readonly BucketBreakdownInput
   if (inputs.length === 0) return EMPTY_BREAKDOWN_SUMMARY;
 
   interface Acc {
-    kind: "tool" | "region";
+    kind: 'tool' | 'region';
     bytes: number[];
     pcts: number[];
     sources: { threadId: string; file: string; bytes: number }[];
   }
   const acc = new Map<string, Acc>();
-  const add = (name: string, kind: "tool" | "region", bytes: number, total: number, input: BucketBreakdownInput) => {
+  const add = (name: string, kind: 'tool' | 'region', bytes: number, total: number, input: BucketBreakdownInput) => {
     if (bytes <= 0) return;
     const entry = acc.get(name) ?? { kind, bytes: [], pcts: [], sources: [] };
     entry.bytes.push(bytes);
@@ -638,9 +632,9 @@ export function summarizeBreakdownPatterns(inputs: readonly BucketBreakdownInput
     const b = input.breakdown;
     const msgBytes = b.messages.reduce((n, m) => n + m.bytes, 0);
     messagesBytes.push(msgBytes);
-    add("System prompt", "region", b.systemBytes, b.totalBytes, input);
-    add("Conversation messages", "region", msgBytes, b.totalBytes, input);
-    for (const tool of b.tools) add(tool.name, "tool", tool.bytes, b.totalBytes, input);
+    add('System prompt', 'region', b.systemBytes, b.totalBytes, input);
+    add('Conversation messages', 'region', msgBytes, b.totalBytes, input);
+    for (const tool of b.tools) add(tool.name, 'tool', tool.bytes, b.totalBytes, input);
   }
 
   const patterns: BreakdownPattern[] = [...acc]
@@ -685,11 +679,11 @@ export function suggestFromBreakdown(summary: BucketBreakdownSummary): SessionSu
   const toolsPct = (summary.avgToolsBytes / summary.avgTotalBytes) * 100;
   if (toolsPct >= SUGGESTION_THRESHOLDS.toolSchemaPctOfRequest) {
     out.push({
-      id: "bucket-tool-schema-heavy",
-      severity: "warn",
-      title: "Tool schemas dominate these requests",
+      id: 'bucket-tool-schema-heavy',
+      severity: 'warn',
+      title: 'Tool schemas dominate these requests',
       detail: `Tool definitions are ~${toolsPct.toFixed(0)}% of the average request in this bucket, on every turn, whether or not the tools get used. Withholding the ones these sessions never called is the largest single context cut available.`,
-      evidence: `~${summary.avgToolsBytes.toLocaleString()} of ~${summary.avgTotalBytes.toLocaleString()} average bytes, over ${summary.requests} request${summary.requests === 1 ? "" : "s"}`,
+      evidence: `~${summary.avgToolsBytes.toLocaleString()} of ~${summary.avgTotalBytes.toLocaleString()} average bytes, over ${summary.requests} request${summary.requests === 1 ? '' : 's'}`,
       sources: summary.toolsSources.map((s) => ({
         threadId: s.threadId,
         label: s.file,
@@ -701,14 +695,14 @@ export function suggestFromBreakdown(summary: BucketBreakdownSummary): SessionSu
 
   const constant = summary.patterns.find(
     (p) =>
-      p.kind === "tool" &&
+      p.kind === 'tool' &&
       p.requests === summary.requests &&
       p.avgPctOfRequest >= SUGGESTION_THRESHOLDS.singleToolPctOfRequest,
   );
   if (constant) {
     out.push({
-      id: "bucket-constant-tool",
-      severity: "warn",
+      id: 'bucket-constant-tool',
+      severity: 'warn',
       title: `"${constant.name}" is in every request in this bucket`,
       detail: `It carries ~${constant.avgEstTokens.toLocaleString()} tokens (~${constant.avgPctOfRequest}% of the request) each time. If these sessions did not need it, disabling it removes that cost from every turn they ever take.`,
       evidence: `present in all ${constant.requests} captured requests, ~${constant.avgBytes.toLocaleString()} bytes each`,

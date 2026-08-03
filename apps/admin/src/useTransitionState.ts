@@ -1,4 +1,4 @@
-import { type SetStateAction, useCallback, useState, useTransition } from "react";
+import { type SetStateAction, useCallback, useState, useTransition } from 'react';
 
 /**
  * State whose *re-render* is the expensive part — a table re-sorting thousands of rows,

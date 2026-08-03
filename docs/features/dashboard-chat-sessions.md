@@ -154,7 +154,7 @@ and receiving `403` for every POST. Add any second-checkout, preview, or remote 
 **One-shot filter exemption.** The proxy normally buffers a first sighting until the
 thread grows, excluding one-shot helpers. Dashboard chats declare interactivity on turn
 one: `api` sends `x-claude-proxy-chat: 1`; CLI cannot set headers, so the server creates
-`<store>/.chat/<session id>.json` before spawn. `proxy/session.mjs` treats both alike.
+`<store>/.chat/<session id>.json` before spawn. `proxy/session.ts` treats both alike.
 Markers live beside, not inside, SSE-watched `sessions/`, expire after 7 days, and are
 never created for ordinary Claude Code.
 
@@ -191,7 +191,7 @@ plain-CSS app has no Tailwind or `components.json`, so `shadcn add` cannot be us
 
 Flow: `apps/admin` (Sessions page `PromptInput`) → `server` (`/api/chat/*`, `chat.ts`,
 `chat-cli.ts`) → `claude --print` *or* a keyed `fetch` → `proxy` (`/v1/messages`, logging +
-`session.mjs`) → `api.anthropic.com`. The chat POSTs are four of the server's seven write
+`session.ts`) → `api.anthropic.com`. The chat POSTs are four of the server's seven write
 routes — suggestion status, job delete and the device system prompt are the others; every
 other route stays read-only.
 
@@ -219,7 +219,7 @@ other route stays read-only.
       next attempt matches what the model last saw.
 - [x] A thread that declares itself interactive is written on its first turn — by header or
       by marker file — and its header block is still written exactly once when it later
-      grows. Both doors are covered in `proxy/proxy.test.mjs`, each alongside a case proving
+      grows. Both doors are covered in `proxy/proxy.test.ts`, each alongside a case proving
       an undeclared request still buffers.
 - [x] The Sessions page renders the config line, the turn log (assistant text as Markdown),
       the prompt input, token counts, an "open transcript" link, and a "New chat" reset,

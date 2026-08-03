@@ -1,5 +1,5 @@
 /**
- * Proxy request filters — the human-readable inventory of what `proxy/proxy.mjs`
+ * Proxy request filters — the human-readable inventory of what `proxy/proxy.ts`
  * removes from every Claude Code request before forwarding.
  *
  * These are edits the CLI can't be configured to make on its own: withheld tools
@@ -8,11 +8,11 @@
  * is the only place they can be stripped, so the dashboard documents them here.
  *
  * The proxy is the source of truth for the *actual* stripping (`WITHHELD_TOOLS`
- * and `INJECTED_REMINDERS` in `proxy/proxy.mjs`); this module is the description
+ * and `INJECTED_REMINDERS` in `proxy/proxy.ts`); this module is the description
  * the dashboard renders — keep the two in sync.
  */
 
-export type ProxyFilterKind = "withheld-tool" | "injected-reminder";
+export type ProxyFilterKind = 'withheld-tool' | 'injected-reminder';
 
 export interface ProxyFilterEntry {
   /** Which stripping mechanism removes it. */
@@ -37,17 +37,17 @@ export interface FiltersResponse {
 /** The canonical inventory — mirrors the proxy's runtime constants. */
 export const PROXY_FILTER_INVENTORY: ProxyFilterEntry[] = [
   {
-    kind: "withheld-tool",
-    id: "EndConversation",
-    label: "EndConversation",
+    kind: 'withheld-tool',
+    id: 'EndConversation',
+    label: 'EndConversation',
     reason:
-      "The CLI exempts this tool from `permissions.deny`, so denying it in settings is silently ignored and its schema ships on every turn. The proxy is the only place it can be withheld.",
+      'The CLI exempts this tool from `permissions.deny`, so denying it in settings is silently ignored and its schema ships on every turn. The proxy is the only place it can be withheld.',
     mechanism: "Removed from the request's `tools` array before forwarding.",
   },
   {
-    kind: "injected-reminder",
-    id: "task-tools",
-    label: "Task-tools nudge",
+    kind: 'injected-reminder',
+    id: 'task-tools',
+    label: 'Task-tools nudge',
     reason:
       "A harness-injected note that the task tools haven't been used recently, closing with an invitation to ignore it. No CLI setting suppresses it, and a CLAUDE.md instruction doesn't reliably stop it — so it can only be removed at the proxy.",
     mechanism:
