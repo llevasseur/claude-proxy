@@ -2,6 +2,7 @@ export * from "./types.js";
 export * from "./time.js";
 export * from "./pricing.js";
 export * from "./digest.js";
+export * from "./cost-rate.js";
 export * from "./usage-limits.js";
 export * from "./advice.js";
 export * from "./withheld.js";
