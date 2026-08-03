@@ -1,4 +1,12 @@
-import { createRootRoute, createRoute, createRouter, Link, Outlet, useRouterState } from '@tanstack/react-router';
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Link,
+  Outlet,
+  redirect,
+  useRouterState,
+} from '@tanstack/react-router';
 import {
   BookOpen,
   EyeOff,
@@ -15,7 +23,6 @@ import {
   Puzzle,
   ScrollText,
   TerminalSquare,
-  TrendingUp,
   Wrench,
   Zap,
 } from 'lucide-react';
@@ -48,14 +55,12 @@ import { SuggestionBucketPage } from './routes/suggestion-bucket';
 import { SystemPromptPage } from './routes/system-prompt';
 import { ToolsPage } from './routes/tools';
 import { TrendDetailPage } from './routes/trend-detail';
-import { TrendsPage } from './routes/trends';
 import { WithheldPage } from './routes/withheld';
 import { useRailCollapsed } from './useRailCollapsed';
 
 /** Side-rail nav stations. */
 const STATIONS = [
   { to: '/', label: 'Overview', hint: 'today', exact: true, icon: Monitor },
-  { to: '/trends', label: 'Trends', hint: 'history', exact: false, icon: TrendingUp },
   { to: '/context', label: 'Context size', hint: 'prompt', exact: false, icon: Gauge },
   { to: '/tools', label: 'Tool bloat', hint: 'context', exact: false, icon: Wrench },
   { to: '/skim', label: 'Skim', hint: 'cache', exact: false, icon: Zap },
@@ -162,11 +167,17 @@ const indexRoute = createRoute({
   component: OverviewPage,
   staticData: { title: 'Overview' },
 });
+/**
+ * The Trends page folded into the Overview; the path stays as a redirect for
+ * saved links. `/trends/$metric` below is a sibling route, not a child, so the
+ * drill-downs are untouched by this.
+ */
 const trendsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/trends',
-  component: TrendsPage,
-  staticData: { title: 'Trends' },
+  beforeLoad: () => {
+    throw redirect({ to: '/' });
+  },
 });
 const trendDetailRoute = createRoute({
   getParentRoute: () => rootRoute,

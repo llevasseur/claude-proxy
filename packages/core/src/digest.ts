@@ -52,12 +52,32 @@ export interface ComputeDigestOptions {
   topN?: number;
 }
 
+/**
+ * Every token a day moved, and the denominator of its rate: the whole prompt —
+ * `realInput` already counts cache reads and writes — plus what came back.
+ */
+export function rateTokens(d: UsageDigest): number {
+  return d.tokens.realInput + d.tokens.output;
+}
+
+/**
+ * A day's blended price in USD per million tokens, independent of how many it
+ * moved. Cache reads are an order of magnitude cheaper than fresh input and are
+ * counted in the denominator, so leaning on the cache pulls this down. Zero for
+ * a day that moved no tokens.
+ */
+export function costPerMTok(d: UsageDigest): number {
+  const tokens = rateTokens(d);
+  return tokens > 0 ? (d.cost.total / tokens) * 1_000_000 : 0;
+}
+
 const TREND_FIELDS: Array<{ field: string; pick: (d: UsageDigest) => number }> = [
   { field: 'realInput', pick: (d) => d.tokens.realInput },
   { field: 'output', pick: (d) => d.tokens.output },
   { field: 'cost', pick: (d) => d.cost.total },
   { field: 'requestCount', pick: (d) => d.requestCount },
   { field: 'avgSystemPromptBytes', pick: (d) => d.avgSystemPromptBytes },
+  { field: 'costPerMTok', pick: costPerMTok },
 ];
 
 function pct(part: number, whole: number): number {

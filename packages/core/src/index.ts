@@ -3,6 +3,7 @@ export * from './code-view.js';
 export * from './commands.js';
 export * from './concepts.js';
 export * from './context.js';
+export * from './cost-rate.js';
 export * from './digest.js';
 export * from './filters.js';
 export * from './hooks-plugins.js';

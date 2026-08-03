@@ -1,5 +1,5 @@
-import { reportTzAbbr, type UsageDigest } from '@claude-proxy/core';
-import { fmtInt, fmtPct, fmtUsd } from './format';
+import { costPerMTok, reportTzAbbr, type UsageDigest } from '@claude-proxy/core';
+import { fmtInt, fmtPct, fmtUsd, fmtUsdPerMTok } from './format';
 
 /** One Overview statistic, shared by the cards, their mini charts, and `/trends/$metric`. */
 export interface StatMetric {
@@ -66,6 +66,19 @@ export const METRICS: StatMetric[] = [
     value: (d) => d.cost.total,
     sub: () => 'approx.',
     trendField: 'cost',
+  },
+  {
+    key: 'cost-rate',
+    label: 'Cost per token',
+    title: 'Cost per million tokens',
+    description:
+      "Estimated USD per million tokens moved each day, counting the whole prompt and the output. A day's efficiency, independent of its size — cache reads are far cheaper than fresh input, so leaning on the cache pulls this down.",
+    color: 'var(--signal)',
+    format: fmtUsdPerMTok,
+    value: (d) => costPerMTok(d),
+    sub: () => 'blended',
+    increaseIsBad: true,
+    trendField: 'costPerMTok',
   },
   {
     key: 'cache-hit',
