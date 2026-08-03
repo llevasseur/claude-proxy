@@ -4,6 +4,7 @@ import { Link, useParams } from '@tanstack/react-router';
 import { getTrends } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { FixedPrefixTools } from '../components/FixedPrefixTools';
+import { HeaderHint } from '../components/HeaderHint';
 import { PerCallNextSteps, PerCallPanel, PerCallSkeleton } from '../components/PerCallPanel';
 import { PromptMixPanel, PromptMixSkeleton } from '../components/PromptMixPanel';
 import { QueryState } from '../components/QueryState';
@@ -118,8 +119,16 @@ export function TrendDetailPage() {
                 <table className='table'>
                   <thead>
                     <tr>
-                      <th>Date ({REPORT_TZ_ABBR})</th>
-                      <th className='num'>{def.label}</th>
+                      <th>
+                        Date ({REPORT_TZ_ABBR})
+                        <HeaderHint
+                          text={`The report day, bucketed in ${REPORT_TZ_ABBR}. Newest first; the latest day may still be partial.`}
+                        />
+                      </th>
+                      <th className='num'>
+                        {def.label}
+                        <HeaderHint text={`${def.description} The chart beside this table plots the same values.`} />
+                      </th>
                     </tr>
                   </thead>
                   <tbody>

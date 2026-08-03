@@ -4,6 +4,7 @@ import { Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { type CommandRunResponse, getCommandRun, getContextMessage } from '../api';
 import { CodeBlock } from '../components/CodeBlock';
+import { HeaderHint } from '../components/HeaderHint';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import {
@@ -208,8 +209,14 @@ function RunBody({ data }: { data: CommandRunResponse }) {
           <table className='table'>
             <thead>
               <tr>
-                <th>Pattern</th>
-                <th className='num'>Frequency</th>
+                <th>
+                  Pattern
+                  <HeaderHint text='A deterministic rule from the catalogue that fired somewhere in this command, matched mechanically rather than judged by a model.' />
+                </th>
+                <th className='num'>
+                  Frequency
+                  <HeaderHint text="Runs of this command the rule fired in, out of the runs counted — how common this run's findings are." />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -428,12 +435,30 @@ function WasteTable({ steps }: { steps: CommandRunStepStats[] }) {
         <table className='table'>
           <thead>
             <tr>
-              <th>Step</th>
-              <th className='num'>Errored calls</th>
-              <th className='num'>Duplicate reads</th>
-              <th className='num'>Retries after an error</th>
-              <th className='num'>No-op turns</th>
-              <th className='num'>Cache-miss tokens</th>
+              <th>
+                Step
+                <HeaderHint text='The step the counters below were tallied under. Only steps with something to report appear.' />
+              </th>
+              <th className='num'>
+                Errored calls
+                <HeaderHint text='Tool calls that came back an error, counted off the transcript.' />
+              </th>
+              <th className='num'>
+                Duplicate reads
+                <HeaderHint text='Reads of a path already read in this run — every read past the first.' />
+              </th>
+              <th className='num'>
+                Retries after an error
+                <HeaderHint text='A call reissued with the same signature right after that same call errored.' />
+              </th>
+              <th className='num'>
+                No-op turns
+                <HeaderHint text='A narration turn that produced no tool call at all before the next one.' />
+              </th>
+              <th className='num'>
+                Cache-miss tokens
+                <HeaderHint text="Prompt tokens that missed the cache (real input − cache read) over the step's turns." />
+              </th>
             </tr>
           </thead>
           <tbody>
