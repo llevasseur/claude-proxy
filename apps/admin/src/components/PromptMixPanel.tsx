@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import type { PromptCohort, PromptMixDay, MixAttribution } from "@claude-proxy/core";
 import { getPromptMix, type PromptRevisionDetail } from "../api";
 import { fmtBytes, fmtInt, fmtPct } from "../format";
@@ -41,7 +42,7 @@ export function PromptMixPanel({ days }: { days: number }) {
       <div className="card">
         <div className="card-head">
           <h2>Where the number comes from</h2>
-          <span className="range">{day.date}</span>
+          <span className="muted">click a prompt for its breakdown</span>
         </div>
         <Composition day={day} partial={data.partial} />
         <CohortTable day={day} />
@@ -121,12 +122,37 @@ function CohortTable({ day }: { day: PromptMixDay }) {
   );
 }
 
+/** A mover carries its cohort key rather than a hash; only identified keys are one. */
+function hashOfKey(key: string): string | null {
+  return key.startsWith("legacy:") ? null : key;
+}
+
+/**
+ * A cohort's name, linked to its breakdown when there is one to link to. A
+ * legacy cohort is keyed by model and size band rather than by a prompt, so it
+ * has no single outline to open.
+ */
+function CohortLabel({ label, hash }: { label: string; hash: string | null }) {
+  if (!hash) {
+    return (
+      <>
+        <span className="mono">{label}</span>
+        <span className="muted"> (est.)</span>
+      </>
+    );
+  }
+  return (
+    <Link to="/prompts/$hash" params={{ hash }} className="link mono">
+      {label}
+    </Link>
+  );
+}
+
 function CohortRow({ cohort }: { cohort: PromptCohort }) {
   return (
     <tr>
       <td>
-        <span className="mono">{cohort.label}</span>
-        {!cohort.identified && <span className="muted"> (est.)</span>}
+        <CohortLabel label={cohort.label} hash={cohort.hash} />
       </td>
       <td className="num">{fmtInt(cohort.requests)}</td>
       <td className="num">{fmtPct(cohort.share * 100)}</td>
@@ -165,7 +191,9 @@ function Attribution({ attribution: a }: { attribution: MixAttribution }) {
         <tbody>
           {a.movers.slice(0, TOP_COHORTS).map((m) => (
             <tr key={m.key}>
-              <td className="mono">{m.label}</td>
+              <td>
+                <CohortLabel label={m.label} hash={hashOfKey(m.key)} />
+              </td>
               <td className="num">
                 {fmtPct(m.priorShare * 100)} → {fmtPct(m.share * 100)}
               </td>

@@ -41,6 +41,7 @@ import type {
   PromptMixDay,
   PromptRevision,
   SectionMove,
+  SectionShare,
   StoredWirePrompt,
   SystemPromptDoc,
   TopTool,
@@ -85,6 +86,26 @@ export interface PromptMixResponse {
   /** Present while the newest day is still running, so its mean is incomplete. */
   partial: { date: string; elapsed: number } | null;
   meta: { days: number; files: number; parseErrors: number; archivedDays: number; outlinesFound: number };
+}
+/** One day a prompt ran, and its slice of that day's mean. */
+export interface PromptDayUsage {
+  date: string;
+  requests: number;
+  share: number;
+  meanBytes: number;
+  contribution: number;
+  dayMeanBytes: number;
+}
+/** One cohort from the mix, opened up into the sections its bytes sit in. */
+export interface PromptDetailResponse {
+  hash: string;
+  label: string;
+  models: string[];
+  /** null when the prompt ran before the proxy started storing outlines. */
+  outline: StoredWirePrompt | null;
+  sections: SectionShare[];
+  usage: PromptDayUsage[];
+  meta: { days: number; files: number; parseErrors: number; archivedDays: number };
 }
 export interface ContextResponse {
   summary: ContextSummary;
@@ -545,6 +566,8 @@ export const getHealth = () => get<HealthResponse>("/api/health");
 export const getSummary = (date?: string) => get<SummaryResponse>(`/api/summary${qs(date)}`);
 export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days=${days}`);
 export const getPromptMix = (days: number) => get<PromptMixResponse>(`/api/prompt-mix?days=${days}`);
+export const getPromptDetail = (hash: string, days: number) =>
+  get<PromptDetailResponse>(`/api/prompt?hash=${encodeURIComponent(hash)}&days=${days}`);
 /** Paired with the `/api/usage/stream` SSE subscription, which pushes the same shape. */
 export const getUsage = () => get<UsageResponse>("/api/usage");
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);

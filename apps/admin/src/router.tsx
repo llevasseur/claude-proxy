@@ -47,6 +47,7 @@ import { MemoryDetailPage } from "./routes/memory-detail";
 import { OverviewPage } from "./routes/overview";
 import { ProjectDetailPage } from "./routes/project-detail";
 import { ProjectsPage } from "./routes/projects";
+import { PromptDetailPage } from "./routes/prompt-detail";
 import { SessionDetailPage } from "./routes/session-detail";
 import { SessionErrorsPage } from "./routes/session-errors";
 import { SessionGraphPage } from "./routes/session-graph";
@@ -182,6 +183,13 @@ const trendDetailRoute = createRoute({
   path: "/trends/$metric",
   component: TrendDetailPage,
   staticData: { title: "Trend" },
+});
+const promptDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // The prompt's content hash, which is also its cohort key on the trend page.
+  path: "/prompts/$hash",
+  component: PromptDetailPage,
+  staticData: { title: "System prompt" },
 });
 const contextRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -354,6 +362,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   trendsRoute,
   trendDetailRoute,
+  promptDetailRoute,
   contextRoute,
   contextDetailRoute,
   contextMessageRoute,

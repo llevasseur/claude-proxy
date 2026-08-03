@@ -360,6 +360,16 @@ button:focus-visible {
   font-weight: 600;
   margin: 0 0 6px;
 }
+/* One prompt's sections: the heading indents to its depth, and the share column
+   carries its own bar so the long tail reads at a glance. */
+.section-heading {
+  display: inline-block;
+}
+.share-cell .rowbar {
+  height: 4px;
+  margin: 0 0 3px auto;
+  opacity: 0.75;
+}
 .muted {
   color: var(--muted);
 }
