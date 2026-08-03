@@ -15,11 +15,20 @@ export interface SeriesLineChartProps {
   /** X-axis category key. */
   xKey: string;
   format: (n: number) => string;
+  /** Compact form of `format` for y-axis ticks; defaults to `format`. */
+  formatTick?: (n: number) => string;
   height?: number;
 }
 
 /** Multi-series line chart. Chrome is themed via the admin's CSS variables. */
-export function SeriesLineChart({ data, series, xKey, format, height = 220 }: SeriesLineChartProps) {
+export function SeriesLineChart({
+  data,
+  series,
+  xKey,
+  format,
+  formatTick = format,
+  height = 220,
+}: SeriesLineChartProps) {
   return (
     <div style={{ height }}>
       <ResponsiveContainer width='100%' height='100%'>
@@ -33,12 +42,13 @@ export function SeriesLineChart({ data, series, xKey, format, height = 220 }: Se
             interval='preserveStartEnd'
             minTickGap={24}
           />
+          {/* `auto` sizes the gutter to the widest rendered tick. */}
           <YAxis
-            width={48}
+            width='auto'
             tick={{ fontSize: 11, fill: 'var(--muted)' }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v) => (typeof v === 'number' ? format(v) : String(v))}
+            tickFormatter={(v) => (typeof v === 'number' ? formatTick(v) : String(v))}
           />
           <Tooltip
             cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
