@@ -1,6 +1,6 @@
-import { isAuditSidecar, type AuditSidecar } from "./types.js";
-import { addCost, estimateCost, ZERO_COST, type CostBreakdown } from "./pricing.js";
-import { reportDay, reportHour } from "./time.js";
+import { addCost, type CostBreakdown, estimateCost, ZERO_COST } from './pricing.js';
+import { reportDay, reportHour } from './time.js';
+import { type AuditSidecar, isAuditSidecar } from './types.js';
 
 export interface DigestTokens {
   input: number;
@@ -72,12 +72,12 @@ export function costPerMTok(d: UsageDigest): number {
 }
 
 const TREND_FIELDS: Array<{ field: string; pick: (d: UsageDigest) => number }> = [
-  { field: "realInput", pick: (d) => d.tokens.realInput },
-  { field: "output", pick: (d) => d.tokens.output },
-  { field: "cost", pick: (d) => d.cost.total },
-  { field: "requestCount", pick: (d) => d.requestCount },
-  { field: "avgSystemPromptBytes", pick: (d) => d.avgSystemPromptBytes },
-  { field: "costPerMTok", pick: costPerMTok },
+  { field: 'realInput', pick: (d) => d.tokens.realInput },
+  { field: 'output', pick: (d) => d.tokens.output },
+  { field: 'cost', pick: (d) => d.cost.total },
+  { field: 'requestCount', pick: (d) => d.requestCount },
+  { field: 'avgSystemPromptBytes', pick: (d) => d.avgSystemPromptBytes },
+  { field: 'costPerMTok', pick: costPerMTok },
 ];
 
 function pct(part: number, whole: number): number {
@@ -146,7 +146,7 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
     .sort((a, b) => b.totalBytes - a.totalBytes)
     .slice(0, topN);
 
-  let busiestHour: UsageDigest["busiestHour"] = null;
+  let busiestHour: UsageDigest['busiestHour'] = null;
   for (const [hour, count] of hourCounts) {
     if (!busiestHour || count > busiestHour.requestCount) busiestHour = { hour, requestCount: count };
   }
@@ -185,12 +185,12 @@ function buildTrend(today: UsageDigest, prior: UsageDigest): TrendEntry[] {
 export function digestsByDay(sidecars: readonly unknown[], topN?: number): UsageDigest[] {
   const byDay = new Map<string, unknown[]>();
   for (const s of sidecars) {
-    const day = isAuditSidecar(s) ? dayOf(s) : "invalid";
+    const day = isAuditSidecar(s) ? dayOf(s) : 'invalid';
     const bucket = byDay.get(day) ?? [];
     bucket.push(s);
     byDay.set(day, bucket);
   }
-  byDay.delete("invalid");
+  byDay.delete('invalid');
 
   const days = [...byDay.keys()].sort();
   const digests: UsageDigest[] = [];
@@ -204,10 +204,10 @@ export function digestsByDay(sidecars: readonly unknown[], topN?: number): Usage
 }
 
 function isRec(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
+  return typeof v === 'object' && v !== null;
 }
 function numOf(v: unknown): number {
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
 /**
@@ -249,7 +249,7 @@ export function normalizeDigest(raw: unknown, fallbackDate: string): UsageDigest
     : null;
 
   return {
-    date: typeof raw.date === "string" ? raw.date : fallbackDate,
+    date: typeof raw.date === 'string' ? raw.date : fallbackDate,
     requestCount: numOf(raw.requestCount),
     skipped: numOf(raw.skipped),
     models,
@@ -259,6 +259,6 @@ export function normalizeDigest(raw: unknown, fallbackDate: string): UsageDigest
     avgSystemPromptBytes: numOf(raw.avgSystemPromptBytes),
     toolOverheadPctOfInput: numOf(raw.toolOverheadPctOfInput),
     busiestHour,
-    trend: Array.isArray(raw.trend) ? (raw.trend as UsageDigest["trend"]) : undefined,
+    trend: Array.isArray(raw.trend) ? (raw.trend as UsageDigest['trend']) : undefined,
   };
 }

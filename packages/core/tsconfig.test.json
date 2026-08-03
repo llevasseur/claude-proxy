@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // No `rootDir`: the parity test reaches out of the package into `proxy/`.
+    "types": ["node"],
+    // The proxy's relative imports carry a real `.ts` extension.
+    "allowImportingTsExtensions": true
+  },
+  // `test` alone: `src` arrives through the tests' imports and is still fully
+  // checked, and leaving it out keeps `src/globals.d.ts` off Node's own.
+  "include": ["test"]
+}

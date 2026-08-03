@@ -1,4 +1,4 @@
-import { isAuditSidecar, type AuditSidecar } from "./types.js";
+import { type AuditSidecar, isAuditSidecar } from './types.js';
 
 /**
  * "Context size" analytics: how large the prompt sent to the model gets.
@@ -54,10 +54,7 @@ function median(sorted: readonly number[]): number {
  * Aggregate context entries into averages, the peak, the largest N, and the full
  * chronological list. Pure.
  */
-export function summarizeContext(
-  entries: readonly ContextEntry[],
-  opts: SummarizeContextOptions = {},
-): ContextSummary {
+export function summarizeContext(entries: readonly ContextEntry[], opts: SummarizeContextOptions = {}): ContextSummary {
   const topN = opts.topN ?? 10;
   const requestCount = entries.length;
 
@@ -116,10 +113,7 @@ export interface SessionContextPeak {
  * peak may belong to any of them. Ties keep the earlier entry; a null or unmatched
  * id gives an empty result.
  */
-export function sessionContextPeak(
-  entries: readonly ContextEntry[],
-  sessionId: string | null,
-): SessionContextPeak {
+export function sessionContextPeak(entries: readonly ContextEntry[], sessionId: string | null): SessionContextPeak {
   if (!sessionId) return { requestCount: 0, peak: null };
 
   let requestCount = 0;
@@ -175,16 +169,16 @@ export const estTokens = (bytes: number): number => Math.round(bytes / 4);
  * malformed shapes — missing/renamed fields yield zeros rather than throwing.
  */
 export function analyzeRequestBody(body: unknown): RequestBreakdown {
-  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
 
   const rawTools = Array.isArray(obj.tools) ? obj.tools : [];
   const tools: BreakdownTool[] = rawTools
     .map((t, index) => {
       const bytes = byteLength(t);
       const name =
-        typeof t === "object" && t !== null && typeof (t as { name?: unknown }).name === "string"
+        typeof t === 'object' && t !== null && typeof (t as { name?: unknown }).name === 'string'
           ? (t as { name: string }).name
-          : "(unnamed)";
+          : '(unnamed)';
       return { index, name, bytes, estTokens: estTokens(bytes) };
     })
     .sort((a, b) => b.bytes - a.bytes);
@@ -193,9 +187,9 @@ export function analyzeRequestBody(body: unknown): RequestBreakdown {
   const messages: BreakdownMessage[] = rawMessages.map((m, index) => {
     const bytes = byteLength(m);
     const role =
-      typeof m === "object" && m !== null && typeof (m as { role?: unknown }).role === "string"
+      typeof m === 'object' && m !== null && typeof (m as { role?: unknown }).role === 'string'
         ? (m as { role: string }).role
-        : "unknown";
+        : 'unknown';
     return { index, role, bytes, estTokens: estTokens(bytes) };
   });
 
@@ -232,17 +226,24 @@ export interface RequestMessageDetail {
  * or out-of-range `index`. Pure and tolerant of malformed shapes.
  */
 export function extractRequestMessage(body: unknown, index: number): RequestMessageDetail | null {
-  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
   const rawMessages = Array.isArray(obj.messages) ? obj.messages : [];
   if (!Number.isInteger(index) || index < 0 || index >= rawMessages.length) return null;
 
   const m = rawMessages[index];
   const bytes = byteLength(m);
   const role =
-    typeof m === "object" && m !== null && typeof (m as { role?: unknown }).role === "string"
+    typeof m === 'object' && m !== null && typeof (m as { role?: unknown }).role === 'string'
       ? (m as { role: string }).role
-      : "unknown";
-  return { index, role, bytes, estTokens: estTokens(bytes), messageCount: rawMessages.length, content: JSON.stringify(m, null, 2) };
+      : 'unknown';
+  return {
+    index,
+    role,
+    bytes,
+    estTokens: estTokens(bytes),
+    messageCount: rawMessages.length,
+    content: JSON.stringify(m, null, 2),
+  };
 }
 
 export interface RequestToolDetail {
@@ -263,15 +264,22 @@ export interface RequestToolDetail {
  * tools array or out-of-range `index`. Pure and tolerant of malformed shapes.
  */
 export function extractRequestTool(body: unknown, index: number): RequestToolDetail | null {
-  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
   const rawTools = Array.isArray(obj.tools) ? obj.tools : [];
   if (!Number.isInteger(index) || index < 0 || index >= rawTools.length) return null;
 
   const t = rawTools[index];
   const bytes = byteLength(t);
   const name =
-    typeof t === "object" && t !== null && typeof (t as { name?: unknown }).name === "string"
+    typeof t === 'object' && t !== null && typeof (t as { name?: unknown }).name === 'string'
       ? (t as { name: string }).name
-      : "(unnamed)";
-  return { index, name, bytes, estTokens: estTokens(bytes), toolCount: rawTools.length, content: JSON.stringify(t, null, 2) };
+      : '(unnamed)';
+  return {
+    index,
+    name,
+    bytes,
+    estTokens: estTokens(bytes),
+    toolCount: rawTools.length,
+    content: JSON.stringify(t, null, 2),
+  };
 }

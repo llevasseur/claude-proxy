@@ -12,19 +12,22 @@ import type {
   ContextSummary,
   HookRow,
   InterruptionKind,
-  PatternFrequency,
-  StepReach,
   JobFileKind,
   JobStateFields,
   JobTreeNode,
   LaunchAlias,
   LaunchAliasPosture,
   LinkedSessionError,
+  MixAttribution,
+  PatternFrequency,
   PluginRow,
+  PromptMixDay,
+  PromptRevision,
   ProxyFilterEntry,
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
+  SectionMove,
   SessionAgentLink,
   SessionBucket,
   SessionContextPeak,
@@ -33,23 +36,20 @@ import type {
   SessionSuggestion,
   SkimDigest,
   SkimShape,
+  StepReach,
+  StoredWirePrompt,
   SuggestionRecurrence,
   SuggestionStatus,
   SuggestionStatusRow,
   SuggestionStatusUpdate,
-  MixAttribution,
-  PromptMixDay,
-  PromptRevision,
-  SectionMove,
-  StoredWirePrompt,
   SystemPromptDoc,
   TopTool,
   UsageDigest,
   UsageLimitsSnapshot,
   WithheldReport,
-} from "@claude-proxy/core";
+} from '@claude-proxy/core';
 
-export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8788";
+export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8788';
 
 // HTTP envelopes — mirror the shapes returned by the server package.
 export interface SummaryResponse {
@@ -228,7 +228,7 @@ export interface JobFileDetail {
   kind: JobFileKind;
   bytes: number;
   modified: string;
-  encoding: "utf8" | "base64";
+  encoding: 'utf8' | 'base64';
   content: string;
   mime: string | null;
   truncated: boolean;
@@ -355,7 +355,7 @@ export interface CommandRunListItem {
   totals: CommandRunTotals;
   patterns: CommandPatternId[];
   lastStep: string | null;
-  meta: CommandRun["meta"];
+  meta: CommandRun['meta'];
 }
 /** Where the command file's content changed between two runs — the scatter's `/sync` marker. */
 export interface CommandHashMarker {
@@ -418,12 +418,12 @@ export interface FiltersResponse {
   filters: ProxyFilterEntry[];
 }
 /** `agent` runs a real Claude Code session and can change the repo; `chat` cannot. */
-export type ChatMode = "chat" | "agent";
+export type ChatMode = 'chat' | 'agent';
 /**
  * The standing answer an agent turn's headless child gives to permission prompts.
  * Mirrors `PERMISSION_MODES` in `server/src/chat.ts`; the server rejects anything else.
  */
-export const PERMISSION_MODES = ["default", "acceptEdits", "bypassPermissions", "plan"] as const;
+export const PERMISSION_MODES = ['default', 'acceptEdits', 'bypassPermissions', 'plan'] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 /** What an agent turn inherits from the device, for the posture line in the UI. */
 export interface ChatAgentConfig {
@@ -432,12 +432,16 @@ export interface ChatAgentConfig {
   aliasFound: boolean;
   rcPath: string;
   rcReadable: boolean;
-  flags: { disallowedTools: string[]; settingSources: string[] | null; settingsOverrides: Record<string, unknown> | null };
+  flags: {
+    disallowedTools: string[];
+    settingSources: string[] | null;
+    settingsOverrides: Record<string, unknown> | null;
+  };
   permissionMode: string;
 }
 /** The resolved settings a dashboard-started chat runs with. */
 export interface ChatConfigResponse {
-  transport: "cli" | "api";
+  transport: 'cli' | 'api';
   mode: ChatMode;
   agent: ChatAgentConfig | null;
   baseUrl: string;
@@ -453,7 +457,7 @@ export interface ChatConfigResponse {
   readyHint: string | null;
 }
 export interface ChatTurn {
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   text: string;
 }
 /** One tool an agent turn ran. */
@@ -464,7 +468,7 @@ export interface ChatToolUse {
   error?: string;
 }
 /** Why a turn ended early: `timeout` is going quiet, `limit` is outrunning the ceiling. */
-export type ChatInterruption = "stopped" | "timeout" | "limit";
+export type ChatInterruption = 'stopped' | 'timeout' | 'limit';
 /** A chat whose turn is in flight right now, as the server sees it. */
 export interface RunningChat {
   /** Also the `session:` a transcript records, which is how a session page matches itself. */
@@ -489,7 +493,7 @@ export interface ChatSendResponse {
     threadId: string | null;
     model: string;
     createdAt: string;
-    transport: "cli" | "api";
+    transport: 'cli' | 'api';
     mode: ChatMode;
     permissionMode: string | null;
     /** What the child reported it started under; a mismatch means the pin never landed. */
@@ -532,21 +536,21 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body: unknown): Promise<T> {
   return unwrap<T>(
     await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }),
   );
 }
 
-const qs = (date?: string) => (date ? `?date=${encodeURIComponent(date)}` : "");
+const qs = (date?: string) => (date ? `?date=${encodeURIComponent(date)}` : '');
 
-export const getHealth = () => get<HealthResponse>("/api/health");
+export const getHealth = () => get<HealthResponse>('/api/health');
 export const getSummary = (date?: string) => get<SummaryResponse>(`/api/summary${qs(date)}`);
 export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days=${days}`);
 export const getPromptMix = (days: number) => get<PromptMixResponse>(`/api/prompt-mix?days=${days}`);
 /** Paired with the `/api/usage/stream` SSE subscription, which pushes the same shape. */
-export const getUsage = () => get<UsageResponse>("/api/usage");
+export const getUsage = () => get<UsageResponse>('/api/usage');
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);
 export const getContext = (days: number) => get<ContextResponse>(`/api/context?days=${days}`);
 export const getContextDetail = (file: string) =>
@@ -555,43 +559,42 @@ export const getContextMessage = (file: string, index: number) =>
   get<ContextMessageResponse>(`/api/context/message?file=${encodeURIComponent(file)}&index=${index}`);
 export const getContextTool = (file: string, index: number) =>
   get<ContextToolResponse>(`/api/context/tool?file=${encodeURIComponent(file)}&index=${index}`);
-export const getProjects = () => get<ProjectsResponse>("/api/projects");
+export const getProjects = () => get<ProjectsResponse>('/api/projects');
 export const getProjectMemories = (project: string) =>
   get<ProjectMemoriesResponse>(`/api/projects/memories?project=${encodeURIComponent(project)}`);
 export const getMemory = (project: string, name: string) =>
   get<MemoryResponse>(`/api/projects/memory?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`);
 /** Every background job directory on the device, newest activity first. */
-export const getJobs = () => get<JobsResponse>("/api/jobs");
+export const getJobs = () => get<JobsResponse>('/api/jobs');
 export const getJob = (id: string) => get<JobResponse>(`/api/jobs/job?id=${encodeURIComponent(id)}`);
 /** One file from a job directory — `file` is a path relative to that directory. */
 export const getJobFile = (id: string, file: string) =>
   get<JobFileResponse>(`/api/jobs/file?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`);
 /** Delete one job directory from `~/.claude/jobs` — no trash, and a running job is refused. */
-export const deleteJob = (id: string) => post<JobDeleteResponse>("/api/jobs/delete", { id });
-export const getSessions = () => get<SessionsResponse>("/api/sessions");
-export const getSessionsGraph = () => get<SessionsGraphResponse>("/api/sessions/graph");
+export const deleteJob = (id: string) => post<JobDeleteResponse>('/api/jobs/delete', { id });
+export const getSessions = () => get<SessionsResponse>('/api/sessions');
+export const getSessionsGraph = () => get<SessionsGraphResponse>('/api/sessions/graph');
 export const getSessionGraphNodes = (id: string) =>
   get<SessionGraphNodesResponse>(`/api/sessions/graph/nodes?id=${encodeURIComponent(id)}`);
-export const getSession = (id: string) =>
-  get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
+export const getSession = (id: string) => get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
 export const getSessionErrors = (id: string) =>
   get<SessionErrorsResponse>(`/api/sessions/errors?id=${encodeURIComponent(id)}`);
 export const getSessionNodeTexts = (id: string) =>
   get<SessionNodeTextsResponse>(`/api/sessions/node-text?id=${encodeURIComponent(id)}`);
 export const getSessionBreakdown = (id: string) =>
   get<SessionBreakdownResponse>(`/api/sessions/breakdown?id=${encodeURIComponent(id)}`);
-export const getCommands = () => get<CommandsResponse>("/api/commands");
+export const getCommands = () => get<CommandsResponse>('/api/commands');
 /** `flags` narrows which runs are aggregated; it never splits the command into variants. */
 export const getCommand = (command: string, flags: readonly string[] = []) => {
   const params = new URLSearchParams({ name: command });
-  if (flags.length) params.set("flags", flags.join(","));
+  if (flags.length) params.set('flags', flags.join(','));
   return get<CommandResponse>(`/api/commands/command?${params.toString()}`);
 };
 export const getCommandRun = (threadId: string) =>
   get<CommandRunResponse>(`/api/commands/run?id=${encodeURIComponent(threadId)}`);
 
 /** Every ten-session window, recomputed server-side on each load — this is the backfill. */
-export const getSessionSuggestions = () => get<SessionSuggestionsResponse>("/api/sessions/suggestions");
+export const getSessionSuggestions = () => get<SessionSuggestionsResponse>('/api/sessions/suggestions');
 export const getSessionSuggestionBucket = (index: number) =>
   get<SessionSuggestionBucketResponse>(`/api/sessions/suggestions/bucket?index=${index}`);
 /**
@@ -599,41 +602,35 @@ export const getSessionSuggestionBucket = (index: number) =>
  * `recurrences` narrows by how each window stands against its rule's dated `done`.
  */
 export const getSuggestionStatus = (
-  opts: {
-    range?: string;
-    statuses?: SuggestionStatus[];
-    recurrences?: SuggestionRecurrence[];
-    detail?: boolean;
-  } = {},
+  opts: { range?: string; statuses?: SuggestionStatus[]; recurrences?: SuggestionRecurrence[]; detail?: boolean } = {},
 ) => {
   const params = new URLSearchParams();
-  if (opts.range) params.set("range", opts.range);
-  if (opts.statuses?.length) params.set("status", opts.statuses.join(","));
-  if (opts.recurrences?.length) params.set("recurrence", opts.recurrences.join(","));
-  if (opts.detail) params.set("detail", "1");
+  if (opts.range) params.set('range', opts.range);
+  if (opts.statuses?.length) params.set('status', opts.statuses.join(','));
+  if (opts.recurrences?.length) params.set('recurrence', opts.recurrences.join(','));
+  if (opts.detail) params.set('detail', '1');
   const query = params.toString();
-  return get<SuggestionStatusResponse>(`/api/sessions/suggestions/status${query ? `?${query}` : ""}`);
+  return get<SuggestionStatusResponse>(`/api/sessions/suggestions/status${query ? `?${query}` : ''}`);
 };
 /** Record flags. Setting one back to `pending` deletes its entry — that is the undo. */
 export const markSuggestionStatus = (updates: SuggestionStatusUpdate[]) =>
-  post<SuggestionStatusUpdateResponse>("/api/sessions/suggestions/status", { updates });
+  post<SuggestionStatusUpdateResponse>('/api/sessions/suggestions/status', { updates });
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
-export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
+export const getHooksPlugins = () => get<HooksPluginsResponse>('/api/hooks-plugins');
 /** Everything `/teach` has saved, newest first. */
-export const getConcepts = () => get<ConceptsResponse>("/api/concepts");
+export const getConcepts = () => get<ConceptsResponse>('/api/concepts');
 /** One saved concept, by the line it sits on in the store. */
 export const getConcept = (ord: number) => get<ConceptResponse>(`/api/concepts/concept?ord=${ord}`);
 /** The device system prompt as it is on disk — `~/.claude/CLAUDE.md`. */
-export const getSystemPrompt = () => get<SystemPromptResponse>("/api/system-prompt");
+export const getSystemPrompt = () => get<SystemPromptResponse>('/api/system-prompt');
 /** Overwrite it. The server keeps the previous contents in a `.bak` beside the file. */
-export const saveSystemPrompt = (text: string) =>
-  post<SystemPromptUpdateResponse>("/api/system-prompt", { text });
-export const getFilters = () => get<FiltersResponse>("/api/filters");
-export const getChatConfig = () => get<ChatConfigResponse>("/api/chat/config");
+export const saveSystemPrompt = (text: string) => post<SystemPromptUpdateResponse>('/api/system-prompt', { text });
+export const getFilters = () => get<FiltersResponse>('/api/filters');
+export const getChatConfig = () => get<ChatConfigResponse>('/api/chat/config');
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */
-export const getRunningChats = () => get<RunningChatsResponse>("/api/chat/running");
+export const getRunningChats = () => get<RunningChatsResponse>('/api/chat/running');
 /** Which transcript a chat session id became — polled by the page it navigated to. */
 export const getChatThread = (sessionId: string) =>
   get<ChatThreadResponse>(`/api/chat/thread?sessionId=${encodeURIComponent(sessionId)}`);
@@ -642,12 +639,12 @@ export const startChat = (
   sessionId: string,
   prompt: string,
   opts: { mode?: ChatMode; permissionMode?: PermissionMode } = {},
-) => post<ChatSendResponse>("/api/chat/sessions", { sessionId, prompt, ...opts });
+) => post<ChatSendResponse>('/api/chat/sessions', { sessionId, prompt, ...opts });
 export const sendChatMessage = (sessionId: string, prompt: string) =>
-  post<ChatSendResponse>("/api/chat/sessions/message", { sessionId, prompt });
+  post<ChatSendResponse>('/api/chat/sessions/message', { sessionId, prompt });
 /** Ends the turn in flight; the send it interrupts resolves with the partial reply. */
 export const stopChat = (sessionId: string) =>
-  post<{ sessionId: string; stopped: boolean }>("/api/chat/stop", { sessionId });
+  post<{ sessionId: string; stopped: boolean }>('/api/chat/stop', { sessionId });
 /** Ends the session, so the server stops holding it once the user moves on. */
 export const endChat = (sessionId: string) =>
-  post<{ sessionId: string; stopped: boolean }>("/api/chat/sessions/end", { sessionId });
+  post<{ sessionId: string; stopped: boolean }>('/api/chat/sessions/end', { sessionId });

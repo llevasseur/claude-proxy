@@ -1,4 +1,11 @@
 import {
+  type CostRatePoint,
+  costRatePoints,
+  isPartialDay,
+  summarizeCostRate,
+  type UsageDigest,
+} from '@claude-proxy/core';
+import {
   CartesianGrid,
   ReferenceLine,
   ResponsiveContainer,
@@ -8,22 +15,21 @@ import {
   XAxis,
   YAxis,
   ZAxis,
-} from "recharts";
-import { costRatePoints, isPartialDay, summarizeCostRate, type CostRatePoint, type UsageDigest } from "@claude-proxy/core";
-import { deltaLabel, deltaTone, fmtInt, fmtUsd, fmtUsdPerMTok, fmtTokensShort } from "../format";
-import { Skeleton, SkeletonCard } from "./Skeleton";
+} from 'recharts';
+import { deltaLabel, deltaTone, fmtInt, fmtTokensShort, fmtUsd, fmtUsdPerMTok } from '../format';
+import { Skeleton, SkeletonCard } from './Skeleton';
 
 /** Plot height, in px. Matched by the skeleton so the card does not resize on load. */
 export const COST_RATE_CHART_HEIGHT = 260;
 
 /** Colour for the newest day. Not `--accent`, which resolves to the same teal as `--signal`. */
-const TODAY_COLOR = "var(--amber)";
+const TODAY_COLOR = 'var(--amber)';
 
 /** Legend entries, in the order they are drawn. */
 const LEGEND = [
-  { name: "Earlier days", color: "var(--accent)" },
-  { name: "Today", color: TODAY_COLOR },
-  { name: "Median rate", color: "var(--muted)" },
+  { name: 'Earlier days', color: 'var(--accent)' },
+  { name: 'Today', color: TODAY_COLOR },
+  { name: 'Median rate', color: 'var(--muted)' },
 ];
 
 /**
@@ -37,23 +43,23 @@ export function CostRateCard({ digests }: { digests: UsageDigest[] }) {
   const prior = points.filter((p) => p.date !== today?.date);
 
   return (
-    <div className="card">
-      <div className="card-head">
+    <div className='card'>
+      <div className='card-head'>
         <h2>Cost per token</h2>
-        <span className="range">{rangeLabel(points)}</span>
+        <span className='range'>{rangeLabel(points)}</span>
       </div>
 
       <Verdict summary={summary} priorDays={prior.length} />
 
       {points.length === 0 ? (
-        <div className="empty">No tokens captured in this window.</div>
+        <div className='empty'>No tokens captured in this window.</div>
       ) : (
         <>
           <CostRateChart prior={prior} today={today} baseline={summary.baseline} />
-          <div className="chartlegend">
+          <div className='chartlegend'>
             {LEGEND.map((l) => (
-              <span className="chartlegend-item" key={l.name}>
-                <span className="chartlegend-swatch" style={{ background: l.color }} />
+              <span className='chartlegend-item' key={l.name}>
+                <span className='chartlegend-swatch' style={{ background: l.color }} />
                 {l.name}
               </span>
             ))}
@@ -67,7 +73,7 @@ export function CostRateCard({ digests }: { digests: UsageDigest[] }) {
 const rangeLabel = (points: CostRatePoint[]): string => {
   const first = points.at(0);
   const last = points.at(-1);
-  if (!first || !last) return "—";
+  if (!first || !last) return '—';
   return first.date === last.date ? first.date : `${first.date} → ${last.date}`;
 };
 
@@ -78,33 +84,35 @@ const rangeLabel = (points: CostRatePoint[]): string => {
 function Verdict({ summary, priorDays }: { summary: ReturnType<typeof summarizeCostRate>; priorDays: number }) {
   const { today, baseline, deltaPct } = summary;
   if (!today) {
-    return <div className="trend-compare muted">No tokens moved yet on the newest day in this window.</div>;
+    return <div className='trend-compare muted'>No tokens moved yet on the newest day in this window.</div>;
   }
 
-  const tone = deltaPct === null ? "flat" : deltaTone(deltaPct);
+  const tone = deltaPct === null ? 'flat' : deltaTone(deltaPct);
   // A rising price per token is always the regression, so `up` is the bad tone.
-  const toneClass = tone === "flat" ? "flat" : tone === "up" ? "bad" : "good";
+  const toneClass = tone === 'flat' ? 'flat' : tone === 'up' ? 'bad' : 'good';
 
   return (
-    <div className="trend-compare">
-      <span className="trend-compare-value">
+    <div className='trend-compare'>
+      <span className='trend-compare-value'>
         {today.date}: {fmtUsd(today.cost)}
       </span>
-      {isPartialDay(today.date) && <span className="muted"> (so far today)</span>}{" "}
-      <span className="muted">· {fmtUsdPerMTok(today.rate)} across {fmtInt(today.tokens)} tokens</span>{" "}
+      {isPartialDay(today.date) && <span className='muted'> (so far today)</span>}{' '}
+      <span className='muted'>
+        · {fmtUsdPerMTok(today.rate)} across {fmtInt(today.tokens)} tokens
+      </span>{' '}
       {baseline === null || deltaPct === null ? (
-        <span className="muted">— no earlier day in this window to compare against.</span>
-      ) : tone === "flat" ? (
-        <span className="muted">
+        <span className='muted'>— no earlier day in this window to compare against.</span>
+      ) : tone === 'flat' ? (
+        <span className='muted'>
           — level with the {fmtUsdPerMTok(baseline)} median of the {priorDays} day
-          {priorDays === 1 ? "" : "s"} before it.
+          {priorDays === 1 ? '' : 's'} before it.
         </span>
       ) : (
         <>
-          <span className={`delta ${toneClass}`}>{deltaLabel(deltaPct)}</span>{" "}
-          <span className="muted">
-            {tone === "up" ? "above" : "below"} the {fmtUsdPerMTok(baseline)} median of the {priorDays} day
-            {priorDays === 1 ? "" : "s"} before it.
+          <span className={`delta ${toneClass}`}>{deltaLabel(deltaPct)}</span>{' '}
+          <span className='muted'>
+            {tone === 'up' ? 'above' : 'below'} the {fmtUsdPerMTok(baseline)} median of the {priorDays} day
+            {priorDays === 1 ? '' : 's'} before it.
           </span>
         </>
       )}
@@ -113,7 +121,7 @@ function Verdict({ summary, priorDays }: { summary: ReturnType<typeof summarizeC
 }
 
 /** `fmtUsd` gives sub-dollar values three decimals, which renders the zero tick as `$0.000`. */
-const fmtAxisUsd = (n: number): string => (n === 0 ? "$0" : fmtUsd(n));
+const fmtAxisUsd = (n: number): string => (n === 0 ? '$0' : fmtUsd(n));
 
 /** Up to the next quarter of a power of ten — 465.2M becomes 500M, 12.1M becomes 12.5M. */
 function roundUp(n: number): number {
@@ -149,43 +157,43 @@ function CostRateChart({ prior, today, baseline }: CostRateChartProps) {
 
   return (
     <div style={{ height: COST_RATE_CHART_HEIGHT }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width='100%' height='100%'>
         <ScatterChart margin={{ top: 8, right: 14, bottom: 2, left: 2 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <CartesianGrid strokeDasharray='3 3' stroke='var(--border)' />
           <XAxis
-            type="number"
-            dataKey="tokens"
-            name="Tokens"
+            type='number'
+            dataKey='tokens'
+            name='Tokens'
             domain={[0, domainMax]}
-            tick={{ fontSize: 11, fill: "var(--muted)" }}
+            tick={{ fontSize: 11, fill: 'var(--muted)' }}
             axisLine={false}
             tickLine={false}
             tickFormatter={fmtTokensShort}
           />
           <YAxis
-            type="number"
-            dataKey="cost"
-            name="Est. cost"
+            type='number'
+            dataKey='cost'
+            name='Est. cost'
             domain={[0, costMax]}
             width={56}
-            tick={{ fontSize: 11, fill: "var(--muted)" }}
+            tick={{ fontSize: 11, fill: 'var(--muted)' }}
             axisLine={false}
             tickLine={false}
             tickFormatter={fmtAxisUsd}
           />
-          <ZAxis type="number" dataKey="z" domain={[1, 3]} range={[55, 190]} />
+          <ZAxis type='number' dataKey='z' domain={[1, 3]} range={[55, 190]} />
           {baseline !== null && (
             <ReferenceLine
-              stroke="var(--muted)"
-              strokeDasharray="5 4"
+              stroke='var(--muted)'
+              strokeDasharray='5 4'
               segment={[
                 { x: 0, y: 0 },
                 { x: lineEndX, y: (lineEndX * baseline) / 1_000_000 },
               ]}
             />
           )}
-          <Tooltip cursor={{ stroke: "var(--border)", strokeDasharray: "3 3" }} content={<CostRateTooltip />} />
-          <Scatter data={priorRows} fill="var(--accent)" isAnimationActive={false} />
+          <Tooltip cursor={{ stroke: 'var(--border)', strokeDasharray: '3 3' }} content={<CostRateTooltip />} />
+          <Scatter data={priorRows} fill='var(--accent)' isAnimationActive={false} />
           {todayRows.length > 0 && <Scatter data={todayRows} fill={TODAY_COLOR} isAnimationActive={false} />}
         </ScatterChart>
       </ResponsiveContainer>
@@ -203,19 +211,19 @@ function CostRateTooltip({ active, payload }: CostRateTooltipProps) {
   const point = payload?.[0]?.payload;
   if (!active || !point) return null;
   return (
-    <div className="charttip">
-      <div className="charttip-label">{point.date}</div>
-      <div className="charttip-row">
-        <span className="charttip-name">Tokens</span>
-        <span className="charttip-value">{fmtInt(point.tokens)}</span>
+    <div className='charttip'>
+      <div className='charttip-label'>{point.date}</div>
+      <div className='charttip-row'>
+        <span className='charttip-name'>Tokens</span>
+        <span className='charttip-value'>{fmtInt(point.tokens)}</span>
       </div>
-      <div className="charttip-row">
-        <span className="charttip-name">Est. cost</span>
-        <span className="charttip-value">{fmtUsd(point.cost)}</span>
+      <div className='charttip-row'>
+        <span className='charttip-name'>Est. cost</span>
+        <span className='charttip-value'>{fmtUsd(point.cost)}</span>
       </div>
-      <div className="charttip-row">
-        <span className="charttip-name">Rate</span>
-        <span className="charttip-value">{fmtUsdPerMTok(point.rate)}</span>
+      <div className='charttip-row'>
+        <span className='charttip-name'>Rate</span>
+        <span className='charttip-value'>{fmtUsdPerMTok(point.rate)}</span>
       </div>
     </div>
   );
@@ -230,19 +238,20 @@ export function CostRateSkeleton({ days }: { days: number }) {
   const heights = Array.from({ length: days }, (_, i) => 34 + ((i * 37) % 61));
 
   return (
-    <SkeletonCard title="Cost per token">
-      <div className="trend-compare" aria-hidden>
-        <Skeleton w="72%" />
+    <SkeletonCard title='Cost per token'>
+      <div className='trend-compare' aria-hidden>
+        <Skeleton w='72%' />
       </div>
-      <div className="skeleton-chart" style={{ height: COST_RATE_CHART_HEIGHT }} aria-hidden>
+      <div className='skeleton-chart' style={{ height: COST_RATE_CHART_HEIGHT }} aria-hidden>
         {heights.map((h, i) => (
-          <span className="skeleton skeleton-bar" key={i} style={{ height: `${h}%` }} />
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
+          <span className='skeleton skeleton-bar' key={i} style={{ height: `${h}%` }} />
         ))}
       </div>
-      <div className="chartlegend" aria-hidden>
+      <div className='chartlegend' aria-hidden>
         {LEGEND.map((l) => (
-          <span className="chartlegend-item" key={l.name}>
-            <Skeleton w="4.5rem" />
+          <span className='chartlegend-item' key={l.name}>
+            <Skeleton w='4.5rem' />
           </span>
         ))}
       </div>

@@ -32,53 +32,83 @@
  * claimable across a restart.
  */
 
-import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  asArrayOf,
+  type ContentBlock,
+  firstHeader,
+  type HeaderBag,
+  type RequestBody,
+  type WireMessage,
+} from './wire.ts';
 
-export const sessionsDir = (logDir) => path.join(logDir, "sessions");
+/** One distilled transcript line, plus the untruncated text behind it (null when
+ * the line already says the whole thing). */
+export interface TranscriptEntry {
+  line: string;
+  full: string | null;
+}
+
+/** Per-thread progress, held in memory and mirrored to `<threadId>.state.json`. */
+interface ThreadEntry {
+  count: number;
+  started: boolean;
+  pending: TranscriptEntry[] | null;
+  root: string | null;
+  title: string | null;
+  titled: boolean;
+  subtitled: boolean;
+  /** Null until recovered — state written by an older proxy carries no count. */
+  nodes: number | null;
+  lastSeen: number;
+  model?: string;
+  sessionId?: string;
+  startedAt?: string;
+}
+
+export const sessionsDir = (logDir: string): string => path.join(logDir, 'sessions');
 
 /** Collapse to one line and cap length. */
-const gist = (s, max = 160) => {
-  const one = String(s ?? "").replace(/\s+/g, " ").trim();
-  return one.length > max ? one.slice(0, max - 1) + "…" : one;
+const gist = (s: unknown, max = 160): string => {
+  const one = String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 };
 
 /** Collapse whitespace to a single line, uncapped (for exact/prefix matching). */
-const collapse = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+const collapse = (s: unknown): string =>
+  String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /** Drop the harness-injected `<system-reminder>…</system-reminder>` context blocks. */
-const stripReminders = (s) => String(s ?? "").replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "");
+const stripReminders = (s: unknown): string =>
+  String(s ?? '').replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '');
 
 /** Normalize a message `content` (string | block array) to a block array. */
-const asBlocks = (content) =>
-  typeof content === "string"
-    ? [{ type: "text", text: content }]
-    : Array.isArray(content)
-      ? content
-      : [];
-
-const firstHeader = (h, k) => {
-  const v = (h ?? {})[k];
-  return (Array.isArray(v) ? v[0] : v) ?? null;
-};
+const asBlocks = (content: unknown): ContentBlock[] =>
+  typeof content === 'string' ? [{ type: 'text', text: content }] : asArrayOf<ContentBlock>(content);
 
 /**
  * A client declaring itself an interactive chat (the dashboard's `POST /api/chat/*`).
  * Such a thread is a real conversation from its first turn, so it is exempt from the
  * growth filter that suppresses one-shot helpers. Claude Code never sends this header.
  */
-const isInteractiveChat = (headers) => firstHeader(headers, "x-claude-proxy-chat") === "1";
+const isInteractiveChat = (headers: HeaderBag | undefined): boolean =>
+  firstHeader(headers, 'x-claude-proxy-chat') === '1';
 
 /** Marker files the dashboard writes to declare a session id interactive. */
-export const chatMarkersDir = (logDir) => path.join(logDir, ".chat");
+export const chatMarkersDir = (logDir: string): string => path.join(logDir, '.chat');
 
 /**
  * The same exemption, claimed out-of-band. A dashboard chat carried by a headless
  * Claude Code process cannot add a header — the CLI builds its own — so the server
  * announces the session id as a file before it spawns, and this reads it back.
  */
-const isDeclaredChat = (logDir, sessionId) => {
+const isDeclaredChat = (logDir: string, sessionId: string | null): boolean => {
   if (!sessionId) return false;
   try {
     return fs.existsSync(path.join(chatMarkersDir(logDir), `${sessionId}.json`));
@@ -88,51 +118,77 @@ const isDeclaredChat = (logDir, sessionId) => {
 };
 
 /** Pull the readable text out of a tool_result block (string or block array). */
-function resultText(b) {
+function resultText(b: ContentBlock | undefined): string {
   const c = b?.content;
-  if (typeof c === "string") return c;
-  if (Array.isArray(c)) return c.map((x) => (typeof x === "string" ? x : x?.type === "text" ? x.text : "")).join(" ");
-  return "";
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) {
+    return c.map((x) => (typeof x === 'string' ? x : x?.type === 'text' ? (x.text ?? '') : '')).join(' ');
+  }
+  return '';
 }
 
 /** Allowlist of identifying tool inputs; at most one is recorded, truncated. */
-const ARG_KEYS = ["file_path", "notebook_path", "path", "command", "pattern", "glob", "url", "query", "subagent_type", "skill", "cron", "description", "prompt"];
+const ARG_KEYS = [
+  'file_path',
+  'notebook_path',
+  'path',
+  'command',
+  'pattern',
+  'glob',
+  'url',
+  'query',
+  'subagent_type',
+  'skill',
+  'cron',
+  'description',
+  'prompt',
+];
 
 /** The recorded arg as it goes on the line (`shown`) and in full (`full`). */
-function toolArgs(input) {
-  const both = (k, v) => ({ shown: `${k}=${gist(v, 60)}`, full: `${k}=${collapse(v)}` });
-  if (!input || typeof input !== "object") return { shown: "", full: "" };
+function toolArgs(input: unknown): { shown: string; full: string } {
+  const both = (k: string, v: unknown) => ({ shown: `${k}=${gist(v, 60)}`, full: `${k}=${collapse(v)}` });
+  if (!input || typeof input !== 'object') return { shown: '', full: '' };
+  const record = input as Record<string, unknown>;
   for (const k of ARG_KEYS) {
-    if (typeof input[k] === "string" && input[k].trim()) return both(k, input[k]);
+    const v = record[k];
+    if (typeof v === 'string' && v.trim()) return both(k, v);
   }
-  const k = Object.keys(input).find((k) => ["string", "number", "boolean"].includes(typeof input[k]));
-  return k ? both(k, String(input[k])) : { shown: "", full: "" };
+  const k = Object.keys(record).find((key) => ['string', 'number', 'boolean'].includes(typeof record[key]));
+  return k ? both(k, String(record[k])) : { shown: '', full: '' };
 }
 
 /** First real user text — the thread's root. Tool-result-only turns don't count. */
-export function firstUserText(messages) {
-  if (!Array.isArray(messages)) return "";
-  for (const m of messages) {
-    if (m?.role !== "user") continue;
-    const t = asBlocks(m.content).filter((b) => b?.type === "text").map((b) => b.text).join(" ").trim();
+export function firstUserText(messages: unknown): string {
+  if (!Array.isArray(messages)) return '';
+  for (const m of messages as WireMessage[]) {
+    if (m?.role !== 'user') continue;
+    const t = asBlocks(m.content)
+      .filter((b) => b?.type === 'text')
+      .map((b) => b.text ?? '')
+      .join(' ')
+      .trim();
     if (t) return t;
   }
-  const first = messages[0];
-  return first ? gist(JSON.stringify(first.content), 200) : "";
+  const first = (messages as WireMessage[])[0];
+  return first ? gist(JSON.stringify(first.content), 200) : '';
 }
 
 /** Per-agent identity: hash of (session id + conversation root). */
-export function threadIdFor(sessionId, messages) {
+export function threadIdFor(sessionId: string | null | undefined, messages: unknown): string | null {
   const root = firstUserText(messages);
   if (!root) return null;
-  return crypto.createHash("sha256").update(`${sessionId ?? ""}\n${root}`).digest("hex").slice(0, 16);
+  return crypto
+    .createHash('sha256')
+    .update(`${sessionId ?? ''}\n${root}`)
+    .digest('hex')
+    .slice(0, 16);
 }
 
 /**
  * The thread's opening prompt, reminders stripped and whitespace collapsed — the
  * subtitle, and the key that links an out-of-band title back to its thread.
  */
-export function rootPrompt(messages) {
+export function rootPrompt(messages: unknown): string {
   return collapse(stripReminders(firstUserText(messages)));
 }
 
@@ -150,40 +206,44 @@ export function rootPrompt(messages) {
 const TITLE_SYSTEM_RE = /generate a concise,?\s+sentence-case title/i;
 
 /** True when this request is the CLI asking the model to title a session. */
-export function isTitleRequest(reqJson) {
+export function isTitleRequest(reqJson: RequestBody | null | undefined): boolean {
   const sys = reqJson?.system;
   const text =
-    typeof sys === "string"
+    typeof sys === 'string'
       ? sys
       : Array.isArray(sys)
-        ? sys.map((b) => (typeof b === "string" ? b : (b?.text ?? ""))).join(" ")
-        : "";
+        ? sys.map((b) => (typeof b === 'string' ? b : ((b as ContentBlock)?.text ?? ''))).join(' ')
+        : '';
   return TITLE_SYSTEM_RE.test(text);
 }
 
 /** The `<session>…</session>` payload a titling request summarizes, collapsed. */
-function titledContent(messages) {
-  const first = Array.isArray(messages) ? messages[0] : null;
-  if (!first) return "";
-  const text = asBlocks(first.content).filter((b) => b?.type === "text").map((b) => b.text).join(" ");
+function titledContent(messages: unknown): string {
+  const first = Array.isArray(messages) ? (messages[0] as WireMessage | undefined) : null;
+  if (!first) return '';
+  const text = asBlocks(first.content)
+    .filter((b) => b?.type === 'text')
+    .map((b) => b.text ?? '')
+    .join(' ');
   const m = /<session>([\s\S]*?)<\/session>/i.exec(text);
-  return collapse(m ? m[1] : "");
+  return collapse(m?.[1] ?? '');
 }
 
 /** Pull the title out of a `{"title": "…"}` titling reply, or null. */
-export function extractTitle(responseText) {
+export function extractTitle(responseText: string | null | undefined): string | null {
   if (!responseText) return null;
   const m = /"title"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(responseText);
   if (!m) return null;
+  const raw = m[1] ?? '';
   try {
-    return JSON.parse(`"${m[1]}"`);
+    return JSON.parse(`"${raw}"`) as string;
   } catch {
-    return m[1];
+    return raw;
   }
 }
 
 /** A titling `<session>` payload matches a thread when it opens with that thread's root. */
-const titleMatches = (content, root) =>
+const titleMatches = (content: string | null, root: string | null | undefined): boolean =>
   !!root && !!content && (content === root || content.startsWith(root) || root.startsWith(content));
 
 /**
@@ -192,40 +252,44 @@ const titleMatches = (content, root) =>
  * line already says the whole thing. One entry per graph node, in order, so the
  * sidecar's indices match what `parseSessionNodes` reads back.
  */
-export function distillEntries(msg) {
-  const entries = [];
+export function distillEntries(msg: WireMessage | undefined | null): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = [];
   const blocks = asBlocks(msg?.content);
   /** `whole` was truncated iff its collapsed form isn't what the line carries. */
-  const push = (line, whole, shown) => entries.push({ line, full: collapse(whole) === shown ? null : String(whole).trim() });
+  const push = (line: string, whole: unknown, shown: string) =>
+    entries.push({ line, full: collapse(whole) === shown ? null : String(whole).trim() });
 
-  if (msg?.role === "user") {
-    const texts = [];
+  if (msg?.role === 'user') {
+    const texts: string[] = [];
     for (const b of blocks) {
-      if (b?.type === "text") texts.push(b.text);
-      else if (b?.type === "tool_result" && b.is_error) {
+      if (b?.type === 'text') texts.push(b.text ?? '');
+      else if (b?.type === 'tool_result' && b.is_error) {
         const err = resultText(b);
         push(`- ✗ ${gist(err, 120)}`, err, gist(err, 120));
       }
     }
-    const task = stripReminders(texts.join(" ")).trim();
+    const task = stripReminders(texts.join(' ')).trim();
     if (task) push(`\n## Task: ${gist(task, 200)}`, task, gist(task, 200));
     return entries;
   }
 
-  if (msg?.role === "assistant") {
-    const texts = [];
-    const tools = [];
+  if (msg?.role === 'assistant') {
+    const texts: string[] = [];
+    const tools: TranscriptEntry[] = [];
     for (const b of blocks) {
-      if (b?.type === "text") texts.push(b.text);
-      else if (b?.type === "tool_use") {
+      if (b?.type === 'text') texts.push(b.text ?? '');
+      else if (b?.type === 'tool_use') {
         const args = toolArgs(b.input);
-        const name = b.name ?? "tool";
+        const name = b.name ?? 'tool';
         // A tool node's text *is* its signature, so the full form is the signature rebuilt.
-        tools.push({ line: `- ${name}(${args.shown})`, full: args.shown === args.full ? null : `${name}(${args.full})` });
+        tools.push({
+          line: `- ${name}(${args.shown})`,
+          full: args.shown === args.full ? null : `${name}(${args.full})`,
+        });
       }
       // `thinking` is skipped — neither a decision nor an outcome.
     }
-    const reasoning = texts.join(" ").trim();
+    const reasoning = texts.join(' ').trim();
     if (tools.length) {
       if (reasoning) push(`- decided: ${gist(reasoning)}`, reasoning, gist(reasoning));
       entries.push(...tools);
@@ -237,57 +301,82 @@ export function distillEntries(msg) {
 }
 
 /** Distill one message into zero or more transcript lines (deterministic). */
-export function distillMessage(msg) {
+export function distillMessage(msg: WireMessage | undefined | null): string[] {
   return distillEntries(msg).map((e) => e.line);
 }
 
 /** Distill a run of new messages (the delta since we last looked). */
-export function distillMessages(delta) {
+export function distillMessages(delta: unknown): string[] {
   return distillMessagesEntries(delta).map((e) => e.line);
 }
 
 /** {@link distillMessages}, keeping each line's untruncated text. */
-export function distillMessagesEntries(delta) {
-  return (Array.isArray(delta) ? delta : []).flatMap(distillEntries);
+export function distillMessagesEntries(delta: unknown): TranscriptEntry[] {
+  return asArrayOf<WireMessage>(delta).flatMap(distillEntries);
 }
 
 /** The one-time header written when a thread is first confirmed real. Built from
  * ingredients captured at the first sighting, plus the subtitle/title known by
  * flush time (a title that arrives later is appended as its own line instead). */
-function header(threadId, entry) {
+function header(threadId: string, entry: ThreadEntry): string {
   const lines = [
-    "",
+    '',
     `# Session ${threadId}`,
-    `- model: ${entry.model ?? "unknown"}`,
-    `- session: ${entry.sessionId ?? "unknown"}`,
+    `- model: ${entry.model ?? 'unknown'}`,
+    `- session: ${entry.sessionId ?? 'unknown'}`,
     `- started: ${entry.startedAt ?? new Date().toISOString()}`,
   ];
   if (entry.title) lines.push(`- title: ${gist(entry.title, 120)}`);
   if (entry.root) lines.push(`- subtitle: ${gist(entry.root, 200)}`);
-  lines.push("");
-  return lines.join("\n");
+  lines.push('');
+  return lines.join('\n');
 }
 
-function readState(statePath) {
+/** The `.state.json` sidecar as it comes off disk — every field may be missing. */
+type StoredState = Partial<Record<keyof ThreadEntry, unknown>>;
+
+function readState(statePath: string): ThreadEntry | null {
   try {
-    const s = JSON.parse(fs.readFileSync(statePath, "utf8"));
-    return { count: s.count ?? 0, started: true, pending: null, root: s.root ?? null, title: s.title ?? null, titled: s.titled ?? false, subtitled: s.subtitled ?? false, nodes: typeof s.nodes === "number" ? s.nodes : null, lastSeen: typeof s.lastSeen === "number" ? s.lastSeen : 0 };
+    const s = JSON.parse(fs.readFileSync(statePath, 'utf8')) as StoredState;
+    return {
+      count: (s.count as number) ?? 0,
+      started: true,
+      pending: null,
+      root: (s.root as string | null) ?? null,
+      title: (s.title as string | null) ?? null,
+      titled: (s.titled as boolean) ?? false,
+      subtitled: (s.subtitled as boolean) ?? false,
+      nodes: typeof s.nodes === 'number' ? s.nodes : null,
+      lastSeen: typeof s.lastSeen === 'number' ? s.lastSeen : 0,
+    };
   } catch {
     return null;
   }
 }
 
-function writeState(statePath, entry) {
+function writeState(statePath: string, entry: StoredState): void {
   try {
-    fs.writeFileSync(statePath, JSON.stringify({ count: entry.count, started: entry.started, root: entry.root, title: entry.title, titled: entry.titled, subtitled: entry.subtitled, nodes: entry.nodes, lastSeen: entry.lastSeen ?? 0 }));
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({
+        count: entry.count,
+        started: entry.started,
+        root: entry.root,
+        title: entry.title,
+        titled: entry.titled,
+        subtitled: entry.subtitled,
+        nodes: entry.nodes,
+        lastSeen: entry.lastSeen ?? 0,
+      }),
+    );
   } catch {
     /* best-effort */
   }
 }
 
-function appendLines(mdPath, lines) {
+function appendLines(mdPath: string, lines: string[]): void {
   fs.mkdirSync(path.dirname(mdPath), { recursive: true });
-  fs.appendFileSync(mdPath, lines.join("\n") + "\n");
+  fs.appendFileSync(mdPath, `${lines.join('\n')}\n`);
 }
 
 // --- Untruncated node text -------------------------------------------------
@@ -297,7 +386,7 @@ function appendLines(mdPath, lines) {
 // pipeline can read cheaply. One JSON line per node that has more to show —
 // `{"i": <node index>, "text": "…"}` — appended as the transcript grows.
 
-const nodeTextsPath = (dir, threadId) => path.join(dir, `${threadId}.nodes.jsonl`);
+const nodeTextsPath = (dir: string, threadId: string): string => path.join(dir, `${threadId}.nodes.jsonl`);
 
 /**
  * The transcript lines `parseSessionNodes` turns into nodes, mirrored here so the
@@ -307,10 +396,10 @@ const nodeTextsPath = (dir, threadId) => path.join(dir, `${threadId}.nodes.jsonl
 const NODE_LINE_RE = /^(?:## Task:|- decided:|- done:|- ✗\s|- [A-Za-z]\w*\()/;
 
 /** How many nodes a transcript's text holds. */
-export function countNodeLines(content) {
+export function countNodeLines(content: unknown): number {
   let n = 0;
-  for (const raw of String(content ?? "").split("\n")) {
-    if (NODE_LINE_RE.test(raw.replace(/\r$/, ""))) n += 1;
+  for (const raw of String(content ?? '').split('\n')) {
+    if (NODE_LINE_RE.test(raw.replace(/\r$/, ''))) n += 1;
   }
   return n;
 }
@@ -320,30 +409,37 @@ export function countNodeLines(content) {
  * advance the thread's node count. State written by an older proxy carries no
  * count, so it's recovered once by counting the transcript already on disk.
  */
-function appendNodeTexts(dir, threadId, entry, mdPath, entries) {
+function appendNodeTexts(
+  dir: string,
+  threadId: string,
+  entry: ThreadEntry,
+  mdPath: string,
+  entries: TranscriptEntry[],
+): void {
   if (entry.nodes === null || entry.nodes === undefined) {
     try {
-      entry.nodes = countNodeLines(fs.readFileSync(mdPath, "utf8"));
+      entry.nodes = countNodeLines(fs.readFileSync(mdPath, 'utf8'));
     } catch {
       entry.nodes = 0; // no transcript yet
     }
   }
-  const rows = [];
+  const base = entry.nodes;
+  const rows: string[] = [];
   entries.forEach((e, i) => {
-    if (e.full !== null) rows.push(JSON.stringify({ i: entry.nodes + i, text: e.full }));
+    if (e.full !== null) rows.push(JSON.stringify({ i: base + i, text: e.full }));
   });
-  entry.nodes += entries.length;
+  entry.nodes = base + entries.length;
   if (!rows.length) return;
   try {
     fs.mkdirSync(dir, { recursive: true }); // the transcript's own dir may not exist yet
-    fs.appendFileSync(nodeTextsPath(dir, threadId), rows.join("\n") + "\n");
+    fs.appendFileSync(nodeTextsPath(dir, threadId), `${rows.join('\n')}\n`);
   } catch {
     /* best-effort */
   }
 }
 
 /** In-memory per-thread progress, recovered from the `.state.json` sidecar. */
-const threads = new Map();
+const threads = new Map<string, ThreadEntry>();
 
 /**
  * A thread's last sighting, in epoch ms but never repeating: titles are matched by
@@ -351,31 +447,31 @@ const threads = new Map();
  * keeps every sighting orderable while staying a real timestamp on disk.
  */
 let lastTick = 0;
-function nowSeen() {
+function nowSeen(): number {
   lastTick = Math.max(Date.now(), lastTick + 1);
   return lastTick;
 }
 
 /** Titles seen before their thread appeared, keyed by titled `<session>` content. */
-const pendingTitles = new Map();
+const pendingTitles = new Map<string, string>();
 
 /** Where unclaimed titles wait out a proxy restart. Dot-prefixed: not a transcript. */
-const pendingPath = (dir) => path.join(dir, ".pending-titles.json");
+const pendingPath = (dir: string): string => path.join(dir, '.pending-titles.json');
 
 /** How many unclaimed titles the sidecar keeps — newest win; an old one is never claimed. */
 const PENDING_LIMIT = 50;
 
 /** The sessions dir whose sidecar is already folded into {@link pendingTitles}. */
-let pendingLoadedFrom = null;
+let pendingLoadedFrom: string | null = null;
 
 /** Fold the sidecar in once per dir, so a title that outlived a restart is still claimable. */
-function loadPendingTitles(dir) {
+function loadPendingTitles(dir: string): void {
   if (pendingLoadedFrom === dir) return;
   pendingLoadedFrom = dir;
   try {
-    const rows = JSON.parse(fs.readFileSync(pendingPath(dir), "utf8"));
-    for (const row of Array.isArray(rows) ? rows : []) {
-      if (typeof row?.content === "string" && typeof row?.title === "string" && !pendingTitles.has(row.content)) {
+    const rows: unknown = JSON.parse(fs.readFileSync(pendingPath(dir), 'utf8'));
+    for (const row of asArrayOf<{ content?: unknown; title?: unknown }>(rows)) {
+      if (typeof row?.content === 'string' && typeof row?.title === 'string' && !pendingTitles.has(row.content)) {
         pendingTitles.set(row.content, row.title);
       }
     }
@@ -385,18 +481,25 @@ function loadPendingTitles(dir) {
 }
 
 /** Mirror the unclaimed titles to disk, oldest dropped past {@link PENDING_LIMIT}. */
-function savePendingTitles(dir) {
+function savePendingTitles(dir: string): void {
   try {
-    while (pendingTitles.size > PENDING_LIMIT) pendingTitles.delete(pendingTitles.keys().next().value);
+    while (pendingTitles.size > PENDING_LIMIT) {
+      const oldest = pendingTitles.keys().next().value;
+      if (oldest === undefined) break;
+      pendingTitles.delete(oldest);
+    }
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(pendingPath(dir), JSON.stringify([...pendingTitles].map(([content, title]) => ({ content, title }))));
+    fs.writeFileSync(
+      pendingPath(dir),
+      JSON.stringify([...pendingTitles].map(([content, title]) => ({ content, title }))),
+    );
   } catch {
     /* best-effort */
   }
 }
 
 /** Write a title onto a thread this process is following. */
-function titleThread(dir, threadId, entry, title) {
+function titleThread(dir: string, threadId: string, entry: ThreadEntry, title: string): void {
   entry.title = title;
   // Already flushed to disk → append a standalone title line. Still pending →
   // the title rides into the header when the thread is confirmed.
@@ -411,24 +514,25 @@ function titleThread(dir, threadId, entry, title) {
  * Title a thread that exists only on disk, written before this process started. Picks
  * the most recently written untitled match and returns whether it found one.
  */
-function titleDiskThread(dir, content, title) {
-  let names;
+function titleDiskThread(dir: string, content: string, title: string): boolean {
+  let names: string[];
   try {
     names = fs.readdirSync(dir);
   } catch {
     return false;
   }
 
-  let best = null;
+  let best: { threadId: string; statePath: string; state: StoredState; at: number } | null = null;
   for (const name of names) {
     const m = /^([0-9a-f]{16})\.state\.json$/.exec(name);
-    if (!m || threads.has(m[1])) continue; // in-memory threads already had their turn
+    const threadId = m?.[1];
+    if (!threadId || threads.has(threadId)) continue; // in-memory threads already had their turn
     const statePath = path.join(dir, name);
     try {
-      const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
-      if (state.title || !titleMatches(content, state.root)) continue;
+      const state = JSON.parse(fs.readFileSync(statePath, 'utf8')) as StoredState;
+      if (state.title || !titleMatches(content, state.root as string | null)) continue;
       const at = fs.statSync(statePath).mtimeMs;
-      if (!best || at > best.at) best = { threadId: m[1], statePath, state, at };
+      if (!best || at > best.at) best = { threadId, statePath, state, at };
     } catch {
       /* unreadable sidecar — skip it */
     }
@@ -447,14 +551,15 @@ function titleDiskThread(dir, content, title) {
  * yields two threads. Already-titled matches are skipped and the most recently active
  * untitled one wins; failing that the thread is on disk only, or not yet seen.
  */
-function recordTitle(dir, content, title) {
+function recordTitle(dir: string, content: string, title: string | null): void {
   if (!content || !title) return;
 
   const untitled = [...threads]
     .filter(([, entry]) => !entry.title && titleMatches(content, entry.root))
     .sort((a, b) => (b[1].lastSeen ?? 0) - (a[1].lastSeen ?? 0));
-  if (untitled.length > 0) {
-    const [threadId, entry] = untitled[0];
+  const first = untitled[0];
+  if (first) {
+    const [threadId, entry] = first;
     titleThread(dir, threadId, entry, title);
     return;
   }
@@ -466,12 +571,21 @@ function recordTitle(dir, content, title) {
   savePendingTitles(dir);
 }
 
+/** One observed request: the body, who sent it, and the reply it drew. */
+export interface AppendSessionInput {
+  logDir: string;
+  reqPath?: string;
+  reqJson?: RequestBody | null;
+  headers?: HeaderBag;
+  responseText?: string | null;
+}
+
 /** Observe one request (and its decoded reply) and append its new turns.
  * Best-effort: never throws. `responseText` carries the reply so a titling
  * request's `{"title": …}` can be captured. */
-export function appendSession({ logDir, reqPath, reqJson, headers, responseText }) {
+export function appendSession({ logDir, reqPath, reqJson, headers, responseText }: AppendSessionInput): void {
   try {
-    if (!reqPath?.includes("/v1/messages")) return; // only real agent turns
+    if (!reqPath?.includes('/v1/messages')) return; // only real agent turns
     const messages = reqJson?.messages;
     if (!Array.isArray(messages) || messages.length === 0) return;
 
@@ -484,7 +598,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
       return;
     }
 
-    const sessionId = firstHeader(headers, "x-claude-code-session-id");
+    const sessionId = firstHeader(headers, 'x-claude-code-session-id');
     const threadId = threadIdFor(sessionId, messages);
     if (!threadId) return;
 
@@ -493,7 +607,17 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     let entry = threads.get(threadId);
     if (!entry) {
-      entry = readState(statePath) ?? { count: 0, started: false, pending: null, root: null, title: null, titled: false, subtitled: false, nodes: 0, lastSeen: 0 };
+      entry = readState(statePath) ?? {
+        count: 0,
+        started: false,
+        pending: null,
+        root: null,
+        title: null,
+        titled: false,
+        subtitled: false,
+        nodes: 0,
+        lastSeen: 0,
+      };
       threads.set(threadId, entry);
     }
     // Which thread a title belongs to is decided by recency, so every sighting counts.
@@ -502,8 +626,8 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     // Learn the thread's identity from its first sighting: the root prompt (for
     // subtitle + title matching) and the header ingredients.
     if (!entry.root) entry.root = rootPrompt(messages);
-    if (entry.model == null) entry.model = reqJson?.model ?? "unknown";
-    if (!entry.sessionId) entry.sessionId = sessionId ?? "unknown";
+    if (entry.model == null) entry.model = typeof reqJson?.model === 'string' ? reqJson.model : 'unknown';
+    if (!entry.sessionId) entry.sessionId = sessionId ?? 'unknown';
     if (!entry.startedAt) entry.startedAt = new Date().toISOString();
     // Claim a title that arrived before this thread existed, including one the sidecar
     // carried across a restart.
@@ -534,7 +658,10 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     if (entry.started) {
       if (entries.length) {
         appendNodeTexts(dir, threadId, entry, mdPath, entries); // before the lines land — it counts the transcript as it stands
-        appendLines(mdPath, entries.map((e) => e.line));
+        appendLines(
+          mdPath,
+          entries.map((e) => e.line),
+        );
       }
       entry.count = total;
       writeState(statePath, entry);
@@ -567,7 +694,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 }
 
 /** Test seam: forget in-memory thread progress (does not touch disk). */
-export function _resetThreads() {
+export function _resetThreads(): void {
   threads.clear();
   pendingTitles.clear();
   pendingLoadedFrom = null; // a restart re-reads the sidecar; so does a test

@@ -1,33 +1,33 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { useMemo } from "react";
-import type { ProjectSummary } from "../api";
-import { getProjects } from "../api";
-import { QueryState } from "../components/QueryState";
-import { Skeleton, type SkeletonColumn, SkeletonTable } from "../components/Skeleton";
-import { fmtInt } from "../format";
-import { useTransitionState } from "../useTransitionState";
+import { useQuery } from '@tanstack/react-query';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { useMemo } from 'react';
+import type { ProjectSummary } from '../api';
+import { getProjects } from '../api';
+import { QueryState } from '../components/QueryState';
+import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
+import { fmtInt } from '../format';
+import { useTransitionState } from '../useTransitionState';
 
 /** Project name, its memory count, then the share bar. */
-const PROJECT_COLUMNS: readonly SkeletonColumn[] = [{ cell: "62%" }, { className: "num" }, { className: "bar-col" }];
+const PROJECT_COLUMNS: readonly SkeletonColumn[] = [{ cell: '62%' }, { className: 'num' }, { className: 'bar-col' }];
 
 export function ProjectsPage() {
-  const query = useQuery({ queryKey: ["projects"], queryFn: getProjects });
+  const query = useQuery({ queryKey: ['projects'], queryFn: getProjects });
   const projects = query.data?.projects;
 
   return (
     <section>
-      <div className="pagehead">
+      <div className='pagehead'>
         <h1>Projects</h1>
-        <span className="muted">Claude Code projects with saved memories</span>
+        <span className='muted'>Claude Code projects with saved memories</span>
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ProjectsSkeleton />}>
         {!projects || projects.length === 0 ? (
-          <div className="card empty">No projects with memories found.</div>
+          <div className='card empty'>No projects with memories found.</div>
         ) : (
           <>
-            <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>
+            <div className='muted' style={{ marginBottom: '0.75rem', wordBreak: 'break-all' }}>
               {query.data?.meta.projectsDir}
             </div>
             <ProjectsTable projects={projects} />
@@ -42,13 +42,13 @@ export function ProjectsPage() {
 function ProjectsSkeleton() {
   return (
     <>
-      <div className="muted" style={{ marginBottom: "0.75rem" }} aria-hidden>
-        <Skeleton w="26rem" />
+      <div className='muted' style={{ marginBottom: '0.75rem' }} aria-hidden>
+        <Skeleton w='26rem' />
       </div>
-      <div className="card">
-        <div className="card-head">
-          <Skeleton w="22%" h="0.95em" />
-          <Skeleton w="30%" />
+      <div className='card'>
+        <div className='card-head'>
+          <Skeleton w='22%' h='0.95em' />
+          <Skeleton w='30%' />
         </div>
         <SkeletonTable columns={PROJECT_COLUMNS} rows={9} />
       </div>
@@ -56,19 +56,19 @@ function ProjectsSkeleton() {
   );
 }
 
-type SortKey = "name" | "memoryCount";
-type SortDir = "asc" | "desc";
+type SortKey = 'name' | 'memoryCount';
+type SortDir = 'asc' | 'desc';
 
 /** Direction applied the first time a column becomes the sort key. */
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
-  name: "asc",
-  memoryCount: "desc",
+  name: 'asc',
+  memoryCount: 'desc',
 };
 
 /** Signed comparison for a column, ascending. */
 function compare(a: ProjectSummary, b: ProjectSummary, key: SortKey): number {
   switch (key) {
-    case "name":
+    case 'name':
       return a.name.localeCompare(b.name);
     default:
       return a.memoryCount - b.memoryCount;
@@ -79,60 +79,58 @@ function ProjectsTable({ projects }: { projects: ProjectSummary[] }) {
   const navigate = useNavigate();
   const max = Math.max(1, ...projects.map((p) => p.memoryCount));
   const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
-    key: "memoryCount",
-    dir: "desc",
+    key: 'memoryCount',
+    dir: 'desc',
   });
 
   const sorted = useMemo(() => {
     const rows = [...projects];
     rows.sort((a, b) => {
       const diff = compare(a, b, sort.key);
-      return sort.dir === "asc" ? diff : -diff;
+      return sort.dir === 'asc' ? diff : -diff;
     });
     return rows;
   }, [projects, sort]);
 
   const onSort = (key: SortKey) =>
     setSort((prev) =>
-      prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: DEFAULT_DIR[key] },
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: DEFAULT_DIR[key] },
     );
 
   return (
-    <div className="card">
-      <div className="card-head">
+    <div className='card'>
+      <div className='card-head'>
         <h2>
-          {projects.length} project{projects.length === 1 ? "" : "s"}
+          {projects.length} project{projects.length === 1 ? '' : 's'}
         </h2>
-        <span className="muted">click a column to sort · click a row for its memories</span>
+        <span className='muted'>click a column to sort · click a row for its memories</span>
       </div>
-      <table className={isSorting ? "table is-stale" : "table"} aria-busy={isSorting || undefined}>
+      <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
         <thead>
           <tr>
-            <SortHeader label="Project" sortKey="name" sort={sort} onSort={onSort} />
-            <SortHeader label="Memories" sortKey="memoryCount" sort={sort} onSort={onSort} className="num" />
-            <th className="bar-col">&nbsp;</th>
+            <SortHeader label='Project' sortKey='name' sort={sort} onSort={onSort} />
+            <SortHeader label='Memories' sortKey='memoryCount' sort={sort} onSort={onSort} className='num' />
+            <th className='bar-col'>&nbsp;</th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((p) => (
             <tr
               key={p.name}
-              className="clickable"
-              onClick={() => navigate({ to: "/projects/$project", params: { project: p.name } })}
-            >
+              className='clickable'
+              onClick={() => navigate({ to: '/projects/$project', params: { project: p.name } })}>
               <td>
                 <Link
-                  to="/projects/$project"
+                  to='/projects/$project'
                   params={{ project: p.name }}
-                  className="link mono-break"
-                  onClick={(e) => e.stopPropagation()}
-                >
+                  className='link mono-break'
+                  onClick={(e) => e.stopPropagation()}>
                   {p.name}
                 </Link>
               </td>
-              <td className="num">{fmtInt(p.memoryCount)}</td>
-              <td className="bar-col">
-                <div className="rowbar" style={{ width: `${(p.memoryCount / max) * 100}%` }} />
+              <td className='num'>{fmtInt(p.memoryCount)}</td>
+              <td className='bar-col'>
+                <div className='rowbar' style={{ width: `${(p.memoryCount / max) * 100}%` }} />
               </td>
             </tr>
           ))}
@@ -158,12 +156,11 @@ function SortHeader({
   const active = sort.key === sortKey;
   return (
     <th
-      className={["sortable", className].filter(Boolean).join(" ")}
-      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
-      onClick={() => onSort(sortKey)}
-    >
+      className={['sortable', className].filter(Boolean).join(' ')}
+      aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      onClick={() => onSort(sortKey)}>
       {label}
-      {active && <span className="sort-arrow">{sort.dir === "asc" ? "▲" : "▼"}</span>}
+      {active && <span className='sort-arrow'>{sort.dir === 'asc' ? '▲' : '▼'}</span>}
     </th>
   );
 }

@@ -1,4 +1,4 @@
-import type { AuditTokens } from "./types.js";
+import type { AuditTokens } from './types.js';
 
 /** Price per **million tokens** (USD). Explicitly approximate and editable. */
 export interface ModelPrice {

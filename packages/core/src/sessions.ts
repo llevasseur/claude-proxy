@@ -3,7 +3,7 @@
  * the handful of facts the dashboard lists: which model/session it belongs to,
  * when it started, and how much happened (tasks, decisions, tools, failures).
  *
- * The transcript is produced by `proxy/session.mjs` and has a fixed, line-based
+ * The transcript is produced by `proxy/session.ts` and has a fixed, line-based
  * shape, so parsing is a cheap single pass — no markdown library needed:
  *
  *   # Session <threadId>
@@ -87,7 +87,7 @@ const COMMAND_NOISE_RE = /<local-command-caveat>[\s\S]*?<\/local-command-caveat>
 
 /** Drop the envelope. A prompt cut mid-caveat never closes its tag, so take that shape too. */
 const stripCommandNoise = (s: string): string =>
-  s.replace(COMMAND_NOISE_RE, "").replace(/<local-command-caveat>[\s\S]*$/i, "");
+  s.replace(COMMAND_NOISE_RE, '').replace(/<local-command-caveat>[\s\S]*$/i, '');
 
 /** Openers a prompt leads with that name nothing about the work. */
 const LEAD_FILLER_RE =
@@ -113,23 +113,23 @@ export function deriveSessionName(prompt: string | null): string | null {
   // Transcripts predating the reminder-free subtitle open with an injected context
   // blob; one truncated mid-block never closes its tag, so drop that shape too.
   let text = prompt
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "")
-    .replace(/<system-reminder>[\s\S]*$/i, "")
-    .replace(/\s+/g, " ")
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '')
+    .replace(/<system-reminder>[\s\S]*$/i, '')
+    .replace(/\s+/g, ' ')
     .trim();
 
   // Name a slash command by its command and arguments, not the definition inlined after.
   const command = COMMAND_NAME_RE.exec(text);
   if (command) {
-    const args = COMMAND_ARGS_RE.exec(text)?.[1] ?? "";
-    const named = stripCommandNoise(`${command[1]} ${args}`).replace(/\s+/g, " ").trim();
+    const args = COMMAND_ARGS_RE.exec(text)?.[1] ?? '';
+    const named = stripCommandNoise(`${command[1]} ${args}`).replace(/\s+/g, ' ').trim();
     return capped(named);
   }
-  text = stripCommandNoise(text).replace(/\s+/g, " ").trim();
+  text = stripCommandNoise(text).replace(/\s+/g, ' ').trim();
 
   // Filler stacks, so peel until nothing more comes off.
   for (let i = 0; i < 3; i++) {
-    const stripped = text.replace(LEAD_FILLER_RE, "");
+    const stripped = text.replace(LEAD_FILLER_RE, '');
     if (stripped === text) break;
     text = stripped;
   }
@@ -146,9 +146,9 @@ export function deriveSessionName(prompt: string | null): string | null {
 function capped(text: string): string | null {
   if (!text) return null;
 
-  const words = text.split(" ");
+  const words = text.split(' ');
   let cut = words.length > NAME_WORDS;
-  let name = words.slice(0, NAME_WORDS).join(" ");
+  let name = words.slice(0, NAME_WORDS).join(' ');
   if (name.length > NAME_CHARS) {
     name = name.slice(0, NAME_CHARS).trimEnd();
     cut = true;
@@ -156,7 +156,7 @@ function capped(text: string): string | null {
   if (!name) return null;
 
   // Sentence case, but never on a path/flag/quoted command — those stay as typed.
-  if (/^[a-z]+$/.test(words[0] ?? "")) name = name[0]!.toUpperCase() + name.slice(1);
+  if (/^[a-z]+$/.test(words[0] ?? '')) name = name[0]!.toUpperCase() + name.slice(1);
   return cut ? `${name}…` : name;
 }
 
@@ -191,17 +191,17 @@ const INTERRUPTED_RE = /^- interrupted:\s*(.*)$/;
 // the graph: the step before was cut short, and what follows is a new trail.
 
 /** Why a run stopped mid-flight. */
-export type InterruptionKind = "user" | "tool-use" | "stopped" | "timeout" | "limit";
+export type InterruptionKind = 'user' | 'tool-use' | 'stopped' | 'timeout' | 'limit';
 
 /** Claude Code's marker, prepended to the user turn that interrupted the run. */
 const INTERRUPT_MARKER_RE = /^\[Request interrupted by user(?<tool> for tool use)?\]\s*/;
 
-const INTERRUPTION_KINDS = new Set<string>(["user", "tool-use", "stopped", "timeout", "limit"]);
+const INTERRUPTION_KINDS = new Set<string>(['user', 'tool-use', 'stopped', 'timeout', 'limit']);
 
 /** Read an `- interrupted:` line's reason; anything unrecognized reads as a plain stop. */
 export function interruptionKind(raw: string): InterruptionKind {
   const one = raw.trim().toLowerCase();
-  return (INTERRUPTION_KINDS.has(one) ? one : "stopped") as InterruptionKind;
+  return (INTERRUPTION_KINDS.has(one) ? one : 'stopped') as InterruptionKind;
 }
 
 /** The transcript line the dashboard appends when its own Stop (or a ceiling) cut a turn. */
@@ -215,7 +215,7 @@ export const INTERRUPTION_LINE = (kind: InterruptionKind): string => `- interrup
 export function splitInterruption(text: string): { kind: InterruptionKind | null; text: string } {
   const m = INTERRUPT_MARKER_RE.exec(text);
   if (!m) return { kind: null, text };
-  return { kind: m.groups?.tool ? "tool-use" : "user", text: text.slice(m[0].length) };
+  return { kind: m.groups?.tool ? 'tool-use' : 'user', text: text.slice(m[0].length) };
 }
 
 /** Distill one transcript's text into its listing/detail metadata. */
@@ -235,13 +235,13 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
     derivedTitle: null,
   };
 
-  for (const raw of content.split("\n")) {
-    const line = raw.replace(/\r$/, "");
+  for (const raw of content.split('\n')) {
+    const line = raw.replace(/\r$/, '');
 
     const task = TASK_RE.exec(line);
     if (task) {
       meta.tasks += 1;
-      if (meta.firstTask === null) meta.firstTask = (task[1] ?? "").trim() || null;
+      if (meta.firstTask === null) meta.firstTask = (task[1] ?? '').trim() || null;
       continue;
     }
     if (DECIDED_RE.test(line)) {
@@ -261,21 +261,21 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
     if (meta.model === null) {
       const m = HEADER_RE.model.exec(line);
       if (m) {
-        meta.model = (m[1] ?? "").trim() || null;
+        meta.model = (m[1] ?? '').trim() || null;
         continue;
       }
     }
     if (meta.sessionId === null) {
       const m = HEADER_RE.session.exec(line);
       if (m) {
-        meta.sessionId = (m[1] ?? "").trim() || null;
+        meta.sessionId = (m[1] ?? '').trim() || null;
         continue;
       }
     }
     if (meta.started === null) {
       const m = HEADER_RE.started.exec(line);
       if (m) {
-        meta.started = (m[1] ?? "").trim() || null;
+        meta.started = (m[1] ?? '').trim() || null;
         continue;
       }
     }
@@ -284,13 +284,13 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
     if (meta.title === null) {
       const m = HEADER_RE.title.exec(line);
       if (m) {
-        meta.title = (m[1] ?? "").trim() || null;
+        meta.title = (m[1] ?? '').trim() || null;
         continue;
       }
     }
     if (meta.subtitle === null) {
       const m = HEADER_RE.subtitle.exec(line);
-      if (m) meta.subtitle = (m[1] ?? "").trim() || null;
+      if (m) meta.subtitle = (m[1] ?? '').trim() || null;
     }
   }
 
@@ -301,7 +301,7 @@ export function parseSessionTranscript(threadId: string, content: string): Sessi
 }
 
 /** The kinds of appended line a transcript records after its header, in emit order. */
-export type SessionNodeType = "task" | "decision" | "tool" | "error" | "done";
+export type SessionNodeType = 'task' | 'decision' | 'tool' | 'error' | 'done';
 
 /** One appended transcript line, structured for the live session graph. */
 export interface SessionNode {
@@ -346,7 +346,16 @@ export function parseSessionNodes(content: string): SessionNode[] {
   let pending: InterruptionKind | null = null;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
-    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false, message: null });
+    nodes.push({
+      index: nodes.length,
+      type,
+      text: text.trim(),
+      tool,
+      task,
+      interruption: pending,
+      interrupted: false,
+      message: null,
+    });
     pending = null;
   };
 
@@ -357,49 +366,49 @@ export function parseSessionNodes(content: string): SessionNode[] {
     pending = kind;
   };
 
-  for (const raw of content.split("\n")) {
-    const line = raw.replace(/\r$/, "");
+  for (const raw of content.split('\n')) {
+    const line = raw.replace(/\r$/, '');
 
     const stopped = INTERRUPTED_RE.exec(line);
     if (stopped) {
-      cut(interruptionKind(stopped[1] ?? ""));
+      cut(interruptionKind(stopped[1] ?? ''));
       continue;
     }
 
     const taskMatch = TASK_RE.exec(line);
     if (taskMatch) {
-      const split = splitInterruption((taskMatch[1] ?? "").trim());
+      const split = splitInterruption((taskMatch[1] ?? '').trim());
       if (split.kind) cut(split.kind);
       task = split.text.trim() || null;
       lastTool = null;
-      push("task", task ?? "", null);
+      push('task', task ?? '', null);
       continue;
     }
 
     const decided = DECIDED_TEXT_RE.exec(line);
     if (decided) {
-      push("decision", decided[1] ?? "", null);
+      push('decision', decided[1] ?? '', null);
       continue;
     }
 
     const done = DONE_TEXT_RE.exec(line);
     if (done) {
-      push("done", done[1] ?? "", null);
+      push('done', done[1] ?? '', null);
       continue;
     }
 
     const errorMatch = ERROR_RE.exec(line);
     if (errorMatch) {
-      push("error", errorMatch[1] ?? "", lastTool);
+      push('error', errorMatch[1] ?? '', lastTool);
       lastTool = null;
       continue;
     }
 
     const toolMatch = TOOL_RE.exec(line);
     if (toolMatch) {
-      const sig = (toolMatch[1] ?? "").trim();
+      const sig = (toolMatch[1] ?? '').trim();
       lastTool = sig;
-      push("tool", sig, sig);
+      push('tool', sig, sig);
     }
   }
 
@@ -414,11 +423,11 @@ export function parseSessionNodes(content: string): SessionNode[] {
  */
 export function parseSessionNodeTexts(content: string): Record<number, string> {
   const texts: Record<number, string> = {};
-  for (const line of content.split("\n")) {
+  for (const line of content.split('\n')) {
     if (!line.trim()) continue;
     try {
       const row = JSON.parse(line) as { i?: unknown; text?: unknown };
-      if (typeof row.i === "number" && Number.isInteger(row.i) && row.i >= 0 && typeof row.text === "string") {
+      if (typeof row.i === 'number' && Number.isInteger(row.i) && row.i >= 0 && typeof row.text === 'string') {
         texts[row.i] = row.text;
       }
     } catch {
@@ -431,12 +440,12 @@ export function parseSessionNodeTexts(content: string): Record<number, string> {
 // --- Subagent linkage ------------------------------------------------------
 //
 // A subagent runs under its parent's session id but with its own conversation
-// root, so the proxy writes it as a *separate* transcript (see proxy/session.mjs).
+// root, so the proxy writes it as a *separate* transcript (see proxy/session.ts).
 // Nothing on the wire names the pair, so the tree is reconstructed here from the
 // parent's `Agent(...)` spawn lines and the group's other transcripts.
 
 /** Tool names whose call spawns a subagent that gets its own transcript. */
-const SPAWN_TOOLS = new Set(["Agent", "Task"]);
+const SPAWN_TOOLS = new Set(['Agent', 'Task']);
 
 /** A tool-call signature, split into name and recorded args. */
 const TOOL_SIG_RE = /^([A-Za-z]\w*)\((.*)\)$/;
@@ -447,10 +456,10 @@ const SUBAGENT_TYPE_RE = /(?:^|,\s*)subagent_type=([^,]*)/;
  * null when the node isn't a spawn at all.
  */
 export function spawnAgentType(node: SessionNode): string | null {
-  if (node.type !== "tool" || !node.tool) return null;
+  if (node.type !== 'tool' || !node.tool) return null;
   const sig = TOOL_SIG_RE.exec(node.tool);
-  if (!sig || !SPAWN_TOOLS.has(sig[1] ?? "")) return null;
-  return (SUBAGENT_TYPE_RE.exec(sig[2] ?? "")?.[1] ?? "").trim();
+  if (!sig || !SPAWN_TOOLS.has(sig[1] ?? '')) return null;
+  return (SUBAGENT_TYPE_RE.exec(sig[2] ?? '')?.[1] ?? '').trim();
 }
 
 /** True when this node is an `Agent(…)` / `Task(…)` call — a subagent spawn. */
@@ -540,7 +549,7 @@ export function linkAgentSessions(sessions: readonly LinkableSession[]): Map<str
   for (const family of families.values()) {
     if (family.length < 2) continue;
     const ordered = [...family].sort(
-      (a, b) => (a.started ?? "").localeCompare(b.started ?? "") || a.threadId.localeCompare(b.threadId),
+      (a, b) => (a.started ?? '').localeCompare(b.started ?? '') || a.threadId.localeCompare(b.threadId),
     );
     const claimed = new Set<string>();
 
@@ -597,25 +606,25 @@ export function parseSessionErrors(content: string): SessionError[] {
   let task: string | null = null;
   let lastTool: string | null = null;
 
-  for (const raw of content.split("\n")) {
-    const line = raw.replace(/\r$/, "");
+  for (const raw of content.split('\n')) {
+    const line = raw.replace(/\r$/, '');
 
     const taskMatch = TASK_RE.exec(line);
     if (taskMatch) {
-      task = (taskMatch[1] ?? "").trim() || null;
+      task = (taskMatch[1] ?? '').trim() || null;
       lastTool = null;
       continue;
     }
 
     const errorMatch = ERROR_RE.exec(line);
     if (errorMatch) {
-      errors.push({ index: errors.length, task, tool: lastTool, text: (errorMatch[1] ?? "").trim() });
+      errors.push({ index: errors.length, task, tool: lastTool, text: (errorMatch[1] ?? '').trim() });
       lastTool = null;
       continue;
     }
 
     const toolMatch = TOOL_RE.exec(line);
-    if (toolMatch) lastTool = (toolMatch[1] ?? "").trim();
+    if (toolMatch) lastTool = (toolMatch[1] ?? '').trim();
   }
 
   return errors;
@@ -624,54 +633,54 @@ export function parseSessionErrors(content: string): SessionError[] {
 // --- Nodes derived from a captured request ---------------------------------
 //
 // A transcript is a lossy render of the same `messages[]` a captured request carries:
-// `proxy/session.mjs` gists every line to 160 chars and every tool arg to 60. Re-running
+// `proxy/session.ts` gists every line to 160 chars and every tool arg to 60. Re-running
 // the proxy's grammar over the whole body yields the same node stream, same emission
 // order, with the text intact.
 
 /** Normalize a message `content` (string | block array) to a block array. */
 function asBlocks(content: unknown): Record<string, unknown>[] {
-  if (typeof content === "string") return [{ type: "text", text: content }];
+  if (typeof content === 'string') return [{ type: 'text', text: content }];
   if (!Array.isArray(content)) return [];
-  return content.filter((b): b is Record<string, unknown> => typeof b === "object" && b !== null);
+  return content.filter((b): b is Record<string, unknown> => typeof b === 'object' && b !== null);
 }
 
-const str = (v: unknown): string => (typeof v === "string" ? v : "");
+const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 /** The transcript's own normalization: every line it records is whitespace-collapsed. */
-const collapseWhitespace = (s: string): string => s.replace(/\s+/g, " ").trim();
+const collapseWhitespace = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
 /** The proxy's `gist` — collapse to one line and cap, cut marked with an `…`. */
 function gist(s: unknown, max: number): string {
-  const one = collapseWhitespace(String(s ?? ""));
+  const one = collapseWhitespace(String(s ?? ''));
   return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 }
 
 /** Drop the harness-injected `<system-reminder>…</system-reminder>` context blocks. */
-const stripReminderBlocks = (s: string): string => s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "");
+const stripReminderBlocks = (s: string): string => s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '');
 
 /** The readable text of a `tool_result` block (string or nested block array). */
 function resultText(block: Record<string, unknown>): string {
   const content = block.content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.map((x) => (typeof x === "string" ? x : str((x as Record<string, unknown>)?.text))).join(" ");
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.map((x) => (typeof x === 'string' ? x : str((x as Record<string, unknown>)?.text))).join(' ');
 }
 
 /** Allowlist of identifying tool inputs, in the proxy's precedence order. */
 const ARG_KEYS = [
-  "file_path",
-  "notebook_path",
-  "path",
-  "command",
-  "pattern",
-  "glob",
-  "url",
-  "query",
-  "subagent_type",
-  "skill",
-  "cron",
-  "description",
-  "prompt",
+  'file_path',
+  'notebook_path',
+  'path',
+  'command',
+  'pattern',
+  'glob',
+  'url',
+  'query',
+  'subagent_type',
+  'skill',
+  'cron',
+  'description',
+  'prompt',
 ];
 
 /**
@@ -680,35 +689,35 @@ const ARG_KEYS = [
  * {@link spawnAgentType}'s signature pattern doesn't match across a newline.
  */
 function toolArgs(input: unknown): string {
-  if (typeof input !== "object" || input === null) return "";
+  if (typeof input !== 'object' || input === null) return '';
   const obj = input as Record<string, unknown>;
   for (const k of ARG_KEYS) {
     const v = obj[k];
-    if (typeof v === "string" && v.trim()) return `${k}=${collapseWhitespace(v)}`;
+    if (typeof v === 'string' && v.trim()) return `${k}=${collapseWhitespace(v)}`;
   }
-  const k = Object.keys(obj).find((key) => ["string", "number", "boolean"].includes(typeof obj[key]));
-  return k ? `${k}=${collapseWhitespace(String(obj[k]))}` : "";
+  const k = Object.keys(obj).find((key) => ['string', 'number', 'boolean'].includes(typeof obj[key]));
+  return k ? `${k}=${collapseWhitespace(String(obj[k]))}` : '';
 }
 
 /**
  * The thread's conversation root: its first real user text, tool-result-only turns not
- * counting. Mirrors `firstUserText` in `proxy/session.mjs`, the string the proxy hashes
+ * counting. Mirrors `firstUserText` in `proxy/session.ts`, the string the proxy hashes
  * into a thread id — including its fallback to the first message's serialized content, so
  * a body with no user text hashes to the same id there and here.
  */
 export function firstUserText(messages: unknown): string {
-  if (!Array.isArray(messages)) return "";
+  if (!Array.isArray(messages)) return '';
   for (const m of messages) {
-    if ((m as Record<string, unknown>)?.role !== "user") continue;
+    if ((m as Record<string, unknown>)?.role !== 'user') continue;
     const text = asBlocks((m as Record<string, unknown>).content)
-      .filter((b) => b.type === "text")
+      .filter((b) => b.type === 'text')
       .map((b) => str(b.text))
-      .join(" ")
+      .join(' ')
       .trim();
     if (text) return text;
   }
   const first = messages[0] as Record<string, unknown> | undefined;
-  return first ? gist(JSON.stringify(first.content), 200) : "";
+  return first ? gist(JSON.stringify(first.content), 200) : '';
 }
 
 /**
@@ -721,7 +730,7 @@ export function firstUserText(messages: unknown): string {
  * the calls it explains.
  */
 export function deriveSessionNodes(body: unknown): SessionNode[] {
-  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
   const messages = Array.isArray(obj.messages) ? obj.messages : [];
 
   const nodes: SessionNode[] = [];
@@ -732,26 +741,35 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
   let message = 0;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
-    nodes.push({ index: nodes.length, type, text: text.trim(), tool, task, interruption: pending, interrupted: false, message });
+    nodes.push({
+      index: nodes.length,
+      type,
+      text: text.trim(),
+      tool,
+      task,
+      interruption: pending,
+      interrupted: false,
+      message,
+    });
     pending = null;
   };
 
   for (let m = 0; m < messages.length; m++) {
     message = m;
     const raw = messages[m];
-    const msg = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+    const msg = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
     const blocks = asBlocks(msg.content);
 
-    if (msg.role === "user") {
+    if (msg.role === 'user') {
       const texts: string[] = [];
       for (const b of blocks) {
-        if (b.type === "text") texts.push(str(b.text));
-        else if (b.type === "tool_result" && b.is_error === true) {
-          push("error", resultText(b), lastTool);
+        if (b.type === 'text') texts.push(str(b.text));
+        else if (b.type === 'tool_result' && b.is_error === true) {
+          push('error', resultText(b), lastTool);
           lastTool = null;
         }
       }
-      const split = splitInterruption(stripReminderBlocks(texts.join(" ")).trim());
+      const split = splitInterruption(stripReminderBlocks(texts.join(' ')).trim());
       const next = split.text.trim();
       if (split.kind || next) {
         if (split.kind) {
@@ -761,30 +779,30 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
         }
         task = next || null;
         lastTool = null;
-        push("task", next, null);
+        push('task', next, null);
       }
       continue;
     }
 
-    if (msg.role !== "assistant") continue;
+    if (msg.role !== 'assistant') continue;
 
     const texts: string[] = [];
     const calls: string[] = [];
     for (const b of blocks) {
-      if (b.type === "text") texts.push(str(b.text));
-      else if (b.type === "tool_use") calls.push(`${str(b.name) || "tool"}(${toolArgs(b.input)})`);
+      if (b.type === 'text') texts.push(str(b.text));
+      else if (b.type === 'tool_use') calls.push(`${str(b.name) || 'tool'}(${toolArgs(b.input)})`);
       // `thinking` is skipped — neither a decision nor an outcome.
     }
-    const reasoning = texts.join(" ").trim();
+    const reasoning = texts.join(' ').trim();
 
     if (calls.length > 0) {
-      if (reasoning) push("decision", reasoning, null);
+      if (reasoning) push('decision', reasoning, null);
       for (const sig of calls) {
         lastTool = sig;
-        push("tool", sig, sig);
+        push('tool', sig, sig);
       }
     } else if (reasoning) {
-      push("done", reasoning, null);
+      push('done', reasoning, null);
     }
   }
 
@@ -799,7 +817,7 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
 export function isSameStep(gisted: string, full: string): boolean {
   const one = collapseWhitespace(full);
   if (one === gisted) return true;
-  const cut = gisted.indexOf("…");
+  const cut = gisted.indexOf('…');
   return cut > 0 && one.startsWith(gisted.slice(0, cut));
 }
 
@@ -897,15 +915,15 @@ export interface RequestErrorSite {
  * `error` nodes. A body with no `messages` array yields none.
  */
 export function deriveRequestErrors(body: unknown): RequestErrorSite[] {
-  const obj = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
   const messages = Array.isArray(obj.messages) ? obj.messages : [];
 
   const sites: RequestErrorSite[] = [];
   messages.forEach((raw, messageIndex) => {
-    const msg = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
-    if (msg.role !== "user") return;
+    const msg = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+    if (msg.role !== 'user') return;
     for (const b of asBlocks(msg.content)) {
-      if (b.type === "tool_result" && b.is_error === true) sites.push({ messageIndex, text: resultText(b) });
+      if (b.type === 'tool_result' && b.is_error === true) sites.push({ messageIndex, text: resultText(b) });
     }
   });
   return sites;

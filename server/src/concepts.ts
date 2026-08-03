@@ -10,13 +10,13 @@
  * over it — see `server/src/db/ingest-concepts.ts`.
  */
 
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { isConcept, normalizeConcept, sortConcepts, type Concept, type StoredConcept } from "@claude-proxy/core";
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { type Concept, isConcept, normalizeConcept, type StoredConcept, sortConcepts } from '@claude-proxy/core';
 
 /** The append-only concept store. */
 export function conceptStorePath(logDir: string): string {
-  return path.join(logDir, "concepts.jsonl");
+  return path.join(logDir, 'concepts.jsonl');
 }
 
 /**
@@ -29,7 +29,7 @@ export function conceptStorePath(logDir: string): string {
  */
 export function parseConceptStore(text: string): Concept[] {
   const out: Concept[] = [];
-  for (const line of text.split("\n")) {
+  for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     let parsed: unknown;
     try {
@@ -53,7 +53,7 @@ export function parseConceptStore(text: string): Concept[] {
 export async function readConcepts(logDir: string): Promise<StoredConcept[]> {
   let text: string;
   try {
-    text = await readFile(conceptStorePath(logDir), "utf8");
+    text = await readFile(conceptStorePath(logDir), 'utf8');
   } catch {
     return [];
   }

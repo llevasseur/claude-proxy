@@ -25,10 +25,10 @@ is a thread of many requests. Session-level attribution was listed **out of scop
 [`2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md)
 ("Session-level attribution (no session ID in logs)"). Two observations made it possible after
 all. Claude Code *does* send `x-claude-code-session-id` on every request — `extractSession` in
-`proxy/proxy.mjs` reads it, alongside the `account_uuid` / `session_id` / `device_id` ids inside
+`proxy/proxy.ts` reads it, alongside the `account_uuid` / `session_id` / `device_id` ids inside
 the `metadata.user_id` blob. That header alone is not enough, because one session id covers the
 main agent, its subagents, and one-shot helpers; but each request replays the whole conversation,
-so `proxy/session.mjs` keys a thread by *(session id + a fingerprint of its first user message)*
+so `proxy/session.ts` keys a thread by *(session id + a fingerprint of its first user message)*
 and separates them. The blocker was a granularity problem, not a missing id.
 
 ## Behavior
@@ -141,7 +141,7 @@ and separates them. The blocker was a granularity problem, not a missing id.
   `offline`, shown by **LiveIndicator** as **Live** / **Connecting…** / **Offline** with a
   pulsing teal, amber, or coral dot.
 
-The data path is `proxy/session.mjs` (best-effort append on every observed request) →
+The data path is `proxy/session.ts` (best-effort append on every observed request) →
 `logs/sessions/<threadId>.md` plus its `.nodes.jsonl` sidecar →
 `packages/core/src/sessions.ts` (`parseSessionTranscript`, `parseSessionErrors`,
 `deriveSessionName`) → `server` (`listSessions` / `readSession` behind `GET /api/sessions`,

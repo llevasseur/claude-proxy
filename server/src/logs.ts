@@ -1,17 +1,17 @@
-import { access, readdir, readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { type AuditSidecar, isAuditSidecar, reportDay, shiftDay } from "@claude-proxy/core";
+import { access, readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { type AuditSidecar, isAuditSidecar, reportDay, shiftDay } from '@claude-proxy/core';
 
 export { shiftDay };
 
 /** The sidecar suffix, which retention keeps forever. */
-const AUDIT_SUFFIX = ".audit.json";
+const AUDIT_SUFFIX = '.audit.json';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // server/src
 
 /** Repo-root `logs/` — where the proxy writes its sidecars by default. */
-export const DEFAULT_LOG_DIR = path.resolve(HERE, "../../logs");
+export const DEFAULT_LOG_DIR = path.resolve(HERE, '../../logs');
 
 /** Resolve the log directory: `LOG_DIR` env override, else the repo-root default. */
 export function resolveLogDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -36,7 +36,7 @@ export interface LoadResult {
 /** Count `*.audit.json` files without reading their contents (for health). */
 export async function countSidecarFiles(logDir: string): Promise<number> {
   const entries = await readdir(logDir);
-  return entries.filter((f) => f.endsWith(".audit.json")).length;
+  return entries.filter((f) => f.endsWith('.audit.json')).length;
 }
 
 export interface ReadOptions {
@@ -53,24 +53,26 @@ export interface ReadOptions {
 }
 
 function latestUserText(request: unknown): string | null {
-  if (typeof request !== "object" || request === null) return null;
+  if (typeof request !== 'object' || request === null) return null;
   const messages = (request as { messages?: unknown }).messages;
   if (!Array.isArray(messages)) return null;
 
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i] as { role?: unknown; content?: unknown };
-    if (message?.role !== "user") continue;
-    if (typeof message.content === "string" && message.content.trim()) return message.content.trim();
+    if (message?.role !== 'user') continue;
+    if (typeof message.content === 'string' && message.content.trim()) return message.content.trim();
     if (!Array.isArray(message.content)) continue;
     const text = message.content
-      .filter((block): block is { type: "text"; text: string } =>
-        typeof block === "object" && block !== null &&
-        (block as { type?: unknown }).type === "text" &&
-        typeof (block as { text?: unknown }).text === "string",
+      .filter(
+        (block): block is { type: 'text'; text: string } =>
+          typeof block === 'object' &&
+          block !== null &&
+          (block as { type?: unknown }).type === 'text' &&
+          typeof (block as { text?: unknown }).text === 'string',
       )
       .map((block) => block.text.trim())
       .filter(Boolean)
-      .join("\n\n");
+      .join('\n\n');
     if (text) return text;
   }
   return null;
@@ -82,11 +84,14 @@ function latestUserText(request: unknown): string | null {
  * `bodyPresent: true`; only `bodyPresent: false` counts as an eviction. Both read
  * backings must draw that line in the same place or `/api/skim` loses parity.
  */
-async function skimRequestText(logDir: string, auditFile: string): Promise<{ text: string | null; bodyPresent: boolean }> {
-  const requestFile = auditFile.replace(/\.audit\.json$/, ".request.txt");
+async function skimRequestText(
+  logDir: string,
+  auditFile: string,
+): Promise<{ text: string | null; bodyPresent: boolean }> {
+  const requestFile = auditFile.replace(/\.audit\.json$/, '.request.txt');
   let raw: string;
   try {
-    raw = await readFile(path.join(logDir, requestFile), "utf8");
+    raw = await readFile(path.join(logDir, requestFile), 'utf8');
   } catch {
     return { text: null, bodyPresent: false };
   }
@@ -108,9 +113,9 @@ function cutoff(sinceDays: number, now: Date): string {
 
 /** A sidecar's ISO `timestamp`, when it has a usable one. */
 function timestampOf(sidecar: unknown): string | null {
-  if (typeof sidecar !== "object" || sidecar === null) return null;
+  if (typeof sidecar !== 'object' || sidecar === null) return null;
   const ts = (sidecar as { timestamp?: unknown }).timestamp;
-  return typeof ts === "string" ? ts : null;
+  return typeof ts === 'string' ? ts : null;
 }
 
 /**
@@ -131,7 +136,7 @@ export async function readSidecars(
     throw new Error(`cannot read log directory ${logDir}: ${(err as Error).message}`);
   }
 
-  let files = entries.filter((f) => f.endsWith(".audit.json"));
+  let files = entries.filter((f) => f.endsWith('.audit.json'));
   // Filenames carry the proxy's UTC prefix, so one reporting day spans the
   // filenames `D` and `D+1`. Match a superset by filename, then narrow it
   // exactly by each sidecar's own timestamp.
@@ -157,7 +162,7 @@ export async function readSidecars(
   for (const f of files) {
     let sidecar: unknown;
     try {
-      sidecar = JSON.parse(await readFile(path.join(logDir, f), "utf8")) as unknown;
+      sidecar = JSON.parse(await readFile(path.join(logDir, f), 'utf8')) as unknown;
     } catch {
       // No timestamp to place it by, so fall back to the filename's UTC day.
       if (keepDay && !keepDay(f.slice(0, 10))) continue;
@@ -172,14 +177,14 @@ export async function readSidecars(
       if (!keepDay((ts && reportDay(ts)) || f.slice(0, 10))) continue;
     }
 
-    if (typeof sidecar === "object" && sidecar !== null) {
+    if (typeof sidecar === 'object' && sidecar !== null) {
       if (opts.includeSkimRequests) {
         const { text, bodyPresent } = await skimRequestText(logDir, f);
         (sidecar as { skimRequestText?: string }).skimRequestText = text ?? undefined;
         if (!bodyPresent) bodiesEvicted += 1;
       }
       if (opts.includeFile) {
-        (sidecar as { __file?: string }).__file = f.replace(/\.audit\.json$/, "");
+        (sidecar as { __file?: string }).__file = f.replace(/\.audit\.json$/, '');
       }
     }
     kept += 1;
@@ -190,7 +195,7 @@ export async function readSidecars(
 
 /** `<logDir>/archive/<YYYY-MM-DD>/` — where the summary job parks each past day's sidecars. */
 export function rawArchiveDayDir(logDir: string, date: string): string {
-  return path.join(logDir, "archive", date);
+  return path.join(logDir, 'archive', date);
 }
 
 /**
@@ -204,7 +209,7 @@ export function rawArchiveDayDir(logDir: string, date: string): string {
 export async function readArchivedDay(
   logDir: string,
   date: string,
-  opts: Omit<ReadOptions, "date" | "sinceDays"> = {},
+  opts: Omit<ReadOptions, 'date' | 'sinceDays'> = {},
 ): Promise<LoadResult> {
   const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0, bodiesEvicted: 0 };
   for (const day of [date, shiftDay(date, 1)]) {
@@ -223,7 +228,7 @@ export async function readArchivedDay(
 
 /** Base names the proxy emits, e.g. `2026-07-20T13-31-00-278_anthropic`. Digits,
  * `T`, `:` (legacy), `.`, `_`, `-` only — no path separators, no `..`. */
-const REQUEST_FILE_RE = /^[0-9A-Za-z:_.\-]+_anthropic$/;
+const REQUEST_FILE_RE = /^[0-9A-Za-z:_.-]+_anthropic$/;
 
 /**
  * Read and parse one captured request body, without rendering it for display.
@@ -241,7 +246,7 @@ export async function readRequestBodyParsed(logDir: string, file: string): Promi
   // in front of it — the commands reconcile pass opens bodies by the thousand.
   let text: string | null = null;
   try {
-    text = await readFile(live, "utf8");
+    text = await readFile(live, 'utf8');
   } catch {
     text = null;
   }
@@ -249,8 +254,8 @@ export async function readRequestBodyParsed(logDir: string, file: string): Promi
 
   // Slow path: archived, evicted, or never captured.
   const location = await locateRequestBody(logDir, file);
-  if (location.status === "present") return JSON.parse(await readFile(location.path, "utf8")) as unknown;
-  if (location.status === "evicted") throw new Error(`request body evicted: ${file}`);
+  if (location.status === 'present') return JSON.parse(await readFile(location.path, 'utf8')) as unknown;
+  if (location.status === 'evicted') throw new Error(`request body evicted: ${file}`);
   throw new Error(`request file not found: ${file}`);
 }
 
@@ -285,9 +290,9 @@ async function exists(file: string): Promise<boolean> {
  * - `missing` — neither file is there. The only case worth a 404.
  */
 export type RequestBodyLocation =
-  | { status: "present"; dir: string; path: string }
-  | { status: "evicted"; dir: string; day: string | null }
-  | { status: "missing" };
+  | { status: 'present'; dir: string; path: string }
+  | { status: 'evicted'; dir: string; day: string | null }
+  | { status: 'missing' };
 
 /**
  * The directories a request's files can live in, in lookup order: the live
@@ -299,7 +304,7 @@ function requestDirs(logDir: string, file: string): { dir: string; day: string |
   const root = path.resolve(logDir);
   const dirs: { dir: string; day: string | null }[] = [{ dir: root, day: null }];
   const day = file.slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(day)) dirs.push({ dir: path.join(root, "archive", day), day });
+  if (/^\d{4}-\d{2}-\d{2}$/.test(day)) dirs.push({ dir: path.join(root, 'archive', day), day });
   return dirs;
 }
 
@@ -310,22 +315,24 @@ export async function locateRequestBody(logDir: string, file: string): Promise<R
 
   for (const candidate of requestDirs(logDir, file)) {
     const body = path.join(candidate.dir, `${file}.request.txt`);
-    if (await exists(body)) return { status: "present", dir: candidate.dir, path: body };
+    if (await exists(body)) return { status: 'present', dir: candidate.dir, path: body };
     if (!sidecar && (await exists(path.join(candidate.dir, `${file}${AUDIT_SUFFIX}`)))) sidecar = candidate;
   }
 
-  if (sidecar) return { status: "evicted", dir: sidecar.dir, day: sidecar.day };
-  return { status: "missing" };
+  if (sidecar) return { status: 'evicted', dir: sidecar.dir, day: sidecar.day };
+  return { status: 'missing' };
 }
 
 /**
  * The audit sidecar that outlived an evicted body. Returns `null` when it is
  * unreadable or malformed, so a caller reporting an eviction never fails on it.
+ * `_logDir` is unread — the sidecar is found under `dir` — but kept for signature
+ * parity with the other readers here.
  */
-export async function readRetainedSidecar(logDir: string, file: string, dir: string): Promise<AuditSidecar | null> {
+export async function readRetainedSidecar(_logDir: string, file: string, dir: string): Promise<AuditSidecar | null> {
   if (!REQUEST_FILE_RE.test(file)) return null;
   try {
-    const raw: unknown = JSON.parse(await readFile(path.join(dir, `${file}${AUDIT_SUFFIX}`), "utf8"));
+    const raw: unknown = JSON.parse(await readFile(path.join(dir, `${file}${AUDIT_SUFFIX}`), 'utf8'));
     return isAuditSidecar(raw) ? raw : null;
   } catch {
     return null;

@@ -1,13 +1,13 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import fs from "node:fs";
-import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
-import { isAuditSidecar, type AuditSidecar } from "@claude-proxy/core";
-import { commandStorePath } from "../command-runs.js";
-import { resolveSessionsDir } from "../sessions.js";
-import { ingestCommandRuns } from "./ingest-commands.js";
-import { ingestConcepts } from "./ingest-concepts.js";
-import { ingestSessions } from "./ingest-sessions.js";
+import fs from 'node:fs';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
+import { type AuditSidecar, isAuditSidecar } from '@claude-proxy/core';
+import { commandStorePath } from '../command-runs.js';
+import { resolveSessionsDir } from '../sessions.js';
+import { ingestCommandRuns } from './ingest-commands.js';
+import { ingestConcepts } from './ingest-concepts.js';
+import { ingestSessions } from './ingest-sessions.js';
 
 /**
  * Fill the substrate from `logs/`, and keep it filled. Runs unattended on server
@@ -22,9 +22,9 @@ import { ingestSessions } from "./ingest-sessions.js";
  */
 
 /** The live log directory, as a `source_dir` value. Archived days are `archive/<YYYY-MM-DD>`. */
-const LIVE = "";
+const LIVE = '';
 
-const AUDIT_SUFFIX = ".audit.json";
+const AUDIT_SUFFIX = '.audit.json';
 
 export interface IngestStats {
   /** Directories examined (live plus each archived day present on disk). */
@@ -80,13 +80,13 @@ async function sourceDirs(logDir: string): Promise<string[]> {
   const dirs = [LIVE];
   let days: string[];
   try {
-    days = await readdir(path.join(logDir, "archive"));
+    days = await readdir(path.join(logDir, 'archive'));
   } catch {
     return dirs;
   }
   for (const day of days.sort()) {
     try {
-      if ((await stat(path.join(logDir, "archive", day))).isDirectory()) dirs.push(`archive/${day}`);
+      if ((await stat(path.join(logDir, 'archive', day))).isDirectory()) dirs.push(`archive/${day}`);
     } catch {
       // Vanished between the listing and the stat — nothing to ingest.
     }
@@ -98,7 +98,7 @@ interface Row {
   stem: string;
   sidecar: AuditSidecar | null;
   /** Set when the file could not become a row: why not. */
-  reason: "parse_error" | "not_audit_sidecar" | null;
+  reason: 'parse_error' | 'not_audit_sidecar' | null;
   /** A usable ISO timestamp off an invalid-but-parsed object, for day filtering. */
   timestamp: string | null;
   mdPath: string | null;
@@ -106,11 +106,11 @@ interface Row {
 }
 
 function num(v: unknown): number {
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
 function str(v: unknown): string | null {
-  return typeof v === "string" ? v : null;
+  return typeof v === 'string' ? v : null;
 }
 
 function bool(v: unknown): number {
@@ -125,30 +125,31 @@ async function readRow(dir: string, sourceDir: string, stem: string, names: Set<
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await readFile(path.join(dir, `${stem}${AUDIT_SUFFIX}`), "utf8"));
+    parsed = JSON.parse(await readFile(path.join(dir, `${stem}${AUDIT_SUFFIX}`), 'utf8'));
   } catch {
-    return { stem, sidecar: null, reason: "parse_error", timestamp: null, mdPath, requestPath };
+    return { stem, sidecar: null, reason: 'parse_error', timestamp: null, mdPath, requestPath };
   }
 
   if (!isAuditSidecar(parsed)) {
     // Parsed, but not a usable audit row. The file-backed reader still places it
     // by its own timestamp when it has one, so keep that here too.
-    const ts = typeof parsed === "object" && parsed !== null ? str((parsed as { timestamp?: unknown }).timestamp) : null;
-    return { stem, sidecar: null, reason: "not_audit_sidecar", timestamp: ts, mdPath, requestPath };
+    const ts =
+      typeof parsed === 'object' && parsed !== null ? str((parsed as { timestamp?: unknown }).timestamp) : null;
+    return { stem, sidecar: null, reason: 'not_audit_sidecar', timestamp: ts, mdPath, requestPath };
   }
   return { stem, sidecar: parsed, reason: null, timestamp: parsed.timestamp, mdPath, requestPath };
 }
 
 interface Statements {
-  insertRequest: ReturnType<DatabaseSync["prepare"]>;
-  insertTool: ReturnType<DatabaseSync["prepare"]>;
-  insertRateLimit: ReturnType<DatabaseSync["prepare"]>;
-  insertSkipped: ReturnType<DatabaseSync["prepare"]>;
-  refreshBlobs: ReturnType<DatabaseSync["prepare"]>;
-  deleteRequest: ReturnType<DatabaseSync["prepare"]>;
-  deleteSkipped: ReturnType<DatabaseSync["prepare"]>;
-  unskip: ReturnType<DatabaseSync["prepare"]>;
-  watermark: ReturnType<DatabaseSync["prepare"]>;
+  insertRequest: ReturnType<DatabaseSync['prepare']>;
+  insertTool: ReturnType<DatabaseSync['prepare']>;
+  insertRateLimit: ReturnType<DatabaseSync['prepare']>;
+  insertSkipped: ReturnType<DatabaseSync['prepare']>;
+  refreshBlobs: ReturnType<DatabaseSync['prepare']>;
+  deleteRequest: ReturnType<DatabaseSync['prepare']>;
+  deleteSkipped: ReturnType<DatabaseSync['prepare']>;
+  unskip: ReturnType<DatabaseSync['prepare']>;
+  watermark: ReturnType<DatabaseSync['prepare']>;
 }
 
 function prepare(db: DatabaseSync): Statements {
@@ -187,22 +188,22 @@ function prepare(db: DatabaseSync): Statements {
          OR request.req_system_hash IS NOT excluded.req_system_hash
     `),
     insertTool: db.prepare(
-      "INSERT INTO request_tool (request_id, ord, name, bytes, est_tokens) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+      'INSERT INTO request_tool (request_id, ord, name, bytes, est_tokens) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
     ),
     insertRateLimit: db.prepare(
-      "INSERT INTO request_rate_limit (request_id, ord, header_name, header_value) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+      'INSERT INTO request_rate_limit (request_id, ord, header_name, header_value) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
     ),
     insertSkipped: db.prepare(`
       INSERT INTO request_skipped (id, source_dir, reason, timestamp) VALUES (?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET source_dir = excluded.source_dir
       WHERE request_skipped.source_dir <> excluded.source_dir
     `),
-    refreshBlobs: db.prepare("UPDATE request SET md_path = ?, request_path = ?, blob_evicted = ? WHERE id = ?"),
+    refreshBlobs: db.prepare('UPDATE request SET md_path = ?, request_path = ?, blob_evicted = ? WHERE id = ?'),
     // Scoped by `source_dir` as well as id, so a stem already relocated to the
     // archive earlier in this pass is not deleted by the live directory.
-    deleteRequest: db.prepare("DELETE FROM request WHERE id = ? AND source_dir = ?"),
-    deleteSkipped: db.prepare("DELETE FROM request_skipped WHERE id = ? AND source_dir = ?"),
-    unskip: db.prepare("DELETE FROM request_skipped WHERE id = ?"),
+    deleteRequest: db.prepare('DELETE FROM request WHERE id = ? AND source_dir = ?'),
+    deleteSkipped: db.prepare('DELETE FROM request_skipped WHERE id = ? AND source_dir = ?'),
+    unskip: db.prepare('DELETE FROM request_skipped WHERE id = ?'),
     watermark: db.prepare(`
       INSERT INTO ingest_watermark (source_dir, last_stem, files_seen, scanned_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(source_dir) DO UPDATE SET
@@ -213,12 +214,12 @@ function prepare(db: DatabaseSync): Statements {
 
 /** Write one already-read batch of rows. Sync, because `node:sqlite` is. */
 function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: Row[], stats: IngestStats): void {
-  db.exec("BEGIN");
+  db.exec('BEGIN');
   try {
     for (const row of rows) {
       const evicted = bool(row.mdPath === null && row.requestPath === null);
       if (!row.sidecar) {
-        st.insertSkipped.run(row.stem, sourceDir, row.reason ?? "unknown", row.timestamp);
+        st.insertSkipped.run(row.stem, sourceDir, row.reason ?? 'unknown', row.timestamp);
         stats.skipped += 1;
         continue;
       }
@@ -232,7 +233,7 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
         s.timestamp,
         s.model,
         str(s.endpoint),
-        typeof s.statusCode === "number" ? s.statusCode : null,
+        typeof s.statusCode === 'number' ? s.statusCode : null,
         bool(session),
         session ? str(session.sessionId) : null,
         session ? str(session.app) : null,
@@ -257,15 +258,15 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
         skim ? bool(skim.servedFromCache) : null,
         skim ? num(skim.savedInputTokens) : null,
         skim ? str(skim.cacheKey) : null,
-        bool(rateLimit && typeof rateLimit === "object"),
+        bool(rateLimit && typeof rateLimit === 'object'),
         row.mdPath,
         row.requestPath,
         evicted,
       );
       s.tools.forEach((tool, ord) => {
-        st.insertTool.run(row.stem, ord, String(tool?.name ?? ""), num(tool?.bytes), num(tool?.estTokens));
+        st.insertTool.run(row.stem, ord, String(tool?.name ?? ''), num(tool?.bytes), num(tool?.estTokens));
       });
-      if (rateLimit && typeof rateLimit === "object") {
+      if (rateLimit && typeof rateLimit === 'object') {
         Object.entries(rateLimit).forEach(([name, value], ord) => {
           st.insertRateLimit.run(row.stem, ord, name, String(value));
         });
@@ -275,9 +276,9 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
       st.unskip.run(row.stem);
       stats.inserted += 1;
     }
-    db.exec("COMMIT");
+    db.exec('COMMIT');
   } catch (err) {
-    db.exec("ROLLBACK");
+    db.exec('ROLLBACK');
     throw err;
   }
 }
@@ -286,26 +287,35 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
 const BATCH = 500;
 
 /** Ingest one directory, reconciling it exactly with what is on disk. */
-async function ingestDir(db: DatabaseSync, st: Statements, logDir: string, sourceDir: string, stats: IngestStats): Promise<void> {
+async function ingestDir(
+  db: DatabaseSync,
+  st: Statements,
+  logDir: string,
+  sourceDir: string,
+  stats: IngestStats,
+): Promise<void> {
   const dir = dirPath(logDir, sourceDir);
   let names: string[];
   try {
     names = await readdir(dir);
   } catch {
     // Pruned since `sourceDirs` listed it. Its rows go with it.
-    db.prepare("DELETE FROM request WHERE source_dir = ?").run(sourceDir);
-    db.prepare("DELETE FROM request_skipped WHERE source_dir = ?").run(sourceDir);
-    db.prepare("DELETE FROM ingest_watermark WHERE source_dir = ?").run(sourceDir);
+    db.prepare('DELETE FROM request WHERE source_dir = ?').run(sourceDir);
+    db.prepare('DELETE FROM request_skipped WHERE source_dir = ?').run(sourceDir);
+    db.prepare('DELETE FROM ingest_watermark WHERE source_dir = ?').run(sourceDir);
     return;
   }
 
   const nameSet = new Set(names);
-  const stems = names.filter((n) => n.endsWith(AUDIT_SUFFIX)).map((n) => n.slice(0, -AUDIT_SUFFIX.length)).sort();
+  const stems = names
+    .filter((n) => n.endsWith(AUDIT_SUFFIX))
+    .map((n) => n.slice(0, -AUDIT_SUFFIX.length))
+    .sort();
   const lastStem = stems.length ? stems[stems.length - 1]! : null;
 
   // An archived day is immutable once the summary job has moved it. When its
   // listing still matches what we recorded, there is nothing to reconcile.
-  const mark = db.prepare("SELECT last_stem, files_seen FROM ingest_watermark WHERE source_dir = ?").get(sourceDir) as
+  const mark = db.prepare('SELECT last_stem, files_seen FROM ingest_watermark WHERE source_dir = ?').get(sourceDir) as
     | { last_stem: string | null; files_seen: number }
     | undefined;
   if (sourceDir !== LIVE && mark && mark.files_seen === stems.length && mark.last_stem === lastStem) {
@@ -315,11 +325,13 @@ async function ingestDir(db: DatabaseSync, st: Statements, logDir: string, sourc
   stats.dirs += 1;
 
   const known = new Set<string>();
-  for (const r of db.prepare("SELECT id FROM request WHERE source_dir = ?").all(sourceDir) as Array<{ id: string }>) {
+  for (const r of db.prepare('SELECT id FROM request WHERE source_dir = ?').all(sourceDir) as Array<{ id: string }>) {
     known.add(r.id);
   }
   const knownSkipped = new Set<string>();
-  for (const r of db.prepare("SELECT id FROM request_skipped WHERE source_dir = ?").all(sourceDir) as Array<{ id: string }>) {
+  for (const r of db.prepare('SELECT id FROM request_skipped WHERE source_dir = ?').all(sourceDir) as Array<{
+    id: string;
+  }>) {
     knownSkipped.add(r.id);
   }
 
@@ -327,7 +339,7 @@ async function ingestDir(db: DatabaseSync, st: Statements, logDir: string, sourc
   // archive. A move re-inserts under the new `source_dir`, and `sourceDirs`
   // ordering (live first) means one pass sees both halves.
   const present = new Set(stems);
-  db.exec("BEGIN");
+  db.exec('BEGIN');
   try {
     for (const id of known) {
       if (!present.has(id)) {
@@ -341,16 +353,16 @@ async function ingestDir(db: DatabaseSync, st: Statements, logDir: string, sourc
         stats.deleted += 1;
       }
     }
-    db.exec("COMMIT");
+    db.exec('COMMIT');
   } catch (err) {
-    db.exec("ROLLBACK");
+    db.exec('ROLLBACK');
     throw err;
   }
 
   // Blob eviction is visible in the listing alone, so refresh every known row's
   // pointers without re-parsing its sidecar.
   const rel = (name: string) => (sourceDir === LIVE ? name : `${sourceDir}/${name}`);
-  db.exec("BEGIN");
+  db.exec('BEGIN');
   try {
     for (const stem of stems) {
       if (!known.has(stem)) continue;
@@ -358,9 +370,9 @@ async function ingestDir(db: DatabaseSync, st: Statements, logDir: string, sourc
       const req = nameSet.has(`${stem}.request.txt`) ? rel(`${stem}.request.txt`) : null;
       st.refreshBlobs.run(md, req, bool(md === null && req === null), stem);
     }
-    db.exec("COMMIT");
+    db.exec('COMMIT');
   } catch (err) {
-    db.exec("ROLLBACK");
+    db.exec('ROLLBACK');
     throw err;
   }
 
@@ -472,7 +484,7 @@ export function watchAndIngest(
   for (const dir of [logDir, resolveSessionsDir(logDir), path.dirname(commandStorePath(logDir))]) {
     try {
       const watcher = fs.watch(dir, { persistent: false }, schedule);
-      watcher.on("error", (err) => onError(err as Error));
+      watcher.on('error', (err) => onError(err as Error));
       watchers.push(watcher);
     } catch (err) {
       onError(err as Error);

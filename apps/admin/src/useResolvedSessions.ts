@@ -1,7 +1,7 @@
-import { useCallback, useState } from "react";
-import type { SessionSummary } from "./api";
+import { useCallback, useState } from 'react';
+import type { SessionSummary } from './api';
 
-const STORAGE_KEY = "admin:resolved-sessions";
+const STORAGE_KEY = 'admin:resolved-sessions';
 
 /** Thread id → the ISO instant it was marked, for each of the two marks. */
 interface Marks {

@@ -1,4 +1,4 @@
-import { costPerMTok, rateTokens, type UsageDigest } from "./digest.js";
+import { costPerMTok, rateTokens, type UsageDigest } from './digest.js';
 
 /**
  * One day as the cost-against-tokens plot draws it: volume on x, spend on y,

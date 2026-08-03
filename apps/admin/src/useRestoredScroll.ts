@@ -1,5 +1,5 @@
-import { useElementScrollRestoration } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useElementScrollRestoration } from '@tanstack/react-router';
+import { useEffect, useRef } from 'react';
 
 /**
  * Re-apply the router's remembered scroll offset once `ready` says the page body is on screen.

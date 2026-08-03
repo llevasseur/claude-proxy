@@ -9,17 +9,17 @@
  * would make. {@link collectRetentionCorpus} reads the listing and
  * {@link applyRetention} performs the plan; neither decides anything.
  */
-import { mkdir, readdir, rename, stat, unlink } from "node:fs/promises";
-import path from "node:path";
-import { REPORT_TZ } from "@claude-proxy/core";
+import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
+import path from 'node:path';
+import { REPORT_TZ } from '@claude-proxy/core';
 
 export const DEFAULT_RETENTION_DAYS = 30;
 
 /** The only files eviction removes; everything else in an archived day is kept forever. */
-export const EVICTABLE_SUFFIXES = [".md", ".request.txt"] as const;
+export const EVICTABLE_SUFFIXES = ['.md', '.request.txt'] as const;
 
 /** The sidecar suffix. Named here so the "never evict this" rule is greppable. */
-export const RETAINED_SUFFIX = ".audit.json";
+export const RETAINED_SUFFIX = '.audit.json';
 
 /** The leading `YYYY-MM-DD` of a log filename, which is the day it is filed under. */
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})/;
@@ -88,13 +88,15 @@ export function shiftDate(date: string, deltaDays: number): string {
 /** Today in the reporting zone; `TIMEZONE` overrides it. */
 export function resolveToday(env: NodeJS.ProcessEnv = process.env, now: Date = new Date()): string {
   const tz = env.TIMEZONE || REPORT_TZ;
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
+    now,
+  );
 }
 
 /** `RETENTION_DAYS`, or 30. A non-numeric or negative value falls back to the default. */
 export function resolveRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.RETENTION_DAYS;
-  if (raw === undefined || raw === "") return DEFAULT_RETENTION_DAYS;
+  if (raw === undefined || raw === '') return DEFAULT_RETENTION_DAYS;
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : DEFAULT_RETENTION_DAYS;
 }
@@ -123,11 +125,7 @@ export function isEvictable(name: string): boolean {
  * landing in an already-expired day does not survive until the next run. Only the
  * day directory's name decides expiry, and the directory is never removed.
  */
-export function planRetention(input: {
-  corpus: RetentionCorpus;
-  today: string;
-  retentionDays: number;
-}): RetentionPlan {
+export function planRetention(input: { corpus: RetentionCorpus; today: string; retentionDays: number }): RetentionPlan {
   const { corpus, today, retentionDays } = input;
   const cutoff = shiftDate(today, -retentionDays);
 
@@ -202,7 +200,7 @@ async function listFiles(dir: string): Promise<FileEntry[]> {
 /** Read the live directory and every archived day. */
 export async function collectRetentionCorpus(logDir: string): Promise<RetentionCorpus> {
   const live = await listFiles(logDir);
-  const archiveRoot = path.join(logDir, "archive");
+  const archiveRoot = path.join(logDir, 'archive');
   let days: string[];
   try {
     days = (await readdir(archiveRoot)).filter((d) => DAY_DIR_RE.test(d)).sort();
@@ -235,7 +233,7 @@ export async function applyRetention(logDir: string, plan: RetentionPlan): Promi
   const failedMoves = new Set<string>();
 
   for (const move of plan.archive.moves) {
-    const dest = path.join(logDir, "archive", move.day);
+    const dest = path.join(logDir, 'archive', move.day);
     try {
       await mkdir(dest, { recursive: true });
       await rename(path.join(logDir, move.name), path.join(dest, move.name));
@@ -250,7 +248,7 @@ export async function applyRetention(logDir: string, plan: RetentionPlan): Promi
     const key = `${file.day}/${file.name}`;
     if (failedMoves.has(key)) continue;
     try {
-      await unlink(path.join(logDir, "archive", file.day, file.name));
+      await unlink(path.join(logDir, 'archive', file.day, file.name));
       result.evicted += 1;
       result.bytesReclaimed += file.bytes;
     } catch (err) {

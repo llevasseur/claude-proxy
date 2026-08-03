@@ -5,10 +5,18 @@
   "description": "Zero-dependency logging proxy between Claude Code and the Anthropic API.",
   "type": "module",
   "bin": {
-    "claude-proxy": "./proxy.mjs"
+    "claude-proxy": "./proxy.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
   },
   "scripts": {
-    "start": "node proxy.mjs",
-    "test": "node --test proxy.test.mjs usage-live.test.mjs system-prompt.test.mjs"
+    "start": "node proxy.ts",
+    "test": "node --test proxy.test.ts usage-live.test.ts system-prompt.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.6.3"
   }
 }

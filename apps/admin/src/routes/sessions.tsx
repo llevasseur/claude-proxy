@@ -1,14 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import type { PermissionMode } from "../api";
-import { getChatConfig, getSessions, PERMISSION_MODES } from "../api";
-import { useChatSession, useChatThread } from "../chat-session";
-import { ChatConversation } from "../components/ChatConversation";
-import { LiveIndicator } from "../components/LiveIndicator";
-import { QueryState } from "../components/QueryState";
-import { SessionsSidenav } from "../components/SessionsSidenav";
-import { Skeleton } from "../components/Skeleton";
-import { useLiveQuery } from "../useLiveQuery";
+import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+import type { PermissionMode } from '../api';
+import { getChatConfig, getSessions, PERMISSION_MODES } from '../api';
+import { useChatSession, useChatThread } from '../chat-session';
+import { ChatConversation } from '../components/ChatConversation';
+import { LiveIndicator } from '../components/LiveIndicator';
+import { QueryState } from '../components/QueryState';
+import { SessionsSidenav } from '../components/SessionsSidenav';
+import { Skeleton } from '../components/Skeleton';
+import { useLiveQuery } from '../useLiveQuery';
 
 /**
  * Sessions, laid out the way a chat client is: the transcripts as a scrolling rail on
@@ -18,9 +18,9 @@ import { useLiveQuery } from "../useLiveQuery";
  * transcript page. The rail marks it instead, and the transcript is a link away.
  */
 export function SessionsPage() {
-  const query = useQuery({ queryKey: ["sessions"], queryFn: getSessions });
+  const query = useQuery({ queryKey: ['sessions'], queryFn: getSessions });
   // Live: the server re-lists whenever the sessions dir changes; query is the fallback.
-  const live = useLiveQuery("/api/sessions/stream", ["sessions"]);
+  const live = useLiveQuery('/api/sessions/stream', ['sessions']);
   const { sessionId, chat, pendingPrompt, reset: newChat } = useChatSession();
   const sessions = query.data?.sessions;
 
@@ -31,19 +31,14 @@ export function SessionsPage() {
   const threadId = chat?.session.threadId ?? resolved ?? undefined;
 
   return (
-    <section className="sessions-shell">
+    <section className='sessions-shell'>
       {/* The rail is the only half that waits; the chat beside it is usable from the
           first paint, in a grid column the shell already sizes. */}
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<SessionsRailSkeleton />}>
-        <SessionsSidenav
-          sessions={sessions ?? []}
-          activeId={threadId}
-          isDrafting={!started}
-          onNewChat={newChat}
-        />
+        <SessionsSidenav sessions={sessions ?? []} activeId={threadId} isDrafting={!started} onNewChat={newChat} />
       </QueryState>
 
-      <div className="sessions-main">
+      <div className='sessions-main'>
         <ChatPane sessionsDir={query.data?.meta.sessionsDir} live={live} threadId={threadId} />
       </div>
     </section>
@@ -53,25 +48,26 @@ export function SessionsPage() {
 /** The transcript rail, shaped like the rows `SessionsSidenav` fills it with. */
 function SessionsRailSkeleton({ rows = 9 }: { rows?: number }) {
   return (
-    <aside className="sessions-nav" aria-hidden>
-      <div className="sessions-nav-body">
-        <div className="sessions-nav-list">
+    <aside className='sessions-nav' aria-hidden>
+      <div className='sessions-nav-body'>
+        <div className='sessions-nav-list'>
           {Array.from({ length: rows }, (_, i) => (
-            <div className="session-row-link" key={i}>
-              <div className="session-row-top">
-                <span className="session-row-name">
+            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
+            <div className='session-row-link' key={i}>
+              <div className='session-row-top'>
+                <span className='session-row-name'>
                   <Skeleton w={`${72 - (i % 3) * 12}%`} />
                 </span>
-                <span className="session-row-age">
-                  <Skeleton w="2.5rem" />
+                <span className='session-row-age'>
+                  <Skeleton w='2.5rem' />
                 </span>
               </div>
-              <span className="session-row-preview">
-                <Skeleton w="88%" />
+              <span className='session-row-preview'>
+                <Skeleton w='88%' />
               </span>
-              <div className="session-row-meta">
-                <Skeleton w="4rem" />
-                <Skeleton w="3.5rem" />
+              <div className='session-row-meta'>
+                <Skeleton w='4rem' />
+                <Skeleton w='3.5rem' />
               </div>
             </div>
           ))}
@@ -89,9 +85,9 @@ function SessionsRailSkeleton({ rows = 9 }: { rows?: number }) {
 /** What each standing answer means for the turn. */
 const PERMISSION_NOTE: Record<PermissionMode, string> = {
   default: "every gated tool asks — and a headless child can't be asked, so commands are denied",
-  acceptEdits: "edits are accepted, but every Bash command is auto-denied — no git writes",
-  bypassPermissions: "nothing is asked: commands run, including git writes — what /task needs",
-  plan: "read-only — the turn plans and does not act",
+  acceptEdits: 'edits are accepted, but every Bash command is auto-denied — no git writes',
+  bypassPermissions: 'nothing is asked: commands run, including git writes — what /task needs',
+  plan: 'read-only — the turn plans and does not act',
 };
 
 function ChatPane({
@@ -104,7 +100,7 @@ function ChatPane({
   /** The transcript this chat became, once the proxy has written it. */
   threadId?: string;
 }) {
-  const config = useQuery({ queryKey: ["chat", "config"], queryFn: getChatConfig, staleTime: 60_000 });
+  const config = useQuery({ queryKey: ['chat', 'config'], queryFn: getChatConfig, staleTime: 60_000 });
   const {
     chat,
     pendingPrompt,
@@ -122,7 +118,7 @@ function ChatPane({
   const permission = (chat?.session.permissionMode ??
     pickedPermission ??
     agent?.permissionMode ??
-    "bypassPermissions") as PermissionMode;
+    'bypassPermissions') as PermissionMode;
   // What the child actually started under, when it differs from what was asked for.
   const drifted =
     !!chat?.session.effectivePermissionMode && chat.session.effectivePermissionMode !== chat.session.permissionMode;
@@ -130,7 +126,7 @@ function ChatPane({
   return (
     <ChatConversation
       fill
-      placeholder={started ? "Reply…" : "Ask Claude to do something — /task works here"}
+      placeholder={started ? 'Reply…' : 'Ask Claude to do something — /task works here'}
       disabled={!!unconfigured}
       emptyState={<ChatEmptyState />}
       // The session's own settings, carried in the input's toolbar.
@@ -138,13 +134,12 @@ function ChatPane({
         <>
           {/* Locked once a session exists: its posture was fixed when it started. */}
           <select
-            className="chat-permission"
-            aria-label="Permissions"
+            className='chat-permission'
+            aria-label='Permissions'
             value={permission}
             title={PERMISSION_NOTE[permission]}
             disabled={started || isSending}
-            onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}
-          >
+            onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}>
             {PERMISSION_MODES.map((p) => (
               <option key={p} value={p}>
                 {p}
@@ -155,7 +150,7 @@ function ChatPane({
               answer from a turn full of denials — a server running older code pins
               its own default and the request's choice never lands. */}
           {drifted && (
-            <span className="session-running-warn">
+            <span className='session-running-warn'>
               running as {chat?.session.effectivePermissionMode}, not {chat?.session.permissionMode}
             </span>
           )}
@@ -166,14 +161,14 @@ function ChatPane({
           <span>
             {config.data
               ? `${config.data.model} · through ${config.data.baseUrl} · ${
-                  config.data.transport === "cli" ? "headless Claude Code" : "API key"
+                  config.data.transport === 'cli' ? 'headless Claude Code' : 'API key'
                 }`
               : config.error
                 ? (config.error as Error).message
-                : "resolving chat config…"}
+                : 'resolving chat config…'}
           </span>
-          {sessionsDir && <span className="mono-break">logs → {sessionsDir}</span>}
-          {unconfigured && <span className="error">Chat is unavailable: {config.data?.readyHint}</span>}
+          {sessionsDir && <span className='mono-break'>logs → {sessionsDir}</span>}
+          {unconfigured && <span className='error'>Chat is unavailable: {config.data?.readyHint}</span>}
           <LiveIndicator status={live} />
         </>
       }
@@ -181,11 +176,11 @@ function ChatPane({
         started && (
           <>
             {threadId && (
-              <Link to="/sessions/$id" params={{ id: threadId }} className="link mono-break">
+              <Link to='/sessions/$id' params={{ id: threadId }} className='link mono-break'>
                 open transcript {threadId}
               </Link>
             )}
-            <button type="button" className="chat-new" onClick={newChat} disabled={isSending}>
+            <button type='button' className='chat-new' onClick={newChat} disabled={isSending}>
               New chat
             </button>
           </>
@@ -198,10 +193,10 @@ function ChatPane({
 /** The blank pane before the first turn. */
 function ChatEmptyState() {
   return (
-    <div className="chat-empty">
-      <span className="chat-empty-node" aria-hidden />
+    <div className='chat-empty'>
+      <span className='chat-empty-node' aria-hidden />
       <h2>Start an agent session</h2>
-      <p className="muted">
+      <p className='muted'>
         It runs with tools and writes a transcript the proxy captures — it appears in the rail as it goes.
       </p>
     </div>

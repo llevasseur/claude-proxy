@@ -1,30 +1,26 @@
-import { readFile, stat } from "node:fs/promises";
-import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
+import { readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import {
+  type CommandRun,
+  type Concept,
   linkAgentSessions,
   parseSessionTranscript,
   reportDay,
-  sortConcepts,
-  type CommandRun,
-  type Concept,
-  type StoredConcept,
   type SessionNode,
-} from "@claude-proxy/core";
+  type StoredConcept,
+  sortConcepts,
+} from '@claude-proxy/core';
+import { commandStorePath, readCommandRuns as readCommandRunsFromFiles, sortCommandRuns } from '../command-runs.js';
+import { conceptStorePath, readConcepts as readConceptsFromFiles } from '../concepts.js';
 import {
-  commandStorePath,
-  readCommandRuns as readCommandRunsFromFiles,
-  sortCommandRuns,
-} from "../command-runs.js";
-import { conceptStorePath, readConcepts as readConceptsFromFiles } from "../concepts.js";
-import {
+  type LoadResult,
+  type ReadOptions,
   readArchivedDay as readArchivedDayFromFiles,
   readSidecars as readSidecarsFromFiles,
   shiftDay,
   today,
-  type LoadResult,
-  type ReadOptions,
-} from "../logs.js";
+} from '../logs.js';
 import {
   listSessionGraphs as listSessionGraphsFromFiles,
   listSessions as listSessionsFromFiles,
@@ -35,9 +31,9 @@ import {
   type SessionGraph,
   type SessionNodeTexts,
   type SessionSummary,
-} from "../sessions.js";
-import { STORE_PATH as COMMAND_STORE_PATH } from "./ingest-commands.js";
-import { STORE_PATH as CONCEPT_STORE_PATH } from "./ingest-concepts.js";
+} from '../sessions.js';
+import { STORE_PATH as COMMAND_STORE_PATH } from './ingest-commands.js';
+import { STORE_PATH as CONCEPT_STORE_PATH } from './ingest-concepts.js';
 
 /**
  * One interface, two backings — the seam the migration turns on. Every read
@@ -51,9 +47,9 @@ import { STORE_PATH as CONCEPT_STORE_PATH } from "./ingest-concepts.js";
  * JSON the routes return. See `server/src/parity.ts`.
  */
 export interface SidecarSource {
-  readonly kind: "files" | "db";
+  readonly kind: 'files' | 'db';
   readSidecars(logDir: string, opts?: ReadOptions, now?: Date): Promise<LoadResult>;
-  readArchivedDay(logDir: string, date: string, opts?: Omit<ReadOptions, "date" | "sinceDays">): Promise<LoadResult>;
+  readArchivedDay(logDir: string, date: string, opts?: Omit<ReadOptions, 'date' | 'sinceDays'>): Promise<LoadResult>;
 
   /* --- Session transcripts (slice 2) --- *
    *
@@ -84,7 +80,7 @@ export interface SidecarSource {
 
 /** The behaviour the server has today: scan the directory, parse every file. */
 export const fileSource: SidecarSource = {
-  kind: "files",
+  kind: 'files',
   readSidecars: (logDir, opts, now) => readSidecarsFromFiles(logDir, opts, now),
   readArchivedDay: (logDir, date, opts) => readArchivedDayFromFiles(logDir, date, opts),
   listSessions: (logDir) => listSessionsFromFiles(logDir),
@@ -96,7 +92,7 @@ export const fileSource: SidecarSource = {
 };
 
 /** The live log directory's `source_dir`; archived days are `archive/<YYYY-MM-DD>`. */
-const LIVE = "";
+const LIVE = '';
 
 interface RequestRow {
   id: string;
@@ -226,7 +222,10 @@ function cutoff(sinceDays: number, now: Date): string {
 }
 
 /** The day-window predicate, mirroring `readSidecars` exactly. */
-function dayFilter(opts: ReadOptions, now: Date): { keepDay: ((day: string) => boolean) | null; from: string | null; to: string | null } {
+function dayFilter(
+  opts: ReadOptions,
+  now: Date,
+): { keepDay: ((day: string) => boolean) | null; from: string | null; to: string | null } {
   if (opts.date) {
     const next = shiftDay(opts.date, 1);
     return { keepDay: (day) => day === opts.date, from: opts.date, to: shiftDay(next, 1) };
@@ -240,24 +239,26 @@ function dayFilter(opts: ReadOptions, now: Date): { keepDay: ((day: string) => b
 }
 
 function latestUserText(request: unknown): string | null {
-  if (typeof request !== "object" || request === null) return null;
+  if (typeof request !== 'object' || request === null) return null;
   const messages = (request as { messages?: unknown }).messages;
   if (!Array.isArray(messages)) return null;
 
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i] as { role?: unknown; content?: unknown };
-    if (message?.role !== "user") continue;
-    if (typeof message.content === "string" && message.content.trim()) return message.content.trim();
+    if (message?.role !== 'user') continue;
+    if (typeof message.content === 'string' && message.content.trim()) return message.content.trim();
     if (!Array.isArray(message.content)) continue;
     const text = message.content
-      .filter((block): block is { type: "text"; text: string } =>
-        typeof block === "object" && block !== null &&
-        (block as { type?: unknown }).type === "text" &&
-        typeof (block as { text?: unknown }).text === "string",
+      .filter(
+        (block): block is { type: 'text'; text: string } =>
+          typeof block === 'object' &&
+          block !== null &&
+          (block as { type?: unknown }).type === 'text' &&
+          typeof (block as { text?: unknown }).text === 'string',
       )
       .map((block) => block.text.trim())
       .filter(Boolean)
-      .join("\n\n");
+      .join('\n\n');
     if (text) return text;
   }
   return null;
@@ -280,19 +281,21 @@ async function readDir(
 
   // The stem carries the proxy's UTC date prefix, so a range on the primary key
   // is the same prefilter the file reader does on filenames, as an index seek.
-  const where: string[] = ["source_dir = ?"];
+  const where: string[] = ['source_dir = ?'];
   const args: unknown[] = [sourceDir];
   if (from) {
-    where.push("id >= ?");
+    where.push('id >= ?');
     args.push(from);
   }
   if (to) {
-    where.push("id < ?");
+    where.push('id < ?');
     args.push(to);
   }
-  const clause = where.join(" AND ");
+  const clause = where.join(' AND ');
 
-  const rows = db.prepare(`SELECT * FROM request WHERE ${clause} ORDER BY id`).all(...(args as never[])) as unknown as RequestRow[];
+  const rows = db
+    .prepare(`SELECT * FROM request WHERE ${clause} ORDER BY id`)
+    .all(...(args as never[])) as unknown as RequestRow[];
   const skippedRows = db
     .prepare(`SELECT id, reason, timestamp FROM request_skipped WHERE ${clause} ORDER BY id`)
     .all(...(args as never[])) as unknown as SkippedRow[];
@@ -305,10 +308,17 @@ async function readDir(
     // under SQLite's bound-parameter ceiling.
     for (let i = 0; i < ids.length; i += 400) {
       const chunk = ids.slice(i, i + 400);
-      const holes = chunk.map(() => "?").join(",");
+      const holes = chunk.map(() => '?').join(',');
       for (const t of db
-        .prepare(`SELECT request_id, name, bytes, est_tokens FROM request_tool WHERE request_id IN (${holes}) ORDER BY request_id, ord`)
-        .all(...(chunk as never[])) as unknown as Array<{ request_id: string; name: string; bytes: number; est_tokens: number }>) {
+        .prepare(
+          `SELECT request_id, name, bytes, est_tokens FROM request_tool WHERE request_id IN (${holes}) ORDER BY request_id, ord`,
+        )
+        .all(...(chunk as never[])) as unknown as Array<{
+        request_id: string;
+        name: string;
+        bytes: number;
+        est_tokens: number;
+      }>) {
         const list = toolsById.get(t.request_id) ?? [];
         list.push({ name: t.name, bytes: t.bytes, est_tokens: t.est_tokens });
         toolsById.set(t.request_id, list);
@@ -317,7 +327,11 @@ async function readDir(
         .prepare(
           `SELECT request_id, header_name, header_value FROM request_rate_limit WHERE request_id IN (${holes}) ORDER BY request_id, ord`,
         )
-        .all(...(chunk as never[])) as unknown as Array<{ request_id: string; header_name: string; header_value: string }>) {
+        .all(...(chunk as never[])) as unknown as Array<{
+        request_id: string;
+        header_name: string;
+        header_value: string;
+      }>) {
         const list = rateById.get(h.request_id) ?? [];
         list.push({ header_name: h.header_name, header_value: h.header_value });
         rateById.set(h.request_id, list);
@@ -336,7 +350,7 @@ async function readDir(
     });
   }
   for (const row of skippedRows) {
-    const parseError = row.reason === "parse_error";
+    const parseError = row.reason === 'parse_error';
     entries.push({
       stem: row.id,
       make: () => (parseError ? parseErrorSidecar(row.id) : invalidSidecar(row.id, row.timestamp)),
@@ -364,7 +378,7 @@ async function readDir(
       const rel = sourceDir === LIVE ? `${entry.stem}.request.txt` : `${sourceDir}/${entry.stem}.request.txt`;
       let raw: string | null = null;
       try {
-        raw = await readFile(path.join(logDir, rel), "utf8");
+        raw = await readFile(path.join(logDir, rel), 'utf8');
       } catch {
         raw = null;
       }
@@ -447,11 +461,11 @@ function toSummary(row: SessionRow): SessionSummary {
 function toNode(row: NodeRow): SessionNode {
   return {
     index: row.idx,
-    type: row.type as SessionNode["type"],
+    type: row.type as SessionNode['type'],
     text: row.text,
     tool: row.tool,
     task: row.task,
-    interruption: row.interruption as SessionNode["interruption"],
+    interruption: row.interruption as SessionNode['interruption'],
     interrupted: row.interrupted === 1,
     message: row.message,
   };
@@ -464,8 +478,8 @@ function sortListing<T extends { modified: string; threadId: string }>(rows: T[]
 }
 
 const SESSION_COLUMNS =
-  "thread_id, model, session_id, started, tasks, decisions, tools, errors, " +
-  "first_task, title, subtitle, derived_title, bytes, modified";
+  'thread_id, model, session_id, started, tasks, decisions, tools, errors, ' +
+  'first_task, title, subtitle, derived_title, bytes, modified';
 
 function sessionRows(db: DatabaseSync): SessionRow[] {
   return db.prepare(`SELECT ${SESSION_COLUMNS} FROM session`).all() as unknown as SessionRow[];
@@ -475,7 +489,9 @@ function sessionRows(db: DatabaseSync): SessionRow[] {
 function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
   const out = new Map<string, SessionNode[]>();
   for (const row of db
-    .prepare("SELECT thread_id, idx, type, text, tool, task, interruption, interrupted, message FROM session_node ORDER BY thread_id, idx")
+    .prepare(
+      'SELECT thread_id, idx, type, text, tool, task, interruption, interrupted, message FROM session_node ORDER BY thread_id, idx',
+    )
     .all() as unknown as NodeRow[]) {
     const list = out.get(row.thread_id) ?? [];
     list.push(toNode(row));
@@ -499,7 +515,7 @@ function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
  * columns beside it — see the schema note in `open.ts`.
  */
 function commandRunsFromDb(db: DatabaseSync): CommandRun[] {
-  const rows = db.prepare("SELECT document FROM command_run ORDER BY ord").all() as unknown as Array<{
+  const rows = db.prepare('SELECT document FROM command_run ORDER BY ord').all() as unknown as Array<{
     document: string;
   }>;
   return sortCommandRuns(rows.map((row) => JSON.parse(row.document) as CommandRun)).filter((run) => !run.retired);
@@ -518,7 +534,7 @@ function commandRunsFromDb(db: DatabaseSync): CommandRun[] {
  * being rebuilt from the columns beside it — see the schema note in `open.ts`.
  */
 function conceptsFromDb(db: DatabaseSync): StoredConcept[] {
-  const rows = db.prepare("SELECT ord, document FROM concept ORDER BY ord").all() as unknown as Array<{
+  const rows = db.prepare('SELECT ord, document FROM concept ORDER BY ord').all() as unknown as Array<{
     ord: number;
     document: string;
   }>;
@@ -530,7 +546,7 @@ function conceptsFromDb(db: DatabaseSync): StoredConcept[] {
 /** The same reads, answered from the substrate. */
 export function dbSource(db: DatabaseSync): SidecarSource {
   return {
-    kind: "db",
+    kind: 'db',
     // Both listings answer from the tables alone — no directory is read.
     listSessions: async () => sortListing(sessionRows(db).map(toSummary)),
     listSessionGraphs: async () => {
@@ -553,7 +569,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       let content: string;
       let info: Awaited<ReturnType<typeof stat>>;
       try {
-        [content, info] = await Promise.all([readFile(full, "utf8"), stat(full)]);
+        [content, info] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
       } catch {
         throw new Error(`session not found: ${id}`);
       }
@@ -582,7 +598,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       resolveSessionFile(logDir, id);
       const texts: Record<number, string> = {};
       for (const row of db
-        .prepare("SELECT idx, text FROM session_node_text WHERE thread_id = ? ORDER BY idx")
+        .prepare('SELECT idx, text FROM session_node_text WHERE thread_id = ? ORDER BY idx')
         .all(id) as unknown as Array<{ idx: number; text: string }>) {
         texts[row.idx] = row.text;
       }
@@ -594,7 +610,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       // request, so rows behind the file would answer with the pre-reconcile
       // view. Same watermark equality `ingestCommandRuns` uses; anything else
       // re-reads the store, which is what the file reader would have answered.
-      const mark = db.prepare("SELECT bytes, modified FROM file_watermark WHERE path = ?").get(COMMAND_STORE_PATH) as
+      const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(COMMAND_STORE_PATH) as
         | { bytes: number; modified: string }
         | undefined;
       if (mark) {
@@ -613,7 +629,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
     // `ingestConcepts` uses decides, and anything else re-reads the file, which
     // is what the file reader would have answered.
     readConcepts: async (logDir) => {
-      const mark = db.prepare("SELECT bytes, modified FROM file_watermark WHERE path = ?").get(CONCEPT_STORE_PATH) as
+      const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(CONCEPT_STORE_PATH) as
         | { bytes: number; modified: string }
         | undefined;
       if (mark) {

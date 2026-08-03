@@ -1,6 +1,6 @@
-import crypto from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
-import path from "node:path";
+import crypto from 'node:crypto';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
 import {
   firstUserText,
   linkAgentSessions,
@@ -10,26 +10,26 @@ import {
   type SessionAgentLink,
   type SessionMeta,
   type SessionNode,
-} from "@claude-proxy/core";
+} from '@claude-proxy/core';
 
 /**
  * The thread id a captured request belongs to: a hash of its session id and its conversation
- * root. Mirrors `threadIdFor` in `proxy/session.mjs`, which named the transcript in the first
+ * root. Mirrors `threadIdFor` in `proxy/session.ts`, which named the transcript in the first
  * place. Null when the body has no user text to root on.
  */
 export function threadIdForBody(sessionId: string | null, messages: unknown): string | null {
   const root = firstUserText(messages);
   if (!root) return null;
   return crypto
-    .createHash("sha256")
-    .update(`${sessionId ?? ""}\n${root}`)
-    .digest("hex")
+    .createHash('sha256')
+    .update(`${sessionId ?? ''}\n${root}`)
+    .digest('hex')
     .slice(0, 16);
 }
 
 /** Session transcripts live in `<LOG_DIR>/sessions/`, written by the proxy. */
 export function resolveSessionsDir(logDir: string): string {
-  return path.join(logDir, "sessions");
+  return path.join(logDir, 'sessions');
 }
 
 /** A thread id is a 16-hex-char stem; the transcript is `<id>.md`. The name comes
@@ -71,8 +71,8 @@ export async function listSessions(logDir: string): Promise<SessionSummary[]> {
   const files = names.filter((f) => SESSION_FILE_RE.test(f));
   const rows = await Promise.all(
     files.map(async (name) => {
-      const [content, info] = await Promise.all([readFile(path.join(dir, name), "utf8"), stat(path.join(dir, name))]);
-      const meta = parseSessionTranscript(name.replace(/\.md$/, ""), content);
+      const [content, info] = await Promise.all([readFile(path.join(dir, name), 'utf8'), stat(path.join(dir, name))]);
+      const meta = parseSessionTranscript(name.replace(/\.md$/, ''), content);
       return { ...meta, bytes: info.size, modified: info.mtime.toISOString() };
     }),
   );
@@ -106,8 +106,8 @@ export async function listSessionGraphs(logDir: string): Promise<SessionGraph[]>
   const files = names.filter((f) => SESSION_FILE_RE.test(f));
   const rows = await Promise.all(
     files.map(async (name) => {
-      const [content, info] = await Promise.all([readFile(path.join(dir, name), "utf8"), stat(path.join(dir, name))]);
-      const meta = parseSessionTranscript(name.replace(/\.md$/, ""), content);
+      const [content, info] = await Promise.all([readFile(path.join(dir, name), 'utf8'), stat(path.join(dir, name))]);
+      const meta = parseSessionTranscript(name.replace(/\.md$/, ''), content);
       return {
         ...meta,
         bytes: info.size,
@@ -165,7 +165,7 @@ export async function readSessionNodeTexts(logDir: string, id: string): Promise<
   }
 
   try {
-    return { threadId: id, texts: parseSessionNodeTexts(await readFile(full, "utf8")) };
+    return { threadId: id, texts: parseSessionNodeTexts(await readFile(full, 'utf8')) };
   } catch {
     return { threadId: id, texts: {} };
   }
@@ -181,9 +181,9 @@ export async function readSession(logDir: string, id: string): Promise<SessionDe
   const full = resolveSessionFile(logDir, id);
 
   let content: string;
-  let info: import("node:fs").Stats;
+  let info: import('node:fs').Stats;
   try {
-    [content, info] = await Promise.all([readFile(full, "utf8"), stat(full)]);
+    [content, info] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
   } catch {
     throw new Error(`session not found: ${id}`);
   }

@@ -1,14 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Expand, Maximize2, Minimize2, Shrink } from "lucide-react";
-import type { CSSProperties, ReactNode, Ref } from "react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { InterruptionKind, SessionNode } from "@claude-proxy/core";
-import { mergeSessionNodes, sessionName, spawnAgentType } from "@claude-proxy/core";
-import type { SessionGraphEntry } from "../api";
-import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from "../api";
-import { Skeleton, SkeletonStatus } from "../components/Skeleton";
-import { fmtInt, fmtLocalTsShort } from "../format";
+import type { InterruptionKind, SessionNode } from '@claude-proxy/core';
+import { mergeSessionNodes, sessionName, spawnAgentType } from '@claude-proxy/core';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { Expand, Maximize2, Minimize2, Shrink } from 'lucide-react';
+import type { CSSProperties, ReactNode, Ref } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SessionGraphEntry } from '../api';
+import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from '../api';
+import { Skeleton, SkeletonStatus } from '../components/Skeleton';
+import { fmtInt, fmtLocalTsShort } from '../format';
 
 /**
  * Live session graph — one session at a time, its appended steps (task / decision /
@@ -70,40 +70,40 @@ const TRAIL_INSET = 72;
 const TRAIL_GAP = 52;
 
 /** Overlay panels with their own scrollbar; a collapsed rail has nothing to scroll. */
-const SCROLLS_ITSELF = ".graph-sessions:not(.is-collapsed), .graph-inspector";
+const SCROLLS_ITSELF = '.graph-sessions:not(.is-collapsed), .graph-inspector';
 
-const ZOOM_HINT = "Scroll to pan · ⌘-scroll or pinch to zoom";
+const ZOOM_HINT = 'Scroll to pan · ⌘-scroll or pinch to zoom';
 
 /** Pointer travel, in px, past which a press on the canvas is a pan rather than a click. */
 const PAN_SLOP = 4;
 
 /** What a box or edge is about — drives its glow color. */
-type Tone = SessionNode["type"] | "root" | "agent" | "cut";
+type Tone = SessionNode['type'] | 'root' | 'agent' | 'cut';
 
 /** Tone → CSS color token. */
 const NODE_COLOR: Record<Tone, string> = {
-  task: "var(--signal)",
-  decision: "var(--muted)",
-  tool: "var(--amber)",
-  error: "var(--coral)",
-  done: "var(--good)",
-  root: "var(--signal-dim)",
-  agent: "var(--violet)",
-  cut: "var(--coral)",
+  task: 'var(--signal)',
+  decision: 'var(--muted)',
+  tool: 'var(--amber)',
+  error: 'var(--coral)',
+  done: 'var(--good)',
+  root: 'var(--signal-dim)',
+  agent: 'var(--violet)',
+  cut: 'var(--coral)',
 };
 
 const LEGEND: { tone: Tone; label: string }[] = [
-  { tone: "task", label: "task" },
-  { tone: "decision", label: "decision" },
-  { tone: "tool", label: "tool" },
-  { tone: "agent", label: "subagent" },
-  { tone: "error", label: "error" },
-  { tone: "done", label: "done" },
-  { tone: "cut", label: "interrupted" },
+  { tone: 'task', label: 'task' },
+  { tone: 'decision', label: 'decision' },
+  { tone: 'tool', label: 'tool' },
+  { tone: 'agent', label: 'subagent' },
+  { tone: 'error', label: 'error' },
+  { tone: 'done', label: 'done' },
+  { tone: 'cut', label: 'interrupted' },
 ];
 
 /** Total color lookup (indexing is `string | undefined` under noUncheckedIndexedAccess). */
-const color = (tone: Tone): string => NODE_COLOR[tone] ?? "var(--signal)";
+const color = (tone: Tone): string => NODE_COLOR[tone] ?? 'var(--signal)';
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
@@ -118,8 +118,8 @@ function colsForWidth(w: number): number {
 /** Harness-injected context, not the user's words — including a block cut off mid-way. */
 const stripReminders = (s: string): string =>
   s
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, "")
-    .replace(/<system-reminder>[\s\S]*$/i, "")
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '')
+    .replace(/<system-reminder>[\s\S]*$/i, '')
     .trim();
 
 /**
@@ -131,7 +131,7 @@ function entryLabel(entry: SessionGraphEntry): string {
   const name = sessionName(entry);
   if (name) return name;
   for (const node of entry.nodes) {
-    if (node.type !== "task") continue;
+    if (node.type !== 'task') continue;
     const text = stripReminders(node.text);
     if (text) return text;
   }
@@ -145,7 +145,7 @@ const isInFlight = (entry: SessionGraphEntry): boolean => entry.parentThreadId !
 interface Box {
   key: string;
   /** `root` = the canvased session, `agent` = a subagent's own root, `node` = one step. */
-  kind: "root" | "agent" | "node";
+  kind: 'root' | 'agent' | 'node';
   x: number;
   y: number;
   w: number;
@@ -162,7 +162,7 @@ interface Edge {
    * `step` follows one session's chain; `spawn`/`return` cross into and out of a branch;
    * `sever` leaves an interrupted step for the side trail the run resumed on.
    */
-  kind: "step" | "spawn" | "return" | "sever";
+  kind: 'step' | 'spawn' | 'return' | 'sever';
 }
 
 /** The nested frame drawn around one subagent's branch. */
@@ -191,14 +191,14 @@ interface Trail {
 
 /** How each interruption reads on a trail's head strip. */
 const INTERRUPTION_LABEL: Record<InterruptionKind, string> = {
-  user: "interrupted by user",
-  "tool-use": "interrupted mid-tool",
-  stopped: "stopped from the dashboard",
-  timeout: "timed out",
-  limit: "hit its ceiling",
+  user: 'interrupted by user',
+  'tool-use': 'interrupted mid-tool',
+  stopped: 'stopped from the dashboard',
+  timeout: 'timed out',
+  limit: 'hit its ceiling',
 };
 
-const interruptionLabel = (kind: InterruptionKind): string => INTERRUPTION_LABEL[kind] ?? "interrupted";
+const interruptionLabel = (kind: InterruptionKind): string => INTERRUPTION_LABEL[kind] ?? 'interrupted';
 
 interface Selection {
   entry: SessionGraphEntry;
@@ -269,7 +269,7 @@ interface Placed {
 
 /** One box to place: a session/subagent root, or one step. */
 interface Item {
-  kind: Box["kind"];
+  kind: Box['kind'];
   node: SessionNode | null;
 }
 
@@ -322,8 +322,8 @@ function layoutRun(
     for (let i = from; i < to; i++) {
       const it = items[i]!;
       const cellX = x0 + cell(i, cols).col * (size.cellW + GAP_X);
-      const w = it.kind === "node" ? size.nodeW : size.rootW;
-      const h = it.kind === "node" ? size.nodeH : size.rootH;
+      const w = it.kind === 'node' ? size.nodeW : size.rootW;
+      const h = it.kind === 'node' ? size.nodeH : size.rootH;
       boxes.push({
         key: it.node ? `${entry.threadId}:${it.node.index}` : `r:${entry.threadId}`,
         kind: it.kind,
@@ -345,7 +345,15 @@ function layoutRun(
       if (!child) continue;
 
       const bandTop = y + BAND_GAP;
-      const inner = layoutTree(child, Math.max(1, cols - 1), x0 + BAND_INSET + BAND_PAD, bandTop + BAND_HEAD, index, depth + 1, size);
+      const inner = layoutTree(
+        child,
+        Math.max(1, cols - 1),
+        x0 + BAND_INSET + BAND_PAD,
+        bandTop + BAND_HEAD,
+        index,
+        depth + 1,
+        size,
+      );
       const bandRight = inner.right + BAND_PAD;
       bands.push({
         key: `b:${child.threadId}`,
@@ -381,7 +389,7 @@ function layoutRun(
       // Turning onto the next row — drop from one box's bottom to the next's top.
       d = edgePathV(a.x + a.w / 2, a.y + a.h, b.x + b.w / 2, b.y);
     }
-    edges.push({ key: `e:${runKey}:${i}`, d, color: color(boxTone(b)), kind: "step" });
+    edges.push({ key: `e:${runKey}:${i}`, d, color: color(boxTone(b)), kind: 'step' });
   }
 
   return { boxes, edges, bands, trails, right, bottom: Math.max(y0, y - GAP_Y) };
@@ -404,8 +412,8 @@ function layoutTree(
 ): Placed {
   const runs = runsOf(entry.nodes);
   const head: Item[] = [
-    { kind: depth === 0 ? "root" : "agent", node: null },
-    ...runs[0]!.map((node) => ({ kind: "node" as const, node })),
+    { kind: depth === 0 ? 'root' : 'agent', node: null },
+    ...runs[0]!.map((node) => ({ kind: 'node' as const, node })),
   ];
 
   const placed = layoutRun(entry, head, cols, x0, y0, index, depth, `${entry.threadId}:0`, size);
@@ -423,7 +431,7 @@ function layoutTree(
     const trailX = x0 + TRAIL_INSET;
     const inner = layoutRun(
       entry,
-      steps.map((node) => ({ kind: "node" as const, node })),
+      steps.map((node) => ({ kind: 'node' as const, node })),
       Math.max(1, cols - 1),
       trailX + BAND_PAD,
       trailTop + BAND_HEAD,
@@ -440,7 +448,7 @@ function layoutTree(
       w: trailRight - trailX,
       h: inner.bottom + BAND_PAD - trailTop,
       entry,
-      kind: opener.interruption ?? "user",
+      kind: opener.interruption ?? 'user',
       label: nodeLabel(opener),
     });
     trails.push(...inner.trails);
@@ -452,7 +460,12 @@ function layoutTree(
     const severed = boxes.find((b) => b.node?.index === opener.index - 1 && b.entry.threadId === entry.threadId);
     const resumed = inner.boxes.find((b) => b.node?.index === opener.index);
     if (severed && resumed) {
-      edges.push({ key: `sv:${entry.threadId}:${opener.index}`, d: boxPathV(severed, resumed), color: color("cut"), kind: "sever" });
+      edges.push({
+        key: `sv:${entry.threadId}:${opener.index}`,
+        d: boxPathV(severed, resumed),
+        color: color('cut'),
+        kind: 'sever',
+      });
     }
 
     right = Math.max(right, trailRight);
@@ -479,7 +492,7 @@ function layout(entry: SessionGraphEntry | null, cols: number, index: ChildIndex
     const spawn = boxAt.get(`${child.parentThreadId}:${child.spawnIndex}`);
     const root = boxAt.get(`r:${child.threadId}`);
     if (spawn && root) {
-      edges.push({ key: `sp:${child.threadId}`, d: boxPathV(spawn, root), color: color("agent"), kind: "spawn" });
+      edges.push({ key: `sp:${child.threadId}`, d: boxPathV(spawn, root), color: color('agent'), kind: 'spawn' });
     }
 
     // The branch's last step back into the parent step it rejoins — absent while in flight.
@@ -487,7 +500,7 @@ function layout(entry: SessionGraphEntry | null, cols: number, index: ChildIndex
     const last = lastNode ? boxAt.get(`${child.threadId}:${lastNode.index}`) : root;
     const rejoin = child.returnIndex === null ? undefined : boxAt.get(`${child.parentThreadId}:${child.returnIndex}`);
     if (last && rejoin) {
-      edges.push({ key: `rt:${child.threadId}`, d: boxPathV(last, rejoin), color: color("agent"), kind: "return" });
+      edges.push({ key: `rt:${child.threadId}`, d: boxPathV(last, rejoin), color: color('agent'), kind: 'return' });
     }
   }
 
@@ -496,9 +509,9 @@ function layout(entry: SessionGraphEntry | null, cols: number, index: ChildIndex
 
 /** What a box is about: a session root, a subagent (its root or the step spawning it), or a step. */
 function boxTone(box: Box): Tone {
-  if (box.kind === "root") return "root";
-  if (box.kind === "agent") return "agent";
-  return spawnAgentType(box.node!) === null ? box.node!.type : "agent";
+  if (box.kind === 'root') return 'root';
+  if (box.kind === 'agent') return 'agent';
+  return spawnAgentType(box.node!) === null ? box.node!.type : 'agent';
 }
 
 /** Node style carries its glow color via the `--gc` custom property, plus the cut's for a severed step. */
@@ -508,8 +521,8 @@ function boxStyle(box: Box): CSSProperties {
     top: box.y,
     width: box.w,
     height: box.h,
-    "--gc": color(boxTone(box)),
-    "--cut": color("cut"),
+    '--gc': color(boxTone(box)),
+    '--cut': color('cut'),
   } as CSSProperties;
 }
 
@@ -523,15 +536,14 @@ function GraphSkeleton({ rows = 2, steps = 4 }: { rows?: number; steps?: number 
   const ghost = (x: number, y: number, w: number, h: number, key: string): ReactNode => (
     <div
       key={key}
-      className="gnode"
-      style={{ left: x, top: y, width: w, height: h, "--gc": color("decision") } as CSSProperties}
-      aria-hidden
-    >
-      <span className="gnode-kind">
-        <Skeleton w="3.5rem" />
+      className='gnode'
+      style={{ left: x, top: y, width: w, height: h, '--gc': color('decision') } as CSSProperties}
+      aria-hidden>
+      <span className='gnode-kind'>
+        <Skeleton w='3.5rem' />
       </span>
-      <span className="gnode-title">
-        <Skeleton w="82%" />
+      <span className='gnode-title'>
+        <Skeleton w='82%' />
       </span>
     </div>
   );
@@ -542,16 +554,11 @@ function GraphSkeleton({ rows = 2, steps = 4 }: { rows?: number; steps?: number 
         const y = PAD + r * (s.rootH + GAP_Y);
         const stepY = y + (s.rootH - s.nodeH) / 2;
         return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
           <Fragment key={r}>
             {ghost(PAD, y, s.rootW, s.rootH, `root-${r}`)}
             {Array.from({ length: steps }, (_, i) =>
-              ghost(
-                PAD + s.rootW + GAP_X + i * (s.nodeW + GAP_X),
-                stepY,
-                s.nodeW,
-                s.nodeH,
-                `step-${r}-${i}`,
-              ),
+              ghost(PAD + s.rootW + GAP_X + i * (s.nodeW + GAP_X), stepY, s.nodeW, s.nodeH, `step-${r}-${i}`),
             )}
           </Fragment>
         );
@@ -562,18 +569,18 @@ function GraphSkeleton({ rows = 2, steps = 4 }: { rows?: number; steps?: number 
 
 /** The extra layer a step wears when the run was cut off on it, or resumed on it. */
 function cutClass(node: SessionNode): string {
-  return `${node.interrupted ? " is-cut" : ""}${node.interruption ? " is-resumed" : ""}`;
+  return `${node.interrupted ? ' is-cut' : ''}${node.interruption ? ' is-resumed' : ''}`;
 }
 
 /** A spawn step is labelled by the kind of agent it started, not its raw signature. */
 function nodeLabel(node: SessionNode): string {
   const agent = spawnAgentType(node);
-  if (agent !== null) return agent || "subagent";
-  if (node.type === "tool" && node.tool) return node.tool;
+  if (agent !== null) return agent || 'subagent';
+  if (node.type === 'tool' && node.tool) return node.tool;
   return node.text || node.type;
 }
 
-const nodeKind = (node: SessionNode): string => (spawnAgentType(node) === null ? node.type : "spawn");
+const nodeKind = (node: SessionNode): string => (spawnAgentType(node) === null ? node.type : 'spawn');
 
 /** A peek at the step text for the hover tooltip — untruncated, it runs to thousands of chars. */
 function hoverLabel(node: SessionNode): string {
@@ -585,9 +592,9 @@ function hoverLabel(node: SessionNode): string {
 const NODES_REFETCH_MS = 20_000;
 
 export function SessionGraphPage() {
-  const { session: requested } = useSearch({ from: "/sessions/graph" });
+  const { session: requested } = useSearch({ from: '/sessions/graph' });
   const navigate = useNavigate();
-  const query = useQuery({ queryKey: ["sessions-graph"], queryFn: getSessionsGraph, refetchInterval: 4000 });
+  const query = useQuery({ queryKey: ['sessions-graph'], queryFn: getSessionsGraph, refetchInterval: 4000 });
   const transcripts = useMemo(() => query.data?.sessions ?? [], [query.data]);
 
   // Selection resolves off the transcripts — the breakdown's text changes no thread id
@@ -631,7 +638,7 @@ export function SessionGraphPage() {
   // The canvased family's steps, re-read from its captured requests so nothing is gisted.
   // Failure is silent: the transcript still draws the graph, just abbreviated.
   const nodesQuery = useQuery({
-    queryKey: ["session-graph-nodes", selectedId],
+    queryKey: ['session-graph-nodes', selectedId],
     queryFn: () => getSessionGraphNodes(selectedId!),
     enabled: selectedId !== null,
     refetchInterval: NODES_REFETCH_MS,
@@ -709,6 +716,7 @@ export function SessionGraphPage() {
   // steps would keep yanking the view back. `fitRef` keeps the effect off `fit`'s deps.
   const fitRef = useRef(fit);
   fitRef.current = fit;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refitting on these two and nothing else is the point — see the note above
   useEffect(() => {
     const id = requestAnimationFrame(() => fitRef.current());
     return () => cancelAnimationFrame(id);
@@ -718,6 +726,7 @@ export function SessionGraphPage() {
   // re-center; only a fresh pick (or a re-fold) moves the view.
   const boxesRef = useRef(boxes);
   boxesRef.current = boxes;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: boxes come through a ref so a poll cannot re-center; only these deps may move the view
   useEffect(() => {
     if (!focusId) return;
     const id = requestAnimationFrame(() => {
@@ -771,8 +780,8 @@ export function SessionGraphPage() {
         return { k, x: mx - (mx - v.x) * (k / v.k), y: my - (my - v.y) * (k / v.k) };
       });
     };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
   // Track fullscreen (Esc exits natively; sync our flag and refit to the new size).
@@ -781,17 +790,17 @@ export function SessionGraphPage() {
       setIsFull(document.fullscreenElement === viewportRef.current);
       requestAnimationFrame(() => fitRef.current());
     };
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
   // Esc closes the inspector when we're not in fullscreen (there Esc exits fullscreen instead).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.fullscreenElement) setSelected(null);
+      if (e.key === 'Escape' && !document.fullscreenElement) setSelected(null);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const toggleFull = () => {
@@ -809,17 +818,17 @@ export function SessionGraphPage() {
     setSelectedId(rootOf(picked.threadId));
     setFocusId(picked.parentThreadId === null ? null : picked.threadId);
     setSelected(null);
-    void navigate({ to: "/sessions/graph", search: { session: picked.threadId }, replace: true });
+    void navigate({ to: '/sessions/graph', search: { session: picked.threadId }, replace: true });
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
     if (
-      t.closest(".gnode") ||
-      t.closest(".gband-head") ||
-      t.closest(".graph-toolbar") ||
-      t.closest(".graph-inspector") ||
-      t.closest(".graph-sessions")
+      t.closest('.gnode') ||
+      t.closest('.gband-head') ||
+      t.closest('.graph-toolbar') ||
+      t.closest('.graph-inspector') ||
+      t.closest('.graph-sessions')
     )
       return;
     pan.current = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
@@ -856,32 +865,33 @@ export function SessionGraphPage() {
   const flying = bands.filter((b) => b.inFlight).length;
 
   return (
-    <section className="graph-page">
-      {query.isLoading ? <SkeletonStatus label="Loading the session graph" /> : null}
+    <section className='graph-page'>
+      {query.isLoading ? <SkeletonStatus label='Loading the session graph' /> : null}
       <div
         ref={viewportRef}
-        className={`graph-viewport${isFull ? " is-full" : ""}${dragging ? " is-dragging" : ""}`}
+        className={`graph-viewport${isFull ? ' is-full' : ''}${dragging ? ' is-dragging' : ''}`}
         style={viewportStyle}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endPan}
-        onPointerCancel={endPan}
-      >
-        <div className={`graph-canvas${roomy ? " is-roomy" : ""}`} style={canvasStyle}>
+        onPointerCancel={endPan}>
+        <div className={`graph-canvas${roomy ? ' is-roomy' : ''}`} style={canvasStyle}>
           {query.isLoading ? <GraphSkeleton /> : null}
           {/* Branch frames sit behind the edges and boxes they enclose. */}
           {bands.map((band) => (
             <div
               key={band.key}
-              className={`gband${band.inFlight ? " is-flight" : ""}${focusId === band.entry.threadId ? " is-focus" : ""}`}
-              style={{ left: band.x, top: band.y, width: band.w, height: band.h }}
-            >
-              <button type="button" className="gband-head" onClick={() => setSelected({ entry: band.entry, node: null })}>
-                <span className="gband-kind">subagent</span>
-                <span className="gband-type">{band.entry.agentType ?? "agent"}</span>
-                <span className="gband-title">{entryLabel(band.entry)}</span>
-                <span className={`gband-state${band.inFlight ? " is-flight" : ""}`}>
-                  {band.inFlight ? "in flight" : "returned"}
+              className={`gband${band.inFlight ? ' is-flight' : ''}${focusId === band.entry.threadId ? ' is-focus' : ''}`}
+              style={{ left: band.x, top: band.y, width: band.w, height: band.h }}>
+              <button
+                type='button'
+                className='gband-head'
+                onClick={() => setSelected({ entry: band.entry, node: null })}>
+                <span className='gband-kind'>subagent</span>
+                <span className='gband-type'>{band.entry.agentType ?? 'agent'}</span>
+                <span className='gband-title'>{entryLabel(band.entry)}</span>
+                <span className={`gband-state${band.inFlight ? ' is-flight' : ''}`}>
+                  {band.inFlight ? 'in flight' : 'returned'}
                 </span>
               </button>
             </div>
@@ -889,22 +899,32 @@ export function SessionGraphPage() {
 
           {/* A trail frames what the run did after being cut off — same layer as a branch band. */}
           {trails.map((trail) => (
-            <div key={trail.key} className="gtrail" style={{ left: trail.x, top: trail.y, width: trail.w, height: trail.h }}>
-              <div className="gtrail-head">
-                <span className="gtrail-kind">interrupted</span>
-                <span className="gtrail-why">{interruptionLabel(trail.kind)}</span>
-                <span className="gtrail-title" title={trail.label}>
+            <div
+              key={trail.key}
+              className='gtrail'
+              style={{ left: trail.x, top: trail.y, width: trail.w, height: trail.h }}>
+              <div className='gtrail-head'>
+                <span className='gtrail-kind'>interrupted</span>
+                <span className='gtrail-why'>{interruptionLabel(trail.kind)}</span>
+                <span className='gtrail-title' title={trail.label}>
                   {trail.label}
                 </span>
               </div>
             </div>
           ))}
 
-          <svg className="graph-edges" width={contentW} height={contentH} aria-hidden>
+          <svg className='graph-edges' width={contentW} height={contentH} aria-hidden='true'>
             <defs>
               {/* Points a return edge at the parent step it lands on. */}
-              <marker id="graph-return-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
-                <path d="M 0 0 L 8 4 L 0 8 z" fill="var(--violet)" />
+              <marker
+                id='graph-return-arrow'
+                viewBox='0 0 8 8'
+                refX='7'
+                refY='4'
+                markerWidth='5'
+                markerHeight='5'
+                orient='auto'>
+                <path d='M 0 0 L 8 4 L 0 8 z' fill='var(--violet)' />
               </marker>
             </defs>
             {edges.map((e) => (
@@ -913,44 +933,44 @@ export function SessionGraphPage() {
                 className={`graph-edge graph-edge--${e.kind}`}
                 d={e.d}
                 style={{ stroke: e.color }}
-                markerEnd={e.kind === "return" ? "url(#graph-return-arrow)" : undefined}
+                markerEnd={e.kind === 'return' ? 'url(#graph-return-arrow)' : undefined}
               />
             ))}
           </svg>
 
           {boxes.map((box) =>
-            box.kind === "node" ? (
+            box.kind === 'node' ? (
               <button
                 key={box.key}
-                type="button"
-                className={`gnode gnode--${boxTone(box)}${cutClass(box.node!)}${selected?.node && selected.entry.threadId === box.entry.threadId && selected.node.index === box.node!.index ? " is-selected" : ""}`}
+                type='button'
+                className={`gnode gnode--${boxTone(box)}${cutClass(box.node!)}${selected?.node && selected.entry.threadId === box.entry.threadId && selected.node.index === box.node!.index ? ' is-selected' : ''}`}
                 style={boxStyle(box)}
-                onClick={() => setSelected({ entry: box.entry, node: box.node })}
-              >
-                <span className="gnode-kind">{nodeKind(box.node!)}</span>
-                <span className="gnode-title" title={hoverLabel(box.node!)}>
+                onClick={() => setSelected({ entry: box.entry, node: box.node })}>
+                <span className='gnode-kind'>{nodeKind(box.node!)}</span>
+                <span className='gnode-title' title={hoverLabel(box.node!)}>
                   {nodeLabel(box.node!)}
                 </span>
               </button>
             ) : (
               <button
                 key={box.key}
-                type="button"
-                className={`gnode gnode--${boxTone(box)}${selected?.entry.threadId === box.entry.threadId && !selected?.node ? " is-selected" : ""}`}
+                type='button'
+                className={`gnode gnode--${boxTone(box)}${selected?.entry.threadId === box.entry.threadId && !selected?.node ? ' is-selected' : ''}`}
                 style={boxStyle(box)}
-                onClick={() => setSelected({ entry: box.entry, node: null })}
-              >
-                <span className="gnode-kind">{box.kind === "agent" ? (box.entry.agentType ?? "subagent") : "session"}</span>
-                <span className="gnode-title" title={entryLabel(box.entry)}>
+                onClick={() => setSelected({ entry: box.entry, node: null })}>
+                <span className='gnode-kind'>
+                  {box.kind === 'agent' ? (box.entry.agentType ?? 'subagent') : 'session'}
+                </span>
+                <span className='gnode-title' title={entryLabel(box.entry)}>
                   {entryLabel(box.entry)}
                 </span>
-                <span className="gnode-sub mono">
-                  {box.entry.threadId.slice(0, 8)} · {box.entry.model ?? "—"}
+                <span className='gnode-sub mono'>
+                  {box.entry.threadId.slice(0, 8)} · {box.entry.model ?? '—'}
                 </span>
-                <span className="gnode-chips">
+                <span className='gnode-chips'>
                   <span>{fmtInt(box.entry.nodes.length)} steps</span>
-                  {box.entry.errors > 0 ? <span className="gchip-error">{fmtInt(box.entry.errors)} err</span> : null}
-                  {isInFlight(box.entry) ? <span className="gchip-flight">in flight</span> : null}
+                  {box.entry.errors > 0 ? <span className='gchip-error'>{fmtInt(box.entry.errors)} err</span> : null}
+                  {isInFlight(box.entry) ? <span className='gchip-flight'>in flight</span> : null}
                 </span>
               </button>
             ),
@@ -968,59 +988,59 @@ export function SessionGraphPage() {
           onToggle={() => setNavCollapsed((c) => !c)}
         />
 
-        <div className="graph-toolbar">
-          <span className="graph-status">
-            <span className={`glive${query.isFetching ? " is-live" : ""}`} aria-hidden />
+        <div className='graph-toolbar'>
+          <span className='graph-status'>
+            <span className={`glive${query.isFetching ? ' is-live' : ''}`} aria-hidden />
             {fmtInt(roots.length)} sessions
-            {entry ? <span className="muted"> · {fmtInt(entry.nodes.length)} steps</span> : null}
+            {entry ? <span className='muted'> · {fmtInt(entry.nodes.length)} steps</span> : null}
             {bands.length > 0 ? (
-              <span className="muted">
-                {" "}
+              <span className='muted'>
+                {' '}
                 · {fmtInt(bands.length)} subagents
-                {flying > 0 ? <span className="graph-status-flight"> ({fmtInt(flying)} in flight)</span> : null}
+                {flying > 0 ? <span className='graph-status-flight'> ({fmtInt(flying)} in flight)</span> : null}
               </span>
             ) : null}
             {trails.length > 0 ? (
-              <span className="graph-status-cut"> · {fmtInt(trails.length)} interrupted</span>
+              <span className='graph-status-cut'> · {fmtInt(trails.length)} interrupted</span>
             ) : null}
           </span>
-          <div className="graph-btns">
-            <button type="button" onClick={fit} title={ZOOM_HINT}>
+          <div className='graph-btns'>
+            <button type='button' onClick={fit} title={ZOOM_HINT}>
               Fit
             </button>
             <button
-              type="button"
-              className="graph-icon-btn"
+              type='button'
+              className='graph-icon-btn'
               onClick={() => setRoomy((r) => !r)}
               aria-pressed={roomy}
-              aria-label={roomy ? "Smaller nodes" : "Larger nodes"}
-              title={roomy ? "Smaller nodes" : "Larger nodes — room for each step's whole text"}
-            >
+              aria-label={roomy ? 'Smaller nodes' : 'Larger nodes'}
+              title={roomy ? 'Smaller nodes' : "Larger nodes — room for each step's whole text"}>
               {roomy ? <Shrink size={15} aria-hidden /> : <Expand size={15} aria-hidden />}
             </button>
             <button
-              type="button"
-              className="graph-icon-btn"
+              type='button'
+              className='graph-icon-btn'
               onClick={toggleFull}
               aria-pressed={isFull}
-              aria-label={isFull ? "Exit fullscreen" : "Fullscreen"}
-              title={isFull ? "Exit fullscreen" : "Fullscreen"}
-            >
+              aria-label={isFull ? 'Exit fullscreen' : 'Fullscreen'}
+              title={isFull ? 'Exit fullscreen' : 'Fullscreen'}>
               {isFull ? <Minimize2 size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}
             </button>
           </div>
-          <div className="graph-legend">
+          <div className='graph-legend'>
             {LEGEND.map((l) => (
-              <span key={l.tone} className="glegend-item">
-                <span className="glegend-dot" style={{ background: color(l.tone) }} />
+              <span key={l.tone} className='glegend-item'>
+                <span className='glegend-dot' style={{ background: color(l.tone) }} />
                 {l.label}
               </span>
             ))}
           </div>
         </div>
 
-        {query.error ? <div className="graph-note error">Failed to load: {(query.error as Error).message}</div> : null}
-        {!query.isLoading && all.length === 0 ? <div className="graph-note muted">No session transcripts yet.</div> : null}
+        {query.error ? <div className='graph-note error'>Failed to load: {(query.error as Error).message}</div> : null}
+        {!query.isLoading && all.length === 0 ? (
+          <div className='graph-note muted'>No session transcripts yet.</div>
+        ) : null}
 
         <Inspector
           panelRef={inspectorRef}
@@ -1094,57 +1114,54 @@ function SessionNav({
     });
 
   return (
-    <aside ref={railRef} className={`graph-sessions${collapsed ? " is-collapsed" : ""}`} aria-label="Sessions">
-      <div className="gs-head">
-        {collapsed ? null : <span className="gs-title">Sessions</span>}
+    <aside ref={railRef} className={`graph-sessions${collapsed ? ' is-collapsed' : ''}`} aria-label='Sessions'>
+      <div className='gs-head'>
+        {collapsed ? null : <span className='gs-title'>Sessions</span>}
         <button
-          type="button"
-          className="gs-collapse"
+          type='button'
+          className='gs-collapse'
           onClick={onToggle}
           aria-expanded={!collapsed}
-          title={collapsed ? "Show sessions" : "Hide sessions"}
-        >
-          {collapsed ? "»" : "«"}
+          title={collapsed ? 'Show sessions' : 'Hide sessions'}>
+          {collapsed ? '»' : '«'}
         </button>
       </div>
       {collapsed ? (
-        <span className="gs-rail-label">{fmtInt(roots.length)} sessions</span>
+        <span className='gs-rail-label'>{fmtInt(roots.length)} sessions</span>
       ) : (
-        <div className="gs-list">
+        <div className='gs-list'>
           {rows.map(({ entry, depth, childCount, expanded }) => {
             const isAgent = entry.parentThreadId !== null;
             const active = entry.threadId === (isAgent ? focusId : selectedId);
             return (
-              <div key={entry.threadId} className="gs-row" style={{ paddingLeft: depth * 14 }}>
+              <div key={entry.threadId} className='gs-row' style={{ paddingLeft: depth * 14 }}>
                 {childCount > 0 ? (
                   <button
-                    type="button"
-                    className="gs-fold"
+                    type='button'
+                    className='gs-fold'
                     onClick={() => toggleFold(entry.threadId)}
                     aria-expanded={expanded}
-                    aria-label={expanded ? "Hide subagents" : "Show subagents"}
-                  >
-                    {expanded ? "▾" : "▸"}
+                    aria-label={expanded ? 'Hide subagents' : 'Show subagents'}>
+                    {expanded ? '▾' : '▸'}
                   </button>
                 ) : (
-                  <span className="gs-fold is-empty" aria-hidden>
-                    {isAgent ? "↳" : ""}
+                  <span className='gs-fold is-empty' aria-hidden>
+                    {isAgent ? '↳' : ''}
                   </span>
                 )}
                 <button
-                  type="button"
-                  className={`gs-item${active ? " is-active" : ""}${isAgent ? " is-agent" : ""}`}
-                  onClick={() => onSelect(entry)}
-                >
-                  <span className="gs-item-title">
-                    {isAgent ? <span className="gs-item-type">{entry.agentType ?? "subagent"}</span> : null}
+                  type='button'
+                  className={`gs-item${active ? ' is-active' : ''}${isAgent ? ' is-agent' : ''}`}
+                  onClick={() => onSelect(entry)}>
+                  <span className='gs-item-title'>
+                    {isAgent ? <span className='gs-item-type'>{entry.agentType ?? 'subagent'}</span> : null}
                     {entryLabel(entry)}
                   </span>
-                  <span className="gs-item-meta mono">
+                  <span className='gs-item-meta mono'>
                     {fmtLocalTsShort(entry.modified)} · {fmtInt(entry.nodes.length)} steps
-                    {childCount > 0 ? <span className="gs-item-kids"> · {fmtInt(childCount)} agents</span> : null}
-                    {entry.errors > 0 ? <span className="gs-item-err"> · {fmtInt(entry.errors)} err</span> : null}
-                    {isInFlight(entry) ? <span className="gs-item-flight"> · in flight</span> : null}
+                    {childCount > 0 ? <span className='gs-item-kids'> · {fmtInt(childCount)} agents</span> : null}
+                    {entry.errors > 0 ? <span className='gs-item-err'> · {fmtInt(entry.errors)} err</span> : null}
+                    {isInFlight(entry) ? <span className='gs-item-flight'> · in flight</span> : null}
                   </span>
                 </button>
               </div>
@@ -1184,7 +1201,7 @@ function Inspector({
   // Remount per selection so a step opened after the last fetch pulls its own text.
   return (
     <InspectorBody
-      key={`${selection.entry.threadId}:${selection.node?.index ?? "root"}`}
+      key={`${selection.entry.threadId}:${selection.node?.index ?? 'root'}`}
       panelRef={panelRef}
       selection={selection}
       byId={byId}
@@ -1218,7 +1235,7 @@ function InspectorBody({
 }) {
   const { entry, node } = selection;
   const texts = useQuery({
-    queryKey: ["session-node-text", entry.threadId],
+    queryKey: ['session-node-text', entry.threadId],
     queryFn: () => getSessionNodeTexts(entry.threadId),
   });
   /** The whole text behind step `index`, when the sidecar recorded one. */
@@ -1228,8 +1245,8 @@ function InspectorBody({
   const source = sources.get(entry.threadId);
   const agentType = node ? spawnAgentType(node) : null;
   const isAgent = !node && entry.parentThreadId !== null;
-  const kind = node ? (agentType === null ? node.type : "spawn") : isAgent ? "subagent" : "session";
-  const kindColor = color(node ? (agentType === null ? node.type : "agent") : isAgent ? "agent" : "root");
+  const kind = node ? (agentType === null ? node.type : 'spawn') : isAgent ? 'subagent' : 'session';
+  const kindColor = color(node ? (agentType === null ? node.type : 'agent') : isAgent ? 'agent' : 'root');
   const parent = entry.parentThreadId ? byId.get(entry.parentThreadId) : undefined;
   /** For a spawn step, the subagent it started. */
   const spawned = node
@@ -1237,32 +1254,31 @@ function InspectorBody({
     : undefined;
 
   return (
-    <aside ref={panelRef} className={`graph-inspector${wide ? " is-wide" : ""}`} aria-label="Node details">
-      <div className="gi-head">
-        <span className="gi-kind" style={{ "--gc": kindColor } as CSSProperties}>
+    <aside ref={panelRef} className={`graph-inspector${wide ? ' is-wide' : ''}`} aria-label='Node details'>
+      <div className='gi-head'>
+        <span className='gi-kind' style={{ '--gc': kindColor } as CSSProperties}>
           {kind}
         </span>
-        <div className="gi-actions">
+        <div className='gi-actions'>
           <button
-            type="button"
-            className="gi-wide"
+            type='button'
+            className='gi-wide'
             onClick={onToggleWide}
             aria-expanded={wide}
-            title={wide ? "Narrow the drawer" : "Widen the drawer"}
-          >
-            {wide ? "⇥" : "⇤"}
+            title={wide ? 'Narrow the drawer' : 'Widen the drawer'}>
+            {wide ? '⇥' : '⇤'}
           </button>
-          <button type="button" className="gi-close" onClick={onClose} aria-label="Close">
+          <button type='button' className='gi-close' onClick={onClose} aria-label='Close'>
             ×
           </button>
         </div>
       </div>
 
-      <div className="gi-body">
+      <div className='gi-body'>
         {node ? (
           <>
             {node.task ? (
-              <Field label="Task">
+              <Field label='Task'>
                 <ExpandableText
                   key={`t:${entry.threadId}:${node.index}`}
                   text={node.task}
@@ -1271,40 +1287,40 @@ function InspectorBody({
               </Field>
             ) : null}
             {node.tool ? (
-              <Field label="Tool">
+              <Field label='Tool'>
                 <LongText key={`c:${entry.threadId}:${node.index}`} text={node.tool} mono />
               </Field>
             ) : null}
-            <Field label="Detail">
+            <Field label='Detail'>
               <ExpandableText
                 key={`d:${entry.threadId}:${node.index}`}
-                text={node.text || "—"}
+                text={node.text || '—'}
                 full={fullText(node.index)}
               />
             </Field>
-            <Field label="Step">#{node.index}</Field>
+            <Field label='Step'>#{node.index}</Field>
             {source && node.message !== null ? <RequestMessage file={source} index={node.message} /> : null}
             {node.interrupted ? (
-              <Field label="Cut off">
-                <span className="gi-cut">the run was interrupted here — it picks up on the trail below</span>
+              <Field label='Cut off'>
+                <span className='gi-cut'>the run was interrupted here — it picks up on the trail below</span>
               </Field>
             ) : null}
             {node.interruption ? (
-              <Field label="Resumed after">
-                <span className="gi-cut">{interruptionLabel(node.interruption)}</span>
+              <Field label='Resumed after'>
+                <span className='gi-cut'>{interruptionLabel(node.interruption)}</span>
               </Field>
             ) : null}
             {agentType === null ? null : spawned ? (
               <>
-                <Field label="Subagent">{entryLabel(spawned)}</Field>
-                <Field label="Status">{agentStatus(spawned)}</Field>
-                <button type="button" className="link gi-open" onClick={() => onFocusAgent(spawned.threadId)}>
+                <Field label='Subagent'>{entryLabel(spawned)}</Field>
+                <Field label='Status'>{agentStatus(spawned)}</Field>
+                <button type='button' className='link gi-open' onClick={() => onFocusAgent(spawned.threadId)}>
                   Show its branch →
                 </button>
               </>
             ) : (
-              <Field label="Subagent">
-                <span className="muted">no transcript captured</span>
+              <Field label='Subagent'>
+                <span className='muted'>no transcript captured</span>
               </Field>
             )}
           </>
@@ -1312,52 +1328,51 @@ function InspectorBody({
           <>
             {isAgent ? (
               <>
-                <Field label="Agent type">{entry.agentType ?? "—"}</Field>
-                <Field label="Status">{agentStatus(entry)}</Field>
-                <Field label="Spawned by">{parent ? `${entryLabel(parent)} · step #${entry.spawnIndex}` : "—"}</Field>
+                <Field label='Agent type'>{entry.agentType ?? '—'}</Field>
+                <Field label='Status'>{agentStatus(entry)}</Field>
+                <Field label='Spawned by'>{parent ? `${entryLabel(parent)} · step #${entry.spawnIndex}` : '—'}</Field>
               </>
             ) : null}
-            <Field label="First task">
-              <ExpandableText text={entry.firstTask ?? "—"} full={fullText(firstTaskIndex(entry.nodes))} />
+            <Field label='First task'>
+              <ExpandableText text={entry.firstTask ?? '—'} full={fullText(firstTaskIndex(entry.nodes))} />
             </Field>
-            <div className="gi-stats">
-              <Stat label="tasks" value={entry.tasks} />
-              <Stat label="tools" value={entry.tools} />
-              <Stat label="errors" value={entry.errors} tone={entry.errors > 0 ? "bad" : undefined} />
+            <div className='gi-stats'>
+              <Stat label='tasks' value={entry.tasks} />
+              <Stat label='tools' value={entry.tools} />
+              <Stat label='errors' value={entry.errors} tone={entry.errors > 0 ? 'bad' : undefined} />
             </div>
           </>
         )}
-        <Field label="Session">
-          <span className="mono-break">{entry.threadId}</span>
+        <Field label='Session'>
+          <span className='mono-break'>{entry.threadId}</span>
         </Field>
-        <Field label="Model">{entry.model ?? "—"}</Field>
-        {entry.started ? <Field label="Started">{fmtLocalTsShort(entry.started)}</Field> : null}
-        <Field label="Updated">{fmtLocalTsShort(entry.modified)}</Field>
-        <Link to="/sessions/$id" params={{ id: entry.threadId }} className="link gi-open">
+        <Field label='Model'>{entry.model ?? '—'}</Field>
+        {entry.started ? <Field label='Started'>{fmtLocalTsShort(entry.started)}</Field> : null}
+        <Field label='Updated'>{fmtLocalTsShort(entry.modified)}</Field>
+        <Link to='/sessions/$id' params={{ id: entry.threadId }} className='link gi-open'>
           Open transcript →
         </Link>
         {source ? (
           <>
             {node && node.message !== null ? (
               <Link
-                to="/context/$file/message/$index"
+                to='/context/$file/message/$index'
                 params={{ file: source, index: String(node.message) }}
-                className="link gi-open"
-              >
+                className='link gi-open'>
                 Open this step's message →
               </Link>
             ) : null}
-            <Link to="/context/$file" params={{ file: source }} className="link gi-open">
+            <Link to='/context/$file' params={{ file: source }} className='link gi-open'>
               Open request breakdown →
             </Link>
             {node && node.message === null ? (
-              <span className="gi-note muted">
+              <span className='gi-note muted'>
                 This step pairs with nothing in the captured request, so its text is the transcript's gist.
               </span>
             ) : null}
           </>
         ) : (
-          <span className="gi-note muted">Text from the transcript — no captured request matched.</span>
+          <span className='gi-note muted'>Text from the transcript — no captured request matched.</span>
         )}
       </div>
     </aside>
@@ -1371,15 +1386,15 @@ function InspectorBody({
  */
 function RequestMessage({ file, index }: { file: string; index: number }) {
   const query = useQuery({
-    queryKey: ["context-message", file, index],
+    queryKey: ['context-message', file, index],
     queryFn: () => getContextMessage(file, index),
   });
   // An evicted body has no message; the drawer omits the field, as for a rotated-away request.
   const message = query.data && !query.data.evicted ? query.data.message : undefined;
   if (!message) return null;
   return (
-    <Field label="Request message">
-      <span className="gi-note muted">
+    <Field label='Request message'>
+      <span className='gi-note muted'>
         #{fmtInt(message.index + 1)} of {fmtInt(message.messageCount)} · {message.role}
       </span>
       <LongText key={`m:${file}:${index}`} text={message.content} mono />
@@ -1390,7 +1405,7 @@ function RequestMessage({ file, index }: { file: string; index: number }) {
 /** Whether a subagent is still running, or which parent step its result flowed into. */
 function agentStatus(agent: SessionGraphEntry): ReactNode {
   return agent.returnIndex === null ? (
-    <span className="gi-flight">in flight — the parent hasn't stepped past the spawn</span>
+    <span className='gi-flight'>in flight — the parent hasn't stepped past the spawn</span>
   ) : (
     <>returned into parent step #{agent.returnIndex}</>
   );
@@ -1398,23 +1413,23 @@ function agentStatus(agent: SessionGraphEntry): ReactNode {
 
 /** The step whose `## Task:` heading a node falls under — where that task's whole text lives. */
 function taskIndexFor(nodes: SessionNode[], node: SessionNode): number | null {
-  if (node.type === "task") return node.index;
+  if (node.type === 'task') return node.index;
   let found: number | null = null;
   for (const n of nodes) {
     if (n.index >= node.index) break;
-    if (n.type === "task") found = n.index;
+    if (n.type === 'task') found = n.index;
   }
   return found;
 }
 
-const firstTaskIndex = (nodes: SessionNode[]): number | null => nodes.find((n) => n.type === "task")?.index ?? null;
+const firstTaskIndex = (nodes: SessionNode[]): number | null => nodes.find((n) => n.type === 'task')?.index ?? null;
 
 /**
  * A gist plus the whole text the transcript line cut short, when the sidecar recorded one.
  * The fuller text is what gets rendered; {@link LongText} keeps it from flooding the drawer.
  */
 function ExpandableText({ text, full }: { text: string; full?: string }) {
-  const whole = full !== undefined && full.trim() !== "" ? full : text;
+  const whole = full !== undefined && full.trim() !== '' ? full : text;
   return <LongText text={whole} />;
 }
 
@@ -1430,14 +1445,14 @@ function LongText({ text, mono }: { text: string; mono?: boolean }) {
   const [open, setOpen] = useState(false);
   const long = text.length > LONG_TEXT_CHARS;
   // Opened, it scrolls within the drawer rather than pushing the fields below it off-screen.
-  const cls = `gi-text${mono ? " mono-break" : ""}${long ? (open ? " is-full" : " is-clamped") : ""}`;
+  const cls = `gi-text${mono ? ' mono-break' : ''}${long ? (open ? ' is-full' : ' is-clamped') : ''}`;
 
   return (
     <>
       <p className={cls}>{text}</p>
       {long ? (
-        <button type="button" className="link gi-more" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-          {open ? "Show less" : `Show all ${fmtInt(text.length)} characters`}
+        <button type='button' className='link gi-more' onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          {open ? 'Show less' : `Show all ${fmtInt(text.length)} characters`}
         </button>
       ) : null}
     </>
@@ -1446,18 +1461,18 @@ function LongText({ text, mono }: { text: string; mono?: boolean }) {
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="gi-field">
-      <span className="gi-label">{label}</span>
-      <div className="gi-value">{children}</div>
+    <div className='gi-field'>
+      <span className='gi-label'>{label}</span>
+      <div className='gi-value'>{children}</div>
     </div>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone?: "bad" }) {
+function Stat({ label, value, tone }: { label: string; value: number; tone?: 'bad' }) {
   return (
-    <div className="gi-stat">
-      <span className={`gi-stat-value${tone === "bad" ? " gi-stat-bad" : ""}`}>{fmtInt(value)}</span>
-      <span className="gi-stat-label">{label}</span>
+    <div className='gi-stat'>
+      <span className={`gi-stat-value${tone === 'bad' ? ' gi-stat-bad' : ''}`}>{fmtInt(value)}</span>
+      <span className='gi-stat-label'>{label}</span>
     </div>
   );
 }

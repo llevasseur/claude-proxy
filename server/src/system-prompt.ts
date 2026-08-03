@@ -1,6 +1,6 @@
-import { copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 /**
  * The device system prompt — `~/.claude/CLAUDE.md`, the instructions Claude Code
@@ -10,7 +10,7 @@ import path from "node:path";
 export function resolveSystemPromptPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.CLAUDE_SYSTEM_PROMPT
     ? path.resolve(env.CLAUDE_SYSTEM_PROMPT)
-    : path.join(os.homedir(), ".claude", "CLAUDE.md");
+    : path.join(os.homedir(), '.claude', 'CLAUDE.md');
 }
 
 /** Raw file state — text plus the metadata core needs to shape it. */
@@ -29,11 +29,11 @@ export interface SystemPromptFile {
  */
 export async function readSystemPromptFile(promptPath: string): Promise<SystemPromptFile> {
   try {
-    const [text, info] = await Promise.all([readFile(promptPath, "utf8"), stat(promptPath)]);
+    const [text, info] = await Promise.all([readFile(promptPath, 'utf8'), stat(promptPath)]);
     return { promptPath, exists: true, text, modified: info.mtime.toISOString() };
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    return { promptPath, exists: false, text: "", modified: null };
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    return { promptPath, exists: false, text: '', modified: null };
   }
 }
 
@@ -64,11 +64,11 @@ export async function writeSystemPromptFile(promptPath: string, text: string): P
   } catch (err) {
     // Nothing there yet is the first save; a backup that failed for any other reason
     // is not something to overwrite the original on top of.
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
 
   const temp = `${promptPath}.${process.pid}.tmp`;
-  await writeFile(temp, text, "utf8");
+  await writeFile(temp, text, 'utf8');
   await rename(temp, promptPath);
 
   return { ...(await readSystemPromptFile(promptPath)), backupPath: backedUp ? backupPath : null };
