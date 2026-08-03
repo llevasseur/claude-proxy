@@ -22,7 +22,8 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
   `exports` map points straight at `./src/index.ts`, so consumers import TypeScript
   source and `packages/core/dist` never exists.
 - `proxy/` is TypeScript with **zero runtime dependencies** — `proxy.ts` (bin
-  `claude-proxy`), plus `wire.ts`, `session.ts`, `skim.ts`, `usage-live.ts`.
+  `claude-proxy`), plus `wire.ts`, `session.ts`, `skim.ts`, `system-prompt.ts`,
+  `usage-live.ts`.
   TypeScript is a devDependency only; the bin is executed directly by node, which
   strips the types itself, so there is no build step and no `dist`. Imports carry
   explicit `.ts` extensions (`allowImportingTsExtensions`) — that is deliberate,

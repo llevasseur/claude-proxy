@@ -325,6 +325,39 @@ button:focus-visible {
   font-family: var(--font-mono);
   font-size: 12px;
 }
+/* Day-over-day sentence under a trend page's description. */
+.trend-compare {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-top: 6px;
+}
+.trend-compare-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+/* System-prompt mix breakdown. */
+.mono {
+  font-family: var(--font-mono);
+}
+.mix-note {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 14px;
+}
+.mix-note strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.mix-revision {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 14px;
+}
+.mix-revision h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
 /* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .muted {
   color: var(--muted);

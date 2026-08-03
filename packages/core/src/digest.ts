@@ -57,6 +57,7 @@ const TREND_FIELDS: Array<{ field: string; pick: (d: UsageDigest) => number }> =
   { field: 'output', pick: (d) => d.tokens.output },
   { field: 'cost', pick: (d) => d.cost.total },
   { field: 'requestCount', pick: (d) => d.requestCount },
+  { field: 'avgSystemPromptBytes', pick: (d) => d.avgSystemPromptBytes },
 ];
 
 function pct(part: number, whole: number): number {

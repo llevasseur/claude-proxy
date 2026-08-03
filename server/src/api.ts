@@ -3,6 +3,7 @@ import {
   type AliasLoadExpectation,
   type AuditSidecar,
   analyzeRequestBody,
+  attributePromptMix,
   type BucketBreakdownInput,
   type BucketBreakdownSummary,
   buildUsageLimits,
@@ -17,8 +18,10 @@ import {
   computeSkimDigest,
   countSuggestionRecurrences,
   countSuggestionStatuses,
+  dayElapsedFraction,
   deriveRequestErrors,
   deriveSessionNodes,
+  diffWirePrompts,
   digestsByDay,
   extractRequestMessage,
   extractRequestTool,
@@ -28,19 +31,25 @@ import {
   type HookRow,
   heuristicAdvice,
   hookPluginLoadExpectations,
+  isPartialDay,
   type JobTreeNode,
   jobStateTone,
   type LaunchAlias,
   type LaunchAliasPosture,
   type LinkedSessionError,
   linkRequestErrors,
+  type MixAttribution,
   normalizePlugins,
   type PatternFrequency,
   type PluginRow,
   PROXY_FILTER_INVENTORY,
+  type PromptMixDay,
+  type PromptRevision,
+  pairPromptRevisions,
   parseSessionErrors,
   parseSystemPromptText,
   patternFrequency,
+  promptMixByDay,
   type RequestBreakdown,
   type RequestErrorSite,
   type RequestMessageDetail,
@@ -48,6 +57,7 @@ import {
   reportDay,
   runKey,
   runTotals,
+  type SectionMove,
   type SessionBucket,
   type SessionContextPeak,
   type SessionError,
@@ -59,6 +69,7 @@ import {
   type SkimShape,
   type StepReach,
   type StoredConcept,
+  type StoredWirePrompt,
   type SuggestionRecurrence,
   type SuggestionStatus,
   type SuggestionStatusRow,
@@ -74,6 +85,7 @@ import {
   summarizeBreakdownPatterns,
   summarizeCommands,
   summarizeContext,
+  summarizePromptMix,
   summarizeSystemPrompt,
   type TopTool,
   toContextEntry,
@@ -113,6 +125,7 @@ import {
   type ProjectSummary,
   readMemory,
 } from './projects.js';
+import { readStoredPrompts } from './prompt-store.js';
 import { resolveRetentionDays } from './retention.js';
 import {
   type SessionDetail,
@@ -304,6 +317,92 @@ export async function buildTrends(
 
   const digests = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
   return { digests, meta: { days, files, parseErrors, archivedDays } };
+}
+
+/** A prompt revision with both outlines resolved and diffed. */
+export interface PromptRevisionDetail extends PromptRevision {
+  /** null when the store has no record for that hash — a prompt the proxy never saw. */
+  prior: StoredWirePrompt | null;
+  current: StoredWirePrompt | null;
+  /** Biggest absolute move first; empty when either outline is missing. */
+  moves: SectionMove[];
+}
+
+export interface PromptMixResponse {
+  /** Oldest first, one per day with captured traffic. */
+  days: PromptMixDay[];
+  /** The two most recent days, decomposed. null when only one day has traffic. */
+  attribution: MixAttribution | null;
+  /** Section-level detail for prompts that changed across that pair. */
+  revisions: PromptRevisionDetail[];
+  /** Set when the newest day is still in progress, so its mean is a part-day figure. */
+  partial: { date: string; elapsed: number } | null;
+  meta: { days: number; files: number; parseErrors: number; archivedDays: number; outlinesFound: number };
+}
+
+/**
+ * Why `avgSystemPromptBytes` sits where it does: the day's cohorts, the move
+ * since the day before split into traffic mix and prompt size, and the sections
+ * that changed when a prompt was rewritten.
+ */
+export async function buildPromptMix(
+  logDir: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<PromptMixResponse> {
+  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days }, now);
+  const byDate = new Map<string, PromptMixDay>();
+  for (const d of promptMixByDay(sidecars)) byDate.set(d.date, d);
+
+  // The live dir holds a day or two; the rest of the window is archived sidecars.
+  let archivedDays = 0;
+  const end = today(now);
+  for (let i = 0; i < days; i += 1) {
+    const date = shiftDay(end, -i);
+    if (byDate.has(date)) continue;
+    const archived = await source.readArchivedDay(logDir, date);
+    if (archived.files === 0) continue;
+    byDate.set(date, summarizePromptMix(archived.sidecars, date));
+    archivedDays += 1;
+  }
+
+  const mix = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const current = mix.at(-1);
+  const prior = mix.at(-2);
+  const attribution = current && prior ? attributePromptMix(prior, current) : null;
+
+  const revisions: PromptRevisionDetail[] = [];
+  let outlinesFound = 0;
+  if (current && prior) {
+    const paired = pairPromptRevisions(prior, current);
+    const outlines = await readStoredPrompts(
+      logDir,
+      paired.flatMap((r) => [r.priorHash, r.hash]),
+    );
+    outlinesFound = outlines.size;
+    for (const revision of paired) {
+      const before = outlines.get(revision.priorHash) ?? null;
+      const after = outlines.get(revision.hash) ?? null;
+      revisions.push({
+        ...revision,
+        prior: before,
+        current: after,
+        moves: before && after ? diffWirePrompts(before, after) : [],
+      });
+    }
+  }
+
+  return {
+    days: mix,
+    attribution,
+    revisions,
+    partial:
+      current && isPartialDay(current.date, now)
+        ? { date: current.date, elapsed: dayElapsedFraction(current.date, now) }
+        : null,
+    meta: { days, files, parseErrors, archivedDays, outlinesFound },
+  };
 }
 
 export interface ToolsResponse {
@@ -1260,7 +1359,7 @@ export async function buildSystemPromptUpdate(promptPath: string, text: unknown)
 }
 
 /**
- * The proxy's request-filter inventory: what `proxy/proxy.ts` strips from every
+ * The proxy's request-filter inventory: what `proxy/proxy.mjs` strips from every
  * request before forwarding. A static config view — these edits have no
  * per-request variation and can't be configured out of the CLI, so the proxy is
  * the only place they happen. Sourced from `PROXY_FILTER_INVENTORY` in core, which

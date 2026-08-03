@@ -116,6 +116,9 @@ interface RequestRow {
   req_tools_bytes: number;
   req_system_bytes: number;
   req_total_bytes: number;
+  req_system_hash: string | null;
+  req_system_blocks: number | null;
+  req_system_sections: number | null;
   skim_present: number;
   skim_enabled: number | null;
   skim_served_from_cache: number | null;
@@ -157,6 +160,17 @@ function toSidecar(
       toolsBytes: row.req_tools_bytes,
       systemBytes: row.req_system_bytes,
       totalBytes: row.req_total_bytes,
+      // Absent, not null, when the sidecar predates the capture — a file read
+      // would have produced no key at all.
+      ...(row.req_system_hash !== null
+        ? {
+            system: {
+              hash: row.req_system_hash,
+              blocks: row.req_system_blocks ?? 0,
+              sections: row.req_system_sections ?? 0,
+            },
+          }
+        : {}),
     },
     tools: tools.map((t) => ({ name: t.name, bytes: t.bytes, estTokens: t.est_tokens })),
   };

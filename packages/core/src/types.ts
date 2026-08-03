@@ -15,11 +15,27 @@ export interface AuditTokens {
   realInput: number;
 }
 
+/**
+ * Identity of the request's system prompt. The outline itself lives once per
+ * hash in `logs/system-prompts/<hash>.json`, so a repeated prompt costs one
+ * short string per request instead of its whole table of contents. Absent on
+ * sidecars written before the capture existed.
+ */
+export interface AuditSystemPrompt {
+  /** Content hash of the serialized `system` field. */
+  hash: string;
+  /** Top-level blocks in the `system` array. */
+  blocks: number;
+  /** Heading spans across all blocks. */
+  sections: number;
+}
+
 export interface AuditRequestMeta {
   toolCount: number;
   toolsBytes: number;
   systemBytes: number;
   totalBytes: number;
+  system?: AuditSystemPrompt;
 }
 
 export interface AuditTool {

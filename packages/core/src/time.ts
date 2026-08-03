@@ -43,6 +43,25 @@ export function reportHour(at: string | Date): number | null {
   return Number.isNaN(h) ? null : h;
 }
 
+/**
+ * Whether `day` is still being written to — the current day in {@link REPORT_TZ}.
+ * A partial day's totals and means are not comparable with a finished one's.
+ */
+export function isPartialDay(day: string, now: Date = new Date()): boolean {
+  return reportDay(now) === day;
+}
+
+/**
+ * How much of `day` has elapsed, 0–1. Past days are 1. Lets a partial day's
+ * counts be read against the fraction of the day they cover.
+ */
+export function dayElapsedFraction(day: string, now: Date = new Date()): number {
+  if (!isPartialDay(day, now)) return 1;
+  const start = dayStartMs(day);
+  const elapsed = (now.getTime() - start) / 86_400_000;
+  return Math.min(1, Math.max(0, elapsed));
+}
+
 /** Short zone label in effect at `at`, e.g. `"EST"` or `"EDT"`. */
 export function reportTzAbbr(at: Date = new Date()): string {
   return abbrFmt.formatToParts(at).find((p) => p.type === 'timeZoneName')?.value ?? 'ET';

@@ -30,6 +30,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as session from './session.ts';
 import * as skim from './skim.ts';
+import { identifyPrompt, type PromptIdentity, recordPrompt } from './system-prompt.ts';
 import { noteAuth, startUsagePolling } from './usage-live.ts';
 import {
   asArrayOf,
@@ -209,6 +210,7 @@ interface Audit {
   systemBytes: number;
   totalBytes: number;
   realInputTokens: number | null;
+  systemPrompt: PromptIdentity | null;
 }
 
 /** Measure every removable region of the request and rank the tools by size.
@@ -233,6 +235,8 @@ function auditRequest(reqJson: RequestBody | null, realInputTokens: number | nul
     systemBytes,
     totalBytes,
     realInputTokens,
+    // Identity of the system prompt; its outline goes to the dedup store.
+    systemPrompt: identifyPrompt(reqJson?.system),
   };
 }
 
@@ -355,6 +359,16 @@ function writeAuditSidecar({
       toolsBytes: audit.toolsBytes,
       systemBytes: audit.systemBytes,
       totalBytes: audit.totalBytes,
+      // Omitted when the request carried no system prompt.
+      ...(audit.systemPrompt
+        ? {
+            system: {
+              hash: audit.systemPrompt.hash,
+              blocks: audit.systemPrompt.blocks,
+              sections: audit.systemPrompt.sections,
+            },
+          }
+        : {}),
     },
     // App-layer skim (not Anthropic's prefix cache); recorded on every request so
     // hit-rate + saved spend are computable from the sidecar.
@@ -724,6 +738,7 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
           const audit = auditRequest(reqJson ?? {}, saved);
           const skimInfo: SkimInfo = { enabled: true, servedFromCache: true, savedInputTokens: saved, cacheKey };
           fs.mkdirSync(LOG_DIR, { recursive: true });
+          recordPrompt(LOG_DIR, audit.systemPrompt);
           fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString('utf8'));
           fs.writeFileSync(
             path.join(LOG_DIR, `${base}.md`),
@@ -816,6 +831,7 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
             };
 
             fs.mkdirSync(LOG_DIR, { recursive: true });
+            recordPrompt(LOG_DIR, audit.systemPrompt);
             fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString('utf8'));
             fs.writeFileSync(
               path.join(LOG_DIR, `${base}.md`),
