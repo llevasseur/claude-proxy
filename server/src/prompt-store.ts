@@ -89,9 +89,8 @@ export function clearClassifierCache(): void {
  * Every stored hash whose prompt is a permission-classifier prompt — what
  * `computeDigest` needs to hold auto-mode's overhead apart from real work.
  *
- * An absent store reads as an empty set, which leaves every request counted as
- * work. That is the honest answer: nothing was identified because nothing was
- * recorded, and `perCall.identified` says so.
+ * An absent store reads as an empty set, leaving every request counted as work;
+ * `perCall.identified` is what records that nothing was ever checked.
  */
 export async function classifierPromptHashes(logDir: string): Promise<Set<string>> {
   let seen = classifierVerdicts.get(logDir);

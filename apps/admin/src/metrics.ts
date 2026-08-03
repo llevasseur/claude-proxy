@@ -2,12 +2,9 @@ import { costPerMTok, type PerCallStats, reportTzAbbr, type UsageDigest } from '
 import { fmtBytes, fmtCompact, fmtInt, fmtPct, fmtUsd, fmtUsdCompact, fmtUsdPerMTok } from './format';
 
 /**
- * Where a statistic's number comes from, stated on its own page rather than
- * left to be inferred from the chart.
- *
- * A per-call mean is only as trustworthy as its denominator, and the ones here
- * deliberately exclude traffic — so the exclusion has to be visible next to the
- * number, not buried in the code that computes it.
+ * Where a statistic's number comes from, stated on its own page rather than left
+ * to be inferred from the chart. The per-call means deliberately exclude
+ * traffic, so the exclusion belongs next to the number.
  */
 export interface MetricProvenance {
   /** The arithmetic, in the audit sidecar's own field names. */
@@ -48,18 +45,12 @@ export interface StatMetric {
   trendField?: string;
   /** Shown as "How this is computed" on the trend page, when stated. */
   provenance?: MetricProvenance;
-  /**
-   * The same statistic read off one cohort rather than off the day. Present only
-   * on the per-request means, and its presence is what gives a metric the
-   * composition panel that shows which traffic was held out of it.
-   */
+  /** The same statistic read off one cohort; its presence adds the composition panel. */
   perCall?: (s: PerCallStats) => number;
   /**
-   * Whether `perCall` is a mean *per request*, so that `share × value` summed
-   * over the cohorts reproduces the all-request figure. Calls per session
-   * divides by sessions instead, and sessions are not partitioned by cohort —
-   * a session contains both work and classifier calls — so no such
-   * decomposition exists for it and the panel omits the column.
+   * Whether `perCall` is a mean *per request*, so `share × value` over the
+   * cohorts reproduces the all-request figure. Calls per session divides by
+   * sessions, which are not partitioned by cohort, so the panel omits the column.
    */
   perCallAdditive?: boolean;
 }

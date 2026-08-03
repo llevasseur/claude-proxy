@@ -22,12 +22,8 @@ const COHORTS = [
  * Where a per-call mean comes from, and what was held out of it.
  *
  * The headline is a mean over work traffic only, so the cohort it excludes has
- * to be visible beside it — otherwise the number looks like it describes every
- * request, and a shift in the ratio of classifier to work traffic would read as
- * the work itself getting cheaper or dearer.
- *
- * Reads `perCall` off the digests the trend page already fetched, so it costs no
- * extra request.
+ * to be visible beside it — otherwise a shift in the ratio of classifier to work
+ * traffic reads as the work itself getting cheaper or dearer.
  */
 export function PerCallPanel({ digests, def }: { digests: UsageDigest[]; def: StatMetric }) {
   const pick = def.perCall;
@@ -111,9 +107,8 @@ function Composition({ day, def, pick }: { day: UsageDigest; def: StatMetric; pi
 
 /**
  * The cohorts side by side. `Of the mean` is `share × value`, which sums to the
- * all-request figure — so it only appears for the per-request means. Calls per
- * session divides by sessions rather than requests, and sessions are not
- * partitioned by cohort, so no such decomposition exists for it.
+ * all-request figure, so it only appears for the per-request means — sessions
+ * are not partitioned by cohort and admit no such decomposition.
  */
 function CohortTable({ day, def, pick }: { day: UsageDigest; def: StatMetric; pick: (s: PerCallStats) => number }) {
   const { all } = day.perCall;
@@ -163,11 +158,9 @@ function CohortTable({ day, def, pick }: { day: UsageDigest; def: StatMetric; pi
 }
 
 /**
- * Where to go to act on a per-call number, per metric.
- *
- * Only `fixed-prefix` gets a drilldown of its own — nothing else in the app
- * showed a tool's JSON schema. The other three are already served by existing
- * raw views, so they link into those rather than duplicating a renderer.
+ * Where to go to act on a per-call number, per metric. Only `fixed-prefix` has a
+ * drilldown of its own — nothing else in the app showed a tool's JSON schema;
+ * the rest link into the existing raw views.
  */
 const NEXT_STEPS: Record<string, { to: '/context' | '/sessions' | '/tools'; label: string; why: string }[]> = {
   'cost-per-call': [

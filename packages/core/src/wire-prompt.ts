@@ -216,22 +216,19 @@ export function isStoredWirePrompt(value: unknown): value is StoredWirePrompt {
 
 /**
  * Headings carried only by Claude Code's auto-mode permission classifier — the
- * separate ~110 KB prompt sent once per agent tool call to score it, which never
- * appears in a prompt the user wrote or can edit.
+ * separate ~110 KB prompt sent once per agent tool call, which never appears in
+ * a prompt the user wrote.
  *
- * Both must be present. Matching on headings rather than on size is deliberate:
- * a byte threshold silently reclassifies every prompt that drifts across it,
- * and the classifier's own size moves by a kilobyte or two between revisions.
+ * Both must be present. Matching on headings rather than size is deliberate: a
+ * byte threshold silently reclassifies every prompt that drifts across it, and
+ * the classifier's own size moves between revisions.
  */
 const CLASSIFIER_HEADINGS = ['HARD BLOCK', 'SOFT BLOCK'] as const;
 
 /**
  * Whether an outline is a permission-classifier prompt rather than a request the
- * user actually asked for. Classifier calls are real spend but not work, so the
- * per-call metrics report them as their own cohort instead of averaging them in.
- *
- * Needs only `sections`, so it runs against a stored outline — the store keeps
- * headings and byte counts long after the request bodies age out.
+ * user asked for. Needs only `sections`, so it runs against a stored outline —
+ * the store keeps headings long after the request bodies age out.
  */
 export function isClassifierPrompt(outline: Pick<WirePromptOutline, 'sections'>): boolean {
   return CLASSIFIER_HEADINGS.every((prefix) => outline.sections.some((s) => s.heading.startsWith(prefix)));

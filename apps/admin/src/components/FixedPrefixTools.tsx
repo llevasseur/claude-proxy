@@ -5,14 +5,10 @@ import { fmtInt, fmtPct } from '../format';
 /**
  * The line items inside the fixed prefix, largest first.
  *
- * `Fixed prefix tokens per call` is one number for tool schemas plus the system
- * prompt together; this is the half of it that is itemised, because each tool
- * ships as its own named definition. Rows link to the schema behind the size —
- * a tool's bytes only become actionable once you can read what they say.
- *
- * Reads the digests the trend page already fetched, so it costs no extra
- * request; that also means it shows the same top-N the digest keeps rather than
- * every tool ever sent.
+ * `Fixed prefix tokens per call` covers tool schemas plus the system prompt
+ * together; this is the half of it that is itemised, and rows link to the schema
+ * behind the size. Reads the digests the trend page already fetched, so it shows
+ * the digest's top-N rather than every tool ever sent.
  */
 export function FixedPrefixTools({ digests }: { digests: UsageDigest[] }) {
   const day = digests.at(-1);

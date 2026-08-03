@@ -31,10 +31,9 @@ export interface TrendEntry {
 /**
  * What one request costs and carries, averaged over a cohort of them.
  *
- * These are the levers a per-day total hides. A day's spend is roughly
+ * The levers a per-day total hides: a day's spend is roughly
  * `requests × costUsd`, and `costUsd` barely moves with conversation depth once
- * compaction caps the prefix — so the number of calls, not the size of any one
- * prompt, is what a day's bill tracks.
+ * compaction caps the prefix.
  */
 export interface PerCallStats {
   requests: number;
@@ -59,12 +58,11 @@ export interface PerCallStats {
  * A day's requests split by whether they are work or overhead.
  *
  * Auto-mode fires a permission classifier as a separate ~110 KB request per
- * agent tool call. That is real spend, but averaging it into a per-call figure
- * makes the mean a statement about the *ratio* of classifier to work traffic
- * rather than about either — the same denominator artifact that makes
- * `avgSystemPromptBytes` move when no prompt changed size. So `work` is the
- * headline, `classifier` is reported beside it, and `all` reconciles to the
- * day's totals.
+ * agent tool call. Averaging it in makes the mean track the *ratio* of
+ * classifier to work traffic rather than either — the same denominator artifact
+ * that moves `avgSystemPromptBytes` when no prompt changed size. So `work` is
+ * the headline, `classifier` sits beside it, and `all` reconciles to the day's
+ * totals.
  */
 export interface PerCallSplit {
   /** Everything that is not a permission-classifier call. The headline. */
@@ -108,12 +106,9 @@ export interface ComputeDigestOptions {
   topN?: number;
   /**
    * System-prompt hashes known to be permission-classifier prompts, so
-   * `perCall` can hold them apart from work.
-   *
-   * Passed in rather than derived here because deciding it needs the outline
-   * store on disk, and this function is pure. The server resolves it with
-   * `classifierPromptHashes()`; omitting it leaves `perCall.identified` false
-   * and every request in `work`.
+   * `perCall` can hold them apart from work. Passed in because resolving it
+   * needs the outline store on disk and this function is pure; omitting it
+   * leaves `perCall.identified` false and every request in `work`.
    */
   classifierHashes?: ReadonlySet<string>;
 }

@@ -687,11 +687,8 @@ export interface ToolSchemaResponse {
 const SCHEMA_BODY_TRIES = 8;
 
 /**
- * One line item of the fixed prefix, opened up to the JSON behind it.
- *
- * Tool schemas are the largest controllable part of what every request resends,
- * and the tool table only ever shows their size. This is the text that size is
- * made of — the thing to read before deciding a tool is worth its bytes.
+ * One line item of the fixed prefix, opened up to the JSON behind it — the text
+ * a tool's size is made of, where the tool table shows only the size.
  *
  * Like a prompt section, the schema has to come back from a captured body, so it
  * comes back null rather than erroring once the bodies have been evicted.

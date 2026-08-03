@@ -6,11 +6,7 @@ import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
 
-/**
- * The window bodies are looked for in. A tool's schema is a property of the
- * tool rather than of the window, so this is a search depth and not a filter —
- * no control for it, matching the prompt-section page.
- */
+/** How far back bodies are searched for the schema — a search depth, not a filter. */
 const LOOKBACK_DAYS = 30;
 
 /** One tool of the fixed prefix, opened up to the JSON that its size is made of. */

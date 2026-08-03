@@ -53,9 +53,8 @@ export function TrendDetailPage() {
   const last = digests.at(-1);
   const rangeLabel = !first || !last ? '—' : first.date === last.date ? first.date : `${first.date} → ${last.date}`;
   const compare = dayOverDay(digests, def);
-  // Which composition panel sits above the chart. `avg-system-prompt` splits a
-  // day by prompt cohort; a per-call mean splits it by what was held out of the
-  // denominator. A metric has at most one of the two.
+  // Which composition panel sits above the chart, at most one: `avg-system-prompt`
+  // splits a day by prompt cohort, a per-call mean by what was held out of it.
   const hasMix = def.key === 'avg-system-prompt';
   const hasPerCall = !!def.perCall;
 
