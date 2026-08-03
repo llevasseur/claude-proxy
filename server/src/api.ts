@@ -747,7 +747,8 @@ export async function buildToolSchema(
       file = candidate;
       break;
     } catch {
-      continue; // evicted, unreadable, or not the shape we expect
+      // An unreadable or truncated body is one fewer candidate, not a failure:
+      // the next-newest request carries the same definition.
     }
   }
 

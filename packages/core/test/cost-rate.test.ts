@@ -31,8 +31,20 @@ function digest(date: string, { input = 0, cacheRead = 0, output = 0, cost }: Da
     avgSystemPromptBytes: 0,
     toolOverheadPctOfInput: 0,
     busiestHour: null,
+    perCall: { work: NO_CALLS, classifier: NO_CALLS, all: NO_CALLS, identified: false },
   };
 }
+
+/** Per-call stats are inert here — a rate is computed from day totals. */
+const NO_CALLS = {
+  requests: 0,
+  sessions: 0,
+  costUsd: 0,
+  costTotal: 0,
+  fixedPrefixTokens: 0,
+  freshInputTokens: 0,
+  callsPerSession: 0,
+};
 
 describe('costPerMTok', () => {
   it('prices the whole prompt plus the output, not just the fresh tokens', () => {
