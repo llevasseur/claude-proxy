@@ -4,7 +4,9 @@ import { useMemo } from "react";
 import type { UsageDigest } from "@claude-proxy/core";
 import { getSummary, getTrends, getUsage, type SummaryResponse, type UsageResponse } from "../api";
 import { AdviceCard } from "../components/AdviceCard";
+import { CostRateCard, CostRateSkeleton } from "../components/CostRateCard";
 import { LiveIndicator } from "../components/LiveIndicator";
+import { PerRequestCard, PerRequestSkeleton } from "../components/PerRequestCard";
 import { QueryState } from "../components/QueryState";
 import { DAY_WINDOWS, Segmented } from "../components/Segmented";
 import { Skeleton, SkeletonStats, SkeletonText } from "../components/Skeleton";
@@ -54,7 +56,7 @@ export function OverviewPage() {
       <QueryState
         isLoading={summary.isLoading || trends.isLoading}
         error={summary.error}
-        skeleton={<OverviewSkeleton />}
+        skeleton={<OverviewSkeleton days={days} />}
       >
         {data && <OverviewBody data={data} digests={trends.data?.digests ?? []} />}
       </QueryState>
@@ -118,10 +120,12 @@ function UsageSection({
 }
 
 /** The cards and panels this page loads into, at their loaded size. */
-function OverviewSkeleton() {
+function OverviewSkeleton({ days }: { days: number }) {
   return (
     <>
       <SkeletonStats count={METRICS.length} spark />
+      <CostRateSkeleton days={days} />
+      <PerRequestSkeleton days={days} />
       <div className="grid two" aria-hidden>
         <div className="card">
           <div className="card-head">
@@ -194,6 +198,11 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
           />
         ))}
       </div>
+
+      {/* Both plots read the window rather than today alone, and take the spliced
+          series so the newest day keeps moving with the summary stream. */}
+      <CostRateCard digests={series} />
+      <PerRequestCard digests={series} />
 
       <div className="grid two">
         <div className="card">

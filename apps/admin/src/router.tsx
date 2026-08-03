@@ -4,6 +4,7 @@ import {
   createRouter,
   Link,
   Outlet,
+  redirect,
   useRouterState,
 } from "@tanstack/react-router";
 import {
@@ -22,7 +23,6 @@ import {
   Puzzle,
   ScrollText,
   TerminalSquare,
-  TrendingUp,
   Wrench,
   Zap,
 } from "lucide-react";
@@ -56,13 +56,11 @@ import { SuggestionBucketPage } from "./routes/suggestion-bucket";
 import { SystemPromptPage } from "./routes/system-prompt";
 import { ToolsPage } from "./routes/tools";
 import { TrendDetailPage } from "./routes/trend-detail";
-import { TrendsPage } from "./routes/trends";
 import { WithheldPage } from "./routes/withheld";
 
 /** Side-rail nav stations. */
 const STATIONS = [
   { to: "/", label: "Overview", hint: "today", exact: true, icon: Monitor },
-  { to: "/trends", label: "Trends", hint: "history", exact: false, icon: TrendingUp },
   { to: "/context", label: "Context size", hint: "prompt", exact: false, icon: Gauge },
   { to: "/tools", label: "Tool bloat", hint: "context", exact: false, icon: Wrench },
   { to: "/skim", label: "Skim", hint: "cache", exact: false, icon: Zap },
@@ -171,11 +169,18 @@ const indexRoute = createRoute({
   component: OverviewPage,
   staticData: { title: "Overview" },
 });
+/**
+ * The Trends page folded into the Overview, which already carried a card per
+ * metric. The path stays as a redirect so saved links and bookmarks still land
+ * somewhere, and because `/trends/$metric` below is a sibling route rather than
+ * a child, the drill-downs it names are untouched by this.
+ */
 const trendsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/trends",
-  component: TrendsPage,
-  staticData: { title: "Trends" },
+  beforeLoad: () => {
+    throw redirect({ to: "/" });
+  },
 });
 const trendDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
