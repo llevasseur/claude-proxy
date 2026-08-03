@@ -45,6 +45,20 @@ export function SkeletonText({ lines = 3 }: { lines?: number }) {
 }
 
 /**
+ * Placeholder prose inside the real paragraph, so its own font size, line height and
+ * margin set the reserved space. One block per rendered line.
+ */
+export function SkeletonNote({ lines = 3, className }: { lines?: number; className: string }) {
+  return (
+    <p className={className} aria-hidden>
+      {Array.from({ length: lines }, (_, i) => (
+        <Skeleton key={i} w={i === lines - 1 ? '62%' : (LINE_WIDTHS[i % LINE_WIDTHS.length] ?? '100%')} />
+      ))}
+    </p>
+  );
+}
+
+/**
  * The one thing a screen reader hears while a page loads. Absolutely positioned, so
  * it can sit in a grid or flex container without becoming an item in it.
  */
@@ -90,6 +104,8 @@ export interface SkeletonColumn {
   head?: Len;
   /** Body cell width. */
   cell?: Len;
+  /** Lines the real cell wraps to — a label wrapping in a narrow column sets the row's height. */
+  lines?: number;
 }
 
 /** A `.table` of placeholder rows, for dropping inside a card. */
@@ -110,7 +126,9 @@ export function SkeletonTable({ columns, rows = 6 }: { columns: readonly Skeleto
           <tr key={r}>
             {columns.map((c, i) => (
               <td key={i} className={c.className}>
-                <Skeleton w={c.cell ?? '78%'} />
+                {Array.from({ length: c.lines ?? 1 }, (_, l) => (
+                  <Skeleton key={l} w={l === 0 ? (c.cell ?? '78%') : '54%'} />
+                ))}
               </td>
             ))}
           </tr>

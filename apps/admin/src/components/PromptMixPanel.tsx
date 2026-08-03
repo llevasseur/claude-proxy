@@ -1,11 +1,25 @@
 import type { MixAttribution, PromptCohort, PromptMixDay } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { getPromptMix, type PromptRevisionDetail } from '../api';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
+import { type SkeletonColumn, SkeletonNote, SkeletonTable } from './Skeleton';
 
 /** How many cohorts and section movers to show before the tail is folded away. */
 const TOP_COHORTS = 8;
 const TOP_MOVES = 10;
+
+/** Both tables are a name followed by four figures; the name wraps in its column. */
+const MIX_COLUMNS: readonly SkeletonColumn[] = [
+  { lines: 2 },
+  { className: 'num' },
+  { className: 'num' },
+  { className: 'num' },
+  { className: 'num' },
+];
+
+/** Rows to reserve in each placeholder table. */
+const SKELETON_ROWS = 7;
 
 /** Signed byte delta. */
 function fmtDelta(bytes: number): string {
@@ -31,6 +45,8 @@ export function PromptMixPanel({ days }: { days: number }) {
     placeholderData: keepPreviousData,
   });
 
+  // Its own query, so without a placeholder it pops in after the page has settled.
+  if (query.isLoading) return <PromptMixSkeleton />;
   const data = query.data;
   if (!data) return null;
   const day = data.days.at(-1);
@@ -41,7 +57,7 @@ export function PromptMixPanel({ days }: { days: number }) {
       <div className='card'>
         <div className='card-head'>
           <h2>Where the number comes from</h2>
-          <span className='range'>{day.date}</span>
+          <span className='muted'>click a prompt for its breakdown</span>
         </div>
         <Composition day={day} partial={data.partial} />
         <CohortTable day={day} />
@@ -57,6 +73,29 @@ export function PromptMixPanel({ days }: { days: number }) {
         {data.revisions.map((r) => (
           <SectionMoves key={`${r.priorHash}-${r.hash}`} revision={r} />
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** The loaded panel's grid, box for box. The headings are fixed text, so they render for real. */
+export function PromptMixSkeleton() {
+  return (
+    <div className='grid wide-two'>
+      <div className='card'>
+        <div className='card-head'>
+          <h2>Where the number comes from</h2>
+          <span className='muted'>click a prompt for its breakdown</span>
+        </div>
+        {/* `Composition` runs to three clauses; `Attribution` is one long sentence. */}
+        <SkeletonNote className='muted mix-note' lines={6} />
+        <SkeletonTable columns={MIX_COLUMNS} rows={SKELETON_ROWS} />
+      </div>
+
+      <div className='card'>
+        <h2>Why it changed</h2>
+        <SkeletonNote className='muted mix-note' lines={4} />
+        <SkeletonTable columns={MIX_COLUMNS} rows={SKELETON_ROWS} />
       </div>
     </div>
   );
@@ -121,12 +160,33 @@ function CohortTable({ day }: { day: PromptMixDay }) {
   );
 }
 
+/** A mover carries its cohort key rather than a hash; only identified keys are one. */
+function hashOfKey(key: string): string | null {
+  return key.startsWith('legacy:') ? null : key;
+}
+
+/** A cohort's name, linked to its breakdown when it has one. */
+function CohortLabel({ label, hash }: { label: string; hash: string | null }) {
+  if (!hash) {
+    return (
+      <>
+        <span className='mono'>{label}</span>
+        <span className='muted'> (est.)</span>
+      </>
+    );
+  }
+  return (
+    <Link to='/trends/avg-system-prompt/$hash' params={{ hash }} className='link mono'>
+      {label}
+    </Link>
+  );
+}
+
 function CohortRow({ cohort }: { cohort: PromptCohort }) {
   return (
     <tr>
       <td>
-        <span className='mono'>{cohort.label}</span>
-        {!cohort.identified && <span className='muted'> (est.)</span>}
+        <CohortLabel label={cohort.label} hash={cohort.hash} />
       </td>
       <td className='num'>{fmtInt(cohort.requests)}</td>
       <td className='num'>{fmtPct(cohort.share * 100)}</td>
@@ -165,7 +225,9 @@ function Attribution({ attribution: a }: { attribution: MixAttribution }) {
         <tbody>
           {a.movers.slice(0, TOP_COHORTS).map((m) => (
             <tr key={m.key}>
-              <td className='mono'>{m.label}</td>
+              <td>
+                <CohortLabel label={m.label} hash={hashOfKey(m.key)} />
+              </td>
               <td className='num'>
                 {fmtPct(m.priorShare * 100)} → {fmtPct(m.share * 100)}
               </td>

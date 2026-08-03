@@ -28,7 +28,9 @@ import {
   buildMemory,
   buildProjectMemories,
   buildProjects,
+  buildPromptDetail,
   buildPromptMix,
+  buildPromptSection,
   buildSession,
   buildSessionBreakdown,
   buildSessionErrors,
@@ -416,6 +418,43 @@ const server = http.createServer(async (req, res) => {
         const mix = await buildPromptMix(LOG_DIR, days, now, readSource());
         send(res, 200, mix);
         shadow('/api/prompt-mix', mix, (source) => buildPromptMix(LOG_DIR, days, now, source));
+        return;
+      }
+      // One cohort from that mix, opened up — which sections its bytes are in.
+      case '/api/prompt': {
+        const hash = url.searchParams.get('hash');
+        if (!hash) {
+          send(res, 400, { error: 'missing ?hash=' });
+          return;
+        }
+        const days = parseDays(url.searchParams.get('days'));
+        const now = new Date();
+        const detail = await buildPromptDetail(LOG_DIR, hash, days, now, readSource());
+        send(res, 200, detail);
+        shadow('/api/prompt', detail, (source) => buildPromptDetail(LOG_DIR, hash, days, now, source));
+        return;
+      }
+      // One section of that prompt, with the text a captured body still holds.
+      case '/api/prompt/section': {
+        const hash = url.searchParams.get('hash');
+        if (!hash) {
+          send(res, 400, { error: 'missing ?hash=' });
+          return;
+        }
+        const index = Number(url.searchParams.get('index'));
+        if (!Number.isInteger(index) || index < 0) {
+          send(res, 400, { error: 'missing or invalid ?index=' });
+          return;
+        }
+        const days = parseDays(url.searchParams.get('days'));
+        try {
+          send(res, 200, await buildPromptSection(LOG_DIR, hash, index, days, new Date(), readSource()));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith('prompt outline not found') || msg.startsWith('prompt section index out of range')) {
+            send(res, 404, { error: msg });
+          } else throw err;
+        }
         return;
       }
       case '/api/usage': {

@@ -8,6 +8,7 @@ import {
   buildConcept,
   buildConcepts,
   buildContext,
+  buildPromptDetail,
   buildPromptMix,
   buildSession,
   buildSessionBreakdown,
@@ -246,6 +247,25 @@ export const PARITY_ROUTES: ParityRoute[] = [
         label: `/api/prompt-mix?days=7 as of ${day}`,
         run: (source) => buildPromptMix(ctx.logDir, 7, endOf(day), source),
       })),
+  },
+  /* Hashes come from the file side's own mix, so the ones replayed are exactly
+   * the ones the cohort table can link to. Identified cohorts only, and only a
+   * day's biggest few: every case rescans the whole window on both sources, and
+   * a busy day carries hundreds of distinct prompts. */
+  {
+    name: '/api/prompt',
+    cases: async (ctx) => {
+      const last = (await archivedDays(ctx.logDir)).at(-1);
+      if (!last) return [];
+      const { days } = await buildPromptMix(ctx.logDir, 7, endOf(last), fileSource);
+      const hashes = new Set(
+        days.flatMap((d) => d.cohorts.flatMap((c) => (c.hash ? [c.hash] : [])).slice(0, PROMPTS_PER_DAY)),
+      );
+      return [...hashes].map((hash) => ({
+        label: `/api/prompt?hash=${hash}&days=7 as of ${last}`,
+        run: (source: SidecarSource) => buildPromptDetail(ctx.logDir, hash, 7, endOf(last), source),
+      }));
+    },
   },
   {
     name: '/api/usage',
@@ -524,6 +544,15 @@ export const PARITY_ROUTES: ParityRoute[] = [
  * only the routes that re-read request bodies per thread.
  */
 const PER_THREAD_CASES = 20;
+
+/**
+ * Prompt hashes replayed per archived day, biggest contribution first.
+ *
+ * Uncapped this is one case per distinct prompt, and each rescans the window on
+ * both sources — a few hundred prompts in a day is enough to take the whole run
+ * past its timeout. The biggest cohorts are the ones the mix page links to.
+ */
+const PROMPTS_PER_DAY = 3;
 
 /** The catalogue a run replays against — pinned on the context, else the installed one. */
 function commandsDirOf(ctx: ParityContext): string {

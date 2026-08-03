@@ -46,6 +46,8 @@ import { MemoryDetailPage } from './routes/memory-detail';
 import { OverviewPage } from './routes/overview';
 import { ProjectDetailPage } from './routes/project-detail';
 import { ProjectsPage } from './routes/projects';
+import { PromptDetailPage } from './routes/prompt-detail';
+import { PromptSectionPage } from './routes/prompt-section';
 import { SessionDetailPage } from './routes/session-detail';
 import { SessionErrorsPage } from './routes/session-errors';
 import { SessionGraphPage } from './routes/session-graph';
@@ -184,6 +186,21 @@ const trendDetailRoute = createRoute({
   path: '/trends/$metric',
   component: TrendDetailPage,
   staticData: { title: 'Trend' },
+});
+const promptDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // Nested under the metric it drills into. The param is the prompt's content
+  // hash, which is also its cohort key on that page.
+  path: '/trends/avg-system-prompt/$hash',
+  component: PromptDetailPage,
+  staticData: { title: 'System prompt' },
+});
+const promptSectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // The index is into the prompt's own ranked section table, not the outline.
+  path: '/trends/avg-system-prompt/$hash/section/$index',
+  component: PromptSectionPage,
+  staticData: { title: 'Prompt section' },
 });
 const contextRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -356,6 +373,8 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   trendsRoute,
   trendDetailRoute,
+  promptDetailRoute,
+  promptSectionRoute,
   contextRoute,
   contextDetailRoute,
   contextMessageRoute,

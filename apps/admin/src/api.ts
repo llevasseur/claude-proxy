@@ -28,6 +28,7 @@ import type {
   RequestMessageDetail,
   RequestToolDetail,
   SectionMove,
+  SectionShare,
   SessionAgentLink,
   SessionBucket,
   SessionContextPeak,
@@ -85,6 +86,46 @@ export interface PromptMixResponse {
   /** Present while the newest day is still running, so its mean is incomplete. */
   partial: { date: string; elapsed: number } | null;
   meta: { days: number; files: number; parseErrors: number; archivedDays: number; outlinesFound: number };
+}
+/** One day a prompt ran, and its slice of that day's mean. */
+export interface PromptDayUsage {
+  date: string;
+  requests: number;
+  share: number;
+  meanBytes: number;
+  contribution: number;
+  dayMeanBytes: number;
+}
+/** One cohort from the mix, opened up into the sections its bytes sit in. */
+export interface PromptDetailResponse {
+  hash: string;
+  label: string;
+  models: string[];
+  /** null when the prompt ran before the proxy started storing outlines. */
+  outline: StoredWirePrompt | null;
+  sections: SectionShare[];
+  usage: PromptDayUsage[];
+  meta: { days: number; files: number; parseErrors: number; archivedDays: number };
+}
+/** One block's worth of a heading's text, since a heading can repeat across blocks. */
+export interface PromptSectionPart {
+  block: number;
+  bytes: number;
+  text: string;
+}
+/** One row of that breakdown, opened up to the text behind it. */
+export interface PromptSectionResponse {
+  hash: string;
+  heading: string;
+  level: number;
+  bytes: number;
+  share: number;
+  blocks: number[];
+  /** Empty when no captured body still carries the text. */
+  parts: PromptSectionPart[];
+  /** The request the text was read back from; null when none survives. */
+  file: string | null;
+  meta: { days: number; files: number; parseErrors: number; candidates: number };
 }
 export interface ContextResponse {
   summary: ContextSummary;
@@ -549,6 +590,10 @@ export const getHealth = () => get<HealthResponse>('/api/health');
 export const getSummary = (date?: string) => get<SummaryResponse>(`/api/summary${qs(date)}`);
 export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days=${days}`);
 export const getPromptMix = (days: number) => get<PromptMixResponse>(`/api/prompt-mix?days=${days}`);
+export const getPromptDetail = (hash: string, days: number) =>
+  get<PromptDetailResponse>(`/api/prompt?hash=${encodeURIComponent(hash)}&days=${days}`);
+export const getPromptSection = (hash: string, index: number, days: number) =>
+  get<PromptSectionResponse>(`/api/prompt/section?hash=${encodeURIComponent(hash)}&index=${index}&days=${days}`);
 /** Paired with the `/api/usage/stream` SSE subscription, which pushes the same shape. */
 export const getUsage = () => get<UsageResponse>('/api/usage');
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);

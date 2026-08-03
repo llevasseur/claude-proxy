@@ -69,12 +69,35 @@ export const PREAMBLE = '(preamble)';
  * `server/test/wire-prompt-parity.test.ts`.
  */
 export function sectionsOfText(text: string, block: number): WirePromptSection[] {
+  return spansOfText(text, block).spans.map((s) => ({
+    block: s.block,
+    heading: s.heading,
+    level: s.level,
+    bytes: s.bytes,
+  }));
+}
+
+/** A span plus the line range it covers, which the stored outline drops. */
+interface WirePromptSpan extends WirePromptSection {
+  /** First line of the span, and one past its last. */
+  from: number;
+  to: number;
+}
+
+/**
+ * The shared parse behind {@link sectionsOfText} and
+ * {@link wirePromptSectionTexts}. Byte counts come from offset arithmetic and
+ * the range from line indices, so a multi-byte character cannot desync them.
+ * Returns ranges rather than text — every outline parse comes through here, and
+ * only the section reader needs the strings.
+ */
+function spansOfText(text: string, block: number): { lines: string[]; spans: WirePromptSpan[] } {
   const lines = text.split('\n');
-  const found: { heading: string; level: number; offset: number }[] = [];
+  const found: { heading: string; level: number; offset: number; line: number }[] = [];
   let fence: string | null = null;
   let offset = 0;
 
-  for (const line of lines) {
+  lines.forEach((line, index) => {
     const opener = FENCE_RE.exec(line);
     if (fence) {
       if (opener && opener[1] === fence) fence = null;
@@ -82,20 +105,31 @@ export function sectionsOfText(text: string, block: number): WirePromptSection[]
       fence = opener[1]!;
     } else {
       const heading = HEADING_RE.exec(line);
-      if (heading) found.push({ heading: heading[2]!, level: heading[1]!.length, offset });
+      if (heading) found.push({ heading: heading[2]!, level: heading[1]!.length, offset, line: index });
     }
     offset += textBytes(line) + 1; // the newline this split consumed
-  }
+  });
 
   const total = textBytes(text);
-  const out: WirePromptSection[] = [];
+  const spans: WirePromptSpan[] = [];
   // Text before the first heading is still bytes on the wire, so it gets a row.
   const firstOffset = found[0]?.offset ?? total;
-  if (firstOffset > 0) out.push({ block, heading: PREAMBLE, level: 0, bytes: firstOffset });
+  const firstLine = found[0]?.line ?? lines.length;
+  if (firstOffset > 0) {
+    spans.push({ block, heading: PREAMBLE, level: 0, bytes: firstOffset, from: 0, to: firstLine });
+  }
   found.forEach((h, i) => {
-    out.push({ block, heading: h.heading, level: h.level, bytes: (found[i + 1]?.offset ?? total) - h.offset });
+    const next = found[i + 1];
+    spans.push({
+      block,
+      heading: h.heading,
+      level: h.level,
+      bytes: (next?.offset ?? total) - h.offset,
+      from: h.line,
+      to: next?.line ?? lines.length,
+    });
   });
-  return out;
+  return { lines, spans };
 }
 
 /** Text of one `system` entry, for the shapes the API accepts. */
@@ -143,6 +177,25 @@ export function outlineWirePrompt(system: unknown): WirePromptOutline {
 }
 
 /**
+ * The text behind each entry of {@link outlineWirePrompt}'s `sections`, in the
+ * same order and with the same skip rule, so index `i` here is section `i`
+ * there. A stored outline keeps byte counts only, so reading a section back
+ * needs the request body it was derived from.
+ */
+export function wirePromptSectionTexts(system: unknown): string[] {
+  if (system === undefined || system === null) return [];
+
+  const texts: string[] = [];
+  for (const [index, block] of (Array.isArray(system) ? system : [system]).entries()) {
+    const text = blockText(block);
+    if (text === '') continue;
+    const { lines, spans } = spansOfText(text, index);
+    for (const s of spans) texts.push(lines.slice(s.from, s.to).join('\n'));
+  }
+  return texts;
+}
+
+/**
  * One outline as `logs/system-prompts/<hash>.json` holds it — written once per
  * distinct prompt, so it outlives the request bodies it was derived from.
  */
@@ -159,6 +212,49 @@ export function isStoredWirePrompt(value: unknown): value is StoredWirePrompt {
   return (
     typeof v.hash === 'string' && typeof v.bytes === 'number' && Array.isArray(v.blocks) && Array.isArray(v.sections)
   );
+}
+
+/** One heading's slice of a prompt. */
+export interface SectionShare {
+  heading: string;
+  /** Shallowest depth the heading was seen at; 0 for a preamble. */
+  level: number;
+  /** Blocks the heading appears in, ascending. */
+  blocks: number[];
+  /** Raw text bytes, summed across every block carrying this heading. */
+  bytes: number;
+  /** Fraction 0–1 of the prompt's section bytes. */
+  share: number;
+}
+
+/**
+ * What a prompt is made of, biggest section first.
+ *
+ * Share is of the sections' own total rather than the outline's `bytes`, so it
+ * sums to 1: block bytes also carry JSON escaping and the text-block envelope,
+ * which no section owns.
+ */
+export function sectionShares(outline: Pick<WirePromptOutline, 'sections'>): SectionShare[] {
+  const rows = new Map<string, SectionShare>();
+  let total = 0;
+  for (const s of outline.sections) {
+    total += s.bytes;
+    const row = rows.get(s.heading);
+    if (!row) {
+      rows.set(s.heading, { heading: s.heading, level: s.level, blocks: [s.block], bytes: s.bytes, share: 0 });
+      continue;
+    }
+    row.bytes += s.bytes;
+    row.level = Math.min(row.level, s.level);
+    if (!row.blocks.includes(s.block)) row.blocks.push(s.block);
+  }
+
+  const out = [...rows.values()];
+  for (const row of out) {
+    row.blocks.sort((a, b) => a - b);
+    row.share = total > 0 ? row.bytes / total : 0;
+  }
+  return out.sort((a, b) => b.bytes - a.bytes);
 }
 
 /** One section's movement between two versions of a prompt. */
