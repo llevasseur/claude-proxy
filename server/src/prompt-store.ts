@@ -2,9 +2,9 @@
  * Read side of `logs/system-prompts/` — the content-addressed store the proxy
  * writes one outline into per distinct system prompt.
  *
- * The store is deliberately not date-prefixed, so retention never archives or
- * evicts it: a cohort seen months ago still has its table of contents even
- * though the request bodies are long gone.
+ * Deliberately not date-prefixed, so retention never archives or evicts it: a
+ * cohort seen months ago still has its table of contents after the request
+ * bodies are gone.
  */
 import crypto from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -15,9 +15,9 @@ export const PROMPT_STORE_DIR = "system-prompts";
 
 /**
  * A prompt's identity. Must stay byte-identical to `hashPrompt` in
- * `proxy/system-prompt.mjs`, or a backfilled sidecar would land in a different
- * cohort than a live-captured one; `server/test/wire-prompt-parity.test.ts`
- * holds the two together.
+ * `proxy/system-prompt.mjs`, or a backfilled sidecar lands in a different
+ * cohort than a live-captured one. Held there by
+ * `server/test/wire-prompt-parity.test.ts`.
  */
 export function hashWirePrompt(system: unknown): string {
   return crypto.createHash("sha256").update(JSON.stringify(system ?? null)).digest("hex").slice(0, 16);

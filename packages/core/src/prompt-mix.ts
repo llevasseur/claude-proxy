@@ -7,7 +7,7 @@
  * changing size at all. Splitting requests into cohorts — one per distinct
  * system prompt — separates the two.
  */
-import type { AuditSidecar } from "./types.js";
+import { isAuditSidecar, type AuditSidecar } from "./types.js";
 import { reportDay } from "./time.js";
 
 /** Requests in a day that shared one system prompt. */
@@ -83,13 +83,17 @@ function bucketFor(s: AuditSidecar): { key: string; hash: string | null; label: 
  * Group one day's sidecars into cohorts. Sidecars written before the capture
  * existed have no hash, so they fall back to model plus a size band — coarser,
  * but enough to keep genuinely different prompts apart in historical data.
+ *
+ * Malformed entries are skipped exactly as `computeDigest` skips them, so the
+ * mean here is over the same population as `avgSystemPromptBytes`.
  */
-export function summarizePromptMix(sidecars: readonly AuditSidecar[], date: string): PromptMixDay {
+export function summarizePromptMix(sidecars: readonly unknown[], date: string): PromptMixDay {
   const buckets = new Map<string, Bucket>();
   const allBytes: number[] = [];
   let identified = 0;
 
   for (const s of sidecars) {
+    if (!isAuditSidecar(s)) continue;
     const { key, hash, label } = bucketFor(s);
     let bucket = buckets.get(key);
     if (!bucket) {
@@ -135,9 +139,10 @@ export function summarizePromptMix(sidecars: readonly AuditSidecar[], date: stri
 }
 
 /** Bucket sidecars by report day and summarize each, oldest first. */
-export function promptMixByDay(sidecars: readonly AuditSidecar[]): PromptMixDay[] {
+export function promptMixByDay(sidecars: readonly unknown[]): PromptMixDay[] {
   const days = new Map<string, AuditSidecar[]>();
   for (const s of sidecars) {
+    if (!isAuditSidecar(s)) continue;
     const day = reportDay(s.timestamp);
     if (!day) continue;
     const list = days.get(day);
@@ -145,6 +150,54 @@ export function promptMixByDay(sidecars: readonly AuditSidecar[]): PromptMixDay[
     else days.set(day, [s]);
   }
   return [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, list]) => summarizePromptMix(list, date));
+}
+
+/** A model's prompt replaced by a different one between two days. */
+export interface PromptRevision {
+  model: string;
+  /** Hash the model sent on the prior day. */
+  priorHash: string;
+  /** Hash it sends now. */
+  hash: string;
+  priorMeanBytes: number;
+  meanBytes: number;
+  deltaBytes: number;
+}
+
+/** Cohorts whose primary model is `model` and which carry a real hash. */
+function identifiedFor(day: PromptMixDay, model: string): PromptCohort[] {
+  return day.cohorts.filter((c) => c.hash !== null && c.models[0] === model);
+}
+
+/**
+ * Match a model's vanished prompts against the ones that replaced them, so a
+ * hash change reads as one revision rather than an unrelated add and remove.
+ * Pairing is by contribution rank within the model — the best available guess,
+ * since nothing on the wire says which prompt succeeded which.
+ */
+export function pairPromptRevisions(prior: PromptMixDay, current: PromptMixDay): PromptRevision[] {
+  const before = new Set(prior.cohorts.map((c) => c.key));
+  const after = new Set(current.cohorts.map((c) => c.key));
+  const models = new Set([...prior.cohorts, ...current.cohorts].flatMap((c) => (c.hash ? c.models.slice(0, 1) : [])));
+
+  const out: PromptRevision[] = [];
+  for (const model of models) {
+    const gone = identifiedFor(prior, model).filter((c) => !after.has(c.key));
+    const fresh = identifiedFor(current, model).filter((c) => !before.has(c.key));
+    for (let i = 0; i < Math.min(gone.length, fresh.length); i += 1) {
+      const was = gone[i]!;
+      const now = fresh[i]!;
+      out.push({
+        model,
+        priorHash: was.hash!,
+        hash: now.hash!,
+        priorMeanBytes: was.meanBytes,
+        meanBytes: now.meanBytes,
+        deltaBytes: now.meanBytes - was.meanBytes,
+      });
+    }
+  }
+  return out.sort((a, b) => Math.abs(b.deltaBytes) - Math.abs(a.deltaBytes));
 }
 
 /** One cohort's share of a day-over-day move in the mean. */

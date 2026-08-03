@@ -1,12 +1,11 @@
 /**
  * Give historical sidecars the system-prompt identity the proxy now captures.
  *
- * The hash and outline are re-derived from the `.request.txt` body sitting next
- * to each sidecar, so this reaches back as far as retention has kept bodies —
- * roughly `RETENTION_DAYS`. Older sidecars keep their scalar `systemBytes` and
- * fall back to the model+size-band cohort, which is what they always had.
+ * The hash and outline are re-derived from the `.request.txt` body beside each
+ * sidecar, so this reaches back only as far as retention has kept bodies.
+ * Older sidecars keep the model+size-band cohort they always had.
  *
- * Strictly additive: a sidecar that already carries `request.system` is left
+ * Strictly additive: a sidecar already carrying `request.system` is left
  * untouched, and no field is ever removed or rewritten.
  */
 import { readFile, readdir, rename, writeFile } from "node:fs/promises";

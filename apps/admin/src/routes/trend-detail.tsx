@@ -1,8 +1,9 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { UsageDigest } from "@claude-proxy/core";
+import { isPartialDay, type UsageDigest } from "@claude-proxy/core";
 import { getTrends } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { PromptMixPanel } from "../components/PromptMixPanel";
 import { QueryState } from "../components/QueryState";
 import { DAY_WINDOWS, Segmented } from "../components/Segmented";
 import { type SkeletonColumn, SkeletonChartCard, SkeletonTableCard } from "../components/Skeleton";
@@ -115,6 +116,8 @@ export function TrendDetailPage() {
           </div>
         )}
       </QueryState>
+
+      {def.key === "avg-system-prompt" && digests.length > 0 && <PromptMixPanel days={days} />}
     </section>
   );
 }
@@ -131,6 +134,8 @@ interface DayComparison {
   tone: "up" | "down" | "flat";
   /** `delta` modifier — whether this direction reads as a win or a regression. */
   toneClass: "good" | "bad" | "flat";
+  /** The newest day is still running, so it is a part-day figure against a whole one. */
+  partial: boolean;
 }
 
 /**
@@ -155,6 +160,7 @@ function dayOverDay(digests: UsageDigest[], def: StatMetric): DayComparison | nu
     deltaPct,
     tone,
     toneClass: tone === "flat" ? "flat" : (tone === "up") === (def.increaseIsBad ?? true) ? "bad" : "good",
+    partial: isPartialDay(today.date),
   };
 }
 
@@ -163,7 +169,8 @@ function DayOverDay({ compare }: { compare: DayComparison }) {
     <div className="trend-compare">
       <span className="trend-compare-value">
         {compare.date}: {compare.value}
-      </span>{" "}
+      </span>
+      {compare.partial && <span className="muted"> (so far today)</span>}{" "}
       {compare.deltaPct === null ? (
         <span className="muted">— nothing recorded on {compare.priorDate} to compare against.</span>
       ) : compare.tone === "flat" ? (

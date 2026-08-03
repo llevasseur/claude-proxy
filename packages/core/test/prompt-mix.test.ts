@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attributePromptMix, promptMixByDay, summarizePromptMix } from "../src/prompt-mix.js";
+import { attributePromptMix, pairPromptRevisions, promptMixByDay, summarizePromptMix } from "../src/prompt-mix.js";
 import type { AuditSidecar } from "../src/types.js";
 import { makeSidecar } from "./helpers.js";
 
@@ -34,6 +34,12 @@ describe("summarizePromptMix", () => {
     expect(day.cohorts.map((c) => c.hash)).toEqual(["bbbb2222", "aaaa1111"]);
     expect(day.identifiedShare).toBe(1);
     expect(day.cohorts.reduce((a, c) => a + c.contribution, 0)).toBeCloseTo(day.meanBytes, 6);
+  });
+
+  it("skips malformed entries, so the mean matches the digest's own population", () => {
+    const day = summarizePromptMix([...cohort(2, "opus", 17_000), { timestamp: "2026-08-02T14:00:00.000Z" }, null], "2026-08-02");
+    expect(day.requests).toBe(2);
+    expect(day.meanBytes).toBe(17_000);
   });
 
   it("separates two hashes that happen to be the same size", () => {
@@ -119,5 +125,40 @@ describe("attributePromptMix", () => {
     const at = attributePromptMix(summarizePromptMix([], "2026-08-01"), summarizePromptMix(cohort(1, "opus", 17_000, "a"), "2026-08-02"));
     expect(at.deltaPct).toBeNull();
     expect(at.deltaBytes).toBe(17_000);
+  });
+});
+
+describe("pairPromptRevisions", () => {
+  it("pairs a model's vanished prompt with the one that replaced it", () => {
+    const prior = summarizePromptMix(cohort(4, "opus", 17_000, "aaaa1111"), "2026-08-01");
+    const current = summarizePromptMix(cohort(4, "opus", 21_000, "bbbb2222"), "2026-08-02");
+
+    expect(pairPromptRevisions(prior, current)).toEqual([
+      { model: "opus", priorHash: "aaaa1111", hash: "bbbb2222", priorMeanBytes: 17_000, meanBytes: 21_000, deltaBytes: 4_000 },
+    ]);
+  });
+
+  it("does not pair across models", () => {
+    const prior = summarizePromptMix(cohort(2, "opus", 17_000, "aaaa1111"), "2026-08-01");
+    const current = summarizePromptMix(cohort(2, "sonnet", 21_000, "bbbb2222"), "2026-08-02");
+    expect(pairPromptRevisions(prior, current)).toEqual([]);
+  });
+
+  it("ignores a prompt that survived the day", () => {
+    const prior = summarizePromptMix(cohort(2, "opus", 17_000, "aaaa1111"), "2026-08-01");
+    const current = summarizePromptMix([...cohort(2, "opus", 17_000, "aaaa1111"), ...cohort(1, "opus", 21_000, "bbbb2222")], "2026-08-02");
+    expect(pairPromptRevisions(prior, current)).toEqual([]);
+  });
+
+  it("leaves unhashed cohorts alone", () => {
+    const prior = summarizePromptMix(cohort(2, "opus", 17_000), "2026-08-01");
+    const current = summarizePromptMix(cohort(2, "opus", 111_000), "2026-08-02");
+    expect(pairPromptRevisions(prior, current)).toEqual([]);
+  });
+
+  it("orders several revisions by the size of the move", () => {
+    const prior = summarizePromptMix([...cohort(2, "opus", 17_000, "a1"), ...cohort(2, "sonnet", 9_000, "b1")], "2026-08-01");
+    const current = summarizePromptMix([...cohort(2, "opus", 18_000, "a2"), ...cohort(2, "sonnet", 40_000, "b2")], "2026-08-02");
+    expect(pairPromptRevisions(prior, current).map((r) => r.model)).toEqual(["sonnet", "opus"]);
   });
 });

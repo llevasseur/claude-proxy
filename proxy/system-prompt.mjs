@@ -1,15 +1,13 @@
 /**
  * Identity and structure of the request's `system` field.
  *
- * The sidecar records only a hash and two counts, so a prompt repeated across
- * thousands of requests costs a short string each time. The outline itself is
- * written once per distinct hash under `logs/system-prompts/`, which is not
- * date-prefixed and so survives retention — the structure behind a historical
- * mean stays readable long after the bodies are evicted.
+ * The sidecar records only a hash and two counts; the outline itself is written
+ * once per distinct hash under `logs/system-prompts/`, which is not
+ * date-prefixed and so survives retention.
  *
- * Mirrors `packages/core/src/wire-prompt.ts`; `proxy/system-prompt.test.mjs`
- * holds the two to identical output. The duplication is the price of `proxy/`
- * staying zero-dependency plain `.mjs`.
+ * Mirrors `packages/core/src/wire-prompt.ts` — the duplication is the price of
+ * `proxy/` staying zero-dependency plain `.mjs`, and
+ * `proxy/system-prompt.test.mjs` holds the two to identical output.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";

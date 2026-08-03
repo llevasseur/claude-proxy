@@ -1,7 +1,7 @@
 /**
- * System-prompt identity and the dedup store.
+ * System-prompt identity and the dedup store. Zero-dependency — Node's built-in runner.
  *
- * Run:  node --test proxy/
+ * Run:  node --test proxy/system-prompt.test.mjs
  */
 
 import test from "node:test";

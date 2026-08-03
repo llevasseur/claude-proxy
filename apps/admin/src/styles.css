@@ -337,6 +337,29 @@ button:focus-visible {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
+/* System-prompt mix breakdown. */
+.mono {
+  font-family: var(--font-mono);
+}
+.mix-note {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 14px;
+}
+.mix-note strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.mix-revision {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 14px;
+}
+.mix-revision h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
 .muted {
   color: var(--muted);
 }
