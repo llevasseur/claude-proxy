@@ -1,5 +1,5 @@
-import { dayStartMs, shiftDay } from "./time.js";
-import { isAuditSidecar, type AuditSidecar, type AuditTokens } from "./types.js";
+import { dayStartMs, shiftDay } from './time.js';
+import { type AuditSidecar, type AuditTokens, isAuditSidecar } from './types.js';
 
 /**
  * Usage meters for the rolling allowances a Claude subscription meters separately.
@@ -11,27 +11,27 @@ import { isAuditSidecar, type AuditSidecar, type AuditTokens } from "./types.js"
  */
 
 /** The separately-metered allowances, in display order. */
-export const USAGE_WINDOWS = ["5h", "week", "weekFable"] as const;
+export const USAGE_WINDOWS = ['5h', 'week', 'weekFable'] as const;
 export type UsageWindowKind = (typeof USAGE_WINDOWS)[number];
 
 /** Nominal span of each window; every pace calculation divides by it. */
 export const USAGE_WINDOW_MS: Record<UsageWindowKind, number> = {
-  "5h": 5 * 60 * 60 * 1000,
+  '5h': 5 * 60 * 60 * 1000,
   week: 7 * 24 * 60 * 60 * 1000,
   weekFable: 7 * 24 * 60 * 60 * 1000,
 };
 
 /** Suffix of each window's override env var; the server builds `USAGE_LIMIT_<suffix>` from this. */
 export const USAGE_LIMIT_ENV_SUFFIX: Record<UsageWindowKind, string> = {
-  "5h": "5H",
-  week: "WEEK",
-  weekFable: "WEEK_FABLE",
+  '5h': '5H',
+  week: 'WEEK',
+  weekFable: 'WEEK_FABLE',
 };
 
 const WINDOW_LABELS: Record<UsageWindowKind, string> = {
-  "5h": "5-hour window",
-  week: "Weekly window",
-  weekFable: "Weekly Fable",
+  '5h': '5-hour window',
+  week: 'Weekly window',
+  weekFable: 'Weekly Fable',
 };
 
 /** Cache reads bill at roughly a tenth of fresh input. */
@@ -63,11 +63,11 @@ export type LiveUsage = Partial<Record<UsageWindowKind, LiveUsageWindow>>;
  * `five_hour`/`seven_day` one the client also accepts are matched.
  */
 const LIVE_KINDS: Record<string, UsageWindowKind> = {
-  session: "5h",
-  weekly_all: "week",
-  five_hour: "5h",
-  seven_day: "week",
-  seven_day_opus: "weekFable",
+  session: '5h',
+  weekly_all: 'week',
+  five_hour: '5h',
+  seven_day: 'week',
+  seven_day_opus: 'weekFable',
 };
 
 /**
@@ -90,7 +90,7 @@ export interface LearnedCeiling {
 export type LearnedCeilings = Partial<Record<UsageWindowKind, LearnedCeiling>>;
 
 /** How hard the current rate is pushing against the allowance. */
-export type UsagePaceStatus = "safe" | "on-pace" | "aggressive" | "exhausted";
+export type UsagePaceStatus = 'safe' | 'on-pace' | 'aggressive' | 'exhausted';
 
 export interface UsagePace {
   status: UsagePaceStatus;
@@ -115,7 +115,7 @@ export interface UsageWindowMeter {
    * Where the ceiling came from: Anthropic's own accounting, an operator-supplied
    * limit, or {@link LearnedCeiling}.
    */
-  source: "live" | "headers" | "estimated" | "learned";
+  source: 'live' | 'headers' | 'estimated' | 'learned';
   /** How the ceiling was inferred; null unless `source` is `learned`. */
   learned: LearnedCeiling | null;
   /** Weighted {@link usageUnits} counted; estimated path only. */
@@ -165,9 +165,9 @@ const FIELD_RE = /(utilization|remaining|limit|reset|used|status)$/;
 /** Which window a rate-limit header describes, or null when it describes none. */
 export function windowOfHeader(name: string): UsageWindowKind | null {
   const n = name.toLowerCase();
-  if (FIVE_HOUR_RE.test(n)) return "5h";
+  if (FIVE_HOUR_RE.test(n)) return '5h';
   if (!WEEKLY_RE.test(n)) return null;
-  return TOP_TIER_RE.test(n) ? "weekFable" : "week";
+  return TOP_TIER_RE.test(n) ? 'weekFable' : 'week';
 }
 
 interface HeaderFields {
@@ -184,7 +184,7 @@ interface HeaderFields {
  */
 function parseReset(raw: string, now: Date): string | null {
   const n = Number(raw);
-  if (raw.trim() !== "" && Number.isFinite(n)) {
+  if (raw.trim() !== '' && Number.isFinite(n)) {
     if (n >= 1e12) return new Date(n).toISOString();
     if (n >= 1e9) return new Date(n * 1000).toISOString();
     return new Date(now.getTime() + n * 1000).toISOString();
@@ -199,7 +199,7 @@ const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 function isFableScope(entry: Record<string, unknown>): boolean {
   const scope = entry.scope as { model?: { display_name?: unknown } } | undefined;
   const name = scope?.model?.display_name;
-  return typeof name === "string" && /fable/i.test(name);
+  return typeof name === 'string' && /fable/i.test(name);
 }
 
 /**
@@ -214,16 +214,16 @@ export function parseLiveUsage(raw: unknown, now: Date = new Date()): LiveUsage 
   const entries = Array.isArray(raw)
     ? raw
     : Array.isArray((raw as { limits?: unknown })?.limits)
-      ? ((raw as { limits: unknown[] }).limits)
+      ? (raw as { limits: unknown[] }).limits
       : [];
   const out: LiveUsage = {};
   for (const e of entries) {
-    if (!e || typeof e !== "object") continue;
+    if (!e || typeof e !== 'object') continue;
     const entry = e as Record<string, unknown>;
     const rawKind = entry.kind;
-    if (typeof rawKind !== "string") continue;
+    if (typeof rawKind !== 'string') continue;
     const kind =
-      rawKind === "weekly_scoped" ? (isFableScope(entry) ? "weekFable" : null) : (LIVE_KINDS[rawKind] ?? null);
+      rawKind === 'weekly_scoped' ? (isFableScope(entry) ? 'weekFable' : null) : (LIVE_KINDS[rawKind] ?? null);
     if (!kind) continue;
     const percent = Number(entry.percent);
     if (!Number.isFinite(percent)) continue;
@@ -265,7 +265,7 @@ function num(raw: string): number | undefined {
 function groupHeaders(headers: Record<string, string>, now: Date): Map<UsageWindowKind, HeaderFields> {
   const out = new Map<UsageWindowKind, HeaderFields>();
   for (const [rawName, rawValue] of Object.entries(headers)) {
-    if (typeof rawValue !== "string") continue;
+    if (typeof rawValue !== 'string') continue;
     const kind = windowOfHeader(rawName);
     if (!kind) continue;
     const field = FIELD_RE.exec(rawName.toLowerCase())?.[1];
@@ -273,22 +273,22 @@ function groupHeaders(headers: Record<string, string>, now: Date): Map<UsageWind
 
     const fields = out.get(kind) ?? {};
     switch (field) {
-      case "limit":
+      case 'limit':
         fields.limit = num(rawValue);
         break;
-      case "remaining":
+      case 'remaining':
         fields.remaining = num(rawValue);
         break;
-      case "used":
+      case 'used':
         fields.used = num(rawValue);
         break;
-      case "utilization": {
+      case 'utilization': {
         const v = num(rawValue);
         // Reported either as a 0–1 fraction or a percentage.
         if (v != null) fields.utilization = v > 1 ? v / 100 : v;
         break;
       }
-      case "reset": {
+      case 'reset': {
         const at = parseReset(rawValue, now);
         if (at) fields.resetsAt = at;
         break;
@@ -362,7 +362,7 @@ function assessPace(args: {
   const { label, utilization, elapsed, resetsAt, now, trailing } = args;
   const windowMs = args.spanMs ?? USAGE_WINDOW_MS[args.kind];
   const untilReset = resetsAt ? Math.max(0, new Date(resetsAt).getTime() - now.getTime()) : null;
-  const resetPhrase = untilReset != null ? `resets in ${fmtDuration(untilReset)}` : "no reset time reported";
+  const resetPhrase = untilReset != null ? `resets in ${fmtDuration(untilReset)}` : 'no reset time reported';
 
   const projected = elapsed > 0 ? utilization / elapsed : null;
 
@@ -375,12 +375,12 @@ function assessPace(args: {
     const caveat =
       coverage < 0.95
         ? ` Counts only the ${fmtDuration(coverage * windowMs)} of logs still on disk, so the real figure is higher.`
-        : "";
+        : '';
     const span = fmtDuration(windowMs);
     // An anchored span is measured from the instant the window opened, so
     // "trailing" would name the wrong end of it.
     const spanPhrase = args.anchored ? `the ${span} since it reset` : `the trailing ${span}`;
-    const resetTail = args.anchored && untilReset != null ? ` It ${resetPhrase}.` : "";
+    const resetTail = args.anchored && untilReset != null ? ` It ${resetPhrase}.` : '';
     const learned = args.learned ?? null;
 
     // Its own vocabulary: readings are against the most we have seen, and passing
@@ -389,14 +389,14 @@ function assessPace(args: {
       const basis = `the busiest of ${learned.windows} completed ${label.toLowerCase()}s in ${fmtDuration(learned.observedMs)} of logs`;
       if (utilization >= EXHAUSTED_UTILIZATION) {
         return {
-          status: "exhausted",
+          status: 'exhausted',
           elapsed,
           projected: utilization,
           exhaustsInMs: 0,
           blurb: `Busiest ${label} on record — ${pct(utilization)} of ${basis}. The real allowance is unknown and may be higher; this only says you are in new territory.${resetTail}${caveat}`,
         };
       }
-      const status: UsagePaceStatus = utilization >= ON_PACE_PROJECTION ? "on-pace" : "safe";
+      const status: UsagePaceStatus = utilization >= ON_PACE_PROJECTION ? 'on-pace' : 'safe';
       return {
         status,
         elapsed,
@@ -408,7 +408,7 @@ function assessPace(args: {
 
     if (utilization >= EXHAUSTED_UTILIZATION) {
       return {
-        status: "exhausted",
+        status: 'exhausted',
         elapsed,
         projected: utilization,
         exhaustsInMs: 0,
@@ -416,9 +416,9 @@ function assessPace(args: {
       };
     }
 
-    const status: UsagePaceStatus = utilization >= ON_PACE_PROJECTION ? "on-pace" : "safe";
+    const status: UsagePaceStatus = utilization >= ON_PACE_PROJECTION ? 'on-pace' : 'safe';
     const tail =
-      status === "safe" ? "comfortably sustainable at this rate" : "sustainable, but with little headroom left";
+      status === 'safe' ? 'comfortably sustainable at this rate' : 'sustainable, but with little headroom left';
     return {
       status,
       elapsed,
@@ -431,7 +431,7 @@ function assessPace(args: {
   // Header path: the allowance really does bind.
   if (utilization >= EXHAUSTED_UTILIZATION) {
     return {
-      status: "exhausted",
+      status: 'exhausted',
       elapsed,
       projected: utilization,
       exhaustsInMs: 0,
@@ -441,7 +441,7 @@ function assessPace(args: {
 
   if (projected == null) {
     return {
-      status: "safe",
+      status: 'safe',
       elapsed,
       projected: null,
       exhaustsInMs: null,
@@ -457,10 +457,10 @@ function assessPace(args: {
     const earlyPhrase =
       exhaustsInMs != null
         ? `you'd hit the cap in about ${fmtDuration(exhaustsInMs)}` +
-          (early && early > 60_000 ? ` — ${fmtDuration(early)} short of the reset` : "")
+          (early && early > 60_000 ? ` — ${fmtDuration(early)} short of the reset` : '')
         : "you'd hit the cap before it resets";
     return {
-      status: "aggressive",
+      status: 'aggressive',
       elapsed,
       projected,
       exhaustsInMs,
@@ -470,7 +470,7 @@ function assessPace(args: {
 
   if (projected >= ON_PACE_PROJECTION) {
     return {
-      status: "on-pace",
+      status: 'on-pace',
       elapsed,
       projected,
       exhaustsInMs,
@@ -479,7 +479,7 @@ function assessPace(args: {
   }
 
   return {
-    status: "safe",
+    status: 'safe',
     elapsed,
     projected,
     exhaustsInMs,
@@ -490,11 +490,11 @@ function assessPace(args: {
 /** A sidecar's captured response rate-limit headers, if the proxy recorded any. */
 function rateLimitHeaders(s: AuditSidecar): Record<string, string> | null {
   const raw: unknown = s.rateLimit;
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   return raw as Record<string, string>;
 }
 
-const isFable = (model: string): boolean => model.toLowerCase().includes("fable");
+const isFable = (model: string): boolean => model.toLowerCase().includes('fable');
 
 /**
  * Infer each window's ceiling from the busiest completed window on record.
@@ -531,7 +531,7 @@ export function learnCeilings(sidecars: readonly unknown[], now: Date = new Date
 
     const totals = new Array<number>(complete + 1).fill(0);
     for (const e of entries) {
-      if (kind === "weekFable" && !isFable(e.model)) continue;
+      if (kind === 'weekFable' && !isFable(e.model)) continue;
       const idx = Math.floor((nowMs - e.at) / windowMs);
       if (idx < 1 || idx > complete) continue;
       totals[idx]! += usageUnits(e.tokens);
@@ -627,7 +627,7 @@ export function buildUsageLimits(
         label,
         utilization: fromLive.utilization,
         resetsAt,
-        source: "live",
+        source: 'live',
         learned: null,
         usedUnits: null,
         limitUnits: null,
@@ -641,15 +641,13 @@ export function buildUsageLimits(
     if (fields && utilFromHeaders != null) {
       const resetsAt = fields.resetsAt ?? null;
       // Elapsed follows from the reset instant against the nominal span.
-      const elapsed = resetsAt
-        ? clamp01(1 - (new Date(resetsAt).getTime() - nowMs) / windowMs)
-        : 0;
+      const elapsed = resetsAt ? clamp01(1 - (new Date(resetsAt).getTime() - nowMs) / windowMs) : 0;
       windows.push({
         kind,
         label,
         utilization: utilFromHeaders,
         resetsAt,
-        source: "headers",
+        source: 'headers',
         learned: null,
         usedUnits: null,
         limitUnits: fields.limit ?? null,
@@ -682,7 +680,7 @@ export function buildUsageLimits(
     let usedUnits = 0;
     for (const s of valid) {
       if (new Date(s.timestamp).getTime() < since) continue;
-      if (kind === "weekFable" && !isFable(s.model)) continue;
+      if (kind === 'weekFable' && !isFable(s.model)) continue;
       usedUnits += usageUnits(s.tokens);
     }
     // An anchored window has only run since it opened, so coverage is measured
@@ -698,7 +696,7 @@ export function buildUsageLimits(
       label,
       utilization,
       resetsAt: anchoredResetsAt,
-      source: learned ? "learned" : "estimated",
+      source: learned ? 'learned' : 'estimated',
       learned,
       usedUnits,
       limitUnits,
@@ -725,8 +723,8 @@ export function buildUsageLimits(
   let unavailable: string | null = null;
   if (windows.length === 0) {
     unavailable = valid.length
-      ? "No rate-limit headers captured, and not enough history to infer a ceiling yet — that takes at least one completed window of retained logs. Set USAGE_LIMIT_5H / USAGE_LIMIT_WEEK to measure against a known ceiling instead of waiting."
-      : "No requests captured in the last 7 days.";
+      ? 'No rate-limit headers captured, and not enough history to infer a ceiling yet — that takes at least one completed window of retained logs. Set USAGE_LIMIT_5H / USAGE_LIMIT_WEEK to measure against a known ceiling instead of waiting.'
+      : 'No requests captured in the last 7 days.';
   }
 
   return {

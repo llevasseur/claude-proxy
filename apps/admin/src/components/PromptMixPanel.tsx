@@ -1,9 +1,9 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import type { PromptCohort, PromptMixDay, MixAttribution } from "@claude-proxy/core";
-import { getPromptMix, type PromptRevisionDetail } from "../api";
-import { fmtBytes, fmtInt, fmtPct } from "../format";
-import { SkeletonNote, SkeletonTable, type SkeletonColumn } from "./Skeleton";
+import type { MixAttribution, PromptCohort, PromptMixDay } from '@claude-proxy/core';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+import { getPromptMix, type PromptRevisionDetail } from '../api';
+import { fmtBytes, fmtInt, fmtPct } from '../format';
+import { type SkeletonColumn, SkeletonNote, SkeletonTable } from './Skeleton';
 
 /** How many cohorts and section movers to show before the tail is folded away. */
 const TOP_COHORTS = 8;
@@ -12,10 +12,10 @@ const TOP_MOVES = 10;
 /** Both tables are a name followed by four figures; the name wraps in its column. */
 const MIX_COLUMNS: readonly SkeletonColumn[] = [
   { lines: 2 },
-  { className: "num" },
-  { className: "num" },
-  { className: "num" },
-  { className: "num" },
+  { className: 'num' },
+  { className: 'num' },
+  { className: 'num' },
+  { className: 'num' },
 ];
 
 /** Rows to reserve in each placeholder table. */
@@ -23,12 +23,12 @@ const SKELETON_ROWS = 7;
 
 /** Signed byte delta. */
 function fmtDelta(bytes: number): string {
-  return `${bytes >= 0 ? "+" : "−"}${fmtBytes(Math.abs(Math.round(bytes)))}`;
+  return `${bytes >= 0 ? '+' : '−'}${fmtBytes(Math.abs(Math.round(bytes)))}`;
 }
 
 function tone(bytes: number): string {
-  if (Math.round(bytes) === 0) return "flat";
-  return bytes > 0 ? "bad" : "good";
+  if (Math.round(bytes) === 0) return 'flat';
+  return bytes > 0 ? 'bad' : 'good';
 }
 
 /**
@@ -40,7 +40,7 @@ function tone(bytes: number): string {
  */
 export function PromptMixPanel({ days }: { days: number }) {
   const query = useQuery({
-    queryKey: ["prompt-mix", days],
+    queryKey: ['prompt-mix', days],
     queryFn: () => getPromptMix(days),
     placeholderData: keepPreviousData,
   });
@@ -53,22 +53,22 @@ export function PromptMixPanel({ days }: { days: number }) {
   if (!day) return null;
 
   return (
-    <div className="grid wide-two">
-      <div className="card">
-        <div className="card-head">
+    <div className='grid wide-two'>
+      <div className='card'>
+        <div className='card-head'>
           <h2>Where the number comes from</h2>
-          <span className="muted">click a prompt for its breakdown</span>
+          <span className='muted'>click a prompt for its breakdown</span>
         </div>
         <Composition day={day} partial={data.partial} />
         <CohortTable day={day} />
       </div>
 
-      <div className="card">
+      <div className='card'>
         <h2>Why it changed</h2>
         {data.attribution ? (
           <Attribution attribution={data.attribution} />
         ) : (
-          <div className="empty">Only one day of captured traffic — nothing to compare against yet.</div>
+          <div className='empty'>Only one day of captured traffic — nothing to compare against yet.</div>
         )}
         {data.revisions.map((r) => (
           <SectionMoves key={`${r.priorHash}-${r.hash}`} revision={r} />
@@ -81,20 +81,20 @@ export function PromptMixPanel({ days }: { days: number }) {
 /** The loaded panel's grid, box for box. The headings are fixed text, so they render for real. */
 export function PromptMixSkeleton() {
   return (
-    <div className="grid wide-two">
-      <div className="card">
-        <div className="card-head">
+    <div className='grid wide-two'>
+      <div className='card'>
+        <div className='card-head'>
           <h2>Where the number comes from</h2>
-          <span className="muted">click a prompt for its breakdown</span>
+          <span className='muted'>click a prompt for its breakdown</span>
         </div>
         {/* `Composition` runs to three clauses; `Attribution` is one long sentence. */}
-        <SkeletonNote className="muted mix-note" lines={6} />
+        <SkeletonNote className='muted mix-note' lines={6} />
         <SkeletonTable columns={MIX_COLUMNS} rows={SKELETON_ROWS} />
       </div>
 
-      <div className="card">
+      <div className='card'>
         <h2>Why it changed</h2>
-        <SkeletonNote className="muted mix-note" lines={4} />
+        <SkeletonNote className='muted mix-note' lines={4} />
         <SkeletonTable columns={MIX_COLUMNS} rows={SKELETON_ROWS} />
       </div>
     </div>
@@ -104,20 +104,20 @@ export function PromptMixSkeleton() {
 /** The one-paragraph answer: an average over N requests, not a sum, plus the median as a control. */
 function Composition({ day, partial }: { day: PromptMixDay; partial: { date: string; elapsed: number } | null }) {
   return (
-    <p className="muted mix-note">
+    <p className='muted mix-note'>
       The mean of the <strong>{fmtInt(day.requests)}</strong> system prompts sent on {day.date} — one per request, not a
-      running total. Half of them were under <strong>{fmtBytes(Math.round(day.medianBytes))}</strong>, so a mean of{" "}
+      running total. Half of them were under <strong>{fmtBytes(Math.round(day.medianBytes))}</strong>, so a mean of{' '}
       <strong>{fmtBytes(Math.round(day.meanBytes))}</strong> is being pulled up by the largest cohorts below.
       {day.identifiedShare < 1 && (
         <>
-          {" "}
+          {' '}
           {fmtPct((1 - day.identifiedShare) * 100)} of requests predate prompt capture and are grouped by model and size
           band instead of by exact prompt.
         </>
       )}
       {partial && (
         <>
-          {" "}
+          {' '}
           <strong>{day.date} is still in progress</strong> ({fmtPct(partial.elapsed * 100)} elapsed), so its mix can
           still move.
         </>
@@ -132,14 +132,14 @@ function CohortTable({ day }: { day: PromptMixDay }) {
   const restContribution = rest.reduce((a, c) => a + c.contribution, 0);
 
   return (
-    <table className="table">
+    <table className='table'>
       <thead>
         <tr>
           <th>Prompt</th>
-          <th className="num">Requests</th>
-          <th className="num">Share</th>
-          <th className="num">Size</th>
-          <th className="num">Of the mean</th>
+          <th className='num'>Requests</th>
+          <th className='num'>Share</th>
+          <th className='num'>Size</th>
+          <th className='num'>Of the mean</th>
         </tr>
       </thead>
       <tbody>
@@ -148,11 +148,11 @@ function CohortTable({ day }: { day: PromptMixDay }) {
         ))}
         {rest.length > 0 && (
           <tr>
-            <td className="muted">{rest.length} smaller cohorts</td>
-            <td className="num">{fmtInt(rest.reduce((a, c) => a + c.requests, 0))}</td>
-            <td className="num">{fmtPct(rest.reduce((a, c) => a + c.share, 0) * 100)}</td>
-            <td className="num">—</td>
-            <td className="num">{fmtBytes(Math.round(restContribution))}</td>
+            <td className='muted'>{rest.length} smaller cohorts</td>
+            <td className='num'>{fmtInt(rest.reduce((a, c) => a + c.requests, 0))}</td>
+            <td className='num'>{fmtPct(rest.reduce((a, c) => a + c.share, 0) * 100)}</td>
+            <td className='num'>—</td>
+            <td className='num'>{fmtBytes(Math.round(restContribution))}</td>
           </tr>
         )}
       </tbody>
@@ -162,7 +162,7 @@ function CohortTable({ day }: { day: PromptMixDay }) {
 
 /** A mover carries its cohort key rather than a hash; only identified keys are one. */
 function hashOfKey(key: string): string | null {
-  return key.startsWith("legacy:") ? null : key;
+  return key.startsWith('legacy:') ? null : key;
 }
 
 /** A cohort's name, linked to its breakdown when it has one. */
@@ -170,13 +170,13 @@ function CohortLabel({ label, hash }: { label: string; hash: string | null }) {
   if (!hash) {
     return (
       <>
-        <span className="mono">{label}</span>
-        <span className="muted"> (est.)</span>
+        <span className='mono'>{label}</span>
+        <span className='muted'> (est.)</span>
       </>
     );
   }
   return (
-    <Link to="/trends/avg-system-prompt/$hash" params={{ hash }} className="link mono">
+    <Link to='/trends/avg-system-prompt/$hash' params={{ hash }} className='link mono'>
       {label}
     </Link>
   );
@@ -188,10 +188,10 @@ function CohortRow({ cohort }: { cohort: PromptCohort }) {
       <td>
         <CohortLabel label={cohort.label} hash={cohort.hash} />
       </td>
-      <td className="num">{fmtInt(cohort.requests)}</td>
-      <td className="num">{fmtPct(cohort.share * 100)}</td>
-      <td className="num">{fmtBytes(Math.round(cohort.meanBytes))}</td>
-      <td className="num">{fmtBytes(Math.round(cohort.contribution))}</td>
+      <td className='num'>{fmtInt(cohort.requests)}</td>
+      <td className='num'>{fmtPct(cohort.share * 100)}</td>
+      <td className='num'>{fmtBytes(Math.round(cohort.meanBytes))}</td>
+      <td className='num'>{fmtBytes(Math.round(cohort.contribution))}</td>
     </tr>
   );
 }
@@ -202,24 +202,24 @@ function CohortRow({ cohort }: { cohort: PromptCohort }) {
  * the whole delta, so a large mix number is proof no prompt grew.
  */
 function Attribution({ attribution: a }: { attribution: MixAttribution }) {
-  const dominant = Math.abs(a.mixBytes) >= Math.abs(a.sizeBytes) ? "mix" : "size";
+  const dominant = Math.abs(a.mixBytes) >= Math.abs(a.sizeBytes) ? 'mix' : 'size';
   return (
     <>
-      <p className="muted mix-note">
+      <p className='muted mix-note'>
         {fmtBytes(Math.round(a.priorMeanBytes))} on {a.priorDate} → {fmtBytes(Math.round(a.meanBytes))} on {a.date}, a
-        move of <span className={`delta ${tone(a.deltaBytes)}`}>{fmtDelta(a.deltaBytes)}</span>. Of that,{" "}
-        <strong>{fmtDelta(a.mixBytes)}</strong> is traffic shifting between prompts and{" "}
-        <strong>{fmtDelta(a.sizeBytes)}</strong> is prompts changing size — so this is mostly{" "}
-        {dominant === "mix" ? "a change in what ran, not in what was sent" : "prompts themselves getting bigger"}.
+        move of <span className={`delta ${tone(a.deltaBytes)}`}>{fmtDelta(a.deltaBytes)}</span>. Of that,{' '}
+        <strong>{fmtDelta(a.mixBytes)}</strong> is traffic shifting between prompts and{' '}
+        <strong>{fmtDelta(a.sizeBytes)}</strong> is prompts changing size — so this is mostly{' '}
+        {dominant === 'mix' ? 'a change in what ran, not in what was sent' : 'prompts themselves getting bigger'}.
       </p>
-      <table className="table">
+      <table className='table'>
         <thead>
           <tr>
             <th>Prompt</th>
-            <th className="num">Share</th>
-            <th className="num">Mix</th>
-            <th className="num">Size</th>
-            <th className="num">Total</th>
+            <th className='num'>Share</th>
+            <th className='num'>Mix</th>
+            <th className='num'>Size</th>
+            <th className='num'>Total</th>
           </tr>
         </thead>
         <tbody>
@@ -228,11 +228,11 @@ function Attribution({ attribution: a }: { attribution: MixAttribution }) {
               <td>
                 <CohortLabel label={m.label} hash={hashOfKey(m.key)} />
               </td>
-              <td className="num">
+              <td className='num'>
                 {fmtPct(m.priorShare * 100)} → {fmtPct(m.share * 100)}
               </td>
-              <td className="num">{fmtDelta(m.mixBytes)}</td>
-              <td className="num">{fmtDelta(m.sizeBytes)}</td>
+              <td className='num'>{fmtDelta(m.mixBytes)}</td>
+              <td className='num'>{fmtDelta(m.sizeBytes)}</td>
               <td className={`num delta ${tone(m.deltaBytes)}`}>{fmtDelta(m.deltaBytes)}</td>
             </tr>
           ))}
@@ -247,37 +247,37 @@ function SectionMoves({ revision }: { revision: PromptRevisionDetail }) {
   const moves = revision.moves.filter((m) => m.deltaBytes !== 0).slice(0, TOP_MOVES);
 
   return (
-    <div className="mix-revision">
+    <div className='mix-revision'>
       <h3>
-        <span className="mono">{revision.model}</span> changed prompt
+        <span className='mono'>{revision.model}</span> changed prompt
       </h3>
-      <p className="muted mix-note">
-        <span className="mono">{revision.priorHash.slice(0, 8)}</span> ({fmtBytes(Math.round(revision.priorMeanBytes))})
-        → <span className="mono">{revision.hash.slice(0, 8)}</span> ({fmtBytes(Math.round(revision.meanBytes))}),{" "}
+      <p className='muted mix-note'>
+        <span className='mono'>{revision.priorHash.slice(0, 8)}</span> ({fmtBytes(Math.round(revision.priorMeanBytes))})
+        → <span className='mono'>{revision.hash.slice(0, 8)}</span> ({fmtBytes(Math.round(revision.meanBytes))}),{' '}
         <span className={`delta ${tone(revision.deltaBytes)}`}>{fmtDelta(revision.deltaBytes)}</span>.
       </p>
       {moves.length === 0 ? (
-        <div className="muted">
+        <div className='muted'>
           {revision.prior && revision.current
-            ? "No section changed size — the difference is outside the headings."
-            : "No stored outline for one of these prompts, so the sections cannot be compared."}
+            ? 'No section changed size — the difference is outside the headings.'
+            : 'No stored outline for one of these prompts, so the sections cannot be compared.'}
         </div>
       ) : (
-        <table className="table">
+        <table className='table'>
           <thead>
             <tr>
               <th>Section</th>
-              <th className="num">Before</th>
-              <th className="num">After</th>
-              <th className="num">Change</th>
+              <th className='num'>Before</th>
+              <th className='num'>After</th>
+              <th className='num'>Change</th>
             </tr>
           </thead>
           <tbody>
             {moves.map((m) => (
               <tr key={m.heading}>
                 <td>{m.heading}</td>
-                <td className="num">{m.status === "added" ? "—" : fmtBytes(m.priorBytes)}</td>
-                <td className="num">{m.status === "removed" ? "—" : fmtBytes(m.bytes)}</td>
+                <td className='num'>{m.status === 'added' ? '—' : fmtBytes(m.priorBytes)}</td>
+                <td className='num'>{m.status === 'removed' ? '—' : fmtBytes(m.bytes)}</td>
                 <td className={`num delta ${tone(m.deltaBytes)}`}>{fmtDelta(m.deltaBytes)}</td>
               </tr>
             ))}

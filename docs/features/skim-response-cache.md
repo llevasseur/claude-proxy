@@ -32,7 +32,7 @@ floor; instrumentation determines whether a smarter key is worthwhile.
 
 ## Behavior
 
-- **Off by default** — `proxy/skim.mjs` reads `SKIM_CACHE` once at startup and only treats
+- **Off by default** — `proxy/skim.ts` reads `SKIM_CACHE` once at startup and only treats
   `1`, `true`, `yes`, or `on` (case-insensitive) as enabled. Unset means `cacheable()`
   returns `false` for everything: nothing stored, nothing served.
 - **Env vars** — `SKIM_CACHE` (enable flag, default off), `SKIM_TTL_MS` (entry lifetime,
@@ -41,7 +41,7 @@ floor; instrumentation determines whether a smarter key is worthwhile.
 - **The gate** — `cacheable()` admits a request only when all three hold: the skim is
   enabled, the path contains `/v1/messages`, and the parsed body has `stream === true`
   (replay can only re-emit raw SSE, so non-streaming replies are never cached).
-  `proxy.mjs` separately excludes `count_tokens` via `isTokenCount` before calling the gate.
+  `proxy.ts` separately excludes `count_tokens` via `isTokenCount` before calling the gate.
 - **Cache key** — `sha256` of the exact forwarded request body (`keyFor(rawBody)`), taken
   *after* the proxy's own tool/reminder stripping so the key matches what was actually sent.
   The model is inside the body, so it is part of the key by construction. Any one-byte
@@ -109,7 +109,7 @@ floor; instrumentation determines whether a smarter key is worthwhile.
   captured user text, or reads *"Request log unavailable"* when the log is gone. With no
   captured activity the page shows *"No skim activity captured in the last N days."*
 
-Data path: `proxy/skim.mjs` (gate, key, store, replay) → the `.audit.json` sidecar's
+Data path: `proxy/skim.ts` (gate, key, store, replay) → the `.audit.json` sidecar's
 `skim` block → the `SidecarSource` seam (`server/src/db/source.ts`) →
 `packages/core/src/skim.ts` (`computeSkimDigest` / `skimDigestsByDay`) →
 `server` (`/api/skim`, `/api/skim/trend`) → `apps/admin` (the **Skim** page). Only the proxy
@@ -164,7 +164,7 @@ sibling `.request.txt` — which is why an evicted body costs the label and noth
 - **`SKIM_MAX_ENTRIES` and eviction were proposed but never implemented.**
   [Correctness guardrails](../wayfinder/decision-004-guardrails.md) recommends a max entry
   count with LRU/oldest-first eviction plus opportunistic deletion of expired files; none of
-  it exists in `proxy/skim.mjs`. The TTL is enforced on read only, expired files are never
+  it exists in `proxy/skim.ts`. The TTL is enforced on read only, expired files are never
   removed, and the cache directory therefore grows unbounded.
 - **The `tool_result` refusal is proposal-only.** Nothing in `cacheable()` inspects message
   content, so a request whose messages carry `tool_result` snapshots of now-changed state is

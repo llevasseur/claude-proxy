@@ -1,5 +1,5 @@
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
@@ -8,5 +8,5 @@ export default defineConfig({
   server: { port: 5173, strictPort: true },
   // @claude-proxy/core is consumed as TypeScript source (types only in the UI);
   // exclude it from dep pre-bundling so Vite transpiles it through its pipeline.
-  optimizeDeps: { exclude: ["@claude-proxy/core"] },
+  optimizeDeps: { exclude: ['@claude-proxy/core'] },
 });

@@ -25,9 +25,9 @@
  * requests and hands the pieces here.
  */
 
-import { estimateCost } from "./pricing.js";
-import type { AuditTokens } from "./types.js";
-import type { InterruptionKind, SessionNode } from "./sessions.js";
+import { estimateCost } from './pricing.js';
+import type { InterruptionKind, SessionNode } from './sessions.js';
+import type { AuditTokens } from './types.js';
 
 /**
  * Run-record schema version. Bump on any change to {@link CommandRun}'s shape.
@@ -48,7 +48,7 @@ export const UNATTRIBUTED = null;
  */
 export interface StepArtifact {
   /** `shell` — a command line; `skill` — a `/name` sub-command; `tool` — a named tool. */
-  kind: "shell" | "skill" | "tool";
+  kind: 'shell' | 'skill' | 'tool';
   /** Normalized form: shell lowercased and cut at its first flag, skill without its slash. */
   value: string;
 }
@@ -88,8 +88,20 @@ const TOOL_SPAN_RE = /^[A-Z][a-z]+(?:[A-Z][a-z]+)*$/;
  * anchors they swamp everything else.
  */
 const AMBIENT_TOOLS = new Set([
-  "Read", "Write", "Edit", "NotebookEdit", "Bash", "Grep", "Glob", "Skill", "Agent",
-  "Task", "Monitor", "WebFetch", "WebSearch", "Artifact",
+  'Read',
+  'Write',
+  'Edit',
+  'NotebookEdit',
+  'Bash',
+  'Grep',
+  'Glob',
+  'Skill',
+  'Agent',
+  'Task',
+  'Monitor',
+  'WebFetch',
+  'WebSearch',
+  'Artifact',
 ]);
 
 /**
@@ -100,15 +112,15 @@ const AMBIENT_TOOLS = new Set([
  * these files are full of out of the vocabulary.
  */
 function toArtifact(raw: string): StepArtifact | null {
-  const span = raw.trim().replace(/[.,:;]+$/, "");
+  const span = raw.trim().replace(/[.,:;]+$/, '');
   if (!span) return null;
 
-  if (/^\/[a-z][a-z0-9:_-]*$/.test(span)) return { kind: "skill", value: span.slice(1).toLowerCase() };
-  if (TOOL_SPAN_RE.test(span)) return AMBIENT_TOOLS.has(span) ? null : { kind: "tool", value: span };
+  if (/^\/[a-z][a-z0-9:_-]*$/.test(span)) return { kind: 'skill', value: span.slice(1).toLowerCase() };
+  if (TOOL_SPAN_RE.test(span)) return AMBIENT_TOOLS.has(span) ? null : { kind: 'tool', value: span };
 
   const tokens: string[] = [];
   for (const token of span.split(/\s+/)) {
-    if (token.startsWith("-") || NOT_LITERAL_RE.test(token)) break;
+    if (token.startsWith('-') || NOT_LITERAL_RE.test(token)) break;
     tokens.push(token);
   }
   if (tokens.length === 0) return null;
@@ -116,11 +128,11 @@ function toArtifact(raw: string): StepArtifact | null {
   // A lone token is only distinctive when it is a path, not a word.
   if (tokens.length === 1) {
     const only = tokens[0]!;
-    if (!only.includes("/") || only.length < 6) return null;
-    return { kind: "shell", value: only.toLowerCase() };
+    if (!only.includes('/') || only.length < 6) return null;
+    return { kind: 'shell', value: only.toLowerCase() };
   }
   if (!/^[a-z][a-z0-9._/-]*$/.test(tokens[0]!)) return null;
-  return { kind: "shell", value: tokens.join(" ").toLowerCase() };
+  return { kind: 'shell', value: tokens.join(' ').toLowerCase() };
 }
 
 /** The artifacts one step's body prescribes, deduped. */
@@ -148,10 +160,7 @@ export function parseCommandSteps(content: string): CommandStep[] {
   headings.forEach((heading, i) => {
     const parsed = STEP_HEADING_RE.exec(heading[0]);
     if (!parsed) return;
-    const body = content.slice(
-      heading.index + heading[0].length,
-      headings[i + 1]?.index ?? content.length,
-    );
+    const body = content.slice(heading.index + heading[0].length, headings[i + 1]?.index ?? content.length);
     const artifacts = parseStepArtifacts(body);
 
     // A repeated heading continues the same step rather than declaring a new one.
@@ -160,7 +169,7 @@ export function parseCommandSteps(content: string): CommandStep[] {
       existing.artifacts = [...(existing.artifacts ?? []), ...artifacts];
       return;
     }
-    const step: CommandStep = { id: parsed[1]!, order: Number(parsed[1]!), title: (parsed[2] ?? "").trim(), artifacts };
+    const step: CommandStep = { id: parsed[1]!, order: Number(parsed[1]!), title: (parsed[2] ?? '').trim(), artifacts };
     byId.set(step.id, step);
     steps.push(step);
   });
@@ -188,7 +197,7 @@ export function contentHash(text: string): string {
     a = Math.imul(a ^ c, 0x01000193);
     b = Math.imul(b ^ (c + i), 0x85ebca6b);
   }
-  const hex = (n: number) => (n >>> 0).toString(16).padStart(8, "0");
+  const hex = (n: number) => (n >>> 0).toString(16).padStart(8, '0');
   return hex(a) + hex(b);
 }
 
@@ -247,7 +256,7 @@ export interface CommandEnvelope {
 function readArgs(text: string, from: number, next: number): string {
   ARGS_OPEN_RE.lastIndex = from;
   const open = ARGS_OPEN_RE.exec(text);
-  if (!open || open.index >= next) return "";
+  if (!open || open.index >= next) return '';
 
   const body = open.index + open[0].length;
   ARGS_CLOSE_RE.lastIndex = body;
@@ -266,7 +275,7 @@ function readArgs(text: string, from: number, next: number): string {
  */
 export function parseCommandEnvelope(prompt: string | null | undefined): CommandEnvelope | null {
   if (!prompt) return null;
-  const text = prompt.replace(REMINDER_RE, "").replace(/<system-reminder>[\s\S]*$/i, "");
+  const text = prompt.replace(REMINDER_RE, '').replace(/<system-reminder>[\s\S]*$/i, '');
 
   const names = [...text.matchAll(COMMAND_NAME_RE)];
   for (const [i, name] of names.entries()) {
@@ -284,7 +293,7 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
       command: name[1]!.toLowerCase(),
       args,
       flags,
-      prompt: args.replace(COMMAND_NOISE_RE, "").replace(/\s+/g, " ").trim(),
+      prompt: args.replace(COMMAND_NOISE_RE, '').replace(/\s+/g, ' ').trim(),
     };
   }
   return null;
@@ -303,7 +312,7 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
  *   (`Skill(skill=clean)` against "Clean, then PR").
  * - `inferred` — no anchor of its own; carried forward from the last one.
  */
-export type StepConfidence = "explicit" | "narrated" | "boundary" | "inferred";
+export type StepConfidence = 'explicit' | 'narrated' | 'boundary' | 'inferred';
 
 /** Rank for picking the better of two competing anchors on one node. */
 const CONFIDENCE_RANK: Record<StepConfidence, number> = { explicit: 3, narrated: 2, boundary: 1, inferred: 0 };
@@ -356,20 +365,20 @@ interface Anchor {
  */
 function narratedAnchor(text: string, byId: ReadonlyMap<string, CommandStep>): Anchor | null {
   const marked = STEP_MARKER_RE.exec(text);
-  if (marked && byId.has(marked[1]!)) return { step: marked[1]!, confidence: "explicit" };
+  if (marked && byId.has(marked[1]!)) return { step: marked[1]!, confidence: 'explicit' };
 
   const said = STEP_NARRATION_RE.exec(text);
   if (!said || !byId.has(said[1]!)) return null;
-  return { step: said[1]!, confidence: said.index <= ENTERING_WINDOW ? "explicit" : "narrated" };
+  return { step: said[1]!, confidence: said.index <= ENTERING_WINDOW ? 'explicit' : 'narrated' };
 }
 
 /** Does this call invoke that artifact? */
 function callMatches(sig: string, lower: string, artifact: StepArtifact): boolean {
-  if (artifact.kind === "skill") {
+  if (artifact.kind === 'skill') {
     const call = SKILL_CALL_RE.exec(sig);
     return !!call && call[1]!.toLowerCase() === artifact.value;
   }
-  if (artifact.kind === "tool") return TOOL_NAME_RE.exec(sig)?.[1] === artifact.value;
+  if (artifact.kind === 'tool') return TOOL_NAME_RE.exec(sig)?.[1] === artifact.value;
   return lower.includes(artifact.value);
 }
 
@@ -397,7 +406,7 @@ function boundaryAnchor(tool: string | null, steps: readonly CommandStep[]): Anc
       found = step.id;
     }
   }
-  return found ? { step: found, confidence: "boundary" } : null;
+  return found ? { step: found, confidence: 'boundary' } : null;
 }
 
 /**
@@ -410,10 +419,7 @@ function boundaryAnchor(tool: string | null, steps: readonly CommandStep[]): Anc
  *
  * A catalogue with no steps attributes nothing, by the same rule.
  */
-export function attributeSteps(
-  nodes: readonly SessionNode[],
-  steps: readonly CommandStep[],
-): StepAttribution[] {
+export function attributeSteps(nodes: readonly SessionNode[], steps: readonly CommandStep[]): StepAttribution[] {
   const byId = new Map(steps.map((s) => [s.id, s]));
 
   const out: StepAttribution[] = [];
@@ -425,7 +431,7 @@ export function attributeSteps(
       // A decision or outcome is where the agent narrates; a tool call is where a
       // sub-command boundary shows up. Neither ever carries the other's signal.
       anchor =
-        node.type === "decision" || node.type === "done" || node.type === "task"
+        node.type === 'decision' || node.type === 'done' || node.type === 'task'
           ? narratedAnchor(node.text, byId)
           : boundaryAnchor(node.tool, steps);
     }
@@ -438,7 +444,7 @@ export function attributeSteps(
     out.push({
       node: node.index,
       step: current,
-      confidence: current === UNATTRIBUTED ? null : "inferred",
+      confidence: current === UNATTRIBUTED ? null : 'inferred',
       anchor: false,
     });
   }
@@ -469,7 +475,7 @@ export function stepConfidence(attributions: readonly StepAttribution[], step: s
  * `Skill` also launches plain skills, so only names `isCommand` knows open a run.
  */
 export function nestedCommandOf(node: SessionNode, isCommand: (name: string) => boolean): string | null {
-  if (node.type !== "tool" || !node.tool) return null;
+  if (node.type !== 'tool' || !node.tool) return null;
   const call = SKILL_CALL_RE.exec(node.tool);
   if (!call) return null;
   const name = call[1]!.toLowerCase();
@@ -571,31 +577,31 @@ export function countWaste(
   nodes.forEach((node, i) => {
     const step = byNode.get(node.index) ?? UNATTRIBUTED;
 
-    if (node.type === "error") {
-      bump(step, "erroredTools");
+    if (node.type === 'error') {
+      bump(step, 'erroredTools');
       erroredCall = node.tool;
       return;
     }
 
-    if (node.type === "tool") {
+    if (node.type === 'tool') {
       const sig = node.tool ?? node.text;
       if (erroredCall && sig === erroredCall) {
-        bump(step, "retriedAfterError");
+        bump(step, 'retriedAfterError');
         erroredCall = null;
       }
       const read = READ_CALL_RE.exec(sig);
       if (read) {
         const path = read[2]!.trim();
-        if (readPaths.has(path)) bump(step, "duplicateReads");
+        if (readPaths.has(path)) bump(step, 'duplicateReads');
         else readPaths.add(path);
       }
       return;
     }
 
     // Narration that led to nothing: the next node is more narration, or a new task.
-    if (node.type === "decision") {
+    if (node.type === 'decision') {
       const next = nodes[i + 1];
-      if (!next || next.type === "decision" || next.type === "task") bump(step, "noOpTurns");
+      if (!next || next.type === 'decision' || next.type === 'task') bump(step, 'noOpTurns');
     }
   });
 
@@ -619,21 +625,21 @@ export interface CommandPattern {
 }
 
 export type CommandPatternId =
-  | "repeat-read"
-  | "retry-after-error"
-  | "step-reentered"
-  | "subagent-fanout"
-  | "context-respike"
-  | "step-errors-first";
+  | 'repeat-read'
+  | 'retry-after-error'
+  | 'step-reentered'
+  | 'subagent-fanout'
+  | 'context-respike'
+  | 'step-errors-first';
 
 /** Human names for the rule ids, for a table that lists rules a run didn't trip. */
 export const COMMAND_PATTERN_TITLES: Record<CommandPatternId, string> = {
-  "repeat-read": "Same file read twice",
-  "retry-after-error": "Tool retried after an error",
-  "step-reentered": "Step re-entered",
-  "subagent-fanout": "Subagent fan-out",
-  "context-respike": "Context re-send spike",
-  "step-errors-first": "Step errors before it does anything",
+  'repeat-read': 'Same file read twice',
+  'retry-after-error': 'Tool retried after an error',
+  'step-reentered': 'Step re-entered',
+  'subagent-fanout': 'Subagent fan-out',
+  'context-respike': 'Context re-send spike',
+  'step-errors-first': 'Step errors before it does anything',
 };
 
 /** Spawns under one step past which the fan-out is worth badging. */
@@ -684,14 +690,14 @@ export function detectPatterns(
     if (step !== currentStep) {
       if (currentStep !== UNATTRIBUTED) visited.add(currentStep);
       if (step !== UNATTRIBUTED && visited.has(step)) {
-        add("step-reentered", `Step ${step} was entered again after moving on`, node.index);
+        add('step-reentered', `Step ${step} was entered again after moving on`, node.index);
       }
       currentStep = step;
     }
 
-    if (node.type === "error") {
+    if (node.type === 'error') {
       if (!stepSawWork.has(step)) {
-        add("step-errors-first", `The first call step ${step ?? "—"} made came back an error`, node.index);
+        add('step-errors-first', `The first call step ${step ?? '—'} made came back an error`, node.index);
         stepSawWork.add(step);
       }
       erroredCall = node.tool;
@@ -700,12 +706,12 @@ export function detectPatterns(
 
     // Only a call counts as the step doing something. Narrating its way in does not,
     // or a step that announces itself and then immediately fails would never fire.
-    if (node.type !== "tool") return;
+    if (node.type !== 'tool') return;
     stepSawWork.add(step);
     const sig = node.tool ?? node.text;
 
     if (erroredCall && sig === erroredCall) {
-      add("retry-after-error", `${sig} was reissued unchanged after it errored`, node.index);
+      add('retry-after-error', `${sig} was reissued unchanged after it errored`, node.index);
       erroredCall = null;
     }
 
@@ -714,14 +720,14 @@ export function detectPatterns(
       const path = read[2]!.trim();
       const first = readAt.get(path);
       if (first === undefined) readAt.set(path, node.index);
-      else add("repeat-read", `${path} was already read at step ${first}`, node.index);
+      else add('repeat-read', `${path} was already read at step ${first}`, node.index);
     }
 
     if (/^(Agent|Task)\(/.test(sig)) {
       const n = (spawnsPerStep.get(step) ?? 0) + 1;
       spawnsPerStep.set(step, n);
       if (n === FANOUT_THRESHOLD) {
-        add("subagent-fanout", `${n} subagents spawned under step ${step ?? "—"}`, node.index);
+        add('subagent-fanout', `${n} subagents spawned under step ${step ?? '—'}`, node.index);
       }
     }
   });
@@ -734,7 +740,7 @@ export function detectPatterns(
     const node = turn.node;
     if (node === null) continue; // nothing to badge it on
     add(
-      "context-respike",
+      'context-respike',
       `Prompt grew from ${prev.realInput.toLocaleString()} to ${turn.realInput.toLocaleString()} tokens in one turn`,
       node,
     );
@@ -746,7 +752,7 @@ export function detectPatterns(
 // --- The run record --------------------------------------------------------
 
 /** How a run ended. `running` is a run the store caught mid-flight. */
-export type CommandRunOutcome = "completed" | "interrupted" | "errored" | "running";
+export type CommandRunOutcome = 'completed' | 'interrupted' | 'errored' | 'running';
 
 /** One captured request in a run, placed against the step that was current when it went out. */
 export interface CommandRunTurn {
@@ -873,9 +879,9 @@ export interface CommandRun {
  * Callers read optional fields defensively — see {@link runTotals}.
  */
 export function isCommandRun(value: unknown): value is CommandRun {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return typeof v.threadId === "string" && typeof v.command === "string" && typeof v.schema === "number";
+  return typeof v.threadId === 'string' && typeof v.command === 'string' && typeof v.schema === 'number';
 }
 
 /**
@@ -910,15 +916,15 @@ export function classifyOutcome(input: {
   reachedEnd: boolean;
   interruption: InterruptionKind | null;
   /** The run's last node, for the errored case. */
-  lastNodeType: SessionNode["type"] | null;
+  lastNodeType: SessionNode['type'] | null;
   /** True while the transcript is still being appended to. */
   active: boolean;
 }): CommandRunOutcome {
-  if (input.reachedEnd) return "completed";
-  if (input.interruption) return "interrupted";
-  if (input.active) return "running";
-  if (input.lastNodeType === "error") return "errored";
-  return "interrupted";
+  if (input.reachedEnd) return 'completed';
+  if (input.interruption) return 'interrupted';
+  if (input.active) return 'running';
+  if (input.lastNodeType === 'error') return 'errored';
+  return 'interrupted';
 }
 
 /**
@@ -930,7 +936,7 @@ export function reachedEnd(
   attributions: readonly StepAttribution[],
   nodes: readonly SessionNode[],
 ): boolean {
-  const done = nodes.some((n) => n.type === "done");
+  const done = nodes.some((n) => n.type === 'done');
   if (!done) return false;
   const last = steps[steps.length - 1];
   if (!last) return true;
@@ -965,14 +971,14 @@ export function summarizeSteps(input: {
 
     return {
       step,
-      title: step === UNATTRIBUTED ? "Unattributed" : (titles.get(step) ?? ""),
+      title: step === UNATTRIBUTED ? 'Unattributed' : (titles.get(step) ?? ''),
       reached: stepNodes.length > 0,
       confidence: stepConfidence(attributions, step),
       tokens,
       cost: estimateCost(tokens, model).total,
       turns: stepTurns.length,
       nodes: stepNodes.length,
-      toolCalls: stepNodes.filter((n) => n.type === "tool").length,
+      toolCalls: stepNodes.filter((n) => n.type === 'tool').length,
       waste: w,
     };
   });
@@ -1022,10 +1028,8 @@ export function summarizeCommands(
 
   const rows: CommandSummary[] = [];
   for (const command of names) {
-    const own = (byCommand.get(command) ?? [])
-      .slice()
-      .sort((a, b) => (a.started ?? "").localeCompare(b.started ?? ""));
-    const settled = own.filter((r) => r.outcome !== "running");
+    const own = (byCommand.get(command) ?? []).slice().sort((a, b) => (a.started ?? '').localeCompare(b.started ?? ''));
+    const settled = own.filter((r) => r.outcome !== 'running');
     const spec = installedBy.get(command);
 
     rows.push({
@@ -1037,7 +1041,7 @@ export function summarizeCommands(
       completionRate: settled.length === 0 ? 0 : settled.filter((r) => r.reachedEnd).length / settled.length,
       totalCost: own.reduce((n, r) => n + runTotals(r).cost, 0),
       totalTokens: own.reduce((n, r) => n + runTotals(r).tokens.realInput, 0),
-      costSeries: own.map((r) => ({ date: r.started ?? "", value: runTotals(r).cost })),
+      costSeries: own.map((r) => ({ date: r.started ?? '', value: runTotals(r).cost })),
       lastRun: own[own.length - 1]?.started ?? null,
       flags: [...new Set(own.flatMap((r) => r.flags ?? []))].sort(),
     });
@@ -1112,7 +1116,7 @@ export function stepReach(steps: readonly CommandStep[], runs: readonly CommandR
     }
     return {
       step,
-      title: step === UNATTRIBUTED ? "Unattributed" : (titles.get(step) ?? ""),
+      title: step === UNATTRIBUTED ? 'Unattributed' : (titles.get(step) ?? ''),
       reached,
       ofRuns: runs.length,
       tokens,

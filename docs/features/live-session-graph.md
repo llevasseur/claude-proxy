@@ -61,7 +61,7 @@ parent, and what the parent did while the branch was in flight.
   strip showing only a vertical **N sessions** label and an explicit **»** to reopen, so
   collapse survives a cursor sitting where the rail used to be and stays keyboard- and
   touch-reachable. Picking a subagent canvases its top-level family and centers that branch.
-- **Step text from the Request breakdown** — a transcript is a *lossy* render: `proxy/session.mjs`
+- **Step text from the Request breakdown** — a transcript is a *lossy* render: `proxy/session.ts`
   gists every line to 160 chars and every recorded tool argument to 60, so a prompt or a command
   line arrives at the graph cut off. The same steps are held whole in the captured requests, so
   the text is re-read from there. `deriveSessionNodes` runs the proxy's own grammar
@@ -84,7 +84,7 @@ parent, and what the parent did while the branch was in flight.
   which records no such position, and the merge carries the derived value through.
 - **Interruptions and side trails** — a run can be cut off two ways, both landing in the same
   grammar. Pressing **Esc** in Claude Code makes the CLI prepend `[Request interrupted by user]`
-  (or `… for tool use`) to the next user turn, which `proxy/session.mjs` already writes into the
+  (or `… for tool use`) to the next user turn, which `proxy/session.ts` already writes into the
   transcript; `splitInterruption` strips that marker off the task text and reports `user` /
   `tool-use`. **Stop** in the dashboard never reaches the wire — the child is killed before
   it answers — so `recordInterruption` (`server/src/chat.ts`) appends `- interrupted: <why>`
@@ -163,7 +163,7 @@ Step text takes a second path over the same logs. `GET /api/sessions/graph/nodes
 (`buildSessionGraphNodes`) walks the canvased session and every descendant into one agent family,
 scans the sidecars carrying the family's session ids **newest-first** capped at 60 requests, and
 hashes each body back to the thread that produced it with `threadIdForBody` — the server-side
-mirror of the `threadIdFor` in `proxy/session.mjs` that named the transcript in the first place.
+mirror of the `threadIdFor` in `proxy/session.ts` that named the transcript in the first place.
 The scan's floor is the family's earliest transcript `started`, read through `reportDay`: that start
 is a UTC instant, but the sidecar reader narrows by *reporting* day in `REPORT_TZ`, so the floor is
 derived on the same clock the filter compares against. A floor taken straight off the UTC prefix
@@ -225,7 +225,7 @@ left are simply absent from `threads`, and keep their transcript text.
 - [x] `parseSessionNodes`, `spawnAgentType`, `linkAgentSessions`, `deriveSessionNodes`,
       `firstUserText`, `isSameStep`, and `mergeSessionNodes` are unit-tested
       (`packages/core/test/sessions.test.ts`), and `threadIdForBody` is checked against the
-      `threadIdFor` it mirrors by importing `proxy/session.mjs` itself
+      `threadIdFor` it mirrors by importing `proxy/session.ts` itself
       (`server/test/session-graph-nodes.test.ts`); `pnpm typecheck` and `pnpm test` pass.
 
 ## Open questions
@@ -237,7 +237,7 @@ left are simply absent from `threads`, and keep their transcript text.
   `Task` are spawns, so a subagent started any other way (a skill that runs in a subagent, a
   teammate resumed via `SendMessage`) leaves its transcript stranded at top level. And the
   proxy records at most one identifying argument per tool call, chosen by a fixed key order in
-  `proxy/session.mjs`, so `subagent_type` is only in the line when the call actually passed it
+  `proxy/session.ts`, so `subagent_type` is only in the line when the call actually passed it
   — otherwise the branch is detected but labelled generically. Worth deciding whether to widen
   the tool set, or record the spawn relationship at capture time instead of inferring it later.
 - Pairing accuracy on a fan-out. Spawns claim transcripts in start-time order, not by matching

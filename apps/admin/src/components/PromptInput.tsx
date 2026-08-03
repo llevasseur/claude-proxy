@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useRef } from 'react';
 
-export type PromptStatus = "ready" | "submitted" | "error";
+export type PromptStatus = 'ready' | 'submitted' | 'error';
 
 const SUBMIT_TITLE: Record<PromptStatus, string> = {
-  ready: "Send (Enter)",
-  submitted: "Sending…",
-  error: "Send again (Enter)",
+  ready: 'Send (Enter)',
+  submitted: 'Sending…',
+  error: 'Send again (Enter)',
 };
 
 export interface PromptInputProps {
@@ -36,26 +36,27 @@ export function PromptInput({
   value,
   onValueChange,
   onSubmit,
-  placeholder = "Send a message…",
+  placeholder = 'Send a message…',
   disabled = false,
-  status = "ready",
+  status = 'ready',
   minRows = 2,
   maxRows = 10,
   options,
 }: PromptInputProps) {
   const textarea = useRef<HTMLTextAreaElement>(null);
-  const busy = status === "submitted";
+  const busy = status === 'submitted';
   const blocked = disabled || busy;
 
   // Auto-grow: clamp measured content between minRows and maxRows, scroll past that.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `value` is what must trigger the re-measure; the height is read off the ref, not off `value`
   useEffect(() => {
     const el = textarea.current;
     if (!el) return;
     const min = minRows * LINE_HEIGHT + VERTICAL_PADDING;
     const max = maxRows * LINE_HEIGHT + VERTICAL_PADDING;
-    el.style.height = "auto";
+    el.style.height = 'auto';
     el.style.height = `${Math.min(max, Math.max(min, el.scrollHeight))}px`;
-    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+    el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
   }, [value, minRows, maxRows]);
 
   const submit = useCallback(() => {
@@ -66,15 +67,14 @@ export function PromptInput({
 
   return (
     <form
-      className="prompt-input"
+      className='prompt-input'
       onSubmit={(e) => {
         e.preventDefault();
         submit();
-      }}
-    >
+      }}>
       <textarea
         ref={textarea}
-        className="prompt-input-textarea"
+        className='prompt-input-textarea'
         value={value}
         placeholder={placeholder}
         disabled={disabled}
@@ -83,24 +83,23 @@ export function PromptInput({
         onChange={(e) => onValueChange(e.target.value)}
         onKeyDown={(e) => {
           // Enter sends; Shift+Enter (and IME composition) writes a newline.
-          if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+          if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
           e.preventDefault();
           submit();
         }}
       />
-      <div className="prompt-input-toolbar">
-        {options && <div className="prompt-input-options">{options}</div>}
-        <span className="muted prompt-input-hint">
+      <div className='prompt-input-toolbar'>
+        {options && <div className='prompt-input-options'>{options}</div>}
+        <span className='muted prompt-input-hint'>
           <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line
         </span>
         <button
-          type="submit"
-          className="prompt-input-submit"
+          type='submit'
+          className='prompt-input-submit'
           disabled={blocked || !value.trim()}
           title={SUBMIT_TITLE[status]}
-          aria-label={SUBMIT_TITLE[status]}
-        >
-          {busy ? "Sending…" : "Send"}
+          aria-label={SUBMIT_TITLE[status]}>
+          {busy ? 'Sending…' : 'Send'}
         </button>
       </div>
     </form>

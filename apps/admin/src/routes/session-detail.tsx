@@ -1,20 +1,20 @@
-import { useEffect } from "react";
-import { sessionName } from "@claude-proxy/core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import type { SessionDetail } from "../api";
-import { getRunningChats, getSession, getSessionBreakdown, stopChat } from "../api";
-import { useChatSession, useChatThread } from "../chat-session";
-import { Breadcrumbs } from "../components/Breadcrumbs";
-import { ChatConversation } from "../components/ChatConversation";
-import { LiveIndicator } from "../components/LiveIndicator";
-import { Markdown } from "../components/Markdown";
-import { QueryState } from "../components/QueryState";
-import { PRETTY_RAW, type PrettyRawView, Segmented } from "../components/Segmented";
-import { Skeleton, SkeletonStats, SkeletonText } from "../components/Skeleton";
-import { fmtBytes, fmtInt, fmtLocalTsShort } from "../format";
-import { useLiveQuery } from "../useLiveQuery";
-import { useTransitionState } from "../useTransitionState";
+import { sessionName } from '@claude-proxy/core';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { useEffect } from 'react';
+import type { SessionDetail } from '../api';
+import { getRunningChats, getSession, getSessionBreakdown, stopChat } from '../api';
+import { useChatSession, useChatThread } from '../chat-session';
+import { Breadcrumbs } from '../components/Breadcrumbs';
+import { ChatConversation } from '../components/ChatConversation';
+import { LiveIndicator } from '../components/LiveIndicator';
+import { Markdown } from '../components/Markdown';
+import { QueryState } from '../components/QueryState';
+import { PRETTY_RAW, type PrettyRawView, Segmented } from '../components/Segmented';
+import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
+import { fmtBytes, fmtInt, fmtLocalTsShort } from '../format';
+import { useLiveQuery } from '../useLiveQuery';
+import { useTransitionState } from '../useTransitionState';
 
 /**
  * A chat session id, which this route also accepts: a dashboard chat can be linked or bookmarked
@@ -24,7 +24,7 @@ import { useTransitionState } from "../useTransitionState";
 const CHAT_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function SessionDetailPage() {
-  const { id } = useParams({ from: "/sessions/$id" });
+  const { id } = useParams({ from: '/sessions/$id' });
   const navigate = useNavigate();
   const isChatId = CHAT_SESSION_ID_RE.test(id);
 
@@ -32,36 +32,32 @@ export function SessionDetailPage() {
   // URL with the thread id so a reload or a shared link still lands on the transcript.
   const { threadId: resolved, gaveUp } = useChatThread(id, isChatId);
   useEffect(() => {
-    if (resolved) navigate({ to: "/sessions/$id", params: { id: resolved }, replace: true });
+    if (resolved) navigate({ to: '/sessions/$id', params: { id: resolved }, replace: true });
   }, [resolved, navigate]);
 
   const query = useQuery({
-    queryKey: ["session", id],
+    queryKey: ['session', id],
     queryFn: () => getSession(id),
     enabled: !isChatId,
   });
   // Stream live appends into the same cache key; the query above is the fallback.
-  const live = useLiveQuery(
-    `/api/sessions/session/stream?id=${encodeURIComponent(id)}`,
-    ["session", id],
-    !isChatId,
-  );
+  const live = useLiveQuery(`/api/sessions/session/stream?id=${encodeURIComponent(id)}`, ['session', id], !isChatId);
   const session = query.data?.session;
 
   return (
     <section>
       <Breadcrumbs>
-        <Link to="/sessions" className="link">
+        <Link to='/sessions' className='link'>
           Sessions
         </Link>
-        <span className="crumb-current">{id}</span>
+        <span className='crumb-current'>{id}</span>
       </Breadcrumbs>
-      <div className="pagehead">
-        <h1 className="mono-break">{isChatId ? "New session" : id}</h1>
+      <div className='pagehead'>
+        <h1 className='mono-break'>{isChatId ? 'New session' : id}</h1>
         {/* The graph is keyed by thread, so a chat id has nothing to link to. */}
         {!isChatId && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Link to="/sessions/graph" search={{ session: id }} className="link">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Link to='/sessions/graph' search={{ session: id }} className='link'>
               live graph →
             </Link>
             <LiveIndicator status={live} />
@@ -85,10 +81,10 @@ function SessionSkeleton() {
   return (
     <>
       <SkeletonStats count={7} />
-      <div className="card">
-        <div className="card-head">
-          <Skeleton w="20%" h="0.95em" />
-          <Skeleton w="7rem" />
+      <div className='card'>
+        <div className='card-head'>
+          <Skeleton w='20%' h='0.95em' />
+          <Skeleton w='7rem' />
         </div>
         <SkeletonText lines={12} />
       </div>
@@ -101,9 +97,9 @@ function StartingBody({ sessionId, gaveUp }: { sessionId: string; gaveUp: boolea
   return (
     <>
       <SessionChatPanel sessionId={sessionId} />
-      <div className="card empty">
+      <div className='card empty'>
         {gaveUp
-          ? "No transcript ever arrived for this session — it never reached the proxy, or this id is not one of ours."
+          ? 'No transcript ever arrived for this session — it never reached the proxy, or this id is not one of ours.'
           : "Waiting for the proxy to write this session's transcript…"}
       </div>
     </>
@@ -111,33 +107,33 @@ function StartingBody({ sessionId, gaveUp }: { sessionId: string; gaveUp: boolea
 }
 
 function SessionBody({ session }: { session: SessionDetail }) {
-  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
+  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>('pretty');
   const { meta } = session;
   const name = sessionName(meta);
 
   return (
     <>
       {(name || meta.subtitle) && (
-        <div className="session-heading">
-          {name && <div className="session-title">{name}</div>}
-          {meta.subtitle && meta.subtitle !== name && <div className="muted">{meta.subtitle}</div>}
+        <div className='session-heading'>
+          {name && <div className='session-title'>{name}</div>}
+          {meta.subtitle && meta.subtitle !== name && <div className='muted'>{meta.subtitle}</div>}
         </div>
       )}
 
       {meta.sessionId && <RunningChatBar sessionId={meta.sessionId} />}
 
-      <div className="grid stats">
-        <StatTile label="Model" value={meta.model ?? "—"} />
-        <StatTile label="Started" value={meta.started ? fmtLocalTsShort(meta.started) : "—"} />
-        <StatTile label="Tasks" value={fmtInt(meta.tasks)} />
-        <StatTile label="Tools" value={fmtInt(meta.tools)} />
-        <StatTile label="Decisions" value={fmtInt(meta.decisions)} />
+      <div className='grid stats'>
+        <StatTile label='Model' value={meta.model ?? '—'} />
+        <StatTile label='Started' value={meta.started ? fmtLocalTsShort(meta.started) : '—'} />
+        <StatTile label='Tasks' value={fmtInt(meta.tasks)} />
+        <StatTile label='Tools' value={fmtInt(meta.tools)} />
+        <StatTile label='Decisions' value={fmtInt(meta.decisions)} />
         <ErrorsStatTile threadId={meta.threadId} errors={meta.errors} />
         <BreakdownStatTile threadId={meta.threadId} sessionId={meta.sessionId} />
       </div>
 
       {meta.sessionId && (
-        <div className="muted mono-break" style={{ margin: "0.5rem 0 0.75rem" }}>
+        <div className='muted mono-break' style={{ margin: '0.5rem 0 0.75rem' }}>
           session {meta.sessionId} · {fmtBytes(session.bytes)}
         </div>
       )}
@@ -145,18 +141,18 @@ function SessionBody({ session }: { session: SessionDetail }) {
       {/* Chat — the conversation as it happens; the transcript below lags a turn behind. */}
       {meta.sessionId && <SessionChatPanel sessionId={meta.sessionId} />}
 
-      <div className="card">
-        <div className="card-head">
+      <div className='card'>
+        <div className='card-head'>
           <h2>Transcript</h2>
-          <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label="Transcript view" busy={isSwitching} />
+          <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label='Transcript view' busy={isSwitching} />
         </div>
-        <div className={isSwitching ? "is-stale" : undefined}>
-          {view === "pretty" ? (
-            <div className="memory-pretty">
+        <div className={isSwitching ? 'is-stale' : undefined}>
+          {view === 'pretty' ? (
+            <div className='memory-pretty'>
               <Markdown source={session.content} />
             </div>
           ) : (
-            <pre className="rawjson wrap">{session.content}</pre>
+            <pre className='rawjson wrap'>{session.content}</pre>
           )}
         </div>
       </div>
@@ -175,14 +171,14 @@ function SessionChatPanel({ sessionId }: { sessionId: string }) {
   // be nowhere on screen.
   if (liveId !== sessionId || (!chat && !pendingPrompt && !sendError)) return null;
 
-  const mode = chat?.session.mode ?? "agent";
+  const mode = chat?.session.mode ?? 'agent';
   return (
-    <div className="card chat-starter">
-      <div className="card-head">
-        <h2>{mode === "agent" ? "Agent" : "Chat"} conversation</h2>
-        <span className="muted">started from this dashboard</span>
+    <div className='card chat-starter'>
+      <div className='card-head'>
+        <h2>{mode === 'agent' ? 'Agent' : 'Chat'} conversation</h2>
+        <span className='muted'>started from this dashboard</span>
       </div>
-      <ChatConversation placeholder="Reply…" />
+      <ChatConversation placeholder='Reply…' />
     </div>
   );
 }
@@ -190,7 +186,7 @@ function SessionChatPanel({ sessionId }: { sessionId: string }) {
 /** How often to re-ask whether this session's turn is still running. */
 const RUNNING_POLL_MS = 3_000;
 /** Shared so stopping a turn can invalidate the poll it answers. */
-const RUNNING_KEY = ["chat", "running"];
+const RUNNING_KEY = ['chat', 'running'];
 
 /**
  * Stop, offered from the transcript itself.
@@ -226,17 +222,17 @@ function RunningChatBar({ sessionId }: { sessionId: string }) {
   const drifted = !!chat.effectivePermissionMode && chat.effectivePermissionMode !== chat.permissionMode;
 
   return (
-    <div className="session-running">
-      <span className="session-running-dot" aria-hidden="true" />
+    <div className='session-running'>
+      <span className='session-running-dot' aria-hidden='true' />
       <span>
-        {chat.mode === "agent" ? "Agent" : "Chat"} turn running since {fmtLocalTsShort(chat.startedAt)}
+        {chat.mode === 'agent' ? 'Agent' : 'Chat'} turn running since {fmtLocalTsShort(chat.startedAt)}
         {permission && ` · ${permission}`}
       </span>
-      {drifted && <span className="session-running-warn">asked for {chat.permissionMode}</span>}
-      <button type="button" className="chat-stop" onClick={() => stop.mutate()} disabled={stop.isPending}>
-        {stop.isPending ? "Stopping…" : "Stop"}
+      {drifted && <span className='session-running-warn'>asked for {chat.permissionMode}</span>}
+      <button type='button' className='chat-stop' onClick={() => stop.mutate()} disabled={stop.isPending}>
+        {stop.isPending ? 'Stopping…' : 'Stop'}
       </button>
-      {stop.error && <span className="session-running-warn">{(stop.error as Error).message}</span>}
+      {stop.error && <span className='session-running-warn'>{(stop.error as Error).message}</span>}
     </div>
   );
 }
@@ -245,19 +241,19 @@ function RunningChatBar({ sessionId }: { sessionId: string }) {
 function ErrorsStatTile({ threadId, errors }: { threadId: string; errors: number }) {
   if (errors === 0) {
     return (
-      <div className="card stat">
-        <div className="stat-label">Errors</div>
-        <div className="stat-value muted">0</div>
-        <div className="stat-foot" />
+      <div className='card stat'>
+        <div className='stat-label'>Errors</div>
+        <div className='stat-value muted'>0</div>
+        <div className='stat-foot' />
       </div>
     );
   }
   return (
-    <Link to="/sessions/$id/errors" params={{ id: threadId }} className="card stat stat-error">
-      <div className="stat-label">Errors</div>
-      <div className="stat-value">{fmtInt(errors)}</div>
-      <div className="stat-foot">
-        <span className="stat-error-cta">view details →</span>
+    <Link to='/sessions/$id/errors' params={{ id: threadId }} className='card stat stat-error'>
+      <div className='stat-label'>Errors</div>
+      <div className='stat-value'>{fmtInt(errors)}</div>
+      <div className='stat-foot'>
+        <span className='stat-error-cta'>view details →</span>
       </div>
     </Link>
   );
@@ -273,7 +269,7 @@ function ErrorsStatTile({ threadId, errors }: { threadId: string; errors: number
  */
 function BreakdownStatTile({ threadId, sessionId }: { threadId: string; sessionId: string | null }) {
   const query = useQuery({
-    queryKey: ["session-breakdown", threadId],
+    queryKey: ['session-breakdown', threadId],
     queryFn: () => getSessionBreakdown(threadId),
     enabled: sessionId !== null,
   });
@@ -281,18 +277,18 @@ function BreakdownStatTile({ threadId, sessionId }: { threadId: string; sessionI
 
   if (!peak) {
     const foot = !sessionId
-      ? "no session id"
+      ? 'no session id'
       : query.isError
-        ? "lookup failed"
+        ? 'lookup failed'
         : query.isPending
-          ? "loading…"
-          : "no captured requests";
+          ? 'loading…'
+          : 'no captured requests';
     return (
-      <div className="card stat">
-        <div className="stat-label">Peak context</div>
-        <div className="stat-value muted">—</div>
-        <div className="stat-foot">
-          <span className="muted">{foot}</span>
+      <div className='card stat'>
+        <div className='stat-label'>Peak context</div>
+        <div className='stat-value muted'>—</div>
+        <div className='stat-foot'>
+          <span className='muted'>{foot}</span>
         </div>
       </div>
     );
@@ -300,13 +296,13 @@ function BreakdownStatTile({ threadId, sessionId }: { threadId: string; sessionI
 
   const count = query.data?.requestCount ?? 0;
   return (
-    <Link to="/context/$file" params={{ file: peak.file }} className="card stat stat-drill">
-      <div className="stat-label">Peak context</div>
-      <div className="stat-value">{fmtInt(peak.realInput)}</div>
-      <div className="stat-foot">
-        <span className="stat-drill-cta">request breakdown →</span>
-        <span className="muted">
-          of {fmtInt(count)} request{count === 1 ? "" : "s"}
+    <Link to='/context/$file' params={{ file: peak.file }} className='card stat stat-drill'>
+      <div className='stat-label'>Peak context</div>
+      <div className='stat-value'>{fmtInt(peak.realInput)}</div>
+      <div className='stat-foot'>
+        <span className='stat-drill-cta'>request breakdown →</span>
+        <span className='muted'>
+          of {fmtInt(count)} request{count === 1 ? '' : 's'}
         </span>
       </div>
     </Link>
@@ -315,10 +311,10 @@ function BreakdownStatTile({ threadId, sessionId }: { threadId: string; sessionI
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="card stat">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      <div className="stat-foot">{sub && <span className="muted">{sub}</span>}</div>
+    <div className='card stat'>
+      <div className='stat-label'>{label}</div>
+      <div className='stat-value'>{value}</div>
+      <div className='stat-foot'>{sub && <span className='muted'>{sub}</span>}</div>
     </div>
   );
 }

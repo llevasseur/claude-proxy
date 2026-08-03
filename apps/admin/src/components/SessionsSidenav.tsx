@@ -1,10 +1,10 @@
-import { sessionName } from "@claude-proxy/core";
-import { Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowUp, Check, Plus, Search } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SessionSummary } from "../api";
-import { fmtAgeShort, fmtInt } from "../format";
-import { useResolvedSessions } from "../useResolvedSessions";
+import { sessionName } from '@claude-proxy/core';
+import { Link } from '@tanstack/react-router';
+import { AlertTriangle, ArrowUp, Check, Plus, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SessionSummary } from '../api';
+import { fmtAgeShort, fmtInt } from '../format';
+import { useResolvedSessions } from '../useResolvedSessions';
 
 /**
  * The session list, as a chat app's conversation rail: newest first, filterable,
@@ -30,7 +30,7 @@ export function SessionsSidenav({
   isDrafting: boolean;
   onNewChat: () => void;
 }) {
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState('');
   const { isResolved, activeAt, resolve, restore } = useResolvedSessions();
   const body = useRef<HTMLDivElement>(null);
   const [split, setSplit] = useSplit();
@@ -66,11 +66,11 @@ export function SessionsSidenav({
       event.currentTarget.setPointerCapture(event.pointerId);
       const move = (e: PointerEvent) => setSplit(clamp(startH + e.clientY - startY, rail.offsetHeight));
       const done = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", done);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', done);
       };
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", done);
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', done);
     },
     [setSplit],
   );
@@ -82,69 +82,70 @@ export function SessionsSidenav({
   };
 
   return (
-    <aside className="sessions-nav" aria-label="Sessions">
-      <div className="sessions-nav-body" ref={body}>
+    <aside className='sessions-nav' aria-label='Sessions'>
+      <div className='sessions-nav-body' ref={body}>
         <SessionSection
-          title="Active"
+          title='Active'
           sessions={active}
           activeId={activeId}
           filter={filter}
-          empty={sessions.length === 0 ? "No session transcripts yet." : "Nothing active."}
+          empty={sessions.length === 0 ? 'No session transcripts yet.' : 'Nothing active.'}
           onToggle={resolve}
-          style={split === null ? undefined : { flex: "none", height: `${split}px` }}
+          style={split === null ? undefined : { flex: 'none', height: `${split}px` }}
         />
 
+        {/* biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take the pointer and keyboard handlers that make this a drag handle */}
         <div
-          className="sessions-nav-resize"
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Resize the Active list"
+          className='sessions-nav-resize'
+          role='separator'
+          aria-orientation='horizontal'
+          aria-valuenow={split ?? 0}
+          aria-label='Resize the Active list'
           tabIndex={0}
           onPointerDown={onResize}
           onKeyDown={(e) => {
-            if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
             e.preventDefault();
-            nudge(e.key === "ArrowUp" ? -24 : 24);
+            nudge(e.key === 'ArrowUp' ? -24 : 24);
           }}
         />
 
         <SessionSection
-          title="Resolved"
+          title='Resolved'
           sessions={resolved}
           activeId={activeId}
           filter={filter}
           resolved
-          empty="Nothing resolved yet."
+          empty='Nothing resolved yet.'
           onToggle={restore}
-          style={split === null ? { flex: "0 1 auto", maxHeight: "38%" } : undefined}
+          style={split === null ? { flex: '0 1 auto', maxHeight: '38%' } : undefined}
         />
       </div>
 
-      <div className="sessions-nav-foot">
-        <div className="sessions-nav-actions">
-          <label className="sessions-search">
+      <div className='sessions-nav-foot'>
+        <div className='sessions-nav-actions'>
+          <label className='sessions-search'>
             <Search size={14} strokeWidth={1.75} aria-hidden />
             <input
-              type="search"
+              type='search'
               value={filter}
-              placeholder="Search sessions"
-              aria-label="Search sessions"
+              placeholder='Search sessions'
+              aria-label='Search sessions'
               onChange={(e) => setFilter(e.target.value)}
             />
           </label>
           <button
-            type="button"
-            className={`sessions-new${isDrafting ? " is-active" : ""}`}
-            title="New chat"
-            aria-label="New chat"
-            onClick={onNewChat}
-          >
+            type='button'
+            className={`sessions-new${isDrafting ? ' is-active' : ''}`}
+            title='New chat'
+            aria-label='New chat'
+            onClick={onNewChat}>
             <Plus size={16} strokeWidth={2} aria-hidden />
           </button>
         </div>
-        <span className="muted sessions-nav-count">
+        <span className='muted sessions-nav-count'>
           {fmtInt(active.length)} active · {fmtInt(resolved.length)} resolved
-          {filter.trim() ? ` of ${fmtInt(sessions.length)}` : ""}
+          {filter.trim() ? ` of ${fmtInt(sessions.length)}` : ''}
         </span>
       </div>
     </aside>
@@ -157,7 +158,7 @@ function clamp(height: number, railHeight: number): number {
   return Math.max(MIN_SECTION, Math.min(height, railHeight - MIN_SECTION));
 }
 
-const SPLIT_KEY = "admin:sessions-split";
+const SPLIT_KEY = 'admin:sessions-split';
 
 /** Where the divider sits, in pixels of Active; `null` until the reader has dragged it. */
 function useSplit(): [number | null, (next: number) => void] {
@@ -207,6 +208,7 @@ function SessionSection({
   const sentinel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a changed filter is exactly what should reset the page and scroll position
   useEffect(() => {
     setShown(PAGE);
     if (list.current) list.current.scrollTop = 0;
@@ -223,21 +225,21 @@ function SessionSection({
         if (entries.some((e) => e.isIntersecting)) setShown((n) => n + PAGE);
       },
       // Reach for the next page before the reader hits the end of this one.
-      { rootMargin: "240px" },
+      { rootMargin: '240px' },
     );
     io.observe(el);
     return () => io.disconnect();
   }, [more]);
 
   return (
-    <section className="sessions-group" style={style}>
-      <h2 className="sessions-group-head">
+    <section className='sessions-group' style={style}>
+      <h2 className='sessions-group-head'>
         {title}
-        <span className="sessions-group-count">{fmtInt(sessions.length)}</span>
+        <span className='sessions-group-count'>{fmtInt(sessions.length)}</span>
       </h2>
-      <div className="sessions-nav-list" ref={list}>
+      <div className='sessions-nav-list' ref={list}>
         {sessions.length === 0 ? (
-          <p className="muted sessions-nav-empty">{empty}</p>
+          <p className='muted sessions-nav-empty'>{empty}</p>
         ) : (
           <>
             {visible.map((s) => (
@@ -250,7 +252,7 @@ function SessionSection({
               />
             ))}
             {more && (
-              <div ref={sentinel} className="muted sessions-nav-more">
+              <div ref={sentinel} className='muted sessions-nav-more'>
                 Loading more…
               </div>
             )}
@@ -279,24 +281,20 @@ function SessionRow({
 }) {
   const name = sessionName(session);
   const preview = session.subtitle ?? session.firstTask;
-  const label = resolved ? "Move back to Active" : "Resolve";
+  const label = resolved ? 'Move back to Active' : 'Resolve';
   return (
-    <div className={`session-row${active ? " is-active" : ""}`}>
-      <Link
-        to="/sessions/$id"
-        params={{ id: session.threadId }}
-        className="session-row-link"
-      >
-        <div className="session-row-top">
-          <span className="session-row-name">{name ?? session.threadId}</span>
-          <span className="session-row-age">{fmtAgeShort(session.modified)}</span>
+    <div className={`session-row${active ? ' is-active' : ''}`}>
+      <Link to='/sessions/$id' params={{ id: session.threadId }} className='session-row-link'>
+        <div className='session-row-top'>
+          <span className='session-row-name'>{name ?? session.threadId}</span>
+          <span className='session-row-age'>{fmtAgeShort(session.modified)}</span>
         </div>
-        {preview && preview !== name && <span className="session-row-preview">{preview}</span>}
-        <div className="session-row-meta">
-          {session.model && <span className="session-chip">{session.model}</span>}
-          {session.tools > 0 && <span className="session-chip">{fmtInt(session.tools)} tools</span>}
+        {preview && preview !== name && <span className='session-row-preview'>{preview}</span>}
+        <div className='session-row-meta'>
+          {session.model && <span className='session-chip'>{session.model}</span>}
+          {session.tools > 0 && <span className='session-chip'>{fmtInt(session.tools)} tools</span>}
           {session.errors > 0 && (
-            <span className="session-chip is-bad">
+            <span className='session-chip is-bad'>
               <AlertTriangle size={11} strokeWidth={2} aria-hidden />
               {fmtInt(session.errors)}
             </span>
@@ -304,17 +302,12 @@ function SessionRow({
         </div>
       </Link>
       <button
-        type="button"
-        className="session-row-cta"
+        type='button'
+        className='session-row-cta'
         title={label}
         aria-label={`${label}: ${name ?? session.threadId}`}
-        onClick={() => onToggle(session.threadId)}
-      >
-        {resolved ? (
-          <ArrowUp size={14} strokeWidth={2} aria-hidden />
-        ) : (
-          <Check size={14} strokeWidth={2} aria-hidden />
-        )}
+        onClick={() => onToggle(session.threadId)}>
+        {resolved ? <ArrowUp size={14} strokeWidth={2} aria-hidden /> : <Check size={14} strokeWidth={2} aria-hidden />}
       </button>
     </div>
   );

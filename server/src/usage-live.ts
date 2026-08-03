@@ -1,11 +1,6 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import {
-  parseLiveUsage,
-  USAGE_WINDOW_MS,
-  type LiveUsage,
-  type UsageWindowKind,
-} from "@claude-proxy/core";
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { type LiveUsage, parseLiveUsage, USAGE_WINDOW_MS, type UsageWindowKind } from '@claude-proxy/core';
 
 /**
  * Anthropic's own usage figures, as the proxy last polled them.
@@ -42,7 +37,7 @@ function rollForward(resetsAt: string, kind: UsageWindowKind, nowMs: number): st
 export async function loadLiveUsage(logDir: string, now: Date = new Date()): Promise<LiveUsageSnapshot> {
   let raw: string;
   try {
-    raw = await readFile(path.join(logDir, "usage-live.json"), "utf8");
+    raw = await readFile(path.join(logDir, 'usage-live.json'), 'utf8');
   } catch {
     return EMPTY; // never polled, or the proxy has no token yet
   }
@@ -55,7 +50,7 @@ export async function loadLiveUsage(logDir: string, now: Date = new Date()): Pro
   }
 
   const nowMs = now.getTime();
-  const fetchedAt = typeof doc.fetchedAt === "string" ? doc.fetchedAt : null;
+  const fetchedAt = typeof doc.fetchedAt === 'string' ? doc.fetchedAt : null;
   const fetchedMs = fetchedAt ? new Date(fetchedAt).getTime() : Number.NaN;
   const parsed = parseLiveUsage(doc.payload, now);
 

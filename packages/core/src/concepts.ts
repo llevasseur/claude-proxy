@@ -58,7 +58,7 @@ export interface StoredConcept extends Concept {
  * and never the concept. Filtered where concepts are read for display; the store
  * keeps whatever was written.
  */
-export const META_SKILLS: readonly string[] = ["find-skills"];
+export const META_SKILLS: readonly string[] = ['find-skills'];
 
 /** A skill list with the meta-skills dropped. Order is otherwise preserved. */
 export function withoutMetaSkills(skills: readonly string[] | undefined): string[] {
@@ -72,15 +72,15 @@ export function withoutMetaSkills(skills: readonly string[] | undefined): string
  * Callers read the rest defensively, which is what {@link normalizeConcept} is for.
  */
 export function isConcept(value: unknown): value is Concept {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return typeof v.term === "string" && typeof v.savedAt === "string";
+  return typeof v.term === 'string' && typeof v.savedAt === 'string';
 }
 
 /** A string array, or `undefined` when the field was never recorded at all. */
 function optionalList(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  return value.filter((entry): entry is string => typeof entry === "string");
+  return value.filter((entry): entry is string => typeof entry === 'string');
 }
 
 /**
@@ -94,16 +94,16 @@ function optionalList(value: unknown): string[] | undefined {
  * written before those fields existed.
  */
 export function normalizeConcept(concept: Concept): Concept {
-  const skills = Array.isArray(concept.skills) ? concept.skills.filter((s): s is string => typeof s === "string") : [];
+  const skills = Array.isArray(concept.skills) ? concept.skills.filter((s): s is string => typeof s === 'string') : [];
   const out: Concept = {
     term: concept.term,
-    sentence: typeof concept.sentence === "string" ? concept.sentence : "",
-    field: typeof concept.field === "string" ? concept.field : "",
+    sentence: typeof concept.sentence === 'string' ? concept.sentence : '',
+    field: typeof concept.field === 'string' ? concept.field : '',
     skills,
     savedAt: concept.savedAt,
   };
 
-  if (typeof concept.notes === "string") out.notes = concept.notes;
+  if (typeof concept.notes === 'string') out.notes = concept.notes;
   const tips = optionalList(concept.tips);
   if (tips) out.tips = tips;
   const sources = optionalList(concept.sources);
@@ -116,5 +116,5 @@ export function normalizeConcept(concept: Concept): Concept {
 
 /** Newest first. Stable, so records saved in the same millisecond keep store order. */
 export function sortConcepts<T extends Concept>(concepts: T[]): T[] {
-  return concepts.sort((a, b) => (b.savedAt ?? "").localeCompare(a.savedAt ?? ""));
+  return concepts.sort((a, b) => (b.savedAt ?? '').localeCompare(a.savedAt ?? ''));
 }

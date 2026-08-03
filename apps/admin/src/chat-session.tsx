@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { ChatSendResponse, PermissionMode } from "./api";
-import { endChat, getChatThread, sendChatMessage, startChat, stopChat } from "./api";
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import type { ChatSendResponse, PermissionMode } from './api';
+import { endChat, getChatThread, sendChatMessage, startChat, stopChat } from './api';
 
 /** The one dashboard-started chat, held above the router so it outlives the page it was typed on. */
 export interface ChatSessionValue {
@@ -35,7 +35,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
   const [chat, setChat] = useState<ChatSendResponse | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState('');
   // null → follow whatever the server defaults to.
   const [permissionMode, setPermissionMode] = useState<PermissionMode | null>(null);
 
@@ -43,11 +43,11 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     mutationFn: (prompt: string) =>
       chat
         ? sendChatMessage(sessionId, prompt)
-        : startChat(sessionId, prompt, { mode: "agent", permissionMode: permissionMode ?? undefined }),
+        : startChat(sessionId, prompt, { mode: 'agent', permissionMode: permissionMode ?? undefined }),
     onSuccess: (data) => {
       setChat(data);
       // The transcript is new, or it grew.
-      client.invalidateQueries({ queryKey: ["sessions"] });
+      client.invalidateQueries({ queryKey: ['sessions'] });
     },
     // The turn's history carries this prompt now; a failure carries the error.
     onSettled: () => setPendingPrompt(null),
@@ -60,7 +60,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     (prompt: string) => {
       setPendingPrompt(prompt);
       // Cleared on submit, not on success: the prompt is already on screen as a turn.
-      setDraft("");
+      setDraft('');
       sendMutation.mutate(prompt);
     },
     [sendMutation],
@@ -75,7 +75,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
     setSessionId(crypto.randomUUID());
     setChat(null);
     setPendingPrompt(null);
-    setDraft("");
+    setDraft('');
     // Both mutations too, or a failed turn's error sits under the new empty chat.
     sendMutation.reset();
     stopMutation.reset();
@@ -119,7 +119,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
 
 export function useChatSession(): ChatSessionValue {
   const value = useContext(ChatSessionContext);
-  if (!value) throw new Error("useChatSession must be used inside a ChatSessionProvider");
+  if (!value) throw new Error('useChatSession must be used inside a ChatSessionProvider');
   return value;
 }
 
@@ -138,6 +138,7 @@ const THREAD_POLL_CEILING_MS = 120_000;
 export function useChatThread(sessionId: string, enabled: boolean): { threadId: string | null; gaveUp: boolean } {
   const [gaveUp, setGaveUp] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new session id must restart the give-up clock, which is why it is listed even though the effect body never reads it
   useEffect(() => {
     setGaveUp(false);
     if (!enabled) return;
@@ -146,7 +147,7 @@ export function useChatThread(sessionId: string, enabled: boolean): { threadId: 
   }, [sessionId, enabled]);
 
   const query = useQuery({
-    queryKey: ["chat", "thread", sessionId],
+    queryKey: ['chat', 'thread', sessionId],
     queryFn: () => getChatThread(sessionId),
     enabled: enabled && !gaveUp,
     // A thread id never changes once the proxy has answered, so stop asking.

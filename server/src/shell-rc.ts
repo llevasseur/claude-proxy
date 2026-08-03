@@ -1,7 +1,7 @@
-import { readFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { type LaunchAlias, parseLaunchAliases } from "@claude-proxy/core";
+import { readFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { type LaunchAlias, parseLaunchAliases } from '@claude-proxy/core';
 
 /**
  * The device's shell rc — `~/.zshrc` by default, where the user's `claude*`
@@ -9,7 +9,7 @@ import { type LaunchAlias, parseLaunchAliases } from "@claude-proxy/core";
  * users, or non-standard homes).
  */
 export function resolveShellRcPath(env: NodeJS.ProcessEnv = process.env): string {
-  return env.CLAUDE_SHELL_RC ? path.resolve(env.CLAUDE_SHELL_RC) : path.join(os.homedir(), ".zshrc");
+  return env.CLAUDE_SHELL_RC ? path.resolve(env.CLAUDE_SHELL_RC) : path.join(os.homedir(), '.zshrc');
 }
 
 export interface ShellLaunchAliases {
@@ -26,7 +26,7 @@ export interface ShellLaunchAliases {
  * result. */
 export async function readLaunchAliases(rcPath: string = resolveShellRcPath()): Promise<ShellLaunchAliases> {
   try {
-    const aliases = parseLaunchAliases(await readFile(rcPath, "utf8"));
+    const aliases = parseLaunchAliases(await readFile(rcPath, 'utf8'));
     return { rcPath, rcReadable: true, aliases };
   } catch {
     return { rcPath, rcReadable: false, aliases: [] };

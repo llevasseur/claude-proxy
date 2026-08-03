@@ -1,5 +1,7 @@
-import type { CSSProperties, ReactNode } from "react";
-import { SPARKLINE_HEIGHT } from "./Sparkline";
+// biome-ignore-all lint/suspicious/noArrayIndexKey: every list here is a fixed-length run of identical placeholders — the index is the only thing distinguishing them, and they never reorder
+
+import type { CSSProperties, ReactNode } from 'react';
+import { SPARKLINE_HEIGHT } from './Sparkline';
 
 /**
  * Loading placeholders built from the classes the real page uses — `.card`,
@@ -12,10 +14,10 @@ import { SPARKLINE_HEIGHT } from "./Sparkline";
 /** A CSS length: a number is px, a string is passed through. */
 type Len = number | string;
 
-const len = (v: Len | undefined): string | undefined => (typeof v === "number" ? `${v}px` : v);
+const len = (v: Len | undefined): string | undefined => (typeof v === 'number' ? `${v}px` : v);
 
 /** Cycled so placeholder prose reads as text rather than ruled lines. */
-const LINE_WIDTHS = ["100%", "92%", "97%", "88%"];
+const LINE_WIDTHS = ['100%', '92%', '97%', '88%'];
 
 export interface SkeletonProps {
   /** Width within its container. Defaults to filling it. */
@@ -28,15 +30,15 @@ export interface SkeletonProps {
 /** One shimmering block. Decorative — `SkeletonStatus` carries the announcement. */
 export function Skeleton({ w, h, className }: SkeletonProps) {
   const style: CSSProperties = { width: len(w), height: len(h) };
-  return <span className={className ? `skeleton ${className}` : "skeleton"} style={style} aria-hidden />;
+  return <span className={className ? `skeleton ${className}` : 'skeleton'} style={style} aria-hidden />;
 }
 
 /** Placeholder prose, ending on a short line. */
 export function SkeletonText({ lines = 3 }: { lines?: number }) {
   return (
-    <div className="skeleton-text" aria-hidden>
+    <div className='skeleton-text' aria-hidden>
       {Array.from({ length: lines }, (_, i) => (
-        <Skeleton key={i} w={i === lines - 1 ? "62%" : (LINE_WIDTHS[i % LINE_WIDTHS.length] ?? "100%")} />
+        <Skeleton key={i} w={i === lines - 1 ? '62%' : (LINE_WIDTHS[i % LINE_WIDTHS.length] ?? '100%')} />
       ))}
     </div>
   );
@@ -50,7 +52,7 @@ export function SkeletonNote({ lines = 3, className }: { lines?: number; classNa
   return (
     <p className={className} aria-hidden>
       {Array.from({ length: lines }, (_, i) => (
-        <Skeleton key={i} w={i === lines - 1 ? "62%" : (LINE_WIDTHS[i % LINE_WIDTHS.length] ?? "100%")} />
+        <Skeleton key={i} w={i === lines - 1 ? '62%' : (LINE_WIDTHS[i % LINE_WIDTHS.length] ?? '100%')} />
       ))}
     </p>
   );
@@ -60,9 +62,9 @@ export function SkeletonNote({ lines = 3, className }: { lines?: number; classNa
  * The one thing a screen reader hears while a page loads. Absolutely positioned, so
  * it can sit in a grid or flex container without becoming an item in it.
  */
-export function SkeletonStatus({ label = "Loading" }: { label?: string }) {
+export function SkeletonStatus({ label = 'Loading' }: { label?: string }) {
   return (
-    <span className="sr-only" role="status">
+    <span className='sr-only' role='status'>
       {label}
     </span>
   );
@@ -71,21 +73,21 @@ export function SkeletonStatus({ label = "Loading" }: { label?: string }) {
 /** A `.grid.stats` row of stat cards. `spark` reserves the mini chart a card can carry. */
 export function SkeletonStats({ count = 4, spark = false }: { count?: number; spark?: boolean }) {
   return (
-    <div className="grid stats" aria-hidden>
+    <div className='grid stats' aria-hidden>
       {Array.from({ length: count }, (_, i) => (
-        <div className="card stat" key={i}>
-          <div className="stat-label">
-            <Skeleton w="60%" />
+        <div className='card stat' key={i}>
+          <div className='stat-label'>
+            <Skeleton w='60%' />
           </div>
-          <div className="stat-value">
-            <Skeleton w="72%" />
+          <div className='stat-value'>
+            <Skeleton w='72%' />
           </div>
-          <div className="stat-foot">
-            <Skeleton w="46%" />
+          <div className='stat-foot'>
+            <Skeleton w='46%' />
           </div>
           {spark && (
-            <div className="sparkline" style={{ height: SPARKLINE_HEIGHT }}>
-              <Skeleton h="100%" />
+            <div className='sparkline' style={{ height: SPARKLINE_HEIGHT }}>
+              <Skeleton h='100%' />
             </div>
           )}
         </div>
@@ -109,12 +111,12 @@ export interface SkeletonColumn {
 /** A `.table` of placeholder rows, for dropping inside a card. */
 export function SkeletonTable({ columns, rows = 6 }: { columns: readonly SkeletonColumn[]; rows?: number }) {
   return (
-    <table className="table" aria-hidden>
+    <table className='table' aria-hidden>
       <thead>
         <tr>
           {columns.map((c, i) => (
             <th key={i} className={c.className}>
-              <Skeleton w={c.head ?? "68%"} />
+              <Skeleton w={c.head ?? '68%'} />
             </th>
           ))}
         </tr>
@@ -125,7 +127,7 @@ export function SkeletonTable({ columns, rows = 6 }: { columns: readonly Skeleto
             {columns.map((c, i) => (
               <td key={i} className={c.className}>
                 {Array.from({ length: c.lines ?? 1 }, (_, l) => (
-                  <Skeleton key={l} w={l === 0 ? (c.cell ?? "78%") : "54%"} />
+                  <Skeleton key={l} w={l === 0 ? (c.cell ?? '78%') : '54%'} />
                 ))}
               </td>
             ))}
@@ -139,8 +141,8 @@ export function SkeletonTable({ columns, rows = 6 }: { columns: readonly Skeleto
 /** A card whose heading is real text and whose body is still loading. */
 export function SkeletonCard({ title, head, children }: { title?: string; head?: boolean; children: ReactNode }) {
   return (
-    <div className="card">
-      {title !== undefined ? <h2>{title}</h2> : head ? <Skeleton w="34%" className="skeleton-h2" /> : null}
+    <div className='card'>
+      {title !== undefined ? <h2>{title}</h2> : head ? <Skeleton w='34%' className='skeleton-h2' /> : null}
       {children}
     </div>
   );
@@ -184,16 +186,16 @@ export function SkeletonChartCard({
 
   return (
     <SkeletonCard title={title} head={title === undefined}>
-      <div className="skeleton-chart" style={{ height }} aria-hidden>
+      <div className='skeleton-chart' style={{ height }} aria-hidden>
         {heights.map((h, i) => (
-          <span className="skeleton skeleton-bar" key={i} style={{ height: `${h}%` }} />
+          <span className='skeleton skeleton-bar' key={i} style={{ height: `${h}%` }} />
         ))}
       </div>
       {legend > 0 && (
-        <div className="chartlegend" aria-hidden>
+        <div className='chartlegend' aria-hidden>
           {Array.from({ length: legend }, (_, i) => (
-            <span className="chartlegend-item" key={i}>
-              <Skeleton w="4.5rem" />
+            <span className='chartlegend-item' key={i}>
+              <Skeleton w='4.5rem' />
             </span>
           ))}
         </div>
@@ -214,12 +216,12 @@ export function SkeletonTextCard({ title, lines = 4 }: { title?: string; lines?:
 /** `.msg-blocks` sections, as used by the message, tool-schema and error pages. */
 export function SkeletonMsgBlocks({ count = 3, lines = 4 }: { count?: number; lines?: number }) {
   return (
-    <div className="msg-blocks" aria-hidden>
+    <div className='msg-blocks' aria-hidden>
       {Array.from({ length: count }, (_, i) => (
-        <div className="msg-block" key={i}>
-          <div className="msg-block-head">
-            <span className="msg-block-label">
-              <Skeleton w="6rem" />
+        <div className='msg-block' key={i}>
+          <div className='msg-block-head'>
+            <span className='msg-block-label'>
+              <Skeleton w='6rem' />
             </span>
           </div>
           <SkeletonText lines={lines} />
@@ -233,7 +235,7 @@ export function SkeletonMsgBlocks({ count = 3, lines = 4 }: { count?: number; li
 export function SkeletonCardList({
   count = 3,
   lines = 2,
-  className = "advice-list wide",
+  className = 'advice-list wide',
 }: {
   count?: number;
   lines?: number;
@@ -242,8 +244,8 @@ export function SkeletonCardList({
   return (
     <div className={className} aria-hidden>
       {Array.from({ length: count }, (_, i) => (
-        <div className="card" key={i}>
-          <Skeleton w="46%" className="skeleton-h2" />
+        <div className='card' key={i}>
+          <Skeleton w='46%' className='skeleton-h2' />
           <SkeletonText lines={lines} />
         </div>
       ))}

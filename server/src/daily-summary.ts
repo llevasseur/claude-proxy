@@ -7,9 +7,9 @@
  *   pnpm --filter server summary            # today
  *   pnpm --filter server summary 2026-07-14 # a specific day
  */
-import { buildSummary, type SummaryResponse } from "./api.js";
-import { resolveLogDir } from "./logs.js";
-import { renderSummary } from "./summary-render.js";
+import { buildSummary, type SummaryResponse } from './api.js';
+import { resolveLogDir } from './logs.js';
+import { renderSummary } from './summary-render.js';
 
 /**
  * Distil any command runs still visible into `logs/commands/runs.jsonl` before the day
@@ -20,7 +20,7 @@ import { renderSummary } from "./summary-render.js";
  */
 async function reconcileRuns(logDir: string): Promise<void> {
   try {
-    const { reconcileCommandRuns } = await import("./command-runs.js");
+    const { reconcileCommandRuns } = await import('./command-runs.js');
     const { written, runs } = await reconcileCommandRuns(logDir);
     if (written > 0) console.log(`[daily-summary] command runs: ${written} record(s) written, ${runs} stored\n`);
   } catch (err) {

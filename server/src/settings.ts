@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { readFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 /**
  * The device's Claude Code user settings — `~/.claude/settings.json`. This is
@@ -9,7 +9,7 @@ import path from "node:path";
  * `CLAUDE_SETTINGS` (handy for tests and non-standard homes).
  */
 export function resolveSettingsPath(env: NodeJS.ProcessEnv = process.env): string {
-  return env.CLAUDE_SETTINGS ? path.resolve(env.CLAUDE_SETTINGS) : path.join(os.homedir(), ".claude", "settings.json");
+  return env.CLAUDE_SETTINGS ? path.resolve(env.CLAUDE_SETTINGS) : path.join(os.homedir(), '.claude', 'settings.json');
 }
 
 export interface DeviceSettings {
@@ -33,7 +33,7 @@ export interface DeviceSettings {
 
 /** A plain record, or `{}` when the value isn't an object. */
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 /** Read `permissions.deny`, enabled `disable*` keys, and the `hooks` /
@@ -41,15 +41,15 @@ function asRecord(value: unknown): Record<string, unknown> {
  * malformed file yields an empty, `readable: false` result. */
 export async function readDeviceSettings(settingsPath: string = resolveSettingsPath()): Promise<DeviceSettings> {
   try {
-    const parsed = JSON.parse(await readFile(settingsPath, "utf8")) as {
+    const parsed = JSON.parse(await readFile(settingsPath, 'utf8')) as {
       permissions?: { deny?: unknown };
       [key: string]: unknown;
     };
     const deny = parsed?.permissions?.deny;
-    const denyRules = Array.isArray(deny) ? deny.filter((r): r is string => typeof r === "string") : [];
+    const denyRules = Array.isArray(deny) ? deny.filter((r): r is string => typeof r === 'string') : [];
     const enabledDisableKeys =
-      parsed && typeof parsed === "object"
-        ? Object.keys(parsed).filter((k) => k.startsWith("disable") && parsed[k] === true)
+      parsed && typeof parsed === 'object'
+        ? Object.keys(parsed).filter((k) => k.startsWith('disable') && parsed[k] === true)
         : [];
     return {
       settingsPath,

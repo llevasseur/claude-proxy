@@ -1,20 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
-import type { RequestToolDetail } from "@claude-proxy/core";
-import { getContextTool } from "../api";
-import { Breadcrumbs } from "../components/Breadcrumbs";
-import { EvictedBody } from "../components/EvictedBody";
-import { QueryState } from "../components/QueryState";
-import { PRETTY_RAW, type PrettyRawView, Segmented } from "../components/Segmented";
-import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from "../components/Skeleton";
-import { fmtBytes, fmtInt } from "../format";
-import { useTransitionState } from "../useTransitionState";
+import type { RequestToolDetail } from '@claude-proxy/core';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useParams } from '@tanstack/react-router';
+import { getContextTool } from '../api';
+import { Breadcrumbs } from '../components/Breadcrumbs';
+import { EvictedBody } from '../components/EvictedBody';
+import { QueryState } from '../components/QueryState';
+import { PRETTY_RAW, type PrettyRawView, Segmented } from '../components/Segmented';
+import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
+import { fmtBytes, fmtInt } from '../format';
+import { useTransitionState } from '../useTransitionState';
 
 export function ContextToolPage() {
-  const { file, index } = useParams({ from: "/context/$file/tool/$index" });
+  const { file, index } = useParams({ from: '/context/$file/tool/$index' });
   const idx = Number(index);
   const query = useQuery({
-    queryKey: ["context-tool", file, idx],
+    queryKey: ['context-tool', file, idx],
     queryFn: () => getContextTool(file, idx),
   });
   const data = query.data;
@@ -23,18 +23,20 @@ export function ContextToolPage() {
   return (
     <section>
       <Breadcrumbs>
-        <Link to="/context" className="link">
+        <Link to='/context' className='link'>
           Context size
         </Link>
-        <Link to="/context/$file" params={{ file }} className="link">
+        <Link to='/context/$file' params={{ file }} className='link'>
           Request breakdown
         </Link>
-        <span className="crumb-current">Tool #{index}</span>
+        <span className='crumb-current'>Tool #{index}</span>
       </Breadcrumbs>
-      <div className="pagehead">
+      <div className='pagehead'>
         <h1>Tool #{index}</h1>
       </div>
-      <div className="muted" style={{ marginBottom: "0.75rem", wordBreak: "break-all" }}>{file}</div>
+      <div className='muted' style={{ marginBottom: '0.75rem', wordBreak: 'break-all' }}>
+        {file}
+      </div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ToolSkeleton />}>
         {data?.evicted && <EvictedBody data={data} />}
@@ -49,10 +51,10 @@ function ToolSkeleton() {
   return (
     <>
       <SkeletonStats count={3} />
-      <div className="card">
-        <div className="card-head">
-          <Skeleton w="20%" h="0.95em" />
-          <Skeleton w="7rem" />
+      <div className='card'>
+        <div className='card-head'>
+          <Skeleton w='20%' h='0.95em' />
+          <Skeleton w='7rem' />
         </div>
         <SkeletonMsgBlocks count={3} lines={4} />
       </div>
@@ -61,23 +63,23 @@ function ToolSkeleton() {
 }
 
 function ToolBody({ tool: t }: { tool: RequestToolDetail }) {
-  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>("pretty");
+  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>('pretty');
 
   return (
     <>
-      <div className="grid stats">
-        <StatTile label="Position" value={`#${t.index}`} sub={`of ${t.toolCount} tools`} />
-        <StatTile label="Name" value={t.name} />
-        <StatTile label="Size" value={fmtBytes(t.bytes)} sub={`~${fmtInt(t.estTokens)} tokens`} />
+      <div className='grid stats'>
+        <StatTile label='Position' value={`#${t.index}`} sub={`of ${t.toolCount} tools`} />
+        <StatTile label='Name' value={t.name} />
+        <StatTile label='Size' value={fmtBytes(t.bytes)} sub={`~${fmtInt(t.estTokens)} tokens`} />
       </div>
 
-      <div className="card">
-        <div className="card-head">
+      <div className='card'>
+        <div className='card-head'>
           <h2>Tool schema</h2>
-          <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label="Schema view" busy={isSwitching} />
+          <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label='Schema view' busy={isSwitching} />
         </div>
-        <div className={isSwitching ? "is-stale" : undefined}>
-          {view === "pretty" ? <PrettyTool content={t.content} /> : <pre className="rawjson wrap">{t.content}</pre>}
+        <div className={isSwitching ? 'is-stale' : undefined}>
+          {view === 'pretty' ? <PrettyTool content={t.content} /> : <pre className='rawjson wrap'>{t.content}</pre>}
         </div>
       </div>
     </>
@@ -97,9 +99,9 @@ function PrettyTool({ content }: { content: string }) {
   try {
     parsed = JSON.parse(content);
   } catch {
-    return <pre className="rawjson wrap">{content}</pre>;
+    return <pre className='rawjson wrap'>{content}</pre>;
   }
-  if (typeof parsed !== "object" || parsed === null) return <pre className="rawjson wrap">{content}</pre>;
+  if (typeof parsed !== 'object' || parsed === null) return <pre className='rawjson wrap'>{content}</pre>;
 
   const tool = parsed as Schema;
   const description = str(tool.description);
@@ -108,20 +110,20 @@ function PrettyTool({ content }: { content: string }) {
   const params = paramRows(schema);
 
   return (
-    <div className="msg-blocks">
-      <Section label="Name">
-        <Prose text={str(tool.name) || "(unnamed)"} />
+    <div className='msg-blocks'>
+      <Section label='Name'>
+        <Prose text={str(tool.name) || '(unnamed)'} />
       </Section>
 
       {description && (
-        <Section label="Description">
+        <Section label='Description'>
           <Prose text={description} />
         </Section>
       )}
 
       {params.length > 0 ? (
-        <Section label="Parameters">
-          <table className="table">
+        <Section label='Parameters'>
+          <table className='table'>
             <thead>
               <tr>
                 <th>Name</th>
@@ -134,9 +136,9 @@ function PrettyTool({ content }: { content: string }) {
                 <tr key={p.name}>
                   <td>
                     {p.name}
-                    {p.required && <span className="msg-badge">required</span>}
+                    {p.required && <span className='msg-badge'>required</span>}
                   </td>
-                  <td className="muted">{p.type}</td>
+                  <td className='muted'>{p.type}</td>
                   <td>{p.description}</td>
                 </tr>
               ))}
@@ -145,8 +147,8 @@ function PrettyTool({ content }: { content: string }) {
         </Section>
       ) : (
         schema && (
-          <Section label="Input schema">
-            <pre className="rawjson wrap">{stringify(schema)}</pre>
+          <Section label='Input schema'>
+            <pre className='rawjson wrap'>{stringify(schema)}</pre>
           </Section>
         )
       )}
@@ -163,13 +165,15 @@ interface ParamRow {
 
 /** Flatten a JSON-schema `properties` map into displayable parameter rows. */
 function paramRows(schema: Schema | undefined): ParamRow[] {
-  if (!schema || typeof schema !== "object") return [];
+  if (!schema || typeof schema !== 'object') return [];
   const props = schema.properties;
-  if (typeof props !== "object" || props === null) return [];
-  const required = new Set(Array.isArray(schema.required) ? schema.required.filter((r): r is string => typeof r === "string") : []);
+  if (typeof props !== 'object' || props === null) return [];
+  const required = new Set(
+    Array.isArray(schema.required) ? schema.required.filter((r): r is string => typeof r === 'string') : [],
+  );
 
   return Object.entries(props as Record<string, unknown>).map(([name, raw]) => {
-    const spec = (typeof raw === "object" && raw !== null ? raw : {}) as Schema;
+    const spec = (typeof raw === 'object' && raw !== null ? raw : {}) as Schema;
     return {
       name,
       type: schemaType(spec),
@@ -181,24 +185,24 @@ function paramRows(schema: Schema | undefined): ParamRow[] {
 
 /** Best-effort human type label for a schema property. */
 function schemaType(spec: Schema): string {
-  if (typeof spec.type === "string") {
-    if (spec.type === "array") {
-      const items = (typeof spec.items === "object" && spec.items !== null ? spec.items : {}) as Schema;
-      const itemType = typeof items.type === "string" ? items.type : "";
-      return itemType ? `array<${itemType}>` : "array";
+  if (typeof spec.type === 'string') {
+    if (spec.type === 'array') {
+      const items = (typeof spec.items === 'object' && spec.items !== null ? spec.items : {}) as Schema;
+      const itemType = typeof items.type === 'string' ? items.type : '';
+      return itemType ? `array<${itemType}>` : 'array';
     }
     return spec.type;
   }
-  if (Array.isArray(spec.enum)) return "enum";
-  if (Array.isArray(spec.anyOf) || Array.isArray(spec.oneOf)) return "union";
-  return "—";
+  if (Array.isArray(spec.enum)) return 'enum';
+  if (Array.isArray(spec.anyOf) || Array.isArray(spec.oneOf)) return 'union';
+  return '—';
 }
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="msg-block">
-      <div className="msg-block-head">
-        <span className="msg-block-label">{label}</span>
+    <div className='msg-block'>
+      <div className='msg-block-head'>
+        <span className='msg-block-label'>{label}</span>
       </div>
       {children}
     </div>
@@ -207,11 +211,11 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 
 /** Wrapped, newline-preserving prose for text-ish values. */
 function Prose({ text }: { text: string }) {
-  return <div className="msg-text">{text}</div>;
+  return <div className='msg-text'>{text}</div>;
 }
 
 function str(v: unknown): string {
-  return typeof v === "string" ? v : "";
+  return typeof v === 'string' ? v : '';
 }
 
 function stringify(v: unknown): string {
@@ -224,10 +228,10 @@ function stringify(v: unknown): string {
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="card stat">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      <div className="stat-foot">{sub && <span className="muted">{sub}</span>}</div>
+    <div className='card stat'>
+      <div className='stat-label'>{label}</div>
+      <div className='stat-value'>{value}</div>
+      <div className='stat-foot'>{sub && <span className='muted'>{sub}</span>}</div>
     </div>
   );
 }

@@ -25,11 +25,8 @@
   --info: var(--signal);
 
   /* type */
-  --font-display:
-    "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    Roboto, sans-serif;
-  --font-body:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   font-family: var(--font-body);
@@ -242,6 +239,7 @@ button:focus-visible {
 }
 
 /* health signal */
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .health {
   display: flex;
   align-items: center;
@@ -369,6 +367,7 @@ button:focus-visible {
   margin: 0 0 3px auto;
   opacity: 0.75;
 }
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .muted {
   color: var(--muted);
 }
@@ -724,11 +723,7 @@ button:focus-visible {
 }
 /* The day under the cursor — on this row or on the mini chart's node. */
 .stat-popover-list li.is-active {
-  background: color-mix(
-    in srgb,
-    var(--spark-color, var(--signal)) 18%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--spark-color, var(--signal)) 18%, transparent);
 }
 .stat-popover-date {
   color: var(--muted);
@@ -1015,6 +1010,7 @@ a.pager-btn:hover {
 .bar-col {
   width: 22%;
 }
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .rowbar {
   height: 10px;
   background: linear-gradient(90deg, var(--signal-dim), var(--signal));
@@ -1353,7 +1349,9 @@ button.link {
 
 @media (prefers-reduced-motion: reduce) {
   * {
+    /* biome-ignore lint/complexity/noImportantStyles: a reduced-motion override must outrank every animation rule in the sheet */
     animation: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: a reduced-motion override must outrank every transition rule in the sheet */
     transition: none !important;
   }
 }
@@ -2142,6 +2140,7 @@ button.link {
   white-space: nowrap;
   color: var(--faint);
 }
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .gs-head {
   display: flex;
   align-items: center;
@@ -2248,6 +2247,7 @@ button.link {
   font-weight: 700;
   color: var(--violet);
 }
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .gs-item-title {
   font-size: 12.5px;
   line-height: 1.35;
@@ -3443,12 +3443,7 @@ button.btn-danger.armed {
   width: 100%;
   height: 0.72em;
   border-radius: 5px;
-  background: linear-gradient(
-    90deg,
-    var(--surface-2) 8%,
-    var(--line) 38%,
-    var(--surface-2) 68%
-  );
+  background: linear-gradient(90deg, var(--surface-2) 8%, var(--line) 38%, var(--surface-2) 68%);
   background-size: 260% 100%;
   animation: skeleton-shimmer 1.6s ease-in-out infinite;
 }
@@ -3601,11 +3596,7 @@ button.btn-danger.armed {
 }
 /* Work this run delegated to a subagent, so a fan-out is visible in the shape. */
 .steptree-turn.delegated {
-  background-image: repeating-linear-gradient(
-    45deg,
-    rgba(0, 0, 0, 0.35) 0 3px,
-    transparent 3px 6px
-  );
+  background-image: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.35) 0 3px, transparent 3px 6px);
 }
 
 /* A run's opening prompt in a list: enough to recognise it, never enough to own the row. */

@@ -195,7 +195,7 @@ requests were captured at all no estimated window is emitted, because a 0% meter
   on the wrong meter.
 - `packages/core/src/time.ts` — `dayStartMs` resolves a day label to the instant local midnight
   opens it, applying the zone offset twice so the changeover days land right.
-- `proxy/usage-live.mjs` — the 60-second poll and the token it holds in memory. `noteAuth` takes
+- `proxy/usage-live.ts` — the 60-second poll and the token it holds in memory. `noteAuth` takes
   the bearer off each forwarded request; `pollOnce` writes `usage-live.json` atomically and
   leaves the old file alone on failure.
 - `server/src/usage-live.ts` — reads that file, expires the percentages after five minutes, and
@@ -206,7 +206,7 @@ requests were captured at all no estimated window is emitted, because a 0% meter
   windows. That result can only change when a window completes, so it is memoised for an hour
   rather than recomputed per request; `clearLearnedCeilingsCache()` drops the memo. Both passes share one per-day archive memo,
   cleared by `clearArchivedUsageCache()`.
-- `proxy/proxy.mjs` — `extractRateLimit` copies only `anthropic-ratelimit-*` / `x-ratelimit-*`
+- `proxy/proxy.ts` — `extractRateLimit` copies only `anthropic-ratelimit-*` / `x-ratelimit-*`
   names off the upstream response, so no auth can ride along. The field is omitted entirely
   when upstream sent none, and a skim-cache-served request records none because no upstream
   call happened.

@@ -24,17 +24,17 @@
  * than replaying `messages[]`.
  */
 
-import { spawn } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { StringDecoder } from "node:string_decoder";
-import { fileURLToPath } from "node:url";
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
+import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // server/src
 
 /** Which posture a turn runs under. */
-export type ChatMode = "chat" | "agent";
+export type ChatMode = 'chat' | 'agent';
 
 /**
  * The device's own `claude` launch flags, replayed onto an agent turn so it matches
@@ -74,7 +74,7 @@ export interface CliToolUse {
  *   - `timeout` — it went quiet: nothing on stdout or stderr for the idle window.
  *   - `limit` — it stayed lively but outran the absolute ceiling on one turn.
  */
-export type CliInterruption = "stopped" | "timeout" | "limit";
+export type CliInterruption = 'stopped' | 'timeout' | 'limit';
 
 export interface CliTurnResult {
   text: string;
@@ -151,22 +151,26 @@ interface CliEvent {
 const textOf = (content: unknown): string =>
   Array.isArray(content)
     ? content
-        .map((b) => (b && typeof b === "object" && (b as { type?: string }).type === "text" ? String((b as { text?: string }).text ?? "") : ""))
+        .map((b) =>
+          b && typeof b === 'object' && (b as { type?: string }).type === 'text'
+            ? String((b as { text?: string }).text ?? '')
+            : '',
+        )
         .filter(Boolean)
-        .join("")
-    : typeof content === "string"
+        .join('')
+    : typeof content === 'string'
       ? content
-      : "";
+      : '';
 
 /** The content blocks of a message event, as objects we can inspect. */
 const blocksOf = (content: unknown): Record<string, unknown>[] =>
-  Array.isArray(content) ? content.filter((b): b is Record<string, unknown> => !!b && typeof b === "object") : [];
+  Array.isArray(content) ? content.filter((b): b is Record<string, unknown> => !!b && typeof b === 'object') : [];
 
-function applyUsage(into: CliTurnResult["usage"], u: Record<string, unknown>): void {
-  if (typeof u.input_tokens === "number") into.input = u.input_tokens;
-  if (typeof u.output_tokens === "number") into.output = u.output_tokens;
-  if (typeof u.cache_read_input_tokens === "number") into.cacheRead = u.cache_read_input_tokens;
-  if (typeof u.cache_creation_input_tokens === "number") into.cacheCreation = u.cache_creation_input_tokens;
+function applyUsage(into: CliTurnResult['usage'], u: Record<string, unknown>): void {
+  if (typeof u.input_tokens === 'number') into.input = u.input_tokens;
+  if (typeof u.output_tokens === 'number') into.output = u.output_tokens;
+  if (typeof u.cache_read_input_tokens === 'number') into.cacheRead = u.cache_read_input_tokens;
+  if (typeof u.cache_creation_input_tokens === 'number') into.cacheCreation = u.cache_creation_input_tokens;
 }
 
 const MAX_TOOL_ERROR_CHARS = 400;
@@ -184,8 +188,8 @@ export function findInitEvent(raw: string): { permissionMode: string | null } | 
     } catch {
       continue; // a partial trailing line; it will be whole on the next chunk
     }
-    if (ev.type !== "system" || ev.subtype !== "init") continue;
-    return { permissionMode: typeof ev.permissionMode === "string" ? ev.permissionMode : null };
+    if (ev.type !== 'system' || ev.subtype !== 'init') continue;
+    return { permissionMode: typeof ev.permissionMode === 'string' ? ev.permissionMode : null };
   }
   return null;
 }
@@ -205,14 +209,14 @@ export function findInitEvent(raw: string): { permissionMode: string | null } | 
  */
 export function decodeCliStream(raw: string, opts: { partial?: boolean } = {}): CliTurnResult {
   const out: CliTurnResult = {
-    text: "",
+    text: '',
     usage: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 },
     sessionId: null,
     tools: [],
     permissionMode: null,
     interrupted: null,
   };
-  let assistantText = "";
+  let assistantText = '';
   let resultText: string | null = null;
   let failure: string | null = null;
   // tool_use id → its entry in `out.tools`, so a later tool_result can mark it failed.
@@ -226,33 +230,33 @@ export function decodeCliStream(raw: string, opts: { partial?: boolean } = {}): 
     } catch {
       continue; // a non-JSON line is CLI chatter, not an event
     }
-    if (typeof ev.session_id === "string" && !out.sessionId) out.sessionId = ev.session_id;
-    if (ev.type === "system" && ev.subtype === "init" && typeof ev.permissionMode === "string") {
+    if (typeof ev.session_id === 'string' && !out.sessionId) out.sessionId = ev.session_id;
+    if (ev.type === 'system' && ev.subtype === 'init' && typeof ev.permissionMode === 'string') {
       out.permissionMode = ev.permissionMode;
     }
 
-    if (ev.type === "assistant") {
+    if (ev.type === 'assistant') {
       assistantText += textOf(ev.message?.content);
       if (ev.message?.usage) applyUsage(out.usage, ev.message.usage);
       for (const b of blocksOf(ev.message?.content)) {
-        if (b.type !== "tool_use") continue;
-        const use: CliToolUse = { name: typeof b.name === "string" ? b.name : "unknown", failed: false };
+        if (b.type !== 'tool_use') continue;
+        const use: CliToolUse = { name: typeof b.name === 'string' ? b.name : 'unknown', failed: false };
         out.tools.push(use);
-        if (typeof b.id === "string") byId.set(b.id, use);
+        if (typeof b.id === 'string') byId.set(b.id, use);
       }
-    } else if (ev.type === "user") {
+    } else if (ev.type === 'user') {
       for (const b of blocksOf(ev.message?.content)) {
-        if (b.type !== "tool_result" || b.is_error !== true) continue;
-        const use = typeof b.tool_use_id === "string" ? byId.get(b.tool_use_id) : undefined;
+        if (b.type !== 'tool_result' || b.is_error !== true) continue;
+        const use = typeof b.tool_use_id === 'string' ? byId.get(b.tool_use_id) : undefined;
         if (!use) continue;
         use.failed = true;
         const why = textOf(b.content).trim();
         if (why) use.error = why.length > MAX_TOOL_ERROR_CHARS ? `${why.slice(0, MAX_TOOL_ERROR_CHARS)}…` : why;
       }
-    } else if (ev.type === "result") {
+    } else if (ev.type === 'result') {
       if (ev.usage) applyUsage(out.usage, ev.usage);
-      if (ev.is_error) failure = ev.result ?? ev.subtype ?? "unknown error";
-      else if (typeof ev.result === "string") resultText = ev.result;
+      if (ev.is_error) failure = ev.result ?? ev.subtype ?? 'unknown error';
+      else if (typeof ev.result === 'string') resultText = ev.result;
     }
   }
 
@@ -272,8 +276,8 @@ export function decodeCliStream(raw: string, opts: { partial?: boolean } = {}): 
  * it and anything the alias injects.
  */
 export function cliSettings(baseUrl: string, overrides?: Record<string, unknown> | null): Record<string, unknown> {
-  const base = overrides && typeof overrides === "object" ? { ...overrides } : {};
-  const env = base.env && typeof base.env === "object" ? { ...(base.env as Record<string, unknown>) } : {};
+  const base = overrides && typeof overrides === 'object' ? { ...overrides } : {};
+  const env = base.env && typeof base.env === 'object' ? { ...(base.env as Record<string, unknown>) } : {};
   return { ...base, env: { ...env, ANTHROPIC_BASE_URL: baseUrl } };
 }
 
@@ -290,48 +294,51 @@ export function cliSettings(baseUrl: string, overrides?: Record<string, unknown>
  * harness prompt that teaches the child to use its tools.
  */
 export function cliArgs(
-  input: Pick<CliTurnInput, "mode" | "model" | "system" | "sessionId" | "resume" | "baseUrl" | "agentFlags" | "permissionMode">,
+  input: Pick<
+    CliTurnInput,
+    'mode' | 'model' | 'system' | 'sessionId' | 'resume' | 'baseUrl' | 'agentFlags' | 'permissionMode'
+  >,
 ): string[] {
-  const session = [input.resume ? "--resume" : "--session-id", input.sessionId];
+  const session = [input.resume ? '--resume' : '--session-id', input.sessionId];
 
-  if (input.mode === "agent") {
+  if (input.mode === 'agent') {
     const flags = input.agentFlags ?? DEFAULT_AGENT_FLAGS;
     const args = [
-      "--print",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-      "--settings",
+      '--print',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--settings',
       JSON.stringify(cliSettings(input.baseUrl, flags.settingsOverrides)),
     ];
     // Absent → the CLI's default set (user, project, local) loads, which is parity.
-    if (flags.settingSources?.length) args.push("--setting-sources", flags.settingSources.join(","));
+    if (flags.settingSources?.length) args.push('--setting-sources', flags.settingSources.join(','));
     // Replay what the device's alias withholds, so the dashboard is never *more*
     // capable than the terminal the user trusts.
-    if (flags.disallowedTools.length) args.push("--disallowed-tools", ...flags.disallowedTools);
+    if (flags.disallowedTools.length) args.push('--disallowed-tools', ...flags.disallowedTools);
     // A headless child cannot answer a permission prompt, so one is chosen for it.
-    if (input.permissionMode) args.push("--permission-mode", input.permissionMode);
-    args.push("--model", input.model, "--append-system-prompt", input.system, ...session);
+    if (input.permissionMode) args.push('--permission-mode', input.permissionMode);
+    args.push('--model', input.model, '--append-system-prompt', input.system, ...session);
     return args;
   }
 
   return [
-    "--print",
-    "--output-format",
-    "stream-json",
-    "--verbose",
-    "--settings",
+    '--print',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--settings',
     JSON.stringify(cliSettings(input.baseUrl)),
     // No tools to call and none defined, so nothing the dashboard sends can touch the device.
-    "--tools",
-    "",
+    '--tools',
+    '',
     // Ignore this device's CLAUDE.md, hooks, plugins, MCP servers, custom commands
     // and subagents — `--safe-mode` disables all of them.
-    "--safe-mode",
-    "--strict-mcp-config",
-    "--model",
+    '--safe-mode',
+    '--strict-mcp-config',
+    '--model',
     input.model,
-    "--system-prompt",
+    '--system-prompt',
     input.system,
     ...session,
   ];
@@ -348,7 +355,7 @@ export function cliEnv(baseUrl: string, from: NodeJS.ProcessEnv = process.env): 
 
 /** Where a `chat` turn runs: never the server's own tree, so `--add-dir`-less tools see nothing. */
 export function resolveCliCwd(configured?: string): string {
-  const dir = configured ?? path.join(os.tmpdir(), "claude-proxy-chat");
+  const dir = configured ?? path.join(os.tmpdir(), 'claude-proxy-chat');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -361,13 +368,13 @@ export function resolveCliCwd(configured?: string): string {
  * another. No env override and no `--add-dir`: exactly one reachable tree.
  */
 export function resolveAgentCwd(): string {
-  return path.resolve(HERE, "../..");
+  return path.resolve(HERE, '../..');
 }
 
 /** Resolve an executable the way a shell would, without spawning one. */
 export function findOnPath(cmd: string, env: NodeJS.ProcessEnv = process.env): string | null {
   if (cmd.includes(path.sep)) return fs.existsSync(cmd) ? cmd : null;
-  for (const dir of (env.PATH ?? "").split(path.delimiter)) {
+  for (const dir of (env.PATH ?? '').split(path.delimiter)) {
     if (!dir) continue;
     const full = path.join(dir, cmd);
     try {
@@ -405,7 +412,7 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   const child = spawn(input.cliPath, args, {
     cwd: input.cwd,
     env: cliEnv(input.baseUrl, process.env),
-    stdio: ["pipe", "pipe", "pipe"],
+    stdio: ['pipe', 'pipe', 'pipe'],
     detached: true,
   });
 
@@ -438,8 +445,8 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
     if (state.interrupted) return;
     state.interrupted = why;
     if (state.idle) clearTimeout(state.idle);
-    signalGroup("SIGTERM");
-    state.sigkill = setTimeout(() => signalGroup("SIGKILL"), STOP_GRACE_MS);
+    signalGroup('SIGTERM');
+    state.sigkill = setTimeout(() => signalGroup('SIGKILL'), STOP_GRACE_MS);
     state.sigkill.unref?.();
   };
 
@@ -447,7 +454,7 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   const armIdle = (): void => {
     if (state.interrupted) return;
     if (state.idle) clearTimeout(state.idle);
-    state.idle = setTimeout(() => end("timeout"), input.idleTimeoutMs);
+    state.idle = setTimeout(() => end('timeout'), input.idleTimeoutMs);
     state.idle.unref?.();
   };
 
@@ -458,33 +465,33 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   // watch exists to report on. The decoder holds a multi-byte character split across a
   // chunk boundary; `pending` holds a line split across one, so it is whole when parsed.
   let announced = false;
-  const decoder = new StringDecoder("utf8");
-  let pending = "";
-  child.stdout.on("data", (c: Buffer) => {
+  const decoder = new StringDecoder('utf8');
+  let pending = '';
+  child.stdout.on('data', (c: Buffer) => {
     stdout.push(c);
     armIdle();
     if (announced || !input.onInit) return;
     pending += decoder.write(c);
     const init = findInitEvent(pending);
-    const lastBreak = pending.lastIndexOf("\n");
+    const lastBreak = pending.lastIndexOf('\n');
     if (lastBreak >= 0) pending = pending.slice(lastBreak + 1);
     if (!init) return;
     announced = true;
     input.onInit(init);
   });
-  child.stderr.on("data", (c: Buffer) => {
+  child.stderr.on('data', (c: Buffer) => {
     stderr.push(c);
     armIdle(); // a child logging its way through is not wedged
   });
 
   armIdle();
-  const ceiling = setTimeout(() => end("limit"), input.maxTurnMs);
+  const ceiling = setTimeout(() => end('limit'), input.maxTurnMs);
   ceiling.unref?.();
-  input.onStart?.({ stop: () => end("stopped") });
+  input.onStart?.({ stop: () => end('stopped') });
 
   const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
-    child.on("error", reject);
-    child.on("close", (code, signal) => resolve({ code, signal }));
+    child.on('error', reject);
+    child.on('close', (code, signal) => resolve({ code, signal }));
   });
 
   child.stdin.end(input.prompt);
@@ -500,18 +507,18 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
     closed = await exit;
   } catch (err) {
     done();
-    const reason = (err as NodeJS.ErrnoException).code === "ENOENT" ? "not found on PATH" : (err as Error).message;
+    const reason = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'not found on PATH' : (err as Error).message;
     throw new Error(`chat cli could not start (${input.cliPath}: ${reason})`);
   }
   done();
 
-  const raw = Buffer.concat(stdout).toString("utf8");
+  const raw = Buffer.concat(stdout).toString('utf8');
   if (state.interrupted) {
     return { ...decodeCliStream(raw, { partial: true }), interrupted: state.interrupted };
   }
   if (closed.code !== 0) {
-    const tail = Buffer.concat(stderr).toString("utf8").trim().split("\n").slice(-4).join("\n");
-    throw new Error(`chat cli exited ${closed.code}${tail ? `: ${tail}` : ""}`);
+    const tail = Buffer.concat(stderr).toString('utf8').trim().split('\n').slice(-4).join('\n');
+    throw new Error(`chat cli exited ${closed.code}${tail ? `: ${tail}` : ''}`);
   }
   return decodeCliStream(raw);
 }

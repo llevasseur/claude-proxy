@@ -1,5 +1,5 @@
-import type { MouseEvent } from "react";
-import { Line, LineChart, ReferenceDot, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import type { MouseEvent } from 'react';
+import { Line, LineChart, ReferenceDot, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 
 export interface SparkPoint {
   /** `YYYY-MM-DD` for this day. */
@@ -60,15 +60,15 @@ export function Sparkline({
     : {};
 
   return (
-    <div className="sparkline" style={{ height }} aria-hidden {...track}>
-      <ResponsiveContainer width="100%" height="100%">
+    <div className='sparkline' style={{ height }} aria-hidden {...track}>
+      <ResponsiveContainer width='100%' height='100%'>
         <LineChart data={points} margin={MARGIN}>
           {/* Hidden, but it gives ReferenceDot a scale to place the marker on. */}
-          <XAxis dataKey="date" type="category" hide />
-          <YAxis hide domain={["dataMin", "dataMax"]} />
+          <XAxis dataKey='date' type='category' hide />
+          <YAxis hide domain={['dataMin', 'dataMax']} />
           <Line
-            type="monotone"
-            dataKey="value"
+            type='monotone'
+            dataKey='value'
             stroke={color}
             strokeWidth={1.5}
             dot={single ? { r: 2, fill: color } : false}
@@ -76,7 +76,7 @@ export function Sparkline({
           />
           {/* Declared after the line, so the marker paints over it. */}
           {active && (
-            <ReferenceDot x={active.date} y={active.value} r={3.2} fill={color} stroke="var(--ink)" strokeWidth={1} />
+            <ReferenceDot x={active.date} y={active.value} r={3.2} fill={color} stroke='var(--ink)' strokeWidth={1} />
           )}
         </LineChart>
       </ResponsiveContainer>

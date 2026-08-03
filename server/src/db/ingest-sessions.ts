@@ -1,8 +1,8 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
-import { parseSessionNodeTexts, parseSessionNodes, parseSessionTranscript } from "@claude-proxy/core";
-import { resolveSessionsDir, SESSION_FILE_RE } from "../sessions.js";
+import { readdir, readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
+import { parseSessionNodes, parseSessionNodeTexts, parseSessionTranscript } from '@claude-proxy/core';
+import { resolveSessionsDir, SESSION_FILE_RE } from '../sessions.js';
 
 /**
  * Index `logs/sessions/` into the `session`, `session_node` and
@@ -29,12 +29,12 @@ export interface SessionIngestStats {
 }
 
 interface SessionStatements {
-  insertSession: ReturnType<DatabaseSync["prepare"]>;
-  insertNode: ReturnType<DatabaseSync["prepare"]>;
-  insertNodeText: ReturnType<DatabaseSync["prepare"]>;
-  clearNodes: ReturnType<DatabaseSync["prepare"]>;
-  clearNodeTexts: ReturnType<DatabaseSync["prepare"]>;
-  deleteSession: ReturnType<DatabaseSync["prepare"]>;
+  insertSession: ReturnType<DatabaseSync['prepare']>;
+  insertNode: ReturnType<DatabaseSync['prepare']>;
+  insertNodeText: ReturnType<DatabaseSync['prepare']>;
+  clearNodes: ReturnType<DatabaseSync['prepare']>;
+  clearNodeTexts: ReturnType<DatabaseSync['prepare']>;
+  deleteSession: ReturnType<DatabaseSync['prepare']>;
 }
 
 function prepare(db: DatabaseSync): SessionStatements {
@@ -65,9 +65,9 @@ function prepare(db: DatabaseSync): SessionStatements {
       INSERT INTO session_node_text (thread_id, idx, text) VALUES (?, ?, ?)
       ON CONFLICT(thread_id, idx) DO UPDATE SET text = excluded.text
     `),
-    clearNodes: db.prepare("DELETE FROM session_node WHERE thread_id = ?"),
-    clearNodeTexts: db.prepare("DELETE FROM session_node_text WHERE thread_id = ?"),
-    deleteSession: db.prepare("DELETE FROM session WHERE thread_id = ?"),
+    clearNodes: db.prepare('DELETE FROM session_node WHERE thread_id = ?'),
+    clearNodeTexts: db.prepare('DELETE FROM session_node_text WHERE thread_id = ?'),
+    deleteSession: db.prepare('DELETE FROM session WHERE thread_id = ?'),
   };
 }
 
@@ -84,8 +84,8 @@ interface ParsedSession {
 /** The untruncated opening prompt, mirroring `readRootPrompt` in `command-runs.ts`. */
 async function readRootPrompt(dir: string, threadId: string): Promise<string | null> {
   try {
-    const state = JSON.parse(await readFile(path.join(dir, `${threadId}.state.json`), "utf8")) as { root?: unknown };
-    return typeof state.root === "string" ? state.root : null;
+    const state = JSON.parse(await readFile(path.join(dir, `${threadId}.state.json`), 'utf8')) as { root?: unknown };
+    return typeof state.root === 'string' ? state.root : null;
   } catch {
     return null; // no sidecar, or it went away
   }
@@ -94,7 +94,7 @@ async function readRootPrompt(dir: string, threadId: string): Promise<string | n
 /** The sparse untruncated node texts, or none when the sidecar is absent. */
 async function readNodeTexts(dir: string, threadId: string): Promise<Record<number, string>> {
   try {
-    return parseSessionNodeTexts(await readFile(path.join(dir, `${threadId}.nodes.jsonl`), "utf8"));
+    return parseSessionNodeTexts(await readFile(path.join(dir, `${threadId}.nodes.jsonl`), 'utf8'));
   } catch {
     return {};
   }
@@ -106,7 +106,10 @@ async function readSessionFiles(dir: string, threadId: string): Promise<ParsedSe
   let bytes: number;
   let modified: string;
   try {
-    const [text, info] = await Promise.all([readFile(path.join(dir, `${threadId}.md`), "utf8"), stat(path.join(dir, `${threadId}.md`))]);
+    const [text, info] = await Promise.all([
+      readFile(path.join(dir, `${threadId}.md`), 'utf8'),
+      stat(path.join(dir, `${threadId}.md`)),
+    ]);
     content = text;
     bytes = info.size;
     modified = info.mtime.toISOString();
@@ -179,17 +182,17 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
   } catch (err) {
     // Only a *missing* `sessions/` means the rows are unbacked. Any other error
     // says nothing about what is on disk, so it must not drop the tables.
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     const st = prepare(db);
-    db.exec("BEGIN");
+    db.exec('BEGIN');
     try {
-      for (const row of db.prepare("SELECT thread_id FROM session").all() as Array<{ thread_id: string }>) {
+      for (const row of db.prepare('SELECT thread_id FROM session').all() as Array<{ thread_id: string }>) {
         st.deleteSession.run(row.thread_id);
         stats.deleted += 1;
       }
-      db.exec("COMMIT");
+      db.exec('COMMIT');
     } catch (txErr) {
-      db.exec("ROLLBACK");
+      db.exec('ROLLBACK');
       throw txErr;
     }
     return stats;
@@ -197,7 +200,7 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
 
   const threadIds = names
     .filter((n) => SESSION_FILE_RE.test(n))
-    .map((n) => n.slice(0, -".md".length))
+    .map((n) => n.slice(0, -'.md'.length))
     .sort();
   stats.seen = threadIds.length;
 
@@ -206,21 +209,21 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
   // Rows whose transcript left the directory. `ON DELETE CASCADE` takes the node
   // stream and node texts with them.
   const present = new Set(threadIds);
-  db.exec("BEGIN");
+  db.exec('BEGIN');
   try {
-    for (const row of db.prepare("SELECT thread_id FROM session").all() as Array<{ thread_id: string }>) {
+    for (const row of db.prepare('SELECT thread_id FROM session').all() as Array<{ thread_id: string }>) {
       if (present.has(row.thread_id)) continue;
       st.deleteSession.run(row.thread_id);
       stats.deleted += 1;
     }
-    db.exec("COMMIT");
+    db.exec('COMMIT');
   } catch (err) {
-    db.exec("ROLLBACK");
+    db.exec('ROLLBACK');
     throw err;
   }
 
   const known = new Map<string, { bytes: number; modified: string }>();
-  for (const row of db.prepare("SELECT thread_id, bytes, modified FROM session").all() as Array<{
+  for (const row of db.prepare('SELECT thread_id, bytes, modified FROM session').all() as Array<{
     thread_id: string;
     bytes: number;
     modified: string;
@@ -248,15 +251,15 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
     const batch = (await Promise.all(stale.slice(i, i + BATCH).map((id) => readSessionFiles(dir, id)))).filter(
       (p): p is ParsedSession => p !== null,
     );
-    db.exec("BEGIN");
+    db.exec('BEGIN');
     try {
       for (const parsed of batch) {
         writeSession(st, parsed);
         stats.parsed += 1;
       }
-      db.exec("COMMIT");
+      db.exec('COMMIT');
     } catch (err) {
-      db.exec("ROLLBACK");
+      db.exec('ROLLBACK');
       throw err;
     }
   }

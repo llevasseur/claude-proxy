@@ -31,9 +31,9 @@ import {
   type SuggestionRecurrence,
   type SuggestionStatus,
   type SuggestionStatusRow,
-} from "@claude-proxy/core";
-import { applySuggestionStatus, buildSuggestionStatus, type SuggestionStatusResponse } from "./api.js";
-import { resolveLogDir } from "./logs.js";
+} from '@claude-proxy/core';
+import { applySuggestionStatus, buildSuggestionStatus, type SuggestionStatusResponse } from './api.js';
+import { resolveLogDir } from './logs.js';
 
 const USAGE = `usage:
   suggestions list [-r|--range <spec>] [-s|--status <flags>] [--recurrence <states>] [-d|--detail] [--json]
@@ -48,11 +48,11 @@ const USAGE = `usage:
 
 /** What `list` shows without `--recurrence`: every state but the frozen `historical` windows. */
 const ACTIONABLE_RECURRENCES: readonly SuggestionRecurrence[] = SUGGESTION_RECURRENCES.filter(
-  (r) => r !== "historical",
+  (r) => r !== 'historical',
 );
 
 /** Flags that stand alone; every other flag takes the next argv entry as its value. */
-const BOOLEAN_FLAGS = new Set(["json", "detail"]);
+const BOOLEAN_FLAGS = new Set(['json', 'detail']);
 
 /** Read `--flag value` / `-f value` pairs off argv; anything else is a positional. */
 function parseArgs(argv: readonly string[]): {
@@ -65,9 +65,9 @@ function parseArgs(argv: readonly string[]): {
   const flags: Record<string, string> = {};
   const switches = new Set<string>();
 
-  const NAMES: Record<string, string> = { r: "range", s: "status", i: "id", n: "note", d: "detail" };
+  const NAMES: Record<string, string> = { r: 'range', s: 'status', i: 'id', n: 'note', d: 'detail' };
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i] ?? "";
+    const arg = argv[i] ?? '';
     const match = /^--?([A-Za-z-]+)$/.exec(arg);
     if (!match?.[1]) {
       positionals.push(arg);
@@ -82,11 +82,11 @@ function parseArgs(argv: readonly string[]): {
     if (value === undefined) throw new Error(`missing value for --${name}`);
     flags[name] = value;
   }
-  return { positionals, flags, json: switches.has("json"), detail: switches.has("detail") };
+  return { positionals, flags, json: switches.has('json'), detail: switches.has('detail') };
 }
 
 function parseStatuses(raw: string): SuggestionStatus[] {
-  return raw.split(",").map((part) => {
+  return raw.split(',').map((part) => {
     const status = part.trim();
     if (!isSuggestionStatus(status)) throw new Error(`invalid status: ${status}`);
     return status;
@@ -94,7 +94,7 @@ function parseStatuses(raw: string): SuggestionStatus[] {
 }
 
 function parseRecurrences(raw: string): SuggestionRecurrence[] {
-  return raw.split(",").map((part) => {
+  return raw.split(',').map((part) => {
     const recurrence = part.trim();
     if (!isSuggestionRecurrence(recurrence)) throw new Error(`invalid recurrence: ${recurrence}`);
     return recurrence;
@@ -103,33 +103,33 @@ function parseRecurrences(raw: string): SuggestionRecurrence[] {
 
 /** The recurrence marker on a row — blank for `none`, loud for `regressed`. */
 function renderRecurrence(row: SuggestionStatusRow): string {
-  if (row.recurrence === "none") return "";
-  const since = row.resolved ? ` since ${row.resolved.updated.slice(0, 10)}` : "";
-  if (row.recurrence === "regressed") return `  ⚠ REGRESSED${since}`;
-  if (row.recurrence === "historical") return `  (pre-fix window${since})`;
+  if (row.recurrence === 'none') return '';
+  const since = row.resolved ? ` since ${row.resolved.updated.slice(0, 10)}` : '';
+  if (row.recurrence === 'regressed') return `  ⚠ REGRESSED${since}`;
+  if (row.recurrence === 'historical') return `  (pre-fix window${since})`;
   return `  (spans the fix${since})`;
 }
 
 function renderRows(rows: readonly SuggestionStatusRow[]): string {
-  if (rows.length === 0) return "no suggestions match.";
+  if (rows.length === 0) return 'no suggestions match.';
   const width = Math.max(...rows.map((r) => r.id.length));
   return rows
     .map((r) => {
-      const note = r.note ? `  — ${r.note}` : "";
+      const note = r.note ? `  — ${r.note}` : '';
       const head = `  ${String(r.bucket).padStart(3)} ${r.label.padEnd(9)} ${r.status.padEnd(7)} ${r.severity.padEnd(4)} ${r.id.padEnd(width)}  ${r.title}${renderRecurrence(r)}${note}`;
       if (!r.detail) return head;
-      const sources = (r.sources ?? []).map((s) => `        · ${s.label}${s.sample ? `: ${s.sample}` : ""}`);
-      return [head, `      ${r.detail}`, `      evidence: ${r.evidence}`, ...sources].join("\n");
+      const sources = (r.sources ?? []).map((s) => `        · ${s.label}${s.sample ? `: ${s.sample}` : ''}`);
+      return [head, `      ${r.detail}`, `      evidence: ${r.evidence}`, ...sources].join('\n');
     })
-    .join("\n");
+    .join('\n');
 }
 
 async function run(argv: readonly string[]): Promise<void> {
   const { positionals, flags, json, detail } = parseArgs(argv);
-  const command = positionals[0] ?? "list";
+  const command = positionals[0] ?? 'list';
   const logDir = resolveLogDir();
 
-  if (command === "list") {
+  if (command === 'list') {
     const wanted = new Set(flags.recurrence ? parseRecurrences(flags.recurrence) : ACTIONABLE_RECURRENCES);
     // Read every recurrence state, then narrow here, so the rows left out can be counted.
     const full = await buildSuggestionStatus(logDir, {
@@ -140,7 +140,7 @@ async function run(argv: readonly string[]): Promise<void> {
     const rows = full.rows.filter((row) => wanted.has(row.recurrence));
     const hidden = full.rows.length - rows.length;
     // Split the hidden count: frozen windows get their own line, the rest were just not asked for.
-    const hiddenHistorical = wanted.has("historical") ? 0 : countSuggestionRecurrences(full.rows).historical;
+    const hiddenHistorical = wanted.has('historical') ? 0 : countSuggestionRecurrences(full.rows).historical;
     const result: SuggestionStatusResponse = {
       rows,
       meta: { ...full.meta, counts: countSuggestionStatuses(rows), recurrences: countSuggestionRecurrences(rows) },
@@ -150,8 +150,10 @@ async function run(argv: readonly string[]): Promise<void> {
       return;
     }
     const { counts, recurrences, buckets, missing } = result.meta;
-    const range = buckets.length ? `buckets 1–${buckets[buckets.length - 1]} exist` : "no buckets yet";
-    console.log(`${range} · ${rows.length} suggestion(s) shown: ${counts.pending} pending, ${counts.done} done, ${counts.skipped} skipped`);
+    const range = buckets.length ? `buckets 1–${buckets[buckets.length - 1]} exist` : 'no buckets yet';
+    console.log(
+      `${range} · ${rows.length} suggestion(s) shown: ${counts.pending} pending, ${counts.done} done, ${counts.skipped} skipped`,
+    );
     if (recurrences.regressed > 0) {
       console.log(`⚠ ${recurrences.regressed} regressed — marked done, still tripping in windows recorded since.`);
     }
@@ -161,29 +163,29 @@ async function run(argv: readonly string[]): Promise<void> {
       );
     }
     if (hidden - hiddenHistorical > 0) {
-      console.log(`(${hidden - hiddenHistorical} more outside --recurrence ${[...wanted].join(",")})`);
+      console.log(`(${hidden - hiddenHistorical} more outside --recurrence ${[...wanted].join(',')})`);
     }
-    if (missing.length) console.log(`(no such bucket: ${missing.join(", ")})`);
+    if (missing.length) console.log(`(no such bucket: ${missing.join(', ')})`);
     console.log(renderRows(rows));
     return;
   }
 
-  if (command === "mark") {
-    if (!flags.range) throw new Error("mark needs --range <bucket>");
-    if (!flags.id) throw new Error("mark needs --id <ids>");
-    if (!flags.status) throw new Error("mark needs --status <flag>");
+  if (command === 'mark') {
+    if (!flags.range) throw new Error('mark needs --range <bucket>');
+    if (!flags.id) throw new Error('mark needs --id <ids>');
+    if (!flags.status) throw new Error('mark needs --status <flag>');
     const buckets = parseBucketRange(flags.range);
     const [bucket] = buckets;
     if (buckets.length !== 1 || bucket === undefined) {
-      throw new Error("mark takes one bucket at a time — a suggestion id belongs to a bucket");
+      throw new Error('mark takes one bucket at a time — a suggestion id belongs to a bucket');
     }
     const [status] = parseStatuses(flags.status);
-    if (!status) throw new Error("mark needs --status <flag>");
+    if (!status) throw new Error('mark needs --status <flag>');
     const ids = flags.id
-      .split(",")
+      .split(',')
       .map((id) => id.trim())
       .filter(Boolean);
-    if (ids.length === 0) throw new Error("mark needs at least one id");
+    if (ids.length === 0) throw new Error('mark needs at least one id');
 
     const result = await applySuggestionStatus(
       logDir,
@@ -195,7 +197,9 @@ async function run(argv: readonly string[]): Promise<void> {
     }
     console.log(`marked ${result.meta.updated} suggestion(s) in ${result.meta.statusFile}`);
     if (result.meta.unknown.length) {
-      console.log(`(no suggestion currently carries: ${result.meta.unknown.map((u) => `${u.bucket}/${u.id}`).join(", ")} — flag written anyway)`);
+      console.log(
+        `(no suggestion currently carries: ${result.meta.unknown.map((u) => `${u.bucket}/${u.id}`).join(', ')} — flag written anyway)`,
+      );
     }
     console.log(renderRows(result.rows));
     return;

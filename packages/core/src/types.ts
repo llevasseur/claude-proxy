@@ -1,7 +1,7 @@
 /**
  * The audit sidecar written by the proxy next to each captured request
  * (`<ts>_anthropic.audit.json`). This type mirrors exactly what
- * `proxy/proxy.mjs` emits — keep the two in sync.
+ * `proxy/proxy.ts` emits — keep the two in sync.
  */
 export interface AuditTokens {
   /** Non-cached input tokens billed at the input rate. */
@@ -99,19 +99,19 @@ export interface AuditSidecar {
  * skipped by the digest rather than aborting the whole run.
  */
 export function isAuditSidecar(value: unknown): value is AuditSidecar {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  if (typeof v.timestamp !== "string") return false;
-  if (typeof v.model !== "string") return false;
+  if (typeof v.timestamp !== 'string') return false;
+  if (typeof v.model !== 'string') return false;
   const t = v.tokens as Record<string, unknown> | undefined;
-  if (typeof t !== "object" || t === null) return false;
-  for (const key of ["input", "output", "cacheRead", "cacheCreation", "realInput"]) {
-    if (typeof t[key] !== "number") return false;
+  if (typeof t !== 'object' || t === null) return false;
+  for (const key of ['input', 'output', 'cacheRead', 'cacheCreation', 'realInput']) {
+    if (typeof t[key] !== 'number') return false;
   }
   const r = v.request as Record<string, unknown> | undefined;
-  if (typeof r !== "object" || r === null) return false;
-  for (const key of ["toolCount", "toolsBytes", "systemBytes", "totalBytes"]) {
-    if (typeof r[key] !== "number") return false;
+  if (typeof r !== 'object' || r === null) return false;
+  for (const key of ['toolCount', 'toolsBytes', 'systemBytes', 'totalBytes']) {
+    if (typeof r[key] !== 'number') return false;
   }
   if (!Array.isArray(v.tools)) return false;
   return true;
