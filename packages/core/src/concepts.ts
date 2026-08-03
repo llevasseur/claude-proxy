@@ -10,7 +10,7 @@
 
 /** One term `/teach` recorded, as stored on a line of `logs/concepts.jsonl`. */
 export interface Concept {
-  /** The term that was learned — the thing the run set out to name. */
+  /** The term that was learned. */
   term: string;
   /** The single Simplified Technical English sentence to say the term back with. */
   sentence: string;
@@ -36,8 +36,8 @@ export function isConcept(value: unknown): value is Concept {
 
 /**
  * A record with every optional field defaulted, so a listing never has to guard
- * per cell. Non-string entries in `skills` are dropped rather than rendered as
- * `[object Object]`; a missing `field` or `sentence` becomes the empty string.
+ * per cell. Non-string entries in `skills` are dropped; a missing `field` or
+ * `sentence` becomes the empty string.
  */
 export function normalizeConcept(concept: Concept): Concept {
   const skills = Array.isArray(concept.skills) ? concept.skills.filter((s): s is string => typeof s === "string") : [];

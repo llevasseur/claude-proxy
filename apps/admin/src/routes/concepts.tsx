@@ -87,7 +87,6 @@ function formatSaved(savedAt: string): string {
   return Number.isNaN(at.getTime()) ? savedAt : at.toLocaleString();
 }
 
-/** The one card on this page, five columns wide. */
 const CONCEPT_COLUMNS: readonly SkeletonColumn[] = [{ cell: "60%" }, {}, { cell: "50%" }, { cell: "70%" }, { cell: "44%" }];
 
 function ConceptsSkeleton() {
