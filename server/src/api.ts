@@ -1359,7 +1359,7 @@ export async function buildSystemPromptUpdate(promptPath: string, text: unknown)
 }
 
 /**
- * The proxy's request-filter inventory: what `proxy/proxy.mjs` strips from every
+ * The proxy's request-filter inventory: what `proxy/proxy.ts` strips from every
  * request before forwarding. A static config view — these edits have no
  * per-request variation and can't be configured out of the CLI, so the proxy is
  * the only place they happen. Sourced from `PROXY_FILTER_INVENTORY` in core, which

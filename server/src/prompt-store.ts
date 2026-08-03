@@ -15,7 +15,7 @@ export const PROMPT_STORE_DIR = 'system-prompts';
 
 /**
  * A prompt's identity. Must stay byte-identical to `hashPrompt` in
- * `proxy/system-prompt.mjs`, or a backfilled sidecar lands in a different
+ * `proxy/system-prompt.ts`, or a backfilled sidecar lands in a different
  * cohort than a live-captured one. Held there by
  * `server/test/wire-prompt-parity.test.ts`.
  */

@@ -30,7 +30,7 @@ loads likewise leaves no trace. Two mechanisms MUST remain distinct:
   witnesses the absence.
 - **Proxy stripping for CLI exceptions.** `EndConversation` is deny-exempt, so its schema
   always ships; the harness-injected task-tools nudge has no suppression setting and is
-  not reliably stopped by `CLAUDE.md`. These are the only reasons `proxy/proxy.mjs`
+  not reliably stopped by `CLAUDE.md`. These are the only reasons `proxy/proxy.ts`
   edits request bodies; everything else is forwarded untouched.
 
 ## Behavior
@@ -51,7 +51,7 @@ loads likewise leaves no trace. Two mechanisms MUST remain distinct:
 - **Proxy filters** (`/filters`) — a **static** inventory declared in
   `packages/core/src/filters.ts` as `PROXY_FILTER_INVENTORY` and served verbatim by
   `buildFilters` (which only stamps `generatedAt`); it is the human-readable pairing for the
-  proxy's runtime constants `WITHHELD_TOOLS` and `INJECTED_REMINDERS` in `proxy/proxy.mjs`.
+  proxy's runtime constants `WITHHELD_TOOLS` and `INJECTED_REMINDERS` in `proxy/proxy.ts`.
   Two groups, each a **What** / **Why it needs the proxy** / **How it's stripped** table.
   **Withheld tools**: `EndConversation`, removed from the request's `tools` array before
   forwarding, because the CLI exempts it from `permissions.deny`. **Injected reminders**: the
@@ -118,9 +118,9 @@ settings, no traffic), and static `GET /api/filters`.
 
 - Nothing enforces parity between `PROXY_FILTER_INVENTORY` in
   `packages/core/src/filters.ts` and `WITHHELD_TOOLS` / `INJECTED_REMINDERS` in
-  `proxy/proxy.mjs`. Independent hardcoded tests assert `EndConversation` and
+  `proxy/proxy.ts`. Independent hardcoded tests assert `EndConversation` and
   `task-tools`—`packages/core/test/filters.test.ts` against the inventory and
-  `proxy/proxy.test.mjs` against runtime constants—but neither imports the other module.
+  `proxy/proxy.test.ts` against runtime constants—but neither imports the other module.
   A third runtime filter would leave the dashboard under-reporting with a green suite;
   one assertion should derive one list from the other.
 - `DISABLE_SCHEMA_TOOLS` maps only `disableWorkflows` and `disableArtifact`; any other

@@ -95,7 +95,7 @@ LLM/agent-backed provider can replace it without changing the UI or API.
 - [x] `packages/core` unit tests cover digest, cost, and advice.
 - [x] `server` serves `/api/*` over the real `logs/` dir; the dashboard renders
       token burn, trends, tool bloat, and advice from live data.
-- [x] The proxy still runs with bare `node proxy/proxy.mjs` (zero deps).
+- [x] The proxy still runs with bare `node proxy/proxy.ts` (zero deps).
 - [x] Day buckets and busiest-hour labels use `America/New_York`, including the EST/EDT
       boundary and late-evening requests whose UTC date is already the next day.
 - [x] `okq validate` passes on this bundle.

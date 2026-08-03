@@ -65,7 +65,7 @@ export const PREAMBLE = '(preamble)';
 /**
  * Split one block's text into heading spans. Lines inside a fenced code block
  * are skipped, so a shell comment is not a section. Mirrored in
- * `proxy/system-prompt.mjs`; the two are held together by
+ * `proxy/system-prompt.ts`; the two are held together by
  * `server/test/wire-prompt-parity.test.ts`.
  */
 export function sectionsOfText(text: string, block: number): WirePromptSection[] {

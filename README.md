@@ -5,7 +5,7 @@ and an admin dashboard that monitors usage, trends, and advice from what the
 proxy captures.
 
 ```
-proxy/          zero-dep capture proxy (the original proxy.mjs)
+proxy/          zero-dep capture proxy (proxy.ts, run directly by node)
 packages/core/  pure, tested library: usage digest, cost, advice
 server/         Node API over logs + scoped local writes + daily-summary CLI
 apps/admin/     TanStack (Router + Query) + Vite dashboard
@@ -128,7 +128,7 @@ and only matters once whole days have been relocated out of the live `logs/` dir
 
 Run from a worktree, the resolution walks back to the main checkout
 (`git rev-parse --git-common-dir`). That is deliberate: `LOG_DIR` follows the
-*running* `proxy.mjs`, so every worktree's sessions land in the main checkout's
+*running* `proxy.ts`, so every worktree's sessions land in the main checkout's
 `logs/sessions`, and a worktree-local path would be an empty directory that
 disappears with the worktree. An explicit `LOG_DIR` still wins.
 
@@ -172,7 +172,7 @@ estimated cost, day-over-day trends, ranked tool bloat, and deterministic
 coaching advice). All analysis lives in `packages/core` and is unit-tested.
 
 ```bash
-pnpm install                  # wire the workspace (pnpm 11, Node 18+)
+pnpm install                  # wire the workspace (pnpm 11, Node 22.18+)
 
 pnpm server                   # API on http://localhost:8788 (reads ./logs)
 pnpm admin                    # dashboard on http://localhost:5173
@@ -348,7 +348,8 @@ pnpm --filter server summary 2026-07-14   # a specific day
 `logs/` is doc-shaped, so every read is a full directory scan. The server also
 indexes the audit sidecars into **`logs/claude-proxy.db`** — SQLite via
 `node:sqlite`, which is built into Node and therefore adds no dependency (it is
-why the engines floor is `>=22`). Ingest runs on server start and again on any
+what first raised the engines floor to `>=22`; the proxy's unflagged type
+stripping then took it to `>=22.18`). Ingest runs on server start and again on any
 change to the log directory; it is idempotent and watermarked, so running it
 twice or having it die halfway are both harmless.
 

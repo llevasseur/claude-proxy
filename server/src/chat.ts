@@ -502,7 +502,7 @@ function chatHeaders(config: ChatConfig, apiKey: string, sessionId: string): Rec
     'content-type': 'application/json',
     'x-api-key': apiKey,
     'anthropic-version': config.anthropicVersion,
-    // Read back by `extractSession` in proxy.mjs; "cli"/"cli-bg" stay Claude Code's.
+    // Read back by `extractSession` in proxy.ts; "cli"/"cli-bg" stay Claude Code's.
     'x-app': 'dashboard',
     // The proxy keys a transcript thread by (this header + the first user message).
     'x-claude-code-session-id': sessionId,
