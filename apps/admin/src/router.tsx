@@ -58,8 +58,7 @@ import { useRailCollapsed } from './useRailCollapsed';
 /** Side-rail nav stations. */
 const STATIONS = [
   { to: '/', label: 'Overview', hint: 'today', exact: true, icon: Monitor },
-  // Not exact: a metric's own trend page is under `/trends`, and the station
-  // stays lit while you are down there.
+  // Not exact: `/trends/$metric` keeps the station lit.
   { to: '/trends', label: 'Trends', hint: 'blended', exact: false, icon: TrendingUp },
   { to: '/context', label: 'Context size', hint: 'prompt', exact: false, icon: Gauge },
   { to: '/tools', label: 'Tool bloat', hint: 'context', exact: false, icon: Wrench },
@@ -169,8 +168,7 @@ const indexRoute = createRoute({
 });
 /**
  * End-of-day snapshots of every metric, blended across the window. `/trends/$metric`
- * below is a sibling route, not a child, so a slide's link is a navigation to a
- * page of its own rather than an outlet inside this one.
+ * below is a sibling route, not a child.
  */
 const trendsRoute = createRoute({
   getParentRoute: () => rootRoute,

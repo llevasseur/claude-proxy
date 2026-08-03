@@ -967,8 +967,7 @@ a.pager-btn:hover {
   gap: 16px;
   margin-bottom: 14px;
 }
-/* The chooser: one chip per graph, so a metric is picked by name rather than by
-   counting anonymous dots. */
+/* The chooser: one chip per graph. */
 .trend-chips {
   display: flex;
   flex-wrap: wrap;
@@ -984,9 +983,8 @@ a.pager-btn:hover {
   border-radius: 999px;
   padding: 4px 10px;
   cursor: pointer;
-  /* Stated rather than inherited, because a `<button>` takes `normal` from the UA
-     while the skeleton's `<span>` takes the page's 1.55 — a 2.5px difference per
-     chip, and the strip wraps to two rows. */
+  /* Stated rather than inherited: a `<button>` takes the UA's `normal` and the
+     skeleton's `<span>` the page's 1.55, 2.5px apart per chip. */
   line-height: 1.45;
 }
 .trend-chip:hover {
@@ -1024,15 +1022,13 @@ a.pager-btn:hover {
   opacity: 0.4;
   cursor: default;
 }
-/* One row of slides, scrolled sideways and snapped so a slide always comes to
-   rest flush with the left edge. Grid columns rather than flex basis: every
-   slide is the same width whatever it holds, so the track's height is settled
-   before any data arrives. */
+/* One row of slides, scrolled sideways and snapped flush to the left edge. Grid
+   columns rather than flex basis: every slide is the same width whatever it
+   holds. */
 .trend-track {
-  /* Load-bearing: it makes the track each slide's offset parent, so `offsetLeft`
-     is the scroll position that brings that slide to the edge. Unpositioned, the
-     offsets are measured from a page-level ancestor and every scroll target — and
-     the nearest-slide sync reading them back — is off by that constant. */
+  /* Load-bearing: makes the track each slide's offset parent, so `offsetLeft` is
+     the scroll position that brings that slide to the edge. Unpositioned, the
+     offsets come from a page-level ancestor and every scroll target is off. */
   position: relative;
   display: grid;
   grid-auto-flow: column;
@@ -1040,14 +1036,13 @@ a.pager-btn:hover {
   gap: 22px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
-  /* The chips and arrows are the control; a scrollbar under them is noise. */
   scrollbar-width: none;
 }
 .trend-track::-webkit-scrollbar {
   display: none;
 }
 @media (min-width: 1080px) {
-  /* Two up, with the gap taken out of each column so both land whole. */
+  /* Two up, with the gap taken out of each column. */
   .trend-track {
     grid-auto-columns: calc(50% - 11px);
   }
@@ -1056,8 +1051,7 @@ a.pager-btn:hover {
   scroll-snap-align: start;
   min-width: 0;
 }
-/* Clamped to two lines: a longer description must not make one slide taller
-   than the one beside it. */
+/* Clamped to two lines so a long description cannot make one slide taller. */
 .trend-slide-note {
   margin: 12px 0 0;
   color: var(--muted);

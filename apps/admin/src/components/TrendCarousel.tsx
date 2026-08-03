@@ -12,8 +12,7 @@ const SLIDE_CHART_HEIGHT = 240;
 
 /**
  * The graphs, one metric per slide, with the chip strip and arrows that choose
- * between them. A slide is the Overview's stat card at full size — same label,
- * value and footer, with the sparkline grown into a real plot — and is itself
+ * between them. A slide is the Overview's stat card at full size, and is itself
  * the link to that metric's trend over time.
  */
 export function TrendCarousel({ metrics, digests }: { metrics: readonly StatMetric[]; digests: UsageDigest[] }) {
@@ -21,10 +20,8 @@ export function TrendCarousel({ metrics, digests }: { metrics: readonly StatMetr
   const trackRef = useRef<HTMLDivElement | null>(null);
 
   /**
-   * The track is moved by assigning `scrollLeft`, not by an animated `scrollTo`:
-   * arriving at the slide is the behaviour, and an animation that does not run —
-   * reduced motion, a background tab — must not leave the track where it was
-   * while the chips claim it moved.
+   * Moves the track by assigning `scrollLeft`, not by an animated `scrollTo`,
+   * which does not run under reduced motion or in a background tab.
    */
   const show = useCallback((index: number) => {
     const track = trackRef.current;
@@ -34,8 +31,8 @@ export function TrendCarousel({ metrics, digests }: { metrics: readonly StatMetr
   }, []);
 
   /**
-   * The track decides which slide is showing, not the last button pressed — a
-   * swipe or a trackpad flick moves it without going through `show`.
+   * The track decides which slide is showing, not the last button pressed: a
+   * swipe moves it without going through `show`.
    */
   const syncActive = useCallback(() => {
     const track = trackRef.current;
@@ -135,9 +132,8 @@ function TrendSlide({ def, digests }: { def: StatMetric; digests: UsageDigest[] 
 }
 
 /**
- * The window's closing day against the day before it, in percent. `null` when
- * the window holds fewer than two days, or when the earlier one was zero — no
- * percentage describes a rise from nothing.
+ * The window's closing day against the day before it, in percent. `null` under
+ * two days, or when the earlier one was zero.
  */
 function closingDelta(digests: readonly UsageDigest[], def: StatMetric): number | null {
   const closing = digests.at(-1);
@@ -165,9 +161,8 @@ export function TrendCarouselSkeleton({ metrics, days }: { metrics: readonly Sta
             </span>
           ))}
         </div>
-        {/* The arrows render inert rather than absent: at 28px they are the tallest
-            thing in this row whenever the chip strip fits on one line, so leaving
-            them out would let the head grow when the real ones arrive. */}
+        {/* Inert rather than absent: at 28px they set the row's height whenever
+            the chips fit on one line. */}
         <div className='trend-carousel-nav'>
           <span className='range'>1 / {metrics.length}</span>
           <button type='button' disabled>
@@ -185,10 +180,9 @@ export function TrendCarouselSkeleton({ metrics, days }: { metrics: readonly Sta
             <div className='stat-value'>
               <Skeleton w='62%' />
             </div>
-            {/* Real text, not a shimmer: the unit is a fixed string like the chip
-                labels, and `.stat-foot` is a flex row, so a shimmer span would set
-                the row's height itself — 8.6px against the 18.6px line box the
-                loaded text lands in, and the slide would grow when data arrived. */}
+            {/* Real text, not a shimmer: `.stat-foot` is a flex row, so a shimmer
+                span sets the row's height itself instead of the loaded text's line
+                box — 8.6px against 18.6px. */}
             <div className='stat-foot'>
               <span className='muted'>{m.blend.unit}</span>
             </div>

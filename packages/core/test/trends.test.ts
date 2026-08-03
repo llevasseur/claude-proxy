@@ -15,8 +15,7 @@ const requests = (d: Day) => d.requests;
 const perDay = () => 1;
 
 describe('endOfDaySnapshots', () => {
-  // Fixed instants in the report timezone, so the filter is tested against a
-  // clock this test controls rather than the one the suite happens to run at.
+  // A fixed instant in the report timezone, not the suite's own clock.
   const during = new Date('2026-08-03T18:00:00-04:00');
 
   it('drops the day still being written to', () => {
@@ -36,8 +35,8 @@ describe('endOfDaySnapshots', () => {
 
 describe('blendRate', () => {
   it('weights by volume, so a quiet day cannot count as much as a busy one', () => {
-    // $1/request over 100 requests, then $10/request over 1. The mean of the two
-    // daily rates is $5.50; the blended rate is what was actually spent per call.
+    // The mean of the two daily rates is $5.50; the blended rate is what was
+    // actually spent per call.
     const days = [day('2026-08-01', 100, 100), day('2026-08-02', 10, 1)];
     const blended = blendRate(days, cost, requests);
     expect(blended?.value).toBeCloseTo(110 / 101);
@@ -54,7 +53,7 @@ describe('blendRate', () => {
     const days = [day('2026-08-01', 10, 10), day('2026-08-02', 0, 0), day('2026-08-03', 30, 10)];
     const blended = blendRate(days, cost, requests);
     expect(blended?.value).toBe(2);
-    // The idle day is not one of the days that had a say in the number.
+    // The idle day had no say in the number.
     expect(blended?.days).toBe(2);
   });
 

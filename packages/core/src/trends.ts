@@ -7,8 +7,7 @@ export interface DayLabelled {
 
 /**
  * The window's finished days, in the order given. The current day is still being
- * written to, so its totals and means are a part-day figure standing next to
- * whole ones: an end-of-day snapshot leaves it out rather than plotting it short.
+ * written to, so its totals are a part-day figure and it is left out.
  */
 export function endOfDaySnapshots<T extends DayLabelled>(days: readonly T[], now?: Date): T[] {
   return days.filter((d) => !isPartialDay(d.date, now));
@@ -26,10 +25,8 @@ export interface BlendedRate {
 
 /**
  * `Σ num / Σ den` across the window — a rate weighted by volume rather than by
- * day. Averaging each day's own rate would let a day with four requests count as
- * much as one with four hundred; this cannot, because both days land in the same
- * two totals. `null` when nothing was captured or every denominator was zero,
- * neither of which a rate describes.
+ * day, so it is not the mean of each day's own rate. `null` when nothing was
+ * captured or every denominator was zero.
  */
 export function blendRate<T>(days: readonly T[], num: (d: T) => number, den: (d: T) => number): BlendedRate | null {
   let numerator = 0;

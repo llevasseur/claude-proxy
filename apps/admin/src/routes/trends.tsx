@@ -14,12 +14,9 @@ import { useTransitionState } from '../useTransitionState';
 const BLENDED_COLUMNS: readonly SkeletonColumn[] = [{}, { className: 'num' }, {}, { className: 'num' }];
 
 /**
- * Every statistic as of the close of each day, blended across the window.
- *
- * The Overview answers "how is today going"; this page answers "what has the
- * rate settled at", which is a different question and needs the current day
- * left out — a day still being written to is a part-day figure and would drag
- * every number on the page down against the finished days beside it.
+ * Every statistic as of the close of each day, blended across the window. The
+ * current day is left out: still being written to, it is a part-day figure
+ * standing next to whole ones.
  */
 export function TrendsPage() {
   const [days, selectDays, isSwitching] = useTransitionState(30);
@@ -48,8 +45,7 @@ export function TrendsPage() {
             one day counting as much as the next. Today is still open and is left out.
           </div>
         </div>
-        {/* The wrapper is what keeps the switcher off the description: `.pagehead`
-            is a flex row, and a bare control shrinks until its last pill clips. */}
+        {/* `.pagehead` is a flex row; a bare control shrinks until its last pill clips. */}
         <div className='pagehead-controls'>
           <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label='Trend window' busy={busy} />
         </div>
@@ -109,8 +105,7 @@ function BlendedRow({ def, digests }: { def: StatMetric; digests: UsageDigest[] 
       </td>
       <td className='num'>{blended ? def.format(blended.value) : '—'}</td>
       <td className='muted'>{def.blend.unit}</td>
-      {/* Days that carried a denominator, not days in the window — an idle day
-          has no rate to contribute and is not counted as one. */}
+      {/* Days that carried a denominator, not days in the window. */}
       <td className='num'>{blended?.days ?? 0}</td>
     </tr>
   );

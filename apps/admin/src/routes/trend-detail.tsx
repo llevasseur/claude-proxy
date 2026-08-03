@@ -60,8 +60,8 @@ export function TrendDetailPage() {
 
   return (
     <section>
-      {/* Trends, not Overview: this page is `/trends/$metric`, and both the
-          carousel and the Overview's cards arrive here through that path. */}
+      {/* Trends, not Overview: both the carousel and the Overview's cards arrive
+          here through `/trends/$metric`. */}
       <Breadcrumbs>
         <Link to='/trends' className='link'>
           Trends

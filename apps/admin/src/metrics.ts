@@ -18,27 +18,26 @@ export interface MetricProvenance {
 }
 
 /**
- * How a statistic combines a window of end-of-day snapshots into one number:
- * `Σ num / Σ den`, a rate weighted by volume rather than by day. Every metric
- * declares one, which is what lets `/trends` state all of them the same way.
+ * How a statistic collapses a window of end-of-day snapshots into one number:
+ * `Σ num / Σ den`, weighted by volume rather than by day.
  */
 export interface MetricBlend {
   /** This day's contribution to the numerator. */
   num: (d: UsageDigest) => number;
   /** This day's weight. `1` blends per day; requests blend a per-request mean. */
   den: (d: UsageDigest) => number;
-  /** What the denominator counts, read after the value — e.g. `"per day"`. */
+  /** What the denominator counts, read after the value. */
   unit: string;
 }
 
-/** A per-request mean carries its own denominator, so the numerator is recovered from it. */
+/** Blends a per-request mean on the requests behind it. */
 const perRequest = (pick: (s: PerCallStats) => number): MetricBlend => ({
   num: (d) => pick(d.perCall.work) * d.perCall.work.requests,
   den: (d) => d.perCall.work.requests,
   unit: 'per work request',
 });
 
-/** A daily total blends into a per-day average: the window's total over its days. */
+/** Blends a daily total into a per-day average. */
 const perDay = (pick: (d: UsageDigest) => number): MetricBlend => ({
   num: pick,
   den: () => 1,
@@ -153,8 +152,7 @@ export const METRICS: StatMetric[] = [
     format: fmtUsdPerMTok,
     value: (d) => costPerMTok(d),
     // The window's whole spend over every token it moved — the same arithmetic
-    // `costPerMTok` does for one day, which is why this metric reads identically
-    // on the Overview and on `/trends`.
+    // `costPerMTok` does for one day.
     blend: { num: (d) => d.cost.total * 1_000_000, den: rateTokens, unit: 'per M tokens moved' },
     sub: () => 'blended',
     increaseIsBad: true,
@@ -251,8 +249,7 @@ export const METRICS: StatMetric[] = [
     format: (n) => `${n.toFixed(1)} calls`,
     formatTick: (n) => n.toFixed(1),
     value: (d) => d.perCall.work.callsPerSession,
-    // Sessions, not requests: the mean this metric reports divides by them, so
-    // that is the weight a window has to blend it on.
+    // Sessions, not requests: that is the denominator this mean is over.
     blend: {
       num: (d) => d.perCall.work.requests,
       den: (d) => d.perCall.work.sessions,
@@ -282,8 +279,7 @@ export const METRICS: StatMetric[] = [
     color: 'var(--signal)',
     format: (n) => fmtPct(n),
     value: (d) => d.tokens.cacheHitRatio * 100,
-    // The ratio's own two totals, so the window's share is the real one rather
-    // than an average of daily percentages weighted equally.
+    // The ratio's own two totals, not an average of daily percentages.
     blend: { num: (d) => d.tokens.cacheRead * 100, den: (d) => d.tokens.realInput, unit: 'of prompt tokens' },
     increaseIsBad: false,
   },
@@ -307,8 +303,7 @@ export const METRICS: StatMetric[] = [
     format: (n) => `${fmtInt(n)} req`,
     formatTick: fmtCompact,
     value: (d) => d.busiestHour?.requestCount ?? 0,
-    // The peak hour's size averaged over the window. Which hour it fell in is a
-    // per-day fact and does not survive a blend, so only the count does.
+    // Only the count blends; which hour it fell in is a per-day fact.
     blend: perDay((d) => d.busiestHour?.requestCount ?? 0),
     headline: (d) => (d.busiestHour ? `${String(d.busiestHour.hour).padStart(2, '0')}:00` : '—'),
     sub: (d) => (d.busiestHour ? `${d.busiestHour.requestCount} req · ${REPORT_TZ_ABBR}` : undefined),
@@ -320,8 +315,7 @@ export const METRICS: StatMetric[] = [
     color: 'var(--amber)',
     format: (n) => fmtPct(n),
     value: (d) => d.toolOverheadPctOfInput,
-    // Only the percentage survives into the digest, so the day's input tokens
-    // are the weight that recovers the tool-token total behind it.
+    // Only the percentage is in the digest; input tokens recover the total behind it.
     blend: {
       num: (d) => d.toolOverheadPctOfInput * d.tokens.realInput,
       den: (d) => d.tokens.realInput,
@@ -337,8 +331,7 @@ export const METRICS: StatMetric[] = [
     format: fmtBytesLabel,
     formatTick: fmtBytes,
     value: (d) => d.avgSystemPromptBytes,
-    // Every request in the window, not every day: this mean is over requests,
-    // and a day's request count is what puts its average back on that footing.
+    // A mean over requests, not days: the day's request count is its weight.
     blend: {
       num: (d) => d.avgSystemPromptBytes * d.requestCount,
       den: (d) => d.requestCount,
