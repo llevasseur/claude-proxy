@@ -134,13 +134,9 @@ interface DayComparison {
 }
 
 /**
- * The last two days in the window. The chart shows the whole shape, but the
- * question that brings anyone to this page is "did it move since yesterday?", so
- * the answer is stated rather than left to be eyeballed off the line.
- *
- * Days come from the digests, not the clock: a gap in captured traffic means the
- * two most recent days need not be today and yesterday, and both dates are shown
- * for that reason.
+ * The last two days in the window, stated rather than left to be read off the
+ * chart. Days come from the digests, not the clock — a gap in captured traffic
+ * means the two most recent need not be today and yesterday, so both dates show.
  */
 function dayOverDay(digests: UsageDigest[], def: StatMetric): DayComparison | null {
   const today = digests.at(-1);
