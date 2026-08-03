@@ -55,6 +55,7 @@ import { SessionsPage } from './routes/sessions';
 import { SkimPage } from './routes/skim';
 import { SuggestionBucketPage } from './routes/suggestion-bucket';
 import { SystemPromptPage } from './routes/system-prompt';
+import { ToolSchemaPage } from './routes/tool-schema';
 import { ToolsPage } from './routes/tools';
 import { TrendDetailPage } from './routes/trend-detail';
 import { WithheldPage } from './routes/withheld';
@@ -201,6 +202,14 @@ const promptSectionRoute = createRoute({
   path: '/trends/avg-system-prompt/$hash/section/$index',
   component: PromptSectionPage,
   staticData: { title: 'Prompt section' },
+});
+const toolSchemaRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // Nested under the metric it drills into. The param is the tool's wire name,
+  // which is what the schema is looked up by.
+  path: '/trends/fixed-prefix/tool/$name',
+  component: ToolSchemaPage,
+  staticData: { title: 'Tool schema' },
 });
 const contextRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -375,6 +384,7 @@ const routeTree = rootRoute.addChildren([
   trendDetailRoute,
   promptDetailRoute,
   promptSectionRoute,
+  toolSchemaRoute,
   contextRoute,
   contextDetailRoute,
   contextMessageRoute,

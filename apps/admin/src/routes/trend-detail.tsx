@@ -3,6 +3,8 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import { getTrends } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { FixedPrefixTools } from '../components/FixedPrefixTools';
+import { PerCallNextSteps, PerCallPanel, PerCallSkeleton } from '../components/PerCallPanel';
 import { PromptMixPanel, PromptMixSkeleton } from '../components/PromptMixPanel';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
@@ -51,7 +53,11 @@ export function TrendDetailPage() {
   const last = digests.at(-1);
   const rangeLabel = !first || !last ? '—' : first.date === last.date ? first.date : `${first.date} → ${last.date}`;
   const compare = dayOverDay(digests, def);
+  // Which composition panel sits above the chart. `avg-system-prompt` splits a
+  // day by prompt cohort; a per-call mean splits it by what was held out of the
+  // denominator. A metric has at most one of the two.
   const hasMix = def.key === 'avg-system-prompt';
+  const hasPerCall = !!def.perCall;
 
   return (
     <section>
@@ -83,13 +89,14 @@ export function TrendDetailPage() {
       <QueryState
         isLoading={query.isLoading}
         error={query.error}
-        skeleton={<TrendDetailSkeleton days={days} label={def.label} mix={hasMix} />}
+        skeleton={<TrendDetailSkeleton days={days} label={def.label} mix={hasMix} perCall={hasPerCall} />}
         busy={busy}>
         {digests.length === 0 ? (
           <div className='card empty'>No usage captured in the last {days} days.</div>
         ) : (
           <>
             {hasMix && <PromptMixPanel days={days} />}
+            {hasPerCall && <PerCallPanel digests={digests} def={def} />}
 
             <div className='grid wide-two chart-lead'>
               <div className='card'>
@@ -127,6 +134,9 @@ export function TrendDetailPage() {
                 </table>
               </div>
             </div>
+
+            {def.key === 'fixed-prefix' && <FixedPrefixTools digests={digests} />}
+            {hasPerCall && <PerCallNextSteps def={def} />}
           </>
         )}
       </QueryState>
@@ -202,10 +212,21 @@ function DayOverDay({ compare }: { compare: DayComparison }) {
 }
 
 /** Everything the loaded page puts in this slot, in order — one row and point per day. */
-function TrendDetailSkeleton({ days, label, mix }: { days: number; label: string; mix: boolean }) {
+function TrendDetailSkeleton({
+  days,
+  label,
+  mix,
+  perCall,
+}: {
+  days: number;
+  label: string;
+  mix: boolean;
+  perCall: boolean;
+}) {
   return (
     <>
       {mix && <PromptMixSkeleton />}
+      {perCall && <PerCallSkeleton />}
       <div className='grid wide-two chart-lead'>
         <SkeletonChartCard title={`${label} / day`} height={CHART_HEIGHT} bars={days} />
         <SkeletonTableCard title='By day' columns={BY_DAY_COLUMNS} rows={days} />
