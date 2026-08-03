@@ -23,59 +23,50 @@ captured traffic. Unlike all of them, it writes back.
 
 ## Motivation
 
-This one file is the highest-leverage text on the device and the least visible. It is loaded into
-every session, so every byte in it is paid for on every request, forever — and nothing in the
-dashboard showed it. The proxy never records it either: it arrives inside the system prompt, which
-the [context-size analytics](context-size-analytics.md) count in aggregate but do not break down.
-So the question "what is in my device instructions, and what are they costing me?" had no answer
-short of opening the file in an editor.
+This file is loaded into every session, so every byte in it is paid for on every request — and
+nothing in the dashboard showed it. The proxy never records it either: it arrives inside the
+system prompt, which the [context-size analytics](context-size-analytics.md) count in aggregate
+but do not break down.
 
 Two things follow from that:
 
 - **Reading it is only half the job.** The reason to look at device instructions is almost always
-  to change them — trim a stale rule, add one a retro produced. A read-only view would send you to
-  an editor anyway, and then back here to see what it cost.
+  to change them, so a read-only view would send you to an editor and then back here.
 - **It is authored state with no version control behind it.** `~/.claude` is not a git repo. An
   overwrite that goes wrong loses text a human wrote and cannot reconstruct, which is a different
   risk from the dashboard's other write ([deleting a job](background-jobs-browser.md), which
   removes machine-generated scratch). The write path is built accordingly.
 
-The token estimate is the point of the size tiles. At the repo's `bytes / 4` estimate a 12 KB
-instruction file is roughly 3000 tokens on every request of every session — worth seeing next to
-the text that produced it.
+The token estimate is the point of the size tiles: at the repo's `bytes / 4` estimate a 12 KB
+instruction file is roughly 3000 tokens on every request of every session.
 
 ## Behavior
 
 - **System prompt** (`/system-prompt`) — **Size / Est. tokens / Lines / Modified** tiles over an
   editor holding the file's text. Size reads `N on disk` underneath while there are unsaved
   changes, so the tile states both numbers rather than silently meaning one of them. Lines carries
-  the section count from the outline. Est. tokens is labelled *per request*, because that is the
-  unit that matters.
+  the section count from the outline. Est. tokens is labelled *per request*.
 - **The stats are live on the draft, not the file.** Every keystroke re-measures bytes, re-derives
   the outline and re-estimates tokens from the text in the editor, using the same core functions
-  the server uses on save — so a paragraph's cost is visible before it is committed to disk, and
-  the numbers cannot disagree with what a save would produce.
+  the server uses on save. They measure the draft as typed, not the normalized form that lands, so
+  a draft with trailing blank lines or CRLF reads a few bytes above what the save writes.
 - **Edit / Preview** — a segmented toggle between the editor and the file rendered as markdown
-  through the dashboard's `Markdown` renderer, since the file is markdown and headings are how it
-  is organised.
+  through the dashboard's `Markdown` renderer.
 - **Saving** — `Save` is enabled only while the draft differs from disk; `Revert` restores the
   file's text. `⌘S` / `Ctrl-S` saves from the editor. The response carries a fresh read of the
   file, which seeds the query cache directly, so the page shows what is *on disk* after a save
   rather than what it hoped it wrote.
 - **Emptying the prompt is armed.** Saving an empty draft over a non-empty file takes a second
-  click, because it discards authored text and the keystroke that gets you there
-  (`⌘A`, `Delete`, `⌘S`) is short.
+  click, because it discards authored text.
 - **A file that does not exist yet** is not an error: the page opens on an empty editor and says
-  saving will create it, which is the true first-run state on a device that has never written
-  device-wide instructions.
+  saving will create it.
 - **Too large is refused before it is written.** A draft past the 200 KB ceiling disables the save
   and says so; the server refuses it independently.
 
 Data flows `~/.claude/CLAUDE.md` → `server` → `packages/core` → `apps/admin`, with core in the
 middle for both directions. The shaping is pure and browser-safe (`TextEncoder`, not `Buffer`) —
 `outlineSystemPrompt`, `summarizeSystemPrompt`, `normalizeSystemPromptText`,
-`parseSystemPromptText` and `utf8Bytes` in `packages/core/src/system-prompt.ts` — which is what
-lets the page compute the draft's stats with the *same* code that measures the saved file. File
+`parseSystemPromptText` and `utf8Bytes` in `packages/core/src/system-prompt.ts`. File
 I/O is `server/src/system-prompt.ts` (`resolveSystemPromptPath`, `readSystemPromptFile`,
 `writeSystemPromptFile`). The path is `~/.claude/CLAUDE.md`, overridable with
 `CLAUDE_SYSTEM_PROMPT` — which is also how the tests drive the write path without touching the
@@ -161,7 +152,7 @@ There is nothing for the DB to hold, so there is nothing to compare.
 
 - **The `.bak` is one deep.** Two bad saves in a row lose the good text. A rotating backup, or
   keeping the last N under `~/.claude/.claude-md-history/`, would make the page safe to experiment
-  in rather than merely safe to use carefully.
+  in.
 - **Nothing detects a concurrent edit.** If the file changes on disk while the page is open —
   another editor, another agent — a save overwrites it without noticing. The read already returns
   `modified`; sending it back and refusing a stale write is the obvious next step.
@@ -173,8 +164,8 @@ There is nothing for the DB to hold, so there is nothing to compare.
   `packages/core/src/context.ts`. It is right to within a fifth or so for prose and wrong for
   dense punctuation; a real tokenizer would be exact but is a dependency this package does not
   have.
-- **No diff on save.** You cannot see what changed between the file and the draft, which is what
-  you actually want before overwriting a long instruction file.
+- **No diff on save.** You cannot see what changed between the file and the draft before
+  overwriting a long instruction file.
 
 ## Related
 

@@ -3,7 +3,7 @@ type: feature
 title: Session transcripts
 description: The proxy reconstructs a per-thread conversation transcript from the requests it already observes, and the dashboard browses them live.
 tags: [dashboard, usage, backend]
-timestamp: 2026-07-24
+timestamp: 2026-08-02
 ---
 
 # Session transcripts
@@ -23,14 +23,13 @@ The audit sidecars are per-*request*: one `.audit.json` per `/v1/messages` call,
 token/cost/context math and useless for "what did that agent actually do?" — a conversation
 is a thread of many requests. Session-level attribution was listed **out of scope** in
 [`2026-07-13-claude-usage-summary-design.md`](../2026-07-13-claude-usage-summary-design.md)
-("Session-level attribution (no session ID in logs)"). Two observations made it possible
-after all. First, Claude Code *does* send `x-claude-code-session-id` on every request —
-`extractSession` in `proxy/proxy.mjs` reads it (alongside the `account_uuid` / `session_id` /
-`device_id` ids inside the `metadata.user_id` blob). Second, that header alone is not enough,
-because one session id covers the main agent, its subagents, and one-shot helpers; but since
-each request replays the whole conversation, `proxy/session.mjs` keys a thread by *(session id
-+ a fingerprint of its first user message)* and separates them. The "no reliable session ID"
-blocker was really a granularity problem.
+("Session-level attribution (no session ID in logs)"). Two observations made it possible after
+all. Claude Code *does* send `x-claude-code-session-id` on every request — `extractSession` in
+`proxy/proxy.mjs` reads it, alongside the `account_uuid` / `session_id` / `device_id` ids inside
+the `metadata.user_id` blob. That header alone is not enough, because one session id covers the
+main agent, its subagents, and one-shot helpers; but each request replays the whole conversation,
+so `proxy/session.mjs` keys a thread by *(session id + a fingerprint of its first user message)*
+and separates them. The blocker was a granularity problem, not a missing id.
 
 ## Behavior
 
@@ -83,11 +82,14 @@ blocker was really a granularity problem.
   largest captured request, showing its real input tokens over **"request breakdown →"** and how
   many requests the session sent. `GET /api/sessions/breakdown?id=<threadId>` reads the
   transcript's session id, scans `.audit.json` sidecars from the session's start date onward
-  (a session's requests never predate it), and returns the largest match. Requests are attributed
-  by the sidecar's `session.sessionId`, which the proxy reads off the `x-claude-code-session-id`
-  header — that id spans the whole agent family, so the peak may belong to a subagent of the
-  thread being viewed. The tile reads a muted **—** with the reason underneath: **"loading…"**
-  while the lookup runs, **"no session id"** on a transcript that carries none (which skips the
+  (a session's requests never predate it), and returns the largest match. That scan is
+  `resolveSessionRequests`, and it goes through the `SidecarSource` seam — by default the
+  SQLite substrate answers it from its tables with no directory read — but it only ever asks for
+  the **live** log directory, so a session whose day has already been archived matches nothing
+  (see the open questions). Requests are attributed by the sidecar's `session.sessionId`, which
+  the proxy reads off the `x-claude-code-session-id` header — that id spans the whole agent
+  family, so the peak may belong to a subagent of the thread being viewed. The tile reads a
+  muted **—** with the reason underneath: **"loading…"** while the lookup runs, **"no session id"** on a transcript that carries none (which skips the
   request entirely), **"lookup failed"** when the call errors, and **"no captured requests"**
   when nothing matched — including legacy sidecars written before `session` was captured.
 - **Session errors** (`/sessions/$id/errors`) — **"Errored tool results captured in this
@@ -111,17 +113,22 @@ blocker was really a granularity problem.
   compaction has lost the failures before it, so a partial overlap links what it covers instead
   of nothing.
 - **Which requests the errors page opens** — `resolveSessionRequests` (shared with
-  `buildSessionBreakdown`) returns every capture matching the session id, and
-  `requestsToScan` picks at most **6** to read: the peak first, then an even walk along the
-  session's timeline. Largest-first is the wrong shape — the biggest bodies cluster at the end
-  of a run, and once a session has compacted they are exactly the ones that dropped its early
-  failures. On a real 193-request session the only body still holding the first error ranked
-  **43rd by size**, while a six-sample walk of the timeline found it. Each body links whatever
-  it can and later ones only fill the gaps, so
-  different errors can point at different requests and the scan stops as soon as every error
-  has a home. Errors that budget can't account for — along with every error on a transcript
+  `buildSessionBreakdown`, and live-directory-only as described above) returns every capture
+  matching the session id, and `requestsToScan` picks at most **6** to read: the peak first, then
+  an even walk along the session's timeline. Largest-first is the wrong shape — the biggest bodies
+  cluster at the end of a run, and once a session has compacted they are exactly the ones that
+  dropped its early failures. On a real 193-request session the only body still holding the first
+  error ranked **43rd by size**, while a six-sample walk of the timeline found it. Each body links
+  whatever it can and later ones only fill the gaps, so different errors can point at different
+  requests and the scan stops as soon as every error has a home. Errors that budget can't account
+  for — along with every error on a transcript
   carrying no session id, or whose captures have been pruned or won't parse — read a muted
-  **"full turn unavailable"**; a missing link never fails the page.
+  **"full turn unavailable"**; a missing link never fails the page. **A body
+  [retention](retention-lifecycle.md) has evicted lands in that same bucket**: past
+  `RETENTION_DAYS` (default 30) the `.request.txt` is gone while its `.audit.json` sidecar is
+  kept forever, `readRequestErrorSites` swallows the read and returns no sites, and the error
+  reads **"full turn unavailable"**. The transcript's own one-line gist survives — it is the
+  verbatim `tool_result`, not the record of the failure, that eviction costs.
 - **Live streaming over SSE** — `GET /api/sessions/stream` watches the `sessions/` directory and
   re-lists with a **400 ms** debounce; `GET /api/sessions/session/stream?id=<threadId>` watches
   that one transcript file with a **150 ms** debounce. Both send the current value as a
@@ -139,7 +146,15 @@ The data path is `proxy/session.mjs` (best-effort append on every observed reque
 `packages/core/src/sessions.ts` (`parseSessionTranscript`, `parseSessionErrors`,
 `deriveSessionName`) → `server` (`listSessions` / `readSession` behind `GET /api/sessions`,
 `/api/sessions/session`, `/api/sessions/errors`, `/api/sessions/node-text?id=` for the sidecar's
-step texts, and the two SSE routes) → `apps/admin`. Thread
+step texts, and the two SSE routes) → `apps/admin`. Every one of those server reads now goes
+through the `SidecarSource` seam (`server/src/db/source.ts`,
+[ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md)): by default the SQLite
+substrate answers the listing and metadata questions from its tables with no directory read,
+`DB_READS=0` reverts every route to the original file scan, and `SHADOW_DB=1` re-runs each
+build against the other backing to compare. The transcript *body* is the deliberate exception
+— `readSession` returns the same `content` off disk either way, so only the metadata around it
+moved into SQL. `logs/sessions/` is also untouched by retention: the archiver moves files, not
+directories, so transcripts and their sidecars are never archived and never evicted. Thread
 ids come from the URL, so `resolveSessionFile` requires a 16-hex-char stem and confirms the
 resolved path stays inside `sessions/` — no traversal, 400 for a bad id and 404 for a missing
 transcript.
@@ -182,6 +197,14 @@ transcript.
   thread key is a hash of the session id plus the first user message, which only the request
   body carries — recomputing it would mean reading every `.request.txt` (megabytes each) instead
   of the sidecars. Worth having the proxy write the thread id into the sidecar?
+- **Both request-joined views are live-day-only.** `resolveSessionRequests` — behind the Peak
+  context tile and the errors page's "View the full turn" links — calls `readSidecars` against
+  the live log directory and has no archive fallback, unlike `buildTrends`. So once
+  `pnpm --filter server maintain` has archived a session's day, its Peak context tile reads
+  **"no captured requests"** and every error reads **"full turn unavailable"**, even though
+  the sidecars are sitting in `logs/archive/<date>/` and the drill-down pages those links
+  point at can read an archived day perfectly well. That is current behaviour rather than
+  intended design; the fix is the archive fallback the trends builder already has.
 - The errors page is the one session view with no SSE subscription and no **Live** indicator —
   worth streaming it too, or is an error list stable enough to leave on the one-shot query?
 

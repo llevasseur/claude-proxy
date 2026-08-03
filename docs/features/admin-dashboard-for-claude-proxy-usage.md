@@ -23,7 +23,7 @@ designed in
 
 ## Behavior
 
-Fourteen stations in the side rail, several with drill-down subpages beneath them:
+Fifteen stations in the side rail, several with drill-down subpages beneath them:
 
 - **Overview** (`/`) — today's real input / output tokens, estimated cost, cache-hit
   ratio, request count, busiest hour, tool overhead, and average system prompt, each
@@ -57,6 +57,9 @@ Fourteen stations in the side rail, several with drill-down subpages beneath the
 - **Hooks & Plugins** (`/hooks-plugins`) — the hooks and plugins the device's settings
   declare. This station, Not added, and Proxy filters share one doc:
   [Config inventory](config-inventory.md).
+- **System prompt** (`/system-prompt`) — `~/.claude/CLAUDE.md`, the device-wide instructions
+  every session loads, sized in bytes and per-request tokens and edited in place. The one
+  station that writes back. See [Device system prompt](device-system-prompt.md).
 - **Commands** (`/commands`) — what each slash command costs per declared step and where
   its runs stop, with a page per command and per run. See
   [Commands eval](commands-eval.md).
@@ -68,7 +71,7 @@ Fourteen stations in the side rail, several with drill-down subpages beneath the
 Each station has a [lucide](https://lucide.dev) icon. The rail toggles between full and
 a 64px icon-only strip; `localStorage` key `admin:rail-collapsed` persists the choice.
 Collapsed labels remain visually hidden in the accessibility tree and appear as hover
-tooltips. Below 860px, the rail becomes a top bar: the toggle and persisted state are
+tooltips. At 860px and below, the rail becomes a top bar: the toggle and persisted state are
 ignored, while icons remain beside labels.
 
 Day-bucketed values use `REPORT_TZ` (`America/New_York`, following EST/EDT), so
@@ -79,7 +82,7 @@ span, then filters by sidecar timestamp. Individual events use the viewer's loca
 Most `server` routes are read-only JSON views; SSE streams feed the Overview summary and
 usage meters, the session list and detail, and the commands pages. An explicit POST
 allowlist with origin-checked CORS starts, continues, stops, or ends dashboard chats,
-records suggestion flags, and deletes a background job. See
+records suggestion flags, rewrites the device system prompt, and deletes a background job. See
 [ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md).
 A page waiting on any of those routes renders a shaped placeholder rather than a spinner —
 see [Skeleton loading](skeleton-loading.md). Analysis is computed via `packages/core`.

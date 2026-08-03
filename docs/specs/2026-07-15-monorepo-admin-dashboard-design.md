@@ -18,10 +18,14 @@ bare-`node` proxy now strips `EndConversation` and harness-injected reminders
 (`proxy/proxy.mjs`, `packages/core/src/filters.ts`). Session attribution was added via
 `proxy/session.mjs`, `packages/core/src/sessions.ts`, and `/api/sessions*`; see
 [Session transcripts](../features/session-transcripts.md). The proxy has a `node --test`
-suite, so `packages/core` is no longer the only tested code. The server grew beyond
-these four read-only routes to scoped chat and
-suggestion-status writes, superseding ADR 0002's read-only clause; see
-[ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md).
+suite, and `server/` now carries its own vitest suite, so `packages/core` is no longer the
+only tested code. The server grew beyond these four read-only routes to an explicit write
+allowlist — chat, suggestion status, job delete, and the device system prompt — superseding
+ADR 0002's read-only clause; see
+[ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md), which records
+only the first two of those four. Reads are no longer a directory scan either: they are
+served from a SQLite view of `logs/` by default, one flag away from the original scan; see
+[ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md).
 The [dashboard feature](../features/admin-dashboard-for-claude-proxy-usage.md) tracks
 current behavior; the rest is point-in-time design history.
 
@@ -31,8 +35,8 @@ Turn `claude-proxy` into a **pnpm monorepo** with a **Node API** and **TanStack
 dashboard** over its `.audit.json` sidecars, surfacing the daily-summary spec's four
 areas—token burn/cost, context bloat, activity, and coaching—in a live browser.
 
-The proxy stays a transparent, zero-dependency pass-through (unchanged behavior). All new analysis
-is read-only over the logs it produces. No credentials are ever read or stored.
+The proxy stays a transparent, zero-dependency pass-through (unchanged behavior). All new
+analysis is read-only over the logs it produces. No credentials are ever read or stored.
 
 ## Repository layout
 

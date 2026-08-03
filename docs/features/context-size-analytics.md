@@ -3,7 +3,7 @@ type: feature
 title: Context-size analytics
 description: A dashboard page showing how large the prompt sent to the model gets — average, largest, and why the largest was so large.
 tags: [context-size, usage, dashboard]
-timestamp: 2026-07-24
+timestamp: 2026-08-02
 ---
 
 # Context-size analytics
@@ -19,9 +19,9 @@ so large** — the "why" being a raw-data drill-down for any of the largest requ
 
 The proxy already records, per request, the true prompt size that fills the model's
 context window (`tokens.realInput` = input + cache-read + cache-creation) plus the byte
-sizes of the system prompt, each tool schema, and the full request body. Nothing surfaced
-*how big context gets over time* or *what made a given request so large*. This turns the
-already-captured data into a direct answer without touching the passive-observer proxy.
+sizes of the system prompt, each tool schema, and the full request body. This surfaces
+*how big context gets over time* and *what made a given request so large* from that
+captured data, without touching the passive-observer proxy.
 
 ## Behavior
 
@@ -31,18 +31,20 @@ already-captured data into a direct answer without touching the passive-observer
   **"Requests"** table listing every request in the window where each row links to its
   breakdown. Default order is **When** newest-first; sortable by **When**, **Model**,
   **Real input**, **System**, **Tools**, and **Size** (click a column to sort and again to
-  flip direction). The peak request is tagged in place.
+  flip direction). The peak request is tagged in place. The window is **live-day-only**:
+  `buildContext` reads the live log directory and has no archive fallback — see the open
+  question below.
 - **Request breakdown** (`/context/$file`) — the "why so large" drill-down for one captured
   request: totals (request bytes, message count, tool count, system-prompt bytes), a
-  **region table** (conversation
-  messages vs. tool schemas vs. system prompt as shares of the request), a
-  **messages-by-size** table (each row opens the [Message drill-down](message-drill-down.md)
-  for that message; the **#** column numbers messages from 1 while the route stays 0-based;
-  sortable by **#**, **Bytes**, **~Tokens**, and **Share** — default **#**
-  ascending, click a column to sort and again to flip direction), a **tools-by-size** table
-  (each row opens that tool's schema page), and the **raw request JSON** (collapsed by
-  default, capped at 2 MB). Breadcrumbs link back up to the Context size page, and coming
-  back from a drill-down restores the scroll position the page was left at.
+  **region table** (conversation messages vs. tool schemas vs. system prompt as shares of the
+  request), a **messages-by-size** table (each row opens the
+  [Message drill-down](message-drill-down.md) for that message; the **#** column numbers
+  messages from 1 while the route stays 0-based; sortable by **#**, **Bytes**, **~Tokens**,
+  and **Share** — default **#** ascending, click a column to sort and again to flip
+  direction), a **tools-by-size** table (each row opens that tool's schema page), and the
+  **raw request JSON** (collapsed by default, capped at 2 MB). Breadcrumbs link back up to the
+  Context size page, and coming back from a drill-down restores the scroll position the page
+  was left at.
 - **Tool schema page** (`/context/$file/tool/$index`) — one tool schema in full: stat tiles
   for **position** (`#index` of N tools), **name**, and **size** (bytes, ~tokens), then a
   **"Tool schema"** card with a **Pretty** view (name, description, and a required-flagged
@@ -51,9 +53,25 @@ already-captured data into a direct answer without touching the passive-observer
 Data comes from the `server` API — `GET /api/context?days=<n>` (windowed summary; `days` is
 clamped to 1–365, default 14), `GET /api/context/detail?file=<base>` (one request's breakdown
 + raw JSON), and `GET /api/context/tool?file=<base>&index=<n>` (one tool schema) — computed via
-`summarizeContext` / `analyzeRequestBody` / `extractRequestTool` in `packages/core`. The
-drill-down endpoints read exactly one `.request.txt`; the `file` handle is validated and
-resolved strictly inside the log directory, so no path traversal is possible.
+`summarizeContext` / `analyzeRequestBody` / `extractRequestTool` in `packages/core`.
+
+The **windowed summary** goes through the `SidecarSource` seam
+([ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md)): by default the SQLite
+substrate answers `readSidecars` from its tables with no directory read at all, `DB_READS=0`
+puts `buildContext` back on the original `logs/*.audit.json` scan, and `SHADOW_DB=1` re-runs
+the build against the other backing to compare. The **drill-downs are outside the seam** —
+`buildContextDetail`, `buildContextMessage`, and `buildContextTool` take no `source` and still
+read exactly one `.request.txt` from disk, because a captured body is verbatim text the
+substrate does not hold.
+
+Those drill-downs look in the live log directory first and then in `logs/archive/<day>/` for
+the day the filename carries, so an archived request still resolves. When the sidecar is there
+but the body is gone, the answer is a **200 carrying `evicted: true`** — with the archived
+`day`, the `retentionDays` window, and the retained sidecar — not a 404; only a request with
+neither file left is a 404. Body eviction is a normal terminal state for the breakdown, the
+message drill-down, and the tool schema page: metrics survive it, verbatim text does not. The
+`file` handle is validated and resolved strictly inside the log directory (or that one archive
+day), so no path traversal is possible.
 
 ## Acceptance criteria
 
@@ -71,6 +89,14 @@ resolved strictly inside the log directory, so no path traversal is possible.
 
 ## Open questions
 
+- **The window selector cannot see an archived day.** `buildContext` calls `readSidecars`
+  against the live log directory only, while `buildTrends` falls back to
+  `logs/archive/<date>/` for days the live set is missing. Once
+  `pnpm --filter server maintain` has archived a past day, that day's requests vanish from
+  the tiles and the "Requests" table, so the 30-day window on a maintained install shows
+  roughly today. The drill-downs it links to *do* resolve archived days, so the gap is in the
+  listing, not the detail pages. Current behaviour, not intended design; the fix is the
+  archive fallback the trends builder already has.
 - Whether to add a historical chart of average/peak context per day (currently avg/median/max
   over a window only — see the design's out-of-scope note).
 - Whether to group the largest requests by session id (session id is captured but not

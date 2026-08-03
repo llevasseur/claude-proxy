@@ -42,8 +42,8 @@ Show the user how large their context (prompt) gets over time:
 "Context size" = **`tokens.realInput`** from each audit sidecar
 (`input + cacheRead + cacheCreation`), already documented in `packages/core/src/types.ts` as
 "the true prompt size sent to the model." This is the number that fills the model's context
-window, so it maps directly to the user's question. Byte sizes (`request.systemBytes`,
-`toolsBytes`, `totalBytes`) are shown as supporting detail on the drill-down.
+window. Byte sizes (`request.systemBytes`, `toolsBytes`, `totalBytes`) are shown as
+supporting detail on the drill-down.
 
 ## Architecture
 
@@ -108,8 +108,11 @@ following the `makeSidecar` helper convention.
   - `buildContext(logDir, days)` — reads sidecars over the window with `includeFile`, maps
     valid ones to `ContextEntry[]`, returns `summarizeContext(...)` plus `meta`.
   - `buildContextDetail(logDir, file)` — reads that one request body, returns
-    `{ file, breakdown: analyzeRequestBody(body), raw, truncated }`. (Shipped **without** the
-    planned sidecar headline numbers — see *Shipped since* above.)
+    `{ file, evicted: false, breakdown: analyzeRequestBody(body), raw, truncated }`. Since the
+    [retention lifecycle](../features/retention-lifecycle.md) shipped, a body that was archived
+    and then evicted returns the `{ file, evicted: true, day, retentionDays, retained }` branch
+    with a 200 rather than a 404; only a genuinely absent file is a 404. (Still shipped
+    **without** the planned sidecar headline numbers — see *Shipped since* above.)
   - `buildContextMessage(logDir, file, index)` — reads that one request body and returns
     `extractRequestMessage(body, index)`. Uses the full parsed body (not the truncated raw
     JSON), so any message resolves regardless of request size. Backs the message drill-down.
@@ -126,7 +129,7 @@ following the `makeSidecar` helper convention.
 - `api.ts` — `getContext(days)`, `getContextDetail(file)`, `getContextMessage(file, index)`,
   and `getContextTool(file, index)` with response interfaces mirroring the server envelopes;
   `ContextSummary`/`RequestBreakdown` imported as types from core.
-- New nav station **"Context"** (`hint: "size"`) in `router.tsx`, route `/context`.
+- New nav station **"Context size"** (`hint: "prompt"`) in `router.tsx`, route `/context`.
 - `routes/context.tsx` — window selector (7/14/30, like Trends), StatCards (Average / Median /
   Largest context, Requests), and a **"Requests"** table (when, model, real input, system,
   tools, size) listing every request in the window, sortable per column and client-side, where

@@ -22,8 +22,16 @@ under the personal profile). **Does not touch `hyperion-nexus-app`.**
 usage-digest.ts` and `scripts/usage-summary.ts` inside `test-eve/my-agent` — landed **in this
 repo** instead, as `packages/core/src/digest.ts` (+ `advice.ts`, `pricing.ts`) and
 `server/src/daily-summary.ts` (`pnpm --filter server summary [date]`), with the same numbers also
-served to the [admin dashboard](features/admin-dashboard-for-claude-proxy-usage.md). Read the
-per-component sections below as point-in-time design history.
+served to the [admin dashboard](features/admin-dashboard-for-claude-proxy-usage.md).
+Component 5's last two steps landed here as well, rather than in `test-eve`: archiving to
+`logs/archive/<date>/` and retention are owned by `server/src/retention.ts` and run by
+`pnpm --filter server maintain`, a dry run unless given `--apply`. The retention rule changed
+shape on the way — instead of pruning whole archive directories, it evicts only the `.md` and
+`.request.txt` bodies past `RETENTION_DAYS` (default 30) and keeps every `.audit.json`
+forever. See [Retention lifecycle](features/retention-lifecycle.md). The
+`~/Documents/ghub/personal/…` paths named above and below are also stale; the checkout is
+`~/Documents/ghub/claude-proxy`. Read the per-component sections below as point-in-time
+design history.
 
 ## Goal
 

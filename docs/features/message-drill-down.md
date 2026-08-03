@@ -19,9 +19,9 @@ either as readable blocks (**Pretty**) or as raw JSON.
 ## Motivation
 
 The [Context-size analytics](context-size-analytics.md) breakdown ranks a request's messages
-by size but only shows each one's index, role, and byte count — never its content. Seeing what
+by size but shows only each one's index, role, and byte count — never its content. Seeing what
 made a message heavy meant expanding the whole request's raw JSON (capped at 2 MB). Each row is
-now a direct link to just that message, read straight from the captured request body so it
+now a direct link to that message alone, read straight from the captured request body so it
 resolves even when the request's raw-JSON view was truncated.
 
 ## Behavior
@@ -43,20 +43,27 @@ resolves even when the request's raw-JSON view was truncated.
   description, `required` badge) drawn from its `input_schema`.
 - **Breadcrumbs** — both pages carry a *Context size → Request breakdown → Message/Tool #N*
   trail back up the drill-down.
+- **Evicted bodies** — once [retention](retention-lifecycle.md) has deleted a request's body
+  (30 days by default, `RETENTION_DAYS`), both pages swap the entry for a *"Body evicted after
+  N days — metrics retained"* card: the audit sidecar is kept forever, so the request's totals,
+  token counts, and per-tool sizes still render — only the verbatim text is gone. Not an error
+  state, and not a 404.
 - **Going back keeps your place** — returning to the breakdown (browser Back, or the
-  breadcrumb) lands on the row you left instead of the top of a long table. The router
-  restores window scroll per history entry (`scrollRestoration`), and the breakdown re-applies
-  the remembered offset once its query resolves — without that second pass the restore would
-  land on the loading state, which is too short to hold the offset.
+  breadcrumb) lands on the row you left. The router restores window scroll per history entry
+  (`scrollRestoration`), and the breakdown re-applies the remembered offset once its query
+  resolves — without that second pass the restore would land on the loading state, which is
+  too short to hold the offset.
 
 Data comes from the `server` API — `GET /api/context/message?file=<base>&index=<n>` and
 `GET /api/context/tool?file=<base>&index=<n>` — which read exactly one `.request.txt` and
 slice out entry `n` via `extractRequestMessage` / `extractRequestTool` in `packages/core`.
 Because the server parses the full request body (only the drill-down's raw JSON is truncated),
-any entry resolves regardless of request size. `file` is validated and resolved strictly inside
-the log directory (no path traversal); both endpoints return 400 for an invalid `file` or
-`index` and 404 when the request file or the index is absent. An omitted `index` resolves to
-entry 0 rather than erroring.
+any entry resolves regardless of request size. The body is located in the live log directory
+or its `archive/<day>/` directory. `file` is validated and resolved strictly inside the log
+directory (no path traversal); both endpoints return 400 for an invalid `file` or `index`, and
+404 only when neither the body nor its audit sidecar exists, or the index is out of range. A
+body evicted by retention is a 200 carrying `evicted: true`, the archived day, the retention
+window, and the retained sidecar. An omitted `index` resolves to entry 0 rather than erroring.
 
 ## Acceptance criteria
 
@@ -65,5 +72,6 @@ entry 0 rather than erroring.
 - [x] The message content is read from the full parsed body, so it resolves even when the
       request's raw JSON was truncated.
 - [x] Navigating back to the breakdown restores the scroll position it was left at.
+- [x] An evicted body renders its retained sidecar metrics instead of an error.
 - [x] No proxy changes; the feature is read-only over existing request logs.
 - [x] `extractRequestMessage` is unit-tested; `pnpm typecheck` and `pnpm test` pass.

@@ -27,8 +27,7 @@ There are two transports to the proxy, chosen by `CHAT_TRANSPORT`:
 The server holds the conversation in memory for display, and for replaying history on the
 next turn under `api`; the durable record is the transcript the proxy writes.
 
-Under `cli` the turn runs in one of two **modes**, and they differ in what a prompt is
-allowed to do:
+Under `cli` the turn runs in one of two **modes**, which differ in what a prompt MAY do:
 
 - **`agent` (default).** A full Claude Code session at parity with the device's own —
   CLAUDE.md, settings, plugins, MCP servers, hooks, subagents, custom slash commands
@@ -90,13 +89,13 @@ ignored, and replaced by `bypassPermissions`.
 - **`default`.** Every gated tool asks, which in a headless child means it is denied.
 - **`plan`.** Read-only; the turn plans and does not act.
 
-Sandbox limits are separate and still apply under every one of them: a write outside the
-session's working directory is blocked by the CLI regardless of permission mode.
+Sandbox limits are separate and apply under every mode: the CLI blocks a write outside the
+session's working directory regardless of permission mode.
 
 **Tool activity is surfaced.** Ordered `tool_use` blocks are matched by id to
 `tool_result`; the send response renders them as chips. Failures include up to 400
-characters of result text, so a denial says `This command requires approval` instead of
-an ambiguous `Bash ✗`. Full calls remain in the proxy transcript.
+characters of result text, so a denial says `This command requires approval`. Full calls
+remain in the proxy transcript.
 
 **A turn can be stopped.** `POST /api/chat/stop` preserves the session while signaling
 the detached child's whole process group: SIGTERM, then SIGKILL after 3s. Shells and
@@ -134,15 +133,16 @@ CLI's entries are OAuth/CLI-specific; opt in with `CHAT_BETA`) and no `tools` (t
 plain chat, not an agent loop). Every default is overridable by env —
 `CHAT_TRANSPORT`, `CHAT_MODE`, `CHAT_BASE_URL`/`ANTHROPIC_BASE_URL`, `CHAT_MODEL`,
 `CHAT_MAX_TOKENS`, `CHAT_SYSTEM`, `CHAT_BETA`, `CHAT_TIMEOUT_MS`,
-`CHAT_IDLE_TIMEOUT_MS`/`CHAT_MAX_TURN_MS` for the two `cli` clocks, plus `CHAT_CLI_PATH` and
-`CHAT_CLI_CWD` for the child, `CHAT_AGENT_ALIAS`/`CHAT_AGENT_PERMISSION_MODE` for agent
+`CHAT_IDLE_TIMEOUT_MS`/`CHAT_MAX_TURN_MS` for the two `cli` clocks, plus `CHAT_CLI_PATH` for
+the child and `CHAT_CLI_CWD` for a `chat` turn's scratch cwd (an agent turn's cwd is the
+server's checkout and takes no override), `CHAT_AGENT_ALIAS`/`CHAT_AGENT_PERMISSION_MODE` for agent
 turns, and `CHAT_ALLOWED_ORIGINS` for the write surface — and per-request by
 `model`/`maxTokens`/`system` in the body, plus `mode`, `permissionMode` and `sessionId` on
 start.
 
 **Chat routes do not answer `*`.** Read routes serve
-`access-control-allow-origin: *`; the six command-capable POSTs (the four chat routes,
-suggestion status, job delete) echo only allowed
+`access-control-allow-origin: *`; the seven command-capable POSTs (the four chat routes,
+suggestion status, job delete, the device system prompt) echo only allowed
 origins—`http://localhost:5173` and `http://127.0.0.1:5173` by default, overridden by
 comma-separated `CHAT_ALLOWED_ORIGINS`. A declared foreign origin gets `403`; no-Origin
 clients such as curl/tests are unaffected. This scopes browsers but is not authentication.
@@ -181,9 +181,9 @@ pending prompt, and unsent draft. The owning session page renders prompt/reply p
 continuation input between stats and the durable, one-turn-lagging transcript; unrelated
 Claude Code sessions are unchanged. Drafts clear on submit and "New chat".
 
-**In-flight prompts render immediately** as a user turn above `Working…`, rather than
-waiting up to an hour for returned history. The session page suppresses its duplicate
-running-turn Stop bar when this tab owns the turn.
+**In-flight prompts render immediately** as a user turn above `Working…`, without waiting
+for returned history. The session page suppresses its duplicate running-turn Stop bar when
+this tab owns the turn.
 
 **Input** follows shadcn AI prompt-input anatomy: hand-rolled auto-growing textarea,
 Enter send, Shift+Enter newline, IME safety, and a send button disabled in flight. The
@@ -191,8 +191,9 @@ plain-CSS app has no Tailwind or `components.json`, so `shadcn add` cannot be us
 
 Flow: `apps/admin` (Sessions page `PromptInput`) → `server` (`/api/chat/*`, `chat.ts`,
 `chat-cli.ts`) → `claude --print` *or* a keyed `fetch` → `proxy` (`/v1/messages`, logging +
-`session.mjs`) → `api.anthropic.com`. The chat POSTs are four of the server's six write
-routes — suggestion status and job delete are the others; every other route stays read-only.
+`session.mjs`) → `api.anthropic.com`. The chat POSTs are four of the server's seven write
+routes — suggestion status, job delete and the device system prompt are the others; every
+other route stays read-only.
 
 ## Acceptance criteria
 
@@ -290,8 +291,9 @@ routes — suggestion status and job delete are the others; every other route st
   Code's own system prompt and its out-of-band titling request, so a CLI-started chat gets a
   real title in the sessions list and an `api` one does not. Comparing token counts across
   the two is not comparing like with like.
-- **Agent mode has no authentication.** Apart from chat, suggestion-status and job-delete
-  writes, the locally bound server is read-only. Origin checks constrain browsers, not direct
+- **Agent mode has no authentication.** Apart from chat, suggestion-status, job-delete and
+  device-system-prompt writes, the locally bound server is read-only. Origin checks constrain
+  browsers, not direct
   callers; exposing the port (tunnel or `0.0.0.0`) still needs authentication. Until then,
   use `CHAT_MODE=chat`.
 - **Tool activity is summarized, not streamed.** Chips name the tools a turn ran, mark

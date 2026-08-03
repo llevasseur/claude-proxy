@@ -3,7 +3,7 @@ type: feature
 title: Skim response cache
 description: An opt-in, byte-exact response cache in the proxy that replays a repeat streamed /v1/messages reply from disk with zero upstream call, plus a dashboard page measuring hit-rate and dollars saved.
 tags: [backend, dashboard, usage]
-timestamp: 2026-07-24
+timestamp: 2026-08-02
 ---
 
 # Skim response cache
@@ -82,10 +82,23 @@ floor; instrumentation determines whether a smarter key is worthwhile.
   enriches each sidecar with `skimRequestText` under the `includeSkimRequests` flag by
   reading the sibling `.request.txt` and extracting the latest user text, so a key with no
   surviving request log simply has no label.
+- **Labels do not survive body eviction; the numbers do** — every count, token, and dollar
+  on this page comes from the `.audit.json` sidecar, which
+  [retention](retention-lifecycle.md) keeps forever, so nothing here changes when
+  `pnpm --filter server maintain` evicts a day's `.md` and `.request.txt` bodies past
+  `RETENTION_DAYS` (default 30). Only the verbatim `requestText` label is lost. A missing body
+  is indistinguishable from a body that was never captured, so the readers count it:
+  `skimRequestText` reports `bodyPresent: false` and both endpoints surface the total as
+  `meta.bodiesEvicted`, so an all-blank **Request** column reads as retention rather than as a
+  capture bug.
 - **Endpoints** — `GET /api/skim?date=YYYY-MM-DD` (one day, defaults to today; invalid
   dates are ignored) and `GET /api/skim/trend?days=N` (`N` defaults to 14 and is clamped to
-  1–365). Both enable the request-text enrichment; `/api/skim` and the trend's cross-window
+  1–365). Both enable the request-text enrichment and both report `meta.bodiesEvicted`
+  alongside `meta.files` and `meta.parseErrors`; `/api/skim` and the trend's cross-window
   `topShapes` request `topN: 50`, while the trend's per-day `digests` keep the default 12.
+  Both read the **live** log directory only: neither has the archive fallback `/api/trends`
+  has, so a day `maintain` has already moved into `logs/archive/<date>/` contributes nothing
+  — see the open question below.
 - **Skim page** (`/skim`) — a 7/14/30-day window selector and four stat tiles:
   **Hit rate (today)** (with `hits / enabled` underneath), **Saved today**,
   **Saved (Nd)**, and **Saved input tokens (today)**. Two charts follow —
@@ -97,9 +110,16 @@ floor; instrumentation determines whether a smarter key is worthwhile.
   captured activity the page shows *"No skim activity captured in the last N days."*
 
 Data path: `proxy/skim.mjs` (gate, key, store, replay) → the `.audit.json` sidecar's
-`skim` block → `packages/core/src/skim.ts` (`computeSkimDigest` / `skimDigestsByDay`) →
+`skim` block → the `SidecarSource` seam (`server/src/db/source.ts`) →
+`packages/core/src/skim.ts` (`computeSkimDigest` / `skimDigestsByDay`) →
 `server` (`/api/skim`, `/api/skim/trend`) → `apps/admin` (the **Skim** page). Only the proxy
 side touches live traffic; everything downstream is read-only over captured sidecars.
+Both server routes read through the seam
+([ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md)): by default the SQLite
+substrate answers from its tables with no directory read, `DB_READS=0` reverts to the
+original `logs/*.audit.json` scan, and `SHADOW_DB=1` re-runs each build against the other
+backing to compare. The request-text enrichment is still a file read either way — it opens the
+sibling `.request.txt` — which is why an evicted body costs the label and nothing else.
 
 ## Acceptance criteria
 
@@ -129,6 +149,13 @@ side touches live traffic; everything downstream is read-only over captured side
 
 ## Open questions
 
+- **The 7/14/30-day window is live-day-only.** `buildSkim` and `buildSkimTrend` both call
+  `readSidecars` against the live log directory and stop there — unlike `buildTrends`, which
+  falls back to `logs/archive/<date>/` for any day the live set is missing. Once
+  `pnpm --filter server maintain` has archived a past day, that day drops out of the trend
+  charts and the cross-window shape table entirely, so a 30-day window on a maintained
+  install shows only today. This is current behaviour, not intended design: the fix is the
+  archive fallback the trends builder already has.
 - **The semantic skim layer is not built.** Matching "same or similar task" needs an
   embedding/similarity threshold, scope keys (cwd, host, git HEAD), and a policy for
   answer-irrelevant volatility (`session_id`, embedded dates, `cache_control`). Research

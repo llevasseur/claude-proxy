@@ -19,15 +19,13 @@ area, pans and zooms, and refreshes on its own so steps appear as a run proceeds
 ## Motivation
 
 The [Sessions](session-transcripts.md) list is flat — one row per transcript, newest first.
-But a Claude Code session spawns subagents, and each subagent runs under its parent's
-session id with its own conversation root, so the proxy writes it as a *separate*
-transcript with its own thread id. In a list, a delegated run is indistinguishable from a
-top-level one: nothing tells you which row was the parent, which rows were its fan-out, how
-deep the nesting went, or which are still running. The relationship *is* inferable from the
-observed request stream — a parent's `Agent(…)` step, and sibling transcripts in the same
-session id — and the graph is where that inference is drawn: parentage, spawn order, depth,
-where each branch's result rejoined the parent, and what the parent did while the branch was
-in flight.
+A subagent runs under its parent's session id with its own conversation root, so the proxy
+writes it as a *separate* transcript with its own thread id, and a list cannot say which row
+was the parent, which rows were its fan-out, how deep the nesting went, or which are still
+running. The relationship *is* inferable from the observed request stream — a parent's
+`Agent(…)` step, and sibling transcripts in the same session id — and the graph is where that
+inference is drawn: parentage, spawn order, depth, where each branch's result rejoined the
+parent, and what the parent did while the branch was in flight.
 
 ## Behavior
 
@@ -46,18 +44,17 @@ in flight.
   session id, bounded by the spawn count. Leftovers stay top-level, and a spawn whose
   transcript was never captured goes unmatched (the inspector says **no transcript captured**).
 - **Canvas** — the selected session's root box then its steps (`task` / `decision` / `tool` /
-  `error` / `done`) folded boustrophedon-style, so a long run wraps instead of running off
-  the right. Rows-per-fold follow the viewport: 1 (vertical, mobile), 3, 5, or 7. Drag to
-  pan, wheel to zoom about the cursor, plus **Fit**, a larger-nodes toggle, and fullscreen.
-  A spawn step is labelled by the agent type it started rather than its raw signature.
+  `error` / `done`) folded boustrophedon-style, so a long run wraps. Rows-per-fold follow the
+  viewport: 1 (vertical, mobile), 3, 5, or 7. Drag to pan, wheel to zoom about the cursor,
+  plus **Fit**, a larger-nodes toggle, and fullscreen. A spawn step is labelled by the agent
+  type it started rather than its raw signature.
 - **Subagent branches** — `layoutTree` recurses: a step that spawned a subagent hangs that
   subagent's own snake beneath its row inside an indented band, and the parent's later rows
-  resume below the band, so what the parent did while the branch ran stays visible beside it.
-  The band's head reads **subagent** · its agent type · its label · **in flight** or
-  **returned**. A dashed **spawn** edge crosses from the parent step into the branch root; a
-  dashed, arrowheaded **return** edge carries the branch's last step back to the parent step
-  it rejoins — so a parallel batch of spawns converges on one parent step. A branch whose
-  parent hasn't stepped past the spawn (`returnIndex === null`) is marked in flight.
+  resume below the band. The band's head reads **subagent** · its agent type · its label ·
+  **in flight** or **returned**. A dashed **spawn** edge crosses from the parent step into the
+  branch root; a dashed, arrowheaded **return** edge carries the branch's last step back to the
+  parent step it rejoins, so a parallel batch of spawns converges on one parent step. A branch
+  whose parent hasn't stepped past the spawn (`returnIndex === null`) is marked in flight.
 - **Collapsible rail** — a **Sessions** rail (272 px) nests the same tree: **▾** / **▸** fold
   toggles per parent, an agent-type tag on subagent rows, and per-row updated time, step
   count, agent count, error count, and an **in flight** marker. **«** collapses it to a 38 px
@@ -66,14 +63,14 @@ in flight.
   touch-reachable. Picking a subagent canvases its top-level family and centers that branch.
 - **Step text from the Request breakdown** — a transcript is a *lossy* render: `proxy/session.mjs`
   gists every line to 160 chars and every recorded tool argument to 60, so a prompt or a command
-  line arrives at the graph cut off. The same steps are held whole in the requests the proxy
-  captured, so the text is re-read from there. `deriveSessionNodes` runs the proxy's own grammar
+  line arrives at the graph cut off. The same steps are held whole in the captured requests, so
+  the text is re-read from there. `deriveSessionNodes` runs the proxy's own grammar
   over a captured body's `messages[]` and emits the identical `SessionNode[]` stream untruncated;
   `mergeSessionNodes` lays that over the transcript's, which stays the authority on *which* steps
   exist (the agent linkage is built from its positions, so the merge preserves every `index`).
-  The two are not positionally aligned — a transcript accumulates every request ever seen, so it
-  also carries turns no single body holds, notably Claude Code's one-shot spinner prompts landing
-  mid-thread, and a captured body can equally hold turns the transcript gisted differently. So the
+  The two are not positionally aligned: a transcript accumulates every request ever seen, so it
+  also carries turns no single body holds — notably Claude Code's one-shot spinner prompts landing
+  mid-thread — and a captured body can equally hold turns the transcript gisted differently. So the
   merge walks both streams and pairs by expanding each gist (`isSameStep` allows for the `…`, which
   for a tool call sits inside the parens); where they disagree it *re-syncs*, searching outward
   along growing diagonals for the nearest pairing that skips fewest steps on either side, within a
@@ -83,26 +80,25 @@ in flight.
   transcript text, so the graph degrades rather than breaks.
 - **Each step carries its message index** — `deriveSessionNodes` records the `messages[]` position
   a step was read from on the node itself (`message`), so the drawer can name the exact turn behind
-  a step rather than only the request as a whole. It is `null` on a step read off a transcript,
+  a step. It is `null` on a step read off a transcript,
   which records no such position, and the merge carries the derived value through.
 - **Interruptions and side trails** — a run can be cut off two ways, both landing in the same
   grammar. Pressing **Esc** in Claude Code makes the CLI prepend `[Request interrupted by user]`
   (or `… for tool use`) to the next user turn, which `proxy/session.mjs` already writes into the
   transcript; `splitInterruption` strips that marker off the task text and reports `user` /
-  `tool-use`. **Stop** in the dashboard never reaches the wire at all — the child is killed before
+  `tool-use`. **Stop** in the dashboard never reaches the wire — the child is killed before
   it answers — so `recordInterruption` (`server/src/chat.ts`) appends `- interrupted: <why>`
   (`stopped` / `timeout` / `limit`) to that thread's transcript, the only durable record a chat
   has. Either way the interruption is a *flag*, never a node: the step it landed after is marked
   `interrupted`, the step that resumed is marked with the `interruption` kind, and every `index`
   stays put (the agent linkage is built from them). `mergeSessionNodes` keeps the transcript's
   flags, since a captured request cannot carry the dashboard's own stop.
-- **Drawing the cut** — the severed step wears a coral ring and a torn right edge, and the run
-  does not simply continue: `runsOf` splits the node stream at each resume, so the snake ends
-  there and the remainder is laid out again inside an inset **side trail** — a coral dashed frame
-  headed **interrupted** · why (*interrupted by user*, *interrupted mid-tool*, *stopped from the
-  dashboard*, *timed out*, *hit its ceiling*) — reached by a distinct dashed **sever** edge
-  dropping out of the severed step. Trails share one indent rather than nesting, so a
-  much-interrupted session doesn't march off the right. The toolbar counts them and the legend
+- **Drawing the cut** — the severed step wears a coral ring and a torn right edge. `runsOf`
+  splits the node stream at each resume, so the snake ends there and the remainder is laid out
+  again inside an inset **side trail** — a coral dashed frame headed **interrupted** · why
+  (*interrupted by user*, *interrupted mid-tool*, *stopped from the dashboard*, *timed out*,
+  *hit its ceiling*) — reached by a distinct dashed **sever** edge dropping out of the severed
+  step. Trails share one indent rather than nesting. The toolbar counts them and the legend
   gains an **interrupted** swatch.
 - **Inspector** — clicking a box or a band head opens a **Node details** panel (**Esc**
   closes). For a step: **Task**, **Tool**, **Detail**, **Step** index, and for a spawn the
@@ -111,14 +107,13 @@ in flight.
   **Spawned by**, **First task**, tasks/tools/errors stats, thread id, **Model**, **Started**,
   **Updated**, **Open transcript →**, and **Open request breakdown →** for the captured request
   the step text came from (or a note that none matched).
-- **The whole turn, in the drawer** — a step's line is only the one line the grammar keeps of it,
-  so a step that paired with a captured request also gets a **Request message** field: the turn
-  it was read out of, whole, fetched per open drawer from the same endpoint the
-  [Request breakdown](context-size-analytics.md)'s drill-down uses, labelled *#n of N · role*, and
-  clamped like any other long value (an expanded one scrolls inside the drawer rather than growing
-  it). **Open this step's message →** links straight to `/context/$file/message/$index` — that
-  step's own message in the breakdown, not just the request's front page. A step that paired with
-  nothing says so, so a gisted step is legible as gisted rather than silently short.
+- **The whole turn, in the drawer** — a step that paired with a captured request also gets a
+  **Request message** field: the turn it was read out of, whole, fetched per open drawer from the
+  same endpoint the [Request breakdown](context-size-analytics.md)'s drill-down uses, labelled
+  *#n of N · role*, and clamped like any other long value (an expanded one scrolls inside the
+  drawer rather than growing it). **Open this step's message →** links straight to
+  `/context/$file/message/$index` — that step's own message in the breakdown, not the request's
+  front page. A step that paired with nothing says so.
 - **Where the drawer's step text comes from** — not the captured-request merge. The drawer asks
   `getSessionNodeTexts` (`GET /api/sessions/node-text?id=`) for the thread's `.nodes.jsonl`
   sidecar, which the proxy writes as it appends the transcript, so a selected step's full text is
@@ -130,7 +125,7 @@ in flight.
 - **Fit accounts for both overlays** — the rail and the details drawer sit *over* the canvas
   rather than shrinking it, so **Fit** measures the slice they leave free (both widths read live,
   since each animates and the drawer is absent when nothing is selected) and frames the graph
-  there. A widened drawer on a narrow viewport can't squeeze the free area to nothing. Opening
+  there. A widened drawer on a narrow viewport cannot squeeze the free area to nothing. Opening
   the drawer does not itself refit; **Fit** is the explicit control.
 - **Toolbar** — a live dot beside a count of sessions, the canvased session's steps, and its
   subagents with how many are in flight; a legend for **task**, **decision**, **tool**,
@@ -139,11 +134,10 @@ in flight.
   pinch), which the **Fit** button's tooltip spells out.
 - **Larger nodes** — steps are drawn as two-line gists by default. The toggle re-lays the
   canvas out at a roomier box size (a step goes 168×64 → 320×216) and lifts the title clamp
-  from 2 lines to 8, so a step's whole label reads on the canvas instead of only in the
-  drawer. Geometry is a `Sizes` preset threaded through `layout` / `layoutTree` / `layoutRun`
-  rather than module constants, so both sizes share one layout path. Toggling deliberately
-  does **not** refit — the zoom is left alone and the boxes simply grow on screen; **Fit**
-  reframes on demand.
+  from 2 lines to 8, so a step's whole label reads on the canvas. Geometry is a `Sizes` preset
+  threaded through `layout` / `layoutTree` / `layoutRun` rather than module constants, so both
+  sizes share one layout path. Toggling deliberately does **not** refit — the zoom is left
+  alone and the boxes simply grow on screen; **Fit** reframes on demand.
 - **Staying live** — the page re-fetches `GET /api/sessions/graph` every 4 s (the dot lights
   while a fetch is in flight) and only refits the view when the session or fold width changes,
   so arriving steps never yank the viewport. Note this page polls; the SSE streams
@@ -152,16 +146,18 @@ in flight.
 
 The data path is `packages/core/src/sessions.ts` → `server` → `apps/admin`: core parses each
 transcript into `SessionMeta` plus an ordered `SessionNode[]` (`parseSessionNodes`) and
-reconstructs the family tree (`linkAgentSessions`); the server's `listSessionGraphs` reads
-every transcript once and merges the two into `SessionGraph` rows, which `buildSessionsGraph`
+reconstructs the family tree (`linkAgentSessions`); the server asks its read source for
+`listSessionGraphs` — the SQLite substrate by default, which answers from its tables without
+reading the directory at all, and the original transcript scan when `DB_READS=0` — and either
+way the two are merged into `SessionGraph` rows, which `buildSessionsGraph`
 serves from `GET /api/sessions/graph` as `{ sessions, meta: { sessionsDir, total } }`; the
 admin page lays those rows out and draws them. The browser never parses raw Markdown. The graph
-itself reads only the transcripts the proxy already writes; the drawer's full step text is the
-one part that needed the proxy, which now emits a `<threadId>.nodes.jsonl` sidecar alongside the
-transcript. The one write back from the dashboard is
-`recordInterruption` appending a dashboard **Stop** to an existing transcript; it never creates
-one, so a thread the proxy hasn't flushed yet is skipped rather than left headerless, and the
-proxy tracks its own progress by message count, not file offset, so the extra line can't desync it.
+reads only the transcripts the proxy already writes; the drawer's full step text is the one part
+that needed the proxy, which now emits a `<threadId>.nodes.jsonl` sidecar alongside the
+transcript. The one write back from the dashboard is `recordInterruption` appending a dashboard
+**Stop** to an existing transcript; it never creates one, so a thread the proxy hasn't flushed
+yet is skipped rather than left headerless, and the proxy tracks its own progress by message
+count, not file offset, so the extra line can't desync it.
 
 Step text takes a second path over the same logs. `GET /api/sessions/graph/nodes?id=<threadId>`
 (`buildSessionGraphNodes`) walks the canvased session and every descendant into one agent family,
@@ -171,7 +167,7 @@ mirror of the `threadIdFor` in `proxy/session.mjs` that named the transcript in 
 The scan's floor is the family's earliest transcript `started`, read through `reportDay`: that start
 is a UTC instant, but the sidecar reader narrows by *reporting* day in `REPORT_TZ`, so the floor is
 derived on the same clock the filter compares against. A floor taken straight off the UTC prefix
-excluded every request the family ever made: Eastern runs behind UTC, so an evening session carries
+excluded every request the family ever made — Eastern runs behind UTC, so an evening session carries
 a `started` whose UTC day is already tomorrow, and every session started in that nightly window
 stayed wholly at its transcript gists.
 The richest snapshot found per thread supplies its `deriveSessionNodes` stream, returned as
@@ -237,7 +233,7 @@ left are simply absent from `threads`, and keep their transcript text.
 - Whether to move the page onto SSE. Every other live surface streams, but the graph polls
   `/api/sessions/graph` every 4 s and rebuilds the whole payload each time — every transcript
   in the log dir, nodes and all — regardless of what changed.
-- The limits of spawn detection are structural. Only tool calls literally named `Agent` or
+- Spawn detection is structurally limited. Only tool calls literally named `Agent` or
   `Task` are spawns, so a subagent started any other way (a skill that runs in a subagent, a
   teammate resumed via `SendMessage`) leaves its transcript stranded at top level. And the
   proxy records at most one identifying argument per tool call, chosen by a fixed key order in
@@ -257,10 +253,10 @@ left are simply absent from `threads`, and keep their transcript text.
 - What the step-text scan should cost — now only for the canvas's merged view, since the drawer
   reads the `.nodes.jsonl` sidecar directly. It reads up to 60 whole request bodies per canvased
   family, newest-first, and re-runs every 20 s — cheap on a local log dir (~120 ms in practice)
-  but unbounded in the wrong direction as the log grows, and `meta.capped` is the only signal
-  that older requests went unread. A thread whose activity falls outside that window keeps its
-  gisted text with nothing in the UI explaining why. Recording the thread id in the audit
-  sidecar at capture time would turn the whole scan into an index lookup.
+  but unbounded as the log grows, and `meta.capped` is the only signal that older requests went
+  unread. A thread whose activity falls outside that window keeps its gisted text with nothing
+  in the UI explaining why. Recording the thread id in the audit sidecar at capture time would
+  turn the whole scan into an index lookup.
 - The merge is a heuristic, not a proof. A gist is matched by expanding its prefix, so two
   adjacent same-type steps sharing a 160-char prefix are indistinguishable; and after context
   compaction the richest captured request may predate steps the transcript already has, which

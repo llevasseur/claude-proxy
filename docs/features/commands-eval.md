@@ -13,7 +13,7 @@ timestamp: 2026-08-02
 Three [dashboard](admin-dashboard-for-claude-proxy-usage.md) pages over slash-command
 invocations: **Commands** (`/commands`) ranks every installed command by what it costs,
 **command detail** (`/commands/$command`) plots that command's runs, and **run detail**
-(`/commands/$command/$threadId`) breaks one run down over the steps its command declares.
+(`/commands/$command/$runId`) breaks one run down over the steps its command declares.
 Capture is passive.
 
 ## Motivation
@@ -27,25 +27,41 @@ prescribed it.
 
 ## Behavior
 
-- **A run is a session with a command envelope** — `parseCommandEnvelope`
+- **A run is a session with a command envelope, or a command a run invoked** —
+  `parseCommandEnvelope`
   (`packages/core/src/commands.ts`) reads `<command-name>` off the opening prompt and
   returns `null` for an ordinary session. It records the command name without its slash,
   the verbatim `<command-args>`, the leading `--flag` tokens, and the criteria with the
   envelope and any injected `<system-reminder>` stripped. Only the *leading* run of flag
   tokens is parsed and nothing knows which flags take a value, so `--base main` records
   `base` and stops at `main`.
+- **A nested command is a run of its own** — a `/clean` or `/pr` invoked mid-session
+  carries no envelope at all: the CLI expands it client-side and injects the command body
+  as an ordinary user turn. The `Skill(skill=<name>)` node is the only durable evidence, so
+  `findNestedInvocations` anchors a child there, restricted to installed command names so a
+  plain skill is not mistaken for a command. Each invocation claims the span from its own
+  node to the next one, so no node is ever charged to two children. A child is a **slice of
+  its host's transcript**, not a separate session: its nodes, turns, tool calls and
+  subagents are the host's, filtered to its span, and it claims only the subagents spawned
+  inside it. The parent's totals already contain the child's, so the two readings agree.
+- **`runId` keys the store** — a thread id for a top-level run, `<threadId>~<node>` for a
+  nested one (`~` is unreserved in a URL path, so the id doubles as the route param).
+  Records written before nesting carry no `runId` and were keyed by thread id, which for a
+  top-level run is the same string, so they upsert rather than duplicate across the bump to
+  schema 2.
 - **A locally-run command is not a run** — `/clear` and `/compact` execute in the CLI and
   never reach the model, but the CLI still sends their envelope as the first thing in the
-  turn they opened, so a session begun with one used to root on it and be charged for
-  everything typed after. The parser walks the envelopes in order and takes the first
+  turn they opened. The parser walks the envelopes in order and takes the first
   **non-local** one — the real command when there was one, no run at all when there wasn't
   — reading each envelope's `<command-args>` from its own block rather than the first in
   the prompt. That block ends at its own closing tag, not at the next envelope: criteria
   quote envelopes all the time, and cutting there empties the args. Locality is pure
   adjacency — the caveat has to sit directly ahead of the envelope — because that caveat
   text survives into compaction summaries far from any envelope it describes.
-- **A record can be retracted** — the store only appends, so a thread that stops parsing as
-  a run is rewritten with `retired: true` and dropped by `readCommandRuns`. Only a thread
+- **A record can be retracted** — the store only appends, so a run that stops parsing as
+  one is rewritten with `retired: true` and dropped by `readCommandRuns`. Retirement is
+  keyed on the run rather than the thread, so a nested run whose `Skill` call is no longer
+  in its host's transcript retracts on the same terms as a top-level one. Only a thread
   whose **opening prompt was read** is retired: a transcript that aged out, or one whose
   `.state.json` is missing or never captured a prompt, is absence of evidence rather than
   evidence the run never happened. Reconciliation carries retired records forward, so a
@@ -97,13 +113,15 @@ prescribed it.
   history for, so a command `/sync` removed keeps its past under an **uninstalled** badge.
 - **Command detail** (`/commands/$command`) — the command's runs as an outcome-coloured
   scatter (completed / interrupted / errored / running) with step-level stacked cost, and a
-  `flags` facet narrowing to runs that used given flags.
-- **Run detail** (`/commands/$command/$threadId`) — one run as a token-weighted tree over
+  `flags` facet narrowing to runs that used given flags. A child has no prompt of its own,
+  so its row reads `nested in /task`.
+- **Run detail** (`/commands/$command/$runId`) — one run as a token-weighted tree over
   its declared steps, each carrying the confidence behind its placement, plus the
-  unattributed bucket.
+  unattributed bucket. A child's pagehead links back to the run that invoked it.
 - **Endpoints** — `GET /api/commands`, `/api/commands/command?name=<name>[&flags=a,b]`, and
-  `/api/commands/run?id=<id>`, each with a `/stream` SSE twin debounced at 600 ms. A
-  missing `name` or `id` is `400`; an unknown one is `404`. Every read reconciles the store
+  `/api/commands/run?id=<runId>`, each with a `/stream` SSE twin debounced at 600 ms. A run
+  resolves by `runId`, which for a top-level run is still its thread id, so old links keep
+  working. A missing `name` or `id` is `400`; an unknown one is `404`. Every read reconciles the store
   first, so it is current even on a cold server.
 
 `packages/core/src/commands.ts` is pure — no I/O, no clock, no Node built-ins. The server
@@ -113,6 +131,9 @@ reads the files and captured requests and hands the pieces to it.
 
 - [x] Every session whose opening prompt carries a `<command-name>` envelope is captured as
       a run, with no tagging and no harness.
+- [x] Every installed command a run invokes inside itself is a run in its own right, keyed
+      `<threadId>~<node>`, covering its host's nodes from its `Skill(…)` call to the next
+      invocation — and still part of its parent, which is charged the same nodes once.
 - [x] A locally-run command is never a run, and never carries the cost of what followed it:
       a session opened by `/clear` is the run of whatever was typed after, or no run at all.
 - [x] Steps come from the `## Step N` headings of the installed command file, snapshotted
@@ -124,7 +145,7 @@ reads the files and captured requests and hands the pieces to it.
       classifies as interrupted, errored, or running.
 - [x] Runs are read from `logs/commands/runs.jsonl`, never from the day-old logs, and the
       store is reconciled before every API read.
-- [x] `/commands`, `/commands/$command` and `/commands/$command/$threadId` each serve from
+- [x] `/commands`, `/commands/$command` and `/commands/$command/$runId` each serve from
       an endpoint with an SSE twin, so a live run updates in place.
 
 ## Open questions
@@ -132,9 +153,14 @@ reads the files and captured requests and hands the pieces to it.
 - **No `STEP n/N` marker is emitted yet.** `attributeSteps` matches it first and the
   narration rules stop mattering the day the commands write it, but today every anchor is
   heuristic.
-- **Nested commands are double-counted by design** — a nested command counts both as a
-  segment of its parent and toward its own command's numbers. Whether the Commands page
-  totals should net that out is unsettled.
+- **A nested run's cost lands in two commands' totals.** Parent and child agree by
+  construction, but the `/commands` index sums every stored run, so a `/clean` nested under
+  `/task` adds its tokens to both rows and to the **Spent** tile. Whether the index should
+  net that out is unsettled.
+- **A nested run's span has no end marker.** Each child runs to the next nested invocation,
+  or to the end of the transcript for the last one, because nothing records where a nested
+  command returned. The last nested run in a transcript therefore absorbs whatever its host
+  did afterwards.
 
 ## Related
 
