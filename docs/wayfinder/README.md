@@ -8,8 +8,8 @@ timestamp: 2026-07-18
 # Wayfinder — local-markdown tracker
 
 No external issue tracker is wired for this repo, so wayfinder uses its
-**local-markdown** fallback: the map and its tickets are plain markdown files
-here, checked into the repo.
+**local-markdown** fallback: the map and its tickets are plain markdown files here,
+checked into the repo.
 
 ## Layout
 
@@ -19,6 +19,13 @@ docs/wayfinder/
   tickets/
     NNN-<slug>.md      a child ticket of the map. Zero-padded id = identity.
 ```
+
+A map tracks its work in one of two shapes. Numbered ticket files, as in `map-proxy-skim`,
+suit an effort whose pieces are decided separately and may be reordered. A checkbox slice
+ledger inside the map body, with a per-slice note of what actually landed, suits a linear
+campaign where each slice is one run and one merge — `map-sqlite-substrate` is that shape
+and has no tickets at all. For a ledger map the git history of `main` is the authority for
+what is checked.
 
 ## Ticket frontmatter
 

@@ -25,11 +25,11 @@ which had two problems:
 - It had **stopped working**. It called an external agent over HTTP before archiving, that
   call started failing, and archiving never ran — leaving thousands of past-day sidecars
   piled up in the live directory.
-- Its pruner `rm -rf`-ed **whole `archive/<date>/` directories**. It had never fired only
+- Its pruner `rm -rf`-ed **whole `archive/<date>/` directories**, and had never fired only
   because the oldest archived day was still inside the window. Once it did, it would have
   deleted the `.audit.json` sidecars along with the bodies, and the substrate's own pruning
   pass (`server/src/db/ingest.ts`) would then have dropped every row derived from that
-  vanished directory. Both copies of the metrics, gone in one silent step.
+  vanished directory — both copies of the metrics, gone in one silent step.
 
 The measurement that decides the design: across 16,581 captured request triples the bodies
 are ~96% of the bytes (`.request.txt` 3.45 GB, `.md` 3.05 GB) and the sidecars ~1%
@@ -42,12 +42,18 @@ essentially the whole disk win.
 
 ### The command
 
-`pnpm --filter server maintain [--apply]` does three things in order:
+`pnpm --filter server maintain [--apply]` does four things in order:
+
+0. **Reconcile command runs** — under `--apply` only, distil any still-visible command
+   runs into `logs/commands/runs.jsonl`. It must run *before* archiving relocates the
+   transcripts and bodies it reads. Never fatal, and skipped on a dry run because it
+   writes.
 
 1. **Archive** — every file in `logs/` whose name begins with a date strictly before today
-   moves to `logs/archive/<that date>/`. Today's logs stay put. A name with no date prefix
-   is never a candidate, which is what keeps `logs/sessions/`, `logs/commands/`,
-   `logs/.chat/`, `logs/suggestion-status.json` and the database where they are.
+   moves to `logs/archive/<that date>/`. Today's logs stay put. Directories are skipped
+   rather than moved, and a name with no date prefix is never a candidate; together that
+   is what keeps `logs/sessions/`, `logs/commands/`, `logs/.chat/`, `logs/archive/`,
+   `logs/suggestion-status.json` and the database where they are.
 2. **Evict** — inside `logs/archive/<date>/` for every day strictly older than
    `today − RETENTION_DAYS`, the `.md` and `.request.txt` files are deleted. `.audit.json`
    is never evicted and **the day directory is never removed** — it still holds the
@@ -75,19 +81,19 @@ retained"** with the retained token counts, byte totals and tool table. A body t
 never captured at all still 404s, so real bugs stay visible.
 
 Those routes also resolve a body inside `logs/archive/<date>/`, not just the live directory.
-This is load-bearing. Archiving had stopped, so every body was live; once the job starts
-moving days again, a drill-down that only looked in `logs/` would 404 every past day.
-The archive candidate comes from the filename's own date prefix, so it is one lookup, not a
-scan.
+This is load-bearing: archiving had stopped, so every body was live, and once the job starts
+moving days again a drill-down that only looked in `logs/` would 404 every past day. The
+archive candidate comes from the filename's own date prefix, so it is one lookup, not a scan.
 
-`/api/skim` reports `meta.bodiesEvicted` — requests counted from their sidecar whose body is
-gone. Both read backings derive it from the same disk observation, so the parity harness
-stays byte-identical.
+`/api/skim` and `/api/skim/trend` report `meta.bodiesEvicted` — requests counted from their
+sidecar whose body is gone. Both read backings derive it from the same disk observation, so
+the parity harness stays byte-identical.
 
 ### The scheduled job
 
 `scripts/com.llevasseur.claude-proxy.maintain.plist` is the reviewable copy of the launchd
-agent: label `com.llevasseur.claude-proxy.maintain`, 21:00 daily, `--apply`, output to
+agent: label `com.llevasseur.claude-proxy.maintain`, 21:00 daily, `--apply`, with `LOG_DIR`,
+`RETENTION_DAYS=30` and `TIMEZONE=America/Toronto` pinned in its environment, output to
 `~/.claude-usage/logs/maintain.log`. It replaces `com.llevasseur.claude-usage-summary`,
 which is unloaded. Losing that job's model-written narrative prose is accepted; the digest
 is the part worth keeping.

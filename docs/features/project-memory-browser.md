@@ -18,11 +18,9 @@ three read-only `GET` endpoints over `~/.claude/projects`. It never writes.
 ## Motivation
 
 Claude Code accumulates auto-memory as flat `*.md` files under its own state directory,
-one `memory/` dir per project (with `MEMORY.md` as the index). Those files shape what
-Claude recalls in later sessions, but they live in path-encoded directories like
-`-Users-me-Documents-app` — unlistable by eye and hard to compare across projects. One
-place to read them answers which projects have memory, how much, which files are stale,
-and what a given memory says.
+one `memory/` dir per project (with `MEMORY.md` as the index). They shape what Claude
+recalls in later sessions, but they live in path-encoded directories like
+`-Users-me-Documents-app` — unlistable by eye and hard to compare across projects.
 
 Unlike the rest of the analytics, this reads **device config, not proxy traffic**: its data
 comes from files Claude Code writes for itself, never from the proxy's audit logs. It shares
@@ -41,9 +39,8 @@ directory.
   above the table. Columns **Project** and **Memories** plus a proportional bar; default
   sort **Memories** descending, click a column to sort and again to flip direction. Rows are
   clickable (the name is also a keyboard-focusable link). `listProjects` counts `*.md` files
-  in each `<project>/memory/` dir and **omits projects that have no `memory/` dir at all**,
-  so the list is exactly "projects with saved memories"; server-side order is count desc,
-  then name. Empty state: "No projects with memories found."
+  in each `<project>/memory/` dir and **omits projects that have no `memory/` dir at all**;
+  server-side order is count desc, then name. Empty state: "No projects with memories found."
 - **Per-project memory list** (`/projects/$project`) — heading **Project memories** with
   breadcrumbs **Projects › Project memories** and the encoded project directory name shown
   below. Columns **File**, **Size**, **Modified**; default sort **Size** descending, also
@@ -94,15 +91,17 @@ sidecars are read anywhere along it.
       400 and missing ones 404.
 - [x] Read-only: the three routes are `GET`-only JSON reads, there is no POST/PUT/DELETE
       route for memories and no write call on the projects path (`server/src/projects.ts`
-      uses only `readdir`/`stat`/`readFile`). The one destructive route in `server/src` is
-      the unrelated `POST /api/jobs/delete`.
+      uses only `readdir`/`stat`/`readFile`). The server's write allowlist (`WRITE_ROUTES`
+      in `server/src/server.ts`) is entirely unrelated routes — the chat session routes,
+      suggestion status, `POST /api/jobs/delete`, and `POST /api/system-prompt` — and any
+      non-`GET` outside it is refused with 405.
 - [x] Reads device config only — no audit-log or sidecar data feeds this section.
 
 ## Open questions
 
-- `server/src/projects.ts` has no unit tests — `server/test/` covers jobs, chat, sessions
-  and usage but not projects — so the path-safety checks, the one security-relevant part of
-  this feature, are unverified by CI.
+- `server/src/projects.ts` has no unit tests. `server/test/route-methods.test.ts` proves the
+  generic non-`GET` 405 gate these routes sit behind, but nothing exercises the path-safety
+  checks — the one security-relevant part of this feature is unverified by CI.
 - `CLAUDE_PROJECTS` is referenced nowhere but `server/src/projects.ts`: no README, env
   sample, or doc mentions it, so the override is effectively undiscoverable.
 - Memory discovery is deliberately flat (`*.md` directly in `memory/`); whether nested

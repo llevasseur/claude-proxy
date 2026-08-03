@@ -12,13 +12,12 @@ timestamp: 2026-07-29
 
 Every page in the admin dashboard shows a placeholder shaped like the content it is
 fetching — the same stat grid, the same table, the same chart box — instead of a single
-line of text. The placeholder occupies the boxes the real content will fill, so when the
-data lands it simply appears where the outline was, with no reflow.
+line of text. The placeholder occupies the boxes the real content will fill, so the data
+lands where the outline was, with no reflow.
 
-The same pass makes the interactions that *replace* already-loaded content — switching a
-day window, re-sorting a table, flipping a document between Pretty and Raw — keep the
-current content on screen while the next render is prepared, rather than emptying the
-page and rebuilding it.
+Interactions that *replace* already-loaded content — switching a day window, re-sorting a
+table, flipping a document between Pretty and Raw — keep the current content on screen
+while the next render is prepared.
 
 ## Motivation
 
@@ -26,15 +25,14 @@ Every query-backed view funnelled through one component, `QueryState`, whose loa
 state was `<p className="muted state">Loading…</p>`. Two problems followed from that:
 
 - **The page collapsed and then jumped.** A 44px-tall line of text stood in for a screen
-  of stat cards and a hundred-row table. When the data arrived the document grew by
-  thousands of pixels in one frame. `useRestoredScroll` exists specifically to work
-  around this: the router's own scroll restore runs while the route is still in its
-  loading state, and *"a document that short cannot hold the offset, so the browser
-  clamps it away."*
+  of stat cards and a hundred-row table, so the document grew by thousands of pixels in one
+  frame when the data arrived. `useRestoredScroll` exists specifically to work around this:
+  the router's own scroll restore runs while the route is still in its loading state, and
+  *"a document that short cannot hold the offset, so the browser clamps it away."*
 - **Switching a window threw the page away.** The 7/14/30-day switchers change the query
   key, so React Query reported `isLoading` for the new key and `QueryState` replaced the
-  whole view with `Loading…` — even though a perfectly good previous window was already
-  drawn and only needed redrawing.
+  whole view with `Loading…`, even though the previous window was already drawn and only
+  needed redrawing.
 
 ## Behavior
 
@@ -43,7 +41,7 @@ composes shapes out of `.card`, `.card.stat`, `.table` and `.grid.stats`, puttin
 shimmer *inside* those elements rather than replacing them. Each block is an
 `inline-block`, so the element holding it keeps its own strut and line box: a skeleton
 `.stat-value` is exactly as tall as a filled one, and neither side names a pixel height.
-Heights therefore agree by construction rather than by a magic number that drifts.
+Heights agree by construction rather than by a magic number.
 
 **Counts come from what the page knows.** Where the eventual size is already determined,
 the skeleton uses it: the trends charts and tables reserve one bar and one row per day in
@@ -56,12 +54,12 @@ holds a sparkline under its value and the per-request chart holds a legend under
 so the skeleton reserves those boxes too — otherwise the card is the right height until the
 extra part appears and pushes the page down anyway. For the same reason the plot heights are
 exported as `BAR_CHART_HEIGHT` and `SPARKLINE_HEIGHT` and read by both the chart and its
-placeholder, rather than being duplicated in the stylesheet where the two could drift apart.
-And where a view is assembled from two queries — Overview's tiles draw their mini charts from
-the trends window, Skim's tiles from a second day query — the skeleton is gated on both, so
-the row lands complete instead of arriving and then growing.
+placeholder, rather than duplicated in the stylesheet where the two could drift apart. Where
+a view is assembled from two queries — Overview's tiles draw their mini charts from the
+trends window, Skim's tiles from a second day query — the skeleton is gated on both, so the
+row lands complete instead of arriving and then growing.
 
-**Every page is covered.** All 27 `QueryState` call sites pass a skeleton, so the
+**Every page is covered.** All 28 `QueryState` call sites pass a skeleton, so the
 `Loading…` text is now only a fallback for a caller that supplies none. The two pages that
 are not a padded column are handled in their own shape: the Sessions rail loads as ghost
 transcript rows into a grid column whose width is already fixed (the chat beside it is

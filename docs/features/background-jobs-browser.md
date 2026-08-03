@@ -15,33 +15,33 @@ Two pages in the [admin dashboard](admin-dashboard-for-claude-proxy-usage.md) ov
 **Jobs** (`/jobs`) lists every one of them device-wide, whichever project it ran in; a job's
 page (`/jobs/$id`) shows what its `state.json` says and presents the directory as a browsable
 **folder tree**, where selecting any file opens it in a viewer with a **Pretty / Raw** toggle.
-The listing can also **delete** a job — really remove its directory from `~/.claude/jobs` — the
-one place in the dashboard that changes the disk rather than reporting on it.
+The listing can also **delete** a job — really remove its directory from `~/.claude/jobs` — one of
+the two places in the dashboard that change the disk rather than report on it, the other being the
+[device system prompt](device-system-prompt.md) editor.
 
-Like the [config inventory](config-inventory.md) and the
-[project memory browser](project-memory-browser.md), and unlike the rest of the dashboard, this
-reads the local filesystem rather than captured traffic.
+Like the [config inventory](config-inventory.md), the
+[project memory browser](project-memory-browser.md) and the
+[device system prompt](device-system-prompt.md), and unlike the rest of the dashboard, this reads
+the local filesystem rather than captured traffic.
 
 ## Motivation
 
 A background job's directory is the only durable record of what that run did on disk — the
 `state.json` it rewrites as it goes, the `timeline.jsonl` of its state changes, and a `tmp/`
-holding whatever it built: logs, screenshots, throwaway scripts, scratch reports. Otherwise you
-are `ls`-ing around `~/.claude/jobs/<id>` and `cat`-ing files whose format you had to guess.
+holding whatever it built: logs, screenshots, throwaway scripts, scratch reports.
 
 Two properties of that directory shape the design:
 
 - **It is not all text, and not all small.** One `tmp/` holds a 244 KB build log full of
   terminal escapes, four PNG screenshots, and a `node_modules` with thousands of files. A viewer
-  that assumes "text file, show it" produces mojibake, and a walk that assumes "descend
-  everything" produces an unusable tree.
+  that assumes "text file, show it" produces mojibake; a walk that descends everything produces
+  an unusable tree.
 - **It is written by another process, right now.** Every reader is therefore tolerant rather than
   strict: a half-written `state.json` yields a husk rather than a 500, and a `timeline.jsonl`
   whose last line is incomplete reports the count it skipped.
 
-Both views exist because a raw `timeline.jsonl` is unreadable JSON-on-one-line and a raw build
-log is escape-code soup, but when you suspect the pretty view of hiding something — that the
-escapes *were* the problem, that the JSON does not actually parse — you need the bytes.
+Both views exist because the pretty view can hide the problem — the escapes themselves, JSON that
+does not actually parse — and then you need the bytes.
 
 ## Behavior
 
@@ -55,12 +55,11 @@ escapes *were* the problem, that the JSON does not actually parse — you need t
   isn't, and hiding it would misreport the disk.
 - **Delete** — each row carries a `Delete` that removes that job's directory and everything under
   it. Husks accumulate and nothing else reaps them. It is a real `rm -r` with no trash behind it,
-  so the control is deliberately awkward in proportion: the first click *arms* the row
+  so the control is deliberately awkward: the first click *arms* the row
   (`Delete 4.2 MB?` / `Yes, delete` / `cancel`), only one row is armed at a time, and a job the
   server would refuse is disabled up front rather than failing after the click. What was removed
   is then stated — name, file count, bytes freed and the path — above the table it just changed.
-  A **running** job cannot be deleted at all: its daemon is still writing there, and pulling the
-  directory out from under it destroys the run's own record of itself. Stop it first.
+  A **running** job cannot be deleted at all: its daemon is still writing there. Stop it first.
 - **A job** (`/jobs/$id`) — **State / Files / Started / Last write** tiles, then a **Job** card
   with what it was asked to do and a field grid (state, detail, working directory, agent, model,
   template, backend, session id, when it first finished). **What it produced** lists the links
@@ -118,12 +117,13 @@ and the read is confined to the job directory three ways over:
   as an escape.
 
 Every read is read-only: `server/src/jobs.ts` uses only `readdir`/`stat`/`readFile`/`realpath` for
-them, and the read routes are GETs under the same open CORS as their neighbours. Text is capped at
+them, and the read routes are GETs under the same open CORS as their neighbours — a non-GET on one
+of them is refused with a 405 (`Allow: GET, OPTIONS`) rather than reaching a handler. Text is capped at
 512 KB (marked truncated) and an inlined image at 4 MB, so no single file can exhaust the response.
 A file whose bytes contain a NUL is reported as binary and not read out, regardless of what its
 extension claimed.
 
-**Delete is the one write, and it is fenced accordingly.** `POST /api/jobs/delete` goes through the
+**Delete is this feature's one write, and it is fenced accordingly.** `POST /api/jobs/delete` goes through the
 origin-checked write CORS the chat routes use, not the read routes' `*` — a wildcard origin on a
 destructive route would let any page open in the browser wipe the device's job history. Before
 `rm -r` runs, `deleteJob` re-establishes the target from scratch: the id passes the same

@@ -11,11 +11,10 @@ timestamp: 2026-07-25
 ## Summary
 
 The proxy writes one [transcript](session-transcripts.md) per conversation thread and one audit
-sidecar per request. Read across a run of sessions, those records answer what no single session
-can: *what does this agent keep doing the slow way?* The Advice page carries a **Session
-suggestions** section that groups every transcript into fixed windows of ten — sessions 1–10,
-11–20, … — and lists, per window, what would have reached the same outcome faster. Each window
-has a detail page with the full suggestions, the sessions behind them, and the
+sidecar per request. The Advice page carries a **Session suggestions** section that groups every
+transcript into fixed windows of ten — sessions 1–10, 11–20, … — and lists, per window, what
+would have reached the same outcome faster. Each window has a detail page with the full
+suggestions, the sessions behind them, and the
 [Request Breakdown](context-size-analytics.md) patterns that recur across those sessions'
 largest captured requests.
 
@@ -23,10 +22,9 @@ largest captured requests.
 
 The existing [advice](admin-dashboard-for-claude-proxy-usage.md) is computed from one day's
 digest: token and cost aggregates, with no notion of what an agent *did*. The transcripts carry
-that — the step sequence, the refusals, the errors — but reading them one by one is the work the
-dashboard exists to avoid, and a single session is too small a sample to tell a habit from an
-accident. Ten is enough for a pattern to repeat and small enough that the window still points at
-a specific stretch of work.
+that — the step sequence, the refusals, the errors — but a single session is too small a sample
+to tell a habit from an accident. Ten is enough for a pattern to repeat and small enough that the
+window still points at a specific stretch of work.
 
 ## Behavior
 
@@ -74,14 +72,14 @@ a specific stretch of work.
   at 12%+ of it. The single-schema claim names the captured requests it was measured from; the
   whole-schema one is measured over the window's averages and names none.
 - **Missing bodies** — raw `.request.txt` captures age out of the log before the sidecars do, so a
-  session may have a peak with no readable body. Those are skipped, counted in
-  `meta.requestsMissing`, and reported next to the table; a window with none left says so instead
-  of showing an empty table.
+  session may have a peak with no readable body — or, once its sidecars are gone, no peak at all.
+  Those are skipped, counted in `meta.requestsMissing`, and reported next to the table; a window
+  with none left says so instead of showing an empty table.
 
 ### Status flags
 
-The suggestions themselves carry no state — a rule that keeps tripping keeps reappearing whether
-or not anyone acted on it. A flag per suggestion records that someone did:
+The suggestions themselves carry no state: a rule that keeps tripping keeps reappearing whether
+or not anyone acted on it. A flag per suggestion records that someone did.
 
 - **The flags** — `pending` (the default), `done` (applied), `skipped` (deliberately passed over).
   Each carries the ISO timestamp of the write and an optional note (a PR link, why it was skipped).
@@ -96,7 +94,7 @@ or not anyone acted on it. A flag per suggestion records that someone did:
   - `historical` — every session in the window predates the claim. Expected to keep tripping;
     nothing left to act on.
   - `regressed` — every session started *after* the claim and the rule tripped anyway. The change
-    did not hold. This is the signal, and the row names the bucket and date of the claim it broke.
+    did not hold; the row names the bucket and date of the claim it broke.
   - `mixed` — the window straddles the claim, so its evidence is part pre-fix and proves nothing.
   - `none` — no dated `done` for that rule, or the dates needed to compare are missing.
 
@@ -123,15 +121,14 @@ or not anyone acted on it. A flag per suggestion records that someone did:
   An update naming a suggestion no rule currently produces is still written and reported under
   `meta.unknown`, so a typo is visible rather than silent.
 - **In the dashboard** — the bucket detail badges every flagged suggestion, dims the ones acted on
-  (restored to full contrast on hover/focus, so nothing becomes unreadable), and gives each one a
-  `Pending / Done / Skipped` control. `Pending` is the undo: it clears the entry, the same write the
-  API and CLI make. A write re-reads the status list rather than patching the row locally. A
-  **hide resolved** toggle appears once anything is *settled* — acted on, or in a window the rule's
-  own fix predates — and the Advice bucket list counts only unsettled suggestions as open. A
-  recurrence badge sits next to the flag, and a `regressed` suggestion is never dimmed and takes a
-  coral border; a regressed control also names the bucket and date of the claim it broke when that
-  claim was recorded in another bucket. Both pages show a `N regressed` badge in their header. The
-  breakdown-derived suggestions carry no control —
+  (restored to full contrast on hover/focus), and gives each one a `Pending / Done / Skipped`
+  control. `Pending` is the undo: it clears the entry, the same write the API and CLI make. A write
+  re-reads the status list rather than patching the row locally. A **hide resolved** toggle appears
+  once anything is *settled* — acted on, or in a window the rule's own fix predates — and the Advice
+  bucket list counts only unsettled suggestions as open. A recurrence badge sits next to the flag; a
+  `regressed` suggestion is never dimmed and takes a coral border, and its control also names the
+  bucket and date of the claim it broke when that claim was recorded in another bucket. Both pages
+  show a `N regressed` badge in their header. The breakdown-derived suggestions carry no control:
   they are computed per request rather than per bucket, so the store has no row for them.
 - **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>]
   [--recurrence <states>] [-d]` and `pnpm --filter server suggestions mark -r <bucket> -i <ids>
@@ -141,7 +138,9 @@ or not anyone acted on it. A flag per suggestion records that someone did:
   hidden is printed, and `--recurrence historical` brings them back. Regressed rows are marked
   `⚠ REGRESSED since <date>` and totalled above the table.
 
-The data path is `logs/sessions/*.md` + `.audit.json` sidecars →
+The data path is `logs/sessions/*.md` + `.audit.json` sidecars — read through the
+`SidecarSource` seam, so the server answers from the SQLite substrate by default and from the
+file scan under `DB_READS=0`, while the CLI always scans the files —
 `packages/core/src/suggestions.ts` (pure: `sessionSuggestionBuckets`, `suggestBucket`,
 `summarizeBreakdownPatterns`, `suggestFromBreakdown` — no I/O, no clock) → `server`
 (`buildSessionSuggestions` / `buildSessionSuggestionBucket` behind
