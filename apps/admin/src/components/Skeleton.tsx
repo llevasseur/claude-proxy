@@ -43,9 +43,8 @@ export function SkeletonText({ lines = 3 }: { lines?: number }) {
 }
 
 /**
- * Placeholder prose inside the real paragraph element, so that paragraph's own font
- * size, line height and margin reserve the space rather than a guess at them. Each
- * block fills its line, so one block is one rendered line.
+ * Placeholder prose inside the real paragraph, so its own font size, line height and
+ * margin set the reserved space. One block per rendered line.
  */
 export function SkeletonNote({ lines = 3, className }: { lines?: number; className: string }) {
   return (
@@ -103,11 +102,7 @@ export interface SkeletonColumn {
   head?: Len;
   /** Body cell width. */
   cell?: Len;
-  /**
-   * Lines the real cell wraps to. A long label in a narrow column is what sets the
-   * row's height, so reserving one line where the page renders three leaves the
-   * table short by the difference on every row.
-   */
+  /** Lines the real cell wraps to — a label wrapping in a narrow column sets the row's height. */
   lines?: number;
 }
 

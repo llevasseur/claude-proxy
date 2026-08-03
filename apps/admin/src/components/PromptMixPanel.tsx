@@ -18,7 +18,7 @@ const MIX_COLUMNS: readonly SkeletonColumn[] = [
   { className: "num" },
 ];
 
-/** Rows to reserve — the tables run to `TOP_COHORTS` before the tail is folded away. */
+/** Rows to reserve in each placeholder table. */
 const SKELETON_ROWS = 7;
 
 /** Signed byte delta. */
@@ -45,8 +45,7 @@ export function PromptMixPanel({ days }: { days: number }) {
     placeholderData: keepPreviousData,
   });
 
-  // The panel loads on its own query, so without a placeholder it pops in above the
-  // page's chart after the page itself has settled.
+  // Its own query, so without a placeholder it pops in after the page has settled.
   if (query.isLoading) return <PromptMixSkeleton />;
   const data = query.data;
   if (!data) return null;
@@ -79,10 +78,7 @@ export function PromptMixPanel({ days }: { days: number }) {
   );
 }
 
-/**
- * The loaded panel's own two-up grid, box for box: both headings are fixed text, so
- * they render for real and only the note and table rows shimmer.
- */
+/** The loaded panel's grid, box for box. The headings are fixed text, so they render for real. */
 export function PromptMixSkeleton() {
   return (
     <div className="grid wide-two">

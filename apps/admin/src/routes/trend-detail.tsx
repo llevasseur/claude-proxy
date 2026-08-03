@@ -51,7 +51,6 @@ export function TrendDetailPage() {
   const last = digests.at(-1);
   const rangeLabel = !first || !last ? "—" : first.date === last.date ? first.date : `${first.date} → ${last.date}`;
   const compare = dayOverDay(digests, def);
-  // The mix panel only exists on this one metric, so only it reserves that row.
   const hasMix = def.key === "avg-system-prompt";
 
   return (
@@ -70,8 +69,7 @@ export function TrendDetailPage() {
           {compare ? (
             <DayOverDay compare={compare} />
           ) : (
-            // Outside the skeleton, so it has to hold its own line or the whole page
-            // drops by one when the comparison arrives.
+            // Outside the skeleton, so it holds its own line while the trend loads.
             query.isLoading && (
               <div className="trend-compare" aria-hidden>
                 <Skeleton w="76%" />
@@ -203,11 +201,7 @@ function DayOverDay({ compare }: { compare: DayComparison }) {
   );
 }
 
-/**
- * Everything the loaded page puts in this slot, in the same order: the mix panel when
- * the metric carries one, then the chart and its by-day table in the two-up grid —
- * one row and point per day.
- */
+/** Everything the loaded page puts in this slot, in order — one row and point per day. */
 function TrendDetailSkeleton({ days, label, mix }: { days: number; label: string; mix: boolean }) {
   return (
     <>
