@@ -38,6 +38,7 @@ import {
   buildSkimTrend,
   buildSummary,
   buildTools,
+  buildPromptMix,
   buildTrends,
   buildUsage,
   buildWithheld,
@@ -395,6 +396,14 @@ const server = http.createServer(async (req, res) => {
         const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, readSource());
         send(res, 200, trends);
         shadow("/api/trends", trends, (source) => buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, source));
+        return;
+      }
+      case "/api/prompt-mix": {
+        const days = parseDays(url.searchParams.get("days"));
+        const now = new Date();
+        const mix = await buildPromptMix(LOG_DIR, days, now, readSource());
+        send(res, 200, mix);
+        shadow("/api/prompt-mix", mix, (source) => buildPromptMix(LOG_DIR, days, now, source));
         return;
       }
       case "/api/usage": {

@@ -22,6 +22,7 @@ import {
   buildSuggestionStatus,
   buildSummary,
   buildTools,
+  buildPromptMix,
   buildTrends,
   buildUsage,
   buildWithheld,
@@ -239,6 +240,14 @@ export const PARITY_ROUTES: ParityRoute[] = [
       }
       return cases;
     },
+  },
+  {
+    name: "/api/prompt-mix",
+    cases: async (ctx) =>
+      (await archivedDays(ctx.logDir)).map((day) => ({
+        label: `/api/prompt-mix?days=7 as of ${day}`,
+        run: (source) => buildPromptMix(ctx.logDir, 7, endOf(day), source),
+      })),
   },
   {
     name: "/api/usage",

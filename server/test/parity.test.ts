@@ -46,6 +46,7 @@ interface SidecarOpts {
   skim?: Record<string, unknown> | null;
   rateLimit?: Record<string, string> | null;
   realInput?: number;
+  system?: { hash: string; blocks: number; sections: number };
 }
 
 function sidecarBody(iso: string, opts: SidecarOpts = {}): Record<string, unknown> {
@@ -62,7 +63,13 @@ function sidecarBody(iso: string, opts: SidecarOpts = {}): Record<string, unknow
       cacheCreation: 25,
       realInput: opts.realInput ?? 525,
     },
-    request: { toolCount: tools.length, toolsBytes: 900, systemBytes: 1200, totalBytes: 4000 },
+    request: {
+      toolCount: tools.length,
+      toolsBytes: 900,
+      systemBytes: 1200,
+      totalBytes: 4000,
+      ...(opts.system ? { system: opts.system } : {}),
+    },
     tools,
   };
   if (opts.session !== null) {
@@ -245,8 +252,12 @@ async function buildCorpus(): Promise<string> {
     ],
     model: "claude-sonnet-5",
   });
-  // A legacy sidecar: no session, no skim, no rate-limit headers.
+  // A legacy sidecar: no session, no skim, no rate-limit headers, and — like
+  // every sidecar above — no system-prompt identity either.
   await writeTriple(dayOne, "2026-07-15T16:00:00.000Z", { session: null, skim: null, rateLimit: null });
+  // Carries the identity the proxy now captures, so both backings have to place
+  // a present hash and an absent one apart.
+  await writeTriple(dayOne, "2026-07-15T16:30:00.000Z", { system: { hash: "0123456789abcdef", blocks: 3, sections: 12 } });
   // Retention took the bodies but the metrics survive.
   await writeTriple(dayOne, "2026-07-15T17:00:00.000Z", { blobs: false });
   // Not JSON at all.
@@ -381,7 +392,7 @@ describe("route parity over a synthetic corpus", () => {
   });
 
   it("ingests every sidecar, and files that are not sidecars separately", () => {
-    expect((db.prepare("SELECT count(*) c FROM request").get() as { c: number }).c).toBe(7);
+    expect((db.prepare("SELECT count(*) c FROM request").get() as { c: number }).c).toBe(8);
     expect((db.prepare("SELECT count(*) c FROM request_skipped").get() as { c: number }).c).toBe(2);
     expect((db.prepare("SELECT count(*) c FROM request WHERE blob_evicted = 1").get() as { c: number }).c).toBe(1);
     // Absent and all-null are stored as different facts.
@@ -389,6 +400,11 @@ describe("route parity over a synthetic corpus", () => {
     expect(
       (db.prepare("SELECT count(*) c FROM request WHERE session_present = 1 AND session_id IS NULL").get() as { c: number }).c,
     ).toBe(1);
+    // System-prompt identity is stored where the sidecar had one, and left null
+    // where it did not.
+    expect(
+      db.prepare("SELECT req_system_hash h, req_system_blocks b, req_system_sections s FROM request WHERE req_system_hash IS NOT NULL").all(),
+    ).toEqual([{ h: "0123456789abcdef", b: 3, s: 12 }]);
   });
 
   it("indexes every transcript, its nodes, and its sparse node texts", () => {

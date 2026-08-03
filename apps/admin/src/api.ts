@@ -37,6 +37,11 @@ import type {
   SuggestionStatus,
   SuggestionStatusRow,
   SuggestionStatusUpdate,
+  MixAttribution,
+  PromptMixDay,
+  PromptRevision,
+  SectionMove,
+  StoredWirePrompt,
   SystemPromptDoc,
   TopTool,
   UsageDigest,
@@ -65,6 +70,21 @@ export interface ToolsResponse {
   date: string;
   topTools: TopTool[];
   meta: { files: number; parseErrors: number };
+}
+/** One prompt swapped for another, with the sections that moved. */
+export interface PromptRevisionDetail extends PromptRevision {
+  prior: StoredWirePrompt | null;
+  current: StoredWirePrompt | null;
+  moves: SectionMove[];
+}
+/** The cohorts behind `avgSystemPromptBytes`, and what moved it day over day. */
+export interface PromptMixResponse {
+  days: PromptMixDay[];
+  attribution: MixAttribution | null;
+  revisions: PromptRevisionDetail[];
+  /** Present while the newest day is still running, so its mean is incomplete. */
+  partial: { date: string; elapsed: number } | null;
+  meta: { days: number; files: number; parseErrors: number; archivedDays: number; outlinesFound: number };
 }
 export interface ContextResponse {
   summary: ContextSummary;
@@ -524,6 +544,7 @@ const qs = (date?: string) => (date ? `?date=${encodeURIComponent(date)}` : "");
 export const getHealth = () => get<HealthResponse>("/api/health");
 export const getSummary = (date?: string) => get<SummaryResponse>(`/api/summary${qs(date)}`);
 export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days=${days}`);
+export const getPromptMix = (days: number) => get<PromptMixResponse>(`/api/prompt-mix?days=${days}`);
 /** Paired with the `/api/usage/stream` SSE subscription, which pushes the same shape. */
 export const getUsage = () => get<UsageResponse>("/api/usage");
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);
