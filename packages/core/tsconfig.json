@@ -2,9 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    // `src` is bundled into the browser by `apps/admin`, so it gets no ambient Node
-    // types: a `node:` import or a `process` reference here has to fail typecheck.
-    // The test tree's Node needs live in `tsconfig.test.json`.
+    // `src` is bundled into the browser by `apps/admin`: no ambient Node types, so
+    // a `node:` import or a `process` reference here fails typecheck.
     "types": []
   },
   "include": ["src"]
