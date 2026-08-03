@@ -80,8 +80,7 @@ export const METRICS: StatMetric[] = [
       "Estimated USD per million tokens moved each day, counting the whole prompt and the output. A day's efficiency, independent of its size — cache reads are far cheaper than fresh input, so leaning on the cache pulls this down.",
     color: 'var(--signal)',
     format: fmtUsdPerMTok,
-    // The `/MTok` suffix repeats on every tick and the title already carries it;
-    // dropping it and the trailing cents is what leaves room for the `$8`.
+    // Ticks drop the repeated `/MTok` suffix and the trailing cents; the title carries the unit.
     formatTick: fmtUsdCompact,
     value: (d) => costPerMTok(d),
     sub: () => 'blended',
