@@ -1,7 +1,8 @@
 import {
   analyzeRequestBody,
   type AuditSidecar,
-  type Concept,
+  type StoredConcept,
+  withoutMetaSkills,
   computeDigest,
   deriveRequestErrors,
   deriveSessionNodes,
@@ -1562,12 +1563,28 @@ export async function buildCommandRun(
 
 export interface ConceptsResponse {
   /** Newest first — the order the page renders. */
-  concepts: Concept[];
+  concepts: StoredConcept[];
   meta: {
     /** The store the list came from, so the page can name its source. */
     storePath: string;
     total: number;
   };
+}
+
+/**
+ * A concept as it is served, with the meta-skills dropped from both skill lists.
+ *
+ * The filter lives here rather than in the store reader or the ingester:
+ * `logs/concepts.jsonl` keeps every word `/teach` wrote and the table stays a
+ * faithful view of it, so only the served answer is trimmed. Both backings pass
+ * through this, so shadow mode and the parity harness compare like with like.
+ */
+function toServedConcept(concept: StoredConcept): StoredConcept {
+  const out: StoredConcept = { ...concept, skills: withoutMetaSkills(concept.skills) };
+  // Absent stays absent: an empty list would claim the run surfaced nothing,
+  // not that it never looked.
+  if (concept.surfacedSkills) out.surfacedSkills = withoutMetaSkills(concept.surfacedSkills);
+  return out;
 }
 
 /**
@@ -1578,6 +1595,33 @@ export async function buildConcepts(
   logDir: string,
   source: SidecarSource = fileSource,
 ): Promise<ConceptsResponse> {
-  const concepts = await source.readConcepts(logDir);
+  const concepts = (await source.readConcepts(logDir)).map(toServedConcept);
   return { concepts, meta: { storePath: conceptStorePath(logDir), total: concepts.length } };
+}
+
+export interface ConceptResponse {
+  concept: StoredConcept;
+  meta: {
+    storePath: string;
+    /** How many records the store holds. */
+    total: number;
+  };
+}
+
+/**
+ * One concept, addressed by the line it sits on. Throws a labelled error the
+ * server maps to 404 when the store has no such line.
+ */
+export async function buildConcept(
+  logDir: string,
+  ord: number,
+  source: SidecarSource = fileSource,
+): Promise<ConceptResponse> {
+  const concepts = await source.readConcepts(logDir);
+  const concept = concepts.find((c) => c.ord === ord);
+  if (!concept) throw new Error(`concept not found: ${ord}`);
+  return {
+    concept: toServedConcept(concept),
+    meta: { storePath: conceptStorePath(logDir), total: concepts.length },
+  };
 }

@@ -300,18 +300,38 @@ export interface CommandsResponse {
   commands: CommandSummary[];
   meta: { commandsDir: string; storePath: string; runs: number; installed: number };
 }
-/** One term `/teach` recorded, exactly as it sits in `logs/concepts.jsonl`. */
+/**
+ * One term `/teach` recorded, as it sits in `logs/concepts.jsonl` — minus the
+ * meta-skills the server drops on the way out.
+ *
+ * Everything below `savedAt` is optional: records written before `/teach` saved
+ * research detail do not carry it, and an absent field means "never recorded"
+ * rather than "recorded empty". The detail page says nothing where one is
+ * missing.
+ */
 export interface ConceptRow {
+  /** The line the record sits on in the store — its address on `/concepts/$ord`. */
+  ord: number;
   term: string;
   sentence: string;
   field: string;
   skills: string[];
   /** ISO timestamp. */
   savedAt: string;
+  /** Free-form research notes from the run that taught the term. */
+  notes?: string;
+  tips?: string[];
+  sources?: string[];
+  /** Skills the run turned up while researching, as opposed to those it applied. */
+  surfacedSkills?: string[];
 }
 export interface ConceptsResponse {
   /** Newest first. */
   concepts: ConceptRow[];
+  meta: { storePath: string; total: number };
+}
+export interface ConceptResponse {
+  concept: ConceptRow;
   meta: { storePath: string; total: number };
 }
 /** One run as the command page lists it — no per-turn series, no per-step breakdown. */
@@ -603,6 +623,8 @@ export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?d
 export const getHooksPlugins = () => get<HooksPluginsResponse>("/api/hooks-plugins");
 /** Everything `/teach` has saved, newest first. */
 export const getConcepts = () => get<ConceptsResponse>("/api/concepts");
+/** One saved concept, by the line it sits on in the store. */
+export const getConcept = (ord: number) => get<ConceptResponse>(`/api/concepts/concept?ord=${ord}`);
 /** The device system prompt as it is on disk — `~/.claude/CLAUDE.md`. */
 export const getSystemPrompt = () => get<SystemPromptResponse>("/api/system-prompt");
 /** Overwrite it. The server keeps the previous contents in a `.bak` beside the file. */

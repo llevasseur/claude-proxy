@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -392,7 +392,7 @@ CREATE TABLE IF NOT EXISTS file_watermark (
  * Clearing the watermarks forces a rescan of every archived day, so rows already
  * ingested pick the columns up on the next pass.
  */
-const SCHEMA_V6 = `
+const SCHEMA_V7 = `
 ALTER TABLE request ADD COLUMN req_system_hash     TEXT;
 ALTER TABLE request ADD COLUMN req_system_blocks   INTEGER;
 ALTER TABLE request ADD COLUMN req_system_sections INTEGER;
@@ -458,6 +458,37 @@ CREATE INDEX IF NOT EXISTS concept_skill_skill_idx ON concept_skill(skill);
 `;
 
 /**
+ * The concept detail fields — `notes`, `tips`, `sources` and `surfacedSkills`.
+ *
+ * All four are optional, so `notes` defaults to the empty string and the lists
+ * contribute no rows for a record that lacks them. The record still round-trips
+ * through \`document\`; these exist to be queried.
+ *
+ * The three lists share one table rather than getting a \`concept_skill\` each —
+ * only grouping by skill is a real question, and \`kind\` keeps them apart.
+ *
+ * Dropping the store's watermark is what makes the new columns fill: the table
+ * is only rebuilt when the file looks changed, and migrating the schema does not
+ * change the file.
+ */
+const CONCEPT_DETAIL = `
+ALTER TABLE concept ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS concept_item (
+  ord      INTEGER NOT NULL REFERENCES concept(ord) ON DELETE CASCADE,
+  -- 'tip', 'source' or 'surfaced_skill'.
+  kind     TEXT NOT NULL,
+  item_ord INTEGER NOT NULL,
+  item     TEXT NOT NULL,
+  PRIMARY KEY (ord, kind, item_ord)
+);
+
+CREATE INDEX IF NOT EXISTS concept_item_kind_idx ON concept_item(kind, item);
+
+DELETE FROM file_watermark WHERE path = 'concepts.jsonl';
+`;
+
+/**
  * Open (creating if needed) the substrate for `logDir` in WAL mode. WAL lets the
  * server read while an ingest pass writes, which is the normal state: the
  * watcher ingests whenever the proxy drops a new sidecar.
@@ -482,7 +513,8 @@ function migrate(db: DatabaseSync): void {
   if (from < 3) db.exec(COMMAND_TABLES);
   if (from < 4) db.exec(SCHEMA_V4);
   if (from < 5) db.exec(CONCEPT_TABLES);
-  if (from < 6) db.exec(SCHEMA_V6);
+  if (from < 6) db.exec(CONCEPT_DETAIL);
+  if (from < 7) db.exec(SCHEMA_V7);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
