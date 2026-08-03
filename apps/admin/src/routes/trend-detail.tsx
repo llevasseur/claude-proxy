@@ -38,8 +38,8 @@ export function TrendDetailPage() {
     return (
       <section>
         <Breadcrumbs>
-          <Link to='/' className='link'>
-            Overview
+          <Link to='/trends' className='link'>
+            Trends
           </Link>
           <span className='crumb-current'>Unknown</span>
         </Breadcrumbs>
@@ -60,9 +60,11 @@ export function TrendDetailPage() {
 
   return (
     <section>
+      {/* Trends, not Overview: this page is `/trends/$metric`, and both the
+          carousel and the Overview's cards arrive here through that path. */}
       <Breadcrumbs>
-        <Link to='/' className='link'>
-          Overview
+        <Link to='/trends' className='link'>
+          Trends
         </Link>
         <span className='crumb-current'>{def.label}</span>
       </Breadcrumbs>

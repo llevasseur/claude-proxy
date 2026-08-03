@@ -1,12 +1,4 @@
-import {
-  createRootRoute,
-  createRoute,
-  createRouter,
-  Link,
-  Outlet,
-  redirect,
-  useRouterState,
-} from '@tanstack/react-router';
+import { createRootRoute, createRoute, createRouter, Link, Outlet, useRouterState } from '@tanstack/react-router';
 import {
   BookOpen,
   EyeOff,
@@ -23,6 +15,7 @@ import {
   Puzzle,
   ScrollText,
   TerminalSquare,
+  TrendingUp,
   Wrench,
   Zap,
 } from 'lucide-react';
@@ -58,12 +51,16 @@ import { SystemPromptPage } from './routes/system-prompt';
 import { ToolSchemaPage } from './routes/tool-schema';
 import { ToolsPage } from './routes/tools';
 import { TrendDetailPage } from './routes/trend-detail';
+import { TrendsPage } from './routes/trends';
 import { WithheldPage } from './routes/withheld';
 import { useRailCollapsed } from './useRailCollapsed';
 
 /** Side-rail nav stations. */
 const STATIONS = [
   { to: '/', label: 'Overview', hint: 'today', exact: true, icon: Monitor },
+  // Not exact: a metric's own trend page is under `/trends`, and the station
+  // stays lit while you are down there.
+  { to: '/trends', label: 'Trends', hint: 'blended', exact: false, icon: TrendingUp },
   { to: '/context', label: 'Context size', hint: 'prompt', exact: false, icon: Gauge },
   { to: '/tools', label: 'Tool bloat', hint: 'context', exact: false, icon: Wrench },
   { to: '/skim', label: 'Skim', hint: 'cache', exact: false, icon: Zap },
@@ -171,16 +168,15 @@ const indexRoute = createRoute({
   staticData: { title: 'Overview' },
 });
 /**
- * The Trends page folded into the Overview; the path stays as a redirect for
- * saved links. `/trends/$metric` below is a sibling route, not a child, so the
- * drill-downs are untouched by this.
+ * End-of-day snapshots of every metric, blended across the window. `/trends/$metric`
+ * below is a sibling route, not a child, so a slide's link is a navigation to a
+ * page of its own rather than an outlet inside this one.
  */
 const trendsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/trends',
-  beforeLoad: () => {
-    throw redirect({ to: '/' });
-  },
+  component: TrendsPage,
+  staticData: { title: 'Trends' },
 });
 const trendDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
