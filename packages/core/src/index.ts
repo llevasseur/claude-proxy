@@ -17,6 +17,7 @@ export * from './suggestion-status.js';
 export * from './suggestions.js';
 export * from './system-prompt.js';
 export * from './time.js';
+export * from './trends.js';
 export * from './types.js';
 export * from './usage-limits.js';
 export * from './wire-prompt.js';
