@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { diffWirePrompts, outlineWirePrompt, PREAMBLE, sectionShares, sectionsOfText } from "../src/wire-prompt.js";
+import {
+  diffWirePrompts,
+  outlineWirePrompt,
+  PREAMBLE,
+  sectionShares,
+  sectionsOfText,
+  wirePromptSectionTexts,
+} from "../src/wire-prompt.js";
 
 const block = (text: string, ttl?: string) => ({
   type: "text",
@@ -74,6 +81,40 @@ describe("sectionShares", () => {
 
   it("returns nothing rather than dividing by zero for an empty prompt", () => {
     expect(sectionShares({ sections: [] })).toEqual([]);
+  });
+});
+
+describe("wirePromptSectionTexts", () => {
+  it("returns one text per outline section, in the same order", () => {
+    const system = [block("intro\n# A\naaa\n## B\nbbb"), block("# C\nccc")];
+    const texts = wirePromptSectionTexts(system);
+    expect(texts).toHaveLength(outlineWirePrompt(system).sections.length);
+    expect(texts).toEqual(["intro", "# A\naaa", "## B\nbbb", "# C\nccc"]);
+  });
+
+  it("gives back exactly the bytes the outline counted", () => {
+    const system = [block("intro\n# Héllo — ok\nbody\n# Next\nmore")];
+    const outline = outlineWirePrompt(system);
+    wirePromptSectionTexts(system).forEach((text, i) => {
+      // Every span but the last carries the newline that ends it.
+      const trailing = i === outline.sections.length - 1 ? 0 : 1;
+      expect(Buffer.byteLength(text) + trailing).toBe(outline.sections[i]!.bytes);
+    });
+  });
+
+  it("skips empty blocks the same way the outline does", () => {
+    const system = [block(""), block("# Only\nbody")];
+    expect(wirePromptSectionTexts(system)).toEqual(["# Only\nbody"]);
+  });
+
+  it("keeps fenced headings inside their section rather than splitting on them", () => {
+    const [only] = wirePromptSectionTexts([block("# Real\n```sh\n# not a heading\n```")]);
+    expect(only).toBe("# Real\n```sh\n# not a heading\n```");
+  });
+
+  it("returns nothing for an absent system field", () => {
+    expect(wirePromptSectionTexts(undefined)).toEqual([]);
+    expect(wirePromptSectionTexts(null)).toEqual([]);
   });
 });
 
