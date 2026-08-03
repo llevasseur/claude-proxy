@@ -19,5 +19,8 @@
     "admin": "pnpm --filter admin dev",
     "summary": "pnpm --filter server summary",
     "zellij": "bash scripts/zellij.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6"
   }
 }
