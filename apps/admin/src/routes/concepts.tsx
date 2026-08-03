@@ -12,8 +12,8 @@ import { useLiveQuery } from "../useLiveQuery";
  *
  * The list is the store: `logs/concepts.jsonl` is append-only and nothing retracts a
  * line, so there is no filter and no paging — a term taught twice appears twice, which
- * is itself worth seeing. Each row opens its own page, addressed by `ord`, the line the
- * record sits on; the term cannot be that address precisely because it can repeat.
+ * is itself worth seeing. Each row opens its own page, addressed by `ord` — the line the
+ * record sits on, since the term can repeat.
  */
 
 type SortKey = "term" | "field" | "savedAt";
@@ -62,9 +62,8 @@ export function ConceptsPage() {
             <table className="table" style={{ marginTop: 12 }}>
               <thead>
                 <tr>
-                  {/* Term is sized to its own longest value: `width: 1%` with no wrapping
-                      collapses the column onto its content, and Explanation — the only
-                      column without a width — absorbs everything left over and wraps. */}
+                  {/* Term sizes to its longest value; Explanation, the only column with
+                      no width, absorbs what is left and wraps. */}
                   <SortHeader label="Term" sortKey="term" sort={sort} onSort={onSort} style={FIT_COLUMN} />
                   <th>Explanation</th>
                   <SortHeader label="Field" sortKey="field" sort={sort} onSort={onSort} style={FIT_COLUMN} />
@@ -143,9 +142,8 @@ function SortHeader({
 }
 
 /**
- * A sorted copy. Ties fall back to `ord` descending — newest first — so equal
- * fields (an empty one, most often) keep the order the page opened in rather
- * than shuffling between renders.
+ * A sorted copy. Ties fall back to `ord` descending, so equal fields — an empty
+ * one, most often — keep a stable order between renders.
  */
 function sortRows(concepts: ConceptRow[], key: SortKey, dir: SortDir): ConceptRow[] {
   const sign = dir === "asc" ? 1 : -1;

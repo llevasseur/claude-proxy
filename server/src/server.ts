@@ -783,9 +783,9 @@ const server = http.createServer(async (req, res) => {
           debounceMs: 600,
         });
         return;
-      // One concept, addressed by the line it sits on in the store. The store is
-      // append-only, so that line number keeps pointing at the same record even
-      // as newer concepts land above it on the page.
+      // One concept, addressed by the line it sits on. The store is append-only,
+      // so that line keeps pointing at the same record as newer ones land above
+      // it on the page.
       case "/api/concepts/concept":
       case "/api/concepts/concept/stream": {
         const ord = Number(url.searchParams.get("ord"));

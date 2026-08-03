@@ -441,21 +441,16 @@ CREATE INDEX IF NOT EXISTS concept_skill_skill_idx ON concept_skill(skill);
 /**
  * The concept detail fields — `notes`, `tips`, `sources` and `surfacedSkills`.
  *
- * All four are optional on the record and every line written before them lacks
- * them, so `notes` defaults to the empty string and the three lists simply
- * contribute no rows. The record still round-trips through \`document\`; these
- * exist to be queried, as everywhere else in this schema.
+ * All four are optional, so `notes` defaults to the empty string and the lists
+ * contribute no rows for a record that lacks them. The record still round-trips
+ * through \`document\`; these exist to be queried.
  *
- * The lists share one table rather than getting a \`concept_skill\` each. That
- * table is indexed because grouping concepts by skill is a real question;
- * "every concept whose tips mention X" is not one anything asks yet, and three
- * near-identical two-column tables would be noise. \`kind\` keeps them apart and
- * the cascade is the same.
+ * The three lists share one table rather than getting a \`concept_skill\` each —
+ * only grouping by skill is a real question, and \`kind\` keeps them apart.
  *
  * Dropping the store's watermark is what makes the new columns fill: the table
  * is only rebuilt when the file looks changed, and migrating the schema does not
- * change the file. Without this an existing database would carry the new columns
- * empty until the next `/teach` run happened to append.
+ * change the file.
  */
 const CONCEPT_DETAIL = `
 ALTER TABLE concept ADD COLUMN notes TEXT NOT NULL DEFAULT '';

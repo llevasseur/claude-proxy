@@ -508,8 +508,8 @@ function conceptsFromDb(db: DatabaseSync): StoredConcept[] {
     ord: number;
     document: string;
   }>;
-  // `ord` comes off the row rather than the loop index, so it stays the line's
-  // position in the file even though this is reading a table.
+  // `ord` comes off the row, not the loop index — it is the line's position in
+  // the file, not this result set's.
   return sortConcepts(rows.map((row) => ({ ...(JSON.parse(row.document) as Concept), ord: row.ord })));
 }
 

@@ -495,10 +495,8 @@ export const PARITY_ROUTES: ParityRoute[] = [
     cases: async (ctx) => [{ label: "/api/concepts", run: (source) => buildConcepts(ctx.logDir, source) }],
   },
 
-  /* The detail route enumerates over the store the list route just returned, so
-   * the `ord` values replayed are exactly the ones the page can link to — a row
-   * the file backing serves but the table backing cannot address would fail
-   * here rather than on a click. */
+  /* Enumerated from the store the list route returns, so the `ord` values
+   * replayed are exactly the ones the page can link to. */
   {
     name: "/api/concepts/concept",
     cases: async (ctx) => {

@@ -10,14 +10,12 @@ import { useLiveQuery } from "../useLiveQuery";
 
 /**
  * One saved concept, addressed by `ord` — the line it sits on in
- * `logs/concepts.jsonl`. A term can be taught more than once, so the term itself
- * is not an address; the line is, because the store is only ever appended to.
+ * `logs/concepts.jsonl`. A term can be taught more than once, so the term is not
+ * an address; the line is, because the store is only ever appended to.
  *
- * Everything past the explanation is optional. `/teach` learned to record
- * research notes, tips, sources and the skills it surfaced after the first
- * concepts were already saved, so an older record simply has none of it — and
- * this page renders nothing at all for a field that was never recorded rather
- * than an empty section claiming there was nothing to say.
+ * Everything past the explanation is optional — `/teach` learned to record it
+ * after the first concepts were saved. A field that was never recorded renders
+ * nothing at all, rather than an empty section claiming there was nothing to say.
  */
 export function ConceptDetailPage() {
   const { ord } = useParams({ from: "/concepts/$ord" });

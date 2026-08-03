@@ -46,10 +46,9 @@ export function parseConceptStore(text: string): Concept[] {
 /**
  * Every concept the store holds, newest first, each carrying the line it sits on.
  *
- * `ord` is assigned from file order *before* the sort, so it keeps meaning the
- * position in the file rather than the position on the page — that is what makes
- * it a stable address for a detail route. A missing store reads as empty: a
- * device where `/teach` has never run is an empty page, not an error.
+ * `ord` is assigned from file order *before* the sort, so it stays the position
+ * in the file rather than the position on the page. A missing store reads as
+ * empty: a device where `/teach` has never run is an empty page, not an error.
  */
 export async function readConcepts(logDir: string): Promise<StoredConcept[]> {
   let text: string;

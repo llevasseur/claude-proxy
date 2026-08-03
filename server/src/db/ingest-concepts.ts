@@ -60,10 +60,9 @@ function clearConcepts(db: DatabaseSync): number {
 /**
  * Write one record's row, its skill list, and whichever detail lists it carries.
  *
- * An absent detail list contributes no rows at all, which is the same fact the
- * record states by leaving the field off — `concept_item` never distinguishes a
- * list that was empty from one that was never recorded, and nothing asks it to.
- * The page reads that distinction off `document`.
+ * An absent detail list contributes no rows. `concept_item` does not distinguish
+ * a list that was empty from one that was never recorded; the page reads that
+ * distinction off `document`.
  */
 function writeConcept(st: ConceptStatements, concept: Concept, ord: number): void {
   st.insertConcept.run(

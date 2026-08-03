@@ -284,10 +284,10 @@ export interface CommandsResponse {
  * One term `/teach` recorded, as it sits in `logs/concepts.jsonl` — minus the
  * meta-skills the server drops on the way out.
  *
- * Everything below `savedAt` is optional because the store is append-only and
- * long-lived: records written before `/teach` learned to save research detail
- * simply do not carry it, and an absent field means "never recorded" rather than
- * "recorded empty". The detail page says nothing where a field is missing.
+ * Everything below `savedAt` is optional: records written before `/teach` saved
+ * research detail do not carry it, and an absent field means "never recorded"
+ * rather than "recorded empty". The detail page says nothing where one is
+ * missing.
  */
 export interface ConceptRow {
   /** The line the record sits on in the store — its address on `/concepts/$ord`. */

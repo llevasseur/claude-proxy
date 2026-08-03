@@ -313,8 +313,7 @@ const conceptsRoute = createRoute({
 });
 const conceptDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
-  // `$ord` is the line the record sits on in the append-only store — stable
-  // because nothing is ever removed, and unique where a term is not.
+  // `$ord` is the line the record sits on in the store — unique where a term is not.
   path: "/concepts/$ord",
   component: ConceptDetailPage,
   staticData: { title: "Concept" },

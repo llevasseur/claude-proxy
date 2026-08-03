@@ -6,9 +6,8 @@
  * back with, the field the term belongs to, which skills were consulted, and —
  * for runs recent enough to write them — the research, tips and sources behind
  * the answer. The file is append-only, one JSON object per line, and it is the
- * sole source of truth: the `concept` table is rebuilt from it wholesale, and
- * every field added since the first record is optional so the old lines keep
- * reading exactly as they did.
+ * sole source of truth: the `concept` table is rebuilt from it wholesale. Every
+ * field added after the first record is optional.
  */
 
 /** One term `/teach` recorded, as stored on a line of `logs/concepts.jsonl`. */
@@ -24,13 +23,9 @@ export interface Concept {
   /** When the record was appended, ISO 8601. */
   savedAt: string;
 
-  /* --- The detail fields, all optional --- *
-   *
-   * A `/teach` run gathers more than the one sentence it is judged on, and these
-   * carry it. Every record written before they existed omits them entirely, so
-   * each is optional and stays *absent* rather than becoming an empty value —
-   * a detail page says nothing where a field is missing, which is not the same
-   * fact as a field that was recorded empty. */
+  /* --- The detail fields --- *
+   * Every record written before they existed omits them, so an unrecorded field
+   * stays *absent* rather than becoming an empty value. */
 
   /** The research the run did, as prose. */
   notes?: string;
@@ -39,19 +34,17 @@ export interface Concept {
   /** Where the term was pinned down — URLs, skills, references. */
   sources?: string[];
   /**
-   * Public skills the run's `find-skills` step turned up. Kept apart from
-   * {@link Concept.skills}: those were consulted to name the term, these are
-   * what someone else already tuned for the field.
+   * Public skills the run's `find-skills` step turned up, as against
+   * {@link Concept.skills}, which were consulted to name the term.
    */
   surfacedSkills?: string[];
 }
 
 /**
- * A concept together with its position in the store.
+ * A concept together with its line in the store.
  *
  * The store has no key — nothing retracts a line and the same term may be saved
- * twice — so a record's identity is the line it sits on. `ord` is that line's
- * index in file order, which is stable for an append-only file, and it is what a
+ * twice — so a record's identity is its index in file order. That is what a
  * detail route addresses a concept by.
  */
 export interface StoredConcept extends Concept {
@@ -61,10 +54,9 @@ export interface StoredConcept extends Concept {
 /**
  * Skills that name a step of the `/teach` run rather than the term's field.
  *
- * `find-skills` is the skill that step *invokes* to surface public skills, so it
- * describes the machinery and never the concept. It is filtered where concepts
- * are read for display; the store keeps whatever was written, because the file is
- * the source of truth and this is a rendering judgement.
+ * `find-skills` is the skill that step invokes, so it describes the machinery
+ * and never the concept. Filtered where concepts are read for display; the store
+ * keeps whatever was written.
  */
 export const META_SKILLS: readonly string[] = ["find-skills"];
 
@@ -96,11 +88,10 @@ function optionalList(value: unknown): string[] | undefined {
  * guard per cell. Non-string entries in `skills` are dropped; a missing `field`
  * or `sentence` becomes the empty string.
  *
- * The detail fields are treated the other way round: an absent one is left off
- * the result entirely rather than defaulted, because "not recorded" and
- * "recorded empty" are different facts and the detail page renders them
- * differently. This is also what keeps the `document` column a faithful
- * round-trip for records written before those fields existed.
+ * The detail fields go the other way: an absent one is left off the result
+ * rather than defaulted, because "not recorded" and "recorded empty" are
+ * different facts. That also keeps `document` a faithful round-trip for records
+ * written before those fields existed.
  */
 export function normalizeConcept(concept: Concept): Concept {
   const skills = Array.isArray(concept.skills) ? concept.skills.filter((s): s is string => typeof s === "string") : [];
