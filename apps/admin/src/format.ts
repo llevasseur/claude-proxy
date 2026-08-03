@@ -17,16 +17,12 @@ export function fmtTokensShort(n: number): string {
 
 const compactNf = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 
-/** Any count at axis width, e.g. `1.2K` / `12.3M`. Keeps a digit `fmtTokensShort` rounds away. */
+/** Any count at axis width, e.g. `1.2K` / `12.3M`. */
 export const fmtCompact = (n: number): string => compactNf.format(n);
 
 const usdTickNf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
-/**
- * Dollars at axis width — `$4.31` while it fits, `$1.2K` once it doesn't.
- * Unlike `fmtUsd` it drops trailing zeros: a tick at 700 is `$700`, not
- * `$700.00`, and cents on one label widen the gutter for every other one.
- */
+/** Dollars at axis width, without `fmtUsd`'s trailing zeros: `$4.31`, `$700`, `$1.2K`. */
 export const fmtUsdCompact = (n: number): string =>
   Math.abs(n) >= 1000 ? `$${fmtCompact(n)}` : `$${usdTickNf.format(n)}`;
 

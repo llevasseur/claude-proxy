@@ -15,7 +15,7 @@ export interface SeriesLineChartProps {
   /** X-axis category key. */
   xKey: string;
   format: (n: number) => string;
-  /** Compact form of `format` for y-axis ticks; defaults to `format` itself. */
+  /** Compact form of `format` for y-axis ticks; defaults to `format`. */
   formatTick?: (n: number) => string;
   height?: number;
 }
@@ -42,8 +42,7 @@ export function SeriesLineChart({
             interval='preserveStartEnd'
             minTickGap={24}
           />
-          {/* `auto` measures the rendered ticks, so the gutter is exactly as wide
-              as the widest label rather than a guess that clips or wastes plot. */}
+          {/* `auto` sizes the gutter to the widest rendered tick. */}
           <YAxis
             width='auto'
             tick={{ fontSize: 11, fill: 'var(--muted)' }}

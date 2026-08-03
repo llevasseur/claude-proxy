@@ -15,11 +15,7 @@ export interface StatMetric {
   color: string;
   /** Formats a plotted value for tooltips, tables, and the popover. */
   format: (n: number) => string;
-  /**
-   * Formats a y-axis tick, in compact notation. Only set where `format` is too
-   * wide for an axis — a grouped `1,234,567` or a unit an axis need not repeat.
-   * Defaults to `format`, which is already tick-width for percentages and rates.
-   */
+  /** Compact y-axis tick; defaults to `format`, already tick-width for percentages and rates. */
   formatTick?: (n: number) => string;
   /** The value plotted for a single day. */
   value: (d: UsageDigest) => number;
