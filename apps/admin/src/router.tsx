@@ -33,6 +33,7 @@ import { AdvicePage } from "./routes/advice";
 import { CommandDetailPage } from "./routes/command-detail";
 import { CommandRunPage } from "./routes/command-run";
 import { CommandsPage } from "./routes/commands";
+import { ConceptDetailPage } from "./routes/concept-detail";
 import { ConceptsPage } from "./routes/concepts";
 import { ContextDetailPage } from "./routes/context-detail";
 import { ContextMessagePage } from "./routes/context-message";
@@ -310,6 +311,13 @@ const conceptsRoute = createRoute({
   component: ConceptsPage,
   staticData: { title: "Concepts" },
 });
+const conceptDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // `$ord` is the line the record sits on in the store — unique where a term is not.
+  path: "/concepts/$ord",
+  component: ConceptDetailPage,
+  staticData: { title: "Concept" },
+});
 const adviceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/advice",
@@ -366,6 +374,7 @@ const routeTree = rootRoute.addChildren([
   hooksPluginsRoute,
   systemPromptRoute,
   conceptsRoute,
+  conceptDetailRoute,
   adviceRoute,
   suggestionBucketRoute,
   commandsRoute,

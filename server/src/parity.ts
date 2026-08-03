@@ -5,6 +5,7 @@ import {
   buildCommand,
   buildCommandRun,
   buildCommands,
+  buildConcept,
   buildConcepts,
   buildContext,
   buildSession,
@@ -492,6 +493,19 @@ export const PARITY_ROUTES: ParityRoute[] = [
   {
     name: "/api/concepts",
     cases: async (ctx) => [{ label: "/api/concepts", run: (source) => buildConcepts(ctx.logDir, source) }],
+  },
+
+  /* Enumerated from the store the list route returns, so the `ord` values
+   * replayed are exactly the ones the page can link to. */
+  {
+    name: "/api/concepts/concept",
+    cases: async (ctx) => {
+      const { concepts } = await buildConcepts(ctx.logDir);
+      return concepts.map((concept) => ({
+        label: `/api/concepts/concept?ord=${concept.ord}`,
+        run: (source) => buildConcept(ctx.logDir, concept.ord, source),
+      }));
+    },
   },
 ];
 

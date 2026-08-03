@@ -46,6 +46,7 @@ import {
   buildSystemPrompt,
   buildSystemPromptUpdate,
   buildConcepts,
+  buildConcept,
 } from "./api.js";
 import { resolveArchiveDir } from "./archive.js";
 import { reconcileCommandRuns, resolveCommandsDir } from "./command-runs.js";
@@ -782,6 +783,32 @@ const server = http.createServer(async (req, res) => {
           debounceMs: 600,
         });
         return;
+      // One concept, addressed by the line it sits on. The store is append-only,
+      // so that line keeps pointing at the same record as newer ones land above
+      // it on the page.
+      case "/api/concepts/concept":
+      case "/api/concepts/concept/stream": {
+        const ord = Number(url.searchParams.get("ord"));
+        if (!Number.isInteger(ord) || ord < 0) {
+          send(res, 400, { error: "missing or invalid ?ord=" });
+          return;
+        }
+        const build = () => buildConcept(LOG_DIR, ord, readSource());
+        if (url.pathname.endsWith("/stream")) {
+          await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+          return;
+        }
+        try {
+          const concept = await build();
+          send(res, 200, concept);
+          shadow("/api/concepts/concept", concept, (source) => buildConcept(LOG_DIR, ord, source));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith("concept not found")) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
       case "/api/sessions/suggestions": {
         const suggestions = await buildSessionSuggestions(LOG_DIR, readSource());
         send(res, 200, suggestions);
