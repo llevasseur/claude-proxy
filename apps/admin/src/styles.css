@@ -1012,9 +1012,7 @@ a.pager-btn:hover {
   opacity: 0.7;
   font-size: 9px;
 }
-/* Column-header hints. The note opens on hover and on keyboard focus, so it is
-   not mouse-only, and it inherits nothing from the header — which is uppercase,
-   mono, and nowrap, while the note is prose. */
+/* Column-header hints. The note is prose, so it resets the header's uppercase mono. */
 .hint {
   position: relative;
   display: inline-block;
@@ -1075,8 +1073,7 @@ a.pager-btn:hover {
   visibility: visible;
   transform: translate(-50%, 0);
 }
-/* A right-aligned column sits against the card's edge, so its note opens inward
-   rather than off the side of the page. */
+/* A right-aligned column opens its note inward, clear of the card's edge. */
 .table th.num .hint-bubble,
 .table th.bar-col .hint-bubble {
   left: auto;

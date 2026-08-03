@@ -2,9 +2,8 @@ import { useId } from 'react';
 
 /**
  * The `i` beside a column header, and the note it reveals: what the column holds
- * and where the value comes from. It hangs off a real button so the keyboard
- * reaches it, and `aria-describedby` ties the note to that button rather than
- * leaving the text to hover alone.
+ * and where the value comes from. A button rather than a span, so the keyboard
+ * reaches it and the note is not hover-only.
  */
 export function HeaderHint({ text }: { text: string }) {
   const id = useId();
@@ -15,7 +14,7 @@ export function HeaderHint({ text }: { text: string }) {
         className='hint-mark'
         aria-label='What this column means'
         aria-describedby={id}
-        // A sortable header sorts on click, and asking what it means is not that.
+        // Keeps the click off a sortable header, which would re-sort the column.
         onClick={(event) => event.stopPropagation()}>
         i
       </button>
