@@ -1,12 +1,12 @@
+import type { SkimDigest } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import type { SkimDigest } from '@claude-proxy/core';
 import { getSkim, getSkimTrend } from '../api';
 import { BAR_CHART_HEIGHT, BarChart } from '../components/BarChart';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
-import { type SkeletonColumn, SkeletonChartCard, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
 import { type Series, SeriesLineChart } from '../components/SeriesLineChart';
+import { SkeletonChartCard, type SkeletonColumn, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtInt, fmtPct, fmtUsd } from '../format';
 import { useTransitionState } from '../useTransitionState';

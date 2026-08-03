@@ -1,5 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { ingest, watchAndIngest, type IngestStats } from './ingest.js';
+import { type IngestStats, ingest, watchAndIngest } from './ingest.js';
 import { openDb } from './open.js';
 import { dbSource, fileSource, type SidecarSource } from './source.js';
 

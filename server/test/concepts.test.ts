@@ -46,7 +46,7 @@ afterEach(async () => {
 });
 
 async function writeStore(records: unknown[], trailer = ''): Promise<void> {
-  await writeFile(conceptStorePath(logDir), records.map((r) => JSON.stringify(r)).join('\n') + '\n' + trailer, 'utf8');
+  await writeFile(conceptStorePath(logDir), `${records.map((r) => JSON.stringify(r)).join('\n')}\n${trailer}`, 'utf8');
 }
 
 describe('parseConceptStore', () => {

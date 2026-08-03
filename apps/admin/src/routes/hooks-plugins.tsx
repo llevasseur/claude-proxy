@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
 import type { AliasLoadExpectation } from '@claude-proxy/core';
+import { useQuery } from '@tanstack/react-query';
 import { getHooksPlugins } from '../api';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
@@ -78,6 +78,7 @@ export function HooksPluginsPage() {
                   </thead>
                   <tbody>
                     {hooks.map((h, i) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: hooks are listed in configuration order, and the event alone is not unique
                       <tr key={`${h.event}-${i}`}>
                         <td className='rule-name'>{h.event}</td>
                         <td>
@@ -203,6 +204,7 @@ function HooksPluginsSkeleton() {
   return (
     <>
       {[3, 2, 4].map((rows, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
         <div className='card' style={{ marginBottom: 16 }} key={i}>
           <div className='muted' aria-hidden>
             <Skeleton w='42%' />

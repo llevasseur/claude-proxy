@@ -1,5 +1,5 @@
+import { type CodeSyntax, highlightSource } from '@claude-proxy/core';
 import { useMemo } from 'react';
-import { highlightSource, type CodeSyntax } from '@claude-proxy/core';
 
 /** Lines rendered before the block gives up and points at the Raw view instead. A
  * capped job file is half a megabyte, which can be 15k lines — enough to cost a
@@ -28,12 +28,13 @@ export function CodeBlock({ source, syntax, wrap = false }: CodeBlockProps) {
     <>
       <ol className={`codeblock${wrap ? ' wrap' : ''}`}>
         {lines.map((tokens, n) => (
-          // The index *is* the line number, and lines never reorder.
+          // biome-ignore lint/suspicious/noArrayIndexKey: the index *is* the line number, and lines never reorder
           <li key={n}>
             {tokens.map((token, i) =>
               token.kind === 'text' ? (
                 token.text
               ) : (
+                // biome-ignore lint/suspicious/noArrayIndexKey: a line's tokens are a fixed left-to-right split
                 <span key={i} className={`tok-${token.kind}`}>
                   {token.text}
                 </span>

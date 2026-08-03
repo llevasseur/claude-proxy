@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type CodeSyntax,
+  type CodeTokenKind,
   codeSyntax,
   formatJsonText,
   highlightSource,
   prettifyLog,
   stripAnsi,
-  type CodeSyntax,
-  type CodeTokenKind,
 } from '../src/code-view.js';
 
 const ESC = '\u001B';

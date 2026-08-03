@@ -70,6 +70,6 @@ export function asArrayOf<T>(value: unknown): T[] {
 
 /** Read a header that may have been repeated, keeping the first value. */
 export function firstHeader(headers: HeaderBag | undefined | null, name: string): string | null {
-  const value = (headers ?? {})[name];
+  const value = headers?.[name];
   return (Array.isArray(value) ? value[0] : value) ?? null;
 }

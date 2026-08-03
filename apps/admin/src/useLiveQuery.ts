@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { type QueryKey, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { API_BASE } from './api';
 
 /** SSE connection state, surfaced for a "Live" indicator. */
@@ -20,6 +20,7 @@ export function useLiveQuery<T>(path: string, queryKey: QueryKey, enabled = true
   // Stable dep for the (array) query key without re-subscribing on every render.
   const keyId = JSON.stringify(queryKey);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `keyId` is the stable stringification of `queryKey`, deliberately standing in for it so a fresh array identity does not re-subscribe on every render
   useEffect(() => {
     if (!enabled) {
       setStatus('connecting');

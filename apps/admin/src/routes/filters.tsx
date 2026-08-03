@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
 import type { ProxyFilterEntry, ProxyFilterKind } from '@claude-proxy/core';
+import { useQuery } from '@tanstack/react-query';
 import { getFilters } from '../api';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';

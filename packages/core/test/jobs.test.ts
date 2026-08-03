@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildJobTree,
+  type JobFileEntry,
   jobFileKind,
   jobStateTone,
   normalizeJobState,
   parseJobTimeline,
-  type JobFileEntry,
 } from '../src/jobs.js';
 
 describe('normalizeJobState', () => {

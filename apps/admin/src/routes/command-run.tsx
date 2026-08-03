@@ -1,23 +1,23 @@
+import type { CommandRun, CommandRunStepStats, CommandRunTurn } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
-import type { CommandRun, CommandRunStepStats, CommandRunTurn } from '@claude-proxy/core';
 import { type CommandRunResponse, getCommandRun, getContextMessage } from '../api';
 import { CodeBlock } from '../components/CodeBlock';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import {
   SkeletonCard,
+  type SkeletonColumn,
   SkeletonStats,
   SkeletonTableCard,
   SkeletonText,
   SkeletonTextCard,
-  type SkeletonColumn,
 } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
+import { fmtBytes, fmtInt, fmtLocalTs, fmtPct, fmtUsd } from '../format';
 import { useLiveQuery } from '../useLiveQuery';
 import { fmtFlag } from './command-detail';
-import { fmtBytes, fmtInt, fmtLocalTs, fmtPct, fmtUsd } from '../format';
 
 /** Step colours, cycled — the same palette the command page's stacked bar uses. */
 const STEP_COLORS = ['var(--signal)', 'var(--good)', 'var(--amber)', 'var(--violet)', 'var(--coral)'];

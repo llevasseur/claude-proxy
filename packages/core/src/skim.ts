@@ -1,6 +1,6 @@
-import { isAuditSidecar, type AuditSidecar, type AuditSkim } from './types.js';
 import { priceFor } from './pricing.js';
 import { reportDay } from './time.js';
+import { type AuditSidecar, type AuditSkim, isAuditSidecar } from './types.js';
 
 export interface SkimShape {
   cacheKey: string;

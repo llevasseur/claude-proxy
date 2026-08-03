@@ -4,8 +4,8 @@ import { getTrends } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
-import { type SkeletonColumn, SkeletonChartCard, SkeletonTableCard } from '../components/Skeleton';
 import { SeriesLineChart } from '../components/SeriesLineChart';
+import { SkeletonChartCard, type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { findMetric, REPORT_TZ_ABBR } from '../metrics';
 import { useTransitionState } from '../useTransitionState';
 

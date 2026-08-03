@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { setShadowHooks, shadowCheck, shadowEnabled, type JsonDiff } from '../src/parity.js';
+import { type JsonDiff, setShadowHooks, shadowCheck, shadowEnabled } from '../src/parity.js';
 
 /**
  * Shadow mode is an observer and nothing else: off unless asked for, silent

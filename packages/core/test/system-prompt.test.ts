@@ -3,8 +3,8 @@ import {
   normalizeSystemPromptText,
   outlineSystemPrompt,
   parseSystemPromptText,
-  summarizeSystemPrompt,
   SYSTEM_PROMPT_MAX_BYTES,
+  summarizeSystemPrompt,
   utf8Bytes,
 } from '../src/system-prompt.js';
 

@@ -1,4 +1,3 @@
-import { useMemo, useState } from 'react';
 import type { JobFileKind, JobTreeNode } from '@claude-proxy/core';
 import {
   ChevronDown,
@@ -11,6 +10,7 @@ import {
   FolderOpen,
   Image as ImageIcon,
 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { fmtBytes } from '../format';
 
 /** Icon per file kind — the tree's only visual cue about what a row opens into. */

@@ -36,6 +36,7 @@ export function Segmented<T extends string | number>({
   busy?: boolean;
 }) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a <fieldset> brings its own box and legend layout; this control is styled from scratch
     <div className='segmented' role='group' aria-label={label} aria-busy={busy || undefined}>
       {options.map((o) => (
         <button

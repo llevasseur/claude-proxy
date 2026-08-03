@@ -1,7 +1,7 @@
+import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
-import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from '@claude-proxy/core';
 import { getContextDetail } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { EvictedBody } from '../components/EvictedBody';
@@ -342,7 +342,7 @@ function RawJson({ raw, truncated }: { raw: string; truncated: boolean }) {
     <div className='card'>
       <div className='card-head'>
         <h2>Raw request JSON</h2>
-        <button className='segmented' onClick={() => setOpen((v) => !v)}>
+        <button type='button' className='segmented' onClick={() => setOpen((v) => !v)}>
           {open ? 'Hide' : 'Show'}
         </button>
       </div>

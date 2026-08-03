@@ -12,7 +12,7 @@
       "!**/node_modules",
       "!.claude/worktrees",
       "!**/pnpm-lock.yaml",
-      "!logs/**",
+      "!logs",
       "!**/coverage/*",
       "!**/build/*",
       "!**/dist/*",
@@ -45,7 +45,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "correctness": {
         "noConstAssign": "error",
         "noConstantCondition": "error",
@@ -75,6 +75,9 @@
       },
       "performance": {
         "noBarrelFile": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "off"
       },
       "suspicious": {
         "noAsyncPromiseExecutor": "error",

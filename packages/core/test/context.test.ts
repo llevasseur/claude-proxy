@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   analyzeRequestBody,
+  type ContextEntry,
   extractRequestMessage,
   extractRequestTool,
   sessionContextPeak,
   summarizeContext,
   toContextEntry,
-  type ContextEntry,
 } from '../src/context.js';
 import { makeSidecar } from './helpers.js';
 

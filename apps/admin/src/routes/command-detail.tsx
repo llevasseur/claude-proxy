@@ -1,3 +1,4 @@
+import type { CommandRunOutcome, CommandStep, StepReach } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -12,14 +13,13 @@ import {
   YAxis,
   ZAxis,
 } from 'recharts';
-import type { CommandRunOutcome, CommandStep, StepReach } from '@claude-proxy/core';
 import { type CommandResponse, type CommandRunListItem, getCommand } from '../api';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
-import { SkeletonChartCard, SkeletonStats, SkeletonTableCard, type SkeletonColumn } from '../components/Skeleton';
+import { SkeletonChartCard, type SkeletonColumn, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
-import { useLiveQuery } from '../useLiveQuery';
 import { fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
+import { useLiveQuery } from '../useLiveQuery';
 
 /** One colour per outcome, shared by the scatter, its legend and the run list. */
 const OUTCOME_COLOR: Record<CommandRunOutcome, string> = {
@@ -180,6 +180,7 @@ function CommandBody({
             <h2>Flags</h2>
             <span className='muted'>narrows which runs are aggregated — it does not split the command</span>
           </div>
+          {/* biome-ignore lint/a11y/useSemanticElements: a <fieldset> brings its own box and legend layout; this control is styled from scratch */}
           <div className='segmented' role='group' aria-label='Filter runs by flag'>
             {data.flags.map((flag) => (
               <button

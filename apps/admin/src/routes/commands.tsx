@@ -1,14 +1,14 @@
+import type { CommandSummary } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import type { CommandSummary } from '@claude-proxy/core';
 import { getCommands } from '../api';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
-import { Skeleton, SkeletonStats, SkeletonTable, type SkeletonColumn } from '../components/Skeleton';
+import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { Sparkline } from '../components/Sparkline';
 import { StatCard } from '../components/StatCard';
-import { useLiveQuery } from '../useLiveQuery';
 import { fmtInt, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
+import { useLiveQuery } from '../useLiveQuery';
 
 /**
  * "Commands" — what each installed slash command costs to run.
@@ -178,6 +178,7 @@ function CommandsTable({ commands, storePath }: { commands: CommandSummary[]; st
               </td>
               <td className='num'>{c.runs === 0 ? <span className='muted'>—</span> : fmtInt(c.totalTokens)}</td>
               <td className='num'>{c.runs === 0 ? <span className='muted'>—</span> : fmtUsd(c.totalCost)}</td>
+              {/* biome-ignore lint/a11y/useKeyWithClickEvents: the cell is not clickable — this only keeps a click off the row's own handler */}
               <td onClick={(e) => e.stopPropagation()}>
                 {c.costSeries.length > 1 ? (
                   <Sparkline

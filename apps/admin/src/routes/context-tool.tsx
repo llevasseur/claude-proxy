@@ -1,6 +1,6 @@
+import type { RequestToolDetail } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
-import type { RequestToolDetail } from '@claude-proxy/core';
 import { getContextTool } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { EvictedBody } from '../components/EvictedBody';

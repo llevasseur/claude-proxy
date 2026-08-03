@@ -1,7 +1,7 @@
 // The read routes answer under an open `*` CORS, which is only safe while they stay
 // reads. The gate lives in the request dispatch, so these drive the real server over a
 // socket rather than a handler stub.
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';

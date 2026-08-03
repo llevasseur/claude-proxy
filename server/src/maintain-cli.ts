@@ -17,9 +17,9 @@ import {
   applyRetention,
   collectRetentionCorpus,
   planRetention,
+  type RetentionPlan,
   resolveRetentionDays,
   resolveToday,
-  type RetentionPlan,
 } from './retention.js';
 import { renderSummary } from './summary-render.js';
 

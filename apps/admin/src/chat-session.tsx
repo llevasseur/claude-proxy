@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ChatSendResponse, PermissionMode } from './api';
 import { endChat, getChatThread, sendChatMessage, startChat, stopChat } from './api';
 
@@ -138,6 +138,7 @@ const THREAD_POLL_CEILING_MS = 120_000;
 export function useChatThread(sessionId: string, enabled: boolean): { threadId: string | null; gaveUp: boolean } {
   const [gaveUp, setGaveUp] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new session id must restart the give-up clock, which is why it is listed even though the effect body never reads it
   useEffect(() => {
     setGaveUp(false);
     if (!enabled) return;

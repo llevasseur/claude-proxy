@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import type { ChatInterruption, ChatToolUse } from '../api';
 import { useChatSession } from '../chat-session';
 import { fmtInt } from '../format';
@@ -50,6 +50,7 @@ export function ChatConversation({
   const started = !!chat || !!pendingPrompt;
 
   // Follow the transcript down as turns land.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the effect reads a ref, so these are here purely to re-scroll when a turn or a pending prompt lands
   useEffect(() => {
     const el = log.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -60,17 +61,20 @@ export function ChatConversation({
       {started ? (
         <div className='chat-log' ref={log}>
           {chat?.turns.map((turn, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: turns are only ever appended, so the index is stable
             <ChatBubble key={i} role={turn.role}>
               {turn.role === 'assistant' ? <Markdown source={turn.text} /> : <p>{turn.text}</p>}
             </ChatBubble>
           ))}
           {pendingPrompt && (
             <>
+              {/* biome-ignore lint/a11y/useValidAriaRole: `role` is ChatBubble's own prop (user | assistant), not an ARIA role */}
               <ChatBubble role='user'>
                 <p>{pendingPrompt}</p>
               </ChatBubble>
+              {/* biome-ignore lint/a11y/useValidAriaRole: `role` is ChatBubble's own prop (user | assistant), not an ARIA role */}
               <ChatBubble role='assistant'>
-                <span className='chat-thinking' aria-label='Working'>
+                <span className='chat-thinking' role='status' aria-label='Working'>
                   <i />
                   <i />
                   <i />
@@ -96,6 +100,7 @@ export function ChatConversation({
           <div className='chat-tools'>
             <span className='muted'>ran</span>
             {chat.tools.map((t, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the tool list is append-only for the life of the turn
               <ToolChip key={i} tool={t} />
             ))}
           </div>

@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
 import { sessionName } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { useEffect } from 'react';
 import type { SessionDetail } from '../api';
 import { getRunningChats, getSession, getSessionBreakdown, stopChat } from '../api';
 import { useChatSession, useChatThread } from '../chat-session';

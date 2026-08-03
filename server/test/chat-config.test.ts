@@ -18,6 +18,7 @@ describe('CHAT_AGENT_PERMISSION_MODE', () => {
   });
 
   it('falls back to bypassPermissions and warns on anything else', async () => {
+    // biome-ignore lint/suspicious/noEmptyBlockStatements: an empty implementation is the point — it swallows the warning the assertion below checks for
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     process.env.CHAT_AGENT_PERMISSION_MODE = 'acceptedits';
     expect((await resolveAgentConfig()).permissionMode).toBe('bypassPermissions');

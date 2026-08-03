@@ -1,9 +1,9 @@
-import { appendFile, copyFile, link, mkdtemp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, link, mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { runKey } from '@claude-proxy/core';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applySuggestionStatus, buildSessionSuggestions } from '../src/api.js';
 import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from '../src/command-runs.js';
 import { conceptStorePath } from '../src/concepts.js';
@@ -11,16 +11,16 @@ import { ingest } from '../src/db/ingest.js';
 import { openDb } from '../src/db/open.js';
 import { dbSource, fileSource } from '../src/db/source.js';
 import { resolveLogDir } from '../src/logs.js';
-import { resolveSettingsPath } from '../src/settings.js';
-import { updateSuggestionStatusStore } from '../src/suggestion-status.js';
 import {
   archivedDays,
   NORMALIZATIONS,
   PARITY_ROUTES,
+  type ParityContext,
   resetCaches,
   runCase,
-  type ParityContext,
 } from '../src/parity.js';
+import { resolveSettingsPath } from '../src/settings.js';
+import { updateSuggestionStatusStore } from '../src/suggestion-status.js';
 import { resolveUsageLimits } from '../src/usage-config.js';
 
 /**
@@ -302,7 +302,7 @@ async function writeConcepts(logDir: string): Promise<void> {
       savedAt: '2026-07-17T09:00:00.000Z',
     },
   ];
-  await writeFile(conceptStorePath(logDir), records.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf8');
+  await writeFile(conceptStorePath(logDir), `${records.map((r) => JSON.stringify(r)).join('\n')}\n`, 'utf8');
 }
 
 /**

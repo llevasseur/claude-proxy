@@ -1,10 +1,10 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   SUGGESTION_STATUSES,
   type SuggestionRecurrence,
   type SuggestionStatus,
   type SuggestionStatusRow,
 } from '@claude-proxy/core';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { markSuggestionStatus } from '../api';
 import { fmtLocalTsShort } from '../format';
 

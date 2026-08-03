@@ -3,10 +3,10 @@ import {
   isEvictable,
   logFileDay,
   planRetention,
+  type RetentionCorpus,
   resolveRetentionDays,
   resolveToday,
   shiftDate,
-  type RetentionCorpus,
 } from '../src/retention.js';
 
 /**

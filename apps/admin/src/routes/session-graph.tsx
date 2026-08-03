@@ -1,10 +1,10 @@
+import type { InterruptionKind, SessionNode } from '@claude-proxy/core';
+import { mergeSessionNodes, sessionName, spawnAgentType } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Expand, Maximize2, Minimize2, Shrink } from 'lucide-react';
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { InterruptionKind, SessionNode } from '@claude-proxy/core';
-import { mergeSessionNodes, sessionName, spawnAgentType } from '@claude-proxy/core';
 import type { SessionGraphEntry } from '../api';
 import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from '../api';
 import { Skeleton, SkeletonStatus } from '../components/Skeleton';
@@ -554,6 +554,7 @@ function GraphSkeleton({ rows = 2, steps = 4 }: { rows?: number; steps?: number 
         const y = PAD + r * (s.rootH + GAP_Y);
         const stepY = y + (s.rootH - s.nodeH) / 2;
         return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
           <Fragment key={r}>
             {ghost(PAD, y, s.rootW, s.rootH, `root-${r}`)}
             {Array.from({ length: steps }, (_, i) =>
@@ -715,6 +716,7 @@ export function SessionGraphPage() {
   // steps would keep yanking the view back. `fitRef` keeps the effect off `fit`'s deps.
   const fitRef = useRef(fit);
   fitRef.current = fit;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refitting on these two and nothing else is the point — see the note above
   useEffect(() => {
     const id = requestAnimationFrame(() => fitRef.current());
     return () => cancelAnimationFrame(id);
@@ -724,6 +726,7 @@ export function SessionGraphPage() {
   // re-center; only a fresh pick (or a re-fold) moves the view.
   const boxesRef = useRef(boxes);
   boxesRef.current = boxes;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: boxes come through a ref so a poll cannot re-center; only these deps may move the view
   useEffect(() => {
     if (!focusId) return;
     const id = requestAnimationFrame(() => {
@@ -910,7 +913,7 @@ export function SessionGraphPage() {
             </div>
           ))}
 
-          <svg className='graph-edges' width={contentW} height={contentH} aria-hidden>
+          <svg className='graph-edges' width={contentW} height={contentH} aria-hidden='true'>
             <defs>
               {/* Points a return edge at the parent step it lands on. */}
               <marker

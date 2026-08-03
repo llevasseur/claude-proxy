@@ -52,6 +52,7 @@ function SessionsRailSkeleton({ rows = 9 }: { rows?: number }) {
       <div className='sessions-nav-body'>
         <div className='sessions-nav-list'>
           {Array.from({ length: rows }, (_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
             <div className='session-row-link' key={i}>
               <div className='session-row-top'>
                 <span className='session-row-name'>

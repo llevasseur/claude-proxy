@@ -3,13 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   buildJobTree,
-  jobFileKind,
-  jobStateTone,
-  normalizeJobState,
   type JobFileEntry,
   type JobFileKind,
   type JobStateFields,
   type JobTreeNode,
+  jobFileKind,
+  jobStateTone,
+  normalizeJobState,
 } from '@claude-proxy/core';
 
 /** Default location of Claude Code's background jobs: `~/.claude/jobs`. */

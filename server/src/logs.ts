@@ -228,7 +228,7 @@ export async function readArchivedDay(
 
 /** Base names the proxy emits, e.g. `2026-07-20T13-31-00-278_anthropic`. Digits,
  * `T`, `:` (legacy), `.`, `_`, `-` only — no path separators, no `..`. */
-const REQUEST_FILE_RE = /^[0-9A-Za-z:_.\-]+_anthropic$/;
+const REQUEST_FILE_RE = /^[0-9A-Za-z:_.-]+_anthropic$/;
 
 /**
  * Read and parse one captured request body, without rendering it for display.
@@ -326,8 +326,10 @@ export async function locateRequestBody(logDir: string, file: string): Promise<R
 /**
  * The audit sidecar that outlived an evicted body. Returns `null` when it is
  * unreadable or malformed, so a caller reporting an eviction never fails on it.
+ * `_logDir` is unread — the sidecar is found under `dir` — but kept so the signature
+ * matches every other reader in this module.
  */
-export async function readRetainedSidecar(logDir: string, file: string, dir: string): Promise<AuditSidecar | null> {
+export async function readRetainedSidecar(_logDir: string, file: string, dir: string): Promise<AuditSidecar | null> {
   if (!REQUEST_FILE_RE.test(file)) return null;
   try {
     const raw: unknown = JSON.parse(await readFile(path.join(dir, `${file}${AUDIT_SUFFIX}`), 'utf8'));

@@ -1,5 +1,5 @@
 import { dayStartMs, shiftDay } from './time.js';
-import { isAuditSidecar, type AuditSidecar, type AuditTokens } from './types.js';
+import { type AuditSidecar, type AuditTokens, isAuditSidecar } from './types.js';
 
 /**
  * Usage meters for the rolling allowances a Claude subscription meters separately.

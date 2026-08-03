@@ -94,10 +94,12 @@ export function SessionsSidenav({
           style={split === null ? undefined : { flex: 'none', height: `${split}px` }}
         />
 
+        {/* biome-ignore lint/a11y/useSemanticElements: an <hr> cannot take the pointer and keyboard handlers that make this a drag handle */}
         <div
           className='sessions-nav-resize'
           role='separator'
           aria-orientation='horizontal'
+          aria-valuenow={split ?? 0}
           aria-label='Resize the Active list'
           tabIndex={0}
           onPointerDown={onResize}
@@ -206,6 +208,7 @@ function SessionSection({
   const sentinel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a changed filter is exactly what should reset the page and scroll position
   useEffect(() => {
     setShown(PAGE);
     if (list.current) list.current.scrollTop = 0;

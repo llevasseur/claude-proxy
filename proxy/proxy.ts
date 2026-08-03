@@ -888,13 +888,13 @@ if (isMain) {
 
 // Exported for unit tests.
 export {
+  auditRequest,
   decodeResponse,
   extractSession,
-  writeAuditSidecar,
-  sumInputTokens,
-  auditRequest,
-  stripWithheldTools,
-  WITHHELD_TOOLS,
-  stripInjectedReminders,
   INJECTED_REMINDERS,
+  stripInjectedReminders,
+  stripWithheldTools,
+  sumInputTokens,
+  WITHHELD_TOOLS,
+  writeAuditSidecar,
 };

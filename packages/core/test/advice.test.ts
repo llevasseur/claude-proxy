@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { ADVICE_THRESHOLDS, HeuristicAdviceProvider } from '../src/advice.js';
 import { computeDigest } from '../src/digest.js';
-import { HeuristicAdviceProvider, ADVICE_THRESHOLDS } from '../src/advice.js';
 import { makeSidecar } from './helpers.js';
 
 const provider = new HeuristicAdviceProvider();

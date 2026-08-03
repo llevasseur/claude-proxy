@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef } from 'react';
 
 export type PromptStatus = 'ready' | 'submitted' | 'error';
 
@@ -48,6 +48,7 @@ export function PromptInput({
   const blocked = disabled || busy;
 
   // Auto-grow: clamp measured content between minRows and maxRows, scroll past that.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `value` is what must trigger the re-measure; the height is read off the ref, not off `value`
   useEffect(() => {
     const el = textarea.current;
     if (!el) return;

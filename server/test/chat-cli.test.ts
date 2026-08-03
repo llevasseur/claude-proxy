@@ -23,7 +23,7 @@ const base = {
 };
 
 /** The value passed to a flag, so assertions don't depend on argv ordering. */
-const valueOf = (args: string[], flag: string): string | undefined =>
+const flagValue = (args: string[], flag: string): string | undefined =>
   args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
 
 describe('cliSettings', () => {
@@ -50,16 +50,16 @@ describe('cliArgs — chat mode', () => {
   it('locks the child down', () => {
     expect(args).toContain('--safe-mode');
     expect(args).toContain('--strict-mcp-config');
-    expect(valueOf(args, '--tools')).toBe('');
+    expect(flagValue(args, '--tools')).toBe('');
   });
 
   it('replaces the system prompt rather than appending', () => {
-    expect(valueOf(args, '--system-prompt')).toBe('be brief');
+    expect(flagValue(args, '--system-prompt')).toBe('be brief');
     expect(args).not.toContain('--append-system-prompt');
   });
 
   it('opens the session id it was given', () => {
-    expect(valueOf(args, '--session-id')).toBe(base.sessionId);
+    expect(flagValue(args, '--session-id')).toBe(base.sessionId);
     expect(args).not.toContain('--resume');
   });
 });
@@ -74,12 +74,12 @@ describe('cliArgs — agent mode', () => {
   });
 
   it('appends its system prompt so Claude Code keeps its own', () => {
-    expect(valueOf(args, '--append-system-prompt')).toBe('be brief');
+    expect(flagValue(args, '--append-system-prompt')).toBe('be brief');
     expect(args).not.toContain('--system-prompt');
   });
 
   it('gives the headless child a standing answer to permission prompts', () => {
-    expect(valueOf(args, '--permission-mode')).toBe('acceptEdits');
+    expect(flagValue(args, '--permission-mode')).toBe('acceptEdits');
   });
 
   it("omits --setting-sources so the CLI's default set loads", () => {
@@ -105,12 +105,12 @@ describe('cliArgs — agent mode', () => {
       mode: 'agent',
       agentFlags: { disallowedTools: [], settingSources: ['project', 'local'], settingsOverrides: null },
     });
-    expect(valueOf(scoped, '--setting-sources')).toBe('project,local');
+    expect(flagValue(scoped, '--setting-sources')).toBe('project,local');
   });
 
   it('resumes instead of opening once a turn has been sent', () => {
     const next = cliArgs({ ...base, mode: 'agent', resume: true });
-    expect(valueOf(next, '--resume')).toBe(base.sessionId);
+    expect(flagValue(next, '--resume')).toBe(base.sessionId);
     expect(next).not.toContain('--session-id');
   });
 });
@@ -163,7 +163,7 @@ describe('decodeCliStream', () => {
   });
 
   it('finds the init event in a prefix, and ignores a half-written trailing line', () => {
-    const raw = line({ type: 'system', subtype: 'init', permissionMode: 'plan' }) + `{"type":"assis`;
+    const raw = `${line({ type: 'system', subtype: 'init', permissionMode: 'plan' })}{"type":"assis`;
     expect(findInitEvent(raw)).toEqual({ permissionMode: 'plan' });
     expect(findInitEvent(`{"type":"assis`)).toBeNull();
   });

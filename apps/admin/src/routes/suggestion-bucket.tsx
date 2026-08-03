@@ -1,18 +1,18 @@
-import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
 import type {
   BreakdownPattern,
   BucketBreakdownSummary,
   SessionSuggestion,
   SuggestionStatusRow,
 } from '@claude-proxy/core';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useParams } from '@tanstack/react-router';
 import { getSessionSuggestionBucket, getSuggestionStatus, type SessionSummary } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { QueryState } from '../components/QueryState';
 import {
   Skeleton,
-  type SkeletonColumn,
   SkeletonCardList,
+  type SkeletonColumn,
   SkeletonStats,
   SkeletonTable,
   SkeletonTableCard,

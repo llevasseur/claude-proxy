@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { computeSkimDigest, skimDigestsByDay } from '../src/skim.js';
 import { priceFor } from '../src/pricing.js';
+import { computeSkimDigest, skimDigestsByDay } from '../src/skim.js';
 import { makeSidecar, makeSkim } from './helpers.js';
 
 const hit = (savedInputTokens: number, cacheKey: string, model = 'claude-opus-4-8') =>

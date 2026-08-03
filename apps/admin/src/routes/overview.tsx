@@ -1,6 +1,6 @@
+import type { UsageDigest } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import type { UsageDigest } from '@claude-proxy/core';
 import { getSummary, getTrends, getUsage, type SummaryResponse, type UsageResponse } from '../api';
 import { AdviceCard } from '../components/AdviceCard';
 import { LiveIndicator } from '../components/LiveIndicator';
@@ -11,7 +11,7 @@ import { StatCard } from '../components/StatCard';
 import { UsageMeter } from '../components/UsageMeter';
 import { fmtInt, fmtPct } from '../format';
 import { METRICS, REPORT_TZ_ABBR } from '../metrics';
-import { useLiveQuery, type LiveStatus } from '../useLiveQuery';
+import { type LiveStatus, useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 
 export function OverviewPage() {
@@ -73,6 +73,7 @@ function UsageSection({ data, isLoading, error }: { data?: UsageResponse; isLoad
     return (
       <div className='grid usage' aria-hidden>
         {Array.from({ length: 2 }, (_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
           <div className='card usage-meter' key={i}>
             <Skeleton w='42%' h='0.8em' />
             <div style={{ margin: '10px 0' }}>
@@ -115,6 +116,7 @@ function OverviewSkeleton() {
           </div>
           <ul className='minilist'>
             {Array.from({ length: 5 }, (_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
               <li key={i}>
                 <Skeleton w='34%' />
                 <Skeleton w='28%' />
@@ -128,6 +130,7 @@ function OverviewSkeleton() {
           </div>
           <div className='advice-list'>
             {Array.from({ length: 2 }, (_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
               <div className='card' key={i}>
                 <Skeleton w='56%' className='skeleton-h2' />
                 <SkeletonText lines={2} />

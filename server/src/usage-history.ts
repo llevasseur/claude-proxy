@@ -1,5 +1,5 @@
 import { access } from 'node:fs/promises';
-import { learnCeilings, type LearnedCeilings } from '@claude-proxy/core';
+import { type LearnedCeilings, learnCeilings } from '@claude-proxy/core';
 import { fileSource, type SidecarSource } from './db/source.js';
 import { rawArchiveDayDir, shiftDay, today } from './logs.js';
 

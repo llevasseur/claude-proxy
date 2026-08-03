@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { parseLiveUsage, USAGE_WINDOW_MS, type LiveUsage, type UsageWindowKind } from '@claude-proxy/core';
+import { type LiveUsage, parseLiveUsage, USAGE_WINDOW_MS, type UsageWindowKind } from '@claude-proxy/core';
 
 /**
  * Anthropic's own usage figures, as the proxy last polled them.

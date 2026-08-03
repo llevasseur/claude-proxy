@@ -1,6 +1,6 @@
-import { isAuditSidecar, type AuditSidecar } from './types.js';
-import { addCost, estimateCost, ZERO_COST, type CostBreakdown } from './pricing.js';
+import { addCost, type CostBreakdown, estimateCost, ZERO_COST } from './pricing.js';
 import { reportDay, reportHour } from './time.js';
+import { type AuditSidecar, isAuditSidecar } from './types.js';
 
 export interface DigestTokens {
   input: number;

@@ -1,11 +1,11 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { UsageDigest } from '@claude-proxy/core';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getTrends } from '../api';
 import { BAR_CHART_HEIGHT, BarChart } from '../components/BarChart';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
-import { type SkeletonColumn, SkeletonChartCard, SkeletonTableCard } from '../components/Skeleton';
 import { type Series, SeriesLineChart } from '../components/SeriesLineChart';
+import { SkeletonChartCard, type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { fmtInt, fmtUsd } from '../format';
 import { REPORT_TZ_ABBR } from '../metrics';
 import { useTransitionState } from '../useTransitionState';

@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
 import { parseSessionNodes } from '@claude-proxy/core';
+import { describe, expect, it } from 'vitest';
 import { recordInterruption } from '../src/chat.js';
 import { resolveSessionsDir } from '../src/sessions.js';
 

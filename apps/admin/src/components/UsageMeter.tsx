@@ -72,6 +72,7 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
         <span className='usage-meter-unit'>%</span>
       </div>
 
+      {/* biome-ignore lint/a11y/useSemanticElements: <meter> cannot be styled into this bar, and its value range is capped where an over-budget estimate is not */}
       <div
         className='usage-bar'
         role='meter'

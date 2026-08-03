@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { parseSessionNodeTexts, parseSessionNodes, parseSessionTranscript } from '@claude-proxy/core';
+import { parseSessionNodes, parseSessionNodeTexts, parseSessionTranscript } from '@claude-proxy/core';
 import { resolveSessionsDir, SESSION_FILE_RE } from '../sessions.js';
 
 /**

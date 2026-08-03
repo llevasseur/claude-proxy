@@ -76,7 +76,9 @@ function writeConcept(st: ConceptStatements, concept: Concept, ord: number): voi
     // order `JSON.parse` produced, so re-parsing matches the file reader's object.
     JSON.stringify(concept),
   );
-  concept.skills.forEach((skill, i) => st.insertSkill.run(ord, i, skill));
+  concept.skills.forEach((skill, i) => {
+    st.insertSkill.run(ord, i, skill);
+  });
   writeItems(st, ord, 'tip', concept.tips);
   writeItems(st, ord, 'source', concept.sources);
   writeItems(st, ord, 'surfaced_skill', concept.surfacedSkills);
@@ -84,7 +86,9 @@ function writeConcept(st: ConceptStatements, concept: Concept, ord: number): voi
 
 /** One `concept_item` row per entry, in the order the record listed them. */
 function writeItems(st: ConceptStatements, ord: number, kind: string, items: string[] | undefined): void {
-  (items ?? []).forEach((item, i) => st.insertItem.run(ord, kind, i, item));
+  (items ?? []).forEach((item, i) => {
+    st.insertItem.run(ord, kind, i, item);
+  });
 }
 
 /**
@@ -134,7 +138,9 @@ export async function ingestConcepts(db: DatabaseSync, logDir: string): Promise<
   db.exec('BEGIN');
   try {
     clearConcepts(db);
-    concepts.forEach((concept, ord) => writeConcept(st, concept, ord));
+    concepts.forEach((concept, ord) => {
+      writeConcept(st, concept, ord);
+    });
     st.watermark.run(STORE_PATH, bytes, modified, new Date().toISOString());
     db.exec('COMMIT');
   } catch (err) {

@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { type JobTone, jobStateTone } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { jobStateTone, type JobTone } from '@claude-proxy/core';
+import { useMemo, useState } from 'react';
 import type { JobDeleteResult, JobSummary } from '../api';
 import { deleteJob, getJobs } from '../api';
 import { QueryState } from '../components/QueryState';
-import { SkeletonStats, SkeletonTable, type SkeletonColumn } from '../components/Skeleton';
+import { type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtLocalTsShort } from '../format';
 
 /**
@@ -247,6 +247,7 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
               <td className='num'>{fmtInt(job.files)}</td>
               <td className='num'>{fmtBytes(job.bytes)}</td>
               <td className='num muted'>{fmtLocalTsShort(job.activity)}</td>
+              {/* biome-ignore lint/a11y/useKeyWithClickEvents: the cell is not clickable — this only keeps a click off the row's own handler */}
               <td className='job-delete-cell' onClick={(e) => e.stopPropagation()}>
                 <DeleteControl
                   job={job}

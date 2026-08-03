@@ -12,7 +12,7 @@
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { isConcept, normalizeConcept, sortConcepts, type Concept, type StoredConcept } from '@claude-proxy/core';
+import { type Concept, isConcept, normalizeConcept, type StoredConcept, sortConcepts } from '@claude-proxy/core';
 
 /** The append-only concept store. */
 export function conceptStorePath(logDir: string): string {

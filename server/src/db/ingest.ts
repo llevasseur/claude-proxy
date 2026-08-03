@@ -1,8 +1,8 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
 import fs from 'node:fs';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { isAuditSidecar, type AuditSidecar } from '@claude-proxy/core';
+import { type AuditSidecar, isAuditSidecar } from '@claude-proxy/core';
 import { commandStorePath } from '../command-runs.js';
 import { resolveSessionsDir } from '../sessions.js';
 import { ingestCommandRuns } from './ingest-commands.js';

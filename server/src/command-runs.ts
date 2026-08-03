@@ -15,39 +15,39 @@
  * so a steady-state pass opens only the request bodies that have appeared since.
  */
 
-import { mkdir, readdir, readFile, appendFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  type AuditSidecar,
   addTokens,
   analyzeRequestBody,
   attributeSteps,
+  COMMAND_RUN_SCHEMA,
+  type CommandRun,
+  type CommandRunTurn,
+  type CommandStep,
   classifyOutcome,
   contentHash,
-  COMMAND_RUN_SCHEMA,
   deriveSessionNodes,
+  detectPatterns,
+  reachedEnd as didReachEnd,
   estimateCost,
   findNestedInvocations,
+  type InterruptionKind,
   isAuditSidecar,
   isCommandRun,
   nestedRunId,
   parseCommandEnvelope,
   parseCommandSteps,
-  runKey,
-  detectPatterns,
-  reachedEnd as didReachEnd,
   reportDay,
+  runKey,
+  type SessionNode,
   summarizeSteps,
   ZERO_TOKENS,
-  type AuditSidecar,
-  type CommandRun,
-  type CommandRunTurn,
-  type CommandStep,
-  type InterruptionKind,
-  type SessionNode,
 } from '@claude-proxy/core';
 import { readRequestBodyParsed, readSidecars } from './logs.js';
-import { listSessionGraphs, resolveSessionsDir, threadIdForBody, type SessionGraph } from './sessions.js';
+import { listSessionGraphs, resolveSessionsDir, type SessionGraph, threadIdForBody } from './sessions.js';
 
 /** Where the CLI installs user commands. `COMMANDS_DIR` overrides it, for tests. */
 export function resolveCommandsDir(env: NodeJS.ProcessEnv = process.env): string {

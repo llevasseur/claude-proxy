@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   attributeSteps,
-  classifyOutcome,
   COMMAND_RUN_SCHEMA,
+  type CommandRun,
+  type CommandStep,
+  classifyOutcome,
   contentHash,
   countWaste,
   detectPatterns,
@@ -21,8 +23,6 @@ import {
   summarizeCommands,
   summarizeSteps,
   ZERO_TOKENS,
-  type CommandRun,
-  type CommandStep,
 } from '../src/commands.js';
 import type { SessionNode } from '../src/sessions.js';
 

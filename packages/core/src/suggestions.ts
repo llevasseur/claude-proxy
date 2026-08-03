@@ -16,7 +16,7 @@
 import type { Severity } from './advice.js';
 import type { RequestBreakdown } from './context.js';
 import { estTokens } from './context.js';
-import { sessionDisplayName, type SessionMeta, type SessionNode } from './sessions.js';
+import { type SessionMeta, type SessionNode, sessionDisplayName } from './sessions.js';
 
 /** How many sessions one bucket covers: 1–10, 11–20, … */
 export const SESSION_BUCKET_SIZE = 10;

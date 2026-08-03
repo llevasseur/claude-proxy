@@ -1,3 +1,5 @@
+// biome-ignore-all lint/suspicious/noArrayIndexKey: every list here is a fixed-length run of identical placeholders — the index is the only thing distinguishing them, and they never reorder
+
 import type { CSSProperties, ReactNode } from 'react';
 import { SPARKLINE_HEIGHT } from './Sparkline';
 

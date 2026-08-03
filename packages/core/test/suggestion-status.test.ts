@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionBucket } from '../src/suggestions.js';
 import {
   applySuggestionStatusUpdates,
   countSuggestionRecurrences,
@@ -13,6 +12,7 @@ import {
   suggestionStatusOf,
   suggestionStatusRows,
 } from '../src/suggestion-status.js';
+import type { SessionBucket } from '../src/suggestions.js';
 
 /** A bucket carrying just what the status join reads off it. */
 function bucket(index: number, ids: string[], span?: { first: string; last: string }): SessionBucket {

@@ -239,6 +239,7 @@ button:focus-visible {
 }
 
 /* health signal */
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .health {
   display: flex;
   align-items: center;
@@ -324,6 +325,7 @@ button:focus-visible {
   font-family: var(--font-mono);
   font-size: 12px;
 }
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .muted {
   color: var(--muted);
 }
@@ -1296,7 +1298,9 @@ button.link {
 
 @media (prefers-reduced-motion: reduce) {
   * {
+    /* biome-ignore lint/complexity/noImportantStyles: a reduced-motion override must outrank every animation rule in the sheet */
     animation: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: a reduced-motion override must outrank every transition rule in the sheet */
     transition: none !important;
   }
 }
@@ -2085,6 +2089,7 @@ button.link {
   white-space: nowrap;
   color: var(--faint);
 }
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .gs-head {
   display: flex;
   align-items: center;
@@ -2191,6 +2196,7 @@ button.link {
   font-weight: 700;
   color: var(--violet);
 }
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .gs-item-title {
   font-size: 12.5px;
   line-height: 1.35;

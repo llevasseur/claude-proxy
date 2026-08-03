@@ -1,4 +1,4 @@
-import { isAuditSidecar, type AuditSidecar } from './types.js';
+import { type AuditSidecar, isAuditSidecar } from './types.js';
 
 /**
  * "Context size" analytics: how large the prompt sent to the model gets.

@@ -6,6 +6,7 @@ export function Breadcrumbs({ children }: { children: ReactNode }) {
   return (
     <nav className='breadcrumbs' aria-label='Breadcrumb'>
       {items.map((child, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a breadcrumb trail is positional — the index is the crumb
         <Fragment key={i}>
           {i > 0 && (
             <span className='crumb-sep' aria-hidden>

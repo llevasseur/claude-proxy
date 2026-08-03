@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { parseSessionNodes, parseSessionTranscript } from '../src/sessions.js';
 import {
+  type BucketBreakdownInput,
   bucketSessions,
   errorSignature,
   isDiscoveryCall,
+  type SuggestibleSession,
   sessionSuggestionBuckets,
   suggestBucket,
   suggestFromBreakdown,
   summarizeBreakdownPatterns,
   toolName,
-  type BucketBreakdownInput,
-  type SuggestibleSession,
 } from '../src/suggestions.js';
 
 /** Build a session the rules can read, from real transcript text. */

@@ -21,17 +21,16 @@ import {
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { HealthBadge } from './components/HealthBadge';
-import { useRailCollapsed } from './useRailCollapsed';
 import { AdvicePage } from './routes/advice';
 import { CommandDetailPage } from './routes/command-detail';
 import { CommandRunPage } from './routes/command-run';
 import { CommandsPage } from './routes/commands';
 import { ConceptDetailPage } from './routes/concept-detail';
 import { ConceptsPage } from './routes/concepts';
+import { ContextPage } from './routes/context';
 import { ContextDetailPage } from './routes/context-detail';
 import { ContextMessagePage } from './routes/context-message';
 import { ContextToolPage } from './routes/context-tool';
-import { ContextPage } from './routes/context';
 import { FiltersPage } from './routes/filters';
 import { HooksPluginsPage } from './routes/hooks-plugins';
 import { JobDetailPage } from './routes/job-detail';
@@ -51,6 +50,7 @@ import { ToolsPage } from './routes/tools';
 import { TrendDetailPage } from './routes/trend-detail';
 import { TrendsPage } from './routes/trends';
 import { WithheldPage } from './routes/withheld';
+import { useRailCollapsed } from './useRailCollapsed';
 
 /** Side-rail nav stations. */
 const STATIONS = [

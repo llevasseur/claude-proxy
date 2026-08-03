@@ -1,6 +1,6 @@
+import type { SessionBucket, SuggestionStatusRow } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import type { SessionBucket, SuggestionStatusRow } from '@claude-proxy/core';
 import { getSessionSuggestions, getSuggestionStatus, getSummary } from '../api';
 import { AdviceCard } from '../components/AdviceCard';
 import { QueryState } from '../components/QueryState';
@@ -89,6 +89,7 @@ function BucketListSkeleton({ rows = 4, suggestions = 3 }: { rows?: number; sugg
   return (
     <div className='bucket-list' aria-hidden>
       {Array.from({ length: rows }, (_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
         <div className='card bucket-row' key={i}>
           <div className='bucket-row-head'>
             <span className='bucket-label'>
@@ -101,6 +102,7 @@ function BucketListSkeleton({ rows = 4, suggestions = 3 }: { rows?: number; sugg
           </div>
           <ul className='bucket-suggestions'>
             {Array.from({ length: suggestions }, (_, s) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length run of identical loading placeholders — the index is all that distinguishes them
               <li key={s}>
                 <Skeleton w={`${64 - s * 8}%`} />
               </li>

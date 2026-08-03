@@ -12,7 +12,7 @@ import {
   buildTrends,
   buildUsage,
 } from '../src/api.js';
-import { applyRetention, planRetention, collectRetentionCorpus } from '../src/retention.js';
+import { applyRetention, collectRetentionCorpus, planRetention } from '../src/retention.js';
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from '../src/usage-history.js';
 
 /**

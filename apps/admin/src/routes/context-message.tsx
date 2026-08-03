@@ -1,6 +1,6 @@
+import type { RequestMessageDetail } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
-import type { RequestMessageDetail } from '@claude-proxy/core';
 import { getContextMessage } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { EvictedBody } from '../components/EvictedBody';
@@ -105,7 +105,7 @@ function MessagePager({ file, index, messageCount }: { file: string; index: numb
           ‹ Previous
         </Link>
       ) : (
-        <button className='pager-btn' disabled>
+        <button type='button' className='pager-btn' disabled>
           ‹ Previous
         </button>
       )}
@@ -119,7 +119,7 @@ function MessagePager({ file, index, messageCount }: { file: string; index: numb
           Next ›
         </Link>
       ) : (
-        <button className='pager-btn' disabled>
+        <button type='button' className='pager-btn' disabled>
           Next ›
         </button>
       )}
@@ -149,6 +149,7 @@ function PrettyMessage({ content }: { content: string }) {
   return (
     <div className='msg-blocks'>
       {blocks.map((block, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a message's content blocks are positional and never reorder
         <BlockView key={i} block={block} />
       ))}
     </div>
@@ -193,6 +194,7 @@ function BlockView({ block }: { block: Block }) {
       return (
         <Section label='Tool result' badge={error ? 'error' : undefined}>
           {toBlocks(block.content).map((b, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a tool result's blocks are positional and never reorder
             <BlockView key={i} block={b} />
           ))}
         </Section>

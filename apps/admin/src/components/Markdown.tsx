@@ -87,6 +87,7 @@ export function Markdown({ source }: { source: string }) {
         <List key={key++} className='md-list'>
           {items.map((it, n) => (
             // A `✗ …` item is a transcript error.
+            // biome-ignore lint/suspicious/noArrayIndexKey: list items come straight off the parsed source in order
             <li key={n} className={/^✗\s/.test(it) ? 'md-error' : undefined}>
               {renderInline(it)}
             </li>

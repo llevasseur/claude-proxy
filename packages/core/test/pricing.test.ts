@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateCost, priceFor, MODEL_PRICES, FALLBACK_PRICE } from '../src/pricing.js';
+import { estimateCost, FALLBACK_PRICE, MODEL_PRICES, priceFor } from '../src/pricing.js';
 
 describe('priceFor', () => {
   it('matches families by substring', () => {

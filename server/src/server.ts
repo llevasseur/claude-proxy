@@ -9,13 +9,18 @@ import {
   type SuggestionStatus,
 } from '@claude-proxy/core';
 import {
+  applySuggestionStatus,
   buildCommand,
   buildCommandRun,
   buildCommands,
+  buildConcept,
+  buildConcepts,
   buildContext,
   buildContextDetail,
   buildContextMessage,
   buildContextTool,
+  buildFilters,
+  buildHooksPlugins,
   buildJob,
   buildJobDelete,
   buildJobFile,
@@ -26,34 +31,24 @@ import {
   buildSession,
   buildSessionBreakdown,
   buildSessionErrors,
-  buildSessionNodeTexts,
-  buildSessions,
   buildSessionGraphNodes,
-  buildSessionsGraph,
+  buildSessionNodeTexts,
   buildSessionSuggestionBucket,
   buildSessionSuggestions,
-  buildSuggestionStatus,
-  applySuggestionStatus,
+  buildSessions,
+  buildSessionsGraph,
   buildSkim,
   buildSkimTrend,
+  buildSuggestionStatus,
   buildSummary,
+  buildSystemPrompt,
+  buildSystemPromptUpdate,
   buildTools,
   buildTrends,
   buildUsage,
   buildWithheld,
-  buildHooksPlugins,
-  buildFilters,
-  buildSystemPrompt,
-  buildSystemPromptUpdate,
-  buildConcepts,
-  buildConcept,
 } from './api.js';
 import { resolveArchiveDir } from './archive.js';
-import { reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
-import { resolveDbPath } from './db/open.js';
-import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from './db/runtime.js';
-import type { SidecarSource } from './db/source.js';
-import { shadowCheck, shadowEnabled } from './parity.js';
 import {
   continueChat,
   endChat,
@@ -64,8 +59,13 @@ import {
   stopChat,
   UUID_RE,
 } from './chat.js';
+import { reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
+import { resolveDbPath } from './db/open.js';
+import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from './db/runtime.js';
+import type { SidecarSource } from './db/source.js';
 import { resolveJobsDir } from './jobs.js';
 import { countSidecarFiles, resolveLogDir } from './logs.js';
+import { shadowCheck, shadowEnabled } from './parity.js';
 import { resolveProjectsDir } from './projects.js';
 import { resolveSessionFile, resolveSessionsDir } from './sessions.js';
 import { resolveSettingsPath } from './settings.js';
@@ -247,7 +247,8 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
       if (debounce) clearTimeout(debounce);
       debounce = setTimeout(pushUpdate, stream.debounceMs);
     });
-    watcher.on('error', () => {}); // watch dropped (e.g. file removed) — snapshot + heartbeat remain
+    // biome-ignore lint/suspicious/noEmptyBlockStatements: swallowing it is the handling — watch dropped (e.g. file removed), and snapshot + heartbeat still hold
+    watcher.on('error', () => {});
   } catch {
     /* watch unsupported / path missing — client keeps the snapshot, heartbeat holds it open */
   }

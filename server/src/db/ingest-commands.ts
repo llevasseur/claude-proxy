@@ -1,13 +1,13 @@
 import { readFile, stat } from 'node:fs/promises';
 import type { DatabaseSync } from 'node:sqlite';
 import {
-  ZERO_WASTE,
   type AuditTokens,
+  type CommandPattern,
   type CommandRun,
   type CommandRunStepStats,
   type CommandRunTurn,
-  type CommandPattern,
   runKey,
+  ZERO_WASTE,
 } from '@claude-proxy/core';
 import { commandStorePath, parseCommandRunStore } from '../command-runs.js';
 
@@ -156,8 +156,12 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
     JSON.stringify(run),
   );
 
-  (run.flags ?? []).forEach((flag, i) => st.insertFlag.run(id, i, flag));
-  (run.threadIds ?? []).forEach((member, i) => st.insertThread.run(id, i, member));
+  (run.flags ?? []).forEach((flag, i) => {
+    st.insertFlag.run(id, i, flag);
+  });
+  (run.threadIds ?? []).forEach((member, i) => {
+    st.insertThread.run(id, i, member);
+  });
 
   (run.turns ?? []).forEach((turn: CommandRunTurn, i) => {
     const t = tokensOf(turn.tokens);
@@ -268,7 +272,9 @@ export async function ingestCommandRuns(db: DatabaseSync, logDir: string): Promi
   db.exec('BEGIN');
   try {
     clearRuns(db);
-    runs.forEach((run, ord) => writeRun(st, run, ord));
+    runs.forEach((run, ord) => {
+      writeRun(st, run, ord);
+    });
     st.watermark.run(STORE_PATH, bytes, modified, new Date().toISOString());
     db.exec('COMMIT');
   } catch (err) {

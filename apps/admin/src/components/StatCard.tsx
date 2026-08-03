@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { type CSSProperties, type ReactNode, useState } from 'react';
-import { Sparkline, type SparkPoint } from './Sparkline';
 import { deltaLabel, deltaTone } from '../format';
+import { Sparkline, type SparkPoint } from './Sparkline';
 
 /** Per-day series and how to render it, for the mini chart and popover. */
 export interface StatSpark {
