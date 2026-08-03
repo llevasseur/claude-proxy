@@ -216,7 +216,7 @@ describe("decodeCliStream", () => {
         },
       }) +
       line({ type: "result", result: "done" });
-    expect(decodeCliStream(raw).tools[0].error).toMatch(/requested permissions to use Bash/);
+    expect(decodeCliStream(raw).tools[0]?.error).toMatch(/requested permissions to use Bash/);
   });
 
   it("truncates a long tool_result rather than returning a whole command's output", () => {
@@ -226,7 +226,7 @@ describe("decodeCliStream", () => {
         type: "user",
         message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true, content: "x".repeat(2000) }] },
       });
-    const error = decodeCliStream(raw).tools[0].error ?? "";
+    const error = decodeCliStream(raw).tools[0]?.error ?? "";
     expect(error.length).toBeLessThan(500);
     expect(error.endsWith("…")).toBe(true);
   });

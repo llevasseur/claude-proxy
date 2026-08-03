@@ -61,8 +61,9 @@ describe("parseConceptStore", () => {
   });
 
   it("fills in the optional fields so the page never renders undefined", () => {
-    const [concept] = parseConceptStore(JSON.stringify({ term: "bare", savedAt: LINES[0].savedAt }));
-    expect(concept).toEqual({ term: "bare", sentence: "", field: "", skills: [], savedAt: LINES[0].savedAt });
+    const savedAt = LINES[0]?.savedAt;
+    const [concept] = parseConceptStore(JSON.stringify({ term: "bare", savedAt }));
+    expect(concept).toEqual({ term: "bare", sentence: "", field: "", skills: [], savedAt });
   });
 });
 

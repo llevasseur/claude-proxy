@@ -17,6 +17,11 @@ let child: ChildProcess;
 /** The device system prompt this server edits — a temp file, never the real one. */
 let promptPath: string;
 
+/** `Response.json()` answers `unknown`; these routes always reply with a `prompt` payload. */
+async function promptOf(res: Response): Promise<unknown> {
+  return ((await res.json()) as { prompt: unknown }).prompt;
+}
+
 /** Poll `/api/health` until the listener answers, so a slow `tsx` start isn't a failure. */
 async function waitForListening(deadlineMs = 30_000): Promise<void> {
   const until = Date.now() + deadlineMs;
@@ -76,7 +81,7 @@ describe("read routes", () => {
   it("serves the system prompt as a GET, and refuses a save from a foreign origin", async () => {
     const read = await fetch(`${BASE}/api/system-prompt`);
     expect(read.status).toBe(200);
-    expect((await read.json()).prompt).toMatchObject({ path: promptPath, exists: false });
+    expect(await promptOf(read)).toMatchObject({ path: promptPath, exists: false });
 
     // On the write allowlist, so the origin check owns it rather than the 405 gate.
     const foreign = await fetch(`${BASE}/api/system-prompt`, {
@@ -95,7 +100,7 @@ describe("read routes", () => {
     });
 
     expect(res.status).toBe(200);
-    expect((await res.json()).prompt).toMatchObject({ exists: true, text: "# Device rules\n" });
+    expect(await promptOf(res)).toMatchObject({ exists: true, text: "# Device rules\n" });
     expect(await readFile(promptPath, "utf8")).toBe("# Device rules\n");
   });
 

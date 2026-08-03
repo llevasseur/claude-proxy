@@ -32,10 +32,10 @@ describe("suggestion status file", () => {
   it("round-trips a flag through the file", async () => {
     const dir = await logDir();
     const written = await updateSuggestionStatusStore(dir, [{ bucket: 9, id: "serial-discovery", status: "done", note: "PR #71" }]);
-    expect(written.buckets["9"]["serial-discovery"].status).toBe("done");
+    expect(written.buckets["9"]?.["serial-discovery"]?.status).toBe("done");
 
     const reread = await readSuggestionStatusStore(dir);
-    expect(reread.buckets["9"]["serial-discovery"]).toMatchObject({ status: "done", note: "PR #71" });
+    expect(reread.buckets["9"]?.["serial-discovery"]).toMatchObject({ status: "done", note: "PR #71" });
   });
 
   it("merges into what is already recorded instead of replacing it", async () => {
