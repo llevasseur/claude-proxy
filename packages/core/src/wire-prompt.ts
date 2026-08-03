@@ -83,8 +83,8 @@ interface WirePromptSpan extends WirePromptSection {
  * The shared parse behind {@link sectionsOfText} and
  * {@link wirePromptSectionTexts}. Byte counts come from offset arithmetic and
  * the range from line indices, so a multi-byte character cannot desync them.
- * Ranges rather than text: every outline written goes through here, and only
- * the section reader ever needs the strings.
+ * Returns ranges rather than text — every outline parse comes through here, and
+ * only the section reader needs the strings.
  */
 function spansOfText(text: string, block: number): { lines: string[]; spans: WirePromptSpan[] } {
   const lines = text.split("\n");
