@@ -92,6 +92,7 @@ export function TrendDetailPage() {
                   series={[{ dataKey: 'value', name: def.label, color: def.color }]}
                   xKey='label'
                   format={def.format}
+                  formatTick={def.formatTick}
                   height={CHART_HEIGHT}
                 />
               </div>
