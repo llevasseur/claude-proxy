@@ -112,6 +112,7 @@ export const METRICS: StatMetric[] = [
     color: "var(--amber)",
     format: fmtBytesLabel,
     value: (d) => d.avgSystemPromptBytes,
+    trendField: "avgSystemPromptBytes",
   },
 ];
 

@@ -1,12 +1,14 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
+import type { UsageDigest } from "@claude-proxy/core";
 import { getTrends } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { QueryState } from "../components/QueryState";
 import { DAY_WINDOWS, Segmented } from "../components/Segmented";
 import { type SkeletonColumn, SkeletonChartCard, SkeletonTableCard } from "../components/Skeleton";
 import { SeriesLineChart } from "../components/SeriesLineChart";
-import { findMetric, REPORT_TZ_ABBR } from "../metrics";
+import { deltaLabel, deltaTone } from "../format";
+import { findMetric, REPORT_TZ_ABBR, type StatMetric } from "../metrics";
 import { useTransitionState } from "../useTransitionState";
 
 /** The tall chart this page leads with, in px. */
@@ -47,6 +49,7 @@ export function TrendDetailPage() {
   const first = digests.at(0);
   const last = digests.at(-1);
   const rangeLabel = !first || !last ? "—" : first.date === last.date ? first.date : `${first.date} → ${last.date}`;
+  const compare = dayOverDay(digests, def);
 
   return (
     <section>
@@ -61,6 +64,7 @@ export function TrendDetailPage() {
         <div>
           <h1>{def.title ?? def.label}</h1>
           <div className="muted">{def.description}</div>
+          {compare && <DayOverDay compare={compare} />}
         </div>
         <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label="Trend window" busy={busy} />
       </div>
@@ -112,6 +116,73 @@ export function TrendDetailPage() {
         )}
       </QueryState>
     </section>
+  );
+}
+
+/** The latest day against the one before it, ready to render. */
+interface DayComparison {
+  date: string;
+  priorDate: string;
+  /** Both values already run through the metric's own formatter. */
+  value: string;
+  priorValue: string;
+  /** null when the prior day was zero, which no percentage describes. */
+  deltaPct: number | null;
+  tone: "up" | "down" | "flat";
+  /** `delta` modifier — whether this direction reads as a win or a regression. */
+  toneClass: "good" | "bad" | "flat";
+}
+
+/**
+ * The last two days in the window. The chart shows the whole shape, but the
+ * question that brings anyone to this page is "did it move since yesterday?", so
+ * the answer is stated rather than left to be eyeballed off the line.
+ *
+ * Days come from the digests, not the clock: a gap in captured traffic means the
+ * two most recent days need not be today and yesterday, and both dates are shown
+ * for that reason.
+ */
+function dayOverDay(digests: UsageDigest[], def: StatMetric): DayComparison | null {
+  const today = digests.at(-1);
+  const prior = digests.at(-2);
+  if (!today || !prior) return null;
+
+  const now = def.value(today);
+  const was = def.value(prior);
+  const deltaPct = was > 0 ? ((now - was) / was) * 100 : null;
+  const tone = deltaPct === null ? "flat" : deltaTone(deltaPct);
+  return {
+    date: today.date,
+    priorDate: prior.date,
+    value: def.format(now),
+    priorValue: def.format(was),
+    deltaPct,
+    tone,
+    toneClass: tone === "flat" ? "flat" : (tone === "up") === (def.increaseIsBad ?? true) ? "bad" : "good",
+  };
+}
+
+function DayOverDay({ compare }: { compare: DayComparison }) {
+  return (
+    <div className="trend-compare">
+      <span className="trend-compare-value">
+        {compare.date}: {compare.value}
+      </span>{" "}
+      {compare.deltaPct === null ? (
+        <span className="muted">— nothing recorded on {compare.priorDate} to compare against.</span>
+      ) : compare.tone === "flat" ? (
+        <span className="muted">
+          — unchanged from {compare.priorValue} on {compare.priorDate}.
+        </span>
+      ) : (
+        <>
+          <span className={`delta ${compare.toneClass}`}>{deltaLabel(compare.deltaPct)}</span>{" "}
+          <span className="muted">
+            {compare.tone === "up" ? "up from" : "down from"} {compare.priorValue} on {compare.priorDate}.
+          </span>
+        </>
+      )}
+    </div>
   );
 }
 
