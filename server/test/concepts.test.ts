@@ -92,6 +92,8 @@ describe("ingestConcepts", () => {
     const third = await ingestConcepts(db, logDir);
     expect(third).toMatchObject({ concepts: 3, parsed: true });
     expect((db.prepare("SELECT count(*) c FROM concept").get() as { c: number }).c).toBe(3);
+    // The skills went with them: without the cascade these would have accumulated.
+    expect((db.prepare("SELECT count(*) c FROM concept_skill").get() as { c: number }).c).toBe(5);
   });
 
   it("drops the rows and its watermark when the store is gone", async () => {

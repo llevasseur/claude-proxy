@@ -5,6 +5,7 @@ import {
   buildCommand,
   buildCommandRun,
   buildCommands,
+  buildConcepts,
   buildContext,
   buildSession,
   buildSessionBreakdown,
@@ -480,6 +481,17 @@ export const PARITY_ROUTES: ParityRoute[] = [
       }
       return cases;
     },
+  },
+
+  /* --- Concepts --- *
+   *
+   * `logs/concepts.jsonl` is inside the substrate's scope, so unlike
+   * `/api/system-prompt` this one belongs here. One case: the store is a single
+   * file with no key and no filter, so there is nothing to enumerate over.
+   */
+  {
+    name: "/api/concepts",
+    cases: async (ctx) => [{ label: "/api/concepts", run: (source) => buildConcepts(ctx.logDir, source) }],
   },
 ];
 

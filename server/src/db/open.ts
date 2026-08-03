@@ -395,8 +395,9 @@ ${COMMAND_TABLES}
 `;
 
 /**
- * Slice 7 — concepts. The source is `logs/concepts.jsonl`, the append-only store
- * `/teach` writes one record to at the end of a run.
+ * Concepts. The source is `logs/concepts.jsonl`, the append-only store `/teach`
+ * writes one record to at the end of a run. A feature on the finished substrate,
+ * not a migration slice — the campaign closed at slice 6.
  *
  * The store has no key and nothing ever retracts a line, so a record's identity
  * *is* its position in the file: `ord` is the primary key, and the table is

@@ -14,6 +14,7 @@ Add one with `okq new feature "<title>"`.
 | Admin dashboard for claude-proxy usage | [admin-dashboard-for-claude-proxy-usage.md](admin-dashboard-for-claude-proxy-usage.md) |
 | Background jobs browser | [background-jobs-browser.md](background-jobs-browser.md) |
 | Commands eval | [commands-eval.md](commands-eval.md) |
+| Concepts page | [concepts-page.md](concepts-page.md) |
 | Config inventory | [config-inventory.md](config-inventory.md) |
 | Context-size analytics | [context-size-analytics.md](context-size-analytics.md) |
 | Dashboard chat sessions | [dashboard-chat-sessions.md](dashboard-chat-sessions.md) |

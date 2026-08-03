@@ -72,7 +72,7 @@ export interface SidecarSource {
    */
   readCommandRuns(logDir: string): Promise<CommandRun[]>;
 
-  /* --- Concepts (slice 7) --- *
+  /* --- Concepts --- *
    *
    * The live view of `logs/concepts.jsonl`: newest concept first. Nothing
    * retracts a line, so unlike the command store there is no filter to apply.
