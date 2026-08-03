@@ -4,7 +4,9 @@ import { Link } from '@tanstack/react-router';
 import { useMemo } from 'react';
 import { getSummary, getTrends, getUsage, type SummaryResponse, type UsageResponse } from '../api';
 import { AdviceCard } from '../components/AdviceCard';
+import { CostRateCard, CostRateSkeleton } from '../components/CostRateCard';
 import { LiveIndicator } from '../components/LiveIndicator';
+import { PerRequestCard, PerRequestSkeleton } from '../components/PerRequestCard';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
@@ -50,7 +52,7 @@ export function OverviewPage() {
       <QueryState
         isLoading={summary.isLoading || trends.isLoading}
         error={summary.error}
-        skeleton={<OverviewSkeleton />}>
+        skeleton={<OverviewSkeleton days={days} />}>
         {data && <OverviewBody data={data} digests={trends.data?.digests ?? []} />}
       </QueryState>
     </section>
@@ -106,10 +108,12 @@ function UsageSection({ data, isLoading, error }: { data?: UsageResponse; isLoad
 }
 
 /** The cards and panels this page loads into, at their loaded size. */
-function OverviewSkeleton() {
+function OverviewSkeleton({ days }: { days: number }) {
   return (
     <>
       <SkeletonStats count={METRICS.length} spark />
+      <CostRateSkeleton days={days} />
+      <PerRequestSkeleton days={days} />
       <div className='grid two' aria-hidden>
         <div className='card'>
           <div className='card-head'>
@@ -184,6 +188,10 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
           />
         ))}
       </div>
+
+      {/* Both plots read the whole window, spliced so the newest day keeps moving. */}
+      <CostRateCard digests={series} />
+      <PerRequestCard digests={series} />
 
       <div className='grid two'>
         <div className='card'>

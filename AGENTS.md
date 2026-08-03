@@ -68,6 +68,14 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
   stop and ask what the remaining unknowns are — then issue them at once. Anything
   that gates the next read (a path you must confirm exists first) is a real
   dependency and does not count; "I read them one at a time to stay tidy" is not.
+- **The per-file loop is what actually trips the trip-wire.** One call per entry of a
+  list you already hold — a `Read` per changed file, or a
+  `git diff origin/main:<path> HEAD:<path>` per path — is the review workflow, and it
+  is the clearest case the rule above governs: the file list came back in one call, so
+  every read in the loop was known before the first one went out. Reviews recorded
+  runs of twelve. Send the whole list as one block of `Read`s, and for a diff ask for
+  every path at once (`git diff origin/main...HEAD -- <path> <path> …`) rather than
+  re-invoking `git diff` per path.
 - **Hand a fan-out to one search agent** when the answer needs sweeping many files or
   directories, or when you cannot name the targets up front — ask for the conclusion,
   not the file dumps, and keep only that. Batch directly instead when the target
@@ -85,6 +93,14 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
   re-read is after the file actually changed (your `Edit`, a hook, formatter,
   generator, external process, or another agent), and then only the affected range
   via numeric `offset`/`limit` — never the whole file.
+- **"I need a different symbol from it" is not a reason to re-read.** Going back to a
+  file already in the transcript because the interesting function is now a different
+  one is what puts a file at three, four, or five reads — `server/src/api.ts` and the
+  `apps/admin/src/` route files are the recorded repeat offenders, being large enough
+  that each pass is expensive. Locate both symbols in one `rg -n 'foo|bar' <file>`,
+  then pull only the range you still need with numeric `offset`/`limit`. The file's
+  earlier read is still in context; the second full read buys nothing it did not
+  already have.
 - **Do not re-read to verify an `Edit` that returned success.** `Edit` and `Write`
   fail loudly when they do not apply; a successful result *is* the verification, and
   the harness already tracks the new contents. Verify behaviour with the repo's
@@ -97,9 +113,6 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
   for that read-only search (`rg ... || true`). Confirm an optional path exists
   before listing a directory or reading, `sed`-ing, or otherwise transforming a
   file, so an absent path does not turn useful discovery into a failed tool result.
-- When a question needs a fan-out across many files or directories, hand it to one
-  search agent and keep the conclusion instead of issuing the reads serially. Name
-  the target files up front when they are already known.
 
 ## Shell command forms
 
@@ -210,8 +223,32 @@ them are one of the shapes below. Each has a working form; use it the first time
 - Before any removal, check locked state, uncommitted changes, and unpushed commits,
   and run the cleanup from outside the target worktree.
 
-## Classifier-sensitive Git calls
+## Classifier-sensitive calls
 
+A refusal here is a judgement about the **shape of the command, not the permission
+behind it**. Every refusal on record was a step the agent had already decided to
+take, so it cost a turn and a retry rather than preventing any work — and the same
+intended operation succeeded once it was reissued as the smallest bare command.
+Three shapes account for all of them; recognize them before sending, not after.
+
+- **A read-only inspection captured into `$(...)`.** `BASE=$(git merge-base
+  origin/main HEAD)` and `d=$(ls logs/archive | sort | tail -1)` were both refused,
+  though `git merge-base` and `ls` are unremarkable run bare. A command substitution
+  or assignment wrapper obscures the probe inside it. Run the probe bare, read the
+  value off its output, and write that value literally into the next call.
+- **An inspection chained in the same call as a mutation.**
+  `ls -la logs/claude-proxy.db* 2>/dev/null; mv logs/claude-proxy.db "$…/tmp/…bak"`
+  is refused as a unit, because the `ls` cannot be judged apart from the `mv` it is
+  glued to. Split it: the `ls` is a read-only call, the `mv` is a second call. This
+  generalizes the branch-lifecycle bullet below — never let a probe ride along with
+  the mutation it was checking for.
+- **A long process launched with a trailing `&` plus `sleep` in a foreground call.**
+  `pnpm --filter server start > srv.log 2>&1 & sleep 12; grep -iE "listening|error"
+  srv.log` is refused, and re-sending it fails again since a foreground `sleep` is
+  independently blocked. The supported form is the Bash tool's own
+  `run_in_background` with a log file, then a bounded wait on that log (`Monitor`, or
+  an until-loop) and a separate call to read it — the same background-plus-log shape
+  "Give a long command an explicit timeout up front" already requires.
 - As a narrow exception to the general rule to chain dependent mutations, issue
   branch-lifecycle operations such as checkout/switch, pull, remote-branch
   inspection, and local branch deletion as individual shell calls. Put status

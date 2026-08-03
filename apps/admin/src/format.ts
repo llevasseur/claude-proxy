@@ -4,6 +4,17 @@ export const fmtInt = (n: number): string => nf.format(Math.round(n));
 export const fmtUsd = (n: number): string => `$${n.toFixed(n < 1 ? 3 : 2)}`;
 export const fmtPct = (n: number, digits = 0): string => `${n.toFixed(digits)}%`;
 
+/** A blended token price, e.g. `$0.73/MTok`. Two decimals: no rate lands below a cent. */
+export const fmtUsdPerMTok = (n: number): string => `$${n.toFixed(2)}/MTok`;
+
+/** Token count at axis width, e.g. `12.3M`. `fmtInt`'s grouped digits are too wide for a tick. */
+export function fmtTokensShort(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${Math.round(n / 1e3)}K`;
+  return String(Math.round(n));
+}
+
 export function fmtBytes(n: number): string {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
   if (n >= 1e3) return `${(n / 1e3).toFixed(1)} KB`;

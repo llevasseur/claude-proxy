@@ -36,8 +36,8 @@ export function TrendDetailPage() {
     return (
       <section>
         <Breadcrumbs>
-          <Link to='/trends' className='link'>
-            Trends
+          <Link to='/' className='link'>
+            Overview
           </Link>
           <span className='crumb-current'>Unknown</span>
         </Breadcrumbs>
@@ -56,8 +56,8 @@ export function TrendDetailPage() {
   return (
     <section>
       <Breadcrumbs>
-        <Link to='/trends' className='link'>
-          Trends
+        <Link to='/' className='link'>
+          Overview
         </Link>
         <span className='crumb-current'>{def.label}</span>
       </Breadcrumbs>
