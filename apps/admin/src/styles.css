@@ -668,6 +668,14 @@ button:focus-visible {
     visibility 0.12s ease;
   pointer-events: none;
 }
+/* Flipped over the card: the panel would otherwise fall past the viewport's
+   bottom edge. The opening slide reverses with it, so it still travels outward. */
+.stat-popover.is-above {
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translateY(4px);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+}
 .stat-link:hover .stat-popover,
 .stat-link:focus-visible .stat-popover {
   opacity: 1;
