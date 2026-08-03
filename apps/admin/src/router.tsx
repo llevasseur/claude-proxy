@@ -186,8 +186,9 @@ const trendDetailRoute = createRoute({
 });
 const promptDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
-  // The prompt's content hash, which is also its cohort key on the trend page.
-  path: "/prompts/$hash",
+  // Nested under the metric it drills into. The param is the prompt's content
+  // hash, which is also its cohort key on that page.
+  path: "/trends/avg-system-prompt/$hash",
   component: PromptDetailPage,
   staticData: { title: "System prompt" },
 });

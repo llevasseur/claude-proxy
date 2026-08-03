@@ -176,7 +176,7 @@ function CohortLabel({ label, hash }: { label: string; hash: string | null }) {
     );
   }
   return (
-    <Link to="/prompts/$hash" params={{ hash }} className="link mono">
+    <Link to="/trends/avg-system-prompt/$hash" params={{ hash }} className="link mono">
       {label}
     </Link>
   );

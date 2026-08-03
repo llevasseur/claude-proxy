@@ -44,7 +44,7 @@ function compare(a: SectionShare, b: SectionShare, key: SortKey): number {
 
 /** One system prompt from the mix: the sections its bytes sit in, and the days it ran. */
 export function PromptDetailPage() {
-  const { hash } = useParams({ from: "/prompts/$hash" });
+  const { hash } = useParams({ from: "/trends/avg-system-prompt/$hash" });
   const [days, selectDays, isSwitching] = useTransitionState(30);
   const query = useQuery({
     queryKey: ["prompt-detail", hash, days],
