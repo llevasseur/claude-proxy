@@ -3,10 +3,20 @@ import { Link } from "@tanstack/react-router";
 import type { PromptCohort, PromptMixDay, MixAttribution } from "@claude-proxy/core";
 import { getPromptMix, type PromptRevisionDetail } from "../api";
 import { fmtBytes, fmtInt, fmtPct } from "../format";
+import { SkeletonNote, SkeletonTable, type SkeletonColumn } from "./Skeleton";
 
 /** How many cohorts and section movers to show before the tail is folded away. */
 const TOP_COHORTS = 8;
 const TOP_MOVES = 10;
+
+/** Both tables are a name followed by four figures. */
+const MIX_COLUMNS: readonly SkeletonColumn[] = [
+  {},
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+  { className: "num" },
+];
 
 /** Signed byte delta. */
 function fmtDelta(bytes: number): string {
@@ -32,6 +42,9 @@ export function PromptMixPanel({ days }: { days: number }) {
     placeholderData: keepPreviousData,
   });
 
+  // The panel loads on its own query, so without a placeholder it pops in above the
+  // page's chart after the page itself has settled.
+  if (query.isLoading) return <PromptMixSkeleton />;
   const data = query.data;
   if (!data) return null;
   const day = data.days.at(-1);
@@ -58,6 +71,31 @@ export function PromptMixPanel({ days }: { days: number }) {
         {data.revisions.map((r) => (
           <SectionMoves key={`${r.priorHash}-${r.hash}`} revision={r} />
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The loaded panel's own two-up grid, box for box: both headings are fixed text, so
+ * they render for real and only the note and table rows shimmer.
+ */
+export function PromptMixSkeleton() {
+  return (
+    <div className="grid wide-two">
+      <div className="card">
+        <div className="card-head">
+          <h2>Where the number comes from</h2>
+          <span className="muted">click a prompt for its breakdown</span>
+        </div>
+        <SkeletonNote className="muted mix-note" />
+        <SkeletonTable columns={MIX_COLUMNS} rows={TOP_COHORTS} />
+      </div>
+
+      <div className="card">
+        <h2>Why it changed</h2>
+        <SkeletonNote className="muted mix-note" />
+        <SkeletonTable columns={MIX_COLUMNS} rows={TOP_COHORTS} />
       </div>
     </div>
   );

@@ -3,10 +3,10 @@ import { Link, useParams } from "@tanstack/react-router";
 import { isPartialDay, type UsageDigest } from "@claude-proxy/core";
 import { getTrends } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { PromptMixPanel } from "../components/PromptMixPanel";
+import { PromptMixPanel, PromptMixSkeleton } from "../components/PromptMixPanel";
 import { QueryState } from "../components/QueryState";
 import { DAY_WINDOWS, Segmented } from "../components/Segmented";
-import { type SkeletonColumn, SkeletonChartCard, SkeletonTableCard } from "../components/Skeleton";
+import { Skeleton, type SkeletonColumn, SkeletonChartCard, SkeletonTableCard } from "../components/Skeleton";
 import { SeriesLineChart } from "../components/SeriesLineChart";
 import { deltaLabel, deltaTone } from "../format";
 import { findMetric, REPORT_TZ_ABBR, type StatMetric } from "../metrics";
@@ -51,6 +51,8 @@ export function TrendDetailPage() {
   const last = digests.at(-1);
   const rangeLabel = !first || !last ? "—" : first.date === last.date ? first.date : `${first.date} → ${last.date}`;
   const compare = dayOverDay(digests, def);
+  // The mix panel only exists on this one metric, so only it reserves that row.
+  const hasMix = def.key === "avg-system-prompt";
 
   return (
     <section>
@@ -65,7 +67,17 @@ export function TrendDetailPage() {
         <div>
           <h1>{def.title ?? def.label}</h1>
           <div className="muted">{def.description}</div>
-          {compare && <DayOverDay compare={compare} />}
+          {compare ? (
+            <DayOverDay compare={compare} />
+          ) : (
+            // Outside the skeleton, so it has to hold its own line or the whole page
+            // drops by one when the comparison arrives.
+            query.isLoading && (
+              <div className="trend-compare" aria-hidden>
+                <Skeleton w="76%" />
+              </div>
+            )
+          )}
         </div>
         <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label="Trend window" busy={busy} />
       </div>
@@ -73,14 +85,14 @@ export function TrendDetailPage() {
       <QueryState
         isLoading={query.isLoading}
         error={query.error}
-        skeleton={<TrendDetailSkeleton days={days} label={def.label} />}
+        skeleton={<TrendDetailSkeleton days={days} label={def.label} mix={hasMix} />}
         busy={busy}
       >
         {digests.length === 0 ? (
           <div className="card empty">No usage captured in the last {days} days.</div>
         ) : (
           <>
-            {def.key === "avg-system-prompt" && <PromptMixPanel days={days} />}
+            {hasMix && <PromptMixPanel days={days} />}
 
             <div className="grid wide-two chart-lead">
               <div className="card">
@@ -191,12 +203,19 @@ function DayOverDay({ compare }: { compare: DayComparison }) {
   );
 }
 
-/** The chart and its by-day table in the loaded page's two-up grid — one row and point per day. */
-function TrendDetailSkeleton({ days, label }: { days: number; label: string }) {
+/**
+ * Everything the loaded page puts in this slot, in the same order: the mix panel when
+ * the metric carries one, then the chart and its by-day table in the two-up grid —
+ * one row and point per day.
+ */
+function TrendDetailSkeleton({ days, label, mix }: { days: number; label: string; mix: boolean }) {
   return (
-    <div className="grid wide-two chart-lead">
-      <SkeletonChartCard title={`${label} / day`} height={CHART_HEIGHT} bars={days} />
-      <SkeletonTableCard title="By day" columns={BY_DAY_COLUMNS} rows={days} />
-    </div>
+    <>
+      {mix && <PromptMixSkeleton />}
+      <div className="grid wide-two chart-lead">
+        <SkeletonChartCard title={`${label} / day`} height={CHART_HEIGHT} bars={days} />
+        <SkeletonTableCard title="By day" columns={BY_DAY_COLUMNS} rows={days} />
+      </div>
+    </>
   );
 }

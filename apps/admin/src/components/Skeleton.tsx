@@ -43,6 +43,21 @@ export function SkeletonText({ lines = 3 }: { lines?: number }) {
 }
 
 /**
+ * Placeholder prose inside the real paragraph element, so that paragraph's own font
+ * size, line height and margin reserve the space rather than a guess at them. Each
+ * block fills its line, so one block is one rendered line.
+ */
+export function SkeletonNote({ lines = 3, className }: { lines?: number; className: string }) {
+  return (
+    <p className={className} aria-hidden>
+      {Array.from({ length: lines }, (_, i) => (
+        <Skeleton key={i} w={i === lines - 1 ? "62%" : (LINE_WIDTHS[i % LINE_WIDTHS.length] ?? "100%")} />
+      ))}
+    </p>
+  );
+}
+
+/**
  * The one thing a screen reader hears while a page loads. Absolutely positioned, so
  * it can sit in a grid or flex container without becoming an item in it.
  */
