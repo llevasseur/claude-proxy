@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { outlineWirePrompt } from "@claude-proxy/core";
-import { buildPromptDetail, buildPromptMix } from "../src/api.js";
+import { buildPromptDetail, buildPromptMix, buildPromptSection } from "../src/api.js";
 import { hashWirePrompt, writeStoredPrompt } from "../src/prompt-store.js";
 
 /** Late enough in the reporting day that `today()` is unambiguous. */
@@ -39,6 +39,16 @@ async function archive(logDir: string, day: string, n: number, model: string, sy
     await writeFile(path.join(dir, `${stamp}_anthropic.audit.json`), JSON.stringify(sidecar), "utf8");
   }
   return hash;
+}
+
+/** The request bodies behind a day's sidecars — what section text is read back from. */
+async function bodies(logDir: string, day: string, n: number, system: unknown, seq = 0): Promise<void> {
+  const dir = path.join(logDir, "archive", day);
+  await mkdir(dir, { recursive: true });
+  for (let i = 0; i < n; i += 1) {
+    const stamp = `${day}T${String(10 + seq).padStart(2, "0")}-${String(i).padStart(2, "0")}-00-000`;
+    await writeFile(path.join(dir, `${stamp}_anthropic.request.txt`), JSON.stringify({ system }), "utf8");
+  }
 }
 
 const big = (heading: string, filler: number) => [{ type: "text", text: `# Preface\nshort\n# ${heading}\n${"x".repeat(filler)}` }];
@@ -178,5 +188,72 @@ describe("buildPromptDetail", () => {
     expect(detail.models).toEqual([]);
     expect(detail.usage).toEqual([]);
     expect(detail.outline).toBeNull();
+  });
+});
+
+describe("buildPromptSection", () => {
+  /** A prompt whose outline is stored and whose bodies are still on disk. */
+  async function seeded(system: unknown = big("Huge", 40_000)): Promise<{ logDir: string; hash: string }> {
+    const logDir = await tmpLogDir();
+    const hash = await archive(logDir, "2026-08-02", 2, "security-monitor", system);
+    await bodies(logDir, "2026-08-02", 2, system);
+    await writeStoredPrompt(logDir, hash, outlineWirePrompt(system), "2026-08-02T14:00:00.000Z");
+    return { logDir, hash };
+  }
+
+  it("reads back the text of the largest section", async () => {
+    const { logDir, hash } = await seeded();
+
+    const section = await buildPromptSection(logDir, hash, 0, 7, NOW);
+    expect(section.heading).toBe("Huge");
+    expect(section.parts).toHaveLength(1);
+    expect(section.parts[0]!.text).toBe(`# Huge\n${"x".repeat(40_000)}`);
+    expect(section.file).not.toBeNull();
+  });
+
+  it("matches the row the detail page ranked at that index", async () => {
+    const { logDir, hash } = await seeded();
+    const { sections } = await buildPromptDetail(logDir, hash, 7, NOW);
+
+    const section = await buildPromptSection(logDir, hash, 1, 7, NOW);
+    expect(section).toMatchObject({ heading: sections[1]!.heading, bytes: sections[1]!.bytes, share: sections[1]!.share });
+    expect(section.parts[0]!.text).toBe("# Preface\nshort");
+  });
+
+  it("returns one part per block when a heading repeats across them", async () => {
+    const system = [
+      { type: "text", text: "# Rules\nfirst" },
+      { type: "text", text: "# Rules\nsecond" },
+    ];
+    const { logDir, hash } = await seeded(system);
+
+    const section = await buildPromptSection(logDir, hash, 0, 7, NOW);
+    expect(section.blocks).toEqual([0, 1]);
+    expect(section.parts.map((p) => [p.block, p.text])).toEqual([
+      [0, "# Rules\nfirst"],
+      [1, "# Rules\nsecond"],
+    ]);
+    expect(section.parts.reduce((a, p) => a + p.bytes, 0)).toBe(section.bytes);
+  });
+
+  it("reports the section without text once every body is evicted", async () => {
+    const logDir = await tmpLogDir();
+    const system = big("Huge", 40_000);
+    const hash = await archive(logDir, "2026-08-02", 2, "security-monitor", system);
+    await writeStoredPrompt(logDir, hash, outlineWirePrompt(system), "2026-08-02T14:00:00.000Z");
+
+    const section = await buildPromptSection(logDir, hash, 0, 7, NOW);
+    expect(section.heading).toBe("Huge");
+    expect(section.bytes).toBeGreaterThan(40_000);
+    expect(section.parts).toEqual([]);
+    expect(section.file).toBeNull();
+    expect(section.meta.candidates).toBe(2);
+  });
+
+  it("throws for an unknown hash and an out-of-range index", async () => {
+    const { logDir, hash } = await seeded();
+
+    await expect(buildPromptSection(logDir, "0".repeat(16), 0, 7, NOW)).rejects.toThrow(/prompt outline not found/);
+    await expect(buildPromptSection(logDir, hash, 9, 7, NOW)).rejects.toThrow(/index out of range/);
   });
 });
