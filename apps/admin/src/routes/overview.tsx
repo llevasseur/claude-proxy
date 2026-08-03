@@ -199,8 +199,7 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
         ))}
       </div>
 
-      {/* Both plots read the window rather than today alone, and take the spliced
-          series so the newest day keeps moving with the summary stream. */}
+      {/* Both plots read the whole window, spliced so the newest day keeps moving. */}
       <CostRateCard digests={series} />
       <PerRequestCard digests={series} />
 

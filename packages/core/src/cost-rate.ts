@@ -1,9 +1,8 @@
 import { costPerMTok, rateTokens, type UsageDigest } from "./digest.js";
 
 /**
- * One day as the cost-against-tokens plot draws it. Volume is the x, spend the
- * y, and `rate` is the slope of the line from the origin through the point —
- * which is what makes two days of very different sizes comparable.
+ * One day as the cost-against-tokens plot draws it: volume on x, spend on y,
+ * `rate` the slope from the origin through the point.
  */
 export interface CostRatePoint {
   date: string;
@@ -24,8 +23,7 @@ const toPoint = (d: UsageDigest): CostRatePoint => ({
 
 /**
  * Every day in the window that moved tokens, oldest first. A day with none has
- * no rate to plot — an undefined slope, not a cheap day — so it is dropped
- * rather than pinned to the origin.
+ * an undefined slope, not a cheap one, so it is dropped rather than plotted.
  */
 export function costRatePoints(digests: readonly UsageDigest[]): CostRatePoint[] {
   return digests.filter((d) => rateTokens(d) > 0).map(toPoint);
@@ -39,10 +37,9 @@ function median(sorted: readonly number[]): number {
 
 /**
  * The bar the newest day is measured against: the median $/MTok of the days
- * before it. The newest day is excluded so it cannot move the baseline it is
- * being judged by, and a median rather than a blended window rate keeps one
- * enormous day from setting the bar on its own. `null` when no earlier day
- * moved tokens, which is the case on a first day of capture.
+ * before it. Excluding the newest keeps it from moving its own baseline, and a
+ * median keeps one enormous day from setting the bar alone. `null` when no
+ * earlier day moved tokens.
  */
 export function baselineRate(digests: readonly UsageDigest[]): number | null {
   const prior = costRatePoints(digests.slice(0, -1));

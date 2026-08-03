@@ -170,10 +170,9 @@ const indexRoute = createRoute({
   staticData: { title: "Overview" },
 });
 /**
- * The Trends page folded into the Overview, which already carried a card per
- * metric. The path stays as a redirect so saved links and bookmarks still land
- * somewhere, and because `/trends/$metric` below is a sibling route rather than
- * a child, the drill-downs it names are untouched by this.
+ * The Trends page folded into the Overview; the path stays as a redirect for
+ * saved links. `/trends/$metric` below is a sibling route, not a child, so the
+ * drill-downs are untouched by this.
  */
 const trendsRoute = createRoute({
   getParentRoute: () => rootRoute,
