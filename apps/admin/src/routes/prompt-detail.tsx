@@ -89,7 +89,7 @@ export function PromptDetailPage() {
               </div>
               <Preface detail={detail} />
               {detail.outline ? (
-                <SectionTable sections={detail.sections} />
+                <SectionTable hash={hash} sections={detail.sections} />
               ) : (
                 <div className="empty">
                   No stored outline for this prompt — it ran before the proxy started recording them, so only its size
@@ -141,12 +141,14 @@ function Preface({ detail }: { detail: PromptDetailResponse }) {
   );
 }
 
-function SectionTable({ sections }: { sections: SectionShare[] }) {
+function SectionTable({ hash, sections }: { hash: string; sections: SectionShare[] }) {
   const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({ key: "share", dir: "desc" });
   const max = Math.max(1, ...sections.map((s) => s.bytes));
 
   const sorted = useMemo(() => {
-    const rows = [...sections];
+    // The section route addresses the server's own ranking, so each row carries
+    // it — sorting this table must not move a row's link.
+    const rows = sections.map((s, rank) => ({ ...s, rank }));
     rows.sort((a, b) => {
       const diff = compare(a, b, sort.key);
       return sort.dir === "asc" ? diff : -diff;
@@ -173,9 +175,14 @@ function SectionTable({ sections }: { sections: SectionShare[] }) {
         {sorted.map((s) => (
           <tr key={s.heading}>
             <td>
-              <span className="section-heading" style={{ paddingLeft: `${Math.max(0, s.level - 1) * 12}px` }}>
+              <Link
+                to="/trends/avg-system-prompt/$hash/section/$index"
+                params={{ hash, index: String(s.rank) }}
+                className="link section-heading"
+                style={{ paddingLeft: `${Math.max(0, s.level - 1) * 12}px` }}
+              >
                 {s.heading}
-              </span>
+              </Link>
             </td>
             <td className="num muted">{s.level === 0 ? "—" : `H${s.level}`}</td>
             <td className="num">{fmtBytes(s.bytes)}</td>

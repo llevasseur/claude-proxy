@@ -48,6 +48,7 @@ import { OverviewPage } from "./routes/overview";
 import { ProjectDetailPage } from "./routes/project-detail";
 import { ProjectsPage } from "./routes/projects";
 import { PromptDetailPage } from "./routes/prompt-detail";
+import { PromptSectionPage } from "./routes/prompt-section";
 import { SessionDetailPage } from "./routes/session-detail";
 import { SessionErrorsPage } from "./routes/session-errors";
 import { SessionGraphPage } from "./routes/session-graph";
@@ -191,6 +192,13 @@ const promptDetailRoute = createRoute({
   path: "/trends/avg-system-prompt/$hash",
   component: PromptDetailPage,
   staticData: { title: "System prompt" },
+});
+const promptSectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // The index is into the prompt's own ranked section table, not the outline.
+  path: "/trends/avg-system-prompt/$hash/section/$index",
+  component: PromptSectionPage,
+  staticData: { title: "Prompt section" },
 });
 const contextRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -364,6 +372,7 @@ const routeTree = rootRoute.addChildren([
   trendsRoute,
   trendDetailRoute,
   promptDetailRoute,
+  promptSectionRoute,
   contextRoute,
   contextDetailRoute,
   contextMessageRoute,

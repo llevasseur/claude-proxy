@@ -107,6 +107,26 @@ export interface PromptDetailResponse {
   usage: PromptDayUsage[];
   meta: { days: number; files: number; parseErrors: number; archivedDays: number };
 }
+/** One block's worth of a heading's text, since a heading can repeat across blocks. */
+export interface PromptSectionPart {
+  block: number;
+  bytes: number;
+  text: string;
+}
+/** One row of that breakdown, opened up to the text behind it. */
+export interface PromptSectionResponse {
+  hash: string;
+  heading: string;
+  level: number;
+  bytes: number;
+  share: number;
+  blocks: number[];
+  /** Empty when no captured body still carries the text. */
+  parts: PromptSectionPart[];
+  /** The request the text was read back from; null when none survives. */
+  file: string | null;
+  meta: { days: number; files: number; parseErrors: number; candidates: number };
+}
 export interface ContextResponse {
   summary: ContextSummary;
   meta: { days: number; files: number; parseErrors: number };
@@ -568,6 +588,8 @@ export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days
 export const getPromptMix = (days: number) => get<PromptMixResponse>(`/api/prompt-mix?days=${days}`);
 export const getPromptDetail = (hash: string, days: number) =>
   get<PromptDetailResponse>(`/api/prompt?hash=${encodeURIComponent(hash)}&days=${days}`);
+export const getPromptSection = (hash: string, index: number, days: number) =>
+  get<PromptSectionResponse>(`/api/prompt/section?hash=${encodeURIComponent(hash)}&index=${index}&days=${days}`);
 /** Paired with the `/api/usage/stream` SSE subscription, which pushes the same shape. */
 export const getUsage = () => get<UsageResponse>("/api/usage");
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);
