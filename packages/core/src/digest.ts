@@ -1,3 +1,4 @@
+import { estTokens } from './context.js';
 import { addCost, type CostBreakdown, estimateCost, ZERO_COST } from './pricing.js';
 import { reportDay, reportHour } from './time.js';
 import { type AuditSidecar, isAuditSidecar } from './types.js';
@@ -27,6 +28,59 @@ export interface TrendEntry {
   deltaPct: number;
 }
 
+/**
+ * What one request costs and carries, averaged over a cohort of them.
+ *
+ * These are the levers a per-day total hides. A day's spend is roughly
+ * `requests × costUsd`, and `costUsd` barely moves with conversation depth once
+ * compaction caps the prefix — so the number of calls, not the size of any one
+ * prompt, is what a day's bill tracks.
+ */
+export interface PerCallStats {
+  requests: number;
+  /** Distinct `session.sessionId` values seen; requests without one are uncounted. */
+  sessions: number;
+  /** Mean estimated USD per request. */
+  costUsd: number;
+  /** Total estimated USD, the numerator behind `costUsd`. */
+  costTotal: number;
+  /**
+   * Mean estimated tokens of tool schemas plus system prompt per request — the
+   * part of the prompt that is resent every turn regardless of what was asked.
+   */
+  fixedPrefixTokens: number;
+  /** Mean uncached input tokens per request: what was genuinely new that turn. */
+  freshInputTokens: number;
+  /** `requests / sessions`; 0 when no request carried a session id. */
+  callsPerSession: number;
+}
+
+/**
+ * A day's requests split by whether they are work or overhead.
+ *
+ * Auto-mode fires a permission classifier as a separate ~110 KB request per
+ * agent tool call. That is real spend, but averaging it into a per-call figure
+ * makes the mean a statement about the *ratio* of classifier to work traffic
+ * rather than about either — the same denominator artifact that makes
+ * `avgSystemPromptBytes` move when no prompt changed size. So `work` is the
+ * headline, `classifier` is reported beside it, and `all` reconciles to the
+ * day's totals.
+ */
+export interface PerCallSplit {
+  /** Everything that is not a permission-classifier call. The headline. */
+  work: PerCallStats;
+  /** Permission-classifier calls only; empty when none were identified. */
+  classifier: PerCallStats;
+  /** Both cohorts together — reconciles with `requestCount` and `cost.total`. */
+  all: PerCallStats;
+  /**
+   * Whether classifier identification actually ran. False when no prompt-hash
+   * set was supplied, in which case `classifier` is empty because nothing was
+   * *checked*, not because nothing was found.
+   */
+  identified: boolean;
+}
+
 export interface UsageDigest {
   date: string;
   requestCount: number;
@@ -40,6 +94,8 @@ export interface UsageDigest {
   /** Est. tool-schema tokens as a % of real input tokens — the "tax" tools add. */
   toolOverheadPctOfInput: number;
   busiestHour: { hour: number; requestCount: number } | null;
+  /** Per-request means, split into work and permission-classifier overhead. */
+  perCall: PerCallSplit;
   trend?: TrendEntry[];
 }
 
@@ -50,6 +106,16 @@ export interface ComputeDigestOptions {
   priorDigest?: UsageDigest | null;
   /** How many tools to include in `topTools`. Default 12. */
   topN?: number;
+  /**
+   * System-prompt hashes known to be permission-classifier prompts, so
+   * `perCall` can hold them apart from work.
+   *
+   * Passed in rather than derived here because deciding it needs the outline
+   * store on disk, and this function is pure. The server resolves it with
+   * `classifierPromptHashes()`; omitting it leaves `perCall.identified` false
+   * and every request in `work`.
+   */
+  classifierHashes?: ReadonlySet<string>;
 }
 
 /**
@@ -78,7 +144,62 @@ const TREND_FIELDS: Array<{ field: string; pick: (d: UsageDigest) => number }> =
   { field: 'requestCount', pick: (d) => d.requestCount },
   { field: 'avgSystemPromptBytes', pick: (d) => d.avgSystemPromptBytes },
   { field: 'costPerMTok', pick: costPerMTok },
+  { field: 'costPerCall', pick: (d) => d.perCall.work.costUsd },
+  { field: 'fixedPrefixTokens', pick: (d) => d.perCall.work.fixedPrefixTokens },
+  { field: 'freshInputPerCall', pick: (d) => d.perCall.work.freshInputTokens },
+  { field: 'callsPerSession', pick: (d) => d.perCall.work.callsPerSession },
 ];
+
+/** Running totals for one per-call cohort, before the means are taken. */
+interface PerCallAcc {
+  requests: number;
+  costTotal: number;
+  fixedPrefixTokens: number;
+  freshInputTokens: number;
+  sessions: Set<string>;
+}
+
+function emptyAcc(): PerCallAcc {
+  return { requests: 0, costTotal: 0, fixedPrefixTokens: 0, freshInputTokens: 0, sessions: new Set() };
+}
+
+/**
+ * One request folded into a cohort. `fixedPrefixTokens` is estimated from bytes
+ * rather than billed: the wire gives one `input` count for the whole prompt, so
+ * the tools-and-system share of it can only be approximated — the same estimate
+ * `toolOverheadPctOfInput` already uses.
+ */
+function accumulate(acc: PerCallAcc, s: AuditSidecar): void {
+  acc.requests += 1;
+  acc.costTotal += estimateCost(s.tokens, s.model).total;
+  acc.fixedPrefixTokens += estTokens(s.request.toolsBytes + s.request.systemBytes);
+  acc.freshInputTokens += s.tokens.input;
+  const id = s.session?.sessionId;
+  if (id) acc.sessions.add(id);
+}
+
+function finish(acc: PerCallAcc): PerCallStats {
+  const n = acc.requests;
+  return {
+    requests: n,
+    sessions: acc.sessions.size,
+    costUsd: n > 0 ? acc.costTotal / n : 0,
+    costTotal: acc.costTotal,
+    fixedPrefixTokens: n > 0 ? acc.fixedPrefixTokens / n : 0,
+    freshInputTokens: n > 0 ? acc.freshInputTokens / n : 0,
+    callsPerSession: acc.sessions.size > 0 ? n / acc.sessions.size : 0,
+  };
+}
+
+const EMPTY_PER_CALL_STATS: PerCallStats = {
+  requests: 0,
+  sessions: 0,
+  costUsd: 0,
+  costTotal: 0,
+  fixedPrefixTokens: 0,
+  freshInputTokens: 0,
+  callsPerSession: 0,
+};
 
 function pct(part: number, whole: number): number {
   return whole > 0 ? (part / whole) * 100 : 0;
@@ -110,9 +231,18 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
   let toolEstTokensSum = 0;
   const toolBytes = new Map<string, { totalBytes: number; estTokens: number }>();
   const hourCounts = new Map<number, number>();
+  const work = emptyAcc();
+  const classifier = emptyAcc();
+  const all = emptyAcc();
+  const classifierHashes = opts.classifierHashes;
 
   for (const s of valid) {
     models[s.model] = (models[s.model] ?? 0) + 1;
+
+    const hash = s.request.system?.hash;
+    const isClassifier = classifierHashes !== undefined && hash !== undefined && classifierHashes.has(hash);
+    accumulate(isClassifier ? classifier : work, s);
+    accumulate(all, s);
 
     tokens.input += s.tokens.input;
     tokens.output += s.tokens.output;
@@ -163,6 +293,12 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
     avgSystemPromptBytes: requestCount > 0 ? Math.round(systemBytesSum / requestCount) : 0,
     toolOverheadPctOfInput: pct(toolEstTokensSum, tokens.realInput),
     busiestHour,
+    perCall: {
+      work: finish(work),
+      classifier: finish(classifier),
+      all: finish(all),
+      identified: classifierHashes !== undefined,
+    },
   };
 
   if (opts.priorDigest) digest.trend = buildTrend(digest, opts.priorDigest);
@@ -182,7 +318,10 @@ function buildTrend(today: UsageDigest, prior: UsageDigest): TrendEntry[] {
  * `REPORT_TZ`), oldest→newest, with each day's `trend` computed against the
  * previous day. Handy for the multi-day trend view.
  */
-export function digestsByDay(sidecars: readonly unknown[], topN?: number): UsageDigest[] {
+export function digestsByDay(
+  sidecars: readonly unknown[],
+  opts: Pick<ComputeDigestOptions, 'topN' | 'classifierHashes'> = {},
+): UsageDigest[] {
   const byDay = new Map<string, unknown[]>();
   for (const s of sidecars) {
     const day = isAuditSidecar(s) ? dayOf(s) : 'invalid';
@@ -196,7 +335,7 @@ export function digestsByDay(sidecars: readonly unknown[], topN?: number): Usage
   const digests: UsageDigest[] = [];
   let prior: UsageDigest | null = null;
   for (const day of days) {
-    const d = computeDigest(byDay.get(day)!, { date: day, priorDigest: prior, topN });
+    const d = computeDigest(byDay.get(day)!, { ...opts, date: day, priorDigest: prior });
     digests.push(d);
     prior = d;
   }
@@ -208,6 +347,45 @@ function isRec(v: unknown): v is Record<string, unknown> {
 }
 function numOf(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/** One persisted cohort, with every absent field reading as zero. */
+function normalizePerCallStats(raw: unknown): PerCallStats {
+  if (!isRec(raw)) return { ...EMPTY_PER_CALL_STATS };
+  const requests = numOf(raw.requests);
+  const sessions = numOf(raw.sessions);
+  return {
+    requests,
+    sessions,
+    costUsd: numOf(raw.costUsd),
+    costTotal: numOf(raw.costTotal),
+    fixedPrefixTokens: numOf(raw.fixedPrefixTokens),
+    freshInputTokens: numOf(raw.freshInputTokens),
+    // Derived for a digest archived before the field existed but with both parts.
+    callsPerSession: raw.callsPerSession != null ? numOf(raw.callsPerSession) : sessions > 0 ? requests / sessions : 0,
+  };
+}
+
+/**
+ * A persisted `perCall` split. A digest archived before this existed has none,
+ * and comes back with `identified: false` — no cohort was ever separated, so
+ * reporting an empty classifier cohort as a *finding* would be a lie.
+ */
+function normalizePerCall(raw: unknown): PerCallSplit {
+  if (!isRec(raw)) {
+    return {
+      work: { ...EMPTY_PER_CALL_STATS },
+      classifier: { ...EMPTY_PER_CALL_STATS },
+      all: { ...EMPTY_PER_CALL_STATS },
+      identified: false,
+    };
+  }
+  return {
+    work: normalizePerCallStats(raw.work),
+    classifier: normalizePerCallStats(raw.classifier),
+    all: normalizePerCallStats(raw.all),
+    identified: raw.identified === true,
+  };
 }
 
 /**
@@ -259,6 +437,7 @@ export function normalizeDigest(raw: unknown, fallbackDate: string): UsageDigest
     avgSystemPromptBytes: numOf(raw.avgSystemPromptBytes),
     toolOverheadPctOfInput: numOf(raw.toolOverheadPctOfInput),
     busiestHour,
+    perCall: normalizePerCall(raw.perCall),
     trend: Array.isArray(raw.trend) ? (raw.trend as UsageDigest['trend']) : undefined,
   };
 }

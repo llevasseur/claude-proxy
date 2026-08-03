@@ -31,6 +31,7 @@ import {
   type HookRow,
   heuristicAdvice,
   hookPluginLoadExpectations,
+  isAuditSidecar,
   isPartialDay,
   type JobTreeNode,
   jobStateTone,
@@ -128,7 +129,7 @@ import {
   type ProjectSummary,
   readMemory,
 } from './projects.js';
-import { readStoredPrompt, readStoredPrompts } from './prompt-store.js';
+import { classifierPromptHashes, readStoredPrompt, readStoredPrompts } from './prompt-store.js';
 import { resolveRetentionDays } from './retention.js';
 import {
   type SessionDetail,
@@ -173,8 +174,9 @@ export async function buildSummary(
     source.readSidecars(logDir, { date: day }, now),
     source.readSidecars(logDir, { date: prevDay }, now),
   ]);
-  const priorDigest = computeDigest(prev.sidecars, { date: prevDay });
-  const digest = computeDigest(cur.sidecars, { date: day, priorDigest });
+  const classifierHashes = await classifierPromptHashes(logDir);
+  const priorDigest = computeDigest(prev.sidecars, { date: prevDay, classifierHashes });
+  const digest = computeDigest(cur.sidecars, { date: day, priorDigest, classifierHashes });
   const advice = await heuristicAdvice.advise(digest);
   return { digest, advice, meta: { date: day, files: cur.files, parseErrors: cur.parseErrors } };
 }
@@ -272,17 +274,24 @@ export function clearRawArchiveCache(): void {
  * One archived day's digest, computed from the raw sidecars the summary job
  * moved into `<logDir>/archive/<date>/`. `null` when that day isn't archived.
  */
-async function rawArchivedDigest(logDir: string, date: string, source: SidecarSource): Promise<UsageDigest | null> {
+async function rawArchivedDigest(
+  logDir: string,
+  date: string,
+  source: SidecarSource,
+  classifierHashes: ReadonlySet<string>,
+): Promise<UsageDigest | null> {
   // Keyed by backing as well as day: the parity harness computes both, and a
-  // shared entry would hand the second run the first one's answer.
-  const key = `${source.kind} ${logDir} ${date}`;
+  // shared entry would hand the second run the first one's answer. The hash-set
+  // size joins the key because the store only grows — a digest computed before a
+  // new classifier revision was recorded would otherwise never be recomputed.
+  const key = `${source.kind} ${logDir} ${date} ${classifierHashes.size}`;
   const hit = rawArchiveDigests.get(key);
   if (hit) return hit;
 
   const { sidecars, files } = await source.readArchivedDay(logDir, date);
   if (files === 0) return null;
 
-  const digest = computeDigest(sidecars, { date });
+  const digest = computeDigest(sidecars, { date, classifierHashes });
   rawArchiveDigests.set(key, digest);
   return digest;
 }
@@ -301,8 +310,9 @@ export async function buildTrends(
   source: SidecarSource = fileSource,
 ): Promise<TrendsResponse> {
   const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days }, now);
+  const classifierHashes = await classifierPromptHashes(logDir);
   const byDate = new Map<string, UsageDigest>();
-  for (const d of digestsByDay(sidecars)) byDate.set(d.date, d);
+  for (const d of digestsByDay(sidecars, { classifierHashes })) byDate.set(d.date, d);
 
   let archivedDays = 0;
   const end = today(now);
@@ -310,7 +320,7 @@ export async function buildTrends(
     const date = shiftDay(end, -i);
     if (byDate.has(date)) continue;
     const digest =
-      (await rawArchivedDigest(logDir, date, source)) ??
+      (await rawArchivedDigest(logDir, date, source, classifierHashes)) ??
       (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
     if (digest) {
       byDate.set(date, digest);
@@ -651,6 +661,106 @@ export async function buildTools(
   const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { date: day }, now);
   const digest = computeDigest(sidecars, { date: day, topN: 200 });
   return { date: day, topTools: digest.topTools, meta: { files, parseErrors } };
+}
+
+export interface ToolSchemaResponse {
+  name: string;
+  /**
+   * The tool definition as it went over the wire, pretty-printed. Null once
+   * every captured body carrying it has aged out — the sidecar keeps the tool's
+   * size forever, but only a body holds its text.
+   */
+  schema: string | null;
+  /** Wire bytes of this one definition, from the newest sidecar that carried it. */
+  bytes: number;
+  estTokens: number;
+  /** Requests in the window that shipped this tool. */
+  requests: number;
+  /** This tool's share of every tool byte in the window, 0–1. */
+  shareOfToolBytes: number;
+  /** The request the schema was read back from; null when none survives. */
+  file: string | null;
+  meta: { days: number; files: number; parseErrors: number; candidates: number };
+}
+
+/** Bodies to open before giving up on recovering a tool's schema. */
+const SCHEMA_BODY_TRIES = 8;
+
+/**
+ * One line item of the fixed prefix, opened up to the JSON behind it.
+ *
+ * Tool schemas are the largest controllable part of what every request resends,
+ * and the tool table only ever shows their size. This is the text that size is
+ * made of — the thing to read before deciding a tool is worth its bytes.
+ *
+ * Like a prompt section, the schema has to come back from a captured body, so it
+ * comes back null rather than erroring once the bodies have been evicted.
+ */
+export async function buildToolSchema(
+  logDir: string,
+  name: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<ToolSchemaResponse> {
+  const { sidecars, files, parseErrors } = await source.readSidecars(
+    logDir,
+    { sinceDays: days, includeFile: true },
+    now,
+  );
+
+  const candidates = new Set<string>();
+  let requests = 0;
+  let bytes = 0;
+  let estTokens = 0;
+  let toolBytesTotal = 0;
+  let namedBytesTotal = 0;
+
+  for (const s of sidecars) {
+    if (!isAuditSidecar(s)) continue;
+    for (const t of s.tools) toolBytesTotal += t.bytes;
+    const hit = s.tools.find((t) => t.name === name);
+    if (!hit) continue;
+    requests += 1;
+    namedBytesTotal += hit.bytes;
+    // Sidecars arrive newest-last, so the last writer wins — the current size.
+    bytes = hit.bytes;
+    estTokens = hit.estTokens;
+    const file = (s as { __file?: unknown }).__file;
+    if (typeof file === 'string') candidates.add(file);
+  }
+
+  // Newest first: names lead with their timestamp, and a recent body is the
+  // likeliest to still be on disk.
+  const ordered = [...candidates].sort().reverse();
+
+  let schema: string | null = null;
+  let file: string | null = null;
+  for (const candidate of ordered.slice(0, SCHEMA_BODY_TRIES)) {
+    try {
+      const { body } = await readRequestBody(logDir, candidate);
+      const tools = (body as { tools?: unknown }).tools;
+      if (!Array.isArray(tools)) continue;
+      const found = tools.find((t) => (t as { name?: unknown })?.name === name);
+      if (found === undefined) continue;
+      schema = JSON.stringify(found, null, 2);
+      file = candidate;
+      break;
+    } catch {
+      continue; // evicted, unreadable, or not the shape we expect
+    }
+  }
+
+  return {
+    name,
+    schema,
+    bytes,
+    estTokens,
+    requests,
+    shareOfToolBytes: toolBytesTotal > 0 ? namedBytesTotal / toolBytesTotal : 0,
+    file,
+    meta: { days, files, parseErrors, candidates: ordered.length },
+  };
 }
 
 export interface ContextResponse {
