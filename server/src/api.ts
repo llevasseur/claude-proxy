@@ -427,7 +427,7 @@ export interface PromptDayUsage {
 
 export interface PromptDetailResponse {
   hash: string;
-  /** The cohort's own label, e.g. `claude-opus-5 · 1a2b3c4d`; the short hash alone when unseen. */
+  /** The cohort's own label; the short hash alone when no request sent it. */
   label: string;
   /** Models that sent it, most requests first. */
   models: string[];
@@ -442,12 +442,11 @@ export interface PromptDetailResponse {
 
 /**
  * One prompt from the cohort table, opened up: the sections it is made of and
- * the days it ran. The cohort table says which prompt pulls the mean up; this
- * says which of its sections the bytes are actually in.
+ * the days it ran.
  *
- * Only identified cohorts have a page — a legacy cohort is keyed by model and
- * size band, so there is no single prompt to outline. Those come back with an
- * empty `usage` and a null `outline` rather than an error.
+ * A legacy cohort is keyed by model and size band rather than by a prompt, so
+ * it has no outline; it comes back with an empty `usage` and a null `outline`
+ * rather than an error, as does an unseen hash.
  */
 export async function buildPromptDetail(
   logDir: string,

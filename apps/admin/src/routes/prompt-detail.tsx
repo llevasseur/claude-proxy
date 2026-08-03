@@ -11,9 +11,7 @@ import { fmtBytes, fmtInt, fmtPct } from "../format";
 import { REPORT_TZ_ABBR } from "../metrics";
 import { useTransitionState } from "../useTransitionState";
 
-/** Section, blocks, size, share. */
 const SECTION_COLUMNS: readonly SkeletonColumn[] = [{}, { className: "num" }, { className: "num" }, { className: "num" }];
-/** Date, requests, share, size, of the mean. */
 const USAGE_COLUMNS: readonly SkeletonColumn[] = [
   {},
   { className: "num" },
@@ -29,9 +27,9 @@ type SortDir = "asc" | "desc";
 const DEFAULT_DIR: Record<SortKey, SortDir> = { heading: "asc", level: "asc", bytes: "desc", share: "desc" };
 
 /**
- * Signed comparison for a column, ascending. Share is `bytes` over a total the
- * whole table shares, so it orders identically — the two columns are separate
- * keys only so that clicking one moves the arrow off the other.
+ * Signed comparison for a column, ascending. `share` and `bytes` order
+ * identically; they are separate keys so clicking one moves the arrow off the
+ * other.
  */
 function compare(a: SectionShare, b: SectionShare, key: SortKey): number {
   switch (key) {
@@ -44,13 +42,7 @@ function compare(a: SectionShare, b: SectionShare, key: SortKey): number {
   }
 }
 
-/**
- * One system prompt from the mix, opened up.
- *
- * The cohort table on the avg-system-prompt trend says *which* prompt is
- * pulling the mean up; this says which of its sections the bytes are in, and
- * how many days it has been doing it for.
- */
+/** One system prompt from the mix: the sections its bytes sit in, and the days it ran. */
 export function PromptDetailPage() {
   const { hash } = useParams({ from: "/prompts/$hash" });
   const [days, selectDays, isSwitching] = useTransitionState(30);
@@ -255,7 +247,7 @@ function SortHeader({
   );
 }
 
-/** The two-up grid the loaded page uses — one row per day for the window's usage. */
+/** Mirrors the loaded two-up grid; one usage row per day of the window. */
 function PromptDetailSkeleton({ days }: { days: number }) {
   return (
     <div className="grid wide-two">

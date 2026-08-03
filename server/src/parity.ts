@@ -250,9 +250,8 @@ export const PARITY_ROUTES: ParityRoute[] = [
         run: (source) => buildPromptMix(ctx.logDir, 7, endOf(day), source),
       })),
   },
-  /* Enumerated from the mix the file side reports, so the hashes replayed are
-   * exactly the ones the cohort table can link to. Identified cohorts only: a
-   * legacy cohort is keyed by model and band, and has no prompt to open. */
+  /* Hashes come from the file side's own mix, so the ones replayed are exactly
+   * the ones the cohort table can link to. Identified cohorts only. */
   {
     name: "/api/prompt",
     cases: async (ctx) => {

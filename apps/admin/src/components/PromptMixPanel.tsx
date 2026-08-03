@@ -127,11 +127,7 @@ function hashOfKey(key: string): string | null {
   return key.startsWith("legacy:") ? null : key;
 }
 
-/**
- * A cohort's name, linked to its breakdown when there is one to link to. A
- * legacy cohort is keyed by model and size band rather than by a prompt, so it
- * has no single outline to open.
- */
+/** A cohort's name, linked to its breakdown when it has one. */
 function CohortLabel({ label, hash }: { label: string; hash: string | null }) {
   if (!hash) {
     return (

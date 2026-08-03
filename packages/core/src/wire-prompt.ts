@@ -159,7 +159,7 @@ export function isStoredWirePrompt(value: unknown): value is StoredWirePrompt {
   return typeof v.hash === "string" && typeof v.bytes === "number" && Array.isArray(v.blocks) && Array.isArray(v.sections);
 }
 
-/** One heading's slice of a prompt, and how much of it that heading occupies. */
+/** One heading's slice of a prompt. */
 export interface SectionShare {
   heading: string;
   /** Shallowest depth the heading was seen at; 0 for a preamble. */
@@ -173,13 +173,11 @@ export interface SectionShare {
 }
 
 /**
- * What a prompt is actually made of, biggest section first. Once the cohort
- * table names the prompt pulling `avgSystemPromptBytes` up, this is the next
- * question — which of its sections the bytes are in.
+ * What a prompt is made of, biggest section first.
  *
  * Share is of the sections' own total rather than the outline's `bytes`, so it
- * sums to 1: block bytes carry JSON escaping and the `{"type":"text",…}`
- * envelope that no section owns.
+ * sums to 1: block bytes also carry JSON escaping and the text-block envelope,
+ * which no section owns.
  */
 export function sectionShares(outline: Pick<WirePromptOutline, "sections">): SectionShare[] {
   const rows = new Map<string, SectionShare>();
