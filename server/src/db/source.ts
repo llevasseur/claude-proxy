@@ -8,6 +8,7 @@ import {
   sortConcepts,
   type CommandRun,
   type Concept,
+  type StoredConcept,
   type SessionNode,
 } from "@claude-proxy/core";
 import {
@@ -74,10 +75,11 @@ export interface SidecarSource {
 
   /* --- Concepts --- *
    *
-   * The live view of `logs/concepts.jsonl`: newest concept first. Nothing
-   * retracts a line, so unlike the command store there is no filter to apply.
+   * The live view of `logs/concepts.jsonl`: newest concept first, each carrying
+   * the line it sits on as `ord`. Nothing retracts a line, so unlike the command
+   * store there is no filter to apply.
    */
-  readConcepts(logDir: string): Promise<Concept[]>;
+  readConcepts(logDir: string): Promise<StoredConcept[]>;
 }
 
 /** The behaviour the server has today: scan the directory, parse every file. */
@@ -501,11 +503,14 @@ function commandRunsFromDb(db: DatabaseSync): CommandRun[] {
  * from the file side's. The record comes back through `document` rather than
  * being rebuilt from the columns beside it — see the schema note in `open.ts`.
  */
-function conceptsFromDb(db: DatabaseSync): Concept[] {
-  const rows = db.prepare("SELECT document FROM concept ORDER BY ord").all() as unknown as Array<{
+function conceptsFromDb(db: DatabaseSync): StoredConcept[] {
+  const rows = db.prepare("SELECT ord, document FROM concept ORDER BY ord").all() as unknown as Array<{
+    ord: number;
     document: string;
   }>;
-  return sortConcepts(rows.map((row) => JSON.parse(row.document) as Concept));
+  // `ord` comes off the row rather than the loop index, so it stays the line's
+  // position in the file even though this is reading a table.
+  return sortConcepts(rows.map((row) => ({ ...(JSON.parse(row.document) as Concept), ord: row.ord })));
 }
 
 /** The same reads, answered from the substrate. */

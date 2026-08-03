@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -439,6 +439,42 @@ CREATE INDEX IF NOT EXISTS concept_skill_skill_idx ON concept_skill(skill);
 `;
 
 /**
+ * The concept detail fields — `notes`, `tips`, `sources` and `surfacedSkills`.
+ *
+ * All four are optional on the record and every line written before them lacks
+ * them, so `notes` defaults to the empty string and the three lists simply
+ * contribute no rows. The record still round-trips through \`document\`; these
+ * exist to be queried, as everywhere else in this schema.
+ *
+ * The lists share one table rather than getting a \`concept_skill\` each. That
+ * table is indexed because grouping concepts by skill is a real question;
+ * "every concept whose tips mention X" is not one anything asks yet, and three
+ * near-identical two-column tables would be noise. \`kind\` keeps them apart and
+ * the cascade is the same.
+ *
+ * Dropping the store's watermark is what makes the new columns fill: the table
+ * is only rebuilt when the file looks changed, and migrating the schema does not
+ * change the file. Without this an existing database would carry the new columns
+ * empty until the next `/teach` run happened to append.
+ */
+const CONCEPT_DETAIL = `
+ALTER TABLE concept ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS concept_item (
+  ord      INTEGER NOT NULL REFERENCES concept(ord) ON DELETE CASCADE,
+  -- 'tip', 'source' or 'surfaced_skill'.
+  kind     TEXT NOT NULL,
+  item_ord INTEGER NOT NULL,
+  item     TEXT NOT NULL,
+  PRIMARY KEY (ord, kind, item_ord)
+);
+
+CREATE INDEX IF NOT EXISTS concept_item_kind_idx ON concept_item(kind, item);
+
+DELETE FROM file_watermark WHERE path = 'concepts.jsonl';
+`;
+
+/**
  * Open (creating if needed) the substrate for `logDir` in WAL mode. WAL lets the
  * server read while an ingest pass writes, which is the normal state: the
  * watcher ingests whenever the proxy drops a new sidecar.
@@ -463,6 +499,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 3) db.exec(COMMAND_TABLES);
   if (from < 4) db.exec(SCHEMA_V4);
   if (from < 5) db.exec(CONCEPT_TABLES);
+  if (from < 6) db.exec(CONCEPT_DETAIL);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

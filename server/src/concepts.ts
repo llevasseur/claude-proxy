@@ -12,7 +12,7 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { isConcept, normalizeConcept, sortConcepts, type Concept } from "@claude-proxy/core";
+import { isConcept, normalizeConcept, sortConcepts, type Concept, type StoredConcept } from "@claude-proxy/core";
 
 /** The append-only concept store. */
 export function conceptStorePath(logDir: string): string {
@@ -44,15 +44,19 @@ export function parseConceptStore(text: string): Concept[] {
 }
 
 /**
- * Every concept the store holds, newest first. A missing store reads as empty —
- * a device where `/teach` has never run is an empty page, not an error.
+ * Every concept the store holds, newest first, each carrying the line it sits on.
+ *
+ * `ord` is assigned from file order *before* the sort, so it keeps meaning the
+ * position in the file rather than the position on the page — that is what makes
+ * it a stable address for a detail route. A missing store reads as empty: a
+ * device where `/teach` has never run is an empty page, not an error.
  */
-export async function readConcepts(logDir: string): Promise<Concept[]> {
+export async function readConcepts(logDir: string): Promise<StoredConcept[]> {
   let text: string;
   try {
     text = await readFile(conceptStorePath(logDir), "utf8");
   } catch {
     return [];
   }
-  return sortConcepts(parseConceptStore(text));
+  return sortConcepts(parseConceptStore(text).map((concept, ord) => ({ ...concept, ord })));
 }

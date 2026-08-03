@@ -1,7 +1,8 @@
 import {
   analyzeRequestBody,
   type AuditSidecar,
-  type Concept,
+  type StoredConcept,
+  withoutMetaSkills,
   computeDigest,
   deriveRequestErrors,
   deriveSessionNodes,
@@ -1474,12 +1475,29 @@ export async function buildCommandRun(
 
 export interface ConceptsResponse {
   /** Newest first — the order the page renders. */
-  concepts: Concept[];
+  concepts: StoredConcept[];
   meta: {
     /** The store the list came from, so the page can name its source. */
     storePath: string;
     total: number;
   };
+}
+
+/**
+ * A concept as it is served, with the meta-skills dropped from both skill lists.
+ *
+ * The filter lives here rather than in the store reader or the ingester on
+ * purpose: `logs/concepts.jsonl` is the source of truth and keeps every word
+ * `/teach` wrote, the table stays a faithful view of it, and only the answer a
+ * page renders is trimmed. Both backings pass through this, so shadow mode and
+ * the parity harness still compare like with like.
+ */
+function toServedConcept(concept: StoredConcept): StoredConcept {
+  const out: StoredConcept = { ...concept, skills: withoutMetaSkills(concept.skills) };
+  // Absent stays absent — an empty list here would claim the run surfaced
+  // nothing, which is a different fact from never having looked.
+  if (concept.surfacedSkills) out.surfacedSkills = withoutMetaSkills(concept.surfacedSkills);
+  return out;
 }
 
 /**
@@ -1490,6 +1508,37 @@ export async function buildConcepts(
   logDir: string,
   source: SidecarSource = fileSource,
 ): Promise<ConceptsResponse> {
-  const concepts = await source.readConcepts(logDir);
+  const concepts = (await source.readConcepts(logDir)).map(toServedConcept);
   return { concepts, meta: { storePath: conceptStorePath(logDir), total: concepts.length } };
+}
+
+export interface ConceptResponse {
+  concept: StoredConcept;
+  meta: {
+    storePath: string;
+    /**
+     * How many records the store holds, so the detail page can say where this
+     * one sits in it.
+     */
+    total: number;
+  };
+}
+
+/**
+ * One concept, addressed by the line it sits on. Throws a labelled error the
+ * server maps to 404 when the store has no such line — which is what a stale
+ * link looks like after the store is rebuilt from a shorter file.
+ */
+export async function buildConcept(
+  logDir: string,
+  ord: number,
+  source: SidecarSource = fileSource,
+): Promise<ConceptResponse> {
+  const concepts = await source.readConcepts(logDir);
+  const concept = concepts.find((c) => c.ord === ord);
+  if (!concept) throw new Error(`concept not found: ${ord}`);
+  return {
+    concept: toServedConcept(concept),
+    meta: { storePath: conceptStorePath(logDir), total: concepts.length },
+  };
 }

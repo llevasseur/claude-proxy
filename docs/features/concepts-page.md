@@ -1,7 +1,7 @@
 ---
 type: feature
 title: Concepts page
-description: A page over logs/concepts.jsonl — every term /teach has explained, with its one Simplified Technical English sentence, field, skills and date, indexed into the substrate and served newest first.
+description: A page over logs/concepts.jsonl — every term /teach has explained, with its one Simplified Technical English sentence, field, skills and date, sortable, indexed into the substrate, and each row opening a detail page of the research behind it.
 tags: [dashboard, teach, sqlite, architecture]
 timestamp: 2026-08-03
 ---
@@ -38,11 +38,38 @@ mechanism, and this one does.
 - A device where `/teach` has never run shows an empty state, not an error. A line that will not
   parse — a torn final line from an interrupted append is the normal case — is skipped, and a
   record from a writer this code does not know is kept and rendered from the fields it has.
+- **Term, Field and Saved sort**, client-side over the list already in hand. Saved descending is the
+  default, so an untouched page reads exactly as it did before sorting existed. Ties fall back to
+  file position, newest first, so equal values keep a stable order between renders.
+- The **Term** column is sized to its own longest value and does not wrap; **Explanation** takes
+  whatever is left and wraps inside it. A term is a short label that reads worse broken across
+  lines, and a sentence does not.
+- **Meta-skills are never listed.** `find-skills` is the skill that finds skills — its presence says
+  the run looked for skills, not that the concept relates to it. `withoutMetaSkills` in
+  `packages/core/src/concepts.ts` drops it, applied once in `buildConcepts`/`buildConcept` rather
+  than in the store or the table: the file keeps every word `/teach` wrote, and only the served
+  answer is trimmed.
+
+### Detail page
+
+- **Clicking a row opens `/concepts/$ord`**, served by `/api/concepts/concept?ord=N` and following
+  the store live like the list does. A missing line is a 404, which is what a stale link looks like
+  after the store is rebuilt from a shorter file.
+- `ord` is the **line the record sits on in the file**, assigned before the list is sorted. The term
+  cannot be the address precisely because a term can be taught twice, and the store has no other key.
+- The page renders the sentence and skills, then four fields that are all **optional**: `notes` (the
+  research, as Markdown), `tips`, `sources`, and `surfacedSkills` — the skills a run turned up while
+  researching, as against those it applied.
+- **Absent is not empty.** `/teach` learned to record research detail after the first concepts were
+  already saved, so older records simply do not carry it. `normalizeConcept` leaves an unrecorded
+  field off the object rather than defaulting it, the page renders no section for it, and a record
+  with none of them says so once instead of showing four empty cards.
 
 ### Substrate
 
 `server/src/db/ingest-concepts.ts` indexes the store into a `concept` table (plus `concept_skill`
-for the array facet) at schema version 5, following the `command_run` precedent exactly:
+for the array facet, and `concept_item` for the detail lists) at schema version 6, following the
+`command_run` precedent exactly:
 
 - One `file_watermark` row keyed on `bytes` + `modified`. An unchanged store is not opened.
 - A changed store is re-parsed whole and **every row replaced in one transaction**. That wholesale
@@ -50,7 +77,14 @@ for the array facet) at schema version 5, following the `command_run` precedent 
   total recovery rather than a resync.
 - The primary key is the line's position in the file, because the store has no natural key.
 - The record round-trips through a `document` column, so a read answers with what the file said
-  rather than something rebuilt from the columns beside it.
+  rather than something rebuilt from the columns beside it. That is also what preserves the
+  absent-versus-empty distinction the detail page depends on — the columns cannot express it.
+- `tips`, `sources` and `surfacedSkills` share one `concept_item(ord, kind, item_ord, item)` table
+  rather than three near-identical ones, because only `skill` is a real grouping question and only
+  it earned its own table.
+- Version 6 deletes the `concepts.jsonl` watermark row as part of the migration. Adding columns does
+  not change the file, so without that the watermark would match on the next pass and the new
+  columns would stay empty on an existing database.
 
 The read goes through the `SidecarSource` seam, so both backings answer identically and
 `/api/concepts` is registered in the parity harness. The DB side re-checks its watermark against
@@ -68,6 +102,13 @@ that is normal here, since `/teach` appends from outside the server.
       appending to them, `concept_skill` included.
 - [x] Both backings answer `/api/concepts` identically, including when a record landed after the
       last ingest pass.
+- [x] Term, Field and Saved sort in both directions; Saved descending is the default.
+- [x] The Term column fits its longest value without wrapping and Explanation absorbs the rest.
+- [x] `find-skills` never appears in either skill list on the page, while the store keeps it.
+- [x] A row click opens `/concepts/$ord`; an `ord` the store does not hold returns 404.
+- [x] The detail page renders `notes`, `tips`, `sources` and `surfacedSkills` when recorded and
+      nothing at all when not; a record predating them still renders.
+- [x] Both backings answer `/api/concepts/concept` identically for every `ord` the list returns.
 
 ## Open questions
 
@@ -75,6 +116,11 @@ that is normal here, since `/teach` appends from outside the server.
   precisely so a listing can group without unpacking every `document`, but no view uses them.
 - Nothing links a concept to the session that taught it. The record carries no thread id, so the
   join would have to come from the store's writer rather than from here.
+- **`/teach` does not yet write the detail fields.** The contract accepts `notes`, `tips`, `sources`
+  and `surfacedSkills`, the table carries them, and the detail page renders them — but the command
+  lives outside this repo and still writes only the original five fields, so today every record
+  takes the absent path. Teaching it to write them (and to stop recording `find-skills` at the
+  source, rather than relying on the read-side filter) is a change in the command's own repo.
 
 ## Related
 

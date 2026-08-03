@@ -31,15 +31,17 @@ export interface ConceptIngestStats {
 interface ConceptStatements {
   insertConcept: ReturnType<DatabaseSync["prepare"]>;
   insertSkill: ReturnType<DatabaseSync["prepare"]>;
+  insertItem: ReturnType<DatabaseSync["prepare"]>;
   watermark: ReturnType<DatabaseSync["prepare"]>;
 }
 
 function prepare(db: DatabaseSync): ConceptStatements {
   return {
     insertConcept: db.prepare(
-      "INSERT INTO concept (ord, term, sentence, field, saved_at, document) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO concept (ord, term, sentence, field, saved_at, notes, document) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ),
     insertSkill: db.prepare("INSERT INTO concept_skill (ord, skill_ord, skill) VALUES (?, ?, ?)"),
+    insertItem: db.prepare("INSERT INTO concept_item (ord, kind, item_ord, item) VALUES (?, ?, ?, ?)"),
     watermark: db.prepare(`
       INSERT INTO file_watermark (path, bytes, modified, scanned_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(path) DO UPDATE SET
@@ -55,7 +57,14 @@ function clearConcepts(db: DatabaseSync): number {
   return before;
 }
 
-/** Write one record's row and its skill list. */
+/**
+ * Write one record's row, its skill list, and whichever detail lists it carries.
+ *
+ * An absent detail list contributes no rows at all, which is the same fact the
+ * record states by leaving the field off — `concept_item` never distinguishes a
+ * list that was empty from one that was never recorded, and nothing asks it to.
+ * The page reads that distinction off `document`.
+ */
 function writeConcept(st: ConceptStatements, concept: Concept, ord: number): void {
   st.insertConcept.run(
     ord,
@@ -63,11 +72,20 @@ function writeConcept(st: ConceptStatements, concept: Concept, ord: number): voi
     concept.sentence,
     concept.field,
     concept.savedAt,
+    concept.notes ?? "",
     // Re-serialized rather than the raw line: `JSON.stringify` preserves the key
     // order `JSON.parse` produced, so re-parsing matches the file reader's object.
     JSON.stringify(concept),
   );
   concept.skills.forEach((skill, i) => st.insertSkill.run(ord, i, skill));
+  writeItems(st, ord, "tip", concept.tips);
+  writeItems(st, ord, "source", concept.sources);
+  writeItems(st, ord, "surfaced_skill", concept.surfacedSkills);
+}
+
+/** One `concept_item` row per entry, in the order the record listed them. */
+function writeItems(st: ConceptStatements, ord: number, kind: string, items: string[] | undefined): void {
+  (items ?? []).forEach((item, i) => st.insertItem.run(ord, kind, i, item));
 }
 
 /**
