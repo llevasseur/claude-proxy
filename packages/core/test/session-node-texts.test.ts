@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 // The proxy is zero-dependency and mirrors this package's transcript grammar rather
-// than importing it; reaching across here pins the two together. It ships no types.
-// @ts-ignore -- untyped JS module
-import { countNodeLines, distillMessagesEntries } from "../../../proxy/session.mjs";
+// than importing it; reaching across here pins the two together. It is TypeScript
+// that Node runs by stripping the types, so the specifier keeps its `.ts` extension.
+import { countNodeLines, distillMessagesEntries } from "../../../proxy/session.ts";
 import { parseSessionNodes, parseSessionNodeTexts } from "../src/sessions.js";
 
 /** One distilled transcript line and the whole text behind it. */

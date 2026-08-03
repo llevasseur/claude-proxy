@@ -5,7 +5,7 @@ import { QueryState } from "../components/QueryState";
 import { Skeleton, type SkeletonColumn, SkeletonTable } from "../components/Skeleton";
 
 /**
- * "Proxy filters" — the inventory of what `proxy/proxy.mjs` strips out of every
+ * "Proxy filters" — the inventory of what `proxy/proxy.ts` strips out of every
  * request before forwarding it to Anthropic.
  *
  * Unlike the "Not added" page (which reads the device's own `permissions.deny`
@@ -77,7 +77,7 @@ export function FiltersPage() {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="leak-note">
           <strong>These can't be configured away without the proxy.</strong> Everything listed here is stripped in{" "}
-          <span className="rule-name">proxy/proxy.mjs</span> because no <span className="rule-name">~/.claude</span>{" "}
+          <span className="rule-name">proxy/proxy.ts</span> because no <span className="rule-name">~/.claude</span>{" "}
           setting will keep it out: withheld tools are exempt from{" "}
           <span className="rule-name">permissions.deny</span>, and injected reminders have no suppression setting at all.
           Requests with nothing to strip are forwarded byte-for-byte.

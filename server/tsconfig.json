@@ -1,9 +1,13 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    // No `rootDir`: nothing is emitted, and two tests reach out into `proxy/`,
+    // which a rootDir would reject.
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    // The proxy is TypeScript that Node runs by stripping the types, so its
+    // relative imports carry the real `.ts` extension; tests import it directly.
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "test"]
 }

@@ -14,7 +14,7 @@ import {
 
 /**
  * The thread id a captured request belongs to: a hash of its session id and its conversation
- * root. Mirrors `threadIdFor` in `proxy/session.mjs`, which named the transcript in the first
+ * root. Mirrors `threadIdFor` in `proxy/session.ts`, which named the transcript in the first
  * place. Null when the body has no user text to root on.
  */
 export function threadIdForBody(sessionId: string | null, messages: unknown): string | null {

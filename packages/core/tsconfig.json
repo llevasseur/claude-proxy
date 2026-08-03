@@ -1,9 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    // No `rootDir`: nothing is emitted, and the parity test deliberately reaches
+    // out of the package into `proxy/`, which a rootDir would reject.
     "noEmit": true,
-    "types": []
+    // Types only, and only because the parity test imports `proxy/session.ts`,
+    // which uses Node built-ins. The package itself still ships no dependencies.
+    "types": ["node"],
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "test"]
 }

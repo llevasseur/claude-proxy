@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { threadIdFor } from "../../proxy/session.mjs";
+import { threadIdFor } from "../../proxy/session.ts";
 import { buildSessionBreakdown, buildSessionSuggestionBucket } from "../src/api.js";
 
 // 22:41 EDT on the 28th, but 02:41Z on the 29th.

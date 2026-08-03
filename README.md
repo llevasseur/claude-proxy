@@ -23,7 +23,7 @@ context** — plus a machine-readable `.audit.json` sidecar. Auth headers
 sensitive lands on disk.
 
 Its deliberate edits are the things the CLI can't be configured to keep out on
-its own, both defined in `proxy/proxy.mjs`: **withheld tools** (`WITHHELD_TOOLS`,
+its own, both defined in `proxy/proxy.ts`: **withheld tools** (`WITHHELD_TOOLS`,
 e.g. `EndConversation`) that the CLI exempts from `permissions.deny`, and
 **injected reminders** (`INJECTED_REMINDERS`, e.g. the task-tools nudge) that have
 no suppression setting at all. Both are stripped from the request before
@@ -32,7 +32,7 @@ dashboard's **Proxy filters** page (`GET /api/filters`) lists the full inventory
 with the reason each one needs the proxy.
 
 ```bash
-PORT=8036 node proxy/proxy.mjs   # zero deps, Node 18+ (PORT defaults to 8787)
+PORT=8036 node proxy/proxy.ts   # zero deps, Node 22.18+ (PORT defaults to 8787)
 # point Claude Code at it in another terminal:
 ANTHROPIC_BASE_URL=http://localhost:8036 claude
 ```
@@ -85,9 +85,9 @@ and Claude Code's own `env` config — not a shell alias — points every
 2. Start the proxy (pick one):
 
    ```bash
-   PORT=8036 node proxy/proxy.mjs          # bare, no deps, no install needed
+   PORT=8036 node proxy/proxy.ts           # bare, no deps, no install needed
    # or, keep it running in the background:
-   PORT=8036 node proxy/proxy.mjs &disown
+   PORT=8036 node proxy/proxy.ts &disown
    # or, launch it alongside server + dashboard in one zellij session:
    pnpm zellij                             # zellij dev layout already uses 8036
    ```

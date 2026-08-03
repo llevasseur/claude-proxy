@@ -1,5 +1,5 @@
 /**
- * Proxy request filters — the human-readable inventory of what `proxy/proxy.mjs`
+ * Proxy request filters — the human-readable inventory of what `proxy/proxy.ts`
  * removes from every Claude Code request before forwarding.
  *
  * These are edits the CLI can't be configured to make on its own: withheld tools
@@ -8,7 +8,7 @@
  * is the only place they can be stripped, so the dashboard documents them here.
  *
  * The proxy is the source of truth for the *actual* stripping (`WITHHELD_TOOLS`
- * and `INJECTED_REMINDERS` in `proxy/proxy.mjs`); this module is the description
+ * and `INJECTED_REMINDERS` in `proxy/proxy.ts`); this module is the description
  * the dashboard renders — keep the two in sync.
  */
 

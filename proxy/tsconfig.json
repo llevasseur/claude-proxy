@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node"],
+    // Node runs these files by stripping the types, and type stripping requires
+    // the real `.ts` specifier on every relative import — so tsc must accept it.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["*.ts"]
+}

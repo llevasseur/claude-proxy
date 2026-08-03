@@ -3,7 +3,7 @@
  * the handful of facts the dashboard lists: which model/session it belongs to,
  * when it started, and how much happened (tasks, decisions, tools, failures).
  *
- * The transcript is produced by `proxy/session.mjs` and has a fixed, line-based
+ * The transcript is produced by `proxy/session.ts` and has a fixed, line-based
  * shape, so parsing is a cheap single pass — no markdown library needed:
  *
  *   # Session <threadId>
@@ -431,7 +431,7 @@ export function parseSessionNodeTexts(content: string): Record<number, string> {
 // --- Subagent linkage ------------------------------------------------------
 //
 // A subagent runs under its parent's session id but with its own conversation
-// root, so the proxy writes it as a *separate* transcript (see proxy/session.mjs).
+// root, so the proxy writes it as a *separate* transcript (see proxy/session.ts).
 // Nothing on the wire names the pair, so the tree is reconstructed here from the
 // parent's `Agent(...)` spawn lines and the group's other transcripts.
 
@@ -624,7 +624,7 @@ export function parseSessionErrors(content: string): SessionError[] {
 // --- Nodes derived from a captured request ---------------------------------
 //
 // A transcript is a lossy render of the same `messages[]` a captured request carries:
-// `proxy/session.mjs` gists every line to 160 chars and every tool arg to 60. Re-running
+// `proxy/session.ts` gists every line to 160 chars and every tool arg to 60. Re-running
 // the proxy's grammar over the whole body yields the same node stream, same emission
 // order, with the text intact.
 
@@ -692,7 +692,7 @@ function toolArgs(input: unknown): string {
 
 /**
  * The thread's conversation root: its first real user text, tool-result-only turns not
- * counting. Mirrors `firstUserText` in `proxy/session.mjs`, the string the proxy hashes
+ * counting. Mirrors `firstUserText` in `proxy/session.ts`, the string the proxy hashes
  * into a thread id — including its fallback to the first message's serialized content, so
  * a body with no user text hashes to the same id there and here.
  */

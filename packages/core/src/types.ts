@@ -1,7 +1,7 @@
 /**
  * The audit sidecar written by the proxy next to each captured request
  * (`<ts>_anthropic.audit.json`). This type mirrors exactly what
- * `proxy/proxy.mjs` emits — keep the two in sync.
+ * `proxy/proxy.ts` emits — keep the two in sync.
  */
 export interface AuditTokens {
   /** Non-cached input tokens billed at the input rate. */
