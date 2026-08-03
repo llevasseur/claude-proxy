@@ -358,6 +358,15 @@ button:focus-visible {
   font-weight: 600;
   margin: 0 0 6px;
 }
+/* One prompt's sections: the heading indents to its depth, the share cell carries a bar. */
+.section-heading {
+  display: inline-block;
+}
+.share-cell .rowbar {
+  height: 4px;
+  margin: 0 0 3px auto;
+  opacity: 0.75;
+}
 /* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .muted {
   color: var(--muted);
@@ -1001,6 +1010,7 @@ a.pager-btn:hover {
 .bar-col {
   width: 22%;
 }
+/* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
 .rowbar {
   height: 10px;
   background: linear-gradient(90deg, var(--signal-dim), var(--signal));

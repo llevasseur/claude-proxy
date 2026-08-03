@@ -58,6 +58,7 @@ import {
   runKey,
   runTotals,
   type SectionMove,
+  type SectionShare,
   type SessionBucket,
   type SessionContextPeak,
   type SessionError,
@@ -76,6 +77,7 @@ import {
   type SuggestionStatusUpdate,
   SYSTEM_PROMPT_MAX_BYTES,
   type SystemPromptDoc,
+  sectionShares,
   sessionContextPeak,
   sessionSuggestionBuckets,
   skimDigestsByDay,
@@ -93,6 +95,7 @@ import {
   type UsageLimitConfig,
   type UsageLimitsSnapshot,
   type WithheldReport,
+  wirePromptSectionTexts,
   withheldReport,
   withoutMetaSkills,
 } from '@claude-proxy/core';
@@ -125,7 +128,7 @@ import {
   type ProjectSummary,
   readMemory,
 } from './projects.js';
-import { readStoredPrompts } from './prompt-store.js';
+import { readStoredPrompt, readStoredPrompts } from './prompt-store.js';
 import { resolveRetentionDays } from './retention.js';
 import {
   type SessionDetail,
@@ -340,22 +343,28 @@ export interface PromptMixResponse {
   meta: { days: number; files: number; parseErrors: number; archivedDays: number; outlinesFound: number };
 }
 
+/** One day of prompt cohorts, oldest first, plus what it cost to read them. */
+interface PromptMixWindow {
+  mix: PromptMixDay[];
+  files: number;
+  parseErrors: number;
+  archivedDays: number;
+}
+
 /**
- * Why `avgSystemPromptBytes` sits where it does: the day's cohorts, the move
- * since the day before split into traffic mix and prompt size, and the sections
- * that changed when a prompt was rewritten.
+ * The window both prompt routes decompose. The live dir holds a day or two; the
+ * rest of the window is archived sidecars, summarized the same way.
  */
-export async function buildPromptMix(
+async function promptMixWindow(
   logDir: string,
   days: number,
-  now: Date = new Date(),
-  source: SidecarSource = fileSource,
-): Promise<PromptMixResponse> {
+  now: Date,
+  source: SidecarSource,
+): Promise<PromptMixWindow> {
   const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days }, now);
   const byDate = new Map<string, PromptMixDay>();
   for (const d of promptMixByDay(sidecars)) byDate.set(d.date, d);
 
-  // The live dir holds a day or two; the rest of the window is archived sidecars.
   let archivedDays = 0;
   const end = today(now);
   for (let i = 0; i < days; i += 1) {
@@ -367,7 +376,21 @@ export async function buildPromptMix(
     archivedDays += 1;
   }
 
-  const mix = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return { mix: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)), files, parseErrors, archivedDays };
+}
+
+/**
+ * Why `avgSystemPromptBytes` sits where it does: the day's cohorts, the move
+ * since the day before split into traffic mix and prompt size, and the sections
+ * that changed when a prompt was rewritten.
+ */
+export async function buildPromptMix(
+  logDir: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<PromptMixResponse> {
+  const { mix, files, parseErrors, archivedDays } = await promptMixWindow(logDir, days, now, source);
   const current = mix.at(-1);
   const prior = mix.at(-2);
   const attribution = current && prior ? attributePromptMix(prior, current) : null;
@@ -402,6 +425,212 @@ export async function buildPromptMix(
         ? { date: current.date, elapsed: dayElapsedFraction(current.date, now) }
         : null,
     meta: { days, files, parseErrors, archivedDays, outlinesFound },
+  };
+}
+
+/** One day this prompt ran, and what it did to that day's mean. */
+export interface PromptDayUsage {
+  date: string;
+  requests: number;
+  /** Fraction of that day's requests, 0–1. */
+  share: number;
+  meanBytes: number;
+  /** `share × meanBytes` — this prompt's bytes of the day's mean. */
+  contribution: number;
+  /** The whole day's mean, so the contribution reads as a fraction of it. */
+  dayMeanBytes: number;
+}
+
+export interface PromptDetailResponse {
+  hash: string;
+  /** The cohort's own label; the short hash alone when no request sent it. */
+  label: string;
+  /** Models that sent it, most requests first. */
+  models: string[];
+  /** null when the store has no outline — the prompt ran before capture existed. */
+  outline: StoredWirePrompt | null;
+  /** Largest share first; empty without an outline. */
+  sections: SectionShare[];
+  /** Oldest first, one entry per day of the window that sent this prompt. */
+  usage: PromptDayUsage[];
+  meta: { days: number; files: number; parseErrors: number; archivedDays: number };
+}
+
+/**
+ * One prompt from the cohort table, opened up: the sections it is made of and
+ * the days it ran.
+ *
+ * A legacy cohort is keyed by model and size band rather than by a prompt, so
+ * it has no outline; it comes back with an empty `usage` and a null `outline`
+ * rather than an error, as does an unseen hash.
+ */
+export async function buildPromptDetail(
+  logDir: string,
+  hash: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<PromptDetailResponse> {
+  const { mix, files, parseErrors, archivedDays } = await promptMixWindow(logDir, days, now, source);
+
+  const usage: PromptDayUsage[] = [];
+  const models = new Map<string, number>();
+  let label = hash.slice(0, 8);
+  for (const day of mix) {
+    const cohort = day.cohorts.find((c) => c.key === hash);
+    if (!cohort) continue;
+    label = cohort.label;
+    for (const model of cohort.models) models.set(model, (models.get(model) ?? 0) + cohort.requests);
+    usage.push({
+      date: day.date,
+      requests: cohort.requests,
+      share: cohort.share,
+      meanBytes: cohort.meanBytes,
+      contribution: cohort.contribution,
+      dayMeanBytes: day.meanBytes,
+    });
+  }
+
+  const outline = await readStoredPrompt(logDir, hash);
+  return {
+    hash,
+    label,
+    models: [...models.entries()].sort((a, b) => b[1] - a[1]).map(([m]) => m),
+    outline,
+    sections: outline ? sectionShares(outline) : [],
+    usage,
+    meta: { days, files, parseErrors, archivedDays },
+  };
+}
+
+/** One block's worth of a heading's text, since a heading can repeat across blocks. */
+export interface PromptSectionPart {
+  block: number;
+  bytes: number;
+  text: string;
+}
+
+export interface PromptSectionResponse {
+  hash: string;
+  /** The heading as the "what it is made of" table names it. */
+  heading: string;
+  level: number;
+  /** Bytes and share summed across blocks, matching that table's row. */
+  bytes: number;
+  share: number;
+  /** Blocks the heading appears in, ascending. */
+  blocks: number[];
+  /** Text per block, block order. Empty when no captured body still carries it. */
+  parts: PromptSectionPart[];
+  /** The request the text was read back from; null when none survives. */
+  file: string | null;
+  meta: { days: number; files: number; parseErrors: number; candidates: number };
+}
+
+/** Bodies to open before giving up on recovering a prompt's text. */
+const SECTION_BODY_TRIES = 8;
+
+/**
+ * The `__file` handles of requests that sent this prompt, newest first. Reads
+ * the live directory and the window's archived days, since the live one holds
+ * roughly today and a prompt's cohort spans the window.
+ */
+async function filesForPromptHash(
+  logDir: string,
+  hash: string,
+  days: number,
+  now: Date,
+  source: SidecarSource,
+): Promise<{ files: string[]; read: number; parseErrors: number }> {
+  const found = new Set<string>();
+  let read = 0;
+  let parseErrors = 0;
+
+  const collect = (sidecars: readonly unknown[]) => {
+    for (const s of sidecars) {
+      const record = s as { __file?: string; request?: { system?: { hash?: unknown } } };
+      if (record.__file && record.request?.system?.hash === hash) found.add(record.__file);
+    }
+  };
+
+  const live = await source.readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
+  read += live.files;
+  parseErrors += live.parseErrors;
+  collect(live.sidecars);
+
+  const end = today(now);
+  for (let i = 0; i < days; i += 1) {
+    const archived = await source.readArchivedDay(logDir, shiftDay(end, -i), { includeFile: true });
+    read += archived.files;
+    parseErrors += archived.parseErrors;
+    collect(archived.sidecars);
+  }
+
+  // Names lead with their timestamp, so this is newest-first — the likeliest to
+  // still have a body behind it.
+  return { files: [...found].sort().reverse(), read, parseErrors };
+}
+
+/**
+ * One row of "what it is made of", opened up to the text behind it.
+ *
+ * The stored outline keeps byte counts only, so the text has to come back from a
+ * request body that sent this prompt — any of them, since the hash is over the
+ * prompt itself. Bodies age out well before outlines do, so `parts` comes back
+ * empty rather than erroring once every candidate has been evicted.
+ *
+ * `index` addresses the ranked section table, not the raw outline. Throws a
+ * labelled error the server maps to 404 for an unknown hash or index.
+ */
+export async function buildPromptSection(
+  logDir: string,
+  hash: string,
+  index: number,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<PromptSectionResponse> {
+  const outline = await readStoredPrompt(logDir, hash);
+  if (!outline) throw new Error(`prompt outline not found: ${hash}`);
+
+  const row = sectionShares(outline)[index];
+  if (!row) throw new Error(`prompt section index out of range: ${index}`);
+
+  const { files: candidates, read, parseErrors } = await filesForPromptHash(logDir, hash, days, now, source);
+
+  // Spans of the outline carrying this heading, in outline order — the same
+  // order `wirePromptSectionTexts` answers in.
+  const spans = outline.sections.flatMap((s, i) =>
+    s.heading === row.heading ? [{ at: i, block: s.block, bytes: s.bytes }] : [],
+  );
+
+  let parts: PromptSectionPart[] = [];
+  let file: string | null = null;
+  for (const candidate of candidates.slice(0, SECTION_BODY_TRIES)) {
+    let texts: string[];
+    try {
+      const { body } = await readRequestBody(logDir, candidate);
+      texts = wirePromptSectionTexts((body as { system?: unknown }).system);
+    } catch {
+      continue; // evicted, unreadable, or not the shape we expect
+    }
+    // A body whose outline no longer lines up is not the prompt this hash names.
+    if (texts.length !== outline.sections.length) continue;
+    parts = spans.map((s) => ({ block: s.block, bytes: s.bytes, text: texts[s.at]! }));
+    file = candidate;
+    break;
+  }
+
+  return {
+    hash,
+    heading: row.heading,
+    level: row.level,
+    bytes: row.bytes,
+    share: row.share,
+    blocks: row.blocks,
+    parts,
+    file,
+    meta: { days, files: read, parseErrors, candidates: candidates.length },
   };
 }
 
