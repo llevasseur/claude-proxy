@@ -26,6 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as skim from "./skim.mjs";
+import { identifyPrompt, recordPrompt } from "./system-prompt.mjs";
 import * as session from "./session.mjs";
 import { noteAuth, startUsagePolling } from "./usage-live.mjs";
 
@@ -181,6 +182,8 @@ function auditRequest(reqJson, realInputTokens) {
     systemBytes,
     totalBytes,
     realInputTokens,
+    // Identity of the system prompt; its outline goes to the dedup store.
+    systemPrompt: identifyPrompt(reqJson?.system),
   };
 }
 
@@ -252,6 +255,10 @@ function writeAuditSidecar({ timestamp, reqJson, statusCode, method, path: reqPa
       toolsBytes: audit.toolsBytes,
       systemBytes: audit.systemBytes,
       totalBytes: audit.totalBytes,
+      // Omitted when the request carried no system prompt.
+      ...(audit.systemPrompt
+        ? { system: { hash: audit.systemPrompt.hash, blocks: audit.systemPrompt.blocks, sections: audit.systemPrompt.sections } }
+        : {}),
     },
     // App-layer skim (not Anthropic's prefix cache); recorded on every request so
     // hit-rate + saved spend are computable from the sidecar.
@@ -517,6 +524,7 @@ function handle(req, res) {
           const audit = auditRequest(reqJson ?? {}, saved);
           const skimInfo = { enabled: true, servedFromCache: true, savedInputTokens: saved, cacheKey };
           fs.mkdirSync(LOG_DIR, { recursive: true });
+          recordPrompt(LOG_DIR, audit.systemPrompt);
           fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString("utf8"));
           fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
           fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens: saved, usage: null, respModel: respModel ?? hit.meta.model, headers: req.headers, skim: skimInfo }));
@@ -558,6 +566,7 @@ function handle(req, res) {
             const skimInfo = { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey };
 
             fs.mkdirSync(LOG_DIR, { recursive: true });
+            recordPrompt(LOG_DIR, audit.systemPrompt);
             fs.writeFileSync(path.join(LOG_DIR, `${base}.request.txt`), forwardBody.toString("utf8"));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.md`), renderMarkdown({ reqJson, timestamp, method: req.method ?? "POST", path: reqPath, statusCode, headers: req.headers }, audit, markdown));
             fs.writeFileSync(path.join(LOG_DIR, `${base}.audit.json`), writeAuditSidecar({ timestamp, reqJson, statusCode, method: req.method ?? "POST", path: reqPath, audit, inputTokens, usage, respModel, headers: req.headers, respHeaders: up.headers, skim: skimInfo }));

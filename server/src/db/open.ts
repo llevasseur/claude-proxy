@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -383,6 +383,25 @@ CREATE TABLE IF NOT EXISTS file_watermark (
  * pass would see an unchanged `stat` and skip the re-parse, leaving the tables
  * empty.
  */
+/**
+ * System-prompt identity, added alongside the scalar `req_system_bytes`. The
+ * outline itself stays in `logs/system-prompts/<hash>.json`; only the hash and
+ * its two counts belong in a row. Nullable throughout — a sidecar written before
+ * the capture existed, or a request that carried no system prompt, has none.
+ *
+ * Clearing the watermarks forces a rescan of every archived day, so rows already
+ * ingested pick the columns up on the next pass.
+ */
+const SCHEMA_V6 = `
+ALTER TABLE request ADD COLUMN req_system_hash     TEXT;
+ALTER TABLE request ADD COLUMN req_system_blocks   INTEGER;
+ALTER TABLE request ADD COLUMN req_system_sections INTEGER;
+
+CREATE INDEX IF NOT EXISTS request_system_hash_idx ON request(req_system_hash);
+
+DELETE FROM ingest_watermark;
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -463,6 +482,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 3) db.exec(COMMAND_TABLES);
   if (from < 4) db.exec(SCHEMA_V4);
   if (from < 5) db.exec(CONCEPT_TABLES);
+  if (from < 6) db.exec(SCHEMA_V6);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

@@ -11,6 +11,7 @@
     "suggestions": "tsx src/suggestions-cli.ts",
     "maintain": "tsx --env-file-if-exists=.env src/maintain-cli.ts",
     "ingest": "tsx --env-file-if-exists=.env src/ingest-cli.ts",
+    "prompt-backfill": "tsx --env-file-if-exists=.env src/prompt-backfill-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
