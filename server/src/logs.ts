@@ -326,8 +326,8 @@ export async function locateRequestBody(logDir: string, file: string): Promise<R
 /**
  * The audit sidecar that outlived an evicted body. Returns `null` when it is
  * unreadable or malformed, so a caller reporting an eviction never fails on it.
- * `_logDir` is unread — the sidecar is found under `dir` — but kept so the signature
- * matches every other reader in this module.
+ * `_logDir` is unread — the sidecar is found under `dir` — but kept for signature
+ * parity with the other readers here.
  */
 export async function readRetainedSidecar(_logDir: string, file: string, dir: string): Promise<AuditSidecar | null> {
   if (!REQUEST_FILE_RE.test(file)) return null;
