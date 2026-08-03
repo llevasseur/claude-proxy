@@ -6,6 +6,7 @@ import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { runKey } from "@claude-proxy/core";
 import { applySuggestionStatus, buildSessionSuggestions } from "../src/api.js";
 import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from "../src/command-runs.js";
+import { conceptStorePath } from "../src/concepts.js";
 import { ingest } from "../src/db/ingest.js";
 import { openDb } from "../src/db/open.js";
 import { dbSource, fileSource } from "../src/db/source.js";
@@ -263,7 +264,39 @@ async function buildCorpus(): Promise<string> {
   });
 
   await writeSessions(logDir);
+  await writeConcepts(logDir);
   return logDir;
+}
+
+/**
+ * A concept store for `/api/concepts` to replay over, with the same term saved
+ * twice — the case the table keeps both rows for.
+ */
+async function writeConcepts(logDir: string): Promise<void> {
+  const records = [
+    {
+      term: "carousel",
+      sentence: "A carousel shows one image at a time.",
+      field: "UI component vocabulary",
+      skills: ["animation-vocabulary"],
+      savedAt: "2026-07-15T18:30:00.000Z",
+    },
+    {
+      term: "watermark",
+      sentence: "A watermark records how far a store was read.",
+      field: "Ingestion",
+      skills: [],
+      savedAt: "2026-07-16T09:00:00.000Z",
+    },
+    {
+      term: "carousel",
+      sentence: "A carousel shows one image at a time.",
+      field: "UI component vocabulary",
+      skills: ["animation-vocabulary", "find-skills"],
+      savedAt: "2026-07-17T09:00:00.000Z",
+    },
+  ];
+  await writeFile(conceptStorePath(logDir), records.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
 }
 
 /**

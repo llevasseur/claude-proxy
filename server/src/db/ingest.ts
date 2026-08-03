@@ -6,6 +6,7 @@ import { isAuditSidecar, type AuditSidecar } from "@claude-proxy/core";
 import { commandStorePath } from "../command-runs.js";
 import { resolveSessionsDir } from "../sessions.js";
 import { ingestCommandRuns } from "./ingest-commands.js";
+import { ingestConcepts } from "./ingest-concepts.js";
 import { ingestSessions } from "./ingest-sessions.js";
 
 /**
@@ -43,6 +44,10 @@ export interface IngestStats {
   commandRuns: number;
   /** True when the command store had changed and was re-parsed this pass. */
   commandRunsParsed: boolean;
+  /** Concepts `logs/concepts.jsonl` holds. */
+  concepts: number;
+  /** True when the concept store had changed and was re-parsed this pass. */
+  conceptsParsed: boolean;
 }
 
 function emptyStats(): IngestStats {
@@ -56,6 +61,8 @@ function emptyStats(): IngestStats {
     sessionsParsed: 0,
     commandRuns: 0,
     commandRunsParsed: false,
+    concepts: 0,
+    conceptsParsed: false,
   };
 }
 
@@ -384,6 +391,13 @@ export async function ingest(db: DatabaseSync, logDir: string): Promise<IngestSt
   stats.commandRuns = commands.runs;
   stats.commandRunsParsed = commands.parsed;
   stats.deleted += commands.deleted;
+
+  // `logs/concepts.jsonl` is one more append-only store beside the command one,
+  // and carries its own `file_watermark` row for the same reason.
+  const concepts = await ingestConcepts(db, logDir);
+  stats.concepts = concepts.concepts;
+  stats.conceptsParsed = concepts.parsed;
+  stats.deleted += concepts.deleted;
   return stats;
 }
 

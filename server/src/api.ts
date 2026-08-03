@@ -1,6 +1,7 @@
 import {
   analyzeRequestBody,
   type AuditSidecar,
+  type Concept,
   computeDigest,
   deriveRequestErrors,
   deriveSessionNodes,
@@ -84,6 +85,7 @@ import {
 } from "@claude-proxy/core";
 import { loadArchivedDigest } from "./archive.js";
 import { listInstalledCommands } from "./command-runs.js";
+import { conceptStorePath } from "./concepts.js";
 import { fileSource, type SidecarSource } from "./db/source.js";
 import {
   locateRequestBody,
@@ -1468,4 +1470,26 @@ export async function buildCommandRun(
       requestsAgedOut: (run.turns ?? []).length === 0,
     },
   };
+}
+
+export interface ConceptsResponse {
+  /** Newest first — the order the page renders. */
+  concepts: Concept[];
+  meta: {
+    /** The store the list came from, so the page can name its source. */
+    storePath: string;
+    total: number;
+  };
+}
+
+/**
+ * Everything `/teach` has recorded. The store is small and append-only, so the
+ * whole list is returned rather than paged.
+ */
+export async function buildConcepts(
+  logDir: string,
+  source: SidecarSource = fileSource,
+): Promise<ConceptsResponse> {
+  const concepts = await source.readConcepts(logDir);
+  return { concepts, meta: { storePath: conceptStorePath(logDir), total: concepts.length } };
 }
