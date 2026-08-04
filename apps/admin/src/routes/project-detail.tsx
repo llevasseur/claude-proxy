@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import type { MemoryFileSummary } from '../api';
 import { getProjectMemories } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { HeaderHint } from '../components/HeaderHint';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
 import { fmtBytes, fmtLocalTsShort } from '../format';
@@ -113,9 +114,29 @@ function MemoriesTable({ project, files }: { project: string; files: MemoryFileS
       <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
         <thead>
           <tr>
-            <SortHeader label='File' sortKey='name' sort={sort} onSort={onSort} />
-            <SortHeader label='Size' sortKey='bytes' sort={sort} onSort={onSort} className='num' />
-            <SortHeader label='Modified' sortKey='modified' sort={sort} onSort={onSort} className='num' />
+            <SortHeader
+              label='File'
+              sortKey='name'
+              sort={sort}
+              onSort={onSort}
+              hint="The file's name in this project's memory directory. MEMORY.md is the index loaded into context each session; every other file holds one memory."
+            />
+            <SortHeader
+              label='Size'
+              sortKey='bytes'
+              sort={sort}
+              onSort={onSort}
+              className='num'
+              hint='Bytes of the file on disk, frontmatter included.'
+            />
+            <SortHeader
+              label='Modified'
+              sortKey='modified'
+              sort={sort}
+              onSort={onSort}
+              className='num'
+              hint="The file's last-modified time on disk, shown in local time."
+            />
           </tr>
         </thead>
         <tbody>
@@ -150,12 +171,14 @@ function SortHeader({
   sort,
   onSort,
   className,
+  hint,
 }: {
   label: string;
   sortKey: SortKey;
   sort: { key: SortKey; dir: SortDir };
   onSort: (key: SortKey) => void;
   className?: string;
+  hint?: string;
 }) {
   const active = sort.key === sortKey;
   return (
@@ -165,6 +188,7 @@ function SortHeader({
       onClick={() => onSort(sortKey)}>
       {label}
       {active && <span className='sort-arrow'>{sort.dir === 'asc' ? '▲' : '▼'}</span>}
+      {hint && <HeaderHint text={hint} />}
     </th>
   );
 }

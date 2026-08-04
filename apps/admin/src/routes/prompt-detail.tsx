@@ -4,6 +4,7 @@ import { Link, useParams } from '@tanstack/react-router';
 import { useMemo } from 'react';
 import { getPromptDetail, type PromptDayUsage, type PromptDetailResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { HeaderHint } from '../components/HeaderHint';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
@@ -169,10 +170,37 @@ function SectionTable({ hash, sections }: { hash: string; sections: SectionShare
     <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
       <thead>
         <tr>
-          <SortHeader label='Section' sortKey='heading' sort={sort} onSort={onSort} />
-          <SortHeader label='Depth' sortKey='level' sort={sort} onSort={onSort} className='num' />
-          <SortHeader label='Size' sortKey='bytes' sort={sort} onSort={onSort} className='num' />
-          <SortHeader label='Share' sortKey='share' sort={sort} onSort={onSort} className='num' />
+          <SortHeader
+            label='Section'
+            sortKey='heading'
+            sort={sort}
+            onSort={onSort}
+            hint="A heading in this system prompt's stored outline, indented by its depth. Click it to read that section."
+          />
+          <SortHeader
+            label='Depth'
+            sortKey='level'
+            sort={sort}
+            onSort={onSort}
+            className='num'
+            hint='The heading level — H1 to H6. Text sitting before the first heading has no level and reads as —.'
+          />
+          <SortHeader
+            label='Size'
+            sortKey='bytes'
+            sort={sort}
+            onSort={onSort}
+            className='num'
+            hint='Bytes of the section, its heading and body together.'
+          />
+          <SortHeader
+            label='Share'
+            sortKey='share'
+            sort={sort}
+            onSort={onSort}
+            className='num'
+            hint="The section's bytes as a fraction of the whole prompt. The bar is drawn against the largest section."
+          />
         </tr>
       </thead>
       <tbody>
@@ -206,11 +234,26 @@ function UsageTable({ usage }: { usage: PromptDayUsage[] }) {
     <table className='table'>
       <thead>
         <tr>
-          <th>Date ({REPORT_TZ_ABBR})</th>
-          <th className='num'>Requests</th>
-          <th className='num'>Share</th>
-          <th className='num'>Size</th>
-          <th className='num'>Of the mean</th>
+          <th>
+            Date ({REPORT_TZ_ABBR})
+            <HeaderHint text={`The report day, bucketed in ${REPORT_TZ_ABBR}. Newest first.`} />
+          </th>
+          <th className='num'>
+            Requests
+            <HeaderHint text='Captured requests that carried this system prompt that day.' />
+          </th>
+          <th className='num'>
+            Share
+            <HeaderHint text="Those requests as a fraction of every request that day — how much of the day's traffic this prompt accounted for." />
+          </th>
+          <th className='num'>
+            Size
+            <HeaderHint text="This prompt's mean system-prompt bytes over that day's requests." />
+          </th>
+          <th className='num'>
+            Of the mean
+            <HeaderHint text="Share × size: the bytes this prompt contributes to the day's mean system prompt, against that whole mean." />
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -237,12 +280,14 @@ function SortHeader({
   sort,
   onSort,
   className,
+  hint,
 }: {
   label: string;
   sortKey: SortKey;
   sort: { key: SortKey; dir: SortDir };
   onSort: (key: SortKey) => void;
   className?: string;
+  hint?: string;
 }) {
   const active = sort.key === sortKey;
   return (
@@ -252,6 +297,7 @@ function SortHeader({
       onClick={() => onSort(sortKey)}>
       {label}
       {active && <span className='sort-arrow'>{sort.dir === 'asc' ? '▲' : '▼'}</span>}
+      {hint && <HeaderHint text={hint} />}
     </th>
   );
 }

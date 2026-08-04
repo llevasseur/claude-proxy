@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { getContextDetail } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { EvictedBody } from '../components/EvictedBody';
+import { HeaderHint } from '../components/HeaderHint';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
@@ -137,10 +138,22 @@ function DetailBody({
         <table className='table'>
           <thead>
             <tr>
-              <th>Region</th>
-              <th className='num'>Bytes</th>
-              <th className='num'>% of request</th>
-              <th className='bar-col'>Share</th>
+              <th>
+                Region
+                <HeaderHint text='One of the three top-level parts of the request body — the conversation, the tool schemas, and the system prompt. Largest first.' />
+              </th>
+              <th className='num'>
+                Bytes
+                <HeaderHint text='Serialized bytes the region contributes to this request body.' />
+              </th>
+              <th className='num'>
+                % of request
+                <HeaderHint text="The region's bytes over the request's total bytes." />
+              </th>
+              <th className='bar-col'>
+                Share
+                <HeaderHint text='The same bytes as a bar, drawn against the largest region rather than the total.' />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -222,11 +235,42 @@ function MessagesTable({ file, messages }: { file: string; messages: BreakdownMe
         <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
           <thead>
             <tr>
-              <SortHeader label='#' sortKey='index' sort={sort} onSort={onSort} className='num' />
-              <th>Role</th>
-              <SortHeader label='Bytes' sortKey='bytes' sort={sort} onSort={onSort} className='num' />
-              <SortHeader label='~Tokens' sortKey='estTokens' sort={sort} onSort={onSort} className='num' />
-              <SortHeader label='Share' sortKey='share' sort={sort} onSort={onSort} className='bar-col' />
+              <SortHeader
+                label='#'
+                sortKey='index'
+                sort={sort}
+                onSort={onSort}
+                className='num'
+                hint="The message's position in the conversation as sent, counted from 1. Click it to read the message."
+              />
+              <th>
+                Role
+                <HeaderHint text='Who the message is attributed to in the request — user, assistant, or system.' />
+              </th>
+              <SortHeader
+                label='Bytes'
+                sortKey='bytes'
+                sort={sort}
+                onSort={onSort}
+                className='num'
+                hint='Serialized bytes of the message as it was sent.'
+              />
+              <SortHeader
+                label='~Tokens'
+                sortKey='estTokens'
+                sort={sort}
+                onSort={onSort}
+                className='num'
+                hint='A rough estimate only: bytes ÷ 4, the same approximation the proxy uses. Not a tokenizer count.'
+              />
+              <SortHeader
+                label='Share'
+                sortKey='share'
+                sort={sort}
+                onSort={onSort}
+                className='bar-col'
+                hint='Bytes as a bar against the largest message, so it sorts on the same value as Bytes.'
+              />
             </tr>
           </thead>
           <tbody>
@@ -274,10 +318,22 @@ function ToolsTable({ file, tools }: { file: string; tools: BreakdownTool[] }) {
         <table className='table'>
           <thead>
             <tr>
-              <th>Tool</th>
-              <th className='num'>Bytes</th>
-              <th className='num'>~Tokens</th>
-              <th className='bar-col'>Share</th>
+              <th>
+                Tool
+                <HeaderHint text='The tool name as declared in the request. Click it to read the schema that was sent.' />
+              </th>
+              <th className='num'>
+                Bytes
+                <HeaderHint text="Serialized bytes of the tool's whole schema — name, description, and input schema." />
+              </th>
+              <th className='num'>
+                ~Tokens
+                <HeaderHint text='A rough estimate only: bytes ÷ 4, the same approximation the proxy uses. Not a tokenizer count.' />
+              </th>
+              <th className='bar-col'>
+                Share
+                <HeaderHint text='The same bytes as a bar, drawn against the largest tool schema.' />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -317,12 +373,14 @@ function SortHeader({
   sort,
   onSort,
   className,
+  hint,
 }: {
   label: string;
   sortKey: SortKey;
   sort: { key: SortKey; dir: SortDir };
   onSort: (key: SortKey) => void;
   className?: string;
+  hint?: string;
 }) {
   const active = sort.key === sortKey;
   return (
@@ -332,6 +390,7 @@ function SortHeader({
       onClick={() => onSort(sortKey)}>
       {label}
       {active && <span className='sort-arrow'>{sort.dir === 'asc' ? '▲' : '▼'}</span>}
+      {hint && <HeaderHint text={hint} />}
     </th>
   );
 }

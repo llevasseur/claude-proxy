@@ -46,6 +46,7 @@ import {
   buildSummary,
   buildSystemPrompt,
   buildSystemPromptUpdate,
+  buildToolSchema,
   buildTools,
   buildTrends,
   buildUsage,
@@ -455,6 +456,20 @@ const server = http.createServer(async (req, res) => {
             send(res, 404, { error: msg });
           } else throw err;
         }
+        return;
+      }
+      // One tool of the fixed prefix, opened up to the JSON schema behind its size.
+      case '/api/tool-schema': {
+        const name = url.searchParams.get('name');
+        if (!name) {
+          send(res, 400, { error: 'missing ?name=' });
+          return;
+        }
+        const days = parseDays(url.searchParams.get('days'));
+        const now = new Date();
+        const schema = await buildToolSchema(LOG_DIR, name, days, now, readSource());
+        send(res, 200, schema);
+        shadow('/api/tool-schema', schema, (source) => buildToolSchema(LOG_DIR, name, days, now, source));
         return;
       }
       case '/api/usage': {

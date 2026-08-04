@@ -14,6 +14,7 @@ import {
   ZAxis,
 } from 'recharts';
 import { type CommandResponse, type CommandRunListItem, getCommand } from '../api';
+import { HeaderHint } from '../components/HeaderHint';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { SkeletonChartCard, type SkeletonColumn, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
@@ -440,11 +441,26 @@ function StepBar({
       <table className='table'>
         <thead>
           <tr>
-            <th>Step</th>
-            <th className='num'>Runs that got here</th>
-            <th className='num'>Tokens</th>
-            <th className='num'>Cost</th>
-            <th className='num'>Share</th>
+            <th>
+              Step
+              <HeaderHint text='A ## Step N heading from the command file, as the file stood when the run happened. Turns nothing could be placed against fall in the unattributed row.' />
+            </th>
+            <th className='num'>
+              Runs that got here
+              <HeaderHint text='Runs whose attribution reached this step, out of the runs that declared it. A step declared after a run happened is not counted against that run.' />
+            </th>
+            <th className='num'>
+              Tokens
+              <HeaderHint text='Tokens on the requests attributed to this step, summed across those runs.' />
+            </th>
+            <th className='num'>
+              Cost
+              <HeaderHint text="Dollar cost of the same requests, priced per model at the day's rates." />
+            </th>
+            <th className='num'>
+              Share
+              <HeaderHint text="This step's tokens over every token attributed here — including the unattributed row, so the column sums to 100%." />
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -483,9 +499,18 @@ function PatternTable({ data }: { data: CommandResponse }) {
         <table className='table'>
           <thead>
             <tr>
-              <th>Pattern</th>
-              <th className='num'>Runs</th>
-              <th className='num'>Firings</th>
+              <th>
+                Pattern
+                <HeaderHint text='A deterministic rule from the catalogue — matched mechanically against the run, not judged by a model.' />
+              </th>
+              <th className='num'>
+                Runs
+                <HeaderHint text='Runs the rule fired in at least once, out of the runs counted here.' />
+              </th>
+              <th className='num'>
+                Firings
+                <HeaderHint text='Every time the rule fired, summed across those runs — so one run can contribute several.' />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -524,14 +549,38 @@ function RunList({
       <table className='table'>
         <thead>
           <tr>
-            <th>Started</th>
-            <th>Prompt</th>
-            <th>Flags</th>
-            <th>Outcome</th>
-            <th className='num'>Reached</th>
-            <th className='num'>Turns</th>
-            <th className='num'>Tokens</th>
-            <th className='num'>Cost</th>
+            <th>
+              Started
+              <HeaderHint text="When the run's first captured request was sent, in local time." />
+            </th>
+            <th>
+              Prompt
+              <HeaderHint text='The text passed to the command. A nested run has no prompt of its own, so it is named by the command that spawned it.' />
+            </th>
+            <th>
+              Flags
+              <HeaderHint text='Flags the run was invoked with. The store keeps the bare name, so -d and --d face together.' />
+            </th>
+            <th>
+              Outcome
+              <HeaderHint text='How the run ended, with the interruption beside it when one was recorded.' />
+            </th>
+            <th className='num'>
+              Reached
+              <HeaderHint text='The last declared step the run was attributed to — how far down the command file it got.' />
+            </th>
+            <th className='num'>
+              Turns
+              <HeaderHint text="Captured requests in the run, its subagents' included. Not chat messages." />
+            </th>
+            <th className='num'>
+              Tokens
+              <HeaderHint text='Real input plus output. Cache reads are excluded here, so this is what the run actually added.' />
+            </th>
+            <th className='num'>
+              Cost
+              <HeaderHint text="The run's whole dollar cost, cache reads included — priced per model." />
+            </th>
           </tr>
         </thead>
         <tbody>

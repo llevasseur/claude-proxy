@@ -348,6 +348,47 @@ button:focus-visible {
   color: var(--text);
   font-weight: 600;
 }
+/* "How this is computed" — the provenance card beside a per-call composition. */
+.provenance h3 {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 16px 0 6px;
+  text-transform: uppercase;
+}
+.provenance h3:first-child {
+  margin-top: 0;
+}
+.provenance-formula {
+  background: var(--panel-2, rgb(255 255 255 / 4%));
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0;
+  overflow-x: auto;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* Flex rather than a `li + li` margin: a descendant `li` selector here outranks
+   `.codeblock li` further down the sheet, which Biome flags as descending
+   specificity. `gap` spaces the items without selecting them at all. */
+.provenance-list {
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 6px;
+  line-height: 1.6;
+  margin: 0;
+  padding-left: 18px;
+}
+.provenance-skeleton-note {
+  margin: 0;
+}
 .mix-revision {
   border-top: 1px solid var(--line);
   margin-top: 18px;
@@ -970,6 +1011,80 @@ a.pager-btn:hover {
   margin-left: 4px;
   opacity: 0.7;
   font-size: 9px;
+}
+/* Column-header hints. The note is prose, so it resets the header's uppercase mono. */
+.hint {
+  position: relative;
+  display: inline-block;
+  margin-left: 5px;
+}
+.hint-mark {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1;
+  text-transform: none;
+  vertical-align: middle;
+  cursor: help;
+}
+.hint-mark:hover,
+.hint-mark:focus-visible {
+  border-color: var(--signal-dim);
+  color: var(--text);
+}
+.hint-bubble {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 50%;
+  width: max-content;
+  max-width: 260px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: normal;
+  color: var(--text);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -4px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease,
+    visibility 0.12s ease;
+  pointer-events: none;
+}
+.hint-mark:hover + .hint-bubble,
+.hint-mark:focus-visible + .hint-bubble {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+/* A right-aligned column opens its note inward, clear of the card's edge. */
+.table th.num .hint-bubble,
+.table th.bar-col .hint-bubble {
+  left: auto;
+  right: 0;
+  transform: translate(0, -4px);
+}
+.table th.num .hint-mark:hover + .hint-bubble,
+.table th.num .hint-mark:focus-visible + .hint-bubble,
+.table th.bar-col .hint-mark:hover + .hint-bubble,
+.table th.bar-col .hint-mark:focus-visible + .hint-bubble {
+  transform: translate(0, 0);
 }
 .table tbody tr.clickable {
   cursor: pointer;

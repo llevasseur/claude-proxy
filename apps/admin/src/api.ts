@@ -127,6 +127,21 @@ export interface PromptSectionResponse {
   file: string | null;
   meta: { days: number; files: number; parseErrors: number; candidates: number };
 }
+/** One tool of the fixed prefix, opened up to the JSON schema behind its size. */
+export interface ToolSchemaResponse {
+  name: string;
+  /** Pretty-printed wire JSON; null once every captured body has aged out. */
+  schema: string | null;
+  bytes: number;
+  estTokens: number;
+  /** Requests in the window that shipped this tool. */
+  requests: number;
+  /** Share of every tool byte in the window, 0–1. */
+  shareOfToolBytes: number;
+  /** The request the schema was read back from; null when none survives. */
+  file: string | null;
+  meta: { days: number; files: number; parseErrors: number; candidates: number };
+}
 export interface ContextResponse {
   summary: ContextSummary;
   meta: { days: number; files: number; parseErrors: number };
@@ -597,6 +612,8 @@ export const getPromptSection = (hash: string, index: number, days: number) =>
 /** Paired with the `/api/usage/stream` SSE subscription, which pushes the same shape. */
 export const getUsage = () => get<UsageResponse>('/api/usage');
 export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);
+export const getToolSchema = (name: string, days: number) =>
+  get<ToolSchemaResponse>(`/api/tool-schema?name=${encodeURIComponent(name)}&days=${days}`);
 export const getContext = (days: number) => get<ContextResponse>(`/api/context?days=${days}`);
 export const getContextDetail = (file: string) =>
   get<ContextDetailResponse>(`/api/context/detail?file=${encodeURIComponent(file)}`);

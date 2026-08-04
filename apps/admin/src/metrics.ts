@@ -1,5 +1,21 @@
-import { costPerMTok, reportTzAbbr, type UsageDigest } from '@claude-proxy/core';
+import { costPerMTok, type PerCallStats, reportTzAbbr, type UsageDigest } from '@claude-proxy/core';
 import { fmtBytes, fmtCompact, fmtInt, fmtPct, fmtUsd, fmtUsdCompact, fmtUsdPerMTok } from './format';
+
+/**
+ * Where a statistic's number comes from, stated on its own page rather than left
+ * to be inferred from the chart. The per-call means deliberately exclude
+ * traffic, so the exclusion belongs next to the number.
+ */
+export interface MetricProvenance {
+  /** The arithmetic, in the audit sidecar's own field names. */
+  formula: string;
+  /** Sidecar fields the formula reads. */
+  sources: string[];
+  /** Requests deliberately left out of both numerator and denominator. */
+  exclusions?: string[];
+  /** What this number cannot tell you, stated before it is over-read. */
+  caveats?: string[];
+}
 
 /** One Overview statistic, shared by the cards, their mini charts, and `/trends/$metric`. */
 export interface StatMetric {
@@ -27,9 +43,31 @@ export interface StatMetric {
   increaseIsBad?: boolean;
   /** Matching field in `UsageDigest.trend` for the day-over-day delta chip. */
   trendField?: string;
+  /** Shown as "How this is computed" on the trend page, when stated. */
+  provenance?: MetricProvenance;
+  /** The same statistic read off one cohort; its presence adds the composition panel. */
+  perCall?: (s: PerCallStats) => number;
+  /**
+   * Whether `perCall` is a mean *per request*, so `share × value` over the
+   * cohorts reproduces the all-request figure. Calls per session divides by
+   * sessions, which are not partitioned by cohort, so the panel omits the column.
+   */
+  perCallAdditive?: boolean;
 }
 
 const fmtBytesLabel = (n: number) => `${fmtInt(n)} B`;
+const fmtTokensLabel = (n: number) => `${fmtInt(n)} tok`;
+
+/**
+ * The cohort every per-call metric is measured over, worded the same way each
+ * time so the four pages agree about what they left out.
+ */
+const CLASSIFIER_EXCLUSION =
+  "Auto-mode permission-classifier calls. Claude Code sends a separate ~110 KB prompt per agent tool call to score it; that is real spend, but it is not a request you made. Counting it would make this mean track the ratio of classifier to work traffic rather than either one. The trend page's composition panel shows the cohort it was held out of.";
+
+/** How a classifier call is recognised — stated wherever the exclusion is. */
+const CLASSIFIER_DETECTION =
+  'A request is classifier traffic when its system-prompt hash resolves to a stored outline carrying both the "HARD BLOCK" and "SOFT BLOCK" headings. Identification is by outline, not by size: the classifier prompt moves by a kilobyte or two between revisions, and a byte threshold would silently reclassify prompts as they drift across it.';
 
 /**
  * Zone every day-bucketed Overview/Trend value is reported in, e.g. `"EDT"`.
@@ -86,6 +124,111 @@ export const METRICS: StatMetric[] = [
     sub: () => 'blended',
     increaseIsBad: true,
     trendField: 'costPerMTok',
+  },
+  {
+    key: 'cost-per-call',
+    label: 'Cost per call',
+    title: 'Estimated cost per request',
+    description:
+      "What one request costs, averaged over the day's work traffic. A day's spend is roughly this times the number of calls, and this barely moves with conversation depth once compaction caps the prefix — so the call count, not the size of any one prompt, is what the bill tracks.",
+    color: 'var(--accent-2)',
+    format: fmtUsd,
+    value: (d) => d.perCall.work.costUsd,
+    perCall: (s) => s.costUsd,
+    perCallAdditive: true,
+    sub: () => 'excl. classifier',
+    increaseIsBad: true,
+    trendField: 'costPerCall',
+    provenance: {
+      formula: 'sum(estimateCost(tokens, model).total) / count(requests), over work requests only',
+      sources: [
+        'tokens.input, tokens.output, tokens.cacheRead, tokens.cacheCreation',
+        'model (priced by packages/core/src/pricing.ts)',
+        'request.system.hash (to place the request in a cohort)',
+      ],
+      exclusions: [CLASSIFIER_EXCLUSION],
+      caveats: [
+        'Cost is estimated from token counts and a static price table, not read from a bill. It tracks relative movement reliably and absolute dollars approximately.',
+        CLASSIFIER_DETECTION,
+      ],
+    },
+  },
+  {
+    key: 'fixed-prefix',
+    label: 'Fixed prefix',
+    title: 'Fixed prefix tokens per call',
+    description:
+      'Estimated tool-schema plus system-prompt tokens resent on every request, regardless of what was asked. The largest controllable line item in a prompt: it is paid once per call whether or not the turn needed any of it.',
+    color: 'var(--amber)',
+    format: fmtTokensLabel,
+    formatTick: fmtCompact,
+    value: (d) => d.perCall.work.fixedPrefixTokens,
+    perCall: (s) => s.fixedPrefixTokens,
+    perCallAdditive: true,
+    sub: () => 'tools + system',
+    increaseIsBad: true,
+    trendField: 'fixedPrefixTokens',
+    provenance: {
+      formula: 'sum(estTokens(request.toolsBytes + request.systemBytes)) / count(requests), over work requests only',
+      sources: ['request.toolsBytes', 'request.systemBytes', 'tools[].name, tools[].bytes (for the per-tool split)'],
+      exclusions: [CLASSIFIER_EXCLUSION],
+      caveats: [
+        'Estimated from bytes at roughly 4 bytes per token, not billed. The wire returns one input count for the whole prompt, so the tools-and-system share of it cannot be measured directly — only approximated.',
+        'Most of these tokens are served from the prefix cache at a tenth of the input rate, so this is a size, not a price. Read it next to cost per call rather than instead of it.',
+      ],
+    },
+  },
+  {
+    key: 'fresh-input',
+    label: 'Fresh input per call',
+    title: 'Fresh input tokens per call',
+    description:
+      'Uncached input tokens per request — what was genuinely new that turn, after the prefix cache absorbed everything the conversation had already sent. The high-signal half of a prompt.',
+    color: 'var(--accent)',
+    format: fmtTokensLabel,
+    formatTick: fmtCompact,
+    value: (d) => d.perCall.work.freshInputTokens,
+    perCall: (s) => s.freshInputTokens,
+    perCallAdditive: true,
+    sub: () => 'uncached',
+    increaseIsBad: true,
+    trendField: 'freshInputPerCall',
+    provenance: {
+      formula: 'sum(tokens.input) / count(requests), over work requests only',
+      sources: ['tokens.input — the billed non-cached input count, straight from the response usage block'],
+      exclusions: [CLASSIFIER_EXCLUSION],
+      caveats: [
+        'This one is measured, not estimated: it is the count Anthropic billed. A cache miss on an unchanged prefix inflates it without anything new having been sent.',
+        'Large tool results are the usual cause of a spike. The context pages show which ones, message by message.',
+      ],
+    },
+  },
+  {
+    key: 'calls-per-session',
+    label: 'Calls per session',
+    title: 'Requests per session',
+    description:
+      'How many requests a session spends on average. With cost per call roughly flat, this is the other half of the bill — the number of round trips a piece of work takes.',
+    color: 'var(--signal)',
+    format: (n) => `${n.toFixed(1)} calls`,
+    formatTick: (n) => n.toFixed(1),
+    value: (d) => d.perCall.work.callsPerSession,
+    perCall: (s) => s.callsPerSession,
+    sub: () => 'per session id',
+    increaseIsBad: true,
+    trendField: 'callsPerSession',
+    provenance: {
+      formula: 'count(requests) / count(distinct session.sessionId), over work requests only',
+      sources: ['session.sessionId — Claude Code’s own session id, read off the request headers'],
+      exclusions: [
+        CLASSIFIER_EXCLUSION,
+        'Requests carrying no session id. Older sidecars predate the capture, and they are left out of both counts rather than pooled into one anonymous session.',
+      ],
+      caveats: [
+        'A session spanning midnight is counted on both days, so each day sees only its own slice of it. Day-over-day movement is reliable; a single day’s absolute value understates a long-running session.',
+        'A resumed session keeps its id, so resuming reads as a longer session rather than a second one.',
+      ],
+    },
   },
   {
     key: 'cache-hit',
