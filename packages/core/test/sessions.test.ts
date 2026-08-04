@@ -456,6 +456,7 @@ describe('linkAgentSessions', () => {
       agentType: 'Explore',
       returnIndex: 3, // the parent's next non-spawn step
       depth: 1,
+      reported: true, // the parent took that step, so it read the report
       childThreadIds: [],
     });
     expect(links.get('a'.repeat(16))).toMatchObject({
@@ -551,8 +552,53 @@ describe('linkAgentSessions', () => {
       agentType: null,
       returnIndex: null,
       depth: 0,
+      reported: false,
       childThreadIds: [],
     });
+  });
+
+  it('reads a subagent as having reported once its caller took the next step', () => {
+    const links = linkAgentSessions([
+      session('a'.repeat(16), 's1', '2026-07-23T18:00:00.000Z', PARENT_BODY),
+      session('b'.repeat(16), 's1', '2026-07-23T18:00:10.000Z', '## Task: Search\n- Read(file_path=/b.ts)'),
+    ]);
+    expect(links.get('b'.repeat(16))).toMatchObject({ reported: true });
+  });
+
+  it('reads a subagent whose caller never resumed as not having reported', () => {
+    const links = linkAgentSessions([
+      session('a'.repeat(16), 's1', '2026-07-23T18:00:00.000Z', '## Task: Do it\n- Agent(subagent_type=Explore)'),
+      session('b'.repeat(16), 's1', '2026-07-23T18:00:10.000Z', '## Task: Search\n- Read(file_path=/b.ts)'),
+    ]);
+    expect(links.get('b'.repeat(16))).toMatchObject({ returnIndex: null, reported: false });
+  });
+
+  it('reads a spawn that came back as an error as not having reported', () => {
+    const body = [
+      '## Task: Do it', // 0
+      '- Agent(subagent_type=Explore)', // 1
+      '- ✗ The user doesn’t want to proceed with this tool use.', // 2
+      '- decided: Carrying on alone.', // 3
+    ].join('\n');
+    const links = linkAgentSessions([
+      session('a'.repeat(16), 's1', '2026-07-23T18:00:00.000Z', body),
+      session('b'.repeat(16), 's1', '2026-07-23T18:00:10.000Z', '## Task: Search\n- Read(file_path=/b.ts)'),
+    ]);
+    expect(links.get('b'.repeat(16))).toMatchObject({ returnIndex: 2, reported: false });
+  });
+
+  it('reads a spawn the run was cut off at as not having reported', () => {
+    const body = [
+      '## Task: Do it', // 0
+      '- Agent(subagent_type=Explore)', // 1
+      '- interrupted: user',
+      '## Task: Actually, stop', // 2
+    ].join('\n');
+    const links = linkAgentSessions([
+      session('a'.repeat(16), 's1', '2026-07-23T18:00:00.000Z', body),
+      session('b'.repeat(16), 's1', '2026-07-23T18:00:10.000Z', '## Task: Search\n- Read(file_path=/b.ts)'),
+    ]);
+    expect(links.get('b'.repeat(16))).toMatchObject({ reported: false });
   });
 });
 

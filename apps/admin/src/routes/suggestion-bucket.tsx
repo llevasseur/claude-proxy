@@ -1,6 +1,7 @@
 import type {
   BreakdownPattern,
   BucketBreakdownSummary,
+  SessionBucketStats,
   SessionSuggestion,
   SuggestionStatusRow,
 } from '@claude-proxy/core';
@@ -29,6 +30,19 @@ import { fmtBytes, fmtInt, fmtLocalTsShort, fmtPct } from '../format';
 import { useTransitionState } from '../useTransitionState';
 
 const SEV_LABEL = { high: 'High', warn: 'Warn', info: 'Info' } as const;
+
+/**
+ * The unfinished count under the Tasks tile, with the two populations kept apart: a
+ * top-level task closes with an outcome line, a subagent thread by reporting back to
+ * its caller, so one number for both would be counting unlike things.
+ */
+function unfinishedSub(stats: SessionBucketStats): string {
+  const parts = [`${stats.unfinishedTasks} of ${stats.topLevelTasks} unfinished`];
+  if (stats.subagentThreads > 0) {
+    parts.push(`${stats.unfinishedSubagents}/${stats.subagentThreads} subagents adrift`);
+  }
+  return parts.join(' · ');
+}
 
 /**
  * One ten-session window in full: what the transcripts suggest, and the Request
@@ -82,11 +96,7 @@ export function SuggestionBucketPage() {
           <>
             <div className='grid stats'>
               <StatTile label='Sessions' value={fmtInt(data.bucket.stats.sessions)} />
-              <StatTile
-                label='Tasks'
-                value={fmtInt(data.bucket.stats.tasks)}
-                sub={`${data.bucket.stats.unfinishedTasks} unfinished`}
-              />
+              <StatTile label='Tasks' value={fmtInt(data.bucket.stats.tasks)} sub={unfinishedSub(data.bucket.stats)} />
               <StatTile
                 label='Tool calls'
                 value={fmtInt(data.bucket.stats.tools)}
