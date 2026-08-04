@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blendRate, endOfDaySnapshots } from '../src/trends.js';
+import { blendRate, endOfDaySnapshots, lastNonZeroComparison } from '../src/trends.js';
 
 /** A day of traffic, reduced to the two numbers a blended rate reads. */
 interface Day {
@@ -30,6 +30,56 @@ describe('endOfDaySnapshots', () => {
 
   it('comes back empty when today is all that was captured', () => {
     expect(endOfDaySnapshots([day('2026-08-03', 1, 2)], during)).toEqual([]);
+  });
+});
+
+describe('lastNonZeroComparison', () => {
+  it('compares against yesterday when yesterday recorded something', () => {
+    const days = [day('2026-08-01', 10, 10), day('2026-08-02', 20, 10)];
+    const compared = lastNonZeroComparison(days, cost);
+    expect(compared?.baseline?.date).toBe('2026-08-01');
+    expect(compared?.deltaPct).toBeCloseTo(100);
+  });
+
+  it('reaches past the idle days to the last one that recorded the metric', () => {
+    // Yesterday and the day before captured nothing; the baseline is the 1st.
+    const days = [
+      day('2026-08-01', 40, 10),
+      day('2026-08-02', 0, 0),
+      day('2026-08-03', 0, 0),
+      day('2026-08-04', 10, 4),
+    ];
+    const compared = lastNonZeroComparison(days, cost);
+    expect(compared?.baseline?.date).toBe('2026-08-01');
+    expect(compared?.deltaPct).toBeCloseTo(-75);
+  });
+
+  it('picks a baseline per metric, so two fields can land on different days', () => {
+    const days = [day('2026-08-01', 40, 10), day('2026-08-02', 0, 5), day('2026-08-03', 10, 10)];
+    expect(lastNonZeroComparison(days, cost)?.baseline?.date).toBe('2026-08-01');
+    expect(lastNonZeroComparison(days, requests)?.baseline?.date).toBe('2026-08-02');
+  });
+
+  it('has no baseline when every earlier day was empty, rather than dividing by zero', () => {
+    const days = [day('2026-08-01', 0, 0), day('2026-08-02', 10, 4)];
+    const compared = lastNonZeroComparison(days, cost);
+    expect(compared?.closing.date).toBe('2026-08-02');
+    expect(compared?.baseline).toBeNull();
+    expect(compared?.deltaPct).toBeNull();
+  });
+
+  it('has no baseline on a single day, and nothing at all on none', () => {
+    expect(lastNonZeroComparison([day('2026-08-02', 10, 4)], cost)?.baseline).toBeNull();
+    expect(lastNonZeroComparison([], cost)).toBeNull();
+  });
+
+  it('reports the closing day even when it is the zero one', () => {
+    // Today has recorded nothing yet — still a real reading, not a reason to
+    // promote an earlier day into the headline.
+    const days = [day('2026-08-01', 40, 10), day('2026-08-02', 0, 0)];
+    const compared = lastNonZeroComparison(days, cost);
+    expect(compared?.closing.date).toBe('2026-08-02');
+    expect(compared?.deltaPct).toBeCloseTo(-100);
   });
 });
 

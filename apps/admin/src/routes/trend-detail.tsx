@@ -1,4 +1,4 @@
-import { isPartialDay, type UsageDigest } from '@claude-proxy/core';
+import { isPartialDay, lastNonZeroComparison, type UsageDigest } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import { getTrends } from '../api';
@@ -53,7 +53,7 @@ export function TrendDetailPage() {
   const first = digests.at(0);
   const last = digests.at(-1);
   const rangeLabel = !first || !last ? '—' : first.date === last.date ? first.date : `${first.date} → ${last.date}`;
-  const compare = dayOverDay(digests, def);
+  const compare = sinceLastRecorded(digests, def);
   // Which composition panel sits above the chart, at most one: `avg-system-prompt`
   // splits a day by prompt cohort, a per-call mean by what was held out of it.
   const hasMix = def.key === 'avg-system-prompt';
@@ -154,14 +154,16 @@ export function TrendDetailPage() {
   );
 }
 
-/** The latest day against the one before it, ready to render. */
+/** The latest day against the last one that recorded the metric, ready to render. */
 interface DayComparison {
   date: string;
-  priorDate: string;
+  /** The baseline's date, or null when no earlier day recorded the metric. */
+  priorDate: string | null;
   /** Both values already run through the metric's own formatter. */
   value: string;
-  priorValue: string;
-  /** null when the prior day was zero, which no percentage describes. */
+  /** null alongside a null `priorDate` — there is no earlier figure to state. */
+  priorValue: string | null;
+  /** null when nothing earlier recorded the metric, which no percentage describes. */
   deltaPct: number | null;
   tone: 'up' | 'down' | 'flat';
   /** `delta` modifier — whether this direction reads as a win or a regression. */
@@ -171,28 +173,26 @@ interface DayComparison {
 }
 
 /**
- * The last two days in the window, stated rather than left to be read off the
- * chart. Days come from the digests, not the clock — a gap in captured traffic
- * means the two most recent need not be today and yesterday, so both dates show.
+ * The window's latest day against the last date that recorded this metric,
+ * stated rather than left to be read off the chart. The baseline skips days that
+ * recorded nothing, so it is often neither yesterday nor the previous row of the
+ * table — which is why both dates are named.
  */
-function dayOverDay(digests: UsageDigest[], def: StatMetric): DayComparison | null {
-  const today = digests.at(-1);
-  const prior = digests.at(-2);
-  if (!today || !prior) return null;
+function sinceLastRecorded(digests: UsageDigest[], def: StatMetric): DayComparison | null {
+  const compared = digests.length > 1 ? lastNonZeroComparison(digests, def.value) : null;
+  if (!compared) return null;
 
-  const now = def.value(today);
-  const was = def.value(prior);
-  const deltaPct = was > 0 ? ((now - was) / was) * 100 : null;
+  const { closing, baseline, deltaPct } = compared;
   const tone = deltaPct === null ? 'flat' : deltaTone(deltaPct);
   return {
-    date: today.date,
-    priorDate: prior.date,
-    value: def.format(now),
-    priorValue: def.format(was),
+    date: closing.date,
+    priorDate: baseline?.date ?? null,
+    value: def.format(def.value(closing)),
+    priorValue: baseline ? def.format(def.value(baseline)) : null,
     deltaPct,
     tone,
     toneClass: tone === 'flat' ? 'flat' : (tone === 'up') === (def.increaseIsBad ?? true) ? 'bad' : 'good',
-    partial: isPartialDay(today.date),
+    partial: isPartialDay(closing.date),
   };
 }
 
@@ -204,7 +204,7 @@ function DayOverDay({ compare }: { compare: DayComparison }) {
       </span>
       {compare.partial && <span className='muted'> (so far today)</span>}{' '}
       {compare.deltaPct === null ? (
-        <span className='muted'>— nothing recorded on {compare.priorDate} to compare against.</span>
+        <span className='muted'>— no earlier day in this window recorded anything to compare against.</span>
       ) : compare.tone === 'flat' ? (
         <span className='muted'>
           — unchanged from {compare.priorValue} on {compare.priorDate}.

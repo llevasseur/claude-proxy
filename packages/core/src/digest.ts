@@ -1,6 +1,7 @@
 import { estTokens } from './context.js';
 import { addCost, type CostBreakdown, estimateCost, ZERO_COST } from './pricing.js';
 import { reportDay, reportHour } from './time.js';
+import { lastNonZeroComparison } from './trends.js';
 import { type AuditSidecar, isAuditSidecar } from './types.js';
 
 export interface DigestTokens {
@@ -26,6 +27,12 @@ export interface TrendEntry {
   today: number;
   prior: number;
   deltaPct: number;
+  /**
+   * The day `prior` was read from — the last one that recorded this field, not
+   * necessarily yesterday. Absent when no earlier day recorded it, and on
+   * digests archived before the baseline was tracked.
+   */
+  priorDate?: string;
 }
 
 /**
@@ -100,8 +107,14 @@ export interface UsageDigest {
 export interface ComputeDigestOptions {
   /** Label for the digest (e.g. "2026-07-15"). */
   date: string;
-  /** Prior day's digest to compute a day-over-day trend against. */
+  /** Prior day's digest to compute a trend against — shorthand for a one-day `priorDigests`. */
   priorDigest?: UsageDigest | null;
+  /**
+   * Every day before this one, oldest→newest, so each field is compared against
+   * the last date that recorded it. Takes precedence over `priorDigest`; include
+   * the idle days, since which of them counts as empty is decided per field.
+   */
+  priorDigests?: readonly UsageDigest[];
   /** How many tools to include in `topTools`. Default 12. */
   topN?: number;
   /**
@@ -296,22 +309,32 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
     },
   };
 
-  if (opts.priorDigest) digest.trend = buildTrend(digest, opts.priorDigest);
+  const history = opts.priorDigests ?? (opts.priorDigest ? [opts.priorDigest] : []);
+  if (history.length > 0) digest.trend = buildTrend(digest, history);
   return digest;
 }
 
-function buildTrend(today: UsageDigest, prior: UsageDigest): TrendEntry[] {
+function buildTrend(today: UsageDigest, history: readonly UsageDigest[]): TrendEntry[] {
+  const series = [...history, today];
   return TREND_FIELDS.map(({ field, pick }) => {
-    const t = pick(today);
-    const p = pick(prior);
-    return { field, today: t, prior: p, deltaPct: p > 0 ? ((t - p) / p) * 100 : 0 };
+    // `series` ends with `today`, so the comparison is never null.
+    const { baseline, deltaPct } = lastNonZeroComparison(series, pick)!;
+    return {
+      field,
+      today: pick(today),
+      prior: baseline ? pick(baseline) : 0,
+      // Zero, not null, when nothing recorded the field — the delta chips read an
+      // absent number as "no trend yet" and a zero one as "flat".
+      deltaPct: deltaPct ?? 0,
+      priorDate: baseline?.date,
+    };
   });
 }
 
 /**
  * Split sidecars into one digest per calendar day in the reporting zone (see
- * `REPORT_TZ`), oldest→newest, with each day's `trend` computed against the
- * previous day. Handy for the multi-day trend view.
+ * `REPORT_TZ`), oldest→newest, with each day's `trend` computed against the last
+ * earlier day that recorded each field. Handy for the multi-day trend view.
  */
 export function digestsByDay(
   sidecars: readonly unknown[],
@@ -328,11 +351,8 @@ export function digestsByDay(
 
   const days = [...byDay.keys()].sort();
   const digests: UsageDigest[] = [];
-  let prior: UsageDigest | null = null;
   for (const day of days) {
-    const d = computeDigest(byDay.get(day)!, { ...opts, date: day, priorDigest: prior });
-    digests.push(d);
-    prior = d;
+    digests.push(computeDigest(byDay.get(day)!, { ...opts, date: day, priorDigests: digests }));
   }
   return digests;
 }

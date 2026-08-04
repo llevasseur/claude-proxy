@@ -13,6 +13,34 @@ export function endOfDaySnapshots<T extends DayLabelled>(days: readonly T[], now
   return days.filter((d) => !isPartialDay(d.date, now));
 }
 
+/** The window's closing day set against the last date that recorded the statistic. */
+export interface ClosingComparison<T> {
+  /** The newest day in the window — the value being reported. */
+  closing: T;
+  /** The latest earlier day whose value was non-zero, or null when none was. */
+  baseline: T | null;
+  /** Percent change from `baseline` to `closing`; null without a baseline. */
+  deltaPct: number | null;
+}
+
+/**
+ * The closing day against the last date that actually recorded this statistic,
+ * skipping back over any that read zero. Which date that is depends on the
+ * statistic, so the scan takes the value accessor rather than a whole-day
+ * emptiness test.
+ */
+export function lastNonZeroComparison<T>(days: readonly T[], value: (d: T) => number): ClosingComparison<T> | null {
+  const closing = days.at(-1);
+  if (!closing) return null;
+  const now = value(closing);
+  for (let i = days.length - 2; i >= 0; i -= 1) {
+    const baseline = days[i]!;
+    const was = value(baseline);
+    if (was > 0) return { closing, baseline, deltaPct: ((now - was) / was) * 100 };
+  }
+  return { closing, baseline: null, deltaPct: null };
+}
+
 /** One statistic blended across a window: a ratio of two totals, not a mean of daily values. */
 export interface BlendedRate {
   /** `numerator / denominator`. */

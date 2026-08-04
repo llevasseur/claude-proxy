@@ -380,7 +380,7 @@ response. See
 | Route | Returns |
 |---|---|
 | `GET /api/health` | liveness, resolved `LOG_DIR`, sidecar count |
-| `GET /api/summary?date=YYYY-MM-DD` | one day's digest + advice (+ trend vs prior day) |
+| `GET /api/summary?date=YYYY-MM-DD` | one day's digest + advice (+ trend vs the last day that recorded each field, with the date it came from) |
 | `GET /api/trends?days=N` | per-day digests for the last N days |
 | `GET /api/tools?date=YYYY-MM-DD` | the ranked tool-bloat table for a day |
 | `GET /api/withheld?days=N` | the device's withheld-tool policy (`~/.claude` deny rules) + a check that each is absent from recent traffic |

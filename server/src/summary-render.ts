@@ -12,8 +12,16 @@ function usd(n: number): string {
 
 function trendLine(d: UsageDigest): string {
   if (!d.trend) return '';
-  const parts = d.trend.map((t) => `${t.field} ${t.deltaPct >= 0 ? '+' : ''}${t.deltaPct.toFixed(0)}%`);
-  return `  vs prior day: ${parts.join(', ')}`;
+  // Two fields need not share a baseline: name it in the header when they agree,
+  // per figure when they don't.
+  const dates = new Set(d.trend.flatMap((t) => (t.priorDate ? [t.priorDate] : [])));
+  const mixed = dates.size > 1;
+  const parts = d.trend.map((t) => {
+    const pct = `${t.deltaPct >= 0 ? '+' : ''}${t.deltaPct.toFixed(0)}%`;
+    return mixed && t.priorDate ? `${t.field} ${pct} (vs ${t.priorDate})` : `${t.field} ${pct}`;
+  });
+  const against = dates.size === 1 ? [...dates][0] : 'last recorded day';
+  return `  vs ${against}: ${parts.join(', ')}`;
 }
 
 /** One day's digest and advice as a readable text block. */

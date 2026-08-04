@@ -27,7 +27,8 @@ Fifteen stations in the side rail, several with drill-down subpages beneath them
 
 - **Overview** (`/`) — today's real input / output tokens, estimated cost, cache-hit
   ratio, request count, busiest hour, tool overhead, and average system prompt, each
-  with a day-over-day delta and a 7/14/30-day sparkline, above the plan's session and
+  with a delta against the last day that recorded it and a 7/14/30-day sparkline,
+  above the plan's session and
   weekly [usage limit meters](usage-limit-meters.md).
 - **Trends** (`/trends`) — per-day tokens and cost over a 7/14/30-day window (bar
   charts + table), a tokens-per-request line chart, and a per-metric drill-down

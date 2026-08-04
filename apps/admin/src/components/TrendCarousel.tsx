@@ -1,4 +1,4 @@
-import { blendRate, type UsageDigest } from '@claude-proxy/core';
+import { blendRate, lastNonZeroComparison, type UsageDigest } from '@claude-proxy/core';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { deltaLabel, deltaTone } from '../format';
@@ -125,15 +125,11 @@ function TrendSlide({
 }
 
 /**
- * The window's closing day against the day before it, in percent. `null` under
- * two days, or when the earlier one was zero.
+ * The window's closing day against the last date that recorded this metric, in
+ * percent. `null` when no earlier day in the window recorded it at all.
  */
 function closingDelta(digests: readonly UsageDigest[], def: StatMetric): number | null {
-  const closing = digests.at(-1);
-  const prior = digests.at(-2);
-  if (!closing || !prior) return null;
-  const was = def.value(prior);
-  return was > 0 ? ((def.value(closing) - was) / was) * 100 : null;
+  return lastNonZeroComparison(digests, def.value)?.deltaPct ?? null;
 }
 
 /**
