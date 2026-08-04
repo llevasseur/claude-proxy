@@ -26,6 +26,20 @@ const usdTickNf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 export const fmtUsdCompact = (n: number): string =>
   Math.abs(n) >= 1000 ? `$${fmtCompact(n)}` : `$${usdTickNf.format(n)}`;
 
+/**
+ * A wall-clock span, at tick width: `45s`, `12m`, `1h 20m`.
+ *
+ * Seconds are kept below 90 rather than rounded straight to minutes, because a command
+ * run genuinely can take twenty seconds and `0m` reads as a measurement failure.
+ */
+export function fmtDuration(ms: number): string {
+  const secs = Math.round(ms / 1000);
+  if (secs < 90) return `${secs}s`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
 export function fmtBytes(n: number): string {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
   if (n >= 1e3) return `${(n / 1e3).toFixed(1)} KB`;

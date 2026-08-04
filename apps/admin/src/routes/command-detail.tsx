@@ -17,9 +17,10 @@ import { type CommandResponse, type CommandRunListItem, getCommand } from '../ap
 import { HeaderHint } from '../components/HeaderHint';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
+import { type Series, SeriesLineChart } from '../components/SeriesLineChart';
 import { SkeletonChartCard, type SkeletonColumn, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
-import { fmtCompact, fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
+import { fmtCompact, fmtDuration, fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
 import { useLiveQuery } from '../useLiveQuery';
 
 /** One colour per outcome, shared by the scatter, its legend and the run list. */
@@ -127,6 +128,8 @@ function CommandDetailSkeleton() {
     <>
       <SkeletonStats count={4} />
       <SkeletonChartCard title='Runs over time' height={SCATTER_HEIGHT} bars={18} />
+      <SkeletonChartCard title='Steps per run' height={TREND_HEIGHT} bars={18} legend={WORK_SERIES.length} />
+      <SkeletonChartCard title='Time per run' height={TREND_HEIGHT} bars={18} legend={TIME_SERIES.length} />
       <SkeletonTableCard title='Tokens by step' columns={STEP_COLUMNS} rows={6} />
       <SkeletonTableCard title='Patterns' columns={PATTERN_COLUMNS} rows={4} />
       <SkeletonTableCard title='Runs' columns={RUN_COLUMNS} rows={8} />
@@ -204,6 +207,7 @@ function CommandBody({
       )}
 
       <RunScatter data={data} command={command} />
+      <ShapeTrends data={data} />
       <StepBar steps={data.steps} reach={data.stepReach} run={hoverRun} totalRuns={data.meta.filteredRuns} />
       <PatternTable data={data} />
       <RunList runs={runs} command={command} onHover={setHoverRun} />
@@ -366,6 +370,126 @@ function ScatterTooltip({ active, payload }: { active?: boolean; payload?: { pay
           <span className='charttip-value'>{p.flags.map(fmtFlag).join(' ')}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The three readings of "how many steps" a run takes, which are not the same number and
+ * are interesting precisely where they diverge: a run doing plenty of work that never
+ * reaches the last declared step is the shape worth catching.
+ */
+const WORK_SERIES: Series[] = [
+  { dataKey: 'nodes', name: 'agent steps', color: 'var(--signal)' },
+  { dataKey: 'toolCalls', name: 'tool calls', color: 'var(--violet)' },
+  { dataKey: 'stepsReached', name: 'declared steps reached', color: 'var(--good)' },
+];
+
+const TIME_SERIES: Series[] = [{ dataKey: 'endToEndMs', name: 'end to end', color: 'var(--amber)' }];
+
+/** Both trend charts share this height, and the skeleton reserves it. */
+const TREND_HEIGHT = 220;
+
+/**
+ * How much work each run did, and how long it took, run by run.
+ *
+ * **Two charts rather than two axes.** Steps are counts in the low tens while a duration
+ * is milliseconds in the millions, so plotting them together flattens the counts onto the
+ * axis. They share one x — a point per run, oldest left, the same order the scatter above
+ * plots — so reading a spike in one against the other is a matter of looking up or down.
+ */
+function ShapeTrends({ data }: { data: CommandResponse }) {
+  const shape = data.shape;
+
+  // One point is not a trend, and a chart of it says less than the run list already does.
+  if (shape.length < 2) {
+    return (
+      <div className='card empty'>
+        A trend needs at least two runs with a recorded start; this selection has {shape.length}. The runs are still
+        listed below.
+      </div>
+    );
+  }
+
+  const rows = shape.map((s) => ({
+    at: s.started ? fmtLocalTsShort(s.started) : '—',
+    nodes: s.nodes,
+    toolCalls: s.toolCalls,
+    stepsReached: s.stepsReached,
+    endToEndMs: s.endToEndMs,
+  }));
+
+  // The newest run's snapshot, which is the catalogue the recent points are out of.
+  const declared = shape[shape.length - 1]!.stepsDeclared;
+  const fellBack = shape.length - data.meta.wallMeasuredRuns;
+
+  return (
+    <>
+      <div className='card'>
+        <div className='card-head'>
+          <h2>Steps per run</h2>
+          <span className='muted'>oldest first · {declared === 0 ? 'no steps declared' : `${declared} declared`}</span>
+        </div>
+        <SeriesLineChart
+          data={rows}
+          series={WORK_SERIES}
+          xKey='at'
+          format={fmtInt}
+          formatTick={fmtCompact}
+          height={TREND_HEIGHT}
+        />
+        <Legend series={WORK_SERIES} />
+        <div className='muted' style={{ marginTop: 8 }}>
+          <strong>Agent steps</strong> are transcript nodes — every decision, tool call and outcome the run and its
+          subagents produced. <strong>Declared steps reached</strong> counts the{' '}
+          <span className='rule-name'>## Step N</span> headings attribution placed something against, out of the{' '}
+          {declared} the command file declared when each run happened, so a step added later is never counted against an
+          older run.
+        </div>
+      </div>
+
+      <div className='card'>
+        <div className='card-head'>
+          <h2>Time per run</h2>
+          <span className='muted'>wall clock, end to end</span>
+        </div>
+        <SeriesLineChart
+          data={rows}
+          series={TIME_SERIES}
+          xKey='at'
+          format={fmtDuration}
+          formatTick={fmtDuration}
+          height={TREND_HEIGHT}
+        />
+        <Legend series={TIME_SERIES} />
+        <div className='muted' style={{ marginTop: 8 }}>
+          A top-level run is measured from its session opening to the last write to its transcript, which is longer than
+          the span between its requests — that span stops at the last request rather than at the answer to it. A nested
+          run has no session of its own, so it is measured across its requests.
+          {fellBack > 0 && (
+            <>
+              {' '}
+              {fellBack} of these {shape.length} runs {fellBack === 1 ? 'was' : 'were'} recorded before the wider
+              measurement existed and {fellBack === 1 ? 'is' : 'are'} plotted on the request span alone; there is no
+              backfill.
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** The swatch strip under a line chart — the page's own convention. */
+function Legend({ series }: { series: Series[] }) {
+  return (
+    <div className='chartlegend'>
+      {series.map((s) => (
+        <span className='chartlegend-item' key={s.dataKey}>
+          <span className='chartlegend-swatch' style={{ background: s.color }} />
+          {s.name}
+        </span>
+      ))}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import type {
   CommandPatternId,
   CommandRun,
   CommandRunOutcome,
+  CommandRunShape,
   CommandRunTotals,
   CommandStep,
   CommandSummary,
@@ -430,7 +431,9 @@ export interface CommandResponse {
   stepReach: StepReach[];
   patterns: PatternFrequency[];
   hashMarkers: CommandHashMarker[];
-  meta: { totalRuns: number; filteredRuns: number };
+  /** Per-run work and duration, oldest first — the trend, where `runs` is newest first. */
+  shape: CommandRunShape[];
+  meta: { totalRuns: number; filteredRuns: number; wallMeasuredRuns: number };
 }
 export interface CommandRunResponse {
   run: CommandRun;
