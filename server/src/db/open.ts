@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -402,6 +402,23 @@ CREATE INDEX IF NOT EXISTS request_system_hash_idx ON request(req_system_hash);
 DELETE FROM ingest_watermark;
 `;
 
+/**
+ * `totals_wall_ms` — a run's end-to-end wall clock, beside the request span
+ * `totals_duration_ms` already holds. See `CommandRunTotals.wallMs` for why the two
+ * differ; both are queryable because "how long did it take" and "how long was it
+ * talking to the model" are different questions.
+ *
+ * Dropping the store's watermark is what makes the column fill: the tables are only
+ * rebuilt when the file looks changed, and migrating the schema does not change the
+ * file. That only recovers the runs the store still holds — the field itself is
+ * computed at capture time, so records written before it carry 0 forever.
+ */
+const SCHEMA_V8 = `
+ALTER TABLE command_run ADD COLUMN totals_wall_ms INTEGER NOT NULL DEFAULT 0;
+
+DELETE FROM file_watermark WHERE path = 'commands/runs.jsonl';
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -515,6 +532,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 5) db.exec(CONCEPT_TABLES);
   if (from < 6) db.exec(CONCEPT_DETAIL);
   if (from < 7) db.exec(SCHEMA_V7);
+  if (from < 8) db.exec(SCHEMA_V8);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

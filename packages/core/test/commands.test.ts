@@ -3,8 +3,10 @@ import {
   attributeSteps,
   COMMAND_RUN_SCHEMA,
   type CommandRun,
+  type CommandRunStepStats,
   type CommandStep,
   classifyOutcome,
+  commandRunShapes,
   contentHash,
   countWaste,
   detectPatterns,
@@ -23,6 +25,7 @@ import {
   summarizeCommands,
   summarizeSteps,
   ZERO_TOKENS,
+  ZERO_WASTE,
 } from '../src/commands.js';
 import type { SessionNode } from '../src/sessions.js';
 
@@ -617,7 +620,14 @@ function run(over: Partial<CommandRun> = {}): CommandRun {
     started: '2026-08-01T10:00:00.000Z',
     ended: '2026-08-01T11:00:00.000Z',
     threadIds: ['0000000000000001'],
-    totals: { tokens: { ...ZERO_TOKENS, realInput: 100 }, cost: 1, turns: 2, toolCalls: 3, durationMs: 1000 },
+    totals: {
+      tokens: { ...ZERO_TOKENS, realInput: 100 },
+      cost: 1,
+      turns: 2,
+      toolCalls: 3,
+      durationMs: 1000,
+      wallMs: 5000,
+    },
     turns: [],
     stepStats: [],
     outcome: 'completed',
@@ -645,11 +655,91 @@ describe('schema tolerance', () => {
 
   it('reads totals off a record that predates the block, rather than throwing', () => {
     const old = { schema: 1, threadId: 'a', command: 'task' } as unknown as CommandRun;
-    expect(runTotals(old)).toEqual({ tokens: ZERO_TOKENS, cost: 0, turns: 0, toolCalls: 0, durationMs: 0 });
+    expect(runTotals(old)).toEqual({
+      tokens: ZERO_TOKENS,
+      cost: 0,
+      turns: 0,
+      toolCalls: 0,
+      durationMs: 0,
+      wallMs: 0,
+    });
     expect(() => summarizeCommands([], [old])).not.toThrow();
     expect(() => patternFrequency([old])).not.toThrow();
     expect(() => stepReach([{ id: '1', order: 1, title: 'Go' }], [old])).not.toThrow();
     expect(() => filterRunsByFlags([old], ['sub'])).not.toThrow();
+    expect(() => commandRunShapes([old])).not.toThrow();
+  });
+});
+
+describe('commandRunShapes', () => {
+  const steps = [
+    { id: '1', order: 1, title: 'One' },
+    { id: '2', order: 2, title: 'Two' },
+    { id: '3', order: 3, title: 'Three' },
+  ];
+
+  /** A step row as `summarizeSteps` writes it, trimmed to what the shape reads. */
+  const stat = (step: string | null, reached: boolean) =>
+    ({
+      step,
+      title: '',
+      reached,
+      confidence: null,
+      tokens: ZERO_TOKENS,
+      cost: 0,
+      turns: 0,
+      nodes: 0,
+      toolCalls: 0,
+      waste: { ...ZERO_WASTE },
+    }) as CommandRunStepStats;
+
+  it('counts declared steps reached, and never the unattributed bucket', () => {
+    const shapes = commandRunShapes([
+      run({
+        steps,
+        // The unattributed row is reached in every real run; it is not a step.
+        stepStats: [stat('1', true), stat('2', true), stat('3', false), stat(null, true)],
+      }),
+    ]);
+    expect(shapes[0]).toMatchObject({ stepsReached: 2, stepsDeclared: 3 });
+  });
+
+  it('counts against the run’s own snapshot, so a step added later is not a regression', () => {
+    // The run declared one step and reached it. A step the command file grew afterwards
+    // was never available to reach, and must not read as the run falling short.
+    const shapes = commandRunShapes([run({ steps: [steps[0]!], stepStats: [stat('1', true), stat('9', true)] })]);
+    expect(shapes[0]).toMatchObject({ stepsReached: 1, stepsDeclared: 1 });
+  });
+
+  it('prefers the end-to-end bracket and says so', () => {
+    const shapes = commandRunShapes([run()]);
+    expect(shapes[0]).toMatchObject({ endToEndMs: 5000, wallMeasured: true });
+  });
+
+  it('falls back to the request span for a record written before wallMs, and flags it', () => {
+    const old = run();
+    // Deleted rather than set to `undefined`: this reproduces a record whose writer never
+    // knew the key, which is what an older store line actually looks like.
+    delete (old.totals as { wallMs?: number }).wallMs;
+    const shapes = commandRunShapes([old]);
+    expect(shapes[0]).toMatchObject({ endToEndMs: 1000, wallMeasured: false });
+  });
+
+  it('orders oldest first, opposite the run list', () => {
+    const shapes = commandRunShapes([
+      run({ runId: 'b', started: '2026-08-02T10:00:00.000Z' }),
+      run({ runId: 'a', started: '2026-08-01T10:00:00.000Z' }),
+    ]);
+    expect(shapes.map((s) => s.runId)).toEqual(['a', 'b']);
+  });
+
+  it('drops a run with no start, which has nowhere to sit on the axis', () => {
+    expect(commandRunShapes([run({ started: null })])).toEqual([]);
+  });
+
+  it('reads work off the record rather than recomputing it', () => {
+    const shapes = commandRunShapes([run({ meta: { turnsUnmapped: 0, nodes: 42, attributed: 40, anchored: 12 } })]);
+    expect(shapes[0]).toMatchObject({ nodes: 42, toolCalls: 3, turns: 2 });
   });
 });
 

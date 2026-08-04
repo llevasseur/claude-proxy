@@ -567,4 +567,44 @@ describe('nested runs', () => {
     expect(clean.totals.tokens.realInput).toBeGreaterThan(0);
     expect(clean.prompt).toBe('');
   });
+
+  it('measures a child across its requests, having no session bracket of its own', async () => {
+    await writeSession(THREAD_ID, SESSION_ID, ROOT, '- Skill(skill=clean)\n- done: ok');
+    await writeCapture({ iso: '2026-07-15T14:02:00.000Z', sessionId: SESSION_ID, root: ROOT, nodes: 3 });
+    await writeCapture({ iso: '2026-07-15T14:05:00.000Z', sessionId: SESSION_ID, root: ROOT, nodes: 4 });
+    await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-15T18:00:00.000Z'));
+
+    const clean = (await readCommandRuns(logDir)).find((r) => r.command === 'clean')!;
+    // The host's transcript brackets the host, not this slice of it, so widening would
+    // charge the child with time its parent spent before and after it.
+    expect(clean.totals.wallMs).toBe(clean.totals.durationMs);
+    expect(clean.totals.durationMs).toBe(3 * 60_000);
+  });
+});
+
+describe('end-to-end duration', () => {
+  it('brackets a top-level run by its transcript, which is wider than its request span', async () => {
+    await writeSession(THREAD_ID, SESSION_ID, ROOT, '- Bash(command=my-command-tools verify)\n- done: ok');
+    await writeCapture({ iso: '2026-07-15T14:01:00.000Z', sessionId: SESSION_ID, root: ROOT, nodes: 2 });
+    await writeCapture({ iso: '2026-07-15T14:04:00.000Z', sessionId: SESSION_ID, root: ROOT, nodes: 3 });
+    await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-15T18:00:00.000Z'));
+
+    const [run] = await readCommandRuns(logDir);
+    // The transcript opens a minute before the first request and is written to after the
+    // last, so the wider reading can only ever contain the narrower one.
+    expect(run!.totals.durationMs).toBe(3 * 60_000);
+    expect(run!.totals.wallMs).toBeGreaterThan(run!.totals.durationMs);
+  });
+
+  it('gives a single-turn run a duration, where the request span reports none', async () => {
+    await writeSession(THREAD_ID, SESSION_ID, ROOT, '- done: ok');
+    await writeCapture({ iso: '2026-07-15T14:01:00.000Z', sessionId: SESSION_ID, root: ROOT, nodes: 2 });
+    await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-15T18:00:00.000Z'));
+
+    const [run] = await readCommandRuns(logDir);
+    // One request is its own first and last, so the span between them is zero — which is
+    // the whole reason the record carries a second reading.
+    expect(run!.totals.durationMs).toBe(0);
+    expect(run!.totals.wallMs).toBeGreaterThan(0);
+  });
 });
