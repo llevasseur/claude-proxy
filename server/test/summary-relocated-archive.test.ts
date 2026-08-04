@@ -8,15 +8,10 @@ import { readArchivedDay } from '../src/logs.js';
 
 /**
  * A finished day leaves the log volume in two stages, and the summary has to
- * follow it through both. The raw triples are relocated to
- * `<archiveDir>/<date>/raw/` — so `<logDir>/archive/<date>/` is empty on a
- * deployment that relocates — and once retention prunes those, only
- * `<archiveDir>/<date>/digest.json` is left, kept indefinitely.
- *
- * Read neither and every prior day digests to `requestCount: 0`, the baseline
- * walk never finds a day that recorded anything, and every stat card reports no
- * earlier day while `/trends` — which already had the digest fallback — names
- * one.
+ * follow it through both: the raw triples are relocated to
+ * `<archiveDir>/<date>/raw/`, and once retention prunes those, only
+ * `<archiveDir>/<date>/digest.json` is left. Read neither and every prior day
+ * digests to `requestCount: 0`, so no stat card ever finds a baseline.
  */
 
 /** 11:00 EDT: the reporting day is the same as the UTC day. */
@@ -136,7 +131,6 @@ describe('the summary baseline across a relocated archive', () => {
     const requests = trendFor(digest.trend!, 'requestCount');
     expect(requests.priorDate).toBe('2026-08-03');
     expect(requests.prior).toBe(1);
-    // Raw sidecars carry the whole digest, so a per-call field has a baseline too.
     expect(trendFor(digest.trend!, 'realInput').prior).toBe(TOKENS.realInput);
   });
 

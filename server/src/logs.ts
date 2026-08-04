@@ -201,10 +201,8 @@ export function rawArchiveDayDir(logDir: string, date: string): string {
 /**
  * `<archiveDir>/<YYYY-MM-DD>/raw/` — where a finished day's raw triples end up
  * once they are relocated off the log volume, alongside that day's `digest.json`.
- *
- * The relocation is external to this repo (a scheduled job on the device), so
- * `<logDir>/archive/<date>/` is empty on a deployment that runs it and the raw
- * triples are only reachable here.
+ * The relocation is external to this repo, so `<logDir>/archive/<date>/` is empty
+ * on a deployment that runs it.
  */
 export function relocatedArchiveDayDir(archiveDir: string, date: string): string {
   return path.join(archiveDir, date, 'raw');
@@ -213,8 +211,7 @@ export function relocatedArchiveDayDir(archiveDir: string, date: string): string
 export interface ArchivedDayOptions extends Omit<ReadOptions, 'date' | 'sinceDays'> {
   /**
    * Root of the relocated archive (see {@link relocatedArchiveDayDir}), read as a
-   * fallback for a day that is no longer under `<logDir>/archive/`. Omitted means
-   * "only look on the log volume".
+   * fallback for a day no longer under `<logDir>/archive/`.
    */
   archiveDir?: string;
 }
@@ -228,9 +225,8 @@ export interface ArchivedDayOptions extends Omit<ReadOptions, 'date' | 'sinceDay
  * `date` and `date + 1`; both are read and `readSidecars` keeps only the
  * sidecars that land on `date`.
  *
- * The two roots are tried per folder rather than merged, because relocation
- * *moves* the triples: a folder present in both places would double every request
- * in it, so the relocated copy is read only where the log volume has none.
+ * The two roots are tried per folder rather than merged: relocation *moves* the
+ * triples, so a folder present in both would double every request in it.
  */
 export async function readArchivedDay(
   logDir: string,

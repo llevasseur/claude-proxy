@@ -52,8 +52,7 @@ export interface SidecarSource {
   readSidecars(logDir: string, opts?: ReadOptions, now?: Date): Promise<LoadResult>;
   /**
    * `opts.archiveDir` names the relocated archive root. Only the file backing
-   * consults it — the substrate answers from what was ingested, wherever the
-   * triples have since been moved to.
+   * consults it — the substrate answers from what was ingested.
    */
   readArchivedDay(logDir: string, date: string, opts?: ArchivedDayOptions): Promise<LoadResult>;
 
@@ -650,8 +649,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
     },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
     readArchivedDay: async (logDir, date, opts = {}) => {
-      // `archiveDir` is a file-backing concern: the substrate holds what was
-      // ingested, under the `source_dir` it was ingested from.
+      // `archiveDir` is a file-backing concern; the substrate reads by `source_dir`.
       const { archiveDir: _archiveDir, ...readOpts } = opts;
       const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0, bodiesEvicted: 0 };
       // Archive folders are named for the UTC day the summary job moved, so one

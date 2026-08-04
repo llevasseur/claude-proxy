@@ -165,7 +165,7 @@ export interface SummaryResponse {
  * the present sits in both places and an older one is archived outright —
  * reading only the live side reports a fraction of the day, then nothing.
  *
- * `archiveDir` extends the archived half to a day whose raw triples have been
+ * `archiveDir` extends the archived half to a day whose raw triples were
  * relocated off the log volume; without it such a day reads as empty.
  */
 async function daySidecars(
@@ -199,11 +199,9 @@ const SUMMARY_BASELINE_LOOKBACK_DAYS = 14;
  * walk stops at the first day that captured anything; the idle days it passed are
  * returned too, since whether one is empty is decided per field.
  *
- * A walked day with no raw sidecars left falls back to its finalized digest, the
- * same order {@link buildTrends} resolves an archived day in. Raw triples are
- * pruned on a retention clock while a finalized digest is kept indefinitely, so
- * without that fallback the baseline silently expires along with the raw files
- * and every field reports no earlier day.
+ * A walked day with no raw sidecars falls back to its finalized digest, the same
+ * order {@link buildTrends} resolves an archived day in. Raw triples are pruned
+ * on a retention clock while a finalized digest is kept indefinitely.
  */
 async function baselineDigests(
   logDir: string,
