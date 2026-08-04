@@ -491,9 +491,9 @@ export interface SessionAgentLink {
   /** 0 for a top-level session, 1 for its subagents, 2 for theirs, and so on. */
   depth: number;
   /**
-   * True when the caller recorded this subagent's result flowing back — the report
-   * that *is* a subagent's outcome. Always false for a top-level session, which
-   * reports to nobody and closes with a `done:` line of its own instead.
+   * True when the caller recorded this subagent's result flowing back — the report that
+   * *is* a subagent's outcome. Always false for a top-level session, which closes with a
+   * `done:` line of its own instead.
    */
   reported: boolean;
   /** Subagents spawned by this transcript, in spawn order. */
@@ -519,16 +519,12 @@ function returnIndexAfter(nodes: SessionNode[], spawnIndex: number): number | nu
 }
 
 /**
- * Whether a spawn's result came back to its caller.
+ * Whether a spawn's result came back to its caller: the parent resumed at `returnIndex`,
+ * and that step is not the spawn coming back as a failure or cut short at it.
  *
- * A subagent's own transcript cannot say. Its report is the reply to its last
- * request, and no later request in that thread ever carries that reply back over the
- * wire — so a subagent transcript always ends on the last tool call it made, however
- * cleanly it finished. The caller is the only witness: it resumed at `returnIndex`,
- * and that step is not the spawn coming back as a failure.
- *
- * A spawn the run was cut off *at* never delivered either — whatever the subagent
- * had done, nobody read it.
+ * The subagent's own transcript cannot say. Its report is the reply to its last request,
+ * and no later request in that thread carries that reply, so a subagent transcript always
+ * ends on the last tool call it made however cleanly it finished.
  */
 function reportedBack(nodes: SessionNode[], spawnIndex: number, returnIndex: number | null): boolean {
   const spawn = nodes.find((n) => n.index === spawnIndex);

@@ -28,10 +28,7 @@ function session(threadId: string, started: string | null, body: string[]): Sugg
   return { ...parseSessionTranscript(threadId, content), nodes: parseSessionNodes(content) };
 }
 
-/**
- * The same transcript, but run as somebody's subagent — so its outcome is the report
- * its caller either read or never got, which is what `reported` carries.
- */
+/** The same transcript run as somebody's subagent, with the report its caller did or didn't get. */
 function subagent(threadId: string, started: string | null, body: string[], reported: boolean): SuggestibleSession {
   return { ...session(threadId, started, body), depth: 1, reported };
 }
@@ -167,8 +164,6 @@ describe('suggestBucket', () => {
     expect(unfinished!.evidence).toBe('2 of 2 top-level tasks have no outcome line');
   });
 
-  // A subagent's outcome is the report it hands back, which its own transcript never
-  // records — so the `done:` line it structurally cannot write must not be required.
   it('leaves a subagent that reported back out of the unfinished count', () => {
     const sessions = [
       session('e1', day(1), ['## Task: One', '- Agent(subagent_type=Explore)']),
@@ -187,7 +182,7 @@ describe('suggestBucket', () => {
     ];
     const unfinished = suggestBucket(sessions).find((s) => s.id === 'unfinished-tasks');
     expect(unfinished).toBeDefined();
-    // Its last step is where it went quiet — the step worth pointing at.
+    // Each source points at the last step, where the thread went quiet.
     expect(unfinished!.sources.map((s) => s.threadId)).toEqual(['e2', 'e3']);
     expect(unfinished!.sources[1]!.sample).toContain('gh pr view 42');
   });

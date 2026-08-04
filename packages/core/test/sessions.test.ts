@@ -456,7 +456,7 @@ describe('linkAgentSessions', () => {
       agentType: 'Explore',
       returnIndex: 3, // the parent's next non-spawn step
       depth: 1,
-      reported: true, // the parent took that step, so it read the report
+      reported: true, // the parent took that step
       childThreadIds: [],
     });
     expect(links.get('a'.repeat(16))).toMatchObject({

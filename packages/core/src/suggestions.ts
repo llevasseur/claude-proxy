@@ -22,10 +22,9 @@ import { type SessionMeta, type SessionNode, sessionDisplayName } from './sessio
 export const SESSION_BUCKET_SIZE = 10;
 
 /**
- * A transcript as the rules see it: its listing metadata plus its node stream, and
- * where it sits in the agent tree when the caller knows (a `SessionGraph` carries the
- * whole `SessionAgentLink`). A view without the tree omits both and reads as a
- * top-level session, which is what a lone transcript is.
+ * A transcript as the rules see it: its listing metadata plus its node stream, and where
+ * it sits in the agent tree when the caller knows it (a `SessionGraph` carries the whole
+ * `SessionAgentLink`). A view without the tree omits both and reads as top-level.
  */
 export interface SuggestibleSession extends SessionMeta {
   nodes: SessionNode[];
@@ -35,7 +34,7 @@ export interface SuggestibleSession extends SessionMeta {
   reported?: boolean;
 }
 
-/** True when this transcript ran as somebody's subagent, so its outcome is a report. */
+/** True when this transcript ran as somebody's subagent. */
 function isSubagent(session: SuggestibleSession): boolean {
   return (session.depth ?? 0) > 0;
 }
@@ -158,9 +157,9 @@ export interface SessionBucketStats {
   /** Tool calls per task — the crude "steps to an outcome" measure. 0 with no tasks. */
   toolsPerTask: number;
   /**
-   * Tasks in top-level threads that never recorded a `done:` outcome. Subagent
-   * threads are judged by {@link SessionBucketStats.unfinishedSubagents} instead:
-   * they close by reporting to their caller, not with a `done:` line.
+   * Tasks in top-level threads that never recorded a `done:` outcome. Subagent threads
+   * close by reporting to their caller instead, and are counted in
+   * {@link SessionBucketStats.unfinishedSubagents}.
    */
   unfinishedTasks: number;
   /** Tasks {@link SessionBucketStats.unfinishedTasks} was measured over — the top-level ones. */
@@ -215,9 +214,8 @@ export function bucketSessions<T extends { started: string | null; threadId: str
 }
 
 /**
- * The `## Task:` nodes a transcript never closed: no `done:` between one task and the
- * next, or between the last task and the end of the transcript. Only meaningful for a
- * top-level thread — see {@link openSubagentNode} for the other half.
+ * The `## Task:` nodes a transcript never closed: no `done:` before the next task, or
+ * before the end. Only meaningful for a top-level thread.
  */
 function openTaskNodes(session: SuggestibleSession): SessionNode[] {
   const open: SessionNode[] = [];
@@ -233,9 +231,8 @@ function openTaskNodes(session: SuggestibleSession): SessionNode[] {
 }
 
 /**
- * Where a subagent thread stopped without reporting back, or null when it did report
- * (or recorded nothing at all). A subagent's terminal condition is its caller reading
- * its report, so the step to point at is the last one it took — where it went quiet.
+ * Where a subagent thread stopped without reporting back — its last step, the one it went
+ * quiet on — or null when it did report, or recorded nothing at all.
  */
 function openSubagentNode(session: SuggestibleSession): SessionNode | null {
   if (session.reported) return null;
@@ -252,9 +249,8 @@ function bucketStats(sessions: readonly SuggestibleSession[]): SessionBucketStat
   let unfinishedSubagents = 0;
 
   for (const s of sessions) {
-    // Two populations, two terminal conditions. A top-level thread closes each task
-    // with a `done:`; a subagent closes the whole thread by handing back a report,
-    // which is a fact about its caller's transcript rather than its own.
+    // Two populations, two terminal conditions: a top-level thread closes each task with
+    // a `done:`, a subagent closes the whole thread by handing back a report.
     if (isSubagent(s)) {
       subagentThreads += 1;
       if (!s.reported) unfinishedSubagents += 1;
@@ -456,13 +452,10 @@ const highToolChurn: Rule = (sessions, stats) => {
 };
 
 /**
- * Work that never reached an outcome — interruptions, or a scope that never closed.
- *
- * The two populations are judged on their own terms and counted apart, because they
- * end differently: a top-level task closes with a `done:` line, written from a turn
- * carrying text and no tool call, while a subagent hands its outcome to its caller as
- * a report and so never writes one. Conflating them made every subagent thread
- * unfinished by construction.
+ * Work that never reached an outcome — interruptions, or a scope that never closed. The
+ * two populations are counted and reported apart: a top-level task closes with a `done:`
+ * line, written from a turn carrying text and no tool call, while a subagent hands its
+ * outcome to its caller as a report and never writes one.
  */
 const unfinishedTasks: Rule = (sessions, stats) => {
   const total = stats.unfinishedTasks + stats.unfinishedSubagents;

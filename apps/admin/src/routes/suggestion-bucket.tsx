@@ -31,11 +31,7 @@ import { useTransitionState } from '../useTransitionState';
 
 const SEV_LABEL = { high: 'High', warn: 'Warn', info: 'Info' } as const;
 
-/**
- * The unfinished count under the Tasks tile, with the two populations kept apart: a
- * top-level task closes with an outcome line, a subagent thread by reporting back to
- * its caller, so one number for both would be counting unlike things.
- */
+/** The unfinished count under the Tasks tile: top-level tasks and subagent threads, kept apart. */
 function unfinishedSub(stats: SessionBucketStats): string {
   const parts = [`${stats.unfinishedTasks} of ${stats.topLevelTasks} unfinished`];
   if (stats.subagentThreads > 0) {
