@@ -48,8 +48,16 @@ window still points at a specific stretch of work.
     `ls`/`git status`) with no decision or error between them.
   - **Files were re-read inside one session** (*info*) — the same `Read` signature 3+ times.
   - **Tasks are taking a lot of steps** (*warn*) — 25 or more tool calls per task across the window.
-  - **Tasks ended without a recorded outcome** (*info*) — a `## Task:` with no `- done:` before
-    the next one, at 2+ per window; points at `/revive <thread id>`.
+  - **Work ended without a recorded outcome** (*info*) — two populations with two terminal
+    conditions, counted apart and reported apart in the evidence. A **top-level** thread owes each
+    `## Task:` a `- done:` before the next one. A **subagent** owes a report to its caller instead,
+    and structurally cannot write a `- done:`: that line comes from a turn carrying text and no
+    tool call, which for a subagent is the reply to its last request — a reply no later request in
+    that thread ever carries, so a subagent transcript always ends on its last tool call however
+    cleanly it finished. The caller is the witness: a subagent counts as finished when the parent
+    resumed at its `returnIndex`, and unfinished when it just stopped — the parent never resumed,
+    the spawn came back as an `- ✗`, or the run was cut off at the spawn. Fires at 2+ across both
+    populations; points at `/revive <thread id>`.
   - **Most calls were spent locating code, not changing it** (*info*) — 55%+ of a window's tool
     calls are discovery, over a floor of 20 calls.
   - **&lt;tool&gt; accounts for most failures** (*warn*, titled with the tool's own name) — a single
@@ -59,7 +67,8 @@ window still points at a specific stretch of work.
 - **Sources** — every suggestion names the sessions it was counted in, strongest first, each with
   the number of steps that matched and one representative line quoted verbatim. Session names
   link to the transcript.
-- **Bucket detail** (`/advice/sessions/$bucket`) — stat tiles (sessions, tasks + unfinished, tool
+- **Bucket detail** (`/advice/sessions/$bucket`) — stat tiles (sessions, tasks + unfinished
+  top-level tasks and adrift subagent threads, tool
   calls + per-task, errors + discovery share), the window's suggestions, the breakdown-derived
   suggestions, the **Request breakdown patterns** table, and the sessions in the window.
 - **Request Breakdown patterns** — each session in the window contributes its **largest** captured
