@@ -996,60 +996,74 @@ a.pager-btn:hover {
   background: var(--surface-2);
   border-color: var(--signal);
 }
-.trend-carousel-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.trend-carousel-head .range {
   flex: none;
 }
-.trend-carousel-nav button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+/* A stack, not a row: every panel lands in the one grid cell, so the stage is
+   as tall as the tallest and the seat transform is all that separates them.
+   Clipped sideways only — the cards' own edges still show through vertically. */
+.trend-stage {
+  display: grid;
+  overflow-x: clip;
+  overflow-y: visible;
+}
+.trend-panel {
+  grid-area: 1 / 1;
+  width: 78%;
+  justify-self: center;
+  min-width: 0;
+  /* Every seat is the same two properties, so the promotion is a composited
+     move: no layout runs while a panel crosses the stage. */
+  transition:
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.trend-panel.seat-current {
+  z-index: 2;
+  transform: none;
+  opacity: 1;
+}
+/* The neighbours: mostly under the selection, with a sliver out either side. */
+.trend-panel.seat-prev,
+.trend-panel.seat-next {
+  z-index: 1;
+  opacity: 0.42;
   cursor: pointer;
 }
-.trend-carousel-nav button:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--signal-dim);
+.trend-panel.seat-prev {
+  transform: translateX(-58%) scale(0.94);
 }
-.trend-carousel-nav button:disabled {
-  opacity: 0.4;
-  cursor: default;
+.trend-panel.seat-next {
+  transform: translateX(58%) scale(0.94);
 }
-/* One row of slides, scrolled sideways and snapped flush to the left edge. Grid
-   columns rather than flex basis: every slide is the same width whatever it
-   holds. */
-.trend-track {
-  /* Load-bearing: makes the track each slide's offset parent, so `offsetLeft` is
-     the scroll position that brings that slide to the edge. Unpositioned, the
-     offsets come from a page-level ancestor and every scroll target is off. */
-  position: relative;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 100%;
-  gap: 22px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
+.trend-panel.seat-prev:hover,
+.trend-panel.seat-next:hover {
+  opacity: 0.68;
 }
-.trend-track::-webkit-scrollbar {
-  display: none;
+/* Everything further out waits off-stage, behind and invisible, so a jump of
+   more than one seat still slides the panels rather than cutting to them. */
+.trend-panel.seat-off {
+  z-index: 0;
+  transform: translateX(70%) scale(0.9);
+  opacity: 0;
+  pointer-events: none;
 }
-@media (min-width: 1080px) {
-  /* Two up, with the gap taken out of each column. */
-  .trend-track {
-    grid-auto-columns: calc(50% - 11px);
+@media (max-width: 700px) {
+  /* Narrower panels, so the slivers stay wide enough to hit with a thumb. */
+  .trend-panel {
+    width: 84%;
+  }
+  .trend-panel.seat-prev {
+    transform: translateX(-62%) scale(0.94);
+  }
+  .trend-panel.seat-next {
+    transform: translateX(62%) scale(0.94);
   }
 }
-.trend-slide {
-  scroll-snap-align: start;
-  min-width: 0;
+@media (prefers-reduced-motion: reduce) {
+  .trend-panel {
+    transition: none;
+  }
 }
 /* Clamped to two lines so a long description cannot make one slide taller. */
 .trend-slide-note {

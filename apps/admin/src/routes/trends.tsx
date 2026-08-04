@@ -1,7 +1,6 @@
-import { blendRate, endOfDaySnapshots, type UsageDigest } from '@claude-proxy/core';
+import { blendRate, isPartialDay, type UsageDigest } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useMemo } from 'react';
 import { getTrends } from '../api';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
@@ -14,9 +13,10 @@ import { useTransitionState } from '../useTransitionState';
 const BLENDED_COLUMNS: readonly SkeletonColumn[] = [{}, { className: 'num' }, {}, { className: 'num' }];
 
 /**
- * Every statistic as of the close of each day, blended across the window. The
- * current day is left out: still being written to, it is a part-day figure
- * standing next to whole ones.
+ * Every statistic per day, blended across the window. Today is in the window
+ * while it is still being written to: the blend is `Σ num / Σ den`, so a day
+ * carries the weight of its own volume and a part-day is not a whole day's vote.
+ * That is what keeps the figure live rather than a day behind.
  */
 export function TrendsPage() {
   const [days, selectDays, isSwitching] = useTransitionState(30);
@@ -27,13 +27,13 @@ export function TrendsPage() {
     queryFn: () => getTrends(days),
     placeholderData: keepPreviousData,
   });
-  const digests = query.data?.digests ?? [];
-  const snapshots = useMemo(() => endOfDaySnapshots(digests), [digests]);
+  const snapshots = query.data?.digests ?? [];
   const busy = isSwitching || query.isFetching;
 
   const first = snapshots.at(0);
   const last = snapshots.at(-1);
   const range = !first || !last ? '—' : first.date === last.date ? first.date : `${first.date} → ${last.date}`;
+  const live = !!last && isPartialDay(last.date);
 
   return (
     <section>
@@ -41,8 +41,9 @@ export function TrendsPage() {
         <div>
           <h1>Trends</h1>
           <div className='muted'>
-            Every statistic at the close of each day, blended across the window — a rate weighted by volume rather than
-            one day counting as much as the next. Today is still open and is left out.
+            Every statistic day by day, blended across the window — a rate weighted by volume rather than one day
+            counting as much as the next.{' '}
+            {live ? 'Today counts as far as it has run, so the figures track the day as it happens.' : ''}
           </div>
         </div>
         {/* `.pagehead` is a flex row; a bare control shrinks until its last pill clips. */}
@@ -53,11 +54,11 @@ export function TrendsPage() {
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<TrendsSkeleton days={days} />} busy={busy}>
         {snapshots.length === 0 ? (
-          <div className='card empty'>No day has closed in the last {days} days.</div>
+          <div className='card empty'>Nothing was captured in the last {days} days.</div>
         ) : (
           <>
             <TrendCarousel metrics={METRICS} digests={snapshots} />
-            <BlendedTable digests={snapshots} range={range} />
+            <BlendedTable digests={snapshots} range={range} live={live} />
           </>
         )}
       </QueryState>
@@ -66,13 +67,16 @@ export function TrendsPage() {
 }
 
 /** Every metric's blended figure at once, for the comparison the carousel cannot show. */
-function BlendedTable({ digests, range }: { digests: UsageDigest[]; range: string }) {
+function BlendedTable({ digests, range, live }: { digests: UsageDigest[]; range: string; live: boolean }) {
   return (
     <div className='card'>
       <div className='card-head'>
         <h2>All trends, blended</h2>
+        {/* The closing date is today when the window runs to it, and today is
+            only as long as it has got so far — said here so the range is not
+            read as a run of whole days. */}
         <span className='range'>
-          {range} ({REPORT_TZ_ABBR})
+          {range} ({REPORT_TZ_ABBR}){live ? ', today so far' : ''}
         </span>
       </div>
       <table className='table'>
