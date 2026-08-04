@@ -28,6 +28,11 @@ function session(threadId: string, started: string | null, body: string[]): Sugg
   return { ...parseSessionTranscript(threadId, content), nodes: parseSessionNodes(content) };
 }
 
+/** The same transcript run as somebody's subagent, with the report its caller did or didn't get. */
+function subagent(threadId: string, started: string | null, body: string[], reported: boolean): SuggestibleSession {
+  return { ...session(threadId, started, body), depth: 1, reported };
+}
+
 const day = (n: number) => `2026-07-${String(n).padStart(2, '0')}T10:00:00.000Z`;
 
 describe('signature helpers', () => {
@@ -149,14 +154,60 @@ describe('suggestBucket', () => {
     expect(redundant!.sources[0]!.threadId).toBe('d1');
   });
 
-  it('counts a task with no outcome line as unfinished', () => {
+  it('counts a top-level task with no outcome line as unfinished', () => {
     const sessions = [
       session('e1', day(1), ['## Task: One', '- Read(file_path=/a.ts)']),
       session('e2', day(2), ['## Task: Two', '- Read(file_path=/b.ts)']),
     ];
     const unfinished = suggestBucket(sessions).find((s) => s.id === 'unfinished-tasks');
     expect(unfinished).toBeDefined();
-    expect(unfinished!.evidence).toContain('2 of 2 tasks');
+    expect(unfinished!.evidence).toBe('2 of 2 top-level tasks have no outcome line');
+  });
+
+  it('leaves a subagent that reported back out of the unfinished count', () => {
+    const sessions = [
+      session('e1', day(1), ['## Task: One', '- Agent(subagent_type=Explore)']),
+      subagent('e2', day(2), ['## Task: Search', '- Read(file_path=/b.ts)'], true),
+      subagent('e3', day(3), ['## Task: Search again', '- Read(file_path=/c.ts)'], true),
+    ];
+    // Only the top-level task is outstanding, so the rule stays below its threshold.
+    expect(suggestBucket(sessions).find((s) => s.id === 'unfinished-tasks')).toBeUndefined();
+  });
+
+  it('counts a subagent that stopped without reporting back as unfinished', () => {
+    const sessions = [
+      session('e1', day(1), ['## Task: One', '- Agent(subagent_type=Explore)', '- done: ok']),
+      subagent('e2', day(2), ['## Task: Search', '- Read(file_path=/b.ts)'], false),
+      subagent('e3', day(3), ['## Task: Clean then PR', '- Bash(command=gh pr view 42)'], false),
+    ];
+    const unfinished = suggestBucket(sessions).find((s) => s.id === 'unfinished-tasks');
+    expect(unfinished).toBeDefined();
+    // Each source points at the last step, where the thread went quiet.
+    expect(unfinished!.sources.map((s) => s.threadId)).toEqual(['e2', 'e3']);
+    expect(unfinished!.sources[1]!.sample).toContain('gh pr view 42');
+  });
+
+  it('reports the two populations apart, never as one number', () => {
+    const sessions = [
+      session('e1', day(1), ['## Task: One', '- Read(file_path=/a.ts)']),
+      session('e2', day(2), ['## Task: Two', '- Agent(subagent_type=Explore)', '- done: ok']),
+      subagent('e3', day(3), ['## Task: Search', '- Read(file_path=/b.ts)'], false),
+      subagent('e4', day(4), ['## Task: Search again', '- Read(file_path=/c.ts)'], true),
+    ];
+    const unfinished = suggestBucket(sessions).find((s) => s.id === 'unfinished-tasks');
+    expect(unfinished!.evidence).toBe(
+      '1 of 2 top-level tasks have no outcome line; 1 of 2 subagent threads stopped without reporting back',
+    );
+  });
+
+  it('names only the population a bucket actually has', () => {
+    const subagentsOnly = [
+      subagent('e1', day(1), ['## Task: Search', '- Read(file_path=/b.ts)'], false),
+      subagent('e2', day(2), ['## Task: Search again', '- Read(file_path=/c.ts)'], false),
+    ];
+    expect(suggestBucket(subagentsOnly).find((s) => s.id === 'unfinished-tasks')!.evidence).toBe(
+      '2 of 2 subagent threads stopped without reporting back',
+    );
   });
 
   it("blames the tool that owns most of a bucket's failures", () => {

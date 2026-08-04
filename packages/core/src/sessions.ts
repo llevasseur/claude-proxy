@@ -490,6 +490,12 @@ export interface SessionAgentLink {
   returnIndex: number | null;
   /** 0 for a top-level session, 1 for its subagents, 2 for theirs, and so on. */
   depth: number;
+  /**
+   * True when the caller recorded this subagent's result flowing back — the report that
+   * *is* a subagent's outcome. Always false for a top-level session, which closes with a
+   * `done:` line of its own instead.
+   */
+  reported: boolean;
   /** Subagents spawned by this transcript, in spawn order. */
   childThreadIds: string[];
 }
@@ -500,6 +506,7 @@ const topLevelLink = (): SessionAgentLink => ({
   agentType: null,
   returnIndex: null,
   depth: 0,
+  reported: false,
   childThreadIds: [],
 });
 
@@ -509,6 +516,24 @@ function returnIndexAfter(nodes: SessionNode[], spawnIndex: number): number | nu
     if (node.index > spawnIndex && !isAgentSpawn(node)) return node.index;
   }
   return null;
+}
+
+/**
+ * Whether a spawn's result came back to its caller: the parent resumed at `returnIndex`,
+ * and that step is not the spawn coming back as a failure or cut short at it.
+ *
+ * The subagent's own transcript cannot say. Its report is the reply to its last request,
+ * and no later request in that thread carries that reply, so a subagent transcript always
+ * ends on the last tool call it made however cleanly it finished.
+ */
+function reportedBack(nodes: SessionNode[], spawnIndex: number, returnIndex: number | null): boolean {
+  const spawn = nodes.find((n) => n.index === spawnIndex);
+  if (spawn?.interrupted) return false;
+  if (returnIndex === null) return false;
+  const at = nodes.find((n) => n.index === returnIndex);
+  if (!at) return false;
+  // An `- ✗` blamed on the spawn call is the subagent failing, not reporting.
+  return !(at.type === 'error' && at.tool === spawn?.tool);
 }
 
 /**
@@ -576,6 +601,7 @@ export function linkAgentSessions(sessions: readonly LinkableSession[]): Map<str
         link.spawnIndex = spawn.index;
         link.agentType = agentType || null;
         link.returnIndex = returnIndexAfter(parent.nodes, spawn.index);
+        link.reported = reportedBack(parent.nodes, spawn.index, link.returnIndex);
         parentLink.childThreadIds.push(child.threadId);
       }
     }

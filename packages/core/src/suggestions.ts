@@ -21,9 +21,22 @@ import { type SessionMeta, type SessionNode, sessionDisplayName } from './sessio
 /** How many sessions one bucket covers: 1–10, 11–20, … */
 export const SESSION_BUCKET_SIZE = 10;
 
-/** A transcript as the rules see it: its listing metadata plus its node stream. */
+/**
+ * A transcript as the rules see it: its listing metadata plus its node stream, and where
+ * it sits in the agent tree when the caller knows it (a `SessionGraph` carries the whole
+ * `SessionAgentLink`). A view without the tree omits both and reads as top-level.
+ */
 export interface SuggestibleSession extends SessionMeta {
   nodes: SessionNode[];
+  /** 0 for a top-level session, 1+ for a subagent — `SessionAgentLink.depth`. */
+  depth?: number;
+  /** Whether this subagent's report reached its caller — `SessionAgentLink.reported`. */
+  reported?: boolean;
+}
+
+/** True when this transcript ran as somebody's subagent. */
+function isSubagent(session: SuggestibleSession): boolean {
+  return (session.depth ?? 0) > 0;
 }
 
 /** Where a suggestion came from — one session and the steps in it that show the pattern. */
@@ -143,8 +156,18 @@ export interface SessionBucketStats {
   errors: number;
   /** Tool calls per task — the crude "steps to an outcome" measure. 0 with no tasks. */
   toolsPerTask: number;
-  /** Tasks that never recorded a `done:` outcome. */
+  /**
+   * Tasks in top-level threads that never recorded a `done:` outcome. Subagent threads
+   * close by reporting to their caller instead, and are counted in
+   * {@link SessionBucketStats.unfinishedSubagents}.
+   */
   unfinishedTasks: number;
+  /** Tasks {@link SessionBucketStats.unfinishedTasks} was measured over — the top-level ones. */
+  topLevelTasks: number;
+  /** Subagent threads that stopped without their report reaching the caller. */
+  unfinishedSubagents: number;
+  /** Subagent threads {@link SessionBucketStats.unfinishedSubagents} was measured over. */
+  subagentThreads: number;
   /** Share of tool calls that only gather information, 0–1. */
   discoveryRatio: number;
   /** Most-called tools, most first, capped at 8. */
@@ -190,32 +213,59 @@ export function bucketSessions<T extends { started: string | null; threadId: str
   return buckets;
 }
 
+/**
+ * The `## Task:` nodes a transcript never closed: no `done:` before the next task, or
+ * before the end. Only meaningful for a top-level thread.
+ */
+function openTaskNodes(session: SuggestibleSession): SessionNode[] {
+  const open: SessionNode[] = [];
+  let at: SessionNode | null = null;
+  for (const node of session.nodes) {
+    if (node.type === 'task') {
+      if (at) open.push(at);
+      at = node;
+    } else if (node.type === 'done') at = null;
+  }
+  if (at) open.push(at);
+  return open;
+}
+
+/**
+ * Where a subagent thread stopped without reporting back — its last step, the one it went
+ * quiet on — or null when it did report, or recorded nothing at all.
+ */
+function openSubagentNode(session: SuggestibleSession): SessionNode | null {
+  if (session.reported) return null;
+  return session.nodes[session.nodes.length - 1] ?? null;
+}
+
 function bucketStats(sessions: readonly SuggestibleSession[]): SessionBucketStats {
   const counts = new Map<string, number>();
   let tools = 0;
   let discovery = 0;
   let unfinishedTasks = 0;
+  let topLevelTasks = 0;
+  let subagentThreads = 0;
+  let unfinishedSubagents = 0;
 
   for (const s of sessions) {
-    // A task is finished once a `done:` follows it and before the next `## Task:`.
-    let openTask = false;
+    // Two populations, two terminal conditions: a top-level thread closes each task with
+    // a `done:`, a subagent closes the whole thread by handing back a report.
+    if (isSubagent(s)) {
+      subagentThreads += 1;
+      if (!s.reported) unfinishedSubagents += 1;
+    } else {
+      topLevelTasks += s.tasks;
+      unfinishedTasks += openTaskNodes(s).length;
+    }
+
     for (const node of s.nodes) {
-      if (node.type === 'task') {
-        if (openTask) unfinishedTasks += 1;
-        openTask = true;
-        continue;
-      }
-      if (node.type === 'done') {
-        openTask = false;
-        continue;
-      }
       if (node.type !== 'tool') continue;
       tools += 1;
       if (isDiscoveryCall(node.tool)) discovery += 1;
       const name = toolName(node.tool);
       if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
     }
-    if (openTask) unfinishedTasks += 1;
   }
 
   const tasks = sessions.reduce((n, s) => n + s.tasks, 0);
@@ -232,6 +282,9 @@ function bucketStats(sessions: readonly SuggestibleSession[]): SessionBucketStat
     errors: sessions.reduce((n, s) => n + s.errors, 0),
     toolsPerTask: tasks === 0 ? 0 : Math.round((tools / tasks) * 10) / 10,
     unfinishedTasks,
+    topLevelTasks,
+    unfinishedSubagents,
+    subagentThreads,
     discoveryRatio: tools === 0 ? 0 : discovery / tools,
     topTools,
   };
@@ -398,27 +451,46 @@ const highToolChurn: Rule = (sessions, stats) => {
   };
 };
 
-/** Tasks that never reached an outcome — interruptions, or a scope that never closed. */
+/**
+ * Work that never reached an outcome — interruptions, or a scope that never closed. The
+ * two populations are counted and reported apart: a top-level task closes with a `done:`
+ * line, written from a turn carrying text and no tool call, while a subagent hands its
+ * outcome to its caller as a report and never writes one.
+ */
 const unfinishedTasks: Rule = (sessions, stats) => {
-  if (stats.unfinishedTasks < SUGGESTION_THRESHOLDS.minUnfinishedTasks) return null;
+  const total = stats.unfinishedTasks + stats.unfinishedSubagents;
+  if (total < SUGGESTION_THRESHOLDS.minUnfinishedTasks) return null;
+
   const hits: { session: SuggestibleSession; node: SessionNode }[] = [];
   for (const session of sessions) {
-    let openTask: SessionNode | null = null;
-    for (const node of session.nodes) {
-      if (node.type === 'task') {
-        if (openTask) hits.push({ session, node: openTask });
-        openTask = node;
-      } else if (node.type === 'done') openTask = null;
+    if (isSubagent(session)) {
+      const node = openSubagentNode(session);
+      if (node) hits.push({ session, node });
+      continue;
     }
-    if (openTask) hits.push({ session, node: openTask });
+    for (const node of openTaskNodes(session)) hits.push({ session, node });
   }
+
+  const clauses: string[] = [];
+  if (stats.topLevelTasks > 0) {
+    const one = stats.topLevelTasks === 1;
+    clauses.push(
+      `${stats.unfinishedTasks} of ${stats.topLevelTasks} top-level task${one ? '' : 's'} ${one ? 'has' : 'have'} no outcome line`,
+    );
+  }
+  if (stats.subagentThreads > 0) {
+    clauses.push(
+      `${stats.unfinishedSubagents} of ${stats.subagentThreads} subagent thread${stats.subagentThreads === 1 ? '' : 's'} stopped without reporting back`,
+    );
+  }
+
   return {
     id: 'unfinished-tasks',
     severity: 'info',
-    title: 'Tasks ended without a recorded outcome',
+    title: 'Work ended without a recorded outcome',
     detail:
-      'A task with no `done:` was interrupted, compacted away, or drifted past its scope. The work is usually still on a branch — `/revive <thread id>` picks it back up rather than starting the same task twice.',
-    evidence: `${stats.unfinishedTasks} of ${stats.tasks} task${stats.tasks === 1 ? '' : 's'} have no outcome line`,
+      'A top-level task with no `done:` was interrupted, compacted away, or drifted past its scope; a subagent that never reported back was cut off before its caller could read anything it did. Either way the work is usually still on a branch — `/revive <thread id>` picks it back up rather than starting the same task twice.',
+    evidence: clauses.join('; '),
     sources: collectSources(hits),
   };
 };
