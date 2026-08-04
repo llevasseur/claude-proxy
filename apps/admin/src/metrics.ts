@@ -1,4 +1,4 @@
-import { costPerMTok, type PerCallStats, reportTzAbbr, type UsageDigest } from '@claude-proxy/core';
+import { costPerMTok, type PerCallStats, rateTokens, reportTzAbbr, type UsageDigest } from '@claude-proxy/core';
 import { fmtBytes, fmtCompact, fmtInt, fmtPct, fmtUsd, fmtUsdCompact, fmtUsdPerMTok } from './format';
 
 /**
@@ -16,6 +16,33 @@ export interface MetricProvenance {
   /** What this number cannot tell you, stated before it is over-read. */
   caveats?: string[];
 }
+
+/**
+ * How a statistic collapses a window of end-of-day snapshots into one number:
+ * `Σ num / Σ den`, weighted by volume rather than by day.
+ */
+export interface MetricBlend {
+  /** This day's contribution to the numerator. */
+  num: (d: UsageDigest) => number;
+  /** This day's weight. `1` blends per day; requests blend a per-request mean. */
+  den: (d: UsageDigest) => number;
+  /** What the denominator counts, read after the value. */
+  unit: string;
+}
+
+/** Blends a per-request mean on the requests behind it. */
+const perRequest = (pick: (s: PerCallStats) => number): MetricBlend => ({
+  num: (d) => pick(d.perCall.work) * d.perCall.work.requests,
+  den: (d) => d.perCall.work.requests,
+  unit: 'per work request',
+});
+
+/** Blends a daily total into a per-day average. */
+const perDay = (pick: (d: UsageDigest) => number): MetricBlend => ({
+  num: pick,
+  den: () => 1,
+  unit: 'per day',
+});
 
 /** One Overview statistic, shared by the cards, their mini charts, and `/trends/$metric`. */
 export interface StatMetric {
@@ -43,6 +70,8 @@ export interface StatMetric {
   increaseIsBad?: boolean;
   /** Matching field in `UsageDigest.trend` for the day-over-day delta chip. */
   trendField?: string;
+  /** How a window of days collapses into the one blended figure `/trends` shows. */
+  blend: MetricBlend;
   /** Shown as "How this is computed" on the trend page, when stated. */
   provenance?: MetricProvenance;
   /** The same statistic read off one cohort; its presence adds the composition panel. */
@@ -87,6 +116,7 @@ export const METRICS: StatMetric[] = [
     format: fmtInt,
     formatTick: fmtCompact,
     value: (d) => d.tokens.realInput,
+    blend: perDay((d) => d.tokens.realInput),
     trendField: 'realInput',
   },
   {
@@ -97,6 +127,7 @@ export const METRICS: StatMetric[] = [
     format: fmtInt,
     formatTick: fmtCompact,
     value: (d) => d.tokens.output,
+    blend: perDay((d) => d.tokens.output),
     trendField: 'output',
   },
   {
@@ -107,6 +138,7 @@ export const METRICS: StatMetric[] = [
     format: fmtUsd,
     formatTick: fmtUsdCompact,
     value: (d) => d.cost.total,
+    blend: perDay((d) => d.cost.total),
     sub: () => 'approx.',
     trendField: 'cost',
   },
@@ -121,6 +153,9 @@ export const METRICS: StatMetric[] = [
     // Ticks drop the repeated `/MTok` suffix and the trailing cents; the title carries the unit.
     formatTick: fmtUsdCompact,
     value: (d) => costPerMTok(d),
+    // The window's whole spend over every token it moved — the same arithmetic
+    // `costPerMTok` does for one day.
+    blend: { num: (d) => d.cost.total * 1_000_000, den: rateTokens, unit: 'per M tokens moved' },
     sub: () => 'blended',
     increaseIsBad: true,
     trendField: 'costPerMTok',
@@ -134,6 +169,7 @@ export const METRICS: StatMetric[] = [
     color: 'var(--accent-2)',
     format: fmtUsd,
     value: (d) => d.perCall.work.costUsd,
+    blend: perRequest((s) => s.costUsd),
     perCall: (s) => s.costUsd,
     perCallAdditive: true,
     sub: () => 'excl. classifier',
@@ -163,6 +199,7 @@ export const METRICS: StatMetric[] = [
     format: fmtTokensLabel,
     formatTick: fmtCompact,
     value: (d) => d.perCall.work.fixedPrefixTokens,
+    blend: perRequest((s) => s.fixedPrefixTokens),
     perCall: (s) => s.fixedPrefixTokens,
     perCallAdditive: true,
     sub: () => 'tools + system',
@@ -188,6 +225,7 @@ export const METRICS: StatMetric[] = [
     format: fmtTokensLabel,
     formatTick: fmtCompact,
     value: (d) => d.perCall.work.freshInputTokens,
+    blend: perRequest((s) => s.freshInputTokens),
     perCall: (s) => s.freshInputTokens,
     perCallAdditive: true,
     sub: () => 'uncached',
@@ -213,6 +251,12 @@ export const METRICS: StatMetric[] = [
     format: (n) => `${n.toFixed(1)} calls`,
     formatTick: (n) => n.toFixed(1),
     value: (d) => d.perCall.work.callsPerSession,
+    // Sessions, not requests: that is the denominator this mean is over.
+    blend: {
+      num: (d) => d.perCall.work.requests,
+      den: (d) => d.perCall.work.sessions,
+      unit: 'per session id',
+    },
     perCall: (s) => s.callsPerSession,
     sub: () => 'per session id',
     increaseIsBad: true,
@@ -237,6 +281,8 @@ export const METRICS: StatMetric[] = [
     color: 'var(--signal)',
     format: (n) => fmtPct(n),
     value: (d) => d.tokens.cacheHitRatio * 100,
+    // The ratio's own two totals, not an average of daily percentages.
+    blend: { num: (d) => d.tokens.cacheRead * 100, den: (d) => d.tokens.realInput, unit: 'of prompt tokens' },
     increaseIsBad: false,
   },
   {
@@ -247,6 +293,7 @@ export const METRICS: StatMetric[] = [
     format: fmtInt,
     formatTick: fmtCompact,
     value: (d) => d.requestCount,
+    blend: perDay((d) => d.requestCount),
     trendField: 'requestCount',
   },
   {
@@ -258,6 +305,8 @@ export const METRICS: StatMetric[] = [
     format: (n) => `${fmtInt(n)} req`,
     formatTick: fmtCompact,
     value: (d) => d.busiestHour?.requestCount ?? 0,
+    // Only the count blends; which hour it fell in is a per-day fact.
+    blend: perDay((d) => d.busiestHour?.requestCount ?? 0),
     headline: (d) => (d.busiestHour ? `${String(d.busiestHour.hour).padStart(2, '0')}:00` : '—'),
     sub: (d) => (d.busiestHour ? `${d.busiestHour.requestCount} req · ${REPORT_TZ_ABBR}` : undefined),
   },
@@ -268,6 +317,12 @@ export const METRICS: StatMetric[] = [
     color: 'var(--amber)',
     format: (n) => fmtPct(n),
     value: (d) => d.toolOverheadPctOfInput,
+    // Only the percentage is in the digest; input tokens recover the total behind it.
+    blend: {
+      num: (d) => d.toolOverheadPctOfInput * d.tokens.realInput,
+      den: (d) => d.tokens.realInput,
+      unit: 'of input tokens',
+    },
     sub: () => 'of input tokens',
   },
   {
@@ -278,6 +333,12 @@ export const METRICS: StatMetric[] = [
     format: fmtBytesLabel,
     formatTick: fmtBytes,
     value: (d) => d.avgSystemPromptBytes,
+    // A mean over requests, not days: the day's request count is its weight.
+    blend: {
+      num: (d) => d.avgSystemPromptBytes * d.requestCount,
+      den: (d) => d.requestCount,
+      unit: 'per request',
+    },
     trendField: 'avgSystemPromptBytes',
   },
 ];
