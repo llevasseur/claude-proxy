@@ -185,8 +185,42 @@ async function daySidecars(
 }
 
 /**
- * One day's digest + advice, with the trend computed against the prior day.
- * Both days are read across the archive and the live dir — see {@link daySidecars}.
+ * How far back the summary will look for a day to compare against. Reached only
+ * when every day in between was idle; a gap longer than this leaves the trend
+ * unreported rather than measured against a fortnight-old figure.
+ */
+const SUMMARY_BASELINE_LOOKBACK_DAYS = 14;
+
+/**
+ * The days before `day` that the trend is measured against, oldest→newest.
+ *
+ * The walk stops at the first day that captured anything, so the usual case
+ * costs the single read it always did; only a run of idle days pays for more.
+ * The idle days are returned too, because whether one is empty is decided per
+ * field rather than per day.
+ */
+async function baselineDigests(
+  logDir: string,
+  day: string,
+  now: Date,
+  source: SidecarSource,
+  classifierHashes: ReadonlySet<string>,
+): Promise<UsageDigest[]> {
+  const digests: UsageDigest[] = [];
+  for (let back = 1; back <= SUMMARY_BASELINE_LOOKBACK_DAYS; back += 1) {
+    const date = shiftDay(day, -back);
+    const read = await daySidecars(logDir, date, now, source);
+    const digest = computeDigest(read.sidecars, { date, classifierHashes });
+    digests.unshift(digest);
+    if (digest.requestCount > 0) break;
+  }
+  return digests;
+}
+
+/**
+ * One day's digest + advice, with each field's trend computed against the last
+ * earlier day that recorded it. Every day read spans the archive and the live
+ * dir — see {@link daySidecars}.
  *
  * `source` selects where the sidecars come from: the directory scan by default,
  * the SQLite substrate when the parity harness or shadow mode asks for it. See
@@ -199,14 +233,12 @@ export async function buildSummary(
   source: SidecarSource = fileSource,
 ): Promise<SummaryResponse> {
   const day = date ?? today(now);
-  const prevDay = shiftDay(day, -1);
-  const [cur, prev] = await Promise.all([
+  const [cur, classifierHashes] = await Promise.all([
     daySidecars(logDir, day, now, source),
-    daySidecars(logDir, prevDay, now, source),
+    classifierPromptHashes(logDir),
   ]);
-  const classifierHashes = await classifierPromptHashes(logDir);
-  const priorDigest = computeDigest(prev.sidecars, { date: prevDay, classifierHashes });
-  const digest = computeDigest(cur.sidecars, { date: day, priorDigest, classifierHashes });
+  const priorDigests = await baselineDigests(logDir, day, now, source, classifierHashes);
+  const digest = computeDigest(cur.sidecars, { date: day, priorDigests, classifierHashes });
   const advice = await heuristicAdvice.advise(digest);
   return { digest, advice, meta: { date: day, files: cur.files, parseErrors: cur.parseErrors } };
 }
@@ -388,16 +420,15 @@ export async function buildTrends(
   }
 
   const digests: UsageDigest[] = [];
-  let prior: UsageDigest | null = null;
   for (const date of dates) {
     const bucket = raw.get(date);
-    // Annotated: `prior` is assigned from this binding, so inference is circular (TS7022).
+    // Every day resolved so far is the baseline history, so a field's trend
+    // reaches past the idle days to the last one that recorded it.
     const digest: UsageDigest | undefined = bucket
-      ? computeDigest(bucket, { date, priorDigest: prior, classifierHashes })
+      ? computeDigest(bucket, { date, priorDigests: digests, classifierHashes })
       : finalized.get(date);
     if (!digest) continue;
     digests.push(digest);
-    prior = digest;
   }
   return { digests, meta: { days, files, parseErrors, archivedDays } };
 }

@@ -63,6 +63,31 @@ describe('computeDigest', () => {
     expect(reqTrend.today).toBe(2);
     expect(reqTrend.prior).toBe(1);
     expect(reqTrend.deltaPct).toBeCloseTo(100);
+    expect(reqTrend.priorDate).toBe('2026-07-14');
+  });
+
+  it('trends against the last day that recorded traffic, not an idle one', () => {
+    const busy = computeDigest([makeSidecar()], { date: '2026-07-13' });
+    const idle = computeDigest([], { date: '2026-07-14' });
+    const today = computeDigest([makeSidecar(), makeSidecar()], {
+      date: '2026-07-15',
+      priorDigests: [busy, idle],
+    });
+    const reqTrend = today.trend!.find((t) => t.field === 'requestCount')!;
+    // Against the idle day this would have been 0% — no movement reported on a
+    // day that doubled the traffic of the last one that had any.
+    expect(reqTrend.priorDate).toBe('2026-07-13');
+    expect(reqTrend.prior).toBe(1);
+    expect(reqTrend.deltaPct).toBeCloseTo(100);
+  });
+
+  it('leaves a field flat and undated when nothing earlier recorded it', () => {
+    const idle = computeDigest([], { date: '2026-07-14' });
+    const today = computeDigest([makeSidecar()], { date: '2026-07-15', priorDigests: [idle] });
+    const reqTrend = today.trend!.find((t) => t.field === 'requestCount')!;
+    expect(reqTrend.priorDate).toBeUndefined();
+    expect(reqTrend.prior).toBe(0);
+    expect(reqTrend.deltaPct).toBe(0);
   });
 
   it('finds the busiest hour, in the reporting zone', () => {
