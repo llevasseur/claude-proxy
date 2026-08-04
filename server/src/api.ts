@@ -365,7 +365,11 @@ export async function buildTrends(
   let prior: UsageDigest | null = null;
   for (const date of dates) {
     const bucket = raw.get(date);
-    const digest = bucket ? computeDigest(bucket, { date, priorDigest: prior, classifierHashes }) : finalized.get(date);
+    // Annotated because `prior` is assigned from this binding below: inferring
+    // it would make the narrowing of `prior` circular (TS7022).
+    const digest: UsageDigest | undefined = bucket
+      ? computeDigest(bucket, { date, priorDigest: prior, classifierHashes })
+      : finalized.get(date);
     if (!digest) continue;
     digests.push(digest);
     prior = digest;
