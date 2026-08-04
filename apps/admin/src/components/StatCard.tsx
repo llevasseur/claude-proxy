@@ -24,13 +24,12 @@ export interface StatSpark {
 
 /**
  * What a card's delta is measured against: the last day that actually recorded
- * the field. Idle days are skipped to find it, so it is frequently not yesterday
- * and can differ from card to card — which is why each card names its own.
+ * the field. Idle days are skipped, so it is often not yesterday and differs
+ * from card to card.
  */
 export interface StatBaseline {
-  /** The day the baseline value came from. */
   date: string;
-  /** That day's value, already through the metric's own formatter. */
+  /** That day's value, already formatted. */
   value: string;
 }
 
@@ -41,8 +40,8 @@ export interface StatCardProps {
   /** Delta % against `baseline`, if available. */
   deltaPct?: number;
   /**
-   * The day and value the delta is measured against. Absent when no earlier day
-   * recorded the field, and on digests archived before the baseline was tracked.
+   * Absent when no earlier day recorded the field, and on digests archived
+   * before the baseline was tracked.
    */
   baseline?: StatBaseline;
   /** Whether an increase is good (e.g. cache-hit) or bad (e.g. cost). */
@@ -128,11 +127,9 @@ export function StatCard({
 }
 
 /**
- * The line under the delta chip, naming the day the percentage is measured
- * against — worded as the trend pages word it, so a card and its `/trends/$metric`
- * page read the same. With no baseline there is no date to name: a zero delta
- * means nothing earlier recorded the field at all, and a non-zero one means the
- * comparison happened on a digest archived before the baseline date was kept.
+ * The line under the delta chip, worded as `/trends/$metric` words it. With no
+ * date to name, a zero delta means nothing earlier recorded the field at all,
+ * and a non-zero one a digest archived before the baseline date was kept.
  */
 function baselineText(tone: 'up' | 'down' | 'flat', baseline: StatBaseline | undefined, deltaPct?: number): string {
   if (!baseline) return deltaPct ? 'vs an earlier day (date not recorded)' : 'no earlier day recorded this yet';

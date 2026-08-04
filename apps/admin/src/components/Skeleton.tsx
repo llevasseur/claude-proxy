@@ -72,8 +72,7 @@ export function SkeletonStatus({ label = 'Loading' }: { label?: string }) {
 
 /**
  * A `.grid.stats` row of stat cards. `spark` reserves the mini chart a card can
- * carry, and `baseline` the line naming the day its delta is measured against —
- * only cards fed a trend show one.
+ * carry, `baseline` the line naming the day its delta is measured against.
  */
 export function SkeletonStats({
   count = 4,

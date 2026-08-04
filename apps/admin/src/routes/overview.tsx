@@ -161,8 +161,6 @@ function withLiveToday(digests: UsageDigest[], today: UsageDigest): UsageDigest[
 
 function OverviewBody({ data, digests }: { data: SummaryResponse; digests: UsageDigest[] }) {
   const d = data.digest;
-  // Keyed by trend field, whole entries rather than just the percentage: each card
-  // states the day its delta is measured against, and that day is per-field.
   const trend = new Map((d.trend ?? []).map((t) => [t.field, t]));
   const series = useMemo(() => withLiveToday(digests, d), [digests, d]);
 
@@ -182,7 +180,6 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
               value={m.headline ? m.headline(d) : m.format(m.value(d))}
               sub={m.sub?.(d)}
               deltaPct={t?.deltaPct}
-              // No `priorDate` means no baseline to name — the card says so instead.
               baseline={t?.priorDate ? { date: t.priorDate, value: m.format(t.prior) } : undefined}
               increaseIsBad={m.increaseIsBad}
               metric={m.key}

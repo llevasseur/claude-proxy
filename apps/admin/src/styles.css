@@ -553,8 +553,7 @@ button:focus-visible {
   gap: 8px;
   font-size: 12px;
 }
-/* Which day the delta chip above it is measured against — the trend skips idle
-   days, so this is per-card and rarely yesterday. */
+/* which day the delta chip above it is measured against */
 .stat-baseline {
   font-family: var(--font-mono);
   font-size: 11px;
