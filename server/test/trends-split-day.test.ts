@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildPromptMix, buildTrends, clearRawArchiveCache } from '../src/api.js';
+import { buildPromptMix, buildSummary, buildTools, buildTrends, clearRawArchiveCache } from '../src/api.js';
 import { ingest } from '../src/db/ingest.js';
 import { openDb } from '../src/db/open.js';
 import { dbSource, fileSource } from '../src/db/source.js';
@@ -107,6 +107,36 @@ describe('a reporting day split across the live dir and the archive', () => {
       expect(split, 'the split day should be in the window').toBeDefined();
       expect(split!.requests).toBe(2);
       expect(days.find((d) => d.date === WHOLE_DAY)!.requests).toBe(1);
+    });
+
+    it(`digests both halves for the day summary, from ${backing.name}`, async () => {
+      const { digest, meta } = await buildSummary(logDir, SPLIT_DAY, NOW, backing.make());
+
+      expect(digest.requestCount).toBe(2);
+      expect(digest.tokens.input).toBe(TOKENS.input * 2);
+      expect(meta.files).toBe(2);
+    });
+
+    it(`summarizes a fully-archived day rather than reporting it empty, from ${backing.name}`, async () => {
+      const { digest, meta } = await buildSummary(logDir, WHOLE_DAY, NOW, backing.make());
+
+      expect(digest.requestCount).toBe(1);
+      expect(digest.tokens.input).toBe(TOKENS.input);
+      expect(meta.files).toBe(1);
+    });
+
+    it(`trends the summary against the archived day before it, from ${backing.name}`, async () => {
+      const { digest } = await buildSummary(logDir, SPLIT_DAY, NOW, backing.make());
+      expect(digest.trend).toBeDefined();
+      expect(digest.trend!.length).toBeGreaterThan(0);
+    });
+
+    it(`counts both halves in the day's tool table, from ${backing.name}`, async () => {
+      const { topTools, meta } = await buildTools(logDir, SPLIT_DAY, NOW, backing.make());
+
+      expect(meta.files).toBe(2);
+      // 900 bytes of Bash schema on each half of the day.
+      expect(topTools.find((t) => t.name === 'Bash')!.totalBytes).toBe(1800);
     });
   }
 

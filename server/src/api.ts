@@ -113,7 +113,9 @@ import {
   readJobFile,
 } from './jobs.js';
 import {
+  type LoadResult,
   locateRequestBody,
+  type ReadOptions,
   type RequestBodyLocation,
   readRequestBody,
   readRetainedSidecar,
@@ -155,7 +157,36 @@ export interface SummaryResponse {
 }
 
 /**
+ * One reporting day's sidecars, archived half first so the stream stays
+ * chronological.
+ *
+ * `readSidecars` only ever scans the live directory. A reporting day is a
+ * `REPORT_TZ` day while the summary job rotates on the *UTC* day, so a day near
+ * the present sits in both places and an older one is archived outright —
+ * reading only the live side reports a fraction of the day, then nothing.
+ */
+async function daySidecars(
+  logDir: string,
+  date: string,
+  now: Date,
+  source: SidecarSource,
+  opts: Omit<ReadOptions, 'date' | 'sinceDays'> = {},
+): Promise<LoadResult> {
+  const [archived, live] = await Promise.all([
+    source.readArchivedDay(logDir, date, opts),
+    source.readSidecars(logDir, { ...opts, date }, now),
+  ]);
+  return {
+    sidecars: [...archived.sidecars, ...live.sidecars],
+    files: archived.files + live.files,
+    parseErrors: archived.parseErrors + live.parseErrors,
+    bodiesEvicted: (archived.bodiesEvicted ?? 0) + (live.bodiesEvicted ?? 0),
+  };
+}
+
+/**
  * One day's digest + advice, with the trend computed against the prior day.
+ * Both days are read across the archive and the live dir — see {@link daySidecars}.
  *
  * `source` selects where the sidecars come from: the directory scan by default,
  * the SQLite substrate when the parity harness or shadow mode asks for it. See
@@ -170,8 +201,8 @@ export async function buildSummary(
   const day = date ?? today(now);
   const prevDay = shiftDay(day, -1);
   const [cur, prev] = await Promise.all([
-    source.readSidecars(logDir, { date: day }, now),
-    source.readSidecars(logDir, { date: prevDay }, now),
+    daySidecars(logDir, day, now, source),
+    daySidecars(logDir, prevDay, now, source),
   ]);
   const classifierHashes = await classifierPromptHashes(logDir);
   const priorDigest = computeDigest(prev.sidecars, { date: prevDay, classifierHashes });
@@ -700,7 +731,7 @@ export async function buildTools(
   source: SidecarSource = fileSource,
 ): Promise<ToolsResponse> {
   const day = date ?? today(now);
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { date: day }, now);
+  const { sidecars, files, parseErrors } = await daySidecars(logDir, day, now, source);
   const digest = computeDigest(sidecars, { date: day, topN: 200 });
   return { date: day, topTools: digest.topTools, meta: { files, parseErrors } };
 }
@@ -1570,11 +1601,9 @@ export async function buildSkim(
   source: SidecarSource = fileSource,
 ): Promise<SkimResponse> {
   const day = date ?? today(now);
-  const { sidecars, files, parseErrors, bodiesEvicted } = await source.readSidecars(
-    logDir,
-    { date: day, includeSkimRequests: true },
-    now,
-  );
+  const { sidecars, files, parseErrors, bodiesEvicted } = await daySidecars(logDir, day, now, source, {
+    includeSkimRequests: true,
+  });
   const skim = computeSkimDigest(sidecars, { date: day, topN: 50 });
   return { date: day, skim, meta: { files, parseErrors, bodiesEvicted: bodiesEvicted ?? 0 } };
 }
