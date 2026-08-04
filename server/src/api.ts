@@ -186,18 +186,14 @@ async function daySidecars(
 
 /**
  * How far back the summary will look for a day to compare against. Reached only
- * when every day in between was idle; a gap longer than this leaves the trend
- * unreported rather than measured against a fortnight-old figure.
+ * when every day in between was idle; a longer gap leaves the trend unreported.
  */
 const SUMMARY_BASELINE_LOOKBACK_DAYS = 14;
 
 /**
- * The days before `day` that the trend is measured against, oldest→newest.
- *
- * The walk stops at the first day that captured anything, so the usual case
- * costs the single read it always did; only a run of idle days pays for more.
- * The idle days are returned too, because whether one is empty is decided per
- * field rather than per day.
+ * The days before `day` that the trend is measured against, oldest→newest. The
+ * walk stops at the first day that captured anything; the idle days it passed are
+ * returned too, since whether one is empty is decided per field.
  */
 async function baselineDigests(
   logDir: string,
@@ -422,8 +418,6 @@ export async function buildTrends(
   const digests: UsageDigest[] = [];
   for (const date of dates) {
     const bucket = raw.get(date);
-    // Every day resolved so far is the baseline history, so a field's trend
-    // reaches past the idle days to the last one that recorded it.
     const digest: UsageDigest | undefined = bucket
       ? computeDigest(bucket, { date, priorDigests: digests, classifierHashes })
       : finalized.get(date);

@@ -42,8 +42,7 @@ describe('lastNonZeroComparison', () => {
   });
 
   it('reaches past the idle days to the last one that recorded the metric', () => {
-    // Yesterday and the day before captured nothing; the honest baseline is the
-    // 1st, and comparing against a zero day would report no movement at all.
+    // Yesterday and the day before captured nothing; the baseline is the 1st.
     const days = [
       day('2026-08-01', 40, 10),
       day('2026-08-02', 0, 0),
@@ -75,8 +74,8 @@ describe('lastNonZeroComparison', () => {
   });
 
   it('reports the closing day even when it is the zero one', () => {
-    // Today has recorded nothing yet. That is a real reading to show, not a
-    // reason to fall back to an earlier day as the headline.
+    // Today has recorded nothing yet — still a real reading, not a reason to
+    // promote an earlier day into the headline.
     const days = [day('2026-08-01', 40, 10), day('2026-08-02', 0, 0)];
     const compared = lastNonZeroComparison(days, cost);
     expect(compared?.closing.date).toBe('2026-08-02');

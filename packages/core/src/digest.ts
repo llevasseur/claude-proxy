@@ -28,8 +28,8 @@ export interface TrendEntry {
   prior: number;
   deltaPct: number;
   /**
-   * The day `prior` was read from — the last one that recorded this field, which
-   * need not be yesterday. Absent when no earlier day recorded it at all, and on
+   * The day `prior` was read from — the last one that recorded this field, not
+   * necessarily yesterday. Absent when no earlier day recorded it, and on
    * digests archived before the baseline was tracked.
    */
   priorDate?: string;
@@ -111,9 +111,8 @@ export interface ComputeDigestOptions {
   priorDigest?: UsageDigest | null;
   /**
    * Every day before this one, oldest→newest, so each field is compared against
-   * the last date that recorded it rather than whatever yesterday happened to
-   * be. Takes precedence over `priorDigest`; pass the days that were idle too,
-   * since which of them counts as empty is decided per field.
+   * the last date that recorded it. Takes precedence over `priorDigest`; include
+   * the idle days, since which of them counts as empty is decided per field.
    */
   priorDigests?: readonly UsageDigest[];
   /** How many tools to include in `topTools`. Default 12. */
@@ -324,9 +323,8 @@ function buildTrend(today: UsageDigest, history: readonly UsageDigest[]): TrendE
       field,
       today: pick(today),
       prior: baseline ? pick(baseline) : 0,
-      // Zero, not null, when nothing recorded the field: the delta chips read an
-      // absent number as "no trend yet" and a zero one as "flat", and neither
-      // says anything wrong here.
+      // Zero, not null, when nothing recorded the field — the delta chips read an
+      // absent number as "no trend yet" and a zero one as "flat".
       deltaPct: deltaPct ?? 0,
       priorDate: baseline?.date,
     };
@@ -354,8 +352,6 @@ export function digestsByDay(
   const days = [...byDay.keys()].sort();
   const digests: UsageDigest[] = [];
   for (const day of days) {
-    // Every day computed so far, so a run of idle days is skipped over rather
-    // than becoming the baseline for the day after it.
     digests.push(computeDigest(byDay.get(day)!, { ...opts, date: day, priorDigests: digests }));
   }
   return digests;

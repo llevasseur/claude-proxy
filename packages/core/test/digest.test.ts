@@ -74,8 +74,8 @@ describe('computeDigest', () => {
       priorDigests: [busy, idle],
     });
     const reqTrend = today.trend!.find((t) => t.field === 'requestCount')!;
-    // Against the idle day this would have been 0% — no movement reported on a
-    // day that doubled the traffic of the last one that had any.
+    // Against the idle day this would have been 0%, on a day that doubled the
+    // traffic of the last one that had any.
     expect(reqTrend.priorDate).toBe('2026-07-13');
     expect(reqTrend.prior).toBe(1);
     expect(reqTrend.deltaPct).toBeCloseTo(100);

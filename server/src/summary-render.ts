@@ -12,9 +12,8 @@ function usd(n: number): string {
 
 function trendLine(d: UsageDigest): string {
   if (!d.trend) return '';
-  // The baseline is the last day that recorded the field, so it need not be
-  // yesterday and two fields need not share one. Name it in the header when they
-  // agree, and per figure when they don't.
+  // Two fields need not share a baseline: name it in the header when they agree,
+  // per figure when they don't.
   const dates = new Set(d.trend.flatMap((t) => (t.priorDate ? [t.priorDate] : [])));
   const mixed = dates.size > 1;
   const parts = d.trend.map((t) => {

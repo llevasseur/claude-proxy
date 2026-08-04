@@ -174,10 +174,9 @@ interface DayComparison {
 
 /**
  * The window's latest day against the last date that recorded this metric,
- * stated rather than left to be read off the chart. The baseline comes from the
- * digests rather than the clock and skips days that recorded nothing, so it is
- * often neither yesterday nor the previous row of the table — which is why both
- * dates are named.
+ * stated rather than left to be read off the chart. The baseline skips days that
+ * recorded nothing, so it is often neither yesterday nor the previous row of the
+ * table — which is why both dates are named.
  */
 function sinceLastRecorded(digests: UsageDigest[], def: StatMetric): DayComparison | null {
   const compared = digests.length > 1 ? lastNonZeroComparison(digests, def.value) : null;

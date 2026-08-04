@@ -25,14 +25,9 @@ export interface ClosingComparison<T> {
 
 /**
  * The closing day against the last date that actually recorded this statistic,
- * skipping back over any that read zero.
- *
- * An idle day is a gap in the record rather than a measurement of zero, so it
- * cannot be what a trend is read against: a zero baseline divides by nothing, so
- * the delta is suppressed and the movement goes unreported even though the day
- * it should be compared to is sitting further back in the same window. Which
- * date that is depends on the statistic, so the scan takes the value accessor
- * rather than a whole-day emptiness test.
+ * skipping back over any that read zero. Which date that is depends on the
+ * statistic, so the scan takes the value accessor rather than a whole-day
+ * emptiness test.
  */
 export function lastNonZeroComparison<T>(days: readonly T[], value: (d: T) => number): ClosingComparison<T> | null {
   const closing = days.at(-1);
