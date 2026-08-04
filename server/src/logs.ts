@@ -199,28 +199,59 @@ export function rawArchiveDayDir(logDir: string, date: string): string {
 }
 
 /**
- * One archived day's sidecars from `<logDir>/archive/<date>/`. Empty result rather
+ * `<archiveDir>/<YYYY-MM-DD>/raw/` — where a finished day's raw triples end up
+ * once they are relocated off the log volume, alongside that day's `digest.json`.
+ * The relocation is external to this repo, so `<logDir>/archive/<date>/` is empty
+ * on a deployment that runs it.
+ */
+export function relocatedArchiveDayDir(archiveDir: string, date: string): string {
+  return path.join(archiveDir, date, 'raw');
+}
+
+export interface ArchivedDayOptions extends Omit<ReadOptions, 'date' | 'sinceDays'> {
+  /**
+   * Root of the relocated archive (see {@link relocatedArchiveDayDir}), read as a
+   * fallback for a day no longer under `<logDir>/archive/`.
+   */
+  archiveDir?: string;
+}
+
+/**
+ * One archived day's sidecars, from `<logDir>/archive/<date>/` and — for a day
+ * that has since been relocated — `<archiveDir>/<date>/raw/`. Empty result rather
  * than a throw when the day was never archived or has been pruned.
  *
  * Folders are named for the UTC day the job moved, so a reporting day straddles
  * `date` and `date + 1`; both are read and `readSidecars` keeps only the
  * sidecars that land on `date`.
+ *
+ * The two roots are tried per folder rather than merged: relocation *moves* the
+ * triples, so a folder present in both would double every request in it.
  */
 export async function readArchivedDay(
   logDir: string,
   date: string,
-  opts: Omit<ReadOptions, 'date' | 'sinceDays'> = {},
+  opts: ArchivedDayOptions = {},
 ): Promise<LoadResult> {
+  const { archiveDir, ...readOpts } = opts;
   const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0, bodiesEvicted: 0 };
   for (const day of [date, shiftDay(date, 1)]) {
-    try {
-      const r = await readSidecars(rawArchiveDayDir(logDir, day), { ...opts, date });
+    const roots = [rawArchiveDayDir(logDir, day)];
+    if (archiveDir) roots.push(relocatedArchiveDayDir(archiveDir, day));
+    for (const root of roots) {
+      let r: LoadResult;
+      try {
+        r = await readSidecars(root, { ...readOpts, date });
+      } catch {
+        // Never archived, already pruned, or relocated away — try the next root.
+        continue;
+      }
+      if (r.files === 0) continue;
       out.sidecars.push(...r.sidecars);
       out.files += r.files;
       out.parseErrors += r.parseErrors;
       out.bodiesEvicted = (out.bodiesEvicted ?? 0) + (r.bodiesEvicted ?? 0);
-    } catch {
-      // Never archived or already pruned — contributes nothing.
+      break;
     }
   }
   return out;

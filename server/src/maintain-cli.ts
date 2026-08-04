@@ -12,6 +12,7 @@
  * object `--apply` executes. See `docs/features/retention-lifecycle.md`.
  */
 import { buildSummary } from './api.js';
+import { resolveArchiveDir } from './archive.js';
 import { resolveLogDir } from './logs.js';
 import {
   applyRetention,
@@ -113,7 +114,7 @@ async function main(): Promise<void> {
   }
 
   console.log('');
-  console.log(renderSummary(await buildSummary(logDir, today)));
+  console.log(renderSummary(await buildSummary(logDir, today, new Date(), resolveArchiveDir())));
 }
 
 main().catch((err: unknown) => {

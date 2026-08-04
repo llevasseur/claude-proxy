@@ -14,6 +14,7 @@ import {
 import { commandStorePath, readCommandRuns as readCommandRunsFromFiles, sortCommandRuns } from '../command-runs.js';
 import { conceptStorePath, readConcepts as readConceptsFromFiles } from '../concepts.js';
 import {
+  type ArchivedDayOptions,
   type LoadResult,
   type ReadOptions,
   readArchivedDay as readArchivedDayFromFiles,
@@ -49,7 +50,11 @@ import { STORE_PATH as CONCEPT_STORE_PATH } from './ingest-concepts.js';
 export interface SidecarSource {
   readonly kind: 'files' | 'db';
   readSidecars(logDir: string, opts?: ReadOptions, now?: Date): Promise<LoadResult>;
-  readArchivedDay(logDir: string, date: string, opts?: Omit<ReadOptions, 'date' | 'sinceDays'>): Promise<LoadResult>;
+  /**
+   * `opts.archiveDir` names the relocated archive root. Only the file backing
+   * consults it — the substrate answers from what was ingested.
+   */
+  readArchivedDay(logDir: string, date: string, opts?: ArchivedDayOptions): Promise<LoadResult>;
 
   /* --- Session transcripts (slice 2) --- *
    *
@@ -644,11 +649,13 @@ export function dbSource(db: DatabaseSync): SidecarSource {
     },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
     readArchivedDay: async (logDir, date, opts = {}) => {
+      // `archiveDir` is a file-backing concern; the substrate reads by `source_dir`.
+      const { archiveDir: _archiveDir, ...readOpts } = opts;
       const out: LoadResult = { sidecars: [], files: 0, parseErrors: 0, bodiesEvicted: 0 };
       // Archive folders are named for the UTC day the summary job moved, so one
       // reporting day straddles two of them. Read both, keep only `date`.
       for (const day of [date, shiftDay(date, 1)]) {
-        const r = await readDir(db, logDir, `archive/${day}`, { ...opts, date }, new Date());
+        const r = await readDir(db, logDir, `archive/${day}`, { ...readOpts, date }, new Date());
         out.sidecars.push(...r.sidecars);
         out.files += r.files;
         out.parseErrors += r.parseErrors;

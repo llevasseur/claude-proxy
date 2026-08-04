@@ -90,6 +90,27 @@ describe('computeDigest', () => {
     expect(reqTrend.deltaPct).toBe(0);
   });
 
+  it('trends the two ratio fields in percentage points, as their cards report them', () => {
+    const day = (cacheRead: number, realInput: number) =>
+      makeSidecar({ tokens: { input: realInput - cacheRead, output: 500, cacheRead, cacheCreation: 0, realInput } });
+    // 50% of the prompt cached, and 6,000 tool tokens against 10,000 input.
+    const prior = computeDigest([day(5_000, 10_000)], { date: '2026-07-14' });
+    // 90% cached, and the same tool schemas against twice the input.
+    const today = computeDigest([day(18_000, 20_000)], { date: '2026-07-15', priorDigest: prior });
+
+    const cache = today.trend!.find((t) => t.field === 'cacheHitPct')!;
+    expect(cache.today).toBeCloseTo(90);
+    expect(cache.prior).toBeCloseTo(50);
+    expect(cache.deltaPct).toBeCloseTo(80);
+    expect(cache.priorDate).toBe('2026-07-14');
+
+    const overhead = today.trend!.find((t) => t.field === 'toolOverheadPct')!;
+    expect(overhead.today).toBeCloseTo(30);
+    expect(overhead.prior).toBeCloseTo(60);
+    expect(overhead.deltaPct).toBeCloseTo(-50);
+    expect(overhead.priorDate).toBe('2026-07-14');
+  });
+
   it('finds the busiest hour, in the reporting zone', () => {
     const at = (h: string) => makeSidecar({ timestamp: `2026-07-15T${h}:00:00.000Z` });
     const d = computeDigest([at('09'), at('14'), at('14')], { date: '2026-07-15' });

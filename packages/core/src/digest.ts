@@ -156,6 +156,9 @@ const TREND_FIELDS: Array<{ field: string; pick: (d: UsageDigest) => number }> =
   { field: 'fixedPrefixTokens', pick: (d) => d.perCall.work.fixedPrefixTokens },
   { field: 'freshInputPerCall', pick: (d) => d.perCall.work.freshInputTokens },
   { field: 'callsPerSession', pick: (d) => d.perCall.work.callsPerSession },
+  // Percentage points: the card formats `prior` with the same formatter as its headline.
+  { field: 'cacheHitPct', pick: (d) => d.tokens.cacheHitRatio * 100 },
+  { field: 'toolOverheadPct', pick: (d) => d.toolOverheadPctOfInput },
 ];
 
 /** Running totals for one per-call cohort, before the means are taken. */

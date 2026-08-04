@@ -213,7 +213,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     cases: async (ctx) =>
       (await archivedDays(ctx.logDir)).map((day) => ({
         label: `/api/summary?date=${day}`,
-        run: (source) => buildSummary(ctx.logDir, day, endOf(day), source),
+        run: (source) => buildSummary(ctx.logDir, day, endOf(day), ctx.archiveDir, source),
       })),
   },
   {
@@ -221,7 +221,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     cases: async (ctx) =>
       (await archivedDays(ctx.logDir)).map((day) => ({
         label: `/api/tools?date=${day}`,
-        run: (source) => buildTools(ctx.logDir, day, endOf(day), source),
+        run: (source) => buildTools(ctx.logDir, day, endOf(day), ctx.archiveDir, source),
       })),
   },
   {
@@ -443,7 +443,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
     cases: async (ctx) =>
       (await archivedDays(ctx.logDir)).map((day) => ({
         label: `/api/skim?date=${day}`,
-        run: (source) => buildSkim(ctx.logDir, day, endOf(day), source),
+        run: (source) => buildSkim(ctx.logDir, day, endOf(day), ctx.archiveDir, source),
       })),
   },
   {

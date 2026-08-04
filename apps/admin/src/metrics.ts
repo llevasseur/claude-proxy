@@ -284,6 +284,7 @@ export const METRICS: StatMetric[] = [
     // The ratio's own two totals, not an average of daily percentages.
     blend: { num: (d) => d.tokens.cacheRead * 100, den: (d) => d.tokens.realInput, unit: 'of prompt tokens' },
     increaseIsBad: false,
+    trendField: 'cacheHitPct',
   },
   {
     key: 'requests',
@@ -324,6 +325,7 @@ export const METRICS: StatMetric[] = [
       unit: 'of input tokens',
     },
     sub: () => 'of input tokens',
+    trendField: 'toolOverheadPct',
   },
   {
     key: 'avg-system-prompt',
