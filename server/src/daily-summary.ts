@@ -8,6 +8,7 @@
  *   pnpm --filter server summary 2026-07-14 # a specific day
  */
 import { buildSummary, type SummaryResponse } from './api.js';
+import { resolveArchiveDir } from './archive.js';
 import { resolveLogDir } from './logs.js';
 import { renderSummary } from './summary-render.js';
 
@@ -31,7 +32,7 @@ async function reconcileRuns(logDir: string): Promise<void> {
 const dateArg = process.argv[2];
 const logDir = resolveLogDir();
 reconcileRuns(logDir)
-  .then(() => buildSummary(logDir, dateArg))
+  .then(() => buildSummary(logDir, dateArg, new Date(), resolveArchiveDir()))
   .then((summary: SummaryResponse) => {
     console.log(renderSummary(summary));
   })

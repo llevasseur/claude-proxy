@@ -391,9 +391,9 @@ const server = http.createServer(async (req, res) => {
       }
       case '/api/summary': {
         const now = new Date();
-        const summary = await buildSummary(LOG_DIR, date, now, readSource());
+        const summary = await buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
         send(res, 200, summary);
-        shadow('/api/summary', summary, (source) => buildSummary(LOG_DIR, date, now, source));
+        shadow('/api/summary', summary, (source) => buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, source));
         return;
       }
       // Today's digest moves with every captured request, so this follows the log
@@ -401,7 +401,7 @@ const server = http.createServer(async (req, res) => {
       case '/api/summary/stream':
         await serveSse(req, res, {
           watchPath: LOG_DIR,
-          build: () => buildSummary(LOG_DIR, date, new Date(), readSource()),
+          build: () => buildSummary(LOG_DIR, date, new Date(), ARCHIVE_DIR, readSource()),
           debounceMs: 600,
         });
         return;
@@ -490,9 +490,9 @@ const server = http.createServer(async (req, res) => {
         return;
       case '/api/tools': {
         const now = new Date();
-        const tools = await buildTools(LOG_DIR, date, now, readSource());
+        const tools = await buildTools(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
         send(res, 200, tools);
-        shadow('/api/tools', tools, (source) => buildTools(LOG_DIR, date, now, source));
+        shadow('/api/tools', tools, (source) => buildTools(LOG_DIR, date, now, ARCHIVE_DIR, source));
         return;
       }
       case '/api/context': {
@@ -1045,9 +1045,9 @@ const server = http.createServer(async (req, res) => {
         return;
       case '/api/skim': {
         const now = new Date();
-        const skim = await buildSkim(LOG_DIR, date, now, readSource());
+        const skim = await buildSkim(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
         send(res, 200, skim);
-        shadow('/api/skim', skim, (source) => buildSkim(LOG_DIR, date, now, source));
+        shadow('/api/skim', skim, (source) => buildSkim(LOG_DIR, date, now, ARCHIVE_DIR, source));
         return;
       }
       case '/api/skim/trend': {

@@ -110,7 +110,7 @@ describe('a reporting day split across the live dir and the archive', () => {
     });
 
     it(`digests both halves for the day summary, from ${backing.name}`, async () => {
-      const { digest, meta } = await buildSummary(logDir, SPLIT_DAY, NOW, backing.make());
+      const { digest, meta } = await buildSummary(logDir, SPLIT_DAY, NOW, undefined, backing.make());
 
       expect(digest.requestCount).toBe(2);
       expect(digest.tokens.input).toBe(TOKENS.input * 2);
@@ -118,7 +118,7 @@ describe('a reporting day split across the live dir and the archive', () => {
     });
 
     it(`summarizes a fully-archived day rather than reporting it empty, from ${backing.name}`, async () => {
-      const { digest, meta } = await buildSummary(logDir, WHOLE_DAY, NOW, backing.make());
+      const { digest, meta } = await buildSummary(logDir, WHOLE_DAY, NOW, undefined, backing.make());
 
       expect(digest.requestCount).toBe(1);
       expect(digest.tokens.input).toBe(TOKENS.input);
@@ -126,13 +126,13 @@ describe('a reporting day split across the live dir and the archive', () => {
     });
 
     it(`trends the summary against the archived day before it, from ${backing.name}`, async () => {
-      const { digest } = await buildSummary(logDir, SPLIT_DAY, NOW, backing.make());
+      const { digest } = await buildSummary(logDir, SPLIT_DAY, NOW, undefined, backing.make());
       expect(digest.trend).toBeDefined();
       expect(digest.trend!.length).toBeGreaterThan(0);
     });
 
     it(`counts both halves in the day's tool table, from ${backing.name}`, async () => {
-      const { topTools, meta } = await buildTools(logDir, SPLIT_DAY, NOW, backing.make());
+      const { topTools, meta } = await buildTools(logDir, SPLIT_DAY, NOW, undefined, backing.make());
 
       expect(meta.files).toBe(2);
       // 900 bytes of Bash schema on each half of the day.
