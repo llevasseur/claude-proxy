@@ -1,5 +1,5 @@
 import type { UsageDigest } from '@claude-proxy/core';
-import { fmtInt } from '../format';
+import { fmtCompact, fmtInt } from '../format';
 import { type Series, SeriesLineChart } from './SeriesLineChart';
 import { SkeletonChartCard } from './Skeleton';
 
@@ -35,7 +35,7 @@ export function PerRequestCard({ digests }: { digests: UsageDigest[] }) {
         <h2>Tokens per request</h2>
         <span className='range'>{rangeLabel}</span>
       </div>
-      <SeriesLineChart data={rows} series={PER_REQUEST_SERIES} xKey='label' format={fmtInt} />
+      <SeriesLineChart data={rows} series={PER_REQUEST_SERIES} xKey='label' format={fmtInt} formatTick={fmtCompact} />
       <div className='chartlegend'>
         {PER_REQUEST_SERIES.map((s) => (
           <span className='chartlegend-item' key={s.dataKey}>

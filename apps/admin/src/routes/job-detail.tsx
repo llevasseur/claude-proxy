@@ -5,6 +5,7 @@ import { Fragment, useMemo, useState } from 'react';
 import type { JobSummary } from '../api';
 import { getJob, getJobFile } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { HeaderHint } from '../components/HeaderHint';
 import { JobFileTree } from '../components/JobFileTree';
 import { JobFileView } from '../components/JobFileView';
 import { QueryState } from '../components/QueryState';
@@ -223,9 +224,18 @@ function JobFacts({ job }: { job: JobSummary }) {
           <table className='table' style={{ marginTop: 12 }}>
             <thead>
               <tr>
-                <th>Kind</th>
-                <th>Id</th>
-                <th>Link</th>
+                <th>
+                  Kind
+                  <HeaderHint text="What the artifact links to, as the job's state file recorded it — pr, issue, branch. Reads “link” when the file named no kind." />
+                </th>
+                <th>
+                  Id
+                  <HeaderHint text="The artifact's identifier from the same record, or — when the file carried none." />
+                </th>
+                <th>
+                  Link
+                  <HeaderHint text='The URL the job wrote down. It opens in a new tab and is not checked from here.' />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -263,9 +273,18 @@ function JobFacts({ job }: { job: JobSummary }) {
           <table className='table' style={{ marginTop: 12 }}>
             <thead>
               <tr>
-                <th>Kind</th>
-                <th>Started</th>
-                <th>What</th>
+                <th>
+                  Kind
+                  <HeaderHint text='Whatever the job called the task — shell, local_bash, an agent name. Reads “task” when the file named no kind.' />
+                </th>
+                <th>
+                  Started
+                  <HeaderHint text='When the task began, in local time, converted from the epoch milliseconds the state file stores. Reads — when it stored none.' />
+                </th>
+                <th>
+                  What
+                  <HeaderHint text="The task's label as the job wrote it, not a description generated here." />
+                </th>
               </tr>
             </thead>
             <tbody>
