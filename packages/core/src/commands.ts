@@ -781,15 +781,13 @@ export interface CommandRunTotals {
   /** Wall clock from first to last captured request, in ms. */
   durationMs: number;
   /**
-   * End-to-end wall clock in ms — how long the run actually took.
+   * End-to-end wall clock in ms.
    *
-   * {@link durationMs} spans the *requests*, so it stops at the last one and reports 0
-   * for a run that only ever sent one. A top-level run brackets a whole session, so its
-   * transcript's own start and last write answer wider and truthfully; a nested run owns
-   * no such bracket and falls back to the request span.
+   * {@link durationMs} spans the *requests*, so it stops at the last one and reports 0 for
+   * a run that only ever sent one. A top-level run brackets its whole session; a nested run
+   * has no such bracket and falls back to the request span.
    *
-   * 0 on a record written before this field existed — there is no backfill, so read it
-   * as "unknown" rather than "instant".
+   * 0 means unknown, not instant — there is no backfill.
    */
   wallMs: number;
 }
@@ -1141,10 +1139,8 @@ export function stepReach(steps: readonly CommandStep[], runs: readonly CommandR
 /**
  * One run's **shape**: how much work it did, and how long it took end to end.
  *
- * Kept apart from {@link CommandRunStepStats}, which asks where the *tokens* went. This
- * asks the two questions cost cannot answer — a run can be cheap and interminable, or
- * expensive and over in one turn — and every field is read off the stored record, so
- * nothing here needs the raw logs.
+ * Distinct from {@link CommandRunStepStats}, which asks where the *tokens* went. Every
+ * field is read off the stored record, so nothing here needs the raw logs.
  */
 export interface CommandRunShape {
   /** The record's key, so a point on the trend can link to its run. */
@@ -1154,8 +1150,7 @@ export interface CommandRunShape {
    * Declared `## Step N` steps this run attributed at least one node to.
    *
    * Counted against the run's **own** snapshot, not the current catalogue: a step added
-   * after the run happened was never available to reach, and counting it would read as a
-   * regression the run had no way to cause.
+   * afterwards was never available to reach.
    */
   stepsReached: number;
   /** Steps that snapshot declared — the ceiling {@link stepsReached} is out of. */
@@ -1166,15 +1161,9 @@ export interface CommandRunShape {
   toolCalls: number;
   /** Captured requests. Not chat messages, and not the same as a step. */
   turns: number;
-  /**
-   * End-to-end wall clock in ms: {@link CommandRunTotals.wallMs} when the record carries
-   * one, else the request span, which is all an older record can answer with.
-   */
+  /** {@link CommandRunTotals.wallMs} when the record carries one, else the request span. */
   endToEndMs: number;
-  /**
-   * False when {@link endToEndMs} fell back to the narrower request span, so the UI can
-   * say how much of a trend is measured on the wider bracket rather than implying it all is.
-   */
+  /** False when {@link endToEndMs} fell back to the narrower request span. */
   wallMeasured: boolean;
   outcome: CommandRunOutcome;
   /** The command file's hash then, so the trend can mark where a `/sync` moved it. */
@@ -1185,8 +1174,7 @@ export interface CommandRunShape {
  * The per-run shape series for one command's trend, **oldest first** — a trend reads
  * left to right, unlike the run list.
  *
- * Runs with no start are dropped: a point with no place on the x-axis cannot be plotted,
- * and inventing one would put it wherever the array happened to hold it.
+ * Runs with no start are dropped — they have no place on the x-axis.
  */
 export function commandRunShapes(runs: readonly CommandRun[]): CommandRunShape[] {
   return runs
@@ -1195,8 +1183,7 @@ export function commandRunShapes(runs: readonly CommandRun[]): CommandRunShape[]
       const totals = runTotals(run);
       const declared = run.steps ?? [];
       const stats = run.stepStats ?? [];
-      // Only the declared steps: the unattributed bucket is a real row on the step
-      // table but it is not a step the run got to.
+      // The unattributed bucket is a row on the step table, but not a step the run got to.
       const declaredIds = new Set(declared.map((s) => s.id));
       const wall = totals.wallMs;
 

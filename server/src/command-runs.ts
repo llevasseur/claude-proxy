@@ -591,11 +591,8 @@ function buildRun(input: {
   const started = turns[0]?.timestamp ?? (range ? null : graph.started) ?? null;
   const ended = turns[turns.length - 1]?.timestamp ?? (range ? null : modified) ?? null;
 
-  // End to end, which the request span above is not: it stops at the last request, so it
-  // misses that request's own answer and reports 0 for a run that only sent one. A
-  // top-level run *is* its session, so the transcript's start and last write bracket the
-  // whole thing. A nested run is a slice of someone else's session and has no bracket of
-  // its own, so the request span is the widest honest answer for it.
+  // A top-level run *is* its session, so its transcript brackets the whole thing. A nested
+  // run is a slice of someone else's session and has no bracket of its own.
   const wallFrom = range ? started : (graph.started ?? started);
   const wallTo = range ? ended : (modified ?? ended);
 
@@ -688,11 +685,7 @@ function nestedFamily(
   return family;
 }
 
-/**
- * Milliseconds between two timestamps, or 0 when either is missing or unparseable —
- * "unknown" and "instant" read the same here, which is why both duration fields are
- * documented as unknown at 0. Clamped at 0, since a clock can hand back either order.
- */
+/** Milliseconds between two timestamps, or 0 when either is missing or unparseable. Clamped at 0. */
 function spanMs(from: string | null, to: string | null): number {
   if (!from || !to) return 0;
   const span = new Date(to).getTime() - new Date(from).getTime();

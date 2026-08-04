@@ -145,8 +145,6 @@ function RunBody({ data }: { data: CommandRunResponse }) {
           value={fmtInt(totals.tokens.realInput + totals.tokens.output)}
           sub={`${fmtInt(totals.tokens.cacheRead)} read from cache`}
         />
-        {/* The end-to-end figure when the record carries one; a record written before
-            `wallMs` existed can only answer with its request span. */}
         <StatCard
           label='End to end'
           value={endToEnd > 0 ? fmtDuration(endToEnd) : '—'}

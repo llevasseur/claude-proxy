@@ -404,14 +404,11 @@ DELETE FROM ingest_watermark;
 
 /**
  * `totals_wall_ms` — a run's end-to-end wall clock, beside the request span
- * `totals_duration_ms` already holds. See `CommandRunTotals.wallMs` for why the two
- * differ; both are queryable because "how long did it take" and "how long was it
- * talking to the model" are different questions.
+ * `totals_duration_ms` already holds. See `CommandRunTotals.wallMs`.
  *
- * Dropping the store's watermark is what makes the column fill: the tables are only
- * rebuilt when the file looks changed, and migrating the schema does not change the
- * file. That only recovers the runs the store still holds — the field itself is
- * computed at capture time, so records written before it carry 0 forever.
+ * Dropping the store's watermark is what makes the column fill: the table is only rebuilt
+ * when the file looks changed, and migrating the schema does not change the file. Records
+ * written before the field carry 0 regardless — it is computed at capture time.
  */
 const SCHEMA_V8 = `
 ALTER TABLE command_run ADD COLUMN totals_wall_ms INTEGER NOT NULL DEFAULT 0;

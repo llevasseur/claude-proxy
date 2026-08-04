@@ -374,11 +374,7 @@ function ScatterTooltip({ active, payload }: { active?: boolean; payload?: { pay
   );
 }
 
-/**
- * The three readings of "how many steps" a run takes, which are not the same number and
- * are interesting precisely where they diverge: a run doing plenty of work that never
- * reaches the last declared step is the shape worth catching.
- */
+/** Three readings of "how many steps" a run takes, plotted together because they diverge. */
 const WORK_SERIES: Series[] = [
   { dataKey: 'nodes', name: 'agent steps', color: 'var(--signal)' },
   { dataKey: 'toolCalls', name: 'tool calls', color: 'var(--violet)' },
@@ -393,15 +389,12 @@ const TREND_HEIGHT = 220;
 /**
  * How much work each run did, and how long it took, run by run.
  *
- * **Two charts rather than two axes.** Steps are counts in the low tens while a duration
- * is milliseconds in the millions, so plotting them together flattens the counts onto the
- * axis. They share one x — a point per run, oldest left, the same order the scatter above
- * plots — so reading a spike in one against the other is a matter of looking up or down.
+ * Two charts rather than two axes: step counts in the low tens and a duration in the
+ * millions of ms cannot share a y. They share one x, a point per run, oldest left.
  */
 function ShapeTrends({ data }: { data: CommandResponse }) {
   const shape = data.shape;
 
-  // One point is not a trend, and a chart of it says less than the run list already does.
   if (shape.length < 2) {
     return (
       <div className='card empty'>
@@ -480,7 +473,7 @@ function ShapeTrends({ data }: { data: CommandResponse }) {
   );
 }
 
-/** The swatch strip under a line chart — the page's own convention. */
+/** The swatch strip under a line chart. */
 function Legend({ series }: { series: Series[] }) {
   return (
     <div className='chartlegend'>

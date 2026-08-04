@@ -575,8 +575,7 @@ describe('nested runs', () => {
     await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-15T18:00:00.000Z'));
 
     const clean = (await readCommandRuns(logDir)).find((r) => r.command === 'clean')!;
-    // The host's transcript brackets the host, not this slice of it, so widening would
-    // charge the child with time its parent spent before and after it.
+    // The host's transcript brackets the host, not this slice of it.
     expect(clean.totals.wallMs).toBe(clean.totals.durationMs);
     expect(clean.totals.durationMs).toBe(3 * 60_000);
   });
@@ -590,8 +589,7 @@ describe('end-to-end duration', () => {
     await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-15T18:00:00.000Z'));
 
     const [run] = await readCommandRuns(logDir);
-    // The transcript opens a minute before the first request and is written to after the
-    // last, so the wider reading can only ever contain the narrower one.
+    // The transcript opens before the first request and is written after the last.
     expect(run!.totals.durationMs).toBe(3 * 60_000);
     expect(run!.totals.wallMs).toBeGreaterThan(run!.totals.durationMs);
   });
@@ -602,8 +600,7 @@ describe('end-to-end duration', () => {
     await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-15T18:00:00.000Z'));
 
     const [run] = await readCommandRuns(logDir);
-    // One request is its own first and last, so the span between them is zero — which is
-    // the whole reason the record carries a second reading.
+    // One request is its own first and last, so the span between them is zero.
     expect(run!.totals.durationMs).toBe(0);
     expect(run!.totals.wallMs).toBeGreaterThan(0);
   });

@@ -1901,10 +1901,7 @@ export interface CommandResponse {
   stepReach: StepReach[];
   patterns: PatternFrequency[];
   hashMarkers: CommandHashMarker[];
-  /**
-   * Per-run work and duration, **oldest first** — the trend, which reads left to right
-   * while `runs` is newest-first for the list.
-   */
+  /** Per-run work and duration, **oldest first** — `runs` is newest-first for the list. */
   shape: CommandRunShape[];
   meta: {
     totalRuns: number;

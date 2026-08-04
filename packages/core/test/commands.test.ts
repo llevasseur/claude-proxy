@@ -705,8 +705,7 @@ describe('commandRunShapes', () => {
   });
 
   it('counts against the run’s own snapshot, so a step added later is not a regression', () => {
-    // The run declared one step and reached it. A step the command file grew afterwards
-    // was never available to reach, and must not read as the run falling short.
+    // A step the command file grew afterwards was never available to reach.
     const shapes = commandRunShapes([run({ steps: [steps[0]!], stepStats: [stat('1', true), stat('9', true)] })]);
     expect(shapes[0]).toMatchObject({ stepsReached: 1, stepsDeclared: 1 });
   });
@@ -718,8 +717,7 @@ describe('commandRunShapes', () => {
 
   it('falls back to the request span for a record written before wallMs, and flags it', () => {
     const old = run();
-    // Deleted rather than set to `undefined`: this reproduces a record whose writer never
-    // knew the key, which is what an older store line actually looks like.
+    // Deleted rather than `undefined`: an older store line has no such key at all.
     delete (old.totals as { wallMs?: number }).wallMs;
     const shapes = commandRunShapes([old]);
     expect(shapes[0]).toMatchObject({ endToEndMs: 1000, wallMeasured: false });
