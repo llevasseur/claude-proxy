@@ -70,8 +70,19 @@ export function SkeletonStatus({ label = 'Loading' }: { label?: string }) {
   );
 }
 
-/** A `.grid.stats` row of stat cards. `spark` reserves the mini chart a card can carry. */
-export function SkeletonStats({ count = 4, spark = false }: { count?: number; spark?: boolean }) {
+/**
+ * A `.grid.stats` row of stat cards. `spark` reserves the mini chart a card can
+ * carry, `baseline` the line naming the day its delta is measured against.
+ */
+export function SkeletonStats({
+  count = 4,
+  spark = false,
+  baseline = false,
+}: {
+  count?: number;
+  spark?: boolean;
+  baseline?: boolean;
+}) {
   return (
     <div className='grid stats' aria-hidden>
       {Array.from({ length: count }, (_, i) => (
@@ -85,6 +96,11 @@ export function SkeletonStats({ count = 4, spark = false }: { count?: number; sp
           <div className='stat-foot'>
             <Skeleton w='46%' />
           </div>
+          {baseline && (
+            <div className='stat-baseline'>
+              <Skeleton w='68%' />
+            </div>
+          )}
           {spark && (
             <div className='sparkline' style={{ height: SPARKLINE_HEIGHT }}>
               <Skeleton h='100%' />

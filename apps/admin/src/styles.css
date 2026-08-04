@@ -553,6 +553,14 @@ button:focus-visible {
   gap: 8px;
   font-size: 12px;
 }
+/* which day the delta chip above it is measured against */
+.stat-baseline {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+}
 .delta {
   font-family: var(--font-mono);
   font-weight: 600;

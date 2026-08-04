@@ -22,12 +22,28 @@ export interface StatSpark {
   format: (n: number) => string;
 }
 
+/**
+ * What a card's delta is measured against: the last day that actually recorded
+ * the field. Idle days are skipped, so it is often not yesterday and differs
+ * from card to card.
+ */
+export interface StatBaseline {
+  date: string;
+  /** That day's value, already formatted. */
+  value: string;
+}
+
 export interface StatCardProps {
   label: string;
   value: string;
   sub?: string;
-  /** Day-over-day delta %, if available. */
+  /** Delta % against `baseline`, if available. */
   deltaPct?: number;
+  /**
+   * Absent when no earlier day recorded the field, and on digests archived
+   * before the baseline was tracked.
+   */
+  baseline?: StatBaseline;
   /** Whether an increase is good (e.g. cache-hit) or bad (e.g. cost). */
   increaseIsBad?: boolean;
   /** Metric slug — makes the whole card a link to `/trends/$metric`. */
@@ -36,7 +52,16 @@ export interface StatCardProps {
   spark?: StatSpark;
 }
 
-export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, metric, spark }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  sub,
+  deltaPct,
+  baseline,
+  increaseIsBad = true,
+  metric,
+  spark,
+}: StatCardProps) {
   const tone = deltaPct === undefined ? null : deltaTone(deltaPct);
   const good = tone === 'flat' ? 'flat' : (tone === 'up') === increaseIsBad ? 'bad' : 'good';
   // Shared by the mini chart and the popover, so hovering either highlights both.
@@ -64,6 +89,7 @@ export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, me
         {sub && <span className='muted'>{sub}</span>}
         {deltaPct !== undefined && tone !== 'flat' && <span className={`delta ${good}`}>{deltaLabel(deltaPct)}</span>}
       </div>
+      {tone !== null && <div className='stat-baseline'>{baselineText(tone, baseline, deltaPct)}</div>}
       {spark && spark.points.length > 0 && (
         <>
           <Sparkline
@@ -98,6 +124,17 @@ export function StatCard({ label, value, sub, deltaPct, increaseIsBad = true, me
     );
   }
   return <div className='card stat'>{body}</div>;
+}
+
+/**
+ * The line under the delta chip, worded as `/trends/$metric` words it. With no
+ * date to name, a zero delta means nothing earlier recorded the field at all,
+ * and a non-zero one a digest archived before the baseline date was kept.
+ */
+function baselineText(tone: 'up' | 'down' | 'flat', baseline: StatBaseline | undefined, deltaPct?: number): string {
+  if (!baseline) return deltaPct ? 'vs an earlier day (date not recorded)' : 'no earlier day recorded this yet';
+  const verb = tone === 'flat' ? 'unchanged from' : tone === 'up' ? 'up from' : 'down from';
+  return `${verb} ${baseline.value} on ${baseline.date}`;
 }
 
 /**

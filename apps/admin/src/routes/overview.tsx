@@ -111,7 +111,7 @@ function UsageSection({ data, isLoading, error }: { data?: UsageResponse; isLoad
 function OverviewSkeleton({ days }: { days: number }) {
   return (
     <>
-      <SkeletonStats count={METRICS.length} spark />
+      <SkeletonStats count={METRICS.length} spark baseline />
       <CostRateSkeleton days={days} />
       <PerRequestSkeleton days={days} />
       <div className='grid two' aria-hidden>
@@ -161,7 +161,7 @@ function withLiveToday(digests: UsageDigest[], today: UsageDigest): UsageDigest[
 
 function OverviewBody({ data, digests }: { data: SummaryResponse; digests: UsageDigest[] }) {
   const d = data.digest;
-  const delta = Object.fromEntries((d.trend ?? []).map((t) => [t.field, t.deltaPct]));
+  const trend = new Map((d.trend ?? []).map((t) => [t.field, t]));
   const series = useMemo(() => withLiveToday(digests, d), [digests, d]);
 
   if (d.requestCount === 0) {
@@ -171,22 +171,26 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
   return (
     <>
       <div className='grid stats'>
-        {METRICS.map((m) => (
-          <StatCard
-            key={m.key}
-            label={m.label}
-            value={m.headline ? m.headline(d) : m.format(m.value(d))}
-            sub={m.sub?.(d)}
-            deltaPct={m.trendField ? delta[m.trendField] : undefined}
-            increaseIsBad={m.increaseIsBad}
-            metric={m.key}
-            spark={{
-              points: series.map((x) => ({ date: x.date, value: m.value(x) })),
-              color: m.color,
-              format: m.format,
-            }}
-          />
-        ))}
+        {METRICS.map((m) => {
+          const t = m.trendField ? trend.get(m.trendField) : undefined;
+          return (
+            <StatCard
+              key={m.key}
+              label={m.label}
+              value={m.headline ? m.headline(d) : m.format(m.value(d))}
+              sub={m.sub?.(d)}
+              deltaPct={t?.deltaPct}
+              baseline={t?.priorDate ? { date: t.priorDate, value: m.format(t.prior) } : undefined}
+              increaseIsBad={m.increaseIsBad}
+              metric={m.key}
+              spark={{
+                points: series.map((x) => ({ date: x.date, value: m.value(x) })),
+                color: m.color,
+                format: m.format,
+              }}
+            />
+          );
+        })}
       </div>
 
       {/* Both plots read the whole window, spliced so the newest day keeps moving. */}
