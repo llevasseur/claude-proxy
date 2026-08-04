@@ -12,10 +12,8 @@ import { dbSource, fileSource } from '../src/db/source.js';
  * A reporting day is a `REPORT_TZ` (America/New_York) day, but the summary job
  * rotates `logs/` into `archive/<date>/` on the *UTC* day. The two boundaries
  * are four hours apart, so the newest day or two is split: its morning is
- * already archived while its evening is still live.
- *
- * Reading only the live half of such a day is the defect these tests pin —
- * on real logs it understated a day by the archived majority of it.
+ * already archived while its evening is still live. These tests pin that such
+ * a day is read from both halves.
  */
 
 /** 11:00 EDT on the reporting day: already rotated into `archive/2026-08-02/`. */
@@ -55,8 +53,8 @@ let logDir: string;
 let db: DatabaseSync;
 
 /**
- * One split reporting day — one request in the archive, one still live — plus a
- * day that rotated out whole, so the fully-archived path stays covered too.
+ * One split reporting day — one request archived, one still live — plus a day
+ * that rotated out whole.
  */
 beforeEach(async () => {
   logDir = await mkdtemp(path.join(tmpdir(), 'trends-split-day-'));
@@ -72,7 +70,6 @@ afterEach(() => {
   db?.close();
 });
 
-/** Both backings answer every read through this seam, so both are exercised. */
 const BACKINGS = [
   { name: 'files', make: () => fileSource },
   { name: 'db', make: () => dbSource(db) },
@@ -85,7 +82,6 @@ describe('a reporting day split across the live dir and the archive', () => {
       const split = digests.find((d) => d.date === SPLIT_DAY);
 
       expect(split, 'the split day should be in the window').toBeDefined();
-      // The whole point: two requests, not just the live one.
       expect(split!.requestCount).toBe(2);
       expect(split!.tokens.input).toBe(TOKENS.input * 2);
       expect(split!.tokens.output).toBe(TOKENS.output * 2);

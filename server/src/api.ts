@@ -311,13 +311,10 @@ function liveSidecarsByDay(sidecars: readonly unknown[]): Map<string, unknown[]>
 /**
  * Per-day digests for the last `days` days, oldest→newest.
  *
- * A reporting day is a `REPORT_TZ` day, but the summary job rotates
- * `logs/` into `archive/<date>/` on the *UTC* day — so the boundaries do not
- * line up and a day near the present is split across both. Its earlier hours
- * sit in the archive while its later ones are still live. Such a day is read
- * from both and digested as one: taking the live half alone silently dropped
- * the archived majority of it, understating that day's tokens and cost by
- * whatever had already rotated out.
+ * A reporting day is a `REPORT_TZ` day, but the summary job rotates `logs/`
+ * into `archive/<date>/` on the *UTC* day. The boundaries do not line up, so a
+ * day near the present is split — earlier hours archived, later ones still
+ * live — and is read from both halves and digested as one.
  *
  * A day with no live requests at all is fully archived, so its digest is read
  * (and cached) whole, falling back to the archive of finalized digests.
@@ -337,8 +334,7 @@ export async function buildTrends(
   const dates: string[] = [];
   for (let i = days - 1; i >= 0; i -= 1) dates.push(shiftDay(end, -i));
 
-  // Resolved first, digested second: the trend field chains each day against
-  // the one before it, so every day has to be in hand before any is computed.
+  // Resolved first, digested second: `trend` chains each day against the one before it.
   const raw = new Map<string, unknown[]>();
   const finalized = new Map<string, UsageDigest>();
   let archivedDays = 0;
@@ -354,8 +350,7 @@ export async function buildTrends(
       }
       continue;
     }
-    // The archived slice precedes the live one within the same reporting day,
-    // so concatenating in this order keeps the stream chronological.
+    // The archived slice precedes the live one, so this order stays chronological.
     const archived = await source.readArchivedDay(logDir, date);
     if (archived.files > 0) archivedDays += 1;
     raw.set(date, [...archived.sidecars, ...live]);
@@ -365,8 +360,7 @@ export async function buildTrends(
   let prior: UsageDigest | null = null;
   for (const date of dates) {
     const bucket = raw.get(date);
-    // Annotated because `prior` is assigned from this binding below: inferring
-    // it would make the narrowing of `prior` circular (TS7022).
+    // Annotated: `prior` is assigned from this binding, so inference is circular (TS7022).
     const digest: UsageDigest | undefined = bucket
       ? computeDigest(bucket, { date, priorDigest: prior, classifierHashes })
       : finalized.get(date);
