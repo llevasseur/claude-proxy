@@ -91,6 +91,20 @@ export const SUGGESTION_THRESHOLDS = {
   singleToolPctOfRequest: 12,
 } as const;
 
+/**
+ * When repeated dismissals stop being noise about windows and start being evidence
+ * about the *rule*. Both have to hold: a rule dismissed three times has a habit,
+ * and one dismissed in half the windows it fired in is wrong more often than right.
+ * The count alone would indict a rule that fired forty times and was wrong three;
+ * the ratio alone would indict a rule that fired once and was dismissed once.
+ */
+export const SUGGESTION_DEFECT_THRESHOLDS = {
+  /** Buckets a rule must be dismissed in before it counts as defective. */
+  minDismissedBuckets: 3,
+  /** Share of the buckets it fired in that those dismissals must reach, 0–1. */
+  minDismissedRatio: 0.5,
+} as const;
+
 const SEVERITY_RANK: Record<Severity, number> = { high: 0, warn: 1, info: 2 };
 
 // --- Tool-signature helpers ------------------------------------------------
@@ -183,6 +197,15 @@ export interface SessionBucket {
   to: number;
   /** `"1–10"` — what the list shows. */
   label: string;
+  /**
+   * Whether this window holds its full {@link SESSION_BUCKET_SIZE} sessions. Only the
+   * tail bucket is ever incomplete, and only until it fills. A complete bucket's
+   * membership is immutable — transcripts are never archived or evicted, so nothing
+   * can join or leave it — which is what makes it safe to record a verdict against.
+   * An incomplete one will gain sessions and re-fire its rules over a wider window,
+   * so it is never judged and never improved upon.
+   */
+  complete: boolean;
   /** Earliest and latest `started` in the bucket, or null when none carried one. */
   startedFirst: string | null;
   startedLast: string | null;
@@ -601,6 +624,7 @@ export function sessionSuggestionBuckets(sessions: readonly SuggestibleSession[]
         from,
         to,
         label: `${from}–${to}`,
+        complete: group.length === SESSION_BUCKET_SIZE,
         startedFirst: started[0] ?? null,
         startedLast: started[started.length - 1] ?? null,
         threadIds: group.map((s) => s.threadId),
