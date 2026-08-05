@@ -7,7 +7,13 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { _resetWarmPrefixes, ensureMessageBreakpoint, hasWarmPrefix, noteCacheRead } from './cache-breakpoint.ts';
+import {
+  _resetWarmPrefixes,
+  ensureMessageBreakpoint,
+  estPrefixTokens,
+  hasWarmPrefix,
+  noteCacheRead,
+} from './cache-breakpoint.ts';
 import type { ContentBlock, RequestBody, WireMessage } from './wire.ts';
 
 const SESSION = 'session-under-test';
@@ -260,8 +266,109 @@ test('a last message whose content is a bare string is left alone', () => {
     ],
   });
 
-  const { reqJson, injected } = ensureMessageBreakpoint(req, { sessionKey: SESSION });
+  const { reqJson, injected, observed, declinedBy } = ensureMessageBreakpoint(req, { sessionKey: SESSION });
 
   assert.equal(injected, false, 'there is no block to carry the hint');
+  assert.equal(observed, true, 'the CLI still dropped the breakpoint');
+  assert.equal(declinedBy, 'no-content-block');
   assert.equal(reqJson, req);
+});
+
+test('reports the defect as observed on an injection', () => {
+  warmUp();
+  const { injected, observed, declinedBy } = ensureMessageBreakpoint(coldRequest(), { sessionKey: SESSION });
+
+  assert.equal(injected, true);
+  assert.equal(observed, true);
+  assert.equal(declinedBy, null, 'nothing declined an injection that happened');
+});
+
+test('reports the defect as observed when the depth gate declines it', () => {
+  warmUp();
+  const shallow = coldRequest({ messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] });
+
+  const { injected, observed, declinedBy } = ensureMessageBreakpoint(shallow, { sessionKey: SESSION });
+
+  assert.equal(injected, false);
+  assert.equal(observed, true, 'a declined occurrence is still an occurrence');
+  assert.equal(declinedBy, 'depth');
+});
+
+test('reports the defect as observed when the cold-prefix gate declines it', () => {
+  // The measured case: 152 requests, 0 injections, and the defect present twice —
+  // an injection count alone reads that as "the CLI was fixed".
+  _resetWarmPrefixes();
+  const { injected, observed, declinedBy } = ensureMessageBreakpoint(coldRequest(), { sessionKey: SESSION });
+
+  assert.equal(injected, false);
+  assert.equal(observed, true);
+  assert.equal(declinedBy, 'cold-prefix');
+});
+
+test('observes nothing when the client already shipped a message breakpoint', () => {
+  warmUp();
+  const healthy = coldRequest();
+  const messages = healthy.messages as WireMessage[];
+  (messages[1]!.content as ContentBlock[])[1]!.cache_control = EPHEMERAL_1H;
+
+  const { observed, declinedBy } = ensureMessageBreakpoint(healthy, { sessionKey: SESSION });
+
+  assert.equal(observed, false, 'this is the healthy shape — there is no defect to report');
+  assert.equal(declinedBy, null);
+});
+
+test('observes nothing when a gate before the defect is confirmed turns the request away', () => {
+  warmUp();
+  for (const req of [
+    // No system block asks for caching, so the client never wanted it (gate 2).
+    coldRequest({ system: [{ type: 'text', text: 'no caching asked for' }] }),
+    // Already at the four breakpoints the API takes (gate 3).
+    coldRequest({
+      system: Array.from({ length: 4 }, (_, i) => ({
+        type: 'text',
+        text: String(i),
+        cache_control: EPHEMERAL_1H,
+      })),
+    }),
+  ]) {
+    const { observed, declinedBy } = ensureMessageBreakpoint(req, { sessionKey: SESSION });
+    assert.equal(observed, false);
+    assert.equal(declinedBy, null);
+  }
+});
+
+test('observes nothing while the kill switch is set', () => {
+  warmUp();
+  const previous = process.env.PROXY_CACHE_BREAKPOINT;
+  try {
+    process.env.PROXY_CACHE_BREAKPOINT = 'off';
+    const { observed, declinedBy } = ensureMessageBreakpoint(coldRequest(), { sessionKey: SESSION });
+    assert.equal(observed, false, 'the body was never inspected, so nothing was seen either way');
+    assert.equal(declinedBy, null);
+  } finally {
+    if (previous === undefined) delete process.env.PROXY_CACHE_BREAKPOINT;
+    else process.env.PROXY_CACHE_BREAKPOINT = previous;
+  }
+});
+
+test('estPrefixTokens sizes a schema-heavy prefix well above the bytes/4 estimate', () => {
+  const bytes = 121_670;
+  assert.equal(estPrefixTokens(bytes), 48_668);
+  assert.ok(
+    estPrefixTokens(bytes) > Math.round(bytes / 4),
+    'the display estimate understates a prefix of dense JSON tool schemas',
+  );
+});
+
+test('a read of nothing but the system prefix no longer marks a session warm', () => {
+  // The observed miss: 48,299 tokens read against a 121,670-byte system+tools
+  // prefix. Against `bytes / 4` (32,619 tokens) that read looked like proof the
+  // message history was cached; it was the prefix and nothing else.
+  _resetWarmPrefixes();
+  noteCacheRead(SESSION, 48_299, estPrefixTokens(121_670));
+  assert.equal(hasWarmPrefix(SESSION), false, 'gate 5 must not certify a cold message prefix as warm');
+
+  // A read that genuinely reaches past the prefix still counts.
+  noteCacheRead(SESSION, 180_000, estPrefixTokens(121_670));
+  assert.equal(hasWarmPrefix(SESSION), true);
 });

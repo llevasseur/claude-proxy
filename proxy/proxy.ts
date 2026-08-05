@@ -31,7 +31,7 @@ import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureMessageBreakpoint, noteCacheRead } from './cache-breakpoint.ts';
+import { type DeclinedGate, ensureMessageBreakpoint, estPrefixTokens, noteCacheRead } from './cache-breakpoint.ts';
 import * as session from './session.ts';
 import * as skim from './skim.ts';
 import { identifyPrompt, type PromptIdentity, recordPrompt } from './system-prompt.ts';
@@ -326,6 +326,10 @@ interface SidecarInput {
   skim?: SkimInfo | null;
   /** Whether this request had a message cache breakpoint put back. */
   cacheBreakpointInjected?: boolean;
+  /** Whether the CLI dropped the breakpoint on this request at all. */
+  cacheBreakpointObserved?: boolean;
+  /** The gate that declined an observed occurrence; null when none did. */
+  cacheBreakpointDeclinedBy?: DeclinedGate | null;
 }
 
 /** Structured sidecar next to each `.md` — the machine-readable facts the daily
@@ -345,6 +349,8 @@ function writeAuditSidecar({
   respHeaders,
   skim: skimInfo,
   cacheBreakpointInjected,
+  cacheBreakpointObserved,
+  cacheBreakpointDeclinedBy,
 }: SidecarInput): string {
   const u = usage ?? {};
   const rateLimit = extractRateLimit(respHeaders);
@@ -380,10 +386,12 @@ function writeAuditSidecar({
     // App-layer skim (not Anthropic's prefix cache); recorded on every request so
     // hit-rate + saved spend are computable from the sidecar.
     skim: skimInfo ?? { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey: null },
-    // Recorded on every request, so a run of zeroes is readable as "the CLI stopped
-    // dropping the breakpoint" and the injector can be retired. See
-    // `cache-breakpoint.ts`.
+    // All three recorded on every request. The observation carries the retirement
+    // trigger, not the injection — a run of zero injections also happens while the
+    // CLI still drops the breakpoint and a gate declines. See `cache-breakpoint.ts`.
     cacheBreakpointInjected: cacheBreakpointInjected ?? false,
+    cacheBreakpointObserved: cacheBreakpointObserved ?? false,
+    cacheBreakpointDeclinedBy: cacheBreakpointDeclinedBy ?? null,
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
   // Omitted when upstream sent none, so a sidecar never implies a reading it lacks.
@@ -715,6 +723,8 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     // send, key, and log from here on.
     let forwardBody = body;
     let breakpointInjected = false;
+    let breakpointObserved = false;
+    let breakpointDeclinedBy: DeclinedGate | null = null;
     if (reqJson) {
       const notes: string[] = [];
       const wt = stripWithheldTools(reqJson);
@@ -732,6 +742,8 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
       // and takes a one-time miss. See `cache-breakpoint.ts`.
       if (!isTokenCount(reqPath)) {
         const bp = ensureMessageBreakpoint(reqJson, { sessionKey });
+        breakpointObserved = bp.observed;
+        breakpointDeclinedBy = bp.declinedBy;
         if (bp.injected) {
           reqJson = bp.reqJson;
           breakpointInjected = true;
@@ -798,6 +810,8 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
               headers: req.headers,
               skim: skimInfo,
               cacheBreakpointInjected: breakpointInjected,
+              cacheBreakpointObserved: breakpointObserved,
+              cacheBreakpointDeclinedBy: breakpointDeclinedBy,
             }),
           );
           session.appendSession({
@@ -845,10 +859,13 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
             // A read past this request's own system+tools prefix is the only proof
             // that the *message* prefix is cached upstream — the evidence gate 5 of
             // `ensureMessageBreakpoint` needs before a write can pay for itself.
+            // `estPrefixTokens`, not the display `estTokens`: `bytes / 4` understates
+            // a schema-heavy prefix by ~45%, which marked sessions warm off a read of
+            // nothing but their own system blocks.
             noteCacheRead(
               sessionKey,
               usage?.cache_read_input_tokens ?? 0,
-              estTokens(audit.systemBytes + audit.toolsBytes),
+              estPrefixTokens(audit.systemBytes + audit.toolsBytes),
             );
 
             // Store a successful streamed reply so a byte-exact repeat hits.
@@ -902,6 +919,8 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
                 respHeaders: up.headers,
                 skim: skimInfo,
                 cacheBreakpointInjected: breakpointInjected,
+                cacheBreakpointObserved: breakpointObserved,
+                cacheBreakpointDeclinedBy: breakpointDeclinedBy,
               }),
             );
             session.appendSession({

@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -435,6 +435,31 @@ ALTER TABLE request ADD COLUMN cache_breakpoint_injected INTEGER;
 DELETE FROM ingest_watermark;
 `;
 
+/**
+ * `cache_breakpoint_observed` — whether the CLI dropped the message breakpoint on
+ * the request at all, and `cache_breakpoint_declined_by` — which gate turned an
+ * observed occurrence away (see `proxy/cache-breakpoint.ts`).
+ *
+ * Both nullable for the same reason slice 9's column is: a sidecar written before
+ * the field existed must stay distinguishable from one that recorded "no". The
+ * observation column carries the retirement trigger — a day of zero injections is
+ * also what a still-broken CLI plus a declining gate looks like — and `declined_by`
+ * says which threshold accounts for the difference.
+ *
+ * `declined_by` is TEXT rather than a coded integer so a gate added later reads back
+ * without another migration; its null means "nothing declined", which the
+ * observation column disambiguates from "nothing was recorded".
+ *
+ * Clearing the watermarks forces a rescan of every archived day, so rows already
+ * ingested pick the columns up on the next pass.
+ */
+const SCHEMA_V10 = `
+ALTER TABLE request ADD COLUMN cache_breakpoint_observed    INTEGER;
+ALTER TABLE request ADD COLUMN cache_breakpoint_declined_by TEXT;
+
+DELETE FROM ingest_watermark;
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -550,6 +575,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 7) db.exec(SCHEMA_V7);
   if (from < 8) db.exec(SCHEMA_V8);
   if (from < 9) db.exec(SCHEMA_V9);
+  if (from < 10) db.exec(SCHEMA_V10);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

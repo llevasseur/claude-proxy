@@ -95,12 +95,29 @@ export interface UsageDigest {
    * Requests the proxy put a message-level `cache_control` breakpoint back on,
    * because Claude Code shipped the turn without one.
    *
-   * This is the injector's retirement trigger. A week of zeroes after a CLI upgrade
-   * means the client stopped dropping the breakpoint and `proxy/cache-breakpoint.ts`
-   * can be deleted. Zero also on days whose sidecars predate the injector — those
-   * carry no such field, so nothing is counted rather than counted as false.
+   * Zero also on days whose sidecars predate the injector — those carry no such
+   * field, so nothing is counted rather than counted as false.
    */
   cacheBreakpointInjections: number;
+  /**
+   * Requests where Claude Code shipped the turn without a message breakpoint,
+   * counted whether or not the proxy went on to inject one.
+   *
+   * This, not `cacheBreakpointInjections`, is the injector's retirement trigger. A
+   * week of zero *observations* after a CLI upgrade means the client stopped dropping
+   * the breakpoint and `proxy/cache-breakpoint.ts` can be deleted; a week of zero
+   * *injections* is equally consistent with the later gates declining every
+   * occurrence, which is what the first window of live data showed. Zero on days
+   * whose sidecars predate the field, same as the injection count.
+   */
+  cacheBreakpointObservations: number;
+  /**
+   * Observed occurrences by the gate that declined them, keyed as
+   * `ensureMessageBreakpoint` reports it (`depth`, `cold-prefix`,
+   * `no-content-block`). Empty when nothing declined — including on days that
+   * recorded no observation at all, which `cacheBreakpointObservations` tells apart.
+   */
+  cacheBreakpointDeclines: Record<string, number>;
   models: Record<string, number>;
   tokens: DigestTokens;
   cost: CostBreakdown;
@@ -257,10 +274,19 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
   const all = emptyAcc();
   const classifierHashes = opts.classifierHashes;
   let cacheBreakpointInjections = 0;
+  let cacheBreakpointObservations = 0;
+  const cacheBreakpointDeclines: Record<string, number> = {};
 
   for (const s of valid) {
     models[s.model] = (models[s.model] ?? 0) + 1;
     if (s.cacheBreakpointInjected === true) cacheBreakpointInjections += 1;
+    if (s.cacheBreakpointObserved === true) cacheBreakpointObservations += 1;
+    // Counted only against an observed occurrence, so a stray gate name on a sidecar
+    // that saw nothing cannot inflate the tally.
+    const declinedBy = s.cacheBreakpointDeclinedBy;
+    if (s.cacheBreakpointObserved === true && typeof declinedBy === 'string' && declinedBy !== '') {
+      cacheBreakpointDeclines[declinedBy] = (cacheBreakpointDeclines[declinedBy] ?? 0) + 1;
+    }
 
     const hash = s.request.system?.hash;
     const isClassifier = classifierHashes !== undefined && hash !== undefined && classifierHashes.has(hash);
@@ -310,6 +336,8 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
     requestCount,
     skipped,
     cacheBreakpointInjections,
+    cacheBreakpointObservations,
+    cacheBreakpointDeclines,
     models,
     tokens: { ...tokens, cacheHitRatio: tokens.realInput > 0 ? tokens.cacheRead / tokens.realInput : 0 },
     cost,
@@ -462,6 +490,10 @@ export function normalizeDigest(raw: unknown, fallbackDate: string): UsageDigest
     requestCount: numOf(raw.requestCount),
     skipped: numOf(raw.skipped),
     cacheBreakpointInjections: numOf(raw.cacheBreakpointInjections),
+    cacheBreakpointObservations: numOf(raw.cacheBreakpointObservations),
+    cacheBreakpointDeclines: isRec(raw.cacheBreakpointDeclines)
+      ? (raw.cacheBreakpointDeclines as Record<string, number>)
+      : {},
     models,
     tokens,
     cost,
