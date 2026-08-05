@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -416,6 +416,25 @@ ALTER TABLE command_run ADD COLUMN totals_wall_ms INTEGER NOT NULL DEFAULT 0;
 DELETE FROM file_watermark WHERE path = 'commands/runs.jsonl';
 `;
 
+/**
+ * `cache_breakpoint_injected` — whether the proxy put a message-level
+ * `cache_control` breakpoint back on the request (see `proxy/cache-breakpoint.ts`).
+ *
+ * Nullable rather than `NOT NULL DEFAULT 0`, so a sidecar written before the
+ * injector existed stays distinguishable from one that recorded "did not inject".
+ * That distinction is the point: the column is read back as a per-day count, and
+ * the injector is retired once the count stays at zero — which only means anything
+ * if zero is a real observation rather than the absence of one.
+ *
+ * Clearing the watermarks forces a rescan of every archived day, so rows already
+ * ingested pick the column up on the next pass.
+ */
+const SCHEMA_V9 = `
+ALTER TABLE request ADD COLUMN cache_breakpoint_injected INTEGER;
+
+DELETE FROM ingest_watermark;
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -530,6 +549,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 6) db.exec(CONCEPT_DETAIL);
   if (from < 7) db.exec(SCHEMA_V7);
   if (from < 8) db.exec(SCHEMA_V8);
+  if (from < 9) db.exec(SCHEMA_V9);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

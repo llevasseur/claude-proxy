@@ -87,6 +87,17 @@ export interface AuditSidecar {
   /** Present on sidecars written since ticket 001. */
   skim?: AuditSkim;
   /**
+   * Whether the proxy put back a message-level `cache_control` breakpoint the CLI
+   * dropped on this request. Absent on sidecars written before the injector
+   * existed, which is why the substrate's column is nullable rather than
+   * defaulting to false.
+   *
+   * The day's total is `UsageDigest.cacheBreakpointInjections`, and it is the
+   * injector's retirement trigger: once it stays at zero after a CLI upgrade, the
+   * proxy's `cache-breakpoint.ts` can be deleted.
+   */
+  cacheBreakpointInjected?: boolean;
+  /**
    * Upstream `anthropic-ratelimit-*` response headers, verbatim with lowercased
    * names — the authoritative remaining allowance behind the usage meters. Absent
    * on older sidecars and on responses that carried no such header.

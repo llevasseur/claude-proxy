@@ -37,6 +37,28 @@ describe('computeDigest', () => {
     expect(d.cost.total).toBeGreaterThan(single.cost.total);
   });
 
+  it('counts the requests the proxy put a cache breakpoint back on', () => {
+    const d = computeDigest(
+      [
+        makeSidecar({ cacheBreakpointInjected: true }),
+        makeSidecar({ cacheBreakpointInjected: false }),
+        makeSidecar({ cacheBreakpointInjected: true }),
+        // Predates the injector: no field at all, so nothing to count.
+        makeSidecar(),
+      ],
+      { date: '2026-07-15' },
+    );
+    expect(d.requestCount).toBe(4);
+    expect(d.cacheBreakpointInjections).toBe(2);
+  });
+
+  it('reports zero injections for a day of sidecars that predate the injector', () => {
+    // The retirement trigger reads a run of zeroes as "the CLI stopped dropping
+    // the breakpoint", so an absent field must count as zero, never as unknown.
+    const d = computeDigest([makeSidecar(), makeSidecar()], { date: '2026-07-15' });
+    expect(d.cacheBreakpointInjections).toBe(0);
+  });
+
   it('skips malformed sidecars but keeps valid ones', () => {
     const d = computeDigest([makeSidecar(), { nope: true }, null, 'garbage'], { date: '2026-07-15' });
     expect(d.requestCount).toBe(1);

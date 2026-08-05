@@ -91,6 +91,16 @@ export interface UsageDigest {
   requestCount: number;
   /** Malformed sidecars encountered and skipped. */
   skipped: number;
+  /**
+   * Requests the proxy put a message-level `cache_control` breakpoint back on,
+   * because Claude Code shipped the turn without one.
+   *
+   * This is the injector's retirement trigger. A week of zeroes after a CLI upgrade
+   * means the client stopped dropping the breakpoint and `proxy/cache-breakpoint.ts`
+   * can be deleted. Zero also on days whose sidecars predate the injector — those
+   * carry no such field, so nothing is counted rather than counted as false.
+   */
+  cacheBreakpointInjections: number;
   models: Record<string, number>;
   tokens: DigestTokens;
   cost: CostBreakdown;
@@ -246,9 +256,11 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
   const classifier = emptyAcc();
   const all = emptyAcc();
   const classifierHashes = opts.classifierHashes;
+  let cacheBreakpointInjections = 0;
 
   for (const s of valid) {
     models[s.model] = (models[s.model] ?? 0) + 1;
+    if (s.cacheBreakpointInjected === true) cacheBreakpointInjections += 1;
 
     const hash = s.request.system?.hash;
     const isClassifier = classifierHashes !== undefined && hash !== undefined && classifierHashes.has(hash);
@@ -297,6 +309,7 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
     date: opts.date,
     requestCount,
     skipped,
+    cacheBreakpointInjections,
     models,
     tokens: { ...tokens, cacheHitRatio: tokens.realInput > 0 ? tokens.cacheRead / tokens.realInput : 0 },
     cost,
@@ -448,6 +461,7 @@ export function normalizeDigest(raw: unknown, fallbackDate: string): UsageDigest
     date: typeof raw.date === 'string' ? raw.date : fallbackDate,
     requestCount: numOf(raw.requestCount),
     skipped: numOf(raw.skipped),
+    cacheBreakpointInjections: numOf(raw.cacheBreakpointInjections),
     models,
     tokens,
     cost,
