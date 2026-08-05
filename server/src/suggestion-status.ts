@@ -1,9 +1,11 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  applySuggestionJudgements,
   applySuggestionStatusUpdates,
   emptySuggestionStatusStore,
   parseSuggestionStatusStore,
+  type SuggestionJudgementWrite,
   type SuggestionStatusStore,
   type SuggestionStatusUpdate,
 } from '@claude-proxy/core';
@@ -63,6 +65,27 @@ export async function updateSuggestionStatusStore(
   now: Date = new Date(),
 ): Promise<SuggestionStatusStore> {
   const next = applySuggestionStatusUpdates(await readSuggestionStatusStore(logDir), updates, now);
+  await writeSuggestionStatusStore(logDir, next);
+  return next;
+}
+
+/**
+ * A judge's whole verdict on one pass: the dismissals it decided on and the
+ * per-bucket judgement records, applied to the store in memory and committed in
+ * **one** temp-file-plus-rename.
+ *
+ * One write is the point. Two — flags then verdict — could leave a bucket recorded
+ * as judged with its dismissals missing, or dismissed suggestions in a bucket the
+ * judge would revisit and adjudicate again.
+ */
+export async function judgeSuggestionStatusStore(
+  logDir: string,
+  verdict: { updates?: readonly SuggestionStatusUpdate[]; judged?: readonly SuggestionJudgementWrite[] },
+  now: Date = new Date(),
+): Promise<SuggestionStatusStore> {
+  const store = await readSuggestionStatusStore(logDir);
+  const flagged = applySuggestionStatusUpdates(store, verdict.updates ?? [], now);
+  const next = applySuggestionJudgements(flagged, verdict.judged ?? [], now);
   await writeSuggestionStatusStore(logDir, next);
   return next;
 }

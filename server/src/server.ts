@@ -4,11 +4,13 @@ import {
   isSuggestionRecurrence,
   isSuggestionStatus,
   parseBucketRange,
+  parseSuggestionJudgements,
   parseSuggestionStatusUpdates,
   type SuggestionRecurrence,
   type SuggestionStatus,
 } from '@claude-proxy/core';
 import {
+  applySuggestionJudge,
   applySuggestionStatus,
   buildCommand,
   buildCommandRun,
@@ -927,8 +929,34 @@ const server = http.createServer(async (req, res) => {
             // The flags stay a JSON file; what goes through the seam is the
             // derived half this echoes back — the bucket/suggestion join — so
             // the response cannot describe a different corpus than the GET.
-            (body) =>
-              applySuggestionStatus(LOG_DIR, parseSuggestionStatusUpdates(body.updates), new Date(), readSource()),
+            //
+            // A body carrying `judged` or `amnesty` is a judge's verdict, which
+            // takes the guarded path: it refuses an unorderable corpus and an
+            // incomplete bucket, and commits flags and verdict in one write.
+            (body) => {
+              const judging = body.judged !== undefined || body.amnesty !== undefined;
+              if (!judging) {
+                return applySuggestionStatus(
+                  LOG_DIR,
+                  parseSuggestionStatusUpdates(body.updates),
+                  new Date(),
+                  readSource(),
+                );
+              }
+              if (body.amnesty !== undefined && typeof body.amnesty !== 'boolean') {
+                throw new Error('amnesty must be a boolean');
+              }
+              return applySuggestionJudge(
+                LOG_DIR,
+                {
+                  ...(body.updates === undefined ? {} : { updates: parseSuggestionStatusUpdates(body.updates) }),
+                  ...(body.judged === undefined ? {} : { judged: parseSuggestionJudgements(body.judged) }),
+                  ...(body.amnesty === undefined ? {} : { amnesty: body.amnesty as boolean }),
+                },
+                new Date(),
+                readSource(),
+              );
+            },
             () => 400,
           );
           return;

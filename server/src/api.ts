@@ -3,9 +3,14 @@ import {
   type AliasLoadExpectation,
   type AuditSidecar,
   analyzeRequestBody,
+  assertJudgeableCorpus,
   attributePromptMix,
   type BucketBreakdownInput,
   type BucketBreakdownSummary,
+  type BucketJudgementRow,
+  type BucketJudgementState,
+  bucketJudgementState,
+  bucketJudgements,
   buildUsageLimits,
   type CommandPattern,
   type CommandRun,
@@ -18,6 +23,7 @@ import {
   computeAliasPosture,
   computeDigest,
   computeSkimDigest,
+  countBucketJudgementStates,
   countSuggestionRecurrences,
   countSuggestionStatuses,
   dayElapsedFraction,
@@ -56,9 +62,12 @@ import {
   type RequestErrorSite,
   type RequestMessageDetail,
   type RequestToolDetail,
+  type RuleDefect,
   reportDay,
+  ruleDefects,
   runKey,
   runTotals,
+  SESSION_BUCKET_SIZE,
   type SectionMove,
   type SectionShare,
   type SessionBucket,
@@ -73,6 +82,8 @@ import {
   type StepReach,
   type StoredConcept,
   type StoredWirePrompt,
+  SUGGESTION_DEFECT_THRESHOLDS,
+  type SuggestionJudgementWrite,
   type SuggestionRecurrence,
   type SuggestionStatus,
   type SuggestionStatusRow,
@@ -144,6 +155,7 @@ import {
 import { readDeviceSettings, resolveSettingsPath } from './settings.js';
 import { readLaunchAliases } from './shell-rc.js';
 import {
+  judgeSuggestionStatusStore,
   readSuggestionStatusStore,
   resolveSuggestionStatusPath,
   updateSuggestionStatusStore,
@@ -1449,6 +1461,12 @@ export interface SuggestionStatusResponse {
     counts: Record<SuggestionStatus, number>;
     /** Row counts per recurrence state, over the rows returned. */
     recurrences: Record<SuggestionRecurrence, number>;
+    /**
+     * Bucket counts per judgement state, over **every** bucket rather than the rows
+     * returned — how much of the corpus is still unadjudicated is a fact about the
+     * corpus, not about the slice asked for.
+     */
+    bucketStates: Record<BucketJudgementState, number>;
   };
 }
 
@@ -1487,6 +1505,67 @@ export async function buildSuggestionStatus(
       missing: (filter.buckets ?? []).filter((i) => !existing.includes(i)),
       counts: countSuggestionStatuses(rows),
       recurrences: countSuggestionRecurrences(rows),
+      bucketStates: countBucketJudgementStates(bucketJudgements(buckets, store)),
+    },
+  };
+}
+
+export interface SuggestionBucketsResponse {
+  buckets: BucketJudgementRow[];
+  meta: {
+    statusFile: string;
+    /** Bucket counts per judgement state, over every bucket that exists. */
+    states: Record<BucketJudgementState, number>;
+  };
+}
+
+/**
+ * Every bucket with its complete / judged / dirty state — the list a judge reads to
+ * find what is still worth adjudicating. `dirty` narrows it to exactly that: the
+ * complete windows with no verdict on record.
+ */
+export async function buildSuggestionBuckets(
+  logDir: string,
+  filter: { dirty?: boolean } = {},
+  source: SidecarSource = fileSource,
+): Promise<SuggestionBucketsResponse> {
+  const [sessions, store] = await Promise.all([source.listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
+  const all = bucketJudgements(sessionSuggestionBuckets(sessions), store);
+  return {
+    buckets: filter.dirty ? all.filter((b) => b.state === 'dirty') : all,
+    // Counted over every bucket: the point of the header is what is left overall.
+    meta: { statusFile: resolveSuggestionStatusPath(logDir), states: countBucketJudgementStates(all) },
+  };
+}
+
+export interface RuleDefectsResponse {
+  defects: RuleDefect[];
+  meta: {
+    statusFile: string;
+    /** Complete buckets the ratios were measured over. */
+    buckets: number;
+    /** The thresholds that were applied, so a report reads without the source. */
+    thresholds: { minDismissedBuckets: number; minDismissedRatio: number };
+  };
+}
+
+/**
+ * Rules dismissed often enough to indict the rule rather than the window. Pure
+ * arithmetic over the store and the recomputed buckets — nothing is cached, so a
+ * dismissal recorded a second ago is in the next report.
+ */
+export async function buildRuleDefects(
+  logDir: string,
+  source: SidecarSource = fileSource,
+): Promise<RuleDefectsResponse> {
+  const [sessions, store] = await Promise.all([source.listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
+  const buckets = sessionSuggestionBuckets(sessions);
+  return {
+    defects: ruleDefects(buckets, store),
+    meta: {
+      statusFile: resolveSuggestionStatusPath(logDir),
+      buckets: buckets.filter((b) => b.complete).length,
+      thresholds: { ...SUGGESTION_DEFECT_THRESHOLDS },
     },
   };
 }
@@ -1528,6 +1607,110 @@ export async function applySuggestionStatus(
       statusFile: resolveSuggestionStatusPath(logDir),
       updated: updates.length,
       unknown: updates.filter((u) => !known.has(suggestionKey(u))).map((u) => ({ bucket: u.bucket, id: u.id })),
+    },
+  };
+}
+
+/** A judge's verdict on one pass, as the API and the CLI both express it. */
+export interface SuggestionJudgeRequest {
+  /** The status writes it decided on — the dismissals, and anything else. */
+  updates?: readonly SuggestionStatusUpdate[];
+  /** The buckets it adjudicated, with the enrichment notes it recorded. */
+  judged?: readonly SuggestionJudgementWrite[];
+  /**
+   * Mark every currently **dirty** bucket judged, with no notes — the line drawn
+   * under a backlog of unjudged windows rather than a claim that each was read.
+   * Already-clean buckets are left alone, so amnesty can never delete enrichment a
+   * judge wrote. Combined with `judged`, the explicit records win.
+   */
+  amnesty?: boolean;
+}
+
+export interface SuggestionJudgeResponse {
+  /** The rows in every bucket the verdict touched, re-read through the list's own join. */
+  rows: SuggestionStatusRow[];
+  /** Those buckets' judgement states after the write. */
+  buckets: BucketJudgementRow[];
+  meta: {
+    statusFile: string;
+    /** Status flags written. */
+    updated: number;
+    /** Buckets recorded as judged. */
+    judged: number;
+    /** Bucket/id pairs no suggestion currently carries — written anyway, so a typo shows. */
+    unknown: { bucket: number; id: string }[];
+    /** Bucket counts per judgement state, over every bucket, after the write. */
+    states: Record<BucketJudgementState, number>;
+  };
+}
+
+/**
+ * Record a judge's verdict: the dismissals and the per-bucket judgement records, in
+ * one atomic file write.
+ *
+ * Two things are refused rather than recorded:
+ *
+ * - **A corpus that cannot be bucketed stably.** A session with no `started` sorts
+ *   ahead of every real timestamp and shifts every bucket boundary after it, so
+ *   every verdict already on file would come to describe sessions it never examined.
+ *   {@link assertJudgeableCorpus} names the offenders.
+ * - **An incomplete bucket.** A partial window will gain sessions and re-fire its
+ *   rules over a wider window, so a verdict against it is a verdict against
+ *   evidence that has not finished arriving.
+ */
+export async function applySuggestionJudge(
+  logDir: string,
+  request: SuggestionJudgeRequest,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<SuggestionJudgeResponse> {
+  const sessions = await source.listSessionGraphs(logDir);
+  assertJudgeableCorpus(sessions);
+  const buckets = sessionSuggestionBuckets(sessions);
+  const complete = new Map(buckets.filter((b) => b.complete).map((b) => [b.index, b]));
+
+  const explicit = request.judged ?? [];
+  // Amnesty covers only the *dirty* buckets. A clean one is already judged, and
+  // re-recording it with no notes would delete enrichment a judge actually wrote —
+  // amnesty draws a line under a backlog, it does not overwrite verdicts.
+  const store0 = await readSuggestionStatusStore(logDir);
+  const judged: SuggestionJudgementWrite[] = request.amnesty
+    ? [
+        ...[...complete.values()]
+          .filter((b) => bucketJudgementState(b, store0) === 'dirty' && !explicit.some((w) => w.bucket === b.index))
+          .map((b) => ({ bucket: b.index })),
+        ...explicit,
+      ]
+    : [...explicit];
+  const updates = request.updates ?? [];
+  if (judged.length === 0 && updates.length === 0) throw new Error('nothing to judge: no updates and no buckets');
+
+  // Both halves are refused on the same ground, so check them together and name
+  // every offending bucket at once rather than one per retry.
+  const partial = [...new Set([...judged.map((w) => w.bucket), ...updates.map((u) => u.bucket)])]
+    .filter((i) => !complete.has(i))
+    .sort((a, b) => a - b);
+  if (partial.length > 0) {
+    throw new Error(
+      `refusing to judge incomplete bucket${partial.length === 1 ? '' : 's'} ${partial.join(', ')}: ` +
+        `only a window holding its full ${SESSION_BUCKET_SIZE} sessions has membership that cannot still change`,
+    );
+  }
+
+  const store = await judgeSuggestionStatusStore(logDir, { updates, judged }, now);
+  const touched = [...new Set([...judged.map((w) => w.bucket), ...updates.map((u) => u.bucket)])];
+  const rows = suggestionStatusRows(buckets, store, { buckets: touched });
+  const known = new Set(rows.map((r) => suggestionKey(r)));
+  const states = bucketJudgements(buckets, store);
+  return {
+    rows,
+    buckets: states.filter((b) => touched.includes(b.bucket)),
+    meta: {
+      statusFile: resolveSuggestionStatusPath(logDir),
+      updated: updates.length,
+      judged: judged.length,
+      unknown: updates.filter((u) => !known.has(suggestionKey(u))).map((u) => ({ bucket: u.bucket, id: u.id })),
+      states: countBucketJudgementStates(states),
     },
   };
 }
