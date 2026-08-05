@@ -130,6 +130,8 @@ interface RequestRow {
   skim_saved_input_tokens: number | null;
   skim_cache_key: string | null;
   cache_breakpoint_injected: number | null;
+  cache_breakpoint_observed: number | null;
+  cache_breakpoint_declined_by: string | null;
   rate_limit_present: number;
 }
 
@@ -202,6 +204,13 @@ function toSidecar(
   // have produced no key at all.
   if (row.cache_breakpoint_injected !== null) {
     sidecar.cacheBreakpointInjected = row.cache_breakpoint_injected === 1;
+  }
+  // The observation and the gate that declined it are written together, so the
+  // observation column is what says whether either was recorded. `declinedBy` then
+  // comes back null — "nothing declined" — rather than absent.
+  if (row.cache_breakpoint_observed !== null) {
+    sidecar.cacheBreakpointObserved = row.cache_breakpoint_observed === 1;
+    sidecar.cacheBreakpointDeclinedBy = row.cache_breakpoint_declined_by;
   }
   if (row.rate_limit_present) {
     const headers: Record<string, string> = {};

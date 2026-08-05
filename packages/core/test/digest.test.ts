@@ -53,10 +53,38 @@ describe('computeDigest', () => {
   });
 
   it('reports zero injections for a day of sidecars that predate the injector', () => {
-    // The retirement trigger reads a run of zeroes as "the CLI stopped dropping
-    // the breakpoint", so an absent field must count as zero, never as unknown.
+    // An absent field must count as zero, never as unknown.
     const d = computeDigest([makeSidecar(), makeSidecar()], { date: '2026-07-15' });
     expect(d.cacheBreakpointInjections).toBe(0);
+    expect(d.cacheBreakpointObservations).toBe(0);
+    expect(d.cacheBreakpointDeclines).toEqual({});
+  });
+
+  it('counts observations apart from injections, so a declining gate is not read as a fixed CLI', () => {
+    // The case the retirement trigger has to survive: the defect happened on every
+    // request and a gate turned each one away, which the injection count alone
+    // cannot tell apart from the client no longer dropping the breakpoint.
+    const d = computeDigest(
+      [
+        makeSidecar({ cacheBreakpointObserved: true, cacheBreakpointDeclinedBy: 'cold-prefix' }),
+        makeSidecar({ cacheBreakpointObserved: true, cacheBreakpointDeclinedBy: 'depth' }),
+        makeSidecar({ cacheBreakpointObserved: true, cacheBreakpointDeclinedBy: 'depth' }),
+        makeSidecar({ cacheBreakpointObserved: true, cacheBreakpointInjected: true, cacheBreakpointDeclinedBy: null }),
+        makeSidecar({ cacheBreakpointObserved: false, cacheBreakpointDeclinedBy: null }),
+      ],
+      { date: '2026-07-15' },
+    );
+    expect(d.cacheBreakpointObservations).toBe(4);
+    expect(d.cacheBreakpointInjections).toBe(1);
+    expect(d.cacheBreakpointDeclines).toEqual({ depth: 2, 'cold-prefix': 1 });
+  });
+
+  it('ignores a declining gate on a request that observed nothing', () => {
+    const d = computeDigest([makeSidecar({ cacheBreakpointObserved: false, cacheBreakpointDeclinedBy: 'depth' })], {
+      date: '2026-07-15',
+    });
+    expect(d.cacheBreakpointObservations).toBe(0);
+    expect(d.cacheBreakpointDeclines).toEqual({});
   });
 
   it('skips malformed sidecars but keeps valid ones', () => {

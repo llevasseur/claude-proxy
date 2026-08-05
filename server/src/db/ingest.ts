@@ -166,7 +166,7 @@ function prepare(db: DatabaseSync): Statements {
         req_tool_count, req_tools_bytes, req_system_bytes, req_total_bytes,
         req_system_hash, req_system_blocks, req_system_sections,
         skim_present, skim_enabled, skim_served_from_cache, skim_saved_input_tokens, skim_cache_key,
-        cache_breakpoint_injected,
+        cache_breakpoint_injected, cache_breakpoint_observed, cache_breakpoint_declined_by,
         rate_limit_present, md_path, request_path, blob_evicted
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
@@ -175,7 +175,7 @@ function prepare(db: DatabaseSync): Statements {
         ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?,
+        ?, ?, ?,
         ?, ?, ?, ?
       )
       ON CONFLICT(id) DO UPDATE SET
@@ -261,8 +261,11 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
         skim ? num(skim.savedInputTokens) : null,
         skim ? str(skim.cacheKey) : null,
         // Null, not 0, for a sidecar written before the injector existed — see the
-        // column's note in `open.ts`.
+        // column's note in `open.ts`. Same for the observation beside it, which is
+        // the field the retirement trigger actually reads.
         typeof s.cacheBreakpointInjected === 'boolean' ? bool(s.cacheBreakpointInjected) : null,
+        typeof s.cacheBreakpointObserved === 'boolean' ? bool(s.cacheBreakpointObserved) : null,
+        typeof s.cacheBreakpointDeclinedBy === 'string' ? s.cacheBreakpointDeclinedBy : null,
         bool(rateLimit && typeof rateLimit === 'object'),
         row.mdPath,
         row.requestPath,

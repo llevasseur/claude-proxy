@@ -92,11 +92,31 @@ export interface AuditSidecar {
    * existed, which is why the substrate's column is nullable rather than
    * defaulting to false.
    *
-   * The day's total is `UsageDigest.cacheBreakpointInjections`, and it is the
-   * injector's retirement trigger: once it stays at zero after a CLI upgrade, the
-   * proxy's `cache-breakpoint.ts` can be deleted.
+   * The day's total is `UsageDigest.cacheBreakpointInjections`.
    */
   cacheBreakpointInjected?: boolean;
+  /**
+   * Whether the CLI dropped the breakpoint on this request at all — recorded
+   * whether or not the proxy went on to inject one. Absent on sidecars written
+   * before the injector reported it, so the column is nullable for the same reason
+   * `cacheBreakpointInjected`'s is: a real "did not happen" must stay
+   * distinguishable from no reading at all.
+   *
+   * The day's total is `UsageDigest.cacheBreakpointObservations`, and *this* is the
+   * injector's retirement trigger rather than the injection count — the later gates
+   * decline most occurrences, so zero injections is also what a still-broken CLI
+   * looks like. Once observations stay at zero after a CLI upgrade, the proxy's
+   * `cache-breakpoint.ts` can be deleted.
+   */
+  cacheBreakpointObserved?: boolean;
+  /**
+   * Which gate declined an observed occurrence (`depth`, `cold-prefix`,
+   * `no-content-block`), so a run of zero injections against non-zero observations
+   * says which threshold is turning them away. Null when nothing declined — either
+   * the injection happened or the defect was not observed. Absent on sidecars
+   * predating the field.
+   */
+  cacheBreakpointDeclinedBy?: string | null;
   /**
    * Upstream `anthropic-ratelimit-*` response headers, verbatim with lowercased
    * names — the authoritative remaining allowance behind the usage meters. Absent
