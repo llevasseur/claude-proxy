@@ -10,9 +10,12 @@
  *
  * Its deliberate edits: it strips `WITHHELD_TOOLS` (tools the CLI won't keep out
  * via `permissions.deny`) and `INJECTED_REMINDERS` (harness-injected text no user
- * setting suppresses) from the request before forwarding. Requests with nothing to
- * strip are forwarded byte-for-byte. `packages/core/src/filters.ts` holds the
- * human-readable inventory the dashboard renders — keep the two in sync.
+ * setting suppresses) from the request before forwarding, and puts back the
+ * message-level `cache_control` breakpoint the CLI intermittently drops (see
+ * `cache-breakpoint.ts`, which carries the reasoning and its own retirement
+ * trigger). Requests with nothing to edit are forwarded byte-for-byte.
+ * `packages/core/src/filters.ts` holds the human-readable inventory the dashboard
+ * renders — keep the two in sync.
  *
  * Run:   node proxy.ts
  * Point Claude Code at it:
@@ -28,6 +31,7 @@ import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureMessageBreakpoint, noteCacheRead } from './cache-breakpoint.ts';
 import * as session from './session.ts';
 import * as skim from './skim.ts';
 import { identifyPrompt, type PromptIdentity, recordPrompt } from './system-prompt.ts';
@@ -320,6 +324,8 @@ interface SidecarInput {
   headers?: HeaderBag;
   respHeaders?: HeaderBag;
   skim?: SkimInfo | null;
+  /** Whether this request had a message cache breakpoint put back. */
+  cacheBreakpointInjected?: boolean;
 }
 
 /** Structured sidecar next to each `.md` — the machine-readable facts the daily
@@ -338,6 +344,7 @@ function writeAuditSidecar({
   headers,
   respHeaders,
   skim: skimInfo,
+  cacheBreakpointInjected,
 }: SidecarInput): string {
   const u = usage ?? {};
   const rateLimit = extractRateLimit(respHeaders);
@@ -373,6 +380,10 @@ function writeAuditSidecar({
     // App-layer skim (not Anthropic's prefix cache); recorded on every request so
     // hit-rate + saved spend are computable from the sidecar.
     skim: skimInfo ?? { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey: null },
+    // Recorded on every request, so a run of zeroes is readable as "the CLI stopped
+    // dropping the breakpoint" and the injector can be retired. See
+    // `cache-breakpoint.ts`.
+    cacheBreakpointInjected: cacheBreakpointInjected ?? false,
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
   // Omitted when upstream sent none, so a sidecar never implies a reading it lacks.
@@ -694,10 +705,16 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
       /* non-JSON body */
     }
 
+    // The session this request belongs to, as the cache-breakpoint ledger keys it.
+    const sender = extractSession(req.headers, reqJson);
+    const sessionKey = sender.sessionId ?? sender.metadataSessionId;
+
     // Strip what the CLI can't keep out itself — withheld tools and injected
-    // reminders — re-serializing only when something changed. `forwardBody` is
-    // what we send, key, and log from here on.
+    // reminders — then put back the message-level cache breakpoint it sometimes
+    // drops, re-serializing only when something changed. `forwardBody` is what we
+    // send, key, and log from here on.
     let forwardBody = body;
+    let breakpointInjected = false;
     if (reqJson) {
       const notes: string[] = [];
       const wt = stripWithheldTools(reqJson);
@@ -710,10 +727,21 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
         reqJson = ir.reqJson;
         notes.push(`reminders: ${ir.removed.join(', ')}`);
       }
-      if (notes.length > 0) {
-        forwardBody = Buffer.from(JSON.stringify(reqJson), 'utf8');
-        console.log(`[agent-proxy] stripped ${notes.join(' · ')} from request`);
+      // Before `skim.keyFor(forwardBody)` below, so the key covers the body
+      // actually sent — an injected request keys differently than it would have
+      // and takes a one-time miss. See `cache-breakpoint.ts`.
+      if (!isTokenCount(reqPath)) {
+        const bp = ensureMessageBreakpoint(reqJson, { sessionKey });
+        if (bp.injected) {
+          reqJson = bp.reqJson;
+          breakpointInjected = true;
+        }
       }
+      if (notes.length > 0 || breakpointInjected) {
+        forwardBody = Buffer.from(JSON.stringify(reqJson), 'utf8');
+      }
+      if (notes.length > 0) console.log(`[agent-proxy] stripped ${notes.join(' · ')} from request`);
+      if (breakpointInjected) console.log('[agent-proxy] injected a message cache_control breakpoint');
     }
 
     const skimDir = skim.cacheDir(LOG_DIR);
@@ -769,6 +797,7 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
               respModel: respModel ?? hit.meta.model,
               headers: req.headers,
               skim: skimInfo,
+              cacheBreakpointInjected: breakpointInjected,
             }),
           );
           session.appendSession({
@@ -812,6 +841,15 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
             const { markdown, inputTokens, usage, model: respModel } = decodeResponse(rawResponse.toString('utf8'));
             const audit = auditRequest(reqJson ?? {}, inputTokens);
             const statusCode = up.statusCode ?? 0;
+
+            // A read past this request's own system+tools prefix is the only proof
+            // that the *message* prefix is cached upstream — the evidence gate 5 of
+            // `ensureMessageBreakpoint` needs before a write can pay for itself.
+            noteCacheRead(
+              sessionKey,
+              usage?.cache_read_input_tokens ?? 0,
+              estTokens(audit.systemBytes + audit.toolsBytes),
+            );
 
             // Store a successful streamed reply so a byte-exact repeat hits.
             if (canSkim && cacheKey && statusCode === 200) {
@@ -863,6 +901,7 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
                 headers: req.headers,
                 respHeaders: up.headers,
                 skim: skimInfo,
+                cacheBreakpointInjected: breakpointInjected,
               }),
             );
             session.appendSession({

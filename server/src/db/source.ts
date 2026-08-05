@@ -129,6 +129,7 @@ interface RequestRow {
   skim_served_from_cache: number | null;
   skim_saved_input_tokens: number | null;
   skim_cache_key: string | null;
+  cache_breakpoint_injected: number | null;
   rate_limit_present: number;
 }
 
@@ -196,6 +197,11 @@ function toSidecar(
       savedInputTokens: row.skim_saved_input_tokens ?? 0,
       cacheKey: row.skim_cache_key,
     };
+  }
+  // Absent, not false, when the sidecar predates the injector — a file read would
+  // have produced no key at all.
+  if (row.cache_breakpoint_injected !== null) {
+    sidecar.cacheBreakpointInjected = row.cache_breakpoint_injected === 1;
   }
   if (row.rate_limit_present) {
     const headers: Record<string, string> = {};

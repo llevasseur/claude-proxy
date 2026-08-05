@@ -17,6 +17,7 @@ function digest(date: string, { input = 0, cacheRead = 0, output = 0, cost }: Da
     date,
     requestCount: 1,
     skipped: 0,
+    cacheBreakpointInjections: 0,
     models: {},
     tokens: {
       input,

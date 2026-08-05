@@ -12,7 +12,7 @@
   },
   "scripts": {
     "start": "node proxy.ts",
-    "test": "node --test proxy.test.ts usage-live.test.ts system-prompt.test.ts",
+    "test": "node --test proxy.test.ts usage-live.test.ts system-prompt.test.ts cache-breakpoint.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
