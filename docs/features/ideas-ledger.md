@@ -13,7 +13,8 @@ dirty: true
 
 `<logDir>/ideas.json` records features and commands somebody proposed building, and what a human
 decided about each one. It is read and written by `pnpm --filter server ideas`, which needs no
-running server.
+running server, and adjudicated from the dashboard's [Advice page](admin-dashboard-for-claude-proxy-usage.md)
+over `GET /api/ideas` and `POST /api/ideas/status`.
 
 It exists because [session suggestions](session-suggestions.md) cannot answer the question it
 answers. A suggestion is produced by a rule counting what a transcript did, so it always traces
@@ -78,6 +79,39 @@ trace, which is the one thing the separation buys.
   landed. `proposed` is the undo: it restores an idea to unsigned-off without erasing the entry or
   its note.
 
+### Adjudicating from the dashboard
+
+The sign-off is a human decision, and requiring it at a terminal is what forced `/ideate` to stop
+mid-run and ask in-session. The Advice page carries the ledger instead, so the run records its
+proposals and ends, and the decision happens whenever somebody looks.
+
+- **`GET /api/ideas`** lists the ledger with per-status counts, optionally narrowed by `?status=`
+  (comma-separated) and `?repo=` (a remote slug — a checkout path is refused here exactly as it is
+  on a write). `meta.total` always counts the whole ledger, so a filtered view still says how much
+  it hid. **`/api/ideas/stream`** shadows it over SSE watching the log directory, so an idea
+  `/ideate` writes from a terminal appears without a page reload.
+- **`POST /api/ideas/status`** takes `{ marks: [{ slug, status, note? }] }` through the same
+  `parseIdeaMarks` / `applyIdeaMarks` the CLI uses. It is on the server's **write allowlist**, under
+  the origin-checked CORS the chat routes use rather than the reads' open `*`: this ledger is
+  device-wide, shared across every repo on the machine, and an `accepted` row is the sign-off
+  `/improve` then acts on.
+- **The browser may set `accepted`, `rejected` and `proposed` (the undo) only.** `shipped` stays
+  CLI-only because it carries a PR url and is a claim made by whoever landed the change, not a
+  button beside Accept.
+- **A `rejected` mark with no note is refused with 400**, matching the CLI contract. The reason is
+  the ledger's dedupe record — it is what stops a rejected idea being re-proposed — and an empty one
+  is worse than none, because it looks like a decision while carrying nothing a later reader can
+  use. Both refusals live in `applyIdeaStatus` rather than in the route, so the HTTP contract and
+  the CLI's cannot drift apart.
+- **A card renders what it cites.** Evidence is what makes an idea approvable, so every path (and
+  `bucket/id` for a judge note) is on the card; without it a card is just a title, and the reader
+  would have to take the proposal on trust.
+- **`accepted` rows stay visible** in a settled state, so it is clear what `/improve` picks up next.
+  **`rejected` rows collapse behind a toggle rather than disappearing** — they are never deleted,
+  because the reasons are the rows that stop an idea coming back.
+- A ledger that exists but does not parse **500s rather than rendering empty**, for the reason
+  below: a page claiming a fresh ledger is how a rejected idea gets re-proposed.
+
 ### A corrupt ledger is an error, not an empty one
 
 `readSuggestionStatusStore` reads a corrupt file as empty, and that is right there: the suggestions
@@ -119,9 +153,17 @@ shape, the parse and apply functions, the slug and repo predicates, and `similar
 beside `suggestion-status.ts` and imports nothing from it. `server/src/ideas-store.ts` is the only
 code that reads or writes the file, and `server/src/ideas-cli.ts` is the command line.
 
-There is **no HTTP route and no dashboard surface** for the ledger. The ideas workflow is an agent
-and a human at a terminal, and adding a route would have meant deciding how a store shared across
-every repo on a device renders on a page about one proxy's logs.
+Over HTTP, `buildIdeas` and `applyIdeaStatus` in `server/src/api.ts` are the read and the write, and
+`server/src/server.ts` dispatches `/api/ideas`, `/api/ideas/stream` and `/api/ideas/status`. Neither
+builder takes a `SidecarSource` and neither is shadowed: the ledger is *authored* state with no
+derived half, so there is nothing for the SQLite substrate to disagree about. In the dashboard,
+`apps/admin/src/components/IdeaCard.tsx` is the card and the Ideas section of
+`apps/admin/src/routes/advice.tsx` is the list.
+
+The store is still **device-wide** while the page is about one proxy's logs, which is why the repo is
+on the card: a reader has to be able to see that an idea belongs to another checkout. That is the
+question a route was originally held back over, and putting the remote slug on the card is the whole
+of the answer.
 
 ## Acceptance criteria
 
@@ -142,6 +184,13 @@ every repo on a device renders on a page about one proxy's logs.
 - [x] The pure half is unit-tested in `packages/core/test/ideas.test.ts` and the file handling in
       `server/test/ideas-store.test.ts`.
 - [x] Every verb works with no server running and takes `--json`.
+- [x] `GET /api/ideas` returns the rows with per-status counts, narrows by status and repo, refuses
+      a checkout path, and refuses any non-GET under the read routes' 405 gate.
+- [x] `POST /api/ideas/status` round-trips accepted and rejected, refuses `shipped` and a
+      note-less rejection with 400, writes nothing for an unknown slug, and sits on the write
+      allowlist so a foreign origin is refused with 403.
+- [x] The Advice page renders each idea's citations, keeps `accepted` visible, collapses `rejected`
+      behind a toggle, and shows an empty state for a ledger with no rows.
 
 ## Open questions
 
