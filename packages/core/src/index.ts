@@ -7,6 +7,7 @@ export * from './cost-rate.js';
 export * from './digest.js';
 export * from './filters.js';
 export * from './hooks-plugins.js';
+export * from './ideas.js';
 export * from './jobs.js';
 export * from './launch-aliases.js';
 export * from './pricing.js';
