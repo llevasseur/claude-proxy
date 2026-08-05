@@ -35,35 +35,28 @@ const WINDOW_LABELS: Record<UsageWindowKind, string> = {
 };
 
 /**
- * What a cache read *costs*, against fresh input: $1.50/MTok against $15/MTok on
- * Opus, so a tenth. Correct for money, and only for money — `pricing.ts` is the
- * precise path, this is the same ratio at one significant figure.
- *
- * Deliberately **not** what the meters below divide by; see
- * {@link CACHE_READ_METERING_WEIGHT}.
+ * What a cache read *costs* against fresh input: $1.50/MTok against $15/MTok on
+ * Opus. For money only — `pricing.ts` is the precise path, and the meters below
+ * deliberately do not use this; see {@link CACHE_READ_METERING_WEIGHT}.
  */
 export const CACHE_READ_COST_WEIGHT = 0.1;
 
 /**
- * What a cache read *meters* at, against fresh input, for the rate-limit
- * allowances. Anthropic discounts cache reads far harder here than it does in
- * billing, so the cost ratio is the wrong number: it is roughly five times too
- * generous to cache reads and inflates every count that leans on the cache.
+ * What a cache read *meters* at against fresh input, for the rate-limit
+ * allowances. Anthropic discounts cache reads roughly five times harder here
+ * than in billing, so the cost ratio reads every cache-heavy window far too low.
  *
  * Fitted against the four completed 5-hour windows whose sidecars carry an
  * `anthropic-ratelimit-unified-5h-utilization` header (2026-08-04 and
- * 2026-08-05). Dividing each window's weighted units by Anthropic's own reported
- * utilization gives the allowance that window implies; the right weight is the
- * one that makes those four agree. They agree to within 6.8% across 0.015–0.02
- * and only 12.6% at 0.1.
+ * 2026-08-05): each window's weighted units over its reported utilization gives
+ * the allowance it implies, and one allowance produced all four, so the right
+ * weight is the one that makes them agree. They agree to within 6.8% across
+ * 0.015–0.02 and only 12.6% at 0.1. 0.02 is the conservative end of that band,
+ * erring high the same way {@link LearnedCeiling} does.
  *
- * 0.02 is the conservative end of that band — a weight that is too *high* reads
- * usage too high, which is the same direction {@link LearnedCeiling} errs in.
- *
- * Getting this wrong is quiet rather than loud, which is why it is worth pinning:
- * usage and the learned ceiling are both counted in these units, so a wrong
- * weight cancels out of the ratio for as long as the cache-hit ratio holds
- * steady, and only shows up — in both meters at once — when the token mix moves.
+ * A wrong weight here is silent: usage and the learned ceiling are both counted
+ * in these units, so it cancels out of the ratio until the cache-hit ratio
+ * moves, then shifts both meters at once.
  */
 export const CACHE_READ_METERING_WEIGHT = 0.02;
 

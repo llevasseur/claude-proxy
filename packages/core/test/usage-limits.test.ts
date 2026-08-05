@@ -65,7 +65,7 @@ describe('windowOfHeader', () => {
 describe('usageUnits', () => {
   it('meters cache reads at the metering weight, not the cost one, and ignores realInput', () => {
     // realInput double-counts input + cacheRead + cacheCreation, so it must not add.
-    // 10k cache reads meter as 200 units, not the 1000 the 0.1 cost ratio would give.
+    // 10k cache reads meter as 200 units, not the 1000 the cost ratio would give.
     expect(usageUnits({ input: 1000, output: 500, cacheRead: 10_000, cacheCreation: 0, realInput: 11_000 })).toBe(1700);
     expect(CACHE_READ_METERING_WEIGHT).toBeLessThan(CACHE_READ_COST_WEIGHT);
   });
@@ -79,10 +79,7 @@ describe('usageUnits', () => {
  * instant (reset − 5h) up to that reading.
  *
  * Anthropic never publishes the allowance, so these four are the only measurement
- * of the metering unit there is: divide each window's weighted units by the
- * utilization it drew and you get the allowance that window implies. One weight is
- * in play, so the four have to agree — a weight that makes them disagree is wrong,
- * whatever else it is right about.
+ * of the metering unit there is.
  */
 const OBSERVED_5H_WINDOWS = [
   {
@@ -136,8 +133,7 @@ describe('the cache-read metering weight, against observed windows', () => {
   });
 
   it('does not agree at the cost weight, which is the defect', () => {
-    // 0.1 is the billing ratio. Metering discounts cache reads far harder, so
-    // using it here spreads the same four windows over twice the range.
+    // The billing ratio spreads the same four windows over twice the range.
     expect(spread(impliedCeilings(CACHE_READ_COST_WEIGHT))).toBeGreaterThan(0.12);
     expect(spread(impliedCeilings(CACHE_READ_COST_WEIGHT))).toBeGreaterThan(
       spread(impliedCeilings(CACHE_READ_METERING_WEIGHT)),
@@ -145,8 +141,8 @@ describe('the cache-read metering weight, against observed windows', () => {
   });
 
   it('sits in the fitted band rather than on an arbitrary round number', () => {
-    // Fitting over the band, 0.015–0.02 is flat at the optimum and everything
-    // outside it is worse; 0.02 is its conservative end (reads usage high).
+    // The fit is flat across 0.015–0.02 and worse either side; 0.02 is its
+    // conservative end, reading usage high.
     expect(CACHE_READ_METERING_WEIGHT).toBeGreaterThanOrEqual(0.015);
     expect(CACHE_READ_METERING_WEIGHT).toBeLessThanOrEqual(0.02);
     for (const worse of [0.005, 0.05, 0.1]) {
@@ -158,8 +154,8 @@ describe('the cache-read metering weight, against observed windows', () => {
     const w = OBSERVED_5H_WINDOWS[0]!;
     const counted = usageUnits({ ...w, realInput: w.input + w.cacheRead + w.cacheCreation });
     expect(counted).toBeCloseTo(w.input + w.output + w.cacheCreation + w.cacheRead * CACHE_READ_METERING_WEIGHT, 6);
-    // ~16.4M units against 82% of the allowance — a ~20M-unit 5-hour ceiling, not
-    // the ~55M the cost weight reports for the same traffic.
+    // ~16.4M units against 82% implies a ~20M 5-hour ceiling, not the ~55M the
+    // cost weight reports for the same traffic.
     expect(counted / w.util).toBeGreaterThan(15e6);
     expect(counted / w.util).toBeLessThan(25e6);
   });
