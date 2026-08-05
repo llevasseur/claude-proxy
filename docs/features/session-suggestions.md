@@ -90,8 +90,11 @@ window still points at a specific stretch of work.
 The suggestions themselves carry no state: a rule that keeps tripping keeps reappearing whether
 or not anyone acted on it. A flag per suggestion records that someone did.
 
-- **The flags** — `pending` (the default), `done` (applied), `skipped` (deliberately passed over).
-  Each carries the ISO timestamp of the write and an optional note (a PR link, why it was skipped).
+- **The flags** — `pending` (the default), `done` (applied), `skipped` (deliberately passed over),
+  `dismissed` (the rule was wrong here). Each carries the ISO timestamp of the write and an optional
+  note (a PR link, why it was skipped, why the rule misfired). `SUGGESTION_STATUSES` is the single
+  source the rest derives from: the CLI's validation message joins it and the dashboard's control
+  maps over it, so a new flag reaches both without a second edit.
 - **The key is `(bucket index, suggestion id)`.** Both halves are stable — buckets are fixed
   windows numbered oldest-first, and a suggestion's id is its rule's id — so a flag survives the
   recomputation that happens on every load. Marking a suggestion `done` sticks even after the rule
@@ -147,6 +150,89 @@ or not anyone acted on it. A flag per suggestion records that someone did.
   hidden is printed, and `--recurrence historical` brings them back. Regressed rows are marked
   `⚠ REGRESSED since <date>` and totalled above the table.
 
+### The judgement layer
+
+The rules are deterministic pattern matches over transcripts. They have high recall and **no
+judgment**, so some of what they report is simply wrong: `serial-discovery` fires on reads that were
+genuinely dependent, `redundant-reads` collapses two long paths that share a truncated prefix.
+Before this layer nothing could record that a finding was *wrong* — `skipped` means the finding was
+right and was deliberately passed over — so a wrongly-fired rule cost attention in every `/improve`
+run forever. An agent now adjudicates a window before `/improve` acts on it.
+
+- **`dismissed` vs `skipped`** — two different claims, and conflating them loses the only fact worth
+  keeping. `skipped` says *the finding was right, and we chose not to act*; it may be worth
+  revisiting. `dismissed` says *the rule was wrong here*; it never is. Only `done` is a dated claim,
+  so **neither `skipped` nor `dismissed` can produce a recurrence state** — reading a regression off
+  a dismissal would be reading a fix off a finding that never existed. The
+  `historical`/`regressed`/`mixed` model is untouched by this layer, and a test pins that.
+- **Store version 2** — a new top-level `judged` key beside `buckets`, mapping bucket index to
+  `{ at, notes }`. A v1 file is migrated by defaulting `judged` to `{}`, which is the whole of that
+  upgrade: every bucket in such a file reads as unjudged, which is true.
+- **Why enrichment lives at bucket level, not on the suggestion.** The context a judge writes for a
+  **confirmed** suggestion goes in `judged[bucket].notes[id]`, never on the suggestion's own entry.
+  Two structural reasons, both load-bearing:
+  - A confirmed suggestion is still `pending`, and **a pending entry cannot persist at all** — it is
+    dropped on read and deleted on write. That is exactly what makes `Pending` the undo, and it is
+    unchanged by this work.
+  - The entry's single `note` is **overwritten** by whoever later marks the suggestion
+    `done -n "<PR url>"`, so anything filed there is clobbered by the act of fixing it.
+
+  Bucket-level storage keeps `note` single-purpose and the judge's context unclobberable. A
+  **dismissed** suggestion needs no such treatment: it is an ordinary status write, with the reason
+  in `note`, shown by the existing control and undone by `Pending` exactly as before.
+- **Three bucket states**, exposed as `complete` on the bucket type:
+  - `not-ready` — a partial window, short of `SESSION_BUCKET_SIZE`. It will gain sessions and its
+    rules will re-fire over a wider window, so there is nothing stable to judge. Never judged, never
+    improved upon.
+  - `dirty` — complete, with no `judged[n]` entry. Work to do.
+  - `clean` — complete, with one on record.
+
+  **Cleanliness is per-bucket and is deliberately *not* derived from the suggestion entries.** If it
+  were, un-dismissing a suggestion — the existing `Pending` undo, which *deletes* the entry — would
+  re-dirty the bucket, the judge would run again, and it would re-dismiss the thing that was just
+  un-dismissed. Keeping the flag at bucket level breaks that loop: a human override survives,
+  because the judge never revisits a clean bucket.
+- **The bucket-index guard** — judging is refused outright if **any** session in the corpus has a
+  null `started`, naming the sessions at fault. Membership is ordered by
+  `(a.started ?? '').localeCompare(b.started ?? '')`, so a null sorts ahead of every real timestamp,
+  lands at the front of bucket 1, and shifts every boundary after it by one — silently re-pointing
+  every stored verdict at sessions it never examined. Currently 0 sessions are affected; the guard
+  exists to keep it that way. Bucket indexes are otherwise stable because **transcripts are never
+  archived or evicted**: `retention.ts` only moves files whose *name* carries a date prefix, which is
+  what keeps `sessions/`, `commands/`, `.chat/`, `suggestion-status.json` and the database out of it.
+  The corpus is append-only, so a full bucket's membership is immutable.
+- **Rule-level defects** — `ruleDefects` reports a rule dismissed in **3+ buckets** *and* in **50%+
+  of the buckets it fired in**, with the count, the ratio and each bucket's dismissal reason. Both
+  numbers live in `SUGGESTION_DEFECT_THRESHOLDS`. Both conditions are needed: the count alone would
+  indict a rule that fired forty times and was wrong three, the ratio alone one that fired once. Only
+  complete buckets count on either side, since a partial window can never contribute a dismissal and
+  would only dilute the ratio. This is the point of accumulating dismissals at all — repeated noise
+  about one rule is evidence the **rule** needs fixing, not a chore to redo every ten sessions.
+- **Judging is one atomic write** — the dismissals and the `judged` record go through a single
+  temp-file-plus-rename. Two writes could leave a bucket recorded as judged with its dismissals
+  missing, or dismissed suggestions in a bucket the judge would adjudicate again.
+- **From the command line** — `suggestions buckets [--dirty]` lists buckets with their
+  complete/judged/dirty state; `suggestions judge -r <bucket> [--confirm <id>[:<note>],…]
+  [--dismiss <id>:<reason>,…]` records one verdict; `suggestions judge --amnesty` marks every
+  complete **still-unjudged** bucket judged with no notes, for drawing a line under a backlog rather
+  than judging it all — it leaves already-judged buckets and their notes alone, so it can never
+  delete enrichment; `suggestions defects` prints the rule-defect report. All read the log directory
+  directly, so no server is required, and all take `--json`. A `--dismiss` without a reason is
+  refused, as is judging an incomplete bucket. **A comma inside a reason stays part of that reason**:
+  a value containing a colon splits only at a comma that introduces a new `<id>:` entry, and
+  repeating the flag is the escape hatch for anything that cannot see.
+- **Over HTTP** — status rows carry `bucketState`, `judgedAt` and any `enrichment`; `meta.bucketStates`
+  counts dirty/clean/not-ready over **every** bucket rather than the rows returned, since how much of
+  the corpus is unadjudicated is a fact about the corpus and not about the slice asked for. A `POST`
+  carrying `judged` or `amnesty` takes the guarded judge path, through the same origin-checked CORS
+  the existing writes use.
+- **In the dashboard** — `dismissed` reaches the flag control automatically and takes the faintest
+  tone of the four, since the row is a record rather than a finding; a dismissed suggestion is dimmed
+  further than a merely resolved one with its reason still legible, and is **not counted as open**.
+  Every bucket is badged **Judged / Unjudged / Not yet full** on both the Advice list and the bucket
+  detail, the Advice header carries an `N unjudged` badge, and a confirmed suggestion shows the
+  judge's enrichment note under its control.
+
 The data path is `logs/sessions/*.md` + `.audit.json` sidecars — read through the
 `SidecarSource` seam, so the server answers from the SQLite substrate by default and from the
 file scan under `DB_READS=0`, while the CLI always scans the files —
@@ -188,6 +274,21 @@ file scan under `DB_READS=0`, while the CLI always scans the files —
       new finding.
 - [x] `historical` rows are excluded from the CLI's default `list`, with the hidden count reported
       and reachable via `--recurrence`.
+- [x] A fourth flag `dismissed` records that the rule was **wrong** in a window, distinct from
+      `skipped`, and produces no recurrence claim — asserted by a test.
+- [x] The store is version 2 with a top-level `judged` map, and a v1 file migrates by defaulting it
+      to `{}` without losing a flag.
+- [x] Enrichment for a confirmed suggestion is stored at bucket level, so the pending-entry
+      invariant holds and marking the suggestion `done` cannot clobber the judge's context.
+- [x] Buckets expose completeness and read as `not-ready` / `dirty` / `clean`, with cleanliness held
+      per bucket so un-dismissing a suggestion cannot re-dirty its window.
+- [x] Judging is refused when any session carries a null `started`, naming the session at fault.
+- [x] A rule dismissed in 3+ buckets and 50%+ of those it fired in is reported as a rule defect, with
+      both numbers in an exported tunable.
+- [x] `suggestions buckets`, `judge` (with `--amnesty`) and `defects` work with no server running,
+      and a judge writes its dismissals and its verdict in one atomic write.
+- [x] The dashboard badges every bucket's judged state, shows the judge's enrichment on a confirmed
+      suggestion, and dims a dismissed one without counting it as open.
 
 ## Open questions
 
@@ -202,6 +303,17 @@ file scan under `DB_READS=0`, while the CLI always scans the files —
   with 2 refusals and one with 40 both read *high*.
 - The breakdown roll-up uses each session's peak request only. That is the cheapest honest
   sample, but a tool schema dropped midway through a session is invisible to it.
+- Judging is a write an agent makes; nothing checks that it actually read the window. `--amnesty`
+  makes that explicit by recording a verdict with no notes, but an ordinary `judge` call is trusted
+  the same way. Recording which agent judged, or how many of the window's transcripts it opened,
+  would let a careless pass be told from a careful one.
+- A rule defect is reported but nothing links it back to the rule's own thresholds. The obvious next
+  step is for the report to name the `SUGGESTION_THRESHOLDS` entry a defective rule is governed by,
+  so the fix has somewhere to start.
+- The dashboard shows the judgement layer but cannot write to it: `dismissed` is settable from the
+  flag control, yet a bucket can only be *judged* from the CLI or the API. That is deliberate for now
+  — a verdict is an agent's product — but it means a human who disagrees can un-dismiss a suggestion
+  without being able to re-judge the window.
 - The dashboard marks a flag but cannot attach a note — the API and CLI can, and the UI displays
   whatever they wrote. A `skipped` without a reason is the flag that most wants one; a note field on
   the control is the obvious next step.
