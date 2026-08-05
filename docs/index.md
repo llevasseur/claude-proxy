@@ -28,4 +28,5 @@ Folders: `adrs/` (decisions), `specs/` (design specs), `features/` (one per capa
 |-------|------|
 | Claude Usage Daily Summary — Design Spec | [2026-07-13-claude-usage-summary-design.md](2026-07-13-claude-usage-summary-design.md) |
 | docs | [README.md](README.md) |
+| Ideas ledger (tier 2) | [ideas.md](ideas.md) |
 <!-- okq:index:end -->
