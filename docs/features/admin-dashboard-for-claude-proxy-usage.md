@@ -64,10 +64,15 @@ Fifteen stations in the side rail, several with drill-down subpages beneath them
 - **Commands** (`/commands`) — what each slash command costs per declared step and where
   its runs stop, with a page per command and per run. See
   [Commands eval](commands-eval.md).
-- **Advice** (`/advice`) — coaching cards derived deterministically from the day's digest
-  (dominant tool, tool overhead, low cache-hit, large system prompt, high cost), plus
-  ten-session suggestion buckets with persistent pending/done/skipped flags. See
-  [Session suggestions](session-suggestions.md).
+- **Advice** (`/advice`) — three stacked sections, ordered by how actionable they are.
+  **Ideas** comes first: the [ideas ledger](ideas-ledger.md) as approve/deny cards, each
+  showing what it cites, so a proposal is signed off in the browser rather than at a
+  terminal. Then the **heuristic coaching** derived deterministically from the day's
+  digest (dominant tool, tool overhead, low cache-hit, large system prompt, high cost) —
+  with any card whose metric has not moved since the prior day folded into one
+  "unchanged since &lt;date&gt;" line that expands back to the full cards. Then
+  ten-session suggestion buckets with persistent pending/done/skipped/dismissed flags.
+  See [Session suggestions](session-suggestions.md).
 
 Each station has a [lucide](https://lucide.dev) icon. The rail toggles between full and
 a 64px icon-only strip; `localStorage` key `admin:rail-collapsed` persists the choice.
@@ -81,9 +86,10 @@ filename date. `readArchivedDay` merges the two UTC archive folders a reporting 
 span, then filters by sidecar timestamp. Individual events use the viewer's local zone.
 
 Most `server` routes are read-only JSON views; SSE streams feed the Overview summary and
-usage meters, the session list and detail, and the commands pages. An explicit POST
-allowlist with origin-checked CORS starts, continues, stops, or ends dashboard chats,
-records suggestion flags, rewrites the device system prompt, and deletes a background job. See
+usage meters, the session list and detail, the ideas ledger, and the commands pages. An
+explicit POST allowlist with origin-checked CORS starts, continues, stops, or ends
+dashboard chats, records suggestion flags, adjudicates an idea, rewrites the device system
+prompt, and deletes a background job. See
 [ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md).
 A page waiting on any of those routes renders a shaped placeholder rather than a spinner —
 see [Skeleton loading](skeleton-loading.md). Analysis is computed via `packages/core`.

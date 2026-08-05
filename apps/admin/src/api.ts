@@ -1,5 +1,6 @@
 import type {
   Advice,
+  AdviceMovement,
   AliasLoadExpectation,
   AuditSidecar,
   BucketBreakdownSummary,
@@ -13,6 +14,9 @@ import type {
   CommandSummary,
   ContextSummary,
   HookRow,
+  IdeaEntry,
+  IdeaMark,
+  IdeaStatus,
   InterruptionKind,
   JobFileKind,
   JobStateFields,
@@ -58,6 +62,8 @@ export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ??
 export interface SummaryResponse {
   digest: UsageDigest;
   advice: Advice[];
+  /** Whether each piece of advice's metric moved since the last day that recorded it. */
+  movement: AdviceMovement[];
   meta: { date: string; files: number; parseErrors: number };
 }
 /** The 5-hour / weekly / weekly-Fable meters, as of the newest captured request. */
@@ -475,6 +481,37 @@ export interface SuggestionStatusUpdateResponse {
   rows: SuggestionStatusRow[];
   meta: { statusFile: string; updated: number; unknown: { bucket: number; id: string }[] };
 }
+/**
+ * The ideas ledger: invented proposals and what a human decided about each one.
+ *
+ * Deliberately **not** the suggestion flags. A suggestion is counted from
+ * transcripts and traces back to the sessions it fired on; an idea is invented and
+ * carries only cited evidence plus a recorded sign-off, which is why `accepted` is
+ * the one status `/improve` may act on.
+ */
+export interface IdeasResponse {
+  /** Oldest first — the order the ledger was decided in. */
+  rows: IdeaEntry[];
+  meta: {
+    file: string;
+    /** Counts over the rows returned. */
+    counts: Record<IdeaStatus, number>;
+    /** Entries on the whole ledger, however the view was filtered. */
+    total: number;
+  };
+}
+/** The entries a write touched, plus the ledger-wide counts after it. */
+export interface IdeasStatusResponse {
+  rows: IdeaEntry[];
+  meta: {
+    file: string;
+    updated: string[];
+    /** Slugs the ledger does not carry — nothing was written for these. */
+    unknown: string[];
+    counts: Record<IdeaStatus, number>;
+    total: number;
+  };
+}
 export interface FiltersResponse {
   generatedAt: string;
   filters: ProxyFilterEntry[];
@@ -695,6 +732,14 @@ export const getConcept = (ord: number) => get<ConceptResponse>(`/api/concepts/c
 export const getSystemPrompt = () => get<SystemPromptResponse>('/api/system-prompt');
 /** Overwrite it. The server keeps the previous contents in a `.bak` beside the file. */
 export const saveSystemPrompt = (text: string) => post<SystemPromptUpdateResponse>('/api/system-prompt', { text });
+/** The whole ledger, paired with the `/api/ideas/stream` subscription that pushes the same shape. */
+export const getIdeas = () => get<IdeasResponse>('/api/ideas');
+/**
+ * Adjudicate ideas. The browser may set `accepted`, `rejected` and `proposed` (the
+ * undo); `shipped` carries a PR url and stays with `ideas mark`. A `rejected` mark
+ * with no note is refused — the reason is what stops the idea being re-proposed.
+ */
+export const markIdeas = (marks: IdeaMark[]) => post<IdeasStatusResponse>('/api/ideas/status', { marks });
 export const getFilters = () => get<FiltersResponse>('/api/filters');
 export const getChatConfig = () => get<ChatConfigResponse>('/api/chat/config');
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */

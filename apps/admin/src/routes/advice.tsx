@@ -1,8 +1,10 @@
-import type { SessionBucket, SuggestionStatusRow } from '@claude-proxy/core';
+import type { Advice, AdviceMovement, IdeaEntry, SessionBucket, SuggestionStatusRow } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { getSessionSuggestions, getSuggestionStatus, getSummary } from '../api';
+import { useState } from 'react';
+import { getIdeas, getSessionSuggestions, getSuggestionStatus, getSummary, type IdeasResponse } from '../api';
 import { AdviceCard } from '../components/AdviceCard';
+import { IDEAS_KEY, IdeaCard } from '../components/IdeaCard';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonCardList } from '../components/Skeleton';
 import {
@@ -14,28 +16,157 @@ import {
   SUGGESTION_STATUS_KEY,
 } from '../components/SuggestionStatus';
 import { fmtInt, fmtLocalTsShort } from '../format';
+import { useLiveQuery } from '../useLiveQuery';
 
 export function AdvicePage() {
   const query = useQuery({ queryKey: ['summary'], queryFn: () => getSummary() });
-  const advice = query.data?.advice ?? [];
 
   return (
     <section>
       <div className='pagehead'>
         <h1>Advice</h1>
-        <div className='muted'>{query.data?.digest.date} · deterministic coaching from today's digest</div>
+        <div className='muted'>
+          {query.data?.digest.date} · ideas awaiting a sign-off, then coaching from today's digest
+        </div>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<SkeletonCardList count={3} lines={3} />}>
-        <div className='advice-list wide'>
-          {advice.map((a) => (
-            <AdviceCard key={a.id} advice={a} />
-          ))}
-        </div>
-      </QueryState>
+      <Ideas />
+
+      <HeuristicAdvice
+        advice={query.data?.advice ?? []}
+        movement={query.data?.movement ?? []}
+        isLoading={query.isLoading}
+        error={query.error}
+      />
 
       <SessionSuggestions />
     </section>
+  );
+}
+
+/**
+ * The ideas ledger — invented proposals, each awaiting the sign-off that is the only
+ * thing making one actionable. Above the heuristic cards, being the half of the page
+ * waiting on a human, and live through SSE so an idea `/ideate` writes from a
+ * terminal appears without a reload.
+ */
+function Ideas() {
+  const query = useQuery({ queryKey: [IDEAS_KEY], queryFn: getIdeas });
+  useLiveQuery<IdeasResponse>('/api/ideas/stream', [IDEAS_KEY]);
+  const [showRejected, setShowRejected] = useState(false);
+
+  const rows = query.data?.rows ?? [];
+  // Newest first, unlike the ledger's own oldest-first order.
+  const byNewest = (a: IdeaEntry, b: IdeaEntry) => b.created.localeCompare(a.created);
+  const open = rows.filter((r) => r.status === 'proposed').sort(byNewest);
+  // Kept visible, so it is clear what /improve picks up next.
+  const settled = rows.filter((r) => r.status === 'accepted' || r.status === 'shipped').sort(byNewest);
+  // Never deleted, only collapsed: the reasons are what stop an idea being re-proposed.
+  const rejected = rows.filter((r) => r.status === 'rejected').sort(byNewest);
+  const counts = query.data?.meta.counts;
+
+  return (
+    <>
+      <div className='card-head'>
+        <h2>Ideas</h2>
+        <span className='muted'>
+          {counts
+            ? `${counts.proposed} awaiting a decision · ${counts.accepted} accepted · ${counts.rejected} rejected · ${counts.shipped} shipped`
+            : ''}
+        </span>
+      </div>
+
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<SkeletonCardList count={2} lines={4} />}>
+        {rows.length === 0 ? (
+          <div className='card empty'>
+            No ideas on the ledger. <code>/ideate</code> proposes them; each one cites evidence a person wrote down.
+          </div>
+        ) : (
+          <>
+            <div className='advice-list wide'>
+              {[...open, ...settled].map((idea) => (
+                <IdeaCard key={idea.slug} idea={idea} />
+              ))}
+            </div>
+            {rejected.length > 0 && (
+              <div className='idea-rejected-fold'>
+                <button type='button' className='idea-toggle' onClick={() => setShowRejected(!showRejected)}>
+                  {showRejected ? 'Hide' : 'Show'} {rejected.length} rejected
+                </button>
+                {showRejected && (
+                  <div className='advice-list wide'>
+                    {rejected.map((idea) => (
+                      <IdeaCard key={idea.slug} idea={idea} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </QueryState>
+    </>
+  );
+}
+
+/**
+ * The heuristic coaching, with anything that has not moved since the prior day folded
+ * into one line.
+ *
+ * Neither the rules nor their thresholds are touched — raising a threshold hides a
+ * real finding. A card whose metric barely moved is **demoted, never dropped**: the
+ * summary line expands to the full cards, and a card that did move renders normally.
+ */
+function HeuristicAdvice({
+  advice,
+  movement,
+  isLoading,
+  error,
+}: {
+  advice: Advice[];
+  movement: AdviceMovement[];
+  isLoading: boolean;
+  error: unknown;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const steadyById = new Map(movement.map((m) => [m.id, m] as const));
+  const isSteady = (a: Advice) => steadyById.get(a.id)?.steady === true;
+  const moved = advice.filter((a) => !isSteady(a));
+  const steady = advice.filter(isSteady);
+  // Every steady card was measured against the same prior day, so one date names them all.
+  const since = steady.map((a) => steadyById.get(a.id)?.since).find(Boolean);
+
+  return (
+    <>
+      <div className='card-head'>
+        <h2>From today's digest</h2>
+        <span className='muted'>deterministic coaching — no model, same digest in, same advice out</span>
+      </div>
+
+      <QueryState isLoading={isLoading} error={error} skeleton={<SkeletonCardList count={3} lines={3} />}>
+        <div className='advice-list wide'>
+          {moved.map((a) => (
+            <AdviceCard key={a.id} advice={a} />
+          ))}
+        </div>
+
+        {steady.length > 0 && (
+          <div className='advice-steady'>
+            <button type='button' className='idea-toggle' onClick={() => setExpanded(!expanded)}>
+              {expanded ? 'Hide' : 'Show'} {steady.length} unchanged{since ? ` since ${since}` : ''}
+            </button>
+            {!expanded && <span className='muted advice-steady-names'>{steady.map((a) => a.title).join(' · ')}</span>}
+            {expanded && (
+              <div className='advice-list wide'>
+                {steady.map((a) => (
+                  <AdviceCard key={a.id} advice={a} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </QueryState>
+    </>
   );
 }
 

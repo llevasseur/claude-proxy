@@ -1306,6 +1306,93 @@ a.pager-btn:hover {
   font-size: 12px;
 }
 
+/* Advice that has not moved since the prior day: one line, expandable back to the
+   full cards. */
+.advice-steady {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.advice-steady-names {
+  font-size: 12px;
+}
+
+/* ideas ledger — the advice card system, with citations and controls in place of a
+   severity. */
+.idea {
+  border-left-color: var(--signal-dim);
+}
+.idea.idea-accepted {
+  border-left-color: var(--signal);
+}
+/* A record rather than a finding, but kept legible: the reason is the row's value. */
+.idea.idea-rejected {
+  border-left-color: var(--line);
+  opacity: 0.8;
+}
+.idea.idea-rejected:hover,
+.idea.idea-rejected:focus-within {
+  opacity: 1;
+}
+.idea-repo {
+  margin-left: auto;
+  font-size: 12px;
+}
+.idea-evidence {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.idea-evidence li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.idea-evidence-source {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+.idea-evidence-where {
+  font-family: var(--font-mono);
+}
+.idea-evidence-quote {
+  font-style: italic;
+}
+.idea-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.idea-when {
+  margin-left: auto;
+  font-size: 12px;
+}
+.idea-reject {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 320px;
+}
+.idea-reject input {
+  flex: 1 1 auto;
+  min-width: 12rem;
+}
+/* The rejected fold: never deleted, only collapsed behind this toggle. */
+.idea-rejected-fold {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.idea-toggle {
+  justify-self: start;
+}
+
 /* session suggestion buckets */
 .bucket-list {
   display: grid;
@@ -1537,6 +1624,24 @@ button.link {
   color: var(--amber);
 }
 .badge.bucket-not-ready {
+  background: var(--surface-2);
+  color: var(--faint);
+}
+/* Ideas: `accepted` takes the affirmative tone as the sign-off /improve acts on,
+   `proposed` is waiting on a human, and `rejected` is the quietest of the four. */
+.badge.idea-status-accepted {
+  background: rgba(111, 227, 154, 0.16);
+  color: var(--good);
+}
+.badge.idea-status-proposed {
+  background: rgba(244, 177, 90, 0.16);
+  color: var(--amber);
+}
+.badge.idea-status-shipped {
+  background: rgba(70, 224, 192, 0.16);
+  color: var(--info);
+}
+.badge.idea-status-rejected {
   background: var(--surface-2);
   color: var(--faint);
 }
