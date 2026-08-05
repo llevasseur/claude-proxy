@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildUsageLimits, fmtDuration, learnCeilings, usageUnits, windowOfHeader } from '../src/usage-limits.js';
+import {
+  buildUsageLimits,
+  CACHE_READ_COST_WEIGHT,
+  CACHE_READ_METERING_WEIGHT,
+  fmtDuration,
+  learnCeilings,
+  usageUnits,
+  windowOfHeader,
+} from '../src/usage-limits.js';
 
 const NOW = new Date('2026-07-30T18:00:00.000Z');
 
@@ -55,9 +63,105 @@ describe('windowOfHeader', () => {
 });
 
 describe('usageUnits', () => {
-  it('discounts cache reads tenfold and ignores realInput', () => {
+  it('meters cache reads at the metering weight, not the cost one, and ignores realInput', () => {
     // realInput double-counts input + cacheRead + cacheCreation, so it must not add.
-    expect(usageUnits({ input: 1000, output: 500, cacheRead: 10_000, cacheCreation: 0, realInput: 11_000 })).toBe(2500);
+    // 10k cache reads meter as 200 units, not the 1000 the 0.1 cost ratio would give.
+    expect(usageUnits({ input: 1000, output: 500, cacheRead: 10_000, cacheCreation: 0, realInput: 11_000 })).toBe(1700);
+    expect(CACHE_READ_METERING_WEIGHT).toBeLessThan(CACHE_READ_COST_WEIGHT);
+  });
+});
+
+/**
+ * The four completed 5-hour windows whose sidecars carry an
+ * `anthropic-ratelimit-unified-5h-utilization` header — every one on record, from
+ * 2026-08-04 and 2026-08-05. `util` is Anthropic's own reading at the last request
+ * of the window; the token counts are every request from the window's opening
+ * instant (reset − 5h) up to that reading.
+ *
+ * Anthropic never publishes the allowance, so these four are the only measurement
+ * of the metering unit there is: divide each window's weighted units by the
+ * utilization it drew and you get the allowance that window implies. One weight is
+ * in play, so the four have to agree — a weight that makes them disagree is wrong,
+ * whatever else it is right about.
+ */
+const OBSERVED_5H_WINDOWS = [
+  {
+    opened: '2026-08-04T12:20:00Z',
+    util: 0.82,
+    input: 761_395,
+    output: 1_225_759,
+    cacheRead: 355_659_610,
+    cacheCreation: 7_274_165,
+  },
+  {
+    opened: '2026-08-04T17:20:00Z',
+    util: 0.43,
+    input: 505_140,
+    output: 667_994,
+    cacheRead: 155_298_357,
+    cacheCreation: 3_262_877,
+  },
+  {
+    opened: '2026-08-05T12:50:00Z',
+    util: 0.93,
+    input: 3_029_783,
+    output: 1_215_817,
+    cacheRead: 292_318_446,
+    cacheCreation: 7_182_611,
+  },
+  {
+    opened: '2026-08-05T17:50:00Z',
+    util: 0.43,
+    input: 373_961,
+    output: 627_085,
+    cacheRead: 165_036_674,
+    cacheCreation: 3_738_450,
+  },
+] as const;
+
+/** Widest departure from the mean, as a fraction of it. */
+function spread(values: readonly number[]): number {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return Math.max(...values.map((v) => Math.abs(v - mean) / mean));
+}
+
+/** The allowance each window implies, at a given cache-read weight. */
+const impliedCeilings = (weight: number): number[] =>
+  OBSERVED_5H_WINDOWS.map((w) => (w.input + w.output + w.cacheCreation + w.cacheRead * weight) / w.util);
+
+describe('the cache-read metering weight, against observed windows', () => {
+  it('is the weight the four observed windows agree on', () => {
+    // One allowance produced all four readings, so the implied ceilings must match.
+    expect(spread(impliedCeilings(CACHE_READ_METERING_WEIGHT))).toBeLessThan(0.07);
+  });
+
+  it('does not agree at the cost weight, which is the defect', () => {
+    // 0.1 is the billing ratio. Metering discounts cache reads far harder, so
+    // using it here spreads the same four windows over twice the range.
+    expect(spread(impliedCeilings(CACHE_READ_COST_WEIGHT))).toBeGreaterThan(0.12);
+    expect(spread(impliedCeilings(CACHE_READ_COST_WEIGHT))).toBeGreaterThan(
+      spread(impliedCeilings(CACHE_READ_METERING_WEIGHT)),
+    );
+  });
+
+  it('sits in the fitted band rather than on an arbitrary round number', () => {
+    // Fitting over the band, 0.015–0.02 is flat at the optimum and everything
+    // outside it is worse; 0.02 is its conservative end (reads usage high).
+    expect(CACHE_READ_METERING_WEIGHT).toBeGreaterThanOrEqual(0.015);
+    expect(CACHE_READ_METERING_WEIGHT).toBeLessThanOrEqual(0.02);
+    for (const worse of [0.005, 0.05, 0.1]) {
+      expect(spread(impliedCeilings(worse))).toBeGreaterThan(spread(impliedCeilings(CACHE_READ_METERING_WEIGHT)));
+    }
+  });
+
+  it('counts a whole observed window the same way usageUnits does', () => {
+    const w = OBSERVED_5H_WINDOWS[0]!;
+    const counted = usageUnits({ ...w, realInput: w.input + w.cacheRead + w.cacheCreation });
+    expect(counted).toBeCloseTo(w.input + w.output + w.cacheCreation + w.cacheRead * CACHE_READ_METERING_WEIGHT, 6);
+    // ~16.4M units against 82% of the allowance — a ~20M-unit 5-hour ceiling, not
+    // the ~55M the cost weight reports for the same traffic.
+    expect(counted / w.util).toBeGreaterThan(15e6);
+    expect(counted / w.util).toBeLessThan(25e6);
   });
 });
 
@@ -237,7 +341,7 @@ describe('buildUsageLimits — from captured headers', () => {
 });
 
 describe('buildUsageLimits — estimated from logged tokens', () => {
-  const tokens = { input: 1000, output: 500, cacheRead: 10_000 }; // 2500 units each
+  const tokens = { input: 1000, output: 500, cacheRead: 50_000 }; // 2500 units each
 
   it('counts weighted units in the trailing window against the configured ceiling', () => {
     const snap = buildUsageLimits([sidecar({ at: agoMin(30), tokens }), sidecar({ at: agoMin(10), tokens })], {

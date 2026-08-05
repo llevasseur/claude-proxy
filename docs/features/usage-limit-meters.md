@@ -88,19 +88,52 @@ how the Fable meter stays absent on plans that never touch it.
 
 Both the estimate and its ceiling are in **weighted tokens**:
 
-    input + output + cacheCreation + (cacheRead × 0.1)
+    input + output + cacheCreation + (cacheRead × 0.02)
 
-Cache reads bill at roughly a tenth of fresh input, so they weigh a tenth here. `input` is used
-rather than `realInput` because `realInput` already sums input + cacheRead + cacheCreation and
-would double-count. For scale, an active coding day on this device runs ~14M units per 5-hour
-window.
+`input` is used rather than `realInput` because `realInput` already sums
+input + cacheRead + cacheCreation and would double-count.
+
+**0.02 is a metering weight, not the cost ratio.** Cache reads *bill* at roughly a tenth of
+fresh input ($1.50/MTok against $15/MTok on Opus), and that tenth is still the right number for
+money — it is `CACHE_READ_COST_WEIGHT`, kept beside the metering one so the two cannot be
+confused again. Anthropic's rate-limit accounting discounts cache reads about five times harder
+than its billing does, and the meters were using the billing ratio for both.
+
+The metering weight is measured, not assumed. The four completed 5-hour windows whose sidecars
+carry an `anthropic-ratelimit-unified-5h-utilization` header — every one on record, from
+2026-08-04 and 2026-08-05 — each pair a weighted count with Anthropic's own utilization reading,
+so each implies an allowance. One allowance produced all four, so the right weight is the one
+that makes them agree:
+
+| Weight | Implied 5-hour ceilings | Worst departure from the mean |
+|--------|-------------------------|-------------------------------|
+| 0.1 (cost) | 54.7M / 46.4M / 43.7M / 49.4M | 12.6% |
+| 0.02 (metering) | 20.0M / 17.5M / 18.6M / 18.7M | 6.8% |
+
+The fit is flat across 0.015–0.02 and worse either side of it; 0.02 is the conservative end,
+since a weight that is too high reads usage too high — the same direction the learned ceiling
+already errs in. Out of sample the weight holds up: it puts 2026-07-28's two 5-hour windows at
+113% and 96% of that ceiling, matching a real cap-out that day, and the 2026-07-25 → 2026-08-01
+weekly window at 98% of the weekly ceiling the current week's live reading implies. At 0.1 the
+same two 5-hour windows read 67% and 64% against the ceiling *that* weight implies, which would
+mean the allowance itself had changed between one week and the next.
+
+**Why the error was invisible.** Usage and the learned ceiling are counted in the same units, so
+a wrong weight divides out of the ratio and both meters look fine — for exactly as long as the
+cache-hit ratio holds steady. It surfaces only when the token mix moves, and then it moves both
+meters at once. That is what makes the weight worth pinning to observations and testing against
+them rather than inferring it from the price sheet.
+
+For scale, an active coding day on this device runs ~16M units per 5-hour window, against a
+5-hour ceiling of about 20M.
 
 ## Fixed windows, not trailing ones
 
 Anthropic's weekly allowance is a **fixed** window that resets at a published instant — "resets
 Aug 8 at 8am" — not a trailing seven days. Estimating over a trailing week counts usage against
 an allowance that already reset: on this device a **5.6× overcount**, 83.0M weighted units where
-14.9M actually belonged to the window in progress.
+14.9M actually belonged to the window in progress. (Those two absolute figures were measured at
+the old 0.1 weight; the ratio between them is the point and is what carries over.)
 
 So the estimate anchors to the real reset instant whenever one is known. The anchor comes from
 the live poll and **outlives it**: allowances reset on a fixed cadence, so an instant that has
@@ -182,7 +215,9 @@ requests were captured at all no estimated window is emitted, because a 0% meter
 ## Where it lives
 
 - `packages/core/src/usage-limits.ts` — header parsing, the weighted unit, coverage, the pace
-  assessment, and `learnCeilings`. Pure;
+  assessment, and `learnCeilings`. `CACHE_READ_COST_WEIGHT` and `CACHE_READ_METERING_WEIGHT` are
+  both exported and both documented, so the billing ratio and the metering one stay visibly
+  distinct; only the second one reaches `usageUnits`. Pure;
   `buildUsageLimits(sidecars, { limits, learned, retainedDays, live, anchors, now })` takes an
   injected `now`, so every threshold is testable. `retainedDays` switches coverage from the
   oldest-record span to the days actually held; omitted, it falls back to that span.
