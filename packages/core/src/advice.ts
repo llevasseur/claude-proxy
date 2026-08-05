@@ -120,3 +120,84 @@ export class HeuristicAdviceProvider implements AdviceProvider {
 
 /** Convenience default instance. */
 export const heuristicAdvice = new HeuristicAdviceProvider();
+
+/**
+ * Relative move below which a metric counts as unchanged. 10% is loose on
+ * purpose: the point is to separate "this is the same finding as yesterday" from
+ * "this moved", and a card restating a number that drifted 3% is the former.
+ */
+export const ADVICE_STEADY_PCT = 0.1;
+
+/**
+ * How to read the number a rule fired on back off a digest, keyed by the rule's
+ * own `metric`. A rule declaring no metric is not comparable and its advice
+ * always renders in full — being unable to measure a finding is not grounds for
+ * demoting it.
+ */
+const METRIC_READERS: Record<string, (d: UsageDigest) => number> = {
+  requestCount: (d) => d.requestCount,
+  topTools: (d) => d.topTools[0]?.pctOfToolBytes ?? 0,
+  toolOverheadPctOfInput: (d) => d.toolOverheadPctOfInput,
+  cacheHitRatio: (d) => d.tokens.cacheHitRatio,
+  avgSystemPromptBytes: (d) => d.avgSystemPromptBytes,
+  cost: (d) => d.cost.total,
+};
+
+/** Where one piece of advice stands against the last day that recorded its metric. */
+export interface AdviceMovement {
+  /** The advice this describes. */
+  id: string;
+  /** The metric compared, or null when the rule declares none this can read. */
+  metric: string | null;
+  current: number | null;
+  prior: number | null;
+  /** The date `prior` was read from; null when there was no day to compare against. */
+  since: string | null;
+  /** `|current - prior| / |prior|`, or null when nothing was comparable. */
+  change: number | null;
+  /**
+   * True only when the metric was read on both days and moved less than
+   * {@link ADVICE_STEADY_PCT}. Absent evidence never makes a card steady, so an
+   * unreadable metric, a missing prior day and a genuinely moving number all
+   * render the same way: in full.
+   */
+  steady: boolean;
+}
+
+/**
+ * Rate each piece of advice against the prior day that recorded something.
+ *
+ * This exists because two of the heuristic rules — `large-system-prompt` and
+ * `high-cost` — trip on essentially every day of a busy install and restate the
+ * same sentence each time, so they crowd out anything actionable. Raising their
+ * thresholds would hide a real finding; the honest fix is to notice that the
+ * finding has not *changed* and let a reader collapse it. Nothing is dropped:
+ * this only reports what moved, and the caller decides how to render it.
+ *
+ * A zero prior with a non-zero current is a move (`change: Infinity` would be
+ * meaningless, so it reports `1`), and both being zero is unchanged.
+ */
+export function adviceMovement(
+  advice: readonly Advice[],
+  digest: UsageDigest,
+  prior: UsageDigest | null,
+): AdviceMovement[] {
+  return advice.map((a) => {
+    const read = a.metric ? METRIC_READERS[a.metric] : undefined;
+    const metric = a.metric ?? null;
+    if (!read) return { id: a.id, metric, current: null, prior: null, since: null, change: null, steady: false };
+    const current = read(digest);
+    if (!prior) return { id: a.id, metric, current, prior: null, since: null, change: null, steady: false };
+    const before = read(prior);
+    const change = before === 0 ? (current === 0 ? 0 : 1) : Math.abs(current - before) / Math.abs(before);
+    return {
+      id: a.id,
+      metric,
+      current,
+      prior: before,
+      since: prior.date,
+      change,
+      steady: change < ADVICE_STEADY_PCT,
+    };
+  });
+}
