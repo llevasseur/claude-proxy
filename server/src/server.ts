@@ -930,9 +930,8 @@ const server = http.createServer(async (req, res) => {
             // derived half this echoes back — the bucket/suggestion join — so
             // the response cannot describe a different corpus than the GET.
             //
-            // A body carrying `judged` or `amnesty` is a judge's verdict, which
-            // takes the guarded path: it refuses an unorderable corpus and an
-            // incomplete bucket, and commits flags and verdict in one write.
+            // A body carrying `judged` or `amnesty` takes the guarded judge path:
+            // it refuses an unorderable corpus and an incomplete bucket.
             (body) => {
               const judging = body.judged !== undefined || body.amnesty !== undefined;
               if (!judging) {

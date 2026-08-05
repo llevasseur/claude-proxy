@@ -93,10 +93,8 @@ export const SUGGESTION_THRESHOLDS = {
 
 /**
  * When repeated dismissals stop being noise about windows and start being evidence
- * about the *rule*. Both have to hold: a rule dismissed three times has a habit,
- * and one dismissed in half the windows it fired in is wrong more often than right.
- * The count alone would indict a rule that fired forty times and was wrong three;
- * the ratio alone would indict a rule that fired once and was dismissed once.
+ * about the *rule*. Both have to hold: the count alone would indict a rule that is
+ * usually right, the ratio alone one that has barely fired.
  */
 export const SUGGESTION_DEFECT_THRESHOLDS = {
   /** Buckets a rule must be dismissed in before it counts as defective. */
@@ -198,12 +196,10 @@ export interface SessionBucket {
   /** `"1–10"` — what the list shows. */
   label: string;
   /**
-   * Whether this window holds its full {@link SESSION_BUCKET_SIZE} sessions. Only the
-   * tail bucket is ever incomplete, and only until it fills. A complete bucket's
-   * membership is immutable — transcripts are never archived or evicted, so nothing
-   * can join or leave it — which is what makes it safe to record a verdict against.
-   * An incomplete one will gain sessions and re-fire its rules over a wider window,
-   * so it is never judged and never improved upon.
+   * Whether this window holds its full {@link SESSION_BUCKET_SIZE} sessions — only the
+   * tail bucket is ever short, and only until it fills. A complete bucket's membership
+   * is immutable, since transcripts are never archived or evicted, which is what makes
+   * it safe to record a verdict against; an incomplete one is never judged.
    */
   complete: boolean;
   /** Earliest and latest `started` in the bucket, or null when none carried one. */

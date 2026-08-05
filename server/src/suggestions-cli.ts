@@ -90,9 +90,8 @@ const ACTIONABLE_RECURRENCES: readonly SuggestionRecurrence[] = SUGGESTION_RECUR
 const BOOLEAN_FLAGS = new Set(['json', 'detail', 'dirty', 'amnesty']);
 
 /**
- * Flags that accumulate rather than overwrite. A note may contain a comma, and
- * comma-splitting one value cannot tell that from a separator — so repeating the
- * flag is the escape hatch, and both forms end up in the same list.
+ * Flags that accumulate rather than overwrite, so repeating one is the escape hatch
+ * for a note whose commas would otherwise read as separators.
  */
 const LIST_FLAGS = new Set(['confirm', 'dismiss']);
 

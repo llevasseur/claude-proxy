@@ -1440,8 +1440,7 @@ a.pager-btn:hover {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-/* The judge's context on a confirmed suggestion — kept apart from the entry's own
-   note, which is a PR link or a skip reason. */
+/* The judge's context, kept apart from the entry's own note. */
 .suggestion-enrichment-label {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -1523,8 +1522,8 @@ button.link {
   background: var(--surface-2);
   color: var(--muted);
 }
-/* Dismissed is the quietest flag there is: the rule was wrong, so the row is a
-   record rather than a finding. Fainter than skipped, which is still a real finding. */
+/* The quietest flag: the rule was wrong, so the row is a record rather than a
+   finding. Fainter than skipped, which is still a real finding. */
 .badge.status-dismissed {
   background: var(--surface-2);
   color: var(--faint);

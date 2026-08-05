@@ -71,12 +71,11 @@ export async function updateSuggestionStatusStore(
 
 /**
  * A judge's whole verdict on one pass: the dismissals it decided on and the
- * per-bucket judgement records, applied to the store in memory and committed in
- * **one** temp-file-plus-rename.
+ * per-bucket judgement records, applied in memory and committed in **one**
+ * temp-file-plus-rename.
  *
- * One write is the point. Two — flags then verdict — could leave a bucket recorded
- * as judged with its dismissals missing, or dismissed suggestions in a bucket the
- * judge would revisit and adjudicate again.
+ * Two writes could leave a bucket recorded as judged with its dismissals missing, or
+ * dismissed suggestions in a bucket the judge would adjudicate again.
  */
 export async function judgeSuggestionStatusStore(
   logDir: string,

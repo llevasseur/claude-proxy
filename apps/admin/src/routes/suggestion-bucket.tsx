@@ -227,8 +227,7 @@ function SuggestionCard({
 }) {
   const settled = isSettled(status);
   const regressed = status?.recurrence === 'regressed';
-  // A dismissed rule was wrong here, so it is dimmed further than a merely resolved
-  // one — but its reason stays legible, which is the whole record of *why*.
+  // Dimmed further than a merely resolved one, with its reason left legible.
   const dismissed = status?.status === 'dismissed';
   return (
     <div

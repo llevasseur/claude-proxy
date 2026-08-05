@@ -35,10 +35,9 @@ import { type SessionBucket, SUGGESTION_DEFECT_THRESHOLDS, type SuggestionSource
  * The flags a suggestion can carry. `pending` is the default.
  *
  * `skipped` and `dismissed` are different claims and must not be conflated:
- * `skipped` means the finding was right and was deliberately passed over, while
- * `dismissed` means **the rule was wrong here** — the reads it called serial were
- * genuinely dependent, the two paths it called the same file were two files. A
- * `skipped` may be worth revisiting; a `dismissed` never is.
+ * `skipped` means the finding was right and was deliberately passed over,
+ * `dismissed` means **the rule was wrong here**. A `skipped` may be worth
+ * revisiting; a `dismissed` never is.
  */
 export const SUGGESTION_STATUSES = ['pending', 'done', 'skipped', 'dismissed'] as const;
 
@@ -573,16 +572,12 @@ export interface JudgeEntry {
 /**
  * Parse a `--confirm` / `--dismiss` value into `(id, note)` entries.
  *
- * The whole difficulty is that a note is prose and prose contains commas, so
- * splitting the value on every comma turns one reason into a second bogus entry —
- * which is worse than an error, because a fragment that happens to contain a colon
- * would be written as a dismissal of a rule nobody named. So:
- *
- * - A value with **no colon** is a plain comma-separated list of bare ids
- *   (`serial-discovery,redundant-reads`).
- * - Otherwise the value is split only at a comma that **introduces a new entry** —
- *   one followed by an id-shaped token and a colon. `"a:why, with commas"` stays one
- *   entry; `"a:why,b:other"` becomes two.
+ * A note is prose and prose contains commas, so splitting on every comma turns one
+ * reason into a second bogus entry — worse than an error, since a fragment carrying
+ * a colon would be written as a dismissal of a rule nobody named. So a value with
+ * **no colon** is a plain comma-separated list of bare ids, and otherwise it splits
+ * only at a comma **introducing a new entry**: one followed by an id-shaped token
+ * and a colon.
  *
  * Repeating the flag is the escape hatch for anything this cannot see, and each
  * entry splits at its *first* colon so a reason may contain further ones.

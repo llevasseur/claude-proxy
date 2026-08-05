@@ -1463,8 +1463,7 @@ export interface SuggestionStatusResponse {
     recurrences: Record<SuggestionRecurrence, number>;
     /**
      * Bucket counts per judgement state, over **every** bucket rather than the rows
-     * returned — how much of the corpus is still unadjudicated is a fact about the
-     * corpus, not about the slice asked for.
+     * returned: how much of the corpus is unadjudicated is not a fact about the slice.
      */
     bucketStates: Record<BucketJudgementState, number>;
   };
@@ -1650,13 +1649,11 @@ export interface SuggestionJudgeResponse {
  *
  * Two things are refused rather than recorded:
  *
- * - **A corpus that cannot be bucketed stably.** A session with no `started` sorts
- *   ahead of every real timestamp and shifts every bucket boundary after it, so
- *   every verdict already on file would come to describe sessions it never examined.
- *   {@link assertJudgeableCorpus} names the offenders.
- * - **An incomplete bucket.** A partial window will gain sessions and re-fire its
- *   rules over a wider window, so a verdict against it is a verdict against
- *   evidence that has not finished arriving.
+ * - **A corpus that cannot be bucketed stably.** A session with no `started` shifts
+ *   every bucket boundary after it, so verdicts already on file would come to
+ *   describe sessions they never examined. {@link assertJudgeableCorpus} names them.
+ * - **An incomplete bucket.** A partial window still gains sessions, so a verdict
+ *   against it is a verdict against evidence that has not finished arriving.
  */
 export async function applySuggestionJudge(
   logDir: string,

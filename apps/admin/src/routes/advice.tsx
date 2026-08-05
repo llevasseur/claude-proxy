@@ -131,10 +131,9 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
   const worst = bucket.suggestions[0];
   const rowOf = (id: string): SuggestionStatusRow | undefined => statusByKey.get(`${bucket.index}:${id}`);
   // Open counts what is still actionable, so a window predating its rule's fix isn't open.
-  // A dismissed suggestion is resolved, so it drops out too — the rule was wrong here.
   const open = bucket.suggestions.filter((s) => !isSettled(rowOf(s.id))).length;
-  // Judged-ness is a fact about the bucket, so any of its rows carries it. Until the
-  // flags land, incompleteness is the one state readable from the bucket alone.
+  // Judged-ness is a fact about the bucket, so any of its rows carries it; until the
+  // flags land, incompleteness is all the bucket alone can say.
   const state =
     bucket.suggestions.map((s) => rowOf(s.id)).find((r) => r)?.bucketState ??
     (bucket.complete ? undefined : 'not-ready');
