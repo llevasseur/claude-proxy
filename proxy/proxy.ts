@@ -706,7 +706,6 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     }
 
     // The session this request belongs to, as the cache-breakpoint ledger keys it.
-    // Read before the edits below, which never touch either id.
     const sender = extractSession(req.headers, reqJson);
     const sessionKey = sender.sessionId ?? sender.metadataSessionId;
 
@@ -728,10 +727,9 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
         reqJson = ir.reqJson;
         notes.push(`reminders: ${ir.removed.join(', ')}`);
       }
-      // Deliberately before `skim.keyFor(forwardBody)` below, so the skim key
-      // covers the body actually sent. An injected request therefore keys
-      // differently than it would have and takes a one-time miss — accepted, and
-      // documented in `cache-breakpoint.ts`.
+      // Before `skim.keyFor(forwardBody)` below, so the key covers the body
+      // actually sent — an injected request keys differently than it would have
+      // and takes a one-time miss. See `cache-breakpoint.ts`.
       if (!isTokenCount(reqPath)) {
         const bp = ensureMessageBreakpoint(reqJson, { sessionKey });
         if (bp.injected) {

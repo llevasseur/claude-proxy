@@ -39,8 +39,7 @@
 import type { ContentBlock, RequestBody, WireMessage } from './wire.ts';
 
 /**
- * The kill switch, read per call rather than at module load so a test can flip it
- * (and so a long-running proxy picks up a changed environment on reload).
+ * The kill switch, read per call rather than at module load so a test can flip it.
  * `PROXY_CACHE_BREAKPOINT=off` disables injection; anything else leaves it on.
  */
 function killed(): boolean {
@@ -177,17 +176,7 @@ export interface EnsureBreakpointOptions {
  * (same reference) and `injected: false` whenever any gate fails, so a request
  * nothing was done to is forwarded byte-for-byte.
  *
- * The gates, in the order they are cheapest to fail:
- *   1. The kill switch is off.
- *   2. No `cache_control` on any block anywhere in `messages` — this is the
- *      self-retirement mechanism, so it stays first in spirit and load-bearing.
- *   3. At least one `system` block carries `cache_control`: proof the client wants
- *      caching on this request. Caching is never invented for a client that is not
- *      asking for it.
- *   4. `system` plus `messages` hold fewer than four breakpoints.
- *   5. The transcript is deep enough that a write pays.
- *   6. This session has already been seen reading past its own system prefix, so a
- *      read exists to recover the write.
+ * The gates are applied below in the order they are cheapest to fail.
  */
 export function ensureMessageBreakpoint(
   reqJson: RequestBody | null,
