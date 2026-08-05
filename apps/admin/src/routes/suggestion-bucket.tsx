@@ -20,6 +20,7 @@ import {
   SkeletonText,
 } from '../components/Skeleton';
 import {
+  BucketJudgementBadge,
   isSettled,
   SUGGESTION_STATUS_KEY,
   SuggestionRecurrenceBadge,
@@ -68,6 +69,9 @@ export function SuggestionBucketPage() {
   const regressed = recurrences?.regressed ?? 0;
   // "Resolved" counts settled rows: acted on, or a window its rule's fix predates.
   const resolvedCount = (statusQuery.data?.rows ?? []).filter((row) => isSettled(row)).length;
+  // Judged-ness is a fact about the window, so any of its rows carries it.
+  const bucketState =
+    (statusQuery.data?.rows ?? [])[0]?.bucketState ?? (data && !data.bucket.complete ? 'not-ready' : undefined);
   const suggestions = (data?.bucket.suggestions ?? []).filter((s) => !hideResolved || !isSettled(statusById.get(s.id)));
 
   return (
@@ -80,6 +84,7 @@ export function SuggestionBucketPage() {
       </Breadcrumbs>
       <div className='pagehead'>
         <h1>Sessions {data?.bucket.label ?? param}</h1>
+        {bucketState && <BucketJudgementBadge state={bucketState} />}
         {data && (
           <span className='muted'>
             {fmtLocalTsShort(data.bucket.startedFirst ?? '')} → {fmtLocalTsShort(data.bucket.startedLast ?? '')}
@@ -109,7 +114,8 @@ export function SuggestionBucketPage() {
               <h2>Suggestions</h2>
               <span className='muted'>
                 from these {data.bucket.stats.sessions} transcripts
-                {resolvedCount > 0 && ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped`}
+                {resolvedCount > 0 &&
+                  ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped · ${counts?.dismissed ?? 0} dismissed`}
                 {(recurrences?.historical ?? 0) > 0 && ` · ${recurrences?.historical} predating the fix`}
               </span>
               {regressed > 0 && (
@@ -221,8 +227,12 @@ function SuggestionCard({
 }) {
   const settled = isSettled(status);
   const regressed = status?.recurrence === 'regressed';
+  // A dismissed rule was wrong here, so it is dimmed further than a merely resolved
+  // one — but its reason stays legible, which is the whole record of *why*.
+  const dismissed = status?.status === 'dismissed';
   return (
-    <div className={`card advice sev-${s.severity}${settled ? ' is-resolved' : ''}${regressed ? ' is-regressed' : ''}`}>
+    <div
+      className={`card advice sev-${s.severity}${settled ? ' is-resolved' : ''}${dismissed ? ' is-dismissed' : ''}${regressed ? ' is-regressed' : ''}`}>
       <div className='advice-head'>
         <span className={`badge sev-${s.severity}`}>{SEV_LABEL[s.severity]}</span>
         <h3>{s.title}</h3>

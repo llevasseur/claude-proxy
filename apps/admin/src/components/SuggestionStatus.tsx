@@ -1,4 +1,5 @@
 import {
+  type BucketJudgementState,
   SUGGESTION_STATUSES,
   type SuggestionRecurrence,
   type SuggestionStatus,
@@ -21,10 +22,27 @@ export const STATUS_LABEL: Record<SuggestionStatus, string> = {
   pending: 'Pending',
   done: 'Done',
   skipped: 'Skipped',
+  dismissed: 'Dismissed',
 };
 
-/** Acted on either way — half of what a "hide resolved" toggle hides. */
+/** Decided either way — half of what a "hide resolved" toggle hides. */
 export const isResolved = (status: SuggestionStatus): boolean => status !== 'pending';
+
+/** How a bucket's judgement state reads on a badge. */
+export const BUCKET_STATE_LABEL: Record<BucketJudgementState, string> = {
+  'not-ready': 'Not yet full',
+  dirty: 'Unjudged',
+  clean: 'Judged',
+};
+
+/**
+ * Where a bucket stands with the judge. Every bucket gets one — "unjudged" is as
+ * much a fact worth showing as "judged", since it is what says whether the
+ * suggestions below have been adjudicated at all.
+ */
+export function BucketJudgementBadge({ state }: { state: BucketJudgementState }) {
+  return <span className={`badge bucket-${state}`}>{BUCKET_STATE_LABEL[state]}</span>;
+}
 
 export const RECURRENCE_LABEL: Record<SuggestionRecurrence, string> = {
   none: '',
@@ -103,6 +121,13 @@ export function SuggestionStatusControl({
       )}
       {mark.error && <span className='suggestion-mark-error'>{(mark.error as Error).message}</span>}
       {row?.note && <div className='suggestion-note'>{row.note}</div>}
+      {/* Bucket-level, so it shows on a still-pending suggestion the judge confirmed —
+          which is the case it exists for. */}
+      {row?.enrichment && (
+        <div className='suggestion-note suggestion-enrichment'>
+          <span className='suggestion-enrichment-label'>Judged</span> {row.enrichment}
+        </div>
+      )}
     </div>
   );
 }
