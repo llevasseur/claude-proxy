@@ -11,6 +11,12 @@
  *   pnpm --filter server suggestions list --recurrence historical  # the windows a fix predates
  *   pnpm --filter server suggestions mark -r 9 -i serial-discovery -s done -n "PR #71"
  *   pnpm --filter server suggestions mark -r 9 -i redundant-reads,high-tool-churn -s done
+ *   pnpm --filter server suggestions buckets --dirty            # complete, unjudged
+ *   pnpm --filter server suggestions judge -r 38 \
+ *     --confirm "redundant-reads:re-read api.ts 4× while hunting one symbol" \
+ *     --dismiss "serial-discovery:each read gated the next path"
+ *   pnpm --filter server suggestions judge --amnesty            # draw a line under the backlog
+ *   pnpm --filter server suggestions defects                    # rules dismissed too often
  *
  * `list` prints one row per suggestion: bucket, flag, severity, id, title, plus the
  * detail/evidence/sources under `--detail`. `mark` writes flags for one or more ids
@@ -20,31 +26,60 @@
  * **`list` hides `historical` rows by default** — windows a rule's `done` postdates,
  * with nothing left to act on. They are counted in the header and reachable with
  * `--recurrence`.
+ *
+ * The judgement half is the adjudication an agent does *before* `/improve` acts:
+ * `buckets` finds the complete windows with no verdict, `judge` records one — a
+ * `--dismiss` is an ordinary `dismissed` flag with the reason in its note, a
+ * `--confirm` leaves the suggestion pending and files the judge's context at bucket
+ * level where marking it `done` cannot clobber it — and `defects` reports the rules
+ * whose dismissals have piled up enough to indict the rule itself.
  */
 import {
+  type BucketJudgementRow,
   countSuggestionRecurrences,
   countSuggestionStatuses,
   isSuggestionRecurrence,
   isSuggestionStatus,
   parseBucketRange,
+  parseJudgeEntries,
+  type RuleDefect,
   SUGGESTION_RECURRENCES,
+  type SuggestionJudgementWrite,
   type SuggestionRecurrence,
   type SuggestionStatus,
   type SuggestionStatusRow,
+  type SuggestionStatusUpdate,
 } from '@claude-proxy/core';
-import { applySuggestionStatus, buildSuggestionStatus, type SuggestionStatusResponse } from './api.js';
+import {
+  applySuggestionJudge,
+  applySuggestionStatus,
+  buildRuleDefects,
+  buildSuggestionBuckets,
+  buildSuggestionStatus,
+  type SuggestionStatusResponse,
+} from './api.js';
 import { resolveLogDir } from './logs.js';
 
 const USAGE = `usage:
-  suggestions list [-r|--range <spec>] [-s|--status <flags>] [--recurrence <states>] [-d|--detail] [--json]
-  suggestions mark  -r|--range <bucket> -i|--id <ids> -s|--status <flag> [-n|--note <text>] [--json]
+  suggestions list    [-r|--range <spec>] [-s|--status <flags>] [--recurrence <states>] [-d|--detail] [--json]
+  suggestions mark     -r|--range <bucket> -i|--id <ids> -s|--status <flag> [-n|--note <text>] [--json]
+  suggestions buckets [--dirty] [--json]
+  suggestions judge    -r|--range <bucket> [--confirm <id>[:<note>],...] [--dismiss <id>:<reason>,...] [--json]
+  suggestions judge   --amnesty [--json]
+  suggestions defects [--json]
 
   <spec>   one bucket (9), a list (2,3,9), a span (2-9), or a mix (2-4,9)
-  <flags>  comma-separated: pending, done, skipped
+  <flags>  comma-separated: pending, done, skipped, dismissed
   <states> comma-separated: none, historical, mixed, regressed
            defaults to everything but historical — windows whose sessions all
            predate the rule's own 'done' can no longer be acted on
-  <ids>    comma-separated suggestion ids, as printed by list`;
+  <ids>    comma-separated suggestion ids, as printed by list
+
+  judge --confirm keeps the suggestion pending and files the note at bucket level;
+  judge --dismiss writes a 'dismissed' flag with the reason in its note — the rule
+  was wrong here, which is a different claim from 'skipped'. Only complete buckets
+  can be judged. --amnesty marks every complete, still-unjudged bucket judged with
+  no notes, leaving buckets already judged (and their notes) untouched.`;
 
 /** What `list` shows without `--recurrence`: every state but the frozen `historical` windows. */
 const ACTIONABLE_RECURRENCES: readonly SuggestionRecurrence[] = SUGGESTION_RECURRENCES.filter(
@@ -52,17 +87,26 @@ const ACTIONABLE_RECURRENCES: readonly SuggestionRecurrence[] = SUGGESTION_RECUR
 );
 
 /** Flags that stand alone; every other flag takes the next argv entry as its value. */
-const BOOLEAN_FLAGS = new Set(['json', 'detail']);
+const BOOLEAN_FLAGS = new Set(['json', 'detail', 'dirty', 'amnesty']);
+
+/**
+ * Flags that accumulate rather than overwrite, so repeating one is the escape hatch
+ * for a note whose commas would otherwise read as separators.
+ */
+const LIST_FLAGS = new Set(['confirm', 'dismiss']);
 
 /** Read `--flag value` / `-f value` pairs off argv; anything else is a positional. */
 function parseArgs(argv: readonly string[]): {
   positionals: string[];
   flags: Record<string, string>;
+  lists: Record<string, string[]>;
+  switches: Set<string>;
   json: boolean;
   detail: boolean;
 } {
   const positionals: string[] = [];
   const flags: Record<string, string> = {};
+  const lists: Record<string, string[]> = {};
   const switches = new Set<string>();
 
   const NAMES: Record<string, string> = { r: 'range', s: 'status', i: 'id', n: 'note', d: 'detail' };
@@ -80,9 +124,13 @@ function parseArgs(argv: readonly string[]): {
     }
     const value = argv[++i];
     if (value === undefined) throw new Error(`missing value for --${name}`);
-    flags[name] = value;
+    if (LIST_FLAGS.has(name)) {
+      const list = lists[name] ?? [];
+      list.push(value);
+      lists[name] = list;
+    } else flags[name] = value;
   }
-  return { positionals, flags, json: switches.has('json'), detail: switches.has('detail') };
+  return { positionals, flags, lists, switches, json: switches.has('json'), detail: switches.has('detail') };
 }
 
 function parseStatuses(raw: string): SuggestionStatus[] {
@@ -116,7 +164,10 @@ function renderRows(rows: readonly SuggestionStatusRow[]): string {
   return rows
     .map((r) => {
       const note = r.note ? `  — ${r.note}` : '';
-      const head = `  ${String(r.bucket).padStart(3)} ${r.label.padEnd(9)} ${r.status.padEnd(7)} ${r.severity.padEnd(4)} ${r.id.padEnd(width)}  ${r.title}${renderRecurrence(r)}${note}`;
+      // The judge's context is the reason a confirmed suggestion is worth acting on,
+      // so it belongs on the row even when the row carries no flag of its own.
+      const enrichment = r.enrichment ? `\n      judged: ${r.enrichment}` : '';
+      const head = `  ${String(r.bucket).padStart(3)} ${r.label.padEnd(9)} ${r.status.padEnd(9)} ${r.severity.padEnd(4)} ${r.id.padEnd(width)}  ${r.title}${renderRecurrence(r)}${note}${enrichment}`;
       if (!r.detail) return head;
       const sources = (r.sources ?? []).map((s) => `        · ${s.label}${s.sample ? `: ${s.sample}` : ''}`);
       return [head, `      ${r.detail}`, `      evidence: ${r.evidence}`, ...sources].join('\n');
@@ -124,8 +175,33 @@ function renderRows(rows: readonly SuggestionStatusRow[]): string {
     .join('\n');
 }
 
+/** Buckets one per line: index, span, state, and when it was judged. */
+function renderBuckets(rows: readonly BucketJudgementRow[]): string {
+  if (rows.length === 0) return 'no buckets match.';
+  return rows
+    .map((b) => {
+      const when = b.judgedAt ? ` judged ${b.judgedAt.slice(0, 10)}` : '';
+      const notes = b.notes ? ` · ${b.notes} note${b.notes === 1 ? '' : 's'}` : '';
+      const short = b.complete ? '' : ' (not yet full)';
+      return `  ${String(b.bucket).padStart(3)} ${b.label.padEnd(9)} ${b.state.padEnd(9)} ${b.suggestions} suggestion${b.suggestions === 1 ? '' : 's'}${when}${notes}${short}`;
+    })
+    .join('\n');
+}
+
+/** One defect per rule, with the buckets and reasons underneath it. */
+function renderDefects(defects: readonly RuleDefect[]): string {
+  if (defects.length === 0) return 'no rule has been dismissed often enough to indict it.';
+  return defects
+    .map((d) => {
+      const head = `  ${d.id} — dismissed in ${d.dismissed} of ${d.fired} bucket${d.fired === 1 ? '' : 's'} it fired in (${Math.round(d.ratio * 100)}%)`;
+      const lines = d.buckets.map((b) => `      · bucket ${b.bucket}${b.reason ? `: ${b.reason}` : ''}`);
+      return [head, ...lines].join('\n');
+    })
+    .join('\n');
+}
+
 async function run(argv: readonly string[]): Promise<void> {
-  const { positionals, flags, json, detail } = parseArgs(argv);
+  const { positionals, flags, lists, switches, json, detail } = parseArgs(argv);
   const command = positionals[0] ?? 'list';
   const logDir = resolveLogDir();
 
@@ -149,11 +225,14 @@ async function run(argv: readonly string[]): Promise<void> {
       console.log(JSON.stringify(result, null, 2));
       return;
     }
-    const { counts, recurrences, buckets, missing } = result.meta;
+    const { counts, recurrences, buckets, missing, bucketStates } = result.meta;
     const range = buckets.length ? `buckets 1–${buckets[buckets.length - 1]} exist` : 'no buckets yet';
     console.log(
-      `${range} · ${rows.length} suggestion(s) shown: ${counts.pending} pending, ${counts.done} done, ${counts.skipped} skipped`,
+      `${range} · ${rows.length} suggestion(s) shown: ${counts.pending} pending, ${counts.done} done, ${counts.skipped} skipped, ${counts.dismissed} dismissed`,
     );
+    if (bucketStates.dirty > 0) {
+      console.log(`(${bucketStates.dirty} complete bucket(s) unjudged — see 'suggestions buckets --dirty')`);
+    }
     if (recurrences.regressed > 0) {
       console.log(`⚠ ${recurrences.regressed} regressed — marked done, still tripping in windows recorded since.`);
     }
@@ -202,6 +281,79 @@ async function run(argv: readonly string[]): Promise<void> {
       );
     }
     console.log(renderRows(result.rows));
+    return;
+  }
+
+  if (command === 'buckets') {
+    const result = await buildSuggestionBuckets(logDir, { dirty: switches.has('dirty') });
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    const { states } = result.meta;
+    console.log(
+      `${result.buckets.length} bucket(s) shown · ${states.dirty} dirty, ${states.clean} clean, ${states['not-ready']} not ready`,
+    );
+    console.log(renderBuckets(result.buckets));
+    return;
+  }
+
+  if (command === 'judge') {
+    const amnesty = switches.has('amnesty');
+    const confirms = parseJudgeEntries(lists.confirm ?? []);
+    const dismissals = parseJudgeEntries(lists.dismiss ?? []);
+    for (const entry of dismissals) {
+      if (!entry.note) throw new Error(`--dismiss ${entry.id} needs a reason: --dismiss "${entry.id}:<why>"`);
+    }
+
+    let judged: SuggestionJudgementWrite[] = [];
+    let updates: SuggestionStatusUpdate[] = [];
+    if (!amnesty) {
+      if (!flags.range) throw new Error('judge needs --range <bucket>, or --amnesty');
+      const buckets = parseBucketRange(flags.range);
+      const [bucket] = buckets;
+      if (buckets.length !== 1 || bucket === undefined) {
+        throw new Error('judge takes one bucket at a time — a verdict is about one window');
+      }
+      // A confirmation is not a status write: the suggestion stays pending, and its
+      // context goes to the bucket where marking it `done` cannot overwrite it.
+      const notes = Object.fromEntries(confirms.filter((c) => c.note).map((c) => [c.id, c.note]));
+      judged = [{ bucket, notes }];
+      updates = dismissals.map((d) => ({ bucket, id: d.id, status: 'dismissed' as const, note: d.note }));
+    } else if (confirms.length > 0 || dismissals.length > 0) {
+      throw new Error('--amnesty records no notes and no dismissals — drop --confirm/--dismiss, or drop --amnesty');
+    }
+
+    const result = await applySuggestionJudge(logDir, { updates, judged, amnesty });
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(
+      `judged ${result.meta.judged} bucket(s), wrote ${result.meta.updated} flag(s) in ${result.meta.statusFile}`,
+    );
+    if (result.meta.unknown.length) {
+      console.log(
+        `(no suggestion currently carries: ${result.meta.unknown.map((u) => `${u.bucket}/${u.id}`).join(', ')} — flag written anyway)`,
+      );
+    }
+    const { states } = result.meta;
+    console.log(`${states.dirty} dirty, ${states.clean} clean, ${states['not-ready']} not ready`);
+    if (!amnesty) console.log(renderRows(result.rows));
+    return;
+  }
+
+  if (command === 'defects') {
+    const result = await buildRuleDefects(logDir);
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    const { minDismissedBuckets, minDismissedRatio } = result.meta.thresholds;
+    console.log(
+      `${result.defects.length} defective rule(s) over ${result.meta.buckets} complete bucket(s) · threshold: ${minDismissedBuckets}+ dismissals and ${Math.round(minDismissedRatio * 100)}%+ of the buckets it fired in`,
+    );
+    console.log(renderDefects(result.defects));
     return;
   }
 

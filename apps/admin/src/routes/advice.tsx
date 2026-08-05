@@ -6,6 +6,7 @@ import { AdviceCard } from '../components/AdviceCard';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonCardList } from '../components/Skeleton';
 import {
+  BucketJudgementBadge,
   isResolved,
   isSettled,
   RECURRENCE_LABEL,
@@ -50,8 +51,9 @@ function SessionSuggestions() {
   const buckets = query.data?.buckets ?? [];
   const statusByKey = new Map((statusQuery.data?.rows ?? []).map((row) => [`${row.bucket}:${row.id}`, row] as const));
   const counts = statusQuery.data?.meta.counts;
-  const resolved = (counts?.done ?? 0) + (counts?.skipped ?? 0);
+  const resolved = (counts?.done ?? 0) + (counts?.skipped ?? 0) + (counts?.dismissed ?? 0);
   const regressed = statusQuery.data?.meta.recurrences.regressed ?? 0;
+  const dirty = statusQuery.data?.meta.bucketStates.dirty ?? 0;
 
   return (
     <>
@@ -59,8 +61,14 @@ function SessionSuggestions() {
         <h2>Session suggestions</h2>
         <span className='muted'>
           {query.data ? `${fmtInt(query.data.meta.sessions)} sessions in ${query.data.meta.buckets} windows of 10` : ''}
-          {resolved > 0 && ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped`}
+          {resolved > 0 &&
+            ` · ${counts?.done ?? 0} done · ${counts?.skipped ?? 0} skipped · ${counts?.dismissed ?? 0} dismissed`}
         </span>
+        {dirty > 0 && (
+          <span className='badge bucket-dirty' title='complete windows no agent has adjudicated yet'>
+            {dirty} unjudged
+          </span>
+        )}
         {regressed > 0 && (
           <span className='badge recurrence-regressed' title='marked done, still tripping in windows recorded since'>
             {regressed} regressed
@@ -124,11 +132,17 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
   const rowOf = (id: string): SuggestionStatusRow | undefined => statusByKey.get(`${bucket.index}:${id}`);
   // Open counts what is still actionable, so a window predating its rule's fix isn't open.
   const open = bucket.suggestions.filter((s) => !isSettled(rowOf(s.id))).length;
+  // Judged-ness is a fact about the bucket, so any of its rows carries it; until the
+  // flags land, incompleteness is all the bucket alone can say.
+  const state =
+    bucket.suggestions.map((s) => rowOf(s.id)).find((r) => r)?.bucketState ??
+    (bucket.complete ? undefined : 'not-ready');
   return (
     <Link to='/advice/sessions/$bucket' params={{ bucket: String(bucket.index) }} className='card bucket-row'>
       <div className='bucket-row-head'>
         <span className='bucket-label'>Sessions {bucket.label}</span>
         {worst && <span className={`badge sev-${worst.severity}`}>{SEV_LABEL[worst.severity]}</span>}
+        {state && <BucketJudgementBadge state={state} />}
         <span className='muted bucket-range'>
           {fmtLocalTsShort(bucket.startedFirst ?? '')} → {fmtLocalTsShort(bucket.startedLast ?? '')}
         </span>

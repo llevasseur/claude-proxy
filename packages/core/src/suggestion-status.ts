@@ -19,22 +19,34 @@
  * `pending` is the default and is never persisted — the file only carries
  * decisions, so it stays small and an empty file means "nothing done yet".
  *
+ * The store's second half is the **judgement layer**: the rules are pattern
+ * matches with high recall and no judgment, so some of what they report is simply
+ * wrong. `dismissed` records that, and a per-bucket `judged` record says an agent
+ * has already adjudicated that window — see {@link bucketJudgementState}.
+ *
  * Pure: no I/O, no clock (callers pass `now`). The reading and writing of the
  * file lives in the server package.
  */
 
 import type { Severity } from './advice.js';
-import type { SessionBucket, SuggestionSource } from './suggestions.js';
+import { type SessionBucket, SUGGESTION_DEFECT_THRESHOLDS, type SuggestionSource } from './suggestions.js';
 
-/** The flags a suggestion can carry. `pending` is the default. */
-export const SUGGESTION_STATUSES = ['pending', 'done', 'skipped'] as const;
+/**
+ * The flags a suggestion can carry. `pending` is the default.
+ *
+ * `skipped` and `dismissed` are different claims and must not be conflated:
+ * `skipped` means the finding was right and was deliberately passed over,
+ * `dismissed` means **the rule was wrong here**. A `skipped` may be worth
+ * revisiting; a `dismissed` never is.
+ */
+export const SUGGESTION_STATUSES = ['pending', 'done', 'skipped', 'dismissed'] as const;
 
 export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
 
 /** What a suggestion is until someone says otherwise. */
 export const DEFAULT_SUGGESTION_STATUS: SuggestionStatus = 'pending';
 
-/** True when `value` names one of the three flags. */
+/** True when `value` names one of the flags. */
 export function isSuggestionStatus(value: unknown): value is SuggestionStatus {
   return typeof value === 'string' && (SUGGESTION_STATUSES as readonly string[]).includes(value);
 }
@@ -49,48 +61,105 @@ export interface SuggestionStatusEntry {
 }
 
 /**
- * The persisted file: bucket index (as a string key) → suggestion id → entry.
- * Versioned so a future shape change can be migrated rather than guessed at.
+ * That an agent has adjudicated one bucket, and what it recorded while doing so.
+ *
+ * `notes` is the judge's **enrichment**: the context a confirmed suggestion needs
+ * for someone to act on it, keyed by suggestion id. It lives here rather than on
+ * the suggestion's own entry for two reasons, both structural:
+ *
+ * - A confirmed suggestion is still `pending`, and a pending entry cannot persist
+ *   at all — it is dropped on read and deleted on write, which is exactly what
+ *   makes `Pending` the undo.
+ * - The entry's single `note` is overwritten by whoever marks the suggestion
+ *   `done -n "<PR url>"`, so anything written there is clobbered by the act of
+ *   fixing it.
+ *
+ * Bucket-level storage keeps `note` single-purpose and the judge's context
+ * unclobberable.
+ */
+export interface SuggestionJudgement {
+  /** ISO timestamp of the write that recorded the verdict. */
+  at: string;
+  /** Suggestion id → the judge's context for it. Empty when it had nothing to add. */
+  notes: Record<string, string>;
+}
+
+/**
+ * The persisted file: bucket index (as a string key) → suggestion id → entry, plus
+ * the per-bucket judgement records. Versioned so a shape change is migrated rather
+ * than guessed at — a v1 file simply has no `judged`, which reads as `{}`.
  */
 export interface SuggestionStatusStore {
-  version: 1;
+  version: 2;
   buckets: Record<string, Record<string, SuggestionStatusEntry>>;
+  /** Bucket index (as a string key) → what the judge recorded about that window. */
+  judged: Record<string, SuggestionJudgement>;
 }
 
 /** A store with nothing recorded — what a missing file reads as. */
 export function emptySuggestionStatusStore(): SuggestionStatusStore {
-  return { version: 1, buckets: {} };
+  return { version: 2, buckets: {}, judged: {} };
 }
 
 /**
  * Read an untrusted parsed JSON value as a store, dropping anything malformed.
  * A corrupt file costs the flags it held, never a crash on an otherwise healthy
  * dashboard — the suggestions underneath are recomputed regardless.
+ *
+ * This is also the v1 → v2 migration: a file written before the judgement layer
+ * carries no `judged` key, and defaulting it to `{}` is the whole of what that
+ * upgrade needs. Every bucket in such a file therefore reads as unjudged, which
+ * is true.
  */
 export function parseSuggestionStatusStore(raw: unknown): SuggestionStatusStore {
   const store = emptySuggestionStatusStore();
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return store;
   const buckets = (raw as { buckets?: unknown }).buckets;
-  if (!buckets || typeof buckets !== 'object' || Array.isArray(buckets)) return store;
-
-  for (const [bucketKey, entries] of Object.entries(buckets as Record<string, unknown>)) {
-    const index = Number(bucketKey);
-    if (!Number.isInteger(index) || index < 1) continue;
-    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
-    const kept: Record<string, SuggestionStatusEntry> = {};
-    for (const [id, entry] of Object.entries(entries as Record<string, unknown>)) {
-      if (!id || !entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-      const { status, updated, note } = entry as { status?: unknown; updated?: unknown; note?: unknown };
-      if (!isSuggestionStatus(status) || status === DEFAULT_SUGGESTION_STATUS) continue;
-      kept[id] = {
-        status,
-        updated: typeof updated === 'string' ? updated : '',
-        ...(typeof note === 'string' && note ? { note } : {}),
-      };
+  if (buckets && typeof buckets === 'object' && !Array.isArray(buckets)) {
+    for (const [bucketKey, entries] of Object.entries(buckets as Record<string, unknown>)) {
+      const index = bucketIndexOf(bucketKey);
+      if (index === null) continue;
+      if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
+      const kept: Record<string, SuggestionStatusEntry> = {};
+      for (const [id, entry] of Object.entries(entries as Record<string, unknown>)) {
+        if (!id || !entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        const { status, updated, note } = entry as { status?: unknown; updated?: unknown; note?: unknown };
+        if (!isSuggestionStatus(status) || status === DEFAULT_SUGGESTION_STATUS) continue;
+        kept[id] = {
+          status,
+          updated: typeof updated === 'string' ? updated : '',
+          ...(typeof note === 'string' && note ? { note } : {}),
+        };
+      }
+      if (Object.keys(kept).length > 0) store.buckets[String(index)] = kept;
     }
-    if (Object.keys(kept).length > 0) store.buckets[String(index)] = kept;
+  }
+
+  const judged = (raw as { judged?: unknown }).judged;
+  if (judged && typeof judged === 'object' && !Array.isArray(judged)) {
+    for (const [bucketKey, record] of Object.entries(judged as Record<string, unknown>)) {
+      const index = bucketIndexOf(bucketKey);
+      if (index === null) continue;
+      if (!record || typeof record !== 'object' || Array.isArray(record)) continue;
+      const { at, notes } = record as { at?: unknown; notes?: unknown };
+      const kept: Record<string, string> = {};
+      if (notes && typeof notes === 'object' && !Array.isArray(notes)) {
+        for (const [id, text] of Object.entries(notes as Record<string, unknown>)) {
+          if (id && typeof text === 'string' && text) kept[id] = text;
+        }
+      }
+      // A record with no timestamp and no notes still means "judged", which is the
+      // whole claim — `--amnesty` writes exactly that.
+      store.judged[String(index)] = { at: typeof at === 'string' ? at : '', notes: kept };
+    }
   }
   return store;
+}
+
+/** A store key read as a bucket index, or null when it isn't one. */
+function bucketIndexOf(key: string): number | null {
+  const index = Number(key);
+  return Number.isInteger(index) && index >= 1 ? index : null;
 }
 
 /** The flag recorded for one suggestion, or `pending` when none is. */
@@ -134,6 +203,11 @@ export interface SuggestionResolution {
  *
  * Entries with no parseable `updated` are skipped — an undated claim can't be
  * placed against a window.
+ *
+ * Only `done` is a claim. `skipped` and `dismissed` are both decisions about one
+ * window and neither asserts a fix landed, so neither can produce a recurrence
+ * state — a `dismissed` rule is one that was *wrong*, and reading a regression off
+ * it would be reading a fix off a finding that never existed.
  */
 export function ruleResolutions(store: SuggestionStatusStore): Map<string, SuggestionResolution> {
   const latest = new Map<string, SuggestionResolution>();
@@ -180,6 +254,10 @@ export interface SuggestionStatusUpdate {
  * Apply updates to a store, returning a new one — the input is never mutated.
  * Setting a suggestion back to `pending` deletes its entry (and its bucket, when
  * that empties it), which is what keeps the file to just the decisions made.
+ *
+ * The `judged` records are carried through untouched. That separation is
+ * deliberate: un-dismissing a suggestion must not re-dirty its bucket, or the
+ * judge would revisit the window and re-dismiss the thing a human just undid.
  */
 export function applySuggestionStatusUpdates(
   store: SuggestionStatusStore,
@@ -187,8 +265,9 @@ export function applySuggestionStatusUpdates(
   now: Date = new Date(),
 ): SuggestionStatusStore {
   const next: SuggestionStatusStore = {
-    version: 1,
+    version: 2,
     buckets: Object.fromEntries(Object.entries(store.buckets).map(([k, v]) => [k, { ...v }])),
+    judged: Object.fromEntries(Object.entries(store.judged).map(([k, v]) => [k, { ...v, notes: { ...v.notes } }])),
   };
   const updated = now.toISOString();
 
@@ -230,6 +309,294 @@ export function parseSuggestionStatusUpdates(raw: unknown): SuggestionStatusUpda
     if (note !== undefined && typeof note !== 'string') throw new Error(`${where}.note must be a string`);
     return { bucket: bucket as number, id: id.trim(), status, ...(note === undefined ? {} : { note }) };
   });
+}
+
+// --- The judgement layer ---------------------------------------------------
+
+/** One bucket's verdict, as a caller asks for it to be recorded. */
+export interface SuggestionJudgementWrite {
+  bucket: number;
+  /** Suggestion id → the judge's context. Omitted or empty records the verdict alone. */
+  notes?: Record<string, string>;
+}
+
+/**
+ * Record judgements against a store, returning a new one — the input is never
+ * mutated. A second judgement of the same bucket replaces the first, so a re-judge
+ * is not an append.
+ *
+ * The suggestion flags are carried through untouched: dismissals are ordinary
+ * status writes, and a caller that wants both in one file write composes this with
+ * {@link applySuggestionStatusUpdates}.
+ */
+export function applySuggestionJudgements(
+  store: SuggestionStatusStore,
+  writes: readonly SuggestionJudgementWrite[],
+  now: Date = new Date(),
+): SuggestionStatusStore {
+  const next: SuggestionStatusStore = {
+    version: 2,
+    buckets: Object.fromEntries(Object.entries(store.buckets).map(([k, v]) => [k, { ...v }])),
+    judged: Object.fromEntries(Object.entries(store.judged).map(([k, v]) => [k, { ...v, notes: { ...v.notes } }])),
+  };
+  const at = now.toISOString();
+  for (const write of writes) {
+    const notes: Record<string, string> = {};
+    for (const [id, text] of Object.entries(write.notes ?? {})) {
+      if (id.trim() && text) notes[id.trim()] = text;
+    }
+    next.judged[String(write.bucket)] = { at, notes };
+  }
+  return next;
+}
+
+/**
+ * Read untrusted input as judgement writes, or throw with the first thing wrong.
+ * Shared so the API and the command line refuse exactly the same shapes.
+ */
+export function parseSuggestionJudgements(raw: unknown): SuggestionJudgementWrite[] {
+  if (!Array.isArray(raw)) throw new Error('judged must be an array');
+  if (raw.length === 0) throw new Error('judged must not be empty');
+
+  return raw.map((item, i) => {
+    const where = `judged[${i}]`;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
+    const { bucket, notes } = item as Record<string, unknown>;
+    if (!Number.isInteger(bucket) || (bucket as number) < 1) throw new Error(`${where}.bucket must be an integer >= 1`);
+    if (notes === undefined) return { bucket: bucket as number };
+    if (!notes || typeof notes !== 'object' || Array.isArray(notes))
+      throw new Error(`${where}.notes must be an object`);
+    const kept: Record<string, string> = {};
+    for (const [id, text] of Object.entries(notes as Record<string, unknown>)) {
+      if (typeof text !== 'string') throw new Error(`${where}.notes.${id} must be a string`);
+      if (id.trim() && text) kept[id.trim()] = text;
+    }
+    return { bucket: bucket as number, notes: kept };
+  });
+}
+
+/**
+ * Where a bucket stands with the judge.
+ *
+ * - `not-ready` — a partial window, short of {@link SESSION_BUCKET_SIZE}. It will
+ *   gain sessions and its rules will re-fire over a different window, so there is
+ *   nothing stable to judge yet. Never judged, never improved upon.
+ * - `dirty` — complete, and nothing recorded against it. Work to do.
+ * - `clean` — complete, and a judgement is on record.
+ */
+export const BUCKET_JUDGEMENT_STATES = ['not-ready', 'dirty', 'clean'] as const;
+
+export type BucketJudgementState = (typeof BUCKET_JUDGEMENT_STATES)[number];
+
+/**
+ * Which of the three states one bucket is in.
+ *
+ * **Read off the bucket only, never off its suggestion entries.** Deriving
+ * cleanliness from "does every suggestion carry a decision" would make the
+ * `Pending` undo re-dirty the window — that undo *deletes* the entry — so the judge
+ * would run again and re-dismiss precisely what a human had just un-dismissed.
+ * Keeping the flag at bucket level breaks that loop: a human override survives,
+ * because the judge never revisits a clean bucket.
+ */
+export function bucketJudgementState(
+  bucket: Pick<SessionBucket, 'index' | 'complete'>,
+  store: SuggestionStatusStore,
+): BucketJudgementState {
+  if (!bucket.complete) return 'not-ready';
+  return store.judged[String(bucket.index)] ? 'clean' : 'dirty';
+}
+
+/** One bucket as the `buckets` listing reports it. */
+export interface BucketJudgementRow {
+  bucket: number;
+  /** The bucket's session span, e.g. `"11–20"`. */
+  label: string;
+  complete: boolean;
+  state: BucketJudgementState;
+  /** ISO timestamp of the verdict, when there is one. Empty on an undated record. */
+  judgedAt?: string;
+  /** How many suggestions the judge left context on. */
+  notes?: number;
+  /** How many suggestions the window currently carries. */
+  suggestions: number;
+}
+
+/** Every bucket with its judgement state, oldest first. */
+export function bucketJudgements(
+  buckets: readonly SessionBucket[],
+  store: SuggestionStatusStore,
+): BucketJudgementRow[] {
+  return buckets
+    .slice()
+    .sort((a, b) => a.index - b.index)
+    .map((bucket) => {
+      const record = store.judged[String(bucket.index)];
+      const row: BucketJudgementRow = {
+        bucket: bucket.index,
+        label: bucket.label,
+        complete: bucket.complete,
+        state: bucketJudgementState(bucket, store),
+        suggestions: bucket.suggestions.length,
+      };
+      if (record?.at) row.judgedAt = record.at;
+      const notes = Object.keys(record?.notes ?? {}).length;
+      if (notes > 0) row.notes = notes;
+      return row;
+    });
+}
+
+/** How many buckets sit in each judgement state. */
+export function countBucketJudgementStates(rows: readonly BucketJudgementRow[]): Record<BucketJudgementState, number> {
+  const counts = Object.fromEntries(BUCKET_JUDGEMENT_STATES.map((s) => [s, 0])) as Record<BucketJudgementState, number>;
+  for (const row of rows) counts[row.state]++;
+  return counts;
+}
+
+/**
+ * The sessions that would move every bucket boundary if they were bucketed.
+ *
+ * Membership is ordered by `(a.started ?? '').localeCompare(b.started ?? '')`, so a
+ * session with no `started` sorts ahead of every real timestamp, lands at the front
+ * of bucket 1, and shifts every boundary after it by one — silently re-pointing
+ * every stored verdict at sessions it never examined. Judging is refused while any
+ * exist rather than recording verdicts against indexes that are about to move.
+ */
+export function unstartedSessions<T extends { started: string | null; threadId: string }>(sessions: readonly T[]): T[] {
+  return sessions.filter((s) => !s.started);
+}
+
+/**
+ * Throw unless the corpus can be bucketed stably, naming the sessions at fault so
+ * the offender can be fixed rather than hunted for.
+ */
+export function assertJudgeableCorpus<T extends { started: string | null; threadId: string }>(
+  sessions: readonly T[],
+): void {
+  const bad = unstartedSessions(sessions);
+  if (bad.length === 0) return;
+  const named = bad
+    .slice(0, 5)
+    .map((s) => s.threadId)
+    .join(', ');
+  const more = bad.length > 5 ? `, and ${bad.length - 5} more` : '';
+  throw new Error(
+    `refusing to judge: ${bad.length} session${bad.length === 1 ? '' : 's'} carry no start timestamp, ` +
+      `which would shift every bucket boundary and re-point stored verdicts at sessions they never examined — ` +
+      `${named}${more}`,
+  );
+}
+
+// --- Rule-level defects ----------------------------------------------------
+
+/** A rule dismissed often enough that the rule, not the window, is the problem. */
+export interface RuleDefect {
+  /** The rule's id — the same id its suggestions carry. */
+  id: string;
+  /** Complete buckets the rule was dismissed in. */
+  dismissed: number;
+  /** Complete buckets it fired in — the denominator. */
+  fired: number;
+  /** `dismissed / fired`, 0–1, rounded to two places. */
+  ratio: number;
+  /** Each dismissal, oldest bucket first, with the reason recorded for it. */
+  buckets: { bucket: number; reason?: string }[];
+}
+
+/**
+ * Rules whose dismissals have accumulated past
+ * {@link SUGGESTION_DEFECT_THRESHOLDS} — dismissed in enough buckets *and* in
+ * enough of the buckets they fired in. This is the point of keeping dismissals at
+ * all: repeated noise about one rule is evidence the *rule* needs fixing, not a
+ * chore to redo every ten sessions.
+ *
+ * Only complete buckets count on either side. A partial window is never judged, so
+ * counting it in the denominator would dilute every ratio by a window that can
+ * never contribute a dismissal.
+ *
+ * Worst first: most dismissals, then highest ratio, then id.
+ */
+export function ruleDefects(buckets: readonly SessionBucket[], store: SuggestionStatusStore): RuleDefect[] {
+  const fired = new Map<string, Set<number>>();
+  const complete = new Set<number>();
+  for (const bucket of buckets) {
+    if (!bucket.complete) continue;
+    complete.add(bucket.index);
+    for (const suggestion of bucket.suggestions) {
+      const seen = fired.get(suggestion.id);
+      if (seen) seen.add(bucket.index);
+      else fired.set(suggestion.id, new Set([bucket.index]));
+    }
+  }
+
+  const dismissals = new Map<string, { bucket: number; reason?: string }[]>();
+  for (const [bucketKey, entries] of Object.entries(store.buckets)) {
+    const bucket = Number(bucketKey);
+    if (!complete.has(bucket)) continue;
+    for (const [id, entry] of Object.entries(entries)) {
+      if (entry.status !== 'dismissed') continue;
+      // A rule can stop firing after being dismissed — the dismissal still counts,
+      // and still needs a denominator, so record the bucket as one it fired in.
+      const seen = fired.get(id);
+      if (seen) seen.add(bucket);
+      else fired.set(id, new Set([bucket]));
+      const list = dismissals.get(id) ?? [];
+      list.push({ bucket, ...(entry.note ? { reason: entry.note } : {}) });
+      dismissals.set(id, list);
+    }
+  }
+
+  const out: RuleDefect[] = [];
+  for (const [id, hits] of dismissals) {
+    const total = fired.get(id)?.size ?? hits.length;
+    const ratio = total === 0 ? 0 : hits.length / total;
+    if (hits.length < SUGGESTION_DEFECT_THRESHOLDS.minDismissedBuckets) continue;
+    if (ratio < SUGGESTION_DEFECT_THRESHOLDS.minDismissedRatio) continue;
+    out.push({
+      id,
+      dismissed: hits.length,
+      fired: total,
+      ratio: Math.round(ratio * 100) / 100,
+      buckets: hits.slice().sort((a, b) => a.bucket - b.bucket),
+    });
+  }
+  return out.sort((a, b) => b.dismissed - a.dismissed || b.ratio - a.ratio || a.id.localeCompare(b.id));
+}
+
+/** One `<id>` or `<id>:<note>` entry, as the judge's command line spells it. */
+export interface JudgeEntry {
+  id: string;
+  /** Empty when the entry carried no note. */
+  note: string;
+}
+
+/**
+ * Parse a `--confirm` / `--dismiss` value into `(id, note)` entries.
+ *
+ * A note is prose and prose contains commas, so splitting on every comma turns one
+ * reason into a second bogus entry — worse than an error, since a fragment carrying
+ * a colon would be written as a dismissal of a rule nobody named. So a value with
+ * **no colon** is a plain comma-separated list of bare ids, and otherwise it splits
+ * only at a comma **introducing a new entry**: one followed by an id-shaped token
+ * and a colon.
+ *
+ * Repeating the flag is the escape hatch for anything this cannot see, and each
+ * entry splits at its *first* colon so a reason may contain further ones.
+ */
+export function parseJudgeEntries(values: readonly string[]): JudgeEntry[] {
+  const out: JudgeEntry[] = [];
+  for (const value of values) {
+    // A comma that starts the next `<id>:` — the only comma that is a separator.
+    const parts = value.includes(':') ? value.split(/,(?=\s*[A-Za-z][\w-]*\s*:)/) : value.split(',');
+    for (const rawPart of parts) {
+      const part = rawPart.trim();
+      if (!part) continue;
+      const at = part.indexOf(':');
+      const id = (at === -1 ? part : part.slice(0, at)).trim();
+      if (!id) throw new Error(`invalid entry: ${part} (expected <id> or <id>:<note>)`);
+      out.push({ id, note: at === -1 ? '' : part.slice(at + 1).trim() });
+    }
+  }
+  return out;
 }
 
 /**
@@ -285,6 +652,12 @@ export interface SuggestionStatusRow {
   recurrence: SuggestionRecurrence;
   /** The dated claim `recurrence` was measured against. Absent when there is none. */
   resolved?: SuggestionResolution;
+  /** Where this row's bucket stands with the judge. See {@link bucketJudgementState}. */
+  bucketState: BucketJudgementState;
+  /** ISO timestamp of that bucket's verdict, when one is on record and dated. */
+  judgedAt?: string;
+  /** The judge's context for this suggestion, from `judged[bucket].notes[id]`. */
+  enrichment?: string;
   /** What to change, in the user's terms. Only with `detail`. */
   detail?: string;
   /** What the rule counted — the claim's arithmetic. Only with `detail`. */
@@ -296,7 +669,7 @@ export interface SuggestionStatusRow {
 export interface SuggestionStatusFilter {
   /** Only these bucket indexes. Omit for every bucket. */
   buckets?: readonly number[];
-  /** Only suggestions carrying one of these flags. Omit for all three. */
+  /** Only suggestions carrying one of these flags. Omit for every flag. */
   statuses?: readonly SuggestionStatus[];
   /** Only suggestions in one of these recurrence states. Omit for all four. */
   recurrences?: readonly SuggestionRecurrence[];
@@ -332,6 +705,7 @@ export function suggestionStatusRows(
         const entry = suggestionStatusOf(store, bucket.index, suggestion.id);
         const resolution = resolutions.get(suggestion.id);
         const recurrence = suggestionRecurrence(bucket, resolution);
+        const judgement = store.judged[String(bucket.index)];
         const row: SuggestionStatusRow = {
           bucket: bucket.index,
           label: bucket.label,
@@ -340,10 +714,14 @@ export function suggestionStatusRows(
           title: suggestion.title,
           status: entry.status,
           recurrence,
+          bucketState: bucketJudgementState(bucket, store),
         };
         if (entry.updated) row.updated = entry.updated;
         if (entry.note) row.note = entry.note;
         if (recurrence !== 'none' && resolution) row.resolved = resolution;
+        if (judgement?.at) row.judgedAt = judgement.at;
+        const enrichment = judgement?.notes[suggestion.id];
+        if (enrichment) row.enrichment = enrichment;
         if (filter.detail) {
           row.detail = suggestion.detail;
           row.evidence = suggestion.evidence;
@@ -357,7 +735,8 @@ export function suggestionStatusRows(
 
 /** How many rows carry each flag — the one-line summary a caller prints. */
 export function countSuggestionStatuses(rows: readonly SuggestionStatusRow[]): Record<SuggestionStatus, number> {
-  const counts: Record<SuggestionStatus, number> = { pending: 0, done: 0, skipped: 0 };
+  // Built from the enum so a new flag is counted without a second edit here.
+  const counts = Object.fromEntries(SUGGESTION_STATUSES.map((s) => [s, 0])) as Record<SuggestionStatus, number>;
   for (const row of rows) counts[row.status]++;
   return counts;
 }

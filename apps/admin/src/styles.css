@@ -1440,6 +1440,26 @@ a.pager-btn:hover {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+/* The judge's context, kept apart from the entry's own note. */
+.suggestion-enrichment-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+/* Sits after .is-resolved and shares its specificity, so it dims further still. The
+   reason itself keeps its own colour and stays readable. */
+.advice.is-dismissed {
+  opacity: 0.4;
+}
+.advice.is-dismissed:hover,
+.advice.is-dismissed:focus-within {
+  opacity: 1;
+}
+.advice.is-dismissed .suggestion-note {
+  color: var(--muted);
+}
 button.link {
   background: none;
   border: none;
@@ -1501,6 +1521,24 @@ button.link {
 .badge.status-skipped {
   background: var(--surface-2);
   color: var(--muted);
+}
+/* The quietest flag: the rule was wrong, so the row is a record rather than a
+   finding. Fainter than skipped, which is still a real finding. */
+.badge.status-dismissed {
+  background: var(--surface-2);
+  color: var(--faint);
+}
+.badge.bucket-clean {
+  background: rgba(111, 227, 154, 0.16);
+  color: var(--good);
+}
+.badge.bucket-dirty {
+  background: rgba(244, 177, 90, 0.16);
+  color: var(--amber);
+}
+.badge.bucket-not-ready {
+  background: var(--surface-2);
+  color: var(--faint);
 }
 .badge.recurrence-regressed {
   background: rgba(255, 107, 129, 0.16);

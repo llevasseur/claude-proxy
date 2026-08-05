@@ -3,6 +3,7 @@ import type {
   AliasLoadExpectation,
   AuditSidecar,
   BucketBreakdownSummary,
+  BucketJudgementState,
   CommandPatternId,
   CommandRun,
   CommandRunOutcome,
@@ -465,6 +466,8 @@ export interface SuggestionStatusResponse {
     counts: Record<SuggestionStatus, number>;
     /** How the returned rows stand against their rules' dated `done`. */
     recurrences: Record<SuggestionRecurrence, number>;
+    /** How many buckets are dirty / clean / not-ready, over every bucket that exists. */
+    bucketStates: Record<BucketJudgementState, number>;
   };
 }
 /** The rows a write touched, re-read through the same join the list uses. */
