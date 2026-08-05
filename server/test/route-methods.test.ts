@@ -6,7 +6,9 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { IdeaEntry, IdeaStatus } from '@claude-proxy/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { addIdeasToStore } from '../src/ideas-store.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(HERE, '..', 'src', 'server.ts');
@@ -40,6 +42,16 @@ async function waitForListening(deadlineMs = 30_000): Promise<void> {
 beforeAll(async () => {
   const logDir = await mkdtemp(path.join(tmpdir(), 'route-methods-'));
   promptPath = path.join(logDir, 'CLAUDE.md');
+  // Seeded so the ideas route below has a row to list and one to refuse a mark on.
+  await addIdeasToStore(logDir, [
+    {
+      slug: 'rolling-window',
+      title: 'A rolling last-10 window beside the fixed buckets',
+      rationale: 'The fixed windows split a habit that spans a boundary.',
+      evidence: [{ source: 'open-question', path: 'docs/features/session-suggestions.md' }],
+      repo: 'llevasseur/claude-proxy',
+    },
+  ]);
   child = spawn('npx', ['tsx', ENTRY], {
     env: {
       ...process.env,
@@ -112,6 +124,43 @@ describe('read routes', () => {
     });
 
     expect(res.status).toBe(400);
+  });
+
+  it('lists the ideas ledger as a GET, and refuses every non-GET on it', async () => {
+    const res = await fetch(`${BASE}/api/ideas`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { rows: IdeaEntry[]; meta: { counts: Record<IdeaStatus, number> } };
+    expect(body.rows.map((r) => r.slug)).toEqual(['rolling-window']);
+    expect(body.meta.counts.proposed).toBe(1);
+
+    // The list is a read, so it stays under the open `*` CORS and its own 405 gate —
+    // only `/api/ideas/status` is on the write allowlist.
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const refused = await fetch(`${BASE}/api/ideas`, { method });
+      expect(refused.status, method).toBe(405);
+      expect(refused.headers.get('allow'), method).toBe('GET, OPTIONS');
+    }
+  });
+
+  it('adjudicates an idea through the write route, and maps each refusal to a 400', async () => {
+    const mark = (marks: unknown, origin?: string) =>
+      fetch(`${BASE}/api/ideas/status`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
+        body: JSON.stringify({ marks }),
+      });
+
+    const accepted = await mark([{ slug: 'rolling-window', status: 'accepted' }]);
+    expect(accepted.status).toBe(200);
+    expect((await accepted.json()) as { rows: IdeaEntry[] }).toMatchObject({ rows: [{ status: 'accepted' }] });
+
+    // `shipped` carries a PR url, so it stays with the CLI; a rejection needs its reason.
+    expect((await mark([{ slug: 'rolling-window', status: 'shipped', note: 'https://x.test/1' }])).status).toBe(400);
+    expect((await mark([{ slug: 'rolling-window', status: 'rejected' }])).status).toBe(400);
+
+    // On the write allowlist, so a declared foreign origin is refused outright — this
+    // ledger is device-wide and an `accepted` row is what /improve acts on.
+    expect((await mark([{ slug: 'rolling-window', status: 'accepted' }], 'http://evil.example')).status).toBe(403);
   });
 
   it('leaves the write allowlist to its own origin check', async () => {

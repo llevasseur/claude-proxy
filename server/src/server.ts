@@ -1,15 +1,20 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import {
+  type IdeaStatus,
+  isIdeaRepo,
+  isIdeaStatus,
   isSuggestionRecurrence,
   isSuggestionStatus,
   parseBucketRange,
+  parseIdeaMarks,
   parseSuggestionJudgements,
   parseSuggestionStatusUpdates,
   type SuggestionRecurrence,
   type SuggestionStatus,
 } from '@claude-proxy/core';
 import {
+  applyIdeaStatus,
   applySuggestionJudge,
   applySuggestionStatus,
   buildCommand,
@@ -23,6 +28,7 @@ import {
   buildContextTool,
   buildFilters,
   buildHooksPlugins,
+  buildIdeas,
   buildJob,
   buildJobDelete,
   buildJobFile,
@@ -148,6 +154,16 @@ const CHAT_ROUTES = new Set([
 /** The suggestion flags: a GET list under the open read CORS, a POST that writes them. */
 const SUGGESTION_STATUS_ROUTE = '/api/sessions/suggestions/status';
 
+/**
+ * The ideas ledger: a GET list under the open read CORS, a POST that adjudicates one.
+ *
+ * The POST is on the write allowlist rather than sharing the reads' `*` because it
+ * writes a **device-wide** ledger that `/improve` acts on — an `accepted` idea is a
+ * recorded human sign-off, and that is the only thing making it actionable.
+ */
+const IDEAS_ROUTE = '/api/ideas';
+const IDEAS_STATUS_ROUTE = '/api/ideas/status';
+
 /** The one destructive route: removes a `~/.claude/jobs/<id>` directory from disk. */
 const JOB_DELETE_ROUTE = '/api/jobs/delete';
 
@@ -155,7 +171,13 @@ const JOB_DELETE_ROUTE = '/api/jobs/delete';
 const SYSTEM_PROMPT_ROUTE = '/api/system-prompt';
 
 /** Paths whose POST goes through the origin-checked write CORS. */
-const WRITE_ROUTES = new Set([...CHAT_ROUTES, SUGGESTION_STATUS_ROUTE, JOB_DELETE_ROUTE, SYSTEM_PROMPT_ROUTE]);
+const WRITE_ROUTES = new Set([
+  ...CHAT_ROUTES,
+  SUGGESTION_STATUS_ROUTE,
+  IDEAS_STATUS_ROUTE,
+  JOB_DELETE_ROUTE,
+  SYSTEM_PROMPT_ROUTE,
+]);
 
 /**
  * Origins allowed to POST those routes — the dashboard's dev server by default,
@@ -890,6 +912,51 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
+      // The ideas ledger. `/ideate` writes the file from outside this process, so the
+      // stream watches the log directory the store sits in — an idea proposed in a
+      // terminal appears on the Advice page without a reload.
+      case IDEAS_ROUTE:
+      case '/api/ideas/stream': {
+        const statusParam = url.searchParams.get('status');
+        const repoParam = url.searchParams.get('repo');
+        let statuses: IdeaStatus[] | undefined;
+        try {
+          if (statusParam) {
+            statuses = statusParam.split(',').map((s) => {
+              const status = s.trim();
+              if (!isIdeaStatus(status)) throw new Error(`invalid status: ${status}`);
+              return status;
+            });
+          }
+          // A checkout path names a different thing on another machine, and this
+          // ledger is shared across every repo on this one.
+          if (repoParam && !isIdeaRepo(repoParam)) {
+            throw new Error(`invalid repo: ${repoParam} (expected a git remote slug like owner/name)`);
+          }
+        } catch (err) {
+          send(res, 400, { error: (err as Error).message });
+          return;
+        }
+        const filter = { ...(statuses ? { statuses } : {}), ...(repoParam ? { repo: repoParam } : {}) };
+        if (url.pathname.endsWith('/stream')) {
+          await serveSse(req, res, { watchPath: LOG_DIR, build: () => buildIdeas(LOG_DIR, filter), debounceMs: 600 });
+          return;
+        }
+        // No shadow read: the ledger is authored state with no derived half, so there
+        // is nothing for the substrate to disagree about.
+        send(res, 200, await buildIdeas(LOG_DIR, filter));
+        return;
+      }
+      // Adjudicating one. POST only, through the origin-checked write CORS, since an
+      // `accepted` idea is the sign-off `/improve` acts on across every repo on the device.
+      case IDEAS_STATUS_ROUTE:
+        await servePost(
+          req,
+          res,
+          (body) => applyIdeaStatus(LOG_DIR, parseIdeaMarks(body.marks), new Date()),
+          () => 400,
+        );
+        return;
       case '/api/sessions/suggestions': {
         const suggestions = await buildSessionSuggestions(LOG_DIR, readSource());
         send(res, 200, suggestions);

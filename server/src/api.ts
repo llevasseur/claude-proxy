@@ -1,7 +1,9 @@
 import {
   type Advice,
+  type AdviceMovement,
   type AliasLoadExpectation,
   type AuditSidecar,
+  adviceMovement,
   analyzeRequestBody,
   assertJudgeableCorpus,
   attributePromptMix,
@@ -24,6 +26,7 @@ import {
   computeDigest,
   computeSkimDigest,
   countBucketJudgementStates,
+  countIdeaStatuses,
   countSuggestionRecurrences,
   countSuggestionStatuses,
   dayElapsedFraction,
@@ -39,6 +42,11 @@ import {
   type HookRow,
   heuristicAdvice,
   hookPluginLoadExpectations,
+  type IdeaEntry,
+  type IdeaFilter,
+  type IdeaMark,
+  type IdeaStatus,
+  ideaRows,
   isAuditSidecar,
   isPartialDay,
   type JobTreeNode,
@@ -116,6 +124,7 @@ import { loadArchivedDigest } from './archive.js';
 import { listInstalledCommands } from './command-runs.js';
 import { conceptStorePath } from './concepts.js';
 import { fileSource, type SidecarSource } from './db/source.js';
+import { markIdeasInStore, readIdeasStore, resolveIdeasPath } from './ideas-store.js';
 import {
   deleteJob,
   type JobDeleteResult,
@@ -167,6 +176,12 @@ import { loadLiveUsage } from './usage-live.js';
 export interface SummaryResponse {
   digest: UsageDigest;
   advice: Advice[];
+  /**
+   * One entry per piece of advice, saying whether the metric it fired on has
+   * moved since the last day that recorded anything. The dashboard collapses the
+   * steady ones rather than dropping them — see `adviceMovement`.
+   */
+  movement: AdviceMovement[];
   meta: { date: string; files: number; parseErrors: number };
 }
 
@@ -263,7 +278,15 @@ export async function buildSummary(
   const priorDigests = await baselineDigests(logDir, day, now, source, classifierHashes, archiveDir);
   const digest = computeDigest(cur.sidecars, { date: day, priorDigests, classifierHashes });
   const advice = await heuristicAdvice.advise(digest);
-  return { digest, advice, meta: { date: day, files: cur.files, parseErrors: cur.parseErrors } };
+  // `baselineDigests` walks backwards and unshifts, so the busy day it stopped on is
+  // first; the idle days it passed carry no metric worth comparing against.
+  const prior = priorDigests.find((d) => d.requestCount > 0) ?? null;
+  return {
+    digest,
+    advice,
+    movement: adviceMovement(advice, digest, prior),
+    meta: { date: day, files: cur.files, parseErrors: cur.parseErrors },
+  };
 }
 
 export interface UsageResponse {
@@ -1708,6 +1731,120 @@ export async function applySuggestionJudge(
       judged: judged.length,
       unknown: updates.filter((u) => !known.has(suggestionKey(u))).map((u) => ({ bucket: u.bucket, id: u.id })),
       states: countBucketJudgementStates(states),
+    },
+  };
+}
+
+export interface IdeasResponse {
+  /** Oldest first — the order the ledger was decided in. */
+  rows: IdeaEntry[];
+  meta: {
+    /** Where the ledger is stored. */
+    file: string;
+    /** Row counts per status, over the rows returned. */
+    counts: Record<IdeaStatus, number>;
+    /** Entries on the whole ledger, so a filtered view still says how much it hid. */
+    total: number;
+  };
+}
+
+/**
+ * The ideas ledger over HTTP — the read half of what `pnpm --filter server ideas
+ * list` prints.
+ *
+ * Unlike {@link buildSuggestionStatus} this takes no `SidecarSource` and is not
+ * shadowed: an idea is *authored*, existing only in `ideas.json`, so there is no
+ * derived half to compare across the parity seam. Nothing here reads the
+ * suggestion store, which is the whole point of the two files being separate.
+ *
+ * A ledger that exists but does not parse throws — see `readIdeasStore`. The
+ * route lets that surface as a 500 rather than answering with an empty ledger,
+ * because a caller that concludes the ledger is fresh will re-propose everything
+ * already rejected in it.
+ */
+export async function buildIdeas(logDir: string, filter: IdeaFilter = {}): Promise<IdeasResponse> {
+  const store = await readIdeasStore(logDir);
+  const rows = ideaRows(store, filter);
+  return {
+    rows,
+    meta: {
+      file: resolveIdeasPath(logDir),
+      counts: countIdeaStatuses(rows),
+      total: Object.keys(store.ideas).length,
+    },
+  };
+}
+
+/**
+ * The statuses a browser may set.
+ *
+ * `shipped` is deliberately absent: it carries a PR url and is a claim about
+ * something that landed, made by whoever landed it, so it stays with the CLI
+ * rather than becoming a button beside Accept. `proposed` is here because it is
+ * the undo — it restores an idea to unsigned-off without erasing the entry or
+ * its note.
+ */
+export const BROWSER_IDEA_STATUSES = ['proposed', 'accepted', 'rejected'] as const;
+
+export interface IdeasStatusResponse {
+  /** The entries the write touched, as they now stand. */
+  rows: IdeaEntry[];
+  meta: {
+    file: string;
+    updated: string[];
+    /** Slugs no entry carries. Nothing was written for these — a mark on an absent slug is a typo. */
+    unknown: string[];
+    /** Row counts per status over the whole ledger, so a card can say what `/improve` will pick up. */
+    counts: Record<IdeaStatus, number>;
+    total: number;
+  };
+}
+
+/**
+ * Adjudicate ideas from the dashboard.
+ *
+ * Two refusals are enforced here rather than in the route, so the CLI contract
+ * and the HTTP one cannot drift apart:
+ *
+ * - **`shipped` is refused**, per {@link BROWSER_IDEA_STATUSES}.
+ * - **A `rejected` mark with no note is refused.** The rejection reason is the
+ *   ledger's dedupe record — it is what stops a rejected idea being re-proposed
+ *   next run — and an empty one is worse than none, because it looks like a
+ *   decision while carrying nothing a later reader can act on.
+ */
+export async function applyIdeaStatus(
+  logDir: string,
+  marks: readonly IdeaMark[],
+  now: Date = new Date(),
+): Promise<IdeasStatusResponse> {
+  if (marks.length === 0) throw new Error('no idea marks given');
+  for (const mark of marks) {
+    if (!(BROWSER_IDEA_STATUSES as readonly IdeaStatus[]).includes(mark.status)) {
+      throw new Error(
+        `${mark.status} cannot be set from the dashboard (${BROWSER_IDEA_STATUSES.join(', ')} only): ` +
+          'it carries a PR url, so it stays with `ideas mark`',
+      );
+    }
+    if (mark.status === 'rejected' && !mark.note?.trim()) {
+      throw new Error(
+        `rejecting ${mark.slug} needs a reason: it is the ledger's record of why, and what stops the idea being re-proposed`,
+      );
+    }
+  }
+
+  const result = await markIdeasInStore(logDir, marks, now);
+  const touched = new Set(result.updated);
+  const all = ideaRows(result.store);
+  return {
+    rows: all.filter((row) => touched.has(row.slug)),
+    meta: {
+      file: result.file,
+      updated: result.updated,
+      unknown: result.unknown,
+      // Over the whole ledger rather than the rows returned: what is still awaiting a
+      // sign-off is a fact about the ledger, not about the write that just happened.
+      counts: countIdeaStatuses(all),
+      total: all.length,
     },
   };
 }
