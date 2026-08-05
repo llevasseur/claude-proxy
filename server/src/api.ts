@@ -1752,15 +1752,14 @@ export interface IdeasResponse {
  * The ideas ledger over HTTP — the read half of what `pnpm --filter server ideas
  * list` prints.
  *
- * Unlike {@link buildSuggestionStatus} this takes no `SidecarSource` and is not
- * shadowed: an idea is *authored*, existing only in `ideas.json`, so there is no
- * derived half to compare across the parity seam. Nothing here reads the
- * suggestion store, which is the whole point of the two files being separate.
+ * Takes no `SidecarSource` and is not shadowed, unlike
+ * {@link buildSuggestionStatus}: an idea is *authored*, existing only in
+ * `ideas.json`, so there is no derived half to compare across the parity seam.
+ * Nothing here reads the suggestion store.
  *
- * A ledger that exists but does not parse throws — see `readIdeasStore`. The
- * route lets that surface as a 500 rather than answering with an empty ledger,
- * because a caller that concludes the ledger is fresh will re-propose everything
- * already rejected in it.
+ * A ledger that exists but does not parse throws — see `readIdeasStore` — and
+ * the route lets that surface as a 500 rather than answering with an empty
+ * ledger a caller would re-propose everything into.
  */
 export async function buildIdeas(logDir: string, filter: IdeaFilter = {}): Promise<IdeasResponse> {
   const store = await readIdeasStore(logDir);
@@ -1778,11 +1777,9 @@ export async function buildIdeas(logDir: string, filter: IdeaFilter = {}): Promi
 /**
  * The statuses a browser may set.
  *
- * `shipped` is deliberately absent: it carries a PR url and is a claim about
- * something that landed, made by whoever landed it, so it stays with the CLI
- * rather than becoming a button beside Accept. `proposed` is here because it is
- * the undo — it restores an idea to unsigned-off without erasing the entry or
- * its note.
+ * `shipped` is deliberately absent — it carries a PR url and is a claim made by
+ * whoever landed the change, so it stays with the CLI. `proposed` is the undo: it
+ * restores an idea to unsigned-off without erasing the entry or its note.
  */
 export const BROWSER_IDEA_STATUSES = ['proposed', 'accepted', 'rejected'] as const;
 
@@ -1801,16 +1798,13 @@ export interface IdeasStatusResponse {
 }
 
 /**
- * Adjudicate ideas from the dashboard.
- *
- * Two refusals are enforced here rather than in the route, so the CLI contract
- * and the HTTP one cannot drift apart:
+ * Adjudicate ideas from the dashboard. Two refusals are enforced here rather
+ * than in the route, so the HTTP contract cannot drift from the CLI's:
  *
  * - **`shipped` is refused**, per {@link BROWSER_IDEA_STATUSES}.
- * - **A `rejected` mark with no note is refused.** The rejection reason is the
- *   ledger's dedupe record — it is what stops a rejected idea being re-proposed
- *   next run — and an empty one is worse than none, because it looks like a
- *   decision while carrying nothing a later reader can act on.
+ * - **A `rejected` mark with no note is refused.** The reason is the ledger's
+ *   dedupe record, and an empty one looks like a decision while carrying nothing
+ *   a later reader can act on.
  */
 export async function applyIdeaStatus(
   logDir: string,
@@ -1842,7 +1836,7 @@ export async function applyIdeaStatus(
       updated: result.updated,
       unknown: result.unknown,
       // Over the whole ledger rather than the rows returned: what is still awaiting a
-      // sign-off is a fact about the ledger, not about the write that just happened.
+      // sign-off is not a fact about the write that just happened.
       counts: countIdeaStatuses(all),
       total: all.length,
     },

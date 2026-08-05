@@ -157,9 +157,8 @@ const SUGGESTION_STATUS_ROUTE = '/api/sessions/suggestions/status';
 /**
  * The ideas ledger: a GET list under the open read CORS, a POST that adjudicates one.
  *
- * The POST is on the write allowlist rather than sharing the reads' `*` because it
- * writes a **device-wide** ledger that `/improve` acts on — an `accepted` idea is a
- * recorded human sign-off, and that is the only thing making it actionable.
+ * The POST is on the write allowlist rather than sharing the reads' `*`: it writes a
+ * **device-wide** ledger whose `accepted` rows are what `/improve` acts on.
  */
 const IDEAS_ROUTE = '/api/ideas';
 const IDEAS_STATUS_ROUTE = '/api/ideas/status';
@@ -913,8 +912,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       // The ideas ledger. `/ideate` writes the file from outside this process, so the
-      // stream watches the log directory the store sits in — an idea proposed in a
-      // terminal appears on the Advice page without a reload.
+      // stream watches the log directory the store sits in.
       case IDEAS_ROUTE:
       case '/api/ideas/stream': {
         const statusParam = url.searchParams.get('status');
@@ -928,8 +926,8 @@ const server = http.createServer(async (req, res) => {
               return status;
             });
           }
-          // A checkout path names a different thing on another machine, and this
-          // ledger is shared across every repo on this one.
+          // A checkout path names a different thing on another machine, and this ledger
+          // is shared across every repo on this one.
           if (repoParam && !isIdeaRepo(repoParam)) {
             throw new Error(`invalid repo: ${repoParam} (expected a git remote slug like owner/name)`);
           }
@@ -942,13 +940,12 @@ const server = http.createServer(async (req, res) => {
           await serveSse(req, res, { watchPath: LOG_DIR, build: () => buildIdeas(LOG_DIR, filter), debounceMs: 600 });
           return;
         }
-        // No shadow read: the ledger is authored state with no derived half, so there
-        // is nothing for the substrate to disagree about.
+        // No shadow read: authored state with no derived half, so there is nothing for
+        // the substrate to disagree about.
         send(res, 200, await buildIdeas(LOG_DIR, filter));
         return;
       }
-      // Adjudicating one. POST only, through the origin-checked write CORS, since an
-      // `accepted` idea is the sign-off `/improve` acts on across every repo on the device.
+      // Adjudicating one. POST only, through the origin-checked write CORS.
       case IDEAS_STATUS_ROUTE:
         await servePost(
           req,

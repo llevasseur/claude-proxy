@@ -133,8 +133,8 @@ describe('read routes', () => {
     expect(body.rows.map((r) => r.slug)).toEqual(['rolling-window']);
     expect(body.meta.counts.proposed).toBe(1);
 
-    // The list is a read, so it stays under the open `*` CORS and its own 405 gate —
-    // only `/api/ideas/status` is on the write allowlist.
+    // The list is a read, so it keeps the open `*` CORS and its 405 gate — only
+    // `/api/ideas/status` is on the write allowlist.
     for (const method of ['POST', 'PUT', 'DELETE']) {
       const refused = await fetch(`${BASE}/api/ideas`, { method });
       expect(refused.status, method).toBe(405);
@@ -158,8 +158,7 @@ describe('read routes', () => {
     expect((await mark([{ slug: 'rolling-window', status: 'shipped', note: 'https://x.test/1' }])).status).toBe(400);
     expect((await mark([{ slug: 'rolling-window', status: 'rejected' }])).status).toBe(400);
 
-    // On the write allowlist, so a declared foreign origin is refused outright — this
-    // ledger is device-wide and an `accepted` row is what /improve acts on.
+    // On the write allowlist, so a declared foreign origin is refused outright.
     expect((await mark([{ slug: 'rolling-window', status: 'accepted' }], 'http://evil.example')).status).toBe(403);
   });
 

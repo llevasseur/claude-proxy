@@ -121,18 +121,13 @@ export class HeuristicAdviceProvider implements AdviceProvider {
 /** Convenience default instance. */
 export const heuristicAdvice = new HeuristicAdviceProvider();
 
-/**
- * Relative move below which a metric counts as unchanged. 10% is loose on
- * purpose: the point is to separate "this is the same finding as yesterday" from
- * "this moved", and a card restating a number that drifted 3% is the former.
- */
+/** Relative move below which a metric counts as unchanged — loose, since the question is only whether this is yesterday's finding. */
 export const ADVICE_STEADY_PCT = 0.1;
 
 /**
  * How to read the number a rule fired on back off a digest, keyed by the rule's
- * own `metric`. A rule declaring no metric is not comparable and its advice
- * always renders in full — being unable to measure a finding is not grounds for
- * demoting it.
+ * own `metric`. A rule declaring no metric is not comparable, and its advice
+ * always renders in full.
  */
 const METRIC_READERS: Record<string, (d: UsageDigest) => number> = {
   requestCount: (d) => d.requestCount,
@@ -157,9 +152,9 @@ export interface AdviceMovement {
   change: number | null;
   /**
    * True only when the metric was read on both days and moved less than
-   * {@link ADVICE_STEADY_PCT}. Absent evidence never makes a card steady, so an
-   * unreadable metric, a missing prior day and a genuinely moving number all
-   * render the same way: in full.
+   * {@link ADVICE_STEADY_PCT}. **Absent evidence never makes a card steady**: an
+   * unreadable metric and a missing prior day both report false, like a number
+   * that genuinely moved.
    */
   steady: boolean;
 }
@@ -167,15 +162,9 @@ export interface AdviceMovement {
 /**
  * Rate each piece of advice against the prior day that recorded something.
  *
- * This exists because two of the heuristic rules — `large-system-prompt` and
- * `high-cost` — trip on essentially every day of a busy install and restate the
- * same sentence each time, so they crowd out anything actionable. Raising their
- * thresholds would hide a real finding; the honest fix is to notice that the
- * finding has not *changed* and let a reader collapse it. Nothing is dropped:
- * this only reports what moved, and the caller decides how to render it.
- *
- * A zero prior with a non-zero current is a move (`change: Infinity` would be
- * meaningless, so it reports `1`), and both being zero is unchanged.
+ * Reports what moved and nothing more — the caller decides how to render a
+ * finding that has not changed. A zero prior with a non-zero current reports
+ * `change: 1` rather than infinity; both zero is unchanged.
  */
 export function adviceMovement(
   advice: readonly Advice[],

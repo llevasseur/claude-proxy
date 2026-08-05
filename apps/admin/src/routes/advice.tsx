@@ -30,7 +30,6 @@ export function AdvicePage() {
         </div>
       </div>
 
-      {/* Ideas first: they are the only thing on this page a human decides. */}
       <Ideas />
 
       <HeuristicAdvice
@@ -47,12 +46,9 @@ export function AdvicePage() {
 
 /**
  * The ideas ledger — invented proposals, each awaiting the sign-off that is the only
- * thing making one actionable.
- *
- * These sit above the heuristic cards because they are the actionable half of the
- * page: the coaching below restates numbers, while an idea is waiting on a human.
- * Live through SSE, so an idea `/ideate` writes from a terminal appears here without
- * a reload.
+ * thing making one actionable. Above the heuristic cards, being the half of the page
+ * waiting on a human, and live through SSE so an idea `/ideate` writes from a
+ * terminal appears without a reload.
  */
 function Ideas() {
   const query = useQuery({ queryKey: [IDEAS_KEY], queryFn: getIdeas });
@@ -60,15 +56,12 @@ function Ideas() {
   const [showRejected, setShowRejected] = useState(false);
 
   const rows = query.data?.rows ?? [];
-  // Newest first here, unlike the ledger's own oldest-first order: what was just
-  // proposed is what a reader is here to decide on.
+  // Newest first, unlike the ledger's own oldest-first order.
   const byNewest = (a: IdeaEntry, b: IdeaEntry) => b.created.localeCompare(a.created);
   const open = rows.filter((r) => r.status === 'proposed').sort(byNewest);
-  // `accepted` stays visible in a settled state, so it is clear what /improve picks up
-  // next; `shipped` sits with it as the record of what already landed.
+  // Kept visible, so it is clear what /improve picks up next.
   const settled = rows.filter((r) => r.status === 'accepted' || r.status === 'shipped').sort(byNewest);
-  // Never deleted, only collapsed: the rejection reasons are what stop a rejected idea
-  // being proposed again.
+  // Never deleted, only collapsed: the reasons are what stop an idea being re-proposed.
   const rejected = rows.filter((r) => r.status === 'rejected').sort(byNewest);
   const counts = query.data?.meta.counts;
 
@@ -120,12 +113,9 @@ function Ideas() {
  * The heuristic coaching, with anything that has not moved since the prior day folded
  * into one line.
  *
- * `large-system-prompt` and `high-cost` trip on essentially every day of a busy
- * install and restate the same sentence each time, so unfolded they permanently
- * occupy the top of the page above anything actionable. Neither the rules nor their
- * thresholds are touched — raising a threshold hides a real finding. Instead a card
- * whose metric barely moved is **demoted, never dropped**: the summary line expands
- * to the full cards, and a card that did move renders normally.
+ * Neither the rules nor their thresholds are touched — raising a threshold hides a
+ * real finding. A card whose metric barely moved is **demoted, never dropped**: the
+ * summary line expands to the full cards, and a card that did move renders normally.
  */
 function HeuristicAdvice({
   advice,

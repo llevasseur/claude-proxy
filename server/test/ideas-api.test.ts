@@ -1,8 +1,7 @@
 // The ideas ledger's builders: the list the Advice page reads, and the adjudication it
-// writes. Both refusals the dashboard depends on live in `applyIdeaStatus` rather than in
-// the route, so they are asserted here rather than over a socket — what the route adds is
-// the CORS and the method gate, and those are in `route-methods.test.ts`, which already
-// runs a server. One spawned server in the suite rather than two.
+// writes. Both refusals live in `applyIdeaStatus` rather than in the route, so they are
+// asserted here; the CORS and the method gate are in `route-methods.test.ts`, which
+// already runs a server.
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -67,8 +66,7 @@ describe('applyIdeaStatus', () => {
       { slug: 'step-reach-chart', status: 'rejected', note: 'covered by /trends' },
     ]);
     expect(rejected.rows[0]?.note).toBe('covered by /trends');
-    // Counted over the whole ledger: what `/improve` picks up next is not a fact about
-    // the write that just happened.
+    // Counted over the whole ledger, not the write that just happened.
     expect(rejected.meta.counts).toEqual({ proposed: 0, accepted: 1, rejected: 1, shipped: 0 });
 
     const store = await readIdeasStore(logDir);
@@ -85,7 +83,7 @@ describe('applyIdeaStatus', () => {
   });
 
   it('refuses a rejection with no reason, writing nothing', async () => {
-    // The reason is the ledger's dedupe record: it is what stops the idea coming back.
+    // The reason is the ledger's dedupe record — what stops the idea coming back.
     for (const note of [undefined, '', '   ']) {
       const mark = { slug: 'rolling-window', status: 'rejected' as const, ...(note === undefined ? {} : { note }) };
       await expect(applyIdeaStatus(logDir, [mark])).rejects.toThrow(/needs a reason/);

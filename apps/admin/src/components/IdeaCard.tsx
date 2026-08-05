@@ -7,12 +7,10 @@ import { fmtLocalTsShort } from '../format';
 /**
  * One idea on the ledger, as a card a human can approve or turn down.
  *
- * This is the whole reason the ledger has a dashboard surface: adjudicating an
- * idea used to mean `pnpm --filter server ideas mark`, which is why `/ideate` had
- * to stop mid-run and ask. It reuses the `.advice` / `.card` styling the
- * heuristic cards use so the two read as one system — but an idea is not advice
- * derived from a number, it is a proposal awaiting a sign-off, so it carries its
- * citations and its controls instead of a severity.
+ * Reuses the `.advice` / `.card` styling the heuristic cards use so the two read
+ * as one system. An idea is a proposal awaiting a sign-off rather than a reading
+ * off a number, so it carries its citations and its controls in place of a
+ * severity.
  */
 
 /** Query key every ideas list shares, so one write invalidates them all. */
@@ -36,7 +34,7 @@ function citationOf(evidence: IdeaEvidence): string {
   return '';
 }
 
-/** What an idea cites. Rendered on every card: without it, a card is just a title. */
+/** What an idea cites, on every card — the evidence is what makes it approvable. */
 function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence[] }) {
   if (evidence.length === 0) return null;
   return (
@@ -58,9 +56,8 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
   // The Reject button the form replaced leaves the tab order with it, so focus would
-  // otherwise fall to the document. Keyed on the reveal rather than set with
-  // `autoFocus`, so it fires on the click that opened the form and not on every
-  // keystroke's re-render.
+  // otherwise fall to the document. Keyed on the reveal, so it fires on the click that
+  // opened the form rather than on every keystroke's re-render.
   const reasonRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (rejecting) reasonRef.current?.focus();
@@ -115,8 +112,7 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
         )}
 
         {rejecting && (
-          // The reason is required rather than encouraged: it is the ledger's dedupe
-          // record, and the server refuses a rejection without one.
+          // Required, not encouraged — the server refuses a rejection with no reason.
           <form
             className='idea-reject'
             onSubmit={(e) => {
