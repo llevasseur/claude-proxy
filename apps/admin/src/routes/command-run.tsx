@@ -16,7 +16,7 @@ import {
   SkeletonTextCard,
 } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
-import { fmtBytes, fmtInt, fmtLocalTs, fmtPct, fmtUsd } from '../format';
+import { fmtBytes, fmtDuration, fmtInt, fmtLocalTs, fmtPct, fmtUsd } from '../format';
 import { useLiveQuery } from '../useLiveQuery';
 import { fmtFlag } from './command-detail';
 
@@ -129,6 +129,7 @@ function RunBody({ data }: { data: CommandRunResponse }) {
   const [selected, setSelected] = useState<CommandRunTurn | null>(null);
 
   const anchoredShare = meta.attributed === 0 ? 0 : meta.anchored / meta.attributed;
+  const endToEnd = totals.wallMs > 0 ? totals.wallMs : totals.durationMs;
 
   return (
     <>
@@ -145,9 +146,11 @@ function RunBody({ data }: { data: CommandRunResponse }) {
           sub={`${fmtInt(totals.tokens.cacheRead)} read from cache`}
         />
         <StatCard
-          label='Wall clock'
-          value={totals.durationMs > 0 ? fmtDuration(totals.durationMs) : '—'}
-          sub={run.started ? fmtLocalTs(run.started) : 'start unknown'}
+          label='End to end'
+          value={endToEnd > 0 ? fmtDuration(endToEnd) : '—'}
+          sub={
+            totals.wallMs > 0 ? `${fmtDuration(totals.durationMs)} of it sending requests` : 'across its requests only'
+          }
         />
       </div>
 
@@ -481,10 +484,4 @@ function WasteTable({ steps }: { steps: CommandRunStepStats[] }) {
 
 function turnTokens(turn: CommandRunTurn): number {
   return turn.tokens.realInput + turn.tokens.output + turn.tokens.cacheCreation;
-}
-
-function fmtDuration(ms: number): string {
-  const mins = Math.round(ms / 60000);
-  if (mins < 60) return `${mins}m`;
-  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }

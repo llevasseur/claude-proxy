@@ -111,10 +111,38 @@ prescribed it.
   **Tokens**, **Cost**, **Cost per run** (a sparkline, or *"needs two runs"*), and
   **Last run**. Rows are the installed files unioned with every command the store has
   history for, so a command `/sync` removed keeps its past under an **uninstalled** badge.
+- **A run carries two durations, and they answer different questions** — `totals.durationMs`
+  is the span between the first and last **captured request**, so it stops at the last
+  request rather than at the answer to it and is `0` for a run that only ever sent one.
+  `totals.wallMs` is the **end-to-end** reading: a top-level run *is* its session, so its
+  transcript's start and last write bracket the whole thing; a nested run is a slice of
+  someone else's session and has no bracket of its own, so it falls back to the request
+  span. Both are `0` when unknown rather than carrying a sentinel, and there is **no
+  backfill** — a record written before `wallMs` existed keeps `0` and the UI says so.
 - **Command detail** (`/commands/$command`) — the command's runs as an outcome-coloured
-  scatter (completed / interrupted / errored / running) with step-level stacked cost, and a
-  `flags` facet narrowing to runs that used given flags. A child has no prompt of its own,
-  so its row reads `nested in /task`.
+  scatter (completed / interrupted / errored / running) with step-level stacked cost, a
+  **Steps per run** and a **Time per run** trend, and a `flags` facet narrowing to runs
+  that used given flags. A child has no prompt of its own, so its row reads
+  `nested in /task`.
+- **The two trends are per-run and chronological**, oldest left — the same grain as the
+  scatter, since a command runs a handful of times a week and daily buckets would mostly
+  be empty. `commandRunShapes` builds them from the stored records alone, and they are two
+  charts rather than two axes because step counts live in the low tens while a duration is
+  milliseconds in the millions.
+  - **Steps per run** plots three series, which are deliberately not the same number:
+    **agent steps** (transcript nodes — every decision, tool call and outcome the run and
+    its subagents produced), **tool calls** among them, and **declared steps reached**.
+    The divergence is the finding: a run doing plenty of work that never reaches the last
+    declared step is the shape worth catching.
+  - **Declared steps reached is counted against the run's own snapshot**, not the current
+    catalogue. A step the command file grew after a run happened was never available to
+    reach, and counting it would read as a regression that run had no way to cause.
+  - **Time per run** plots `wallMs`, falling back to the request span for records that
+    predate it; `meta.wallMeasuredRuns` reports how many points are on the wider bracket,
+    and the card names the shortfall rather than implying the whole line is comparable.
+  - A trend needs **two runs with a recorded start**. A run with no start is dropped — it
+    has nowhere to sit on the axis — and a selection with fewer than two says so instead
+    of drawing a one-point line.
 - **Run detail** (`/commands/$command/$runId`) — one run as a token-weighted tree over
   its declared steps, each carrying the confidence behind its placement, plus the
   unattributed bucket. A child's pagehead links back to the run that invoked it.
@@ -147,6 +175,12 @@ reads the files and captured requests and hands the pieces to it.
       store is reconciled before every API read.
 - [x] `/commands`, `/commands/$command` and `/commands/$command/$runId` each serve from
       an endpoint with an SSE twin, so a live run updates in place.
+- [x] A run records an end-to-end wall clock distinct from its request span, and a
+      single-turn run reports a real duration rather than zero.
+- [x] Command detail trends steps per run and time per run, one point per run, oldest
+      first, with declared steps counted against each run's own step catalogue.
+- [x] A point measured on the narrower request span is disclosed as such rather than
+      plotted as if it were comparable.
 
 ## Open questions
 

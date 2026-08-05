@@ -52,10 +52,10 @@ function prepare(db: DatabaseSync): CommandStatements {
         run_id, ord, command, args, prompt, command_hash, schema_version,
         model, started, ended, outcome, interruption, reached_end, retired,
         totals_input, totals_output, totals_cache_read, totals_cache_creation, totals_real_input,
-        totals_cost, totals_turns, totals_tool_calls, totals_duration_ms,
+        totals_cost, totals_turns, totals_tool_calls, totals_duration_ms, totals_wall_ms,
         meta_turns_unmapped, meta_nodes, meta_attributed, meta_anchored,
         updated_at, document
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
     insertFlag: db.prepare('INSERT INTO command_run_flag (run_id, ord, flag) VALUES (?, ?, ?)'),
     insertThread: db.prepare('INSERT INTO command_run_thread (run_id, ord, member_thread_id) VALUES (?, ?, ?)'),
@@ -146,6 +146,7 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
     totals?.turns ?? 0,
     totals?.toolCalls ?? 0,
     totals?.durationMs ?? 0,
+    totals?.wallMs ?? 0,
     meta?.turnsUnmapped ?? 0,
     meta?.nodes ?? 0,
     meta?.attributed ?? 0,

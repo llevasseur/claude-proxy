@@ -34,7 +34,7 @@ import type { AuditTokens } from './types.js';
  * Readers keep older records and render what they carry — see {@link isCommandRun},
  * which validates only the identity fields every version has had.
  */
-export const COMMAND_RUN_SCHEMA = 2;
+export const COMMAND_RUN_SCHEMA = 3;
 
 /** The bucket holding turns and steps no anchor could place. Never a real step id. */
 export const UNATTRIBUTED = null;
@@ -780,6 +780,16 @@ export interface CommandRunTotals {
   toolCalls: number;
   /** Wall clock from first to last captured request, in ms. */
   durationMs: number;
+  /**
+   * End-to-end wall clock in ms.
+   *
+   * {@link durationMs} spans the *requests*, so it stops at the last one and reports 0 for
+   * a run that only ever sent one. A top-level run brackets its whole session; a nested run
+   * has no such bracket and falls back to the request span.
+   *
+   * 0 means unknown, not instant — there is no backfill.
+   */
+  wallMs: number;
 }
 
 export const ZERO_TOKENS: AuditTokens = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, realInput: 0 };
@@ -902,6 +912,7 @@ export function runTotals(run: CommandRun): CommandRunTotals {
     turns: t?.turns ?? 0,
     toolCalls: t?.toolCalls ?? 0,
     durationMs: t?.durationMs ?? 0,
+    wallMs: t?.wallMs ?? 0,
   };
 }
 
@@ -1123,6 +1134,74 @@ export function stepReach(steps: readonly CommandStep[], runs: readonly CommandR
       cost,
     };
   });
+}
+
+/**
+ * One run's **shape**: how much work it did, and how long it took end to end.
+ *
+ * Distinct from {@link CommandRunStepStats}, which asks where the *tokens* went. Every
+ * field is read off the stored record, so nothing here needs the raw logs.
+ */
+export interface CommandRunShape {
+  /** The record's key, so a point on the trend can link to its run. */
+  runId: string;
+  started: string | null;
+  /**
+   * Declared `## Step N` steps this run attributed at least one node to.
+   *
+   * Counted against the run's **own** snapshot, not the current catalogue: a step added
+   * afterwards was never available to reach.
+   */
+  stepsReached: number;
+  /** Steps that snapshot declared — the ceiling {@link stepsReached} is out of. */
+  stepsDeclared: number;
+  /** Transcript nodes in the run: agent steps, the literal unit of work done. */
+  nodes: number;
+  /** The tool calls among them — work that touched something, not narration. */
+  toolCalls: number;
+  /** Captured requests. Not chat messages, and not the same as a step. */
+  turns: number;
+  /** {@link CommandRunTotals.wallMs} when the record carries one, else the request span. */
+  endToEndMs: number;
+  /** False when {@link endToEndMs} fell back to the narrower request span. */
+  wallMeasured: boolean;
+  outcome: CommandRunOutcome;
+  /** The command file's hash then, so the trend can mark where a `/sync` moved it. */
+  commandHash: string | null;
+}
+
+/**
+ * The per-run shape series for one command's trend, **oldest first** — a trend reads
+ * left to right, unlike the run list.
+ *
+ * Runs with no start are dropped — they have no place on the x-axis.
+ */
+export function commandRunShapes(runs: readonly CommandRun[]): CommandRunShape[] {
+  return runs
+    .filter((run) => !!run.started)
+    .map((run): CommandRunShape => {
+      const totals = runTotals(run);
+      const declared = run.steps ?? [];
+      const stats = run.stepStats ?? [];
+      // The unattributed bucket is a row on the step table, but not a step the run got to.
+      const declaredIds = new Set(declared.map((s) => s.id));
+      const wall = totals.wallMs;
+
+      return {
+        runId: runKey(run),
+        started: run.started ?? null,
+        stepsReached: stats.filter((s) => s.step !== null && s.reached && declaredIds.has(s.step)).length,
+        stepsDeclared: declared.length,
+        nodes: run.meta?.nodes ?? 0,
+        toolCalls: totals.toolCalls,
+        turns: totals.turns,
+        endToEndMs: wall > 0 ? wall : totals.durationMs,
+        wallMeasured: wall > 0,
+        outcome: run.outcome ?? 'interrupted',
+        commandHash: run.commandHash ?? null,
+      };
+    })
+    .sort((a, b) => (a.started ?? '').localeCompare(b.started ?? ''));
 }
 
 /**

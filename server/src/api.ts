@@ -9,10 +9,12 @@ import {
   buildUsageLimits,
   type CommandPattern,
   type CommandRun,
+  type CommandRunShape,
   type CommandStep,
   type CommandSummary,
   type ContextEntry,
   type ContextSummary,
+  commandRunShapes,
   computeAliasPosture,
   computeDigest,
   computeSkimDigest,
@@ -1899,7 +1901,14 @@ export interface CommandResponse {
   stepReach: StepReach[];
   patterns: PatternFrequency[];
   hashMarkers: CommandHashMarker[];
-  meta: { totalRuns: number; filteredRuns: number };
+  /** Per-run work and duration, **oldest first** — `runs` is newest-first for the list. */
+  shape: CommandRunShape[];
+  meta: {
+    totalRuns: number;
+    filteredRuns: number;
+    /** Runs in `shape` whose duration came off the wider bracket rather than the request span. */
+    wallMeasuredRuns: number;
+  };
 }
 
 /**
@@ -1941,6 +1950,8 @@ export async function buildCommand(
     previous = hash;
   }
 
+  const shape = commandRunShapes(filtered);
+
   return {
     command,
     installed: !!spec,
@@ -1952,7 +1963,12 @@ export async function buildCommand(
     stepReach: stepReach(steps, filtered),
     patterns: patternFrequency(filtered),
     hashMarkers: markers,
-    meta: { totalRuns: own.length, filteredRuns: filtered.length },
+    shape,
+    meta: {
+      totalRuns: own.length,
+      filteredRuns: filtered.length,
+      wallMeasuredRuns: shape.filter((s) => s.wallMeasured).length,
+    },
   };
 }
 

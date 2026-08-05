@@ -591,6 +591,11 @@ function buildRun(input: {
   const started = turns[0]?.timestamp ?? (range ? null : graph.started) ?? null;
   const ended = turns[turns.length - 1]?.timestamp ?? (range ? null : modified) ?? null;
 
+  // A top-level run *is* its session, so its transcript brackets the whole thing. A nested
+  // run is a slice of someone else's session and has no bracket of its own.
+  const wallFrom = range ? started : (graph.started ?? started);
+  const wallTo = range ? ended : (modified ?? ended);
+
   return {
     schema: COMMAND_RUN_SCHEMA,
     runId: identity.runId,
@@ -614,7 +619,8 @@ function buildRun(input: {
       cost: estimateCost(tokens, priced).total,
       turns: turns.length,
       toolCalls: familyNodes.filter((n) => n.type === 'tool').length,
-      durationMs: started && ended ? Math.max(0, new Date(ended).getTime() - new Date(started).getTime()) : 0,
+      durationMs: spanMs(started, ended),
+      wallMs: spanMs(wallFrom, wallTo),
     },
     turns,
     stepStats: summarizeSteps({ steps, nodes, attributions, turns, model: priced }),
@@ -677,6 +683,13 @@ function nestedFamily(
     }
   }
   return family;
+}
+
+/** Milliseconds between two timestamps, or 0 when either is missing or unparseable. Clamped at 0. */
+function spanMs(from: string | null, to: string | null): number {
+  if (!from || !to) return 0;
+  const span = new Date(to).getTime() - new Date(from).getTime();
+  return Number.isFinite(span) ? Math.max(0, span) : 0;
 }
 
 /** The kind of the last interruption anywhere in the family, if it was interrupted at all. */
