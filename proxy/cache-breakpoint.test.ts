@@ -274,8 +274,6 @@ test('a last message whose content is a bare string is left alone', () => {
   assert.equal(reqJson, req);
 });
 
-// --- The observation report: what the retirement trigger actually reads --------
-
 test('reports the defect as observed on an injection', () => {
   warmUp();
   const { injected, observed, declinedBy } = ensureMessageBreakpoint(coldRequest(), { sessionKey: SESSION });
@@ -352,8 +350,6 @@ test('observes nothing while the kill switch is set', () => {
     else process.env.PROXY_CACHE_BREAKPOINT = previous;
   }
 });
-
-// --- The prefix estimate gate 5 compares a cache read against -----------------
 
 test('estPrefixTokens sizes a schema-heavy prefix well above the bytes/4 estimate', () => {
   const bytes = 121_670;

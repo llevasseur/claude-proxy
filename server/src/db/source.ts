@@ -205,9 +205,8 @@ function toSidecar(
   if (row.cache_breakpoint_injected !== null) {
     sidecar.cacheBreakpointInjected = row.cache_breakpoint_injected === 1;
   }
-  // The observation and the gate that declined it are written together, so the
-  // observation column is what says whether either was recorded. `declinedBy` then
-  // comes back null — "nothing declined" — rather than absent.
+  // Written together, so the observation column says whether either was recorded.
+  // `declinedBy` then comes back null — "nothing declined" — rather than absent.
   if (row.cache_breakpoint_observed !== null) {
     sidecar.cacheBreakpointObserved = row.cache_breakpoint_observed === 1;
     sidecar.cacheBreakpointDeclinedBy = row.cache_breakpoint_declined_by;

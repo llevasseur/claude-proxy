@@ -386,10 +386,9 @@ function writeAuditSidecar({
     // App-layer skim (not Anthropic's prefix cache); recorded on every request so
     // hit-rate + saved spend are computable from the sidecar.
     skim: skimInfo ?? { enabled: skim.skimEnabled(), servedFromCache: false, savedInputTokens: 0, cacheKey: null },
-    // All three recorded on every request. `cacheBreakpointObserved` is what carries
-    // the retirement trigger — a run of zero *injections* also happens while the CLI
-    // still drops the breakpoint and a later gate declines, and `declinedBy` says
-    // which one. See `cache-breakpoint.ts`.
+    // All three recorded on every request. The observation carries the retirement
+    // trigger, not the injection — a run of zero injections also happens while the
+    // CLI still drops the breakpoint and a gate declines. See `cache-breakpoint.ts`.
     cacheBreakpointInjected: cacheBreakpointInjected ?? false,
     cacheBreakpointObserved: cacheBreakpointObserved ?? false,
     cacheBreakpointDeclinedBy: cacheBreakpointDeclinedBy ?? null,
@@ -860,9 +859,9 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
             // A read past this request's own system+tools prefix is the only proof
             // that the *message* prefix is cached upstream — the evidence gate 5 of
             // `ensureMessageBreakpoint` needs before a write can pay for itself.
-            // `estPrefixTokens`, not the display `estTokens`: a `bytes / 4` figure
-            // understates a schema-heavy prefix by ~45%, which marked a session warm
-            // off a read of nothing but its own system blocks.
+            // `estPrefixTokens`, not the display `estTokens`: `bytes / 4` understates
+            // a schema-heavy prefix by ~45%, which marked sessions warm off a read of
+            // nothing but their own system blocks.
             noteCacheRead(
               sessionKey,
               usage?.cache_read_input_tokens ?? 0,

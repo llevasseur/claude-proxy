@@ -104,11 +104,11 @@ export interface UsageDigest {
    * counted whether or not the proxy went on to inject one.
    *
    * This, not `cacheBreakpointInjections`, is the injector's retirement trigger. A
-   * week of zero *observations* after a CLI upgrade means the client stopped
-   * dropping the breakpoint and `proxy/cache-breakpoint.ts` can be deleted; a week
-   * of zero *injections* is equally consistent with the later gates declining every
-   * occurrence, which is what the first window of live data actually showed. Zero on
-   * days whose sidecars predate the field, same as the injection count.
+   * week of zero *observations* after a CLI upgrade means the client stopped dropping
+   * the breakpoint and `proxy/cache-breakpoint.ts` can be deleted; a week of zero
+   * *injections* is equally consistent with the later gates declining every
+   * occurrence, which is what the first window of live data showed. Zero on days
+   * whose sidecars predate the field, same as the injection count.
    */
   cacheBreakpointObservations: number;
   /**
@@ -281,8 +281,8 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
     models[s.model] = (models[s.model] ?? 0) + 1;
     if (s.cacheBreakpointInjected === true) cacheBreakpointInjections += 1;
     if (s.cacheBreakpointObserved === true) cacheBreakpointObservations += 1;
-    // Only counted for an occurrence that was actually observed, so a stray gate
-    // name on a sidecar that saw nothing cannot inflate the tally.
+    // Counted only against an observed occurrence, so a stray gate name on a sidecar
+    // that saw nothing cannot inflate the tally.
     const declinedBy = s.cacheBreakpointDeclinedBy;
     if (s.cacheBreakpointObserved === true && typeof declinedBy === 'string' && declinedBy !== '') {
       cacheBreakpointDeclines[declinedBy] = (cacheBreakpointDeclines[declinedBy] ?? 0) + 1;

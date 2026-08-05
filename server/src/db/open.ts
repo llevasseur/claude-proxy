@@ -442,13 +442,12 @@ DELETE FROM ingest_watermark;
  *
  * Both nullable for the same reason slice 9's column is: a sidecar written before
  * the field existed must stay distinguishable from one that recorded "no". The
- * observation column is what carries the retirement trigger — a day of zero
- * injections is also what a still-broken CLI plus a declining gate looks like, so
- * the count that means "the defect is gone" is this one, and `declined_by` says
- * which threshold accounts for the difference.
+ * observation column carries the retirement trigger — a day of zero injections is
+ * also what a still-broken CLI plus a declining gate looks like — and `declined_by`
+ * says which threshold accounts for the difference.
  *
- * `declined_by` is TEXT rather than a coded integer so a gate added later reads
- * back without another migration; its null means "nothing declined", which the
+ * `declined_by` is TEXT rather than a coded integer so a gate added later reads back
+ * without another migration; its null means "nothing declined", which the
  * observation column disambiguates from "nothing was recorded".
  *
  * Clearing the watermarks forces a rescan of every archived day, so rows already

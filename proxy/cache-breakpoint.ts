@@ -26,15 +26,14 @@
  * for another key) and whether an injection actually *happened*. Both reach the
  * audit sidecar on every request, become nullable columns in the substrate, and
  * surface as `UsageDigest.cacheBreakpointObservations` beside
- * `cacheBreakpointInjections`. Injections alone cannot carry the trigger: the
- * later gates decline most occurrences, so a week of zero injections is equally
- * consistent with "the CLI was fixed" (safe to retire) and "it still drops the
- * breakpoint and gate 4 or 5 said no" (must not retire) — the first ~18 minutes
- * live recorded 152 requests, 0 injections and 2 occurrences, which is entirely
- * the second case. **Retire on a week of zero *observations* after a CLI upgrade:
- * delete this module and its three call sites.** `cacheBreakpointDeclines` says
- * which gate turned each observed occurrence away, so a zero that comes from a
- * gate being too strict is legible as such rather than as an absent defect.
+ * `cacheBreakpointInjections`. Injections alone cannot carry the trigger: the later
+ * gates decline most occurrences, so a week of zero injections is equally consistent
+ * with "the CLI was fixed" (safe to retire) and "it still drops the breakpoint and a
+ * gate said no" (must not retire) — the first ~18 minutes live recorded 152
+ * requests, 0 injections and 2 occurrences, entirely the second case. **Retire on a
+ * week of zero *observations* after a CLI upgrade: delete this module and its three
+ * call sites.** `cacheBreakpointDeclines` names the gate that turned each observed
+ * occurrence away, so a zero produced by an over-strict gate reads as one.
  *
  * **Known consequence, accepted.** Injecting changes the bytes
  * `skim.keyFor(forwardBody)` hashes, so an affected request gets a different skim
@@ -73,30 +72,26 @@ const WARM_LIMIT = 500;
  * Bytes per token across a request's system+tools prefix, measured rather than
  * assumed.
  *
- * The proxy's display estimate is `bytes / 4`, which is roughly right for prose and
- * badly wrong here: measured across 29 cold-start requests in the log window —
- * where `cacheRead` is 0 and `input` under 50, so `totalBytes / cacheCreation` is
- * the ratio outright — a whole request runs 2.75 bytes per token (p10 2.68, p90
- * 2.81). Dense JSON tool schemas tokenize worse still, so the prefix's own ratio
- * sits below the whole-request figure; the one directly observed prefix-only read
- * came in at 2.52. Feeding gate 5 a `bytes / 4` figure understated the prefix by
- * ~45% and marked a session warm on a read of nothing but its own system blocks
- * (48,299 tokens read against a 121,670-byte prefix, compared to a 32,619-token
- * threshold), which turned gate 5 into "has this session ever had a cache hit".
+ * Measured across 29 cold-start requests in the log window — `cacheRead` 0 and
+ * `input` under 50, so `totalBytes / cacheCreation` is the ratio outright — a whole
+ * request runs 2.75 bytes per token (p10 2.68, p90 2.81). Dense JSON tool schemas
+ * tokenize worse still, so the prefix's own ratio sits below that; the one directly
+ * observed prefix-only read came in at 2.52. The `bytes / 4` display estimate
+ * understated the prefix by ~45% and marked a session warm on a read of nothing but
+ * its own system blocks, turning gate 5 into "has this session ever had a cache hit".
  *
  * The denominator is the densest figure observed rather than the mean, because the
- * two directions are not symmetric: understating the prefix marks a cold session
- * warm and buys a 2x cache write with no read to recover it, while overstating it
- * only declines an injection that might have paid. Gate 5 is the last thing between
- * an injection and that write, so it rounds toward declining.
+ * directions are not symmetric: understating the prefix marks a cold session warm
+ * and buys a 2x cache write with no read to recover it, while overstating it only
+ * declines an injection that might have paid. Gate 5 rounds toward declining.
  */
 const PREFIX_BYTES_PER_TOKEN = 2.5;
 
 /**
  * The system+tools prefix in tokens — the figure `noteCacheRead` compares a cache
  * read against. Separate from the proxy's `estTokens`, which stays at `bytes / 4`
- * for the human-readable audit report it also feeds; this one is a threshold in a
- * cost decision, so it uses the measured ratio.
+ * for the audit report it also feeds; a threshold in a cost decision needs the
+ * measured ratio, a display estimate does not.
  */
 export function estPrefixTokens(bytes: number): number {
   return Math.round(bytes / PREFIX_BYTES_PER_TOKEN);
@@ -215,24 +210,21 @@ export interface EnsureBreakpointOptions {
 }
 
 /**
- * Which gate turned away an occurrence of the defect that was already observed.
- * `depth` is gate 4 (the transcript is too shallow for a write to pay), `cold-prefix`
- * is gate 5 (nothing proves the message prefix is cached upstream), and
- * `no-content-block` is the structural check after it — a last message whose content
- * is a bare string has nowhere to carry the hint.
+ * Which gate turned away an already-observed occurrence. `depth` is gate 4 (the
+ * transcript is too shallow for a write to pay), `cold-prefix` is gate 5 (nothing
+ * proves the message prefix is cached upstream), `no-content-block` the structural
+ * check after it — a last message whose content is a bare string carries no hint.
  */
 export type DeclinedGate = 'depth' | 'cold-prefix' | 'no-content-block';
 
 export interface EnsureBreakpointResult {
   reqJson: RequestBody | null;
-  /** Whether a breakpoint was actually put back. */
   injected: boolean;
   /**
-   * Whether the defect was observed on this request: gates 1–3 passed, so the CLI
-   * shipped no message breakpoint while asking for caching and leaving room under
-   * the four-breakpoint cap. True on every occurrence, injected or declined — which
-   * is what makes a zero readable. False when the kill switch is set or the body was
-   * never inspected, since then nothing was observed either way.
+   * Gates 1–3 passed: the CLI shipped no message breakpoint while asking for caching
+   * and leaving room under the four-breakpoint cap. True on every occurrence,
+   * injected or declined, which is what makes a zero readable. False when the kill
+   * switch is set or the body was never inspected — nothing was seen either way.
    */
   observed: boolean;
   /** The gate that declined an observed occurrence; null when none did. */
@@ -278,8 +270,7 @@ export function ensureMessageBreakpoint(
     // Gate 3 — the API takes four breakpoints; a fifth is an error, not a saving.
     if (system.count >= BREAKPOINT_CAP) return miss;
 
-    // Past gate 3 the defect is confirmed present on this request, so every return
-    // below reports it as observed even where a gate declines to act on it.
+    // Past gate 3 the defect is confirmed, so every return below reports it observed.
 
     // Gate 4 — a write bills above fresh input, so only a deep transcript pays.
     const messageBytes = Buffer.byteLength(JSON.stringify(messages));
@@ -305,9 +296,8 @@ export function ensureMessageBreakpoint(
     const nextMessages = turns.slice(0, -1).concat({ ...last, content: nextBlocks });
     return { reqJson: { ...reqJson, messages: nextMessages }, injected: true, observed: true, declinedBy: null };
   } catch {
-    // Fail open: an optimization never breaks or drops a request. An observation is
-    // only reported from an inspection that ran to completion, so a throw reports
-    // none rather than guessing which side of gate 3 it happened on.
+    // Fail open: an optimization never breaks or drops a request. A throw reports no
+    // observation rather than guessing which side of gate 3 it happened on.
     return miss;
   }
 }
