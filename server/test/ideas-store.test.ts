@@ -62,12 +62,8 @@ describe('the ledger file', () => {
 
   it('throws rather than reading a corrupt-but-present ledger as empty', async () => {
     await writeFile(resolveIdeasPath(logDir), '{ this is not json', 'utf8');
-    // The deliberate divergence from the suggestion store. Suggestions are
-    // recomputed from transcripts, so a corrupt flag file costs only flags. An
-    // idea exists nowhere else: reading a broken ledger as empty would let a
-    // caller re-propose everything already rejected in it and then overwrite the
-    // file with that conclusion. A waterfall caller needs "absent" and "broken"
-    // to be different answers.
+    // The deliberate divergence from the suggestion store: a waterfall caller
+    // needs "absent" and "broken" to be different answers.
     await expect(readIdeasStore(logDir)).rejects.toThrow(/exists but is not valid JSON/);
   });
 

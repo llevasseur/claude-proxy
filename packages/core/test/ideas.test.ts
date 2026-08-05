@@ -42,8 +42,7 @@ describe('slug and repo shapes', () => {
 
   it('refuses a checkout path where a remote slug belongs', () => {
     expect(isIdeaRepo('llevasseur/claude-proxy')).toBe(true);
-    // The whole point of the field: the ledger is device-wide, so a path names a
-    // different thing on another machine.
+    // The ledger is device-wide, so a path names a different thing elsewhere.
     expect(isIdeaRepo('/Users/someone/Documents/ghub/claude-proxy')).toBe(false);
     expect(isIdeaRepo('~/claude-proxy')).toBe(false);
     expect(isIdeaRepo('claude-proxy')).toBe(false);
@@ -59,8 +58,7 @@ describe('adding', () => {
     const entry = ideaOf(store, 'rolling-window');
     expect(entry?.status).toBe('proposed');
     expect(entry?.created).toBe('2026-08-05T00:00:00.000Z');
-    // Unlike a pending suggestion, a proposed idea survives a round trip — the
-    // ledger has to record what was considered, not only what was liked.
+    // Unlike a pending suggestion, a proposed idea survives a round trip.
     expect(ideaOf(parseIdeasStore(JSON.parse(JSON.stringify(store))), 'rolling-window')?.status).toBe('proposed');
   });
 
@@ -80,8 +78,7 @@ describe('adding', () => {
     expect(second.added).toEqual([]);
     expect(second.refused).toEqual(['rolling-window']);
     const entry = ideaOf(second.store, 'rolling-window');
-    // A rejected idea returning every run is the failure the key prevents, and
-    // the reason is the row worth keeping.
+    // The reason is the row worth keeping.
     expect(entry?.status).toBe('rejected');
     expect(entry?.note).toBe('covered by /trends');
     expect(entry?.title).toBe('Idea rolling-window');
@@ -115,8 +112,7 @@ describe('marking', () => {
     const result = applyIdeaMarks(emptyIdeasStore(), [{ slug: 'nope', status: 'accepted' }]);
     expect(result.unknown).toEqual(['nope']);
     expect(result.updated).toEqual([]);
-    // The opposite of a suggestion flag, which is written for an unknown id
-    // because the rules are recomputed. An idea exists only here.
+    // The opposite of a suggestion flag, which is written for an unknown id.
     expect(result.store.ideas).toEqual({});
   });
 

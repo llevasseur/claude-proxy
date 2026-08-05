@@ -171,8 +171,7 @@ export function parseIdeasStore(raw: unknown): IdeasStore {
     if (!isIdeaRepo(repo)) continue;
     if (typeof title !== 'string' || !title.trim()) continue;
     const kept = parseEvidenceList(evidence);
-    // An entry that cites nothing is not a weaker entry, it is the thing the
-    // evidence rule exists to keep out of the file.
+    // An entry citing nothing is dropped rather than kept as a weaker one.
     if (kept.length === 0) continue;
     store.ideas[key] = {
       slug: key,

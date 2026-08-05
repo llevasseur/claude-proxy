@@ -134,9 +134,9 @@ function renderRows(rows: readonly IdeaEntry[]): string {
 
 async function run(argv: readonly string[]): Promise<void> {
   const first = argv[0] ?? '';
-  // Asking for help is checked against argv rather than against the resolved
-  // command: a leading flag leaves `command` defaulted to `list`, so `--help`
-  // would otherwise reach the parser and be read as a flag wanting a value.
+  // Checked against argv, not the resolved command: a leading flag leaves
+  // `command` defaulted to `list`, and `--help` would reach the parser as a flag
+  // wanting a value.
   if (first === 'help' || argv.includes('--help') || argv.includes('-h')) {
     console.log(USAGE);
     return;
@@ -177,9 +177,8 @@ async function run(argv: readonly string[]): Promise<void> {
     }
     const adds = parseIdeaAdds(raw);
 
-    // Report look-alikes before writing: a near-duplicate under a different slug
-    // defeats the dedupe key, and only a reader can tell one from a genuine
-    // sibling. Surfaced, never refused.
+    // Look-alikes are reported, never refused — only a reader can tell a rename
+    // from a genuine sibling.
     const existing = await readIdeasStore(logDir);
     const similar = Object.fromEntries(
       adds
@@ -216,15 +215,13 @@ async function run(argv: readonly string[]): Promise<void> {
       return;
     }
     if (result.unknown.length > 0) {
-      // Nothing was written for it — unlike a suggestion flag, an idea exists only
-      // in this file, so a mark on a slug that is not here is a typo.
+      // Nothing was written for it: a mark on a slug the ledger lacks is a typo.
       console.log(`no idea on the ledger is called: ${result.unknown.join(', ')} — nothing written`);
       process.exitCode = 1;
       return;
     }
     console.log(`marked ${result.updated.join(', ')} ${status} in ${result.file}`);
-    // Only the entry that moved — echoing the whole ledger buries the one row the
-    // caller just changed, which is the row it needs to check.
+    // Only the entry that moved; the whole ledger would bury it.
     console.log(renderRows(ideaRows(result.store, {}).filter((r) => result.updated.includes(r.slug))).trimEnd());
     return;
   }
