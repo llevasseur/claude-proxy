@@ -120,6 +120,11 @@ describe('listInstalledCommands', () => {
     expect(installed[0]!.commandHash).toMatch(/^[0-9a-f]{16}$/);
   });
 
+  it('keeps the file byte for byte, which is what the command page renders', async () => {
+    const installed = await listInstalledCommands(commandsDir);
+    expect(installed[0]!.content).toBe(COMMAND_FILE);
+  });
+
   it('treats a machine with no commands directory as empty, not broken', async () => {
     expect(await listInstalledCommands(path.join(commandsDir, 'nope'))).toEqual([]);
   });

@@ -117,6 +117,8 @@ export interface InstalledCommand {
   steps: CommandStep[];
   /** Content hash of the file as installed — the marker a `/sync` moves. */
   commandHash: string;
+  /** The file's markdown, byte for byte — what the command page renders. */
+  content: string;
 }
 
 /**
@@ -140,6 +142,7 @@ export async function listInstalledCommands(dir: string): Promise<InstalledComma
         command: name.replace(/\.md$/, '').toLowerCase(),
         steps: parseCommandSteps(content),
         commandHash: contentHash(content),
+        content,
       });
     } catch {
       // A file that vanished mid-scan simply isn't installed.
