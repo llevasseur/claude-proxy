@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildUsageLimits, fmtDuration, learnCeilings, usageUnits, windowOfHeader } from '../src/usage-limits.js';
+import { MODEL_PRICES } from '../src/pricing.js';
+import {
+  buildUsageLimits,
+  CACHE_READ_METERING_WEIGHT,
+  fmtDuration,
+  learnCeilings,
+  usageUnits,
+  windowOfHeader,
+} from '../src/usage-limits.js';
 
 const NOW = new Date('2026-07-30T18:00:00.000Z');
 
@@ -54,10 +62,132 @@ describe('windowOfHeader', () => {
   });
 });
 
+/** What a cache read bills at, from the price table rather than a constant restating it. */
+const CACHE_READ_COST_RATIO = MODEL_PRICES.opus!.cacheRead / MODEL_PRICES.opus!.input;
+
 describe('usageUnits', () => {
-  it('discounts cache reads tenfold and ignores realInput', () => {
+  it('meters cache reads at the metering weight, not the cost one, and ignores realInput', () => {
     // realInput double-counts input + cacheRead + cacheCreation, so it must not add.
-    expect(usageUnits({ input: 1000, output: 500, cacheRead: 10_000, cacheCreation: 0, realInput: 11_000 })).toBe(2500);
+    // 10k cache reads meter as 200 units, not the 1000 the cost ratio would give.
+    expect(usageUnits({ input: 1000, output: 500, cacheRead: 10_000, cacheCreation: 0, realInput: 11_000 })).toBe(1700);
+    expect(CACHE_READ_METERING_WEIGHT).toBeLessThan(CACHE_READ_COST_RATIO);
+  });
+});
+
+/**
+ * The four completed 5-hour windows whose sidecars carry an
+ * `anthropic-ratelimit-unified-5h-utilization` header — every one on record, from
+ * 2026-08-04 and 2026-08-05. `util` is Anthropic's own reading at the **last**
+ * reporting request of the window; the token counts are every captured request from
+ * the window's opening instant (reset − 5h) up to that reading, reporting or not.
+ *
+ * Regenerate with `node scripts/derive-metering-weight.mjs`, which implements that rule
+ * and prints this block from the retained sidecars.
+ *
+ * Anthropic never publishes the allowance, so these four are the only direct measurement
+ * of the metering unit there is — and, being few and near-collinear, they bound the
+ * weight loosely. The assertions below answer to the fixtures, not to the constant.
+ */
+const OBSERVED_5H_WINDOWS = [
+  {
+    opened: '2026-08-04T12:20:00Z',
+    util: 0.82,
+    input: 761_489,
+    output: 1_225_847,
+    cacheRead: 355_949_151,
+    cacheCreation: 7_275_285,
+  },
+  {
+    opened: '2026-08-04T17:20:00Z',
+    util: 0.43,
+    input: 506_094,
+    output: 672_266,
+    cacheRead: 158_147_724,
+    cacheCreation: 3_279_392,
+  },
+  {
+    opened: '2026-08-05T12:50:00Z',
+    util: 0.93,
+    input: 3_031_225,
+    output: 1_230_253,
+    cacheRead: 296_214_600,
+    cacheCreation: 7_219_019,
+  },
+  {
+    opened: '2026-08-05T17:50:00Z',
+    util: 0.47,
+    input: 445_237,
+    output: 701_720,
+    cacheRead: 185_903_957,
+    cacheCreation: 4_031_819,
+  },
+] as const;
+
+/** Widest departure from the mean, as a fraction of it. */
+function spread(values: readonly number[]): number {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return Math.max(...values.map((v) => Math.abs(v - mean) / mean));
+}
+
+/** The allowance each window implies, at a given cache-read weight. */
+const impliedCeilings = (weight: number): number[] =>
+  OBSERVED_5H_WINDOWS.map((w) => (w.input + w.output + w.cacheCreation + w.cacheRead * weight) / w.util);
+
+/** The weight these fixtures fit best, and how well — swept from the fixtures themselves. */
+const BEST_FIT = (() => {
+  let weight = 0.001;
+  let best = Number.POSITIVE_INFINITY;
+  for (let i = 1; i <= 200; i++) {
+    const candidate = i * 0.001;
+    const s = spread(impliedCeilings(candidate));
+    if (s < best) {
+      best = s;
+      weight = candidate;
+    }
+  }
+  return { weight, spread: best };
+})();
+
+describe('the cache-read metering weight, against observed windows', () => {
+  it('agrees about as well as these fixtures can be made to agree', () => {
+    // One allowance produced all four readings, so the implied ceilings should match.
+    // The bar is the fixtures' own best fit, not a literal that survives them changing.
+    expect(spread(impliedCeilings(CACHE_READ_METERING_WEIGHT))).toBeLessThanOrEqual(BEST_FIT.spread * 1.1);
+  });
+
+  it('does not agree at the cost ratio, which is the defect', () => {
+    // Metering at the billing ratio spreads the same four windows far wider.
+    expect(spread(impliedCeilings(CACHE_READ_COST_RATIO))).toBeGreaterThan(BEST_FIT.spread * 1.5);
+    expect(spread(impliedCeilings(CACHE_READ_COST_RATIO))).toBeGreaterThan(
+      spread(impliedCeilings(CACHE_READ_METERING_WEIGHT)),
+    );
+  });
+
+  it('is the parameter the disagreement is sensitive to, and is not merely round', () => {
+    // Weights an order of magnitude out either way fit worse, so the fixtures do
+    // constrain this term — loosely: the shipped value only has to sit near the best fit.
+    for (const worse of [0.001, 0.05, CACHE_READ_COST_RATIO]) {
+      expect(spread(impliedCeilings(worse))).toBeGreaterThan(spread(impliedCeilings(CACHE_READ_METERING_WEIGHT)));
+    }
+    expect(Math.abs(CACHE_READ_METERING_WEIGHT - BEST_FIT.weight)).toBeLessThan(0.01);
+  });
+
+  it('leaves a residual no weight explains, so it is a fit and not an identity', () => {
+    // Even at the optimum the four windows disagree by several percent — misspecification
+    // no weight absorbs. If this drops to ~0 the model improved and the docs should say so.
+    expect(BEST_FIT.spread).toBeGreaterThan(0.02);
+  });
+
+  it('counts a whole observed window the same way usageUnits does', () => {
+    const w = OBSERVED_5H_WINDOWS[0]!;
+    const counted = usageUnits({ ...w, realInput: w.input + w.cacheRead + w.cacheCreation });
+    expect(counted).toBeCloseTo(w.input + w.output + w.cacheCreation + w.cacheRead * CACHE_READ_METERING_WEIGHT, 6);
+    // Its implied ceiling agrees with the other three — the fit restated per window,
+    // rather than an absolute range written down by hand.
+    const ceilings = impliedCeilings(CACHE_READ_METERING_WEIGHT);
+    const mean = ceilings.reduce((a, b) => a + b, 0) / ceilings.length;
+    expect(counted / w.util).toBeCloseTo(ceilings[0]!, 6);
+    expect(Math.abs(counted / w.util - mean) / mean).toBeLessThanOrEqual(BEST_FIT.spread * 1.1);
   });
 });
 
@@ -237,7 +367,7 @@ describe('buildUsageLimits — from captured headers', () => {
 });
 
 describe('buildUsageLimits — estimated from logged tokens', () => {
-  const tokens = { input: 1000, output: 500, cacheRead: 10_000 }; // 2500 units each
+  const tokens = { input: 1000, output: 500, cacheRead: 50_000 }; // 2500 units each
 
   it('counts weighted units in the trailing window against the configured ceiling', () => {
     const snap = buildUsageLimits([sidecar({ at: agoMin(30), tokens }), sidecar({ at: agoMin(10), tokens })], {
