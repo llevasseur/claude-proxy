@@ -177,20 +177,16 @@ const TASK_RE = /^## Task:\s*(.*)$/;
 const DECIDED_RE = /^- decided:\s/;
 const ERROR_RE = /^- ✗\s(.*)$/;
 /**
- * The glyph that opens an assistant turn's calls. A `tool_use` block that is the *first*
- * of its assistant message is written `- ▸ Name(…)`; every call after it in that same
- * message stays unmarked, so a batch reads as one marked line and its unmarked run.
- *
- * `proxy/session.ts` writes it (it is zero-dependency and mirrors this grammar rather
- * than importing it; a cross-check test in `packages/core` pins the two together).
+ * Marks the *first* `tool_use` of an assistant message (`- ▸ Name(…)`); every call after
+ * it in that message stays unmarked. `proxy/session.ts` mirrors this constant rather than
+ * importing it — it is zero-dependency — and a cross-check test pins the two together.
  */
 export const TURN_MARKER = '▸';
 
 /**
  * A tool-call line: `- Name(` — distinct from `- decided:` / `- done:` prose. Group 1 is
- * {@link TURN_MARKER} when the call opened a turn, group 2 the call signature itself.
- * Transcripts written before the marker existed carry no group 1 at all, which is exactly
- * how {@link parseSessionNodes} knows their turn boundaries are unrecoverable.
+ * {@link TURN_MARKER} when the call opened a turn, group 2 the call signature. Transcripts
+ * written before the marker existed carry no group 1, so their turns are unrecoverable.
  */
 const TOOL_RE = /^- (?:(▸) )?([A-Za-z]\w*\(.*)$/;
 /** The dashboard's own cut, written as its own line (see {@link INTERRUPTION_LINE}). */
@@ -340,12 +336,11 @@ export interface SessionNode {
   message: number | null;
   /**
    * Which assistant turn emitted this call — 0-based, counting only turns that made calls.
-   * Every `tool_use` block of one assistant message shares a number, so calls that went out
-   * *together* are distinguishable from calls that each cost their own round-trip.
+   * Every `tool_use` block of one message shares a number, so calls that went out *together*
+   * stay distinguishable from calls that each cost their own round-trip.
    *
-   * Null on every non-`tool` node, and on a `tool` node whose turn is unknowable: transcripts
-   * written before {@link TURN_MARKER} existed record no boundary, so their calls read as
-   * "turn unknown" rather than as one turn each.
+   * Null on every non-`tool` node, and on a `tool` node whose turn is unknowable: a
+   * transcript written before {@link TURN_MARKER} existed records no boundary at all.
    */
   turn: number | null;
 }
@@ -364,9 +359,8 @@ const DONE_TEXT_RE = /^- done:\s*(.*)$/;
  * linkage is built from those positions).
  *
  * Turns are counted off {@link TURN_MARKER}: each marked call opens a turn and the unmarked
- * calls after it share it. Calls seen *before* the transcript's first marker predate the
- * marker's existence — a thread can straddle the change — so they keep `turn: null` rather
- * than being guessed at one turn each.
+ * calls after it share it. Calls seen *before* the transcript's first marker keep
+ * `turn: null` — a thread can straddle the change.
  */
 export function parseSessionNodes(content: string): SessionNode[] {
   const nodes: SessionNode[] = [];
@@ -861,7 +855,6 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
 
     if (calls.length > 0) {
       if (reasoning) push('decision', reasoning, null);
-      // Every call in this message shares one turn — that is the whole point of the field.
       for (const sig of calls) {
         lastTool = sig;
         push('tool', sig, sig);
@@ -944,8 +937,8 @@ export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNod
     if (cand && pairs(step, cand)) {
       // Text comes from the request; which steps exist — and where the run was cut —
       // stays the transcript's, since it alone carries the dashboard's own stops. `turn`
-      // goes with structure rather than text: the two streams number turns off different
-      // starting points, so taking one from each side would merge unrelated turns.
+      // goes with structure: the two streams number turns off different starting points,
+      // so taking one from each side would merge unrelated turns.
       merged.push({
         ...cand,
         index: step.index,

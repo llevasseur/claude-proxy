@@ -157,7 +157,7 @@ describe('suggestBucket', () => {
 
   it('breaks a run on a result the next turn had to wait for, but not on the turn’s own reasoning', () => {
     // A decision is what the assistant wrote *in* the turn it called from, so it separates
-    // nothing — otherwise the rule would only ever fire on turns that reasoned silently.
+    // nothing.
     const reasoned = session('c4', day(1), [
       '## Task: One',
       ...turn('Read(file_path=/a.ts)'),
@@ -183,8 +183,7 @@ describe('suggestBucket', () => {
   });
 
   it('says nothing about a transcript written before turn boundaries were recorded', () => {
-    // Unmarked calls carry no turn, and an unknown boundary is not evidence of a serial
-    // one — an old transcript degrades to not-flagged rather than flagging every call.
+    // Unmarked calls carry no turn, and an unknown boundary is not evidence of a serial one.
     const legacy = session('c6', day(1), [
       '## Task: One',
       '- Read(file_path=/a.ts)',

@@ -461,17 +461,13 @@ DELETE FROM ingest_watermark;
 `;
 
 /**
- * `session_node.turn` — which assistant turn emitted a call, so calls that went out
- * *together* stay distinguishable from calls that each cost a round-trip. See
- * `SessionNode.turn` and the `▸` marker `parseSessionNodes` counts turns off.
+ * `session_node.turn` — which assistant turn emitted a call. See `SessionNode.turn`.
  *
- * Nullable, and null is a real reading rather than a gap: a transcript written before
- * the marker existed records no boundary at all, and the `serial-discovery` rule must
- * treat that as "unknown" instead of inventing one turn per call.
+ * Nullable, and null is a real reading rather than a gap: a transcript written before the
+ * `▸` marker existed records no boundary, which `serial-discovery` reads as "unknown".
  *
- * Blanking `bytes` is what makes the column fill. A transcript is only re-parsed when
- * its `stat` differs from the row's, and migrating the schema does not touch the file,
- * so the row is forced to look stale instead.
+ * Blanking `bytes` is what makes the column fill — a transcript is re-parsed only when its
+ * `stat` differs from the row's, and migrating does not touch the file.
  */
 const SCHEMA_V11 = `
 ALTER TABLE session_node ADD COLUMN turn INTEGER;

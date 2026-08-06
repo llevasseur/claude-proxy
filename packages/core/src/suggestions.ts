@@ -388,9 +388,9 @@ const repeatedErrors: Rule = (sessions) => {
 };
 
 /**
- * One assistant turn's calls, in the order the turn issued them. `turn` is null for a
- * transcript written before the boundary was recorded (see `SessionNode.turn`), and such
- * a turn can never qualify — an unknown boundary is not evidence of a serial one.
+ * One assistant turn's calls, in the order it issued them. `turn` is null for a transcript
+ * written before the boundary was recorded (see `SessionNode.turn`), and such a turn never
+ * qualifies — an unknown boundary is not evidence of a serial one.
  */
 interface DiscoveryTurn {
   turn: number | null;
@@ -398,10 +398,9 @@ interface DiscoveryTurn {
 }
 
 /**
- * The bucket's steps split into turns, with everything that is *not* a tool call left in
- * as a break. A `task`, `done`, or errored result between two turns means the second was a
- * reaction to what came back, so it cannot be counted as an avoidable round-trip; a
- * `decision` is the turn's own reasoning and breaks nothing.
+ * The steps split into turns, with everything that is *not* a tool call left in as a break.
+ * A `task`, `done`, or errored result between two turns means the second reacted to what
+ * came back; a `decision` is the turn's own reasoning and breaks nothing.
  */
 function discoveryTurns(nodes: readonly SessionNode[]): (DiscoveryTurn | null)[] {
   const out: (DiscoveryTurn | null)[] = [];
@@ -429,12 +428,9 @@ const isSerialDiscoveryTurn = (turn: DiscoveryTurn | null): boolean =>
   turn !== null && turn.turn !== null && turn.tools.length === 1 && isDiscoveryCall(turn.tools[0]!.tool);
 
 /**
- * Read-only calls that each cost their own round-trip — the cheapest latency win.
- *
- * Counted in **turns**, not calls, which is the whole point: ten reads issued together are
- * one turn and never flagged, while ten turns of one read each are ten round-trips that
- * could have been one. A transcript that records no turn boundaries yields nothing here
- * rather than reading every call as its own turn.
+ * Read-only calls that each cost their own round-trip — the cheapest latency win. Counted
+ * in **turns**, not calls: a turn that issued its reads together is never flagged, however
+ * many. A transcript recording no turn boundaries yields nothing here.
  */
 const serialDiscovery: Rule = (sessions) => {
   const hits: { session: SuggestibleSession; node: SessionNode }[] = [];

@@ -71,10 +71,10 @@ interface ThreadEntry {
 export const sessionsDir = (logDir: string): string => path.join(logDir, 'sessions');
 
 /**
- * Marks the first `tool_use` of an assistant message, so a batch of calls issued in one
- * turn reads as one marked line plus the unmarked run under it. `packages/core` mirrors
- * this constant (`TURN_MARKER` in `sessions.ts`) rather than sharing it — this file has no
- * dependencies by design — and a cross-check test there pins the two grammars together.
+ * Marks the first `tool_use` of an assistant message, so a batch reads as one marked line
+ * plus the unmarked run under it. `packages/core` mirrors this constant (`TURN_MARKER` in
+ * `sessions.ts`) rather than sharing it — this file has no dependencies by design — and a
+ * cross-check test there pins the two grammars together.
  */
 const TURN_MARKER = '▸';
 
@@ -289,9 +289,8 @@ export function distillEntries(msg: WireMessage | undefined | null): TranscriptE
       else if (b?.type === 'tool_use') {
         const args = toolArgs(b.input);
         const name = b.name ?? 'tool';
-        // Only this message's *first* call is marked, so the reader can tell calls that went
-        // out together from calls that each cost a round-trip. `full` stays the bare
-        // signature: a tool node's text *is* its signature, the marker is line grammar.
+        // Only this message's *first* call is marked. `full` stays the bare signature: a
+        // tool node's text *is* its signature, and the marker is line grammar.
         tools.push({
           line: `- ${tools.length === 0 ? `${TURN_MARKER} ` : ''}${name}(${args.shown})`,
           full: args.shown === args.full ? null : `${name}(${args.full})`,

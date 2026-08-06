@@ -339,7 +339,6 @@ test('distillMessage: task / decided+tool / error / done mapping', () => {
       { type: 'tool_use', name: 'Edit', input: { file_path: '/a/b.ts', old_string: 'x', new_string: 'y' } },
     ],
   };
-  // The call opens an assistant turn, so it carries the turn marker.
   assert.deepEqual(distillMessage(assistantWithTool), [
     "- decided: I'll edit the file to fix it.",
     '- ▸ Edit(file_path=/a/b.ts)',
