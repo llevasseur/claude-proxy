@@ -6,12 +6,11 @@ import { type CliFunctionEntry, resolveCliCatalogue } from '@claude-proxy/core';
 /**
  * The installed Claude Code bundle, as read-only input.
  *
- * Nothing here writes: the versions directory belongs to the installer, and this
- * only ever opens files there for reading. The bundle is a single ~270 MB compiled
- * executable with a region of minified JS inside it, which shapes everything below —
- * it is read once per version, resolved in one pass, and then only the resolved
- * offsets are kept. A detail view re-reads its function by a ranged read at the
- * cached offset rather than holding the whole thing in memory.
+ * Nothing here writes — the versions directory belongs to the installer and is only
+ * ever opened for reading. The bundle is a single ~270 MB compiled executable with a
+ * region of minified JS inside it: it is read once per version, resolved in one pass,
+ * and only the resolved offsets are kept. A detail view re-reads its function by a
+ * ranged read at the cached offset.
  */
 
 /** Where the installer keeps versioned bundles. */
@@ -20,10 +19,9 @@ function versionsDir(env: NodeJS.ProcessEnv): string {
 }
 
 /**
- * The bundle this machine actually runs. `~/.local/bin/claude` is a symlink to the
- * active version, which is the honest answer; falling back to the highest-sorted
- * entry in the versions directory covers an install that has no launcher symlink.
- * `CLAUDE_CLI_BUNDLE` overrides both.
+ * The bundle this machine actually runs. `~/.local/bin/claude` symlinks the active
+ * version; the highest-sorted entry in the versions directory covers an install with
+ * no launcher symlink. `CLAUDE_CLI_BUNDLE` overrides both.
  */
 export async function resolveCliBundlePath(env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
   if (env.CLAUDE_CLI_BUNDLE) return path.resolve(env.CLAUDE_CLI_BUNDLE);
@@ -80,10 +78,7 @@ export interface CliBundleCatalogue {
   durationMs: number | null;
 }
 
-/**
- * Refuse a file too large to hold as a string. V8 caps a string well above this, but
- * a bundle this size is not one of ours to parse.
- */
+/** Refuse a file too large to hold as a string. */
 const MAX_BUNDLE_BYTES = 600 * 1024 * 1024;
 
 /** One resolved bundle, keyed by identity so a CLI upgrade invalidates it. */
@@ -92,9 +87,8 @@ let cached: { key: string; catalogue: CliBundleCatalogue } | null = null;
 /**
  * Resolve the catalogue against the installed bundle.
  *
- * Absent, unreadable and oversized bundles are all legitimate states that come back
- * as an empty catalogue with `bundle.error` set — a machine with no CLI installed
- * gets an empty page, not a 500.
+ * Absent, unreadable and oversized bundles all come back as an empty catalogue with
+ * `bundle.error` set rather than as a thrown request.
  */
 export async function readCliCatalogue(bundlePath?: string | null): Promise<CliBundleCatalogue> {
   const resolved = bundlePath === undefined ? await resolveCliBundlePath() : bundlePath;
@@ -141,8 +135,7 @@ export async function readCliCatalogue(bundlePath?: string | null): Promise<CliB
   const started = Date.now();
   try {
     // latin1 keeps one byte to one character, so the offsets below are byte offsets
-    // and the detail view can seek straight to them. The text is dropped once the
-    // pass returns; only the offsets are cached.
+    // and the detail view can seek straight to them.
     const text = (await readFile(resolved)).toString('latin1');
     functions = resolveCliCatalogue(text);
   } catch (err) {
@@ -161,8 +154,7 @@ export async function readCliCatalogue(bundlePath?: string | null): Promise<CliB
 /**
  * The source text of one resolved function, read back out of the bundle at its
  * cached offset. Returns null when the entry never resolved, or when the bundle
- * changed under us — a re-resolve on the next request is cheaper than serving text
- * from an offset that now means something else.
+ * changed under us and the offset no longer covers it.
  */
 export async function readCliFunctionSource(entry: CliFunctionEntry, bundlePath: string): Promise<string | null> {
   if (entry.offset === null || entry.length === null) return null;
@@ -178,7 +170,7 @@ export async function readCliFunctionSource(entry: CliFunctionEntry, bundlePath:
   }
 }
 
-/** Drop the cached resolution — for tests, which must not see another test's bundle. */
+/** Drop the cached resolution, so a test does not see another test's bundle. */
 export function resetCliCatalogueCache(): void {
   cached = null;
 }

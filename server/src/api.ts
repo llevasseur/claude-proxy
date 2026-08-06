@@ -2141,8 +2141,7 @@ export interface CliInternalsResponse {
  *
  * The identifiers are minified and change between releases, so a row's identity is
  * its signal, not its name — the name is an output of this call. A row whose signal
- * is gone comes back with `missing` set rather than with the previous version's
- * source, which is the whole point of resolving at read time.
+ * is gone comes back with `missing` set rather than with the previous version's source.
  */
 export async function buildCliInternals(bundlePath?: string | null): Promise<CliInternalsResponse> {
   const { bundle, functions, durationMs } = await readCliCatalogue(bundlePath);
@@ -2168,7 +2167,7 @@ export interface CliFunctionResponse {
  * One catalogued function, with its source read back out of the bundle at the offset
  * the index pass recorded. Throws a labelled error the server maps to 404 when the id
  * is not in the catalogue; a row that is catalogued but unresolved is a 200 with a
- * null source, since "this version does not have it" is an answer, not an error.
+ * null source.
  */
 export async function buildCliFunction(id: string, bundlePath?: string | null): Promise<CliFunctionResponse> {
   const { bundle, functions } = await readCliCatalogue(bundlePath);

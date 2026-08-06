@@ -14,13 +14,13 @@ import { fmtBundleSize, MISS_DETAIL, MISS_LABEL } from './cli-internals';
  * recorded — never reconstructed, never cached from an earlier version.
  *
  * The source is minified, so a single function is routinely several thousand
- * characters on one line. Wrapped is the default because it is the only view that
- * fits the column; Unwrapped keeps the original line structure and scrolls.
+ * characters on one line. Wrapped is the default; Unwrapped keeps the original line
+ * structure and scrolls.
  */
 
 type SourceView = 'wrapped' | 'unwrapped';
 
-/** Wrapping is what makes one very long line readable; unwrapped preserves it exactly. */
+/** Wrapped fits the column; unwrapped preserves the line exactly. */
 const SOURCE_VIEWS: readonly SegmentedOption<SourceView>[] = [
   { value: 'wrapped', label: 'Wrapped' },
   { value: 'unwrapped', label: 'Unwrapped' },

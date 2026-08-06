@@ -9,8 +9,7 @@ import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skel
  * "CLI internals" — functions inside the Claude Code bundle this machine has
  * installed, each one located in the bundle at read time.
  *
- * The bundle ships minified, so a name like `GEe` is a build artefact that will be
- * something else in the next release. No row is keyed to one. Each is keyed to a
+ * The bundle ships minified, so no row is keyed to an identifier. Each is keyed to a
  * **signal** that survives minification — a string literal the function contains, or
  * the source-spelled name a bundler export map binds it to — and the identifier in
  * the Function column is what this version resolved that signal to. When a signal
@@ -31,7 +30,7 @@ const MISS_DETAIL: Record<CliFunctionMiss, string> = {
   'no-enclosing-function': 'The signal is there, but nothing around it parses as a function.',
 };
 
-/** How a row was identified, shown so the resolution is auditable rather than magic. */
+/** How a row was identified. */
 function SignalCell({ entry }: { entry: CliFunctionEntry }) {
   if (entry.signal.kind === 'export') {
     return (
@@ -153,14 +152,10 @@ export function CliInternalsPage() {
   );
 }
 
-/** The long-form miss text, re-exported for the detail page rather than duplicated. */
+/** The miss text, re-exported for the detail page. */
 export { MISS_DETAIL, MISS_LABEL };
 
-/**
- * Bundle size at whichever scale reads as a number. The installed bundle is
- * hundreds of megabytes, but a bundle handed over by `CLAUDE_CLI_BUNDLE` can be
- * tiny, and rounding that to `0 MB` looks like a failure rather than a size.
- */
+/** Bundle size at whichever scale reads as a number, down to bytes. */
 export function fmtBundleSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;

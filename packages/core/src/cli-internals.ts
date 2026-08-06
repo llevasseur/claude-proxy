@@ -37,10 +37,8 @@ export type CliFunctionSignal =
       /** Text the bundle still contains verbatim. */
       literal: string;
       /**
-       * Source of a regular expression the literal's neighbourhood must match, for
-       * a literal several functions share. The match has to cover the occurrence
-       * itself, so a getter and its adjacent setter stay apart. Names no minified
-       * identifier — that is the thing that moves.
+       * Source of a regular expression the literal's neighbourhood must match, for a
+       * literal several functions share. The match has to cover the occurrence itself.
        */
       near?: string;
     }
@@ -60,11 +58,7 @@ export interface CliFunctionAnchor {
   description: string;
   /** How to find it in a bundle that has renamed it. */
   signal: CliFunctionSignal;
-  /**
-   * How many enclosing functions to step out past the innermost one. A literal
-   * inside a nested callback resolves to that callback at 0, to its host at 1.
-   * Literal signals only.
-   */
+  /** How many enclosing functions to step out past the innermost one. Literal signals only. */
   outward?: number;
 }
 
@@ -96,11 +90,7 @@ export interface ExtractedFunction {
   source: string;
 }
 
-/**
- * How far back from an anchor a function head may start. Bundled functions are far
- * smaller than this; the bound keeps a miss cheap rather than scanning the whole
- * bundle backwards.
- */
+/** How far back from an anchor a function head may start. */
 const HEAD_WINDOW = 500_000;
 
 /** How far a balanced scan may run before the input is treated as malformed. */
@@ -450,8 +440,7 @@ function nearCovers(text: string, at: number, near: RegExp): boolean {
  *
  * For a literal, every occurrence is tried rather than just the first: a compiled
  * bundle carries its string constants in a data section as well as in the code, so
- * the first hit is routinely one that no function encloses. The first occurrence
- * that parses wins.
+ * the first hit is routinely one that no function encloses.
  */
 export function resolveCliFunction(text: string, anchor: CliFunctionAnchor): CliFunctionEntry {
   const miss = (reason: CliFunctionMiss): CliFunctionEntry => ({
@@ -509,8 +498,7 @@ export function resolveCliCatalogue(
  *
  * One coherent story: how Claude Code decides whether to summarize an agent's
  * progress, plus the flag, fork-mode and environment plumbing that decision reads.
- * Every description is written from the body the resolver returns — a minified name
- * carries no information, so none of them is inferred from one.
+ * Every description is written from the body the resolver returns.
  */
 export const CLI_FUNCTION_CATALOGUE: readonly CliFunctionAnchor[] = [
   {
