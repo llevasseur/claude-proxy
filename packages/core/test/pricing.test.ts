@@ -8,24 +8,53 @@ describe('priceFor', () => {
     expect(priceFor('claude-haiku-4-5')).toBe(MODEL_PRICES.haiku);
   });
 
+  it('matches the model ids actually on the wire', () => {
+    expect(priceFor('claude-opus-5')).toBe(MODEL_PRICES.opus);
+    expect(priceFor('claude-sonnet-5')).toBe(MODEL_PRICES.sonnet);
+    expect(priceFor('claude-haiku-4-5-20251001')).toBe(MODEL_PRICES.haiku);
+  });
+
   it('falls back for unknown models', () => {
     expect(priceFor('gpt-5')).toBe(FALLBACK_PRICE);
     expect(priceFor('')).toBe(FALLBACK_PRICE);
   });
 });
 
+describe('MODEL_PRICES', () => {
+  // The one place the sheet's own values are pinned. Opus 5, Sonnet 5, Haiku 4.5
+  // list, $/MTok.
+  it('carries the current generation, not the one before it', () => {
+    expect(MODEL_PRICES.opus).toEqual({ input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 });
+    expect(MODEL_PRICES.sonnet).toEqual({ input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 });
+    expect(MODEL_PRICES.haiku).toEqual({ input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 });
+  });
+
+  it('keeps cache writes at 1.25x input and cache reads at 0.1x', () => {
+    for (const [family, p] of Object.entries(MODEL_PRICES)) {
+      expect(p.cacheWrite / p.input, `${family} cacheWrite`).toBeCloseTo(1.25, 10);
+      expect(p.cacheRead / p.input, `${family} cacheRead`).toBeCloseTo(0.1, 10);
+    }
+  });
+
+  it('leaves the fallback mirroring the sonnet row', () => {
+    expect(FALLBACK_PRICE).toEqual(MODEL_PRICES.sonnet);
+  });
+});
+
 describe('estimateCost', () => {
   it('prices each token bucket at its rate', () => {
-    // 1M of each bucket under opus → exactly the opus rates.
+    // 1M of each bucket → exactly the row's rates, read off MODEL_PRICES rather
+    // than retyped.
+    const opus = MODEL_PRICES.opus!;
     const cost = estimateCost(
       { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheCreation: 1_000_000, realInput: 3_000_000 },
-      'claude-opus-4-8',
+      'claude-opus-5',
     );
-    expect(cost.input).toBeCloseTo(15);
-    expect(cost.output).toBeCloseTo(75);
-    expect(cost.cacheRead).toBeCloseTo(1.5);
-    expect(cost.cacheWrite).toBeCloseTo(18.75);
-    expect(cost.total).toBeCloseTo(15 + 75 + 1.5 + 18.75);
+    expect(cost.input).toBeCloseTo(opus.input);
+    expect(cost.output).toBeCloseTo(opus.output);
+    expect(cost.cacheRead).toBeCloseTo(opus.cacheRead);
+    expect(cost.cacheWrite).toBeCloseTo(opus.cacheWrite);
+    expect(cost.total).toBeCloseTo(opus.input + opus.output + opus.cacheRead + opus.cacheWrite);
   });
 
   it('is zero for zero tokens', () => {
