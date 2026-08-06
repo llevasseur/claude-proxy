@@ -37,7 +37,7 @@ const WINDOW_LABELS: Record<UsageWindowKind, string> = {
 /**
  * What a cache read *meters* at against fresh input, for the rate-limit allowances.
  * This is **not** the cost ratio: Anthropic bills cache reads at about a tenth of
- * fresh input ($1.50/MTok against $15/MTok on Opus — see `MODEL_PRICES` in
+ * fresh input ($0.50/MTok against $5/MTok on Opus — see `MODEL_PRICES` in
  * `pricing.ts`, which is the only place money is computed), and metering at that
  * tenth reads every cache-heavy window several times too high.
  *

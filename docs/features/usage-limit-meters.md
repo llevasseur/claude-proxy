@@ -94,7 +94,7 @@ Both the estimate and its ceiling are in **weighted tokens**:
 input + cacheRead + cacheCreation and would double-count.
 
 **0.02 is a metering weight, not the cost ratio.** Cache reads *bill* at roughly a tenth of
-fresh input ($1.50/MTok against $15/MTok on Opus). That tenth is still the right number for
+fresh input ($0.50/MTok against $5/MTok on Opus). That tenth is still the right number for
 money, and it lives in exactly one place — the `cacheRead`/`input` rows of `MODEL_PRICES` in
 `pricing.ts`. Anthropic's rate-limit accounting discounts cache reads several times harder than
 its billing does, and the meters were using the billing ratio for both.
