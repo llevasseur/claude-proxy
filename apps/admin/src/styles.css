@@ -1920,6 +1920,9 @@ button.link {
   background: rgba(255, 107, 129, 0.1);
   overflow-wrap: anywhere;
 }
+.md-list .md-list {
+  margin: 3px 0 6px;
+}
 .md-quote {
   margin: 0 0 12px;
   padding: 2px 14px;
@@ -1949,6 +1952,14 @@ button.link {
   color: var(--signal);
   background: rgba(70, 224, 192, 0.08);
   border: 1px solid var(--signal-dim);
+}
+
+/* The command file on a command's page — a long document above the charts, so it
+   scrolls in place. */
+.cmdfile {
+  max-height: 560px;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 /* Sessions list — the Errors count links to the drill-down when non-zero. */

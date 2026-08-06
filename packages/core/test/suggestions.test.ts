@@ -116,27 +116,84 @@ describe('suggestBucket', () => {
     expect(repeated!.evidence).toContain('2 occurrences');
   });
 
-  it('flags an unbroken run of read-only calls but not one a decision interrupts', () => {
+  /** One assistant turn's calls: the first marked, the rest riding along in that same turn. */
+  const turn = (...calls: string[]) => calls.map((c, i) => (i === 0 ? `- ▸ ${c}` : `- ${c}`));
+
+  const serialDiscoveryIn = (s: SuggestibleSession) => suggestBucket([s]).find((r) => r.id === 'serial-discovery');
+
+  it('flags a run of turns that each spent their whole round-trip on one read', () => {
     const serial = session('c1', day(1), [
+      '## Task: One',
+      ...turn('Read(file_path=/a.ts)'),
+      ...turn('Read(file_path=/b.ts)'),
+      ...turn('Grep(pattern=foo)'),
+      ...turn('Read(file_path=/c.ts)'),
+      '- done: ok',
+    ]);
+    const flagged = serialDiscoveryIn(serial);
+    expect(flagged).toBeDefined();
+    expect(flagged!.evidence).toContain('4 single-call turns');
+  });
+
+  it('never flags reads that went out together, however many one turn issued', () => {
+    const batched = session('c2', day(1), [
+      '## Task: One',
+      ...turn(...Array.from({ length: 10 }, (_, i) => `Read(file_path=/f${i}.ts)`)),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(batched)).toBeUndefined();
+
+    // Nor does a string of batched turns add up to a run — each one is still one round-trip.
+    const batches = session('c3', day(1), [
+      '## Task: One',
+      ...turn('Read(file_path=/a.ts)', 'Read(file_path=/b.ts)'),
+      ...turn('Read(file_path=/c.ts)', 'Read(file_path=/d.ts)'),
+      ...turn('Read(file_path=/e.ts)', 'Read(file_path=/f.ts)'),
+      ...turn('Read(file_path=/g.ts)', 'Read(file_path=/h.ts)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(batches)).toBeUndefined();
+  });
+
+  it('breaks a run on a result the next turn had to wait for, but not on the turn’s own reasoning', () => {
+    // A decision is what the assistant wrote *in* the turn it called from, so it separates
+    // nothing.
+    const reasoned = session('c4', day(1), [
+      '## Task: One',
+      ...turn('Read(file_path=/a.ts)'),
+      '- decided: Now I know where to look.',
+      ...turn('Read(file_path=/b.ts)'),
+      ...turn('Read(file_path=/c.ts)'),
+      ...turn('Read(file_path=/d.ts)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(reasoned)).toBeDefined();
+
+    // An errored result did come back in between, so the next read reacted to it.
+    const reacted = session('c5', day(1), [
+      '## Task: One',
+      ...turn('Read(file_path=/a.ts)'),
+      ...turn('Read(file_path=/b.ts)'),
+      '- ✗ ENOENT: no such file /b.ts',
+      ...turn('Read(file_path=/c.ts)'),
+      ...turn('Read(file_path=/d.ts)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(reacted)).toBeUndefined();
+  });
+
+  it('says nothing about a transcript written before turn boundaries were recorded', () => {
+    // Unmarked calls carry no turn, and an unknown boundary is not evidence of a serial one.
+    const legacy = session('c6', day(1), [
       '## Task: One',
       '- Read(file_path=/a.ts)',
       '- Read(file_path=/b.ts)',
       '- Grep(pattern=foo)',
       '- Read(file_path=/c.ts)',
-      '- done: ok',
-    ]);
-    expect(suggestBucket([serial]).find((s) => s.id === 'serial-discovery')).toBeDefined();
-
-    const interrupted = session('c2', day(1), [
-      '## Task: One',
-      '- Read(file_path=/a.ts)',
-      '- Read(file_path=/b.ts)',
-      '- decided: Now I know where to look.',
-      '- Read(file_path=/c.ts)',
       '- Read(file_path=/d.ts)',
       '- done: ok',
     ]);
-    expect(suggestBucket([interrupted]).find((s) => s.id === 'serial-discovery')).toBeUndefined();
+    expect(serialDiscoveryIn(legacy)).toBeUndefined();
   });
 
   it('flags a file read three times in one session', () => {

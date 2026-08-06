@@ -31,7 +31,7 @@ import type { SessionNode } from '../src/sessions.js';
 
 /** A transcript node, with the fields these rules read. */
 function node(index: number, type: SessionNode['type'], text: string, tool: string | null = null): SessionNode {
-  return { index, type, text, tool, task: null, interruption: null, interrupted: false, message: null };
+  return { index, type, text, tool, task: null, interruption: null, interrupted: false, message: null, turn: null };
 }
 
 const decision = (i: number, text: string) => node(i, 'decision', text);

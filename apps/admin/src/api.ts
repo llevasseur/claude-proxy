@@ -432,6 +432,8 @@ export interface CommandResponse {
   installed: boolean;
   steps: CommandStep[];
   commandHash: string | null;
+  /** The installed command file's markdown, exactly as on disk — null once it is gone. */
+  source: string | null;
   flags: string[];
   appliedFlags: string[];
   runs: CommandRunListItem[];
