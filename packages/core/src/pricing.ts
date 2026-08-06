@@ -10,14 +10,24 @@ export interface ModelPrice {
 
 /**
  * Editable price map keyed by model *family* keyword. Matched by substring
- * against the model name (so `claude-opus-4-8`, `claude-3-opus`, etc. all map
- * to the opus row). Numbers are list prices in $/MTok and are approximate —
- * adjust as pricing changes.
+ * against the model name (so `claude-opus-5`, `claude-opus-4-8`, `claude-3-opus`
+ * all map to the opus row). Numbers are list prices in $/MTok.
+ *
+ * A row prices **one generation**, and every model matching its keyword bills at
+ * it — so a new generation at new prices silently mis-prices the old ones and
+ * vice versa. These are the current flagships: Opus 5, Sonnet 5, Haiku 4.5. Name
+ * the generation when changing a row; the rows sat at Opus 4/4.1 prices while the
+ * traffic was Opus 5, and nothing in the type said which was which.
+ *
+ * Within a row, `cacheWrite` is 1.25x `input` (5-minute TTL) and `cacheRead` is
+ * 0.1x. Keep that shape — a row that breaks it is a transcription error.
  */
 export const MODEL_PRICES: Record<string, ModelPrice> = {
-  opus: { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 },
+  opus: { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  // Sonnet 5 introductory pricing runs to 2026-08-31 at $2/$10; list is carried
+  // here deliberately, so the figures do not go stale the day it lapses.
   sonnet: { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
-  haiku: { input: 0.8, output: 4, cacheWrite: 1.0, cacheRead: 0.08 },
+  haiku: { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
 };
 
 /** Used when a model name matches no known family (mirrors the sonnet row). */

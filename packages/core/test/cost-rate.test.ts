@@ -61,10 +61,10 @@ describe('costPerMTok', () => {
   });
 
   it('falls when the same volume is served from cache — the point of the metric', () => {
-    // Both days move 10.2M tokens. On opus list prices a cache read is $1.50/MTok
-    // against $15 for fresh input, so only the token *mix* separates them.
-    const cached = digest('2026-08-01', { cacheRead: 10_000_000, output: 200_000, cost: 10 * 1.5 + 0.2 * 75 });
-    const fresh = digest('2026-08-02', { input: 10_000_000, output: 200_000, cost: 10 * 15 + 0.2 * 75 });
+    // Both days move 10.2M tokens. On opus list prices a cache read is $0.50/MTok
+    // against $5 for fresh input, so only the token *mix* separates them.
+    const cached = digest('2026-08-01', { cacheRead: 10_000_000, output: 200_000, cost: 10 * 0.5 + 0.2 * 25 });
+    const fresh = digest('2026-08-02', { input: 10_000_000, output: 200_000, cost: 10 * 5 + 0.2 * 25 });
 
     expect(rateTokens(cached)).toBe(rateTokens(fresh));
     expect(costPerMTok(cached)).toBeLessThan(costPerMTok(fresh));
