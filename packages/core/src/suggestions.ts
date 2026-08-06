@@ -69,7 +69,11 @@ export const SUGGESTION_THRESHOLDS = {
   minBlockedErrors: 2,
   /** Times one normalized error text must recur before it counts as repeated. */
   minRepeatedError: 2,
-  /** Consecutive independent read-only calls that could have gone out together. */
+  /**
+   * Consecutive assistant turns that each spent their whole turn on one read-only call.
+   * The unit is turns, not calls: a turn that issued four reads at once cost one
+   * round-trip and is not a run at all.
+   */
   serialRunLength: 4,
   /** Times one session re-reads the same target before it counts as redundant. */
   minRepeatReads: 2,
@@ -383,24 +387,70 @@ const repeatedErrors: Rule = (sessions) => {
   };
 };
 
-/** Independent read-only calls issued one at a time — the cheapest latency win. */
+/**
+ * One assistant turn's calls, in the order the turn issued them. `turn` is null for a
+ * transcript written before the boundary was recorded (see `SessionNode.turn`), and such
+ * a turn can never qualify — an unknown boundary is not evidence of a serial one.
+ */
+interface DiscoveryTurn {
+  turn: number | null;
+  tools: SessionNode[];
+}
+
+/**
+ * The bucket's steps split into turns, with everything that is *not* a tool call left in
+ * as a break. A `task`, `done`, or errored result between two turns means the second was a
+ * reaction to what came back, so it cannot be counted as an avoidable round-trip; a
+ * `decision` is the turn's own reasoning and breaks nothing.
+ */
+function discoveryTurns(nodes: readonly SessionNode[]): (DiscoveryTurn | null)[] {
+  const out: (DiscoveryTurn | null)[] = [];
+  let open: DiscoveryTurn | null = null;
+
+  for (const node of nodes) {
+    if (node.type === 'tool') {
+      // Calls sharing a turn number went out together — one round-trip, however many.
+      if (open && open.turn !== null && open.turn === node.turn) open.tools.push(node);
+      else {
+        open = { turn: node.turn, tools: [node] };
+        out.push(open);
+      }
+      continue;
+    }
+    if (node.type === 'decision') continue;
+    open = null;
+    out.push(null); // a break in the chain
+  }
+  return out;
+}
+
+/** A turn that spent its whole round-trip on a single read — the shape worth batching. */
+const isSerialDiscoveryTurn = (turn: DiscoveryTurn | null): boolean =>
+  turn !== null && turn.turn !== null && turn.tools.length === 1 && isDiscoveryCall(turn.tools[0]!.tool);
+
+/**
+ * Read-only calls that each cost their own round-trip — the cheapest latency win.
+ *
+ * Counted in **turns**, not calls, which is the whole point: ten reads issued together are
+ * one turn and never flagged, while ten turns of one read each are ten round-trips that
+ * could have been one. A transcript that records no turn boundaries yields nothing here
+ * rather than reading every call as its own turn.
+ */
 const serialDiscovery: Rule = (sessions) => {
   const hits: { session: SuggestibleSession; node: SessionNode }[] = [];
   let runs = 0;
 
   for (const session of sessions) {
-    let run: SessionNode[] = [];
+    let run: DiscoveryTurn[] = [];
     const flush = () => {
       if (run.length >= SUGGESTION_THRESHOLDS.serialRunLength) {
         runs += 1;
-        for (const node of run) hits.push({ session, node });
+        for (const turn of run) hits.push({ session, node: turn.tools[0]! });
       }
       run = [];
     };
-    for (const node of session.nodes) {
-      // Only an unbroken chain counts: a decision or an error between two calls
-      // means the second depended on the first's answer.
-      if (node.type === 'tool' && isDiscoveryCall(node.tool)) run.push(node);
+    for (const turn of discoveryTurns(session.nodes)) {
+      if (isSerialDiscoveryTurn(turn)) run.push(turn!);
       else flush();
     }
     flush();
@@ -412,8 +462,8 @@ const serialDiscovery: Rule = (sessions) => {
     id: 'serial-discovery',
     severity: 'warn',
     title: 'Read-only calls went out one at a time',
-    detail: `Runs of ${SUGGESTION_THRESHOLDS.serialRunLength}+ consecutive reads/greps with no decision between them are independent by construction — batching them into a single turn collapses that many round-trips into one, for the same steps and the same context.`,
-    evidence: `${runs} serial run${runs === 1 ? '' : 's'} covering ${hits.length} calls across ${sources.length} session${sources.length === 1 ? '' : 's'}`,
+    detail: `${SUGGESTION_THRESHOLDS.serialRunLength}+ turns in a row each spent their whole round-trip on a single read/grep, with nothing coming back in between that the next one needed — so they were independent by construction. Issuing them as parallel calls in one turn collapses that many round-trips into one, for the same steps and the same context.`,
+    evidence: `${runs} serial run${runs === 1 ? '' : 's'} covering ${hits.length} single-call turns across ${sources.length} session${sources.length === 1 ? '' : 's'}`,
     sources,
   };
 };
