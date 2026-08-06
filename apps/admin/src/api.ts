@@ -5,6 +5,7 @@ import type {
   AuditSidecar,
   BucketBreakdownSummary,
   BucketJudgementState,
+  CliFunctionEntry,
   CommandPatternId,
   CommandRun,
   CommandRunOutcome,
@@ -240,6 +241,28 @@ export interface HooksPluginsResponse {
   loadExpectations: AliasLoadExpectation[];
   launchRcPath: string;
   launchRcReadable: boolean;
+}
+/** The installed CLI bundle a catalogue was resolved against. */
+export interface CliBundleInfo {
+  path: string | null;
+  /** The installed version, which is what the whole catalogue is keyed to. */
+  version: string | null;
+  exists: boolean;
+  bytes: number;
+  modified: string | null;
+  /** Set when there is no readable bundle — the page's empty state. */
+  error: string | null;
+}
+export interface CliInternalsResponse {
+  bundle: CliBundleInfo;
+  functions: CliFunctionEntry[];
+  meta: { resolved: number; missing: number; durationMs: number | null };
+}
+export interface CliFunctionResponse {
+  bundle: CliBundleInfo;
+  function: CliFunctionEntry;
+  /** Minified source, verbatim — null when the row did not resolve in this version. */
+  source: string | null;
 }
 /** `~/.claude/CLAUDE.md` — the instructions every session on this device loads. */
 export interface SystemPromptResponse {
@@ -726,6 +749,11 @@ export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
 export const getHooksPlugins = () => get<HooksPluginsResponse>('/api/hooks-plugins');
+/** The catalogued CLI internals, resolved against the bundle installed right now. */
+export const getCliInternals = () => get<CliInternalsResponse>('/api/cli-internals');
+/** One catalogued function, with its source read straight out of that bundle. */
+export const getCliFunction = (id: string) =>
+  get<CliFunctionResponse>(`/api/cli-internals/function?id=${encodeURIComponent(id)}`);
 /** Everything `/teach` has saved, newest first. */
 export const getConcepts = () => get<ConceptsResponse>('/api/concepts');
 /** One saved concept, by the line it sits on in the store. */

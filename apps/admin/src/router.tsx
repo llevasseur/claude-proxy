@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter, Link, Outlet, useRouterState } from '@tanstack/react-router';
 import {
+  Binary,
   BookOpen,
   EyeOff,
   FolderGit2,
@@ -22,6 +23,8 @@ import {
 import { useEffect } from 'react';
 import { HealthBadge } from './components/HealthBadge';
 import { AdvicePage } from './routes/advice';
+import { CliFunctionPage } from './routes/cli-function';
+import { CliInternalsPage } from './routes/cli-internals';
 import { CommandDetailPage } from './routes/command-detail';
 import { CommandRunPage } from './routes/command-run';
 import { CommandsPage } from './routes/commands';
@@ -72,6 +75,7 @@ const STATIONS = [
   { to: '/hooks-plugins', label: 'Hooks & Plugins', hint: 'config', exact: false, icon: Puzzle },
   { to: '/system-prompt', label: 'System prompt', hint: 'device', exact: false, icon: ScrollText },
   { to: '/commands', label: 'Commands', hint: 'per step', exact: false, icon: TerminalSquare },
+  { to: '/cli-internals', label: 'CLI internals', hint: 'bundle', exact: false, icon: Binary },
   { to: '/concepts', label: 'Concepts', hint: '/teach', exact: false, icon: BookOpen },
   { to: '/advice', label: 'Advice', hint: 'coaching', exact: false, icon: Lightbulb },
 ] as const;
@@ -327,6 +331,19 @@ const systemPromptRoute = createRoute({
   component: SystemPromptPage,
   staticData: { title: 'System prompt' },
 });
+const cliInternalsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/cli-internals',
+  component: CliInternalsPage,
+  staticData: { title: 'CLI internals' },
+});
+const cliFunctionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // `$id` is the catalogue's own key, which is stable where the minified name is not.
+  path: '/cli-internals/$id',
+  component: CliFunctionPage,
+  staticData: { title: 'CLI function' },
+});
 const conceptsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/concepts',
@@ -398,6 +415,8 @@ const routeTree = rootRoute.addChildren([
   filtersRoute,
   hooksPluginsRoute,
   systemPromptRoute,
+  cliInternalsRoute,
+  cliFunctionRoute,
   conceptsRoute,
   conceptDetailRoute,
   adviceRoute,
