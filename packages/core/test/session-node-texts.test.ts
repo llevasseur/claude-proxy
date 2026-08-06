@@ -67,6 +67,14 @@ describe('node accounting agrees with the proxy', () => {
     expect(nodes.map((n) => n.type)).toEqual(['task', 'decision', 'tool', 'tool', 'error', 'done']);
   });
 
+  it("reads the proxy's turn marker back as one turn shared by both calls", () => {
+    const nodes = parseSessionNodes(transcript);
+    // The two `tool_use` blocks are one assistant message, so they cost one round-trip.
+    expect(nodes.filter((n) => n.type === 'tool').map((n) => n.turn)).toEqual([0, 0]);
+    // Turn is a property of a call; nothing else carries one.
+    expect(nodes.filter((n) => n.type !== 'tool').every((n) => n.turn === null)).toBe(true);
+  });
+
   it("counts the transcript's nodes the way the parser does", () => {
     expect(countNodeLines(transcript)).toBe(parseSessionNodes(transcript).length);
   });

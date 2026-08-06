@@ -14,14 +14,25 @@ import {
   ZAxis,
 } from 'recharts';
 import { type CommandResponse, type CommandRunListItem, getCommand } from '../api';
+import { Frontmatter, splitFrontmatter } from '../components/Frontmatter';
 import { HeaderHint } from '../components/HeaderHint';
 import { LiveIndicator } from '../components/LiveIndicator';
+import { Markdown } from '../components/Markdown';
 import { QueryState } from '../components/QueryState';
+import { PRETTY_RAW, type PrettyRawView, Segmented } from '../components/Segmented';
 import { type Series, SeriesLineChart } from '../components/SeriesLineChart';
-import { SkeletonChartCard, type SkeletonColumn, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
+import {
+  Skeleton,
+  SkeletonChartCard,
+  type SkeletonColumn,
+  SkeletonStats,
+  SkeletonTableCard,
+  SkeletonText,
+} from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtCompact, fmtDuration, fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
 import { useLiveQuery } from '../useLiveQuery';
+import { useTransitionState } from '../useTransitionState';
 
 /** One colour per outcome, shared by the scatter, its legend and the run list. */
 const OUTCOME_COLOR: Record<CommandRunOutcome, string> = {
@@ -81,11 +92,14 @@ export function CommandDetailPage() {
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<CommandDetailSkeleton />}>
         {!data ? null : data.meta.totalRuns === 0 ? (
-          <div className='card empty'>
-            No runs of <span className='rule-name'>/{command}</span> captured yet. It has{' '}
-            {data.steps.length === 0 ? 'no declared steps' : `${data.steps.length} declared steps`}; numbers appear the
-            next time it actually runs through the proxy.
-          </div>
+          <>
+            <div className='card empty'>
+              No runs of <span className='rule-name'>/{command}</span> captured yet. It has{' '}
+              {data.steps.length === 0 ? 'no declared steps' : `${data.steps.length} declared steps`}; numbers appear
+              the next time it actually runs through the proxy.
+            </div>
+            <CommandFile source={data.source} command={command} />
+          </>
         ) : (
           <CommandBody data={data} command={command} flags={flags} onToggleFlag={toggleFlag} />
         )}
@@ -127,6 +141,13 @@ function CommandDetailSkeleton() {
   return (
     <>
       <SkeletonStats count={4} />
+      <div className='card'>
+        <div className='card-head'>
+          <Skeleton w='22%' h='0.95em' />
+          <Skeleton w='7rem' />
+        </div>
+        <SkeletonText lines={9} />
+      </div>
       <SkeletonChartCard title='Runs over time' height={SCATTER_HEIGHT} bars={18} />
       <SkeletonChartCard title='Steps per run' height={TREND_HEIGHT} bars={18} legend={WORK_SERIES.length} />
       <SkeletonChartCard title='Time per run' height={TREND_HEIGHT} bars={18} legend={TIME_SERIES.length} />
@@ -206,12 +227,51 @@ function CommandBody({
         </div>
       )}
 
+      <CommandFile source={data.source} command={command} />
       <RunScatter data={data} command={command} />
       <ShapeTrends data={data} />
       <StepBar steps={data.steps} reach={data.stepReach} run={hoverRun} totalRuns={data.meta.filteredRuns} />
       <PatternTable data={data} />
       <RunList runs={runs} command={command} onHover={setHoverRun} />
     </>
+  );
+}
+
+/**
+ * The command file itself: Pretty renders the markdown as installed, Raw is the file byte
+ * for byte. Nothing here is reconstructed from the parsed step catalogue.
+ */
+function CommandFile({ source, command }: { source: string | null; command: string }) {
+  const [view, setView, isSwitching] = useTransitionState<PrettyRawView>('pretty');
+
+  if (source === null) {
+    return (
+      <div className='card empty'>
+        <span className='rule-name'>/{command}</span> is no longer installed, so there is no file left to show — the
+        runs below are all that remains of it.
+      </div>
+    );
+  }
+
+  const { frontmatter, body } = splitFrontmatter(source);
+
+  return (
+    <div className='card'>
+      <div className='card-head'>
+        <h2>Command file</h2>
+        <Segmented options={PRETTY_RAW} value={view} onSelect={setView} label='Command file view' busy={isSwitching} />
+      </div>
+      <div className={isSwitching ? 'is-stale' : undefined}>
+        {view === 'pretty' ? (
+          <div className='file-pretty cmdfile'>
+            {frontmatter && <Frontmatter fm={frontmatter} />}
+            <Markdown source={body} />
+          </div>
+        ) : (
+          <pre className='rawjson wrap'>{source}</pre>
+        )}
+      </div>
+    </div>
   );
 }
 

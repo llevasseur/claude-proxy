@@ -2204,6 +2204,8 @@ export interface CommandResponse {
   /** The catalogue as installed now — the spine the funnel and the stacked bar use. */
   steps: CommandStep[];
   commandHash: string | null;
+  /** The installed file's markdown, byte for byte — null once the command is gone. */
+  source: string | null;
   /** Every flag any run used, for the facet control. Unfiltered by the current facet. */
   flags: string[];
   /** The facet actually applied. */
@@ -2268,6 +2270,7 @@ export async function buildCommand(
     installed: !!spec,
     steps,
     commandHash: spec?.commandHash ?? null,
+    source: spec?.content ?? null,
     flags: [...new Set(own.flatMap((r) => r.flags ?? []))].sort(),
     appliedFlags: [...flags],
     runs: filtered.map(toListItem).reverse(), // newest first for the list; the scatter re-sorts

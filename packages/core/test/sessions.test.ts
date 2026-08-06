@@ -25,11 +25,15 @@ import {
 
 /** A node fixture, with the interruption fields these cases don't exercise defaulted off. */
 const node = (
-  n: Omit<SessionNode, 'interruption' | 'interrupted' | 'message'> & { message?: number | null },
+  n: Omit<SessionNode, 'interruption' | 'interrupted' | 'message' | 'turn'> & {
+    message?: number | null;
+    turn?: number | null;
+  },
 ): SessionNode => ({
   interruption: null,
   interrupted: false,
   message: null,
+  turn: null,
   ...n,
 });
 

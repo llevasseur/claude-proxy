@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -460,6 +460,21 @@ ALTER TABLE request ADD COLUMN cache_breakpoint_declined_by TEXT;
 DELETE FROM ingest_watermark;
 `;
 
+/**
+ * `session_node.turn` — which assistant turn emitted a call. See `SessionNode.turn`.
+ *
+ * Nullable, and null is a real reading rather than a gap: a transcript written before the
+ * `▸` marker existed records no boundary, which `serial-discovery` reads as "unknown".
+ *
+ * Blanking `bytes` is what makes the column fill — a transcript is re-parsed only when its
+ * `stat` differs from the row's, and migrating does not touch the file.
+ */
+const SCHEMA_V11 = `
+ALTER TABLE session_node ADD COLUMN turn INTEGER;
+
+UPDATE session SET bytes = -1;
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -576,6 +591,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 8) db.exec(SCHEMA_V8);
   if (from < 9) db.exec(SCHEMA_V9);
   if (from < 10) db.exec(SCHEMA_V10);
+  if (from < 11) db.exec(SCHEMA_V11);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

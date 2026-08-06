@@ -70,6 +70,14 @@ interface ThreadEntry {
 
 export const sessionsDir = (logDir: string): string => path.join(logDir, 'sessions');
 
+/**
+ * Marks the first `tool_use` of an assistant message, so a batch reads as one marked line
+ * plus the unmarked run under it. `packages/core` mirrors this constant (`TURN_MARKER` in
+ * `sessions.ts`) rather than sharing it — this file has no dependencies by design — and a
+ * cross-check test there pins the two grammars together.
+ */
+const TURN_MARKER = '▸';
+
 /** Collapse to one line and cap length. */
 const gist = (s: unknown, max = 160): string => {
   const one = String(s ?? '')
@@ -281,9 +289,10 @@ export function distillEntries(msg: WireMessage | undefined | null): TranscriptE
       else if (b?.type === 'tool_use') {
         const args = toolArgs(b.input);
         const name = b.name ?? 'tool';
-        // A tool node's text *is* its signature, so the full form is the signature rebuilt.
+        // Only this message's *first* call is marked. `full` stays the bare signature: a
+        // tool node's text *is* its signature, and the marker is line grammar.
         tools.push({
-          line: `- ${name}(${args.shown})`,
+          line: `- ${tools.length === 0 ? `${TURN_MARKER} ` : ''}${name}(${args.shown})`,
           full: args.shown === args.full ? null : `${name}(${args.full})`,
         });
       }
@@ -393,7 +402,7 @@ const nodeTextsPath = (dir: string, threadId: string): string => path.join(dir, 
  * sidecar's indices match the dashboard's. A cross-check test in `packages/core`
  * pins the two grammars together.
  */
-const NODE_LINE_RE = /^(?:## Task:|- decided:|- done:|- ✗\s|- [A-Za-z]\w*\()/;
+const NODE_LINE_RE = /^(?:## Task:|- decided:|- done:|- ✗\s|- (?:▸ )?[A-Za-z]\w*\()/;
 
 /** How many nodes a transcript's text holds. */
 export function countNodeLines(content: unknown): number {
