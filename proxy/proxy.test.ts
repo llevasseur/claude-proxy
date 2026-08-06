@@ -339,9 +339,25 @@ test('distillMessage: task / decided+tool / error / done mapping', () => {
       { type: 'tool_use', name: 'Edit', input: { file_path: '/a/b.ts', old_string: 'x', new_string: 'y' } },
     ],
   };
+  // The call opens an assistant turn, so it carries the turn marker.
   assert.deepEqual(distillMessage(assistantWithTool), [
     "- decided: I'll edit the file to fix it.",
-    '- Edit(file_path=/a/b.ts)',
+    '- ▸ Edit(file_path=/a/b.ts)',
+  ]);
+
+  // Only the first call of a message is marked — the rest went out with it, in one turn.
+  const batched = {
+    role: 'assistant',
+    content: [
+      { type: 'tool_use', name: 'Read', input: { file_path: '/a.ts' } },
+      { type: 'tool_use', name: 'Read', input: { file_path: '/b.ts' } },
+      { type: 'tool_use', name: 'Grep', input: { pattern: 'foo' } },
+    ],
+  };
+  assert.deepEqual(distillMessage(batched), [
+    '- ▸ Read(file_path=/a.ts)',
+    '- Read(file_path=/b.ts)',
+    '- Grep(pattern=foo)',
   ]);
 
   const errored = { role: 'user', content: [{ type: 'tool_result', is_error: true, content: 'ENOENT: no such file' }] };
@@ -355,7 +371,7 @@ test('distillMessage: task / decided+tool / error / done mapping', () => {
     role: 'assistant',
     content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls -la', timeout: 5000 } }],
   };
-  assert.deepEqual(distillMessage(bash), ['- Bash(command=ls -la)']);
+  assert.deepEqual(distillMessage(bash), ['- ▸ Bash(command=ls -la)']);
 
   // thinking blocks are dropped.
   assert.deepEqual(distillMessages([{ role: 'assistant', content: [{ type: 'thinking', thinking: 'hmm' }] }]), []);
@@ -410,7 +426,7 @@ test('appendSession: one-shot helper calls never get a file; real threads grow a
   assert.match(out, /# Session/);
   assert.match(out, /## Task: Build the parser/);
   assert.match(out, /- decided: Reading the grammar first\./);
-  assert.match(out, /- Read\(file_path=\/g\.ebnf\)/);
+  assert.match(out, /- ▸ Read\(file_path=\/g\.ebnf\)/);
   assert.match(out, /- ✗ parse error at line 3/);
 
   // A state sidecar records progress for restart recovery.

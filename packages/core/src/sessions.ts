@@ -176,8 +176,23 @@ export function sessionDisplayName(meta: SessionMeta): string {
 const TASK_RE = /^## Task:\s*(.*)$/;
 const DECIDED_RE = /^- decided:\s/;
 const ERROR_RE = /^- ✗\s(.*)$/;
-/** A tool-call line: `- Name(` — distinct from `- decided:` / `- done:` prose. */
-const TOOL_RE = /^- ([A-Za-z]\w*\(.*)$/;
+/**
+ * The glyph that opens an assistant turn's calls. A `tool_use` block that is the *first*
+ * of its assistant message is written `- ▸ Name(…)`; every call after it in that same
+ * message stays unmarked, so a batch reads as one marked line and its unmarked run.
+ *
+ * `proxy/session.ts` writes it (it is zero-dependency and mirrors this grammar rather
+ * than importing it; a cross-check test in `packages/core` pins the two together).
+ */
+export const TURN_MARKER = '▸';
+
+/**
+ * A tool-call line: `- Name(` — distinct from `- decided:` / `- done:` prose. Group 1 is
+ * {@link TURN_MARKER} when the call opened a turn, group 2 the call signature itself.
+ * Transcripts written before the marker existed carry no group 1 at all, which is exactly
+ * how {@link parseSessionNodes} knows their turn boundaries are unrecoverable.
+ */
+const TOOL_RE = /^- (?:(▸) )?([A-Za-z]\w*\(.*)$/;
 /** The dashboard's own cut, written as its own line (see {@link INTERRUPTION_LINE}). */
 const INTERRUPTED_RE = /^- interrupted:\s*(.*)$/;
 
@@ -323,6 +338,16 @@ export interface SessionNode {
    * read back off a transcript, which records no such position.
    */
   message: number | null;
+  /**
+   * Which assistant turn emitted this call — 0-based, counting only turns that made calls.
+   * Every `tool_use` block of one assistant message shares a number, so calls that went out
+   * *together* are distinguishable from calls that each cost their own round-trip.
+   *
+   * Null on every non-`tool` node, and on a `tool` node whose turn is unknowable: transcripts
+   * written before {@link TURN_MARKER} existed record no boundary, so their calls read as
+   * "turn unknown" rather than as one turn each.
+   */
+  turn: number | null;
 }
 
 const DECIDED_TEXT_RE = /^- decided:\s*(.*)$/;
@@ -337,6 +362,11 @@ const DONE_TEXT_RE = /^- done:\s*(.*)$/;
  * An interruption is a flag, not a step: it marks the node it cut short and the node
  * the run resumed on, so every node's `index` still counts transcript lines (the agent
  * linkage is built from those positions).
+ *
+ * Turns are counted off {@link TURN_MARKER}: each marked call opens a turn and the unmarked
+ * calls after it share it. Calls seen *before* the transcript's first marker predate the
+ * marker's existence — a thread can straddle the change — so they keep `turn: null` rather
+ * than being guessed at one turn each.
  */
 export function parseSessionNodes(content: string): SessionNode[] {
   const nodes: SessionNode[] = [];
@@ -344,6 +374,8 @@ export function parseSessionNodes(content: string): SessionNode[] {
   let lastTool: string | null = null;
   /** An interruption seen but not yet attached — it belongs to the step that resumes. */
   let pending: InterruptionKind | null = null;
+  /** The turn the calls being read belong to, or null until the first marker names one. */
+  let turn: number | null = null;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
     nodes.push({
@@ -355,6 +387,7 @@ export function parseSessionNodes(content: string): SessionNode[] {
       interruption: pending,
       interrupted: false,
       message: null,
+      turn: type === 'tool' ? turn : null,
     });
     pending = null;
   };
@@ -406,7 +439,9 @@ export function parseSessionNodes(content: string): SessionNode[] {
 
     const toolMatch = TOOL_RE.exec(line);
     if (toolMatch) {
-      const sig = (toolMatch[1] ?? '').trim();
+      // A marked call opens the next turn; an unmarked one joins whatever turn is open.
+      if (toolMatch[1]) turn = turn === null ? 0 : turn + 1;
+      const sig = (toolMatch[2] ?? '').trim();
       lastTool = sig;
       push('tool', sig, sig);
     }
@@ -650,7 +685,7 @@ export function parseSessionErrors(content: string): SessionError[] {
     }
 
     const toolMatch = TOOL_RE.exec(line);
-    if (toolMatch) lastTool = (toolMatch[1] ?? '').trim();
+    if (toolMatch) lastTool = (toolMatch[2] ?? '').trim();
   }
 
   return errors;
@@ -765,6 +800,8 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
   let pending: InterruptionKind | null = null;
   /** The `messages[]` position being read, carried onto every step it yields. */
   let message = 0;
+  /** How many assistant turns have made calls so far — the turn the next call belongs to. */
+  let turns = 0;
 
   const push = (type: SessionNodeType, text: string, tool: string | null) => {
     nodes.push({
@@ -776,6 +813,7 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
       interruption: pending,
       interrupted: false,
       message,
+      turn: type === 'tool' ? turns : null,
     });
     pending = null;
   };
@@ -823,10 +861,12 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
 
     if (calls.length > 0) {
       if (reasoning) push('decision', reasoning, null);
+      // Every call in this message shares one turn — that is the whole point of the field.
       for (const sig of calls) {
         lastTool = sig;
         push('tool', sig, sig);
       }
+      turns += 1;
     } else if (reasoning) {
       push('done', reasoning, null);
     }
@@ -903,8 +943,16 @@ export function mergeSessionNodes(transcript: SessionNode[], derived: SessionNod
     const cand = derived[d];
     if (cand && pairs(step, cand)) {
       // Text comes from the request; which steps exist — and where the run was cut —
-      // stays the transcript's, since it alone carries the dashboard's own stops.
-      merged.push({ ...cand, index: step.index, interruption: step.interruption, interrupted: step.interrupted });
+      // stays the transcript's, since it alone carries the dashboard's own stops. `turn`
+      // goes with structure rather than text: the two streams number turns off different
+      // starting points, so taking one from each side would merge unrelated turns.
+      merged.push({
+        ...cand,
+        index: step.index,
+        interruption: step.interruption,
+        interrupted: step.interrupted,
+        turn: step.turn,
+      });
       t += 1;
       d += 1;
       continue;

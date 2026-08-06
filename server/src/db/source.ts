@@ -450,6 +450,7 @@ interface NodeRow {
   interruption: string | null;
   interrupted: number;
   message: number | null;
+  turn: number | null;
 }
 
 /**
@@ -487,6 +488,7 @@ function toNode(row: NodeRow): SessionNode {
     interruption: row.interruption as SessionNode['interruption'],
     interrupted: row.interrupted === 1,
     message: row.message,
+    turn: row.turn,
   };
 }
 
@@ -509,7 +511,7 @@ function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
   const out = new Map<string, SessionNode[]>();
   for (const row of db
     .prepare(
-      'SELECT thread_id, idx, type, text, tool, task, interruption, interrupted, message FROM session_node ORDER BY thread_id, idx',
+      'SELECT thread_id, idx, type, text, tool, task, interruption, interrupted, message, turn FROM session_node ORDER BY thread_id, idx',
     )
     .all() as unknown as NodeRow[]) {
     const list = out.get(row.thread_id) ?? [];
