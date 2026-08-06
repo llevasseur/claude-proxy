@@ -14,6 +14,7 @@ import {
   bucketJudgementState,
   bucketJudgements,
   buildUsageLimits,
+  type CliFunctionEntry,
   type CommandPattern,
   type CommandRun,
   type CommandRunShape,
@@ -121,6 +122,7 @@ import {
   withoutMetaSkills,
 } from '@claude-proxy/core';
 import { loadArchivedDigest } from './archive.js';
+import { type CliBundleInfo, readCliCatalogue, readCliFunctionSource } from './cli-bundle.js';
 import { listInstalledCommands } from './command-runs.js';
 import { conceptStorePath } from './concepts.js';
 import { fileSource, type SidecarSource } from './db/source.js';
@@ -2119,6 +2121,62 @@ export async function buildSystemPromptUpdate(promptPath: string, text: unknown)
     maxBytes: SYSTEM_PROMPT_MAX_BYTES,
     backupPath: written.backupPath,
   };
+}
+
+export interface CliInternalsResponse {
+  bundle: CliBundleInfo;
+  functions: CliFunctionEntry[];
+  meta: {
+    /** How many catalogue rows resolved against this version, and how many did not. */
+    resolved: number;
+    missing: number;
+    /** Time the resolving pass took, or null when this answer came from cache. */
+    durationMs: number | null;
+  };
+}
+
+/**
+ * The CLI internals index: every catalogued function, resolved against the bundle
+ * this machine has installed right now.
+ *
+ * The identifiers are minified and change between releases, so a row's identity is
+ * its signal, not its name — the name is an output of this call. A row whose signal
+ * is gone comes back with `missing` set rather than with the previous version's
+ * source, which is the whole point of resolving at read time.
+ */
+export async function buildCliInternals(bundlePath?: string | null): Promise<CliInternalsResponse> {
+  const { bundle, functions, durationMs } = await readCliCatalogue(bundlePath);
+  return {
+    bundle,
+    functions,
+    meta: {
+      resolved: functions.filter((f) => f.missing === null).length,
+      missing: functions.filter((f) => f.missing !== null).length,
+      durationMs,
+    },
+  };
+}
+
+export interface CliFunctionResponse {
+  bundle: CliBundleInfo;
+  function: CliFunctionEntry;
+  /** The function's text out of the bundle, verbatim — null when the row did not resolve. */
+  source: string | null;
+}
+
+/**
+ * One catalogued function, with its source read back out of the bundle at the offset
+ * the index pass recorded. Throws a labelled error the server maps to 404 when the id
+ * is not in the catalogue; a row that is catalogued but unresolved is a 200 with a
+ * null source, since "this version does not have it" is an answer, not an error.
+ */
+export async function buildCliFunction(id: string, bundlePath?: string | null): Promise<CliFunctionResponse> {
+  const { bundle, functions } = await readCliCatalogue(bundlePath);
+  const entry = functions.find((f) => f.id === id);
+  if (!entry) throw new Error(`cli function not found: ${id}`);
+  const source =
+    bundle.path === null || entry.missing !== null ? null : await readCliFunctionSource(entry, bundle.path);
+  return { bundle, function: entry, source };
 }
 
 /**

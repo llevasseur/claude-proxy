@@ -17,6 +17,8 @@ import {
   applyIdeaStatus,
   applySuggestionJudge,
   applySuggestionStatus,
+  buildCliFunction,
+  buildCliInternals,
   buildCommand,
   buildCommandRun,
   buildCommands,
@@ -1160,6 +1162,24 @@ const server = http.createServer(async (req, res) => {
       case '/api/hooks-plugins':
         send(res, 200, await buildHooksPlugins());
         return;
+      case '/api/cli-internals':
+        send(res, 200, await buildCliInternals());
+        return;
+      case '/api/cli-internals/function': {
+        const id = url.searchParams.get('id');
+        if (!id) {
+          send(res, 400, { error: 'missing ?id=' });
+          return;
+        }
+        try {
+          send(res, 200, await buildCliFunction(id));
+        } catch (err) {
+          const msg = (err as Error).message;
+          if (msg.startsWith('cli function not found')) send(res, 404, { error: msg });
+          else throw err;
+        }
+        return;
+      }
       case SYSTEM_PROMPT_ROUTE: {
         // Anything but a GET is the save, which takes the origin-checked write path
         // rather than the open read CORS.
