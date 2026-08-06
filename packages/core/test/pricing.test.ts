@@ -9,8 +9,6 @@ describe('priceFor', () => {
   });
 
   it('matches the model ids actually on the wire', () => {
-    // The rows sat a generation stale partly because nothing named the ids the
-    // proxy sees. These are what `logs/` carries.
     expect(priceFor('claude-opus-5')).toBe(MODEL_PRICES.opus);
     expect(priceFor('claude-sonnet-5')).toBe(MODEL_PRICES.sonnet);
     expect(priceFor('claude-haiku-4-5-20251001')).toBe(MODEL_PRICES.haiku);
@@ -23,9 +21,8 @@ describe('priceFor', () => {
 });
 
 describe('MODEL_PRICES', () => {
-  // The one place the sheet's own numbers are pinned, so a price change breaks a
-  // test that is about prices rather than one about arithmetic. Opus 5, Sonnet 5,
-  // Haiku 4.5 list, $/MTok.
+  // The one place the sheet's own values are pinned. Opus 5, Sonnet 5, Haiku 4.5
+  // list, $/MTok.
   it('carries the current generation, not the one before it', () => {
     expect(MODEL_PRICES.opus).toEqual({ input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 });
     expect(MODEL_PRICES.sonnet).toEqual({ input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 });
@@ -46,9 +43,8 @@ describe('MODEL_PRICES', () => {
 
 describe('estimateCost', () => {
   it('prices each token bucket at its rate', () => {
-    // 1M of each bucket → exactly the row's rates, whatever those rates are. Read
-    // off MODEL_PRICES rather than retyped, so this stays a test of the
-    // arithmetic and a price change does not land here.
+    // 1M of each bucket → exactly the row's rates, read off MODEL_PRICES rather
+    // than retyped.
     const opus = MODEL_PRICES.opus!;
     const cost = estimateCost(
       { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheCreation: 1_000_000, realInput: 3_000_000 },
