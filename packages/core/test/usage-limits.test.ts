@@ -62,11 +62,7 @@ describe('windowOfHeader', () => {
   });
 });
 
-/**
- * The ratio a cache read *bills* at, taken from the price table rather than restated
- * as a constant of its own — this is the figure the metering weight used to be, and
- * the whole point is that the two are different numbers from different sources.
- */
+/** What a cache read bills at, from the price table rather than a constant restating it. */
 const CACHE_READ_COST_RATIO = MODEL_PRICES.opus!.cacheRead / MODEL_PRICES.opus!.input;
 
 describe('usageUnits', () => {
@@ -85,14 +81,12 @@ describe('usageUnits', () => {
  * reporting request of the window; the token counts are every captured request from
  * the window's opening instant (reset − 5h) up to that reading, reporting or not.
  *
- * Regenerate with `node scripts/derive-metering-weight.mjs`, which prints exactly this
- * block from the retained sidecars — the rule above is the one it implements, so these
- * rows can be re-derived and audited rather than taken on trust.
+ * Regenerate with `node scripts/derive-metering-weight.mjs`, which implements that rule
+ * and prints this block from the retained sidecars.
  *
- * Anthropic never publishes the allowance, so these four are the only direct
- * measurement of the metering unit there is — and, being few and near-collinear, they
- * bound the weight loosely. The assertions below are written against what the fixtures
- * themselves support, not against the shipped constant.
+ * Anthropic never publishes the allowance, so these four are the only direct measurement
+ * of the metering unit there is — and, being few and near-collinear, they bound the
+ * weight loosely. The assertions below answer to the fixtures, not to the constant.
  */
 const OBSERVED_5H_WINDOWS = [
   {
@@ -139,11 +133,7 @@ function spread(values: readonly number[]): number {
 const impliedCeilings = (weight: number): number[] =>
   OBSERVED_5H_WINDOWS.map((w) => (w.input + w.output + w.cacheCreation + w.cacheRead * weight) / w.util);
 
-/**
- * The weight these fixtures actually fit best, and how well — swept from the fixtures
- * at call time so every assertion below answers to the measurements rather than to a
- * band copied out of the commit message that introduced them.
- */
+/** The weight these fixtures fit best, and how well — swept from the fixtures themselves. */
 const BEST_FIT = (() => {
   let weight = 0.001;
   let best = Number.POSITIVE_INFINITY;
@@ -161,14 +151,12 @@ const BEST_FIT = (() => {
 describe('the cache-read metering weight, against observed windows', () => {
   it('agrees about as well as these fixtures can be made to agree', () => {
     // One allowance produced all four readings, so the implied ceilings should match.
-    // The bar is the best fit the fixtures themselves admit — not a literal threshold
-    // that would still pass if the fixtures changed underneath it.
+    // The bar is the fixtures' own best fit, not a literal that survives them changing.
     expect(spread(impliedCeilings(CACHE_READ_METERING_WEIGHT))).toBeLessThanOrEqual(BEST_FIT.spread * 1.1);
   });
 
   it('does not agree at the cost ratio, which is the defect', () => {
-    // Metering at the billing ratio spreads the same four windows far wider, and the
-    // comparison is against the fixtures' own floor rather than a hardcoded number.
+    // Metering at the billing ratio spreads the same four windows far wider.
     expect(spread(impliedCeilings(CACHE_READ_COST_RATIO))).toBeGreaterThan(BEST_FIT.spread * 1.5);
     expect(spread(impliedCeilings(CACHE_READ_COST_RATIO))).toBeGreaterThan(
       spread(impliedCeilings(CACHE_READ_METERING_WEIGHT)),
@@ -176,9 +164,8 @@ describe('the cache-read metering weight, against observed windows', () => {
   });
 
   it('is the parameter the disagreement is sensitive to, and is not merely round', () => {
-    // Weights an order of magnitude out in either direction fit worse, so the fixtures
-    // do constrain this term — while staying honest that the fit is shallow: the band
-    // within a tenth of the best is wide, and the shipped value only has to be in it.
+    // Weights an order of magnitude out either way fit worse, so the fixtures do
+    // constrain this term — loosely: the shipped value only has to sit near the best fit.
     for (const worse of [0.001, 0.05, CACHE_READ_COST_RATIO]) {
       expect(spread(impliedCeilings(worse))).toBeGreaterThan(spread(impliedCeilings(CACHE_READ_METERING_WEIGHT)));
     }
@@ -186,9 +173,8 @@ describe('the cache-read metering weight, against observed windows', () => {
   });
 
   it('leaves a residual no weight explains, so it is a fit and not an identity', () => {
-    // Guards the claim in the docs: even at the optimum the four windows disagree by
-    // several percent, which is misspecification the weight cannot absorb. If this
-    // ever drops to ~0 the model got better and the prose should say so.
+    // Even at the optimum the four windows disagree by several percent — misspecification
+    // no weight absorbs. If this drops to ~0 the model improved and the docs should say so.
     expect(BEST_FIT.spread).toBeGreaterThan(0.02);
   });
 
@@ -196,8 +182,8 @@ describe('the cache-read metering weight, against observed windows', () => {
     const w = OBSERVED_5H_WINDOWS[0]!;
     const counted = usageUnits({ ...w, realInput: w.input + w.cacheRead + w.cacheCreation });
     expect(counted).toBeCloseTo(w.input + w.output + w.cacheCreation + w.cacheRead * CACHE_READ_METERING_WEIGHT, 6);
-    // The window's own implied ceiling agrees with what the other three imply, which is
-    // the fit restated per window rather than an absolute range written down by hand.
+    // Its implied ceiling agrees with the other three — the fit restated per window,
+    // rather than an absolute range written down by hand.
     const ceilings = impliedCeilings(CACHE_READ_METERING_WEIGHT);
     const mean = ceilings.reduce((a, b) => a + b, 0) / ceilings.length;
     expect(counted / w.util).toBeCloseTo(ceilings[0]!, 6);

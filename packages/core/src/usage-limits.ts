@@ -42,28 +42,24 @@ const WINDOW_LABELS: Record<UsageWindowKind, string> = {
  * tenth reads every cache-heavy window several times too high.
  *
  * Measured rather than assumed. Each completed 5-hour window whose sidecars carry an
- * `anthropic-ratelimit-unified-5h-utilization` header pairs a weighted token count
- * with Anthropic's own reading of how much of the allowance it consumed, so each
- * window implies an allowance; one allowance produced them all, so the weight that
- * makes them agree is the measured one. `node scripts/derive-metering-weight.mjs`
- * re-derives it from the captured sidecars, and `usage-limits.test.ts` pins it to four
- * such windows checked in as fixtures.
+ * `anthropic-ratelimit-unified-5h-utilization` header pairs a weighted token count with
+ * Anthropic's own reading of what it consumed, so each implies an allowance; one
+ * allowance produced them all. `node scripts/derive-metering-weight.mjs` re-derives it,
+ * and `usage-limits.test.ts` pins it to four such windows.
  *
- * **Held loosely — the order of magnitude is solid, the second digit is not.** Those
- * four windows are near-collinear: their cache-read share of units spans just 1.2pp
- * (0.963–0.975), so identification rests mostly on the single window with materially
- * more fresh input. Weights within a tenth of the best fit (0.019) span 0.011–0.023,
- * and ~6% of the four-window disagreement is residual that no weight removes. A
- * far larger-sample check corroborates the direction without pinning the value:
- * regressing every per-request reading inside a window against the cumulative units at
- * that instant — hundreds of points per window rather than four in total — bottoms out
- * near 0.016 and roughly halves the residual against 0.1.
+ * **Held loosely — the order of magnitude is solid, the second digit is not.** The four
+ * windows are near-collinear: cache-read share spans 1.2pp (0.963–0.975), so
+ * identification rests mostly on the one window with materially more fresh input.
+ * Weights within a tenth of the best fit (0.019) span 0.011–0.023, and ~6% of the
+ * disagreement is residual no weight removes. A far larger sample — every per-request
+ * reading in a window against the cumulative units at that instant — bottoms out near
+ * 0.016 and roughly halves the residual against 0.1.
  *
- * A wrong weight here is quiet in two ways. Usage and a *learned* ceiling are both
- * counted in these units, so the error cancels out of that ratio until the cache-hit
- * ratio moves, then shifts both meters at once. A *configured* `USAGE_LIMIT_*` ceiling
- * is an absolute number in this unit, so changing this weight silently invalidates any
- * value already set — see `server/.env.example`.
+ * A wrong weight is quiet twice over. Usage and a *learned* ceiling are both in these
+ * units, so the error cancels out of that ratio until the cache-hit ratio moves, then
+ * shifts both meters at once. A *configured* `USAGE_LIMIT_*` ceiling is an absolute
+ * number in this unit, so changing the weight invalidates any value already set — see
+ * `server/.env.example`.
  */
 export const CACHE_READ_METERING_WEIGHT = 0.02;
 

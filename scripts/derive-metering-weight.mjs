@@ -1,32 +1,30 @@
 #!/usr/bin/env node
 /**
- * Re-derives the cache-read *metering* weight from captured audit sidecars, and
- * prints the `OBSERVED_5H_WINDOWS` fixture in `packages/core/test/usage-limits.test.ts`
- * so that fixture can be regenerated and audited rather than trusted.
+ * Re-derives the cache-read *metering* weight from captured audit sidecars, and prints
+ * the `OBSERVED_5H_WINDOWS` fixture in `packages/core/test/usage-limits.test.ts`.
  *
- * Anthropic never publishes the subscription allowance as a token count, so the
- * weight cannot be looked up — it has to be inferred. Every request whose sidecar
- * carries `anthropic-ratelimit-unified-5h-utilization` pairs a weighted token count
- * with Anthropic's own reading of how much of the 5-hour allowance that count
- * consumed, so each *completed* window implies an allowance. One allowance produced
- * them all, so the weight that makes them agree is the measured one.
+ * Anthropic never publishes the subscription allowance as a token count, so the weight
+ * has to be inferred. Every request whose sidecar carries
+ * `anthropic-ratelimit-unified-5h-utilization` pairs a weighted token count with
+ * Anthropic's own reading of what that count consumed, so each completed window implies
+ * an allowance; one allowance produced them all.
  *
  * Two independent estimates are printed:
  *
- *   endpoint fit  — one observation per completed window (its last reading). This is
- *                   what the checked-in fixture holds. Few observations, and they are
- *                   near-collinear, so it is weakly identified.
- *   intra-window  — every reading inside each window regressed against the cumulative
- *                   units at that instant. Hundreds of observations per window, so it
- *                   is the stronger evidence, at the cost of assuming the header is a
- *                   plain cumulative counter (it very nearly is; see `--monotonicity`).
+ *   endpoint fit  — one observation per completed window, its last reading. What the
+ *                   fixture holds, and weakly identified: few, near-collinear points.
+ *   intra-window  — every reading in a window against the cumulative units at that
+ *                   instant. Hundreds of points per window, so it is the stronger
+ *                   evidence, but it assumes the header is a plain cumulative counter
+ *                   (nearly, not exactly — see `--monotonicity`).
  *
  * Usage:
  *   node scripts/derive-metering-weight.mjs [--logs <dir>] [--json] [--monotonicity]
+ *                                           [--out-of-sample <YYYY-MM-DD>]
  *
- * `--logs` defaults to `logs/` at the repo root, and its `archive/<date>/` days are
- * read alongside it. Run it against a machine's own retained logs; the numbers in the
- * fixture and in `docs/features/usage-limit-meters.md` are this device's.
+ * `--logs` defaults to `logs/`, and its `archive/<date>/` days are read alongside it.
+ * The figures in the fixture and in `docs/features/usage-limit-meters.md` are this
+ * device's; run it against your own logs for yours.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -42,11 +40,7 @@ const WEEK_MS = 7 * 86_400_000;
 /** Weights swept when reporting where the fit actually bottoms out. */
 const SWEEP = Array.from({ length: 200 }, (_, i) => (i + 1) * 0.001);
 
-/**
- * Reset instants arrive as epoch seconds today, but the proxy's own header parsing
- * also accepts epoch milliseconds and an ISO instant, so accept all three here
- * rather than pinning the script to the spelling in one week's captures.
- */
+/** Epoch seconds, epoch milliseconds, or an ISO instant — the proxy accepts all three. */
 function parseInstant(raw) {
   if (raw == null) return null;
   const s = String(raw).trim();
@@ -98,11 +92,9 @@ function auditFiles(logRoot) {
 }
 
 /**
- * One record per captured request: when it happened, what it spent, and — when the
- * response carried them — the 5-hour utilization and reset instant it reported.
- *
- * Deduped by sidecar *filename*, because the archive job may copy rather than move
- * and a day can appear in both the live directory and its archive folder.
+ * One record per captured request: when, what it spent, and the utilization and reset
+ * instant it reported, where the response carried them. Deduped by sidecar filename —
+ * the archive job may copy rather than move, putting a day in both places.
  */
 function loadRecords(logRoot) {
   const seen = new Set();
@@ -145,12 +137,9 @@ function loadRecords(logRoot) {
 }
 
 /**
- * Group the reporting requests into windows by the reset instant they name — that
- * instant *is* the window's identity — and keep only windows that have closed.
- *
- * A window's token count is every captured request in `[reset − 5h, lastReading]`,
- * reporting or not: usage is usage. `util` is the reading at that last reporting
- * request, which is the rule the fixture's comment states.
+ * Completed windows, grouped by the reset instant they name — that instant is the
+ * window's identity. Token counts cover every captured request in
+ * `[reset − 5h, lastReading]`, reporting or not; `util` is that last reading.
  */
 function windowsFrom(records, now = Date.now()) {
   const byReset = new Map();
@@ -193,12 +182,11 @@ function windowsFrom(records, now = Date.now()) {
 
 /**
  * The same construction for the 7-day allowance, which is what a `USAGE_LIMIT_WEEK`
- * example has to be expressed against. Weekly windows are reported in progress as
- * well as completed — an in-progress one still pairs a count with a reading, and on a
- * device that retains a few weeks it is usually the only one fully on disk.
+ * value is expressed against. In-progress windows are included — one still pairs a
+ * count with a reading, and is usually the only week fully on disk.
  *
- * `covered` says whether retained logs reach back to the window's opening instant. An
- * uncovered window undercounts, so its implied ceiling reads too *low*.
+ * `covered` says whether retained logs reach the window's opening instant. An
+ * uncovered window undercounts, so its implied ceiling reads too low.
  */
 function weekWindowsFrom(records, now = Date.now()) {
   const oldest = records.length > 0 ? records[0].at : Number.POSITIVE_INFINITY;
@@ -247,16 +235,16 @@ function spread(values) {
 const impliedCeilings = (windows, weight) => windows.map((w) => weighted(w, weight) / w.util);
 
 /**
- * The share of a window's units that comes from cache reads, at the shipped weight.
- * This is what *identifies* the weight: windows that all sit at the same share
- * constrain it barely at all, however many of them there are.
+ * The share of a window's units coming from cache reads. Variation in this across
+ * windows is what identifies the weight; windows at the same share barely constrain it,
+ * however many there are.
  */
 const cacheShare = (w) => w.cacheRead / (w.input + w.output + w.cacheCreation + w.cacheRead);
 
 /**
- * Regress every reading in one window against the cumulative units at that instant.
- * For a given weight the best allowance is the least-squares fit through the origin,
- * and the residual says how straight the trajectory is — a wrong weight bends it.
+ * Every reading in a window against the cumulative units at that instant. The allowance
+ * is the least-squares fit through the origin; the residual says how straight the
+ * trajectory is, and a wrong weight bends it.
  */
 function intraWindowFit(windows, records, weight) {
   const perWindow = [];
@@ -294,13 +282,12 @@ function intraWindowFit(windows, records, weight) {
 }
 
 /**
- * The busiest non-overlapping 5-hour windows on a day that reports **no** headers, as a
- * fraction of the allowance a given weight implies. This is the out-of-sample check: a
- * weight fitted on one week should put a day that actually hit its cap near 100%, and a
- * weight that puts it near 65% is claiming the allowance itself changed between weeks.
- *
- * Windows are reconstructed greedily — the busiest 5 hours anywhere on the day, then the
- * busiest disjoint from it — because without a reset header there is nothing to align to.
+ * The busiest non-overlapping 5-hour windows on a day reporting no headers, as a
+ * fraction of the allowance a weight implies. Without a reset header there is nothing to
+ * align to, so windows are greedy: the busiest 5 hours anywhere on the day, then the
+ * busiest disjoint from it. That unaligned maximum is an **upper bound** on any real
+ * window, so it can only refute a weight — a weight putting a day that demonstrably
+ * capped out well under 100% is wrong.
  */
 function outOfSampleDay(records, day, weight, ceiling, count = 2) {
   const from = Date.parse(`${day}T00:00:00Z`);
