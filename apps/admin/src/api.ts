@@ -432,10 +432,7 @@ export interface CommandResponse {
   installed: boolean;
   steps: CommandStep[];
   commandHash: string | null;
-  /**
-   * The installed command file's markdown, exactly as it sits on disk — null once the
-   * command is gone, since only the store remembers it then.
-   */
+  /** The installed command file's markdown, exactly as on disk — null once it is gone. */
   source: string | null;
   flags: string[];
   appliedFlags: string[];

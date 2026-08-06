@@ -2204,10 +2204,7 @@ export interface CommandResponse {
   /** The catalogue as installed now — the spine the funnel and the stacked bar use. */
   steps: CommandStep[];
   commandHash: string | null;
-  /**
-   * The installed file's markdown, byte for byte — null once the command is gone, since
-   * only the store remembers it then.
-   */
+  /** The installed file's markdown, byte for byte — null once the command is gone. */
   source: string | null;
   /** Every flag any run used, for the facet control. Unfiltered by the current facet. */
   flags: string[];

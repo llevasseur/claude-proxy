@@ -8,10 +8,8 @@ const COMMENT_RE = /<!--.*?-->/g;
  * files, command files and session transcripts use: headings, fenced code,
  * blockquotes, nested unordered/ordered lists, horizontal rules, and paragraphs
  * — plus inline code, bold, italic, links, and Obsidian `[[wikilinks]]`.
- * Anything it doesn't recognise renders as a plain paragraph.
- *
- * HTML comments are dropped everywhere but inside a fence, since in these files
- * they carry include directives rather than prose.
+ * Anything it doesn't recognise renders as a plain paragraph. HTML comments are
+ * dropped everywhere but inside a fence.
  */
 export function Markdown({ source }: { source: string }) {
   const lines = source.split('\n');
@@ -100,8 +98,7 @@ export function Markdown({ source }: { source: string }) {
           i += 1;
           continue;
         }
-        // An indented line that isn't an item continues the one above it — these files
-        // wrap long bullets rather than letting them run off.
+        // An indented line that isn't an item continues the one above it.
         const next = at(i);
         const last = flat[flat.length - 1];
         if (last && next.trim() !== '' && /^\s/.test(next) && !/^\s*```/.test(raw(i))) {
@@ -147,9 +144,8 @@ interface ListNode {
 }
 
 /**
- * Turn a run of list lines into a tree by indentation. Depth is relative: any item
- * indented further than the one above it nests under it, whatever the file's step is,
- * so two-space and four-space files both read.
+ * Turn a run of list lines into a tree by indentation. Depth is relative — any item
+ * indented further than the one above nests under it, whatever the file's step.
  */
 function nest(items: readonly FlatItem[]): ListNode[] {
   const roots: ListNode[] = [];
@@ -199,8 +195,7 @@ function renderInline(text: string): ReactNode[] {
           {tok.slice(1, -1)}
         </code>,
       );
-      // Emphasis re-enters the tokeniser below: these files put code spans inside bold
-      // runs, and backticks left literal mid-sentence read as a mistake.
+      // Emphasis re-enters the tokeniser below — these files put code spans inside bold runs.
     } else if (tok.startsWith('**')) {
       nodes.push(<strong key={key++}>{renderInline(tok.slice(2, -2))}</strong>);
     } else if (tok.startsWith('*')) {

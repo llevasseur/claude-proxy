@@ -1920,7 +1920,6 @@ button.link {
   background: rgba(255, 107, 129, 0.1);
   overflow-wrap: anywhere;
 }
-/* A nested list sits tighter than the one it hangs off. */
 .md-list .md-list {
   margin: 3px 0 6px;
 }
@@ -1955,8 +1954,8 @@ button.link {
   border: 1px solid var(--signal-dim);
 }
 
-/* The command file on a command's page. It is a long document sitting above the charts,
-   so the rendered view scrolls in place rather than pushing them off the page. */
+/* The command file on a command's page — a long document above the charts, so it
+   scrolls in place. */
 .cmdfile {
   max-height: 560px;
   overflow-y: auto;

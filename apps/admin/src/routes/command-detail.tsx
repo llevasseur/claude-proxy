@@ -238,11 +238,8 @@ function CommandBody({
 }
 
 /**
- * The command file itself — what every number on this page is a reading of.
- *
- * Pretty renders the markdown as installed; Raw is the file byte for byte, which is the
- * view to read when the question is what the agent was actually handed. Nothing here is
- * reconstructed from the parsed step catalogue.
+ * The command file itself: Pretty renders the markdown as installed, Raw is the file byte
+ * for byte. Nothing here is reconstructed from the parsed step catalogue.
  */
 function CommandFile({ source, command }: { source: string | null; command: string }) {
   const [view, setView, isSwitching] = useTransitionState<PrettyRawView>('pretty');
