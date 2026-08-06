@@ -35,28 +35,35 @@ const WINDOW_LABELS: Record<UsageWindowKind, string> = {
 };
 
 /**
- * What a cache read *costs* against fresh input: $1.50/MTok against $15/MTok on
- * Opus. For money only — `pricing.ts` is the precise path, and the meters below
- * deliberately do not use this; see {@link CACHE_READ_METERING_WEIGHT}.
- */
-export const CACHE_READ_COST_WEIGHT = 0.1;
-
-/**
- * What a cache read *meters* at against fresh input, for the rate-limit
- * allowances. Anthropic discounts cache reads roughly five times harder here
- * than in billing, so the cost ratio reads every cache-heavy window far too low.
+ * What a cache read *meters* at against fresh input, for the rate-limit allowances.
+ * This is **not** the cost ratio: Anthropic bills cache reads at about a tenth of
+ * fresh input ($1.50/MTok against $15/MTok on Opus — see `MODEL_PRICES` in
+ * `pricing.ts`, which is the only place money is computed), and metering at that
+ * tenth reads every cache-heavy window several times too high.
  *
- * Fitted against the four completed 5-hour windows whose sidecars carry an
- * `anthropic-ratelimit-unified-5h-utilization` header (2026-08-04 and
- * 2026-08-05): each window's weighted units over its reported utilization gives
- * the allowance it implies, and one allowance produced all four, so the right
- * weight is the one that makes them agree. They agree to within 6.8% across
- * 0.015–0.02 and only 12.6% at 0.1. 0.02 is the conservative end of that band,
- * erring high the same way {@link LearnedCeiling} does.
+ * Measured rather than assumed. Each completed 5-hour window whose sidecars carry an
+ * `anthropic-ratelimit-unified-5h-utilization` header pairs a weighted token count
+ * with Anthropic's own reading of how much of the allowance it consumed, so each
+ * window implies an allowance; one allowance produced them all, so the weight that
+ * makes them agree is the measured one. `node scripts/derive-metering-weight.mjs`
+ * re-derives it from the captured sidecars, and `usage-limits.test.ts` pins it to four
+ * such windows checked in as fixtures.
  *
- * A wrong weight here is silent: usage and the learned ceiling are both counted
- * in these units, so it cancels out of the ratio until the cache-hit ratio
- * moves, then shifts both meters at once.
+ * **Held loosely — the order of magnitude is solid, the second digit is not.** Those
+ * four windows are near-collinear: their cache-read share of units spans just 1.2pp
+ * (0.963–0.975), so identification rests mostly on the single window with materially
+ * more fresh input. Weights within a tenth of the best fit (0.019) span 0.011–0.023,
+ * and ~6% of the four-window disagreement is residual that no weight removes. A
+ * far larger-sample check corroborates the direction without pinning the value:
+ * regressing every per-request reading inside a window against the cumulative units at
+ * that instant — hundreds of points per window rather than four in total — bottoms out
+ * near 0.016 and roughly halves the residual against 0.1.
+ *
+ * A wrong weight here is quiet in two ways. Usage and a *learned* ceiling are both
+ * counted in these units, so the error cancels out of that ratio until the cache-hit
+ * ratio moves, then shifts both meters at once. A *configured* `USAGE_LIMIT_*` ceiling
+ * is an absolute number in this unit, so changing this weight silently invalidates any
+ * value already set — see `server/.env.example`.
  */
 export const CACHE_READ_METERING_WEIGHT = 0.02;
 

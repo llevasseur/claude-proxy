@@ -94,29 +94,76 @@ Both the estimate and its ceiling are in **weighted tokens**:
 input + cacheRead + cacheCreation and would double-count.
 
 **0.02 is a metering weight, not the cost ratio.** Cache reads *bill* at roughly a tenth of
-fresh input ($1.50/MTok against $15/MTok on Opus), and that tenth is still the right number for
-money — it is `CACHE_READ_COST_WEIGHT`, kept beside the metering one so the two cannot be
-confused again. Anthropic's rate-limit accounting discounts cache reads about five times harder
-than its billing does, and the meters were using the billing ratio for both.
+fresh input ($1.50/MTok against $15/MTok on Opus). That tenth is still the right number for
+money, and it lives in exactly one place — the `cacheRead`/`input` rows of `MODEL_PRICES` in
+`pricing.ts`. Anthropic's rate-limit accounting discounts cache reads several times harder than
+its billing does, and the meters were using the billing ratio for both.
 
-The metering weight is measured, not assumed. The four completed 5-hour windows whose sidecars
-carry an `anthropic-ratelimit-unified-5h-utilization` header — every one on record, from
-2026-08-04 and 2026-08-05 — each pair a weighted count with Anthropic's own utilization reading,
-so each implies an allowance. One allowance produced all four, so the right weight is the one
-that makes them agree:
+The metering weight is measured, not assumed, and
+`node scripts/derive-metering-weight.mjs` re-derives every figure below from the retained
+sidecars — including the fixture block the tests check in. The four completed 5-hour windows
+whose sidecars carry an `anthropic-ratelimit-unified-5h-utilization` header — every one on
+record, from 2026-08-04 and 2026-08-05 — each pair a weighted count with Anthropic's own
+utilization reading, so each implies an allowance. One allowance produced all four, so the right
+weight is the one that makes them agree:
 
 | Weight | Implied 5-hour ceilings | Worst departure from the mean |
 |--------|-------------------------|-------------------------------|
-| 0.1 (cost) | 54.7M / 46.4M / 43.7M / 49.4M | 12.6% |
-| 0.02 (metering) | 20.0M / 17.5M / 18.6M / 18.7M | 6.8% |
+| 0.1 (the billing ratio) | 54.7M / 47.1M / 44.2M / 50.6M | 11.3% |
+| 0.02 (shipped) | 20.0M / 17.7M / 18.7M / 18.9M | 6.1% |
+| 0.019 (best fit) | 19.5M / 17.4M / 18.4M / 18.5M | 6.0% |
 
-The fit is flat across 0.015–0.02 and worse either side of it; 0.02 is the conservative end,
-since a weight that is too high reads usage too high — the same direction the learned ceiling
-already errs in. Out of sample the weight holds up: it puts 2026-07-28's two 5-hour windows at
-113% and 96% of that ceiling, matching a real cap-out that day, and the 2026-07-25 → 2026-08-01
-weekly window at 98% of the weekly ceiling the current week's live reading implies. At 0.1 the
-same two 5-hour windows read 67% and 64% against the ceiling *that* weight implies, which would
-mean the allowance itself had changed between one week and the next.
+**How firmly this pins the weight: the order of magnitude, and not the second digit.** Three
+things limit it, and all three are worth stating plainly rather than leaving the table to imply
+a precision it does not have.
+
+- *The sample is near-collinear.* What identifies a cache-read weight is variation in how much
+  of a window is cache reads — and across these four that share spans 1.2pp, 0.963 to 0.975.
+  Identification therefore rests mostly on the 2026-08-05 12:50 window, the only one with
+  materially more fresh input. Weights within a tenth of the best fit span **0.011–0.023**;
+  within half of it, 0.001–0.045.
+- *A residual survives at every weight.* Even at the optimum the four windows disagree by ~6%.
+  Header quantization — utilization is reported to two decimal places — accounts for at most
+  about 1pp of that, so the rest is misspecification the weight cannot absorb. Freeing a
+  different term instead of the cache-read weight does worse, so this is at least the right knob:
+  holding cache reads at the billing ratio and fitting a free output-token weight bottoms out at
+  10.5%, and an output-tokens-only model at 9.9%, against 6.0% here.
+- *A much larger sample agrees on the direction, not the digit.* Every request carries a reading,
+  so within a window the readings can be regressed against the cumulative units at each instant —
+  hundreds of points per window instead of four in total. That check bottoms out near **0.016**
+  and roughly halves the residual against 0.1 (0.5–1.4% against 1.5–2.8%). It is the stronger
+  evidence that 0.1 is wrong; it also puts the centre slightly below 0.02.
+
+0.02 is a defensible round number inside that band, erring on the high side, which reads usage
+high — the same direction the learned ceiling already errs in.
+
+**Two caveats on the reading itself.** The utilization header is not strictly monotone within a
+window: it steps *down* by 0.01–0.02 at a few dozen points out of a few thousand, so it is not
+quite a plain running total — some lag, smoothing, or leak is in it. The effect is about a
+percentage point and overturns nothing here, but the cumulative interpretation the fit rests on
+is an approximation, not the header's definition. And whether Anthropic's unified unit is
+token-based at all cannot be established from these logs; a weighted token count is the best
+available proxy, not a model of the real accounting.
+
+**Out of sample, the check that survives its own weakness.** 2026-07-28 reports no headers at
+all, and the account demonstrably hit its 5-hour cap that day. Without a reset header there is
+nothing to align a window to, so `--out-of-sample 2026-07-28` takes the busiest 5 hours anywhere
+on the day and then the busiest disjoint from it. That free-floating maximum is an **upper bound**
+on any fixed window, which cuts one way only — and that is what makes it useful. At 0.02 the
+busiest 5 hours reach ~129% of the implied ceiling and the next ~75%: consistent with capping
+out, though the 129% is itself a sign the unaligned maximum overstates. At 0.1 the busiest 5
+hours reach only **79%** of the ceiling *that* weight implies. Since no aligned window can exceed
+the unaligned maximum, 0.1 says the day could not have capped out — and it did. The weight is
+wrong by more than alignment error can explain. (The exact percentages are alignment-sensitive
+and should not be read as measurements; the inequality is the finding.)
+
+**A configured ceiling is an absolute number in this unit**, so changing the weight invalidates
+any `USAGE_LIMIT_*` value already set: the same traffic against an unchanged ceiling reads about
+five times lower. `server/.env.example` was rescaled with the weight. Its figures are this
+device's, rounded *down* from what the headers imply — ~19M per 5-hour window and ~154M per week
+(the latter from the 7-day headers over a fully-retained window) — because a lower ceiling reads
+usage high, which is the direction that surfaces a problem rather than hiding one. Anyone who set
+those variables by hand at the old weight must divide their values by about five.
 
 **Why the error was invisible.** Usage and the learned ceiling are counted in the same units, so
 a wrong weight divides out of the ratio and both meters look fine — for exactly as long as the
@@ -125,7 +172,7 @@ meters at once. That is what makes the weight worth pinning to observations and 
 them rather than inferring it from the price sheet.
 
 For scale, an active coding day on this device runs ~16M units per 5-hour window, against a
-5-hour ceiling of about 20M.
+5-hour ceiling of about 19M.
 
 ## Fixed windows, not trailing ones
 
@@ -215,9 +262,10 @@ requests were captured at all no estimated window is emitted, because a 0% meter
 ## Where it lives
 
 - `packages/core/src/usage-limits.ts` — header parsing, the weighted unit, coverage, the pace
-  assessment, and `learnCeilings`. `CACHE_READ_COST_WEIGHT` and `CACHE_READ_METERING_WEIGHT` are
-  both exported and both documented, so the billing ratio and the metering one stay visibly
-  distinct; only the second one reaches `usageUnits`. Pure;
+  assessment, and `learnCeilings`. `CACHE_READ_METERING_WEIGHT` is the only cache-read weight
+  here, and its doc comment says at length that it is *not* the billing ratio — that one stays
+  where money is actually computed, in `pricing.ts`'s `MODEL_PRICES`, so there is no second
+  constant to drift out of step with the price sheet. Pure;
   `buildUsageLimits(sidecars, { limits, learned, retainedDays, live, anchors, now })` takes an
   injected `now`, so every threshold is testable. `retainedDays` switches coverage from the
   oldest-record span to the days actually held; omitted, it falls back to that span.
@@ -245,6 +293,11 @@ requests were captured at all no estimated window is emitted, because a 0% meter
   names off the upstream response, so no auth can ride along. The field is omitted entirely
   when upstream sent none, and a skim-cache-served request records none because no upstream
   call happened.
+- `scripts/derive-metering-weight.mjs` — re-derives the metering weight from retained sidecars
+  and prints the `OBSERVED_5H_WINDOWS` fixture block verbatim, so that fixture is regenerable
+  rather than a set of numbers someone once pasted in. `--out-of-sample <date>` reconstructs a
+  header-less day's busiest 5-hour windows, `--monotonicity` reports where the utilization header
+  steps backwards, and `--json` emits the lot for further analysis.
 - `server/src/usage-config.ts` — resolves the configured ceilings from the environment.
 - `server/src/api.ts` — `buildUsage` reads the trailing 8 days of sidecars (a day wider than
   the weekly window, since the file filter is day-granular while the windows are instant-granular)
