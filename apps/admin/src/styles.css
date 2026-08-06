@@ -1920,6 +1920,10 @@ button.link {
   background: rgba(255, 107, 129, 0.1);
   overflow-wrap: anywhere;
 }
+/* A nested list sits tighter than the one it hangs off. */
+.md-list .md-list {
+  margin: 3px 0 6px;
+}
 .md-quote {
   margin: 0 0 12px;
   padding: 2px 14px;
@@ -1949,6 +1953,14 @@ button.link {
   color: var(--signal);
   background: rgba(70, 224, 192, 0.08);
   border: 1px solid var(--signal-dim);
+}
+
+/* The command file on a command's page. It is a long document sitting above the charts,
+   so the rendered view scrolls in place rather than pushing them off the page. */
+.cmdfile {
+  max-height: 560px;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 /* Sessions list — the Errors count links to the drill-down when non-zero. */
