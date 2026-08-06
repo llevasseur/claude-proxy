@@ -56,8 +56,8 @@ function prepare(db: DatabaseSync): SessionStatements {
         root_prompt = excluded.root_prompt
     `),
     insertNode: db.prepare(`
-      INSERT INTO session_node (thread_id, idx, type, text, tool, task, interruption, interrupted, message)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO session_node (thread_id, idx, type, text, tool, task, interruption, interrupted, message, turn)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
     // A `.nodes.jsonl` naming the same index twice: last entry wins, matching
     // the file reader's plain-object assignment.
@@ -155,6 +155,7 @@ function writeSession(st: SessionStatements, parsed: ParsedSession): void {
       node.interruption,
       node.interrupted ? 1 : 0,
       node.message,
+      node.turn,
     );
   }
 
