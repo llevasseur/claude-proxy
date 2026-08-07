@@ -24,6 +24,7 @@ Add one with `okq new feature "<title>"`.
 | Message drill-down | [message-drill-down.md](message-drill-down.md) |
 | Project memory browser | [project-memory-browser.md](project-memory-browser.md) |
 | Retention lifecycle | [retention-lifecycle.md](retention-lifecycle.md) |
+| Session map | [session-map.md](session-map.md) |
 | Session suggestions | [session-suggestions.md](session-suggestions.md) |
 | Session transcripts | [session-transcripts.md](session-transcripts.md) |
 | Skeleton loading | [skeleton-loading.md](skeleton-loading.md) |
