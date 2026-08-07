@@ -1229,20 +1229,17 @@ export interface SessionEmbeddingResponse {
 /**
  * How many transcripts the map projects by default, newest first.
  *
- * The layout is O(n²) in both memory and time — every pair of sessions gets a distance — so this
- * is a real bound rather than a formality: measured at ~570 ms for 344 sessions, which is fine on
- * demand and would not be at ten times the count. The window is newest-first because that is the
- * corpus a person is asking about.
+ * The layout is O(n²) in memory and time, so this is a real bound rather than a formality:
+ * measured at ~570 ms for 344 sessions, and it would not hold at ten times the count.
  */
 export const SESSION_EMBEDDING_LIMIT = 400;
 
 /**
- * Project every session transcript onto the flat embedding map — the subject-similarity scatter
- * behind `/sessions/map`.
+ * Project every session transcript onto the flat embedding map behind `/sessions/map`.
  *
- * All the work is `projectSessions`, which is pure; this only picks the window and names where the
- * transcripts came from. `perplexity` is passed through and clamped downstream against the window
- * size, so an out-of-range request degrades rather than erroring.
+ * The work is `projectSessions`, which is pure; this picks the window and names the source
+ * directory. `perplexity` is clamped downstream against the window size, so an out-of-range
+ * request degrades rather than erroring.
  */
 export async function buildSessionEmbedding(
   logDir: string,

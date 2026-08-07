@@ -301,15 +301,10 @@ export const PARITY_ROUTES: ParityRoute[] = [
     cases: async (ctx) => [{ label: '/api/sessions/graph', run: (source) => buildSessionsGraph(ctx.logDir, source) }],
   },
   {
-    // Reads the same `listSessionGraphs` the graph does, so the two sides must agree on the
-    // corpus. The projection itself is pure and seeded, which is what makes the comparison
-    // meaningful: any difference in the points is a difference in the transcripts behind them.
-    //
-    // `limit` is small on purpose. The layout is O(n²) and this file replays every route twice
-    // over the real corpus, so projecting all of it would spend seconds here to re-prove what a
-    // few dozen transcripts already prove — the two sources agree. A disagreement shows up in the
-    // *points*, which the window does not soften: a transcript either side reads differently is a
-    // different vector, and every other point moves with it.
+    // The projection is pure and seeded, so any difference in the points is a difference in the
+    // transcripts behind them. `limit` is small on purpose: the layout is O(n²) and this file
+    // replays every route twice over the real corpus. The window does not soften a disagreement —
+    // a transcript either side reads differently is a different vector, and every point moves.
     name: '/api/sessions/embedding',
     cases: async (ctx) => [
       {

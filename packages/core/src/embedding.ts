@@ -1,30 +1,22 @@
 /**
  * Embedding projection of session transcripts — the flat map behind `/sessions/map`.
  *
- * Each transcript becomes one bag-of-words embedding vector, every pair of vectors a cosine
- * distance, and t-SNE lays those distances out in two dimensions. The result is a scatter in
- * which **position is the entire claim**: sessions about the same subject land near each other.
- * There are no edges and nothing is force-directed. The live session graph already draws the one
- * real relation between transcripts (parent/subagent), and this map deliberately draws none —
- * proximity here is a statement about subject matter, and an edge laid over it would be read as
- * a second, stronger claim that the data does not support.
+ * Each transcript becomes one TF-IDF vector, every pair a cosine distance, and t-SNE lays those
+ * out in two dimensions. Position is the entire claim: sessions about the same subject land near
+ * each other. There are deliberately no edges — the session graph already draws parent/subagent,
+ * and an edge here would read as a stronger claim than proximity supports.
  *
- * Two choices carry the file:
+ * Two constraints carry the file:
  *
- * - **The command envelope is stripped before the text is embedded.** A slash-command session's
- *   opening prompt inlines the whole command definition, which is byte-identical across every run
- *   of that command and dwarfs the criteria it wraps. Embedding it would group `/task` runs with
- *   `/task` runs by *boilerplate* — and since the dots are coloured by command, the map would then
- *   only ever prove its own colouring. {@link parseCommandEnvelope} already separates a run's
- *   criteria from its definition, so the criteria is what gets embedded and the command name is
- *   kept aside as the label. Whether same-command runs cluster is then something the map can
- *   actually observe rather than something it assumes.
- * - **The vectors are TF-IDF, not a neural embedding.** This package has no runtime dependencies
- *   and no network, and the projection has to be reproducible offline from the transcripts already
- *   on disk. Term overlap is a blunter notion of "same subject" than a sentence encoder would
- *   give, but it is deterministic and needs nothing the log directory does not already hold.
+ * - **The command envelope is stripped before embedding.** A slash command's opening prompt
+ *   inlines its whole definition, byte-identical across every run and dwarfing the criteria it
+ *   wraps; embedding it would cluster `/task` with `/task` by boilerplate, so the map would only
+ *   prove its own colouring. {@link parseCommandEnvelope} splits the two — the criteria is
+ *   embedded, the command name kept aside as the label.
+ * - **The vectors are TF-IDF, not neural.** This package has no runtime dependencies and no
+ *   network; the projection must be reproducible offline from the transcripts already on disk.
  *
- * The whole pipeline is pure and seeded, so the same transcripts always produce the same map.
+ * The pipeline is pure and seeded, so the same transcripts always produce the same map.
  */
 
 import { type CommandEnvelope, parseCommandEnvelope } from './commands.js';
@@ -46,10 +38,8 @@ export interface ProjectableSession extends SessionMeta {
 // --- Text ------------------------------------------------------------------
 
 /**
- * English function words, plus the handful of transcript-grammar words every session carries.
- * The list is deliberately short: corpus-specific noise (this repo's own paths, tool names,
- * the word "session") is dropped by {@link TFIDF_DEFAULTS}'s document-frequency ceiling instead,
- * which adapts as the corpus changes where a hand-maintained list would go stale.
+ * English function words. Deliberately short — corpus-specific noise is dropped by
+ * {@link TFIDF_DEFAULTS}'s document-frequency ceiling instead, which adapts as the corpus changes.
  */
 const STOP_WORDS = new Set([
   'about',
@@ -187,8 +177,8 @@ const HEX_BLOB_RE = /^[0-9a-f]{8,}$/;
 /**
  * Split text into embedding terms: lowercase, letter-led runs of at least
  * {@link MIN_TERM_CHARS}, minus stop words, hex blobs, and anything implausibly long.
- * `camelCase` and `snake_case` both fall apart into their words, which is what makes a
- * transcript's tool signatures (`Read(file_path=…)`) contribute their paths as subject terms.
+ * `camelCase` and `snake_case` fall apart into their words, so a transcript's tool signatures
+ * contribute their paths as subject terms.
  */
 export function embeddingTerms(text: string): string[] {
   const terms: string[] = [];
@@ -207,10 +197,9 @@ export function embeddingTerms(text: string): string[] {
 const NODE_TEXT_BUDGET = 20_000;
 
 /**
- * The text a session is embedded from: its names, its criteria, and its steps — with the slash
- * command's inlined definition removed. A command run contributes
- * {@link CommandEnvelope.prompt} (the criteria alone); an ordinary session contributes its
- * subtitle as written.
+ * The text a session is embedded from: its names, its criteria, and its steps, with the slash
+ * command's inlined definition removed. A command run contributes {@link CommandEnvelope.prompt};
+ * an ordinary session contributes its subtitle as written.
  */
 export function sessionSubjectText(session: ProjectableSession): string {
   const envelope = parseCommandEnvelope(session.subtitle) ?? parseCommandEnvelope(session.firstTask);
@@ -231,10 +220,7 @@ export function sessionSubjectText(session: ProjectableSession): string {
   return parts.join('\n');
 }
 
-/**
- * The slash command a session ran, without its leading slash, or null for an ordinary session.
- * Read off the opening prompt's envelope — the transcript's subtitle keeps it verbatim.
- */
+/** The slash command a session ran, without its leading slash, or null for an ordinary session. */
 export function sessionCommand(session: ProjectableSession): string | null {
   const envelope = parseCommandEnvelope(session.subtitle) ?? parseCommandEnvelope(session.firstTask);
   return envelope?.command ?? null;
@@ -248,11 +234,10 @@ const NAME_CHARS = 72;
  * Condense a run's criteria into a name: drop its flags, then keep the first {@link NAME_WORDS}
  * words, with an `…` marking the cut.
  *
- * Every flag token goes, wherever it sits — a flag says how the run was invoked rather than what it
- * was about, and a leading run of them would otherwise eat the whole word budget. A flag's *value*
- * is not recognised as belonging to it, since nothing here knows which flags take one (the same
- * limitation `parseCommandEnvelope` records for its own flag list), so a value can survive as a
- * leading word. In a name that is cosmetic rather than misleading.
+ * Every flag token goes, wherever it sits, since a leading run of them would eat the whole word
+ * budget. A flag's *value* is not recognised as belonging to it — nothing here knows which flags
+ * take one (the limitation `parseCommandEnvelope` records for its own flag list) — so a value can
+ * survive as a leading word. Cosmetic in a name rather than misleading.
  */
 function condenseCriteria(prompt: string): string {
   const words = prompt.split(/\s+/).filter((word) => word !== '' && !word.startsWith('-'));
@@ -264,10 +249,10 @@ function condenseCriteria(prompt: string): string {
 
 /**
  * The name a dot carries. {@link sessionDisplayName} is the authority, but for a command run it
- * frequently comes back as the **bare command** — `deriveSessionName` keeps only the first sentence
- * of the opening prompt, and a run whose args start with flags or run to several lines collapses to
- * just `/task`. That name says nothing the dot's own colour does not already say, so where it adds
- * nothing the run's criteria is what identifies the session and the two are shown together.
+ * often comes back as the bare command — `deriveSessionName` keeps only the first sentence of the
+ * opening prompt, and a run whose args start with flags or span several lines collapses to just
+ * `/task`, which says nothing the dot's colour does not. Where it adds nothing, the criteria is
+ * appended to identify the session.
  */
 function pointName(session: ProjectableSession, envelope: CommandEnvelope | null): string {
   const display = sessionDisplayName(session);
@@ -286,15 +271,13 @@ export type EmbeddingVector = Map<string, number>;
 
 export interface TfIdfOptions {
   /**
-   * Drop a term appearing in fewer than this many documents. A term in exactly one document
-   * cannot bring two sessions together, so it only inflates the vocabulary. Applied only once
-   * the corpus is large enough for it to be meaningful ({@link MIN_DOCS_FOR_DF_FLOOR}).
+   * Drop a term appearing in fewer than this many documents — a term in one document cannot bring
+   * two sessions together. Applied only above {@link MIN_DOCS_FOR_DF_FLOOR} documents.
    */
   minDocumentFrequency?: number;
   /**
-   * Drop a term appearing in more than this fraction of documents. This is what removes the
-   * corpus's own boilerplate — the repo's paths, the tool names, the words every transcript
-   * carries — without a hand-maintained list.
+   * Drop a term appearing in more than this fraction of documents. Removes the corpus's own
+   * boilerplate without a hand-maintained list.
    */
   maxDocumentFrequencyRatio?: number;
   /** Keep at most this many terms, the most-discriminating first, so the vocabulary is bounded. */
@@ -320,10 +303,9 @@ export interface TfIdfResult {
 /**
  * Build L2-normalized TF-IDF vectors for a corpus of pre-tokenized documents.
  *
- * Term frequency is sublinear (`1 + ln tf`), so a word repeated forty times in a long run does
- * not outweigh forty distinct words; inverse document frequency is smoothed
- * (`ln(1 + N/df)`), so a term in every document still carries a little weight rather than
- * exactly none. Vectors are L2-normalized, which makes their dot product the cosine similarity.
+ * Term frequency is sublinear (`1 + ln tf`), so a repeated word does not outweigh distinct ones;
+ * inverse document frequency is smoothed (`ln(1 + N/df)`), so a term in every document keeps a
+ * little weight. L2 normalization makes the dot product the cosine similarity.
  */
 export function buildTfIdf(documents: readonly (readonly string[])[], options: TfIdfOptions = {}): TfIdfResult {
   const { minDocumentFrequency, maxDocumentFrequencyRatio, maxTerms } = { ...TFIDF_DEFAULTS, ...options };
@@ -427,13 +409,12 @@ export const TSNE_DEFAULTS = {
 const MIN_LEARNING_RATE = 50;
 
 /**
- * The learning rate to use for a corpus of `n` points — scikit-learn's `learning_rate="auto"`
- * rule, `max(n / exaggeration / 4, 50)`.
+ * The learning rate for a corpus of `n` points — scikit-learn's `learning_rate="auto"` rule,
+ * `max(n / exaggeration / 4, 50)`.
  *
- * A rate is not scale-free here: the gradient sums over every pair, so the step a corpus of a few
- * thousand needs will overshoot on one of a few dozen and leave the clusters oscillating across
- * the map instead of settling. A fixed 200 was measured diverging at 60 points while every rate at
- * 100 and below converged, so the size-aware rule is the default and a caller may still override.
+ * The rate is not scale-free: the gradient sums over every pair, so a step sized for thousands of
+ * points overshoots on dozens and leaves clusters oscillating instead of settling. A fixed 200 was
+ * measured diverging at 60 points while every rate at 100 and below converged.
  */
 export function autoLearningRate(n: number, earlyExaggeration: number = TSNE_DEFAULTS.earlyExaggeration): number {
   return Math.max(n / earlyExaggeration / 4, MIN_LEARNING_RATE);
@@ -462,20 +443,15 @@ export function clampPerplexity(requested: number, n: number): number {
  * joint distribution P that t-SNE matches.
  *
  * Each row gets its own gaussian bandwidth, found by bisection on `beta = 1/2σ²` until the row's
- * Shannon entropy hits `log(perplexity)` — that is what lets a point in a dense cluster and a
- * point out on its own both keep a comparable number of neighbours.
+ * Shannon entropy hits `log(perplexity)`, so a point in a dense cluster and one out on its own
+ * keep comparable neighbour counts.
  *
- * **The target is not always reachable, and the row that gets kept is the closest one rather than
- * the last one tried.** Where a point's `k` nearest neighbours sit at identical distances, the
- * narrowest possible kernel still spreads over all `k`, so entropy bottoms out at `log k`; asking
- * for a perplexity below that sends `beta` upward without ever satisfying the test until
- * `exp(-d·beta)` underflows to zero for every neighbour. Treating that underflow as "still too
- * wide" and widening the search further is what turned such a row into a *uniform* distribution —
- * which is the one answer that erases the structure entirely, since it declares every other
- * session an equally good neighbour. So underflow lowers the ceiling instead (it proves `beta` is
- * too large), and each step's row is scored against the target with the best-scoring one kept.
- * A row whose distances are genuinely all equal has constant entropy at every bandwidth and comes
- * out uniform through the same path, which for that row is the honest answer.
+ * **The target is not always reachable, so the kept row is the closest one, not the last tried.**
+ * Where a point's `k` nearest neighbours sit at identical distances, entropy bottoms out at
+ * `log k`; a perplexity below that drives `beta` up until `exp(-d·beta)` underflows to zero for
+ * every neighbour. Treating that underflow as "still too wide" widens the search further and
+ * yields a uniform row — the one answer that erases all structure. Underflow therefore lowers the
+ * ceiling instead, and each step is scored against the target with the best kept.
  */
 function jointProbabilities(squared: readonly (readonly number[])[], perplexity: number): Float64Array {
   const n = squared.length;
@@ -552,10 +528,9 @@ function jointProbabilities(squared: readonly (readonly number[])[], perplexity:
 /**
  * Lay a precomputed distance matrix out in two dimensions with t-SNE.
  *
- * `squared` holds squared distances (this module passes cosine distance squared). The optimizer is
- * the standard one — early exaggeration, momentum stepping 0.5 → 0.8, per-parameter gains — run
- * over the full O(n²) gradient rather than a Barnes-Hut approximation, which is well within budget
- * for a log directory's worth of transcripts and keeps the result exactly reproducible.
+ * `squared` holds squared distances. The optimizer is the standard one — early exaggeration,
+ * momentum stepping 0.5 → 0.8, per-parameter gains — over the full O(n²) gradient rather than
+ * Barnes-Hut, which stays within budget at a log directory's scale and is exactly reproducible.
  *
  * Output is centered and scaled so the widest axis spans `[-1, 1]`; the caller maps that to pixels.
  */
@@ -612,7 +587,7 @@ export function tsne(squared: readonly (readonly number[])[], options: TsneOptio
     const momentum = iteration < exaggerationIterations ? 0.5 : 0.8;
     for (let i = 0; i < n * 2; i++) {
       // A gain rises while the gradient keeps its sign and is cut when it flips — the standard
-      // per-parameter step adaptation, which is what keeps a fixed learning rate usable.
+      // per-parameter step adaptation.
       const aligned = Math.sign(gradient[i]!) === Math.sign(velocity[i]!);
       gains[i] = Math.max(0.01, aligned ? gains[i]! * 0.8 : gains[i]! + 0.2);
       velocity[i] = momentum * velocity[i]! - learningRate * gains[i]! * gradient[i]!;
@@ -701,9 +676,9 @@ const DEFAULT_TERMS_PER_POINT = 6;
  * Project a corpus of transcripts onto the flat map: embed each one, take every pairwise cosine
  * distance, and reduce to two dimensions with t-SNE.
  *
- * A session whose text yields no terms at all is **skipped rather than placed at the origin** —
- * an empty transcript has no subject, and parking it somewhere specific would invent a claim
- * about it and pull a real cluster toward the middle. `meta.skipped` reports how many.
+ * A session whose text yields no terms is **skipped rather than placed at the origin** — parking
+ * a subject-less transcript somewhere specific would invent a claim and pull real clusters toward
+ * the middle. `meta.skipped` reports how many.
  */
 export function projectSessions(
   sessions: readonly ProjectableSession[],
@@ -742,7 +717,6 @@ export function projectSessions(
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .slice(0, termsPerPoint)
       .map(([term]) => term);
-    // Parsed once here and shared by the name and the label, rather than per accessor.
     const envelope = parseCommandEnvelope(session.subtitle) ?? parseCommandEnvelope(session.firstTask);
     return {
       threadId: session.threadId,
@@ -764,8 +738,7 @@ export function projectSessions(
   for (const point of points) counts.set(point.command, (counts.get(point.command) ?? 0) + 1);
   const commands = [...counts.entries()]
     .map(([command, sessions]) => ({ command, sessions }))
-    // Commonest first; the ordinary-session band sorts last whatever its size, since it is the
-    // absence of a command rather than one of them.
+    // Commonest first; the ordinary-session band sorts last whatever its size.
     .sort((a, b) => {
       if (a.command === null) return 1;
       if (b.command === null) return -1;

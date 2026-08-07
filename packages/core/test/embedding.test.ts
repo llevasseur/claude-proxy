@@ -249,11 +249,10 @@ describe('tsne', () => {
   });
 
   it('separates tight groups even when the nearest neighbours sit at identical distances', () => {
-    // The regression that motivated the closest-row bandwidth search. With `k` neighbours tied at
-    // one distance, entropy cannot fall below `log k`, so a perplexity under that is unreachable:
-    // `beta` climbs until `exp(-d·beta)` underflows. Reading that underflow as "still too wide"
-    // pushed `beta` higher still and left the row uniform — declaring every session an equally
-    // good neighbour, which scrambles the map at every learning rate.
+    // The regression behind the closest-row bandwidth search. With `k` neighbours tied at one
+    // distance, entropy cannot fall below `log k`, so a lower perplexity is unreachable and `beta`
+    // climbs until `exp(-d·beta)` underflows. Reading that as "still too wide" left the row
+    // uniform, which scrambles the map at every learning rate.
     const per = 20;
     const n = 60;
     const squared = Array.from({ length: n }, (_, i) =>
