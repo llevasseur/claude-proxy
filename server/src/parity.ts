@@ -12,6 +12,7 @@ import {
   buildPromptMix,
   buildSession,
   buildSessionBreakdown,
+  buildSessionEmbedding,
   buildSessionErrors,
   buildSessionGraphNodes,
   buildSessionNodeTexts,
@@ -298,6 +299,24 @@ export const PARITY_ROUTES: ParityRoute[] = [
   {
     name: '/api/sessions/graph',
     cases: async (ctx) => [{ label: '/api/sessions/graph', run: (source) => buildSessionsGraph(ctx.logDir, source) }],
+  },
+  {
+    // Reads the same `listSessionGraphs` the graph does, so the two sides must agree on the
+    // corpus. The projection itself is pure and seeded, which is what makes the comparison
+    // meaningful: any difference in the points is a difference in the transcripts behind them.
+    //
+    // `limit` is small on purpose. The layout is O(n²) and this file replays every route twice
+    // over the real corpus, so projecting all of it would spend seconds here to re-prove what a
+    // few dozen transcripts already prove — the two sources agree. A disagreement shows up in the
+    // *points*, which the window does not soften: a transcript either side reads differently is a
+    // different vector, and every other point moves with it.
+    name: '/api/sessions/embedding',
+    cases: async (ctx) => [
+      {
+        label: '/api/sessions/embedding',
+        run: (source) => buildSessionEmbedding(ctx.logDir, { limit: 40 }, source),
+      },
+    ],
   },
   {
     name: '/api/sessions/session',

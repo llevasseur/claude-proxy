@@ -43,6 +43,7 @@ import {
   buildPromptSection,
   buildSession,
   buildSessionBreakdown,
+  buildSessionEmbedding,
   buildSessionErrors,
   buildSessionGraphNodes,
   buildSessionNodeTexts,
@@ -728,6 +729,20 @@ const server = http.createServer(async (req, res) => {
         const graph = await buildSessionsGraph(LOG_DIR, readSource());
         send(res, 200, graph);
         shadow('/api/sessions/graph', graph, (source) => buildSessionsGraph(LOG_DIR, source));
+        return;
+      }
+      case '/api/sessions/embedding': {
+        // Both are advisory: `perplexity` is clamped against the window downstream and a
+        // non-numeric one falls back to the default, so the map always renders.
+        const requested = Number(url.searchParams.get('perplexity'));
+        const limit = Number(url.searchParams.get('limit'));
+        const opts = {
+          ...(Number.isFinite(requested) && requested > 0 ? { perplexity: requested } : {}),
+          ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
+        };
+        const embedding = await buildSessionEmbedding(LOG_DIR, opts, readSource());
+        send(res, 200, embedding);
+        shadow('/api/sessions/embedding', embedding, (source) => buildSessionEmbedding(LOG_DIR, opts, source));
         return;
       }
       case '/api/sessions/node-text': {

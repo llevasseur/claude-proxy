@@ -15,6 +15,7 @@ import {
   bucketJudgements,
   buildUsageLimits,
   type CliFunctionEntry,
+  type CommandBand,
   type CommandPattern,
   type CommandRun,
   type CommandRunShape,
@@ -67,6 +68,7 @@ import {
   parseSessionErrors,
   parseSystemPromptText,
   patternFrequency,
+  projectSessions,
   type RequestBreakdown,
   type RequestErrorSite,
   type RequestMessageDetail,
@@ -85,6 +87,7 @@ import {
   type SessionErrorLink,
   type SessionMeta,
   type SessionNode,
+  type SessionPoint,
   type SessionSuggestion,
   type SkimDigest,
   type SkimShape,
@@ -1200,6 +1203,63 @@ export async function buildSessionsGraph(
 ): Promise<SessionsGraphResponse> {
   const sessions = await source.listSessionGraphs(logDir);
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
+}
+
+export interface SessionEmbeddingResponse {
+  /** One dot per projected session. Position is the whole claim — there are no edges. */
+  points: SessionPoint[];
+  /** The legend: every command on the map, commonest first, ordinary sessions last. */
+  commands: CommandBand[];
+  meta: {
+    sessionsDir: string;
+    /** Transcripts on disk, before the window and before any were skipped. */
+    total: number;
+    /** Transcripts actually placed. */
+    sessions: number;
+    /** Transcripts dropped for carrying no usable text. */
+    skipped: number;
+    vocabulary: number;
+    /** The perplexity actually used, after clamping against the window size. */
+    perplexity: number;
+    iterations: number;
+    seed: number;
+  };
+}
+
+/**
+ * How many transcripts the map projects by default, newest first.
+ *
+ * The layout is O(n²) in both memory and time — every pair of sessions gets a distance — so this
+ * is a real bound rather than a formality: measured at ~570 ms for 344 sessions, which is fine on
+ * demand and would not be at ten times the count. The window is newest-first because that is the
+ * corpus a person is asking about.
+ */
+export const SESSION_EMBEDDING_LIMIT = 400;
+
+/**
+ * Project every session transcript onto the flat embedding map — the subject-similarity scatter
+ * behind `/sessions/map`.
+ *
+ * All the work is `projectSessions`, which is pure; this only picks the window and names where the
+ * transcripts came from. `perplexity` is passed through and clamped downstream against the window
+ * size, so an out-of-range request degrades rather than erroring.
+ */
+export async function buildSessionEmbedding(
+  logDir: string,
+  opts: { limit?: number; perplexity?: number } = {},
+  source: SidecarSource = fileSource,
+): Promise<SessionEmbeddingResponse> {
+  const sessions = await source.listSessionGraphs(logDir);
+  const limit = Math.max(1, Math.min(opts.limit ?? SESSION_EMBEDDING_LIMIT, SESSION_EMBEDDING_LIMIT));
+  const projection = projectSessions(
+    sessions.slice(0, limit),
+    opts.perplexity === undefined ? {} : { perplexity: opts.perplexity },
+  );
+  return {
+    points: projection.points,
+    commands: projection.commands,
+    meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length, ...projection.meta },
+  };
 }
 
 export type SessionNodeTextsResponse = SessionNodeTexts;
