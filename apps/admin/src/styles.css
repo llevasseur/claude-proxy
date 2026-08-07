@@ -1092,10 +1092,8 @@ a.pager-btn:hover {
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
 }
-/* A table whose columns carry `min-width` can't shrink to fit a narrow card, so
-   give it somewhere to overflow: sideways, inside its own scroller, rather than
-   past the card's edge. Below the columns' combined minimum — a phone — this is
-   what scrolls; above it the table is 100% wide and the scroller never appears. */
+/* Scroller for a table whose columns carry `min-width` and so can't shrink to a
+   narrow card. Only scrolls below the columns' combined minimum. */
 .table-scroll {
   overflow-x: auto;
 }

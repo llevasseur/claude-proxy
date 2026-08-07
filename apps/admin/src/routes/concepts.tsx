@@ -112,12 +112,10 @@ export function ConceptsPage() {
 }
 
 /**
- * What each column is owed. Term used to be shrink-to-fit and `nowrap`, which
- * let one long term hold the whole row open; it wraps now, so every column needs
- * a floor of its own or the wrap just redistributes the squeeze onto its
- * neighbours. The sum is wider than a phone, which is what `.table-scroll` is
- * for — the minimums win and the table scrolls sideways rather than collapsing.
- * Only Saved stays `nowrap`: a split timestamp reads as two values.
+ * Per-column floors — every column needs one, or a wrap in Term just
+ * redistributes the squeeze onto its neighbours. Their sum is wider than a
+ * phone, which is what `.table-scroll` is for. Saved stays `nowrap`: a split
+ * timestamp reads as two values.
  */
 const COLUMN = {
   term: { minWidth: 140 },
