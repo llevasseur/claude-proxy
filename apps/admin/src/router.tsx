@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, Link, Outlet, useRouterStat
 import {
   Binary,
   BookOpen,
+  ChartScatter,
   EyeOff,
   FolderGit2,
   Gauge,
@@ -47,6 +48,7 @@ import { PromptSectionPage } from './routes/prompt-section';
 import { SessionDetailPage } from './routes/session-detail';
 import { SessionErrorsPage } from './routes/session-errors';
 import { SessionGraphPage } from './routes/session-graph';
+import { SessionMapPage } from './routes/session-map';
 import { SessionsPage } from './routes/sessions';
 import { SkimPage } from './routes/skim';
 import { SuggestionBucketPage } from './routes/suggestion-bucket';
@@ -71,6 +73,7 @@ const STATIONS = [
   { to: '/projects', label: 'Projects', hint: 'memory', exact: false, icon: FolderGit2 },
   { to: '/sessions', label: 'Sessions', hint: 'transcripts', exact: true, icon: MessagesSquare },
   { to: '/sessions/graph', label: 'Live graph', hint: 'sessions', exact: false, icon: Network },
+  { to: '/sessions/map', label: 'Session map', hint: 'subjects', exact: false, icon: ChartScatter },
   { to: '/jobs', label: 'Jobs', hint: 'device', exact: false, icon: HardDrive },
   { to: '/hooks-plugins', label: 'Hooks & Plugins', hint: 'config', exact: false, icon: Puzzle },
   { to: '/system-prompt', label: 'System prompt', hint: 'device', exact: false, icon: ScrollText },
@@ -271,6 +274,16 @@ const sessionGraphRoute = createRoute({
     return typeof session === 'string' && session !== '' ? { session } : {};
   },
 });
+/**
+ * The embedding projection. A static sibling of `/sessions/$id`, like `/sessions/graph` — the
+ * router ranks a literal segment above a param, so `map` cannot be read as a thread id.
+ */
+const sessionMapRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sessions/map',
+  component: SessionMapPage,
+  staticData: { title: 'Session map' },
+});
 const sessionDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sessions/$id',
@@ -405,6 +418,7 @@ const routeTree = rootRoute.addChildren([
   memoryDetailRoute,
   sessionsRoute,
   sessionGraphRoute,
+  sessionMapRoute,
   sessionDetailRoute,
   sessionErrorsRoute,
   jobsRoute,

@@ -6,6 +6,7 @@ import type {
   BucketBreakdownSummary,
   BucketJudgementState,
   CliFunctionEntry,
+  CommandBand,
   CommandPatternId,
   CommandRun,
   CommandRunOutcome,
@@ -41,6 +42,7 @@ import type {
   SessionContextPeak,
   SessionMeta,
   SessionNode,
+  SessionPoint,
   SessionSuggestion,
   SkimDigest,
   SkimShape,
@@ -340,6 +342,27 @@ export interface SessionGraphEntry extends SessionSummary, SessionAgentLink {
 export interface SessionsGraphResponse {
   sessions: SessionGraphEntry[];
   meta: { sessionsDir: string; total: number };
+}
+/**
+ * The embedding projection: every session as a dot on a flat map, positioned by subject
+ * similarity alone. There are no links between sessions here — position carries the meaning.
+ */
+export interface SessionEmbeddingResponse {
+  points: SessionPoint[];
+  /** Every command on the map, commonest first, ordinary sessions last — the legend. */
+  commands: CommandBand[];
+  meta: {
+    sessionsDir: string;
+    /** Transcripts on disk, before the window and before any were skipped. */
+    total: number;
+    sessions: number;
+    /** Transcripts dropped for carrying no usable text. */
+    skipped: number;
+    vocabulary: number;
+    perplexity: number;
+    iterations: number;
+    seed: number;
+  };
 }
 /** Node index → the whole text behind that step's truncated one-line gist. Sparse. */
 export interface SessionNodeTextsResponse {
@@ -704,6 +727,17 @@ export const getJobFile = (id: string, file: string) =>
 export const deleteJob = (id: string) => post<JobDeleteResponse>('/api/jobs/delete', { id });
 export const getSessions = () => get<SessionsResponse>('/api/sessions');
 export const getSessionsGraph = () => get<SessionsGraphResponse>('/api/sessions/graph');
+/**
+ * The flat embedding map of every session. `limit` narrows the window to the newest N
+ * transcripts — the layout is O(n²), so the server caps it regardless.
+ */
+export const getSessionEmbedding = (opts: { limit?: number; perplexity?: number } = {}) => {
+  const params = new URLSearchParams();
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+  if (opts.perplexity !== undefined) params.set('perplexity', String(opts.perplexity));
+  const query = params.toString();
+  return get<SessionEmbeddingResponse>(`/api/sessions/embedding${query ? `?${query}` : ''}`);
+};
 export const getSessionGraphNodes = (id: string) =>
   get<SessionGraphNodesResponse>(`/api/sessions/graph/nodes?id=${encodeURIComponent(id)}`);
 export const getSession = (id: string) => get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
