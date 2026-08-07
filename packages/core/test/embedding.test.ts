@@ -7,7 +7,6 @@ import {
   embeddingTerms,
   type ProjectableSession,
   projectSessions,
-  sessionCommand,
   sessionSubjectText,
   tsne,
 } from '../src/embedding.js';
@@ -104,17 +103,21 @@ describe('sessionSubjectText', () => {
   });
 });
 
-describe('sessionCommand', () => {
+describe("a point's command label", () => {
+  /** The label is read off the envelope during `projectSessions`, so assert it through the point. */
+  const labelOf = (overrides: Partial<ProjectableSession>) =>
+    projectSessions([session({ nodes: [node('rendering the scroll panel')], ...overrides })]).points[0]?.command;
+
   it('reads the command off the envelope, without its slash', () => {
-    expect(sessionCommand(session({ subtitle: envelope('god', 'ship it') }))).toBe('god');
+    expect(labelOf({ subtitle: envelope('god', 'ship it') })).toBe('god');
   });
 
   it('falls back to the first task when the subtitle carries no envelope', () => {
-    expect(sessionCommand(session({ subtitle: null, firstTask: envelope('teach', 'explain SSE') }))).toBe('teach');
+    expect(labelOf({ subtitle: null, firstTask: envelope('teach', 'explain SSE') })).toBe('teach');
   });
 
   it('is null for an ordinary session', () => {
-    expect(sessionCommand(session({ subtitle: 'just a question about caching' }))).toBeNull();
+    expect(labelOf({ subtitle: 'just a question about caching' })).toBeNull();
   });
 });
 

@@ -1028,6 +1028,12 @@ a.pager-btn:hover {
   margin-top: 6px;
   color: var(--muted);
 }
+.mapwarn {
+  border-left: 3px solid var(--warn);
+}
+.mapwarn strong {
+  color: var(--warn);
+}
 
 /* trend carousel */
 .trend-carousel {

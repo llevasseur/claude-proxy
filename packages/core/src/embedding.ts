@@ -220,12 +220,6 @@ export function sessionSubjectText(session: ProjectableSession): string {
   return parts.join('\n');
 }
 
-/** The slash command a session ran, without its leading slash, or null for an ordinary session. */
-export function sessionCommand(session: ProjectableSession): string | null {
-  const envelope = parseCommandEnvelope(session.subtitle) ?? parseCommandEnvelope(session.firstTask);
-  return envelope?.command ?? null;
-}
-
 /** Words a criteria-derived name keeps, and its hard character cap. */
 const NAME_WORDS = 9;
 const NAME_CHARS = 72;

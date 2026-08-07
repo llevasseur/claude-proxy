@@ -120,7 +120,7 @@ formality: the layout is O(n²) in time and memory, measured at ~570 ms for 344 
 narrows it and `?perplexity=` overrides the target, both advisory — a non-numeric or out-of-range
 value falls back rather than erroring, so the map always renders. `meta.total` always reports the
 whole corpus, so a narrowed window still says how much it hid. The route joins the
-[parity](retention-lifecycle.md) registry, which is meaningful precisely because the projection is
+[parity](../adrs/0004-adopt-sqlite-as-the-query-substrate.md) registry, which is meaningful precisely because the projection is
 deterministic: any difference in the points is a difference in the transcripts behind them.
 
 ## Acceptance criteria

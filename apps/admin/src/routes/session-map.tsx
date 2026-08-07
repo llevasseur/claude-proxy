@@ -67,8 +67,18 @@ export function SessionMapPage() {
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<SessionMapSkeleton />}>
         {!data ? null : data.points.length === 0 ? (
           <div className='card empty'>
-            No session transcripts in <span className='rule-name'>{data.meta.sessionsDir}</span> yet. The map fills as
-            the proxy writes them.
+            {data.meta.skipped > 0 ? (
+              <>
+                All {fmtInt(data.meta.skipped)} transcript{data.meta.skipped === 1 ? '' : 's'} in{' '}
+                <span className='rule-name'>{data.meta.sessionsDir}</span> carried no usable text, so there is nothing
+                to place — {fmtInt(data.meta.total)} on disk, none with a subject to position it by.
+              </>
+            ) : (
+              <>
+                No session transcripts in <span className='rule-name'>{data.meta.sessionsDir}</span> yet. The map fills
+                as the proxy writes them.
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -82,6 +92,16 @@ export function SessionMapPage() {
                 sub={data.meta.skipped === 0 ? 'every transcript placed' : 'no usable text'}
               />
             </div>
+
+            {data.meta.vocabulary === 0 && (
+              <div className='card mapwarn' style={{ marginBottom: 16 }}>
+                <div className='leak-note'>
+                  <strong>Position means nothing on this map.</strong> No term survived the vocabulary filter, so every
+                  vector is empty and every pair of sessions is exactly as far apart as every other. The dots below are
+                  laid out by the projection's own dynamics, not by subject — read nothing into which sit together.
+                </div>
+              </div>
+            )}
 
             <MapLegend bands={bands} hidden={hidden} onToggle={setHidden} />
             <MapCanvas bands={bands} hidden={hidden} />
