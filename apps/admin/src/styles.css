@@ -1092,6 +1092,11 @@ a.pager-btn:hover {
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
 }
+/* Scroller for a table whose columns carry `min-width` and so can't shrink to a
+   narrow card. Only scrolls below the columns' combined minimum. */
+.table-scroll {
+  overflow-x: auto;
+}
 .table th,
 .table td {
   text-align: left;

@@ -61,49 +61,49 @@ export function ConceptsPage() {
               <strong>{concepts.length}</strong> concept{concepts.length === 1 ? '' : 's'} saved · click a column to
               sort · click a row to read the detail
             </div>
-            <table className='table' style={{ marginTop: 12 }}>
-              <thead>
-                <tr>
-                  {/* Term sizes to its longest value; Explanation, the only column with
-                      no width, absorbs what is left and wraps. */}
-                  <SortHeader label='Term' sortKey='term' sort={sort} onSort={onSort} style={FIT_COLUMN} />
-                  <th>Explanation</th>
-                  <SortHeader label='Field' sortKey='field' sort={sort} onSort={onSort} style={FIT_COLUMN} />
-                  <th>Skills</th>
-                  <SortHeader label='Saved' sortKey='savedAt' sort={sort} onSort={onSort} style={FIT_COLUMN} />
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((c) => (
-                  <tr
-                    key={c.ord}
-                    className='clickable'
-                    onClick={() => navigate({ to: '/concepts/$ord', params: { ord: String(c.ord) } })}>
-                    <td className='rule-name' style={FIT_COLUMN}>
-                      {c.term}
-                    </td>
-                    <td>{c.sentence || <span className='muted'>—</span>}</td>
-                    <td style={FIT_COLUMN}>
-                      {c.field ? <span className='badge neutral'>{c.field}</span> : <span className='muted'>—</span>}
-                    </td>
-                    <td>
-                      {c.skills.length === 0 ? (
-                        <span className='muted'>—</span>
-                      ) : (
-                        c.skills.map((skill) => (
-                          <span className='badge sev-info' key={skill} style={{ marginRight: 4 }}>
-                            {skill}
-                          </span>
-                        ))
-                      )}
-                    </td>
-                    <td className='muted' style={FIT_COLUMN}>
-                      {formatSaved(c.savedAt)}
-                    </td>
+            <div className='table-scroll' style={{ marginTop: 12 }}>
+              <table className='table'>
+                <thead>
+                  <tr>
+                    <SortHeader label='Term' sortKey='term' sort={sort} onSort={onSort} style={COLUMN.term} />
+                    <th style={COLUMN.sentence}>Explanation</th>
+                    <SortHeader label='Field' sortKey='field' sort={sort} onSort={onSort} style={COLUMN.field} />
+                    <th style={COLUMN.skills}>Skills</th>
+                    <SortHeader label='Saved' sortKey='savedAt' sort={sort} onSort={onSort} style={COLUMN.saved} />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {sorted.map((c) => (
+                    <tr
+                      key={c.ord}
+                      className='clickable'
+                      onClick={() => navigate({ to: '/concepts/$ord', params: { ord: String(c.ord) } })}>
+                      <td className='rule-name' style={COLUMN.term}>
+                        {c.term}
+                      </td>
+                      <td style={COLUMN.sentence}>{c.sentence || <span className='muted'>—</span>}</td>
+                      <td style={COLUMN.field}>
+                        {c.field ? <span className='badge neutral'>{c.field}</span> : <span className='muted'>—</span>}
+                      </td>
+                      <td style={COLUMN.skills}>
+                        {c.skills.length === 0 ? (
+                          <span className='muted'>—</span>
+                        ) : (
+                          c.skills.map((skill) => (
+                            <span className='badge sev-info' key={skill} style={{ marginRight: 4 }}>
+                              {skill}
+                            </span>
+                          ))
+                        )}
+                      </td>
+                      <td className='muted' style={COLUMN.saved}>
+                        {formatSaved(c.savedAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </QueryState>
@@ -111,8 +111,19 @@ export function ConceptsPage() {
   );
 }
 
-/** Shrink-to-fit: the browser gives `1%` columns only what their content needs. */
-const FIT_COLUMN = { width: '1%', whiteSpace: 'nowrap' } as const;
+/**
+ * Per-column floors — every column needs one, or a wrap in Term just
+ * redistributes the squeeze onto its neighbours. Their sum is wider than a
+ * phone, which is what `.table-scroll` is for. Saved stays `nowrap`: a split
+ * timestamp reads as two values.
+ */
+const COLUMN = {
+  term: { minWidth: 140 },
+  sentence: { minWidth: 260 },
+  field: { minWidth: 110 },
+  skills: { minWidth: 160 },
+  saved: { minWidth: 150, whiteSpace: 'nowrap' },
+} as const satisfies Record<string, CSSProperties>;
 
 /** A sortable column head — click to sort, click again to reverse. */
 function SortHeader({
@@ -176,8 +187,8 @@ function ConceptsSkeleton() {
       <div className='muted' aria-hidden>
         <Skeleton w='32%' />
       </div>
-      {/* The real table carries this offset itself. */}
-      <div style={{ marginTop: 12 }}>
+      {/* Same wrapper and offset as the real table, so the swap doesn't shift. */}
+      <div className='table-scroll' style={{ marginTop: 12 }}>
         <SkeletonTable columns={CONCEPT_COLUMNS} rows={6} />
       </div>
     </div>
