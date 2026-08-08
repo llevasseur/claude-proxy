@@ -345,10 +345,9 @@ export interface SessionNode {
   turn: number | null;
   /**
    * Fingerprint of the call's *whole* argument object, hashed by the proxy at capture
-   * time and carried on the `.nodes.jsonl` sidecar. {@link SessionNode.text} is a
-   * rendered display signature: one identifying argument, truncated — so two calls that
-   * differ only past the cut render identically, and anything keyed on the rendered form
-   * conflates them. This does not.
+   * time and carried on the `.nodes.jsonl` sidecar. {@link SessionNode.text} renders one
+   * identifying argument, truncated, so two calls differing only past the cut look alike
+   * there; they do not here.
    *
    * Null on non-`tool` nodes, and on any node from a transcript whose sidecar predates
    * the field — where the rendered signature stays the only key available.
@@ -375,8 +374,8 @@ const DONE_TEXT_RE = /^- done:\s*(.*)$/;
  *
  * `argsHashes` is the transcript's `.nodes.jsonl` sidecar read through
  * {@link parseSessionNodeHashes}, keyed by the same node index. Omit it and every node
- * comes back with `argsHash: null`, which is what a transcript predating the sidecar
- * field yields anyway.
+ * comes back with `argsHash: null` — the same reading a transcript predating the field
+ * yields.
  */
 export function parseSessionNodes(content: string, argsHashes: Record<number, string> = {}): SessionNode[] {
   const nodes: SessionNode[] = [];
@@ -510,16 +509,14 @@ export function parseSessionNodeHashes(content: string): Record<number, string> 
 // A subagent runs under its parent's session id but with its own conversation
 // root, so the proxy writes it as a *separate* transcript (see proxy/session.ts).
 //
-// The proxy now writes the pairing down at capture time — it saw the spawning call
-// and the prompt that became the child's root — as `- parent:` / `- spawn:` /
-// `- agent:` header lines on the child. {@link parseRecordedSpawn} reads them back,
-// and a transcript that carries them is linked from the record.
+// The proxy writes the pairing down at capture time as `- parent:` / `- spawn:` /
+// `- agent:` header lines on the child; {@link parseRecordedSpawn} reads them back.
 //
-// Transcripts written before that, and any whose spawn the proxy missed, still fall
-// through to the inference below: the parent's `Agent(…)` / `Task(…)` lines claim
-// the group's other transcripts in start-time order. That pairing is positional, not
-// proven — a parallel fan-out can hand the wrong branch to the wrong spawn — so a
-// link produced that way is flagged `inferred`.
+// Transcripts written before that, and any whose spawn the proxy missed, fall through
+// to the inference below: the parent's `Agent(…)` / `Task(…)` lines claim the group's
+// other transcripts in start-time order. That pairing is positional, not proven — a
+// parallel fan-out can hand the wrong branch to the wrong spawn — so a link produced
+// that way is flagged `inferred`.
 
 /** The parentage a transcript's own header records, written by the proxy at capture time. */
 export interface RecordedSpawn {
@@ -637,8 +634,7 @@ export interface SessionAgentLink {
   /**
    * True when this pairing was *guessed* rather than recorded: the parent's spawn lines
    * were matched to transcripts in start-time order, which a parallel fan-out can get
-   * wrong. False for a link the proxy wrote down at capture time, and false at top
-   * level, where there is no pairing to be wrong about.
+   * wrong. False for a link the proxy wrote down, and false at top level.
    */
   inferred: boolean;
 }
@@ -684,8 +680,7 @@ function reportedBack(nodes: SessionNode[], spawnIndex: number, returnIndex: num
  * Reconstruct the agent tree across a set of transcripts, keyed by thread id.
  *
  * A transcript that records its own parentage ({@link LinkableSession.recorded}) is
- * linked from that record — the proxy watched the spawn happen — and its link is not
- * `inferred`. Nothing about it depends on start times or on the spawning call's name.
+ * linked from that record, and its link is not `inferred`.
  *
  * Everything left over takes the legacy path. Transcripts sharing a session id are one
  * agent family; within a family, each transcript's `Agent(…)` / `Task(…)` spawn lines

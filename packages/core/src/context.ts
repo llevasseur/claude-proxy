@@ -18,9 +18,8 @@ export interface ContextEntry {
   /** Claude Code session id that sent it; null on legacy sidecars. */
   sessionId: string | null;
   /**
-   * The transcript it is a turn of, recorded by the proxy at capture time; null on
-   * sidecars written before the field existed. A session id spans a whole agent
-   * family, so this is the only handle that names one thread.
+   * The transcript it is a turn of; null on legacy sidecars. A session id spans a
+   * whole agent family, so this is the only handle that names one thread.
    */
   threadId: string | null;
   /** input + cacheRead + cacheCreation — the true prompt size. */
@@ -115,11 +114,9 @@ export interface SessionContextPeak {
 }
 
 /**
- * Which entries belong to one transcript. Prefers the thread id the proxy recorded
- * at capture time: it names exactly one transcript, where a session id spans a whole
- * agent family — main thread, subagents, one-shot helpers — and so can hand a
- * subagent's request to its parent. Falls back to the session id when the thread is
- * older than the recorded field, which is the only case where that risk remains.
+ * Which entries belong to one transcript. Prefers the recorded thread id, which names
+ * exactly one; falls back to the session id, which spans a whole agent family and so
+ * can hand a subagent's request to its parent.
  */
 function matching(
   entries: readonly ContextEntry[],
@@ -135,8 +132,7 @@ function matching(
 }
 
 /**
- * The largest-context request a transcript sent. Matched on the recorded thread id
- * where the sidecars carry one, else on the session id — see {@link matching}. Ties
+ * The largest-context request a transcript sent, matched by {@link matching}. Ties
  * keep the earlier entry; no match gives an empty result.
  */
 export function sessionContextPeak(

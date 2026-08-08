@@ -254,11 +254,9 @@ interface SessionInfo {
   deviceId: string | null;
   /**
    * The transcript this request belongs to — the same id
-   * {@link session.threadIdFor} names `logs/sessions/<threadId>.md` with. A session
-   * id is shared by a run and every subagent under it, so it cannot say *which*
-   * transcript a request is a turn of; this can. Absent (not null) when the body
-   * has no user text to root on, so a sidecar written before this field existed and
-   * one written for an unrootable request read alike.
+   * {@link session.threadIdFor} names `logs/sessions/<threadId>.md` with. Absent (not
+   * null) when the body has no user text to root on, so an unrootable request and a
+   * sidecar written before this field read alike.
    */
   threadId?: string;
 }

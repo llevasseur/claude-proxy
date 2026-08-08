@@ -134,9 +134,7 @@ export async function listSessionGraphs(logDir: string): Promise<SessionGraph[]>
   );
 
   const links = linkAgentSessions(rows);
-  // `recorded` is an input to the linkage, not part of the listing's wire shape — the
-  // link it produced says everything a reader needs, and says it the same way for a
-  // transcript that recorded nothing.
+  // `recorded` is an input to the linkage, not part of the listing's wire shape.
   const linked = rows.map(({ recorded: _recorded, ...row }) => ({ ...row, ...links.get(row.threadId)! }));
 
   linked.sort((a, b) => b.modified.localeCompare(a.modified) || a.threadId.localeCompare(b.threadId));

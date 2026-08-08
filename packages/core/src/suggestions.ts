@@ -468,10 +468,9 @@ const serialDiscovery: Rule = (sessions) => {
  * The same file opened twice in one session — context paid for twice.
  *
  * Keyed on the argument fingerprint the proxy hashed at capture time, not on the
- * rendered `Read(file_path=…)` line: that line carries one truncated argument, so every
- * read under a long shared prefix (`.claude/worktrees/<name>/…`) renders identically and
- * keying on it reports duplicates that never happened. A transcript whose sidecar
- * predates the hash falls back to the rendered signature, since it is all there is.
+ * rendered line: that line carries one truncated argument, so reads under a long shared
+ * prefix all render alike and keying on it reports duplicates that never happened. A
+ * transcript whose sidecar predates the hash falls back to the rendered signature.
  */
 const redundantReads: Rule = (sessions) => {
   const hits: { session: SuggestibleSession; node: SessionNode }[] = [];

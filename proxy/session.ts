@@ -51,15 +51,13 @@ export interface TranscriptEntry {
   full: string | null;
   /**
    * Stable fingerprint of the call's *whole* argument object, not the one truncated
-   * argument the line shows. Null on anything that is not a tool call. Two calls with
-   * the same hash really were the same call; two long paths sharing a 60-char prefix
-   * no longer collapse into one signature.
+   * argument the line shows. Null on anything that is not a tool call. Two long paths
+   * sharing a 60-char prefix no longer collapse into one signature.
    */
   argsHash?: string | null;
   /**
-   * The opening prompt of the thread this call starts, when it starts one — the join
-   * key that makes spawn parentage a recorded fact instead of a later inference. Null
-   * on a call that spawns nothing.
+   * The opening prompt of the thread this call starts, when it starts one — the key
+   * the child's thread id is rooted on. Null on a call that spawns nothing.
    */
   spawnPrompt?: string | null;
   /** What the spawn calls itself (`subagent_type`, else `skill`), or null. */
@@ -206,9 +204,8 @@ function stableJson(value: unknown): string {
 }
 
 /**
- * Fingerprint of a tool call — its name plus its whole argument object. Recorded
- * beside the truncated display signature so a consumer asking "was this the same
- * call?" reads the answer instead of guessing it off 60 rendered characters.
+ * Fingerprint of a tool call — its name plus its whole argument object. Recorded beside
+ * the truncated display signature, which cannot tell two similar calls apart.
  */
 export function argsHashFor(name: string, input: unknown): string {
   return crypto
@@ -223,9 +220,9 @@ const AGENT_TYPE_KEYS = ['subagent_type', 'skill'];
 
 /**
  * A call that starts its own thread, and what to call it. Any tool handed a non-empty
- * `prompt` starts one — that string *is* the child's first user message, which is what
- * the child's thread id is rooted on. Keyed on the argument rather than the tool's name,
- * so a spawn under a name nobody listed is still a spawn.
+ * `prompt` starts one — that string *is* the child's first user message. Keyed on the
+ * argument rather than the tool's name, so a spawn under a name nobody listed still
+ * counts.
  */
 function spawnOf(input: unknown): { prompt: string; agentType: string | null } | null {
   if (!input || typeof input !== 'object') return null;
@@ -451,8 +448,8 @@ function readState(statePath: string): ThreadEntry | null {
       subtitled: (s.subtitled as boolean) ?? false,
       nodes: typeof s.nodes === 'number' ? s.nodes : null,
       lastSeen: typeof s.lastSeen === 'number' ? s.lastSeen : 0,
-      // Absent on state written before parentage was recorded — that thread keeps
-      // whatever the reader infers, exactly as it did before.
+      // Absent on state written before parentage was recorded; that thread keeps
+      // whatever the reader infers.
       parent: (s.parent as string | null) ?? null,
       spawnIndex: typeof s.spawnIndex === 'number' ? s.spawnIndex : null,
       agentType: (s.agentType as string | null) ?? null,
@@ -521,9 +518,9 @@ export function countNodeLines(content: unknown): number {
  * Record what the transcript line dropped, keyed by node index, and advance the
  * thread's node count. Two things go in a row: the untruncated text behind a gisted
  * line (`text`), and the fingerprint of a tool call's whole argument object
- * (`argsHash`). Either may be absent — a row exists as soon as one of them does — so
- * a reader that only knows about `text` reads these rows exactly as it read the old
- * ones. Returns the index the first of these entries landed at.
+ * (`argsHash`). Either may be absent — a row exists as soon as one of them does — so a
+ * reader that only knows `text` reads these rows as it read the old ones. Returns the
+ * index the first of these entries landed at.
  *
  * State written by an older proxy carries no count, so it's recovered once by
  * counting the transcript already on disk.
@@ -696,17 +693,15 @@ function recordTitle(dir: string, content: string, title: string | null): void {
 
 // --- Recorded spawn parentage ----------------------------------------------
 //
-// A subagent runs under its parent's session id but with its own conversation root,
-// so it gets a transcript of its own and nothing on the wire names the pair. The
-// proxy *does* know the pair, though: the spawning call carried the prompt that
-// became the child's first user message, which is what the child's thread id is
-// rooted on. So the pairing is written down here rather than reconstructed later
-// from start times and a list of tool names that count as spawns.
+// A subagent runs under its parent's session id but with its own conversation root, so
+// it gets a transcript of its own and nothing on the wire names the pair. The spawning
+// call does carry the prompt that became the child's first user message, which is what
+// the child's thread id is rooted on, so the pairing is written down here.
 //
-// The two sightings arrive in either order. A blocking spawn only reaches the wire
-// once its child has finished — the call and its result ride in the parent's *next*
-// request — so the child is normally already known when the spawn is seen. A
-// backgrounded one can go the other way, which is what {@link pendingSpawns} holds.
+// The two sightings arrive in either order. A blocking spawn only reaches the wire once
+// its child has finished — the call and its result ride in the parent's *next* request —
+// so the child is normally already known. A backgrounded one goes the other way, which
+// is what {@link pendingSpawns} holds.
 
 /** A spawning call as the wire showed it: who made it, and where in their transcript. */
 interface SpawnRecord {
@@ -737,9 +732,8 @@ function linkThread(dir: string, threadId: string, entry: ThreadEntry, spawn: Sp
 
 /**
  * Attach one observed spawn to the thread it started, or park it until that thread
- * appears. Where several unparented threads match the prompt, the most recently
- * active wins — the same tie-break {@link recordTitle} uses, and for the same reason:
- * two runs of one prompt are indistinguishable by content alone.
+ * appears. Where several unparented threads match the prompt, the most recently active
+ * wins — the same tie-break {@link recordTitle} uses.
  */
 function recordSpawn(dir: string, prompt: string, spawn: SpawnRecord): void {
   const candidates = [...threads]
@@ -871,7 +865,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     if (entry.started) {
       if (entries.length) {
-        const base = appendNodeTexts(dir, threadId, entry, mdPath, entries); // before the lines land — it counts the transcript as it stands
+        const base = appendNodeTexts(dir, threadId, entry, mdPath, entries); // counts the transcript before the new lines land
         appendLines(
           mdPath,
           entries.map((e) => e.line),
