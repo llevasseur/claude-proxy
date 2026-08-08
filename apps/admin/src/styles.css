@@ -906,10 +906,9 @@ a.pager-btn:hover {
 }
 
 /* recharts focus: never the plot area, only the points. `accessibilityLayer={false}`
-   at each chart keeps the surface out of the tab order, but recharts still stamps
-   `tabindex="-1"` on every inner `recharts-zIndex-layer_*` group — a click on the
-   plot focuses one of those and the browser rings the whole plot area. So the reset
-   covers the wrapper and everything under it; the pin targets below opt back in. */
+   at each chart keeps the surface out of the tab order; recharts still stamps
+   `tabindex="-1"` on every inner `recharts-zIndex-layer_*` group, which a click
+   focuses and the browser then rings. */
 .recharts-wrapper:focus,
 .recharts-wrapper:focus-visible,
 .recharts-wrapper :focus,
