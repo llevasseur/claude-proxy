@@ -43,6 +43,7 @@ import {
   buildPromptDetail,
   buildPromptMix,
   buildPromptSection,
+  buildPullRequests,
   buildSession,
   buildSessionBreakdown,
   buildSessionErrors,
@@ -1192,6 +1193,9 @@ const server = http.createServer(async (req, res) => {
         shadow('/api/withheld', withheld, (source) => buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, source));
         return;
       }
+      case '/api/pull-requests':
+        send(res, 200, await buildPullRequests(LOG_DIR));
+        return;
       case '/api/hooks-plugins':
         send(res, 200, await buildHooksPlugins());
         return;

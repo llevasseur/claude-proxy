@@ -5,6 +5,7 @@ import {
   EyeOff,
   FolderGit2,
   Gauge,
+  GitPullRequest,
   HardDrive,
   Lightbulb,
   ListFilter,
@@ -46,6 +47,7 @@ import { ProjectDetailPage } from './routes/project-detail';
 import { ProjectsPage } from './routes/projects';
 import { PromptDetailPage } from './routes/prompt-detail';
 import { PromptSectionPage } from './routes/prompt-section';
+import { PullRequestsPage } from './routes/pull-requests';
 import { SessionDetailPage } from './routes/session-detail';
 import { SessionErrorsPage } from './routes/session-errors';
 import { SessionGraphPage } from './routes/session-graph';
@@ -74,6 +76,7 @@ const STATIONS = [
   { to: '/projects', label: 'Projects', hint: 'memory', exact: false, icon: FolderGit2 },
   { to: '/sessions', label: 'Sessions', hint: 'transcripts', exact: true, icon: MessagesSquare },
   { to: '/sessions/graph', label: 'Live graph', hint: 'sessions', exact: false, icon: Network },
+  { to: '/pull-requests', label: 'Pull requests', hint: 'github', exact: false, icon: GitPullRequest },
   { to: '/jobs', label: 'Jobs', hint: 'device', exact: false, icon: HardDrive },
   { to: '/hooks-plugins', label: 'Hooks & Plugins', hint: 'config', exact: false, icon: Puzzle },
   { to: '/system-prompt', label: 'System prompt', hint: 'device', exact: false, icon: ScrollText },
@@ -386,6 +389,12 @@ const filtersRoute = createRoute({
   component: FiltersPage,
   staticData: { title: 'Proxy filters' },
 });
+const pullRequestsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/pull-requests',
+  component: PullRequestsPage,
+  staticData: { title: 'Pull requests' },
+});
 const hooksPluginsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/hooks-plugins',
@@ -481,6 +490,7 @@ const routeTree = rootRoute.addChildren([
   skimRoute,
   withheldRoute,
   filtersRoute,
+  pullRequestsRoute,
   hooksPluginsRoute,
   systemPromptRoute,
   cliInternalsRoute,
