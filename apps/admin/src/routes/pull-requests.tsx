@@ -55,7 +55,9 @@ export function PullRequestsPage() {
 
   /** Trunk index → the PRs cut from it that never landed, newest opened first. */
   const hanging = (after: number): PrBranch[] =>
-    [...tree.open, ...tree.closed].filter((b) => b.after === after).reverse();
+    [...tree.open, ...tree.closed]
+      .filter((b) => b.after === after)
+      .sort((a, b) => b.pr.createdAt.localeCompare(a.pr.createdAt));
 
   const node = (pr: PullRequestRow, cls: string) => (
     <PrNode

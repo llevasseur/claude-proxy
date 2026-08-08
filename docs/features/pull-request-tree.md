@@ -40,7 +40,9 @@ no GitHub remote each come back inside a 200 as an `error` string naming the com
 fixes it, because an error boundary would hide the one thing the visitor needs to read.
 
 Results are cached for 60 s server-side and the page polls every 30 s, so a PR opened or
-merged elsewhere appears on its own without hammering GitHub's rate limit.
+merged elsewhere appears on its own without hammering GitHub's rate limit. The session
+index is keyed to the same fetch, so the transcript scan below happens once per `gh` read
+rather than once per poll.
 
 ## The tree
 
@@ -63,7 +65,9 @@ transcripts, and the drawer says which signal it came from rather than asserting
 
 - **branch** — the transcript names the PR's head branch. A session that built a PR names
   its own branch constantly, including the slash-flattened `feat-x` spelling a worktree
-  directory uses. Branches shorter than four characters are too generic to match on.
+  directory uses. Branches shorter than four characters are too generic to match on, and
+  a name that is only the head of a longer branch does not count — `feat/pr-tree-page` is
+  not `feat/pr-tree`, the branch-side form of the `#14`/`#144` guard.
 - **number** — a `/pull/123` url, or a `#123` that sits within about a sentence of a word
   meaning pull request. **The context requirement is load-bearing**: matching a bare `#n`
   tied PR #1 to four unrelated sessions and PR #10 to a transcript asking about "message

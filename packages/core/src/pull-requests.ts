@@ -196,30 +196,65 @@ const HASH_CONTEXT = /\b(?:prs?|pull|pulls|merge|merged|merging)\b/i;
 /** How far either side of a `#n` that word is looked for — about a sentence. */
 const CONTEXT_CHARS = 90;
 
-/** Whether the text refers to this PR by number, as a url or a qualified `#n`. */
-function refersByNumber(pr: PullRequestRow, text: string): boolean {
-  // `(?!\d)` throughout, so #14 does not match inside #144.
-  if (new RegExp(`pulls?/${pr.number}(?!\\d)`).test(text)) return true;
-  const hash = new RegExp(`#${pr.number}(?!\\d)`, 'g');
-  for (let m = hash.exec(text); m !== null; m = hash.exec(text)) {
-    if (HASH_CONTEXT.test(text.slice(Math.max(0, m.index - CONTEXT_CHARS), m.index + CONTEXT_CHARS))) return true;
+/**
+ * What may follow a branch name and still be the same name. `/` is absent on purpose:
+ * `feat-pr-tree/server` is a path under the worktree, while `feat/pr-tree-page` is a
+ * different branch that merely starts the same way.
+ */
+const BRANCH_TAIL = /[\w.-]/;
+
+/** Whether `text` names `form` as a whole branch rather than the head of a longer one. */
+function namesBranch(text: string, form: string): boolean {
+  for (let i = text.indexOf(form); i !== -1; i = text.indexOf(form, i + 1)) {
+    const after = text[i + form.length];
+    if (after === undefined || !BRANCH_TAIL.test(after)) return true;
   }
   return false;
 }
 
 /**
- * How a transcript refers to a pull request, if it does.
+ * A matcher for one pull request, compiled once.
  *
- * Two independent signals: the branch name, and the PR number as a `/pull/123` url or
- * a `#123`. A branch shorter than four characters is too generic to match on.
+ * The scan runs every PR against every transcript, so the regexes are built per PR
+ * rather than per pairing.
  */
+export interface PrMatcher {
+  match(text: string): PrSessionVia[];
+}
+
+/**
+ * Compile the two signals a transcript can carry: the branch name, and the PR number
+ * as a `/pull/123` url or a `#123`. A branch shorter than four characters is too
+ * generic to match on.
+ */
+export function prMatcher(pr: PullRequestRow): PrMatcher {
+  const forms = pr.headRefName.length >= 4 ? branchForms(pr.headRefName) : [];
+  // `(?!\d)` throughout, so #14 does not match inside #144.
+  const url = new RegExp(`pulls?/${pr.number}(?!\\d)`);
+  const hash = new RegExp(`#${pr.number}(?!\\d)`, 'g');
+
+  const refersByNumber = (text: string): boolean => {
+    if (url.test(text)) return true;
+    hash.lastIndex = 0;
+    for (let m = hash.exec(text); m !== null; m = hash.exec(text)) {
+      if (HASH_CONTEXT.test(text.slice(Math.max(0, m.index - CONTEXT_CHARS), m.index + CONTEXT_CHARS))) return true;
+    }
+    return false;
+  };
+
+  return {
+    match(text: string): PrSessionVia[] {
+      const via: PrSessionVia[] = [];
+      if (forms.some((form) => namesBranch(text, form))) via.push('branch');
+      if (refersByNumber(text)) via.push('number');
+      return via;
+    },
+  };
+}
+
+/** How a transcript refers to a pull request, if it does. */
 export function matchPrInText(pr: PullRequestRow, text: string): PrSessionVia[] {
-  const via: PrSessionVia[] = [];
-  if (pr.headRefName.length >= 4 && branchForms(pr.headRefName).some((form) => text.includes(form))) {
-    via.push('branch');
-  }
-  if (refersByNumber(pr, text)) via.push('number');
-  return via;
+  return prMatcher(pr).match(text);
 }
 
 /** `owner/name` from a git remote url, or null when it is not a GitHub remote. */

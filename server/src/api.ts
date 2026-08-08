@@ -2228,7 +2228,9 @@ export async function buildPullRequests(
   limit: number = DEFAULT_PR_LIMIT,
 ): Promise<PullRequestsResponse> {
   const { repo, prs, error, fetchedAt, cached } = await readPullRequests(repoDir, limit);
-  const sessions = await readPrSessions(logDir, prs);
+  // Keyed on the fetch the rows came from, so the transcript scan tracks the gh cache
+  // rather than re-running under every poll.
+  const sessions = await readPrSessions(logDir, prs, `${logDir}:${repoDir}:${fetchedAt}`);
   return { repo, prs, error, sessions, meta: { fetchedAt, cached, total: prs.length, limit } };
 }
 

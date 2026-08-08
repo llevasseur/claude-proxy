@@ -111,6 +111,13 @@ describe('matchPrInText', () => {
     expect(matchPrInText(pr, 'see PR #144 and /pull/1409')).toEqual([]);
   });
 
+  it('does not match a branch it is only the head of', () => {
+    expect(matchPrInText(pr, 'shipped feat/pr-tree-page')).toEqual([]);
+    expect(matchPrInText(pr, 'entered .claude/worktrees/feat-pr-tree-page')).toEqual([]);
+    // A path under the worktree is still the branch itself.
+    expect(matchPrInText(pr, '.claude/worktrees/feat-pr-tree/server/src')).toEqual(['branch']);
+  });
+
   it('ignores a branch name too short to be distinctive', () => {
     expect(matchPrInText(row({ number: 3, headRefName: 'wip' }), 'wip wip wip')).toEqual([]);
   });
