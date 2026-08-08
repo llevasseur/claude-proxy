@@ -6,7 +6,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { threadIdFor } from '../../proxy/session.ts';
 import { buildSessionGraphNodes } from '../src/api.js';
-import { threadIdForBody } from '../src/sessions.js';
+import { listSessionGraphs, threadIdForBody } from '../src/sessions.js';
 
 const CASES: { name: string; messages: unknown[] }[] = [
   { name: 'a plain string prompt', messages: [{ role: 'user', content: 'Fix the login bug' }] },
@@ -113,5 +113,91 @@ describe('buildSessionGraphNodes', () => {
       'Bash(command=npm test --runInBand --verbose)',
     ]);
     expect(threads[0]?.nodes.map((n) => n.message)).toEqual([0, 1]);
+  });
+});
+
+/** Two children of one parent, one carrying the proxy's record and one written before it. */
+async function recordedAndLegacy() {
+  const dir = await mkdtemp(path.join(tmpdir(), 'graph-recorded-'));
+  const sessions = path.join(dir, 'sessions');
+  await mkdir(sessions, { recursive: true });
+
+  const parent = '00000000000000a1';
+  await writeFile(
+    path.join(sessions, `${parent}.md`),
+    [
+      `# Session ${parent}`,
+      '- model: claude-opus-5',
+      '- session: s-1',
+      '- started: 2026-07-29T10:00:00.000Z',
+      '',
+      '## Task: Fan out', // 0
+      '- Agent(subagent_type=Explore)', // 1
+      '- Agent(subagent_type=general-purpose)', // 2
+      '- done: both back', // 3
+      '',
+    ].join('\n'),
+  );
+  await writeFile(
+    path.join(sessions, `${parent}.nodes.jsonl`),
+    `${JSON.stringify({ i: 1, argsHash: 'aaaabbbbccccdddd' })}\n`,
+  );
+
+  // Started *later* than the other child, so the start-time guess would pair it with
+  // the second spawn. Its own header says otherwise.
+  await writeFile(
+    path.join(sessions, '00000000000000b2.md'),
+    [
+      '# Session 00000000000000b2',
+      '- model: claude-opus-5',
+      '- session: s-1',
+      '- started: 2026-07-29T10:00:20.000Z',
+      `- parent: ${parent}`,
+      '- spawn: 1',
+      '- agent: Explore',
+      '',
+      '## Task: Recorded',
+      '',
+    ].join('\n'),
+  );
+  await writeFile(
+    path.join(sessions, '00000000000000c3.md'),
+    [
+      '# Session 00000000000000c3',
+      '- model: claude-opus-5',
+      '- session: s-1',
+      '- started: 2026-07-29T10:00:10.000Z',
+      '',
+      '## Task: Legacy',
+      '',
+    ].join('\n'),
+  );
+  return dir;
+}
+
+describe('listSessionGraphs', () => {
+  it('links a child from its recorded header, and still infers for one that has none', async () => {
+    const graphs = await listSessionGraphs(await recordedAndLegacy());
+    const by = new Map(graphs.map((g) => [g.threadId, g]));
+
+    expect(by.get('00000000000000b2')).toMatchObject({
+      parentThreadId: '00000000000000a1',
+      spawnIndex: 1,
+      agentType: 'Explore',
+      inferred: false,
+    });
+    // The record took spawn 1, so the guess only has spawn 2 left for the legacy child.
+    expect(by.get('00000000000000c3')).toMatchObject({
+      parentThreadId: '00000000000000a1',
+      spawnIndex: 2,
+      agentType: 'general-purpose',
+      inferred: true,
+    });
+    // Children are listed in spawn order, not start order.
+    expect(by.get('00000000000000a1')?.childThreadIds).toEqual(['00000000000000b2', '00000000000000c3']);
+    // The parent's fingerprint sidecar rode along with its nodes.
+    expect(by.get('00000000000000a1')?.nodes.map((n) => n.argsHash)).toEqual([null, 'aaaabbbbccccdddd', null, null]);
+    // `recorded` is an input to the linker, not part of the wire shape.
+    expect('recorded' in by.get('00000000000000b2')!).toBe(false);
   });
 });

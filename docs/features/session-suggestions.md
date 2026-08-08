@@ -295,10 +295,17 @@ file scan under `DB_READS=0`, while the CLI always scans the files —
 - Windows are fixed at ten by position, so a window never re-scopes as new sessions arrive. That
   keeps bucket 1 stable and comparable over time, but it means a habit that spans a window
   boundary is split across two pages. Worth also offering a rolling last-10 view?
-- The rules read the transcript's *distilled* lines, so a tool call's arguments are truncated at
-  capture. `redundantReads` therefore matches on the truncated `Read(file_path=…)` signature —
-  two long paths sharing a prefix could collapse into one. Worth having the proxy record a hash
-  of the full argument?
+- ~~`redundantReads` matches on the truncated `Read(file_path=…)` signature~~ — **resolved.**
+  "Could collapse into one" was already happening: a judge verdict on bucket 42 found the rule
+  firing on sessions with no duplicate reads at all, because every `Read` under a
+  `.claude/worktrees/<long-branch>/…` path renders to the same 60 characters. The proxy now
+  writes `argsHash` — `sha256(name + "\n" + key-sorted JSON of the whole input)`, first 16 hex —
+  into the `.nodes.jsonl` row beside the display text, `SessionNode.argsHash` carries it through
+  both the file and SQLite sources, and the rule keys on `node.argsHash ?? node.tool`. The
+  fallback is the legacy path, kept deliberately: a transcript written before the field has no
+  hashes and reads exactly as it did before. The rules still read distilled lines for everything
+  else, so any *other* rule that wants to compare arguments has the same key available and does
+  not yet use it.
 - Severity is fixed per rule rather than scaled by how badly a threshold was crossed. A window
   with 2 refusals and one with 40 both read *high*.
 - The breakdown roll-up uses each session's peak request only. That is the cheapest honest

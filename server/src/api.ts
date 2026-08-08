@@ -101,6 +101,7 @@ import {
   SYSTEM_PROMPT_MAX_BYTES,
   type SystemPromptDoc,
   sectionShares,
+  sessionContextEntries,
   sessionContextPeak,
   sessionSuggestionBuckets,
   skimDigestsByDay,
@@ -1336,8 +1337,8 @@ async function resolveSessionRequests(
 
   return {
     sessionId,
-    requests: entries.filter((e) => e.sessionId === sessionId),
-    ...sessionContextPeak(entries, sessionId),
+    requests: sessionContextEntries(entries, sessionId, meta.threadId),
+    ...sessionContextPeak(entries, sessionId, meta.threadId),
     files,
     parseErrors,
   };
@@ -1422,7 +1423,7 @@ export async function buildSessionSuggestionBucket(
   const entries = toContextEntries(sidecars);
 
   const peaks = sessions
-    .map((s) => ({ threadId: s.threadId, peak: sessionContextPeak(entries, s.sessionId).peak }))
+    .map((s) => ({ threadId: s.threadId, peak: sessionContextPeak(entries, s.sessionId, s.threadId).peak }))
     .filter((p): p is { threadId: string; peak: ContextEntry } => !!p.peak);
 
   const inputs: BucketBreakdownInput[] = [];

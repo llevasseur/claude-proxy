@@ -4,6 +4,8 @@ import path from 'node:path';
 import {
   firstUserText,
   linkAgentSessions,
+  parseRecordedSpawn,
+  parseSessionNodeHashes,
   parseSessionNodes,
   parseSessionNodeTexts,
   parseSessionTranscript,
@@ -81,6 +83,18 @@ export async function listSessions(logDir: string): Promise<SessionSummary[]> {
   return rows;
 }
 
+/**
+ * The per-node argument fingerprints off a transcript's `.nodes.jsonl`, or none when
+ * the sidecar is absent or predates the field.
+ */
+async function readNodeHashes(dir: string, threadId: string): Promise<Record<number, string>> {
+  try {
+    return parseSessionNodeHashes(await readFile(path.join(dir, `${threadId}.nodes.jsonl`), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
 /** One transcript's listing row, its ordered stream of appended nodes, and its place in the agent tree. */
 export interface SessionGraph extends SessionSummary, SessionAgentLink {
   nodes: SessionNode[];
@@ -106,19 +120,22 @@ export async function listSessionGraphs(logDir: string): Promise<SessionGraph[]>
   const files = names.filter((f) => SESSION_FILE_RE.test(f));
   const rows = await Promise.all(
     files.map(async (name) => {
+      const threadId = name.replace(/\.md$/, '');
       const [content, info] = await Promise.all([readFile(path.join(dir, name), 'utf8'), stat(path.join(dir, name))]);
-      const meta = parseSessionTranscript(name.replace(/\.md$/, ''), content);
+      const meta = parseSessionTranscript(threadId, content);
       return {
         ...meta,
         bytes: info.size,
         modified: info.mtime.toISOString(),
-        nodes: parseSessionNodes(content),
+        nodes: parseSessionNodes(content, await readNodeHashes(dir, threadId)),
+        recorded: parseRecordedSpawn(content),
       };
     }),
   );
 
   const links = linkAgentSessions(rows);
-  const linked = rows.map((row) => ({ ...row, ...links.get(row.threadId)! }));
+  // `recorded` is an input to the linkage, not part of the listing's wire shape.
+  const linked = rows.map(({ recorded: _recorded, ...row }) => ({ ...row, ...links.get(row.threadId)! }));
 
   linked.sort((a, b) => b.modified.localeCompare(a.modified) || a.threadId.localeCompare(b.threadId));
   return linked;
