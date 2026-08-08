@@ -202,9 +202,8 @@ const SUMMARY_BASELINE_LOOKBACK_DAYS = 14;
  * order {@link buildTrends} resolves an archived day in. Raw triples are pruned
  * on a retention clock while a finalized digest is kept indefinitely.
  *
- * The walk stays lazy — one `readWindow` per day rather than one call over the
- * whole lookback — because the usual case stops on the first day back, and
- * reading fourteen eagerly would pay for thirteen days nothing reads.
+ * The walk stays lazy — one `readWindow` per day, not one call over the whole
+ * lookback — since it usually stops on the first day back.
  */
 async function baselineDigests(
   logDir: string,
@@ -357,8 +356,8 @@ export function clearRawArchiveCache(): void {
  * already resolved for it. Computed prior-free, which is what makes it cacheable:
  * the value cannot depend on which window asked for it.
  *
- * A day still taking live writes deliberately never reaches here — it has no
- * final answer to cache.
+ * A day still taking live writes never reaches here — it has no final answer to
+ * cache.
  */
 function rawArchivedDigest(
   logDir: string,
@@ -414,8 +413,8 @@ export async function buildTrends(
   for (const date of dates) {
     const day = byDate.get(date);
     if (!day) {
-      // No raw triples survive for this day. Retention prunes them on a clock
-      // while a finalized digest is kept forever, so that is what is left.
+      // No raw triples survive for this day; retention prunes them on a clock
+      // while a finalized digest is kept forever.
       const digest = archiveDir ? await loadArchivedDigest(archiveDir, date) : null;
       if (digest) {
         finalized.set(date, digest);

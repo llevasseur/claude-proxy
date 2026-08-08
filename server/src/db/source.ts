@@ -82,13 +82,10 @@ export interface SidecarSource {
    */
   readConcepts(logDir: string): Promise<StoredConcept[]>;
 
-  /* --- The window reader --- */
-
   /**
    * Every sidecar a reporting window covers, live directory and archive
-   * together. {@link readSidecars} is the single-root primitive underneath;
-   * this is the composition every multi-day builder wants, and the only place
-   * that composition is written. See {@link readWindowFrom}.
+   * together. {@link readSidecars} is the single-root primitive underneath; see
+   * {@link readWindowFrom}.
    */
   readWindow(logDir: string, opts?: WindowOptions, now?: Date): Promise<WindowResult>;
 }
@@ -106,25 +103,21 @@ export interface WindowDay {
   date: string;
   /** The archived half first, then the live half, so the day reads chronologically. */
   sidecars: unknown[];
-  /** How many of them came from the archive roots. */
   archivedFiles: number;
-  /** How many came from the live directory. */
   liveFiles: number;
 }
 
 export interface WindowResult extends LoadResult {
   /**
    * Oldest→newest, one entry per day in the window that yielded anything. The
-   * flat `sidecars` above is these concatenated, so a caller wanting per-day
-   * digests does not read the corpus a second time to get them.
+   * flat `sidecars` above is these concatenated.
    */
   days: WindowDay[];
 }
 
 /**
  * How far back a bare `since` floor may fan the per-day archive probes out. The
- * live half is unbounded either way — this only bounds a caller that floors
- * itself at a very old transcript.
+ * live half is unbounded either way.
  */
 const MAX_WINDOW_DAYS = 400;
 
@@ -144,7 +137,7 @@ function windowDates(opts: WindowOptions, now: Date): string[] {
 /**
  * The reporting day a live sidecar belongs to, or `null` when nothing on it
  * says. A file that would not parse has no timestamp to be placed by, so the
- * filename's UTC day stands in — the same fallback both readers make.
+ * filename's UTC day stands in.
  */
 function sidecarDay(sidecar: unknown): string | null {
   if (typeof sidecar !== 'object' || sidecar === null) return null;
@@ -165,16 +158,12 @@ function sidecarDay(sidecar: unknown): string | null {
 /**
  * The live+archive composition, written once for both backings.
  *
- * `readSidecars` only ever scans the live directory, which holds roughly today.
  * A reporting day is a `REPORT_TZ` day while the summary job rotates on the
- * *UTC* day, so a day near the present sits in both places and an older one is
- * archived outright — reading only the live side reports a fraction of the
- * newest day and nothing at all for the rest of the window.
- *
- * So the live half is read once, bucketed by the day each sidecar reports in,
- * and each day's archived slice is concatenated ahead of it. Live sidecars the
- * window did not enumerate are kept at the end rather than dropped: the flat
- * stream is still every sidecar the read touched.
+ * *UTC* day, so a day near the present sits in both roots and an older one is
+ * archived outright. The live half is read once and bucketed by the day each
+ * sidecar reports in; each day's archived slice is concatenated ahead of it.
+ * Live sidecars the window did not enumerate are kept at the end rather than
+ * dropped.
  */
 async function readWindowFrom(
   source: SidecarSource,
@@ -714,8 +703,8 @@ function conceptsFromDb(db: DatabaseSync): StoredConcept[] {
 export function dbSource(db: DatabaseSync): SidecarSource {
   const source: SidecarSource = {
     kind: 'db',
-    // The composition is backing-agnostic — it is the two primitives below,
-    // read through whichever object it was handed.
+    // Backing-agnostic: it runs on the two primitives below, read through
+    // whichever object it was handed.
     readWindow: (logDir, opts = {}, now = new Date()) => readWindowFrom(source, logDir, opts, now),
     // Both listings answer from the tables alone — no directory is read.
     listSessions: async () => sortListing(sessionRows(db).map(toSummary)),

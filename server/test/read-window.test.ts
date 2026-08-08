@@ -48,7 +48,6 @@ async function writeSidecar(dir: string, iso: string): Promise<void> {
 /** 14:00 EDT on the 4th, so `today()` is the 4th and it is still taking writes. */
 const NOW = new Date('2026-08-04T18:00:00.000Z');
 
-/** Still live. */
 const LIVE = morning('2026-08-04');
 /** Archived under `<logDir>/archive/`, in the two UTC folders the 2nd straddles. */
 const ARCHIVED_MORNING = morning('2026-08-02');
