@@ -145,8 +145,6 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
         {when && (
           <span className='muted idea-when'>
             {IDEA_STATUS_LABEL[idea.status].toLowerCase()} {when}
-            {/* Who moved it there, when that was recorded. Every entry decided
-                before provenance existed shows the date alone, as before. */}
             {idea.by && <> by {idea.by.thread}</>}
           </span>
         )}

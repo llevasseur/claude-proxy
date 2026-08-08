@@ -137,11 +137,8 @@ export interface IdeaEntry {
   note?: string;
   /**
    * Who last changed the status, in the same envelope a bucket verdict carries.
-   *
-   * This is the ledger's half of the same hole: nothing recorded *who* accepted an
-   * idea, only that the status moved and when. It carries no window — an idea is
-   * invented and has no transcripts behind it — so it is the actor field alone.
-   * Absent on every entry decided before provenance existed.
+   * The actor field alone — an idea is invented and has no window behind it to
+   * count. Absent on every entry decided before provenance existed.
    */
   by?: WriteProvenance;
 }
@@ -184,8 +181,7 @@ export function parseIdeasStore(raw: unknown): IdeasStore {
     const kept = parseEvidenceList(evidence);
     // An entry citing nothing is dropped rather than kept as a weaker one.
     if (kept.length === 0) continue;
-    // An unreadable envelope loses the actor, never the idea — every entry
-    // written before provenance existed has none at all.
+    // An unreadable envelope loses the actor, never the idea.
     const actor = parseWriteProvenance(by);
     store.ideas[key] = {
       slug: key,
@@ -328,8 +324,6 @@ export function applyIdeaMarks(store: IdeasStore, marks: readonly IdeaMark[], no
       continue;
     }
     const note = mark.note ?? current.note;
-    // The actor belongs to the status now on the entry, so a mark that names one
-    // replaces whoever decided the previous status rather than accumulating.
     const by = mark.by ?? current.by;
     next.ideas[mark.slug] = {
       ...current,
@@ -401,8 +395,8 @@ export function parseIdeaMarks(raw: unknown): IdeaMark[] {
     if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
     if (!isIdeaStatus(status)) throw new Error(`${where}.status must be one of ${IDEA_STATUSES.join(', ')}`);
     if (note !== undefined && typeof note !== 'string') throw new Error(`${where}.note must be a string`);
-    // Attribution is optional, but a malformed one is a caller mistake worth naming
-    // here — unlike the store's read boundary, this input has an author to tell.
+    // Optional, but a malformed one throws here rather than being dropped as at
+    // the store's read boundary — this input has an author to tell.
     if (by !== undefined && parseWriteProvenance(by) === null)
       throw new Error(`${where}.by must carry a 16-hex-character thread id`);
     const actor = parseWriteProvenance(by);

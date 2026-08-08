@@ -85,8 +85,8 @@ export interface SuggestionJudgement {
   notes: Record<string, string>;
   /**
    * Which agent judged the window and how much of it that agent opened. Absent on
-   * every verdict recorded before provenance existed, and on one whose caller did
-   * not pass a thread id — the verdict still stands, it is simply unattributed.
+   * a verdict recorded before provenance existed, or one whose caller passed no
+   * thread id — unattributed, not invalid.
    */
   by?: WriteProvenance;
 }
@@ -156,8 +156,7 @@ export function parseSuggestionStatusStore(raw: unknown): SuggestionStatusStore 
         }
       }
       // A record with no timestamp and no notes still means "judged", which is the
-      // whole claim — `--amnesty` writes exactly that. A record with no `by` is a
-      // verdict written before provenance, and is kept exactly as it was.
+      // whole claim — `--amnesty` writes exactly that.
       const provenance = parseWriteProvenance(by);
       store.judged[String(index)] = {
         at: typeof at === 'string' ? at : '',
@@ -333,8 +332,7 @@ export interface SuggestionJudgementWrite {
   notes?: Record<string, string>;
   /**
    * Who is judging, and how much of this bucket they opened. Omitted records the
-   * verdict unattributed, exactly as every verdict was before this existed — the
-   * caller derives it rather than the judge reporting it.
+   * verdict unattributed. The caller derives it; the judge does not report it.
    */
   by?: WriteProvenance;
 }
@@ -382,9 +380,8 @@ export function parseSuggestionJudgements(raw: unknown): SuggestionJudgementWrit
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
     const { bucket, notes, by } = item as Record<string, unknown>;
     if (!Number.isInteger(bucket) || (bucket as number) < 1) throw new Error(`${where}.bucket must be an integer >= 1`);
-    // An unreadable envelope is dropped rather than thrown on: provenance is
-    // additive, and refusing a verdict over it would make the audit trail a
-    // precondition for recording the thing it audits.
+    // An unreadable envelope is dropped rather than thrown on — refusing a verdict
+    // over it would make the audit trail a precondition for what it audits.
     const provenance = parseWriteProvenance(by);
     const attribution = provenance ? { by: provenance } : {};
     if (notes === undefined) return { bucket: bucket as number, ...attribution };

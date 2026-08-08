@@ -1632,9 +1632,8 @@ button.link {
   background: var(--surface-2);
   color: var(--faint);
 }
-/* A judged bucket whose judge opened almost none of it. Amber, like `dirty`: it
-   is the same claim in a weaker form — this window may not really have been read
-   — and deliberately not coral, since a thin pass is advisory, never a defect. */
+/* A judged bucket whose judge opened almost none of it. Amber like `dirty`, the
+   same claim in a weaker form; not coral, since a thin pass is advisory. */
 .badge.judge-thin {
   background: rgba(244, 177, 90, 0.16);
   color: var(--amber);

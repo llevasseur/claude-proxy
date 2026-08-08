@@ -149,7 +149,7 @@ function renderBuckets(rows: readonly BucketJudgementRow[]): string {
   if (rows.length === 0) return 'no buckets match.';
   return rows
     .map((b) => {
-      // Attribution rides on the `judged` word rather than taking its own column:
+      // Attribution rides on the `judged` word rather than taking its own column —
       // most rows have none, and an empty column on every line reads as a defect.
       const who = b.by ? ` by ${b.by.thread}${b.by.window ? ` (${b.by.opened}/${b.by.window} read)` : ''}` : '';
       const thin = b.thin ? ' THIN' : '';

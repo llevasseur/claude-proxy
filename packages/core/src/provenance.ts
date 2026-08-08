@@ -14,16 +14,14 @@
  *
  * - **Who.** A judging run is itself a Claude session the proxy transcribes, so
  *   the writer already has a thread id and passing it through is the whole of the
- *   instrumentation. It is a claim the writer makes about itself, which is why it
- *   is not the interesting half.
- * - **How much they read.** This is *not* self-reported. The judging thread's own
+ *   instrumentation. A claim the writer makes about itself.
+ * - **How much they read.** *Not* self-reported. The judging thread's own
  *   `logs/sessions/<threadId>.md` transcript records every tool call it made, so
- *   how many of the window's transcripts it opened is arithmetic over data the
- *   proxy already wrote — see {@link transcriptsOpened}. An agent that claims a
- *   thread id it did not run is claiming a transcript that will not show the reads.
+ *   the count is arithmetic over data the proxy already wrote — see
+ *   {@link transcriptsOpened}.
  *
- * Pure: no I/O and no clock. The reading of a judging thread's nodes lives in the
- * server package, which hands the parsed nodes here.
+ * Pure: no I/O and no clock. Reading a judging thread's nodes lives in the server
+ * package, which hands the parsed nodes here.
  */
 
 import type { SessionNode } from './sessions.js';
@@ -40,8 +38,7 @@ export function isThreadId(value: unknown): value is string {
  * Who wrote a verdict or a sign-off, and how much of the window they opened.
  *
  * Shared verbatim by the suggestion store's per-bucket `judged` record and the
- * ideas ledger's entries, so "which agent decided this" is one shape across both
- * evidence standards rather than two near-misses.
+ * ideas ledger's entries, so "which agent decided this" is one shape across both.
  *
  * `opened`/`window` are absent on a write with no window to measure — an idea mark
  * has no transcripts behind it — and on one whose judging thread has no transcript
@@ -58,8 +55,8 @@ export interface WriteProvenance {
 
 /**
  * Read an untrusted value as an envelope, or null when it carries no usable
- * thread id. Tolerant by construction: an entry stored before provenance existed
- * has no envelope at all, and reads back as null rather than as a defect.
+ * thread id. An entry stored before provenance existed has no envelope at all,
+ * and reads back as null rather than as a defect.
  */
 export function parseWriteProvenance(raw: unknown): WriteProvenance | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -68,7 +65,7 @@ export function parseWriteProvenance(raw: unknown): WriteProvenance | null {
   const out: WriteProvenance = { thread };
   if (Number.isInteger(window) && (window as number) >= 0) out.window = window as number;
   if (Number.isInteger(opened) && (opened as number) >= 0) out.opened = opened as number;
-  // A count with no denominator measures nothing, and vice versa — keep the pair or neither.
+  // A count with no denominator measures nothing — keep the pair or neither.
   if (out.window === undefined || out.opened === undefined) {
     delete out.window;
     delete out.opened;
@@ -88,12 +85,9 @@ export function provenanceCoverage(by: WriteProvenance | undefined | null): numb
 /**
  * Below this share of a window's transcripts, a verdict is marked as a thin pass.
  *
- * 0.3 over the fixed window of ten means a judge that opened two transcripts or
- * fewer is flagged, and three is enough to clear it. The number is a judgement
- * call with no data behind it yet, and it is set deliberately low: the marker's
- * job is to catch the pass that read *almost nothing*, not to prescribe how much
- * reading a careful verdict takes. A judge can reach a sound verdict off three
- * transcripts when the rule it is checking only fired in three.
+ * 0.3 over the fixed window of ten flags a judge that opened two transcripts or
+ * fewer; three clears it. Set deliberately low: the marker catches the pass that
+ * read *almost nothing* rather than prescribing how much a careful verdict takes.
  */
 export const THIN_PASS_RATIO = 0.3;
 
@@ -103,8 +97,7 @@ export const THIN_PASS_RATIO = 0.3;
  *
  * **Advisory, and false whenever the evidence is missing.** No envelope, no
  * measurable pair, or an empty window all read as false — an unattributed verdict
- * is a different thing from a careless one, and inferring carelessness from a
- * legacy row would indict every verdict written before this existed.
+ * is a different thing from a careless one.
  */
 export function isThinPass(by: WriteProvenance | undefined | null): boolean {
   const coverage = provenanceCoverage(by);
@@ -115,19 +108,15 @@ export function isThinPass(by: WriteProvenance | undefined | null): boolean {
  * Which of `threadIds` the judging thread actually opened, counted off the nodes
  * of its own transcript.
  *
- * This is the half of the envelope that is *derived rather than claimed*. A tool
- * call is recorded in the judging thread's transcript as its call signature, so a
- * transcript in the window counts as opened when some tool call of the judging
- * thread names it. `texts` is that thread's `.nodes.jsonl` sidecar, which carries
- * the untruncated argument text behind a gisted line — without it a long path
- * truncated at capture can hide the id it ends with, so an absent sidecar
- * undercounts rather than miscounts.
+ * The half of the envelope that is *derived rather than claimed*. A transcript in
+ * the window counts as opened when some tool call of the judging thread names it.
+ * `texts` is that thread's `.nodes.jsonl` sidecar, carrying the untruncated
+ * argument text behind a gisted line — without it a path truncated at capture can
+ * hide the id it ends with, so an absent sidecar undercounts rather than miscounts.
  *
- * **Any tool naming the transcript counts, not only `Read`.** The question being
- * answered is whether the judge looked at the window's evidence, and a `Bash` that
- * greps a transcript opened it just as a `Read` did. The judging thread's own
- * transcript never counts, so a judge cannot credit itself by being in its own
- * window.
+ * **Any tool naming the transcript counts, not only `Read`** — a `Bash` that greps
+ * one opened it just as a `Read` did. The judging thread's own transcript never
+ * counts, so a judge cannot credit itself by being in its own window.
  */
 export function transcriptsOpened(
   nodes: readonly SessionNode[],

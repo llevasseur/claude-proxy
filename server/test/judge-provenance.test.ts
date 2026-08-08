@@ -1,6 +1,6 @@
-// A verdict's provenance is half claim and half arithmetic: the judging thread id is
-// what the caller passes, but how much of the window that thread opened is read back
-// off its own transcript. These check the arithmetic against a real log directory.
+// A verdict's provenance is half claim and half arithmetic: the thread id is what the
+// caller passes, the opened count is read back off that thread's own transcript.
+// These check the arithmetic against a real log directory.
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';

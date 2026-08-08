@@ -99,8 +99,6 @@ function renderRows(rows: readonly IdeaEntry[]): string {
     .map((r) => {
       const when = r.updated ? r.updated.slice(0, 10) : '';
       const note = r.note ? `\n      note: ${r.note}` : '';
-      // Who last moved this status. Only shown when recorded; every entry decided
-      // before provenance existed simply has no line here.
       const actor = r.by ? `\n      by: ${r.by.thread}` : '';
       const cites = r.evidence.map((e) => {
         const where = e.path ?? (e.bucket === undefined ? '' : `bucket ${e.bucket}/${e.id ?? ''}`);

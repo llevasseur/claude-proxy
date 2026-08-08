@@ -47,10 +47,8 @@ export function BucketJudgementBadge({ state }: { state: BucketJudgementState })
 
 /**
  * Shown beside a verdict whose judge opened almost none of the window it judged.
- *
- * **Advisory and nothing else** — it never hides the verdict, never blocks a write,
- * and renders nothing at all when the verdict predates provenance or its judge left
- * no measurable count. An unattributed verdict is not a careless one.
+ * Advisory: it never hides the verdict, and renders nothing when the verdict
+ * predates provenance or its judge left no measurable count.
  */
 export function ThinPassBadge({ by }: { by: WriteProvenance | undefined }) {
   if (!by || !isThinPass(by)) return null;

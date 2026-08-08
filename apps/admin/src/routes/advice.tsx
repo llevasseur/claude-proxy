@@ -268,7 +268,6 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
   // flags land, incompleteness is all the bucket alone can say.
   const anyRow = bucket.suggestions.map((s) => rowOf(s.id)).find((r) => r);
   const state = anyRow?.bucketState ?? (bucket.complete ? undefined : 'not-ready');
-  // Attribution is a fact about the bucket's verdict too, so it rides the same row.
   const judgedBy = anyRow?.judgedBy;
   return (
     <Link to='/advice/sessions/$bucket' params={{ bucket: String(bucket.index) }} className='card bucket-row'>

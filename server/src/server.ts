@@ -1012,9 +1012,8 @@ const server = http.createServer(async (req, res) => {
               if (body.amnesty !== undefined && typeof body.amnesty !== 'boolean') {
                 throw new Error('amnesty must be a boolean');
               }
-              // The judging agent's own thread id. Refused when present and
-              // malformed — silently dropping it would file the verdict
-              // unattributed while the caller believed it had signed the write.
+              // Refused when present and malformed — silently dropping it would file
+              // the verdict unattributed while the caller believed it had signed.
               if (body.thread !== undefined && !isThreadId(body.thread)) {
                 throw new Error('thread must be a 16-hex-character thread id');
               }

@@ -1625,8 +1625,7 @@ export interface SuggestionJudgeRequest {
    * writes along with how many of that bucket's transcripts the thread opened.
    *
    * Optional, and a malformed or unknown id is ignored rather than refused — a
-   * verdict is still a verdict without an author, and the ledger already holds
-   * thousands written before anyone was recorded. See {@link deriveJudgeProvenance}.
+   * verdict is still a verdict without an author. See {@link deriveJudgeProvenance}.
    */
   thread?: string;
 }
@@ -1635,12 +1634,11 @@ export interface SuggestionJudgeRequest {
  * Build the per-bucket provenance envelopes for one judging pass.
  *
  * The *who* is the caller's claim. The *how much* is not: the judging thread's own
- * transcript is on disk like any other, so the count of the window's transcripts it
- * opened is read back off its recorded tool calls rather than asked for. A judge
- * that names a thread it did not run gets an honest zero.
+ * transcript is on disk like any other, so the count is read back off its recorded
+ * tool calls rather than asked for.
  *
- * Returns an empty map when there is no usable thread id or no transcript for it —
- * absent provenance, not a zero-coverage indictment.
+ * Returns an empty map when there is no usable thread id — absent provenance, not
+ * a zero-coverage indictment.
  */
 async function deriveJudgeProvenance(
   logDir: string,
@@ -1653,8 +1651,8 @@ async function deriveJudgeProvenance(
   if (!isThreadId(thread)) return out;
   const judge = sessions.find((s) => s.threadId === thread);
   if (!judge) {
-    // The id is well-formed but no transcript backs it, so nothing can be counted.
-    // Record the claim alone; `window`/`opened` stay absent and read as unknown.
+    // Well-formed but no transcript backs it, so nothing can be counted: the claim
+    // alone, with `window`/`opened` absent and reading as unknown.
     for (const bucket of buckets) out.set(bucket.index, { thread });
     return out;
   }
@@ -1742,9 +1740,9 @@ export async function applySuggestionJudge(
     );
   }
 
-  // Attribution is derived after the refusals above, so a pass that is going to be
-  // rejected never pays for reading the judge's own transcript. An explicit `by` on
-  // a write wins: the caller may be replaying a verdict it did not itself reach.
+  // Derived after the refusals above, so a pass that will be rejected never pays to
+  // read the judge's transcript. An explicit `by` on a write wins: the caller may be
+  // replaying a verdict it did not itself reach.
   const attribution = await deriveJudgeProvenance(
     logDir,
     request.thread,
