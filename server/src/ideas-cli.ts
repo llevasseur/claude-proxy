@@ -33,6 +33,7 @@ import {
   type IdeaStatus,
   ideaRows,
   isIdeaStatus,
+  parseCliArgs,
   parseIdeaAdds,
   similarIdeaSlugs,
 } from '@claude-proxy/core';
@@ -66,37 +67,8 @@ const USAGE = `usage:
   may act on. This CLI never sets one by itself.`;
 
 /** Flags that stand alone. Empty for `add`, whose `--json` carries the payload. */
-function booleanFlagsFor(command: string): Set<string> {
-  return command === 'add' ? new Set() : new Set(['json']);
-}
-
-/** Read `--flag value` / `-f value` pairs off argv; anything else is a positional. */
-function parseArgs(
-  argv: readonly string[],
-  booleans: Set<string>,
-): { positionals: string[]; flags: Record<string, string>; switches: Set<string> } {
-  const positionals: string[] = [];
-  const flags: Record<string, string> = {};
-  const switches = new Set<string>();
-
-  const NAMES: Record<string, string> = { s: 'status', n: 'note' };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i] ?? '';
-    const match = /^--?([A-Za-z-]+)$/.exec(arg);
-    if (!match?.[1]) {
-      positionals.push(arg);
-      continue;
-    }
-    const name = NAMES[match[1]] ?? match[1];
-    if (booleans.has(name)) {
-      switches.add(name);
-      continue;
-    }
-    const value = argv[++i];
-    if (value === undefined) throw new Error(`missing value for --${name}`);
-    flags[name] = value;
-  }
-  return { positionals, flags, switches };
+function booleanFlagsFor(command: string): string[] {
+  return command === 'add' ? [] : ['json'];
 }
 
 function parseStatuses(raw: string): IdeaStatus[] {
@@ -134,17 +106,19 @@ function renderRows(rows: readonly IdeaEntry[]): string {
 
 async function run(argv: readonly string[]): Promise<void> {
   const first = argv[0] ?? '';
-  // Checked against argv, not the resolved command: a leading flag leaves
-  // `command` defaulted to `list`, and `--help` would reach the parser as a flag
-  // wanting a value.
-  if (first === 'help' || argv.includes('--help') || argv.includes('-h')) {
-    console.log(USAGE);
-    return;
-  }
   const command = first && !first.startsWith('-') ? first : 'list';
 
   const rest = first && !first.startsWith('-') ? argv.slice(1) : argv;
-  const { flags, switches } = parseArgs(rest, booleanFlagsFor(command));
+  // `--help` no longer needs pre-screening against raw argv: the shared parser
+  // treats it as a switch, so it can never be read as a flag wanting a value.
+  const { flags, switches, help } = parseCliArgs(rest, {
+    aliases: { s: 'status', n: 'note' },
+    booleans: booleanFlagsFor(command),
+  });
+  if (help || first === 'help') {
+    console.log(USAGE);
+    return;
+  }
   const json = switches.has('json');
   const logDir = resolveLogDir();
 

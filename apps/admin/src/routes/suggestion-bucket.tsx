@@ -226,9 +226,11 @@ function SuggestionCard({
   status?: SuggestionStatusRow;
 }) {
   const settled = isSettled(status);
-  const regressed = status?.recurrence === 'regressed';
   // Dimmed further than a merely resolved one, with its reason left legible.
   const dismissed = status?.status === 'dismissed';
+  // Dismissed outranks regressed: the row keeps its dimming, and the badge still says
+  // it regressed.
+  const regressed = !dismissed && status?.recurrence === 'regressed';
   return (
     <div
       className={`card advice sev-${s.severity}${settled ? ' is-resolved' : ''}${dismissed ? ' is-dismissed' : ''}${regressed ? ' is-regressed' : ''}`}>

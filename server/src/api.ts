@@ -126,7 +126,7 @@ import { loadArchivedDigest } from './archive.js';
 import { type CliBundleInfo, readCliCatalogue, readCliFunctionSource } from './cli-bundle.js';
 import { listInstalledCommands } from './command-runs.js';
 import { conceptStorePath } from './concepts.js';
-import { fileSource, type SidecarSource } from './db/source.js';
+import { fileSource, readWindow, type SidecarSource } from './db/source.js';
 import { markIdeasInStore, readIdeasStore, resolveIdeasPath } from './ideas-store.js';
 import {
   deleteJob,
@@ -190,15 +190,8 @@ export interface SummaryResponse {
 
 /**
  * One reporting day's sidecars, archived half first so the stream stays
- * chronological.
- *
- * `readSidecars` only ever scans the live directory. A reporting day is a
- * `REPORT_TZ` day while the summary job rotates on the *UTC* day, so a day near
- * the present sits in both places and an older one is archived outright —
- * reading only the live side reports a fraction of the day, then nothing.
- *
- * `archiveDir` extends the archived half to a day whose raw triples were
- * relocated off the log volume; without it such a day reads as empty.
+ * chronological — a one-day {@link readWindow}, kept as a name because a day is
+ * what the summary, tools and skim routes are actually asking for.
  */
 async function daySidecars(
   logDir: string,
@@ -208,16 +201,7 @@ async function daySidecars(
   archiveDir?: string,
   opts: Omit<ReadOptions, 'date' | 'sinceDays'> = {},
 ): Promise<LoadResult> {
-  const [archived, live] = await Promise.all([
-    source.readArchivedDay(logDir, date, { ...opts, archiveDir }),
-    source.readSidecars(logDir, { ...opts, date }, now),
-  ]);
-  return {
-    sidecars: [...archived.sidecars, ...live.sidecars],
-    files: archived.files + live.files,
-    parseErrors: archived.parseErrors + live.parseErrors,
-    bodiesEvicted: (archived.bodiesEvicted ?? 0) + (live.bodiesEvicted ?? 0),
-  };
+  return readWindow(logDir, { ...opts, date, ...(archiveDir === undefined ? {} : { archiveDir }) }, now, source);
 }
 
 /**
@@ -524,22 +508,13 @@ async function promptMixWindow(
   now: Date,
   source: SidecarSource,
 ): Promise<PromptMixWindow> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days }, now);
-  const liveByDate = liveSidecarsByDay(sidecars);
-  const byDate = new Map<string, PromptMixDay>();
+  const { byDay, files, parseErrors, archivedDays } = await readWindow(logDir, { sinceDays: days }, now, source);
+  const mix = [...byDay.entries()]
+    .filter(([, bucket]) => bucket.length > 0)
+    .map(([date, bucket]) => summarizePromptMix(bucket, date))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
-  let archivedDays = 0;
-  const end = today(now);
-  for (let i = 0; i < days; i += 1) {
-    const date = shiftDay(end, -i);
-    const live = liveByDate.get(date) ?? [];
-    const archived = await source.readArchivedDay(logDir, date);
-    if (archived.files === 0 && !live.length) continue;
-    if (archived.files > 0) archivedDays += 1;
-    byDate.set(date, summarizePromptMix([...archived.sidecars, ...live], date));
-  }
-
-  return { mix: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)), files, parseErrors, archivedDays };
+  return { mix, files, parseErrors, archivedDays };
 }
 
 /**
@@ -716,18 +691,10 @@ async function filesForPromptHash(
     }
   };
 
-  const live = await source.readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
-  read += live.files;
-  parseErrors += live.parseErrors;
-  collect(live.sidecars);
-
-  const end = today(now);
-  for (let i = 0; i < days; i += 1) {
-    const archived = await source.readArchivedDay(logDir, shiftDay(end, -i), { includeFile: true });
-    read += archived.files;
-    parseErrors += archived.parseErrors;
-    collect(archived.sidecars);
-  }
+  const window = await readWindow(logDir, { sinceDays: days, includeFile: true }, now, source);
+  read += window.files;
+  parseErrors += window.parseErrors;
+  collect(window.sidecars);
 
   // Names lead with their timestamp, so this is newest-first — the likeliest to
   // still have a body behind it.
@@ -854,10 +821,11 @@ export async function buildToolSchema(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<ToolSchemaResponse> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(
+  const { sidecars, files, parseErrors } = await readWindow(
     logDir,
     { sinceDays: days, includeFile: true },
     now,
+    source,
   );
 
   const candidates = new Set<string>();
@@ -946,10 +914,11 @@ export async function buildContext(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<ContextResponse> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(
+  const { sidecars, files, parseErrors } = await readWindow(
     logDir,
     { sinceDays: days, includeFile: true },
     now,
+    source,
   );
   return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
 }
@@ -1360,7 +1329,7 @@ async function resolveSessionRequests(
   }
 
   const since = (meta.started && reportDay(meta.started)) || undefined;
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { since, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await readWindow(logDir, { since, includeFile: true }, now, source);
   const entries = toContextEntries(sidecars);
 
   return {
@@ -1447,7 +1416,7 @@ export async function buildSessionSuggestionBucket(
 
   // A session's requests never predate it, so the earliest start bounds the scan.
   const since = (bucket.startedFirst && reportDay(bucket.startedFirst)) || undefined;
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { since, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await readWindow(logDir, { since, includeFile: true }, now, source);
   const entries = toContextEntries(sidecars);
 
   const peaks = sessions
@@ -1905,7 +1874,7 @@ export async function buildSessionGraphNodes(
   const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
   const since = (starts.length > 0 && reportDay(starts.sort()[0]!)) || undefined;
 
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { since, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await readWindow(logDir, { since, includeFile: true }, now, source);
   const candidates = toContextEntries(sidecars)
     .filter((e) => e.sessionId !== null && sessionIds.has(e.sessionId))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
@@ -1979,10 +1948,11 @@ export async function buildSkimTrend(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<SkimTrendResponse> {
-  const { sidecars, files, parseErrors, bodiesEvicted } = await source.readSidecars(
+  const { sidecars, files, parseErrors, bodiesEvicted } = await readWindow(
     logDir,
     { sinceDays: days, includeSkimRequests: true },
     now,
+    source,
   );
   const topShapes = computeSkimDigest(sidecars, { date: `${days}d`, topN: 50 }).topShapes;
   return {
@@ -2028,7 +1998,7 @@ export async function buildWithheld(
   // The traffic half goes through the seam; the device settings and the shell rc
   // are authored files outside `logs/`, read the same way by both backings.
   const [{ sidecars, files, parseErrors }, settings, launchAliases] = await Promise.all([
-    source.readSidecars(logDir, { sinceDays: days }, now),
+    readWindow(logDir, { sinceDays: days }, now, source),
     readDeviceSettings(settingsPath),
     readLaunchAliases(),
   ]);

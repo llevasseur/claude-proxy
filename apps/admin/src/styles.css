@@ -915,6 +915,14 @@ a.pager-btn:hover {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  /* Sized to its rows, capped by a `max-height` set from the plot height. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The hovered point holds the top of the card; only the pins below it scroll. */
+.charttip-lead {
+  flex: none;
 }
 .charttip-label {
   color: var(--muted);
@@ -931,12 +939,42 @@ a.pager-btn:hover {
   border-radius: 50%;
   flex: none;
 }
+/* Hollow, matching how a pinned point is drawn on the line itself. */
+.charttip-dot.pinned {
+  box-sizing: border-box;
+  background: none;
+  border: 2px solid var(--line);
+}
 .charttip-name {
   color: var(--muted);
 }
 .charttip-value {
   color: var(--text);
   margin-left: auto;
+}
+/* The only part that scrolls — the pin list is the one that grows unbounded. */
+.charttip-pins {
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.charttip-pin + .charttip-pin {
+  margin-top: 4px;
+}
+.charttip-delta {
+  color: var(--faint);
+  margin-left: 8px;
+}
+.charttip-hint {
+  flex: none;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--faint);
 }
 .chartlegend {
   display: flex;
@@ -1552,6 +1590,11 @@ a.pager-btn:hover {
 .advice.is-dismissed .suggestion-note {
   color: var(--muted);
 }
+/* Regressed badge in the quiet palette on a dismissed row, not the coral one. */
+.advice.is-dismissed .badge.recurrence-regressed {
+  background: var(--surface-2);
+  color: var(--faint);
+}
 button.link {
   background: none;
   border: none;
@@ -1662,7 +1705,8 @@ button.link {
   background: var(--surface-2);
   color: var(--faint);
 }
-/* Undims regressed rows: sits after the .is-resolved dimming and shares its specificity. */
+/* Undims regressed rows: sits after the .is-resolved dimming and shares its specificity.
+   Neither selector is emitted for a dismissed row — dismissed keeps its dimming. */
 .advice.is-regressed {
   opacity: 1;
   border-color: var(--coral);

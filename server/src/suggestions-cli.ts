@@ -41,6 +41,7 @@ import {
   isSuggestionRecurrence,
   isSuggestionStatus,
   parseBucketRange,
+  parseCliArgs,
   parseJudgeEntries,
   type RuleDefect,
   SUGGESTION_RECURRENCES,
@@ -86,52 +87,14 @@ const ACTIONABLE_RECURRENCES: readonly SuggestionRecurrence[] = SUGGESTION_RECUR
   (r) => r !== 'historical',
 );
 
-/** Flags that stand alone; every other flag takes the next argv entry as its value. */
-const BOOLEAN_FLAGS = new Set(['json', 'detail', 'dirty', 'amnesty']);
-
-/**
- * Flags that accumulate rather than overwrite, so repeating one is the escape hatch
- * for a note whose commas would otherwise read as separators.
- */
-const LIST_FLAGS = new Set(['confirm', 'dismiss']);
-
-/** Read `--flag value` / `-f value` pairs off argv; anything else is a positional. */
-function parseArgs(argv: readonly string[]): {
-  positionals: string[];
-  flags: Record<string, string>;
-  lists: Record<string, string[]>;
-  switches: Set<string>;
-  json: boolean;
-  detail: boolean;
-} {
-  const positionals: string[] = [];
-  const flags: Record<string, string> = {};
-  const lists: Record<string, string[]> = {};
-  const switches = new Set<string>();
-
-  const NAMES: Record<string, string> = { r: 'range', s: 'status', i: 'id', n: 'note', d: 'detail' };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i] ?? '';
-    const match = /^--?([A-Za-z-]+)$/.exec(arg);
-    if (!match?.[1]) {
-      positionals.push(arg);
-      continue;
-    }
-    const name = NAMES[match[1]] ?? match[1];
-    if (BOOLEAN_FLAGS.has(name)) {
-      switches.add(name);
-      continue;
-    }
-    const value = argv[++i];
-    if (value === undefined) throw new Error(`missing value for --${name}`);
-    if (LIST_FLAGS.has(name)) {
-      const list = lists[name] ?? [];
-      list.push(value);
-      lists[name] = list;
-    } else flags[name] = value;
-  }
-  return { positionals, flags, lists, switches, json: switches.has('json'), detail: switches.has('detail') };
-}
+/** How this CLI spells its own flags; `--help`/`-h` are the parser's, not ours. */
+const ARGS_SPEC = {
+  aliases: { r: 'range', s: 'status', i: 'id', n: 'note', d: 'detail' },
+  booleans: ['json', 'detail', 'dirty', 'amnesty'],
+  // Accumulating flags, so repeating one is the escape hatch for a note whose
+  // commas would otherwise read as separators.
+  lists: ['confirm', 'dismiss'],
+} as const;
 
 function parseStatuses(raw: string): SuggestionStatus[] {
   return raw.split(',').map((part) => {
@@ -201,7 +164,14 @@ function renderDefects(defects: readonly RuleDefect[]): string {
 }
 
 async function run(argv: readonly string[]): Promise<void> {
-  const { positionals, flags, lists, switches, json, detail } = parseArgs(argv);
+  const { positionals, flags, lists, switches, help } = parseCliArgs(argv, ARGS_SPEC);
+  // Before any subcommand dispatch, so `judge --help` answers the same as `--help`.
+  if (help) {
+    console.log(USAGE);
+    return;
+  }
+  const json = switches.has('json');
+  const detail = switches.has('detail');
   const command = positionals[0] ?? 'list';
   const logDir = resolveLogDir();
 
