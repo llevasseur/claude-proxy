@@ -52,7 +52,9 @@ export function SeriesLineChart({
   return (
     <div style={{ height }}>
       <ResponsiveContainer width='100%' height='100%'>
-        <LineChart data={data} margin={{ top: 6, right: 12, bottom: 2, left: 2 }}>
+        {/* Off, so the plot surface isn't `tabIndex=0`: the keyboard reaches the points
+            through the pin switches below, and the area itself never takes focus. */}
+        <LineChart accessibilityLayer={false} data={data} margin={{ top: 6, right: 12, bottom: 2, left: 2 }}>
           <CartesianGrid strokeDasharray='3 3' stroke='var(--border)' />
           <XAxis
             dataKey={xKey}
