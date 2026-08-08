@@ -1,10 +1,9 @@
 /**
  * Which sessions touched which pull request.
  *
- * Nothing records the link, so it is recovered from the transcripts: a session that
- * built a PR names its branch throughout, and one that reviewed or merged it names
- * the number. Each transcript is read once and tested against every PR, so this
- * costs one pass over `logs/sessions/` rather than one per pull request.
+ * Nothing records the link, so it is recovered from the transcripts: a session names
+ * either the PR's branch or its number. One pass over `logs/sessions/`, each
+ * transcript tested against every PR.
  */
 
 import { readdir, readFile, stat } from 'node:fs/promises';
@@ -22,10 +21,8 @@ import { resolveSessionsDir, SESSION_FILE_RE } from './sessions.js';
 export type PrSessionIndex = Record<number, PrSessionLink[]>;
 
 /**
- * Index the transcripts under `logDir` against `prs`.
- *
- * A missing `sessions/` directory is an empty index, not an error — the proxy may
- * simply not have written one yet.
+ * Index the transcripts under `logDir` against `prs`. A missing `sessions/` directory
+ * is an empty index, not an error.
  */
 export async function readPrSessions(logDir: string, prs: readonly PullRequestRow[]): Promise<PrSessionIndex> {
   const index: PrSessionIndex = {};

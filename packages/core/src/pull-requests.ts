@@ -1,13 +1,10 @@
 /**
  * The project's pull requests, shaped into the tree the dashboard draws.
  *
- * The trunk is what actually landed: merged PRs in merge order, which is the order
- * `main` grew in. Everything else hangs off the trunk point it was cut from — an open
- * PR off the newest commit that had merged when it was opened, a closed-unmerged one
- * off the same, drawn as a stub that never rejoined.
+ * The trunk is merged PRs in merge order; everything that never landed hangs off the
+ * trunk point it was cut from.
  *
- * Pure: no I/O, no clock, no `gh`. The server package runs the CLI and hands the
- * parsed JSON here.
+ * Pure: no I/O, no clock, no `gh` — the server hands the parsed JSON here.
  */
 
 /** Merged, still open, or closed without merging — the three shapes the tree draws. */
@@ -42,10 +39,7 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const iso = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
-/**
- * `gh` reports `MERGED` for a merged PR and `CLOSED` for one that was not, but the
- * merge timestamp is the fact — a row whose state is missing still classifies.
- */
+/** The merge timestamp wins over `state`, so a row with no `state` still classifies. */
 function readState(raw: Record<string, unknown>): PullRequestState {
   if (iso(raw.mergedAt) !== null) return 'merged';
   const state = str(raw.state).toUpperCase();
@@ -72,9 +66,8 @@ function readLabels(raw: unknown): string[] {
 /**
  * Read `gh pr list --json …` output into rows, newest first.
  *
- * Defensive throughout: a row with no usable number is dropped, and every other
- * field degrades to an empty value rather than emptying the page. `gh` gains fields
- * between versions and a future one must not break the view.
+ * A row with no usable number is dropped; every other field degrades to an empty
+ * value rather than emptying the page.
  */
 export function parsePullRequests(raw: unknown): PullRequestRow[] {
   if (!Array.isArray(raw)) return [];
@@ -195,11 +188,8 @@ const branchForms = (branch: string): string[] =>
   branch.includes('/') ? [branch, branch.replaceAll('/', '-')] : [branch];
 
 /**
- * A bare `#n` is not evidence on its own: `#1` is how prose numbers a step, and
- * "message #10" is not pull request 10. Tested against the real transcripts, an
- * unqualified `#n` tied the repo's low-numbered PRs to every session that happened
- * to enumerate something. So the hash form has to sit near a word that means pull
- * request; a `/pull/n` url needs no such help.
+ * A bare `#n` is not evidence on its own — prose numbers steps that way — so the hash
+ * form must sit near one of these words. A `/pull/n` url needs no such help.
  */
 const HASH_CONTEXT = /\b(?:prs?|pull|pulls|merge|merged|merging)\b/i;
 
@@ -220,9 +210,8 @@ function refersByNumber(pr: PullRequestRow, text: string): boolean {
 /**
  * How a transcript refers to a pull request, if it does.
  *
- * Two independent signals: the branch name — a session that built the PR names its
- * own branch constantly — and the PR number, as a `/pull/123` url or a `#123`. A
- * branch shorter than four characters is too generic to match on.
+ * Two independent signals: the branch name, and the PR number as a `/pull/123` url or
+ * a `#123`. A branch shorter than four characters is too generic to match on.
  */
 export function matchPrInText(pr: PullRequestRow, text: string): PrSessionVia[] {
   const via: PrSessionVia[] = [];

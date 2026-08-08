@@ -9,19 +9,15 @@ import { Skeleton, SkeletonStatus } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort } from '../format';
 
 /**
- * The project's pull requests as the tree they actually formed.
+ * The project's pull requests as the tree they actually formed: merged PRs form the
+ * spine, newest at the top, and everything that did not land hangs off the merge it
+ * was cut from. Clicking a node opens the live session graph's detail drawer, down to
+ * that drawer's own classes.
  *
- * The spine is what landed — merged PRs, newest at the top, so reading down is
- * reading backwards through the project's history. Everything that did not land
- * hangs off the merge it was cut from: an open PR as a live stub, a closed one as a
- * dead end. Clicking any of them opens the same detail drawer the live session graph
- * uses, down to the drawer's own classes.
- *
- * Read-only. The server runs `gh pr list` and caches it, and the page polls, so a PR
- * opened or merged elsewhere shows up here on its own.
+ * Read-only, and polls.
  */
 
-/** How often the page re-asks. The server caches for a minute, so this mostly hits warm. */
+/** How often the page re-asks. */
 const REFETCH_MS = 30_000;
 
 const STATE_COLOR: Record<PullRequestState | 'draft', string> = {
@@ -155,7 +151,7 @@ function Count({ label, value, tone }: { label: string; value: number; tone: Pul
   );
 }
 
-/** One PR on the tree. The whole box is the hit target — this page has no other click. */
+/** One PR on the tree; the whole box is the hit target. */
 function PrNode({
   pr,
   className,
@@ -284,7 +280,6 @@ function PrInspector({
 /** Past this much text a description is folded away until asked for. */
 const LONG_TEXT_CHARS = 280;
 
-/** A PR description runs long; clamp it rather than let it swamp the drawer. */
 function LongText({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const long = text.length > LONG_TEXT_CHARS;

@@ -1,14 +1,9 @@
 /**
- * The project's pull requests, read through the `gh` CLI.
+ * The project's pull requests, read through the `gh` CLI — `gh pr list` and nothing
+ * else, on the device's own auth, so the dashboard needs no token.
  *
- * `gh` rather than the REST API on purpose: the device is already authenticated for
- * it, so the dashboard needs no token of its own and no write scope — this reads
- * `gh pr list` and nothing else.
- *
- * Every failure that is really a setup problem (no `gh`, not signed in, no GitHub
- * remote) comes back as a message rather than an exception, so the page can say what
- * to do instead of rendering an error. The result is cached briefly: the tree moves
- * at the speed of merges, and the page polls.
+ * Setup problems (no `gh`, not signed in, no GitHub remote) come back as a message
+ * rather than an exception, and the result is cached briefly.
  */
 
 import { execFile } from 'node:child_process';
@@ -41,7 +36,7 @@ const PR_FIELDS = [
   'changedFiles',
 ].join(',');
 
-/** How many PRs to ask for. The tree is a history view, so it reaches back a long way. */
+/** How many PRs to ask for. */
 export const DEFAULT_PR_LIMIT = 200;
 
 /** How long a fetch is reused before `gh` is run again. */
@@ -64,9 +59,8 @@ export interface PullRequestsResult {
 }
 
 /**
- * The checkout whose PRs are served. `REPO_DIR` overrides it; otherwise it is this
- * repository, resolved from the module's own path so a server started from anywhere
- * still answers about the project it ships with.
+ * The checkout whose PRs are served. `REPO_DIR` overrides it; otherwise this
+ * repository, resolved from the module's own path rather than the cwd.
  */
 export function resolveRepoDir(env: NodeJS.ProcessEnv = process.env): string {
   if (env.REPO_DIR) return path.resolve(env.REPO_DIR);
@@ -95,10 +89,7 @@ function ghFailure(err: unknown): string {
 
 let cache: { key: string; at: number; result: PullRequestsResult } | null = null;
 
-/**
- * Read the repository's pull requests. `limit` caps how many `gh` returns, newest
- * first; the tree orders them itself.
- */
+/** Read the repository's pull requests. `limit` caps how many `gh` returns. */
 export async function readPullRequests(repoDir: string, limit = DEFAULT_PR_LIMIT): Promise<PullRequestsResult> {
   const key = `${repoDir}:${limit}`;
   if (cache && cache.key === key && Date.now() - cache.at < CACHE_MS) {

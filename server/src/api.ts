@@ -2209,8 +2209,8 @@ export interface PullRequestsResponse {
   /** Newest first — the page orders them into the tree itself. */
   prs: PullRequestRow[];
   /**
-   * Why the read produced nothing, phrased for the page: no `gh`, not signed in, no
-   * remote. Null on success. A setup gap is the page's empty state, not a 500.
+   * A setup gap phrased for the page — no `gh`, not signed in, no remote — rather than
+   * a 500. Null on success.
    */
   error: string | null;
   /** Sessions that worked on each PR, keyed by number — absent when none did. */
@@ -2219,9 +2219,8 @@ export interface PullRequestsResponse {
 }
 
 /**
- * The project's pull requests, straight from `gh`, each tied back to the sessions
- * that worked on it. Read-only: the dashboard lists what GitHub already has and
- * never writes back.
+ * The project's pull requests, straight from `gh`, each tied back to the sessions that
+ * worked on it. Read-only.
  */
 export async function buildPullRequests(
   logDir: string,
