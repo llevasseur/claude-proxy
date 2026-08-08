@@ -3,5 +3,9 @@ packages:
   - server
   - packages/*
   - apps/*
+  - services/*
 allowBuilds:
   esbuild: true
+  # wrangler ships the workerd runtime for `wrangler dev`; its postinstall
+  # unpacks the platform binary.
+  workerd: true
