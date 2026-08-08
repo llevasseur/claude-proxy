@@ -106,6 +106,10 @@ export function TrendDetailPage() {
                   <h2>{def.label} / day</h2>
                   <span className='range'>{rangeLabel}</span>
                 </div>
+                {/* Days are worth reading against each other, and hovering only
+                    ever shows one. Pinning keeps the rest in the tooltip, so a
+                    comparison is a couple of clicks rather than a memorised
+                    figure and a second hover. */}
                 <SeriesLineChart
                   data={rows}
                   series={[{ dataKey: 'value', name: def.label, color: def.color }]}
@@ -113,6 +117,7 @@ export function TrendDetailPage() {
                   format={def.format}
                   formatTick={def.formatTick}
                   height={CHART_HEIGHT}
+                  pinnable
                 />
               </div>
 

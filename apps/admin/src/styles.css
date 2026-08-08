@@ -915,6 +915,16 @@ a.pager-btn:hover {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  /* The card is as tall as its rows need. A `max-height` set from the plot's own
+     height caps it there, and the column below decides what gives when it does. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The hovered point holds the top of the card whatever else is pinned, so the
+   figure everything is being compared against never scrolls out of view. */
+.charttip-lead {
+  flex: none;
 }
 .charttip-label {
   color: var(--muted);
@@ -931,12 +941,42 @@ a.pager-btn:hover {
   border-radius: 50%;
   flex: none;
 }
+/* Hollow, matching how a pinned point is drawn on the line itself. */
+.charttip-dot.pinned {
+  box-sizing: border-box;
+  background: none;
+  border: 2px solid var(--line);
+}
 .charttip-name {
   color: var(--muted);
 }
 .charttip-value {
   color: var(--text);
   margin-left: auto;
+}
+/* The only part that scrolls: pins are the list that grows without bound. */
+.charttip-pins {
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.charttip-pin + .charttip-pin {
+  margin-top: 4px;
+}
+.charttip-delta {
+  color: var(--faint);
+  margin-left: 8px;
+}
+.charttip-hint {
+  flex: none;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--faint);
 }
 .chartlegend {
   display: flex;
