@@ -1,8 +1,8 @@
-import { type ContextEntry, promptExcerpt, promptMatches } from '@claude-proxy/core';
+import { type ContextEntry, type ContextRun, groupContextRuns, promptExcerpt, promptMatches } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
 import { getContext } from '../api';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
@@ -130,6 +130,14 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
     return rows;
   }, [entries, sort, query]);
 
+  // Grouped after sorting, so a run is whatever the current sort placed together.
+  const runs = useMemo(() => groupContextRuns(sorted), [sorted]);
+  const searching = query.trim() !== '';
+  // Only a run the reader opened or closed appears here; the rest follow `defaultOpen`.
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const isOpen = (run: ContextRun) => opened[run.key] ?? (searching || run.entries.length === 1);
+  const toggle = (key: string, open: boolean) => setOpened((prev) => ({ ...prev, [key]: !open }));
+
   const searchable = useMemo(() => entries.filter((e) => e.prompt).length, [entries]);
 
   const onSort = (key: SortKey) =>
@@ -154,7 +162,7 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
         <span className='muted'>
           {query.trim()
             ? `${fmtInt(sorted.length)} of ${fmtInt(entries.length)} · searching ${fmtInt(searchable)} recorded prompt${searchable === 1 ? '' : 's'}`
-            : 'click a column to sort · click a row for the breakdown'}
+            : 'one heading per thread · click it to see that thread’s requests'}
         </span>
       </div>
       <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
@@ -169,28 +177,19 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
           </tr>
         </thead>
         <tbody>
-          {sorted.map((e) => (
-            <tr key={e.file}>
-              <td>
-                <Link to='/context/$file' params={{ file: e.file }} className='link'>
-                  {fmtLocalTs(e.timestamp)}
-                  {e.realInput === maxRealInput && <span className='muted'> · peak</span>}
-                </Link>
-                {e.prompt && (
-                  <div className='muted context-prompt' title={e.prompt}>
-                    {promptExcerpt(e.prompt, query)}
-                  </div>
-                )}
-              </td>
-              <td className='muted'>{e.model}</td>
-              <td className='num'>{fmtInt(e.realInput)}</td>
-              <td className='num'>{fmtBytes(e.systemBytes)}</td>
-              <td className='num'>{fmtBytes(e.toolsBytes)}</td>
-              <td className='bar-col'>
-                <div className='rowbar' style={{ width: `${(e.realInput / max) * 100}%` }} />
-              </td>
-            </tr>
-          ))}
+          {runs.map((run) =>
+            run.threadId === null ? (
+              <RequestRow key={run.key} entry={run.entries[0]!} max={max} maxRealInput={maxRealInput} />
+            ) : (
+              <Fragment key={run.key}>
+                <ThreadHead run={run} query={query} open={isOpen(run)} onToggle={toggle} maxRealInput={maxRealInput} />
+                {isOpen(run) &&
+                  run.entries.map((e) => (
+                    <RequestRow key={e.file} entry={e} max={max} maxRealInput={maxRealInput} grouped />
+                  ))}
+              </Fragment>
+            ),
+          )}
           {sorted.length === 0 && (
             <tr>
               <td colSpan={6} className='empty'>
@@ -201,6 +200,77 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * The heading a thread's run of requests sits under. It carries what the whole run
+ * shares — the opening prompt, the thread id, its span and peak — so the rows below
+ * never repeat it, and a collapsed run still names itself.
+ */
+function ThreadHead({
+  run,
+  query,
+  open,
+  onToggle,
+  maxRealInput,
+}: {
+  run: ContextRun;
+  query: string;
+  open: boolean;
+  onToggle: (key: string, open: boolean) => void;
+  maxRealInput: number;
+}) {
+  const count = run.entries.length;
+  const Chevron = open ? ChevronDown : ChevronRight;
+  return (
+    <tr className='thread-run'>
+      <td colSpan={6}>
+        <button type='button' className='thread-head' aria-expanded={open} onClick={() => onToggle(run.key, open)}>
+          <Chevron size={14} strokeWidth={1.75} aria-hidden />
+          <span className='thread-title' title={run.prompt ?? undefined}>
+            {run.prompt ? promptExcerpt(run.prompt, query) : 'No opening prompt recorded'}
+          </span>
+          <span className='thread-meta'>
+            {run.threadId && <span className='thread-id'>{run.threadId.slice(-8)}</span>}
+            {fmtInt(count)} request{count === 1 ? '' : 's'} · {fmtLocalTs(run.firstTimestamp)}
+            {count > 1 && ` → ${fmtLocalTs(run.lastTimestamp)}`}
+            {run.peakRealInput === maxRealInput && ' · peak'}
+          </span>
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+/** One request. `grouped` indents it under the thread heading it belongs to. */
+function RequestRow({
+  entry,
+  max,
+  maxRealInput,
+  grouped,
+}: {
+  entry: ContextEntry;
+  max: number;
+  maxRealInput: number;
+  grouped?: boolean;
+}) {
+  return (
+    <tr className={grouped ? 'thread-child' : undefined}>
+      <td>
+        <Link to='/context/$file' params={{ file: entry.file }} className='link'>
+          {fmtLocalTs(entry.timestamp)}
+          {entry.realInput === maxRealInput && <span className='muted'> · peak</span>}
+        </Link>
+      </td>
+      <td className='muted'>{entry.model}</td>
+      <td className='num'>{fmtInt(entry.realInput)}</td>
+      <td className='num'>{fmtBytes(entry.systemBytes)}</td>
+      <td className='num'>{fmtBytes(entry.toolsBytes)}</td>
+      <td className='bar-col'>
+        <div className='rowbar' style={{ width: `${(entry.realInput / max) * 100}%` }} />
+      </td>
+    </tr>
   );
 }
 

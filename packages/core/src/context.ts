@@ -135,6 +135,58 @@ export function attachContextPrompts(
   return entries.map((e) => ({ ...e, prompt: (e.threadId && texts.get(e.threadId)) || null }));
 }
 
+/**
+ * A run of adjacent requests that share a thread — what the context table shows
+ * as one group instead of one row each.
+ */
+export interface ContextRun {
+  /** Stable for as long as the ordering is: the thread plus the run's first sidecar. */
+  key: string;
+  /** Null when the requests carry no thread id, in which case the run is one request. */
+  threadId: string | null;
+  /** The run's requests, in the order they were given. */
+  entries: ContextEntry[];
+  /** The thread's opening prompt, from the first request that recorded one. */
+  prompt: string | null;
+  /** Oldest and newest timestamp in the run, regardless of the order given. */
+  firstTimestamp: string;
+  lastTimestamp: string;
+  peakRealInput: number;
+}
+
+/**
+ * Collapse each run of *adjacent* same-thread requests into one {@link ContextRun}.
+ * Adjacency is what makes this safe under any sort order: the caller sorts, this
+ * groups what the sort placed together, so no row ever moves.
+ *
+ * A null thread id names no thread, so those requests are never grouped with each
+ * other — each becomes a run of one. Pure.
+ */
+export function groupContextRuns(entries: readonly ContextEntry[]): ContextRun[] {
+  const runs: ContextRun[] = [];
+  for (const entry of entries) {
+    const last = runs[runs.length - 1];
+    if (last && entry.threadId !== null && last.threadId === entry.threadId) {
+      last.entries.push(entry);
+      last.prompt ??= entry.prompt;
+      if (entry.timestamp.localeCompare(last.firstTimestamp) < 0) last.firstTimestamp = entry.timestamp;
+      if (entry.timestamp.localeCompare(last.lastTimestamp) > 0) last.lastTimestamp = entry.timestamp;
+      last.peakRealInput = Math.max(last.peakRealInput, entry.realInput);
+      continue;
+    }
+    runs.push({
+      key: `${entry.threadId ?? 'no-thread'}:${entry.file}`,
+      threadId: entry.threadId,
+      entries: [entry],
+      prompt: entry.prompt,
+      firstTimestamp: entry.timestamp,
+      lastTimestamp: entry.timestamp,
+      peakRealInput: entry.realInput,
+    });
+  }
+  return runs;
+}
+
 /** One session's captured requests, reduced to the one worth drilling into. */
 export interface SessionContextPeak {
   /** How many captured requests were matched to this thread. */
