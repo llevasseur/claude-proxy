@@ -136,55 +136,61 @@ export function attachContextPrompts(
 }
 
 /**
- * A run of adjacent requests that share a thread — what the context table shows
- * as one group instead of one row each.
+ * The requests of one thread, gathered — what the context table shows as a single
+ * group instead of one nameless row per model call.
  */
-export interface ContextRun {
-  /** Stable for as long as the ordering is: the thread plus the run's first sidecar. */
+export interface ContextThreadGroup {
+  /** The thread id, or the lone request's sidecar when it has none. */
   key: string;
-  /** Null when the requests carry no thread id, in which case the run is one request. */
+  /** Null when the request carries no thread id, in which case the group holds it alone. */
   threadId: string | null;
-  /** The run's requests, in the order they were given. */
+  /** The thread's requests, in the order they were given. */
   entries: ContextEntry[];
   /** The thread's opening prompt, from the first request that recorded one. */
   prompt: string | null;
-  /** Oldest and newest timestamp in the run, regardless of the order given. */
+  /** Oldest and newest timestamp in the group, regardless of the order given. */
   firstTimestamp: string;
   lastTimestamp: string;
   peakRealInput: number;
 }
 
 /**
- * Collapse each run of *adjacent* same-thread requests into one {@link ContextRun}.
- * Adjacency is what makes this safe under any sort order: the caller sorts, this
- * groups what the sort placed together, so no row ever moves.
+ * Gather every request of a thread into one {@link ContextThreadGroup}, whichever
+ * positions the caller's sort put them in. Grouping only where the sort happened to
+ * place them adjacently is not enough: concurrent sessions interleave in time, so
+ * adjacency alone leaves a 68-request thread as dozens of one-request groups.
  *
- * A null thread id names no thread, so those requests are never grouped with each
- * other — each becomes a run of one. Pure.
+ * Groups come back in the order their first request appears, so the caller's sort
+ * still decides which thread leads and how the rows inside one read. A null thread
+ * id names no thread, so those requests are never gathered with each other — each
+ * gets a group of its own. Pure.
  */
-export function groupContextRuns(entries: readonly ContextEntry[]): ContextRun[] {
-  const runs: ContextRun[] = [];
+export function groupContextThreads(entries: readonly ContextEntry[]): ContextThreadGroup[] {
+  const groups: ContextThreadGroup[] = [];
+  const byThread = new Map<string, ContextThreadGroup>();
   for (const entry of entries) {
-    const last = runs[runs.length - 1];
-    if (last && entry.threadId !== null && last.threadId === entry.threadId) {
-      last.entries.push(entry);
-      last.prompt ??= entry.prompt;
-      if (entry.timestamp.localeCompare(last.firstTimestamp) < 0) last.firstTimestamp = entry.timestamp;
-      if (entry.timestamp.localeCompare(last.lastTimestamp) > 0) last.lastTimestamp = entry.timestamp;
-      last.peakRealInput = Math.max(last.peakRealInput, entry.realInput);
+    const existing = entry.threadId === null ? undefined : byThread.get(entry.threadId);
+    if (existing) {
+      existing.entries.push(entry);
+      existing.prompt ??= entry.prompt;
+      if (entry.timestamp.localeCompare(existing.firstTimestamp) < 0) existing.firstTimestamp = entry.timestamp;
+      if (entry.timestamp.localeCompare(existing.lastTimestamp) > 0) existing.lastTimestamp = entry.timestamp;
+      existing.peakRealInput = Math.max(existing.peakRealInput, entry.realInput);
       continue;
     }
-    runs.push({
-      key: `${entry.threadId ?? 'no-thread'}:${entry.file}`,
+    const group: ContextThreadGroup = {
+      key: entry.threadId ?? `no-thread:${entry.file}`,
       threadId: entry.threadId,
       entries: [entry],
       prompt: entry.prompt,
       firstTimestamp: entry.timestamp,
       lastTimestamp: entry.timestamp,
       peakRealInput: entry.realInput,
-    });
+    };
+    groups.push(group);
+    if (entry.threadId !== null) byThread.set(entry.threadId, group);
   }
-  return runs;
+  return groups;
 }
 
 /** One session's captured requests, reduced to the one worth drilling into. */

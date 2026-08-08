@@ -1,4 +1,10 @@
-import { type ContextEntry, type ContextRun, groupContextRuns, promptExcerpt, promptMatches } from '@claude-proxy/core';
+import {
+  type ContextEntry,
+  type ContextThreadGroup,
+  groupContextThreads,
+  promptExcerpt,
+  promptMatches,
+} from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
@@ -130,12 +136,12 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
     return rows;
   }, [entries, sort, query]);
 
-  // Grouped after sorting, so a run is whatever the current sort placed together.
-  const runs = useMemo(() => groupContextRuns(sorted), [sorted]);
+  // Grouped after sorting, so the sort still decides which thread leads.
+  const groups = useMemo(() => groupContextThreads(sorted), [sorted]);
   const searching = query.trim() !== '';
-  // Only a run the reader opened or closed appears here; the rest follow `defaultOpen`.
+  // Only a thread the reader opened or closed appears here; the rest follow the default.
   const [opened, setOpened] = useState<Record<string, boolean>>({});
-  const isOpen = (run: ContextRun) => opened[run.key] ?? (searching || run.entries.length === 1);
+  const isOpen = (group: ContextThreadGroup) => opened[group.key] ?? (searching || group.entries.length === 1);
   const toggle = (key: string, open: boolean) => setOpened((prev) => ({ ...prev, [key]: !open }));
 
   const searchable = useMemo(() => entries.filter((e) => e.prompt).length, [entries]);
@@ -177,14 +183,20 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
           </tr>
         </thead>
         <tbody>
-          {runs.map((run) =>
-            run.threadId === null ? (
-              <RequestRow key={run.key} entry={run.entries[0]!} max={max} maxRealInput={maxRealInput} />
+          {groups.map((group) =>
+            group.threadId === null ? (
+              <RequestRow key={group.key} entry={group.entries[0]!} max={max} maxRealInput={maxRealInput} />
             ) : (
-              <Fragment key={run.key}>
-                <ThreadHead run={run} query={query} open={isOpen(run)} onToggle={toggle} maxRealInput={maxRealInput} />
-                {isOpen(run) &&
-                  run.entries.map((e) => (
+              <Fragment key={group.key}>
+                <ThreadHead
+                  group={group}
+                  query={query}
+                  open={isOpen(group)}
+                  onToggle={toggle}
+                  maxRealInput={maxRealInput}
+                />
+                {isOpen(group) &&
+                  group.entries.map((e) => (
                     <RequestRow key={e.file} entry={e} max={max} maxRealInput={maxRealInput} grouped />
                   ))}
               </Fragment>
@@ -204,38 +216,38 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
 }
 
 /**
- * The heading a thread's run of requests sits under. It carries what the whole run
- * shares — the opening prompt, the thread id, its span and peak — so the rows below
- * never repeat it, and a collapsed run still names itself.
+ * The heading a thread's requests sit under. It carries what they all share — the
+ * opening prompt, the thread id, the span and peak — so the rows below never repeat
+ * it, and a collapsed thread still names itself.
  */
 function ThreadHead({
-  run,
+  group,
   query,
   open,
   onToggle,
   maxRealInput,
 }: {
-  run: ContextRun;
+  group: ContextThreadGroup;
   query: string;
   open: boolean;
   onToggle: (key: string, open: boolean) => void;
   maxRealInput: number;
 }) {
-  const count = run.entries.length;
+  const count = group.entries.length;
   const Chevron = open ? ChevronDown : ChevronRight;
   return (
     <tr className='thread-run'>
       <td colSpan={6}>
-        <button type='button' className='thread-head' aria-expanded={open} onClick={() => onToggle(run.key, open)}>
+        <button type='button' className='thread-head' aria-expanded={open} onClick={() => onToggle(group.key, open)}>
           <Chevron size={14} strokeWidth={1.75} aria-hidden />
-          <span className='thread-title' title={run.prompt ?? undefined}>
-            {run.prompt ? promptExcerpt(run.prompt, query) : 'No opening prompt recorded'}
+          <span className='thread-title' title={group.prompt ?? undefined}>
+            {group.prompt ? promptExcerpt(group.prompt, query) : 'No opening prompt recorded'}
           </span>
           <span className='thread-meta'>
-            {run.threadId && <span className='thread-id'>{run.threadId.slice(-8)}</span>}
-            {fmtInt(count)} request{count === 1 ? '' : 's'} · {fmtLocalTs(run.firstTimestamp)}
-            {count > 1 && ` → ${fmtLocalTs(run.lastTimestamp)}`}
-            {run.peakRealInput === maxRealInput && ' · peak'}
+            {group.threadId && <span className='thread-id'>{group.threadId.slice(-8)}</span>}
+            {fmtInt(count)} request{count === 1 ? '' : 's'} · {fmtLocalTs(group.firstTimestamp)}
+            {count > 1 && ` → ${fmtLocalTs(group.lastTimestamp)}`}
+            {group.peakRealInput === maxRealInput && ' · peak'}
           </span>
         </button>
       </td>
