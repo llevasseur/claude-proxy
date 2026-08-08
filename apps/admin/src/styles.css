@@ -915,14 +915,12 @@ a.pager-btn:hover {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-  /* The card is as tall as its rows need. A `max-height` set from the plot's own
-     height caps it there, and the column below decides what gives when it does. */
+  /* Sized to its rows, capped by a `max-height` set from the plot height. */
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-/* The hovered point holds the top of the card whatever else is pinned, so the
-   figure everything is being compared against never scrolls out of view. */
+/* The hovered point holds the top of the card; only the pins below it scroll. */
 .charttip-lead {
   flex: none;
 }
@@ -954,7 +952,7 @@ a.pager-btn:hover {
   color: var(--text);
   margin-left: auto;
 }
-/* The only part that scrolls: pins are the list that grows without bound. */
+/* The only part that scrolls — the pin list is the one that grows unbounded. */
 .charttip-pins {
   min-height: 0;
   overflow-y: auto;

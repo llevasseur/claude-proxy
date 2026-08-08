@@ -22,11 +22,7 @@ export interface SeriesLineChartProps {
   /** Compact form of `format` for y-axis ticks; defaults to `format`. */
   formatTick?: (n: number) => string;
   height?: number;
-  /**
-   * Let a click pin a point, so the tooltip reads as a comparison list rather
-   * than one point at a time. Off by default: on a chart whose surroundings
-   * already own the click, pinning would take it.
-   */
+  /** Let a click pin a point into the tooltip's comparison list. Off where the surroundings own the click. */
   pinnable?: boolean;
 }
 
@@ -45,9 +41,7 @@ export function SeriesLineChart({
 }: SeriesLineChartProps) {
   const [pinned, setPinned] = useState<PinKey[]>([]);
 
-  // Keyed off the point's own datum rather than the chart's `activeLabel`: that
-  // one tracks the hovered category and lags a fast pointer, so a click could
-  // pin the point before the one under the cursor.
+  // Keyed off the point's own datum: the chart's `activeLabel` lags a fast pointer.
   const togglePin = useCallback((key: PinKey) => {
     setPinned((current) => (current.includes(key) ? current.filter((p) => p !== key) : [...current, key]));
   }, []);
@@ -86,9 +80,7 @@ export function SeriesLineChart({
                 xKey={xKey}
                 pins={pins}
                 pinnable={pinnable}
-                // The card takes whatever height its rows need; the plot is the
-                // ceiling, and a longer pin list scrolls inside it rather than
-                // running off the chart.
+                // The plot is the card's ceiling; a longer pin list scrolls inside it.
                 maxHeight={height - 16}
               />
             }
@@ -106,9 +98,8 @@ export function SeriesLineChart({
                   ? (props: unknown) => renderDot(props, s.color, pinSet, xKey, togglePin)
                   : { r: 2, fill: s.color }
               }
-              // The hover marker is drawn over the point it marks, so left alone
-              // it swallows the click aimed at the dot underneath — which is
-              // every click, since a point is hovered before it is clicked.
+              // The hover marker draws over the point, so without this it swallows
+              // every click — a point is always hovered before it is clicked.
               activeDot={pinnable ? { r: 4, fill: s.color, style: { pointerEvents: 'none' } } : undefined}
               isAnimationActive={false}
             />
@@ -127,9 +118,8 @@ interface DotRenderProps {
 }
 
 /**
- * A pinned point reads as a hollow ring in the line's own colour, an unpinned
- * one as the plain 2px dot — the state has to be legible from the line alone,
- * since the tooltip that lists the pins only exists while something is hovered.
+ * A pinned point draws as a hollow ring, an unpinned one as the plain dot. The
+ * state has to read off the line, since the tooltip only exists while hovering.
  */
 function renderDot(
   props: unknown,
@@ -154,9 +144,8 @@ function renderDot(
         stroke={color}
         strokeWidth={isPinned ? 2 : 0}
       />
-      {/* The visible dot is 2px across, which is nothing to aim at. This disc is
-          the target that actually gets clicked — invisible, and wide enough to
-          hit without being so wide it overlaps its neighbours. */}
+      {/* The visible dot is 2px across. This invisible disc is the click target,
+          wide enough to hit without overlapping its neighbours. */}
       {key !== null && placed && (
         <circle
           cx={cx}
@@ -164,15 +153,13 @@ function renderDot(
           r={9}
           fill='transparent'
           style={{ cursor: 'pointer' }}
-          // A switch, not a button: pinning is a two-state control, and the state
-          // is what a screen reader needs to read back.
+          // A switch rather than a button: pinning is a two-state control.
           role='switch'
           tabIndex={0}
           aria-checked={isPinned}
           aria-label={`${isPinned ? 'Unpin' : 'Pin'} ${key}`}
-          // Mouse-down, not click: hovering makes recharts re-render the dots, so
-          // the node the press landed on is gone by the time the release happens
-          // and no `click` is ever dispatched against it.
+          // Mouse-down, not click: hovering re-renders the dots, so the pressed
+          // node is gone before the release and no `click` is ever dispatched.
           onMouseDown={(e) => {
             e.stopPropagation();
             onToggle(key);
@@ -225,9 +212,8 @@ function SeriesTooltip({
   const hovered = label == null ? '' : String(label);
   const valueFor = (key: string) => payload.find((p) => p.dataKey === key)?.value ?? null;
 
-  // The hovered point heads the list, and the pins follow in the order they were
-  // clicked. Hovering a pinned point promotes it to the head rather than listing
-  // it twice, and a pin whose day has dropped out of the window is simply gone.
+  // Hovered point heads the list, pins follow in click order. A hovered pin is
+  // promoted rather than listed twice; a pin outside the window drops out.
   const compared = pins
     .filter((key) => key !== hovered)
     .map((key) => data.find((row) => String(row[xKey]) === key))
@@ -276,8 +262,7 @@ function SeriesTooltip({
 
 /**
  * One pinned point, measured against whatever is hovered. A single-series chart
- * collapses to one line per point — its date is the only thing distinguishing
- * the rows, so repeating the series name on each would only cost height.
+ * collapses to one row per point — only the date distinguishes them.
  */
 function PinnedEntry({
   row,
@@ -328,9 +313,8 @@ function PinnedEntry({
 }
 
 /**
- * How the pinned figure sits against the hovered one, in percent. Deliberately
- * uncoloured: the chart is not told whether up is a win for this metric, and a
- * green or red here would be asserting one.
+ * How the pinned figure sits against the hovered one, in percent. Uncoloured —
+ * the chart is not told whether up is a win for this metric.
  */
 function Delta({ base, value }: { base: number | null; value: number }) {
   if (base == null || base === 0) return null;
