@@ -258,7 +258,7 @@ export interface IdeaEntry {
   status: IdeaStatus;
   /** ISO timestamp of the write that first recorded it. */
   created: string;
-  /** ISO timestamp of the write that last changed its status. */
+  /** ISO timestamp of the write that last changed it — a decision, a re-file, or a comment. */
   updated: string;
   /** For `rejected`, the reason; for `shipped`, the PR url. */
   note?: string;

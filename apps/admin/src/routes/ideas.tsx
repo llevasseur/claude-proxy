@@ -28,6 +28,10 @@ import { useLiveQuery } from '../useLiveQuery';
  */
 const UNFILED_TAB = '-unfiled';
 
+/** The single panel the strip swaps, and the tab ids that label it. */
+const PANEL_ID = 'idea-area-panel';
+const tabId = (area: string) => `idea-area-tab-${area}`;
+
 interface IdeaTab {
   /** The `?area=` value. */
   value: string;
@@ -96,9 +100,11 @@ export function IdeasPage() {
               {tabs.map((tab) => (
                 <button
                   key={tab.value}
+                  id={tabId(tab.value)}
                   type='button'
                   role='tab'
                   aria-selected={tab.value === selected}
+                  aria-controls={PANEL_ID}
                   className={`idea-tab${tab.value === selected ? ' is-selected' : ''}${tab.count === 0 ? ' is-empty' : ''}`}
                   onClick={() => navigate({ search: { area: tab.value } })}>
                   {tab.label}
@@ -107,12 +113,13 @@ export function IdeasPage() {
               ))}
             </div>
 
+            {/* One panel the strip swaps out, labelled by whichever tab is selected. */}
             {shown.length === 0 ? (
-              <div className='card empty'>
+              <div className='card empty' id={PANEL_ID} role='tabpanel' aria-labelledby={tabId(selected)}>
                 Nothing filed under {tabs.find((t) => t.value === selected)?.label ?? selected} yet.
               </div>
             ) : (
-              <div className='advice-list wide'>
+              <div className='advice-list wide' id={PANEL_ID} role='tabpanel' aria-labelledby={tabId(selected)}>
                 {shown.map((idea) => (
                   <IdeaCard key={idea.slug} idea={idea} />
                 ))}

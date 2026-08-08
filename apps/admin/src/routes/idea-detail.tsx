@@ -75,7 +75,7 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
         <p>{idea.rationale}</p>
         <div className='muted idea-when'>
           proposed {fmtLocalTsShort(idea.created)}
-          {idea.updated && idea.updated !== idea.created ? ` · ${idea.status} ${fmtLocalTsShort(idea.updated)}` : ''}
+          {idea.updated && idea.updated !== idea.created ? ` · updated ${fmtLocalTsShort(idea.updated)}` : ''}
           {/* The provenance envelope: which session's thread decided this. A row
               written before it existed carries none and says nothing here. */}
           {idea.by && <> · by {idea.by.thread}</>}
