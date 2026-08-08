@@ -252,6 +252,15 @@ interface SessionInfo {
   account: string | null;
   metadataSessionId: string | null;
   deviceId: string | null;
+  /**
+   * The transcript this request belongs to — the same id
+   * {@link session.threadIdFor} names `logs/sessions/<threadId>.md` with. A session
+   * id is shared by a run and every subagent under it, so it cannot say *which*
+   * transcript a request is a turn of; this can. Absent (not null) when the body
+   * has no user text to root on, so a sidecar written before this field existed and
+   * one written for an unrootable request read alike.
+   */
+  threadId?: string;
 }
 
 /** Reads sender identity from Claude Code's headers plus the `metadata.user_id`
@@ -273,13 +282,16 @@ function extractSession(headers: HeaderBag | undefined, reqJson: RequestBody | n
       /* user_id not JSON — leave ids null */
     }
   }
+  const sessionId = first(h['x-claude-code-session-id']);
+  const threadId = session.threadIdFor(sessionId, reqJson?.messages);
   return {
-    sessionId: first(h['x-claude-code-session-id']),
+    sessionId,
     app: first(h['x-app']), // "-bg" suffix marks a background agent
     userAgent: first(h['user-agent']),
     account,
     metadataSessionId,
     deviceId: device,
+    ...(threadId ? { threadId } : {}),
   };
 }
 

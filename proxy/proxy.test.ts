@@ -25,6 +25,7 @@ import {
 import {
   _resetThreads,
   appendSession,
+  argsHashFor,
   chatMarkersDir,
   countNodeLines,
   distillMessage,
@@ -865,6 +866,179 @@ test('appendSession: a transcript that predates the sidecar keeps its indices al
     [3],
   );
   assert.equal(countNodeLines(fs.readFileSync(md, 'utf8')), 4);
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// Join keys written at capture time
+// ---------------------------------------------------------------------------
+
+test('argsHashFor: fingerprints the whole argument object, not the rendered line', () => {
+  const long = `/Users/x/.claude/worktrees/feat-a-very-long-branch-name/${'nested/'.repeat(6)}`;
+  // Two calls whose display signature truncates to the same prefix are still distinct.
+  assert.notEqual(argsHashFor('Read', { file_path: `${long}a.ts` }), argsHashFor('Read', { file_path: `${long}b.ts` }));
+  // Key order is not part of the call.
+  assert.equal(argsHashFor('Bash', { command: 'ls', timeout: 5 }), argsHashFor('Bash', { timeout: 5, command: 'ls' }));
+  // The tool name is part of it, and the digest is a stable 16 hex chars.
+  assert.notEqual(argsHashFor('Read', { file_path: '/a.ts' }), argsHashFor('Grep', { file_path: '/a.ts' }));
+  assert.match(argsHashFor('Read', { file_path: '/a.ts' }), /^[0-9a-f]{16}$/);
+});
+
+test('extractSession: carries the thread id, and omits it when there is no root to hash', () => {
+  const headers = { 'x-claude-code-session-id': 'sess-X' };
+  const messages = [userText('Fix the login bug')];
+  const withRoot = extractSession(headers, { model: 'claude-opus-5', messages });
+  assert.equal(withRoot.threadId, threadIdFor('sess-X', messages));
+  // Absent, not null: the sidecar's session block omits what it does not know, and the
+  // SQLite source rebuilds it the same way.
+  assert.equal('threadId' in extractSession(headers, { model: 'claude-opus-5', messages: [] }), false);
+});
+
+test('appendSession: writes an argument fingerprint beside each tool call', () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sess-hash-'));
+  const dir = sessionsDir(logDir);
+  const headers = { 'x-claude-code-session-id': 'sess-H' };
+
+  const long = `/Users/x/.claude/worktrees/feat-a-very-long-branch-name/${'nested/'.repeat(6)}`;
+  const m1 = [userText('Read them both')];
+  const m2 = [
+    ...m1,
+    {
+      role: 'assistant',
+      content: [
+        { type: 'tool_use', name: 'Read', input: { file_path: `${long}a.ts` } },
+        { type: 'tool_use', name: 'Read', input: { file_path: `${long}b.ts` } },
+      ],
+    },
+  ];
+  appendSession({ logDir, reqPath: '/v1/messages', reqJson: { model: 'claude-opus-4-8', messages: m1 }, headers });
+  appendSession({ logDir, reqPath: '/v1/messages', reqJson: { model: 'claude-opus-4-8', messages: m2 }, headers });
+
+  const tid = threadIdFor('sess-H', m1);
+  const rows = fs
+    .readFileSync(path.join(dir, `${tid}.nodes.jsonl`), 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l));
+  const hashes = rows.filter((r) => r.argsHash);
+  assert.deepEqual(
+    hashes.map((r) => r.i),
+    [1, 2],
+  );
+  assert.equal(hashes[0].argsHash, argsHashFor('Read', { file_path: `${long}a.ts` }));
+  // The two lines render alike once truncated; the fingerprints keep them apart.
+  assert.notEqual(hashes[0].argsHash, hashes[1].argsHash);
+  // The task node is text-only — a node that is not a call gets no fingerprint.
+  assert.equal(rows.find((r) => r.i === 0)?.argsHash, undefined);
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+/** One assistant turn that spawns `prompt` under `agentType`, appended to `messages`. */
+const spawnTurn = (messages: WireMessage[], prompt: string, agentType: string): WireMessage[] => [
+  ...messages,
+  {
+    role: 'assistant',
+    content: [{ type: 'tool_use', name: 'Agent', input: { prompt, subagent_type: agentType } }],
+  },
+];
+
+test('appendSession: records the spawning thread on a child already on disk', () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sess-spawn-'));
+  const dir = sessionsDir(logDir);
+
+  // The child runs and is confirmed first: a blocking spawn's `tool_use` block only
+  // reaches the wire in the parent's *next* request, after the child finished.
+  const childPrompt = 'search for the handler';
+  const child = confirmThread(logDir, 'sess-S', childPrompt);
+
+  const parentHeaders = { 'x-claude-code-session-id': 'sess-S' };
+  const p1 = [userText('Fix the login bug')];
+  appendSession({
+    logDir,
+    reqPath: '/v1/messages',
+    reqJson: { model: 'claude-opus-4-8', messages: p1 },
+    headers: parentHeaders,
+  });
+  appendSession({
+    logDir,
+    reqPath: '/v1/messages',
+    reqJson: { model: 'claude-opus-4-8', messages: spawnTurn(p1, childPrompt, 'Explore') },
+    headers: parentHeaders,
+  });
+
+  const parent = threadIdFor('sess-S', p1);
+  const out = fs.readFileSync(path.join(dir, `${child}.md`), 'utf8');
+  assert.match(out, new RegExp(`- parent: ${parent}`), 'child names the thread that spawned it');
+  assert.match(out, /- spawn: 1/, 'and the node index of the spawning call');
+  assert.match(out, /- agent: Explore/);
+  // Written once, and mirrored into the sidecar so a restart does not repeat it.
+  assert.equal((out.match(/- parent:/g) || []).length, 1);
+  const state = JSON.parse(fs.readFileSync(path.join(dir, `${child}.state.json`), 'utf8'));
+  assert.equal(state.parent, parent);
+  assert.equal(state.linked, true);
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test('appendSession: a spawn seen before its child rides into the child’s header', () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sess-spawn2-'));
+  const dir = sessionsDir(logDir);
+  const parentHeaders = { 'x-claude-code-session-id': 'sess-B' };
+
+  // A backgrounded spawn: the parent's call goes out while the child has yet to speak.
+  const childPrompt = 'draft the release note';
+  const p1 = [userText('Ship the release')];
+  appendSession({
+    logDir,
+    reqPath: '/v1/messages',
+    reqJson: { model: 'claude-opus-4-8', messages: p1 },
+    headers: parentHeaders,
+  });
+  appendSession({
+    logDir,
+    reqPath: '/v1/messages',
+    reqJson: { model: 'claude-opus-4-8', messages: spawnTurn(p1, childPrompt, 'general-purpose') },
+    headers: parentHeaders,
+  });
+
+  const child = confirmThread(logDir, 'sess-B', childPrompt);
+  const out = fs.readFileSync(path.join(dir, `${child}.md`), 'utf8');
+  assert.match(out, new RegExp(`- parent: ${threadIdFor('sess-B', p1)}`), 'parked record claimed at first sighting');
+  assert.match(out, /- agent: general-purpose/);
+  // In the header block, before the first task — not appended after it.
+  assert.ok(out.indexOf('- parent:') < out.indexOf('## Task:'));
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+test('appendSession: a thread nothing spawned records no parentage at all', () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sess-noparent-'));
+  const dir = sessionsDir(logDir);
+
+  // A plain run, and a spawn whose prompt matches nothing that ever arrives.
+  const tid = confirmThread(logDir, 'sess-N', 'just do the thing');
+  const out = fs.readFileSync(path.join(dir, `${tid}.md`), 'utf8');
+  assert.equal(out.includes('- parent:'), false);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, `${tid}.state.json`), 'utf8')).parent, null);
+
+  // A thread never claims itself, even when its own root is the prompt it spawned with.
+  const self = [userText('recurse forever')];
+  const headers = { 'x-claude-code-session-id': 'sess-N2' };
+  appendSession({ logDir, reqPath: '/v1/messages', reqJson: { model: 'claude-opus-4-8', messages: self }, headers });
+  appendSession({
+    logDir,
+    reqPath: '/v1/messages',
+    reqJson: { model: 'claude-opus-4-8', messages: spawnTurn(self, 'recurse forever', 'Explore') },
+    headers,
+  });
+  const selfOut = fs.readFileSync(path.join(dir, `${threadIdFor('sess-N2', self)}.md`), 'utf8');
+  assert.equal(selfOut.includes('- parent:'), false);
 
   fs.rmSync(logDir, { recursive: true, force: true });
 });
