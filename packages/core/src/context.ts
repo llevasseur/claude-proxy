@@ -135,10 +135,7 @@ export function attachContextPrompts(
   return entries.map((e) => ({ ...e, prompt: (e.threadId && texts.get(e.threadId)) || null }));
 }
 
-/**
- * The requests of one thread, gathered — what the context table shows as a single
- * group instead of one nameless row per model call.
- */
+/** The requests of one thread, gathered — what the context table shows as one group. */
 export interface ContextThreadGroup {
   /** The thread id, or the lone request's sidecar when it has none. */
   key: string;
@@ -155,15 +152,13 @@ export interface ContextThreadGroup {
 }
 
 /**
- * Gather every request of a thread into one {@link ContextThreadGroup}, whichever
- * positions the caller's sort put them in. Grouping only where the sort happened to
- * place them adjacently is not enough: concurrent sessions interleave in time, so
- * adjacency alone leaves a 68-request thread as dozens of one-request groups.
+ * Gather every request of a thread into one {@link ContextThreadGroup}, whatever
+ * positions the caller's sort put them in — concurrent sessions interleave in time,
+ * so grouping only adjacent requests would leave one thread as many groups.
  *
- * Groups come back in the order their first request appears, so the caller's sort
- * still decides which thread leads and how the rows inside one read. A null thread
- * id names no thread, so those requests are never gathered with each other — each
- * gets a group of its own. Pure.
+ * Groups come back in the order their first request appears, so the sort still
+ * decides which thread leads. A null thread id names no thread, so each such
+ * request gets a group of its own. Pure.
  */
 export function groupContextThreads(entries: readonly ContextEntry[]): ContextThreadGroup[] {
   const groups: ContextThreadGroup[] = [];

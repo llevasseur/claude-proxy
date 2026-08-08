@@ -3429,8 +3429,7 @@ button.sessions-new.is-active {
   font-size: 12px;
   padding: 5px 0;
 }
-/* A thread's requests gather under one heading row, so the run reads as a single
-   session rather than as one nameless row per model call. */
+/* A thread's requests gather under one heading row. */
 .table tr.thread-run td {
   padding: 0;
   background: color-mix(in srgb, var(--surface) 70%, transparent);
@@ -3471,7 +3470,7 @@ button.sessions-new.is-active {
   margin-right: 8px;
   color: var(--faint);
 }
-/* Indent so a request reads as belonging to the heading above it. */
+/* Indent a request under its thread heading. */
 .table tr.thread-child td:first-child {
   padding-left: 30px;
 }

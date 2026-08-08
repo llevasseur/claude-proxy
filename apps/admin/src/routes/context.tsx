@@ -139,7 +139,7 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
   // Grouped after sorting, so the sort still decides which thread leads.
   const groups = useMemo(() => groupContextThreads(sorted), [sorted]);
   const searching = query.trim() !== '';
-  // Only a thread the reader opened or closed appears here; the rest follow the default.
+  // Only a thread the reader toggled appears here; the rest follow the default.
   const [opened, setOpened] = useState<Record<string, boolean>>({});
   const isOpen = (group: ContextThreadGroup) => opened[group.key] ?? (searching || group.entries.length === 1);
   const toggle = (key: string, open: boolean) => setOpened((prev) => ({ ...prev, [key]: !open }));
@@ -215,11 +215,8 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
   );
 }
 
-/**
- * The heading a thread's requests sit under. It carries what they all share — the
- * opening prompt, the thread id, the span and peak — so the rows below never repeat
- * it, and a collapsed thread still names itself.
- */
+/** The heading a thread's requests sit under: the opening prompt, thread id, span
+ * and peak they all share. */
 function ThreadHead({
   group,
   query,

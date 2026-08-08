@@ -258,7 +258,7 @@ describe('groupContextThreads', () => {
     expect(groups[0]!.threadId).toBe('t1');
     expect(groups[0]!.prompt).toBe('go on');
     expect(groups[0]!.peakRealInput).toBe(90);
-    // Oldest and newest, not first and last, so any sort order reports the real span.
+    // Oldest and newest, not first and last.
     expect(groups[0]!.firstTimestamp).toBe('2026-07-20T13:31:00.000Z');
     expect(groups[0]!.lastTimestamp).toBe('2026-07-20T13:31:08.000Z');
   });
@@ -270,7 +270,6 @@ describe('groupContextThreads', () => {
       entry({ file: 'c', threadId: 't1' }),
       entry({ file: 'd', threadId: 't2' }),
     ]);
-    // Two groups, ordered by where each thread first appeared.
     expect(groups.map((g) => [g.threadId, g.entries.map((e) => e.file)])).toEqual([
       ['t1', ['a', 'c']],
       ['t2', ['b', 'd']],
