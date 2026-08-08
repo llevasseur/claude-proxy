@@ -70,8 +70,7 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   padding: 24px 16px;
-  /* The section headings cost the rail a station's worth of height apiece, so a short
-     viewport scrolls rather than dropping the last group and the health badge. */
+  /* Scrolls on a short viewport — the section headings cost a station's worth of height apiece. */
   overflow-y: auto;
   background: linear-gradient(180deg, var(--surface), var(--ink));
   border-right: 1px solid var(--line);
@@ -109,7 +108,7 @@ button:focus-visible {
   gap: 2px;
   margin-top: 22px;
 }
-/* A section of the rail: a label naming what its stations are, and nothing clickable. */
+/* A section of the rail: a label over its stations, nothing clickable. */
 .nav-group {
   display: flex;
   flex-direction: column;
@@ -277,8 +276,7 @@ button:focus-visible {
     justify-content: center;
     padding: 10px 0;
   }
-  /* At 64px the label has nowhere to sit, so a rule between groups carries the
-     grouping instead — hidden rather than removed, to keep the group named. */
+  /* At 64px there is no room for a label: hidden, not removed, so the group keeps its name, and a rule carries the grouping. */
   .app--rail-collapsed .nav-group-label {
     position: absolute;
     width: 1px;

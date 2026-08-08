@@ -62,11 +62,7 @@ import { WithheldPage } from './routes/withheld';
 import { useNavDrawer } from './useNavDrawer';
 import { useRailCollapsed } from './useRailCollapsed';
 
-/**
- * Side-rail nav stations, grouped by what the pages in each group are about. A
- * section is a label over its stations, never a destination of its own — there is
- * no page behind "Context", only the five that sit under it.
- */
+/** Side-rail nav stations, grouped into sections. A section labels its stations; it is never a destination. */
 const NAV_SECTIONS = [
   {
     label: 'Dashboard',
@@ -119,7 +115,7 @@ const NAV_SECTIONS = [
   },
 ] as const;
 
-/** DOM id for a nav section's heading, so its stations can point back at it. */
+/** DOM id for a nav section's heading. */
 function navGroupId(label: string): string {
   return `nav-group-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 }
@@ -185,8 +181,6 @@ function RootLayout() {
 
         <nav className='stations' aria-label='Primary'>
           {NAV_SECTIONS.map((section) => (
-            // The heading names the group rather than linking anywhere, so the stations
-            // are bound to it by `aria-labelledby` instead of by nesting under a link.
             // biome-ignore lint/a11y/useSemanticElements: the suggested <fieldset> groups form controls; this groups nav links, and a nested <nav> per section would add six landmarks to the rail
             <div key={section.label} className='nav-group' role='group' aria-labelledby={navGroupId(section.label)}>
               <h2 className='nav-group-label' id={navGroupId(section.label)}>
