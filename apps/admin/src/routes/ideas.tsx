@@ -11,16 +11,14 @@ import { useLiveQuery } from '../useLiveQuery';
 /**
  * The ideas ledger, one area at a time.
  *
- * The page fetches the **whole** ledger once and filters client-side, so
- * switching tabs is instant and costs no request — and stays live over the same
- * `/api/ideas/stream` subscription the Advice page used, so an idea `/ideate`
- * writes from a terminal appears in its area without a reload.
+ * Fetches the **whole** ledger once and filters client-side, so switching tabs
+ * costs no request, and stays live over the same `/api/ideas/stream` subscription
+ * the Advice page used.
  *
- * **There is no "All" tab.** The trade-off is deliberate and stated rather than
- * hidden: a mixed batch of proposals is adjudicated tab by tab. What it buys is
- * that every list on this page is a list of *comparable* things — the judgement
- * "is this worth building" reads differently for a UI polish item than for an
- * infrastructure change, and an All tab is where that comparison stops happening.
+ * **There is no "All" tab**, deliberately: a mixed batch is adjudicated tab by
+ * tab, so every list here is a list of *comparable* things — "is this worth
+ * building" reads differently for a UI polish item than for an infrastructure
+ * change.
  */
 
 /**
@@ -46,8 +44,8 @@ function tabsOf(areas: Record<string, number>, unfiled: number): IdeaTab[] {
     .filter((area) => !seedNames.has(area))
     .sort()
     .map((area) => ({ value: area, label: ideaAreaLabel(area), count: areas[area] ?? 0 }));
-  // Only while there is something to file. Once every legacy row is classified it
-  // disappears for good, rather than sitting there as a permanent empty tab.
+  // Only while there is something to file — once every legacy row is classified it
+  // disappears for good rather than sitting there empty.
   const unfiledTab = unfiled > 0 ? [{ value: UNFILED_TAB, label: UNFILED_IDEA_AREA_LABEL, count: unfiled }] : [];
   return [...seeds, ...invented, ...unfiledTab];
 }
@@ -61,12 +59,11 @@ export function IdeasPage() {
   const rows = query.data?.rows ?? [];
   const areas = query.data?.meta.areas;
   const tabs = tabsOf(areas?.areas ?? {}, areas?.unfiled ?? 0);
-  // The default is the first tab holding anything, so a fresh visit lands on rows
-  // rather than on an empty UI/UX tab.
+  // The first tab holding anything, so a fresh visit lands on rows rather than on
+  // an empty UI/UX tab.
   const fallback = tabs.find((t) => t.count > 0)?.value ?? tabs[0]?.value ?? '';
-  // An area that was deleted, renamed, or never existed **degrades to the default**
-  // rather than erroring: a stale link is a worse thing to answer with a crash than
-  // with the page the reader wanted.
+  // An area that was deleted, renamed, or never existed degrades to the default
+  // rather than erroring.
   const selected = tabs.some((t) => t.value === search.area) ? (search.area as string) : fallback;
 
   const shown = rows
@@ -94,8 +91,7 @@ export function IdeasPage() {
           </div>
         ) : (
           <>
-            {/* The seeds render even at zero, dimmed — the vocabulary is visible before
-                anything is filed under it, which is what makes it a vocabulary. */}
+            {/* Area tabs. The seeds render even at zero, dimmed. */}
             <div className='idea-tabs' role='tablist' aria-label='Idea areas'>
               {tabs.map((tab) => (
                 <button

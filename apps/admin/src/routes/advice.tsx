@@ -48,11 +48,8 @@ export function AdvicePage() {
 /**
  * A summary line, and a way across to the ledger.
  *
- * The full list used to live here. It moved to `/ideas`, where the proposals are
- * tabbed by area — one flat list mixed a UI polish item in with an infrastructure
- * change, and the sign-off reads differently for each. What stays is the number
- * this page's reader actually needs: how many decisions are outstanding. Still
- * live over SSE, so the count moves when `/ideate` writes from a terminal.
+ * The full list moved to `/ideas`, where the proposals are tabbed by area. What
+ * stays is how many decisions are outstanding, still live over SSE.
  */
 function Ideas() {
   const query = useQuery({ queryKey: [IDEAS_KEY], queryFn: getIdeas });

@@ -176,8 +176,7 @@ const IDEAS_STATUS_ROUTE = '/api/ideas/status';
 /**
  * Re-filing and commenting: two more writes to the same ledger, so they sit on the
  * same allowlist. Filing is **its own route rather than a field on the status
- * write**, for the reason `applyIdeaFilings` gives — adjudicating an idea must
- * never move it between areas as a side effect.
+ * write** — see `applyIdeaFilings`.
  */
 const IDEAS_AREA_ROUTE = '/api/ideas/area';
 const IDEAS_COMMENT_ROUTE = '/api/ideas/comment';

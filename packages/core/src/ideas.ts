@@ -45,12 +45,9 @@ import { parseWriteProvenance, type WriteProvenance } from './provenance.js';
  * evidence of one of these kinds is invention with nothing behind it, which is
  * why {@link parseIdeaAdds} refuses one.
  *
- * `command-gap` is the fifth and the odd one out: it cites the *absence* of a
- * command, and a command nobody wrote has no file path to point at. It is
- * therefore the one source that carries **no locator**, and the one citation a
- * reader cannot go and check. That is a real cost, accepted deliberately and
- * contained by {@link IDEA_COMMAND_AREA} — see the rules on
- * {@link parseIdeaAdds}.
+ * `command-gap` is the odd one out: it cites the *absence* of a command, so it
+ * carries **no locator** and is the one citation a reader cannot go and check.
+ * Contained by {@link IDEA_COMMAND_AREA}; both rules are in {@link parseIdeaAdds}.
  */
 export const IDEA_EVIDENCE_SOURCES = ['open-question', 'judge-note', 'changelog', 'deferral', 'command-gap'] as const;
 
@@ -142,11 +139,9 @@ export function isIdeaSlug(value: unknown): value is string {
 /**
  * True when `value` is a well-formed area — the same kebab shape a slug takes.
  *
- * **Shape is the whole check.** There is no allow-list: an area is free text,
- * and an agent that files an idea under `observability` is filing it correctly
- * even though nothing here has heard of that word. What the shape buys is that
- * two runs writing the same area write the same string, so the tab it lands
- * under is predictable.
+ * **Shape is the whole check** — there is no allow-list, and an area nothing here
+ * has heard of is still a valid one. What the shape buys is that two runs writing
+ * the same area write the same string.
  */
 export function isIdeaArea(value: unknown): value is string {
   return typeof value === 'string' && SLUG_PATTERN.test(value);
@@ -155,11 +150,9 @@ export function isIdeaArea(value: unknown): value is string {
 /**
  * The areas worth suggesting, in the order a reader should meet them.
  *
- * **Advisory only.** These are the tab order, the display labels, and the list
- * the CLI's help prints — never a constraint. {@link parseIdeaAdds} accepts any
- * area passing {@link isIdeaArea}, and an area invented by an agent gets a tab
- * of its own beside these. The seeds exist so the common case is spelled one
- * way rather than five.
+ * **Advisory only** — the tab order, the display labels, and the list the CLI's
+ * help prints, never a constraint. {@link parseIdeaAdds} accepts any area passing
+ * {@link isIdeaArea}, and an invented one gets a tab of its own beside these.
  */
 export const SEED_IDEA_AREAS: readonly { area: string; label: string }[] = [
   { area: 'ui-ux', label: 'UI/UX' },
@@ -256,11 +249,10 @@ export interface IdeaEntry {
    * What kind of thing it is — the tab it files under.
    *
    * **Required on the way in and optional on the way out.** {@link parseIdeaAdds}
-   * refuses an entry without one, exactly as it refuses one citing nothing, so
-   * nothing new lands unfiled. {@link parseIdeasStore} tolerates its absence,
-   * because every row written before areas existed lacks it — and dropping those
-   * rows would discard the rejection reasons the dedupe check reads. Those rows
-   * show as {@link UNFILED_IDEA_AREA_LABEL} until someone files them.
+   * refuses an entry without one, so nothing new lands unfiled.
+   * {@link parseIdeasStore} tolerates its absence, since dropping the rows written
+   * before areas existed would discard the rejection reasons the dedupe check
+   * reads. Those show as {@link UNFILED_IDEA_AREA_LABEL} until someone files them.
    */
   area?: string;
   status: IdeaStatus;
@@ -273,11 +265,9 @@ export interface IdeaEntry {
   /**
    * A human's own words about the idea — build notes, scope, a caveat.
    *
-   * **Deliberately not {@link IdeaEntry.note}.** That field is machinery: a
-   * rejection's reason is what stops the idea being re-proposed, and a shipped
-   * entry's PR url is its trace. Overloading it with commentary would put free
-   * prose where a dedupe check reads. This one is overwritten on each edit
-   * rather than appended to — it is the current instruction, not a log.
+   * **Deliberately not {@link IdeaEntry.note}**, which is machinery a dedupe check
+   * reads: a rejection's reason, or a shipped entry's PR url. Overwritten on each
+   * edit rather than appended to — it is the current instruction, not a log.
    */
   comment?: string;
   /** Who is building it, present only while `status` is `claimed`. */
@@ -551,19 +541,14 @@ export interface IdeaEditResult {
 /**
  * File ideas under an area, returning a new store — the input is never mutated.
  *
- * **Deliberately not folded into {@link applyIdeaMarks}.** Filing and deciding
- * are different acts, and a single verb doing both would let a status change
- * move an idea between tabs as a side effect — or a re-file quietly reset a
- * rejection. Keeping them apart is also what makes this the tool for the two
- * jobs it actually has: classifying a legacy row that reads as Unfiled, and
- * correcting a misfile. **`status`, `note` and `claim` are all left exactly as
- * they were.**
+ * **Deliberately not folded into {@link applyIdeaMarks}**: a single verb doing
+ * both would let a status change move an idea between tabs as a side effect, or a
+ * re-file quietly reset a rejection. **`status`, `note` and `claim` are left
+ * exactly as they were.**
  *
- * The one refusal is {@link IDEA_COMMAND_AREA} containment: an idea citing
- * {@link LOCATORLESS_SOURCE} may not be filed anywhere else. `parseIdeaAdds`
- * enforces that on the way in, and re-filing is the only other way to reach the
- * state it forbids — so it is checked over the whole batch before anything is
- * written, rather than half-applied and then thrown.
+ * The one refusal is {@link IDEA_COMMAND_AREA} containment — re-filing is the only
+ * way past {@link parseIdeaAdds} into the state it forbids. Checked over the whole
+ * batch before anything is written, rather than half-applied and then thrown.
  */
 export function applyIdeaFilings(
   store: IdeasStore,
@@ -792,9 +777,8 @@ export function parseIdeaClaims(raw: unknown): IdeaClaimRequest[] {
  * 1. A `command-gap` citation may appear only on an idea whose area *is*
  *    `commands` — anywhere else it is refused, whatever else the idea cites.
  * 2. It is the only source that may stand alone, so an idea citing nothing but
- *    `command-gap` is necessarily a `commands` idea. Rule 1 already refuses the
- *    alternative; this is the consequence worth stating, because it is the one
- *    place the ledger accepts a citation with no locator at all.
+ *    `command-gap` is necessarily a `commands` idea — the one place the ledger
+ *    accepts a citation with no locator at all.
  */
 export function parseIdeaAdds(raw: unknown): IdeaAdd[] {
   if (!Array.isArray(raw)) throw new Error('ideas must be an array');
@@ -977,16 +961,13 @@ export function similarIdeaSlugs(store: IdeasStore, slug: string): string[] {
 /**
  * Areas already in use that look like they might be `area`, strongest first.
  *
- * The sibling of {@link similarIdeaSlugs}, and it exists for the same reason and
- * with the same restraint: **it never refuses anything.** A free-text vocabulary
- * fragments when one run writes `infra` and the next writes `infrastructure`,
- * and the fix for that is a reader noticing, not a gate — an agent with a
- * genuinely new area must still be able to open one. So `ideas add` reports
- * these beside the entry it just recorded.
+ * The sibling of {@link similarIdeaSlugs}, with the same restraint: **it never
+ * refuses anything.** A free-text vocabulary fragments when one run writes `infra`
+ * and the next `infrastructure`, and the fix is a reader noticing rather than a
+ * gate, so `ideas add` reports these beside the entry it just recorded.
  *
- * It matches on prefixes as well as shared tokens, because the fragmentations
- * worth catching are abbreviations (`infra`, `ui`, `svc`) rather than
- * rewordings, and those share no whole token with what they abbreviate.
+ * Matches prefixes as well as shared tokens: the fragmentations worth catching are
+ * abbreviations, which share no whole token with what they abbreviate.
  */
 export function similarAreas(store: IdeasStore, area: string): string[] {
   const known = new Set<string>(SEED_IDEA_AREAS.map((s) => s.area));

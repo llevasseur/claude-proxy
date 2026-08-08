@@ -238,8 +238,7 @@ async function run(argv: readonly string[]): Promise<void> {
         .map((add) => [add.slug, similarIdeaSlugs(existing, add.slug)] as const)
         .filter(([, hits]) => hits.length > 0),
     );
-    // Same restraint as the slug look-alikes: reported, never refused. A new
-    // area has to stay openable, or the vocabulary is an allow-list in disguise.
+    // Same restraint as the slug look-alikes: reported, never refused.
     const areaHits = Object.fromEntries(
       adds.map((add) => [add.slug, similarAreas(existing, add.area)] as const).filter(([, hits]) => hits.length > 0),
     );

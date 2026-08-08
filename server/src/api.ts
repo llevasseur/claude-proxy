@@ -2005,13 +2005,10 @@ export interface IdeasResponse {
      * Row counts per area, over the **whole** ledger rather than the rows
      * returned, and including every seed area at zero.
      *
-     * It sits beside `counts` rather than inside it because the two answer
-     * different questions and are counted over different populations: `counts`
-     * describes the view, this describes the ledger the view is a slice of. The
-     * tab strip needs the latter — a tab must be able to say how many rows it
-     * holds while a *different* tab is selected, which a count over the returned
-     * rows can never do — and it renders the empty seeds dimmed rather than
-     * hiding them, so the vocabulary is visible before anything is filed under it.
+     * Beside `counts` rather than inside it: `counts` describes the view, this
+     * describes the ledger the view is a slice of. The tab strip needs the latter,
+     * since a tab must say how many rows it holds while a *different* tab is
+     * selected.
      */
     areas: IdeaAreaCounts;
     /** Entries on the whole ledger, so a filtered view still says how much it hid. */
@@ -2143,10 +2140,10 @@ export interface IdeasEditResponse {
  * deliberately not part of {@link applyIdeaStatus}: a decision must never move an
  * idea between tabs as a side effect.
  *
- * Both refusals live here rather than in the route, matching `applyIdeaStatus`,
- * so the HTTP contract cannot drift from `ideas file`'s. The shape check is this
- * one's; the `command-gap` containment refusal is `applyIdeaFilings`'s, and
- * surfaces through it.
+ * Both refusals live here rather than in the route, matching `applyIdeaStatus`, so
+ * the HTTP contract cannot drift from `ideas file`'s. The shape check is this
+ * one's; the `command-gap` containment refusal surfaces through
+ * `applyIdeaFilings`.
  */
 export async function applyIdeaArea(
   logDir: string,

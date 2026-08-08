@@ -1513,8 +1513,7 @@ a.pager-btn:hover {
   font-size: 14px;
 }
 
-/* Area tabs. The five seeds always render; an empty one is dimmed rather than
-   hidden, so the vocabulary is visible before anything is filed under it. */
+/* Area tabs. The five seeds always render; an empty one is dimmed, not hidden. */
 .idea-tabs {
   display: flex;
   flex-wrap: wrap;

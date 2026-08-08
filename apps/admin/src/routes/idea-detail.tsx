@@ -15,21 +15,19 @@ import { useLiveQuery } from '../useLiveQuery';
  * One idea, in full.
  *
  * **The area is deliberately absent from the permalink** — `/ideas/$slug`, never
- * `/ideas/$area/$slug` — because re-filing is a normal thing to do and a link
- * that breaks when somebody corrects a misfile is worse than a slightly less
- * descriptive url. The slug is the ledger's own key, so it is the address.
+ * `/ideas/$area/$slug` — so correcting a misfile cannot break a link. The slug is
+ * the ledger's own key, so it is the address.
  *
  * There is no per-idea endpoint: the ledger is small, the list is already cached
  * under the same query key, and one shape means a write from either page moves
- * both. The SSE stream keeps it live for the same reason it does the list.
+ * both.
  */
 export function IdeaDetailPage() {
   const { slug } = useParams({ from: '/ideas/$slug' });
   const query = useQuery({ queryKey: [IDEAS_KEY], queryFn: getIdeas });
   const live = useLiveQuery<IdeasResponse>('/api/ideas/stream', [IDEAS_KEY]);
   const idea = query.data?.rows.find((row) => row.slug === slug);
-  // Every area anyone has used, seeds included — the picker offers the vocabulary
-  // in use rather than only the five this repo shipped with.
+  // Every area anyone has used, seeds included — not just the five seeds.
   const known = [
     ...SEED_IDEA_AREAS.map((s) => s.area),
     ...(query.data?.meta.areas.areas ? Object.keys(query.data.meta.areas.areas) : []),
@@ -137,8 +135,7 @@ function claimAge(at: string): string {
 
 /**
  * Re-file the idea. Its own control and its own route, never a side effect of a
- * status change — this is how a legacy Unfiled row gets classified and how a
- * misfile is corrected.
+ * status change.
  */
 function AreaPicker({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
   const client = useQueryClient();
@@ -179,8 +176,8 @@ function AreaPicker({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
 }
 
 /**
- * The comment — a person's own words about the proposal, and **not** `note`,
- * which stays the rejection reason or the shipped PR url. Each save replaces the
+ * The comment — a person's own words about the proposal, and **not** `note`, which
+ * stays the rejection reason or the shipped PR url. Each save replaces the
  * previous comment rather than appending to it.
  */
 function CommentEditor({ idea }: { idea: IdeaEntry }) {
