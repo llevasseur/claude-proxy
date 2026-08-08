@@ -1694,6 +1694,12 @@ button.link {
   background: var(--surface-2);
   color: var(--faint);
 }
+/* A judged bucket whose judge opened almost none of it. Amber like `dirty`, the
+   same claim in a weaker form; not coral, since a thin pass is advisory. */
+.badge.judge-thin {
+  background: rgba(244, 177, 90, 0.16);
+  color: var(--amber);
+}
 /* Ideas: `accepted` takes the affirmative tone as the sign-off /improve acts on,
    `proposed` is waiting on a human, and `rejected` is the quietest of the four. */
 .badge.idea-status-accepted {

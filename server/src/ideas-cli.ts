@@ -33,6 +33,7 @@ import {
   type IdeaStatus,
   ideaRows,
   isIdeaStatus,
+  isThreadId,
   parseCliArgs,
   parseIdeaAdds,
   similarIdeaSlugs,
@@ -43,7 +44,7 @@ import { resolveLogDir } from './logs.js';
 const USAGE = `usage:
   ideas list  [-s|--status <flags>] [--repo <slug>] [--json]
   ideas add    --json <entries>|-
-  ideas mark   --slug <slug> -s|--status <flag> [-n|--note <text>] [--json]
+  ideas mark   --slug <slug> -s|--status <flag> [-n|--note <text>] [--thread <id>] [--json]
 
   <flags>    comma-separated: proposed, accepted, rejected, shipped
   <slug>     for --slug, the idea's kebab-case key; for --repo, a git remote
@@ -62,6 +63,10 @@ const USAGE = `usage:
   mark needs a note for 'rejected' (the reason) and for 'shipped' (the PR url).
   'proposed' is the undo: it restores an idea to unsigned-off without erasing
   the entry or its note.
+
+  mark --thread <id> records the marking session's own thread id on the entry, the
+  same attribution a bucket verdict carries. It is the answer to 'who accepted
+  this'; unlike a verdict there is no window behind an idea, so nothing is counted.
 
   Only 'accepted' carries a human sign-off, and it is the only status /improve
   may act on. This CLI never sets one by itself.`;
@@ -94,12 +99,13 @@ function renderRows(rows: readonly IdeaEntry[]): string {
     .map((r) => {
       const when = r.updated ? r.updated.slice(0, 10) : '';
       const note = r.note ? `\n      note: ${r.note}` : '';
+      const actor = r.by ? `\n      by: ${r.by.thread}` : '';
       const cites = r.evidence.map((e) => {
         const where = e.path ?? (e.bucket === undefined ? '' : `bucket ${e.bucket}/${e.id ?? ''}`);
         return `        · ${e.source}: ${where}${e.quote ? ` — ${e.quote}` : ''}`;
       });
       const head = `  ${r.status.padEnd(8)} ${r.slug.padEnd(width)}  ${r.title}  [${r.repo}]${when ? `  ${when}` : ''}`;
-      return [head, `      ${r.rationale}`, ...cites].join('\n') + note;
+      return [head, `      ${r.rationale}`, ...cites].join('\n') + note + actor;
     })
     .join('\n');
 }
@@ -112,7 +118,7 @@ async function run(argv: readonly string[]): Promise<void> {
   // `--help` no longer needs pre-screening against raw argv: the shared parser
   // treats it as a switch, so it can never be read as a flag wanting a value.
   const { flags, switches, help } = parseCliArgs(rest, {
-    aliases: { s: 'status', n: 'note' },
+    aliases: { s: 'status', n: 'note', t: 'thread' },
     booleans: booleanFlagsFor(command),
   });
   if (help || first === 'help') {
@@ -181,8 +187,16 @@ async function run(argv: readonly string[]): Promise<void> {
       );
     }
 
+    if (flags.thread !== undefined && !isThreadId(flags.thread)) {
+      throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
+    }
     const result = await markIdeasInStore(logDir, [
-      { slug: flags.slug, status, ...(flags.note === undefined ? {} : { note: flags.note }) },
+      {
+        slug: flags.slug,
+        status,
+        ...(flags.note === undefined ? {} : { note: flags.note }),
+        ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }),
+      },
     ]);
     if (json) {
       console.log(JSON.stringify(result, null, 2));

@@ -201,14 +201,23 @@ of the answer.
 - `similarIdeaSlugs` compares slug tokens, so it catches a rename and misses a genuine restatement
   under unrelated words. A comparison over the title and rationale would catch more, and would need
   a threshold nobody has evidence for yet.
-- Nothing records *who* accepted an idea, only that the status changed and when. With one human on
-  the device that is the same fact; it stops being so if the ledger is ever shared.
+- ~~Nothing records *who* accepted an idea, only that the status changed and when.~~ **Closed by the
+  provenance envelope**, the same `by` field a bucket verdict carries: `ideas mark --thread <id>`
+  records the marking session's thread id on the entry, and the dashboard and `ideas list` show it
+  beside the status date. It is the actor alone — an idea is invented rather than judged, so there
+  is no window behind it to count reads against, and the `window`/`opened` half stays absent. The
+  attribution belongs to the status now on the entry: a later mark that names a thread replaces it,
+  and one that does not leaves it. Entries decided before this existed keep loading with no `by` at
+  all and are never treated as unattributed-and-therefore-suspect.
 - A `shipped` idea keeps its PR url in the same single `note` a `rejected` one keeps its reason in,
   so an idea that was rejected and later revived and shipped keeps only the second. The suggestion
   store solved the equivalent problem by moving enrichment to bucket level; here it has not come up.
 - There is no `ideas defects` analogue. A rule can be systematically wrong and the dismissals prove
   it; an idea is a one-off, so there is no population to indict. If a *source* turns out to produce
-  bad ideas repeatedly, nothing currently notices.
+  bad ideas repeatedly, nothing currently notices. The provenance envelope is the *precondition*
+  rather than the answer: with `by` on the entry there is finally a population to group rejections
+  by, but nothing reads it that way yet, and one thread id per entry is a thin basis for indicting a
+  source until several runs have accumulated under it.
 
 ## Related
 

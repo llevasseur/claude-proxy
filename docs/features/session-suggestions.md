@@ -310,10 +310,21 @@ file scan under `DB_READS=0`, while the CLI always scans the files —
   with 2 refusals and one with 40 both read *high*.
 - The breakdown roll-up uses each session's peak request only. That is the cheapest honest
   sample, but a tool schema dropped midway through a session is invisible to it.
-- Judging is a write an agent makes; nothing checks that it actually read the window. `--amnesty`
-  makes that explicit by recording a verdict with no notes, but an ordinary `judge` call is trusted
-  the same way. Recording which agent judged, or how many of the window's transcripts it opened,
-  would let a careless pass be told from a careful one.
+- ~~Judging is a write an agent makes; nothing checks that it actually read the window.~~ **Closed
+  by the provenance envelope.** `judge --thread <id>` records the judging session's own thread id on
+  the verdict, and with it how many of the window's ten transcripts that thread opened. The count is
+  *derived*, not self-reported: the judging run is itself a session the proxy transcribes, so its
+  tool calls are read back off `logs/sessions/<threadId>.md` and matched against the window's thread
+  ids. Any tool naming a transcript counts — a `Bash` grep opened it as much as a `Read` did — and
+  the judge's own transcript never counts toward its own window. Under 30% the verdict is marked a
+  **thin pass**, on the Advice page and in `suggestions buckets`. It is advisory in both: a thin
+  pass is never refused, never hidden, and a verdict with no envelope is not marked at all, since
+  every verdict written before this existed has none. The threshold is a judgement call with no data
+  behind it yet, set low deliberately — the marker catches a pass that read *almost nothing* rather
+  than prescribing how much reading a careful verdict takes.
+  - Still open on this thread: the envelope records the *judge*, not the human who reviewed it, and
+    a judge that opens every transcript without reading them counts as thorough. The count is a
+    floor on effort, not a measure of attention.
 - A rule defect is reported but nothing links it back to the rule's own thresholds. The obvious next
   step is for the report to name the `SUGGESTION_THRESHOLDS` entry a defective rule is governed by,
   so the fix has somewhere to start.

@@ -50,6 +50,7 @@ import {
   ideaRows,
   isAuditSidecar,
   isPartialDay,
+  isThreadId,
   type JobTreeNode,
   jobStateTone,
   type LaunchAlias,
@@ -114,10 +115,12 @@ import {
   summarizeSystemPrompt,
   type TopTool,
   toContextEntry,
+  transcriptsOpened,
   type UsageDigest,
   type UsageLimitConfig,
   type UsageLimitsSnapshot,
   type WithheldReport,
+  type WriteProvenance,
   wirePromptSectionTexts,
   withheldReport,
   withoutMetaSkills,
@@ -1618,6 +1621,55 @@ export interface SuggestionJudgeRequest {
    * judge wrote. Combined with `judged`, the explicit records win.
    */
   amnesty?: boolean;
+  /**
+   * Thread id of the judging session itself, recorded on every bucket this pass
+   * writes along with how many of that bucket's transcripts the thread opened.
+   *
+   * Optional, and a malformed or unknown id is ignored rather than refused — a
+   * verdict is still a verdict without an author. See {@link deriveJudgeProvenance}.
+   */
+  thread?: string;
+}
+
+/**
+ * Build the per-bucket provenance envelopes for one judging pass.
+ *
+ * The *who* is the caller's claim. The *how much* is not: the judging thread's own
+ * transcript is on disk like any other, so the count is read back off its recorded
+ * tool calls rather than asked for.
+ *
+ * Returns an empty map when there is no usable thread id — absent provenance, not
+ * a zero-coverage indictment.
+ */
+async function deriveJudgeProvenance(
+  logDir: string,
+  thread: string | undefined,
+  buckets: readonly SessionBucket[],
+  sessions: readonly SessionGraph[],
+  source: SidecarSource,
+): Promise<Map<number, WriteProvenance>> {
+  const out = new Map<number, WriteProvenance>();
+  if (!isThreadId(thread)) return out;
+  const judge = sessions.find((s) => s.threadId === thread);
+  if (!judge) {
+    // Well-formed but no transcript backs it, so nothing can be counted: the claim
+    // alone, with `window`/`opened` absent and reading as unknown.
+    for (const bucket of buckets) out.set(bucket.index, { thread });
+    return out;
+  }
+  // The sidecar carries the untruncated argument text behind a gisted tool line; a
+  // missing one undercounts a long path rather than failing the whole derivation.
+  let texts: Record<number, string> = {};
+  try {
+    texts = (await source.readSessionNodeTexts(logDir, thread)).texts;
+  } catch {
+    texts = {};
+  }
+  for (const bucket of buckets) {
+    const opened = transcriptsOpened(judge.nodes, bucket.threadIds, texts, thread);
+    out.set(bucket.index, { thread, window: bucket.threadIds.length, opened: opened.length });
+  }
+  return out;
 }
 
 export interface SuggestionJudgeResponse {
@@ -1689,7 +1741,22 @@ export async function applySuggestionJudge(
     );
   }
 
-  const store = await judgeSuggestionStatusStore(logDir, { updates, judged }, now);
+  // Derived after the refusals above, so a pass that will be rejected never pays to
+  // read the judge's transcript. An explicit `by` on a write wins: the caller may be
+  // replaying a verdict it did not itself reach.
+  const attribution = await deriveJudgeProvenance(
+    logDir,
+    request.thread,
+    judged.map((w) => complete.get(w.bucket)).filter((b): b is SessionBucket => b !== undefined),
+    sessions,
+    source,
+  );
+  const attributed = judged.map((write) => {
+    const by = write.by ?? attribution.get(write.bucket);
+    return by ? { ...write, by } : write;
+  });
+
+  const store = await judgeSuggestionStatusStore(logDir, { updates, judged: attributed }, now);
   const touched = [...new Set([...judged.map((w) => w.bucket), ...updates.map((u) => u.bucket)])];
   const rows = suggestionStatusRows(buckets, store, { buckets: touched });
   const known = new Set(rows.map((r) => suggestionKey(r)));
