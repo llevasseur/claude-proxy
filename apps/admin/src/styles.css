@@ -1552,8 +1552,7 @@ a.pager-btn:hover {
 .advice.is-dismissed .suggestion-note {
   color: var(--muted);
 }
-/* The badge still reads `Regressed`, in the quiet palette rather than the coral one:
-   the row records that it came back without competing for attention. */
+/* Regressed badge in the quiet palette on a dismissed row, not the coral one. */
 .advice.is-dismissed .badge.recurrence-regressed {
   background: var(--surface-2);
   color: var(--faint);
