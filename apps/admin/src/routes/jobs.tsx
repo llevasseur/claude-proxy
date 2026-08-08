@@ -139,7 +139,7 @@ type SortDir = 'asc' | 'desc';
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
   name: 'asc',
   state: 'asc',
-  // Ascending puts the branches still going at the top, which is the reason to sort by it.
+  // Ascending puts the branches still going at the top.
   liveness: 'asc',
   cwd: 'asc',
   files: 'desc',

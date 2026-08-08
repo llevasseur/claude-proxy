@@ -1081,9 +1081,8 @@ export async function buildMemory(projectsDir: string, project: string, name: st
 /** One job directory, plus whether the transcripts it is writing are still moving. */
 export interface JobRow extends JobSummary {
   /**
-   * The verdict across every transcript sharing this job's session id — the fan-out
-   * rolled into one answer. `unknown` when no transcript matched: the job may predate
-   * the proxy, or run somewhere the proxy never saw.
+   * The verdict across every transcript sharing this job's session id. `unknown` when
+   * none matched — the job may predate the proxy, or run somewhere it never saw.
    */
   liveness: BranchLiveness;
   /** How many transcripts that verdict is drawn from. */
@@ -1099,8 +1098,7 @@ export interface JobsResponse {
     running: number;
     /**
      * How many have a transcript still being appended to. Distinct from {@link running}:
-     * that is what the job last wrote about itself, this is what its branches are
-     * observably doing, and a job that died mid-write still claims to be `working`.
+     * a job that died mid-write still claims to be `working`.
      */
     live: number;
     /** Directories with no readable `state.json` — scratch space outliving its job. */
@@ -1116,10 +1114,9 @@ export interface JobsResponse {
  * the transcripts its session wrote.
  *
  * The directories themselves are a device view rather than a traffic one — Claude Code's
- * own scratch space, which never passes through the proxy. The join is what makes the
- * page answer "is this still going": `state.json` is a claim the job last wrote about
- * itself and stops updating the moment it dies, while the transcript is written from the
- * outside and cannot lie about having stopped.
+ * own scratch space, which never passes through the proxy. The join answers "is this
+ * still going": `state.json` stops updating the moment the job dies, while the transcript
+ * is written from outside it.
  */
 export async function buildJobs(
   jobsDir: string,
@@ -1129,8 +1126,8 @@ export async function buildJobs(
 ): Promise<JobsResponse> {
   const [listed, sessions] = await Promise.all([listJobs(jobsDir), source.listSessionGraphs(logDir)]);
 
-  // A session id can own several transcripts — the root and every subagent under it —
-  // so the job's verdict is its whole family rolled up.
+  // A session id owns the root transcript and every subagent under it, so the job's
+  // verdict is that whole family rolled up.
   const bySession = new Map<string, BranchLiveness[]>();
   for (const session of livenessOf(sessions, now)) {
     if (!session.sessionId) continue;
@@ -1225,8 +1222,8 @@ export interface SessionsGraphResponse {
 
 /**
  * Take each transcript's liveness verdict against one `now`. The parent is the only
- * witness to a subagent finishing (see {@link BranchActivity.reported}), so a branch is
- * judged with its *own* link — which `listSessionGraphs` has already reconstructed.
+ * witness to a subagent finishing (see `BranchActivity.reported`), so each branch is
+ * judged with its own link, which `listSessionGraphs` has already reconstructed.
  */
 function livenessOf(sessions: readonly SessionGraph[], now: Date): SessionGraphRow[] {
   return sessions.map((session) => ({
@@ -1237,8 +1234,8 @@ function livenessOf(sessions: readonly SessionGraph[], now: Date): SessionGraphR
 
 /**
  * Every session transcript with its structured node stream, newest first — feeds the live
- * graph. `now` is a parameter rather than read inside, so the same call twice against the
- * same corpus answers identically; the two backings are compared that way (`parity.ts`).
+ * graph. `now` is a parameter rather than read inside, so the same corpus answers
+ * identically twice; the two backings are compared that way (`parity.ts`).
  */
 export async function buildSessionsGraph(
   logDir: string,
@@ -1280,12 +1277,8 @@ export interface SessionsLivenessResponse {
 
 /**
  * Every branch's liveness verdict, live branches first — the terminal-readable answer to
- * "is that dispatch still going?", so a stalled parent can ask without a browser:
- *
- *     curl -s localhost:8787/api/sessions/liveness | jq '.threads[] | select(.liveness.state != "finished")'
- *
- * Deliberately thin next to `/api/sessions/graph`: no node streams, so it stays cheap to
- * poll from a shell loop.
+ * "is that dispatch still going?", so a stalled parent can ask without a browser. Thin
+ * next to `/api/sessions/graph`: no node streams, so it stays cheap to poll from a shell.
  */
 export async function buildSessionsLiveness(
   logDir: string,

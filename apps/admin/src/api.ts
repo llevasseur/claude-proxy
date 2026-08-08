@@ -285,9 +285,8 @@ export interface JobSummary extends JobStateFields {
   /** Newest of `updatedAt` and `modified` — what the listing sorts by. */
   activity: string;
   /**
-   * What the transcripts of this job's session are observably doing, rolled up across the
-   * whole fan-out. `state.json` is the job's own claim about itself and freezes the moment
-   * it dies; this is written from outside it.
+   * What the transcripts of this job's session are doing, rolled up across the fan-out.
+   * `state.json` is the job's own claim and freezes the moment it dies; this does not.
    */
   liveness: BranchLiveness;
   /** How many transcripts that verdict is drawn from; 0 when none matched the session id. */

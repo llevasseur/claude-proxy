@@ -141,11 +141,8 @@ function entryLabel(entry: SessionGraphEntry): string {
 
 /**
  * A subagent's parent hasn't taken a step past the spawn, so nothing has come back yet.
- *
- * This is about the *parent's* record, which is why it pairs with `entry.liveness` rather
- * than duplicating it: in flight says no result was recorded, liveness says whether the
- * branch is still writing. A dispatch whose result the harness ate reads as in flight and
- * `running` — the case that used to be indistinguishable from a dead one.
+ * This is the parent's record, so it pairs with `entry.liveness` rather than duplicating
+ * it: a dispatch whose result the harness ate reads as in flight *and* `running`.
  */
 const isInFlight = (entry: SessionGraphEntry): boolean => entry.parentThreadId !== null && entry.returnIndex === null;
 

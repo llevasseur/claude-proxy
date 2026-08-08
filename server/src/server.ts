@@ -726,16 +726,15 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       case '/api/sessions/graph': {
-        // One `now` for both runs: a liveness verdict is taken against the clock, so a
-        // shadow read a moment later would diff against the primary for no other reason.
+        // One `now` for both runs — a shadow read a moment later would otherwise diff
+        // against the primary on the clock alone.
         const now = new Date();
         const graph = await buildSessionsGraph(LOG_DIR, now, readSource());
         send(res, 200, graph);
         shadow('/api/sessions/graph', graph, (source) => buildSessionsGraph(LOG_DIR, now, source));
         return;
       }
-      // Every branch's liveness verdict and nothing else — thin enough to poll from a
-      // shell, so a dispatcher whose subagent went silent can ask without a browser.
+      // Every branch's liveness verdict and nothing else — thin enough to poll from a shell.
       case '/api/sessions/liveness': {
         const now = new Date();
         const liveness = await buildSessionsLiveness(LOG_DIR, now, readSource());

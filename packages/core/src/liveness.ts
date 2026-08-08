@@ -1,21 +1,13 @@
 /**
  * Is a branch still running right now?
  *
- * Every other reading in this repo describes what a run already did. None answers the
- * question a dispatcher gets stuck on when a spawn's result never comes back: is that
- * agent dead, or just busy. The two are indistinguishable today, so the safe reading is
- * the pessimistic one — and the cost of reading a live branch as dead is a stalled
- * parent, or a duplicate worktree and a duplicate PR from re-dispatching.
+ * The verdict is *derived*, never reported: a crashed agent cannot self-report, and one
+ * whose result the harness ate never got the chance, so nothing here asks the branch
+ * anything. Two facts decide it — when the transcript was last appended to, and whether
+ * it carries a terminal turn.
  *
- * The verdict is *derived*, never reported. An agent that crashed cannot self-report, and
- * one whose result the harness ate never got the chance, so nothing here asks the branch
- * anything: it reads the transcript the proxy is already writing. Two facts decide it —
- * when the transcript was last appended to, and whether it carries a terminal turn.
- *
- * Deliberately out of scope: resuming or killing anything. This is a read.
- *
- * Pure: no I/O, and `now` is always passed in, so the same inputs always give the same
- * verdict (which is what lets the file- and DB-backed sources agree — see `parity.ts`).
+ * Resuming or killing anything is out of scope; this is a read. Pure, with `now` passed
+ * in, so the file- and DB-backed sources agree (`parity.ts`).
  */
 
 import type { SessionNode } from './sessions.js';
@@ -25,9 +17,8 @@ import type { SessionNode } from './sessions.js';
  *
  * - `running` — appended to recently enough, with no terminal turn. Still breathing.
  * - `quiet` — no terminal turn, but nothing appended for {@link QUIET_AFTER_MS}. **Not
- *   dead**: a single long tool call (a full `verify`, an install) appends nothing for
- *   minutes. Quiet is the whole point of the distinction — it says "unknown, lean live"
- *   rather than letting a busy branch read as a dead one.
+ *   dead**: a single long tool call appends nothing for minutes, so this reads as
+ *   "unknown, lean live".
  * - `finished` — the transcript carries a terminal turn, so there is nothing to wait for.
  * - `unknown` — nothing to judge: no transcript, or none carrying a usable timestamp.
  */
@@ -35,12 +26,8 @@ export type LivenessState = 'running' | 'quiet' | 'finished' | 'unknown';
 
 /**
  * How long a branch may go without an append before it reads `quiet` rather than
- * `running`.
- *
- * Ten minutes, because the gap being tolerated is *one tool call*: a branch sitting on
- * `my-command-tools verify` or a cold `pnpm install` makes no request, so it appends
- * nothing for as long as that call runs. Anything much shorter reports every verify step
- * as quiet, which is the pessimistic reading this exists to stop.
+ * `running`. Ten minutes: the gap being tolerated is one long tool call — a full verify,
+ * a cold install — which appends nothing for as long as it runs.
  */
 export const QUIET_AFTER_MS = 10 * 60_000;
 
@@ -65,17 +52,16 @@ export interface BranchActivity {
   nodes: readonly SessionNode[];
   /**
    * True when the *parent* recorded this branch's report flowing back. A subagent's own
-   * transcript can never say so — its report is the reply to its last request, and no
-   * later request in that thread carries that reply — so a subagent that finished
-   * perfectly still ends on a tool call. The parent is the only witness.
+   * transcript can never say so — a subagent that finished perfectly still ends on a tool
+   * call — so the parent is the only witness.
    */
   reported: boolean;
 }
 
 /**
- * Whether a transcript ends on an outcome: a `done:` line, uninterrupted. That line is
- * written from a turn carrying text and no tool call — the agent handing back — so
- * nothing follows it unless the run is asked something new.
+ * Whether a transcript ends on an outcome: a `done:` line, uninterrupted. That line comes
+ * from a turn carrying text and no tool call, so nothing follows it unless the run is
+ * asked something new.
  */
 export function endsWithOutcome(nodes: readonly SessionNode[]): boolean {
   const last = nodes[nodes.length - 1];
@@ -109,12 +95,11 @@ export function branchLiveness(
 const STATE_RANK: Record<LivenessState, number> = { running: 3, quiet: 2, finished: 1, unknown: 0 };
 
 /**
- * Roll a family of branches up into one verdict — what a dispatcher, or a job holding a
- * whole fan-out, actually wants to know. A family is `running` if any branch is, `quiet`
- * if any is quiet, and only `finished` once every branch has handed back. `terminal` and
- * `lastActivity` describe the family the same way: all of them, and the newest of them.
+ * Roll a family of branches up into one verdict. `running` if any branch is, `quiet` if
+ * any is quiet, and only `finished` once every branch has handed back; `terminal` and
+ * `lastActivity` follow the same way — all of them, and the newest of them.
  *
- * An empty family is `unknown` — no transcript was matched, which is not evidence that
+ * An empty family is `unknown` — no transcript matched, which is not evidence that
  * nothing is running.
  */
 export function familyLiveness(

@@ -298,7 +298,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/sessions/graph',
-    // One `now` across both backings: the payload carries a liveness verdict taken
+    // One `now` across both backings — the payload carries a liveness verdict taken
     // against the clock, so two reads a moment apart would diff on the clock alone.
     cases: async (ctx) => {
       const now = new Date();

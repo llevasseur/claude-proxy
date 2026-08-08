@@ -1693,9 +1693,8 @@ button.link {
   background: var(--surface-2);
   color: var(--faint);
 }
-/* Liveness: a derived verdict, so the tones stop short of certainty. `running` is the
-   active one, `quiet` cautions without asserting death, `finished` is the settled green,
-   and `unknown` — no transcript to judge by — is the faintest thing on the row. */
+/* Liveness: `running` active, `quiet` cautioning without asserting death, `finished` the
+   settled green, and `unknown` — no transcript to judge by — the faintest of the four. */
 .badge.liveness-running {
   background: rgba(70, 224, 192, 0.16);
   color: var(--info);
@@ -2737,8 +2736,8 @@ button.link {
 .gs-item-flight {
   color: var(--violet);
 }
-/* Liveness on a rail row. `running` is the only affirmative one; `quiet` warns without
-   claiming the branch is dead, and `unknown` stays as quiet as the rest of the meta. */
+/* Liveness on a rail row — `running` affirmative, `quiet` warning, `unknown` as faint
+   as the rest of the meta line. */
 .gs-item-live.is-running {
   color: var(--info);
 }

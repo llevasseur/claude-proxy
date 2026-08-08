@@ -2,12 +2,9 @@ import { type BranchLiveness, LIVENESS_NOTE, type LivenessState } from '@claude-
 import { fmtDuration } from '../format';
 
 /**
- * One branch's liveness verdict, as a badge.
- *
- * The verdict is *derived* — the server reads how long ago the transcript last grew and
- * whether it ended on an outcome — so this never claims more than it can see. `quiet`
- * in particular means "no new step for a while", not "dead": a branch mid-`verify` looks
- * exactly like one that crashed, and the badge's tooltip says so rather than guessing.
+ * One branch's liveness verdict, as a badge. `quiet` means "no new step for a while", not
+ * "dead" — a branch mid-verify looks exactly like one that crashed, and the tooltip says
+ * so rather than guessing.
  */
 
 /** Badge class per state. `running` takes the active tone, `quiet` the caution one. */
