@@ -89,8 +89,6 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
       <IdeaEvidenceList evidence={idea.evidence} />
 
       {idea.claim && (
-        // Who is building it, and since when — the reason the idea is not on offer.
-        // The PR is what pins the claim open, so it is named when there is one.
         <div className='suggestion-note idea-claim'>
           held by <strong>{idea.claim.by}</strong> since {fmtLocalTsShort(idea.claim.at)}
           {idea.claim.pr && ` — ${idea.claim.pr}`}
@@ -145,9 +143,8 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
           </form>
         )}
 
-        {/* Releasing is `accepted`, not `proposed`: the idea goes back on offer with its
-            human sign-off intact. Every mark but `shipped` drops the claim, so this frees an
-            idea from a run that hung without waiting out the six-hour expiry. */}
+        {/* Releasing is `accepted`, not `proposed` — the idea goes back on offer with its
+            sign-off intact, without waiting out the six-hour expiry. */}
         {idea.status === 'claimed' && (
           <button type='button' disabled={mark.isPending} onClick={() => mark.mutate({ status: 'accepted' })}>
             Release

@@ -120,17 +120,13 @@ export async function markIdeasInStore(
  * Read, claim, write — the write an implementation run makes *before* it starts,
  * so a second run reads the idea as taken.
  *
- * **It narrows the duplicate-work window without closing it absolutely, and the
- * residue is worth naming.** Like the two writers above, this is not atomic
- * against a second process racing between the read and the rename, so two runs
- * claiming the same idea within the same few milliseconds can both believe they
- * won. That is not the failure this feature was built for: the observed collision
- * was **eleven minutes** wide, because the entry stayed `accepted` for the whole
- * span between picking the idea up and opening a PR. Compressing that window to
- * the width of one read-modify-write is the fix; making it zero would mean a lock
- * file with an owner, a timeout, and a recovery path — machinery that has its own
- * stuck states, on a ledger with one writer at a time and a duplicate PR as the
- * worst outcome.
+ * **It narrows the duplicate-work window without closing it absolutely.** Like
+ * the two writers above it is not atomic against a second process racing between
+ * the read and the rename, so two runs claiming within the same few milliseconds
+ * can both believe they won. The collision this was built for was eleven minutes
+ * wide; closing the residue would mean a lock file with an owner, a timeout, and
+ * a recovery path — machinery with its own stuck states, on a ledger whose worst
+ * outcome is a duplicate PR.
  */
 export async function claimIdeasInStore(
   logDir: string,

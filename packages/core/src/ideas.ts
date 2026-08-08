@@ -78,15 +78,11 @@ export interface IdeaEvidence {
  * `shipped` is set by whoever landed the PR, never by the command that proposed
  * the idea.
  *
- * **`claimed` exists because `accepted` and `shipped` are too far apart in
- * time.** An implementation run stamped `shipped` when its PR opened, so for the
- * whole span between picking an idea up and opening that PR the entry still read
- * `accepted` — unclaimed, and the only status an implementing run looks for. Two
- * runs overlapping in that window each took the same idea and each built it: on
- * this ledger, PRs #139 and #140 implemented `archive-aware-window-reader`
- * against the same accepted entry eleven minutes apart. `claimed` is stamped at
- * the *start* of work, which closes the window to the width of a single write,
- * and `shipped` goes back to meaning the work actually landed.
+ * `claimed` is stamped at the *start* of work, and `shipped` only once the work
+ * lands. Before it existed, an entry read `accepted` for the whole span between
+ * being picked up and its PR opening — unclaimed, and the only status an
+ * implementing run looks for. PRs #139 and #140 both built
+ * `archive-aware-window-reader` off that gap, eleven minutes apart.
  */
 export const IDEA_STATUSES = ['proposed', 'accepted', 'claimed', 'rejected', 'shipped'] as const;
 
@@ -128,9 +124,7 @@ export function isIdeaRepo(value: unknown): value is string {
 /**
  * Who is building an idea, and since when. Present only on a `claimed` entry.
  *
- * `at` is the moment work *started*, not the moment a PR opened — that is the
- * whole point of the field, since the gap between the two is the window a second
- * run used to walk into.
+ * `at` is the moment work started, not the moment a PR opened.
  */
 export interface IdeaClaim {
   /** The holder: a branch name, a run id, a person — whatever a second run can read and recognise as not itself. */
@@ -144,30 +138,21 @@ export interface IdeaClaim {
 /**
  * How long an unevidenced claim survives before a second run may take it.
  *
- * A run that dies mid-task cannot release its own claim, and an idea locked
- * forever by a crashed run is a worse failure than the duplicate work the claim
- * exists to prevent — nobody would ever go and unstick it by hand. So the rule is
- * **an age-based expiry rather than a required explicit release**: expiry needs
- * no liveness protocol, no heartbeat writer, and no background sweeper, and it is
- * computed at read time from the timestamp already on the entry, so a claim
- * "expires" without anybody writing the file.
- *
- * Six hours is chosen against what it costs to be wrong in each direction. Too
- * short re-opens the exact race this feature closes; too long parks an idea. A
- * live implementation run reaches a PR well inside six hours, and once it does,
- * `pr` pins the claim open indefinitely — which is what makes a short-ish TTL
- * safe, since the long part of an idea's life is the PR review, not the writing.
+ * An age-based expiry rather than a required explicit release, because a run
+ * that dies cannot release its own claim and nobody would unstick it by hand.
+ * It is computed at read time from the timestamp already on the entry, so a
+ * claim expires with no sweeper, no heartbeat, and no write. Six hours is safe
+ * only because `pr` then pins the claim open indefinitely — the long part of an
+ * idea's life is the PR review, not the writing.
  */
 export const IDEA_CLAIM_TTL_MS = 6 * 60 * 60 * 1000;
 
 /**
  * True when a claim is old enough that a second run may take the idea anyway.
  *
- * **A claim carrying a `pr` is never stale**, however old: an open PR is live
- * evidence the work exists, and expiring a claim that has already produced one
- * would invite precisely the duplicate implementation this whole state was added
- * to stop. An unparseable `at` reads as stale, because the alternative is a
- * malformed row locking an idea permanently.
+ * **A claim carrying a `pr` is never stale**, however old — an open PR is live
+ * evidence the work exists. An unparseable `at` reads as stale, since the
+ * alternative is a malformed row locking an idea permanently.
  */
 export function isIdeaClaimStale(entry: IdeaEntry, now: Date = new Date()): boolean {
   const claim = entry.claim;
@@ -241,10 +226,8 @@ export function parseIdeasStore(raw: unknown): IdeasStore {
     const kept = parseEvidenceList(evidence);
     // An entry citing nothing is dropped rather than kept as a weaker one.
     if (kept.length === 0) continue;
-    // A malformed claim is dropped rather than dropping the entry with it: the
-    // idea is the record, and losing it to a bad holder field would be the
-    // larger loss. The entry then reads as unclaimed, which a second run may take
-    // — the same outcome the staleness rule reaches for a claim nobody can read.
+    // A malformed claim is dropped rather than dropping the entry with it. The
+    // entry then reads as unclaimed, which a second run may take.
     const parsedClaim = parseClaim(claim);
     store.ideas[key] = {
       slug: key,
@@ -385,11 +368,9 @@ export interface IdeaMarkResult {
  * inventing a titleless, evidence-free entry to hold the flag would put exactly
  * the kind of row in the ledger that {@link parseIdeasStore} drops.
  *
- * **A mark to anything but `shipped` drops the claim**, which is what makes
- * `ideas mark -s accepted` the explicit release beside the age-based expiry: a
- * run that finishes, gives up, or is called off puts the idea back where a second
- * run can take it, without waiting out {@link IDEA_CLAIM_TTL_MS}. `shipped`
- * keeps it, because there the claim is the record of who built the thing.
+ * **A mark to anything but `shipped` drops the claim**, which makes
+ * `ideas mark -s accepted` the explicit release beside {@link IDEA_CLAIM_TTL_MS}.
+ * `shipped` keeps it, as the record of who built the thing.
  */
 export function applyIdeaMarks(store: IdeasStore, marks: readonly IdeaMark[], now: Date = new Date()): IdeaMarkResult {
   const next: IdeasStore = { version: 1, ideas: { ...store.ideas } };
@@ -404,9 +385,8 @@ export function applyIdeaMarks(store: IdeasStore, marks: readonly IdeaMark[], no
       continue;
     }
     const note = mark.note ?? current.note;
-    // Rebuilt rather than spread-over, so `claim` is dropped by omission: a
-    // `...current` spread would carry a stale holder into `accepted` and leave the
-    // idea looking taken by a run that has already stopped.
+    // Rebuilt rather than spread-over, so `claim` is dropped by omission — a
+    // `...current` spread would carry a stale holder into `accepted`.
     const { claim: _dropped, ...rest } = current;
     next.ideas[mark.slug] = {
       ...rest,
@@ -455,11 +435,8 @@ export interface IdeaClaimResult {
 
 /**
  * Take ideas for implementation, returning a new store — the input is never
- * mutated.
- *
- * **This is the write that closes the duplicate-work race**, and it is deliberately
- * the *first* thing an implementation run does rather than something it does on
- * opening a PR. Only these are claimable:
+ * mutated. Called as the *first* step of an implementation run, not at PR-open
+ * time. Only these are claimable:
  *
  * - an `accepted` entry — the signed-off, unclaimed state;
  * - a `claimed` entry whose claim is stale per {@link isIdeaClaimStale}, so a run
@@ -469,10 +446,9 @@ export interface IdeaClaimResult {
  *   does not have to distinguish "I already hold this" from "somebody does".
  *
  * Everything else is refused with the status that refused it, including
- * `proposed`: an unsigned idea is still invention, and letting a claim skip the
- * human sign-off would route around the one gate `/improve` respects. Refusals are
- * returned rather than thrown, so a batch claiming three ideas still takes the two
- * that were free.
+ * `proposed` — letting a claim skip the human sign-off would route around the one
+ * gate `/improve` respects. Refusals are returned rather than thrown, so a batch
+ * still takes the ideas that were free.
  */
 export function applyIdeaClaims(
   store: IdeasStore,
@@ -505,7 +481,7 @@ export function applyIdeaClaims(
       continue;
     }
     // A re-claim by the same holder keeps a PR it already recorded, so attaching
-    // one is a separate call rather than something every re-claim must repeat.
+    // one is a separate call.
     const pr = request.pr ?? (held?.by === request.by ? held.pr : undefined);
     next.ideas[request.slug] = {
       ...current,
@@ -621,13 +597,10 @@ export function ideaRows(store: IdeasStore, filter: IdeaFilter = {}): IdeaEntry[
  * The rows an implementation run may actually take right now: `accepted`, plus
  * any `claimed` entry whose claim has gone stale.
  *
- * This exists because "signed off" and "available" stopped being the same
- * question the moment `claimed` was added. A run listing `-s accepted` alone
- * would never recover an idea abandoned by a dead run — the entry would sit at
- * `claimed` forever, invisible to the only query that looks for work — while a
- * run listing `-s accepted,claimed` would happily take one out from under a live
- * holder. Reading staleness at query time is what keeps both wrong answers out
- * without a sweeper process writing the file on a timer.
+ * The two queries a run might reach for instead are both wrong: `-s accepted`
+ * never recovers an idea abandoned by a dead run, and `-s accepted,claimed`
+ * takes one out from under a live holder. Staleness is read at query time, so
+ * no sweeper writes the file on a timer.
  */
 export function claimableIdeaRows(store: IdeasStore, filter: IdeaFilter = {}, now: Date = new Date()): IdeaEntry[] {
   return ideaRows(store, { ...filter, statuses: ['accepted', 'claimed'] }).filter(

@@ -59,8 +59,7 @@ function Ideas() {
   // Newest first, unlike the ledger's own oldest-first order.
   const byNewest = (a: IdeaEntry, b: IdeaEntry) => b.created.localeCompare(a.created);
   const open = rows.filter((r) => r.status === 'proposed').sort(byNewest);
-  // Kept visible, so it is clear what /improve picks up next — and `claimed` most of
-  // all, since a claim is the answer to "why has nothing happened to this one".
+  // Kept visible, so it is clear what /improve picks up next, and what is already being built.
   const settled = rows
     .filter((r) => r.status === 'accepted' || r.status === 'claimed' || r.status === 'shipped')
     .sort(byNewest);

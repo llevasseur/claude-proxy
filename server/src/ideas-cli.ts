@@ -125,8 +125,8 @@ function renderRows(rows: readonly IdeaEntry[]): string {
         const where = e.path ?? (e.bucket === undefined ? '' : `bucket ${e.bucket}/${e.id ?? ''}`);
         return `        · ${e.source}: ${where}${e.quote ? ` — ${e.quote}` : ''}`;
       });
-      // The holder is the row a second run reads to decide whether to walk away,
-      // so it sits above the note rather than being folded into it.
+      // Its own row above the note — this is what a second run reads to decide
+      // whether to walk away.
       const held = r.claim
         ? `\n      held by ${r.claim.by} since ${r.claim.at.slice(0, 16).replace('T', ' ')}${r.claim.pr ? ` — ${r.claim.pr}` : ''}`
         : '';
@@ -160,8 +160,7 @@ async function run(argv: readonly string[]): Promise<void> {
       ...(flags.status ? { statuses: parseStatuses(flags.status) } : {}),
       ...(flags.repo ? { repo: flags.repo } : {}),
     };
-    // `--available` answers "what may I take", which stopped being the same
-    // question as "what is signed off" once a claim could go stale.
+    // `--available` is "what may I take"; the default is "what is signed off".
     const rows = switches.has('available') ? claimableIdeaRows(store, filter) : ideaRows(store, filter);
     const counts = countIdeaStatuses(rows);
     if (json) {
@@ -223,8 +222,8 @@ async function run(argv: readonly string[]): Promise<void> {
     }
     const [refusal] = result.refused;
     if (refusal) {
-      // Exit 1 so a run scripting this walks away rather than reading a
-      // zero exit as permission to build what somebody else is already building.
+      // Exit 1, so a scripted run walks away rather than reading a zero exit as
+      // permission to build what somebody else already is.
       if (!json) {
         console.log(
           refusal.heldBy
