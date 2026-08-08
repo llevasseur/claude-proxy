@@ -32,6 +32,8 @@ import type {
   PromptMixDay,
   PromptRevision,
   ProxyFilterEntry,
+  PrSessionLink,
+  PullRequestRow,
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
@@ -205,6 +207,15 @@ export interface WithheldResponse {
   report: WithheldReport;
   launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[]; posture: LaunchAliasPosture };
   meta: { days: number; files: number; parseErrors: number };
+}
+export interface PullRequestsResponse {
+  repo: string | null;
+  prs: PullRequestRow[];
+  /** A setup problem phrased for the page (no `gh`, not signed in, no remote). */
+  error: string | null;
+  /** Sessions that worked on each PR, keyed by number. */
+  sessions: Record<number, PrSessionLink[]>;
+  meta: { fetchedAt: string; cached: boolean; total: number; limit: number };
 }
 export interface ProjectSummary {
   name: string;
@@ -792,6 +803,8 @@ export const markSuggestionStatus = (updates: SuggestionStatusUpdate[]) =>
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
+/** The project's pull requests, read through `gh` on the server. */
+export const getPullRequests = () => get<PullRequestsResponse>('/api/pull-requests');
 export const getHooksPlugins = () => get<HooksPluginsResponse>('/api/hooks-plugins');
 /** The catalogued CLI internals, resolved against the bundle installed right now. */
 export const getCliInternals = () => get<CliInternalsResponse>('/api/cli-internals');
