@@ -89,14 +89,10 @@ day), so no path traversal is possible.
 
 ## Open questions
 
-- **The window selector cannot see an archived day.** `buildContext` calls `readSidecars`
-  against the live log directory only, while `buildTrends` falls back to
-  `logs/archive/<date>/` for days the live set is missing. Once
-  `pnpm --filter server maintain` has archived a past day, that day's requests vanish from
-  the tiles and the "Requests" table, so the 30-day window on a maintained install shows
-  roughly today. The drill-downs it links to *do* resolve archived days, so the gap is in the
-  listing, not the detail pages. Current behaviour, not intended design; the fix is the
-  archive fallback the trends builder already has.
+- ~~**The window selector cannot see an archived day.**~~ Resolved. `buildContext` calls
+  `readWindow` in `server/src/db/source.ts`, the one reader that composes the live directory
+  with `logs/archive/<date>/`, so an archived day's requests stay in the tiles and the
+  "Requests" table rather than only in the drill-downs those rows link to.
 - Whether to add a historical chart of average/peak context per day (currently avg/median/max
   over a window only — see the design's out-of-scope note).
 - Whether to group the largest requests by session id (session id is captured but not

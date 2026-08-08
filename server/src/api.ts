@@ -125,7 +125,7 @@ import { loadArchivedDigest } from './archive.js';
 import { type CliBundleInfo, readCliCatalogue, readCliFunctionSource } from './cli-bundle.js';
 import { listInstalledCommands } from './command-runs.js';
 import { conceptStorePath } from './concepts.js';
-import { fileSource, type SidecarSource } from './db/source.js';
+import { fileSource, type SidecarSource, type WindowDay } from './db/source.js';
 import { markIdeasInStore, readIdeasStore, resolveIdeasPath } from './ideas-store.js';
 import {
   deleteJob,
@@ -188,38 +188,6 @@ export interface SummaryResponse {
 }
 
 /**
- * One reporting day's sidecars, archived half first so the stream stays
- * chronological.
- *
- * `readSidecars` only ever scans the live directory. A reporting day is a
- * `REPORT_TZ` day while the summary job rotates on the *UTC* day, so a day near
- * the present sits in both places and an older one is archived outright —
- * reading only the live side reports a fraction of the day, then nothing.
- *
- * `archiveDir` extends the archived half to a day whose raw triples were
- * relocated off the log volume; without it such a day reads as empty.
- */
-async function daySidecars(
-  logDir: string,
-  date: string,
-  now: Date,
-  source: SidecarSource,
-  archiveDir?: string,
-  opts: Omit<ReadOptions, 'date' | 'sinceDays'> = {},
-): Promise<LoadResult> {
-  const [archived, live] = await Promise.all([
-    source.readArchivedDay(logDir, date, { ...opts, archiveDir }),
-    source.readSidecars(logDir, { ...opts, date }, now),
-  ]);
-  return {
-    sidecars: [...archived.sidecars, ...live.sidecars],
-    files: archived.files + live.files,
-    parseErrors: archived.parseErrors + live.parseErrors,
-    bodiesEvicted: (archived.bodiesEvicted ?? 0) + (live.bodiesEvicted ?? 0),
-  };
-}
-
-/**
  * How far back the summary will look for a day to compare against. Reached only
  * when every day in between was idle; a longer gap leaves the trend unreported.
  */
@@ -233,6 +201,10 @@ const SUMMARY_BASELINE_LOOKBACK_DAYS = 14;
  * A walked day with no raw sidecars falls back to its finalized digest, the same
  * order {@link buildTrends} resolves an archived day in. Raw triples are pruned
  * on a retention clock while a finalized digest is kept indefinitely.
+ *
+ * The walk stays lazy — one `readWindow` per day rather than one call over the
+ * whole lookback — because the usual case stops on the first day back, and
+ * reading fourteen eagerly would pay for thirteen days nothing reads.
  */
 async function baselineDigests(
   logDir: string,
@@ -245,7 +217,7 @@ async function baselineDigests(
   const digests: UsageDigest[] = [];
   for (let back = 1; back <= SUMMARY_BASELINE_LOOKBACK_DAYS; back += 1) {
     const date = shiftDay(day, -back);
-    const read = await daySidecars(logDir, date, now, source, archiveDir);
+    const read = await source.readWindow(logDir, { date, archiveDir }, now);
     const digest =
       read.files === 0 && archiveDir
         ? ((await loadArchivedDigest(archiveDir, date)) ?? computeDigest([], { date, classifierHashes }))
@@ -259,7 +231,7 @@ async function baselineDigests(
 /**
  * One day's digest + advice, with each field's trend computed against the last
  * earlier day that recorded it. Every day read spans the archive and the live
- * dir — see {@link daySidecars}.
+ * dir — see `readWindow` in `server/src/db/source.ts`.
  *
  * `source` selects where the sidecars come from: the directory scan by default,
  * the SQLite substrate when the parity harness or shadow mode asks for it. See
@@ -274,7 +246,7 @@ export async function buildSummary(
 ): Promise<SummaryResponse> {
   const day = date ?? today(now);
   const [cur, classifierHashes] = await Promise.all([
-    daySidecars(logDir, day, now, source, archiveDir),
+    source.readWindow(logDir, { date: day, archiveDir }, now),
     classifierPromptHashes(logDir),
   ]);
   const priorDigests = await baselineDigests(logDir, day, now, source, classifierHashes, archiveDir);
@@ -381,44 +353,32 @@ export function clearRawArchiveCache(): void {
 }
 
 /**
- * One archived day's digest, computed from the raw sidecars the summary job
- * moved into `<logDir>/archive/<date>/`. `null` when that day isn't archived.
+ * One fully-archived day's digest, computed from the raw sidecars `readWindow`
+ * already resolved for it. Computed prior-free, which is what makes it cacheable:
+ * the value cannot depend on which window asked for it.
+ *
+ * A day still taking live writes deliberately never reaches here — it has no
+ * final answer to cache.
  */
-async function rawArchivedDigest(
+function rawArchivedDigest(
   logDir: string,
-  date: string,
+  day: WindowDay,
   source: SidecarSource,
   classifierHashes: ReadonlySet<string>,
   archiveDir?: string,
-): Promise<UsageDigest | null> {
+): UsageDigest {
   // Keyed by backing as well as day: the parity harness computes both, and a
   // shared entry would hand the second run the first one's answer. The hash-set
   // size joins the key because the store only grows — a digest computed before a
   // new classifier revision was recorded would otherwise never be recomputed.
   // `archiveDir` joins it too, since it decides which roots the day was read from.
-  const key = `${source.kind} ${logDir} ${archiveDir ?? ''} ${date} ${classifierHashes.size}`;
+  const key = `${source.kind} ${logDir} ${archiveDir ?? ''} ${day.date} ${classifierHashes.size}`;
   const hit = rawArchiveDigests.get(key);
   if (hit) return hit;
 
-  const { sidecars, files } = await source.readArchivedDay(logDir, date, { archiveDir });
-  if (files === 0) return null;
-
-  const digest = computeDigest(sidecars, { date, classifierHashes });
+  const digest = computeDigest(day.sidecars, { date: day.date, classifierHashes });
   rawArchiveDigests.set(key, digest);
   return digest;
-}
-
-/** Live sidecars bucketed by the reporting day they fall in, malformed ones dropped. */
-function liveSidecarsByDay(sidecars: readonly unknown[]): Map<string, unknown[]> {
-  const byDate = new Map<string, unknown[]>();
-  for (const s of sidecars) {
-    if (!isAuditSidecar(s)) continue;
-    const day = dayOf(s);
-    const bucket = byDate.get(day) ?? [];
-    bucket.push(s);
-    byDate.set(day, bucket);
-  }
-  return byDate;
 }
 
 /**
@@ -439,9 +399,9 @@ export async function buildTrends(
   archiveDir?: string,
   source: SidecarSource = fileSource,
 ): Promise<TrendsResponse> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days }, now);
+  const window = await source.readWindow(logDir, { sinceDays: days, archiveDir }, now);
   const classifierHashes = await classifierPromptHashes(logDir);
-  const liveByDate = liveSidecarsByDay(sidecars);
+  const byDate = new Map(window.days.map((d) => [d.date, d]));
 
   const end = today(now);
   const dates: string[] = [];
@@ -452,21 +412,23 @@ export async function buildTrends(
   const finalized = new Map<string, UsageDigest>();
   let archivedDays = 0;
   for (const date of dates) {
-    const live = liveByDate.get(date);
-    if (!live?.length) {
-      const digest =
-        (await rawArchivedDigest(logDir, date, source, classifierHashes, archiveDir)) ??
-        (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
+    const day = byDate.get(date);
+    if (!day) {
+      // No raw triples survive for this day. Retention prunes them on a clock
+      // while a finalized digest is kept forever, so that is what is left.
+      const digest = archiveDir ? await loadArchivedDigest(archiveDir, date) : null;
       if (digest) {
         finalized.set(date, digest);
         archivedDays += 1;
       }
       continue;
     }
-    // The archived slice precedes the live one, so this order stays chronological.
-    const archived = await source.readArchivedDay(logDir, date, { archiveDir });
-    if (archived.files > 0) archivedDays += 1;
-    raw.set(date, [...archived.sidecars, ...live]);
+    if (day.archivedFiles > 0) archivedDays += 1;
+    if (day.liveFiles === 0) {
+      finalized.set(date, rawArchivedDigest(logDir, day, source, classifierHashes, archiveDir));
+      continue;
+    }
+    raw.set(date, day.sidecars);
   }
 
   const digests: UsageDigest[] = [];
@@ -478,7 +440,7 @@ export async function buildTrends(
     if (!digest) continue;
     digests.push(digest);
   }
-  return { digests, meta: { days, files, parseErrors, archivedDays } };
+  return { digests, meta: { days, files: window.files, parseErrors: window.parseErrors, archivedDays } };
 }
 
 /** A prompt revision with both outlines resolved and diffed. */
@@ -523,22 +485,14 @@ async function promptMixWindow(
   now: Date,
   source: SidecarSource,
 ): Promise<PromptMixWindow> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days }, now);
-  const liveByDate = liveSidecarsByDay(sidecars);
-  const byDate = new Map<string, PromptMixDay>();
-
-  let archivedDays = 0;
-  const end = today(now);
-  for (let i = 0; i < days; i += 1) {
-    const date = shiftDay(end, -i);
-    const live = liveByDate.get(date) ?? [];
-    const archived = await source.readArchivedDay(logDir, date);
-    if (archived.files === 0 && !live.length) continue;
-    if (archived.files > 0) archivedDays += 1;
-    byDate.set(date, summarizePromptMix([...archived.sidecars, ...live], date));
-  }
-
-  return { mix: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)), files, parseErrors, archivedDays };
+  const window = await source.readWindow(logDir, { sinceDays: days }, now);
+  return {
+    // `readWindow` returns the days oldest→newest already.
+    mix: window.days.map((d) => summarizePromptMix(d.sidecars, d.date)),
+    files: window.files,
+    parseErrors: window.parseErrors,
+    archivedDays: window.days.filter((d) => d.archivedFiles > 0).length,
+  };
 }
 
 /**
@@ -715,18 +669,10 @@ async function filesForPromptHash(
     }
   };
 
-  const live = await source.readSidecars(logDir, { sinceDays: days, includeFile: true }, now);
-  read += live.files;
-  parseErrors += live.parseErrors;
-  collect(live.sidecars);
-
-  const end = today(now);
-  for (let i = 0; i < days; i += 1) {
-    const archived = await source.readArchivedDay(logDir, shiftDay(end, -i), { includeFile: true });
-    read += archived.files;
-    parseErrors += archived.parseErrors;
-    collect(archived.sidecars);
-  }
+  const window = await source.readWindow(logDir, { sinceDays: days, includeFile: true }, now);
+  read += window.files;
+  parseErrors += window.parseErrors;
+  collect(window.sidecars);
 
   // Names lead with their timestamp, so this is newest-first — the likeliest to
   // still have a body behind it.
@@ -811,7 +757,7 @@ export async function buildTools(
   source: SidecarSource = fileSource,
 ): Promise<ToolsResponse> {
   const day = date ?? today(now);
-  const { sidecars, files, parseErrors } = await daySidecars(logDir, day, now, source, archiveDir);
+  const { sidecars, files, parseErrors } = await source.readWindow(logDir, { date: day, archiveDir }, now);
   const digest = computeDigest(sidecars, { date: day, topN: 200 });
   return { date: day, topTools: digest.topTools, meta: { files, parseErrors } };
 }
@@ -853,11 +799,7 @@ export async function buildToolSchema(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<ToolSchemaResponse> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(
-    logDir,
-    { sinceDays: days, includeFile: true },
-    now,
-  );
+  const { sidecars, files, parseErrors } = await source.readWindow(logDir, { sinceDays: days, includeFile: true }, now);
 
   const candidates = new Set<string>();
   let requests = 0;
@@ -945,11 +887,7 @@ export async function buildContext(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<ContextResponse> {
-  const { sidecars, files, parseErrors } = await source.readSidecars(
-    logDir,
-    { sinceDays: days, includeFile: true },
-    now,
-  );
+  const { sidecars, files, parseErrors } = await source.readWindow(logDir, { sinceDays: days, includeFile: true }, now);
   return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
 }
 
@@ -1359,7 +1297,7 @@ async function resolveSessionRequests(
   }
 
   const since = (meta.started && reportDay(meta.started)) || undefined;
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { since, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await source.readWindow(logDir, { since, includeFile: true }, now);
   const entries = toContextEntries(sidecars);
 
   return {
@@ -1446,7 +1384,7 @@ export async function buildSessionSuggestionBucket(
 
   // A session's requests never predate it, so the earliest start bounds the scan.
   const since = (bucket.startedFirst && reportDay(bucket.startedFirst)) || undefined;
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { since, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await source.readWindow(logDir, { since, includeFile: true }, now);
   const entries = toContextEntries(sidecars);
 
   const peaks = sessions
@@ -1899,12 +1837,12 @@ export async function buildSessionGraphNodes(
     return { rootThreadId: id, threads: [], meta: { files: 0, parseErrors: 0, requestsRead: 0, capped: false } };
   }
 
-  // A family's requests never predate its earliest transcript, and `readSidecars`
+  // A family's requests never predate its earliest transcript, and `readWindow`
   // narrows by *reporting* day, so the floor is derived on that clock too.
   const starts = [...family].map((t) => byId.get(t)?.started).filter((s): s is string => !!s);
   const since = (starts.length > 0 && reportDay(starts.sort()[0]!)) || undefined;
 
-  const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { since, includeFile: true }, now);
+  const { sidecars, files, parseErrors } = await source.readWindow(logDir, { since, includeFile: true }, now);
   const candidates = toContextEntries(sidecars)
     .filter((e) => e.sessionId !== null && sessionIds.has(e.sessionId))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
@@ -1958,9 +1896,11 @@ export async function buildSkim(
   source: SidecarSource = fileSource,
 ): Promise<SkimResponse> {
   const day = date ?? today(now);
-  const { sidecars, files, parseErrors, bodiesEvicted } = await daySidecars(logDir, day, now, source, archiveDir, {
-    includeSkimRequests: true,
-  });
+  const { sidecars, files, parseErrors, bodiesEvicted } = await source.readWindow(
+    logDir,
+    { date: day, archiveDir, includeSkimRequests: true },
+    now,
+  );
   const skim = computeSkimDigest(sidecars, { date: day, topN: 50 });
   return { date: day, skim, meta: { files, parseErrors, bodiesEvicted: bodiesEvicted ?? 0 } };
 }
@@ -1978,7 +1918,7 @@ export async function buildSkimTrend(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<SkimTrendResponse> {
-  const { sidecars, files, parseErrors, bodiesEvicted } = await source.readSidecars(
+  const { sidecars, files, parseErrors, bodiesEvicted } = await source.readWindow(
     logDir,
     { sinceDays: days, includeSkimRequests: true },
     now,
@@ -2027,7 +1967,7 @@ export async function buildWithheld(
   // The traffic half goes through the seam; the device settings and the shell rc
   // are authored files outside `logs/`, read the same way by both backings.
   const [{ sidecars, files, parseErrors }, settings, launchAliases] = await Promise.all([
-    source.readSidecars(logDir, { sinceDays: days }, now),
+    source.readWindow(logDir, { sinceDays: days }, now),
     readDeviceSettings(settingsPath),
     readLaunchAliases(),
   ]);

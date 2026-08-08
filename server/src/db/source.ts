@@ -81,6 +81,151 @@ export interface SidecarSource {
    * store there is no filter to apply.
    */
   readConcepts(logDir: string): Promise<StoredConcept[]>;
+
+  /* --- The window reader --- */
+
+  /**
+   * Every sidecar a reporting window covers, live directory and archive
+   * together. {@link readSidecars} is the single-root primitive underneath;
+   * this is the composition every multi-day builder wants, and the only place
+   * that composition is written. See {@link readWindowFrom}.
+   */
+  readWindow(logDir: string, opts?: WindowOptions, now?: Date): Promise<WindowResult>;
+}
+
+export interface WindowOptions extends ReadOptions {
+  /**
+   * Root of the relocated archive — `<archiveDir>/<date>/raw/`. Only the file
+   * backing consults it; the substrate answers from what was ingested.
+   */
+  archiveDir?: string;
+}
+
+/** One reporting day of a window, resolved from both roots. */
+export interface WindowDay {
+  date: string;
+  /** The archived half first, then the live half, so the day reads chronologically. */
+  sidecars: unknown[];
+  /** How many of them came from the archive roots. */
+  archivedFiles: number;
+  /** How many came from the live directory. */
+  liveFiles: number;
+}
+
+export interface WindowResult extends LoadResult {
+  /**
+   * Oldest→newest, one entry per day in the window that yielded anything. The
+   * flat `sidecars` above is these concatenated, so a caller wanting per-day
+   * digests does not read the corpus a second time to get them.
+   */
+  days: WindowDay[];
+}
+
+/**
+ * How far back a bare `since` floor may fan the per-day archive probes out. The
+ * live half is unbounded either way — this only bounds a caller that floors
+ * itself at a very old transcript.
+ */
+const MAX_WINDOW_DAYS = 400;
+
+/** The reporting days a window covers, oldest→newest. */
+function windowDates(opts: WindowOptions, now: Date): string[] {
+  if (opts.date) return [opts.date];
+  const end = today(now);
+  const from =
+    opts.since ??
+    (opts.sinceDays != null ? shiftDay(end, -(opts.sinceDays - 1)) : shiftDay(end, -(MAX_WINDOW_DAYS - 1)));
+
+  const dates: string[] = [];
+  for (let day = end; day >= from && dates.length < MAX_WINDOW_DAYS; day = shiftDay(day, -1)) dates.unshift(day);
+  return dates;
+}
+
+/**
+ * The reporting day a live sidecar belongs to, or `null` when nothing on it
+ * says. A file that would not parse has no timestamp to be placed by, so the
+ * filename's UTC day stands in — the same fallback both readers make.
+ */
+function sidecarDay(sidecar: unknown): string | null {
+  if (typeof sidecar !== 'object' || sidecar === null) return null;
+  const record = sidecar as { timestamp?: unknown; __file?: unknown; __parseError?: unknown };
+  if (typeof record.timestamp === 'string') {
+    const day = reportDay(record.timestamp);
+    if (day) return day;
+  }
+  const name =
+    typeof record.__file === 'string'
+      ? record.__file
+      : typeof record.__parseError === 'string'
+        ? record.__parseError
+        : null;
+  return name && /^\d{4}-\d{2}-\d{2}/.test(name) ? name.slice(0, 10) : null;
+}
+
+/**
+ * The live+archive composition, written once for both backings.
+ *
+ * `readSidecars` only ever scans the live directory, which holds roughly today.
+ * A reporting day is a `REPORT_TZ` day while the summary job rotates on the
+ * *UTC* day, so a day near the present sits in both places and an older one is
+ * archived outright — reading only the live side reports a fraction of the
+ * newest day and nothing at all for the rest of the window.
+ *
+ * So the live half is read once, bucketed by the day each sidecar reports in,
+ * and each day's archived slice is concatenated ahead of it. Live sidecars the
+ * window did not enumerate are kept at the end rather than dropped: the flat
+ * stream is still every sidecar the read touched.
+ */
+async function readWindowFrom(
+  source: SidecarSource,
+  logDir: string,
+  opts: WindowOptions,
+  now: Date,
+): Promise<WindowResult> {
+  const { archiveDir, ...readOpts } = opts;
+  const archivedOpts: ArchivedDayOptions = {
+    archiveDir,
+    includeFile: opts.includeFile,
+    includeSkimRequests: opts.includeSkimRequests,
+  };
+
+  const live = await source.readSidecars(logDir, readOpts, now);
+
+  const byDay = new Map<string, unknown[]>();
+  const unplaced: unknown[] = [];
+  for (const s of live.sidecars) {
+    const day = sidecarDay(s);
+    if (!day) {
+      unplaced.push(s);
+      continue;
+    }
+    const bucket = byDay.get(day) ?? [];
+    bucket.push(s);
+    byDay.set(day, bucket);
+  }
+
+  const days: WindowDay[] = [];
+  const sidecars: unknown[] = [];
+  let files = live.files;
+  let parseErrors = live.parseErrors;
+  let bodiesEvicted = live.bodiesEvicted ?? 0;
+
+  for (const date of windowDates(opts, now)) {
+    const archived = await source.readArchivedDay(logDir, date, archivedOpts);
+    const liveSlice = byDay.get(date) ?? [];
+    byDay.delete(date);
+    if (archived.files === 0 && liveSlice.length === 0) continue;
+    files += archived.files;
+    parseErrors += archived.parseErrors;
+    bodiesEvicted += archived.bodiesEvicted ?? 0;
+    const merged = [...archived.sidecars, ...liveSlice];
+    days.push({ date, sidecars: merged, archivedFiles: archived.files, liveFiles: liveSlice.length });
+    sidecars.push(...merged);
+  }
+  for (const day of [...byDay.keys()].sort()) sidecars.push(...byDay.get(day)!);
+  sidecars.push(...unplaced);
+
+  return { sidecars, files, parseErrors, bodiesEvicted, days };
 }
 
 /** The behaviour the server has today: scan the directory, parse every file. */
@@ -88,6 +233,7 @@ export const fileSource: SidecarSource = {
   kind: 'files',
   readSidecars: (logDir, opts, now) => readSidecarsFromFiles(logDir, opts, now),
   readArchivedDay: (logDir, date, opts) => readArchivedDayFromFiles(logDir, date, opts),
+  readWindow: (logDir, opts = {}, now = new Date()) => readWindowFrom(fileSource, logDir, opts, now),
   listSessions: (logDir) => listSessionsFromFiles(logDir),
   listSessionGraphs: (logDir) => listSessionGraphsFromFiles(logDir),
   readSession: (logDir, id) => readSessionFromFiles(logDir, id),
@@ -566,8 +712,11 @@ function conceptsFromDb(db: DatabaseSync): StoredConcept[] {
 
 /** The same reads, answered from the substrate. */
 export function dbSource(db: DatabaseSync): SidecarSource {
-  return {
+  const source: SidecarSource = {
     kind: 'db',
+    // The composition is backing-agnostic — it is the two primitives below,
+    // read through whichever object it was handed.
+    readWindow: (logDir, opts = {}, now = new Date()) => readWindowFrom(source, logDir, opts, now),
     // Both listings answer from the tables alone — no directory is read.
     listSessions: async () => sortListing(sessionRows(db).map(toSummary)),
     listSessionGraphs: async () => {
@@ -680,4 +829,5 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return out;
     },
   };
+  return source;
 }
