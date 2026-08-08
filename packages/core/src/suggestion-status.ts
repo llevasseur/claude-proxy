@@ -29,6 +29,7 @@
  */
 
 import type { Severity } from './advice.js';
+import { isThinPass, parseWriteProvenance, type WriteProvenance } from './provenance.js';
 import { type SessionBucket, SUGGESTION_DEFECT_THRESHOLDS, type SuggestionSource } from './suggestions.js';
 
 /**
@@ -82,6 +83,12 @@ export interface SuggestionJudgement {
   at: string;
   /** Suggestion id → the judge's context for it. Empty when it had nothing to add. */
   notes: Record<string, string>;
+  /**
+   * Which agent judged the window and how much of it that agent opened. Absent on
+   * every verdict recorded before provenance existed, and on one whose caller did
+   * not pass a thread id — the verdict still stands, it is simply unattributed.
+   */
+  by?: WriteProvenance;
 }
 
 /**
@@ -141,7 +148,7 @@ export function parseSuggestionStatusStore(raw: unknown): SuggestionStatusStore 
       const index = bucketIndexOf(bucketKey);
       if (index === null) continue;
       if (!record || typeof record !== 'object' || Array.isArray(record)) continue;
-      const { at, notes } = record as { at?: unknown; notes?: unknown };
+      const { at, notes, by } = record as { at?: unknown; notes?: unknown; by?: unknown };
       const kept: Record<string, string> = {};
       if (notes && typeof notes === 'object' && !Array.isArray(notes)) {
         for (const [id, text] of Object.entries(notes as Record<string, unknown>)) {
@@ -149,8 +156,14 @@ export function parseSuggestionStatusStore(raw: unknown): SuggestionStatusStore 
         }
       }
       // A record with no timestamp and no notes still means "judged", which is the
-      // whole claim — `--amnesty` writes exactly that.
-      store.judged[String(index)] = { at: typeof at === 'string' ? at : '', notes: kept };
+      // whole claim — `--amnesty` writes exactly that. A record with no `by` is a
+      // verdict written before provenance, and is kept exactly as it was.
+      const provenance = parseWriteProvenance(by);
+      store.judged[String(index)] = {
+        at: typeof at === 'string' ? at : '',
+        notes: kept,
+        ...(provenance ? { by: provenance } : {}),
+      };
     }
   }
   return store;
@@ -318,6 +331,12 @@ export interface SuggestionJudgementWrite {
   bucket: number;
   /** Suggestion id → the judge's context. Omitted or empty records the verdict alone. */
   notes?: Record<string, string>;
+  /**
+   * Who is judging, and how much of this bucket they opened. Omitted records the
+   * verdict unattributed, exactly as every verdict was before this existed — the
+   * caller derives it rather than the judge reporting it.
+   */
+  by?: WriteProvenance;
 }
 
 /**
@@ -345,7 +364,7 @@ export function applySuggestionJudgements(
     for (const [id, text] of Object.entries(write.notes ?? {})) {
       if (id.trim() && text) notes[id.trim()] = text;
     }
-    next.judged[String(write.bucket)] = { at, notes };
+    next.judged[String(write.bucket)] = { at, notes, ...(write.by ? { by: write.by } : {}) };
   }
   return next;
 }
@@ -361,9 +380,14 @@ export function parseSuggestionJudgements(raw: unknown): SuggestionJudgementWrit
   return raw.map((item, i) => {
     const where = `judged[${i}]`;
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { bucket, notes } = item as Record<string, unknown>;
+    const { bucket, notes, by } = item as Record<string, unknown>;
     if (!Number.isInteger(bucket) || (bucket as number) < 1) throw new Error(`${where}.bucket must be an integer >= 1`);
-    if (notes === undefined) return { bucket: bucket as number };
+    // An unreadable envelope is dropped rather than thrown on: provenance is
+    // additive, and refusing a verdict over it would make the audit trail a
+    // precondition for recording the thing it audits.
+    const provenance = parseWriteProvenance(by);
+    const attribution = provenance ? { by: provenance } : {};
+    if (notes === undefined) return { bucket: bucket as number, ...attribution };
     if (!notes || typeof notes !== 'object' || Array.isArray(notes))
       throw new Error(`${where}.notes must be an object`);
     const kept: Record<string, string> = {};
@@ -371,7 +395,7 @@ export function parseSuggestionJudgements(raw: unknown): SuggestionJudgementWrit
       if (typeof text !== 'string') throw new Error(`${where}.notes.${id} must be a string`);
       if (id.trim() && text) kept[id.trim()] = text;
     }
-    return { bucket: bucket as number, notes: kept };
+    return { bucket: bucket as number, notes: kept, ...attribution };
   });
 }
 
@@ -419,6 +443,10 @@ export interface BucketJudgementRow {
   notes?: number;
   /** How many suggestions the window currently carries. */
   suggestions: number;
+  /** Who judged it and how much of it they opened. Absent on an unattributed verdict. */
+  by?: WriteProvenance;
+  /** True only when `by` measures a pass under {@link THIN_PASS_RATIO}. Advisory. */
+  thin?: boolean;
 }
 
 /** Every bucket with its judgement state, oldest first. */
@@ -441,6 +469,8 @@ export function bucketJudgements(
       if (record?.at) row.judgedAt = record.at;
       const notes = Object.keys(record?.notes ?? {}).length;
       if (notes > 0) row.notes = notes;
+      if (record?.by) row.by = record.by;
+      if (isThinPass(record?.by)) row.thin = true;
       return row;
     });
 }
@@ -656,6 +686,8 @@ export interface SuggestionStatusRow {
   bucketState: BucketJudgementState;
   /** ISO timestamp of that bucket's verdict, when one is on record and dated. */
   judgedAt?: string;
+  /** Who judged this row's bucket, and how much of it they opened. Absent when unattributed. */
+  judgedBy?: WriteProvenance;
   /** The judge's context for this suggestion, from `judged[bucket].notes[id]`. */
   enrichment?: string;
   /** What to change, in the user's terms. Only with `detail`. */
@@ -720,6 +752,7 @@ export function suggestionStatusRows(
         if (entry.note) row.note = entry.note;
         if (recurrence !== 'none' && resolution) row.resolved = resolution;
         if (judgement?.at) row.judgedAt = judgement.at;
+        if (judgement?.by) row.judgedBy = judgement.by;
         const enrichment = judgement?.notes[suggestion.id];
         if (enrichment) row.enrichment = enrichment;
         if (filter.detail) {
