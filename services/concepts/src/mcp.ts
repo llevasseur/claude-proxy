@@ -1,18 +1,7 @@
 /**
- * MCP over streamable HTTP, hand-rolled.
- *
- * The official SDK is not used, and that is a deliberate cost: this repo's
- * proxy package ships zero runtime dependencies and `@claude-proxy/core` ships
- * none either, so the one place a dependency would have to earn its way in is
- * here. What it would buy is transport plumbing — session ids, SSE resumption,
- * server-initiated messages — none of which this service does. What it costs is
- * a dependency inside the request path of the only always-on component in the
- * system. Three tools and five JSON-RPC methods is less code than the wiring
- * needed to configure the SDK, so it is written out.
- *
- * The response is always a single `application/json` body. The spec permits
- * that for a request the server can answer immediately, and every method here
- * can be.
+ * MCP over streamable HTTP, hand-rolled rather than via the official SDK — see
+ * ADR 0005. Always answers with a single `application/json` body, which the
+ * spec allows for requests the server can satisfy immediately.
  */
 
 import type { Db } from './db.ts';
@@ -149,8 +138,7 @@ function rpcError(id: string | number | null | undefined, code: number, message:
 }
 
 export async function handleMcp(request: Request, db: Db): Promise<Response> {
-  // No GET stream: this server never initiates a message, so there is nothing
-  // for a long-lived SSE channel to carry.
+  // No GET stream: this server never initiates a message.
   if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
 
   const body = (await request.json().catch(() => null)) as JsonRpcRequest | null;
@@ -184,8 +172,8 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
         isError,
       });
     } catch (error) {
-      // A tool failure is reported inside the result, not as a transport
-      // error: the model should see it and be able to correct its arguments.
+      // A tool failure is reported inside the result, not as a transport error,
+      // so the model can see it and correct its arguments.
       return result(id, {
         content: [{ type: 'text', text: `tool ${name} failed: ${(error as Error).message}` }],
         isError: true,

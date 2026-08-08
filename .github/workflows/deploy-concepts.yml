@@ -1,7 +1,7 @@
 name: Deploy concepts service
 
 # The concept store is the one always-on component in this repo, so it deploys
-# from CI rather than from a laptop. Everything else here still ships by hand.
+# from CI. Everything else here still ships by hand.
 on:
   push:
     branches: [main]
@@ -33,7 +33,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The gates that cover this package, before anything reaches production.
       - run: pnpm --filter concepts typecheck
       - run: pnpm --filter concepts test
 
@@ -54,8 +53,8 @@ jobs:
           workingDirectory: services/concepts
           command: deploy
 
-      # `/health` is the only unauthenticated route, which is what lets this run
-      # without handing CI the corpus token. Skipped until CONCEPTS_URL is set.
+      # `/health` is unauthenticated, so CI needs no corpus token. Skipped until
+      # CONCEPTS_URL is set.
       - name: Smoke check
         if: vars.CONCEPTS_URL != ''
         run: curl --fail --silent --show-error --retry 5 --retry-delay 3 "${{ vars.CONCEPTS_URL }}/health"

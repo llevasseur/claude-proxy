@@ -5,21 +5,18 @@ import { fileURLToPath } from 'node:url';
 import type { Db, DbStatement, DbValue } from '../src/db.ts';
 
 /**
- * `node:sqlite` is required at runtime rather than imported, for the same
- * reason `server/src/db/open.ts` does it: the module is newer than the builtin
- * list Vite ships, so a static import makes Vitest try to resolve a package
- * called `sqlite` and fail.
+ * `node:sqlite` is required at runtime rather than imported, as in
+ * `server/src/db/open.ts`: it is newer than the builtin list Vite ships, so a
+ * static import makes Vitest try to resolve a package called `sqlite` and fail.
  */
 const sqlite = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 /**
- * A `Db` backed by in-memory `node:sqlite`.
- *
- * D1 is SQLite, so this runs the production SQL — including the FTS5 virtual
- * table and `bm25()` — through the same engine the Worker will hit. It is not a
- * stand-in for the database; it is the database, reached locally.
+ * A `Db` backed by in-memory `node:sqlite`. D1 is SQLite, so this runs the
+ * production SQL — FTS5 virtual table and `bm25()` included — on the same
+ * engine the Worker will hit.
  */
 export function testDb(): Db {
   const database = new sqlite.DatabaseSync(':memory:');

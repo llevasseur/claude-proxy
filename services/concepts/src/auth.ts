@@ -1,9 +1,6 @@
 /**
  * Compares two secrets without an early exit on the first differing byte.
- *
- * Length is compared up front and therefore leaks, which is accepted: the
- * token's length is not the secret, and padding to hide it would buy nothing
- * against an attacker who can already time requests across the open internet.
+ * Length is compared up front and so leaks; that is accepted.
  */
 function timingSafeEqual(a: string, b: string): boolean {
   const encoder = new TextEncoder();
@@ -17,8 +14,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 /** True when the request carries the shared bearer token. */
 export function isAuthorized(request: Request, token: string | undefined): boolean {
-  // An unset secret denies everything rather than defaulting open — a Worker
-  // deployed before `wrangler secret put` should serve nothing at all.
+  // An unset secret denies everything rather than defaulting open.
   if (!token) return false;
   const header = request.headers.get('authorization');
   if (!header) return false;

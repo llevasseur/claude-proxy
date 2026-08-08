@@ -2,15 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    // Explicit `.ts` extensions on relative imports, as `proxy/` does: nothing
-    // here is bundled by tsc, and wrangler resolves them directly.
+    // Explicit `.ts` extensions on relative imports, as `proxy/` does.
     "allowImportingTsExtensions": true,
-    // Cloudflare's types are imported explicitly where they are used rather
-    // than pulled in as ambient globals. Loading them globally alongside
-    // `@types/node` collides on `Request`, `Response` and `fetch`, and
-    // `tsconfig.test.json` below has to compile this same `src` under Node —
-    // so one consistent view of the standard globals is worth more here than
-    // workerd-exact ones.
+    // Cloudflare's types are imported where used rather than loaded as ambient
+    // globals: alongside `@types/node` they collide on `Request`, `Response`
+    // and `fetch`, and `tsconfig.test.json` compiles this same `src` under Node.
     "types": ["node"]
   },
   "include": ["src"]

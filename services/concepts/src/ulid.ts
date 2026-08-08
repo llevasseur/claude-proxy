@@ -1,20 +1,11 @@
 /**
- * ULIDs, derived rather than random.
+ * ULIDs whose random half is derived rather than random: the leading 48 bits
+ * are the timestamp, so ids sort chronologically, and the remaining 80 are a
+ * hash of the record, which makes writes idempotent and preserves ids across an
+ * export/import round trip.
  *
- * Two properties are wanted at once, and an autoincrement gives neither:
- *
- *   - **Sortable by creation.** A ULID's leading 48 bits are the timestamp, so
- *     lexical order is chronological order and paging needs no separate cursor
- *     column.
- *   - **Stable across a restore.** The randomness half is *not* random here: it
- *     is the first 10 bytes of the SHA-256 of the record itself. Re-importing
- *     the backup, or replaying the same `/teach` twice, regenerates the identical
- *     id — so `INSERT OR IGNORE` makes both operations idempotent for free, and
- *     an export/import round trip preserves every id exactly.
- *
- * The cost is that two byte-identical records saved in the same millisecond
- * collapse into one row. That is the correct outcome, not a lost write: same
- * document, same instant, same concept.
+ * Consequence: two byte-identical records saved in the same millisecond
+ * collapse into one row.
  */
 
 const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -40,7 +31,7 @@ export function ulid(timeMs: number, randomness: Uint8Array): string {
   return encodeBase32(time, TIME_CHARS) + encodeBase32(random, RANDOM_CHARS);
 }
 
-/** The first 10 bytes of SHA-256(seed) — the derived half of the id above. */
+/** The first 10 bytes of SHA-256(seed). */
 export async function seedBytes(seed: string): Promise<Uint8Array> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seed));
   return new Uint8Array(digest).slice(0, 10);

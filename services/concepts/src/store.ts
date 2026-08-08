@@ -7,7 +7,7 @@ export interface HostedConcept extends Concept {
   id: string;
 }
 
-/** The listing shape — everything but the prose. See README for why it is split. */
+/** The listing shape: everything but the prose. */
 export interface ConceptSummary {
   id: string;
   term: string;
@@ -62,7 +62,7 @@ export class ConceptError extends Error {
 
 /**
  * Two records are the same concept when their terms match case- and
- * whitespace-insensitively, so re-teaching `Carousel` supersedes `carousel`.
+ * whitespace-insensitively.
  */
 function termKey(term: string): string {
   return term.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -70,8 +70,7 @@ function termKey(term: string): string {
 
 /**
  * The newest-per-term predicate: keep a row only when no other row for the same
- * term is newer. A correlated NOT EXISTS rather than a window function because
- * it walks `concept_term_key` directly, and because it reads as what it means.
+ * term is newer. Correlated NOT EXISTS so it walks `concept_term_key` directly.
  */
 const CURRENT_ONLY = `NOT EXISTS (
     SELECT 1 FROM concept newer
@@ -115,12 +114,10 @@ interface DocumentRow {
 }
 
 function hydrate(row: DocumentRow): HostedConcept {
-  // `document` is the record verbatim, which is the only representation that
-  // still distinguishes an absent optional field from an empty one.
+  // `document` is the record verbatim — the only representation that still
+  // distinguishes an absent optional field from an empty one.
   return { ...(JSON.parse(row.document) as Concept), id: row.id };
 }
-
-// -- writing ---------------------------------------------------------------
 
 /** Canonical serialization — the id is derived from this, so it must be stable. */
 function documentOf(concept: Concept): string {
@@ -165,9 +162,8 @@ export async function saveConcept(db: Db, input: unknown): Promise<SaveResult> {
     },
   ];
 
-  // Meta skills are routing machinery, not subject matter: they stay in
-  // `document` but out of the facet table, so grouping by skill does not put
-  // `find-skills` at the top of every list.
+  // Meta skills stay in `document` but out of the facet table, so grouping by
+  // skill does not rank routing machinery above subject matter.
   withoutMetaSkills(concept.skills).forEach((skill, index) => {
     statements.push({
       sql: 'INSERT OR IGNORE INTO concept_skill (id, skill_ord, skill) VALUES (?, ?, ?)',
@@ -197,8 +193,6 @@ export async function saveConcept(db: Db, input: unknown): Promise<SaveResult> {
   await db.batch(statements);
   return { concept: { ...concept, id }, created: true };
 }
-
-// -- reading ---------------------------------------------------------------
 
 export async function listConcepts(db: Db, filter: ConceptFilter = {}): Promise<ConceptSummary[]> {
   const where = buildWhere(filter);
@@ -236,10 +230,7 @@ export async function getConceptById(db: Db, id: string): Promise<HostedConcept 
   return rows.length > 0 ? hydrate(rows[0]!) : null;
 }
 
-/**
- * Every version of a term, newest first. The caller decides whether it wants
- * just `[0]` or the history — the store does not hide the older ones.
- */
+/** Every version of a term, newest first. */
 export async function getConceptsByTerm(db: Db, term: string): Promise<HostedConcept[]> {
   const rows = await db.all<DocumentRow>(
     'SELECT id, document FROM concept c WHERE c.term_key = ? ORDER BY c.saved_at DESC, c.id DESC',
@@ -249,11 +240,9 @@ export async function getConceptsByTerm(db: Db, term: string): Promise<HostedCon
 }
 
 /**
- * Turns free text into an FTS5 query that cannot throw.
- *
- * Every bare token is quoted, so `C++`, `foo(bar)` and a stray `"` are matched
- * literally instead of parsed as operators. `AND`/`OR`/`NOT` written in caps
- * still pass through, which keeps the useful half of the syntax available.
+ * Turns free text into an FTS5 query that cannot throw: every bare token is
+ * quoted so punctuation is matched literally rather than parsed as an operator,
+ * while `AND`/`OR`/`NOT` in caps still pass through.
  */
 export function toMatchQuery(query: string): string {
   const tokens = query.trim().split(/\s+/).filter(Boolean);
@@ -279,9 +268,8 @@ export async function searchConcepts(db: Db, query: string, filter: ConceptFilte
      LIMIT ?`,
     [...where.params, match, boundedLimit(filter.limit)],
   );
-  // bm25() returns a negative number that is *more* negative for a better hit;
-  // negating it above turns the column into the ordinary "higher is better"
-  // score an agent will assume it is reading.
+  // bm25() is more negative for a better hit; negating it above gives the
+  // ordinary "higher is better" score.
   return rows.map((row) => ({ ...hydrate(row), score: row.score }));
 }
 
@@ -305,9 +293,7 @@ export async function conceptFacets(db: Db, filter: ConceptFilter = {}): Promise
 
 /**
  * The whole corpus as JSONL, oldest first — every version, not just the current
- * ones. This is what the nightly backup commits, and it is deliberately the
- * same format `logs/concepts.jsonl` used, so a restore is an import of a file
- * the rest of the toolchain already understands.
+ * ones. Same format as `logs/concepts.jsonl`, so a restore is an ordinary import.
  */
 export async function exportJsonl(db: Db): Promise<string> {
   const rows = await db.all<{ document: string }>('SELECT document FROM concept c ORDER BY c.saved_at ASC, c.id ASC');

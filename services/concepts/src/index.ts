@@ -11,8 +11,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // The one unauthenticated route: the deploy workflow's smoke check needs
-    // something to hit, and "the Worker is running" is not a secret.
+    // The one unauthenticated route, so the deploy smoke check has something to hit.
     if (url.pathname === '/health') return json({ ok: true, service: 'concepts' });
 
     if (!isAuthorized(request, env.CONCEPTS_TOKEN)) {

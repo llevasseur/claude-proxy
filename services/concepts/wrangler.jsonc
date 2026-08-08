@@ -5,9 +5,8 @@
   "compatibility_date": "2026-08-01",
   "observability": { "enabled": true },
 
-  // `database_id` is filled in by `wrangler d1 create concepts` — see README.
-  // The placeholder is left in the file on purpose: a deploy against it fails
-  // loudly rather than silently writing to the wrong database.
+  // `database_id` comes from `wrangler d1 create concepts` — see README. The
+  // placeholder stays so a deploy before that fails loudly.
   "d1_databases": [
     {
       "binding": "DB",
@@ -17,7 +16,7 @@
     }
   ],
 
-  // Daily backup commit. Off-peak in UTC; the exact minute does not matter.
+  // Daily backup commit, off-peak in UTC.
   "triggers": { "crons": ["17 9 * * *"] },
 
   // Secrets (CONCEPTS_TOKEN, BACKUP_GITHUB_TOKEN) are set with

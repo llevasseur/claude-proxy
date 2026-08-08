@@ -70,8 +70,7 @@ export async function handleRest(request: Request, url: URL, db: Db): Promise<Re
     if (!term) throw new ConceptError(400, 'pass either `id` or `term`');
     const versions = await getConceptsByTerm(db, term);
     if (versions.length === 0) throw new ConceptError(404, `no concept for term ${term}`);
-    // Newest first, with the older versions alongside rather than discarded —
-    // an append-only store has a history and callers are allowed to see it.
+    // Newest first, with the older versions alongside rather than discarded.
     return json({ concept: versions[0]!, versions });
   }
 

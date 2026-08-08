@@ -1,10 +1,7 @@
 /**
- * Nightly backup: commit the whole corpus to a private git repo.
- *
- * This is what keeps the design honest about ADR 0004. The database is now the
- * source of truth for concepts, which is a genuine departure — so the escape
- * hatch is that a plain-text, human-readable, re-importable copy of everything
- * lands in git every day. Losing the Cloudflare account costs at most a day.
+ * Nightly backup: commit the whole corpus to a private git repo. The database
+ * is the source of truth for concepts, so this daily JSONL copy is what bounds
+ * data loss to a single day. See ADR 0005.
  */
 
 import type { Db } from './db.ts';

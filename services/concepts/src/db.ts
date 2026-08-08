@@ -1,11 +1,7 @@
 /**
- * The database port.
- *
- * `store.ts` is written against this rather than against `D1Database` so the
- * exact SQL that runs at the edge also runs under `node:sqlite` in the tests.
- * D1 *is* SQLite, so this is not a mock standing in for the real thing — it is
- * the same engine reached through a different handle, and a query that passes
- * the suite is a query D1 will accept.
+ * The database port. `store.ts` targets this rather than `D1Database` so the
+ * same SQL also runs under `node:sqlite` in the tests — D1 is SQLite, so the
+ * suite exercises the real engine rather than a mock.
  */
 
 import type { D1Database } from '@cloudflare/workers-types';

@@ -1,14 +1,8 @@
 /**
- * One-time seed: push `logs/concepts.jsonl` into the deployed store.
- *
- * It posts through the real HTTP write path rather than generating SQL, so the
- * ids, the FTS rows and the skill rows are produced by exactly the code that
- * serves live writes — there is no second implementation of the schema to drift.
- * Writes are idempotent (the id is derived from the record), so re-running this
- * after a partial failure is safe and re-imports nothing.
- *
- *   pnpm --filter concepts import -- --url https://… --token "$CONCEPTS_TOKEN"
- *   pnpm --filter concepts import -- --dry-run
+ * One-time seed: push `logs/concepts.jsonl` into the deployed store over the
+ * real HTTP write path, so ids, FTS rows and skill rows come from the code that
+ * serves live writes. Writes are idempotent, so re-running after a partial
+ * failure re-imports nothing.
  */
 
 import { readFileSync } from 'node:fs';
@@ -25,7 +19,7 @@ function flag(name: string): string | undefined {
 
 function defaultStorePath(): string {
   // Same resolution rule `/teach` uses: the store's own env var wins, and its
-  // parent directory is the log dir. Never search the filesystem for a checkout.
+  // parent directory is the log dir.
   const configured = process.env.CLAUDE_PROXY_STORE;
   if (configured) return join(dirname(resolve(configured)), 'concepts.jsonl');
   return resolve(HERE, '..', '..', '..', 'logs', 'concepts.jsonl');

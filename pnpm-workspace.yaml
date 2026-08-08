@@ -6,6 +6,5 @@ packages:
   - services/*
 allowBuilds:
   esbuild: true
-  # wrangler ships the workerd runtime for `wrangler dev`; its postinstall
-  # unpacks the platform binary.
+  # wrangler's postinstall unpacks the workerd binary `wrangler dev` runs on.
   workerd: true
