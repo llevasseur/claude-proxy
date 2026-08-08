@@ -906,12 +906,13 @@ a.pager-btn:hover {
 }
 
 /* recharts focus: never the plot area, only the points. `accessibilityLayer={false}`
-   at each chart is what stops the surface being `tabIndex=0`; this is the backstop
-   for a chart added without it. */
+   at each chart keeps the surface out of the tab order; recharts still stamps
+   `tabindex="-1"` on every inner `recharts-zIndex-layer_*` group, which a click
+   focuses and the browser then rings. */
 .recharts-wrapper:focus,
 .recharts-wrapper:focus-visible,
-.recharts-surface:focus,
-.recharts-surface:focus-visible {
+.recharts-wrapper :focus,
+.recharts-wrapper :focus-visible {
   outline: none;
 }
 /* Pin targets stay keyboard-reachable: a box outline round an SVG circle reads as the
