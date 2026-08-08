@@ -80,6 +80,9 @@ function sidecarBody(iso: string, opts: SidecarOpts = {}): Record<string, unknow
       account: 'someone@example.com',
       metadataSessionId: 'm-1',
       deviceId: 'd-1',
+      // The thread the proxy resolved at capture time. Present here and absent on
+      // the all-null session below, so both branches of the rebuild are covered.
+      threadId: '00000000000000a1',
     };
   }
   if (opts.skim !== null) {
@@ -161,6 +164,10 @@ async function writeSessions(logDir: string): Promise<void> {
     path.join(dir, `${parent}.nodes.jsonl`),
     [
       JSON.stringify({ i: 1, text: 'keep logs/ the source of truth, because a view may not hold the only copy' }),
+      // A row carrying only a fingerprint, and one carrying both — the sidecar's two
+      // sparse maps are independent.
+      JSON.stringify({ i: 2, argsHash: 'aaaabbbbccccdddd' }),
+      JSON.stringify({ i: 5, text: 'Read(server/src/api.ts)', argsHash: '1111222233334444' }),
       '{ torn line',
       // Index 99 is past the end of the transcript: the sidecar is sparse and
       // outlives edits, and both readers hand the entry back regardless.
@@ -177,6 +184,10 @@ async function writeSessions(logDir: string): Promise<void> {
       '- model: claude-opus-5',
       '- session: s-1',
       '- started: 2026-07-15T14:05:00.000Z',
+      // The parentage the proxy wrote down when it saw the spawn go out.
+      '- parent: 00000000000000a1',
+      '- spawn: 4',
+      '- agent: Explore',
       '',
       '## Task: find the readers',
       '- Grep(readSidecars)',
@@ -432,8 +443,9 @@ describe('route parity over a synthetic corpus', () => {
         .c,
     ).toBe(7);
     expect((db.prepare('SELECT count(*) c FROM session_node WHERE interrupted = 1').get() as { c: number }).c).toBe(1);
-    // The torn line is dropped, the out-of-range index is kept.
-    expect((db.prepare('SELECT count(*) c FROM session_node_text').get() as { c: number }).c).toBe(2);
+    // The torn line is dropped, the out-of-range index is kept, and a row
+    // carrying both a text and a fingerprint counts once here and once there.
+    expect((db.prepare('SELECT count(*) c FROM session_node_text').get() as { c: number }).c).toBe(3);
     // The subagent has no `state.json` at all, which reads the same as one
     // carrying no `root`: null.
     expect((db.prepare('SELECT count(*) c FROM session WHERE root_prompt IS NOT NULL').get() as { c: number }).c).toBe(

@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -475,6 +475,35 @@ ALTER TABLE session_node ADD COLUMN turn INTEGER;
 UPDATE session SET bytes = -1;
 `;
 
+/**
+ * The join keys the proxy now records at capture time, in place of downstream inference.
+ *
+ * - `request.thread_id` — which transcript a captured request is a turn of. A session id
+ *   is shared by a run and every subagent under it, so it cannot say that on its own.
+ * - `session_node.args_hash` — a fingerprint of a call's whole argument object, beside
+ *   the truncated display signature already in `text`.
+ * - `session.parent_thread_id` / `spawn_index` / `spawn_agent_type` — the parentage the
+ *   child's own transcript header records.
+ *
+ * All nullable, and null is a real reading: a sidecar or transcript written before the
+ * proxy wrote the field, which the readers fall back to inference for.
+ *
+ * Clearing the request watermark re-reads the sidecars; blanking `bytes` is what makes a
+ * transcript re-parse, since migrating does not touch the file its `stat` is compared to.
+ */
+const SCHEMA_V12 = `
+ALTER TABLE request ADD COLUMN thread_id TEXT;
+ALTER TABLE session_node ADD COLUMN args_hash TEXT;
+ALTER TABLE session ADD COLUMN parent_thread_id  TEXT;
+ALTER TABLE session ADD COLUMN spawn_index       INTEGER;
+ALTER TABLE session ADD COLUMN spawn_agent_type  TEXT;
+
+CREATE INDEX IF NOT EXISTS request_thread_idx ON request(thread_id);
+
+DELETE FROM ingest_watermark;
+UPDATE session SET bytes = -1;
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -592,6 +621,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 9) db.exec(SCHEMA_V9);
   if (from < 10) db.exec(SCHEMA_V10);
   if (from < 11) db.exec(SCHEMA_V11);
+  if (from < 12) db.exec(SCHEMA_V12);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

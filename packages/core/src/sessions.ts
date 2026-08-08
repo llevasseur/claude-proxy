@@ -343,6 +343,17 @@ export interface SessionNode {
    * transcript written before {@link TURN_MARKER} existed records no boundary at all.
    */
   turn: number | null;
+  /**
+   * Fingerprint of the call's *whole* argument object, hashed by the proxy at capture
+   * time and carried on the `.nodes.jsonl` sidecar. {@link SessionNode.text} is a
+   * rendered display signature: one identifying argument, truncated — so two calls that
+   * differ only past the cut render identically, and anything keyed on the rendered form
+   * conflates them. This does not.
+   *
+   * Null on non-`tool` nodes, and on any node from a transcript whose sidecar predates
+   * the field — where the rendered signature stays the only key available.
+   */
+  argsHash: string | null;
 }
 
 const DECIDED_TEXT_RE = /^- decided:\s*(.*)$/;
@@ -361,8 +372,13 @@ const DONE_TEXT_RE = /^- done:\s*(.*)$/;
  * Turns are counted off {@link TURN_MARKER}: each marked call opens a turn and the unmarked
  * calls after it share it. Calls seen *before* the transcript's first marker keep
  * `turn: null` — a thread can straddle the change.
+ *
+ * `argsHashes` is the transcript's `.nodes.jsonl` sidecar read through
+ * {@link parseSessionNodeHashes}, keyed by the same node index. Omit it and every node
+ * comes back with `argsHash: null`, which is what a transcript predating the sidecar
+ * field yields anyway.
  */
-export function parseSessionNodes(content: string): SessionNode[] {
+export function parseSessionNodes(content: string, argsHashes: Record<number, string> = {}): SessionNode[] {
   const nodes: SessionNode[] = [];
   let task: string | null = null;
   let lastTool: string | null = null;
@@ -382,6 +398,7 @@ export function parseSessionNodes(content: string): SessionNode[] {
       interrupted: false,
       message: null,
       turn: type === 'tool' ? turn : null,
+      argsHash: type === 'tool' ? (argsHashes[nodes.length] ?? null) : null,
     });
     pending = null;
   };
@@ -466,12 +483,96 @@ export function parseSessionNodeTexts(content: string): Record<number, string> {
   return texts;
 }
 
+/**
+ * Argument fingerprints from a transcript's `<threadId>.nodes.jsonl` sidecar, keyed by
+ * node index — see {@link SessionNode.argsHash}. Sparse and independent of the text
+ * rows: a call whose display signature dropped nothing still gets a hash, and a
+ * transcript written before the field has none. Malformed lines are skipped.
+ */
+export function parseSessionNodeHashes(content: string): Record<number, string> {
+  const hashes: Record<number, string> = {};
+  for (const line of content.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line) as { i?: unknown; argsHash?: unknown };
+      if (typeof row.i === 'number' && Number.isInteger(row.i) && row.i >= 0 && typeof row.argsHash === 'string') {
+        hashes[row.i] = row.argsHash;
+      }
+    } catch {
+      /* skip a torn or truncated line */
+    }
+  }
+  return hashes;
+}
+
 // --- Subagent linkage ------------------------------------------------------
 //
 // A subagent runs under its parent's session id but with its own conversation
 // root, so the proxy writes it as a *separate* transcript (see proxy/session.ts).
-// Nothing on the wire names the pair, so the tree is reconstructed here from the
-// parent's `Agent(...)` spawn lines and the group's other transcripts.
+//
+// The proxy now writes the pairing down at capture time — it saw the spawning call
+// and the prompt that became the child's root — as `- parent:` / `- spawn:` /
+// `- agent:` header lines on the child. {@link parseRecordedSpawn} reads them back,
+// and a transcript that carries them is linked from the record.
+//
+// Transcripts written before that, and any whose spawn the proxy missed, still fall
+// through to the inference below: the parent's `Agent(…)` / `Task(…)` lines claim
+// the group's other transcripts in start-time order. That pairing is positional, not
+// proven — a parallel fan-out can hand the wrong branch to the wrong spawn — so a
+// link produced that way is flagged `inferred`.
+
+/** The parentage a transcript's own header records, written by the proxy at capture time. */
+export interface RecordedSpawn {
+  /** The transcript whose call started this one. */
+  parentThreadId: string;
+  /** Index of the spawning node in the parent's transcript, or null if unrecorded. */
+  spawnIndex: number | null;
+  /** What the spawn called itself (`subagent_type`, else the skill name), or null. */
+  agentType: string | null;
+}
+
+const SPAWN_HEADER_RE = {
+  parent: /^- parent:\s*(.*)$/,
+  spawn: /^- spawn:\s*(.*)$/,
+  agent: /^- agent:\s*(.*)$/,
+} as const;
+
+/**
+ * The parentage a transcript records for itself, or null when it records none —
+ * a top-level run, or one written before the proxy wrote the lines. The lines can
+ * arrive after the header (a spawn observed once the transcript was already
+ * flushed), so the whole file is scanned rather than just its head.
+ */
+export function parseRecordedSpawn(content: string): RecordedSpawn | null {
+  let parentThreadId: string | null = null;
+  let spawnIndex: number | null = null;
+  let agentType: string | null = null;
+
+  for (const raw of content.split('\n')) {
+    const line = raw.replace(/\r$/, '');
+    if (parentThreadId === null) {
+      const m = SPAWN_HEADER_RE.parent.exec(line);
+      if (m) {
+        parentThreadId = (m[1] ?? '').trim() || null;
+        continue;
+      }
+    }
+    if (spawnIndex === null) {
+      const m = SPAWN_HEADER_RE.spawn.exec(line);
+      if (m) {
+        const n = Number((m[1] ?? '').trim());
+        if (Number.isInteger(n) && n >= 0) spawnIndex = n;
+        continue;
+      }
+    }
+    if (agentType === null) {
+      const m = SPAWN_HEADER_RE.agent.exec(line);
+      if (m) agentType = (m[1] ?? '').trim() || null;
+    }
+  }
+
+  return parentThreadId ? { parentThreadId, spawnIndex, agentType } : null;
+}
 
 /** Tool names whose call spawns a subagent that gets its own transcript. */
 const SPAWN_TOOLS = new Set(['Agent', 'Task']);
@@ -502,6 +603,12 @@ export interface LinkableSession {
   sessionId: string | null;
   started: string | null;
   nodes: SessionNode[];
+  /**
+   * What this transcript's header says about its own parentage, from
+   * {@link parseRecordedSpawn}. Absent or null means nothing was recorded and the
+   * transcript takes the inferred path.
+   */
+  recorded?: RecordedSpawn | null;
 }
 
 /** Where one transcript sits in its session id's agent tree. */
@@ -527,6 +634,13 @@ export interface SessionAgentLink {
   reported: boolean;
   /** Subagents spawned by this transcript, in spawn order. */
   childThreadIds: string[];
+  /**
+   * True when this pairing was *guessed* rather than recorded: the parent's spawn lines
+   * were matched to transcripts in start-time order, which a parallel fan-out can get
+   * wrong. False for a link the proxy wrote down at capture time, and false at top
+   * level, where there is no pairing to be wrong about.
+   */
+  inferred: boolean;
 }
 
 const topLevelLink = (): SessionAgentLink => ({
@@ -537,6 +651,7 @@ const topLevelLink = (): SessionAgentLink => ({
   depth: 0,
   reported: false,
   childThreadIds: [],
+  inferred: false,
 });
 
 /** Where a spawn's result rejoins the parent: its next non-spawn step, or null while in flight. */
@@ -568,27 +683,24 @@ function reportedBack(nodes: SessionNode[], spawnIndex: number, returnIndex: num
 /**
  * Reconstruct the agent tree across a set of transcripts, keyed by thread id.
  *
- * Transcripts sharing a session id are one agent family. Within a family, each
- * transcript's `Agent(…)` spawn lines claim, in order, the earliest unclaimed
- * transcript that started no earlier than the spawner. Claiming is one-to-one, so
- * leftovers stay top-level and a spawn whose transcript was never captured goes
- * unmatched.
+ * A transcript that records its own parentage ({@link LinkableSession.recorded}) is
+ * linked from that record — the proxy watched the spawn happen — and its link is not
+ * `inferred`. Nothing about it depends on start times or on the spawning call's name.
  *
- * Start times are the only ordering the transcripts carry — individual lines have
- * no timestamps — so pairing is positional, not proven. A transcript with no start
- * time is never claimed.
+ * Everything left over takes the legacy path. Transcripts sharing a session id are one
+ * agent family; within a family, each transcript's `Agent(…)` / `Task(…)` spawn lines
+ * claim, in order, the earliest unclaimed transcript that started no earlier than the
+ * spawner. Claiming is one-to-one, so leftovers stay top-level and a spawn whose
+ * transcript was never captured goes unmatched. Start times are the only ordering those
+ * transcripts carry — individual lines have no timestamps — so the pairing is
+ * positional, not proven, and every link it makes is flagged `inferred`. A transcript
+ * with no start time is never claimed that way.
  */
 export function linkAgentSessions(sessions: readonly LinkableSession[]): Map<string, SessionAgentLink> {
   const links = new Map<string, SessionAgentLink>();
   for (const s of sessions) links.set(s.threadId, topLevelLink());
 
-  const families = new Map<string, LinkableSession[]>();
-  for (const s of sessions) {
-    if (!s.sessionId) continue;
-    const family = families.get(s.sessionId);
-    if (family) family.push(s);
-    else families.set(s.sessionId, [s]);
-  }
+  const byThread = new Map(sessions.map((s) => [s.threadId, s]));
 
   /** Guard against a cycle: is `id` already somewhere above `of` in the tree? */
   const isAncestor = (id: string, of: LinkableSession): boolean => {
@@ -600,18 +712,65 @@ export function linkAgentSessions(sessions: readonly LinkableSession[]): Map<str
     return false;
   };
 
+  /** Attach `child` to `parent` at `spawnIndex`, filling in where the work flows back. */
+  const attach = (
+    parent: LinkableSession,
+    child: LinkableSession,
+    spawnIndex: number | null,
+    agentType: string | null,
+    inferred: boolean,
+  ): void => {
+    const link = links.get(child.threadId)!;
+    link.parentThreadId = parent.threadId;
+    link.spawnIndex = spawnIndex;
+    link.agentType = agentType || null;
+    link.returnIndex = spawnIndex === null ? null : returnIndexAfter(parent.nodes, spawnIndex);
+    link.reported = spawnIndex !== null && reportedBack(parent.nodes, spawnIndex, link.returnIndex);
+    link.inferred = inferred;
+  };
+
+  /** Children already placed, and the parent spawn slots those placements used up. */
+  const claimed = new Set<string>();
+  const usedSpawns = new Map<string, Set<number>>();
+
+  // Pass one: what the proxy wrote down. A record naming a transcript that is not in
+  // this set (aged out, or filtered away) leaves the child top-level rather than
+  // guessing a different parent for it.
+  for (const child of sessions) {
+    const recorded = child.recorded;
+    if (!recorded) continue;
+    const parent = byThread.get(recorded.parentThreadId);
+    if (!parent || parent.threadId === child.threadId || isAncestor(child.threadId, parent)) continue;
+    attach(parent, child, recorded.spawnIndex, recorded.agentType, false);
+    claimed.add(child.threadId);
+    if (recorded.spawnIndex !== null) {
+      const used = usedSpawns.get(parent.threadId) ?? new Set<number>();
+      used.add(recorded.spawnIndex);
+      usedSpawns.set(parent.threadId, used);
+    }
+  }
+
+  const families = new Map<string, LinkableSession[]>();
+  for (const s of sessions) {
+    if (!s.sessionId) continue;
+    const family = families.get(s.sessionId);
+    if (family) family.push(s);
+    else families.set(s.sessionId, [s]);
+  }
+
   for (const family of families.values()) {
     if (family.length < 2) continue;
     const ordered = [...family].sort(
       (a, b) => (a.started ?? '').localeCompare(b.started ?? '') || a.threadId.localeCompare(b.threadId),
     );
-    const claimed = new Set<string>();
 
     // Every transcript is a candidate spawner, so nested subagents link too; going
     // in start order means an outer parent claims before its own children do.
     for (const parent of ordered) {
-      const parentLink = links.get(parent.threadId)!;
+      const used = usedSpawns.get(parent.threadId);
       for (const spawn of parent.nodes) {
+        // A spawn already answered by a recorded link must not claim a second child.
+        if (used?.has(spawn.index)) continue;
         const agentType = spawnAgentType(spawn);
         if (agentType === null) continue;
         const child = ordered.find(
@@ -625,18 +784,25 @@ export function linkAgentSessions(sessions: readonly LinkableSession[]): Map<str
         );
         if (!child) continue;
         claimed.add(child.threadId);
-        const link = links.get(child.threadId)!;
-        link.parentThreadId = parent.threadId;
-        link.spawnIndex = spawn.index;
-        link.agentType = agentType || null;
-        link.returnIndex = returnIndexAfter(parent.nodes, spawn.index);
-        link.reported = reportedBack(parent.nodes, spawn.index, link.returnIndex);
-        parentLink.childThreadIds.push(child.threadId);
+        attach(parent, child, spawn.index, agentType, true);
       }
     }
   }
 
-  // Depth is only knowable once every parent is assigned.
+  // Children are listed in spawn order, which both passes can only agree on once every
+  // parent is assigned. Depth is knowable only then too.
+  for (const [threadId, link] of links) {
+    if (!link.parentThreadId) continue;
+    links.get(link.parentThreadId)?.childThreadIds.push(threadId);
+  }
+  for (const link of links.values()) {
+    link.childThreadIds.sort((a, b) => {
+      const ai = links.get(a)?.spawnIndex ?? Number.MAX_SAFE_INTEGER;
+      const bi = links.get(b)?.spawnIndex ?? Number.MAX_SAFE_INTEGER;
+      return ai - bi || a.localeCompare(b);
+    });
+  }
+
   for (const [threadId, link] of links) {
     let depth = 0;
     let at = link.parentThreadId;
@@ -808,6 +974,9 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
       interrupted: false,
       message,
       turn: type === 'tool' ? turns : null,
+      // The hash is a *capture-time* record on the transcript's sidecar. These nodes are
+      // re-derived from a body instead, so they carry none.
+      argsHash: null,
     });
     pending = null;
   };

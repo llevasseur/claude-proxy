@@ -211,6 +211,32 @@ describe('suggestBucket', () => {
     expect(redundant!.sources[0]!.threadId).toBe('d1');
   });
 
+  it('separates reads whose display signature was truncated to the same prefix', () => {
+    // The recorded signature is one truncated argument, so three different files under a
+    // long path render identically. Keying on the proxy's hash of the full arguments is
+    // what stops that reading as the same file read three times.
+    const body = [
+      '## Task: One',
+      '- Read(file_path=/Users/x/.claude/worktrees/feat-someth…',
+      '- Read(file_path=/Users/x/.claude/worktrees/feat-someth…',
+      '- Read(file_path=/Users/x/.claude/worktrees/feat-someth…',
+      '- done: ok',
+    ];
+    const distinct: SuggestibleSession = {
+      ...session('d2', day(1), body),
+      nodes: session('d2', day(1), body).nodes.map((n, i) => (n.type === 'tool' ? { ...n, argsHash: `hash${i}` } : n)),
+    };
+    expect(suggestBucket([distinct]).find((r) => r.id === 'redundant-reads')).toBeUndefined();
+
+    // Same three lines, one hash: genuinely the same call, and it still fires.
+    const same: SuggestibleSession = {
+      ...distinct,
+      threadId: 'd3',
+      nodes: distinct.nodes.map((n) => (n.type === 'tool' ? { ...n, argsHash: 'sameargs' } : n)),
+    };
+    expect(suggestBucket([same]).find((r) => r.id === 'redundant-reads')).toBeDefined();
+  });
+
   it('counts a top-level task with no outcome line as unfinished', () => {
     const sessions = [
       session('e1', day(1), ['## Task: One', '- Read(file_path=/a.ts)']),

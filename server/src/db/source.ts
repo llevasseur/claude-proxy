@@ -6,6 +6,7 @@ import {
   type Concept,
   linkAgentSessions,
   parseSessionTranscript,
+  type RecordedSpawn,
   reportDay,
   type SessionNode,
   type StoredConcept,
@@ -107,6 +108,7 @@ interface RequestRow {
   status_code: number | null;
   session_present: number;
   session_id: string | null;
+  thread_id: string | null;
   app: string | null;
   user_agent: string | null;
   account: string | null;
@@ -190,6 +192,9 @@ function toSidecar(
       account: row.account,
       metadataSessionId: row.metadata_session_id,
       deviceId: row.device_id,
+      // Absent, not null, when the sidecar predates the capture — a file read
+      // would have produced no key at all.
+      ...(row.thread_id !== null ? { threadId: row.thread_id } : {}),
     };
   }
   if (row.skim_present) {
@@ -438,6 +443,9 @@ interface SessionRow {
   derived_title: string | null;
   bytes: number;
   modified: string;
+  parent_thread_id: string | null;
+  spawn_index: number | null;
+  spawn_agent_type: string | null;
 }
 
 interface NodeRow {
@@ -451,6 +459,7 @@ interface NodeRow {
   interrupted: number;
   message: number | null;
   turn: number | null;
+  args_hash: string | null;
 }
 
 /**
@@ -489,6 +498,17 @@ function toNode(row: NodeRow): SessionNode {
     interrupted: row.interrupted === 1,
     message: row.message,
     turn: row.turn,
+    argsHash: row.args_hash,
+  };
+}
+
+/** The parentage the transcript recorded for itself, or null when it recorded none. */
+function toRecordedSpawn(row: SessionRow): RecordedSpawn | null {
+  if (!row.parent_thread_id) return null;
+  return {
+    parentThreadId: row.parent_thread_id,
+    spawnIndex: row.spawn_index,
+    agentType: row.spawn_agent_type,
   };
 }
 
@@ -500,7 +520,8 @@ function sortListing<T extends { modified: string; threadId: string }>(rows: T[]
 
 const SESSION_COLUMNS =
   'thread_id, model, session_id, started, tasks, decisions, tools, errors, ' +
-  'first_task, title, subtitle, derived_title, bytes, modified';
+  'first_task, title, subtitle, derived_title, bytes, modified, ' +
+  'parent_thread_id, spawn_index, spawn_agent_type';
 
 function sessionRows(db: DatabaseSync): SessionRow[] {
   return db.prepare(`SELECT ${SESSION_COLUMNS} FROM session`).all() as unknown as SessionRow[];
@@ -511,7 +532,7 @@ function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
   const out = new Map<string, SessionNode[]>();
   for (const row of db
     .prepare(
-      'SELECT thread_id, idx, type, text, tool, task, interruption, interrupted, message, turn FROM session_node ORDER BY thread_id, idx',
+      'SELECT thread_id, idx, type, text, tool, task, interruption, interrupted, message, turn, args_hash FROM session_node ORDER BY thread_id, idx',
     )
     .all() as unknown as NodeRow[]) {
     const list = out.get(row.thread_id) ?? [];
@@ -572,12 +593,16 @@ export function dbSource(db: DatabaseSync): SidecarSource {
     listSessions: async () => sortListing(sessionRows(db).map(toSummary)),
     listSessionGraphs: async () => {
       const nodes = nodesByThread(db);
-      const rows = sessionRows(db).map((row) => ({ ...toSummary(row), nodes: nodes.get(row.thread_id) ?? [] }));
+      const rows = sessionRows(db).map((row) => ({
+        ...toSummary(row),
+        nodes: nodes.get(row.thread_id) ?? [],
+        recorded: toRecordedSpawn(row),
+      }));
       // The agent tree is derived, not stored — same function the file reader
-      // uses. `linkAgentSessions` sorts each family internally, so the result
-      // does not depend on the order rows arrive in.
+      // uses, over the same recorded parentage. `linkAgentSessions` sorts each
+      // family internally, so the result does not depend on row order.
       const links = linkAgentSessions(rows);
-      return sortListing(rows.map((row) => ({ ...row, ...links.get(row.threadId)! })));
+      return sortListing(rows.map(({ recorded: _recorded, ...row }) => ({ ...row, ...links.get(row.threadId)! })));
     },
     readSession: async (logDir, id) => {
       // Validates the URL-supplied id and confirms the path stays inside

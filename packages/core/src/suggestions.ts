@@ -464,7 +464,15 @@ const serialDiscovery: Rule = (sessions) => {
   };
 };
 
-/** The same file opened twice in one session — context paid for twice. */
+/**
+ * The same file opened twice in one session — context paid for twice.
+ *
+ * Keyed on the argument fingerprint the proxy hashed at capture time, not on the
+ * rendered `Read(file_path=…)` line: that line carries one truncated argument, so every
+ * read under a long shared prefix (`.claude/worktrees/<name>/…`) renders identically and
+ * keying on it reports duplicates that never happened. A transcript whose sidecar
+ * predates the hash falls back to the rendered signature, since it is all there is.
+ */
 const redundantReads: Rule = (sessions) => {
   const hits: { session: SuggestibleSession; node: SessionNode }[] = [];
   let targets = 0;
@@ -473,9 +481,10 @@ const redundantReads: Rule = (sessions) => {
     const seen = new Map<string, SessionNode[]>();
     for (const node of session.nodes) {
       if (node.type !== 'tool' || !node.tool || toolName(node.tool) !== 'Read') continue;
-      const list = seen.get(node.tool);
+      const key = node.argsHash ?? node.tool;
+      const list = seen.get(key);
       if (list) list.push(node);
-      else seen.set(node.tool, [node]);
+      else seen.set(key, [node]);
     }
     for (const nodes of seen.values()) {
       if (nodes.length < SUGGESTION_THRESHOLDS.minRepeatReads + 1) continue;
