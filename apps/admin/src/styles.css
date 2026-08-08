@@ -4235,3 +4235,161 @@ button.btn-save:disabled {
   margin-top: 8px;
   color: var(--bad);
 }
+
+/* pull request tree */
+.pr-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+.pr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pr-head p {
+  margin: 4px 0 0;
+  max-width: 62ch;
+  font-size: 12.5px;
+}
+.pr-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pr-count {
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--gc);
+  border: 1px solid var(--gc);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.pr-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--amber);
+  border-radius: 9px;
+  color: var(--amber);
+  font-size: 12.5px;
+}
+/* The drawer overlays this frame, so it anchors the absolute inspector. */
+.pr-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 50vh;
+  overflow: hidden;
+}
+.pr-tree {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 24px;
+  height: 100%;
+  overflow-y: auto;
+}
+.pr-empty {
+  padding: 24px 0;
+}
+/* One trunk merge plus whatever hung off it, joined by the spine down the left. */
+.pr-row {
+  position: relative;
+  padding-left: 26px;
+}
+.pr-row::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+.pr-row:last-child::before {
+  bottom: 50%;
+}
+.pr-node {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  max-width: 760px;
+  margin: 6px 0;
+  padding: 9px 12px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gc);
+  border-radius: 9px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.pr-node:hover,
+.pr-node.is-selected {
+  border-color: var(--gc);
+}
+/* The dot where this PR meets the spine. */
+.pr-node::before {
+  content: "";
+  position: absolute;
+  left: -23px;
+  top: 18px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gc);
+}
+/* A branch is indented and joined by a dashed stub, so it reads as never landing. */
+.pr-node--branch {
+  margin-left: 34px;
+  border-style: dashed;
+  border-left-style: solid;
+}
+.pr-node--branch::before {
+  left: -57px;
+  width: 42px;
+  height: 2px;
+  border-radius: 0;
+  background: repeating-linear-gradient(90deg, var(--gc) 0 4px, transparent 4px 8px);
+}
+.pr-node-kind {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gc);
+}
+.pr-node-title {
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+.pr-node-num {
+  font-family: var(--font-mono);
+  color: var(--faint);
+}
+.pr-node-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+/* Where PRs cut before the first merge attach. */
+.pr-root {
+  margin: 10px 0 2px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.pr-sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.pr-note {
+  margin: 0;
+  font-size: 11.5px;
+}

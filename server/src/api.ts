@@ -68,6 +68,7 @@ import {
   PROXY_FILTER_INVENTORY,
   type PromptMixDay,
   type PromptRevision,
+  type PullRequestRow,
   pairPromptRevisions,
   parseSessionErrors,
   parseSystemPromptText,
@@ -136,6 +137,7 @@ import { type CliBundleInfo, readCliCatalogue, readCliFunctionSource } from './c
 import { listInstalledCommands } from './command-runs.js';
 import { conceptStorePath } from './concepts.js';
 import { fileSource, readWindow, type SidecarSource } from './db/source.js';
+import { DEFAULT_PR_LIMIT, readPullRequests, resolveRepoDir } from './github.js';
 import { markIdeasInStore, readIdeasStore, resolveIdeasPath } from './ideas-store.js';
 import {
   deleteJob,
@@ -156,6 +158,7 @@ import {
   shiftDay,
   today,
 } from './logs.js';
+import { type PrSessionIndex, readPrSessions } from './pr-sessions.js';
 import {
   listProjectMemories,
   listProjects,
@@ -2198,6 +2201,36 @@ export async function buildSkimTrend(
     topShapes,
     meta: { days, files, parseErrors, bodiesEvicted: bodiesEvicted ?? 0 },
   };
+}
+
+export interface PullRequestsResponse {
+  /** `owner/name` the rows were read from; null when the checkout has no GitHub remote. */
+  repo: string | null;
+  /** Newest first — the page orders them into the tree itself. */
+  prs: PullRequestRow[];
+  /**
+   * A setup gap phrased for the page — no `gh`, not signed in, no remote — rather than
+   * a 500. Null on success.
+   */
+  error: string | null;
+  /** Sessions that worked on each PR, keyed by number — absent when none did. */
+  sessions: PrSessionIndex;
+  meta: { fetchedAt: string; cached: boolean; total: number; limit: number };
+}
+
+/**
+ * The project's pull requests, straight from `gh`, each tied back to the sessions that
+ * worked on it. Read-only.
+ */
+export async function buildPullRequests(
+  logDir: string,
+  repoDir: string = resolveRepoDir(),
+  limit: number = DEFAULT_PR_LIMIT,
+): Promise<PullRequestsResponse> {
+  const { repo, prs, error, fetchedAt, cached } = await readPullRequests(repoDir, limit);
+  // Keyed on the fetch the rows came from, so the scan tracks the `gh` cache.
+  const sessions = await readPrSessions(logDir, prs, `${logDir}:${repoDir}:${fetchedAt}`);
+  return { repo, prs, error, sessions, meta: { fetchedAt, cached, total: prs.length, limit } };
 }
 
 export interface WithheldResponse {
