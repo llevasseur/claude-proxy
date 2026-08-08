@@ -233,17 +233,22 @@ left are simply absent from `threads`, and keep their transcript text.
 - Whether to move the page onto SSE. Every other live surface streams, but the graph polls
   `/api/sessions/graph` every 4 s and rebuilds the whole payload each time — every transcript
   in the log dir, nodes and all — regardless of what changed.
-- Spawn detection is structurally limited. Only tool calls literally named `Agent` or
-  `Task` are spawns, so a subagent started any other way (a skill that runs in a subagent, a
-  teammate resumed via `SendMessage`) leaves its transcript stranded at top level. And the
-  proxy records at most one identifying argument per tool call, chosen by a fixed key order in
-  `proxy/session.ts`, so `subagent_type` is only in the line when the call actually passed it
-  — otherwise the branch is detected but labelled generically. Worth deciding whether to widen
-  the tool set, or record the spawn relationship at capture time instead of inferring it later.
-- Pairing accuracy on a fan-out. Spawns claim transcripts in start-time order, not by matching
-  a spawn to *its* subagent, so a parallel batch that starts in a different order than it was
-  requested can attach the wrong branch to the wrong spawn — and nothing in the payload marks
-  a pairing as uncertain.
+- ~~Spawn detection is structurally limited~~ and ~~pairing accuracy on a fan-out~~ —
+  **resolved for anything captured from now on.** The proxy watched the spawn happen, so it
+  writes the pairing down instead of leaving it to be re-derived: a `tool_use` carrying a
+  non-empty `prompt` starts a child thread, and the child's transcript gets `- parent:` /
+  `- spawn:` / `- agent:` header lines naming the spawning thread, the node index of the call,
+  and the agent type (`subagent_type`, else `skill`). Detection is keyed on the **argument**
+  rather than the tool's name, so a spawn under a name nobody listed is still a spawn, and the
+  agent type is read off the call's full input rather than the one truncated argument the
+  display line kept. `linkAgentSessions` applies every recorded pairing first; only what is
+  left over takes the old per-family start-time pass, and every link it makes is now flagged
+  `inferred: true` on the wire, so an uncertain pairing says so. The `Agent`/`Task` allow-list
+  and the start-time heuristic **stay** — they are the legacy path for transcripts written
+  before the header lines, and they are tested as such — but they no longer decide anything the
+  proxy saw for itself. Still open: linking is bidirectional in memory only, so a spawn observed
+  before its child *and* separated from it by a proxy restart falls back to inference, since the
+  pending-spawn registry is not mirrored to disk the way pending titles are.
 - Transcripts that can never be linked: one with no `session:` header, one with no `started:`
   time, or a lone transcript in its family. Also, a thread id is a hash of session id plus
   first user text, so two subagents given byte-identical prompts in one session collapse into a

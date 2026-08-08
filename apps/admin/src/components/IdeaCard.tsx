@@ -145,6 +145,7 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
         {when && (
           <span className='muted idea-when'>
             {IDEA_STATUS_LABEL[idea.status].toLowerCase()} {when}
+            {idea.by && <> by {idea.by.thread}</>}
           </span>
         )}
       </div>
