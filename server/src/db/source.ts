@@ -4,6 +4,8 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   type CommandRun,
   type Concept,
+  dayOf,
+  isAuditSidecar,
   linkAgentSessions,
   parseSessionTranscript,
   reportDay,
@@ -95,6 +97,106 @@ export const fileSource: SidecarSource = {
   readCommandRuns: (logDir) => readCommandRunsFromFiles(logDir),
   readConcepts: (logDir) => readConceptsFromFiles(logDir),
 };
+
+export interface WindowOptions extends ReadOptions {
+  /**
+   * Root of the relocated archive. Only the file backing consults it — the
+   * substrate answers from what was ingested.
+   */
+  archiveDir?: string;
+}
+
+export interface WindowResult extends LoadResult {
+  /** Reporting day → that day's sidecars, archived half first. Only days that read something. */
+  byDay: Map<string, unknown[]>;
+  /** How many days in the span had an archived half with files in it. */
+  archivedDays: number;
+  /**
+   * The days the archive was consulted for, oldest→newest. Empty when the span
+   * is unbounded (see {@link readWindow}), which is the one case this reader
+   * cannot compose — there is no first day to walk from.
+   */
+  days: string[];
+}
+
+/** The days a window covers, oldest→newest; empty when the span has no floor. */
+function windowDays(opts: WindowOptions, now: Date): string[] {
+  const end = today(now);
+  if (opts.date) return [opts.date];
+  const from = opts.since ?? (opts.sinceDays == null ? null : shiftDay(end, -(opts.sinceDays - 1)));
+  if (from === null) return [];
+  const days: string[] = [];
+  for (let day = from; day <= end; day = shiftDay(day, 1)) days.push(day);
+  return days;
+}
+
+/**
+ * **The only way a multi-day window is read.** `readSidecars` scans one root and
+ * stops there, so a builder that calls it directly sees today and whatever else
+ * `maintain` has not archived yet — the day it moves into `<logDir>/archive/<date>/`
+ * simply vanishes from that builder's answer. Four builders each rediscovered
+ * that and three feature docs each recorded it as an open question; composing the
+ * two halves here means a new builder cannot forget to.
+ *
+ * The two halves are read per day and concatenated archived-first, so the stream
+ * stays chronological across the seam where a day is half archived and half live.
+ * Reporting days and the archiver's UTC rotation do not line up, so a day near
+ * the present genuinely sits in both places.
+ *
+ * `readSidecars` stays exactly what it was: the single-root primitive underneath.
+ *
+ * An unbounded span — no `date`, `since`, or `sinceDays` — reads the live root
+ * only. Enumerating every day the archive might hold would need a floor this
+ * reader has not been given, so the caller gets the old behaviour and an empty
+ * `days`, not a guess.
+ */
+export async function readWindow(
+  logDir: string,
+  opts: WindowOptions = {},
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<WindowResult> {
+  // The span narrows the live read; the archived halves are addressed by day, so
+  // they take only the per-file options.
+  const { archiveDir, ...readOpts } = opts;
+  const { date: _date, since: _since, sinceDays: _sinceDays, ...perFile } = readOpts;
+  const days = windowDays(opts, now);
+
+  const archived = await Promise.all(
+    days.map(async (day) => ({
+      day,
+      read: await source.readArchivedDay(logDir, day, { ...perFile, archiveDir }),
+    })),
+  );
+  const live = await source.readSidecars(logDir, readOpts, now);
+
+  const byDay = new Map<string, unknown[]>();
+  const sidecars: unknown[] = [];
+  let files = live.files;
+  let parseErrors = live.parseErrors;
+  let bodiesEvicted = live.bodiesEvicted ?? 0;
+  let archivedDays = 0;
+
+  for (const { day, read } of archived) {
+    if (read.files === 0) continue;
+    archivedDays += 1;
+    files += read.files;
+    parseErrors += read.parseErrors;
+    bodiesEvicted += read.bodiesEvicted ?? 0;
+    sidecars.push(...read.sidecars);
+    byDay.set(day, [...read.sidecars]);
+  }
+  for (const sidecar of live.sidecars) {
+    sidecars.push(sidecar);
+    if (!isAuditSidecar(sidecar)) continue;
+    const day = dayOf(sidecar);
+    const bucket = byDay.get(day) ?? [];
+    bucket.push(sidecar);
+    byDay.set(day, bucket);
+  }
+
+  return { sidecars, files, parseErrors, bodiesEvicted, byDay, archivedDays, days };
+}
 
 /** The live log directory's `source_dir`; archived days are `archive/<YYYY-MM-DD>`. */
 const LIVE = '';
