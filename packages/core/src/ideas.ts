@@ -39,15 +39,44 @@
 import { parseWriteProvenance, type WriteProvenance } from './provenance.js';
 
 /**
- * Where an idea's evidence came from. Every one of these is a statement a
+ * Where an idea's evidence came from. The first four are each a statement a
  * *person* wrote down — an unresolved question, a judge's note on a confirmed
  * finding, a shipped changelog entry, an explicit deferral. An idea with no
  * evidence of one of these kinds is invention with nothing behind it, which is
  * why {@link parseIdeaAdds} refuses one.
+ *
+ * `command-gap` is the fifth and the odd one out: it cites the *absence* of a
+ * command, and a command nobody wrote has no file path to point at. It is
+ * therefore the one source that carries **no locator**, and the one citation a
+ * reader cannot go and check. That is a real cost, accepted deliberately and
+ * contained by {@link IDEA_COMMAND_AREA} — see the rules on
+ * {@link parseIdeaAdds}.
  */
-export const IDEA_EVIDENCE_SOURCES = ['open-question', 'judge-note', 'changelog', 'deferral'] as const;
+export const IDEA_EVIDENCE_SOURCES = ['open-question', 'judge-note', 'changelog', 'deferral', 'command-gap'] as const;
 
 export type IdeaEvidenceSource = (typeof IDEA_EVIDENCE_SOURCES)[number];
+
+/**
+ * The one source that may stand alone, with no path and no bucket/id.
+ *
+ * Everything else must say where it was read, because that locator is what lets
+ * a reader check the citation rather than take it on trust.
+ */
+const LOCATORLESS_SOURCE: IdeaEvidenceSource = 'command-gap';
+
+/**
+ * The single area string this module ascribes meaning to.
+ *
+ * **The area vocabulary is otherwise free text** — {@link SEED_IDEA_AREAS} is
+ * advisory and any kebab string is a valid area. This one constant is the
+ * deliberate exception, and it exists to contain {@link LOCATORLESS_SOURCE}: a
+ * `command-gap` cites a command that was never written, so it carries no
+ * locator, and an uncheckable citation is only tolerable where it is the *only*
+ * citation available. Confining it to the Commands area is what stops "no file
+ * to point at" becoming the universal excuse for evidence-free invention. Both
+ * rules are enforced at the parse boundary, in {@link parseIdeaAdds}.
+ */
+export const IDEA_COMMAND_AREA = 'commands';
 
 /** True when `value` names one of the evidence sources. */
 export function isIdeaEvidenceSource(value: unknown): value is IdeaEvidenceSource {
@@ -108,6 +137,53 @@ const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** True when `value` is a well-formed idea slug. */
 export function isIdeaSlug(value: unknown): value is string {
   return typeof value === 'string' && SLUG_PATTERN.test(value);
+}
+
+/**
+ * True when `value` is a well-formed area — the same kebab shape a slug takes.
+ *
+ * **Shape is the whole check.** There is no allow-list: an area is free text,
+ * and an agent that files an idea under `observability` is filing it correctly
+ * even though nothing here has heard of that word. What the shape buys is that
+ * two runs writing the same area write the same string, so the tab it lands
+ * under is predictable.
+ */
+export function isIdeaArea(value: unknown): value is string {
+  return typeof value === 'string' && SLUG_PATTERN.test(value);
+}
+
+/**
+ * The areas worth suggesting, in the order a reader should meet them.
+ *
+ * **Advisory only.** These are the tab order, the display labels, and the list
+ * the CLI's help prints — never a constraint. {@link parseIdeaAdds} accepts any
+ * area passing {@link isIdeaArea}, and an area invented by an agent gets a tab
+ * of its own beside these. The seeds exist so the common case is spelled one
+ * way rather than five.
+ */
+export const SEED_IDEA_AREAS: readonly { area: string; label: string }[] = [
+  { area: 'ui-ux', label: 'UI/UX' },
+  { area: 'infrastructure', label: 'Infrastructure' },
+  { area: 'code-quality', label: 'Code Quality' },
+  { area: 'services', label: 'Services' },
+  { area: IDEA_COMMAND_AREA, label: 'Commands' },
+];
+
+/** What a row with no area reads as — legacy rows written before areas existed. */
+export const UNFILED_IDEA_AREA_LABEL = 'Unfiled';
+
+/**
+ * The display label for an area: the seed's if it has one, else the area itself
+ * title-cased enough to read as a heading rather than as a key.
+ */
+export function ideaAreaLabel(area: string | undefined): string {
+  if (!area) return UNFILED_IDEA_AREA_LABEL;
+  const seed = SEED_IDEA_AREAS.find((s) => s.area === area);
+  if (seed) return seed.label;
+  return area
+    .split('-')
+    .map((part) => (part ? part[0]!.toUpperCase() + part.slice(1) : part))
+    .join(' ');
 }
 
 /**
@@ -176,6 +252,17 @@ export interface IdeaEntry {
   evidence: IdeaEvidence[];
   /** The repo it lands in, as a git remote slug. */
   repo: string;
+  /**
+   * What kind of thing it is — the tab it files under.
+   *
+   * **Required on the way in and optional on the way out.** {@link parseIdeaAdds}
+   * refuses an entry without one, exactly as it refuses one citing nothing, so
+   * nothing new lands unfiled. {@link parseIdeasStore} tolerates its absence,
+   * because every row written before areas existed lacks it — and dropping those
+   * rows would discard the rejection reasons the dedupe check reads. Those rows
+   * show as {@link UNFILED_IDEA_AREA_LABEL} until someone files them.
+   */
+  area?: string;
   status: IdeaStatus;
   /** ISO timestamp of the write that first recorded it. */
   created: string;
@@ -183,6 +270,16 @@ export interface IdeaEntry {
   updated: string;
   /** For `rejected`, the reason; for `shipped`, the PR url. */
   note?: string;
+  /**
+   * A human's own words about the idea — build notes, scope, a caveat.
+   *
+   * **Deliberately not {@link IdeaEntry.note}.** That field is machinery: a
+   * rejection's reason is what stops the idea being re-proposed, and a shipped
+   * entry's PR url is its trace. Overloading it with commentary would put free
+   * prose where a dedupe check reads. This one is overwritten on each edit
+   * rather than appended to — it is the current instruction, not a log.
+   */
+  comment?: string;
   /** Who is building it, present only while `status` is `claimed`. */
   claim?: IdeaClaim;
   /**
@@ -224,10 +321,8 @@ export function parseIdeasStore(raw: unknown): IdeasStore {
   for (const [key, value] of Object.entries(ideas as Record<string, unknown>)) {
     if (!isIdeaSlug(key)) continue;
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-    const { title, rationale, evidence, repo, status, created, updated, note, claim, by } = value as Record<
-      string,
-      unknown
-    >;
+    const { title, rationale, evidence, repo, area, status, created, updated, note, comment, claim, by } =
+      value as Record<string, unknown>;
     if (!isIdeaStatus(status)) continue;
     if (!isIdeaRepo(repo)) continue;
     if (typeof title !== 'string' || !title.trim()) continue;
@@ -245,10 +340,15 @@ export function parseIdeasStore(raw: unknown): IdeasStore {
       rationale: typeof rationale === 'string' ? rationale.trim() : '',
       evidence: kept,
       repo,
+      // Tolerated absent, and a malformed one is dropped rather than dropping
+      // the entry: an idea filed under `Not An Area` reads as Unfiled, which is
+      // fixable from the dashboard, where a dropped row is not.
+      ...(isIdeaArea(area) ? { area } : {}),
       status,
       created: typeof created === 'string' ? created : '',
       updated: typeof updated === 'string' ? updated : '',
       ...(typeof note === 'string' && note ? { note } : {}),
+      ...(typeof comment === 'string' && comment.trim() ? { comment: comment.trim() } : {}),
       ...(parsedClaim ? { claim: parsedClaim } : {}),
       ...(actor ? { by: actor } : {}),
     };
@@ -269,7 +369,12 @@ function parseClaim(raw: unknown): IdeaClaim | null {
   };
 }
 
-/** Read an untrusted value as an evidence list, dropping entries with no source or no locator. */
+/**
+ * Read an untrusted value as an evidence list, dropping entries with no source
+ * or no locator — except {@link LOCATORLESS_SOURCE}, which has nothing to locate
+ * and stands alone. Which *areas* may carry that one is a separate rule, checked
+ * in {@link parseIdeaAdds} where the area is in hand.
+ */
 function parseEvidenceList(raw: unknown): IdeaEvidence[] {
   if (!Array.isArray(raw)) return [];
   const kept: IdeaEvidence[] = [];
@@ -279,7 +384,7 @@ function parseEvidenceList(raw: unknown): IdeaEvidence[] {
     if (!isIdeaEvidenceSource(source)) continue;
     const hasPath = typeof path === 'string' && path.trim() !== '';
     const hasRef = Number.isInteger(bucket) && typeof id === 'string' && id.trim() !== '';
-    if (!hasPath && !hasRef) continue;
+    if (!hasPath && !hasRef && source !== LOCATORLESS_SOURCE) continue;
     kept.push({
       source,
       ...(hasPath ? { path: (path as string).trim() } : {}),
@@ -303,6 +408,8 @@ export interface IdeaAdd {
   rationale: string;
   evidence: IdeaEvidence[];
   repo: string;
+  /** Required here, unlike on {@link IdeaEntry} — nothing new lands unfiled. */
+  area: string;
   /** Defaults to `proposed`. An add may not claim a sign-off nobody gave. */
   status?: IdeaStatus;
   note?: string;
@@ -343,6 +450,7 @@ export function applyIdeaAdds(store: IdeasStore, adds: readonly IdeaAdd[], now: 
       rationale: add.rationale,
       evidence: add.evidence,
       repo: add.repo,
+      ...(add.area ? { area: add.area } : {}),
       status: add.status ?? DEFAULT_IDEA_STATUS,
       created: at,
       updated: at,
@@ -413,6 +521,151 @@ export function applyIdeaMarks(store: IdeasStore, marks: readonly IdeaMark[], no
     updated.push(mark.slug);
   }
   return { store: next, updated, unknown };
+}
+
+/** A re-filing: which idea, and the area it belongs under. */
+export interface IdeaFiling {
+  slug: string;
+  area: string;
+  /** Who re-filed it. Replaces any existing attribution; absent leaves it. */
+  by?: WriteProvenance;
+}
+
+/** A comment written on one idea. */
+export interface IdeaComment {
+  slug: string;
+  /** The whole comment. **Overwrites** any existing one — this is not an append. */
+  text: string;
+  /** Who wrote it. Replaces any existing attribution; absent leaves it. */
+  by?: WriteProvenance;
+}
+
+/** What {@link applyIdeaFilings} or {@link applyIdeaComments} did. */
+export interface IdeaEditResult {
+  store: IdeasStore;
+  updated: string[];
+  /** Slugs no entry carries. Nothing is written for these, as with a mark. */
+  unknown: string[];
+}
+
+/**
+ * File ideas under an area, returning a new store — the input is never mutated.
+ *
+ * **Deliberately not folded into {@link applyIdeaMarks}.** Filing and deciding
+ * are different acts, and a single verb doing both would let a status change
+ * move an idea between tabs as a side effect — or a re-file quietly reset a
+ * rejection. Keeping them apart is also what makes this the tool for the two
+ * jobs it actually has: classifying a legacy row that reads as Unfiled, and
+ * correcting a misfile. **`status`, `note` and `claim` are all left exactly as
+ * they were.**
+ *
+ * The one refusal is {@link IDEA_COMMAND_AREA} containment: an idea citing
+ * {@link LOCATORLESS_SOURCE} may not be filed anywhere else. `parseIdeaAdds`
+ * enforces that on the way in, and re-filing is the only other way to reach the
+ * state it forbids — so it is checked over the whole batch before anything is
+ * written, rather than half-applied and then thrown.
+ */
+export function applyIdeaFilings(
+  store: IdeasStore,
+  filings: readonly IdeaFiling[],
+  now: Date = new Date(),
+): IdeaEditResult {
+  for (const filing of filings) {
+    const current = store.ideas[filing.slug];
+    if (!current || filing.area === IDEA_COMMAND_AREA) continue;
+    if (current.evidence.some((e) => e.source === LOCATORLESS_SOURCE)) {
+      throw new Error(
+        `${filing.slug} cites ${LOCATORLESS_SOURCE}, which carries no locator and so is confined to the ${IDEA_COMMAND_AREA} area — it cannot be filed under ${filing.area}`,
+      );
+    }
+  }
+
+  const next: IdeasStore = { version: 1, ideas: { ...store.ideas } };
+  const at = now.toISOString();
+  const updated: string[] = [];
+  const unknown: string[] = [];
+
+  for (const filing of filings) {
+    const current = next.ideas[filing.slug];
+    if (!current) {
+      unknown.push(filing.slug);
+      continue;
+    }
+    const by = filing.by ?? current.by;
+    next.ideas[filing.slug] = { ...current, area: filing.area, updated: at, ...(by ? { by } : {}) };
+    updated.push(filing.slug);
+  }
+  return { store: next, updated, unknown };
+}
+
+/**
+ * Write comments on ideas, returning a new store — the input is never mutated.
+ *
+ * Each write **replaces** the whole comment, and an empty one clears it. See
+ * {@link IdeaEntry.comment} for why this is a separate field from `note`.
+ */
+export function applyIdeaComments(
+  store: IdeasStore,
+  comments: readonly IdeaComment[],
+  now: Date = new Date(),
+): IdeaEditResult {
+  const next: IdeasStore = { version: 1, ideas: { ...store.ideas } };
+  const at = now.toISOString();
+  const updated: string[] = [];
+  const unknown: string[] = [];
+
+  for (const comment of comments) {
+    const current = next.ideas[comment.slug];
+    if (!current) {
+      unknown.push(comment.slug);
+      continue;
+    }
+    const text = comment.text.trim();
+    const by = comment.by ?? current.by;
+    // Rebuilt rather than spread-over, so an emptied comment is dropped by
+    // omission rather than persisted as `""`.
+    const { comment: _replaced, ...rest } = current;
+    next.ideas[comment.slug] = { ...rest, updated: at, ...(text ? { comment: text } : {}), ...(by ? { by } : {}) };
+    updated.push(comment.slug);
+  }
+  return { store: next, updated, unknown };
+}
+
+/** Read untrusted input as filings, or throw with the first thing wrong. */
+export function parseIdeaFilings(raw: unknown): IdeaFiling[] {
+  if (!Array.isArray(raw)) throw new Error('filings must be an array');
+  if (raw.length === 0) throw new Error('filings must not be empty');
+
+  return raw.map((item, i) => {
+    const where = `filings[${i}]`;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
+    const { slug, area, by } = item as Record<string, unknown>;
+    if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
+    if (!isIdeaArea(area)) throw new Error(`${where}.area must be a kebab-case area (a-z, 0-9, single dashes)`);
+    if (by !== undefined && parseWriteProvenance(by) === null)
+      throw new Error(`${where}.by must carry a 16-hex-character thread id`);
+    const actor = parseWriteProvenance(by);
+    return { slug: slug as string, area, ...(actor ? { by: actor } : {}) };
+  });
+}
+
+/** Read untrusted input as comments, or throw with the first thing wrong. */
+export function parseIdeaComments(raw: unknown): IdeaComment[] {
+  if (!Array.isArray(raw)) throw new Error('comments must be an array');
+  if (raw.length === 0) throw new Error('comments must not be empty');
+
+  return raw.map((item, i) => {
+    const where = `comments[${i}]`;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
+    const { slug, text, by } = item as Record<string, unknown>;
+    if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
+    // An empty string is the clear, so it is accepted where a missing field is not.
+    if (typeof text !== 'string') throw new Error(`${where}.text must be a string ('' clears the comment)`);
+    if (by !== undefined && parseWriteProvenance(by) === null)
+      throw new Error(`${where}.by must carry a 16-hex-character thread id`);
+    const actor = parseWriteProvenance(by);
+    return { slug: slug as string, text, ...(actor ? { by: actor } : {}) };
+  });
 }
 
 /** A request to take an idea, as a caller asks for it. */
@@ -530,7 +783,18 @@ export function parseIdeaClaims(raw: unknown): IdeaClaimRequest[] {
  * Read untrusted input (a CLI's `--json`, an HTTP body) as adds, or throw with
  * the first thing wrong. **The evidence rule is enforced here**, not left to the
  * caller: an idea citing nothing is the failure mode this whole store exists to
- * suppress, so it is a parse error rather than a lint.
+ * suppress, so it is a parse error rather than a lint. **The area is required on
+ * the same footing**, so nothing new lands unfiled.
+ *
+ * Both {@link IDEA_COMMAND_AREA} containment rules are enforced here too, and
+ * they are two rules rather than one:
+ *
+ * 1. A `command-gap` citation may appear only on an idea whose area *is*
+ *    `commands` — anywhere else it is refused, whatever else the idea cites.
+ * 2. It is the only source that may stand alone, so an idea citing nothing but
+ *    `command-gap` is necessarily a `commands` idea. Rule 1 already refuses the
+ *    alternative; this is the consequence worth stating, because it is the one
+ *    place the ledger accepts a citation with no locator at all.
  */
 export function parseIdeaAdds(raw: unknown): IdeaAdd[] {
   if (!Array.isArray(raw)) throw new Error('ideas must be an array');
@@ -540,7 +804,7 @@ export function parseIdeaAdds(raw: unknown): IdeaAdd[] {
   return raw.map((item, i) => {
     const where = `ideas[${i}]`;
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { slug, title, rationale, evidence, repo, status, note } = item as Record<string, unknown>;
+    const { slug, title, rationale, evidence, repo, area, status, note } = item as Record<string, unknown>;
 
     if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
     if (seen.has(slug as string)) throw new Error(`${where}.slug repeats ${String(slug)} in the same batch`);
@@ -550,6 +814,10 @@ export function parseIdeaAdds(raw: unknown): IdeaAdd[] {
       throw new Error(`${where}.rationale must be a non-empty string`);
     if (!isIdeaRepo(repo))
       throw new Error(`${where}.repo must be a git remote slug like owner/name, never a checkout path`);
+    if (!isIdeaArea(area))
+      throw new Error(
+        `${where}.area must be a kebab-case area (a-z, 0-9, single dashes) — any word will do, and these are the ones already in use: ${SEED_IDEA_AREAS.map((s) => s.area).join(', ')}`,
+      );
     if (status !== undefined && !isIdeaStatus(status))
       throw new Error(`${where}.status must be one of ${IDEA_STATUSES.join(', ')}`);
     if (note !== undefined && typeof note !== 'string') throw new Error(`${where}.note must be a string`);
@@ -557,7 +825,12 @@ export function parseIdeaAdds(raw: unknown): IdeaAdd[] {
     const parsed = parseEvidenceList(evidence);
     if (parsed.length === 0) {
       throw new Error(
-        `${where}.evidence must cite at least one of ${IDEA_EVIDENCE_SOURCES.join(', ')}, each with a path (or bucket + id for a judge note)`,
+        `${where}.evidence must cite at least one of ${IDEA_EVIDENCE_SOURCES.join(', ')}, each with a path (or bucket + id for a judge note); only ${LOCATORLESS_SOURCE} stands alone`,
+      );
+    }
+    if (area !== IDEA_COMMAND_AREA && parsed.some((e) => e.source === LOCATORLESS_SOURCE)) {
+      throw new Error(
+        `${where}.evidence cites ${LOCATORLESS_SOURCE}, which carries no locator and so is confined to the ${IDEA_COMMAND_AREA} area — this idea is filed under ${String(area)}`,
       );
     }
     return {
@@ -566,6 +839,7 @@ export function parseIdeaAdds(raw: unknown): IdeaAdd[] {
       rationale: rationale.trim(),
       evidence: parsed,
       repo: repo as string,
+      area,
       ...(status === undefined ? {} : { status }),
       ...(note === undefined ? {} : { note }),
     };
@@ -603,6 +877,8 @@ export interface IdeaFilter {
   statuses?: readonly IdeaStatus[];
   /** A git remote slug. */
   repo?: string;
+  /** An area. Matches exactly; a row with no area matches nothing. */
+  area?: string;
 }
 
 /**
@@ -615,6 +891,7 @@ export function ideaRows(store: IdeasStore, filter: IdeaFilter = {}): IdeaEntry[
   return Object.values(store.ideas)
     .filter((entry) => (statuses ? statuses.has(entry.status) : true))
     .filter((entry) => (filter.repo ? entry.repo === filter.repo : true))
+    .filter((entry) => (filter.area ? entry.area === filter.area : true))
     .sort((a, b) => a.created.localeCompare(b.created) || a.slug.localeCompare(b.slug));
 }
 
@@ -638,6 +915,32 @@ export function countIdeaStatuses(rows: readonly IdeaEntry[]): Record<IdeaStatus
   const counts = Object.fromEntries(IDEA_STATUSES.map((s) => [s, 0])) as Record<IdeaStatus, number>;
   for (const row of rows) counts[row.status] += 1;
   return counts;
+}
+
+/** Totals per area over the rows given, plus the rows carrying no area at all. */
+export interface IdeaAreaCounts {
+  /**
+   * Area → how many rows are filed under it. **Every seed area is present, at 0
+   * when empty**, so a tab strip renders the full vocabulary from this record
+   * alone rather than scanning the ledger and then unioning in the seeds.
+   */
+  areas: Record<string, number>;
+  /** Rows with no area — the legacy ones. Zero means the Unfiled tab is gone for good. */
+  unfiled: number;
+}
+
+/** Totals per area over the rows given. */
+export function countIdeaAreas(rows: readonly IdeaEntry[]): IdeaAreaCounts {
+  const areas: Record<string, number> = Object.fromEntries(SEED_IDEA_AREAS.map((s) => [s.area, 0]));
+  let unfiled = 0;
+  for (const row of rows) {
+    if (!row.area) {
+      unfiled += 1;
+      continue;
+    }
+    areas[row.area] = (areas[row.area] ?? 0) + 1;
+  }
+  return { areas, unfiled };
 }
 
 /** Slug tokens worth nothing as a similarity signal, being in half the slugs on any ledger. */
@@ -669,4 +972,41 @@ export function similarIdeaSlugs(store: IdeasStore, slug: string): string[] {
     .filter((s) => s.score >= 0.5)
     .sort((a, b) => b.score - a.score || a.slug.localeCompare(b.slug))
     .map((s) => s.slug);
+}
+
+/**
+ * Areas already in use that look like they might be `area`, strongest first.
+ *
+ * The sibling of {@link similarIdeaSlugs}, and it exists for the same reason and
+ * with the same restraint: **it never refuses anything.** A free-text vocabulary
+ * fragments when one run writes `infra` and the next writes `infrastructure`,
+ * and the fix for that is a reader noticing, not a gate — an agent with a
+ * genuinely new area must still be able to open one. So `ideas add` reports
+ * these beside the entry it just recorded.
+ *
+ * It matches on prefixes as well as shared tokens, because the fragmentations
+ * worth catching are abbreviations (`infra`, `ui`, `svc`) rather than
+ * rewordings, and those share no whole token with what they abbreviate.
+ */
+export function similarAreas(store: IdeasStore, area: string): string[] {
+  const known = new Set<string>(SEED_IDEA_AREAS.map((s) => s.area));
+  for (const entry of Object.values(store.ideas)) if (entry.area) known.add(entry.area);
+
+  const tokens = new Set(area.split('-').filter((t) => t && !STOP_TOKENS.has(t)));
+  const scored: { area: string; score: number }[] = [];
+  for (const existing of known) {
+    if (existing === area) continue;
+    const other = existing.split('-').filter((t) => t && !STOP_TOKENS.has(t));
+    const shared = other.filter((t) => tokens.has(t)).length;
+    // An abbreviation shares no token with what it abbreviates, so a prefix of
+    // three or more characters counts as a hit in its own right.
+    const prefix = area.length >= 3 && existing.length >= 3 && (existing.startsWith(area) || area.startsWith(existing));
+    if (shared === 0 && !prefix) continue;
+    const overlap = tokens.size && other.length ? shared / Math.min(tokens.size, other.length) : 0;
+    scored.push({ area: existing, score: Math.max(overlap, prefix ? 0.75 : 0) });
+  }
+  return scored
+    .filter((s) => s.score >= 0.5)
+    .sort((a, b) => b.score - a.score || a.area.localeCompare(b.area))
+    .map((s) => s.area);
 }

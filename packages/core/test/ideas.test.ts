@@ -2,22 +2,31 @@ import { describe, expect, it } from 'vitest';
 import {
   applyIdeaAdds,
   applyIdeaClaims,
+  applyIdeaComments,
+  applyIdeaFilings,
   applyIdeaMarks,
   claimableIdeaRows,
+  countIdeaAreas,
   countIdeaStatuses,
   emptyIdeasStore,
   IDEA_CLAIM_TTL_MS,
   type IdeaAdd,
   type IdeaEvidence,
+  ideaAreaLabel,
   ideaOf,
   ideaRows,
+  isIdeaArea,
   isIdeaClaimStale,
   isIdeaRepo,
   isIdeaSlug,
   parseIdeaAdds,
   parseIdeaClaims,
+  parseIdeaComments,
+  parseIdeaFilings,
   parseIdeaMarks,
   parseIdeasStore,
+  SEED_IDEA_AREAS,
+  similarAreas,
   similarIdeaSlugs,
 } from '../src/index.js';
 
@@ -30,6 +39,7 @@ function add(slug: string, over: Partial<IdeaAdd> = {}): IdeaAdd {
     rationale: 'Because the open question says so.',
     evidence: EVIDENCE,
     repo: 'llevasseur/claude-proxy',
+    area: 'ui-ux',
     ...over,
   };
 }
@@ -435,5 +445,200 @@ describe('near-duplicate detection', () => {
   it('does not report the slug itself', () => {
     const { store } = applyIdeaAdds(emptyIdeasStore(), [add('rolling-window')]);
     expect(similarIdeaSlugs(store, 'rolling-window')).toEqual([]);
+  });
+});
+
+describe('areas', () => {
+  it('takes the same shape as a slug, and nothing else', () => {
+    expect(isIdeaArea('ui-ux')).toBe(true);
+    expect(isIdeaArea('infrastructure')).toBe(true);
+    expect(isIdeaArea('UI-UX')).toBe(false);
+    expect(isIdeaArea('ui--ux')).toBe(false);
+    expect(isIdeaArea('-unfiled')).toBe(false);
+    expect(isIdeaArea('')).toBe(false);
+    expect(isIdeaArea(undefined)).toBe(false);
+  });
+
+  it('is required on the way in — refused exactly as evidence is', () => {
+    const { area: _dropped, ...arealess } = add('one');
+    expect(() => parseIdeaAdds([arealess])).toThrow(/area must be a kebab-case area/);
+    expect(() => parseIdeaAdds([add('one', { area: 'Not_Kebab' })])).toThrow(/area must be a kebab-case area/);
+    // Any word will do: the seeds are a vocabulary, never a whitelist.
+    expect(parseIdeaAdds([add('one', { area: 'observability' })])[0]?.area).toBe('observability');
+  });
+
+  it('names the seeds in the refusal, so the vocabulary is discoverable from the error', () => {
+    const { area: _dropped, ...arealess } = add('one');
+    for (const seed of SEED_IDEA_AREAS) expect(() => parseIdeaAdds([arealess])).toThrow(seed.area);
+  });
+
+  it('is tolerated absent on the way out, so a legacy row keeps its rejection reason', () => {
+    const store = parseIdeasStore({
+      version: 1,
+      ideas: {
+        legacy: {
+          title: 'Written before areas existed',
+          rationale: 'r',
+          evidence: EVIDENCE,
+          repo: 'a/b',
+          status: 'rejected',
+          note: 'covered by /trends',
+        },
+      },
+    });
+    // Dropping it would lose the reason, and the reason is what dedupes the ledger.
+    expect(store.ideas.legacy).toBeDefined();
+    expect(store.ideas.legacy?.area).toBeUndefined();
+    expect(store.ideas.legacy?.note).toBe('covered by /trends');
+    expect(ideaAreaLabel(store.ideas.legacy?.area)).toBe('Unfiled');
+  });
+
+  it('labels a seed by its written-out name and an invented one by its own words', () => {
+    expect(ideaAreaLabel('ui-ux')).toBe('UI/UX');
+    expect(ideaAreaLabel('code-quality')).toBe('Code Quality');
+    // An invented area has no label to look up, so the slug's own words are it.
+    expect(ideaAreaLabel('observability')).toBe('Observability');
+    expect(ideaAreaLabel('build-times')).toBe('Build Times');
+  });
+
+  it('filters and counts by area, with every seed present at zero', () => {
+    let store = applyIdeaAdds(emptyIdeasStore(), [add('one')], new Date('2026-08-01')).store;
+    store = applyIdeaAdds(store, [add('two', { area: 'infrastructure' })], new Date('2026-08-02')).store;
+    // A legacy row, as it comes off disk: no area at all.
+    store = parseIdeasStore({
+      version: 1,
+      ideas: {
+        ...JSON.parse(JSON.stringify(store)).ideas,
+        old: { title: 'Legacy', rationale: 'r', evidence: EVIDENCE, repo: 'a/b', status: 'proposed' },
+      },
+    });
+
+    expect(ideaRows(store, { area: 'ui-ux' }).map((r) => r.slug)).toEqual(['one']);
+    // An area-less row matches no area filter at all, rather than every one.
+    expect(ideaRows(store, { area: 'infrastructure' }).map((r) => r.slug)).toEqual(['two']);
+    expect(countIdeaAreas(ideaRows(store))).toEqual({
+      areas: { 'ui-ux': 1, infrastructure: 1, 'code-quality': 0, services: 0, commands: 0 },
+      unfiled: 1,
+    });
+  });
+
+  it('surfaces an abbreviation of an area already in use, without refusing it', () => {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('one', { area: 'infrastructure' })]);
+    expect(similarAreas(store, 'infra')).toEqual(['infrastructure']);
+    expect(similarAreas(store, 'infrastructure')).toEqual([]);
+    expect(similarAreas(store, 'observability')).toEqual([]);
+  });
+});
+
+describe('the commands area, which is the one area core knows the meaning of', () => {
+  const GAP: IdeaEvidence[] = [{ source: 'command-gap' }];
+
+  it('accepts a command-gap standing alone, which no other source may do', () => {
+    const [parsed] = parseIdeaAdds([add('one', { area: 'commands', evidence: GAP })]);
+    expect(parsed?.evidence).toEqual([{ source: 'command-gap' }]);
+    // Every other source still needs a locator, alone or not.
+    expect(() => parseIdeaAdds([add('one', { evidence: [{ source: 'deferral' }] })])).toThrow(/must cite at least one/);
+  });
+
+  it('refuses a command-gap filed anywhere else, however much else it cites', () => {
+    expect(() => parseIdeaAdds([add('one', { area: 'ui-ux', evidence: GAP })])).toThrow(/confined to the commands/);
+    expect(() =>
+      parseIdeaAdds([add('one', { area: 'ui-ux', evidence: [...EVIDENCE, { source: 'command-gap' }] })]),
+    ).toThrow(/confined to the commands/);
+  });
+
+  it('refuses re-filing one out of commands, since that is the other way into the forbidden state', () => {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('one', { area: 'commands', evidence: GAP })]);
+    expect(() => applyIdeaFilings(store, [{ slug: 'one', area: 'ui-ux' }])).toThrow(/confined to the commands/);
+    // Refused over the whole batch before anything is written, never half-applied.
+    const both = applyIdeaAdds(store, [add('two')]).store;
+    expect(() =>
+      applyIdeaFilings(both, [
+        { slug: 'two', area: 'services' },
+        { slug: 'one', area: 'services' },
+      ]),
+    ).toThrow(/confined to the commands/);
+    expect(ideaOf(both, 'two')?.area).toBe('ui-ux');
+  });
+});
+
+describe('re-filing', () => {
+  it('changes the area and nothing else — not the status, the note, or the claim', () => {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('one')], new Date('2026-08-01'));
+    const rejected = applyIdeaMarks(store, [{ slug: 'one', status: 'rejected', note: 'too big' }]).store;
+    const filed = applyIdeaFilings(rejected, [{ slug: 'one', area: 'infrastructure' }], new Date('2026-08-05'));
+
+    const entry = ideaOf(filed.store, 'one');
+    expect(filed.updated).toEqual(['one']);
+    expect(entry?.area).toBe('infrastructure');
+    expect(entry?.status).toBe('rejected');
+    expect(entry?.note).toBe('too big');
+    expect(entry?.created).toBe('2026-08-01T00:00:00.000Z');
+    expect(entry?.updated).toBe('2026-08-05T00:00:00.000Z');
+  });
+
+  it('classifies a legacy row that reads as Unfiled', () => {
+    const store = parseIdeasStore({
+      version: 1,
+      ideas: { old: { title: 'Legacy', rationale: 'r', evidence: EVIDENCE, repo: 'a/b', status: 'proposed' } },
+    });
+    expect(ideaOf(applyIdeaFilings(store, [{ slug: 'old', area: 'services' }]).store, 'old')?.area).toBe('services');
+  });
+
+  it('writes nothing for a slug the ledger does not carry, and never mutates the input', () => {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('one')]);
+    const result = applyIdeaFilings(store, [{ slug: 'nope', area: 'services' }]);
+    expect(result.unknown).toEqual(['nope']);
+    expect(result.updated).toEqual([]);
+    expect(result.store.ideas.nope).toBeUndefined();
+    expect(ideaOf(store, 'one')?.area).toBe('ui-ux');
+  });
+
+  it('refuses a malformed filing at the parse boundary', () => {
+    expect(() => parseIdeaFilings([])).toThrow(/must not be empty/);
+    expect(() => parseIdeaFilings([{ slug: 'one' }])).toThrow(/area must be a kebab-case area/);
+    expect(() => parseIdeaFilings([{ slug: 'Not_Kebab', area: 'services' }])).toThrow(/slug must be kebab-case/);
+    expect(parseIdeaFilings([{ slug: 'one', area: 'services' }])[0]).toEqual({ slug: 'one', area: 'services' });
+  });
+});
+
+describe('commenting', () => {
+  it('round-trips a comment without touching the note', () => {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('one')], new Date('2026-08-01'));
+    const rejected = applyIdeaMarks(store, [{ slug: 'one', status: 'rejected', note: 'too big' }]).store;
+    const commented = applyIdeaComments(rejected, [{ slug: 'one', text: '  scope it to one page  ' }]);
+
+    const entry = ideaOf(commented.store, 'one');
+    expect(commented.updated).toEqual(['one']);
+    expect(entry?.comment).toBe('scope it to one page');
+    // The two fields are separate on purpose: `note` stays the rejection reason.
+    expect(entry?.note).toBe('too big');
+    expect(entry?.status).toBe('rejected');
+    expect(ideaOf(parseIdeasStore(JSON.parse(JSON.stringify(commented.store))), 'one')?.comment).toBe(
+      'scope it to one page',
+    );
+  });
+
+  it('replaces the comment on each write rather than appending', () => {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('one')]);
+    const first = applyIdeaComments(store, [{ slug: 'one', text: 'first' }]).store;
+    const second = applyIdeaComments(first, [{ slug: 'one', text: 'second' }]).store;
+    expect(ideaOf(second, 'one')?.comment).toBe('second');
+  });
+
+  it('clears the comment with an empty one, dropping the field rather than storing ""', () => {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('one')]);
+    const written = applyIdeaComments(store, [{ slug: 'one', text: 'something' }]).store;
+    const cleared = applyIdeaComments(written, [{ slug: 'one', text: '   ' }]).store;
+    expect(ideaOf(cleared, 'one')?.comment).toBeUndefined();
+    expect('comment' in (ideaOf(cleared, 'one') as object)).toBe(false);
+  });
+
+  it('writes nothing for an unknown slug, and refuses a malformed comment', () => {
+    expect(applyIdeaComments(emptyIdeasStore(), [{ slug: 'nope', text: 'x' }]).unknown).toEqual(['nope']);
+    expect(() => parseIdeaComments([])).toThrow(/must not be empty/);
+    expect(() => parseIdeaComments([{ slug: 'one' }])).toThrow(/text must be a string/);
+    // An empty string is the clear, so it parses where a missing field does not.
+    expect(parseIdeaComments([{ slug: 'one', text: '' }])[0]).toEqual({ slug: 'one', text: '' });
   });
 });
