@@ -1,5 +1,6 @@
-import type { IdeaEntry, IdeaEvidence, IdeaStatus } from '@claude-proxy/core';
+import { type IdeaEntry, type IdeaEvidence, type IdeaStatus, ideaAreaLabel } from '@claude-proxy/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { markIdeas } from '../api';
 import { fmtLocalTsShort } from '../format';
@@ -29,14 +30,14 @@ export const IDEA_STATUS_LABEL: Record<IdeaStatus, string> = {
  * lives in the suggestion store rather than in a file, so it is located by
  * `bucket`/`id`; everything else is a repo-relative path.
  */
-function citationOf(evidence: IdeaEvidence): string {
+export function citationOf(evidence: IdeaEvidence): string {
   if (evidence.path) return evidence.path;
   if (evidence.bucket !== undefined) return `bucket ${evidence.bucket}/${evidence.id ?? ''}`;
   return '';
 }
 
 /** What an idea cites, on every card — the evidence is what makes it approvable. */
-function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence[] }) {
+export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence[] }) {
   if (evidence.length === 0) return null;
   return (
     <ul className='idea-evidence'>
@@ -82,11 +83,21 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
     <div className={`card advice idea idea-${idea.status}`}>
       <div className='advice-head'>
         <span className={`badge idea-status-${idea.status}`}>{IDEA_STATUS_LABEL[idea.status]}</span>
-        <h3>{idea.title}</h3>
+        {/* The card stays actionable and gains a way in: the title opens the permalink,
+            which carries the rationale in full, the re-file picker and the comment. */}
+        <h3>
+          <Link to='/ideas/$slug' params={{ slug: idea.slug }} className='link'>
+            {idea.title}
+          </Link>
+        </h3>
+        {/* Unfiled for a row written before areas existed — `ideas file` classifies it. */}
+        <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
         <code className='idea-repo muted'>{idea.repo}</code>
       </div>
-      <p>{idea.rationale}</p>
+      <p className='idea-rationale'>{idea.rationale}</p>
       <IdeaEvidenceList evidence={idea.evidence} />
+
+      {idea.comment && <div className='suggestion-note idea-comment'>{idea.comment}</div>}
 
       {idea.claim && (
         <div className='suggestion-note idea-claim'>

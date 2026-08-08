@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Puzzle,
   ScrollText,
+  Sparkles,
   TerminalSquare,
   TrendingUp,
   Wrench,
@@ -39,6 +40,8 @@ import { ContextThreadPage } from './routes/context-thread';
 import { ContextToolPage } from './routes/context-tool';
 import { FiltersPage } from './routes/filters';
 import { HooksPluginsPage } from './routes/hooks-plugins';
+import { IdeaDetailPage } from './routes/idea-detail';
+import { IdeasPage } from './routes/ideas';
 import { JobDetailPage } from './routes/job-detail';
 import { JobsPage } from './routes/jobs';
 import { MemoryDetailPage } from './routes/memory-detail';
@@ -84,6 +87,8 @@ const STATIONS = [
   { to: '/cli-internals', label: 'CLI internals', hint: 'bundle', exact: false, icon: Binary },
   { to: '/concepts', label: 'Concepts', hint: '/teach', exact: false, icon: BookOpen },
   { to: '/advice', label: 'Advice', hint: 'coaching', exact: false, icon: Lightbulb },
+  // Beside Advice, which kept the coaching and handed the ledger over to this page.
+  { to: '/ideas', label: 'Ideas', hint: 'by area', exact: false, icon: Sparkles },
 ] as const;
 
 /** Scroll the document to the top, jumping rather than animating under `prefers-reduced-motion`. */
@@ -439,6 +444,31 @@ const adviceRoute = createRoute({
   component: AdvicePage,
   staticData: { title: 'Advice' },
 });
+/**
+ * `?area=` is the selected tab, so a filtered view is linkable and survives a
+ * reload. An unreadable one is dropped here and the page falls back to its
+ * default view — a renamed or deleted area must degrade, never error.
+ */
+export interface IdeasSearch {
+  area?: string;
+}
+const ideasRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ideas',
+  component: IdeasPage,
+  staticData: { title: 'Ideas' },
+  validateSearch: (search: Record<string, unknown>): IdeasSearch => {
+    const area = search.area;
+    return typeof area === 'string' && area !== '' ? { area } : {};
+  },
+});
+const ideaDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // The slug alone: the area is never in a permalink, so re-filing cannot break a link.
+  path: '/ideas/$slug',
+  component: IdeaDetailPage,
+  staticData: { title: 'Idea' },
+});
 const suggestionBucketRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/advice/sessions/$bucket',
@@ -498,6 +528,8 @@ const routeTree = rootRoute.addChildren([
   conceptsRoute,
   conceptDetailRoute,
   adviceRoute,
+  ideasRoute,
+  ideaDetailRoute,
   suggestionBucketRoute,
   commandsRoute,
   commandDetailRoute,
