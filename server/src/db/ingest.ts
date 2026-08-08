@@ -161,7 +161,7 @@ function prepare(db: DatabaseSync): Statements {
     insertRequest: db.prepare(`
       INSERT INTO request (
         id, source_dir, timestamp, model, endpoint, status_code,
-        session_present, session_id, app, user_agent, account, metadata_session_id, device_id,
+        session_present, session_id, thread_id, app, user_agent, account, metadata_session_id, device_id,
         tokens_input, tokens_output, tokens_cache_read, tokens_cache_creation, tokens_real_input,
         req_tool_count, req_tools_bytes, req_system_bytes, req_total_bytes,
         req_system_hash, req_system_blocks, req_system_sections,
@@ -170,7 +170,7 @@ function prepare(db: DatabaseSync): Statements {
         rate_limit_present, md_path, request_path, blob_evicted
       ) VALUES (
         ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?,
@@ -185,9 +185,11 @@ function prepare(db: DatabaseSync): Statements {
         blob_evicted        = excluded.blob_evicted,
         req_system_hash     = excluded.req_system_hash,
         req_system_blocks   = excluded.req_system_blocks,
-        req_system_sections = excluded.req_system_sections
+        req_system_sections = excluded.req_system_sections,
+        thread_id           = excluded.thread_id
       WHERE request.source_dir <> excluded.source_dir
          OR request.req_system_hash IS NOT excluded.req_system_hash
+         OR request.thread_id IS NOT excluded.thread_id
     `),
     insertTool: db.prepare(
       'INSERT INTO request_tool (request_id, ord, name, bytes, est_tokens) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
@@ -238,6 +240,9 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
         typeof s.statusCode === 'number' ? s.statusCode : null,
         bool(session),
         session ? str(session.sessionId) : null,
+        // Absent on a sidecar predating the field; null is that absence, and the
+        // readers fall back to the session id for it.
+        session ? str(session.threadId ?? null) : null,
         session ? str(session.app) : null,
         session ? str(session.userAgent) : null,
         session ? str(session.account) : null,
