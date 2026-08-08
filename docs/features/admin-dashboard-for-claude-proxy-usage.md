@@ -23,7 +23,12 @@ designed in
 
 ## Behavior
 
-Fifteen stations in the side rail, several with drill-down subpages beneath them:
+Eighteen stations in the side rail, several with drill-down subpages beneath them. They sit
+under six section headings — **Dashboard**, **Context**, **Sessions**, **Activity**,
+**Device**, **Learning** — and a heading is a label for the stations under it, never a
+destination: there is no page behind "Context", only the five stations it names.
+
+**Dashboard**
 
 - **Overview** (`/`) — today's real input / output tokens, estimated cost, cache-hit
   ratio, request count, busiest hour, tool overhead, and average system prompt, each
@@ -33,6 +38,8 @@ Fifteen stations in the side rail, several with drill-down subpages beneath them
 - **Trends** (`/trends`) — per-day tokens and cost over a 7/14/30-day window (bar
   charts + table), a tokens-per-request line chart, and a per-metric drill-down
   (`/trends/$metric`).
+**Context**
+
 - **Context size** (`/context`) — how large the prompt to the model gets, and why the
   largest was so large. See [Context-size analytics](context-size-analytics.md) and
   [Message drill-down](message-drill-down.md).
@@ -44,6 +51,8 @@ Fifteen stations in the side rail, several with drill-down subpages beneath them
 - **Not added** (`/withheld`) — tools the device's settings keep out of every request,
   cross-referenced against tools recently observed in traffic.
 - **Proxy filters** (`/filters`) — the inventory of what the proxy itself strips.
+**Sessions**
+
 - **Projects** (`/projects`) — per-project auto-memory files, with a page per project and
   per memory. See [Project memory browser](project-memory-browser.md).
 - **Sessions** (`/sessions`) — a two-pane chat client over per-thread transcripts, listed
@@ -53,8 +62,15 @@ Fifteen stations in the side rail, several with drill-down subpages beneath them
 - **Live graph** (`/sessions/graph`) — a full-bleed graph of sessions and their subagent
   branches, refreshed on a 4-second poll (this page does not use SSE). See
   [Live session graph](live-session-graph.md).
+**Activity**
+
+- **Pull requests** (`/pull-requests`) — this repository's own pull requests drawn as the tree
+  they formed, read-only, with a detail drawer tying each PR back to the sessions that worked
+  on it. See [Pull request tree](pull-request-tree.md).
 - **Jobs** (`/jobs`) — the device's `~/.claude` background jobs, with a per-job file tree
   and viewer. See [Background jobs browser](background-jobs-browser.md).
+**Device**
+
 - **Hooks & Plugins** (`/hooks-plugins`) — the hooks and plugins the device's settings
   declare. This station, Not added, and Proxy filters share one doc:
   [Config inventory](config-inventory.md).
@@ -64,6 +80,16 @@ Fifteen stations in the side rail, several with drill-down subpages beneath them
 - **Commands** (`/commands`) — what each slash command costs per declared step and where
   its runs stop, with a page per command and per run. See
   [Commands eval](commands-eval.md).
+- **CLI internals** (`/cli-internals`) — a catalogue of functions read out of the installed
+  Claude Code bundle. The bundle is minified, so each row is keyed to a signal that survives
+  minification and a row whose signal no longer matches says so rather than showing stale
+  source.
+
+**Learning**
+
+- **Concepts** (`/concepts`) — every term `/teach` has explained, with its one Simplified
+  Technical English sentence, and a detail page per term. See
+  [Concepts page](concepts-page.md).
 - **Advice** (`/advice`) — three stacked sections, ordered by how actionable they are.
   **Ideas** comes first: the [ideas ledger](ideas-ledger.md) as approve/deny cards, each
   showing what it cites, so a proposal is signed off in the browser rather than at a
@@ -74,11 +100,15 @@ Fifteen stations in the side rail, several with drill-down subpages beneath them
   ten-session suggestion buckets with persistent pending/done/skipped/dismissed flags.
   See [Session suggestions](session-suggestions.md).
 
-Each station has a [lucide](https://lucide.dev) icon. The rail toggles between full and
+Each station has a [lucide](https://lucide.dev) icon. The headings cost the rail about a
+station's worth of height apiece, so the rail scrolls on a short viewport rather than dropping
+its last group and the health badge off the bottom. The rail toggles between full and
 a 64px icon-only strip; `localStorage` key `admin:rail-collapsed` persists the choice.
 Collapsed labels remain visually hidden in the accessibility tree and appear as hover
-tooltips. At 860px and below, the rail becomes a top bar: the toggle and persisted state are
-ignored, while icons remain beside labels.
+tooltips, and the section headings are hidden the same way — a hairline rule between groups
+carries the grouping at that width, while the heading stays in the accessibility tree so each
+group keeps its name. At 860px and below, the rail becomes a top bar: the toggle and persisted
+state are ignored, while icons remain beside labels.
 
 Day-bucketed values use `REPORT_TZ` (`America/New_York`, following EST/EDT), so
 Overview, Trends, busiest hour, and Skim roll over at Eastern midnight, not the UTC
