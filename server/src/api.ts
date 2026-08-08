@@ -6,6 +6,7 @@ import {
   adviceMovement,
   analyzeRequestBody,
   assertJudgeableCorpus,
+  attachContextPrompts,
   attributePromptMix,
   type BranchLiveness,
   type BucketBreakdownInput,
@@ -915,6 +916,10 @@ function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
  * Context-size analytics over the last `days` days: average / median / max real
  * input tokens, plus the largest requests (each with a `file` handle for the
  * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
+ *
+ * Each entry also carries the text a person typed to open its thread, so the
+ * table can be searched by what was asked for. That costs one extra read per
+ * distinct thread in the window.
  */
 export async function buildContext(
   logDir: string,
@@ -928,7 +933,13 @@ export async function buildContext(
     now,
     source,
   );
-  return { summary: summarizeContext(toContextEntries(sidecars)), meta: { days, files, parseErrors } };
+  const entries = toContextEntries(sidecars);
+  const threadIds = entries.map((e) => e.threadId).filter((id): id is string => id !== null);
+  const prompts = await source.readRootPrompts(logDir, threadIds);
+  return {
+    summary: summarizeContext(attachContextPrompts(entries, prompts)),
+    meta: { days, files, parseErrors },
+  };
 }
 
 /**

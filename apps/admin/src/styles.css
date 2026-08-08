@@ -3385,6 +3385,24 @@ button.sessions-new.is-active {
   color: var(--faint);
 }
 
+/* The same control in a card head, pushed right beside the caption. */
+.card-head .context-search {
+  margin: 0 12px 0 auto;
+  min-width: 18rem;
+  border-radius: 8px;
+}
+.card-head .context-search input {
+  font-size: 12px;
+  padding: 5px 0;
+}
+/* What was asked, under the timestamp it was asked at. */
+.context-prompt {
+  margin-top: 3px;
+  max-width: 44rem;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
 /* The scroll container the sentinel at its end pages against — one per list. */
 .sessions-nav-list {
   flex: 1;

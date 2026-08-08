@@ -14,6 +14,7 @@ const entry = (n: number, realInput: number): ContextEntry => ({
   model: 'claude-opus-4-8',
   sessionId: 'be4b71b3-ccaf-4350-b1aa-b0cf0218897a',
   threadId: null,
+  prompt: null,
   realInput,
   systemBytes: 100,
   toolsBytes: 200,
