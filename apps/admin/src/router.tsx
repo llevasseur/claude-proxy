@@ -82,7 +82,7 @@ const STATIONS = [
   { to: '/advice', label: 'Advice', hint: 'coaching', exact: false, icon: Lightbulb },
 ] as const;
 
-/** A station for the page already on screen has nowhere to navigate, so it rides back to the top instead. */
+/** Scroll the document to the top, jumping rather than animating under `prefers-reduced-motion`. */
 function scrollToTop(): void {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
@@ -151,9 +151,9 @@ function RootLayout() {
               activeOptions={s.exact ? { exact: true } : undefined}
               title={collapsed ? s.label : undefined}
               onClick={(e) => {
-                // Only the exact page on screen — a lit `/trends` station under `/trends/$metric` still navigates.
+                // Exact pathname, not lit state: a `/trends` station lit under `/trends/$metric` still navigates.
                 if (pathname !== s.to) return;
-                // Leave a modified click alone; it is opening a tab, not navigating here.
+                // A modified click is opening a tab, not navigating here.
                 if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                 e.preventDefault();
                 // On a narrow viewport the drawer covers the page it just scrolled.
