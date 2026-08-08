@@ -7,6 +7,7 @@
  *   pnpm --filter server ideas list                                  # the whole ledger
  *   pnpm --filter server ideas list -s accepted                      # only what was signed off
  *   pnpm --filter server ideas list -s accepted --repo owner/name    # ... for one repo
+ *   pnpm --filter server ideas list --area commands                  # ... for one area
  *   pnpm --filter server ideas list --json                           # machine-readable
  *   pnpm --filter server ideas add --json '[{"slug":"…", …}]'        # record proposals
  *   pnpm --filter server ideas add --json -                          # ... from stdin
@@ -15,6 +16,8 @@
  *   pnpm --filter server ideas mark --slug rolling-window -s accepted
  *   pnpm --filter server ideas mark --slug rolling-window -s rejected -n "covered by /trends"
  *   pnpm --filter server ideas mark --slug rolling-window -s shipped -n "<PR url>"
+ *   pnpm --filter server ideas file --slug rolling-window --area ui-ux
+ *   pnpm --filter server ideas note --slug rolling-window --text "start with the reader"
  *
  * **This is not the suggestions CLI and shares no store with it.** A suggestion is
  * counted from transcripts and traces back to source sessions; an idea is
@@ -34,16 +37,22 @@ import {
   IDEA_STATUSES,
   type IdeaEntry,
   type IdeaStatus,
+  ideaAreaLabel,
   ideaRows,
+  isIdeaArea,
   isIdeaStatus,
   isThreadId,
   parseCliArgs,
   parseIdeaAdds,
+  SEED_IDEA_AREAS,
+  similarAreas,
   similarIdeaSlugs,
 } from '@claude-proxy/core';
 import {
   addIdeasToStore,
   claimIdeasInStore,
+  commentIdeasInStore,
+  fileIdeasInStore,
   markIdeasInStore,
   readIdeasStore,
   resolveIdeasPath,
@@ -51,24 +60,38 @@ import {
 import { resolveLogDir } from './logs.js';
 
 const USAGE = `usage:
-  ideas list  [-s|--status <flags>] [--repo <slug>] [--available] [--json]
+  ideas list  [-s|--status <flags>] [--repo <slug>] [--area <area>] [--available] [--json]
   ideas add    --json <entries>|-
   ideas claim  --slug <slug> --by <holder> [--pr <url>] [--json]
   ideas mark   --slug <slug> -s|--status <flag> [-n|--note <text>] [--thread <id>] [--json]
+  ideas file   --slug <slug> --area <area> [--thread <id>] [--json]
+  ideas note   --slug <slug> --text <text> [--thread <id>] [--json]
 
   <flags>    comma-separated: proposed, accepted, claimed, rejected, shipped
   <slug>     for --slug, the idea's kebab-case key; for --repo, a git remote
              slug like owner/name — never an absolute checkout path, since this
              ledger is device-wide and shared across every repo on the machine
-  <entries>  a JSON array of { slug, title, rationale, evidence[], repo,
+  <area>     a kebab-case classification. FREE TEXT: any word will do, and a new
+             one opens a tab of its own. These are the ones already in use —
+             ${SEED_IDEA_AREAS.map((s) => s.area).join(', ')}
+  <entries>  a JSON array of { slug, title, rationale, evidence[], repo, area,
              status?, note? }, or - to read it from stdin. Each entry must cite
              at least one piece of evidence — { source, path } where source is
              open-question | changelog | deferral, or { source: "judge-note",
              bucket, id } — and an entry citing nothing is refused, not stored.
+             'area' is required on the same footing: nothing new lands unfiled.
+
+  { source: "command-gap" } is the one citation that needs NO locator, since a
+  command nobody wrote has no file to point at. It is therefore the one a reader
+  cannot check, and it is confined to the '${SEED_IDEA_AREAS[4]?.area}' area — cited from any
+  other area, the entry is refused rather than stored.
 
   add refuses a slug already on the ledger in ANY status rather than
   overwriting it, and reports the collision; the other entries in the batch are
-  still recorded. Its own output is always JSON, since its input is.
+  still recorded. Its own output is always JSON, since its input is. It also
+  reports near-miss areas under 'similarAreas' — 'infra' beside an existing
+  'infrastructure' — and still records the entry. Fragmenting the vocabulary is
+  a thing for a reader to notice, not a thing to refuse.
 
   mark needs a note for 'rejected' (the reason) and for 'shipped' (the PR url).
   'proposed' is the undo: it restores an idea to unsigned-off without erasing
@@ -90,6 +113,18 @@ const USAGE = `usage:
   any 'claimed' idea whose claim has expired. Plain -s accepted misses an idea
   abandoned by a run that died, and -s accepted,claimed would take one out from
   under a live holder.
+
+  file is how an idea changes area — a legacy entry showing as Unfiled, or one
+  filed under the wrong heading. It is its OWN verb rather than a flag on mark,
+  deliberately: folding the two together would let a status change move an idea
+  between tabs as a side effect. file touches the area and nothing else — the
+  status, the note and any claim are left exactly as they were.
+
+  note writes the entry's 'comment': a human's own words about the idea, which
+  /improve reads as extra build criteria. It is a DIFFERENT field from mark's
+  -n/--note, which stays what it always was — the rejection reason, or the PR
+  url on a shipped idea. Each write replaces the whole comment rather than
+  appending to it, and --text "" clears it.
 
   mark --thread <id> records the marking session's own thread id on the entry, the
   same attribution a bucket verdict carries. It is the answer to 'who accepted
@@ -126,6 +161,7 @@ function renderRows(rows: readonly IdeaEntry[]): string {
     .map((r) => {
       const when = r.updated ? r.updated.slice(0, 10) : '';
       const note = r.note ? `\n      note: ${r.note}` : '';
+      const comment = r.comment ? `\n      comment: ${r.comment}` : '';
       const actor = r.by ? `\n      by: ${r.by.thread}` : '';
       const cites = r.evidence.map((e) => {
         const where = e.path ?? (e.bucket === undefined ? '' : `bucket ${e.bucket}/${e.id ?? ''}`);
@@ -136,8 +172,8 @@ function renderRows(rows: readonly IdeaEntry[]): string {
       const held = r.claim
         ? `\n      held by ${r.claim.by} since ${r.claim.at.slice(0, 16).replace('T', ' ')}${r.claim.pr ? ` — ${r.claim.pr}` : ''}`
         : '';
-      const head = `  ${r.status.padEnd(8)} ${r.slug.padEnd(width)}  ${r.title}  [${r.repo}]${when ? `  ${when}` : ''}`;
-      return [head, `      ${r.rationale}`, ...cites].join('\n') + held + note + actor;
+      const head = `  ${r.status.padEnd(8)} ${r.slug.padEnd(width)}  ${r.title}  [${r.repo} · ${ideaAreaLabel(r.area)}]${when ? `  ${when}` : ''}`;
+      return [head, `      ${r.rationale}`, ...cites].join('\n') + held + note + comment + actor;
     })
     .join('\n');
 }
@@ -162,9 +198,12 @@ async function run(argv: readonly string[]): Promise<void> {
 
   if (command === 'list') {
     const store = await readIdeasStore(logDir);
+    if (flags.area !== undefined && !isIdeaArea(flags.area))
+      throw new Error(`--area ${flags.area} is not a kebab-case area (a-z, 0-9, single dashes)`);
     const filter = {
       ...(flags.status ? { statuses: parseStatuses(flags.status) } : {}),
       ...(flags.repo ? { repo: flags.repo } : {}),
+      ...(flags.area ? { area: flags.area } : {}),
     };
     // `--available` is "what may I take"; the default is "what is signed off".
     const rows = switches.has('available') ? claimableIdeaRows(store, filter) : ideaRows(store, filter);
@@ -199,10 +238,19 @@ async function run(argv: readonly string[]): Promise<void> {
         .map((add) => [add.slug, similarIdeaSlugs(existing, add.slug)] as const)
         .filter(([, hits]) => hits.length > 0),
     );
+    // Same restraint as the slug look-alikes: reported, never refused. A new
+    // area has to stay openable, or the vocabulary is an allow-list in disguise.
+    const areaHits = Object.fromEntries(
+      adds.map((add) => [add.slug, similarAreas(existing, add.area)] as const).filter(([, hits]) => hits.length > 0),
+    );
 
     const result = await addIdeasToStore(logDir, adds);
     console.log(
-      JSON.stringify({ added: result.added, refused: result.refused, similar, meta: { file: result.file } }, null, 2),
+      JSON.stringify(
+        { added: result.added, refused: result.refused, similar, similarAreas: areaHits, meta: { file: result.file } },
+        null,
+        2,
+      ),
     );
     if (result.refused.length > 0) process.exitCode = 1;
     return;
@@ -283,6 +331,56 @@ async function run(argv: readonly string[]): Promise<void> {
     }
     console.log(`marked ${result.updated.join(', ')} ${status} in ${result.file}`);
     // Only the entry that moved; the whole ledger would bury it.
+    console.log(renderRows(ideaRows(result.store, {}).filter((r) => result.updated.includes(r.slug))).trimEnd());
+    return;
+  }
+
+  if (command === 'file') {
+    if (!flags.slug) throw new Error('file needs --slug <slug>');
+    if (!flags.area) throw new Error('file needs --area <area>');
+    if (!isIdeaArea(flags.area))
+      throw new Error(`--area ${flags.area} is not a kebab-case area (a-z, 0-9, single dashes)`);
+    if (flags.thread !== undefined && !isThreadId(flags.thread))
+      throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
+
+    const result = await fileIdeasInStore(logDir, [
+      { slug: flags.slug, area: flags.area, ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }) },
+    ]);
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    if (result.unknown.length > 0) {
+      console.log(`no idea on the ledger is called: ${result.unknown.join(', ')} — nothing written`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`filed ${result.updated.join(', ')} under ${ideaAreaLabel(flags.area)} in ${result.file}`);
+    console.log(renderRows(ideaRows(result.store, {}).filter((r) => result.updated.includes(r.slug))).trimEnd());
+    return;
+  }
+
+  if (command === 'note') {
+    if (!flags.slug) throw new Error('note needs --slug <slug>');
+    // Distinguished from an absent flag, since '' is the documented clear.
+    if (flags.text === undefined) throw new Error('note needs --text <text>, or --text "" to clear the comment');
+    if (flags.thread !== undefined && !isThreadId(flags.thread))
+      throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
+
+    const result = await commentIdeasInStore(logDir, [
+      { slug: flags.slug, text: flags.text, ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }) },
+    ]);
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    if (result.unknown.length > 0) {
+      console.log(`no idea on the ledger is called: ${result.unknown.join(', ')} — nothing written`);
+      process.exitCode = 1;
+      return;
+    }
+    const what = flags.text.trim() ? 'commented on' : 'cleared the comment on';
+    console.log(`${what} ${result.updated.join(', ')} in ${result.file}`);
     console.log(renderRows(ideaRows(result.store, {}).filter((r) => result.updated.includes(r.slug))).trimEnd());
     return;
   }

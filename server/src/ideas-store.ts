@@ -3,12 +3,17 @@ import path from 'node:path';
 import {
   applyIdeaAdds,
   applyIdeaClaims,
+  applyIdeaComments,
+  applyIdeaFilings,
   applyIdeaMarks,
   emptyIdeasStore,
   type IdeaAdd,
   type IdeaAddResult,
   type IdeaClaimRequest,
   type IdeaClaimResult,
+  type IdeaComment,
+  type IdeaEditResult,
+  type IdeaFiling,
   type IdeaMark,
   type IdeaMarkResult,
   type IdeasStore,
@@ -112,6 +117,33 @@ export async function markIdeasInStore(
   now: Date = new Date(),
 ): Promise<IdeaMarkResult & IdeasWriteMeta> {
   const result = applyIdeaMarks(await readIdeasStore(logDir), marks, now);
+  const file = await writeIdeasStore(logDir, result.store);
+  return { ...result, file };
+}
+
+/**
+ * Read, file, write — the only way an idea changes area.
+ *
+ * Separate from {@link markIdeasInStore} for the reason on `applyIdeaFilings`: a
+ * status change must never move an idea between tabs as a side effect.
+ */
+export async function fileIdeasInStore(
+  logDir: string,
+  filings: readonly IdeaFiling[],
+  now: Date = new Date(),
+): Promise<IdeaEditResult & IdeasWriteMeta> {
+  const result = applyIdeaFilings(await readIdeasStore(logDir), filings, now);
+  const file = await writeIdeasStore(logDir, result.store);
+  return { ...result, file };
+}
+
+/** Read, comment, write. Each write replaces the whole comment; `''` clears it. */
+export async function commentIdeasInStore(
+  logDir: string,
+  comments: readonly IdeaComment[],
+  now: Date = new Date(),
+): Promise<IdeaEditResult & IdeasWriteMeta> {
+  const result = applyIdeaComments(await readIdeasStore(logDir), comments, now);
   const file = await writeIdeasStore(logDir, result.store);
   return { ...result, file };
 }
