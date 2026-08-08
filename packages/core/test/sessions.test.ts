@@ -11,7 +11,9 @@ import {
   linkAgentSessions,
   linkRequestErrors,
   mergeSessionNodes,
+  parseRecordedSpawn,
   parseSessionErrors,
+  parseSessionNodeHashes,
   parseSessionNodes,
   parseSessionTranscript,
   type SessionError,
@@ -25,15 +27,17 @@ import {
 
 /** A node fixture, with the interruption fields these cases don't exercise defaulted off. */
 const node = (
-  n: Omit<SessionNode, 'interruption' | 'interrupted' | 'message' | 'turn'> & {
+  n: Omit<SessionNode, 'interruption' | 'interrupted' | 'message' | 'turn' | 'argsHash'> & {
     message?: number | null;
     turn?: number | null;
+    argsHash?: string | null;
   },
 ): SessionNode => ({
   interruption: null,
   interrupted: false,
   message: null,
   turn: null,
+  argsHash: null,
   ...n,
 });
 
@@ -462,6 +466,7 @@ describe('linkAgentSessions', () => {
       depth: 1,
       reported: true, // the parent took that step
       childThreadIds: [],
+      inferred: true, // no recorded spawn on the transcript — start-time pairing
     });
     expect(links.get('a'.repeat(16))).toMatchObject({
       parentThreadId: null,
@@ -558,6 +563,7 @@ describe('linkAgentSessions', () => {
       depth: 0,
       reported: false,
       childThreadIds: [],
+      inferred: false, // a root is not a guess
     });
   });
 
@@ -603,6 +609,189 @@ describe('linkAgentSessions', () => {
       session('b'.repeat(16), 's1', '2026-07-23T18:00:10.000Z', '## Task: Search\n- Read(file_path=/b.ts)'),
     ]);
     expect(links.get('b'.repeat(16))).toMatchObject({ reported: false });
+  });
+
+  // --- Recorded spawns, and the legacy transcripts that carry none ---------
+
+  /** A child whose own header names the spawn the proxy saw start it. */
+  const recorded = (
+    threadId: string,
+    started: string | null,
+    body: string,
+    spawn: { parent: string; spawnIndex?: number | null; agentType?: string | null },
+  ): LinkableSession => ({
+    ...session(threadId, 's1', started, body),
+    recorded: {
+      parentThreadId: spawn.parent,
+      spawnIndex: spawn.spawnIndex ?? null,
+      agentType: spawn.agentType ?? null,
+    },
+  });
+
+  it('takes the recorded pairing over the start-time guess, and marks it certain', () => {
+    // Start times say `b` goes with the first spawn and `c` with the second; the
+    // record from the proxy says the opposite, and wins.
+    const body = [
+      '## Task: Do it', // 0
+      '- Agent(subagent_type=Explore)', // 1
+      '- Agent(subagent_type=general-purpose)', // 2
+      '- Edit(file_path=/b.ts)', // 3
+    ].join('\n');
+    const links = linkAgentSessions([
+      session('a'.repeat(16), 's1', '2026-07-23T18:00:00.000Z', body),
+      recorded('b'.repeat(16), '2026-07-23T18:00:05.000Z', '## Task: One', {
+        parent: 'a'.repeat(16),
+        spawnIndex: 2,
+        agentType: 'general-purpose',
+      }),
+      recorded('c'.repeat(16), '2026-07-23T18:00:06.000Z', '## Task: Two', {
+        parent: 'a'.repeat(16),
+        spawnIndex: 1,
+        agentType: 'Explore',
+      }),
+    ]);
+
+    expect(links.get('b'.repeat(16))).toMatchObject({ spawnIndex: 2, agentType: 'general-purpose', inferred: false });
+    expect(links.get('c'.repeat(16))).toMatchObject({ spawnIndex: 1, agentType: 'Explore', inferred: false });
+    // Children come back in spawn order, which is now the recorded one.
+    expect(links.get('a'.repeat(16))?.childThreadIds).toEqual(['c'.repeat(16), 'b'.repeat(16)]);
+  });
+
+  it('records a pairing the inference could never make', () => {
+    // No `Agent(…)` line at all, a child that started *first*, and a different
+    // session id — every heuristic gate the legacy pass applies.
+    const links = linkAgentSessions([
+      session('a'.repeat(16), 's1', '2026-07-23T18:00:00.000Z', '## Task: Do it\n- Skill(skill=deploy)'),
+      {
+        ...session('b'.repeat(16), 's2', '2026-07-23T17:59:00.000Z', '## Task: Deploy'),
+        recorded: { parentThreadId: 'a'.repeat(16), spawnIndex: 1, agentType: 'deploy' },
+      },
+    ]);
+
+    expect(links.get('b'.repeat(16))).toMatchObject({
+      parentThreadId: 'a'.repeat(16),
+      spawnIndex: 1,
+      agentType: 'deploy',
+      depth: 1,
+      inferred: false,
+    });
+  });
+
+  it('ignores a record naming itself, a stranger, or one of its own descendants', () => {
+    const links = linkAgentSessions([
+      session('a'.repeat(16), 's1', '2026-07-23T18:00:00.000Z', '## Task: Root'),
+      recorded('b'.repeat(16), '2026-07-23T18:00:01.000Z', '## Task: Self', { parent: 'b'.repeat(16) }),
+      recorded('c'.repeat(16), '2026-07-23T18:00:02.000Z', '## Task: Ghost', { parent: 'z'.repeat(16) }),
+      recorded('d'.repeat(16), '2026-07-23T18:00:03.000Z', '## Task: Down', { parent: 'e'.repeat(16) }),
+      recorded('e'.repeat(16), '2026-07-23T18:00:04.000Z', '## Task: Up', { parent: 'd'.repeat(16) }),
+    ]);
+
+    expect(links.get('b'.repeat(16))).toMatchObject({ parentThreadId: null, depth: 0 });
+    expect(links.get('c'.repeat(16))).toMatchObject({ parentThreadId: null, depth: 0 });
+    // One of the two-cycle's halves links; the other cannot, or the depth walk
+    // would never terminate.
+    const cycle = [links.get('d'.repeat(16))!.parentThreadId, links.get('e'.repeat(16))!.parentThreadId];
+    expect(cycle.filter((p) => p !== null)).toHaveLength(1);
+  });
+
+  it('still infers for a legacy transcript that records nothing, beside one that does', () => {
+    const body = [
+      '## Task: Do it', // 0
+      '- Agent(subagent_type=Explore)', // 1
+      '- Agent(subagent_type=general-purpose)', // 2
+    ].join('\n');
+    const links = linkAgentSessions([
+      session('a'.repeat(16), 's1', '2026-07-23T18:00:00.000Z', body),
+      recorded('b'.repeat(16), '2026-07-23T18:00:05.000Z', '## Task: Recorded', {
+        parent: 'a'.repeat(16),
+        spawnIndex: 2,
+      }),
+      session('c'.repeat(16), 's1', '2026-07-23T18:00:06.000Z', '## Task: Legacy'),
+    ]);
+
+    expect(links.get('b'.repeat(16))).toMatchObject({ spawnIndex: 2, inferred: false });
+    // The recorded child consumed spawn 2, so the guess only has spawn 1 left.
+    expect(links.get('c'.repeat(16))).toMatchObject({
+      parentThreadId: 'a'.repeat(16),
+      spawnIndex: 1,
+      agentType: 'Explore',
+      inferred: true,
+    });
+  });
+});
+
+describe('parseRecordedSpawn', () => {
+  const PARENT = 'a'.repeat(16);
+
+  it('reads the three header lines the proxy writes', () => {
+    const content = [
+      '# Session bbbbbbbbbbbbbbbb',
+      '- model: claude-opus-4-8',
+      `- parent: ${PARENT}`,
+      '- spawn: 7',
+      '- agent: Explore',
+      '',
+      '## Task: Search',
+    ].join('\n');
+    expect(parseRecordedSpawn(content)).toEqual({ parentThreadId: PARENT, spawnIndex: 7, agentType: 'Explore' });
+  });
+
+  it('finds lines appended after the body, where a late-observed spawn lands', () => {
+    const content = [
+      '# Session bbbbbbbbbbbbbbbb',
+      '',
+      '## Task: Search',
+      '- Read(file_path=/b.ts)',
+      `- parent: ${PARENT}`,
+      '- spawn: 3',
+    ].join('\n');
+    expect(parseRecordedSpawn(content)).toEqual({ parentThreadId: PARENT, spawnIndex: 3, agentType: null });
+  });
+
+  it('is null for a transcript that records no parentage', () => {
+    expect(parseRecordedSpawn('# Session bbbbbbbbbbbbbbbb\n- spawn: 3\n- agent: Explore')).toBeNull();
+    expect(parseRecordedSpawn('# Session bbbbbbbbbbbbbbbb\n- parent:')).toBeNull();
+    expect(parseRecordedSpawn('')).toBeNull();
+  });
+
+  it('drops a spawn index that is not a whole non-negative number', () => {
+    expect(parseRecordedSpawn(`- parent: ${PARENT}\n- spawn: -1`)?.spawnIndex).toBeNull();
+    expect(parseRecordedSpawn(`- parent: ${PARENT}\n- spawn: later`)?.spawnIndex).toBeNull();
+  });
+
+  it('tolerates CRLF line endings', () => {
+    expect(parseRecordedSpawn(`- parent: ${PARENT}\r\n- spawn: 2\r\n`)).toEqual({
+      parentThreadId: PARENT,
+      spawnIndex: 2,
+      agentType: null,
+    });
+  });
+});
+
+describe('parseSessionNodeHashes', () => {
+  it('reads the hash rows and ignores the text-only ones', () => {
+    const content = [
+      '{"i":0,"text":"a long prompt"}',
+      '{"i":1,"argsHash":"0f1e2d3c4b5a6978"}',
+      '{"i":2,"text":"more","argsHash":"aaaabbbbccccdddd"}',
+      '',
+      'not json at all',
+      '{"i":-1,"argsHash":"negative"}',
+      '{"i":3,"argsHash":42}',
+    ].join('\n');
+    expect(parseSessionNodeHashes(content)).toEqual({ 1: '0f1e2d3c4b5a6978', 2: 'aaaabbbbccccdddd' });
+  });
+
+  it('is empty for a sidecar written before the field existed', () => {
+    expect(parseSessionNodeHashes('{"i":0,"text":"only text"}')).toEqual({});
+  });
+
+  it('hangs the hashes off the matching nodes, and leaves the rest null', () => {
+    const body = ['## Task: Do it', '- Read(file_path=/a.ts)', '- decided: on it'].join('\n');
+    const nodes = parseSessionNodes(body, { 1: 'aaaabbbbccccdddd' });
+    expect(nodes.map((n) => n.argsHash)).toEqual([null, 'aaaabbbbccccdddd', null]);
+    // Omitting the map entirely is the legacy path: every node reads null.
+    expect(parseSessionNodes(body).every((n) => n.argsHash === null)).toBe(true);
   });
 });
 

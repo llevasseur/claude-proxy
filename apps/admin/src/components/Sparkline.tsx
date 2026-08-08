@@ -62,7 +62,8 @@ export function Sparkline({
   return (
     <div className='sparkline' style={{ height }} aria-hidden {...track}>
       <ResponsiveContainer width='100%' height='100%'>
-        <LineChart data={points} margin={MARGIN}>
+        {/* Off: the plot is decorative here, so it must not take focus at all. */}
+        <LineChart accessibilityLayer={false} data={points} margin={MARGIN}>
           {/* Hidden, but it gives ReferenceDot a scale to place the marker on. */}
           <XAxis dataKey='date' type='category' hide />
           <YAxis hide domain={['dataMin', 'dataMax']} />

@@ -49,6 +49,19 @@ import {
 export interface TranscriptEntry {
   line: string;
   full: string | null;
+  /**
+   * Stable fingerprint of the call's *whole* argument object, not the one truncated
+   * argument the line shows. Null on anything that is not a tool call. Two long paths
+   * sharing a 60-char prefix no longer collapse into one signature.
+   */
+  argsHash?: string | null;
+  /**
+   * The opening prompt of the thread this call starts, when it starts one — the key
+   * the child's thread id is rooted on. Null on a call that spawns nothing.
+   */
+  spawnPrompt?: string | null;
+  /** What the spawn calls itself (`subagent_type`, else `skill`), or null. */
+  agentType?: string | null;
 }
 
 /** Per-thread progress, held in memory and mirrored to `<threadId>.state.json`. */
@@ -63,6 +76,14 @@ interface ThreadEntry {
   /** Null until recovered — state written by an older proxy carries no count. */
   nodes: number | null;
   lastSeen: number;
+  /** The thread whose tool call spawned this one, recorded when that call is seen. */
+  parent: string | null;
+  /** The spawning node's index in the parent's transcript. */
+  spawnIndex: number | null;
+  /** What the spawn called this agent (`subagent_type`/`skill`), or null. */
+  agentType: string | null;
+  /** Whether the parentage above already reached the transcript. */
+  linked: boolean;
   model?: string;
   sessionId?: string;
   startedAt?: string;
@@ -165,6 +186,55 @@ function toolArgs(input: unknown): { shown: string; full: string } {
   return k ? both(k, String(record[k])) : { shown: '', full: '' };
 }
 
+/**
+ * JSON with object keys in sorted order at every depth, so two calls that passed the
+ * same arguments hash alike however the client happened to serialize them.
+ */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const body = Object.keys(record)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(record[k])}`)
+      .join(',');
+    return `{${body}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/**
+ * Fingerprint of a tool call — its name plus its whole argument object. Recorded beside
+ * the truncated display signature, which cannot tell two similar calls apart.
+ */
+export function argsHashFor(name: string, input: unknown): string {
+  return crypto
+    .createHash('sha256')
+    .update(`${name}\n${stableJson(input)}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+/** Inputs that name the agent a spawn starts, in falling order of authority. */
+const AGENT_TYPE_KEYS = ['subagent_type', 'skill'];
+
+/**
+ * A call that starts its own thread, and what to call it. Any tool handed a non-empty
+ * `prompt` starts one — that string *is* the child's first user message. Keyed on the
+ * argument rather than the tool's name, so a spawn under a name nobody listed still
+ * counts.
+ */
+function spawnOf(input: unknown): { prompt: string; agentType: string | null } | null {
+  if (!input || typeof input !== 'object') return null;
+  const record = input as Record<string, unknown>;
+  const raw = record.prompt;
+  if (typeof raw !== 'string') return null;
+  const prompt = collapse(stripReminders(raw));
+  if (!prompt) return null;
+  const named = AGENT_TYPE_KEYS.map((k) => record[k]).find((v) => typeof v === 'string' && v.trim());
+  return { prompt, agentType: typeof named === 'string' ? named.trim() : null };
+}
+
 /** First real user text — the thread's root. Tool-result-only turns don't count. */
 export function firstUserText(messages: unknown): string {
   if (!Array.isArray(messages)) return '';
@@ -250,8 +320,12 @@ export function extractTitle(responseText: string | null | undefined): string | 
   }
 }
 
-/** A titling `<session>` payload matches a thread when it opens with that thread's root. */
-const titleMatches = (content: string | null, root: string | null | undefined): boolean =>
+/**
+ * Whether a captured string names a thread by its opening prompt — either side may be
+ * the truncated form, so a shared prefix counts. Used by a titling `<session>` payload
+ * and by the prompt a spawning tool call handed its child.
+ */
+const rootMatches = (content: string | null, root: string | null | undefined): boolean =>
   !!root && !!content && (content === root || content.startsWith(root) || root.startsWith(content));
 
 /**
@@ -289,11 +363,15 @@ export function distillEntries(msg: WireMessage | undefined | null): TranscriptE
       else if (b?.type === 'tool_use') {
         const args = toolArgs(b.input);
         const name = b.name ?? 'tool';
+        const spawn = spawnOf(b.input);
         // Only this message's *first* call is marked. `full` stays the bare signature: a
         // tool node's text *is* its signature, and the marker is line grammar.
         tools.push({
           line: `- ${tools.length === 0 ? `${TURN_MARKER} ` : ''}${name}(${args.shown})`,
           full: args.shown === args.full ? null : `${name}(${args.full})`,
+          argsHash: argsHashFor(name, b.input),
+          spawnPrompt: spawn?.prompt ?? null,
+          agentType: spawn?.agentType ?? null,
         });
       }
       // `thinking` is skipped — neither a decision nor an outcome.
@@ -337,8 +415,21 @@ function header(threadId: string, entry: ThreadEntry): string {
   ];
   if (entry.title) lines.push(`- title: ${gist(entry.title, 120)}`);
   if (entry.root) lines.push(`- subtitle: ${gist(entry.root, 200)}`);
+  if (entry.parent) lines.push(...spawnLines(entry));
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * The recorded parentage, as transcript lines. Written into the header when the
+ * spawning call was already seen, appended standalone when it lands later — which is
+ * the usual order, since a blocking spawn only reaches the wire once its child is done.
+ */
+function spawnLines(entry: ThreadEntry): string[] {
+  const lines = [`- parent: ${entry.parent}`];
+  if (entry.spawnIndex !== null) lines.push(`- spawn: ${entry.spawnIndex}`);
+  if (entry.agentType) lines.push(`- agent: ${gist(entry.agentType, 60)}`);
+  return lines;
 }
 
 /** The `.state.json` sidecar as it comes off disk — every field may be missing. */
@@ -357,6 +448,12 @@ function readState(statePath: string): ThreadEntry | null {
       subtitled: (s.subtitled as boolean) ?? false,
       nodes: typeof s.nodes === 'number' ? s.nodes : null,
       lastSeen: typeof s.lastSeen === 'number' ? s.lastSeen : 0,
+      // Absent on state written before parentage was recorded; that thread keeps
+      // whatever the reader infers.
+      parent: (s.parent as string | null) ?? null,
+      spawnIndex: typeof s.spawnIndex === 'number' ? s.spawnIndex : null,
+      agentType: (s.agentType as string | null) ?? null,
+      linked: (s.linked as boolean) ?? false,
     };
   } catch {
     return null;
@@ -376,6 +473,10 @@ function writeState(statePath: string, entry: StoredState): void {
         subtitled: entry.subtitled,
         nodes: entry.nodes,
         lastSeen: entry.lastSeen ?? 0,
+        parent: entry.parent ?? null,
+        spawnIndex: entry.spawnIndex ?? null,
+        agentType: entry.agentType ?? null,
+        linked: entry.linked ?? false,
       }),
     );
   } catch {
@@ -414,9 +515,15 @@ export function countNodeLines(content: unknown): number {
 }
 
 /**
- * Record the untruncated text behind each new line, keyed by node index, and
- * advance the thread's node count. State written by an older proxy carries no
- * count, so it's recovered once by counting the transcript already on disk.
+ * Record what the transcript line dropped, keyed by node index, and advance the
+ * thread's node count. Two things go in a row: the untruncated text behind a gisted
+ * line (`text`), and the fingerprint of a tool call's whole argument object
+ * (`argsHash`). Either may be absent — a row exists as soon as one of them does — so a
+ * reader that only knows `text` reads these rows as it read the old ones. Returns the
+ * index the first of these entries landed at.
+ *
+ * State written by an older proxy carries no count, so it's recovered once by
+ * counting the transcript already on disk.
  */
 function appendNodeTexts(
   dir: string,
@@ -424,7 +531,7 @@ function appendNodeTexts(
   entry: ThreadEntry,
   mdPath: string,
   entries: TranscriptEntry[],
-): void {
+): number {
   if (entry.nodes === null || entry.nodes === undefined) {
     try {
       entry.nodes = countNodeLines(fs.readFileSync(mdPath, 'utf8'));
@@ -435,16 +542,20 @@ function appendNodeTexts(
   const base = entry.nodes;
   const rows: string[] = [];
   entries.forEach((e, i) => {
-    if (e.full !== null) rows.push(JSON.stringify({ i: base + i, text: e.full }));
+    const row: Record<string, unknown> = { i: base + i };
+    if (e.full !== null) row.text = e.full;
+    if (e.argsHash) row.argsHash = e.argsHash;
+    if (Object.keys(row).length > 1) rows.push(JSON.stringify(row));
   });
   entry.nodes = base + entries.length;
-  if (!rows.length) return;
+  if (!rows.length) return base;
   try {
     fs.mkdirSync(dir, { recursive: true }); // the transcript's own dir may not exist yet
     fs.appendFileSync(nodeTextsPath(dir, threadId), `${rows.join('\n')}\n`);
   } catch {
     /* best-effort */
   }
+  return base;
 }
 
 /** In-memory per-thread progress, recovered from the `.state.json` sidecar. */
@@ -539,7 +650,7 @@ function titleDiskThread(dir: string, content: string, title: string): boolean {
     const statePath = path.join(dir, name);
     try {
       const state = JSON.parse(fs.readFileSync(statePath, 'utf8')) as StoredState;
-      if (state.title || !titleMatches(content, state.root as string | null)) continue;
+      if (state.title || !rootMatches(content, state.root as string | null)) continue;
       const at = fs.statSync(statePath).mtimeMs;
       if (!best || at > best.at) best = { threadId, statePath, state, at };
     } catch {
@@ -564,7 +675,7 @@ function recordTitle(dir: string, content: string, title: string | null): void {
   if (!content || !title) return;
 
   const untitled = [...threads]
-    .filter(([, entry]) => !entry.title && titleMatches(content, entry.root))
+    .filter(([, entry]) => !entry.title && rootMatches(content, entry.root))
     .sort((a, b) => (b[1].lastSeen ?? 0) - (a[1].lastSeen ?? 0));
   const first = untitled[0];
   if (first) {
@@ -578,6 +689,87 @@ function recordTitle(dir: string, content: string, title: string | null): void {
   loadPendingTitles(dir);
   pendingTitles.set(content, title); // thread not seen yet — claim it on arrival
   savePendingTitles(dir);
+}
+
+// --- Recorded spawn parentage ----------------------------------------------
+//
+// A subagent runs under its parent's session id but with its own conversation root, so
+// it gets a transcript of its own and nothing on the wire names the pair. The spawning
+// call does carry the prompt that became the child's first user message, which is what
+// the child's thread id is rooted on, so the pairing is written down here.
+//
+// The two sightings arrive in either order. A blocking spawn only reaches the wire once
+// its child has finished — the call and its result ride in the parent's *next* request —
+// so the child is normally already known. A backgrounded one goes the other way, which
+// is what {@link pendingSpawns} holds.
+
+/** A spawning call as the wire showed it: who made it, and where in their transcript. */
+interface SpawnRecord {
+  parent: string;
+  spawnIndex: number;
+  agentType: string | null;
+}
+
+/** Spawns whose child has not been seen yet, keyed by the prompt handed to it. */
+const pendingSpawns = new Map<string, SpawnRecord>();
+
+/** How many unclaimed spawns are kept; oldest dropped past it, as titles are. */
+const PENDING_SPAWN_LIMIT = 100;
+
+/** Write recorded parentage onto a thread this process is following. */
+function linkThread(dir: string, threadId: string, entry: ThreadEntry, spawn: SpawnRecord): void {
+  if (entry.parent || threadId === spawn.parent) return; // one parent, and never itself
+  entry.parent = spawn.parent;
+  entry.spawnIndex = spawn.spawnIndex;
+  entry.agentType = spawn.agentType;
+  // Already flushed → the lines go on standalone. Still pending → they ride into the header.
+  if (entry.started && !entry.linked) {
+    appendLines(path.join(dir, `${threadId}.md`), spawnLines(entry));
+    entry.linked = true;
+    writeState(path.join(dir, `${threadId}.state.json`), entry);
+  }
+}
+
+/**
+ * Attach one observed spawn to the thread it started, or park it until that thread
+ * appears. Where several unparented threads match the prompt, the most recently active
+ * wins — the same tie-break {@link recordTitle} uses.
+ */
+function recordSpawn(dir: string, prompt: string, spawn: SpawnRecord): void {
+  const candidates = [...threads]
+    .filter(([id, entry]) => id !== spawn.parent && !entry.parent && rootMatches(prompt, entry.root))
+    .sort((a, b) => (b[1].lastSeen ?? 0) - (a[1].lastSeen ?? 0));
+  const first = candidates[0];
+  if (first) {
+    linkThread(dir, first[0], first[1], spawn);
+    return;
+  }
+
+  pendingSpawns.set(prompt, spawn); // child not seen yet — claim it on arrival
+  while (pendingSpawns.size > PENDING_SPAWN_LIMIT) {
+    const oldest = pendingSpawns.keys().next().value;
+    if (oldest === undefined) break;
+    pendingSpawns.delete(oldest);
+  }
+}
+
+/** Record every spawning call in a run of appended entries, at its own node index. */
+function recordSpawns(dir: string, threadId: string, base: number, entries: TranscriptEntry[]): void {
+  entries.forEach((e, i) => {
+    if (!e.spawnPrompt) return;
+    recordSpawn(dir, e.spawnPrompt, { parent: threadId, spawnIndex: base + i, agentType: e.agentType ?? null });
+  });
+}
+
+/** Claim a spawn recorded before this thread was first seen. */
+function claimSpawn(dir: string, threadId: string, entry: ThreadEntry): void {
+  if (entry.parent || !entry.root) return;
+  for (const [prompt, spawn] of pendingSpawns) {
+    if (spawn.parent === threadId || !rootMatches(prompt, entry.root)) continue;
+    pendingSpawns.delete(prompt);
+    linkThread(dir, threadId, entry, spawn);
+    return;
+  }
 }
 
 /** One observed request: the body, who sent it, and the reply it drew. */
@@ -626,6 +818,10 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
         subtitled: false,
         nodes: 0,
         lastSeen: 0,
+        parent: null,
+        spawnIndex: null,
+        agentType: null,
+        linked: false,
       };
       threads.set(threadId, entry);
     }
@@ -643,7 +839,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     if (!entry.title) {
       loadPendingTitles(dir);
       for (const [content, title] of pendingTitles) {
-        if (titleMatches(content, entry.root)) {
+        if (rootMatches(content, entry.root)) {
           entry.title = title;
           pendingTitles.delete(content);
           savePendingTitles(dir);
@@ -651,6 +847,9 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
         }
       }
     }
+    // Same for a spawn recorded before its child was first seen — a backgrounded
+    // agent's parent can reach the wire first.
+    claimSpawn(dir, threadId, entry);
 
     // Root learned only now, after the write-once header was flushed without it
     // (older proxy, or restart from state predating `root`): append it standalone.
@@ -666,11 +865,12 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     if (entry.started) {
       if (entries.length) {
-        appendNodeTexts(dir, threadId, entry, mdPath, entries); // before the lines land — it counts the transcript as it stands
+        const base = appendNodeTexts(dir, threadId, entry, mdPath, entries); // counts the transcript before the new lines land
         appendLines(
           mdPath,
           entries.map((e) => e.line),
         );
+        recordSpawns(dir, threadId, base, entries);
       }
       entry.count = total;
       writeState(statePath, entry);
@@ -689,14 +889,16 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     // Growth (or a declared chat) → a real thread. Flush header + buffer + new turns.
     const flushed = [...(entry.pending ?? []), ...entries];
-    appendNodeTexts(dir, threadId, entry, mdPath, flushed);
+    const base = appendNodeTexts(dir, threadId, entry, mdPath, flushed);
     appendLines(mdPath, [header(threadId, entry), ...flushed.map((e) => e.line)]);
     entry.started = true;
     entry.titled = !!entry.title; // the header already carries any known title
     entry.subtitled = !!entry.root; // the header already carries any known subtitle
+    entry.linked = !!entry.parent; // ditto any known parentage
     entry.pending = null;
     entry.count = total;
     writeState(statePath, entry);
+    recordSpawns(dir, threadId, base, flushed);
   } catch {
     /* best-effort */
   }
@@ -706,5 +908,6 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 export function _resetThreads(): void {
   threads.clear();
   pendingTitles.clear();
+  pendingSpawns.clear();
   pendingLoadedFrom = null; // a restart re-reads the sidecar; so does a test
 }

@@ -905,6 +905,25 @@ a.pager-btn:hover {
   margin-top: 6px;
 }
 
+/* recharts focus: never the plot area, only the points. `accessibilityLayer={false}`
+   at each chart keeps the surface out of the tab order; recharts still stamps
+   `tabindex="-1"` on every inner `recharts-zIndex-layer_*` group, which a click
+   focuses and the browser then rings. */
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-wrapper :focus,
+.recharts-wrapper :focus-visible {
+  outline: none;
+}
+/* Pin targets stay keyboard-reachable: a box outline round an SVG circle reads as the
+   area being focused, so the hit disc rings itself. `:focus-visible` only — a click
+   already shows its result by pinning the point. */
+.recharts-wrapper [role="switch"]:focus-visible {
+  outline: none;
+  stroke: var(--signal);
+  stroke-width: 2;
+}
+
 /* recharts tooltip + legend */
 .charttip {
   background: var(--surface-2);

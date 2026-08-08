@@ -170,9 +170,15 @@ directory that isn't there a 404.
   nothing caches it. A device with hundreds of jobs would want the counts memoized on mtime.
 - Neither page live-updates. A running job's `state.json` changes under you, and the sessions
   views already have SSE (`serveSse`) that this could reuse by watching the job directory.
-- A job records a `sessionId`, and the proxy's transcripts are keyed by *thread* id, so the two
-  cannot be linked without the `/api/chat/thread` style lookup that only covers dashboard-started
-  chats. Joining a job to its transcript is the obvious next step and is not done here.
+- A job records a `sessionId`, and the proxy's transcripts are keyed by *thread* id. The join
+  key now exists: every audit sidecar the proxy writes carries `session.threadId` beside
+  `session.sessionId`, and the `request` table indexes it (`request_thread_idx`), so a job's
+  session id reaches its thread ids through the captured requests without the
+  `/api/chat/thread` lookup that only covers dashboard-started chats. **The pages do not use it
+  yet** — no route joins a job to a transcript, and that is still the obvious next step. Note
+  one session id can own several threads (the main agent, its subagents, one-shot helpers), so
+  the join is one-to-many and the page has to pick, most likely the top-level thread the agent
+  tree already identifies.
 - `jobFileKind` is an extension allow-list, so an unknown extension holding perfectly good text
   is assumed binary until the NUL check clears it — which it does, but only after the bytes are
   read. It errs toward showing something rather than nothing, but the mapping needs extending as
