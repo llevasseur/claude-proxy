@@ -40,6 +40,7 @@ import {
   countSuggestionStatuses,
   isSuggestionRecurrence,
   isSuggestionStatus,
+  isThreadId,
   parseBucketRange,
   parseCliArgs,
   parseJudgeEntries,
@@ -65,8 +66,8 @@ const USAGE = `usage:
   suggestions list    [-r|--range <spec>] [-s|--status <flags>] [--recurrence <states>] [-d|--detail] [--json]
   suggestions mark     -r|--range <bucket> -i|--id <ids> -s|--status <flag> [-n|--note <text>] [--json]
   suggestions buckets [--dirty] [--json]
-  suggestions judge    -r|--range <bucket> [--confirm <id>[:<note>],...] [--dismiss <id>:<reason>,...] [--json]
-  suggestions judge   --amnesty [--json]
+  suggestions judge    -r|--range <bucket> [--confirm <id>[:<note>],...] [--dismiss <id>:<reason>,...] [--thread <id>] [--json]
+  suggestions judge   --amnesty [--thread <id>] [--json]
   suggestions defects [--json]
 
   <spec>   one bucket (9), a list (2,3,9), a span (2-9), or a mix (2-4,9)
@@ -80,7 +81,12 @@ const USAGE = `usage:
   judge --dismiss writes a 'dismissed' flag with the reason in its note — the rule
   was wrong here, which is a different claim from 'skipped'. Only complete buckets
   can be judged. --amnesty marks every complete, still-unjudged bucket judged with
-  no notes, leaving buckets already judged (and their notes) untouched.`;
+  no notes, leaving buckets already judged (and their notes) untouched.
+
+  judge --thread <id> records the judging session's own thread id on the verdict,
+  and with it how many of the window's transcripts that thread opened — counted
+  off its own transcript, not self-reported. buckets marks a verdict 'thin' when
+  the share is under 30%. Advisory: it is never a reason a write is refused.`;
 
 /** What `list` shows without `--recurrence`: every state but the frozen `historical` windows. */
 const ACTIONABLE_RECURRENCES: readonly SuggestionRecurrence[] = SUGGESTION_RECURRENCES.filter(
@@ -89,7 +95,7 @@ const ACTIONABLE_RECURRENCES: readonly SuggestionRecurrence[] = SUGGESTION_RECUR
 
 /** How this CLI spells its own flags; `--help`/`-h` are the parser's, not ours. */
 const ARGS_SPEC = {
-  aliases: { r: 'range', s: 'status', i: 'id', n: 'note', d: 'detail' },
+  aliases: { r: 'range', s: 'status', i: 'id', n: 'note', d: 'detail', t: 'thread' },
   booleans: ['json', 'detail', 'dirty', 'amnesty'],
   // Accumulating flags, so repeating one is the escape hatch for a note whose
   // commas would otherwise read as separators.
@@ -138,12 +144,16 @@ function renderRows(rows: readonly SuggestionStatusRow[]): string {
     .join('\n');
 }
 
-/** Buckets one per line: index, span, state, and when it was judged. */
+/** Buckets one per line: index, span, state, who judged it, and when. */
 function renderBuckets(rows: readonly BucketJudgementRow[]): string {
   if (rows.length === 0) return 'no buckets match.';
   return rows
     .map((b) => {
-      const when = b.judgedAt ? ` judged ${b.judgedAt.slice(0, 10)}` : '';
+      // Attribution rides on the `judged` word rather than taking its own column:
+      // most rows have none, and an empty column on every line reads as a defect.
+      const who = b.by ? ` by ${b.by.thread}${b.by.window ? ` (${b.by.opened}/${b.by.window} read)` : ''}` : '';
+      const thin = b.thin ? ' THIN' : '';
+      const when = b.judgedAt ? ` judged ${b.judgedAt.slice(0, 10)}${who}${thin}` : who;
       const notes = b.notes ? ` · ${b.notes} note${b.notes === 1 ? '' : 's'}` : '';
       const short = b.complete ? '' : ' (not yet full)';
       return `  ${String(b.bucket).padStart(3)} ${b.label.padEnd(9)} ${b.state.padEnd(9)} ${b.suggestions} suggestion${b.suggestions === 1 ? '' : 's'}${when}${notes}${short}`;
@@ -294,7 +304,15 @@ async function run(argv: readonly string[]): Promise<void> {
       throw new Error('--amnesty records no notes and no dismissals — drop --confirm/--dismiss, or drop --amnesty');
     }
 
-    const result = await applySuggestionJudge(logDir, { updates, judged, amnesty });
+    if (flags.thread !== undefined && !isThreadId(flags.thread)) {
+      throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
+    }
+    const result = await applySuggestionJudge(logDir, {
+      updates,
+      judged,
+      amnesty,
+      ...(flags.thread === undefined ? {} : { thread: flags.thread }),
+    });
     if (json) {
       console.log(JSON.stringify(result, null, 2));
       return;
