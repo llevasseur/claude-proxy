@@ -283,10 +283,16 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
           const row = rowOf(s.id);
           const status = row?.status ?? 'pending';
           const recurrence = row?.recurrence ?? 'none';
+          // Same precedence as the cards below: a dismissed rule stays faint, since
+          // the regressed colour would pull the eye to a row nobody should act on.
+          const dismissed = status === 'dismissed';
           return (
             <li
               key={s.id}
-              className={[isSettled(row) ? 'is-resolved' : '', recurrence === 'regressed' ? 'is-regressed' : '']
+              className={[
+                isSettled(row) ? 'is-resolved' : '',
+                !dismissed && recurrence === 'regressed' ? 'is-regressed' : '',
+              ]
                 .filter(Boolean)
                 .join(' ')}>
               <span className={`dot sev-${s.severity}`} aria-hidden />
