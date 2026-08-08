@@ -188,7 +188,7 @@ button:focus-visible {
   border-top: 1px solid var(--line);
 }
 
-/* drawer chrome — only ever shown at the narrow breakpoint, where the rail goes off-canvas */
+/* drawer chrome — narrow breakpoint only */
 .topbar {
   display: none;
   position: sticky;
@@ -217,7 +217,7 @@ button:focus-visible {
   color: var(--text);
   border-color: var(--muted);
 }
-/* Sits under the drawer, over everything else: a click that misses the drawer closes it. */
+/* Under the drawer, over everything else — a click that misses the drawer closes it. */
 .rail-scrim {
   position: fixed;
   inset: 0;
@@ -1804,7 +1804,7 @@ button.link {
   .app {
     grid-template-columns: 1fr;
   }
-  /* Out of the grid entirely, so the workspace gets the full width whether it is open or not. */
+  /* Out of the grid — the workspace keeps full width, open or closed. */
   .rail {
     position: fixed;
     top: 0;
@@ -1825,7 +1825,7 @@ button.link {
     transform: none;
     visibility: visible;
   }
-  /* The drawer carries navigation alone — the brand and the collapse toggle stay on wide viewports. */
+  /* Navigation alone — the brand and collapse toggle stay on wide viewports. */
   .rail-head {
     display: none;
   }

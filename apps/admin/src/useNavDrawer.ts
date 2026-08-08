@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
-/* At or below this width the rail leaves the grid and becomes an off-canvas drawer. */
+/* At or below this width the rail is an off-canvas drawer. */
 const DRAWER = '(max-width: 860px)';
 
 let query: MediaQueryList | null = null;
@@ -24,10 +24,7 @@ export type NavDrawer = {
   close: () => void;
 };
 
-/**
- * Open state for the narrow-viewport nav drawer. Widening back to a column closes it,
- * so the rail never comes back mid-transition with a stale scrim over the page.
- */
+/** Open state for the narrow-viewport nav drawer; widening back to a column closes it. */
 export function useNavDrawer(): NavDrawer {
   const drawer = useSyncExternalStore(
     subscribe,

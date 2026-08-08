@@ -156,8 +156,7 @@ function RootLayout() {
         </div>
       </aside>
 
-      {/* Anywhere off the drawer closes it. A station inside the drawer is above the scrim, so
-          picking one navigates and leaves the drawer open. */}
+      {/* Anywhere off the drawer closes it; a station sits above the scrim, so picking one leaves it open. */}
       {nav.open && (
         <button type='button' className='rail-scrim' tabIndex={-1} aria-label='Close navigation' onClick={nav.close} />
       )}
