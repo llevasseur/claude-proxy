@@ -192,11 +192,16 @@ transcript.
   a transcript to its captured requests for the Peak context link — but it is still optional and
   unchecked by `isAuditSidecar`, since legacy sidecars predate it. Once those age out, should the
   guard require it?
-- Attribution is per session id, not per thread: a session id covers the main agent, its
-  subagents, and one-shot helpers, so a thread's Peak context can be a subagent's request. The
-  thread key is a hash of the session id plus the first user message, which only the request
-  body carries — recomputing it would mean reading every `.request.txt` (megabytes each) instead
-  of the sidecars. Worth having the proxy write the thread id into the sidecar?
+- ~~Attribution is per session id, not per thread~~ — **resolved.** The proxy already computed
+  `threadIdFor(sessionId, messages)` to name the transcript, so it now writes that id onto the
+  audit sidecar's `session` block as well, and `sessionContextPeak` / `sessionContextEntries`
+  prefer an exact thread match over the session-wide one. Nothing has to re-read
+  `.request.txt` to recover it. The key is **omitted, not null**, when there was no root to hash
+  — matching how `isAuditSidecar` already tolerates a missing `session` block, and how the
+  SQLite source rebuilds it — so a legacy sidecar keeps the session-id path unchanged. What is
+  still open is whether the per-thread filter should ever *replace* the session-wide fallback
+  rather than only preceding it: today a thread whose requests all predate the field silently
+  reads as its whole session again.
 - **Both request-joined views are live-day-only.** `resolveSessionRequests` — behind the Peak
   context tile and the errors page's "View the full turn" links — calls `readSidecars` against
   the live log directory and has no archive fallback, unlike `buildTrends`. So once
