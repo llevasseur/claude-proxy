@@ -135,6 +135,67 @@ export function attachContextPrompts(
   return entries.map((e) => ({ ...e, prompt: (e.threadId && texts.get(e.threadId)) || null }));
 }
 
+/** The requests of one thread, gathered — what the context table shows as one row. */
+export interface ContextThreadGroup {
+  /** The thread id, or the lone request's sidecar when it has none. */
+  key: string;
+  /** Null when the request carries no thread id, in which case the group holds it alone. */
+  threadId: string | null;
+  /** The thread's requests, in the order they were given. */
+  entries: ContextEntry[];
+  /** The thread's opening prompt, from the first request that recorded one. */
+  prompt: string | null;
+  /** Oldest and newest timestamp in the group, regardless of the order given. */
+  firstTimestamp: string;
+  lastTimestamp: string;
+  /**
+   * The thread's largest request, which is what the single row's cells show. Ties
+   * keep the earlier entry.
+   */
+  peak: ContextEntry;
+  /** Distinct models the thread used, first seen first — usually one. */
+  models: string[];
+}
+
+/**
+ * Gather every request of a thread into one {@link ContextThreadGroup}, whatever
+ * positions the caller's sort put them in — concurrent sessions interleave in time,
+ * so grouping only adjacent requests would leave one thread as many groups.
+ *
+ * Groups come back in the order their first request appears, so the caller's sort
+ * still decides which thread leads. A null thread id names no thread, so each such
+ * request gets a group of its own. Pure.
+ */
+export function groupContextThreads(entries: readonly ContextEntry[]): ContextThreadGroup[] {
+  const groups: ContextThreadGroup[] = [];
+  const byThread = new Map<string, ContextThreadGroup>();
+  for (const entry of entries) {
+    const existing = entry.threadId === null ? undefined : byThread.get(entry.threadId);
+    if (existing) {
+      existing.entries.push(entry);
+      existing.prompt ??= entry.prompt;
+      if (entry.timestamp.localeCompare(existing.firstTimestamp) < 0) existing.firstTimestamp = entry.timestamp;
+      if (entry.timestamp.localeCompare(existing.lastTimestamp) > 0) existing.lastTimestamp = entry.timestamp;
+      if (entry.realInput > existing.peak.realInput) existing.peak = entry;
+      if (!existing.models.includes(entry.model)) existing.models.push(entry.model);
+      continue;
+    }
+    const group: ContextThreadGroup = {
+      key: entry.threadId ?? `no-thread:${entry.file}`,
+      threadId: entry.threadId,
+      entries: [entry],
+      prompt: entry.prompt,
+      firstTimestamp: entry.timestamp,
+      lastTimestamp: entry.timestamp,
+      peak: entry,
+      models: [entry.model],
+    };
+    groups.push(group);
+    if (entry.threadId !== null) byThread.set(entry.threadId, group);
+  }
+  return groups;
+}
+
 /** One session's captured requests, reduced to the one worth drilling into. */
 export interface SessionContextPeak {
   /** How many captured requests were matched to this thread. */

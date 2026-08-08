@@ -945,6 +945,48 @@ export async function buildContext(
   };
 }
 
+export interface ContextThreadResponse {
+  threadId: string;
+  /** Every captured request of the thread in the window, oldest first. */
+  entries: ContextEntry[];
+  /** What the person typed to open the thread; null when it recorded none. */
+  prompt: string | null;
+  meta: { days: number; files: number; parseErrors: number };
+}
+
+/**
+ * One thread's captured requests, oldest first. Matches on thread id alone rather
+ * than through {@link sessionContextEntries}'s session-id fallback, which spans a
+ * whole agent family and would hand a parent's requests to a subagent's page.
+ *
+ * A thread with no requests in the window answers an empty list, not a 404.
+ */
+export async function buildContextThread(
+  logDir: string,
+  threadId: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<ContextThreadResponse> {
+  const { sidecars, files, parseErrors } = await readWindow(
+    logDir,
+    { sinceDays: days, includeFile: true },
+    now,
+    source,
+  );
+  const mine = toContextEntries(sidecars)
+    .filter((e) => e.threadId === threadId)
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const prompts = await source.readRootPrompts(logDir, mine.length ? [threadId] : []);
+  const entries = attachContextPrompts(mine, prompts);
+  return {
+    threadId,
+    entries,
+    prompt: entries.find((e) => e.prompt)?.prompt ?? null,
+    meta: { days, files, parseErrors },
+  };
+}
+
 /**
  * What every body-reading drill-down answers when retention has evicted the body
  * it would have parsed. A normal terminal state, not an error: the sidecar is

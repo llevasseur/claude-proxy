@@ -28,21 +28,36 @@ captured data, without touching the passive-observer proxy.
 - **Metric** — context size is `realInput` tokens, the true prompt size sent to the model.
 - **Context size page** (`/context`) — a 7/14/30-day window selector, stat tiles for
   **average / median / largest** context (tokens per request) and the request count, and a
-  **"Requests"** table listing every request in the window where each row links to its
-  breakdown. Default order is **When** newest-first; sortable by **When**, **Model**,
-  **Real input**, **System**, **Tools**, and **Size** (click a column to sort and again to
-  flip direction). The peak request is tagged in place. A **search box** over the table
-  narrows it by what was *asked for*: every row carries the opening prompt of the thread that
-  sent it, reduced to the text a person typed — no system prompt, no `<system-reminder>`
+  **"Threads"** table showing **one row per thread**, not per request. `groupContextThreads`
+  in `packages/core` gathers a thread's requests wherever they landed in the window — they
+  interleave with other threads' — and the row stands in for all of them: its **Model**,
+  **Peak input**, **System**, **Tools**, and **Size** cells are the thread's *largest*
+  request (ties keep the earlier one), **Started** is when the thread's first captured
+  request arrived with an arrow to its last, and the first cell carries the opening prompt,
+  the short thread id, and the request count. A request whose sidecar recorded no thread id
+  is its own one-request row and links straight to its breakdown. Default order is
+  **Started** newest-first; sortable by **Started**, **Model**, **Peak input**, **System**,
+  **Tools**, and **Size** (click a column to sort and again to flip direction) — every
+  comparison reads the group, so the order is never decided by a request the row does not
+  show. The window's overall peak is tagged in place. A **search box** over the table narrows
+  it by what was *asked for*: every row carries the opening prompt of the thread it
+  represents, reduced to the text a person typed — no system prompt, no `<system-reminder>`
   block (which is where `AGENTS.md`, `CLAUDE.md`, and memory get injected), and for a slash
   command the arguments only, never the inlined command definition. Matching is
   case-insensitive and every whitespace-separated term must appear; `"a phrase"` in double
   quotes matches whole. A matching row shows an excerpt of that prompt windowed on the first
-  term. Filtering is client-side over the entries already loaded, so it needs no refetch, and
-  a request whose thread recorded no opening prompt is never a match — the caption says how
-  many prompts are searchable. The window is **live-day-only**:
-  `buildContext` reads the live log directory and has no archive fallback — see the open
-  question below.
+  term. Grouping happens before filtering and sorting, and filtering is client-side over the
+  entries already loaded, so it needs no refetch; a thread that recorded no opening prompt is
+  never a match — the caption says how many prompts are searchable.
+- **Thread page** (`/context/thread/$threadId?days=<n>`) — the shared drill-down a thread's
+  single row opens: its opening prompt and full thread id, stat tiles for **requests**,
+  **peak** and **average** context and the **span**, then a **"Requests"** table of every
+  captured request the thread sent, oldest first, each row opening that request's own
+  breakdown. It carries the window it was reached from in `?days=`, so the page holds the
+  same 7/14/30 days the table did, and an empty window answers an empty list rather than a
+  404. Rows link on to `/context/$file?thread=…&days=…`, which is what lets the breakdown
+  show a **Thread** breadcrumb back to this page — a captured request body records no ids of
+  its own.
 - **Request breakdown** (`/context/$file`) — the "why so large" drill-down for one captured
   request: totals (request bytes, message count, tool count, system-prompt bytes), a
   **region table** (conversation messages vs. tool schemas vs. system prompt as shares of the
@@ -60,9 +75,16 @@ captured data, without touching the passive-observer proxy.
   parameter table drawn from `input_schema`) and a **Raw** JSON view.
 
 Data comes from the `server` API — `GET /api/context?days=<n>` (windowed summary; `days` is
-clamped to 1–365, default 14), `GET /api/context/detail?file=<base>` (one request's breakdown
-+ raw JSON), and `GET /api/context/tool?file=<base>&index=<n>` (one tool schema) — computed via
-`summarizeContext` / `analyzeRequestBody` / `extractRequestTool` in `packages/core`.
+clamped to 1–365, default 14), `GET /api/context/thread?thread=<id>&days=<n>` (one thread's
+requests, oldest first, plus its opening prompt), `GET /api/context/detail?file=<base>` (one
+request's breakdown + raw JSON), and `GET /api/context/tool?file=<base>&index=<n>` (one tool
+schema) — computed via `summarizeContext` / `analyzeRequestBody` / `extractRequestTool` in
+`packages/core`.
+
+`buildContextThread` selects on **thread id alone** rather than reusing the session-id
+fallback that widens a session view, because that fallback would hand a subagent's page every
+request its parent sent. It goes through the same `SidecarSource` seam as the windowed
+summary, so it is shadow-checked alongside it.
 
 The **windowed summary** goes through the `SidecarSource` seam
 ([ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md)): by default the SQLite
@@ -92,11 +114,17 @@ day), so no path traversal is possible.
 
 - The Context size page shows average, median, and largest `realInput` tokens over the
   selected window, plus the request count.
-- The "Requests" table lists every request in the window, ordered by arrival time by default
-  and sortable by when, model, real input, system, tools, and size; each row opens its breakdown.
+- The "Threads" table lists one row per thread in the window — never one per request —
+  showing that thread's largest request, ordered by start time by default and sortable by
+  started, model, peak input, system, tools, and size; each row opens the thread's own page,
+  and a request with no thread id opens its breakdown directly.
+- The thread page lists every request the thread sent in the window with its prompt, span,
+  count and peak, and each of its rows opens that request's breakdown with a breadcrumb back.
 - Each row carries its thread's opening prompt reduced to human-authored text, and the search
-  box narrows the table to the rows whose prompt contains every query term; a request whose
-  thread recorded no prompt never matches.
+  box narrows the table to the rows whose prompt contains every query term; a thread that
+  recorded no prompt never matches.
+- Every table stays inside its card at any viewport width, scrolling horizontally below its
+  columns' combined minimum rather than overflowing.
 - The breakdown attributes a request's size across conversation messages, tool schemas, and
   the system prompt, and exposes the raw request JSON.
 - Each "Tools by size" row opens `/context/$file/tool/$index`, showing that tool's full schema
@@ -113,5 +141,9 @@ day), so no path traversal is possible.
   window collapsing to roughly today on a maintained install.
 - Whether to add a historical chart of average/peak context per day (currently avg/median/max
   over a window only — see the design's out-of-scope note).
-- Whether to group the largest requests by session id (session id is captured but not
-  aggregated here).
+- ~~Whether to group the largest requests by session id (session id is captured but not
+  aggregated here).~~ **Resolved as thread id, not session id.** The table groups by
+  `threadId`, which names exactly one transcript; a session id spans an agent together with
+  its subagents, so grouping on it would fold a subagent's requests into its parent's row.
+  Whether to offer a *second*, coarser view that rolls a whole agent family up by session id
+  is still open.

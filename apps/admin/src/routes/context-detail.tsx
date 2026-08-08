@@ -1,6 +1,6 @@
 import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { getContextDetail } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -14,6 +14,9 @@ import { useTransitionState } from '../useTransitionState';
 
 export function ContextDetailPage() {
   const { file } = useParams({ from: '/context/$file' });
+  // Only set when the request was reached through its thread; there is nothing to
+  // fall back to.
+  const { thread, days } = useSearch({ from: '/context/$file' });
   const query = useQuery({ queryKey: ['context-detail', file], queryFn: () => getContextDetail(file) });
   const data = query.data;
   useRestoredScroll(!!data);
@@ -24,6 +27,15 @@ export function ContextDetailPage() {
         <Link to='/context' className='link'>
           Context size
         </Link>
+        {thread && (
+          <Link
+            to='/context/thread/$threadId'
+            params={{ threadId: thread }}
+            search={{ days: days ?? 14 }}
+            className='link'>
+            Thread {thread.slice(-8)}
+          </Link>
+        )}
         <span className='crumb-current'>Request breakdown</span>
       </Breadcrumbs>
       <div className='pagehead'>

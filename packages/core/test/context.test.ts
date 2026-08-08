@@ -5,6 +5,7 @@ import {
   type ContextEntry,
   extractRequestMessage,
   extractRequestTool,
+  groupContextThreads,
   sessionContextPeak,
   summarizeContext,
   toContextEntry,
@@ -242,6 +243,71 @@ describe('extractRequestTool', () => {
     expect(extractRequestTool({ tools: [{ description: 'no name' }] }, 0)!.name).toBe('(unnamed)');
     expect(extractRequestTool({}, 0)).toBeNull();
     expect(extractRequestTool(null, 0)).toBeNull();
+  });
+});
+
+describe('groupContextThreads', () => {
+  it('gathers a thread’s requests into one group, with its span and peak', () => {
+    const groups = groupContextThreads([
+      entry({ file: 'a', threadId: 't1', timestamp: '2026-07-20T13:31:00.000Z', realInput: 10, prompt: null }),
+      entry({ file: 'b', threadId: 't1', timestamp: '2026-07-20T13:31:08.000Z', realInput: 90, prompt: 'go on' }),
+      entry({ file: 'c', threadId: 't1', timestamp: '2026-07-20T13:31:04.000Z', realInput: 40 }),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.entries.map((e) => e.file)).toEqual(['a', 'b', 'c']);
+    expect(groups[0]!.threadId).toBe('t1');
+    expect(groups[0]!.prompt).toBe('go on');
+    // The whole entry, so the one row can draw its cells from the largest request.
+    expect(groups[0]!.peak.file).toBe('b');
+    expect(groups[0]!.peak.realInput).toBe(90);
+    // Oldest and newest, not first and last.
+    expect(groups[0]!.firstTimestamp).toBe('2026-07-20T13:31:00.000Z');
+    expect(groups[0]!.lastTimestamp).toBe('2026-07-20T13:31:08.000Z');
+  });
+
+  it('keeps the earlier request when two tie for the peak', () => {
+    const groups = groupContextThreads([
+      entry({ file: 'a', threadId: 't1', realInput: 50 }),
+      entry({ file: 'b', threadId: 't1', realInput: 50 }),
+    ]);
+    expect(groups[0]!.peak.file).toBe('a');
+  });
+
+  it('lists the distinct models a thread used, first seen first', () => {
+    const groups = groupContextThreads([
+      entry({ file: 'a', threadId: 't1', model: 'claude-opus-4-8' }),
+      entry({ file: 'b', threadId: 't1', model: 'claude-haiku-4-5' }),
+      entry({ file: 'c', threadId: 't1', model: 'claude-opus-4-8' }),
+    ]);
+    expect(groups[0]!.models).toEqual(['claude-opus-4-8', 'claude-haiku-4-5']);
+  });
+
+  it('gathers a thread whose requests are interleaved with another’s', () => {
+    const groups = groupContextThreads([
+      entry({ file: 'a', threadId: 't1' }),
+      entry({ file: 'b', threadId: 't2' }),
+      entry({ file: 'c', threadId: 't1' }),
+      entry({ file: 'd', threadId: 't2' }),
+    ]);
+    expect(groups.map((g) => [g.threadId, g.entries.map((e) => e.file)])).toEqual([
+      ['t1', ['a', 'c']],
+      ['t2', ['b', 'd']],
+    ]);
+  });
+
+  it('never gathers thread-less requests with each other', () => {
+    const groups = groupContextThreads([
+      entry({ file: 'a', threadId: null }),
+      entry({ file: 'b', threadId: null }),
+      entry({ file: 'c', threadId: 't1' }),
+      entry({ file: 'd', threadId: 't1' }),
+    ]);
+    expect(groups.map((g) => g.entries.map((e) => e.file))).toEqual([['a'], ['b'], ['c', 'd']]);
+    expect(new Set(groups.map((g) => g.key)).size).toBe(3);
+  });
+
+  it('returns no groups for no entries', () => {
+    expect(groupContextThreads([])).toEqual([]);
   });
 });
 

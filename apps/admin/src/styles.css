@@ -515,10 +515,23 @@ button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* A title, a search box and a caption do not share one line in a narrow card. */
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin-bottom: 14px;
 }
 .card-head h2 {
   margin: 0;
+}
+/* A caption is prose: let it wrap rather than push the head wider. */
+.card-head > .muted {
+  min-width: 0;
+}
+/* A phone has no room for the card's full gutter. */
+@media (max-width: 640px) {
+  .card {
+    padding: 18px 14px;
+  }
 }
 .link {
   font-family: var(--font-mono);
@@ -3454,22 +3467,75 @@ button.sessions-new.is-active {
   color: var(--faint);
 }
 
-/* The same control in a card head, pushed right beside the caption. */
+/* The same control in a card head, growing into the space between title and
+   caption rather than claiming a fixed 18rem it cannot shrink below. */
 .card-head .context-search {
-  margin: 0 12px 0 auto;
-  min-width: 18rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+  margin: 0;
   border-radius: 8px;
 }
 .card-head .context-search input {
   font-size: 12px;
   padding: 5px 0;
 }
-/* What was asked, under the timestamp it was asked at. */
-.context-prompt {
-  margin-top: 3px;
-  max-width: 44rem;
-  font-size: 11.5px;
+/* Below this the three parts stop sharing a line: the box takes its own row. */
+@media (max-width: 900px) {
+  .card-head .context-search {
+    flex-basis: 100%;
+    order: 1;
+  }
+  .card-head > .muted {
+    order: 2;
+  }
+}
+/* A thread's whole first cell is the link — two stacked lines rather than one wide
+   one, so the cell reflows instead of widening the table. */
+.thread-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: inherit;
+  text-decoration: none;
+}
+.thread-link:hover .thread-title {
+  text-decoration: underline;
+}
+.thread-title {
   line-height: 1.35;
+  /* Two lines, then ellipsis — a prompt must never set the column's width. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.thread-sub {
+  display: block;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.thread-when {
+  display: block;
+}
+.thread-id {
+  margin-right: 8px;
+  color: var(--faint);
+}
+/* The opening prompt above a thread's requests — free text, so it wraps, and it
+   scrolls in place because a `/task` prompt runs to thousands of words. */
+.thread-prompt-text {
+  margin: 6px 0 10px;
+  max-height: 14rem;
+  overflow-y: auto;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.thread-prompt-foot {
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 /* The scroll container the sentinel at its end pages against — one per list. */
