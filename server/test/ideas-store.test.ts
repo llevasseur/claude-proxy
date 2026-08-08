@@ -2,7 +2,13 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addIdeasToStore, markIdeasInStore, readIdeasStore, resolveIdeasPath } from '../src/ideas-store.js';
+import {
+  addIdeasToStore,
+  claimIdeasInStore,
+  markIdeasInStore,
+  readIdeasStore,
+  resolveIdeasPath,
+} from '../src/ideas-store.js';
 
 let logDir: string;
 
@@ -58,6 +64,35 @@ describe('the ledger file', () => {
     const entry = (await readIdeasStore(logDir)).ideas['rolling-window'];
     expect(entry?.status).toBe('rejected');
     expect(entry?.note).toBe('not now');
+  });
+
+  it('survives a claim through the file, so a second process reads the idea as taken', async () => {
+    await addIdeasToStore(logDir, [ADD]);
+    await markIdeasInStore(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+    const claimed = await claimIdeasInStore(logDir, [{ slug: 'rolling-window', by: 'feat/rolling-window' }]);
+    expect(claimed.claimed).toEqual(['rolling-window']);
+
+    // The whole point is the *next* read, by whoever comes along after.
+    const entry = (await readIdeasStore(logDir)).ideas['rolling-window'];
+    expect(entry?.status).toBe('claimed');
+    expect(entry?.claim?.by).toBe('feat/rolling-window');
+
+    const second = await claimIdeasInStore(logDir, [{ slug: 'rolling-window', by: 'someone-else' }]);
+    expect(second.claimed).toEqual([]);
+    expect(second.refused[0]?.heldBy).toBe('feat/rolling-window');
+  });
+
+  it('releases a claim through mark, and keeps it through shipped', async () => {
+    await addIdeasToStore(logDir, [ADD]);
+    await markIdeasInStore(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+    await claimIdeasInStore(logDir, [{ slug: 'rolling-window', by: 'feat/rolling-window' }]);
+
+    await markIdeasInStore(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.claim).toBeUndefined();
+
+    await claimIdeasInStore(logDir, [{ slug: 'rolling-window', by: 'feat/rolling-window' }]);
+    await markIdeasInStore(logDir, [{ slug: 'rolling-window', status: 'shipped', note: 'https://…/141' }]);
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.claim?.by).toBe('feat/rolling-window');
   });
 
   it('throws rather than reading a corrupt-but-present ledger as empty', async () => {

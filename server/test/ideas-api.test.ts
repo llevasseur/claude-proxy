@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyIdeaStatus, BROWSER_IDEA_STATUSES, buildIdeas } from '../src/api.js';
-import { addIdeasToStore, readIdeasStore } from '../src/ideas-store.js';
+import { addIdeasToStore, claimIdeasInStore, readIdeasStore } from '../src/ideas-store.js';
 
 let logDir: string;
 
@@ -33,7 +33,7 @@ describe('buildIdeas', () => {
     const { rows, meta } = await buildIdeas(logDir);
 
     expect(rows.map((r) => r.slug).sort()).toEqual(['rolling-window', 'step-reach-chart']);
-    expect(meta.counts).toEqual({ proposed: 2, accepted: 0, rejected: 0, shipped: 0 });
+    expect(meta.counts).toEqual({ proposed: 2, accepted: 0, claimed: 0, rejected: 0, shipped: 0 });
     expect(meta.total).toBe(2);
     expect(meta.file.endsWith('ideas.json')).toBe(true);
     // The evidence is what makes an idea approvable, so it has to reach the card.
@@ -67,7 +67,7 @@ describe('applyIdeaStatus', () => {
     ]);
     expect(rejected.rows[0]?.note).toBe('covered by /trends');
     // Counted over the whole ledger, not the write that just happened.
-    expect(rejected.meta.counts).toEqual({ proposed: 0, accepted: 1, rejected: 1, shipped: 0 });
+    expect(rejected.meta.counts).toEqual({ proposed: 0, accepted: 1, claimed: 0, rejected: 1, shipped: 0 });
 
     const store = await readIdeasStore(logDir);
     expect(store.ideas['rolling-window']?.status).toBe('accepted');
@@ -97,6 +97,23 @@ describe('applyIdeaStatus', () => {
     ).rejects.toThrow(/cannot be set from the dashboard/);
     expect((await readIdeasStore(logDir)).ideas['rolling-window']?.status).toBe('proposed');
     expect(BROWSER_IDEA_STATUSES).toEqual(['proposed', 'accepted', 'rejected']);
+  });
+
+  it('refuses `claimed`, since a claim names the run building the idea', async () => {
+    // A button would park an idea for the whole expiry under a holder nobody can find.
+    await expect(applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'claimed' }])).rejects.toThrow(
+      /ideas claim --by/,
+    );
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.status).toBe('proposed');
+  });
+
+  it('releases a claim with `accepted`, which is the dashboard escape hatch for a hung run', async () => {
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+    await claimIdeasInStore(logDir, [{ slug: 'rolling-window', by: 'run-a' }]);
+
+    const released = await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+    expect(released.rows[0]?.status).toBe('accepted');
+    expect(released.rows[0]?.claim).toBeUndefined();
   });
 
   it('refuses the whole batch when one mark is bad, rather than half-applying it', async () => {

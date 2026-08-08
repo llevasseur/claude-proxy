@@ -1,9 +1,9 @@
 ---
 type: feature
 title: Ideas ledger
-description: A store for invented proposals, kept separate from the suggestion flags because an idea has no source sessions behind it — only a recorded human sign-off makes one actionable.
+description: A store for invented proposals, kept separate from the suggestion flags because an idea has no source sessions behind it — only a recorded human sign-off makes one actionable, and a claim stamped at the start of work keeps two runs from building the same one.
 tags: [advice, cli, ideas]
-timestamp: 2026-08-05
+timestamp: 2026-08-07
 dirty: true
 ---
 
@@ -48,9 +48,10 @@ trace, which is the one thing the separation buys.
   every repo on the machine, so the repo an idea lands in is a *field*, carried as a git remote
   slug (`llevasseur/claude-proxy`). **An absolute checkout path is refused**, because it names a
   different thing — or nothing — on another machine.
-- **The statuses** — `proposed` (the default), `accepted` (a human signed it off), `rejected`
-  (with the reason), `shipped` (with the PR url). Only `accepted` carries a sign-off, and it is
-  the only status `/improve` may act on; a `proposed` or `rejected` idea is still invention.
+- **The statuses** — `proposed` (the default), `accepted` (a human signed it off), `claimed` (a run
+  is building it), `rejected` (with the reason), `shipped` (with the PR url). Only `accepted`
+  carries a sign-off, and it is the only status `/improve` may act on; a `proposed` or `rejected`
+  idea is still invention.
 - **`proposed` is persisted, unlike a `pending` suggestion.** The suggestion store drops a
   `pending` entry on read and deletes it on write, so that file holds only decisions. Here the
   ledger's whole job is to record **what was already considered** — an idea proposed and rejected
@@ -79,6 +80,53 @@ trace, which is the one thing the separation buys.
   landed. `proposed` is the undo: it restores an idea to unsigned-off without erasing the entry or
   its note.
 
+### Claiming, so two runs cannot build the same idea
+
+`accepted` and `shipped` are far apart in wall-clock time, and for a while nothing filled the gap.
+An implementation run stamped `shipped` when its PR opened, so from the moment it picked an idea up
+to the moment that PR existed the entry still read `accepted` — the one status an implementing run
+looks for, and therefore still on offer. On this ledger that window was **eleven minutes**, and two
+runs walked into it: PRs #139 and #140 both implemented `archive-aware-window-reader` against the
+same accepted entry.
+
+`claimed` fills the gap, and the two halves of the fix are equally load-bearing:
+
+- **The claim is stamped at the start of work**, not at PR-open time, which compresses the window
+  from the length of an implementation to the width of a single read-modify-write.
+- **`shipped` goes back to meaning the work landed**, rather than doubling as "somebody started".
+
+- **The claim carries a holder.** `{ by, at, pr? }` on the entry: `by` is a branch, a run id, or a
+  person — whatever a second run can read and recognise as not itself — and `at` is when work
+  started. `pr` is attached later, by re-claiming as the same holder.
+- **Only `accepted` may be claimed** (or a `claimed` entry that is stale or already yours).
+  `proposed` is refused, so a claim cannot route around the human sign-off that is the whole point
+  of `accepted`.
+- **A stale claim expires after six hours, rather than requiring an explicit release.** A run that
+  dies cannot release its own claim, and an idea locked forever by a crashed run is a worse failure
+  than the duplicate work the claim prevents — nobody would go and unstick it by hand. Expiry needs
+  no heartbeat, no liveness protocol and no sweeper: it is computed at read time from the `at`
+  already on the entry, so a claim expires without anybody writing the file.
+- **A claim carrying a `pr` never goes stale**, however old. An open PR is live evidence the work
+  exists, and expiring such a claim would invite exactly the duplicate implementation this state
+  was added to stop. This is what makes a six-hour TTL safe: the long part of an idea's life is PR
+  review, not writing, and `pr` covers that part.
+- **`ideas mark -s accepted` is the explicit release**, for a run that gives up before the expiry.
+  Every mark but `shipped` drops the claim; `shipped` keeps it as the record of who built the thing.
+- **`ideas list --available` is what an implementation run should read** — `accepted` plus any
+  `claimed` entry whose claim has expired. Plain `-s accepted` never recovers an idea abandoned by
+  a dead run, and `-s accepted,claimed` would take one out from under a live holder.
+- **The race is narrowed, not eliminated, and the residue is stated rather than papered over.** Like
+  every other writer here, `claimIdeasInStore` is a read-modify-write and is not atomic against a
+  second process in the same few milliseconds. The failure it was built for was eleven minutes wide;
+  closing it absolutely would mean a lock file with an owner, a timeout and a recovery path — its
+  own stuck states, on a ledger with one writer at a time and a duplicate PR as the worst outcome.
+
+**The command prose that has to change lives outside this repo.** `/ideate` and `/improve` are
+user-level command files on the device, not files in this checkout. The mechanism here is complete
+and usable, but an implementing run only stops colliding once its command file calls
+`ideas claim --by <branch>` as its first step and reads `list --available` in place of
+`list -s accepted`.
+
 ### Adjudicating from the dashboard
 
 The sign-off is a human decision, and requiring it at a terminal is what forced `/ideate` to stop
@@ -97,7 +145,11 @@ proposals and ends, and the decision happens whenever somebody looks.
   `/improve` then acts on.
 - **The browser may set `accepted`, `rejected` and `proposed` (the undo) only.** `shipped` stays
   CLI-only because it carries a PR url and is a claim made by whoever landed the change, not a
-  button beside Accept.
+  button beside Accept. `claimed` is absent for a different reason: it is not a decision a person
+  makes but a machine registering that it has started building, and it must carry a holder a second
+  run can recognise — a button would park an idea for the whole expiry under a holder nobody can
+  find. **Releasing** one is allowed, and is `accepted`: the card's Release button frees an idea
+  from a run that hung without waiting the six hours out, and leaves the sign-off intact.
 - **A `rejected` mark with no note is refused with 400**, matching the CLI contract. The reason is
   the ledger's dedupe record — it is what stops a rejected idea being re-proposed — and an empty one
   is worse than none, because it looks like a decision while carrying nothing a later reader can
@@ -130,12 +182,19 @@ Falling through past a broken tier-1 store forks one ledger into two that each l
 ## Flags / Parameters
 
 ```
-ideas list  [-s|--status <flags>] [--repo <slug>] [--json]
+ideas list  [-s|--status <flags>] [--repo <slug>] [--available] [--json]
 ideas add    --json <entries>|-
+ideas claim  --slug <slug> --by <holder> [--pr <url>] [--json]
 ideas mark   --slug <slug> -s|--status <flag> [-n|--note <text>] [--json]
 ```
 
-- `-s` / `--status` — comma-separated subset of `proposed`, `accepted`, `rejected`, `shipped`.
+- `-s` / `--status` — comma-separated subset of `proposed`, `accepted`, `claimed`, `rejected`,
+  `shipped`.
+- `--available` — on `list`, the rows an implementation run may take right now: `accepted` plus any
+  `claimed` entry whose claim has expired.
+- `--by` — on `claim`, the holder to record. `--pr` attaches the PR that pins the claim open.
+  `claim` exits non-zero when the idea is held by somebody else, so a scripted run walks away
+  rather than reading a zero exit as permission to build it.
 - `--repo` — a git remote slug, `owner/name`.
 - `--json` — on `list` and `mark`, machine-readable output. **On `add` it carries the payload**: a
   JSON array of entries, or `-` to read stdin. `add`'s own output is always JSON, since its input
@@ -143,8 +202,8 @@ ideas mark   --slug <slug> -s|--status <flag> [-n|--note <text>] [--json]
 - `--help` — the usage, including what each verb refuses.
 - `LOG_DIR` selects the store, exactly as it does for `suggestions`.
 
-An entry is `{ slug, title, rationale, evidence[], repo, status?, note? }`, and each evidence item
-is `{ source, path?, bucket?, id?, quote? }`.
+An entry is `{ slug, title, rationale, evidence[], repo, status?, note?, claim? }`, each evidence
+item is `{ source, path?, bucket?, id?, quote? }`, and a claim is `{ by, at, pr? }`.
 
 ## Where the code lives
 
@@ -191,6 +250,20 @@ of the answer.
       allowlist so a foreign origin is refused with 403.
 - [x] The Advice page renders each idea's citations, keeps `accepted` visible, collapses `rejected`
       behind a toggle, and shows an empty state for a ledger with no rows.
+- [x] A claim is stamped at the start of work and carries a holder and a start time, so a second
+      run can tell who holds an idea and since when.
+- [x] Only `accepted` — or a stale or already-yours `claimed` — may be claimed; `proposed` is
+      refused, so a claim cannot route around the human sign-off.
+- [x] An unevidenced claim expires after six hours and a claim carrying a `pr` never expires, both
+      decided at read time with no sweeper writing the file.
+- [x] `ideas mark -s accepted` releases a claim, every mark but `shipped` drops it, and `shipped`
+      keeps it as the record of who built the thing.
+- [x] `ideas list --available` returns `accepted` plus expired claims, and the test pins what the
+      two obvious alternative queries each get wrong.
+- [x] `claimed` cannot be set from the dashboard, but a claim can be released there.
+- [ ] `/ideate` and `/improve` claim before building and read `--available` instead of
+      `-s accepted`. **Those command files live outside this repo**, so this one is not closed by
+      anything in this checkout.
 
 ## Open questions
 
@@ -206,6 +279,16 @@ of the answer.
 - A `shipped` idea keeps its PR url in the same single `note` a `rejected` one keeps its reason in,
   so an idea that was rejected and later revived and shipped keeps only the second. The suggestion
   store solved the equivalent problem by moving enrichment to bucket level; here it has not come up.
+- The six-hour claim TTL is a judgement, not a measurement — there is one observed collision to
+  reason from, not a distribution of run durations. The `pr` escape hatch is what makes being
+  wrong on the short side survivable; if runs start losing claims mid-flight, the honest fix is to
+  record something the run refreshes rather than to keep raising the constant.
+- A claim's `by` is free text, so nothing stops two runs picking the same holder string and each
+  reading the other's claim as its own idempotent re-claim. With branch names as holders that does
+  not happen; it would need a real run id if anything ever generated holders automatically.
+- Claiming is still a read-modify-write, so two processes writing within the same few milliseconds
+  can both believe they won. Closing that would need a lock with an owner and a recovery path, and
+  the failure it guards against is a duplicate PR rather than data loss.
 - There is no `ideas defects` analogue. A rule can be systematically wrong and the dismissals prove
   it; an idea is a one-off, so there is no population to indict. If a *source* turns out to produce
   bad ideas repeatedly, nothing currently notices.

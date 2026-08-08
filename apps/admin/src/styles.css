@@ -1633,10 +1633,15 @@ button.link {
   color: var(--faint);
 }
 /* Ideas: `accepted` takes the affirmative tone as the sign-off /improve acts on,
-   `proposed` is waiting on a human, and `rejected` is the quietest of the four. */
+   `proposed` is waiting on a human, `claimed` is in flight — signed off but not on
+   offer — and `rejected` is the quietest of the five. */
 .badge.idea-status-accepted {
   background: rgba(111, 227, 154, 0.16);
   color: var(--good);
+}
+.badge.idea-status-claimed {
+  background: rgba(70, 224, 192, 0.16);
+  color: var(--info);
 }
 .badge.idea-status-proposed {
   background: rgba(244, 177, 90, 0.16);

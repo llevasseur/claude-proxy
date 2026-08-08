@@ -19,6 +19,7 @@ export const IDEAS_KEY = 'ideas';
 export const IDEA_STATUS_LABEL: Record<IdeaStatus, string> = {
   proposed: 'Proposed',
   accepted: 'Accepted',
+  claimed: 'Claimed',
   rejected: 'Rejected',
   shipped: 'Shipped',
 };
@@ -87,6 +88,15 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
       <p>{idea.rationale}</p>
       <IdeaEvidenceList evidence={idea.evidence} />
 
+      {idea.claim && (
+        // Who is building it, and since when — the reason the idea is not on offer.
+        // The PR is what pins the claim open, so it is named when there is one.
+        <div className='suggestion-note idea-claim'>
+          held by <strong>{idea.claim.by}</strong> since {fmtLocalTsShort(idea.claim.at)}
+          {idea.claim.pr && ` — ${idea.claim.pr}`}
+        </div>
+      )}
+
       {idea.note && (
         <div className='suggestion-note'>
           {idea.status === 'shipped' ? 'shipped: ' : idea.status === 'rejected' ? 'reason: ' : 'note: '}
@@ -135,8 +145,17 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
           </form>
         )}
 
+        {/* Releasing is `accepted`, not `proposed`: the idea goes back on offer with its
+            human sign-off intact. Every mark but `shipped` drops the claim, so this frees an
+            idea from a run that hung without waiting out the six-hour expiry. */}
+        {idea.status === 'claimed' && (
+          <button type='button' disabled={mark.isPending} onClick={() => mark.mutate({ status: 'accepted' })}>
+            Release
+          </button>
+        )}
+
         {/* `proposed` is the undo — it un-signs an idea without erasing it or its note. */}
-        {decided && idea.status !== 'shipped' && (
+        {decided && idea.status !== 'shipped' && idea.status !== 'claimed' && (
           <button type='button' disabled={mark.isPending} onClick={() => mark.mutate({ status: 'proposed' })}>
             Undo
           </button>

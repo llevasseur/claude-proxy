@@ -59,8 +59,11 @@ function Ideas() {
   // Newest first, unlike the ledger's own oldest-first order.
   const byNewest = (a: IdeaEntry, b: IdeaEntry) => b.created.localeCompare(a.created);
   const open = rows.filter((r) => r.status === 'proposed').sort(byNewest);
-  // Kept visible, so it is clear what /improve picks up next.
-  const settled = rows.filter((r) => r.status === 'accepted' || r.status === 'shipped').sort(byNewest);
+  // Kept visible, so it is clear what /improve picks up next — and `claimed` most of
+  // all, since a claim is the answer to "why has nothing happened to this one".
+  const settled = rows
+    .filter((r) => r.status === 'accepted' || r.status === 'claimed' || r.status === 'shipped')
+    .sort(byNewest);
   // Never deleted, only collapsed: the reasons are what stop an idea being re-proposed.
   const rejected = rows.filter((r) => r.status === 'rejected').sort(byNewest);
   const counts = query.data?.meta.counts;
@@ -71,7 +74,7 @@ function Ideas() {
         <h2>Ideas</h2>
         <span className='muted'>
           {counts
-            ? `${counts.proposed} awaiting a decision · ${counts.accepted} accepted · ${counts.rejected} rejected · ${counts.shipped} shipped`
+            ? `${counts.proposed} awaiting a decision · ${counts.accepted} accepted · ${counts.claimed} being built · ${counts.rejected} rejected · ${counts.shipped} shipped`
             : ''}
         </span>
       </div>
