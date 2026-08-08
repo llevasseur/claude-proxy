@@ -14,6 +14,7 @@ import type {
   CommandRunTotals,
   CommandStep,
   CommandSummary,
+  ContextEntry,
   ContextSummary,
   HookRow,
   IdeaEntry,
@@ -154,6 +155,13 @@ export interface ToolSchemaResponse {
 }
 export interface ContextResponse {
   summary: ContextSummary;
+  meta: { days: number; files: number; parseErrors: number };
+}
+export interface ContextThreadResponse {
+  threadId: string;
+  /** Every captured request of the thread in the window, oldest first. */
+  entries: ContextEntry[];
+  prompt: string | null;
   meta: { days: number; files: number; parseErrors: number };
 }
 /**
@@ -725,6 +733,8 @@ export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(da
 export const getToolSchema = (name: string, days: number) =>
   get<ToolSchemaResponse>(`/api/tool-schema?name=${encodeURIComponent(name)}&days=${days}`);
 export const getContext = (days: number) => get<ContextResponse>(`/api/context?days=${days}`);
+export const getContextThread = (threadId: string, days: number) =>
+  get<ContextThreadResponse>(`/api/context/thread?thread=${encodeURIComponent(threadId)}&days=${days}`);
 export const getContextDetail = (file: string) =>
   get<ContextDetailResponse>(`/api/context/detail?file=${encodeURIComponent(file)}`);
 export const getContextMessage = (file: string, index: number) =>

@@ -257,10 +257,29 @@ describe('groupContextThreads', () => {
     expect(groups[0]!.entries.map((e) => e.file)).toEqual(['a', 'b', 'c']);
     expect(groups[0]!.threadId).toBe('t1');
     expect(groups[0]!.prompt).toBe('go on');
-    expect(groups[0]!.peakRealInput).toBe(90);
+    // The whole entry, so the one row can draw its cells from the largest request.
+    expect(groups[0]!.peak.file).toBe('b');
+    expect(groups[0]!.peak.realInput).toBe(90);
     // Oldest and newest, not first and last.
     expect(groups[0]!.firstTimestamp).toBe('2026-07-20T13:31:00.000Z');
     expect(groups[0]!.lastTimestamp).toBe('2026-07-20T13:31:08.000Z');
+  });
+
+  it('keeps the earlier request when two tie for the peak', () => {
+    const groups = groupContextThreads([
+      entry({ file: 'a', threadId: 't1', realInput: 50 }),
+      entry({ file: 'b', threadId: 't1', realInput: 50 }),
+    ]);
+    expect(groups[0]!.peak.file).toBe('a');
+  });
+
+  it('lists the distinct models a thread used, first seen first', () => {
+    const groups = groupContextThreads([
+      entry({ file: 'a', threadId: 't1', model: 'claude-opus-4-8' }),
+      entry({ file: 'b', threadId: 't1', model: 'claude-haiku-4-5' }),
+      entry({ file: 'c', threadId: 't1', model: 'claude-opus-4-8' }),
+    ]);
+    expect(groups[0]!.models).toEqual(['claude-opus-4-8', 'claude-haiku-4-5']);
   });
 
   it('gathers a thread whose requests are interleaved with another’s', () => {

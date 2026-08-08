@@ -28,6 +28,7 @@ import {
   buildContext,
   buildContextDetail,
   buildContextMessage,
+  buildContextThread,
   buildContextTool,
   buildFilters,
   buildHooksPlugins,
@@ -528,6 +529,19 @@ const server = http.createServer(async (req, res) => {
         const context = await buildContext(LOG_DIR, days, now, readSource());
         send(res, 200, context);
         shadow('/api/context', context, (source) => buildContext(LOG_DIR, days, now, source));
+        return;
+      }
+      case '/api/context/thread': {
+        const threadId = url.searchParams.get('thread');
+        if (!threadId) {
+          send(res, 400, { error: 'missing ?thread=' });
+          return;
+        }
+        const days = parseDays(url.searchParams.get('days'));
+        const now = new Date();
+        const thread = await buildContextThread(LOG_DIR, threadId, days, now, readSource());
+        send(res, 200, thread);
+        shadow('/api/context/thread', thread, (source) => buildContextThread(LOG_DIR, threadId, days, now, source));
         return;
       }
       case '/api/context/detail': {

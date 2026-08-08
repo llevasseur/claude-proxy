@@ -135,7 +135,7 @@ export function attachContextPrompts(
   return entries.map((e) => ({ ...e, prompt: (e.threadId && texts.get(e.threadId)) || null }));
 }
 
-/** The requests of one thread, gathered — what the context table shows as one group. */
+/** The requests of one thread, gathered — what the context table shows as one row. */
 export interface ContextThreadGroup {
   /** The thread id, or the lone request's sidecar when it has none. */
   key: string;
@@ -148,7 +148,14 @@ export interface ContextThreadGroup {
   /** Oldest and newest timestamp in the group, regardless of the order given. */
   firstTimestamp: string;
   lastTimestamp: string;
-  peakRealInput: number;
+  /**
+   * The thread's largest request. The single row stands in for every request the
+   * thread sent, so its cells — real input, system, tools, the size bar — are this
+   * one's. Ties keep the earlier entry.
+   */
+  peak: ContextEntry;
+  /** Distinct models the thread used, first seen first — usually one. */
+  models: string[];
 }
 
 /**
@@ -156,8 +163,8 @@ export interface ContextThreadGroup {
  * positions the caller's sort put them in — concurrent sessions interleave in time,
  * so grouping only adjacent requests would leave one thread as many groups.
  *
- * Groups come back in the order their first request appears, so the sort still
- * decides which thread leads. A null thread id names no thread, so each such
+ * Groups come back in the order their first request appears, so the caller's sort
+ * still decides which thread leads. A null thread id names no thread, so each such
  * request gets a group of its own. Pure.
  */
 export function groupContextThreads(entries: readonly ContextEntry[]): ContextThreadGroup[] {
@@ -170,7 +177,8 @@ export function groupContextThreads(entries: readonly ContextEntry[]): ContextTh
       existing.prompt ??= entry.prompt;
       if (entry.timestamp.localeCompare(existing.firstTimestamp) < 0) existing.firstTimestamp = entry.timestamp;
       if (entry.timestamp.localeCompare(existing.lastTimestamp) > 0) existing.lastTimestamp = entry.timestamp;
-      existing.peakRealInput = Math.max(existing.peakRealInput, entry.realInput);
+      if (entry.realInput > existing.peak.realInput) existing.peak = entry;
+      if (!existing.models.includes(entry.model)) existing.models.push(entry.model);
       continue;
     }
     const group: ContextThreadGroup = {
@@ -180,7 +188,8 @@ export function groupContextThreads(entries: readonly ContextEntry[]): ContextTh
       prompt: entry.prompt,
       firstTimestamp: entry.timestamp,
       lastTimestamp: entry.timestamp,
-      peakRealInput: entry.realInput,
+      peak: entry,
+      models: [entry.model],
     };
     groups.push(group);
     if (entry.threadId !== null) byThread.set(entry.threadId, group);
