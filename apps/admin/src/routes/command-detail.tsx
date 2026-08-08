@@ -331,7 +331,7 @@ function RunScatter({ data, command }: { data: CommandResponse; command: string 
       </div>
       <div style={{ height: 300 }}>
         <ResponsiveContainer width='100%' height='100%'>
-          {/* Off, so the plot surface isn't `tabIndex=0` and never takes a focus ring. */}
+          {/* Off: recharts otherwise marks the surface `tabIndex=0`, ringing the whole plot. */}
           <ScatterChart accessibilityLayer={false} margin={{ top: 8, right: 16, bottom: 4, left: 4 }}>
             <CartesianGrid strokeDasharray='3 3' stroke='var(--line)' />
             <XAxis
