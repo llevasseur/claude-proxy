@@ -1,3 +1,4 @@
+import { userPromptText } from './prompt-text.js';
 import { type AuditSidecar, isAuditSidecar } from './types.js';
 
 /**
@@ -22,6 +23,13 @@ export interface ContextEntry {
    * whole agent family, so this is the only handle that names one thread.
    */
   threadId: string | null;
+  /**
+   * What the person typed to open this request's thread — the searchable text
+   * behind the "Requests" table's filter, via {@link attachContextPrompts}. Null
+   * until the server attaches it, and on a request whose thread is unknown or
+   * whose opening prompt was never recorded.
+   */
+  prompt: string | null;
   /** input + cacheRead + cacheCreation — the true prompt size. */
   realInput: number;
   systemBytes: number;
@@ -97,12 +105,37 @@ export function toContextEntry(sidecar: unknown, file: string): ContextEntry | n
     model: s.model,
     sessionId: s.session?.sessionId ?? null,
     threadId: s.session?.threadId ?? null,
+    // A sidecar records who sent the request, never what was asked — the opening
+    // prompt lives with the transcript, so only `attachContextPrompts` can fill this.
+    prompt: null,
     realInput: s.tokens.realInput,
     systemBytes: s.request.systemBytes,
     toolsBytes: s.request.toolsBytes,
     totalBytes: s.request.totalBytes,
     toolCount: s.request.toolCount,
   };
+}
+
+/**
+ * Fill each entry's {@link ContextEntry.prompt} from the opening prompts of the
+ * threads they belong to, reduced by {@link userPromptText} to the part a person
+ * typed. Keyed on thread id alone: a session id spans a whole agent family, so it
+ * would hand a subagent's request the parent's prompt.
+ *
+ * An entry with no thread id, or one whose thread recorded no opening prompt,
+ * keeps `prompt: null` and so never matches a search. Pure.
+ */
+export function attachContextPrompts(
+  entries: readonly ContextEntry[],
+  rootPrompts: ReadonlyMap<string, string>,
+): ContextEntry[] {
+  // One thread sends many requests, so reduce each opening prompt once.
+  const texts = new Map<string, string>();
+  for (const [threadId, root] of rootPrompts) {
+    const text = userPromptText(root);
+    if (text) texts.set(threadId, text);
+  }
+  return entries.map((e) => ({ ...e, prompt: (e.threadId && texts.get(e.threadId)) || null }));
 }
 
 /** One session's captured requests, reduced to the one worth drilling into. */

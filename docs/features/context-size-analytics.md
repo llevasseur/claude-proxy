@@ -31,7 +31,16 @@ captured data, without touching the passive-observer proxy.
   **"Requests"** table listing every request in the window where each row links to its
   breakdown. Default order is **When** newest-first; sortable by **When**, **Model**,
   **Real input**, **System**, **Tools**, and **Size** (click a column to sort and again to
-  flip direction). The peak request is tagged in place. The window is **live-day-only**:
+  flip direction). The peak request is tagged in place. A **search box** over the table
+  narrows it by what was *asked for*: every row carries the opening prompt of the thread that
+  sent it, reduced to the text a person typed — no system prompt, no `<system-reminder>`
+  block (which is where `AGENTS.md`, `CLAUDE.md`, and memory get injected), and for a slash
+  command the arguments only, never the inlined command definition. Matching is
+  case-insensitive and every whitespace-separated term must appear; `"a phrase"` in double
+  quotes matches whole. A matching row shows an excerpt of that prompt windowed on the first
+  term. Filtering is client-side over the entries already loaded, so it needs no refetch, and
+  a request whose thread recorded no opening prompt is never a match — the caption says how
+  many prompts are searchable. The window is **live-day-only**:
   `buildContext` reads the live log directory and has no archive fallback — see the open
   question below.
 - **Request breakdown** (`/context/$file`) — the "why so large" drill-down for one captured
@@ -59,7 +68,13 @@ The **windowed summary** goes through the `SidecarSource` seam
 ([ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md)): by default the SQLite
 substrate answers `readSidecars` from its tables with no directory read at all, `DB_READS=0`
 puts `buildContext` back on the original `logs/*.audit.json` scan, and `SHADOW_DB=1` re-runs
-the build against the other backing to compare. The **drill-downs are outside the seam** —
+the build against the other backing to compare. The **prompt text is fetched through that
+same seam** by a bounded `readRootPrompts(logDir, threadIds)` — it names only the threads the
+window actually contains, reading `logs/sessions/<threadId>.state.json`'s untruncated `root`
+on the file backing and the `session.root_prompt` column on the SQLite one, then
+`attachContextPrompts` runs each through `userPromptText` in `packages/core`. The lookup keys
+on **thread id, never session id**: a session id spans an agent and its subagents, so keying
+on it would label a subagent's request with its parent's prompt. The **drill-downs are outside the seam** —
 `buildContextDetail`, `buildContextMessage`, and `buildContextTool` take no `source` and still
 read exactly one `.request.txt` from disk, because a captured body is verbatim text the
 substrate does not hold.
@@ -79,6 +94,9 @@ day), so no path traversal is possible.
   selected window, plus the request count.
 - The "Requests" table lists every request in the window, ordered by arrival time by default
   and sortable by when, model, real input, system, tools, and size; each row opens its breakdown.
+- Each row carries its thread's opening prompt reduced to human-authored text, and the search
+  box narrows the table to the rows whose prompt contains every query term; a request whose
+  thread recorded no prompt never matches.
 - The breakdown attributes a request's size across conversation messages, tool schemas, and
   the system prompt, and exposes the raw request JSON.
 - Each "Tools by size" row opens `/context/$file/tool/$index`, showing that tool's full schema

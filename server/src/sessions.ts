@@ -84,6 +84,37 @@ export async function listSessions(logDir: string): Promise<SessionSummary[]> {
 }
 
 /**
+ * The untruncated opening prompts of the named threads, off their `.state.json`
+ * sidecars — the same `root` field `command-runs.ts` reads, and the same one the
+ * substrate ingests into `session.root_prompt`.
+ *
+ * Only the ids asked for are opened. The caller holds them already (they came off
+ * the captured requests), and the alternative — reading every sidecar in the
+ * directory — is megabytes of prompt to answer a question about a handful of
+ * threads. A thread with no sidecar, a torn one, or one recorded before the proxy
+ * had a prompt to record is simply absent from the result; the transcript's own
+ * `subtitle` is capped at 200 characters and so is not a substitute.
+ */
+export async function readRootPrompts(logDir: string, threadIds: readonly string[]): Promise<Map<string, string>> {
+  const dir = resolveSessionsDir(logDir);
+  const wanted = [...new Set(threadIds)].filter((id) => THREAD_ID_RE.test(id)).sort();
+
+  const out = new Map<string, string>();
+  await Promise.all(
+    wanted.map(async (threadId) => {
+      try {
+        const raw = await readFile(path.join(dir, `${threadId}.state.json`), 'utf8');
+        const state = JSON.parse(raw) as { root?: unknown };
+        if (typeof state.root === 'string' && state.root) out.set(threadId, state.root);
+      } catch {
+        // no sidecar, or it went away — the thread just has no prompt on record
+      }
+    }),
+  );
+  return out;
+}
+
+/**
  * The per-node argument fingerprints off a transcript's `.nodes.jsonl`, or none when
  * the sidecar is absent or predates the field.
  */

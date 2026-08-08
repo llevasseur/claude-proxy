@@ -28,6 +28,7 @@ import {
 import {
   listSessionGraphs as listSessionGraphsFromFiles,
   listSessions as listSessionsFromFiles,
+  readRootPrompts as readRootPromptsFromFiles,
   readSession as readSessionFromFiles,
   readSessionNodeTexts as readSessionNodeTextsFromFiles,
   resolveSessionFile,
@@ -68,6 +69,12 @@ export interface SidecarSource {
   listSessionGraphs(logDir: string): Promise<SessionGraph[]>;
   readSession(logDir: string, id: string): Promise<SessionDetail>;
   readSessionNodeTexts(logDir: string, id: string): Promise<SessionNodeTexts>;
+  /**
+   * The untruncated opening prompts of the named threads, thread id → prompt.
+   * Ids with nothing on record are absent rather than null, so the two backings
+   * cannot disagree about which flavour of "no prompt" a thread has.
+   */
+  readRootPrompts(logDir: string, threadIds: readonly string[]): Promise<Map<string, string>>;
 
   /* --- Command runs (slice 3) --- *
    *
@@ -95,6 +102,7 @@ export const fileSource: SidecarSource = {
   listSessionGraphs: (logDir) => listSessionGraphsFromFiles(logDir),
   readSession: (logDir, id) => readSessionFromFiles(logDir, id),
   readSessionNodeTexts: (logDir, id) => readSessionNodeTextsFromFiles(logDir, id),
+  readRootPrompts: (logDir, threadIds) => readRootPromptsFromFiles(logDir, threadIds),
   readCommandRuns: (logDir) => readCommandRunsFromFiles(logDir),
   readConcepts: (logDir) => readConceptsFromFiles(logDir),
 };
@@ -614,6 +622,33 @@ function toRecordedSpawn(row: SessionRow): RecordedSpawn | null {
   };
 }
 
+/** Bound parameters per statement, well under SQLite's ceiling on any build. */
+const BIND_LIMIT = 500;
+
+/**
+ * The named threads' opening prompts, out of the column ingest copied them into.
+ * Asked for by id rather than read wholesale for the same reason the file reader
+ * opens only the sidecars it was named: the answer covers a window's worth of
+ * threads, not the corpus.
+ */
+function rootPromptsFromDb(db: DatabaseSync, threadIds: readonly string[]): Map<string, string> {
+  const wanted = [...new Set(threadIds)].sort();
+  const out = new Map<string, string>();
+
+  // Chunked, because a wide window names more threads than SQLite binds parameters.
+  for (let at = 0; at < wanted.length; at += BIND_LIMIT) {
+    const chunk = wanted.slice(at, at + BIND_LIMIT);
+    const rows = db
+      .prepare(
+        `SELECT thread_id, root_prompt FROM session
+         WHERE root_prompt IS NOT NULL AND root_prompt != '' AND thread_id IN (${chunk.map(() => '?').join(',')})`,
+      )
+      .all(...chunk) as unknown as Array<{ thread_id: string; root_prompt: string }>;
+    for (const row of rows) out.set(row.thread_id, row.root_prompt);
+  }
+  return out;
+}
+
 /** Newest first, ties broken by thread id — the order both listings return. */
 function sortListing<T extends { modified: string; threadId: string }>(rows: T[]): T[] {
   rows.sort((a, b) => b.modified.localeCompare(a.modified) || a.threadId.localeCompare(b.threadId));
@@ -706,6 +741,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       const links = linkAgentSessions(rows);
       return sortListing(rows.map(({ recorded: _recorded, ...row }) => ({ ...row, ...links.get(row.threadId)! })));
     },
+    readRootPrompts: async (_logDir, threadIds) => rootPromptsFromDb(db, threadIds),
     readSession: async (logDir, id) => {
       // Validates the URL-supplied id and confirms the path stays inside
       // `sessions/`, as the file reader does.

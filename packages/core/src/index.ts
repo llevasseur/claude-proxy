@@ -14,6 +14,7 @@ export * from './jobs.js';
 export * from './launch-aliases.js';
 export * from './pricing.js';
 export * from './prompt-mix.js';
+export * from './prompt-text.js';
 export * from './provenance.js';
 export * from './sessions.js';
 export * from './skim.js';

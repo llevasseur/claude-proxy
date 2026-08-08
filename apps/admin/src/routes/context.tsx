@@ -1,7 +1,8 @@
-import type { ContextEntry } from '@claude-proxy/core';
+import { type ContextEntry, promptExcerpt, promptMatches } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useMemo } from 'react';
+import { Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { getContext } from '../api';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
@@ -116,16 +117,21 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
     key: 'when',
     dir: 'desc',
   });
+  const [query, setQuery] = useState('');
+  // The bar is scaled by the whole window, so filtering doesn't silently re-scale it.
   const max = Math.max(1, ...entries.map((e) => e.realInput));
 
   const sorted = useMemo(() => {
-    const rows = [...entries];
+    const rows = entries.filter((e) => promptMatches(e.prompt, query));
     rows.sort((a, b) => {
       const diff = compare(a, b, sort.key);
       return sort.dir === 'asc' ? diff : -diff;
     });
     return rows;
-  }, [entries, sort]);
+  }, [entries, sort, query]);
+
+  // Only requests whose thread recorded an opening prompt can be searched at all.
+  const searchable = useMemo(() => entries.filter((e) => e.prompt).length, [entries]);
 
   const onSort = (key: SortKey) =>
     setSort((prev) =>
@@ -136,7 +142,21 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
     <div className='card'>
       <div className='card-head'>
         <h2>Requests</h2>
-        <span className='muted'>click a column to sort · click a row for the breakdown</span>
+        <label className='sessions-search context-search'>
+          <Search size={14} strokeWidth={1.75} aria-hidden />
+          <input
+            type='search'
+            value={query}
+            placeholder='Search what was asked'
+            aria-label='Search requests by opening prompt'
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        <span className='muted'>
+          {query.trim()
+            ? `${fmtInt(sorted.length)} of ${fmtInt(entries.length)} · searching ${fmtInt(searchable)} recorded prompt${searchable === 1 ? '' : 's'}`
+            : 'click a column to sort · click a row for the breakdown'}
+        </span>
       </div>
       <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
         <thead>
@@ -157,6 +177,12 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
                   {fmtLocalTs(e.timestamp)}
                   {e.realInput === maxRealInput && <span className='muted'> · peak</span>}
                 </Link>
+                {e.prompt && (
+                  // The excerpt follows the match, so a hit shows the words that found it.
+                  <div className='muted context-prompt' title={e.prompt}>
+                    {promptExcerpt(e.prompt, query)}
+                  </div>
+                )}
               </td>
               <td className='muted'>{e.model}</td>
               <td className='num'>{fmtInt(e.realInput)}</td>
@@ -167,6 +193,13 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
               </td>
             </tr>
           ))}
+          {sorted.length === 0 && (
+            <tr>
+              <td colSpan={6} className='empty'>
+                No request's opening prompt matches “{query.trim()}”.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
