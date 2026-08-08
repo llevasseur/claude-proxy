@@ -27,6 +27,7 @@ const node = (index: number, type: SessionNode['type'], text: string): SessionNo
   type,
   text,
   tool: type === 'tool' ? text : null,
+  argsHash: null,
   task: null,
   interruption: null,
   interrupted: false,
