@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "claude-proxy-concepts",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "observability": { "enabled": true },
+
+  // `database_id` comes from `wrangler d1 create concepts` — see README. The
+  // placeholder stays so a deploy before that fails loudly.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "concepts",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Daily backup commit, off-peak in UTC.
+  "triggers": { "crons": ["17 9 * * *"] },
+
+  // Secrets (CONCEPTS_TOKEN, BACKUP_GITHUB_TOKEN) are set with
+  // `wrangler secret put` and never appear here.
+  "vars": {
+    "BACKUP_REPO": "",
+    "BACKUP_PATH": "concepts.jsonl",
+    "BACKUP_BRANCH": "main"
+  }
+}
