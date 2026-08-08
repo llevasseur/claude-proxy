@@ -17,6 +17,11 @@ export interface ContextEntry {
   model: string;
   /** Claude Code session id that sent it; null on legacy sidecars. */
   sessionId: string | null;
+  /**
+   * The transcript it is a turn of; null on legacy sidecars. A session id spans a
+   * whole agent family, so this is the only handle that names one thread.
+   */
+  threadId: string | null;
   /** input + cacheRead + cacheCreation — the true prompt size. */
   realInput: number;
   systemBytes: number;
@@ -91,6 +96,7 @@ export function toContextEntry(sidecar: unknown, file: string): ContextEntry | n
     timestamp: s.timestamp,
     model: s.model,
     sessionId: s.session?.sessionId ?? null,
+    threadId: s.session?.threadId ?? null,
     realInput: s.tokens.realInput,
     systemBytes: s.request.systemBytes,
     toolsBytes: s.request.toolsBytes,
@@ -101,29 +107,57 @@ export function toContextEntry(sidecar: unknown, file: string): ContextEntry | n
 
 /** One session's captured requests, reduced to the one worth drilling into. */
 export interface SessionContextPeak {
-  /** How many captured requests carried this session id. */
+  /** How many captured requests were matched to this thread. */
   requestCount: number;
   /** The largest of them — the drill-down handle. */
   peak: ContextEntry | null;
 }
 
 /**
- * The largest-context request sent under one Claude Code session id. A session id
- * spans a whole agent family — main thread, subagents, one-shot helpers — so the
- * peak may belong to any of them. Ties keep the earlier entry; a null or unmatched
- * id gives an empty result.
+ * Which entries belong to one transcript. Prefers the recorded thread id, which names
+ * exactly one; falls back to the session id, which spans a whole agent family and so
+ * can hand a subagent's request to its parent.
  */
-export function sessionContextPeak(entries: readonly ContextEntry[], sessionId: string | null): SessionContextPeak {
-  if (!sessionId) return { requestCount: 0, peak: null };
+function matching(
+  entries: readonly ContextEntry[],
+  sessionId: string | null,
+  threadId?: string | null,
+): readonly ContextEntry[] {
+  if (threadId) {
+    const exact = entries.filter((e) => e.threadId === threadId);
+    if (exact.length) return exact;
+  }
+  if (!sessionId) return [];
+  return entries.filter((e) => e.sessionId === sessionId);
+}
 
-  let requestCount = 0;
+/**
+ * The largest-context request a transcript sent, matched by {@link matching}. Ties
+ * keep the earlier entry; no match gives an empty result.
+ */
+export function sessionContextPeak(
+  entries: readonly ContextEntry[],
+  sessionId: string | null,
+  threadId?: string | null,
+): SessionContextPeak {
+  const mine = matching(entries, sessionId, threadId);
   let peak: ContextEntry | null = null;
-  for (const e of entries) {
-    if (e.sessionId !== sessionId) continue;
-    requestCount += 1;
+  for (const e of mine) {
     if (!peak || e.realInput > peak.realInput) peak = e;
   }
-  return { requestCount, peak };
+  return { requestCount: mine.length, peak };
+}
+
+/**
+ * Every captured request belonging to one transcript, matched the same way
+ * {@link sessionContextPeak} matches.
+ */
+export function sessionContextEntries(
+  entries: readonly ContextEntry[],
+  sessionId: string | null,
+  threadId?: string | null,
+): ContextEntry[] {
+  return [...matching(entries, sessionId, threadId)];
 }
 
 // Raw-request breakdown — "why was this one so large?"

@@ -6,6 +6,7 @@ import {
   isIdeaStatus,
   isSuggestionRecurrence,
   isSuggestionStatus,
+  isThreadId,
   parseBucketRange,
   parseIdeaMarks,
   parseSuggestionJudgements,
@@ -1023,12 +1024,18 @@ const server = http.createServer(async (req, res) => {
               if (body.amnesty !== undefined && typeof body.amnesty !== 'boolean') {
                 throw new Error('amnesty must be a boolean');
               }
+              // Refused when present and malformed — silently dropping it would file
+              // the verdict unattributed while the caller believed it had signed.
+              if (body.thread !== undefined && !isThreadId(body.thread)) {
+                throw new Error('thread must be a 16-hex-character thread id');
+              }
               return applySuggestionJudge(
                 LOG_DIR,
                 {
                   ...(body.updates === undefined ? {} : { updates: parseSuggestionStatusUpdates(body.updates) }),
                   ...(body.judged === undefined ? {} : { judged: parseSuggestionJudgements(body.judged) }),
                   ...(body.amnesty === undefined ? {} : { amnesty: body.amnesty as boolean }),
+                  ...(body.thread === undefined ? {} : { thread: body.thread as string }),
                 },
                 new Date(),
                 readSource(),

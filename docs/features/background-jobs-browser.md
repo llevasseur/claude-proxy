@@ -181,7 +181,13 @@ directory that isn't there a 404.
   transcript records the session it belongs to, so a job's whole family — root and every
   subagent — comes back together, which is what the rolled-up liveness verdict wants. It does
   not identify *which* transcript is the job's own root, and a job whose session never reached
-  the proxy still matches nothing.
+  the proxy still matches nothing. The thread-level key now exists for that next step: every
+  audit sidecar carries `session.threadId` beside `session.sessionId` and the `request` table
+  indexes it (`request_thread_idx`), so a job's session id reaches its thread ids through the
+  captured requests without the `/api/chat/thread` lookup that only covers dashboard-started
+  chats. One session id can own several threads (the main agent, its subagents, one-shot
+  helpers), so picking the job's own root means picking among them — most likely the top-level
+  thread the agent tree already identifies.
 - `jobFileKind` is an extension allow-list, so an unknown extension holding perfectly good text
   is assumed binary until the NUL check clears it — which it does, but only after the bytes are
   read. It errs toward showing something rather than nothing, but the mapping needs extending as

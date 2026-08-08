@@ -72,6 +72,14 @@ export interface AuditSession {
   account: string | null;
   metadataSessionId: string | null;
   deviceId: string | null;
+  /**
+   * Which transcript this request is a turn of — the stem of
+   * `logs/sessions/<threadId>.md`. A session id is shared by a run and every subagent
+   * under it, so joining on `sessionId` alone attributes a subagent's request to its
+   * parent's thread; this does not. Absent on legacy sidecars and on requests with no
+   * user text to root on, so consumers must keep the session-wide fallback.
+   */
+  threadId?: string;
 }
 
 export interface AuditSidecar {

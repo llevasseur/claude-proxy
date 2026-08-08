@@ -15,6 +15,7 @@ const node = (type: SessionNodeType, interrupted = false): SessionNode => ({
   type,
   text: 'whatever',
   tool: null,
+  argsHash: null,
   task: null,
   interruption: null,
   interrupted,

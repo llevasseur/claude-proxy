@@ -14,6 +14,7 @@ import {
   RECURRENCE_LABEL,
   STATUS_LABEL,
   SUGGESTION_STATUS_KEY,
+  ThinPassBadge,
 } from '../components/SuggestionStatus';
 import { fmtInt, fmtLocalTsShort } from '../format';
 import { useLiveQuery } from '../useLiveQuery';
@@ -59,8 +60,10 @@ function Ideas() {
   // Newest first, unlike the ledger's own oldest-first order.
   const byNewest = (a: IdeaEntry, b: IdeaEntry) => b.created.localeCompare(a.created);
   const open = rows.filter((r) => r.status === 'proposed').sort(byNewest);
-  // Kept visible, so it is clear what /improve picks up next.
-  const settled = rows.filter((r) => r.status === 'accepted' || r.status === 'shipped').sort(byNewest);
+  // Kept visible, so it is clear what /improve picks up next, and what is already being built.
+  const settled = rows
+    .filter((r) => r.status === 'accepted' || r.status === 'claimed' || r.status === 'shipped')
+    .sort(byNewest);
   // Never deleted, only collapsed: the reasons are what stop an idea being re-proposed.
   const rejected = rows.filter((r) => r.status === 'rejected').sort(byNewest);
   const counts = query.data?.meta.counts;
@@ -71,7 +74,7 @@ function Ideas() {
         <h2>Ideas</h2>
         <span className='muted'>
           {counts
-            ? `${counts.proposed} awaiting a decision · ${counts.accepted} accepted · ${counts.rejected} rejected · ${counts.shipped} shipped`
+            ? `${counts.proposed} awaiting a decision · ${counts.accepted} accepted · ${counts.claimed} being built · ${counts.rejected} rejected · ${counts.shipped} shipped`
             : ''}
         </span>
       </div>
@@ -265,15 +268,16 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
   const open = bucket.suggestions.filter((s) => !isSettled(rowOf(s.id))).length;
   // Judged-ness is a fact about the bucket, so any of its rows carries it; until the
   // flags land, incompleteness is all the bucket alone can say.
-  const state =
-    bucket.suggestions.map((s) => rowOf(s.id)).find((r) => r)?.bucketState ??
-    (bucket.complete ? undefined : 'not-ready');
+  const anyRow = bucket.suggestions.map((s) => rowOf(s.id)).find((r) => r);
+  const state = anyRow?.bucketState ?? (bucket.complete ? undefined : 'not-ready');
+  const judgedBy = anyRow?.judgedBy;
   return (
     <Link to='/advice/sessions/$bucket' params={{ bucket: String(bucket.index) }} className='card bucket-row'>
       <div className='bucket-row-head'>
         <span className='bucket-label'>Sessions {bucket.label}</span>
         {worst && <span className={`badge sev-${worst.severity}`}>{SEV_LABEL[worst.severity]}</span>}
         {state && <BucketJudgementBadge state={state} />}
+        <ThinPassBadge by={judgedBy} />
         <span className='muted bucket-range'>
           {fmtLocalTsShort(bucket.startedFirst ?? '')} → {fmtLocalTsShort(bucket.startedLast ?? '')}
         </span>

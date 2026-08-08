@@ -15,6 +15,7 @@ export * from './launch-aliases.js';
 export * from './liveness.js';
 export * from './pricing.js';
 export * from './prompt-mix.js';
+export * from './provenance.js';
 export * from './sessions.js';
 export * from './skim.js';
 export * from './suggestion-status.js';
