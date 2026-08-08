@@ -3,6 +3,7 @@ import type {
   AdviceMovement,
   AliasLoadExpectation,
   AuditSidecar,
+  BranchLiveness,
   BucketBreakdownSummary,
   BucketJudgementState,
   CliFunctionEntry,
@@ -283,10 +284,26 @@ export interface JobSummary extends JobStateFields {
   modified: string;
   /** Newest of `updatedAt` and `modified` — what the listing sorts by. */
   activity: string;
+  /**
+   * What the transcripts of this job's session are doing, rolled up across the fan-out.
+   * `state.json` is the job's own claim and freezes the moment it dies; this does not.
+   */
+  liveness: BranchLiveness;
+  /** How many transcripts that verdict is drawn from; 0 when none matched the session id. */
+  threads: number;
 }
 export interface JobsResponse {
   jobs: JobSummary[];
-  meta: { jobsDir: string; total: number; running: number; husks: number; files: number; bytes: number };
+  meta: {
+    jobsDir: string;
+    total: number;
+    running: number;
+    /** Jobs with a transcript still being appended to — observed, not self-reported. */
+    live: number;
+    husks: number;
+    files: number;
+    bytes: number;
+  };
 }
 export interface JobResponse {
   job: JobSummary;
@@ -336,10 +353,35 @@ export interface SessionsResponse {
 /** A transcript's steps plus its place in the session's agent tree (parent/subagent links). */
 export interface SessionGraphEntry extends SessionSummary, SessionAgentLink {
   nodes: SessionNode[];
+  /** Whether this branch is still being written to — `quiet` is busy-or-stalled, not dead. */
+  liveness: BranchLiveness;
 }
 export interface SessionsGraphResponse {
   sessions: SessionGraphEntry[];
   meta: { sessionsDir: string; total: number };
+}
+/** One branch's liveness verdict with no node stream attached — cheap enough to poll. */
+export interface SessionLivenessRow {
+  threadId: string;
+  sessionId: string | null;
+  name: string;
+  parentThreadId: string | null;
+  agentType: string | null;
+  depth: number;
+  steps: number;
+  liveness: BranchLiveness;
+}
+export interface SessionsLivenessResponse {
+  threads: SessionLivenessRow[];
+  meta: {
+    at: string;
+    quietAfterMs: number;
+    total: number;
+    running: number;
+    quiet: number;
+    finished: number;
+    unknown: number;
+  };
 }
 /** Node index → the whole text behind that step's truncated one-line gist. Sparse. */
 export interface SessionNodeTextsResponse {
@@ -704,6 +746,8 @@ export const getJobFile = (id: string, file: string) =>
 export const deleteJob = (id: string) => post<JobDeleteResponse>('/api/jobs/delete', { id });
 export const getSessions = () => get<SessionsResponse>('/api/sessions');
 export const getSessionsGraph = () => get<SessionsGraphResponse>('/api/sessions/graph');
+/** Every branch's liveness verdict, live branches first — the graph payload without the steps. */
+export const getSessionsLiveness = () => get<SessionsLivenessResponse>('/api/sessions/liveness');
 export const getSessionGraphNodes = (id: string) =>
   get<SessionGraphNodesResponse>(`/api/sessions/graph/nodes?id=${encodeURIComponent(id)}`);
 export const getSession = (id: string) => get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
