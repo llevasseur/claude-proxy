@@ -1,7 +1,13 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { parseSessionNodes, parseSessionNodeTexts, parseSessionTranscript } from '@claude-proxy/core';
+import {
+  parseRecordedSpawn,
+  parseSessionNodeHashes,
+  parseSessionNodes,
+  parseSessionNodeTexts,
+  parseSessionTranscript,
+} from '@claude-proxy/core';
 import { resolveSessionsDir, SESSION_FILE_RE } from '../sessions.js';
 
 /**
@@ -45,19 +51,21 @@ function prepare(db: DatabaseSync): SessionStatements {
         thread_id, model, session_id, started,
         tasks, decisions, tools, errors,
         first_task, title, subtitle, derived_title,
-        bytes, modified, md_path, root_prompt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        bytes, modified, md_path, root_prompt,
+        parent_thread_id, spawn_index, spawn_agent_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         model = excluded.model, session_id = excluded.session_id, started = excluded.started,
         tasks = excluded.tasks, decisions = excluded.decisions, tools = excluded.tools,
         errors = excluded.errors, first_task = excluded.first_task, title = excluded.title,
         subtitle = excluded.subtitle, derived_title = excluded.derived_title,
         bytes = excluded.bytes, modified = excluded.modified, md_path = excluded.md_path,
-        root_prompt = excluded.root_prompt
+        root_prompt = excluded.root_prompt, parent_thread_id = excluded.parent_thread_id,
+        spawn_index = excluded.spawn_index, spawn_agent_type = excluded.spawn_agent_type
     `),
     insertNode: db.prepare(`
-      INSERT INTO session_node (thread_id, idx, type, text, tool, task, interruption, interrupted, message, turn)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO session_node (thread_id, idx, type, text, tool, task, interruption, interrupted, message, turn, args_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
     // A `.nodes.jsonl` naming the same index twice: last entry wins, matching
     // the file reader's plain-object assignment.
@@ -79,6 +87,8 @@ interface ParsedSession {
   modified: string;
   rootPrompt: string | null;
   nodeTexts: Record<number, string>;
+  /** Per-node argument fingerprints off the same sidecar — see `SessionNode.argsHash`. */
+  nodeHashes: Record<number, string>;
 }
 
 /** The untruncated opening prompt, mirroring `readRootPrompt` in `command-runs.ts`. */
@@ -91,12 +101,20 @@ async function readRootPrompt(dir: string, threadId: string): Promise<string | n
   }
 }
 
-/** The sparse untruncated node texts, or none when the sidecar is absent. */
-async function readNodeTexts(dir: string, threadId: string): Promise<Record<number, string>> {
+/**
+ * The `.nodes.jsonl` sidecar's two sparse maps — untruncated texts and argument
+ * fingerprints — or empty ones when it is absent. Read in one pass: the rows carry
+ * both, and a row can carry either alone.
+ */
+async function readNodeSidecar(
+  dir: string,
+  threadId: string,
+): Promise<{ texts: Record<number, string>; hashes: Record<number, string> }> {
   try {
-    return parseSessionNodeTexts(await readFile(path.join(dir, `${threadId}.nodes.jsonl`), 'utf8'));
+    const content = await readFile(path.join(dir, `${threadId}.nodes.jsonl`), 'utf8');
+    return { texts: parseSessionNodeTexts(content), hashes: parseSessionNodeHashes(content) };
   } catch {
-    return {};
+    return { texts: {}, hashes: {} };
   }
 }
 
@@ -116,13 +134,14 @@ async function readSessionFiles(dir: string, threadId: string): Promise<ParsedSe
   } catch {
     return null;
   }
-  const [rootPrompt, nodeTexts] = await Promise.all([readRootPrompt(dir, threadId), readNodeTexts(dir, threadId)]);
-  return { threadId, content, bytes, modified, rootPrompt, nodeTexts };
+  const [rootPrompt, sidecar] = await Promise.all([readRootPrompt(dir, threadId), readNodeSidecar(dir, threadId)]);
+  return { threadId, content, bytes, modified, rootPrompt, nodeTexts: sidecar.texts, nodeHashes: sidecar.hashes };
 }
 
 /** Write one transcript's row and its node stream, replacing whatever was there. */
 function writeSession(st: SessionStatements, parsed: ParsedSession): void {
   const meta = parseSessionTranscript(parsed.threadId, parsed.content);
+  const recorded = parseRecordedSpawn(parsed.content);
   st.insertSession.run(
     meta.threadId,
     meta.model,
@@ -140,11 +159,14 @@ function writeSession(st: SessionStatements, parsed: ParsedSession): void {
     parsed.modified,
     mdPath(parsed.threadId),
     parsed.rootPrompt,
+    recorded?.parentThreadId ?? null,
+    recorded?.spawnIndex ?? null,
+    recorded?.agentType ?? null,
   );
 
   // Delete then insert: a transcript can be rewritten, not only extended.
   st.clearNodes.run(parsed.threadId);
-  for (const node of parseSessionNodes(parsed.content)) {
+  for (const node of parseSessionNodes(parsed.content, parsed.nodeHashes)) {
     st.insertNode.run(
       parsed.threadId,
       node.index,
@@ -156,6 +178,7 @@ function writeSession(st: SessionStatements, parsed: ParsedSession): void {
       node.interrupted ? 1 : 0,
       node.message,
       node.turn,
+      node.argsHash,
     );
   }
 

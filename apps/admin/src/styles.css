@@ -905,6 +905,25 @@ a.pager-btn:hover {
   margin-top: 6px;
 }
 
+/* recharts focus: never the plot area, only the points. `accessibilityLayer={false}`
+   at each chart keeps the surface out of the tab order; recharts still stamps
+   `tabindex="-1"` on every inner `recharts-zIndex-layer_*` group, which a click
+   focuses and the browser then rings. */
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-wrapper :focus,
+.recharts-wrapper :focus-visible {
+  outline: none;
+}
+/* Pin targets stay keyboard-reachable: a box outline round an SVG circle reads as the
+   area being focused, so the hit disc rings itself. `:focus-visible` only — a click
+   already shows its result by pinning the point. */
+.recharts-wrapper [role="switch"]:focus-visible {
+  outline: none;
+  stroke: var(--signal);
+  stroke-width: 2;
+}
+
 /* recharts tooltip + legend */
 .charttip {
   background: var(--surface-2);
@@ -915,6 +934,14 @@ a.pager-btn:hover {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  /* Sized to its rows, capped by a `max-height` set from the plot height. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The hovered point holds the top of the card; only the pins below it scroll. */
+.charttip-lead {
+  flex: none;
 }
 .charttip-label {
   color: var(--muted);
@@ -931,12 +958,42 @@ a.pager-btn:hover {
   border-radius: 50%;
   flex: none;
 }
+/* Hollow, matching how a pinned point is drawn on the line itself. */
+.charttip-dot.pinned {
+  box-sizing: border-box;
+  background: none;
+  border: 2px solid var(--line);
+}
 .charttip-name {
   color: var(--muted);
 }
 .charttip-value {
   color: var(--text);
   margin-left: auto;
+}
+/* The only part that scrolls — the pin list is the one that grows unbounded. */
+.charttip-pins {
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.charttip-pin + .charttip-pin {
+  margin-top: 4px;
+}
+.charttip-delta {
+  color: var(--faint);
+  margin-left: 8px;
+}
+.charttip-hint {
+  flex: none;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--faint);
 }
 .chartlegend {
   display: flex;
@@ -1552,6 +1609,11 @@ a.pager-btn:hover {
 .advice.is-dismissed .suggestion-note {
   color: var(--muted);
 }
+/* Regressed badge in the quiet palette on a dismissed row, not the coral one. */
+.advice.is-dismissed .badge.recurrence-regressed {
+  background: var(--surface-2);
+  color: var(--faint);
+}
 button.link {
   background: none;
   border: none;
@@ -1632,6 +1694,12 @@ button.link {
   background: var(--surface-2);
   color: var(--faint);
 }
+/* A judged bucket whose judge opened almost none of it. Amber like `dirty`, the
+   same claim in a weaker form; not coral, since a thin pass is advisory. */
+.badge.judge-thin {
+  background: rgba(244, 177, 90, 0.16);
+  color: var(--amber);
+}
 /* Ideas: `accepted` takes the affirmative tone as the sign-off /improve acts on,
    `proposed` is waiting on a human, `claimed` is in flight — signed off but not on
    offer — and `rejected` is the quietest of the five. */
@@ -1667,7 +1735,8 @@ button.link {
   background: var(--surface-2);
   color: var(--faint);
 }
-/* Undims regressed rows: sits after the .is-resolved dimming and shares its specificity. */
+/* Undims regressed rows: sits after the .is-resolved dimming and shares its specificity.
+   Neither selector is emitted for a dismissed row — dismissed keeps its dimming. */
 .advice.is-regressed {
   opacity: 1;
   border-color: var(--coral);

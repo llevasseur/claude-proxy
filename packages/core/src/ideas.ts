@@ -36,6 +36,8 @@
  * file lives in the server package.
  */
 
+import { parseWriteProvenance, type WriteProvenance } from './provenance.js';
+
 /**
  * Where an idea's evidence came from. Every one of these is a statement a
  * *person* wrote down — an unresolved question, a judge's note on a confirmed
@@ -183,6 +185,12 @@ export interface IdeaEntry {
   note?: string;
   /** Who is building it, present only while `status` is `claimed`. */
   claim?: IdeaClaim;
+  /**
+   * Who last changed the status, in the same envelope a bucket verdict carries.
+   * The actor field alone — an idea is invented and has no window behind it to
+   * count. Absent on every entry decided before provenance existed.
+   */
+  by?: WriteProvenance;
 }
 
 /** The persisted file: slug → entry. Versioned so a shape change is migrated rather than guessed at. */
@@ -216,7 +224,7 @@ export function parseIdeasStore(raw: unknown): IdeasStore {
   for (const [key, value] of Object.entries(ideas as Record<string, unknown>)) {
     if (!isIdeaSlug(key)) continue;
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-    const { title, rationale, evidence, repo, status, created, updated, note, claim } = value as Record<
+    const { title, rationale, evidence, repo, status, created, updated, note, claim, by } = value as Record<
       string,
       unknown
     >;
@@ -229,6 +237,8 @@ export function parseIdeasStore(raw: unknown): IdeasStore {
     // A malformed claim is dropped rather than dropping the entry with it. The
     // entry then reads as unclaimed, which a second run may take.
     const parsedClaim = parseClaim(claim);
+    // An unreadable envelope loses the actor, never the idea.
+    const actor = parseWriteProvenance(by);
     store.ideas[key] = {
       slug: key,
       title: title.trim(),
@@ -240,6 +250,7 @@ export function parseIdeasStore(raw: unknown): IdeasStore {
       updated: typeof updated === 'string' ? updated : '',
       ...(typeof note === 'string' && note ? { note } : {}),
       ...(parsedClaim ? { claim: parsedClaim } : {}),
+      ...(actor ? { by: actor } : {}),
     };
   }
   return store;
@@ -348,6 +359,8 @@ export interface IdeaMark {
   status: IdeaStatus;
   /** For `rejected`, the reason; for `shipped`, the PR url. Replaces any existing note. */
   note?: string;
+  /** The marking agent's thread id. Replaces any existing attribution; absent leaves it. */
+  by?: WriteProvenance;
 }
 
 /** What {@link applyIdeaMarks} did. */
@@ -388,12 +401,14 @@ export function applyIdeaMarks(store: IdeasStore, marks: readonly IdeaMark[], no
     // Rebuilt rather than spread-over, so `claim` is dropped by omission — a
     // `...current` spread would carry a stale holder into `accepted`.
     const { claim: _dropped, ...rest } = current;
+    const by = mark.by ?? current.by;
     next.ideas[mark.slug] = {
       ...rest,
       status: mark.status,
       updated: at,
       ...(note ? { note } : {}),
       ...(mark.status === 'shipped' && current.claim ? { claim: current.claim } : {}),
+      ...(by ? { by } : {}),
     };
     updated.push(mark.slug);
   }
@@ -565,11 +580,21 @@ export function parseIdeaMarks(raw: unknown): IdeaMark[] {
   return raw.map((item, i) => {
     const where = `marks[${i}]`;
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { slug, status, note } = item as Record<string, unknown>;
+    const { slug, status, note, by } = item as Record<string, unknown>;
     if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
     if (!isIdeaStatus(status)) throw new Error(`${where}.status must be one of ${IDEA_STATUSES.join(', ')}`);
     if (note !== undefined && typeof note !== 'string') throw new Error(`${where}.note must be a string`);
-    return { slug: slug as string, status, ...(note === undefined ? {} : { note }) };
+    // Optional, but a malformed one throws here rather than being dropped as at
+    // the store's read boundary — this input has an author to tell.
+    if (by !== undefined && parseWriteProvenance(by) === null)
+      throw new Error(`${where}.by must carry a 16-hex-character thread id`);
+    const actor = parseWriteProvenance(by);
+    return {
+      slug: slug as string,
+      status,
+      ...(note === undefined ? {} : { note }),
+      ...(actor ? { by: actor } : {}),
+    };
   });
 }
 

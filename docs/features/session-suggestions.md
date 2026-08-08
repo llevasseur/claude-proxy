@@ -295,18 +295,36 @@ file scan under `DB_READS=0`, while the CLI always scans the files —
 - Windows are fixed at ten by position, so a window never re-scopes as new sessions arrive. That
   keeps bucket 1 stable and comparable over time, but it means a habit that spans a window
   boundary is split across two pages. Worth also offering a rolling last-10 view?
-- The rules read the transcript's *distilled* lines, so a tool call's arguments are truncated at
-  capture. `redundantReads` therefore matches on the truncated `Read(file_path=…)` signature —
-  two long paths sharing a prefix could collapse into one. Worth having the proxy record a hash
-  of the full argument?
+- ~~`redundantReads` matches on the truncated `Read(file_path=…)` signature~~ — **resolved.**
+  "Could collapse into one" was already happening: a judge verdict on bucket 42 found the rule
+  firing on sessions with no duplicate reads at all, because every `Read` under a
+  `.claude/worktrees/<long-branch>/…` path renders to the same 60 characters. The proxy now
+  writes `argsHash` — `sha256(name + "\n" + key-sorted JSON of the whole input)`, first 16 hex —
+  into the `.nodes.jsonl` row beside the display text, `SessionNode.argsHash` carries it through
+  both the file and SQLite sources, and the rule keys on `node.argsHash ?? node.tool`. The
+  fallback is the legacy path, kept deliberately: a transcript written before the field has no
+  hashes and reads exactly as it did before. The rules still read distilled lines for everything
+  else, so any *other* rule that wants to compare arguments has the same key available and does
+  not yet use it.
 - Severity is fixed per rule rather than scaled by how badly a threshold was crossed. A window
   with 2 refusals and one with 40 both read *high*.
 - The breakdown roll-up uses each session's peak request only. That is the cheapest honest
   sample, but a tool schema dropped midway through a session is invisible to it.
-- Judging is a write an agent makes; nothing checks that it actually read the window. `--amnesty`
-  makes that explicit by recording a verdict with no notes, but an ordinary `judge` call is trusted
-  the same way. Recording which agent judged, or how many of the window's transcripts it opened,
-  would let a careless pass be told from a careful one.
+- ~~Judging is a write an agent makes; nothing checks that it actually read the window.~~ **Closed
+  by the provenance envelope.** `judge --thread <id>` records the judging session's own thread id on
+  the verdict, and with it how many of the window's ten transcripts that thread opened. The count is
+  *derived*, not self-reported: the judging run is itself a session the proxy transcribes, so its
+  tool calls are read back off `logs/sessions/<threadId>.md` and matched against the window's thread
+  ids. Any tool naming a transcript counts — a `Bash` grep opened it as much as a `Read` did — and
+  the judge's own transcript never counts toward its own window. Under 30% the verdict is marked a
+  **thin pass**, on the Advice page and in `suggestions buckets`. It is advisory in both: a thin
+  pass is never refused, never hidden, and a verdict with no envelope is not marked at all, since
+  every verdict written before this existed has none. The threshold is a judgement call with no data
+  behind it yet, set low deliberately — the marker catches a pass that read *almost nothing* rather
+  than prescribing how much reading a careful verdict takes.
+  - Still open on this thread: the envelope records the *judge*, not the human who reviewed it, and
+    a judge that opens every transcript without reading them counts as thorough. The count is a
+    floor on effort, not a measure of attention.
 - A rule defect is reported but nothing links it back to the rule's own thresholds. The obvious next
   step is for the report to name the `SUGGESTION_THRESHOLDS` entry a defective rule is governed by,
   so the fix has somewhere to start.

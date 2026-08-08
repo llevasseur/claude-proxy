@@ -14,6 +14,7 @@ import {
   RECURRENCE_LABEL,
   STATUS_LABEL,
   SUGGESTION_STATUS_KEY,
+  ThinPassBadge,
 } from '../components/SuggestionStatus';
 import { fmtInt, fmtLocalTsShort } from '../format';
 import { useLiveQuery } from '../useLiveQuery';
@@ -267,15 +268,16 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
   const open = bucket.suggestions.filter((s) => !isSettled(rowOf(s.id))).length;
   // Judged-ness is a fact about the bucket, so any of its rows carries it; until the
   // flags land, incompleteness is all the bucket alone can say.
-  const state =
-    bucket.suggestions.map((s) => rowOf(s.id)).find((r) => r)?.bucketState ??
-    (bucket.complete ? undefined : 'not-ready');
+  const anyRow = bucket.suggestions.map((s) => rowOf(s.id)).find((r) => r);
+  const state = anyRow?.bucketState ?? (bucket.complete ? undefined : 'not-ready');
+  const judgedBy = anyRow?.judgedBy;
   return (
     <Link to='/advice/sessions/$bucket' params={{ bucket: String(bucket.index) }} className='card bucket-row'>
       <div className='bucket-row-head'>
         <span className='bucket-label'>Sessions {bucket.label}</span>
         {worst && <span className={`badge sev-${worst.severity}`}>{SEV_LABEL[worst.severity]}</span>}
         {state && <BucketJudgementBadge state={state} />}
+        <ThinPassBadge by={judgedBy} />
         <span className='muted bucket-range'>
           {fmtLocalTsShort(bucket.startedFirst ?? '')} → {fmtLocalTsShort(bucket.startedLast ?? '')}
         </span>
@@ -285,10 +287,15 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
           const row = rowOf(s.id);
           const status = row?.status ?? 'pending';
           const recurrence = row?.recurrence ?? 'none';
+          // Same precedence as the cards: a dismissed row stays faint even if it regressed.
+          const dismissed = status === 'dismissed';
           return (
             <li
               key={s.id}
-              className={[isSettled(row) ? 'is-resolved' : '', recurrence === 'regressed' ? 'is-regressed' : '']
+              className={[
+                isSettled(row) ? 'is-resolved' : '',
+                !dismissed && recurrence === 'regressed' ? 'is-regressed' : '',
+              ]
                 .filter(Boolean)
                 .join(' ')}>
               <span className={`dot sev-${s.severity}`} aria-hidden />

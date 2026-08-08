@@ -16,6 +16,7 @@ function entry(overrides: Partial<ContextEntry> = {}): ContextEntry {
     timestamp: '2026-07-20T13:31:00.278Z',
     model: 'claude-opus-4-8',
     sessionId: null,
+    threadId: null,
     realInput: 10_000,
     systemBytes: 8_000,
     toolsBytes: 24_000,

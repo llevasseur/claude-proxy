@@ -155,7 +155,8 @@ function CostRateChart({ prior, today, baseline }: CostRateChartProps) {
   return (
     <div style={{ height: COST_RATE_CHART_HEIGHT }}>
       <ResponsiveContainer width='100%' height='100%'>
-        <ScatterChart margin={{ top: 8, right: 14, bottom: 2, left: 2 }}>
+        {/* Off: recharts otherwise marks the surface `tabIndex=0`, ringing the whole plot. */}
+        <ScatterChart accessibilityLayer={false} margin={{ top: 8, right: 14, bottom: 2, left: 2 }}>
           <CartesianGrid strokeDasharray='3 3' stroke='var(--border)' />
           <XAxis
             type='number'
