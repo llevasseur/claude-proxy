@@ -1552,6 +1552,11 @@ a.pager-btn:hover {
 .advice.is-dismissed .suggestion-note {
   color: var(--muted);
 }
+/* Regressed badge in the quiet palette on a dismissed row, not the coral one. */
+.advice.is-dismissed .badge.recurrence-regressed {
+  background: var(--surface-2);
+  color: var(--faint);
+}
 button.link {
   background: none;
   border: none;
@@ -1662,7 +1667,8 @@ button.link {
   background: var(--surface-2);
   color: var(--faint);
 }
-/* Undims regressed rows: sits after the .is-resolved dimming and shares its specificity. */
+/* Undims regressed rows: sits after the .is-resolved dimming and shares its specificity.
+   Neither selector is emitted for a dismissed row — dismissed keeps its dimming. */
 .advice.is-regressed {
   opacity: 1;
   border-color: var(--coral);
