@@ -8,6 +8,7 @@ import {
   HardDrive,
   Lightbulb,
   ListFilter,
+  Menu,
   MessagesSquare,
   Monitor,
   Network,
@@ -56,6 +57,7 @@ import { ToolsPage } from './routes/tools';
 import { TrendDetailPage } from './routes/trend-detail';
 import { TrendsPage } from './routes/trends';
 import { WithheldPage } from './routes/withheld';
+import { useNavDrawer } from './useNavDrawer';
 import { useRailCollapsed } from './useRailCollapsed';
 
 /** Side-rail nav stations. */
@@ -113,9 +115,10 @@ function RootLayout() {
   const full = pathname === '/sessions/graph' || pathname === '/sessions';
   const [collapsed, toggleRail] = useRailCollapsed();
   const toggleLabel = collapsed ? 'Expand navigation' : 'Collapse navigation';
+  const nav = useNavDrawer();
   return (
-    <div className={`app${collapsed ? ' app--rail-collapsed' : ''}`}>
-      <aside className='rail'>
+    <div className={`app${collapsed ? ' app--rail-collapsed' : ''}${nav.open ? ' app--drawer-open' : ''}`}>
+      <aside className='rail' id='rail-nav'>
         <div className='rail-head'>
           <span className='brand-node' aria-hidden />
           <span className='brand'>
@@ -153,7 +156,24 @@ function RootLayout() {
         </div>
       </aside>
 
+      {/* Anywhere off the drawer closes it; a station sits above the scrim, so picking one leaves it open. */}
+      {nav.open && (
+        <button type='button' className='rail-scrim' tabIndex={-1} aria-label='Close navigation' onClick={nav.close} />
+      )}
+
       <div className='workspace'>
+        <div className='topbar'>
+          <button
+            type='button'
+            className='drawer-toggle'
+            onClick={nav.toggle}
+            aria-expanded={nav.open}
+            aria-controls='rail-nav'
+            aria-label='Open navigation'
+            title='Open navigation'>
+            <Menu size={20} aria-hidden />
+          </button>
+        </div>
         <main className={`content${full ? ' content--full' : ''}`}>
           <Outlet />
         </main>

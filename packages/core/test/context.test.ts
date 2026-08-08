@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   analyzeRequestBody,
+  attachContextPrompts,
   type ContextEntry,
   extractRequestMessage,
   extractRequestTool,
@@ -17,6 +18,7 @@ function entry(overrides: Partial<ContextEntry> = {}): ContextEntry {
     model: 'claude-opus-4-8',
     sessionId: null,
     threadId: null,
+    prompt: null,
     realInput: 10_000,
     systemBytes: 8_000,
     toolsBytes: 24_000,
@@ -240,5 +242,38 @@ describe('extractRequestTool', () => {
     expect(extractRequestTool({ tools: [{ description: 'no name' }] }, 0)!.name).toBe('(unnamed)');
     expect(extractRequestTool({}, 0)).toBeNull();
     expect(extractRequestTool(null, 0)).toBeNull();
+  });
+});
+
+describe('attachContextPrompts', () => {
+  const root =
+    '<command-message>task</command-message> <command-name>/task</command-name>' +
+    '<command-args>Make the breakdown searchable</command-args> the whole definition follows';
+
+  it('gives every request of a thread the text its opening prompt was typed as', () => {
+    const attached = attachContextPrompts(
+      [entry({ threadId: 'aaaa000000000001' }), entry({ file: 'other', threadId: 'aaaa000000000001' })],
+      new Map([['aaaa000000000001', root]]),
+    );
+    expect(attached.map((e) => e.prompt)).toEqual([
+      '/task Make the breakdown searchable',
+      '/task Make the breakdown searchable',
+    ]);
+  });
+
+  it('leaves a request with no thread, or a thread with no prompt, unsearchable', () => {
+    const attached = attachContextPrompts(
+      [entry({ threadId: null }), entry({ file: 'b', threadId: 'aaaa000000000002' })],
+      new Map([['aaaa000000000001', root]]),
+    );
+    expect(attached.map((e) => e.prompt)).toEqual([null, null]);
+  });
+
+  it('never matches a request to a prompt by session id', () => {
+    const attached = attachContextPrompts(
+      [entry({ sessionId: 's-1', threadId: null })],
+      new Map([['aaaa000000000001', root]]),
+    );
+    expect(attached[0]!.prompt).toBeNull();
   });
 });
