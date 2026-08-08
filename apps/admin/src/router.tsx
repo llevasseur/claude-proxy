@@ -35,6 +35,7 @@ import { ConceptsPage } from './routes/concepts';
 import { ContextPage } from './routes/context';
 import { ContextDetailPage } from './routes/context-detail';
 import { ContextMessagePage } from './routes/context-message';
+import { ContextThreadPage } from './routes/context-thread';
 import { ContextToolPage } from './routes/context-tool';
 import { FiltersPage } from './routes/filters';
 import { HooksPluginsPage } from './routes/hooks-plugins';
@@ -254,11 +255,41 @@ const contextRoute = createRoute({
   component: ContextPage,
   staticData: { title: 'Context size' },
 });
+/** `?days=` clamped to 1–365 the way `/api/context` clamps it; anything unreadable
+ * falls back to the default rather than erroring. */
+function contextDays(raw: unknown): number {
+  const days = Number(raw);
+  return Number.isFinite(days) && days > 0 ? Math.min(Math.round(days), 365) : 14;
+}
+/** `?days=` carries the window the thread was reached from. */
+export interface ContextThreadSearch {
+  days: number;
+}
+const contextThreadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // A static segment, so it can never be read as a `$file` drill-down.
+  path: '/context/thread/$threadId',
+  component: ContextThreadPage,
+  staticData: { title: 'Context thread' },
+  validateSearch: (search: Record<string, unknown>): ContextThreadSearch => ({ days: contextDays(search.days) }),
+});
+/** `?thread=` names the thread this request was reached through — the only way the
+ * breakdown can crumb back, since a request body records no ids. `?days=` rides
+ * along so that crumb reopens the window it came from. */
+export interface ContextDetailSearch {
+  thread?: string;
+  days?: number;
+}
 const contextDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/context/$file',
   component: ContextDetailPage,
   staticData: { title: 'Context size' },
+  validateSearch: (search: Record<string, unknown>): ContextDetailSearch => {
+    const thread = search.thread;
+    if (typeof thread !== 'string' || thread === '') return {};
+    return { thread, days: contextDays(search.days) };
+  },
 });
 const contextMessageRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -442,6 +473,7 @@ const routeTree = rootRoute.addChildren([
   promptSectionRoute,
   toolSchemaRoute,
   contextRoute,
+  contextThreadRoute,
   contextDetailRoute,
   contextMessageRoute,
   contextToolRoute,
