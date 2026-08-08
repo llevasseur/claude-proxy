@@ -197,14 +197,10 @@ transcript.
   thread key is a hash of the session id plus the first user message, which only the request
   body carries — recomputing it would mean reading every `.request.txt` (megabytes each) instead
   of the sidecars. Worth having the proxy write the thread id into the sidecar?
-- **Both request-joined views are live-day-only.** `resolveSessionRequests` — behind the Peak
-  context tile and the errors page's "View the full turn" links — calls `readSidecars` against
-  the live log directory and has no archive fallback, unlike `buildTrends`. So once
-  `pnpm --filter server maintain` has archived a session's day, its Peak context tile reads
-  **"no captured requests"** and every error reads **"full turn unavailable"**, even though
-  the sidecars are sitting in `logs/archive/<date>/` and the drill-down pages those links
-  point at can read an archived day perfectly well. That is current behaviour rather than
-  intended design; the fix is the archive fallback the trends builder already has.
+- ~~**Both request-joined views are live-day-only.**~~ **Resolved.** `resolveSessionRequests`
+  now goes through `readWindow` in `server/src/db/source.ts`, which composes `logs/archive/<date>/`
+  with the live root, so the Peak context tile and the errors page's "View the full turn" links
+  survive `pnpm --filter server maintain` archiving the session's day.
 - The errors page is the one session view with no SSE subscription and no **Live** indicator —
   worth streaming it too, or is an error list stable enough to leave on the one-shot query?
 

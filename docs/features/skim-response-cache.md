@@ -149,13 +149,11 @@ sibling `.request.txt` — which is why an evicted body costs the label and noth
 
 ## Open questions
 
-- **The 7/14/30-day window is live-day-only.** `buildSkim` and `buildSkimTrend` both call
-  `readSidecars` against the live log directory and stop there — unlike `buildTrends`, which
-  falls back to `logs/archive/<date>/` for any day the live set is missing. Once
-  `pnpm --filter server maintain` has archived a past day, that day drops out of the trend
-  charts and the cross-window shape table entirely, so a 30-day window on a maintained
-  install shows only today. This is current behaviour, not intended design: the fix is the
-  archive fallback the trends builder already has.
+- ~~**The 7/14/30-day window is live-day-only.**~~ **Resolved**, and narrower than recorded:
+  `buildSkim` already routed through the per-day helper that reads `logs/archive/<date>/`, so
+  only `buildSkimTrend` was affected. It now calls `readWindow` in `server/src/db/source.ts`,
+  the one place the archived and live halves of a window are composed, so an archived day stays
+  in the trend charts and the cross-window shape table.
 - **The semantic skim layer is not built.** Matching "same or similar task" needs an
   embedding/similarity threshold, scope keys (cwd, host, git HEAD), and a policy for
   answer-irrelevant volatility (`session_id`, embedded dates, `cache_control`). Research

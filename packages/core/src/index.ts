@@ -1,4 +1,5 @@
 export * from './advice.js';
+export * from './cli-args.js';
 export * from './cli-internals.js';
 export * from './code-view.js';
 export * from './commands.js';
