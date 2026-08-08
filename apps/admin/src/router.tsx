@@ -85,6 +85,12 @@ const STATIONS = [
   { to: '/advice', label: 'Advice', hint: 'coaching', exact: false, icon: Lightbulb },
 ] as const;
 
+/** Scroll the document to the top, jumping rather than animating under `prefers-reduced-motion`. */
+function scrollToTop(): void {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+}
+
 /** Browser-tab title for a route, appended after the ClaudeProxy brand. */
 declare module '@tanstack/react-router' {
   interface StaticDataRouteOption {
@@ -146,7 +152,17 @@ function RootLayout() {
               className='station'
               activeProps={activeProps}
               activeOptions={s.exact ? { exact: true } : undefined}
-              title={collapsed ? s.label : undefined}>
+              title={collapsed ? s.label : undefined}
+              onClick={(e) => {
+                // Exact pathname, not lit state: a `/trends` station lit under `/trends/$metric` still navigates.
+                if (pathname !== s.to) return;
+                // A modified click is opening a tab, not navigating here.
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
+                // On a narrow viewport the drawer covers the page it just scrolled.
+                nav.close();
+                scrollToTop();
+              }}>
               <s.icon className='station-icon' size={17} strokeWidth={1.75} aria-hidden />
               <span className='station-label'>{s.label}</span>
               <span className='station-hint'>{s.hint}</span>
