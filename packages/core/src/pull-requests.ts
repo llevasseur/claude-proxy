@@ -212,12 +212,7 @@ function namesBranch(text: string, form: string): boolean {
   return false;
 }
 
-/**
- * A matcher for one pull request, compiled once.
- *
- * The scan runs every PR against every transcript, so the regexes are built per PR
- * rather than per pairing.
- */
+/** A matcher for one pull request, compiled once and reused across transcripts. */
 export interface PrMatcher {
   match(text: string): PrSessionVia[];
 }
