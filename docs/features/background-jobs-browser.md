@@ -162,6 +162,11 @@ directory that isn't there a 404.
 - [x] Core's job shaping, tree building and viewer transforms are unit-tested, the server's walk
       and path validation are tested against a real temp directory, and `pnpm typecheck`,
       `pnpm test` and `pnpm build` pass.
+- [x] Each row joins its `sessionId` to the transcripts that session wrote and shows a
+      **Liveness** verdict rolled up across the whole fan-out — one live branch makes the job
+      live, and a job matching no transcript reads `unknown` rather than `finished`. A **Live**
+      tile counts them, distinct from **Running**, which is still what the job says about
+      itself (`server/test/sessions-liveness.test.ts`).
 
 ## Open questions
 
@@ -169,10 +174,14 @@ directory that isn't there a 404.
   (eight jobs, `node_modules` never descended) but it is linear in what the jobs dirs hold, and
   nothing caches it. A device with hundreds of jobs would want the counts memoized on mtime.
 - Neither page live-updates. A running job's `state.json` changes under you, and the sessions
-  views already have SSE (`serveSse`) that this could reuse by watching the job directory.
-- A job records a `sessionId`, and the proxy's transcripts are keyed by *thread* id, so the two
-  cannot be linked without the `/api/chat/thread` style lookup that only covers dashboard-started
-  chats. Joining a job to its transcript is the obvious next step and is not done here.
+  views already have SSE (`serveSse`) that this could reuse by watching the job directory. The
+  Liveness column blunts the worst of it — a stale `working` no longer reads as proof the job
+  is alive — but the row itself is still whatever the last load fetched.
+- The job-to-transcript join is done, but on the *session* id rather than the thread id: a
+  transcript records the session it belongs to, so a job's whole family — root and every
+  subagent — comes back together, which is what the rolled-up liveness verdict wants. It does
+  not identify *which* transcript is the job's own root, and a job whose session never reached
+  the proxy still matches nothing.
 - `jobFileKind` is an extension allow-list, so an unknown extension holding perfectly good text
   is assumed binary until the NUL check clears it — which it does, but only after the bytes are
   read. It errs toward showing something rather than nothing, but the mapping needs extending as

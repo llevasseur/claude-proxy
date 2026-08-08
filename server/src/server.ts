@@ -50,6 +50,7 @@ import {
   buildSessionSuggestions,
   buildSessions,
   buildSessionsGraph,
+  buildSessionsLiveness,
   buildSkim,
   buildSkimTrend,
   buildSuggestionStatus,
@@ -632,7 +633,7 @@ const server = http.createServer(async (req, res) => {
       // The device's background jobs: `~/.claude/jobs`. Reads are open like their
       // neighbours; the delete below is the one route here that changes the disk.
       case '/api/jobs':
-        send(res, 200, await buildJobs(JOBS_DIR));
+        send(res, 200, await buildJobs(JOBS_DIR, LOG_DIR, new Date(), readSource()));
         return;
       case '/api/jobs/job': {
         const id = url.searchParams.get('id');
@@ -682,7 +683,7 @@ const server = http.createServer(async (req, res) => {
           async (body) => {
             const id = body.id;
             if (typeof id !== 'string' || id === '') throw new Error('missing id');
-            return buildJobDelete(JOBS_DIR, id);
+            return buildJobDelete(JOBS_DIR, LOG_DIR, id, new Date(), readSource());
           },
           (msg) => {
             if (msg.startsWith('job not found')) return 404;
@@ -725,9 +726,21 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       case '/api/sessions/graph': {
-        const graph = await buildSessionsGraph(LOG_DIR, readSource());
+        // One `now` for both runs: a liveness verdict is taken against the clock, so a
+        // shadow read a moment later would diff against the primary for no other reason.
+        const now = new Date();
+        const graph = await buildSessionsGraph(LOG_DIR, now, readSource());
         send(res, 200, graph);
-        shadow('/api/sessions/graph', graph, (source) => buildSessionsGraph(LOG_DIR, source));
+        shadow('/api/sessions/graph', graph, (source) => buildSessionsGraph(LOG_DIR, now, source));
+        return;
+      }
+      // Every branch's liveness verdict and nothing else — thin enough to poll from a
+      // shell, so a dispatcher whose subagent went silent can ask without a browser.
+      case '/api/sessions/liveness': {
+        const now = new Date();
+        const liveness = await buildSessionsLiveness(LOG_DIR, now, readSource());
+        send(res, 200, liveness);
+        shadow('/api/sessions/liveness', liveness, (source) => buildSessionsLiveness(LOG_DIR, now, source));
         return;
       }
       case '/api/sessions/node-text': {

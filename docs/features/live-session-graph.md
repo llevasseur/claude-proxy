@@ -227,6 +227,13 @@ left are simply absent from `threads`, and keep their transcript text.
       (`packages/core/test/sessions.test.ts`), and `threadIdForBody` is checked against the
       `threadIdFor` it mirrors by importing `proxy/session.ts` itself
       (`server/test/session-graph-nodes.test.ts`); `pnpm typecheck` and `pnpm test` pass.
+- [x] Every row of `/api/sessions/graph` carries a `liveness` verdict — `running`, `quiet`,
+      `finished` or `unknown` — derived from how long ago the transcript was appended to and
+      whether it ended on an outcome, and the rail draws a branch's verdict beside its
+      **in flight** marker. `GET /api/sessions/liveness` is the same verdict without the node
+      streams, for asking from a terminal. Both take `now` as a parameter, so the file- and
+      SQLite-backed sources answer identically and parity holds
+      (`packages/core/test/liveness.test.ts`, `server/test/sessions-liveness.test.ts`).
 
 ## Open questions
 
@@ -243,7 +250,15 @@ left are simply absent from `threads`, and keep their transcript text.
 - Pairing accuracy on a fan-out. Spawns claim transcripts in start-time order, not by matching
   a spawn to *its* subagent, so a parallel batch that starts in a different order than it was
   requested can attach the wrong branch to the wrong spawn — and nothing in the payload marks
-  a pairing as uncertain.
+  a pairing as uncertain. The `liveness` verdict is deliberately **not** downstream of this:
+  it reads one transcript's own appends, so a mispaired branch still reports whether *it* is
+  running. Only `finished`-by-`reported` leans on the linkage, since a subagent's report is
+  recorded by its parent and nowhere else.
+- Liveness is a read and stays one — nothing here resumes or kills a branch. It also cannot
+  tell a branch stuck in a loop from one doing slow work: both append, so both read `running`.
+  `quiet` is the honest limit of what an outside observer can say, and `QUIET_AFTER_MS` (ten
+  minutes, sized to one long tool call) is reported in every payload rather than assumed, so
+  the threshold can be argued with without re-deriving the verdict.
 - Transcripts that can never be linked: one with no `session:` header, one with no `started:`
   time, or a lone transcript in its family. Also, a thread id is a hash of session id plus
   first user text, so two subagents given byte-identical prompts in one session collapse into a

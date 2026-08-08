@@ -7,6 +7,7 @@ import type { CSSProperties, ReactNode, Ref } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionGraphEntry } from '../api';
 import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from '../api';
+import { livenessTitle } from '../components/LivenessBadge';
 import { Skeleton, SkeletonStatus } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort } from '../format';
 
@@ -138,7 +139,14 @@ function entryLabel(entry: SessionGraphEntry): string {
   return entry.threadId;
 }
 
-/** A subagent is still running while its parent hasn't taken a step past the spawn. */
+/**
+ * A subagent's parent hasn't taken a step past the spawn, so nothing has come back yet.
+ *
+ * This is about the *parent's* record, which is why it pairs with `entry.liveness` rather
+ * than duplicating it: in flight says no result was recorded, liveness says whether the
+ * branch is still writing. A dispatch whose result the harness ate reads as in flight and
+ * `running` — the case that used to be indistinguishable from a dead one.
+ */
 const isInFlight = (entry: SessionGraphEntry): boolean => entry.parentThreadId !== null && entry.returnIndex === null;
 
 /** A placed box on the canvas plus the data behind it (node is null for a session root). */
@@ -1162,6 +1170,12 @@ function SessionNav({
                     {childCount > 0 ? <span className='gs-item-kids'> · {fmtInt(childCount)} agents</span> : null}
                     {entry.errors > 0 ? <span className='gs-item-err'> · {fmtInt(entry.errors)} err</span> : null}
                     {isInFlight(entry) ? <span className='gs-item-flight'> · in flight</span> : null}
+                    {entry.liveness.state === 'finished' ? null : (
+                      <span className={`gs-item-live is-${entry.liveness.state}`} title={livenessTitle(entry.liveness)}>
+                        {' '}
+                        · {entry.liveness.state}
+                      </span>
+                    )}
                   </span>
                 </button>
               </div>
