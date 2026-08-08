@@ -627,15 +627,12 @@ const BIND_LIMIT = 500;
 
 /**
  * The named threads' opening prompts, out of the column ingest copied them into.
- * Asked for by id rather than read wholesale for the same reason the file reader
- * opens only the sidecars it was named: the answer covers a window's worth of
- * threads, not the corpus.
+ * Asked for by id rather than read wholesale, as the file reader is.
  */
 function rootPromptsFromDb(db: DatabaseSync, threadIds: readonly string[]): Map<string, string> {
   const wanted = [...new Set(threadIds)].sort();
   const out = new Map<string, string>();
 
-  // Chunked, because a wide window names more threads than SQLite binds parameters.
   for (let at = 0; at < wanted.length; at += BIND_LIMIT) {
     const chunk = wanted.slice(at, at + BIND_LIMIT);
     const rows = db

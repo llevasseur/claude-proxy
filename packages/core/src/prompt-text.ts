@@ -3,17 +3,14 @@ import { parseCommandEnvelope } from './commands.js';
 /**
  * The text a **person** typed, pulled out of a thread's opening prompt.
  *
- * An opening prompt on the wire is mostly not the person's: the harness injects
+ * Most of an opening prompt on the wire is not the person's: the harness injects
  * `<system-reminder>` blocks carrying `CLAUDE.md`, `AGENTS.md`, the memory index
  * and the date, and a slash command inlines its whole definition after the
- * arguments. None of that distinguishes one thread from another — it is
- * byte-identical across every run in the repo — so it is noise to search
- * through. What is left is the request itself, which is the only part worth
- * matching on.
+ * arguments. All of it is byte-identical across every run in the repo, so none of
+ * it distinguishes one thread from another.
  *
- * The system prompt never appears here at all: it travels in the request's
- * `system` field, not in `messages`, and a root prompt is the first user
- * message.
+ * The system prompt never appears here: it travels in the request's `system`
+ * field, not in `messages`.
  */
 
 /** The harness-injected context blocks, including one a truncated prompt left unclosed. */
@@ -27,12 +24,11 @@ const collapse = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
 /**
  * The searchable text of one opening prompt: the criteria a slash command was
- * given (`/task <everything after it>`), or the message as typed when no command
- * opened the thread. Empty when nothing of the person's survives the stripping.
+ * given, or the message as typed when no command opened the thread. Empty when
+ * nothing of the person's survives the stripping.
  *
- * A command run keeps its `/name` in front, so searching for the command finds
- * its runs; the definition inlined after `</command-args>` is dropped, since it
- * is the same text on every run of that command.
+ * A command run keeps its `/name` in front; the definition inlined after
+ * `</command-args>` is dropped.
  */
 export function userPromptText(prompt: string | null | undefined): string {
   if (!prompt) return '';
@@ -54,8 +50,7 @@ const fold = (s: string): string => collapse(s).toLowerCase();
 
 /**
  * Split a query into the terms that must all appear. Whitespace separates terms,
- * and double quotes group one that contains whitespace (`"open pr"`), so a
- * phrase can be asked for exactly.
+ * and double quotes group one that contains whitespace.
  */
 export function promptQueryTerms(query: string): string[] {
   const terms: string[] = [];
@@ -68,8 +63,7 @@ export function promptQueryTerms(query: string): string[] {
 
 /**
  * Whether one prompt answers a query. Every term must appear, case-insensitively
- * and in any order; an empty query matches everything, so an untouched search box
- * filters nothing out.
+ * and in any order; an empty query matches everything.
  */
 export function promptMatches(text: string | null | undefined, query: string): boolean {
   const terms = promptQueryTerms(query);
@@ -81,9 +75,8 @@ export function promptMatches(text: string | null | undefined, query: string): b
 
 /**
  * A window of the prompt around the first term that matched, capped at `max`
- * characters with `…` marking either cut — so a result shows *why* it matched
- * rather than always the opening words. Falls back to the head of the prompt
- * when nothing matched (an empty query, or a caller showing an unfiltered row).
+ * characters with `…` marking either cut. Falls back to the head of the prompt
+ * when nothing matched.
  */
 export function promptExcerpt(text: string | null | undefined, query: string, max = 160): string {
   if (!text) return '';

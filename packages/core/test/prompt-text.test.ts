@@ -33,8 +33,7 @@ describe('userPromptText', () => {
   });
 
   it('reads past a locally-run command to the one that was typed', () => {
-    // The caveat sits immediately ahead of the envelope it marks local — that
-    // adjacency is what tells `/clear` apart from the command typed after it.
+    // The caveat must sit immediately ahead of the envelope it marks local.
     const prompt =
       '<local-command-caveat>caveat</local-command-caveat><command-name>/clear</command-name>' +
       envelope('pr', '--draft ship it');

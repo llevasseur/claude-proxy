@@ -913,9 +913,8 @@ function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
  * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
  *
  * Each entry also carries the text a person typed to open its thread, so the
- * table can be searched by what was *asked for* rather than only by size and
- * time. That costs one extra read per distinct thread in the window — the
- * sidecars themselves record who sent a request, never what it said.
+ * table can be searched by what was asked for. That costs one extra read per
+ * distinct thread in the window.
  */
 export async function buildContext(
   logDir: string,

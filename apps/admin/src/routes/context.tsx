@@ -118,7 +118,7 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
     dir: 'desc',
   });
   const [query, setQuery] = useState('');
-  // The bar is scaled by the whole window, so filtering doesn't silently re-scale it.
+  // Scaled by the whole window, so filtering doesn't re-scale the bars.
   const max = Math.max(1, ...entries.map((e) => e.realInput));
 
   const sorted = useMemo(() => {
@@ -130,7 +130,6 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
     return rows;
   }, [entries, sort, query]);
 
-  // Only requests whose thread recorded an opening prompt can be searched at all.
   const searchable = useMemo(() => entries.filter((e) => e.prompt).length, [entries]);
 
   const onSort = (key: SortKey) =>
@@ -178,7 +177,6 @@ function RequestsTable({ entries, maxRealInput }: { entries: ContextEntry[]; max
                   {e.realInput === maxRealInput && <span className='muted'> · peak</span>}
                 </Link>
                 {e.prompt && (
-                  // The excerpt follows the match, so a hit shows the words that found it.
                   <div className='muted context-prompt' title={e.prompt}>
                     {promptExcerpt(e.prompt, query)}
                   </div>

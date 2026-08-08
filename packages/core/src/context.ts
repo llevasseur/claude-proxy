@@ -24,10 +24,9 @@ export interface ContextEntry {
    */
   threadId: string | null;
   /**
-   * What the person typed to open this request's thread — the searchable text
-   * behind the "Requests" table's filter, via {@link attachContextPrompts}. Null
-   * until the server attaches it, and on a request whose thread is unknown or
-   * whose opening prompt was never recorded.
+   * What the person typed to open this request's thread, via
+   * {@link attachContextPrompts}. Null until the server attaches it, and on a
+   * request whose thread is unknown or recorded no opening prompt.
    */
   prompt: string | null;
   /** input + cacheRead + cacheCreation — the true prompt size. */
@@ -105,8 +104,7 @@ export function toContextEntry(sidecar: unknown, file: string): ContextEntry | n
     model: s.model,
     sessionId: s.session?.sessionId ?? null,
     threadId: s.session?.threadId ?? null,
-    // A sidecar records who sent the request, never what was asked — the opening
-    // prompt lives with the transcript, so only `attachContextPrompts` can fill this.
+    // A sidecar records who sent the request, never what was asked.
     prompt: null,
     realInput: s.tokens.realInput,
     systemBytes: s.request.systemBytes,
@@ -129,7 +127,6 @@ export function attachContextPrompts(
   entries: readonly ContextEntry[],
   rootPrompts: ReadonlyMap<string, string>,
 ): ContextEntry[] {
-  // One thread sends many requests, so reduce each opening prompt once.
   const texts = new Map<string, string>();
   for (const [threadId, root] of rootPrompts) {
     const text = userPromptText(root);

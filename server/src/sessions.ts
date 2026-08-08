@@ -88,12 +88,11 @@ export async function listSessions(logDir: string): Promise<SessionSummary[]> {
  * sidecars — the same `root` field `command-runs.ts` reads, and the same one the
  * substrate ingests into `session.root_prompt`.
  *
- * Only the ids asked for are opened. The caller holds them already (they came off
- * the captured requests), and the alternative — reading every sidecar in the
- * directory — is megabytes of prompt to answer a question about a handful of
- * threads. A thread with no sidecar, a torn one, or one recorded before the proxy
- * had a prompt to record is simply absent from the result; the transcript's own
- * `subtitle` is capped at 200 characters and so is not a substitute.
+ * Only the ids asked for are opened — reading the whole directory is megabytes of
+ * prompt to answer a question about a handful of threads. A thread with no
+ * sidecar, a torn one, or one recorded before the proxy had a prompt to record is
+ * absent from the result; the transcript's own `subtitle` is capped at 200
+ * characters and so is not a substitute.
  */
 export async function readRootPrompts(logDir: string, threadIds: readonly string[]): Promise<Map<string, string>> {
   const dir = resolveSessionsDir(logDir);

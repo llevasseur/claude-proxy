@@ -3351,7 +3351,7 @@ button.sessions-new.is-active {
   color: var(--faint);
 }
 
-/* The same control inside a card head: pushed right so it sits beside the caption. */
+/* The same control in a card head, pushed right beside the caption. */
 .card-head .context-search {
   margin: 0 12px 0 auto;
   min-width: 18rem;
@@ -3361,7 +3361,7 @@ button.sessions-new.is-active {
   font-size: 12px;
   padding: 5px 0;
 }
-/* What was asked, under the timestamp it was asked at — the text the search matches. */
+/* What was asked, under the timestamp it was asked at. */
 .context-prompt {
   margin-top: 3px;
   max-width: 44rem;
