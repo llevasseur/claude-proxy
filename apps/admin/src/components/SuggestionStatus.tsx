@@ -1,9 +1,11 @@
 import {
   type BucketJudgementState,
+  isThinPass,
   SUGGESTION_STATUSES,
   type SuggestionRecurrence,
   type SuggestionStatus,
   type SuggestionStatusRow,
+  type WriteProvenance,
 } from '@claude-proxy/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { markSuggestionStatus } from '../api';
@@ -41,6 +43,24 @@ export const BUCKET_STATE_LABEL: Record<BucketJudgementState, string> = {
  */
 export function BucketJudgementBadge({ state }: { state: BucketJudgementState }) {
   return <span className={`badge bucket-${state}`}>{BUCKET_STATE_LABEL[state]}</span>;
+}
+
+/**
+ * Shown beside a verdict whose judge opened almost none of the window it judged.
+ *
+ * **Advisory and nothing else** — it never hides the verdict, never blocks a write,
+ * and renders nothing at all when the verdict predates provenance or its judge left
+ * no measurable count. An unattributed verdict is not a careless one.
+ */
+export function ThinPassBadge({ by }: { by: WriteProvenance | undefined }) {
+  if (!by || !isThinPass(by)) return null;
+  return (
+    <span
+      className='badge judge-thin'
+      title={`The judging thread ${by.thread} opened ${by.opened} of this window's ${by.window} transcripts.`}>
+      Thin pass {by.opened}/{by.window}
+    </span>
+  );
 }
 
 export const RECURRENCE_LABEL: Record<SuggestionRecurrence, string> = {
