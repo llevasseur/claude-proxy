@@ -1,9 +1,10 @@
-import { type JobTone, jobStateTone } from '@claude-proxy/core';
+import { type JobTone, jobStateTone, type LivenessState } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import type { JobDeleteResult, JobSummary } from '../api';
 import { deleteJob, getJobs } from '../api';
+import { LivenessBadge } from '../components/LivenessBadge';
 import { QueryState } from '../components/QueryState';
 import { type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtLocalTsShort } from '../format';
@@ -67,6 +68,14 @@ export function JobsPage() {
           so unlike the rest of the dashboard none of it comes through the proxy. Directories whose job is gone stay
           behind, and are listed here as <strong>husks</strong>.
         </div>
+        <div className='leak-note'>
+          <strong>State is what a job says; liveness is what its transcripts do.</strong> A{' '}
+          <span className='rule-name'>state.json</span> is the job's own claim about itself, and it freezes at whatever
+          it last wrote — a job that died mid-step still reads <span className='rule-name'>working</span> forever. The{' '}
+          <strong>Liveness</strong> column is derived from outside it instead: how long ago the session's transcripts
+          last grew, rolled up across the whole fan-out. <span className='rule-name'>quiet</span> means no new step for
+          a while — busy or stalled — never that anything is known to be dead.
+        </div>
         <div className='leak-note danger-note'>
           <strong>Deleting is permanent.</strong> The <span className='rule-name'>Delete</span> on a row removes that
           job's whole directory from <span className='rule-name'>~/.claude/jobs</span> — its state, its timeline and
@@ -81,6 +90,7 @@ export function JobsPage() {
             <div className='grid stats'>
               <StatTile label='Jobs' value={fmtInt(data.meta.total)} sub='directories on disk' />
               <StatTile label='Running' value={fmtInt(data.meta.running)} sub='in a working state' />
+              <StatTile label='Live' value={fmtInt(data.meta.live)} sub='transcript still growing' />
               <StatTile label='Husks' value={fmtInt(data.meta.husks)} sub='no readable state' />
               <StatTile label='On disk' value={fmtBytes(data.meta.bytes)} sub={`${fmtInt(data.meta.files)} files`} />
             </div>
@@ -103,6 +113,7 @@ export function JobsPage() {
 const JOB_COLUMNS: SkeletonColumn[] = [
   { cell: '58%' },
   { cell: '40%' },
+  { cell: '40%' },
   { cell: '46%' },
   { className: 'num', cell: '34%' },
   { className: 'num', cell: '44%' },
@@ -113,7 +124,7 @@ const JOB_COLUMNS: SkeletonColumn[] = [
 function JobsSkeleton() {
   return (
     <>
-      <SkeletonStats count={4} />
+      <SkeletonStats count={5} />
       <div className='card'>
         <SkeletonTable columns={JOB_COLUMNS} rows={8} />
       </div>
@@ -121,13 +132,15 @@ function JobsSkeleton() {
   );
 }
 
-type SortKey = 'name' | 'state' | 'cwd' | 'files' | 'bytes' | 'activity';
+type SortKey = 'name' | 'state' | 'liveness' | 'cwd' | 'files' | 'bytes' | 'activity';
 type SortDir = 'asc' | 'desc';
 
 /** Direction applied the first time a column becomes the sort key. */
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
   name: 'asc',
   state: 'asc',
+  // Ascending puts the branches still going at the top.
+  liveness: 'asc',
   cwd: 'asc',
   files: 'desc',
   bytes: 'desc',
@@ -139,6 +152,9 @@ function jobLabel(job: JobSummary): string {
   return job.name || job.id;
 }
 
+/** Sort order for the liveness column: what is still going, then what might be, then what is over. */
+const LIVENESS_ORDER: Record<LivenessState, number> = { running: 0, quiet: 1, unknown: 2, finished: 3 };
+
 /** Signed comparison for a column, ascending. */
 function compare(a: JobSummary, b: JobSummary, key: SortKey): number {
   switch (key) {
@@ -146,6 +162,8 @@ function compare(a: JobSummary, b: JobSummary, key: SortKey): number {
       return jobLabel(a).localeCompare(jobLabel(b));
     case 'state':
       return a.state.localeCompare(b.state);
+    case 'liveness':
+      return LIVENESS_ORDER[a.liveness.state] - LIVENESS_ORDER[b.liveness.state];
     case 'cwd':
       return cwdLabel(a.cwd).localeCompare(cwdLabel(b.cwd));
     case 'files':
@@ -213,6 +231,7 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
           <tr>
             <SortHeader label='Job' sortKey='name' sort={sort} onSort={onSort} />
             <SortHeader label='State' sortKey='state' sort={sort} onSort={onSort} />
+            <SortHeader label='Liveness' sortKey='liveness' sort={sort} onSort={onSort} />
             <SortHeader label='Ran in' sortKey='cwd' sort={sort} onSort={onSort} />
             <SortHeader label='Files' sortKey='files' sort={sort} onSort={onSort} className='num' />
             <SortHeader label='Size' sortKey='bytes' sort={sort} onSort={onSort} className='num' />
@@ -240,6 +259,14 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
               <td>
                 <StateBadge state={job.state} />
                 {!job.stateReadable && <div className='leak-note'>husk — no state.json</div>}
+              </td>
+              <td>
+                <LivenessBadge liveness={job.liveness} />
+                {job.threads > 0 && (
+                  <div className='muted job-threads'>
+                    {fmtInt(job.threads)} transcript{job.threads === 1 ? '' : 's'}
+                  </div>
+                )}
               </td>
               <td>
                 <span title={job.cwd}>{cwdLabel(job.cwd)}</span>

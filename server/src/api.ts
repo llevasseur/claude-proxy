@@ -8,10 +8,12 @@ import {
   assertJudgeableCorpus,
   attachContextPrompts,
   attributePromptMix,
+  type BranchLiveness,
   type BucketBreakdownInput,
   type BucketBreakdownSummary,
   type BucketJudgementRow,
   type BucketJudgementState,
+  branchLiveness,
   bucketJudgementState,
   bucketJudgements,
   buildUsageLimits,
@@ -39,6 +41,7 @@ import {
   extractRequestMessage,
   extractRequestTool,
   type FiltersResponse,
+  familyLiveness,
   filterRunsByFlags,
   flattenHooks,
   type HookRow,
@@ -69,6 +72,7 @@ import {
   parseSessionErrors,
   parseSystemPromptText,
   patternFrequency,
+  QUIET_AFTER_MS,
   type RequestBreakdown,
   type RequestErrorSite,
   type RequestMessageDetail,
@@ -104,6 +108,7 @@ import {
   sectionShares,
   sessionContextEntries,
   sessionContextPeak,
+  sessionDisplayName,
   sessionSuggestionBuckets,
   skimDigestsByDay,
   stepReach,
@@ -1088,13 +1093,29 @@ export async function buildMemory(projectsDir: string, project: string, name: st
   return { memory: await readMemory(projectsDir, project, name) };
 }
 
+/** One job directory, plus whether the transcripts it is writing are still moving. */
+export interface JobRow extends JobSummary {
+  /**
+   * The verdict across every transcript sharing this job's session id. `unknown` when
+   * none matched — the job may predate the proxy, or run somewhere it never saw.
+   */
+  liveness: BranchLiveness;
+  /** How many transcripts that verdict is drawn from. */
+  threads: number;
+}
+
 export interface JobsResponse {
-  jobs: JobSummary[];
+  jobs: JobRow[];
   meta: {
     jobsDir: string;
     total: number;
-    /** How many are in a `busy` state right now. */
+    /** How many are in a `busy` state right now — the job's own word for itself. */
     running: number;
+    /**
+     * How many have a transcript still being appended to. Distinct from {@link running}:
+     * a job that died mid-write still claims to be `working`.
+     */
+    live: number;
     /** Directories with no readable `state.json` — scratch space outliving its job. */
     husks: number;
     /** Files across every job, and their total bytes. */
@@ -1104,18 +1125,44 @@ export interface JobsResponse {
 }
 
 /**
- * Every background job directory on the device, newest activity first. A device
- * view, not a traffic one: these directories are Claude Code's own scratch space,
- * so nothing here comes from the captured logs.
+ * Every background job directory on the device, newest activity first, each joined to
+ * the transcripts its session wrote.
+ *
+ * The directories themselves are a device view rather than a traffic one — Claude Code's
+ * own scratch space, which never passes through the proxy. The join answers "is this
+ * still going": `state.json` stops updating the moment the job dies, while the transcript
+ * is written from outside it.
  */
-export async function buildJobs(jobsDir: string): Promise<JobsResponse> {
-  const jobs = await listJobs(jobsDir);
+export async function buildJobs(
+  jobsDir: string,
+  logDir: string,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<JobsResponse> {
+  const [listed, sessions] = await Promise.all([listJobs(jobsDir), source.listSessionGraphs(logDir)]);
+
+  // A session id owns the root transcript and every subagent under it, so the job's
+  // verdict is that whole family rolled up.
+  const bySession = new Map<string, BranchLiveness[]>();
+  for (const session of livenessOf(sessions, now)) {
+    if (!session.sessionId) continue;
+    const family = bySession.get(session.sessionId);
+    if (family) family.push(session.liveness);
+    else bySession.set(session.sessionId, [session.liveness]);
+  }
+
+  const jobs: JobRow[] = listed.map((job) => {
+    const family = (job.sessionId && bySession.get(job.sessionId)) || [];
+    return { ...job, liveness: familyLiveness(family), threads: family.length };
+  });
+
   return {
     jobs,
     meta: {
       jobsDir,
       total: jobs.length,
       running: jobs.filter((j) => jobStateTone(j.state) === 'busy').length,
+      live: jobs.filter((j) => j.liveness.state === 'running').length,
       husks: jobs.filter((j) => !j.stateReadable).length,
       files: jobs.reduce((sum, j) => sum + j.files, 0),
       bytes: jobs.reduce((sum, j) => sum + j.bytes, 0),
@@ -1156,9 +1203,15 @@ export interface JobDeleteResponse {
  * Delete one job directory from disk, then hand back the refreshed listing. `id` is
  * validated downstream, which also refuses a still-running job and a symlinked directory.
  */
-export async function buildJobDelete(jobsDir: string, id: string): Promise<JobDeleteResponse> {
+export async function buildJobDelete(
+  jobsDir: string,
+  logDir: string,
+  id: string,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<JobDeleteResponse> {
   const deleted = await deleteJob(jobsDir, id);
-  return { deleted, jobs: await buildJobs(jobsDir) };
+  return { deleted, jobs: await buildJobs(jobsDir, logDir, now, source) };
 }
 
 export interface SessionsResponse {
@@ -1172,18 +1225,116 @@ export async function buildSessions(logDir: string, source: SidecarSource = file
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
 }
 
+/** One transcript in the graph, plus whether it is still being written to. */
+export interface SessionGraphRow extends SessionGraph {
+  liveness: BranchLiveness;
+}
+
 export interface SessionsGraphResponse {
-  sessions: SessionGraph[];
+  sessions: SessionGraphRow[];
   meta: { sessionsDir: string; total: number };
 }
 
-/** Every session transcript with its structured node stream, newest first — feeds the live graph. */
+/**
+ * Take each transcript's liveness verdict against one `now`. The parent is the only
+ * witness to a subagent finishing (see `BranchActivity.reported`), so each branch is
+ * judged with its own link, which `listSessionGraphs` has already reconstructed.
+ */
+function livenessOf(sessions: readonly SessionGraph[], now: Date): SessionGraphRow[] {
+  return sessions.map((session) => ({
+    ...session,
+    liveness: branchLiveness({ lastActivity: session.modified, nodes: session.nodes, reported: session.reported }, now),
+  }));
+}
+
+/**
+ * Every session transcript with its structured node stream, newest first — feeds the live
+ * graph. `now` is a parameter rather than read inside, so the same corpus answers
+ * identically twice; the two backings are compared that way (`parity.ts`).
+ */
 export async function buildSessionsGraph(
   logDir: string,
+  now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<SessionsGraphResponse> {
-  const sessions = await source.listSessionGraphs(logDir);
+  const sessions = livenessOf(await source.listSessionGraphs(logDir), now);
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
+}
+
+/** One branch's liveness, flattened for a reader who wants the verdict and nothing else. */
+export interface SessionLivenessRow {
+  threadId: string;
+  sessionId: string | null;
+  /** The most human name the transcript offers, falling back to the thread id. */
+  name: string;
+  /** The transcript that spawned this one, or null at top level. */
+  parentThreadId: string | null;
+  agentType: string | null;
+  depth: number;
+  /** Steps appended so far — how far along the branch is. */
+  steps: number;
+  liveness: BranchLiveness;
+}
+
+export interface SessionsLivenessResponse {
+  threads: SessionLivenessRow[];
+  meta: {
+    /** When the verdicts were taken — every `idleMs` is measured from here. */
+    at: string;
+    quietAfterMs: number;
+    total: number;
+    running: number;
+    quiet: number;
+    finished: number;
+    unknown: number;
+  };
+}
+
+/**
+ * Every branch's liveness verdict, live branches first — the terminal-readable answer to
+ * "is that dispatch still going?", so a stalled parent can ask without a browser. Thin
+ * next to `/api/sessions/graph`: no node streams, so it stays cheap to poll from a shell.
+ */
+export async function buildSessionsLiveness(
+  logDir: string,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<SessionsLivenessResponse> {
+  const sessions = livenessOf(await source.listSessionGraphs(logDir), now);
+
+  const threads: SessionLivenessRow[] = sessions.map((session) => ({
+    threadId: session.threadId,
+    sessionId: session.sessionId,
+    name: sessionDisplayName(session),
+    parentThreadId: session.parentThreadId,
+    agentType: session.agentType,
+    depth: session.depth,
+    steps: session.nodes.length,
+    liveness: session.liveness,
+  }));
+
+  // Anything still possibly alive floats to the top; within a state, newest write first.
+  const rank: Record<BranchLiveness['state'], number> = { running: 0, quiet: 1, unknown: 2, finished: 3 };
+  threads.sort(
+    (a, b) =>
+      rank[a.liveness.state] - rank[b.liveness.state] ||
+      (b.liveness.lastActivity ?? '').localeCompare(a.liveness.lastActivity ?? '') ||
+      a.threadId.localeCompare(b.threadId),
+  );
+
+  const count = (state: BranchLiveness['state']) => threads.filter((t) => t.liveness.state === state).length;
+  return {
+    threads,
+    meta: {
+      at: now.toISOString(),
+      quietAfterMs: QUIET_AFTER_MS,
+      total: threads.length,
+      running: count('running'),
+      quiet: count('quiet'),
+      finished: count('finished'),
+      unknown: count('unknown'),
+    },
+  };
 }
 
 export type SessionNodeTextsResponse = SessionNodeTexts;
@@ -1830,6 +1981,12 @@ export async function buildIdeas(logDir: string, filter: IdeaFilter = {}): Promi
  * `shipped` is deliberately absent — it carries a PR url and is a claim made by
  * whoever landed the change, so it stays with the CLI. `proposed` is the undo: it
  * restores an idea to unsigned-off without erasing the entry or its note.
+ *
+ * `claimed` is absent for a different reason: it is not a decision a person
+ * makes but a machine registering that it has started building, and it must
+ * carry a holder a second run can recognise — a button would park the idea for
+ * the whole TTL under a holder nobody can find. **Releasing** one from here is
+ * allowed, and is `accepted`.
  */
 export const BROWSER_IDEA_STATUSES = ['proposed', 'accepted', 'rejected'] as const;
 
@@ -1866,7 +2023,10 @@ export async function applyIdeaStatus(
     if (!(BROWSER_IDEA_STATUSES as readonly IdeaStatus[]).includes(mark.status)) {
       throw new Error(
         `${mark.status} cannot be set from the dashboard (${BROWSER_IDEA_STATUSES.join(', ')} only): ` +
-          'it carries a PR url, so it stays with `ideas mark`',
+          (mark.status === 'claimed'
+            ? 'a claim names the run that is building the idea, so it is taken by `ideas claim --by <holder>`; ' +
+              'mark it accepted to release one'
+            : 'it carries a PR url, so it stays with `ideas mark`'),
       );
     }
     if (mark.status === 'rejected' && !mark.note?.trim()) {

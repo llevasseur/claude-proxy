@@ -19,6 +19,7 @@ import {
   buildSessionSuggestions,
   buildSessions,
   buildSessionsGraph,
+  buildSessionsLiveness,
   buildSkim,
   buildSkimTrend,
   buildSuggestionStatus,
@@ -297,7 +298,19 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/sessions/graph',
-    cases: async (ctx) => [{ label: '/api/sessions/graph', run: (source) => buildSessionsGraph(ctx.logDir, source) }],
+    // One `now` across both backings — the payload carries a liveness verdict taken
+    // against the clock, so two reads a moment apart would diff on the clock alone.
+    cases: async (ctx) => {
+      const now = new Date();
+      return [{ label: '/api/sessions/graph', run: (source) => buildSessionsGraph(ctx.logDir, now, source) }];
+    },
+  },
+  {
+    name: '/api/sessions/liveness',
+    cases: async (ctx) => {
+      const now = new Date();
+      return [{ label: '/api/sessions/liveness', run: (source) => buildSessionsLiveness(ctx.logDir, now, source) }];
+    },
   },
   {
     name: '/api/sessions/session',

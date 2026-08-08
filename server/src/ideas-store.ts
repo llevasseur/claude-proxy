@@ -2,10 +2,13 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   applyIdeaAdds,
+  applyIdeaClaims,
   applyIdeaMarks,
   emptyIdeasStore,
   type IdeaAdd,
   type IdeaAddResult,
+  type IdeaClaimRequest,
+  type IdeaClaimResult,
   type IdeaMark,
   type IdeaMarkResult,
   type IdeasStore,
@@ -109,6 +112,28 @@ export async function markIdeasInStore(
   now: Date = new Date(),
 ): Promise<IdeaMarkResult & IdeasWriteMeta> {
   const result = applyIdeaMarks(await readIdeasStore(logDir), marks, now);
+  const file = await writeIdeasStore(logDir, result.store);
+  return { ...result, file };
+}
+
+/**
+ * Read, claim, write — the write an implementation run makes *before* it starts,
+ * so a second run reads the idea as taken.
+ *
+ * **It narrows the duplicate-work window without closing it absolutely.** Like
+ * the two writers above it is not atomic against a second process racing between
+ * the read and the rename, so two runs claiming within the same few milliseconds
+ * can both believe they won. The collision this was built for was eleven minutes
+ * wide; closing the residue would mean a lock file with an owner, a timeout, and
+ * a recovery path — machinery with its own stuck states, on a ledger whose worst
+ * outcome is a duplicate PR.
+ */
+export async function claimIdeasInStore(
+  logDir: string,
+  claims: readonly IdeaClaimRequest[],
+  now: Date = new Date(),
+): Promise<IdeaClaimResult & IdeasWriteMeta> {
+  const result = applyIdeaClaims(await readIdeasStore(logDir), claims, now);
   const file = await writeIdeasStore(logDir, result.store);
   return { ...result, file };
 }

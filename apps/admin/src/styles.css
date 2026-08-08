@@ -1701,10 +1701,15 @@ button.link {
   color: var(--amber);
 }
 /* Ideas: `accepted` takes the affirmative tone as the sign-off /improve acts on,
-   `proposed` is waiting on a human, and `rejected` is the quietest of the four. */
+   `proposed` is waiting on a human, `claimed` is in flight — signed off but not on
+   offer — and `rejected` is the quietest of the five. */
 .badge.idea-status-accepted {
   background: rgba(111, 227, 154, 0.16);
   color: var(--good);
+}
+.badge.idea-status-claimed {
+  background: rgba(70, 224, 192, 0.16);
+  color: var(--info);
 }
 .badge.idea-status-proposed {
   background: rgba(244, 177, 90, 0.16);
@@ -1715,6 +1720,24 @@ button.link {
   color: var(--info);
 }
 .badge.idea-status-rejected {
+  background: var(--surface-2);
+  color: var(--faint);
+}
+/* Liveness: `running` active, `quiet` cautioning without asserting death, `finished` the
+   settled green, and `unknown` — no transcript to judge by — the faintest of the four. */
+.badge.liveness-running {
+  background: rgba(70, 224, 192, 0.16);
+  color: var(--info);
+}
+.badge.liveness-quiet {
+  background: rgba(244, 177, 90, 0.16);
+  color: var(--amber);
+}
+.badge.liveness-finished {
+  background: rgba(111, 227, 154, 0.16);
+  color: var(--good);
+}
+.badge.liveness-unknown {
   background: var(--surface-2);
   color: var(--faint);
 }
@@ -2743,6 +2766,17 @@ button.link {
 .gs-item-flight {
   color: var(--violet);
 }
+/* Liveness on a rail row — `running` affirmative, `quiet` warning, `unknown` as faint
+   as the rest of the meta line. */
+.gs-item-live.is-running {
+  color: var(--info);
+}
+.gs-item-live.is-quiet {
+  color: var(--amber);
+}
+.gs-item-live.is-unknown {
+  color: var(--faint);
+}
 
 /* Right-hand detail inspector. */
 .graph-inspector {
@@ -3595,6 +3629,11 @@ button.sessions-new.is-active {
 .job-id {
   font-size: 11.5px;
   margin-top: 1px;
+}
+/* How many transcripts the liveness badge above it was rolled up from. */
+.job-threads {
+  font-size: 11px;
+  margin-top: 3px;
 }
 .job-detail {
   margin-top: 3px;
