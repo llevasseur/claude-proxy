@@ -1819,6 +1819,12 @@ export async function buildIdeas(logDir: string, filter: IdeaFilter = {}): Promi
  * `shipped` is deliberately absent — it carries a PR url and is a claim made by
  * whoever landed the change, so it stays with the CLI. `proposed` is the undo: it
  * restores an idea to unsigned-off without erasing the entry or its note.
+ *
+ * `claimed` is absent for a different reason: it is not a decision a person
+ * makes but a machine registering that it has started building, and it must
+ * carry a holder a second run can recognise — a button would park the idea for
+ * the whole TTL under a holder nobody can find. **Releasing** one from here is
+ * allowed, and is `accepted`.
  */
 export const BROWSER_IDEA_STATUSES = ['proposed', 'accepted', 'rejected'] as const;
 
@@ -1855,7 +1861,10 @@ export async function applyIdeaStatus(
     if (!(BROWSER_IDEA_STATUSES as readonly IdeaStatus[]).includes(mark.status)) {
       throw new Error(
         `${mark.status} cannot be set from the dashboard (${BROWSER_IDEA_STATUSES.join(', ')} only): ` +
-          'it carries a PR url, so it stays with `ideas mark`',
+          (mark.status === 'claimed'
+            ? 'a claim names the run that is building the idea, so it is taken by `ideas claim --by <holder>`; ' +
+              'mark it accepted to release one'
+            : 'it carries a PR url, so it stays with `ideas mark`'),
       );
     }
     if (mark.status === 'rejected' && !mark.note?.trim()) {

@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyIdeaAdds,
+  applyIdeaClaims,
   applyIdeaMarks,
+  claimableIdeaRows,
   countIdeaStatuses,
   emptyIdeasStore,
+  IDEA_CLAIM_TTL_MS,
   type IdeaAdd,
   type IdeaEvidence,
   ideaOf,
   ideaRows,
+  isIdeaClaimStale,
   isIdeaRepo,
   isIdeaSlug,
   parseIdeaAdds,
+  parseIdeaClaims,
   parseIdeaMarks,
   parseIdeasStore,
   similarIdeaSlugs,
@@ -124,6 +129,165 @@ describe('marking', () => {
   });
 });
 
+describe('claiming', () => {
+  const T0 = new Date('2026-08-07T00:00:00.000Z');
+  /** An accepted idea — the only state a fresh claim may be taken from. */
+  function accepted(slug = 'one') {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add(slug)], new Date('2026-08-01'));
+    return applyIdeaMarks(store, [{ slug, status: 'accepted' }], new Date('2026-08-02')).store;
+  }
+
+  it('takes an accepted idea, stamping the holder and the start of work', () => {
+    const result = applyIdeaClaims(accepted(), [{ slug: 'one', by: 'feat/one' }], T0);
+    expect(result.claimed).toEqual(['one']);
+    const entry = ideaOf(result.store, 'one');
+    expect(entry?.status).toBe('claimed');
+    expect(entry?.claim).toEqual({ by: 'feat/one', at: '2026-08-07T00:00:00.000Z' });
+    // `created` is still the proposal, not the claim.
+    expect(entry?.created).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('refuses an idea another run already holds, naming the holder', () => {
+    const held = applyIdeaClaims(accepted(), [{ slug: 'one', by: 'run-a' }], T0).store;
+    const second = applyIdeaClaims(held, [{ slug: 'one', by: 'run-b' }], new Date('2026-08-07T01:00:00.000Z'));
+    expect(second.claimed).toEqual([]);
+    expect(second.refused).toEqual([
+      { slug: 'one', status: 'claimed', heldBy: 'run-a', since: '2026-08-07T00:00:00.000Z' },
+    ]);
+    // Nothing was written for it: the loser walks away, it does not overwrite.
+    expect(ideaOf(second.store, 'one')?.claim?.by).toBe('run-a');
+  });
+
+  it('refuses a proposed idea, so a claim cannot route around the human sign-off', () => {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('one')]);
+    const result = applyIdeaClaims(store, [{ slug: 'one', by: 'run-a' }], T0);
+    expect(result.claimed).toEqual([]);
+    expect(result.refused).toEqual([{ slug: 'one', status: 'proposed' }]);
+  });
+
+  it('lets a second run take over once the claim goes stale, but not a moment before', () => {
+    const held = applyIdeaClaims(accepted(), [{ slug: 'one', by: 'died' }], T0).store;
+    const justBefore = new Date(T0.getTime() + IDEA_CLAIM_TTL_MS - 1);
+    const atExpiry = new Date(T0.getTime() + IDEA_CLAIM_TTL_MS);
+
+    expect(isIdeaClaimStale(ideaOf(held, 'one')!, justBefore)).toBe(false);
+    expect(applyIdeaClaims(held, [{ slug: 'one', by: 'run-b' }], justBefore).claimed).toEqual([]);
+
+    expect(isIdeaClaimStale(ideaOf(held, 'one')!, atExpiry)).toBe(true);
+    const taken = applyIdeaClaims(held, [{ slug: 'one', by: 'run-b' }], atExpiry);
+    expect(taken.claimed).toEqual(['one']);
+    expect(ideaOf(taken.store, 'one')?.claim?.by).toBe('run-b');
+  });
+
+  it('never expires a claim that has produced a PR, however old', () => {
+    const held = applyIdeaClaims(accepted(), [{ slug: 'one', by: 'run-a', pr: 'https://…/141' }], T0).store;
+    // A PR review outlives the TTL by days; the open PR is the evidence the work exists.
+    const muchLater = new Date(T0.getTime() + IDEA_CLAIM_TTL_MS * 100);
+    expect(isIdeaClaimStale(ideaOf(held, 'one')!, muchLater)).toBe(false);
+    expect(applyIdeaClaims(held, [{ slug: 'one', by: 'run-b' }], muchLater).claimed).toEqual([]);
+  });
+
+  it('treats a re-claim by the same holder as idempotent, and as how a PR is attached', () => {
+    const held = applyIdeaClaims(accepted(), [{ slug: 'one', by: 'run-a' }], T0).store;
+    const later = new Date(T0.getTime() + 60_000);
+    const again = applyIdeaClaims(held, [{ slug: 'one', by: 'run-a', pr: 'https://…/141' }], later);
+    expect(again.claimed).toEqual(['one']);
+    expect(ideaOf(again.store, 'one')?.claim).toEqual({
+      by: 'run-a',
+      at: later.toISOString(),
+      pr: 'https://…/141',
+    });
+    // And a plain re-claim keeps the PR rather than dropping it.
+    expect(applyIdeaClaims(again.store, [{ slug: 'one', by: 'run-a' }], later).store.ideas.one?.claim?.pr).toBe(
+      'https://…/141',
+    );
+  });
+
+  it('takes the free ideas in a batch that also collides, and writes nothing unknown', () => {
+    let store = accepted('one');
+    store = applyIdeaAdds(store, [add('two')], new Date('2026-08-01')).store;
+    store = applyIdeaMarks(store, [{ slug: 'two', status: 'accepted' }]).store;
+    store = applyIdeaClaims(store, [{ slug: 'one', by: 'run-a' }], T0).store;
+
+    const result = applyIdeaClaims(
+      store,
+      [
+        { slug: 'one', by: 'run-b' },
+        { slug: 'two', by: 'run-b' },
+        { slug: 'nope', by: 'run-b' },
+      ],
+      T0,
+    );
+    expect(result.claimed).toEqual(['two']);
+    expect(result.refused.map((r) => r.slug)).toEqual(['one']);
+    expect(result.unknown).toEqual(['nope']);
+    expect(result.store.ideas.nope).toBeUndefined();
+  });
+
+  it('never mutates the input store', () => {
+    const store = accepted();
+    applyIdeaClaims(store, [{ slug: 'one', by: 'run-a' }], T0);
+    expect(ideaOf(store, 'one')?.status).toBe('accepted');
+    expect(ideaOf(store, 'one')?.claim).toBeUndefined();
+  });
+});
+
+describe('releasing a claim', () => {
+  const T0 = new Date('2026-08-07T00:00:00.000Z');
+  function claimed() {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('one')], new Date('2026-08-01'));
+    const signed = applyIdeaMarks(store, [{ slug: 'one', status: 'accepted' }]).store;
+    return applyIdeaClaims(signed, [{ slug: 'one', by: 'run-a' }], T0).store;
+  }
+
+  it('drops the claim on every mark but shipped, which is the explicit release', () => {
+    for (const status of ['accepted', 'proposed', 'rejected'] as const) {
+      const released = applyIdeaMarks(claimed(), [{ slug: 'one', status, note: 'why' }]);
+      expect(ideaOf(released.store, 'one')?.claim, status).toBeUndefined();
+      expect(ideaOf(released.store, 'one')?.status).toBe(status);
+    }
+  });
+
+  it('keeps the claim on shipped, as the record of who built it', () => {
+    const shipped = applyIdeaMarks(claimed(), [{ slug: 'one', status: 'shipped', note: 'https://…/141' }]);
+    expect(ideaOf(shipped.store, 'one')?.claim?.by).toBe('run-a');
+  });
+
+  it('offers a released idea back to the next run that asks', () => {
+    const released = applyIdeaMarks(claimed(), [{ slug: 'one', status: 'accepted' }]).store;
+    const retaken = applyIdeaClaims(released, [{ slug: 'one', by: 'run-b' }], new Date(T0.getTime() + 60_000));
+    expect(retaken.claimed).toEqual(['one']);
+  });
+});
+
+describe('what an implementation run may take', () => {
+  const T0 = new Date('2026-08-07T00:00:00.000Z');
+
+  it('is accepted plus expired claims — never a live one, never an unsigned idea', () => {
+    let store = applyIdeaAdds(emptyIdeasStore(), [add('unsigned')], new Date('2026-08-01')).store;
+    store = applyIdeaAdds(store, [add('free')], new Date('2026-08-02')).store;
+    store = applyIdeaAdds(store, [add('live')], new Date('2026-08-03')).store;
+    store = applyIdeaAdds(store, [add('abandoned')], new Date('2026-08-04')).store;
+    store = applyIdeaMarks(store, [
+      { slug: 'free', status: 'accepted' },
+      { slug: 'live', status: 'accepted' },
+      { slug: 'abandoned', status: 'accepted' },
+    ]).store;
+    store = applyIdeaClaims(store, [{ slug: 'abandoned', by: 'died' }], T0).store;
+    const now = new Date(T0.getTime() + IDEA_CLAIM_TTL_MS + 1);
+    store = applyIdeaClaims(store, [{ slug: 'live', by: 'run-a' }], now).store;
+
+    expect(claimableIdeaRows(store, {}, now).map((r) => r.slug)).toEqual(['free', 'abandoned']);
+    // The two queries a run might reach for instead, and what each gets wrong.
+    expect(ideaRows(store, { statuses: ['accepted'] }).map((r) => r.slug)).toEqual(['free']);
+    expect(ideaRows(store, { statuses: ['accepted', 'claimed'] }).map((r) => r.slug)).toEqual([
+      'free',
+      'live',
+      'abandoned',
+    ]);
+  });
+});
+
 describe('parsing untrusted input', () => {
   it('refuses an idea that cites nothing', () => {
     expect(() => parseIdeaAdds([{ ...add('one'), evidence: [] }])).toThrow(/must cite at least one/);
@@ -158,6 +322,17 @@ describe('parsing untrusted input', () => {
   it('refuses a mark with an unknown status', () => {
     expect(() => parseIdeaMarks([{ slug: 'one', status: 'done' }])).toThrow(/must be one of/);
   });
+
+  it('accepts claimed as a status, since it is one of the five', () => {
+    expect(parseIdeaMarks([{ slug: 'one', status: 'claimed' }])[0]?.status).toBe('claimed');
+  });
+
+  it('refuses a claim with no holder', () => {
+    expect(() => parseIdeaClaims([{ slug: 'one' }])).toThrow(/must name the holder/);
+    expect(() => parseIdeaClaims([{ slug: 'one', by: '  ' }])).toThrow(/must name the holder/);
+    expect(() => parseIdeaClaims([])).toThrow(/must not be empty/);
+    expect(parseIdeaClaims([{ slug: 'one', by: ' run-a ' }])[0]).toEqual({ slug: 'one', by: 'run-a' });
+  });
 });
 
 describe('reading a stored file', () => {
@@ -173,6 +348,52 @@ describe('reading a stored file', () => {
       },
     });
     expect(Object.keys(store.ideas)).toEqual(['good']);
+  });
+
+  it('round-trips a claim, and drops a malformed one without dropping the idea', () => {
+    const store = parseIdeasStore({
+      version: 1,
+      ideas: {
+        held: {
+          title: 'Held',
+          rationale: 'r',
+          evidence: EVIDENCE,
+          repo: 'a/b',
+          status: 'claimed',
+          claim: { by: 'run-a', at: '2026-08-07T00:00:00.000Z', pr: 'https://…/141' },
+        },
+        headless: {
+          title: 'Bad claim',
+          rationale: 'r',
+          evidence: EVIDENCE,
+          repo: 'a/b',
+          status: 'claimed',
+          claim: { at: '2026-08-07T00:00:00.000Z' },
+        },
+      },
+    });
+    expect(store.ideas.held?.claim).toEqual({ by: 'run-a', at: '2026-08-07T00:00:00.000Z', pr: 'https://…/141' });
+    // The idea survives; only the unreadable holder is dropped, which leaves the
+    // entry takeable rather than locked by a row nobody can act on.
+    expect(store.ideas.headless).toBeDefined();
+    expect(store.ideas.headless?.claim).toBeUndefined();
+  });
+
+  it('reads an unparseable claim timestamp as stale rather than as a permanent lock', () => {
+    const store = parseIdeasStore({
+      version: 1,
+      ideas: {
+        stuck: {
+          title: 'Stuck',
+          rationale: 'r',
+          evidence: EVIDENCE,
+          repo: 'a/b',
+          status: 'claimed',
+          claim: { by: 'run-a', at: 'not a date' },
+        },
+      },
+    });
+    expect(isIdeaClaimStale(store.ideas.stuck!, new Date('2026-08-07'))).toBe(true);
   });
 
   it('reads a missing or malformed file as empty', () => {
@@ -193,7 +414,13 @@ describe('listing', () => {
     expect(ideaRows(store, { statuses: ['accepted'] }).map((r) => r.slug)).toEqual(['third']);
     expect(ideaRows(store, { repo: 'llevasseur/my-command' }).map((r) => r.slug)).toEqual(['second']);
     expect(ideaRows(store, { statuses: ['accepted'], repo: 'llevasseur/my-command' })).toEqual([]);
-    expect(countIdeaStatuses(ideaRows(store))).toEqual({ proposed: 2, accepted: 1, rejected: 0, shipped: 0 });
+    expect(countIdeaStatuses(ideaRows(store))).toEqual({
+      proposed: 2,
+      accepted: 1,
+      claimed: 0,
+      rejected: 0,
+      shipped: 0,
+    });
   });
 });
 
