@@ -480,8 +480,7 @@ button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* Wraps, because a head carrying a title, a search box and a caption cannot fit
-     them on one line in a narrow card — without this they overflow it instead. */
+  /* A title, a search box and a caption do not share one line in a narrow card. */
   flex-wrap: wrap;
   gap: 8px 12px;
   margin-bottom: 14px;
@@ -3433,9 +3432,8 @@ button.sessions-new.is-active {
   color: var(--faint);
 }
 
-/* The same control in a card head, taking the space between title and caption.
-   It grows into that space rather than claiming a fixed 18rem, so a narrow card
-   shrinks the box instead of overflowing. */
+/* The same control in a card head, growing into the space between title and
+   caption rather than claiming a fixed 18rem it cannot shrink below. */
 .card-head .context-search {
   flex: 1 1 18rem;
   min-width: 0;
@@ -3456,8 +3454,8 @@ button.sessions-new.is-active {
     order: 2;
   }
 }
-/* A thread is one row, and its first cell is the whole link. Two stacked lines
-   rather than one wide one, so the cell reflows instead of widening the table. */
+/* A thread's whole first cell is the link — two stacked lines rather than one wide
+   one, so the cell reflows instead of widening the table. */
 .thread-link {
   display: flex;
   flex-direction: column;
@@ -3470,8 +3468,7 @@ button.sessions-new.is-active {
 }
 .thread-title {
   line-height: 1.35;
-  /* Two lines, then ellipsis: a prompt is arbitrarily long and must never set
-     the column's width. */
+  /* Two lines, then ellipsis — a prompt must never set the column's width. */
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -3491,9 +3488,8 @@ button.sessions-new.is-active {
   margin-right: 8px;
   color: var(--faint);
 }
-/* The opening prompt above a thread's requests — free text, so it wraps. A `/task`
-   prompt runs to thousands of words, so it scrolls in place rather than pushing the
-   requests table off the page. */
+/* The opening prompt above a thread's requests — free text, so it wraps, and it
+   scrolls in place because a `/task` prompt runs to thousands of words. */
 .thread-prompt-text {
   margin: 6px 0 10px;
   max-height: 14rem;

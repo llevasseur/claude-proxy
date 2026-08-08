@@ -149,9 +149,8 @@ export interface ContextThreadGroup {
   firstTimestamp: string;
   lastTimestamp: string;
   /**
-   * The thread's largest request. The single row stands in for every request the
-   * thread sent, so its cells — real input, system, tools, the size bar — are this
-   * one's. Ties keep the earlier entry.
+   * The thread's largest request, which is what the single row's cells show. Ties
+   * keep the earlier entry.
    */
   peak: ContextEntry;
   /** Distinct models the thread used, first seen first — usually one. */

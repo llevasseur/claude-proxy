@@ -14,8 +14,8 @@ import { useTransitionState } from '../useTransitionState';
 
 export function ContextDetailPage() {
   const { file } = useParams({ from: '/context/$file' });
-  // Only set when the request was reached through its thread; a captured body
-  // records no thread id, so there is nothing to fall back to.
+  // Only set when the request was reached through its thread; there is nothing to
+  // fall back to.
   const { thread, days } = useSearch({ from: '/context/$file' });
   const query = useQuery({ queryKey: ['context-detail', file], queryFn: () => getContextDetail(file) });
   const data = query.data;

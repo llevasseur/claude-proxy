@@ -22,7 +22,7 @@ const REQUEST_COLUMNS: readonly SkeletonColumn[] = [
 
 /**
  * Per-column floors, as on the Context size table — every column needs one, or a
- * wrap in When redistributes the squeeze onto its neighbours.
+ * wrap in When squeezes its neighbours instead.
  */
 const COLUMN = {
   when: { minWidth: 170 },
@@ -31,11 +31,7 @@ const COLUMN = {
   bar: { minWidth: 90 },
 } as const satisfies Record<string, CSSProperties>;
 
-/**
- * Every request one thread sent — the page the Context size table's single row per
- * thread drills into. The rows drill one level further, into each request's own
- * breakdown.
- */
+/** Every request one thread sent; its rows drill into each request's own breakdown. */
 export function ContextThreadPage() {
   const { threadId } = useParams({ from: '/context/thread/$threadId' });
   const { days } = useSearch({ from: '/context/thread/$threadId' });

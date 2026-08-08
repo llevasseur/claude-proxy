@@ -952,13 +952,11 @@ export interface ContextThreadResponse {
 }
 
 /**
- * One thread's captured requests — what the context table's single row per thread
- * drills into. Matches on thread id alone rather than through
- * {@link sessionContextEntries}'s session-id fallback, which spans a whole agent
- * family and would hand a parent's requests to a subagent's page.
+ * One thread's captured requests, oldest first. Matches on thread id alone rather
+ * than through {@link sessionContextEntries}'s session-id fallback, which spans a
+ * whole agent family and would hand a parent's requests to a subagent's page.
  *
- * A thread with no requests in the window answers an empty list rather than a 404:
- * the window is a filter, so "not in these days" is a normal answer.
+ * A thread with no requests in the window answers an empty list, not a 404.
  */
 export async function buildContextThread(
   logDir: string,

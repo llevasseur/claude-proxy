@@ -97,9 +97,8 @@ const DEFAULT_DIR: Record<SortKey, SortDir> = {
 };
 
 /**
- * Signed comparison for a column, ascending. Every numeric column reads the
- * thread's peak request, which is what its single row shows, so the Size bar
- * sorts on the same underlying value as Real input.
+ * Signed comparison for a column, ascending. Every numeric column reads the thread's
+ * peak request, so Size sorts on the same value as Peak input.
  */
 function compare(a: ContextThreadGroup, b: ContextThreadGroup, key: SortKey): number {
   switch (key) {
@@ -117,9 +116,8 @@ function compare(a: ContextThreadGroup, b: ContextThreadGroup, key: SortKey): nu
 }
 
 /**
- * Per-column floors — every column needs one, or a wrap in Thread just
- * redistributes the squeeze onto its neighbours. Their sum is wider than a phone,
- * which is what `.table-scroll` is for.
+ * Per-column floors — every column needs one, or a wrap in Thread squeezes its
+ * neighbours. Their sum is wider than a phone, which is what `.table-scroll` is for.
  */
 const COLUMN = {
   thread: { minWidth: 220 },
@@ -139,8 +137,8 @@ function ThreadsTable({ summary, days }: { summary: ContextResponse['summary']; 
   // Scaled by the whole window, so filtering doesn't re-scale the bars.
   const max = Math.max(1, maxRealInput);
 
-  // Grouped before filtering and sorting, so a thread is one row however its
-  // requests were interleaved with another's.
+  // Grouped before filtering and sorting, so a thread stays one row however its
+  // requests interleaved with another's.
   const groups = useMemo(() => groupContextThreads(entries), [entries]);
 
   const rows = useMemo(() => {
@@ -245,10 +243,8 @@ function ThreadsTable({ summary, days }: { summary: ContextResponse['summary']; 
 }
 
 /**
- * One thread, on one row. Its numbers are the thread's largest request — the row
- * stands in for every request it sent, and the peak is the one worth drilling
- * into. A thread-less request has no thread page, so it links to its own
- * breakdown instead.
+ * One thread, on one row, showing its largest request. A thread-less request has no
+ * thread page, so it links to its own breakdown instead.
  */
 function ThreadRow({
   group,

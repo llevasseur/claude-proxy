@@ -236,14 +236,13 @@ const contextRoute = createRoute({
   component: ContextPage,
   staticData: { title: 'Context size' },
 });
-/** The Context size page's own window, clamped the way `/api/context` clamps it.
- * Anything unreadable falls back to the page's default rather than erroring. */
+/** `?days=` clamped to 1–365 the way `/api/context` clamps it; anything unreadable
+ * falls back to the default rather than erroring. */
 function contextDays(raw: unknown): number {
   const days = Number(raw);
   return Number.isFinite(days) && days > 0 ? Math.min(Math.round(days), 365) : 14;
 }
-/** `?days=` carries the window the thread was reached from, so its request list
- * covers the same days the table did. */
+/** `?days=` carries the window the thread was reached from. */
 export interface ContextThreadSearch {
   days: number;
 }
@@ -255,9 +254,9 @@ const contextThreadRoute = createRoute({
   staticData: { title: 'Context thread' },
   validateSearch: (search: Record<string, unknown>): ContextThreadSearch => ({ days: contextDays(search.days) }),
 });
-/** `?thread=` names the thread this request was reached through, which is the only
- * way the breakdown can offer a crumb back to it — a request body records no ids.
- * `?days=` rides along so that crumb reopens the window it came from. */
+/** `?thread=` names the thread this request was reached through — the only way the
+ * breakdown can crumb back, since a request body records no ids. `?days=` rides
+ * along so that crumb reopens the window it came from. */
 export interface ContextDetailSearch {
   thread?: string;
   days?: number;
