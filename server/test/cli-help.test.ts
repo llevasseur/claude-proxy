@@ -45,17 +45,13 @@ describe('CLI help', () => {
     for (const command of commands) {
       for (const flag of ['--help', '-h']) {
         const label = [cli, command, flag].filter(Boolean).join(' ');
-        it(
-          `${label} prints usage and exits 0`,
-          async () => {
-            const { code, stdout } = await invoke(file, [...(command ? [command] : []), flag]);
+        it(`${label} prints usage and exits 0`, async () => {
+          const { code, stdout } = await invoke(file, [...(command ? [command] : []), flag]);
 
-            expect(code).toBe(0);
-            expect(stdout).toContain('usage:');
-            expect(stdout).toContain(`${cli} list`);
-          },
-          60_000,
-        );
+          expect(code).toBe(0);
+          expect(stdout).toContain('usage:');
+          expect(stdout).toContain(`${cli} list`);
+        }, 60_000);
       }
     }
   }
