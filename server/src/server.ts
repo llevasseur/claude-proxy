@@ -2,12 +2,15 @@ import fs from 'node:fs';
 import http from 'node:http';
 import {
   type IdeaStatus,
+  isIdeaArea,
   isIdeaRepo,
   isIdeaStatus,
   isSuggestionRecurrence,
   isSuggestionStatus,
   isThreadId,
   parseBucketRange,
+  parseIdeaComments,
+  parseIdeaFilings,
   parseIdeaMarks,
   parseSuggestionJudgements,
   parseSuggestionStatusUpdates,
@@ -15,6 +18,8 @@ import {
   type SuggestionStatus,
 } from '@claude-proxy/core';
 import {
+  applyIdeaArea,
+  applyIdeaComment,
   applyIdeaStatus,
   applySuggestionJudge,
   applySuggestionStatus,
@@ -168,6 +173,13 @@ const SUGGESTION_STATUS_ROUTE = '/api/sessions/suggestions/status';
  */
 const IDEAS_ROUTE = '/api/ideas';
 const IDEAS_STATUS_ROUTE = '/api/ideas/status';
+/**
+ * Re-filing and commenting: two more writes to the same ledger, so they sit on the
+ * same allowlist. Filing is **its own route rather than a field on the status
+ * write** — see `applyIdeaFilings`.
+ */
+const IDEAS_AREA_ROUTE = '/api/ideas/area';
+const IDEAS_COMMENT_ROUTE = '/api/ideas/comment';
 
 /** The one destructive route: removes a `~/.claude/jobs/<id>` directory from disk. */
 const JOB_DELETE_ROUTE = '/api/jobs/delete';
@@ -180,6 +192,8 @@ const WRITE_ROUTES = new Set([
   ...CHAT_ROUTES,
   SUGGESTION_STATUS_ROUTE,
   IDEAS_STATUS_ROUTE,
+  IDEAS_AREA_ROUTE,
+  IDEAS_COMMENT_ROUTE,
   JOB_DELETE_ROUTE,
   SYSTEM_PROMPT_ROUTE,
 ]);
@@ -947,6 +961,7 @@ const server = http.createServer(async (req, res) => {
       case '/api/ideas/stream': {
         const statusParam = url.searchParams.get('status');
         const repoParam = url.searchParams.get('repo');
+        const areaParam = url.searchParams.get('area');
         let statuses: IdeaStatus[] | undefined;
         try {
           if (statusParam) {
@@ -961,11 +976,20 @@ const server = http.createServer(async (req, res) => {
           if (repoParam && !isIdeaRepo(repoParam)) {
             throw new Error(`invalid repo: ${repoParam} (expected a git remote slug like owner/name)`);
           }
+          // Shape only. The vocabulary is free text, so an area nothing is filed
+          // under is an empty list rather than an error.
+          if (areaParam && !isIdeaArea(areaParam)) {
+            throw new Error(`invalid area: ${areaParam} (expected a kebab-case slug)`);
+          }
         } catch (err) {
           send(res, 400, { error: (err as Error).message });
           return;
         }
-        const filter = { ...(statuses ? { statuses } : {}), ...(repoParam ? { repo: repoParam } : {}) };
+        const filter = {
+          ...(statuses ? { statuses } : {}),
+          ...(repoParam ? { repo: repoParam } : {}),
+          ...(areaParam ? { area: areaParam } : {}),
+        };
         if (url.pathname.endsWith('/stream')) {
           await serveSse(req, res, { watchPath: LOG_DIR, build: () => buildIdeas(LOG_DIR, filter), debounceMs: 600 });
           return;
@@ -981,6 +1005,23 @@ const server = http.createServer(async (req, res) => {
           req,
           res,
           (body) => applyIdeaStatus(LOG_DIR, parseIdeaMarks(body.marks), new Date()),
+          () => 400,
+        );
+        return;
+      // Re-filing one, and commenting on one. Same allowlist, same origin check.
+      case IDEAS_AREA_ROUTE:
+        await servePost(
+          req,
+          res,
+          (body) => applyIdeaArea(LOG_DIR, parseIdeaFilings(body.filings), new Date()),
+          () => 400,
+        );
+        return;
+      case IDEAS_COMMENT_ROUTE:
+        await servePost(
+          req,
+          res,
+          (body) => applyIdeaComment(LOG_DIR, parseIdeaComments(body.comments), new Date()),
           () => 400,
         );
         return;

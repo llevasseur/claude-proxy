@@ -17,7 +17,10 @@ import type {
   ContextEntry,
   ContextSummary,
   HookRow,
+  IdeaAreaCounts,
+  IdeaComment,
   IdeaEntry,
+  IdeaFiling,
   IdeaMark,
   IdeaStatus,
   InterruptionKind,
@@ -582,6 +585,12 @@ export interface IdeasResponse {
     file: string;
     /** Counts over the rows returned. */
     counts: Record<IdeaStatus, number>;
+    /**
+     * Counts per area over the **whole** ledger, with every seed area present at
+     * zero — what the tab strip renders from, so selecting a tab never changes
+     * the numbers on the others.
+     */
+    areas: IdeaAreaCounts;
     /** Entries on the whole ledger, however the view was filtered. */
     total: number;
   };
@@ -595,6 +604,17 @@ export interface IdeasStatusResponse {
     /** Slugs the ledger does not carry — nothing was written for these. */
     unknown: string[];
     counts: Record<IdeaStatus, number>;
+    total: number;
+  };
+}
+/** The entries a re-file or a comment touched, plus the ledger-wide area counts. */
+export interface IdeasEditResponse {
+  rows: IdeaEntry[];
+  meta: {
+    file: string;
+    updated: string[];
+    unknown: string[];
+    areas: IdeaAreaCounts;
     total: number;
   };
 }
@@ -837,6 +857,14 @@ export const getIdeas = () => get<IdeasResponse>('/api/ideas');
  * with no note is refused — the reason is what stops the idea being re-proposed.
  */
 export const markIdeas = (marks: IdeaMark[]) => post<IdeasStatusResponse>('/api/ideas/status', { marks });
+/**
+ * Re-file ideas under an area. Its own route rather than a field on the mark: a
+ * status change must never move an idea between tabs as a side effect. An idea
+ * citing `command-gap` cannot leave the Commands area and is refused with 400.
+ */
+export const fileIdeas = (filings: IdeaFiling[]) => post<IdeasEditResponse>('/api/ideas/area', { filings });
+/** Write the comment on an idea. It replaces the previous one; `''` clears it. */
+export const commentIdeas = (comments: IdeaComment[]) => post<IdeasEditResponse>('/api/ideas/comment', { comments });
 export const getFilters = () => get<FiltersResponse>('/api/filters');
 export const getChatConfig = () => get<ChatConfigResponse>('/api/chat/config');
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */

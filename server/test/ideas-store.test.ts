@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   addIdeasToStore,
   claimIdeasInStore,
+  commentIdeasInStore,
+  fileIdeasInStore,
   markIdeasInStore,
   readIdeasStore,
   resolveIdeasPath,
@@ -22,6 +24,7 @@ const ADD = {
   rationale: 'The fixed windows split a habit that spans a boundary.',
   evidence: [{ source: 'open-question' as const, path: 'docs/features/session-suggestions.md' }],
   repo: 'llevasseur/claude-proxy',
+  area: 'ui-ux',
 };
 
 describe('the ledger file', () => {
@@ -93,6 +96,31 @@ describe('the ledger file', () => {
     await claimIdeasInStore(logDir, [{ slug: 'rolling-window', by: 'feat/rolling-window' }]);
     await markIdeasInStore(logDir, [{ slug: 'rolling-window', status: 'shipped', note: 'https://…/141' }]);
     expect((await readIdeasStore(logDir)).ideas['rolling-window']?.claim?.by).toBe('feat/rolling-window');
+  });
+
+  it('re-files an entry on disk without disturbing its decision', async () => {
+    await addIdeasToStore(logDir, [ADD]);
+    await markIdeasInStore(logDir, [{ slug: 'rolling-window', status: 'rejected', note: 'not now' }]);
+
+    const filed = await fileIdeasInStore(logDir, [{ slug: 'rolling-window', area: 'infrastructure' }]);
+    expect(filed.updated).toEqual(['rolling-window']);
+
+    const entry = (await readIdeasStore(logDir)).ideas['rolling-window'];
+    expect(entry?.area).toBe('infrastructure');
+    // Filing is not deciding: the status and its reason survive the move.
+    expect(entry?.status).toBe('rejected');
+    expect(entry?.note).toBe('not now');
+  });
+
+  it('writes a comment through the file, and clears it with an empty one', async () => {
+    await addIdeasToStore(logDir, [ADD]);
+    await commentIdeasInStore(logDir, [{ slug: 'rolling-window', text: 'start with the chart' }]);
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.comment).toBe('start with the chart');
+
+    await commentIdeasInStore(logDir, [{ slug: 'rolling-window', text: '' }]);
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.comment).toBeUndefined();
+    // And the entry itself is untouched by either write.
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.status).toBe('proposed');
   });
 
   it('throws rather than reading a corrupt-but-present ledger as empty', async () => {

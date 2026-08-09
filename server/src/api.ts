@@ -30,6 +30,7 @@ import {
   computeDigest,
   computeSkimDigest,
   countBucketJudgementStates,
+  countIdeaAreas,
   countIdeaStatuses,
   countSuggestionRecurrences,
   countSuggestionStatuses,
@@ -47,12 +48,17 @@ import {
   type HookRow,
   heuristicAdvice,
   hookPluginLoadExpectations,
+  type IdeaAreaCounts,
+  type IdeaComment,
+  type IdeaEditResult,
   type IdeaEntry,
+  type IdeaFiling,
   type IdeaFilter,
   type IdeaMark,
   type IdeaStatus,
   ideaRows,
   isAuditSidecar,
+  isIdeaArea,
   isPartialDay,
   isThreadId,
   type JobTreeNode,
@@ -138,7 +144,13 @@ import { listInstalledCommands } from './command-runs.js';
 import { conceptStorePath } from './concepts.js';
 import { fileSource, readWindow, type SidecarSource } from './db/source.js';
 import { DEFAULT_PR_LIMIT, readPullRequests, resolveRepoDir } from './github.js';
-import { markIdeasInStore, readIdeasStore, resolveIdeasPath } from './ideas-store.js';
+import {
+  commentIdeasInStore,
+  fileIdeasInStore,
+  markIdeasInStore,
+  readIdeasStore,
+  resolveIdeasPath,
+} from './ideas-store.js';
 import {
   deleteJob,
   type JobDeleteResult,
@@ -1989,6 +2001,16 @@ export interface IdeasResponse {
     file: string;
     /** Row counts per status, over the rows returned. */
     counts: Record<IdeaStatus, number>;
+    /**
+     * Row counts per area, over the **whole** ledger rather than the rows
+     * returned, and including every seed area at zero.
+     *
+     * Beside `counts` rather than inside it: `counts` describes the view, this
+     * describes the ledger the view is a slice of. The tab strip needs the latter,
+     * since a tab must say how many rows it holds while a *different* tab is
+     * selected.
+     */
+    areas: IdeaAreaCounts;
     /** Entries on the whole ledger, so a filtered view still says how much it hid. */
     total: number;
   };
@@ -2015,6 +2037,7 @@ export async function buildIdeas(logDir: string, filter: IdeaFilter = {}): Promi
     meta: {
       file: resolveIdeasPath(logDir),
       counts: countIdeaStatuses(rows),
+      areas: countIdeaAreas(ideaRows(store)),
       total: Object.keys(store.ideas).length,
     },
   };
@@ -2093,6 +2116,77 @@ export async function applyIdeaStatus(
       // Over the whole ledger rather than the rows returned: what is still awaiting a
       // sign-off is not a fact about the write that just happened.
       counts: countIdeaStatuses(all),
+      total: all.length,
+    },
+  };
+}
+
+/** The entries an edit touched, plus the area counts the tab strip re-renders from. */
+export interface IdeasEditResponse {
+  rows: IdeaEntry[];
+  meta: {
+    file: string;
+    updated: string[];
+    /** Slugs no entry carries. Nothing was written for these. */
+    unknown: string[];
+    /** Over the whole ledger, so a re-file updates both tabs' counts at once. */
+    areas: IdeaAreaCounts;
+    total: number;
+  };
+}
+
+/**
+ * Re-file an idea from the dashboard — the only write that changes an area, and
+ * deliberately not part of {@link applyIdeaStatus}: a decision must never move an
+ * idea between tabs as a side effect.
+ *
+ * Both refusals live here rather than in the route, matching `applyIdeaStatus`, so
+ * the HTTP contract cannot drift from `ideas file`'s. The shape check is this
+ * one's; the `command-gap` containment refusal surfaces through
+ * `applyIdeaFilings`.
+ */
+export async function applyIdeaArea(
+  logDir: string,
+  filings: readonly IdeaFiling[],
+  now: Date = new Date(),
+): Promise<IdeasEditResponse> {
+  if (filings.length === 0) throw new Error('no idea filings given');
+  for (const filing of filings) {
+    if (!isIdeaArea(filing.area)) {
+      throw new Error(`${filing.area} is not a kebab-case area (a-z, 0-9, single dashes)`);
+    }
+  }
+  return editResponse(await fileIdeasInStore(logDir, filings, now));
+}
+
+/**
+ * Write a comment on an idea. The comment is a person's own words about a
+ * proposal and is **overwritten** on each edit, never appended; `''` clears it.
+ * It is not `note`, which stays the rejection reason or the shipped PR url.
+ */
+export async function applyIdeaComment(
+  logDir: string,
+  comments: readonly IdeaComment[],
+  now: Date = new Date(),
+): Promise<IdeasEditResponse> {
+  if (comments.length === 0) throw new Error('no idea comments given');
+  for (const comment of comments) {
+    if (typeof comment.text !== 'string') throw new Error(`${comment.slug} needs a comment, as text`);
+  }
+  return editResponse(await commentIdeasInStore(logDir, comments, now));
+}
+
+/** The shared tail of both edits: the touched rows, plus ledger-wide area counts. */
+function editResponse(result: IdeaEditResult & { file: string }): IdeasEditResponse {
+  const touched = new Set(result.updated);
+  const all = ideaRows(result.store);
+  return {
+    rows: all.filter((row) => touched.has(row.slug)),
+    meta: {
+      file: result.file,
+      updated: result.updated,
+      unknown: result.unknown,
+      areas: countIdeaAreas(all),
       total: all.length,
     },
   };

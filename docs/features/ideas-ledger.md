@@ -13,8 +13,9 @@ dirty: true
 
 `<logDir>/ideas.json` records features and commands somebody proposed building, and what a human
 decided about each one. It is read and written by `pnpm --filter server ideas`, which needs no
-running server, and adjudicated from the dashboard's [Advice page](admin-dashboard-for-claude-proxy-usage.md)
-over `GET /api/ideas` and `POST /api/ideas/status`.
+running server, and adjudicated from the [dashboard's](admin-dashboard-for-claude-proxy-usage.md)
+`/ideas` page — one tab per area, one detail page per idea — over `GET /api/ideas` and the
+`POST /api/ideas/status`, `/api/ideas/area` and `/api/ideas/comment` writes.
 
 It exists because [session suggestions](session-suggestions.md) cannot answer the question it
 answers. A suggestion is produced by a rule counting what a transcript did, so it always traces
@@ -61,10 +62,11 @@ trace, which is the one thing the separation buys.
   The refusal is reported rather than thrown, so a batch of three ideas with one collision still
   records the other two, and `add` exits non-zero when anything was refused.
 - **Evidence is required, and enforced at the parse boundary.** Every entry must cite at least one
-  of `open-question`, `judge-note`, `changelog` or `deferral`, each with a locator: a `path`, or a
-  `bucket` + `id` for a judge note, which lives in the suggestion store rather than in a file. An
-  entry citing nothing is a parse error rather than a lint — "I noticed the code could use X" is
-  exactly the output the requirement exists to suppress.
+  of `open-question`, `judge-note`, `changelog`, `deferral` or `command-gap`, each with a locator: a
+  `path`, or a `bucket` + `id` for a judge note, which lives in the suggestion store rather than in a
+  file. An entry citing nothing is a parse error rather than a lint — "I noticed the code could use
+  X" is exactly the output the requirement exists to suppress.
+- **An area is required too, and is the second thing every entry carries.** See below.
 - **Near-duplicates are surfaced, not refused.** A near-duplicate under a different slug defeats
   the dedupe key, and only a reader can tell `rolling-window-view` from a genuine sibling.
   `similarIdeaSlugs` scores shared slug tokens (dropping stop-words) and `add` reports the hits
@@ -79,6 +81,44 @@ trace, which is the one thing the separation buys.
   with no reason is the row a later run most needs, and `shipped` is a claim about something that
   landed. `proposed` is the undo: it restores an idea to unsigned-off without erasing the entry or
   its note.
+
+### Areas, so a batch of proposals is judged against comparable things
+
+Every entry carries an **`area`** — a kebab-case word, shape-validated exactly as the slug is and
+otherwise free text. A flat ledger mixed a UI polish item in with an infrastructure change, and "is
+this worth building" reads differently for each; the area is what lets the two be adjudicated apart.
+
+- **Required on the way in, tolerated absent on the way out.** `parseIdeaAdds` refuses an entry with
+  no area, exactly as it refuses one citing nothing. `parseIdeasStore` does **not**: rows written
+  before areas existed keep loading, because dropping them would lose their rejection reasons, which
+  is the one thing the ledger is least able to afford to lose. Those rows read as **Unfiled** and are
+  classified with `ideas file`.
+- **The seed areas are a vocabulary, never a whitelist.** `SEED_IDEA_AREAS` names `ui-ux`,
+  `infrastructure`, `code-quality`, `services` and `commands`, in that order, with display labels.
+  They are **advisory only** — they order the tabs, label them, and appear in the CLI's help and in
+  the refusal an unparseable area produces. Nothing anywhere enforces membership: an agent with a
+  genuinely new area must be able to open one.
+- **Fragmentation is surfaced, not refused**, on the same reasoning as near-duplicate slugs.
+  `similarAreas` matches shared tokens *and* prefixes — the fragmentations worth catching are
+  abbreviations (`infra` for `infrastructure`) rather than rewordings, and an abbreviation shares no
+  whole token with what it abbreviates — and `ideas add` reports the hits under `similarAreas` while
+  still landing the entry.
+- **`commands` is the one area core knows the meaning of**, because of the fifth evidence source.
+  `command-gap` is the citation for a command that was never written, and it is the **only source
+  that carries no locator** — there is no file to point at, which is the entire condition it
+  describes. Two rules contain it: a `command-gap` citation may appear only on an idea whose area
+  *is* `commands`, and it is the only source that may stand alone. Both are enforced at the parse
+  boundary, and re-filing is checked too — that is the only other way to reach the state the parse
+  forbids, so `applyIdeaFilings` refuses over the **whole batch before writing anything**.
+- **The trade-off is stated rather than hidden**: a locator-less `command-gap` is the one citation a
+  reader cannot go and check. It is confined to `commands` for exactly that reason.
+- **Filing is not deciding.** `ideas file` is its own verb, deliberately not folded into `mark`: a
+  single verb doing both would let a status change move an idea between tabs as a side effect, or a
+  re-file quietly reset a rejection. Re-filing leaves `status`, `note` and `claim` untouched.
+- **`comment` is a separate field from `note`.** `note` keeps its exact meaning — the rejection
+  reason, or the shipped PR url. `comment` is a person's own words about the proposal, the build
+  criteria whoever implements it should read. Each save **replaces** it rather than appending, and an
+  empty one clears it.
 
 ### Claiming, so two runs cannot build the same idea
 
@@ -134,10 +174,13 @@ mid-run and ask in-session. The Advice page carries the ledger instead, so the r
 proposals and ends, and the decision happens whenever somebody looks.
 
 - **`GET /api/ideas`** lists the ledger with per-status counts, optionally narrowed by `?status=`
-  (comma-separated) and `?repo=` (a remote slug — a checkout path is refused here exactly as it is
-  on a write). `meta.total` always counts the whole ledger, so a filtered view still says how much
-  it hid. **`/api/ideas/stream`** shadows it over SSE watching the log directory, so an idea
-  `/ideate` writes from a terminal appears without a page reload.
+  (comma-separated), `?repo=` (a remote slug — a checkout path is refused here exactly as it is
+  on a write) and `?area=`. `meta.total` always counts the whole ledger, so a filtered view still
+  says how much it hid, and `meta.areas` counts per area **over the whole ledger too** — otherwise
+  selecting one tab would rewrite the numbers on all the others. It is a sibling of `meta.counts`
+  rather than a key inside it, because the two are counted over different vocabularies and a caller
+  reading `counts` wants the five statuses. **`/api/ideas/stream`** shadows the list over SSE
+  watching the log directory, so an idea `/ideate` writes from a terminal appears without a reload.
 - **`POST /api/ideas/status`** takes `{ marks: [{ slug, status, note? }] }` through the same
   `parseIdeaMarks` / `applyIdeaMarks` the CLI uses. It is on the server's **write allowlist**, under
   the origin-checked CORS the chat routes use rather than the reads' open `*`: this ledger is
@@ -161,6 +204,27 @@ proposals and ends, and the decision happens whenever somebody looks.
 - **`accepted` rows stay visible** in a settled state, so it is clear what `/improve` picks up next.
   **`rejected` rows collapse behind a toggle rather than disappearing** — they are never deleted,
   because the reasons are the rows that stop an idea coming back.
+- **The list lives at `/ideas`, tabbed by area**, and the Advice page keeps only a summary line
+  linking to it. The page fetches the whole ledger once and filters **client-side**, so switching
+  tabs costs no request, and stays live over the same SSE stream. The five seed tabs always render,
+  dimmed at zero — the vocabulary is visible before anything is filed under it, which is what makes
+  it a vocabulary — then invented areas alphabetically, then **Unfiled only while area-less rows
+  exist**. The selected tab travels in the URL as `?area=`, and an area that was renamed, emptied or
+  never existed **degrades to the default** rather than erroring, because answering a stale link with
+  a crash is worse than answering it with the page the reader wanted.
+- **There is no "All" tab**, and the trade-off is deliberate: a mixed batch of proposals is
+  adjudicated tab by tab. What it buys is that every list on the page is a list of comparable things,
+  which is the whole reason areas exist. Cards stay fully actionable — Accept, Reject-with-reason,
+  Release and Undo are all still on them.
+- **`/ideas/$slug` is the detail page**, carrying the full rationale, every citation with its quote,
+  the claim holder and how long it has been held, the `by` provenance, the re-file picker and the
+  comment editor. **The area is deliberately absent from the permalink** — re-filing is a normal
+  thing to do, and a link that breaks when somebody corrects a misfile is worse than a less
+  descriptive url. There is no per-idea endpoint: the ledger is small and the list is already cached
+  under the same query key, so a write from either surface moves both.
+- **`POST /api/ideas/area`** and **`POST /api/ideas/comment`** are the two new writes, on the same
+  write allowlist and origin-checked CORS as `/api/ideas/status`, with their refusals in the apply
+  functions rather than in the routes for the same reason as before.
 - A ledger that exists but does not parse **500s rather than rendering empty**, for the reason
   below: a page claiming a fresh ledger is how a rejected idea gets re-proposed.
 
@@ -182,10 +246,12 @@ Falling through past a broken tier-1 store forks one ledger into two that each l
 ## Flags / Parameters
 
 ```
-ideas list  [-s|--status <flags>] [--repo <slug>] [--available] [--json]
+ideas list  [-s|--status <flags>] [--repo <slug>] [--area <area>] [--available] [--json]
 ideas add    --json <entries>|-
 ideas claim  --slug <slug> --by <holder> [--pr <url>] [--json]
 ideas mark   --slug <slug> -s|--status <flag> [-n|--note <text>] [--json]
+ideas file   --slug <slug> --area <area> [--thread <id>] [--json]
+ideas note   --slug <slug> --text <text> [--thread <id>] [--json]
 ```
 
 - `-s` / `--status` — comma-separated subset of `proposed`, `accepted`, `claimed`, `rejected`,
@@ -196,28 +262,37 @@ ideas mark   --slug <slug> -s|--status <flag> [-n|--note <text>] [--json]
   `claim` exits non-zero when the idea is held by somebody else, so a scripted run walks away
   rather than reading a zero exit as permission to build it.
 - `--repo` — a git remote slug, `owner/name`.
+- `--area` — on `list`, one area, matched exactly; an area-less row matches no area at all. On
+  `file` it is the area to move the idea to, and `--help` lists the seed areas.
+- `--text` — on `note`, the whole comment. It **replaces** any existing one rather than appending,
+  and `--text ""` clears it.
 - `--json` — on `list` and `mark`, machine-readable output. **On `add` it carries the payload**: a
   JSON array of entries, or `-` to read stdin. `add`'s own output is always JSON, since its input
   is, which is also why the flag is not doing double duty on that verb.
 - `--help` — the usage, including what each verb refuses.
 - `LOG_DIR` selects the store, exactly as it does for `suggestions`.
 
-An entry is `{ slug, title, rationale, evidence[], repo, status?, note?, claim? }`, each evidence
-item is `{ source, path?, bucket?, id?, quote? }`, and a claim is `{ by, at, pr? }`.
+An entry is `{ slug, title, rationale, evidence[], repo, area, status?, note?, comment?, claim? }`,
+each evidence item is `{ source, path?, bucket?, id?, quote? }` — `command-gap` carries no locator —
+and a claim is `{ by, at, pr? }`.
 
 ## Where the code lives
 
 `packages/core/src/ideas.ts` is pure — no I/O, no clock (callers pass `now`) — holding the store
-shape, the parse and apply functions, the slug and repo predicates, and `similarIdeaSlugs`. It sits
-beside `suggestion-status.ts` and imports nothing from it. `server/src/ideas-store.ts` is the only
-code that reads or writes the file, and `server/src/ideas-cli.ts` is the command line.
+shape, the parse and apply functions, the slug, repo and area predicates, `SEED_IDEA_AREAS`,
+`countIdeaAreas`, `similarIdeaSlugs` and `similarAreas`. It sits beside `suggestion-status.ts` and
+imports nothing from it. `server/src/ideas-store.ts` is the only code that reads or writes the file,
+and `server/src/ideas-cli.ts` is the command line.
 
-Over HTTP, `buildIdeas` and `applyIdeaStatus` in `server/src/api.ts` are the read and the write, and
-`server/src/server.ts` dispatches `/api/ideas`, `/api/ideas/stream` and `/api/ideas/status`. Neither
-builder takes a `SidecarSource` and neither is shadowed: the ledger is *authored* state with no
-derived half, so there is nothing for the SQLite substrate to disagree about. In the dashboard,
-`apps/admin/src/components/IdeaCard.tsx` is the card and the Ideas section of
-`apps/admin/src/routes/advice.tsx` is the list.
+Over HTTP, `buildIdeas` is the read and `applyIdeaStatus`, `applyIdeaArea` and `applyIdeaComment` are
+the writes, all in `server/src/api.ts`; `server/src/server.ts` dispatches `/api/ideas`,
+`/api/ideas/stream`, `/api/ideas/status`, `/api/ideas/area` and `/api/ideas/comment`. No builder here
+takes a `SidecarSource` and none is shadowed: the ledger is *authored* state with no derived half, so
+there is nothing for the SQLite substrate to disagree about. In the dashboard,
+`apps/admin/src/components/IdeaCard.tsx` is the card, `apps/admin/src/routes/ideas.tsx` is the tabbed
+list, `apps/admin/src/routes/idea-detail.tsx` is one idea in full, and both are registered by hand in
+`apps/admin/src/router.tsx`; the Ideas section of `apps/admin/src/routes/advice.tsx` is now a summary
+line linking across.
 
 The store is still **device-wide** while the page is about one proxy's logs, which is why the repo is
 on the card: a reader has to be able to see that an idea belongs to another checkout. That is the
@@ -261,9 +336,31 @@ of the answer.
 - [x] `ideas list --available` returns `accepted` plus expired claims, and the test pins what the
       two obvious alternative queries each get wrong.
 - [x] `claimed` cannot be set from the dashboard, but a claim can be released there.
+- [x] Every entry carries a kebab-case `area`, required by `parseIdeaAdds` and tolerated absent by
+      `parseIdeasStore`, so a legacy row survives the read with its rejection reason and renders as
+      Unfiled.
+- [x] The seed areas are advisory: they order and label the tabs and appear in the CLI help, and no
+      code path refuses an area outside them.
+- [x] `command-gap` stands alone with no locator, is refused on any idea not filed under `commands`,
+      and cannot be re-filed out of `commands` — checked over the whole batch before anything writes.
+- [x] `ideas file` changes the area without touching status, note or claim, and `ideas note` writes
+      `comment` without touching `note`, with an empty text clearing it.
+- [x] `GET /api/ideas` narrows by `?area=` and reports per-area counts over the whole ledger, and
+      `POST /api/ideas/area` and `/api/ideas/comment` sit on the write allowlist behind the
+      origin-checked CORS.
+- [x] `/ideas` renders the five seed tabs even at zero, then invented areas alphabetically, then
+      Unfiled only while area-less rows exist; the tab is in `?area=` and an unknown one degrades to
+      the default rather than erroring.
+- [x] `/ideas/$slug` carries the rationale, every citation, the claim, the provenance, the re-file
+      picker and the comment editor, and the area is absent from the permalink.
 - [ ] `/ideate` and `/improve` claim before building and read `--available` instead of
       `-s accepted`. **Those command files live outside this repo**, so this one is not closed by
       anything in this checkout.
+- [ ] `/ideate` chooses an area for every proposal it records and cites `command-gap` when the gap is
+      a command that was never written. **That command file lives outside this repo**, at
+      `~/.claude/commands/`, so nothing in this checkout closes it.
+- [ ] `/improve` reads an accepted idea's `comment` as build criteria. **Same story**: the command
+      file is outside this checkout, and the field is here waiting for it.
 
 ## Open questions
 
