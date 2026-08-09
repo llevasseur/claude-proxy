@@ -1,23 +1,14 @@
 /* The dashboard's stylesheet: a layer order, then one file per component.
  *
- * Everything here used to be one 4,735-line file, where a rule won because of
- * where it sat rather than what it selected. Two things follow from splitting it
- * behind a declared layer order:
+ * The order below decides which layer wins, once, for the whole sheet — a
+ * component's rule beats the layout it sits in because `components` is declared
+ * after `layout`, not because it sits further down a file. These imports can be
+ * reordered, and files split further, without changing what renders.
  *
- * 1. The order below decides which layer wins, once, for the whole sheet. A
- *    component's rule beats the layout it sits in because `components` is
- *    declared after `layout` — not because it happens to be further down a file.
- *    So these imports can be reordered, and files added or split further, without
- *    changing what renders.
- * 2. A component's size rules live with the component, and read the component's
- *    own width via `@container` rather than the window's via `@media`. A table
- *    scrolls sideways because its card got narrow, not because the viewport
- *    crossed some number — which is why the same overflow bug no longer has to be
- *    found and fixed once per page.
- *
- * The one boundary still keyed to the viewport is the shell's: whether there is
- * room beside the content for a rail at all is a question about the window, and
- * `layout/narrow-shell.css` owns it alone.
+ * Size rules live with their component and read its own width via `@container`,
+ * not the window's via `@media`. The one boundary still keyed to the viewport is
+ * the shell's — whether there is room beside the content for a rail at all —
+ * and `layout/narrow-shell.css` owns it alone.
  */
 @layer tokens, base, layout, components;
 

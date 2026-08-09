@@ -43,14 +43,11 @@
   .table tbody tr:last-child td {
     border-bottom: none;
   }
-  /* The one rule this file exists to hold. A table is cramped by the *card* it is in,
-   * never by the window: the same table is ~1,100px wide on Context and ~420px wide
-   * in one half of a `.grid.two`, at one viewport. Asking the card means the answer is
-   * right on every page at once, which is the difference between this and the two
-   * separate fixes recorded in the changelog months apart.
+  /* A table is cramped by the card it is in, never by the window, so asking the card
+   * makes this right on every page at once.
    *
-   * Tightening the gutters is not cosmetic — cell padding is part of a column's
-   * intrinsic minimum, so 10px to 6px takes roughly 8px off every column, and a
+   * Tightening the gutters is not cosmetic: cell padding is part of a column's
+   * intrinsic minimum, so 10px to 6px takes roughly 8px off every column and a
    * six-column table stops needing to scroll about 48px sooner. */
   @container card (max-width: 560px) {
     .table th,
@@ -162,8 +159,8 @@
   .table tbody tr.clickable:hover {
     background: rgba(255, 255, 255, 0.03);
   }
-  /* A cap in pixels is a guess about the card. `cqi` is a measurement of it, so the
-   * cell yields its share of a narrow card instead of holding it open at 380px. */
+  /* `cqi` measures the card, where a pixel cap only guesses at it — the cell yields
+   * its share of a narrow card instead of holding it open at 380px. */
   .skim-request {
     max-width: min(380px, 60cqi);
   }

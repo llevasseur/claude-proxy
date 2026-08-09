@@ -45,10 +45,8 @@
   /* A stack, not a row: every panel lands in the one grid cell, so the stage is
    as tall as the tallest and the seat transform is all that separates them.
    Clipped sideways only — the cards' own edges still show through vertically. */
-  /* The stage names itself, because the seat widths below are percentages *of the
-   * stage* — so the stage is the only honest thing for them to ask. `inline-size`
-   * containment is on the inline axis alone, which is what lets the stage keep
-   * sizing its own height to the tallest panel. */
+  /* The stage names itself: the seat widths below are percentages of it. Containment
+   * is inline-axis only, so the stage still sizes its height to the tallest panel. */
   .trend-stage {
     container: trend-stage / inline-size;
     display: grid;

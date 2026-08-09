@@ -5,10 +5,9 @@
     display: flex;
     flex-direction: column;
   }
-  /* The column a page is laid out in, and the outer of the two size containers the
-   * sheet declares. Anything asking "is there room for two of these side by side"
-   * asks this, because the answer is the width of the column — not of the window,
-   * which also contains a rail that is 244px wide, or 64px, or nothing at all. */
+  /* The column a page is laid out in, and the outer of the sheet's two size
+   * containers. "Is there room for two of these side by side" asks this, not the
+   * window — the window also holds a rail that is 244px, or 64px, or nothing. */
   .content {
     container: workspace / inline-size;
     width: 100%;
@@ -16,9 +15,8 @@
     margin: 0 auto;
     padding: 40px clamp(20px, 3vw, 40px) 72px;
   }
-  /* The live graph escapes the padded, centered column and fills the workspace.
-   * It sizes itself from its own height and pans its own canvas, so it opts out of
-   * containment rather than having a layout container imposed over it. */
+  /* The live graph escapes the padded, centered column and fills the workspace. It
+   * pans its own canvas, so it opts out of containment. */
   .content--full {
     container-type: normal;
     max-width: none;

@@ -32,21 +32,15 @@
 
     /* motion
    *
-   * One number, and every duration in the sheet is written as a multiple of it.
-   * The sheet used to carry six separate `prefers-reduced-motion` blocks, and a
-   * new animation only honoured the preference if whoever wrote it remembered to
-   * add a seventh; the blanket `* { animation: none !important }` that backstopped
-   * them outranked every rule in the sheet to do it. Now the block at the bottom
-   * of this file has one job — set this to zero — and an animation honours the
-   * preference by being written in terms of it.
-   *
-   * The multiples exist so a rule still reads as its own duration rather than as a
-   * bare factor. They are `calc()` of the base, so they reach zero for free. */
+   * Every duration in the sheet is a multiple of this one. The reduced-motion
+   * block at the bottom of the file has one job — set this to zero — so an
+   * animation honours the preference by being written in terms of it. The
+   * multiples are `calc()` of the base, so they reach zero for free. */
     --motion-duration: 0.18s;
     /* A deliberate, watchable move: the trend carousel's slide, a meter filling. */
     --motion-duration-slow: calc(var(--motion-duration) * 2);
-    /* Ambient loops — a pulsing dot, a shimmering placeholder. Three rates, because
-   * a thinking indicator and a slow status glow read as different things. */
+    /* Ambient loops — a pulsing dot, a shimmering placeholder. Three rates: a
+   * thinking indicator and a slow status glow read as different things. */
     --motion-loop-fast: calc(var(--motion-duration) * 7);
     --motion-loop: calc(var(--motion-duration) * 9);
     --motion-loop-slow: calc(var(--motion-duration) * 13);
