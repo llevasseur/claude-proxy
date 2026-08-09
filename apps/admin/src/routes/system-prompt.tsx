@@ -1,8 +1,17 @@
-import { countLines, estTokens, outlineSystemPrompt, utf8Bytes } from '@claude-proxy/core';
+import {
+  countLines,
+  diffSystemPromptText,
+  estTokens,
+  normalizeSystemPromptText,
+  outlineSystemPrompt,
+  type SystemPromptDoc,
+  utf8Bytes,
+} from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import type { SystemPromptResponse } from '../api';
 import { getSystemPrompt, saveSystemPrompt } from '../api';
+import { CodeBlock } from '../components/CodeBlock';
 import { Markdown } from '../components/Markdown';
 import { QueryState } from '../components/QueryState';
 import { Segmented, type SegmentedOption } from '../components/Segmented';
@@ -39,6 +48,11 @@ export function SystemPromptPage() {
   const [view, setView] = useState<EditorView>('edit');
   const [armedEmpty, setArmedEmpty] = useState(false);
   const [saved, setSaved] = useState<{ modified: string | null; backupPath: string | null } | null>(null);
+  // The file's mtime when editing began. A background refetch moves `prompt` on an
+  // idle tab, so this — not the current query data — is the version being edited,
+  // and the version the confirm step checks the disk against.
+  const [editingFrom, setEditingFrom] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<SaveConfirm | null>(null);
 
   const onDisk = prompt?.text ?? '';
   const text = draft ?? onDisk;
@@ -52,24 +66,43 @@ export function SystemPromptPage() {
   // the way the job delete does.
   const clearsPrompt = text.trim() === '' && onDisk.trim() !== '';
 
+  // Save is a two-step: re-read the file, show what the write would change, then
+  // write against the version just read. The read is the point — the page may have
+  // been open for hours, and only the bytes on disk *now* say what is at stake.
+  const review = useMutation({
+    mutationFn: getSystemPrompt,
+    onSuccess: (res) => {
+      setConfirm({ disk: res.prompt, editingFrom, proposed: normalizeSystemPromptText(text) });
+    },
+  });
+
   const save = useMutation({
-    mutationFn: () => saveSystemPrompt(text),
+    mutationFn: (input: { text: string; expectedModified: string | null }) =>
+      saveSystemPrompt(input.text, input.expectedModified),
     onSuccess: (res) => {
       // The response is a fresh read of the file, so seeding beats refetching.
       client.setQueryData<SystemPromptResponse>(SYSTEM_PROMPT_KEY, { prompt: res.prompt, maxBytes: res.maxBytes });
       setDraft(null);
       setArmedEmpty(false);
+      setEditingFrom(null);
+      setConfirm(null);
       setSaved({ modified: res.prompt.modified, backupPath: res.backupPath });
     },
   });
 
   const submit = () => {
-    if (!dirty || tooLong || save.isPending) return;
+    if (!dirty || tooLong || save.isPending || review.isPending) return;
     if (clearsPrompt && !armedEmpty) {
       setArmedEmpty(true);
       return;
     }
-    save.mutate();
+    save.reset();
+    review.mutate();
+  };
+
+  const cancelConfirm = () => {
+    setConfirm(null);
+    save.reset();
   };
 
   return (
@@ -115,95 +148,253 @@ export function SystemPromptPage() {
               </div>
             )}
 
-            <div className='card'>
-              <div className='card-head'>
-                <h2>Device system prompt</h2>
-                <Segmented options={EDITOR_VIEWS} value={view} onSelect={setView} label='Editor view' />
-              </div>
-
-              {view === 'edit' ? (
-                <textarea
-                  className='sysprompt-editor'
-                  value={text}
-                  spellCheck={false}
-                  aria-label='Device system prompt'
-                  onChange={(e) => {
-                    setDraft(e.target.value);
-                    setArmedEmpty(false);
-                    setSaved(null);
-                  }}
-                  onKeyDown={(e) => {
-                    // ⌘S / Ctrl-S saves.
-                    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-                      e.preventDefault();
-                      submit();
-                    }
-                  }}
-                />
-              ) : text.trim() === '' ? (
-                <div className='empty'>Nothing to preview — the prompt is empty.</div>
-              ) : (
-                <div className='memory-pretty'>
-                  <Markdown source={text} />
+            {confirm ? (
+              <SaveConfirmCard
+                confirm={confirm}
+                pending={save.isPending}
+                error={save.error as Error | null}
+                rereading={review.isPending}
+                onReread={() => review.mutate()}
+                onCancel={cancelConfirm}
+                onConfirm={() => save.mutate({ text: confirm.proposed, expectedModified: confirm.disk.modified })}
+              />
+            ) : (
+              <div className='card'>
+                <div className='card-head'>
+                  <h2>Device system prompt</h2>
+                  <Segmented options={EDITOR_VIEWS} value={view} onSelect={setView} label='Editor view' />
                 </div>
-              )}
 
-              <div className='sysprompt-actions'>
-                <div className='sysprompt-state'>
-                  {tooLong && maxBytes !== undefined ? (
-                    <span className='sysprompt-error'>
-                      {fmtBytes(bytes)} is over the {fmtBytes(maxBytes)} ceiling — trim it before saving.
-                    </span>
-                  ) : dirty ? (
-                    <span className='muted'>Unsaved changes.</span>
-                  ) : saved ? (
-                    <span className='muted'>
-                      Saved{saved.modified ? ` at ${fmtLocalTsShort(saved.modified)}` : ''}
-                      {saved.backupPath && (
-                        <>
-                          {' '}
-                          — previous contents kept in <span className='rule-name'>{saved.backupPath}</span>
-                        </>
-                      )}
-                      .
-                    </span>
-                  ) : (
-                    <span className='muted'>In sync with the file.</span>
-                  )}
-                </div>
-                <div className='sysprompt-buttons'>
-                  <button
-                    type='button'
-                    className='link'
-                    disabled={!dirty || save.isPending}
-                    onClick={() => {
-                      setDraft(null);
+                {view === 'edit' ? (
+                  <textarea
+                    className='sysprompt-editor'
+                    value={text}
+                    spellCheck={false}
+                    aria-label='Device system prompt'
+                    onChange={(e) => {
+                      // The first keystroke pins the version being edited from.
+                      if (draft === null) setEditingFrom(prompt.modified);
+                      setDraft(e.target.value);
                       setArmedEmpty(false);
-                    }}>
-                    Revert
-                  </button>
-                  <button
-                    type='button'
-                    className={armedEmpty ? 'btn-danger armed' : 'btn-save'}
-                    disabled={!dirty || tooLong || save.isPending}
-                    onClick={submit}>
-                    {save.isPending
-                      ? 'Saving…'
-                      : armedEmpty
-                        ? 'Clear the prompt?'
-                        : clearsPrompt
-                          ? 'Save (empties it)'
-                          : 'Save'}
-                  </button>
-                </div>
-              </div>
+                      setSaved(null);
+                    }}
+                    onKeyDown={(e) => {
+                      // ⌘S / Ctrl-S saves.
+                      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+                        e.preventDefault();
+                        submit();
+                      }
+                    }}
+                  />
+                ) : text.trim() === '' ? (
+                  <div className='empty'>Nothing to preview — the prompt is empty.</div>
+                ) : (
+                  <div className='memory-pretty'>
+                    <Markdown source={text} />
+                  </div>
+                )}
 
-              {save.error && <div className='sysprompt-error'>Save failed — {(save.error as Error).message}</div>}
-            </div>
+                <div className='sysprompt-actions'>
+                  <div className='sysprompt-state'>
+                    {tooLong && maxBytes !== undefined ? (
+                      <span className='sysprompt-error'>
+                        {fmtBytes(bytes)} is over the {fmtBytes(maxBytes)} ceiling — trim it before saving.
+                      </span>
+                    ) : dirty ? (
+                      <span className='muted'>Unsaved changes.</span>
+                    ) : saved ? (
+                      <span className='muted'>
+                        Saved{saved.modified ? ` at ${fmtLocalTsShort(saved.modified)}` : ''}
+                        {saved.backupPath && (
+                          <>
+                            {' '}
+                            — previous contents kept in <span className='rule-name'>{saved.backupPath}</span>
+                          </>
+                        )}
+                        .
+                      </span>
+                    ) : (
+                      <span className='muted'>In sync with the file.</span>
+                    )}
+                  </div>
+                  <div className='sysprompt-buttons'>
+                    <button
+                      type='button'
+                      className='link'
+                      disabled={!dirty || review.isPending}
+                      onClick={() => {
+                        setDraft(null);
+                        setArmedEmpty(false);
+                        setEditingFrom(null);
+                      }}>
+                      Revert
+                    </button>
+                    <button
+                      type='button'
+                      className={armedEmpty ? 'btn-danger armed' : 'btn-save'}
+                      disabled={!dirty || tooLong || review.isPending}
+                      onClick={submit}>
+                      {review.isPending
+                        ? 'Comparing…'
+                        : armedEmpty
+                          ? 'Clear the prompt?'
+                          : clearsPrompt
+                            ? 'Save (empties it)'
+                            : 'Save'}
+                    </button>
+                  </div>
+                </div>
+
+                {review.error && (
+                  <div className='sysprompt-error'>
+                    Could not read the file to compare — {(review.error as Error).message}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </QueryState>
     </section>
+  );
+}
+
+/**
+ * What the confirm step is deciding about: the file as it was re-read a moment ago,
+ * the mtime the editor started from, and the normalized text about to land.
+ */
+interface SaveConfirm {
+  disk: SystemPromptDoc;
+  editingFrom: string | null;
+  proposed: string;
+}
+
+/**
+ * The step between pressing Save and the file being replaced: a line diff of the
+ * draft against the bytes on disk *now*, not the ones the page loaded with.
+ *
+ * The staleness check is the same read. If the file's mtime no longer matches the
+ * one editing began from, something else wrote to it — and rather than refusing
+ * with a message the reader would have to go to a terminal to check, the diff
+ * already on screen is the evidence, taken against the new contents.
+ */
+function SaveConfirmCard({
+  confirm,
+  pending,
+  error,
+  rereading,
+  onReread,
+  onCancel,
+  onConfirm,
+}: {
+  confirm: SaveConfirm;
+  pending: boolean;
+  error: Error | null;
+  rereading: boolean;
+  onReread: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const diff = useMemo(() => diffSystemPromptText(confirm.disk.text, confirm.proposed), [confirm]);
+  const source = useMemo(() => diff.lines.map((line) => line.text).join('\n'), [diff]);
+  const stale = confirm.disk.modified !== confirm.editingFrom;
+  // The server re-checks at write time, so the file can still move between this
+  // read and the click. That refusal comes back as a 409.
+  const movedAgain = error !== null && /changed on disk/.test(error.message);
+
+  const lineClass = (index: number) => {
+    switch (diff.lines[index]?.kind) {
+      case 'added':
+        return 'diff-added';
+      case 'removed':
+        return 'diff-removed';
+      case 'gap':
+        return 'diff-gap';
+      default:
+        return undefined;
+    }
+  };
+
+  return (
+    <div className='card'>
+      <div className='card-head'>
+        <h2>Review the save</h2>
+        <span className='muted'>
+          +{fmtInt(diff.added)} −{fmtInt(diff.removed)} lines
+        </span>
+      </div>
+
+      {stale && (
+        <div className='leak-note'>
+          <strong>The file changed on disk while you were editing.</strong> Another editor or another agent wrote to{' '}
+          <span className='rule-name'>{confirm.disk.path}</span>
+          {confirm.disk.modified ? ` at ${fmtLocalTsShort(confirm.disk.modified)}` : ''}. Saving replaces <em>those</em>{' '}
+          contents, not the ones this page opened with — which is what the diff below compares against.
+        </div>
+      )}
+
+      {diff.identical ? (
+        <div className='empty'>Nothing to write — the draft already matches the file on disk.</div>
+      ) : diff.lines.length === 0 ? (
+        <div className='empty'>No line changes — the save only normalizes line endings and trailing whitespace.</div>
+      ) : (
+        <>
+          <CodeBlock source={source} syntax='plain' wrap lineClass={lineClass} />
+          {diff.wholeFile && (
+            <div className='leak-note' style={{ marginTop: 8 }}>
+              Too much changed to line up against the old text — shown as a full replacement rather than an edit.
+            </div>
+          )}
+        </>
+      )}
+
+      {error && (
+        <div className='sysprompt-error'>
+          {movedAgain
+            ? 'Refused — the file changed again while you were reviewing it. Re-read it to see what is there now.'
+            : `Save failed — ${error.message}`}
+        </div>
+      )}
+
+      <div className='sysprompt-actions'>
+        <div className='sysprompt-state'>
+          <span className='muted'>
+            {confirm.disk.exists ? (
+              <>
+                Compared against <span className='rule-name'>{confirm.disk.path}</span> as it is right now.
+              </>
+            ) : (
+              <>
+                No file there yet — saving creates <span className='rule-name'>{confirm.disk.path}</span>.
+              </>
+            )}
+          </span>
+        </div>
+        <div className='sysprompt-buttons'>
+          <button type='button' className='link' disabled={pending} onClick={onCancel}>
+            Back to the editor
+          </button>
+          {movedAgain && (
+            <button type='button' className='link' disabled={rereading} onClick={onReread}>
+              {rereading ? 'Re-reading…' : 'Re-read the file'}
+            </button>
+          )}
+          <button
+            type='button'
+            className={stale ? 'btn-danger armed' : 'btn-save'}
+            disabled={pending || rereading || diff.identical}
+            onClick={onConfirm}>
+            {pending
+              ? 'Saving…'
+              : stale
+                ? 'Overwrite anyway'
+                : confirm.disk.exists
+                  ? 'Overwrite the file'
+                  : 'Create the file'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

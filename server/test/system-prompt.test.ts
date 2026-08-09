@@ -95,4 +95,52 @@ describe('buildSystemPromptUpdate', () => {
 
     expect(await readFile(nested, 'utf8')).toBe('# Rules\n');
   });
+
+  it('writes when the caller sends no expected mtime at all', async () => {
+    await buildSystemPromptUpdate(promptPath, '# First\n');
+
+    await buildSystemPromptUpdate(promptPath, '# Second\n');
+
+    expect(await readFile(promptPath, 'utf8')).toBe('# Second\n');
+  });
+
+  it('writes when the file still carries the mtime the caller read', async () => {
+    await buildSystemPromptUpdate(promptPath, '# First\n');
+    const { prompt } = await buildSystemPrompt(promptPath);
+
+    await buildSystemPromptUpdate(promptPath, '# Second\n', prompt.modified);
+
+    expect(await readFile(promptPath, 'utf8')).toBe('# Second\n');
+  });
+
+  it('refuses a stale save, leaving the concurrent edit on disk', async () => {
+    await buildSystemPromptUpdate(promptPath, '# Written by someone else\n');
+
+    await expect(buildSystemPromptUpdate(promptPath, '# Mine\n', '2020-01-01T00:00:00.000Z')).rejects.toThrow(
+      /changed on disk/,
+    );
+    expect(await readFile(promptPath, 'utf8')).toBe('# Written by someone else\n');
+  });
+
+  it('treats a null expected mtime as "there was no file", so the first save goes through', async () => {
+    await buildSystemPromptUpdate(promptPath, '# Rules\n', null);
+
+    expect(await readFile(promptPath, 'utf8')).toBe('# Rules\n');
+  });
+
+  it('refuses that same first save once a file has appeared underneath it', async () => {
+    await writeFile(promptPath, '# Someone got there first\n', 'utf8');
+
+    await expect(buildSystemPromptUpdate(promptPath, '# Rules\n', null)).rejects.toThrow(/changed on disk/);
+    expect(await readFile(promptPath, 'utf8')).toBe('# Someone got there first\n');
+  });
+
+  it('checks the body before the mtime, so an invalid edit still fails on the body', async () => {
+    await buildSystemPromptUpdate(promptPath, '# Keep me\n');
+
+    await expect(buildSystemPromptUpdate(promptPath, 42, '2020-01-01T00:00:00.000Z')).rejects.toThrow(
+      /must be a string/,
+    );
+    expect(await readFile(promptPath, 'utf8')).toBe('# Keep me\n');
+  });
 });

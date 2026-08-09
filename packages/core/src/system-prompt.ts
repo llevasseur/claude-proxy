@@ -141,3 +141,188 @@ export function parseSystemPromptText(value: unknown): string {
   }
   return normalized;
 }
+
+/**
+ * The `modified` a save claims to be replacing — the mtime the editor last read.
+ * Absent means "write regardless", which is what a caller that never read the file
+ * sends; `null` is the legitimate value for "there was no file".
+ */
+export function parseSystemPromptExpectedModified(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value === 'string') return value;
+  throw new Error('system prompt expectedModified must be a string or null');
+}
+
+/** One rendered line of a save diff. `text` carries its own ` `/`+`/`-` marker. */
+export type SystemPromptDiffKind = 'context' | 'added' | 'removed' | 'gap';
+
+export interface SystemPromptDiffLine {
+  kind: SystemPromptDiffKind;
+  /** Marker-prefixed line, or the `@@ … @@` header for a `gap`. */
+  text: string;
+}
+
+export interface SystemPromptDiff {
+  /** Changed regions with a few lines of context; empty when nothing differs. */
+  lines: SystemPromptDiffLine[];
+  added: number;
+  removed: number;
+  /** The two texts are byte-identical — a save would write nothing new. */
+  identical: boolean;
+  /**
+   * The change was too large to line up, so it reads as a whole-file replacement
+   * rather than an edit. Honest rather than wrong: at that size there is no small
+   * set of edits to show.
+   */
+  wholeFile: boolean;
+}
+
+/** Unchanged lines kept either side of a change, as `diff -u` does. */
+const DIFF_CONTEXT = 3;
+
+/**
+ * Cells the alignment table may fill. The 200 KB ceiling allows a few thousand
+ * lines, and a wholesale rewrite of one would square that — past this the diff
+ * degrades to a replacement instead of allocating for it.
+ */
+const DIFF_MAX_CELLS = 4_000_000;
+
+/**
+ * Lines of a document for diffing. The newline a saved prompt closes with ends the
+ * last line rather than opening an empty one, matching {@link countLines}.
+ */
+function diffLines(text: string): string[] {
+  if (text === '') return [];
+  return (text.endsWith('\n') ? text.slice(0, -1) : text).split('\n');
+}
+
+type DiffOp = { kind: 'equal' | 'added' | 'removed'; text: string };
+
+/** Every old line dropped, every new line written — the shape of a replacement. */
+function replaceAll(before: string[], after: string[]): DiffOp[] {
+  return [
+    ...before.map((text): DiffOp => ({ kind: 'removed', text })),
+    ...after.map((text): DiffOp => ({ kind: 'added', text })),
+  ];
+}
+
+/**
+ * Longest-common-subsequence alignment of two line arrays. A plain table rather
+ * than a diff library: the caller has already trimmed the matching head and tail,
+ * so what reaches here is the changed region alone.
+ */
+function alignLines(before: string[], after: string[]): DiffOp[] {
+  const n = before.length;
+  const m = after.length;
+  if (n === 0 || m === 0) return replaceAll(before, after);
+
+  const width = m + 1;
+  const lcs = new Int32Array((n + 1) * width);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i * width + j] =
+        before[i] === after[j]
+          ? lcs[(i + 1) * width + j + 1]! + 1
+          : Math.max(lcs[(i + 1) * width + j]!, lcs[i * width + j + 1]!);
+    }
+  }
+
+  const ops: DiffOp[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (before[i] === after[j]) {
+      ops.push({ kind: 'equal', text: before[i]! });
+      i++;
+      j++;
+    } else if (lcs[(i + 1) * width + j]! >= lcs[i * width + j + 1]!) {
+      ops.push({ kind: 'removed', text: before[i]! });
+      i++;
+    } else {
+      ops.push({ kind: 'added', text: after[j]! });
+      j++;
+    }
+  }
+  while (i < n) ops.push({ kind: 'removed', text: before[i++]! });
+  while (j < m) ops.push({ kind: 'added', text: after[j++]! });
+  return ops;
+}
+
+const MARKERS: Record<DiffOp['kind'], string> = { equal: ' ', added: '+', removed: '-' };
+
+/**
+ * A unified line diff of `before` against `after`, ready to render as text.
+ *
+ * This is what the dashboard shows before it overwrites the device instruction
+ * file: `before` is the bytes read back off disk at confirm time, `after` is the
+ * normalized draft about to land, so the diff describes the write itself rather
+ * than the state the page happened to load with.
+ */
+export function diffSystemPromptText(before: string, after: string): SystemPromptDiff {
+  if (before === after) return { lines: [], added: 0, removed: 0, identical: true, wholeFile: false };
+
+  const a = diffLines(before);
+  const b = diffLines(after);
+
+  // A long instruction file usually changes in one place, so the matching head and
+  // tail come off first and only the middle is aligned.
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) {
+    tail++;
+  }
+
+  const midA = a.slice(head, a.length - tail);
+  const midB = b.slice(head, b.length - tail);
+  const wholeFile = midA.length * midB.length > DIFF_MAX_CELLS;
+
+  const ops: DiffOp[] = [
+    ...a.slice(0, head).map((text): DiffOp => ({ kind: 'equal', text })),
+    ...(wholeFile ? replaceAll(midA, midB) : alignLines(midA, midB)),
+    ...a.slice(a.length - tail).map((text): DiffOp => ({ kind: 'equal', text })),
+  ];
+
+  // Line numbers each op sits on, so the hunk headers can name real positions.
+  let oldLine = 0;
+  let newLine = 0;
+  const rows = ops.map((op) => {
+    if (op.kind !== 'added') oldLine++;
+    if (op.kind !== 'removed') newLine++;
+    return { op, oldLine, newLine };
+  });
+
+  const ranges: [number, number][] = [];
+  rows.forEach((row, i) => {
+    if (row.op.kind === 'equal') return;
+    const start = Math.max(0, i - DIFF_CONTEXT);
+    const end = Math.min(rows.length, i + DIFF_CONTEXT + 1);
+    const last = ranges[ranges.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else ranges.push([start, end]);
+  });
+
+  const lines: SystemPromptDiffLine[] = [];
+  for (const [start, end] of ranges) {
+    const span = rows.slice(start, end);
+    const oldCount = span.filter((r) => r.op.kind !== 'added').length;
+    const newCount = span.filter((r) => r.op.kind !== 'removed').length;
+    const oldStart = span.find((r) => r.op.kind !== 'added')?.oldLine ?? 0;
+    const newStart = span.find((r) => r.op.kind !== 'removed')?.newLine ?? 0;
+    lines.push({ kind: 'gap', text: `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@` });
+    for (const { op } of span) {
+      lines.push({
+        kind: op.kind === 'equal' ? 'context' : op.kind,
+        text: `${MARKERS[op.kind]}${op.text}`,
+      });
+    }
+  }
+
+  return {
+    lines,
+    added: ops.filter((op) => op.kind === 'added').length,
+    removed: ops.filter((op) => op.kind === 'removed').length,
+    identical: false,
+    wholeFile,
+  };
+}

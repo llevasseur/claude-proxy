@@ -4429,6 +4429,18 @@ button.btn-save:disabled {
   margin-top: 8px;
   color: var(--bad);
 }
+/* The save's confirm step renders a unified diff through the shared code block, so
+   the colour lives on the line rather than on a token. */
+.codeblock li.diff-added {
+  background: color-mix(in srgb, var(--good) 13%, transparent);
+}
+.codeblock li.diff-removed {
+  background: color-mix(in srgb, var(--bad) 13%, transparent);
+}
+.codeblock li.diff-gap {
+  color: var(--faint);
+  background: rgba(255, 255, 255, 0.03);
+}
 
 /* pull request tree */
 .pr-page {
