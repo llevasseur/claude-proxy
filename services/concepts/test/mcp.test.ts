@@ -5,11 +5,31 @@ import { handleMcp } from '../src/mcp.ts';
 import { saveConcept } from '../src/store.ts';
 import { concept, testDb } from './harness.ts';
 
-function rpc(method: string, params?: Record<string, unknown>, id: number | null = 1) {
+/** The one revision this server implements. Asserted exactly, never by shape. */
+const PROTOCOL_VERSION = '2026-07-28';
+const META_VERSION = 'io.modelcontextprotocol/protocolVersion';
+
+/** A raw POST, for the cases that are about a header being wrong or absent. */
+function post(headers: Record<string, string>, body: unknown) {
   return new Request('https://concepts.example/mcp', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+    headers: { 'content-type': 'application/json', ...headers },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
+}
+
+/**
+ * A well-formed modern request: the version declared in `_meta` and mirrored
+ * into `MCP-Protocol-Version`, alongside the other headers the binding requires.
+ */
+function rpc(method: string, params: Record<string, unknown> = {}, version = PROTOCOL_VERSION) {
+  const headers: Record<string, string> = { 'mcp-protocol-version': version, 'mcp-method': method };
+  if (typeof params.name === 'string') headers['mcp-name'] = params.name;
+  return post(headers, {
+    jsonrpc: '2.0',
+    id: 1,
+    method,
+    params: { ...params, _meta: { [META_VERSION]: version } },
   });
 }
 
@@ -23,11 +43,21 @@ async function call(db: Db, name: string, args: Record<string, unknown> = {}) {
 }
 
 describe('handleMcp', () => {
-  it('initializes with a protocol version and tool capability', async () => {
-    const response = await handleMcp(rpc('initialize'), testDb());
-    const body = (await response.json()) as { result: { protocolVersion: string; capabilities: unknown } };
-    expect(body.result.protocolVersion).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(body.result.capabilities).toHaveProperty('tools');
+  it('discovers the exact supported version, the capabilities and the identity', async () => {
+    const response = await handleMcp(rpc('server/discover'), testDb());
+    const body = (await response.json()) as {
+      result: {
+        supportedVersions: string[];
+        capabilities: { tools: unknown; extensions: Record<string, unknown> };
+        _meta: Record<string, unknown>;
+      };
+    };
+    expect(response.status).toBe(200);
+    expect(body.result.supportedVersions).toEqual([PROTOCOL_VERSION]);
+    expect(body.result.capabilities.tools).toBeDefined();
+    // A map of extension identifier to settings object; this server has none.
+    expect(body.result.capabilities.extensions).toEqual({});
+    expect(body.result._meta['io.modelcontextprotocol/serverInfo']).toEqual({ name: 'concepts', version: '0.1.0' });
   });
 
   it('advertises exactly the three concept tools, each with a schema', async () => {
@@ -37,10 +67,61 @@ describe('handleMcp', () => {
     for (const tool of body.result.tools) expect(tool.inputSchema).toHaveProperty('properties');
   });
 
-  it('acknowledges a notification without a body', async () => {
-    const response = await handleMcp(rpc('notifications/initialized', {}, null), testDb());
-    expect(response.status).toBe(202);
-    expect(await response.text()).toBe('');
+  it('rejects a version it does not implement, naming the ones it does', async () => {
+    const response = await handleMcp(rpc('tools/list', {}, '2025-06-18'), testDb());
+    const body = (await response.json()) as { error: { code: number; data: { supported: string[]; requested: string } } };
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe(-32022);
+    expect(body.error.data).toEqual({ supported: [PROTOCOL_VERSION], requested: '2025-06-18' });
+  });
+
+  it('refuses initialize by naming its versions, since a legacy client cannot fall forward', async () => {
+    const request = post({}, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+    const response = await handleMcp(request, testDb());
+    const body = (await response.json()) as { error: { code: number; message: string; data: { supported: string[] } } };
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe(-32022);
+    expect(body.error.data.supported).toEqual([PROTOCOL_VERSION]);
+    expect(body.error.message).toContain(PROTOCOL_VERSION);
+  });
+
+  it('rejects a request that declares no protocol version at all', async () => {
+    const request = post({ 'mcp-method': 'tools/list' }, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+    const response = await handleMcp(request, testDb());
+    const body = (await response.json()) as { error: { code: number } };
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe(-32020);
+  });
+
+  it('rejects a version header that disagrees with the one in _meta', async () => {
+    const request = post(
+      { 'mcp-protocol-version': PROTOCOL_VERSION, 'mcp-method': 'tools/list' },
+      { jsonrpc: '2.0', id: 1, method: 'tools/list', params: { _meta: { [META_VERSION]: '2025-06-18' } } },
+    );
+    const body = (await (await handleMcp(request, testDb())).json()) as { error: { code: number } };
+    expect(body.error.code).toBe(-32020);
+  });
+
+  it('rejects a request missing the mirrored Mcp-Method and Mcp-Name headers', async () => {
+    const params = { name: 'concepts_list', arguments: {}, _meta: { [META_VERSION]: PROTOCOL_VERSION } };
+    const message = { jsonrpc: '2.0', id: 1, method: 'tools/call', params };
+
+    const noMethod = post({ 'mcp-protocol-version': PROTOCOL_VERSION }, message);
+    expect((await handleMcp(noMethod, testDb())).status).toBe(400);
+
+    const headers = { 'mcp-protocol-version': PROTOCOL_VERSION, 'mcp-method': 'tools/call' };
+    const response = await handleMcp(post(headers, message), testDb());
+    const body = (await response.json()) as { error: { code: number; message: string } };
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe(-32020);
+    expect(body.error.message).toContain('Mcp-Name');
+  });
+
+  it('rejects a notification, since this revision defines none from the client', async () => {
+    const response = await handleMcp(rpc('notifications/initialized'), testDb());
+    const body = (await response.json()) as { error: { code: number } };
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe(-32600);
   });
 
   it('answers ping', async () => {
@@ -48,9 +129,10 @@ describe('handleMcp', () => {
     expect((await response.json()) as unknown).toMatchObject({ result: {} });
   });
 
-  it('reports an unknown method as a JSON-RPC error', async () => {
+  it('reports an unknown method as a 404 carrying a JSON-RPC error', async () => {
     const response = await handleMcp(rpc('resources/list'), testDb());
     const body = (await response.json()) as { error: { code: number } };
+    expect(response.status).toBe(404);
     expect(body.error.code).toBe(-32601);
   });
 

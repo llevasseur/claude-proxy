@@ -1,14 +1,38 @@
 /**
  * MCP over streamable HTTP, hand-rolled rather than via the official SDK — see
- * ADR 0005. Always answers with a single `application/json` body, which the
- * spec allows for requests the server can satisfy immediately.
+ * ADR 0005. Implements revision 2026-07-28 and nothing earlier: every request
+ * declares its own protocol version, there is no `initialize` handshake and no
+ * session, and the answer is always a single `application/json` body.
  */
 
 import type { Db } from './db.ts';
 import { conceptFacets, getConceptById, getConceptsByTerm, listConcepts, searchConcepts } from './store.ts';
 
-const PROTOCOL_VERSION = '2025-06-18';
+/**
+ * The revisions this server speaks. Modern-era only: a legacy client that
+ * expects a handshake is turned away rather than served, which is what keeps
+ * the server stateless and the per-connection cost at zero.
+ */
+const SUPPORTED_VERSIONS: readonly string[] = ['2026-07-28'];
 const SERVER_INFO = { name: 'concepts', version: '0.1.0' };
+
+/** `_meta` keys the revision reserves for per-request protocol metadata. */
+const META_PROTOCOL_VERSION = 'io.modelcontextprotocol/protocolVersion';
+const META_SERVER_INFO = 'io.modelcontextprotocol/serverInfo';
+
+/** Error codes MCP allocates from the JSON-RPC range reserved for the spec. */
+const HEADER_MISMATCH = -32020;
+const UNSUPPORTED_PROTOCOL_VERSION = -32022;
+
+/**
+ * What the server can do. `extensions` is a map of extension identifier to that
+ * extension's settings object; this server advertises none, so it is empty
+ * rather than absent.
+ */
+const CAPABILITIES = {
+  tools: { listChanged: false },
+  extensions: {} as Record<string, Record<string, unknown>>,
+};
 
 interface JsonRpcRequest {
   jsonrpc?: string;
@@ -16,6 +40,8 @@ interface JsonRpcRequest {
   method?: string;
   params?: Record<string, unknown>;
 }
+
+type RequestId = string | number | null | undefined;
 
 /** Filter parameters shared by `concepts_list` and `concepts_search`. */
 const FILTER_PROPERTIES = {
@@ -125,37 +151,130 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
   return { error: `unknown tool ${name}` };
 }
 
-function result(id: string | number | null | undefined, value: unknown): Response {
-  return new Response(JSON.stringify({ jsonrpc: '2.0', id: id ?? null, result: value }), {
+function jsonBody(payload: unknown, status: number): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
     headers: { 'content-type': 'application/json; charset=utf-8' },
   });
 }
 
-function rpcError(id: string | number | null | undefined, code: number, message: string): Response {
-  return new Response(JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code, message } }), {
-    headers: { 'content-type': 'application/json; charset=utf-8' },
-  });
+function result(id: RequestId, value: unknown): Response {
+  return jsonBody({ jsonrpc: '2.0', id: id ?? null, result: value }, 200);
+}
+
+function rpcError(id: RequestId, code: number, message: string, status: number): Response {
+  return jsonBody({ jsonrpc: '2.0', id: id ?? null, error: { code, message } }, status);
+}
+
+/**
+ * The one error a client can always act on: it names every version this server
+ * would have accepted, so a client that guessed wrong knows what to retry with.
+ */
+function unsupportedVersion(id: RequestId, requested: string | null, message: string): Response {
+  const error = {
+    code: UNSUPPORTED_PROTOCOL_VERSION,
+    message,
+    data: { supported: SUPPORTED_VERSIONS, requested },
+  };
+  return jsonBody({ jsonrpc: '2.0', id: id ?? null, error }, 400);
+}
+
+/** `=?base64?…?=` is how the binding carries a header value that is not plain ASCII. */
+function decodeHeaderValue(value: string): string {
+  if (!value.startsWith('=?base64?') || !value.endsWith('?=')) return value;
+  try {
+    const binary = atob(value.slice('=?base64?'.length, -'?='.length));
+    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+  } catch {
+    return value;
+  }
+}
+
+function metaProtocolVersion(params: Record<string, unknown>): string | undefined {
+  const meta = params._meta;
+  if (typeof meta !== 'object' || meta === null) return undefined;
+  const value = (meta as Record<string, unknown>)[META_PROTOCOL_VERSION];
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * The headers the transport mirrors from the body, so an intermediary can route
+ * on them. They are required, and a value that disagrees with the body is
+ * rejected rather than reconciled — the disagreement is the vulnerability.
+ */
+function mirroredHeaderMismatch(request: Request, method: string, params: Record<string, unknown>): string | null {
+  const headerMethod = request.headers.get('mcp-method');
+  if (!headerMethod) return 'missing required header Mcp-Method';
+  if (headerMethod !== method) return `Mcp-Method header "${headerMethod}" does not match body method "${method}"`;
+
+  // Mcp-Name mirrors `params.name` (or `params.uri`); only tools/call has one here.
+  if (method === 'tools/call') {
+    const headerName = request.headers.get('mcp-name');
+    if (!headerName) return 'missing required header Mcp-Name';
+    const bodyName = typeof params.name === 'string' ? params.name : '';
+    const decoded = decodeHeaderValue(headerName);
+    if (decoded !== bodyName) return `Mcp-Name header "${decoded}" does not match body name "${bodyName}"`;
+  }
+
+  return null;
 }
 
 export async function handleMcp(request: Request, db: Db): Promise<Response> {
-  // No GET stream: this server never initiates a message.
+  // No GET stream and no session to DELETE: this server never initiates a
+  // message, so POST is the only verb the endpoint has.
   if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
 
   const body = (await request.json().catch(() => null)) as JsonRpcRequest | null;
-  if (!body || typeof body.method !== 'string') return rpcError(null, -32700, 'parse error');
+  if (!body || typeof body.method !== 'string') return rpcError(null, -32700, 'parse error', 400);
   const { id, method } = body;
   const params = body.params ?? {};
 
+  // A legacy client has no fall-forward mechanism, so this error is the only
+  // diagnostic it will ever see: name the versions it would need, rather than
+  // answering the handshake with a bare "method not found".
   if (method === 'initialize') {
-    return result(id, {
-      protocolVersion: PROTOCOL_VERSION,
-      capabilities: { tools: { listChanged: false } },
-      serverInfo: SERVER_INFO,
-    });
+    const requested = typeof params.protocolVersion === 'string' ? params.protocolVersion : null;
+    return unsupportedVersion(id, requested, 'this server implements MCP 2026-07-28, which has no initialize handshake');
   }
 
-  // Notifications carry no id and get no body — only an acknowledgement.
-  if (method.startsWith('notifications/')) return new Response(null, { status: 202 });
+  // The revision defines no client-to-server notifications over streamable
+  // HTTP — closing the response stream is the only signal a client sends — so
+  // there is nothing here to accept.
+  if (method.startsWith('notifications/')) {
+    return rpcError(null, -32600, `no client notification is defined by this protocol revision: ${method}`, 400);
+  }
+
+  // Version is declared per request, in a header and in `_meta`, and the two
+  // must agree. Accept or reject this request alone; nothing is remembered.
+  const headerVersion = request.headers.get('mcp-protocol-version');
+  const bodyVersion = metaProtocolVersion(params);
+  if (!headerVersion) return rpcError(id, HEADER_MISMATCH, 'missing required header MCP-Protocol-Version', 400);
+  if (!bodyVersion) {
+    return rpcError(id, HEADER_MISMATCH, `missing required params._meta["${META_PROTOCOL_VERSION}"]`, 400);
+  }
+  if (headerVersion !== bodyVersion) {
+    const message = `MCP-Protocol-Version header "${headerVersion}" does not match body value "${bodyVersion}"`;
+    return rpcError(id, HEADER_MISMATCH, message, 400);
+  }
+  if (!SUPPORTED_VERSIONS.includes(bodyVersion)) {
+    return unsupportedVersion(id, bodyVersion, 'unsupported protocol version');
+  }
+
+  const mismatch = mirroredHeaderMismatch(request, method, params);
+  if (mismatch) return rpcError(id, HEADER_MISMATCH, mismatch, 400);
+
+  // Mandatory: how a client learns the versions, capabilities and identity of
+  // this server without having to provoke an error first.
+  if (method === 'server/discover') {
+    return result(id, {
+      resultType: 'complete',
+      supportedVersions: SUPPORTED_VERSIONS,
+      capabilities: CAPABILITIES,
+      instructions:
+        'The glossary of terms the user has taught themselves. Call concepts_list first for a cheap overview of everything available, then concepts_get or concepts_search when you need the prose.',
+      _meta: { [META_SERVER_INFO]: SERVER_INFO },
+    });
+  }
 
   if (method === 'ping') return result(id, {});
 
@@ -181,5 +300,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
     }
   }
 
-  return rpcError(id, -32601, `method not found: ${method}`);
+  // 404 with a JSON-RPC body, which is what tells a client this endpoint is a
+  // modern MCP server rather than a host that does not serve MCP at all.
+  return rpcError(id, -32601, `method not found: ${method}`, 404);
 }
