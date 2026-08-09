@@ -1,0 +1,60 @@
+name: Deploy concepts service
+
+# The concept store is the one always-on component in this repo, so it deploys
+# from CI. Everything else here still ships by hand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/concepts/**'
+      - 'packages/core/**'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-concepts.yml'
+  workflow_dispatch:
+
+# Never let two deploys race a migration against each other.
+concurrency:
+  group: deploy-concepts
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter concepts typecheck
+      - run: pnpm --filter concepts test
+
+      # Migrations first: the schema a deploy assumes must already be there.
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/concepts
+          command: d1 migrations apply operator-db --remote
+
+      - name: Deploy worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: services/concepts
+          command: deploy
+
+      # `/health` is unauthenticated, so CI needs no corpus token. Skipped until
+      # CONCEPTS_URL is set.
+      - name: Smoke check
+        if: vars.CONCEPTS_URL != ''
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 3 "${{ vars.CONCEPTS_URL }}/health"

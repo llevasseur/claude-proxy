@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "operator",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-08",
+  "observability": { "enabled": true },
+
+  // The existing `operator-db` database. A D1 database id is not a secret.
+  "d1_databases": [
+    {
+      "binding": "operator_db",
+      "database_name": "operator-db",
+      "database_id": "0f6e4159-6d40-4154-b796-a11b9bd609ad"
+    }
+  ],
+
+  // Daily backup commit, off-peak in UTC.
+  "triggers": { "crons": ["17 9 * * *"] },
+
+  // Secrets (CONCEPTS_TOKEN, BACKUP_GITHUB_TOKEN) are set with
+  // `wrangler secret put` and never appear here.
+  "vars": {
+    "BACKUP_REPO": "llevasseur/concepts-backup",
+    "BACKUP_PATH": "concepts.jsonl",
+    "BACKUP_BRANCH": "main"
+  }
+}
