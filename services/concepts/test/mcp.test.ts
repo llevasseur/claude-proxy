@@ -69,14 +69,19 @@ describe('handleMcp', () => {
 
   it('rejects a version it does not implement, naming the ones it does', async () => {
     const response = await handleMcp(rpc('tools/list', {}, '2025-06-18'), testDb());
-    const body = (await response.json()) as { error: { code: number; data: { supported: string[]; requested: string } } };
+    const body = (await response.json()) as {
+      error: { code: number; data: { supported: string[]; requested: string } };
+    };
     expect(response.status).toBe(400);
     expect(body.error.code).toBe(-32022);
     expect(body.error.data).toEqual({ supported: [PROTOCOL_VERSION], requested: '2025-06-18' });
   });
 
   it('refuses initialize by naming its versions, since a legacy client cannot fall forward', async () => {
-    const request = post({}, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+    const request = post(
+      {},
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+    );
     const response = await handleMcp(request, testDb());
     const body = (await response.json()) as { error: { code: number; message: string; data: { supported: string[] } } };
     expect(response.status).toBe(400);

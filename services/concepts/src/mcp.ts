@@ -234,7 +234,11 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
   // answering the handshake with a bare "method not found".
   if (method === 'initialize') {
     const requested = typeof params.protocolVersion === 'string' ? params.protocolVersion : null;
-    return unsupportedVersion(id, requested, 'this server implements MCP 2026-07-28, which has no initialize handshake');
+    return unsupportedVersion(
+      id,
+      requested,
+      'this server implements MCP 2026-07-28, which has no initialize handshake',
+    );
   }
 
   // The revision defines no client-to-server notifications over streamable
