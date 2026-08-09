@@ -129,8 +129,8 @@ prompt, and deletes a background job. See
 [ADR 0003](../adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md).
 A page waiting on any of those routes renders a shaped placeholder rather than a spinner —
 see [Skeleton loading](skeleton-loading.md). Analysis is computed via `packages/core`.
-Advice comes from a `HeuristicAdviceProvider` behind an `AdviceProvider` seam, so an
-LLM/agent-backed provider can replace it without changing the UI or API.
+Advice comes from `heuristicAdvice`, the deterministic rule set itself — there is no
+provider interface in front of it.
 
 ## Acceptance criteria
 
@@ -145,5 +145,6 @@ LLM/agent-backed provider can replace it without changing the UI or API.
 
 ## Open questions
 
-- Whether to replace heuristics with an in-repo `agents/` LLM provider; the interface
-  exists, but wiring was out of scope.
+- Whether to replace heuristics with an in-repo `agents/` LLM provider. Nothing is
+  wired, and the interface that anticipated it has been deleted — the abstraction is
+  one line to reintroduce in the commit that adds a second implementation.

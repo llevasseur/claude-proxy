@@ -54,7 +54,7 @@ claude-proxy/                 (monorepo root — pnpm workspaces)
         types.ts              AuditSidecar shape (matches proxy output)
         pricing.ts            editable $/MTok price map + cost()
         digest.ts             audit sidecars -> UsageDigest (pure)
-        advice.ts             AdviceProvider seam + deterministic heuristics
+        advice.ts             deterministic advice heuristics
         index.ts
       test/                   vitest unit tests + fixtures
   server/                     Node API over the logs dir (uses packages/core)
@@ -98,12 +98,11 @@ Reusable, unit-tested deterministic logic from the daily-summary spec.
   `cacheHitRatio`), `cost`, `topTools`, `avgSystemPromptBytes`, `toolOverheadPctOfInput`,
   `busiestHour`, optional `trend[]` vs a prior digest, and a `skipped` tally for malformed input.
   Also exposes `digestsByDay(sidecars) -> UsageDigest[]` for the multi-day trend view.
-- **`advice.ts`** — an `AdviceProvider` interface (`advise(digest) -> Advice[]`) and a
-  `HeuristicAdviceProvider` implementation: deterministic rules over the digest (e.g. "tool X is N%
-  of every request — disable it if unused", "cache-hit ratio low — reuse sessions", "system prompt
-  is large"). Each `Advice` has `severity`, `title`, `detail`, and the `metric` it derives from.
-  **Seam:** the interface lets a future `agents/`-backed provider (LLM coaching, replacing the
-  external test-eve wiring) drop in without touching callers.
+- **`advice.ts`** — `heuristicAdvice.advise(digest) -> Advice[]`: deterministic rules over the
+  digest (e.g. "tool X is N% of every request — disable it if unused", "cache-hit ratio low —
+  reuse sessions", "system prompt is large"). Each `Advice` has `severity`, `title`, `detail`,
+  and the `metric` it derives from. Callers depend on the concrete rule set; the interface this
+  spec once described has been deleted, since a second implementation never arrived.
 
 ### `server` — Node API over the logs
 
@@ -131,7 +130,7 @@ Reusable, unit-tested deterministic logic from the daily-summary spec.
   - **Trends** — a multi-day line/bar chart of tokens & cost (lightweight SVG charts, no heavy
     charting dep unless one is clearly warranted).
   - **Tool bloat** — the ranked tool table (bytes / est-tokens / % of request), the proxy's hero view.
-  - **Advice** — the coaching cards from the `AdviceProvider`.
+  - **Advice** — the coaching cards from `heuristicAdvice`.
 - Styling: minimal, dependency-light (hand-rolled CSS / CSS modules). No design-system dependency.
 
 ## Ports
@@ -185,7 +184,7 @@ Claude Code ─▶ proxy :8787 ─▶ api.anthropic.com        (reply streamed b
 
 ## Out of scope (YAGNI)
 
-- LLM/eve-backed advice (seam left; not wired in this PR).
+- LLM/eve-backed advice (not wired in this PR; the seam left for it has since been deleted).
 - Auth on the dashboard (local-only, single-user; bind localhost).
 - launchd/deployment automation (documented, not scripted here — carried by the 2026-07-13 spec).
 - Session-level attribution (no session ID in logs), weekly rollups, remote delivery.
