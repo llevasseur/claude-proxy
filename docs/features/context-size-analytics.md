@@ -75,7 +75,9 @@ captured data, without touching the passive-observer proxy.
   parameter table drawn from `input_schema`) and a **Raw** JSON view.
 
 Data comes from the `server` API — `GET /api/context?days=<n>` (windowed summary; `days` is
-clamped to 1–365, default 14), `GET /api/context/thread?thread=<id>&days=<n>` (one thread's
+clamped to 1–365, default 14, or `all` — the `0` the picker sends — for every day on record,
+whose floor is the oldest day the corpus holds rather than a clamp),
+`GET /api/context/thread?thread=<id>&days=<n>` (one thread's
 requests, oldest first, plus its opening prompt), `GET /api/context/detail?file=<base>` (one
 request's breakdown + raw JSON), and `GET /api/context/tool?file=<base>&index=<n>` (one tool
 schema) — computed via `summarizeContext` / `analyzeRequestBody` / `extractRequestTool` in

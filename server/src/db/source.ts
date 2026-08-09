@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
@@ -25,6 +25,7 @@ import {
   shiftDay,
   today,
 } from '../logs.js';
+import { listArchiveDays, logFileDay } from '../retention.js';
 import {
   listSessionGraphs as listSessionGraphsFromFiles,
   listSessions as listSessionsFromFiles,
@@ -60,6 +61,31 @@ export interface SidecarSource {
    */
   readArchivedDay(logDir: string, date: string, opts?: ArchivedDayOptions): Promise<LoadResult>;
 
+  /**
+   * The oldest reporting day this backing can answer for, or `null` when it
+   * holds nothing at all. **This is the floor an `all: true` window is resolved
+   * against** — the one thing {@link readWindow} used to be missing, and the
+   * reason an unbounded span could only answer with the live root.
+   *
+   * It is a lookup, not a guess, on either backing: a listing of the archive's
+   * day directories on the file side, an indexed `MIN` on the DB side. Both
+   * step one day back off the earliest UTC name they find, because reporting
+   * days lag UTC ones — the first archived directory can hold the tail of the
+   * day before it.
+   */
+  oldestDay(logDir: string, opts?: { archiveDir?: string }): Promise<string | null>;
+
+  /**
+   * Every archived day in `days` at once, keyed by reporting day. Optional: a
+   * backing that has nothing better than the per-day walk simply omits it and
+   * {@link readWindow} calls {@link readArchivedDay} per day as before.
+   *
+   * The DB implements it, and that is what keeps an all-time read from being a
+   * scaling problem — one range-free query over an indexed column instead of two
+   * per day in a span that now runs to the beginning of the corpus.
+   */
+  readAllDays?(logDir: string, days: readonly string[], opts?: ArchivedDayOptions): Promise<Map<string, LoadResult>>;
+
   /* --- Session transcripts (slice 2) --- *
    *
    * The transcript body stays on disk: {@link readSession} returns the same
@@ -93,11 +119,40 @@ export interface SidecarSource {
   readConcepts(logDir: string): Promise<StoredConcept[]>;
 }
 
+/**
+ * The oldest day on disk. The archive's day directories are the answer whenever
+ * there are any — `listArchiveDays` is the same listing `collectRetentionCorpus`
+ * does, and the same `DAY_DIR_RE` rejects a name that is not a date — and the
+ * live root's dated filenames cover the deployment that has not archived yet.
+ *
+ * One day back off the earliest name found, because filenames carry the proxy's
+ * UTC prefix while a window walks reporting days: the earliest file can belong
+ * to the reporting day before the one it is named for.
+ */
+async function oldestDayOnDisk(logDir: string, archiveDir?: string): Promise<string | null> {
+  const days = await listArchiveDays(archiveDir ?? path.join(logDir, 'archive'));
+  let earliest = days[0] ?? null;
+
+  let live: string[];
+  try {
+    live = await readdir(logDir);
+  } catch {
+    live = [];
+  }
+  for (const name of live) {
+    const day = logFileDay(name);
+    if (day !== null && (earliest === null || day < earliest)) earliest = day;
+  }
+
+  return earliest === null ? null : shiftDay(earliest, -1);
+}
+
 /** The behaviour the server has today: scan the directory, parse every file. */
 export const fileSource: SidecarSource = {
   kind: 'files',
   readSidecars: (logDir, opts, now) => readSidecarsFromFiles(logDir, opts, now),
   readArchivedDay: (logDir, date, opts) => readArchivedDayFromFiles(logDir, date, opts),
+  oldestDay: (logDir, opts) => oldestDayOnDisk(logDir, opts?.archiveDir),
   listSessions: (logDir) => listSessionsFromFiles(logDir),
   listSessionGraphs: (logDir) => listSessionGraphsFromFiles(logDir),
   readSession: (logDir, id) => readSessionFromFiles(logDir, id),
@@ -113,6 +168,16 @@ export interface WindowOptions extends ReadOptions {
    * substrate answers from what was ingested.
    */
   archiveDir?: string;
+  /**
+   * Read every day on record. The floor comes from
+   * {@link SidecarSource.oldestDay} and is resolved **once, here**, into an
+   * ordinary `since` — so this is one more bounded span by the time anything
+   * below this option sees it, and no existing caller's code path changes.
+   *
+   * Ignored when the caller already named a span; an explicit `date`, `since`
+   * or `sinceDays` is a floor, and this option only supplies a missing one.
+   */
+  all?: boolean;
 }
 
 export interface WindowResult extends LoadResult {
@@ -121,9 +186,9 @@ export interface WindowResult extends LoadResult {
   /** How many days in the span had an archived half with files in it. */
   archivedDays: number;
   /**
-   * The days the archive was consulted for, oldest→newest. Empty when the span
-   * is unbounded (see {@link readWindow}), which is the one case this reader
-   * cannot compose — there is no first day to walk from.
+   * The days the archive was consulted for, oldest→newest. Empty only for a
+   * span with no floor at all — `all: true` supplies one from the corpus, so an
+   * all-time read reports the days it covered like any other window.
    */
   days: string[];
 }
@@ -154,10 +219,11 @@ function windowDays(opts: WindowOptions, now: Date): string[] {
  *
  * `readSidecars` stays exactly what it was: the single-root primitive underneath.
  *
- * An unbounded span — no `date`, `since`, or `sinceDays` — reads the live root
- * only. Enumerating every day the archive might hold would need a floor this
- * reader has not been given, so the caller gets the old behaviour and an empty
- * `days`, not a guess.
+ * An unbounded span — no `date`, `since`, `sinceDays`, **or `all`** — still reads
+ * the live root only, because there is genuinely no first day to walk from. `all`
+ * is how a caller asks for the floor instead of that: the backing looks up the
+ * oldest day it holds, this function turns it into a `since` once, and everything
+ * below here composes an ordinary bounded span.
  */
 export async function readWindow(
   logDir: string,
@@ -167,16 +233,30 @@ export async function readWindow(
 ): Promise<WindowResult> {
   // The span narrows the live read; the archived halves are addressed by day, so
   // they take only the per-file options.
-  const { archiveDir, ...readOpts } = opts;
-  const { date: _date, since: _since, sinceDays: _sinceDays, ...perFile } = readOpts;
-  const days = windowDays(opts, now);
+  const { archiveDir, all, ...requested } = opts;
 
-  const archived = await Promise.all(
-    days.map(async (day) => ({
-      day,
-      read: await source.readArchivedDay(logDir, day, { ...perFile, archiveDir }),
-    })),
-  );
+  // Resolved once per request, before anything reads. An empty corpus has no
+  // floor to find, and today is the honest answer for it — a one-day span, not
+  // a walk back through days that never existed.
+  const bounded = requested.date || requested.since || requested.sinceDays != null;
+  const floor = all && !bounded ? ((await source.oldestDay(logDir, { archiveDir })) ?? today(now)) : null;
+  const readOpts: ReadOptions = floor === null ? requested : { ...requested, since: floor };
+
+  const { date: _date, since: _since, sinceDays: _sinceDays, ...perFile } = readOpts;
+  const days = windowDays(readOpts, now);
+
+  // The whole archive in one read where the backing offers it; otherwise the
+  // per-day walk, which is exactly what every bounded span already does.
+  const wholeArchive =
+    floor !== null && source.readAllDays ? await source.readAllDays(logDir, days, { ...perFile, archiveDir }) : null;
+  const archived = wholeArchive
+    ? days.map((day) => ({ day, read: wholeArchive.get(day) ?? EMPTY_READ }))
+    : await Promise.all(
+        days.map(async (day) => ({
+          day,
+          read: await source.readArchivedDay(logDir, day, { ...perFile, archiveDir }),
+        })),
+      );
   const live = await source.readSidecars(logDir, readOpts, now);
 
   const byDay = new Map<string, unknown[]>();
@@ -205,6 +285,37 @@ export async function readWindow(
   }
 
   return { sidecars, files, parseErrors, bodiesEvicted, byDay, archivedDays, days };
+}
+
+/** A day the whole-archive read returned nothing for; the walk's answer for it too. */
+const EMPTY_READ: LoadResult = { sidecars: [], files: 0, parseErrors: 0, bodiesEvicted: 0 };
+
+/**
+ * The `?days=` a route reads as "every day on record". `0` rather than a large
+ * number: a count of days cannot express all-time, and clamping it to 1 is what
+ * used to make the widest question the pickers could ask a 30-day one.
+ */
+export const ALL_DAYS = 0;
+
+/**
+ * {@link ALL_DAYS} as a concrete count of days, so a builder that walks a fixed
+ * date range keeps taking a number and keeps its current code path. Anything
+ * else is returned untouched.
+ */
+export async function resolveAllDays(
+  logDir: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+  archiveDir?: string,
+): Promise<number> {
+  if (days !== ALL_DAYS) return days;
+  const floor = await source.oldestDay(logDir, { archiveDir });
+  if (floor === null) return 1;
+  // Inclusive of both ends, and never less than a day — the corpus always has
+  // at least the day its floor names.
+  const span = Math.round((Date.parse(`${today(now)}T00:00:00Z`) - Date.parse(`${floor}T00:00:00Z`)) / 86_400_000) + 1;
+  return Math.max(1, span);
 }
 
 /** The live log directory's `source_dir`; archived days are `archive/<YYYY-MM-DD>`. */
@@ -245,12 +356,14 @@ interface RequestRow {
   cache_breakpoint_observed: number | null;
   cache_breakpoint_declined_by: string | null;
   rate_limit_present: number;
+  source_dir: string;
 }
 
 interface SkippedRow {
   id: string;
   reason: string;
   timestamp: string | null;
+  source_dir: string;
 }
 
 /**
@@ -427,11 +540,31 @@ async function readDir(
   }
   const clause = where.join(' AND ');
 
+  const entries = entriesFrom(db, clause, args);
+  entries.sort((a, b) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
+  return materialize(logDir, entries, keepDay, opts);
+}
+
+/** One row of the merged stream, before the day filter and the body reads. */
+type Entry = {
+  stem: string;
+  sourceDir: string;
+  make: () => Record<string, unknown>;
+  parseError: boolean;
+  day: string;
+};
+
+/**
+ * The valid and skipped rows a `WHERE` clause selects, merged into one unsorted
+ * stream. Factored out of {@link readDir} so the whole-archive read can issue the
+ * clause once for every day at a time rather than twice per day.
+ */
+function entriesFrom(db: DatabaseSync, clause: string, args: unknown[]): Entry[] {
   const rows = db
     .prepare(`SELECT * FROM request WHERE ${clause} ORDER BY id`)
     .all(...(args as never[])) as unknown as RequestRow[];
   const skippedRows = db
-    .prepare(`SELECT id, reason, timestamp FROM request_skipped WHERE ${clause} ORDER BY id`)
+    .prepare(`SELECT id, reason, timestamp, source_dir FROM request_skipped WHERE ${clause} ORDER BY id`)
     .all(...(args as never[])) as unknown as SkippedRow[];
 
   const ids = rows.map((r) => r.id);
@@ -473,11 +606,11 @@ async function readDir(
     }
   }
 
-  type Entry = { stem: string; make: () => Record<string, unknown>; parseError: boolean; day: string };
   const entries: Entry[] = [];
   for (const row of rows) {
     entries.push({
       stem: row.id,
+      sourceDir: row.source_dir,
       make: () => toSidecar(row, toolsById.get(row.id) ?? [], rateById.get(row.id) ?? []),
       parseError: false,
       day: reportDay(row.timestamp) ?? row.id.slice(0, 10),
@@ -487,6 +620,7 @@ async function readDir(
     const parseError = row.reason === 'parse_error';
     entries.push({
       stem: row.id,
+      sourceDir: row.source_dir,
       make: () => (parseError ? parseErrorSidecar(row.id) : invalidSidecar(row.id, row.timestamp)),
       parseError,
       // A file that would not parse has no timestamp to be placed by, so the
@@ -494,8 +628,16 @@ async function readDir(
       day: parseError ? row.id.slice(0, 10) : (row.timestamp && reportDay(row.timestamp)) || row.id.slice(0, 10),
     });
   }
-  entries.sort((a, b) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
+  return entries;
+}
 
+/** Build the sidecars an already-ordered entry stream stands for. */
+async function materialize(
+  logDir: string,
+  entries: readonly Entry[],
+  keepDay: ((day: string) => boolean) | null,
+  opts: ReadOptions,
+): Promise<LoadResult> {
   const sidecars: unknown[] = [];
   let parseErrors = 0;
   let kept = 0;
@@ -509,7 +651,8 @@ async function readDir(
       // eviction count is read off the disk here too — a row's `blob_evicted` is
       // only as fresh as the last ingest, and parity needs both sides answering
       // from the same observation.
-      const rel = sourceDir === LIVE ? `${entry.stem}.request.txt` : `${sourceDir}/${entry.stem}.request.txt`;
+      const rel =
+        entry.sourceDir === LIVE ? `${entry.stem}.request.txt` : `${entry.sourceDir}/${entry.stem}.request.txt`;
       let raw: string | null = null;
       try {
         raw = await readFile(path.join(logDir, rel), 'utf8');
@@ -532,6 +675,81 @@ async function readDir(
     sidecars.push(sidecar);
   }
   return { sidecars, files: kept, parseErrors, bodiesEvicted };
+}
+
+/** `archive/<day>` → `<day>`; `null` for the live root or anything else. */
+function archivedDayOf(sourceDir: string): string | null {
+  return sourceDir.startsWith('archive/') ? sourceDir.slice('archive/'.length) : null;
+}
+
+/**
+ * **The whole archive in one query**, bucketed into the reporting days it covers.
+ *
+ * This is what makes an all-time window a read rather than a walk. `readDir`
+ * already filters by an indexed `source_dir` and an `id` range over the primary
+ * key, so dropping the range and asking for every archived row costs one seek
+ * instead of the two per day {@link SidecarSource.readArchivedDay} would issue —
+ * and an all-time span is every day the corpus has.
+ *
+ * The bucketing is the walk's own rule, applied once instead of per day: a day
+ * is read from `archive/<day>` and `archive/<day+1>`, keeping only rows whose
+ * reporting day is that day, archived-directory-first so the stream stays in the
+ * order the concatenation produced.
+ */
+async function readWholeArchive(
+  db: DatabaseSync,
+  logDir: string,
+  days: readonly string[],
+  opts: ReadOptions,
+): Promise<Map<string, LoadResult>> {
+  const wanted = new Set(days);
+  const byDay = new Map<string, Entry[]>();
+
+  for (const entry of entriesFrom(db, "source_dir <> ''", [])) {
+    const dir = archivedDayOf(entry.sourceDir);
+    if (dir === null) continue;
+    // The day this row would have been read under, if it is read at all.
+    if (dir !== entry.day && dir !== shiftDay(entry.day, 1)) continue;
+    if (!wanted.has(entry.day)) continue;
+    const list = byDay.get(entry.day) ?? [];
+    list.push(entry);
+    byDay.set(entry.day, list);
+  }
+
+  const out = new Map<string, LoadResult>();
+  for (const [day, list] of byDay) {
+    const rank = (entry: Entry) => (archivedDayOf(entry.sourceDir) === day ? 0 : 1);
+    list.sort((a, b) => rank(a) - rank(b) || (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
+    // The day filter is already applied above, so nothing is left to reject.
+    out.set(day, await materialize(logDir, list, null, opts));
+  }
+  return out;
+}
+
+/**
+ * The oldest day the substrate can answer for. `MIN` over the primary key and
+ * over `source_dir` — both indexed, so this is a seek rather than a scan, and
+ * neither is a guess: the id carries the file's UTC date prefix and the
+ * `source_dir` carries the archive directory's name.
+ *
+ * One day back, for the same reason the file side steps back: a reporting day
+ * lags the UTC day its files are named for.
+ */
+function oldestDayFromDb(db: DatabaseSync): string | null {
+  const marks: string[] = [];
+  const take = (value: unknown, from: number) => {
+    if (typeof value === 'string' && value.length >= from + 10) marks.push(value.slice(from, from + 10));
+  };
+  take((db.prepare('SELECT MIN(id) AS v FROM request').get() as { v: unknown } | undefined)?.v, 0);
+  take((db.prepare('SELECT MIN(id) AS v FROM request_skipped').get() as { v: unknown } | undefined)?.v, 0);
+  take(
+    (db.prepare("SELECT MIN(source_dir) AS v FROM request WHERE source_dir <> ''").get() as { v: unknown } | undefined)
+      ?.v,
+    'archive/'.length,
+  );
+
+  const earliest = marks.sort()[0];
+  return earliest === undefined ? null : shiftDay(earliest, -1);
 }
 
 /* ------------------------------------------------------------------ *
@@ -824,6 +1042,12 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return readConceptsFromFiles(logDir);
     },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
+    oldestDay: async () => oldestDayFromDb(db),
+    readAllDays: async (logDir, days, opts = {}) => {
+      // `archiveDir` is a file-backing concern; the substrate reads by `source_dir`.
+      const { archiveDir: _archiveDir, ...readOpts } = opts;
+      return readWholeArchive(db, logDir, days, readOpts);
+    },
     readArchivedDay: async (logDir, date, opts = {}) => {
       // `archiveDir` is a file-backing concern; the substrate reads by `source_dir`.
       const { archiveDir: _archiveDir, ...readOpts } = opts;

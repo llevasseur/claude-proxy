@@ -89,7 +89,7 @@ import { snapshotChatStream, subscribeChatStream } from './chat-stream.js';
 import { reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
 import { resolveDbPath } from './db/open.js';
 import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from './db/runtime.js';
-import type { SidecarSource } from './db/source.js';
+import { ALL_DAYS, resolveAllDays, type SidecarSource } from './db/source.js';
 import { resolveJobsDir } from './jobs.js';
 import { countSidecarFiles, resolveLogDir } from './logs.js';
 import { ERR } from './main-history.js';
@@ -377,9 +377,22 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
   res.on('error', cleanup);
 }
 
-/** Parse `?days=` as a positive int in [1, 365], default 14. */
-function parseDays(raw: string | null): number {
-  const n = Number(raw);
+/**
+ * Parse `?days=` as a positive int in [1, 365], default 14 — plus `all`, and the
+ * `0` the picker sends for it, meaning every day on record.
+ *
+ * All-time is resolved to a concrete count here, once per request, off the
+ * backing's own floor. That is what keeps the 365 ceiling honest: it clamps a
+ * number a caller *asked* for, and no longer decides how far back the corpus is
+ * allowed to be read.
+ */
+async function parseDays(raw: string | null, now: Date = new Date()): Promise<number> {
+  const text = raw?.trim() ?? '';
+  if (text === '') return 14;
+  const n = Number(text);
+  if (text.toLowerCase() === 'all' || n === ALL_DAYS) {
+    return resolveAllDays(LOG_DIR, ALL_DAYS, now, readSource(), ARCHIVE_DIR);
+  }
   if (!Number.isFinite(n)) return 14;
   return Math.min(365, Math.max(1, Math.floor(n)));
 }
@@ -530,7 +543,7 @@ const server = http.createServer(async (req, res) => {
         });
         return;
       case '/api/trends': {
-        const days = parseDays(url.searchParams.get('days'));
+        const days = await parseDays(url.searchParams.get('days'));
         const now = new Date();
         const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, readSource());
         send(res, 200, trends);
@@ -538,7 +551,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       case '/api/prompt-mix': {
-        const days = parseDays(url.searchParams.get('days'));
+        const days = await parseDays(url.searchParams.get('days'));
         const now = new Date();
         const mix = await buildPromptMix(LOG_DIR, days, now, readSource());
         send(res, 200, mix);
@@ -552,7 +565,7 @@ const server = http.createServer(async (req, res) => {
           send(res, 400, { error: 'missing ?hash=' });
           return;
         }
-        const days = parseDays(url.searchParams.get('days'));
+        const days = await parseDays(url.searchParams.get('days'));
         const now = new Date();
         const detail = await buildPromptDetail(LOG_DIR, hash, days, now, readSource());
         send(res, 200, detail);
@@ -571,7 +584,7 @@ const server = http.createServer(async (req, res) => {
           send(res, 400, { error: 'missing or invalid ?index=' });
           return;
         }
-        const days = parseDays(url.searchParams.get('days'));
+        const days = await parseDays(url.searchParams.get('days'));
         try {
           send(res, 200, await buildPromptSection(LOG_DIR, hash, index, days, new Date(), readSource()));
         } catch (err) {
@@ -589,7 +602,7 @@ const server = http.createServer(async (req, res) => {
           send(res, 400, { error: 'missing ?name=' });
           return;
         }
-        const days = parseDays(url.searchParams.get('days'));
+        const days = await parseDays(url.searchParams.get('days'));
         const now = new Date();
         const schema = await buildToolSchema(LOG_DIR, name, days, now, readSource());
         send(res, 200, schema);
@@ -620,7 +633,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       case '/api/context': {
-        const days = parseDays(url.searchParams.get('days'));
+        const days = await parseDays(url.searchParams.get('days'));
         const now = new Date();
         const context = await buildContext(LOG_DIR, days, now, readSource());
         send(res, 200, context);
@@ -633,7 +646,7 @@ const server = http.createServer(async (req, res) => {
           send(res, 400, { error: 'missing ?thread=' });
           return;
         }
-        const days = parseDays(url.searchParams.get('days'));
+        const days = await parseDays(url.searchParams.get('days'));
         const now = new Date();
         const thread = await buildContextThread(LOG_DIR, threadId, days, now, readSource());
         send(res, 200, thread);
@@ -1328,7 +1341,7 @@ const server = http.createServer(async (req, res) => {
       }
       case '/api/skim/trend': {
         const now = new Date();
-        const days = parseDays(url.searchParams.get('days'));
+        const days = await parseDays(url.searchParams.get('days'));
         const trend = await buildSkimTrend(LOG_DIR, days, now, readSource());
         send(res, 200, trend);
         shadow('/api/skim/trend', trend, (source) => buildSkimTrend(LOG_DIR, days, now, source));
@@ -1336,7 +1349,7 @@ const server = http.createServer(async (req, res) => {
       }
       case '/api/withheld': {
         const now = new Date();
-        const days = parseDays(url.searchParams.get('days'));
+        const days = await parseDays(url.searchParams.get('days'));
         const withheld = await buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, readSource());
         send(res, 200, withheld);
         shadow('/api/withheld', withheld, (source) => buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, source));

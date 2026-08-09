@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useEffect } from 'react';
 import { HealthBadge } from './components/HealthBadge';
+import { ALL_DAYS } from './components/Segmented';
 import { AdvicePage } from './routes/advice';
 import { CliFunctionPage } from './routes/cli-function';
 import { CliInternalsPage } from './routes/cli-internals';
@@ -335,11 +336,15 @@ const contextRoute = createRoute({
   component: ContextPage,
   staticData: { title: 'Context size' },
 });
-/** `?days=` clamped to 1–365 the way `/api/context` clamps it; anything unreadable
- * falls back to the default rather than erroring. */
+/** `?days=` clamped to 1–365 the way `/api/context` clamps it, plus `ALL_DAYS` for
+ * every day on record; anything unreadable falls back to the default rather than
+ * erroring. The clamp bounds a requested count, not the corpus — `All` passes
+ * through it untouched and has its floor resolved server-side. */
 function contextDays(raw: unknown): number {
   const days = Number(raw);
-  return Number.isFinite(days) && days > 0 ? Math.min(Math.round(days), 365) : 14;
+  if (!Number.isFinite(days)) return 14;
+  if (days === ALL_DAYS) return ALL_DAYS;
+  return days > 0 ? Math.min(Math.round(days), 365) : 14;
 }
 /** `?days=` carries the window the thread was reached from. */
 export interface ContextThreadSearch {

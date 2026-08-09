@@ -3,11 +3,23 @@ export interface SegmentedOption<T> {
   label: string;
 }
 
-/** The day windows the trend-shaped pages offer. */
+/**
+ * Every day on record, as a `?days=` value. A count of days cannot say "all", so
+ * `0` names it: the server reads that as the window whose floor is the oldest day
+ * the log corpus holds, rather than clamping it up to one.
+ */
+export const ALL_DAYS = 0;
+
+/**
+ * The day windows the trend-shaped pages offer. `All` sits at the end because it
+ * is the widest, and it is a window like the others — the reader resolves its
+ * floor per request instead of the picker pretending the span does not exist.
+ */
 export const DAY_WINDOWS: readonly SegmentedOption<number>[] = [
   { value: 7, label: '7d' },
   { value: 14, label: '14d' },
   { value: 30, label: '30d' },
+  { value: ALL_DAYS, label: 'All' },
 ];
 
 export type PrettyRawView = 'pretty' | 'raw';

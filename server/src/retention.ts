@@ -334,16 +334,27 @@ async function listFiles(dir: string): Promise<FileEntry[]> {
   return out;
 }
 
+/**
+ * The archive's day directories, ascending; `[]` when there is no archive.
+ * `DAY_DIR_RE` rejects anything that is not a date, so the first entry is the
+ * archive's floor rather than whatever `readdir` happened to hand back first.
+ *
+ * Split out of {@link collectRetentionCorpus} for the window reader, which wants
+ * that floor and none of the per-file `stat`s pricing a plan needs.
+ */
+export async function listArchiveDays(archiveRoot: string): Promise<string[]> {
+  try {
+    return (await readdir(archiveRoot)).filter((d) => DAY_DIR_RE.test(d)).sort();
+  } catch {
+    return [];
+  }
+}
+
 /** Read the live directory and every archived day. */
 export async function collectRetentionCorpus(logDir: string): Promise<RetentionCorpus> {
   const live = await listFiles(logDir);
   const archiveRoot = path.join(logDir, 'archive');
-  let days: string[];
-  try {
-    days = (await readdir(archiveRoot)).filter((d) => DAY_DIR_RE.test(d)).sort();
-  } catch {
-    days = [];
-  }
+  const days = await listArchiveDays(archiveRoot);
   const archive: ArchiveDayEntry[] = [];
   for (const day of days) {
     archive.push({ day, files: await listFiles(path.join(archiveRoot, day)) });

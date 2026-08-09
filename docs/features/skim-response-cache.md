@@ -93,7 +93,9 @@ floor; instrumentation determines whether a smarter key is worthwhile.
   capture bug.
 - **Endpoints** — `GET /api/skim?date=YYYY-MM-DD` (one day, defaults to today; invalid
   dates are ignored) and `GET /api/skim/trend?days=N` (`N` defaults to 14 and is clamped to
-  1–365). Both enable the request-text enrichment and both report `meta.bodiesEvicted`
+  1–365; `all` — or the `0` the picker sends — reads every day on record instead, its floor
+  taken from the oldest day the corpus holds). Both enable the request-text enrichment and
+  both report `meta.bodiesEvicted`
   alongside `meta.files` and `meta.parseErrors`; `/api/skim` and the trend's cross-window
   `topShapes` request `topN: 50`, while the trend's per-day `digests` keep the default 12.
   Both read the **live** log directory only: neither has the archive fallback `/api/trends`
