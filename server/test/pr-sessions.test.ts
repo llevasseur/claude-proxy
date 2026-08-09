@@ -20,6 +20,7 @@ const pr = (over: Partial<PullRequestRow> & { number: number }): PullRequestRow 
   createdAt: '2026-08-01T00:00:00Z',
   updatedAt: '2026-08-01T00:00:00Z',
   mergedAt: null,
+  mergeCommit: null,
   closedAt: null,
   additions: 0,
   deletions: 0,

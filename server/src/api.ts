@@ -67,7 +67,9 @@ import {
   type LaunchAliasPosture,
   type LinkedSessionError,
   linkRequestErrors,
+  type MainHistoryGraph,
   type MixAttribution,
+  mainPositions,
   normalizePlugins,
   type PatternFrequency,
   type PluginRow,
@@ -170,6 +172,14 @@ import {
   shiftDay,
   today,
 } from './logs.js';
+import {
+  type LocalDivergence,
+  readLocalDivergence,
+  readMainHistory,
+  setLineHidden,
+  slideMain,
+  syncLocal,
+} from './main-history.js';
 import { type PrSessionIndex, readPrSessions } from './pr-sessions.js';
 import {
   listProjectMemories,
@@ -2351,23 +2361,65 @@ export interface PullRequestsResponse {
   error: string | null;
   /** Sessions that worked on each PR, keyed by number — absent when none did. */
   sessions: PrSessionIndex;
+  /**
+   * Where `main` sits and what runs beside it. Computed here rather than on the page
+   * because the lanes need real commit ancestry, which only the ref store has.
+   */
+  mainHistory: MainHistoryGraph;
+  /** Whether this checkout's own `main` still agrees with origin, and what would fix it. */
+  localMain: LocalDivergence;
+  /** Why the rail may be out of date — a failed ref fetch, not a failed page. */
+  refError: string | null;
   meta: { fetchedAt: string; cached: boolean; total: number; limit: number };
 }
 
 /**
  * The project's pull requests, straight from `gh`, each tied back to the sessions that
- * worked on it. Read-only.
+ * worked on it — plus where `main` is standing among them.
+ *
+ * Still a read: the ref fetch behind `mainHistory` writes refs into the checkout's ref
+ * store and nothing else, and every route that moves anything is a POST of its own.
  */
 export async function buildPullRequests(
   logDir: string,
   repoDir: string = resolveRepoDir(),
   limit: number = DEFAULT_PR_LIMIT,
 ): Promise<PullRequestsResponse> {
-  const { repo, prs, error, fetchedAt, cached } = await readPullRequests(repoDir, limit);
+  const { repo, prs, error, fetchedAt, cached, refError } = await readPullRequests(repoDir, limit);
   // Keyed on the fetch the rows came from, so the scan tracks the `gh` cache.
   const sessions = await readPrSessions(logDir, prs, `${logDir}:${repoDir}:${fetchedAt}`);
-  return { repo, prs, error, sessions, meta: { fetchedAt, cached, total: prs.length, limit } };
+  const [mainHistory, localMain] = await Promise.all([
+    readMainHistory(repoDir, mainPositions(prs)),
+    readLocalDivergence(repoDir),
+  ]);
+  return {
+    repo,
+    prs,
+    error,
+    sessions,
+    mainHistory,
+    localMain,
+    refError,
+    meta: { fetchedAt, cached, total: prs.length, limit },
+  };
 }
+
+/**
+ * Move `origin/main` to a merged pull request's landing commit.
+ *
+ * The whole safety argument lives in `slideMain`: pin what is being left behind, then
+ * move with a lease against the sha the page displayed.
+ */
+export const buildMainHistorySlide = (body: Record<string, unknown>, repoDir: string = resolveRepoDir()) =>
+  slideMain(repoDir, { expectedMain: body.expectedMain, target: body.target });
+
+/** Point this checkout's `main` back at `origin/main`, which `git pull` will not do. */
+export const buildMainHistorySyncLocal = (body: Record<string, unknown>, repoDir: string = resolveRepoDir()) =>
+  syncLocal(repoDir, { preserve: body.preserve });
+
+/** Hide a line from the page — a marker ref, never a deletion of the pin. */
+export const buildMainHistoryHide = (body: Record<string, unknown>, repoDir: string = resolveRepoDir()) =>
+  setLineHidden(repoDir, { sha: body.sha, hidden: body.hidden });
 
 export interface WithheldResponse {
   /** The device settings file the deny-list was read from (device-specific). */

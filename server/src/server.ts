@@ -42,6 +42,9 @@ import {
   buildJobDelete,
   buildJobFile,
   buildJobs,
+  buildMainHistoryHide,
+  buildMainHistorySlide,
+  buildMainHistorySyncLocal,
   buildMemory,
   buildProjectMemories,
   buildProjects,
@@ -88,6 +91,7 @@ import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate
 import type { SidecarSource } from './db/source.js';
 import { resolveJobsDir } from './jobs.js';
 import { countSidecarFiles, resolveLogDir } from './logs.js';
+import { ERR } from './main-history.js';
 import { shadowCheck, shadowEnabled } from './parity.js';
 import { resolveProjectsDir } from './projects.js';
 import { resolveSessionFile, resolveSessionsDir } from './sessions.js';
@@ -187,6 +191,15 @@ const JOB_DELETE_ROUTE = '/api/jobs/delete';
 /** The device system prompt: a GET of `~/.claude/CLAUDE.md`, a POST that rewrites it. */
 const SYSTEM_PROMPT_ROUTE = '/api/system-prompt';
 
+/**
+ * Moving `main`: a force-push of `refs/heads/main` on origin, the local checkout's own
+ * catch-up, and the marker that hides a line. They are shared, remote and irreversible in
+ * the sense that everyone sees them, so they belong behind the origin check rather than
+ * under the read routes' open CORS — and `slideMain` gates them a second time on the
+ * device's `gh` identity.
+ */
+const MAIN_HISTORY_ROUTES = ['/api/main-history/slide', '/api/main-history/sync-local', '/api/main-history/hide'];
+
 /** Paths whose POST goes through the origin-checked write CORS. */
 const WRITE_ROUTES = new Set([
   ...CHAT_ROUTES,
@@ -196,6 +209,7 @@ const WRITE_ROUTES = new Set([
   IDEAS_COMMENT_ROUTE,
   JOB_DELETE_ROUTE,
   SYSTEM_PROMPT_ROUTE,
+  ...MAIN_HISTORY_ROUTES,
 ]);
 
 /**
@@ -369,6 +383,19 @@ function chatErrorStatus(msg: string): number {
  */
 function systemPromptErrorStatus(msg: string): number {
   return /^(system prompt text|request body)\b/.test(msg) ? 400 : 500;
+}
+
+/**
+ * Moving `main` fails in four distinguishable ways, and the page acts differently on
+ * each: an identity that may not do it, a page that had gone stale, a request that is
+ * simply wrong, and a preflight that said no.
+ */
+function mainHistoryErrorStatus(msg: string): number {
+  if (msg.startsWith(ERR.notAuthorized)) return 403;
+  if (msg.startsWith(ERR.moved)) return 409;
+  if (msg.startsWith(ERR.bad)) return 400;
+  if (msg.startsWith(ERR.refused)) return 409;
+  return 500;
 }
 
 /**
@@ -1236,6 +1263,15 @@ const server = http.createServer(async (req, res) => {
       }
       case '/api/pull-requests':
         send(res, 200, await buildPullRequests(LOG_DIR));
+        return;
+      case '/api/main-history/slide':
+        await servePost(req, res, (body) => buildMainHistorySlide(body), mainHistoryErrorStatus);
+        return;
+      case '/api/main-history/sync-local':
+        await servePost(req, res, (body) => buildMainHistorySyncLocal(body), mainHistoryErrorStatus);
+        return;
+      case '/api/main-history/hide':
+        await servePost(req, res, (body) => buildMainHistoryHide(body), mainHistoryErrorStatus);
         return;
       case '/api/hooks-plugins':
         send(res, 200, await buildHooksPlugins());
