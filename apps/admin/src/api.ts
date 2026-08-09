@@ -769,6 +769,31 @@ export interface ChatSendResponse {
   /** Set when the turn was stopped, went quiet, or hit its ceiling; the reply is the partial one. */
   interrupted: ChatInterruption | null;
 }
+/**
+ * One thing a turn did, pushed while it was doing it. Mirrors `ChatStreamEvent` in
+ * `server/src/chat-stream.ts`.
+ */
+export type ChatStreamEvent =
+  | { type: 'text'; text: string }
+  /** A tool was called; `index` is its place in the turn's finished `tools` list. */
+  | { type: 'tool'; index: number; name: string }
+  /** That tool answered. A failure carries its `tool_result` text, as the chip does. */
+  | { type: 'tool-result'; index: number; failed: boolean; error?: string };
+/** One SSE frame off the turn stream: a `snapshot` replaces, an `update` appends. */
+export interface ChatStreamFrame {
+  sessionId: string;
+  /** Which turn of the session these belong to; a change means start over. */
+  turn: number;
+  active: boolean;
+  interrupted: ChatInterruption | null;
+  events: ChatStreamEvent[];
+  seq: number;
+  /** True when the turn outran the server's replay buffer, so the text starts mid-reply. */
+  truncated: boolean;
+}
+/** Where a turn's live account arrives; an `EventSource` path, not a fetch. */
+export const chatStreamPath = (sessionId: string) => `/api/chat/stream?sessionId=${encodeURIComponent(sessionId)}`;
+
 export interface HealthResponse {
   ok: boolean;
   logDir: string;
@@ -917,8 +942,16 @@ export const getConcepts = () => get<ConceptsResponse>('/api/concepts');
 export const getConcept = (ord: number) => get<ConceptResponse>(`/api/concepts/concept?ord=${ord}`);
 /** The device system prompt as it is on disk — `~/.claude/CLAUDE.md`. */
 export const getSystemPrompt = () => get<SystemPromptResponse>('/api/system-prompt');
-/** Overwrite it. The server keeps the previous contents in a `.bak` beside the file. */
-export const saveSystemPrompt = (text: string) => post<SystemPromptUpdateResponse>('/api/system-prompt', { text });
+/**
+ * Overwrite it. The server keeps the previous contents in a `.bak` beside the file.
+ * `expectedModified` is the mtime the save is replacing; the server answers 409 when
+ * the file no longer carries it. Omit it to write regardless.
+ */
+export const saveSystemPrompt = (text: string, expectedModified?: string | null) =>
+  post<SystemPromptUpdateResponse>(
+    '/api/system-prompt',
+    expectedModified === undefined ? { text } : { text, expectedModified },
+  );
 /** The whole ledger, paired with the `/api/ideas/stream` subscription that pushes the same shape. */
 export const getIdeas = () => get<IdeasResponse>('/api/ideas');
 /**

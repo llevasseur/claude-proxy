@@ -79,6 +79,17 @@
   .codeblock li:hover {
     background: rgba(255, 255, 255, 0.03);
   }
+  /* Save-confirm diff lines, tinted whole rather than per token. */
+  .codeblock li.diff-added {
+    background: color-mix(in srgb, var(--good) 13%, transparent);
+  }
+  .codeblock li.diff-removed {
+    background: color-mix(in srgb, var(--bad) 13%, transparent);
+  }
+  .codeblock li.diff-gap {
+    color: var(--faint);
+    background: rgba(255, 255, 255, 0.03);
+  }
 
   /* Token colours, shared by every pretty code view. */
   .tok-comment {

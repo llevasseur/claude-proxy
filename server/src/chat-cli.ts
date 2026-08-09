@@ -133,6 +133,12 @@ export interface CliTurnInput {
    * a watcher most wants to see — so this one fact is reported as it arrives.
    */
   onInit?: (info: { permissionMode: string | null }) => void;
+  /**
+   * Called for each thing the turn does as it does it — see {@link CliLiveReader}.
+   * Purely a watcher: the returned {@link CliTurnResult} is decoded from the whole
+   * stream either way, so nothing depends on these having been observed.
+   */
+  onEvent?: (event: CliLiveEvent) => void;
 }
 
 /** Enough of a `stream-json` line to reassemble a turn. */
@@ -176,22 +182,107 @@ function applyUsage(into: CliTurnResult['usage'], u: Record<string, unknown>): v
 const MAX_TOOL_ERROR_CHARS = 400;
 
 /**
- * Find the child's `system`/`init` event in a prefix of the stream, if it has arrived.
- * The full decode happens once at the end; this reads the one line a watcher needs early.
+ * What a turn is doing, reported while it does it rather than once it is over.
+ *
+ * The same events {@link decodeCliStream} reads at the end, read a second time as they
+ * land. `index` is the tool's position in the finished `tools` list, which is what makes
+ * a live chip and a summary chip the same chip.
  */
-export function findInitEvent(raw: string): { permissionMode: string | null } | null {
-  for (const line of raw.split(/\r?\n/)) {
-    if (!line.includes(`"init"`)) continue;
+export type CliLiveEvent =
+  | { kind: 'init'; permissionMode: string | null }
+  | { kind: 'text'; text: string }
+  | { kind: 'tool'; index: number; name: string }
+  | { kind: 'tool-result'; index: number; failed: boolean; error?: string };
+
+/**
+ * A single line of `stream-json` can be a whole tool result, so a run of chunks with no
+ * newline in them is normal — but an unbounded one is a leak. Past this the partial line
+ * is abandoned and reading resumes at the next newline; only the live view misses that
+ * event, since the end-of-run decode still sees the whole stream.
+ */
+const MAX_PENDING_LINE_CHARS = 4_000_000;
+
+/**
+ * Reads the child's stdout as it arrives and reports what the turn is doing.
+ *
+ * {@link decodeCliStream} remains the authority on the finished turn, and is what a
+ * caller falls back on when nothing was watching. This reads the same stream for a
+ * watcher who wants the turn *while* it runs: text as each assistant message lands, and
+ * a tool announced when it is called and again when it is answered, interleaved in the
+ * order the turn actually ran them.
+ *
+ * Chunk boundaries fall anywhere, so the reader holds a partial trailing line until its
+ * newline arrives, and a `StringDecoder` holds a multi-byte character split across two
+ * chunks.
+ */
+export class CliLiveReader {
+  private pending = '';
+  private readonly decoder = new StringDecoder('utf8');
+  /** How many tools have been announced — the next one's index in the finished list. */
+  private tools = 0;
+  /** `tool_use` id → its index, so its `tool_result` can be matched to it later. */
+  private readonly byId = new Map<string, number>();
+  /** Set once the partial line was abandoned, so reading resumes at a line boundary. */
+  private skipping = false;
+
+  constructor(private readonly emit: (event: CliLiveEvent) => void) {}
+
+  /** Feed one chunk of stdout. Complete lines are reported; a split line waits for the rest. */
+  write(chunk: Buffer): void {
+    this.pending += this.decoder.write(chunk);
+    for (let br = this.pending.indexOf('\n'); br >= 0; br = this.pending.indexOf('\n')) {
+      const line = this.pending.slice(0, br);
+      this.pending = this.pending.slice(br + 1);
+      if (this.skipping) this.skipping = false;
+      else this.read(line);
+    }
+    if (this.pending.length > MAX_PENDING_LINE_CHARS) {
+      this.pending = '';
+      this.skipping = true;
+    }
+  }
+
+  private read(raw: string): void {
+    if (!raw.trim()) return;
     let ev: CliEvent;
     try {
-      ev = JSON.parse(line) as CliEvent;
+      ev = JSON.parse(raw) as CliEvent;
     } catch {
-      continue; // a partial trailing line; it will be whole on the next chunk
+      return; // a non-JSON line is CLI chatter, not an event
     }
-    if (ev.type !== 'system' || ev.subtype !== 'init') continue;
-    return { permissionMode: typeof ev.permissionMode === 'string' ? ev.permissionMode : null };
+
+    if (ev.type === 'system' && ev.subtype === 'init') {
+      this.emit({ kind: 'init', permissionMode: typeof ev.permissionMode === 'string' ? ev.permissionMode : null });
+      return;
+    }
+
+    if (ev.type === 'assistant') {
+      const text = textOf(ev.message?.content);
+      if (text) this.emit({ kind: 'text', text });
+      for (const b of blocksOf(ev.message?.content)) {
+        if (b.type !== 'tool_use') continue;
+        const index = this.tools++;
+        if (typeof b.id === 'string') this.byId.set(b.id, index);
+        this.emit({ kind: 'tool', index, name: typeof b.name === 'string' ? b.name : 'unknown' });
+      }
+      return;
+    }
+
+    if (ev.type !== 'user') return;
+    for (const b of blocksOf(ev.message?.content)) {
+      if (b.type !== 'tool_result') continue;
+      const index = typeof b.tool_use_id === 'string' ? this.byId.get(b.tool_use_id) : undefined;
+      if (index === undefined) continue;
+      const failed = b.is_error === true;
+      const why = failed ? textOf(b.content).trim() : '';
+      this.emit({
+        kind: 'tool-result',
+        index,
+        failed,
+        ...(why ? { error: why.length > MAX_TOOL_ERROR_CHARS ? `${why.slice(0, MAX_TOOL_ERROR_CHARS)}…` : why } : {}),
+      });
+    }
   }
-  return null;
 }
 
 /**
@@ -458,26 +549,27 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
     state.idle.unref?.();
   };
 
-  // The watch for the child's opening `init` event reads each chunk once as it lands,
-  // rather than re-reading the whole stream every time: a child that never announces —
-  // an older CLI, or a run that dies before it says — would otherwise make every chunk
-  // rescan everything before it, which is quadratic on exactly the long turns this
-  // watch exists to report on. The decoder holds a multi-byte character split across a
-  // chunk boundary; `pending` holds a line split across one, so it is whole when parsed.
+  // Watchers read each chunk once as it lands: a rescan per chunk is quadratic on exactly
+  // the long turns a watcher exists to report on. Built only when someone is watching, so
+  // an unwatched turn still just buffers and decodes at the end.
   let announced = false;
-  const decoder = new StringDecoder('utf8');
-  let pending = '';
+  const live =
+    input.onInit || input.onEvent
+      ? new CliLiveReader((event) => {
+          if (event.kind !== 'init') {
+            input.onEvent?.(event);
+            return;
+          }
+          // The first announcement is the one that counts; a resumed child can say twice.
+          if (announced) return;
+          announced = true;
+          input.onInit?.({ permissionMode: event.permissionMode });
+        })
+      : null;
   child.stdout.on('data', (c: Buffer) => {
     stdout.push(c);
     armIdle();
-    if (announced || !input.onInit) return;
-    pending += decoder.write(c);
-    const init = findInitEvent(pending);
-    const lastBreak = pending.lastIndexOf('\n');
-    if (lastBreak >= 0) pending = pending.slice(lastBreak + 1);
-    if (!init) return;
-    announced = true;
-    input.onInit(init);
+    live?.write(c);
   });
   child.stderr.on('data', (c: Buffer) => {
     stderr.push(c);

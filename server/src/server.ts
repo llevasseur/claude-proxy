@@ -85,6 +85,7 @@ import {
   stopChat,
   UUID_RE,
 } from './chat.js';
+import { snapshotChatStream, subscribeChatStream } from './chat-stream.js';
 import { reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
 import { resolveDbPath } from './db/open.js';
 import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from './db/runtime.js';
@@ -166,6 +167,13 @@ const CHAT_ROUTES = new Set([
   '/api/chat/stop',
 ]);
 
+/**
+ * The live account of a turn in flight. A GET, so it is not on the write allowlist — but
+ * unlike every other read it carries the chat's own **content**, so it answers the
+ * dashboard's origins rather than the reads' open `*`.
+ */
+const CHAT_STREAM_ROUTE = '/api/chat/stream';
+
 /** The suggestion flags: a GET list under the open read CORS, a POST that writes them. */
 const SUGGESTION_STATUS_ROUTE = '/api/sessions/suggestions/status';
 
@@ -243,17 +251,17 @@ function send(res: http.ServerResponse, status: number, body: unknown, cors: Rec
   res.end(JSON.stringify(body));
 }
 
-const SSE_HEADERS = {
+const SSE_BASE_HEADERS = {
   'content-type': 'text/event-stream; charset=utf-8',
   'cache-control': 'no-cache, no-transform',
   connection: 'keep-alive',
-  ...CORS,
 };
 
 /** Comment-frame heartbeat interval — keeps proxies/browsers from idling out. */
 const SSE_HEARTBEAT_MS = 25_000;
 
-interface SseStream {
+/** A resource that changes on disk: re-read it when the path does. */
+interface SseWatchSource {
   /** File or directory to `fs.watch`; a change re-runs `build` and pushes an update. */
   watchPath: string;
   /** Produce the JSON payload sent as the initial `snapshot` and each `update`. */
@@ -263,55 +271,94 @@ interface SseStream {
 }
 
 /**
- * Serve one live JSON resource over Server-Sent Events. Sends the current value as
- * a `snapshot` event, then an `update` event (same shape) whenever `watchPath`
- * changes on disk — deduping byte-identical payloads. A comment heartbeat keeps the
+ * A resource that is pushed rather than polled: the server already knows the change as
+ * it happens and has nothing to re-read. Frames are sent exactly as produced — never
+ * deduped, because two identical pushes are two real events, not a repeat of one.
+ */
+interface SsePushSource {
+  /** The value sent as the opening `snapshot`. */
+  snapshot: () => unknown;
+  /** Register for pushes; each one is sent as an `update`. Returns the unsubscribe. */
+  subscribe: (push: (frame: unknown) => void) => () => void;
+}
+
+type SseStream = (SseWatchSource | SsePushSource) & {
+  /**
+   * Response CORS. Defaults to the read routes' open `*`, which is only right for a
+   * payload every other reader may see — a stream carrying chat content passes the
+   * origin-checked headers instead.
+   */
+  cors?: Record<string, string>;
+};
+
+/**
+ * Serve one live JSON resource over Server-Sent Events. Sends the current value as a
+ * `snapshot` event, then `update` events as it changes. A comment heartbeat keeps the
  * connection open, and everything is torn down when the client disconnects.
  *
- * The initial build runs *before* the SSE headers, so a build failure surfaces as a
+ * Two sources feed it. A **watch** source re-runs `build` whenever `watchPath` changes
+ * on disk, deduping byte-identical payloads — the shape every dashboard list uses. A
+ * **push** source is handed a callback and pushes frames itself, for something the
+ * server witnesses rather than reads back, such as a chat turn in flight.
+ *
+ * The initial snapshot is produced *before* the SSE headers, so a failure surfaces as a
  * normal HTTP error (400/404/500) that `EventSource` reports without reconnecting.
  */
 async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, stream: SseStream): Promise<void> {
+  const cors = stream.cors ?? CORS;
+  const watch = 'watchPath' in stream ? stream : null;
+
   let snapshot: unknown;
   try {
-    snapshot = await stream.build();
+    snapshot = watch ? await watch.build() : (stream as SsePushSource).snapshot();
   } catch (err) {
     const msg = (err as Error).message;
-    send(res, /(^|\b)not found:/.test(msg) ? 404 : 500, { error: msg });
+    send(res, /(^|\b)not found:/.test(msg) ? 404 : 500, { error: msg }, cors);
     return;
   }
 
-  res.writeHead(200, SSE_HEADERS);
+  res.writeHead(200, { ...SSE_BASE_HEADERS, ...cors });
   let lastSent = JSON.stringify(snapshot);
   res.write(`event: snapshot\ndata: ${lastSent}\n\n`);
 
   let debounce: NodeJS.Timeout | null = null;
-  const pushUpdate = () => {
-    debounce = null;
-    stream
-      .build()
-      .then((data) => {
-        if (res.writableEnded) return;
-        const next = JSON.stringify(data);
-        if (next === lastSent) return; // spurious fs event or no-op change
-        lastSent = next;
-        res.write(`event: update\ndata: ${next}\n\n`);
-      })
-      .catch(() => {
-        /* transient read error mid-write — skip this tick; the next change re-reads */
-      });
-  };
-
   let watcher: fs.FSWatcher | null = null;
-  try {
-    watcher = fs.watch(stream.watchPath, () => {
-      if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(pushUpdate, stream.debounceMs);
+  let unsubscribe: (() => void) | null = null;
+
+  if (watch) {
+    const pushUpdate = () => {
+      debounce = null;
+      watch
+        .build()
+        .then((data) => {
+          if (res.writableEnded) return;
+          const next = JSON.stringify(data);
+          if (next === lastSent) return; // spurious fs event or no-op change
+          lastSent = next;
+          res.write(`event: update\ndata: ${next}\n\n`);
+        })
+        .catch(() => {
+          /* transient read error mid-write — skip this tick; the next change re-reads */
+        });
+    };
+
+    try {
+      watcher = fs.watch(watch.watchPath, () => {
+        if (debounce) clearTimeout(debounce);
+        debounce = setTimeout(pushUpdate, watch.debounceMs);
+      });
+      // biome-ignore lint/suspicious/noEmptyBlockStatements: swallowing it is the handling — watch dropped (e.g. file removed), and snapshot + heartbeat still hold
+      watcher.on('error', () => {});
+    } catch {
+      /* watch unsupported / path missing — client keeps the snapshot, heartbeat holds it open */
+    }
+  } else {
+    // Subscribed after the snapshot was written, so the opening frame and the pushes
+    // cannot interleave and the client never sees an update it has no baseline for.
+    unsubscribe = (stream as SsePushSource).subscribe((frame) => {
+      if (res.writableEnded) return;
+      res.write(`event: update\ndata: ${JSON.stringify(frame)}\n\n`);
     });
-    // biome-ignore lint/suspicious/noEmptyBlockStatements: swallowing it is the handling — watch dropped (e.g. file removed), and snapshot + heartbeat still hold
-    watcher.on('error', () => {});
-  } catch {
-    /* watch unsupported / path missing — client keeps the snapshot, heartbeat holds it open */
   }
 
   const heartbeat = setInterval(() => {
@@ -323,6 +370,8 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
     if (debounce) clearTimeout(debounce);
     watcher?.close();
     watcher = null;
+    unsubscribe?.();
+    unsubscribe = null;
   };
   req.on('close', cleanup);
   res.on('error', cleanup);
@@ -379,10 +428,13 @@ function chatErrorStatus(msg: string): number {
 
 /**
  * A rejected save is the body's fault; anything else — a permission error, a full
- * disk — is the server's, and a 400 would send the editor looking for a typo.
+ * disk — is the server's, and a 400 would send the editor looking for a typo. A
+ * stale save is neither: the request was well-formed and the file simply moved
+ * under it, which is a 409 for the editor to re-read and show.
  */
 function systemPromptErrorStatus(msg: string): number {
-  return /^(system prompt text|request body)\b/.test(msg) ? 400 : 500;
+  if (msg.startsWith('system prompt changed on disk')) return 409;
+  return /^(system prompt text|system prompt expectedModified|request body)\b/.test(msg) ? 400 : 500;
 }
 
 /**
@@ -431,7 +483,9 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, WRITE_ROUTES.has(url.pathname) ? chatCors(req.headers.origin) : CORS);
+    // The turn stream is a GET, but it answers the same narrow origins the writes do.
+    const narrow = WRITE_ROUTES.has(url.pathname) || url.pathname === CHAT_STREAM_ROUTE;
+    res.writeHead(204, narrow ? chatCors(req.headers.origin) : CORS);
     res.end();
     return;
   }
@@ -1210,6 +1264,33 @@ const server = http.createServer(async (req, res) => {
         send(res, 200, { sessionId, threadId: await resolveThreadId(LOG_DIR, sessionId, 0) });
         return;
       }
+      // The turn in flight, as it happens: the reply's text as it arrives and a chip per
+      // tool, interleaved in the order the turn ran them. The POST still answers with the
+      // finished turn, so this is what makes a slow turn legible — never the record of it.
+      case CHAT_STREAM_ROUTE: {
+        const cors = { ...chatCors(req.headers.origin), 'access-control-allow-methods': 'GET, OPTIONS' };
+        if (!originAllowed(req.headers.origin)) {
+          send(res, 403, { error: `origin not allowed: ${req.headers.origin}` }, cors);
+          return;
+        }
+        const sessionId = url.searchParams.get('sessionId');
+        if (!sessionId) {
+          send(res, 400, { error: 'missing ?sessionId=' }, cors);
+          return;
+        }
+        if (!UUID_RE.test(sessionId)) {
+          send(res, 400, { error: 'invalid sessionId: expected a uuid' }, cors);
+          return;
+        }
+        // A session the server has yet to hear of is not an error: the dashboard names
+        // the id and opens this stream in the same tick as the POST that starts it.
+        await serveSse(req, res, {
+          cors,
+          snapshot: () => snapshotChatStream(sessionId),
+          subscribe: (push) => subscribeChatStream(sessionId, push),
+        });
+        return;
+      }
       case '/api/chat/sessions':
         await servePost(req, res, (body) =>
           startChat(
@@ -1301,7 +1382,7 @@ const server = http.createServer(async (req, res) => {
           await servePost(
             req,
             res,
-            (body) => buildSystemPromptUpdate(SYSTEM_PROMPT_PATH, body.text),
+            (body) => buildSystemPromptUpdate(SYSTEM_PROMPT_PATH, body.text, body.expectedModified),
             systemPromptErrorStatus,
           );
           return;

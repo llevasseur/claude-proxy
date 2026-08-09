@@ -13,6 +13,9 @@ export interface CodeBlockProps {
   /** Soft-wrap long lines instead of scrolling horizontally — right for prose and
    * logs, wrong for code, where a wrapped line breaks the column alignment. */
   wrap?: boolean;
+  /** Extra class for the nth rendered line, so a caller can tint whole lines —
+   * a diff's additions and removals — without a second block component. */
+  lineClass?: (index: number) => string | undefined;
 }
 
 /**
@@ -20,7 +23,7 @@ export interface CodeBlockProps {
  * viewer. Numbers come from a CSS counter rather than the markup, so selecting the
  * block copies the code without them.
  */
-export function CodeBlock({ source, syntax, wrap = false }: CodeBlockProps) {
+export function CodeBlock({ source, syntax, wrap = false, lineClass }: CodeBlockProps) {
   const all = useMemo(() => highlightSource(source, syntax), [source, syntax]);
   const lines = all.length > MAX_LINES ? all.slice(0, MAX_LINES) : all;
 
@@ -29,7 +32,7 @@ export function CodeBlock({ source, syntax, wrap = false }: CodeBlockProps) {
       <ol className={`codeblock${wrap ? ' wrap' : ''}`}>
         {lines.map((tokens, n) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: the index *is* the line number, and lines never reorder
-          <li key={n}>
+          <li key={n} className={lineClass?.(n)}>
             {tokens.map((token, i) =>
               token.kind === 'text' ? (
                 token.text

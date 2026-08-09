@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  diffSystemPromptText,
   normalizeSystemPromptText,
   outlineSystemPrompt,
+  parseSystemPromptExpectedModified,
   parseSystemPromptText,
   SYSTEM_PROMPT_MAX_BYTES,
   summarizeSystemPrompt,
@@ -102,5 +104,104 @@ describe('parseSystemPromptText', () => {
     const text = parseSystemPromptText('x'.repeat(SYSTEM_PROMPT_MAX_BYTES - 1));
 
     expect(utf8Bytes(text)).toBe(SYSTEM_PROMPT_MAX_BYTES);
+  });
+});
+
+describe('parseSystemPromptExpectedModified', () => {
+  it('passes an mtime through, and null for "there was no file"', () => {
+    expect(parseSystemPromptExpectedModified('2026-08-09T10:00:00.000Z')).toBe('2026-08-09T10:00:00.000Z');
+    expect(parseSystemPromptExpectedModified(null)).toBeNull();
+  });
+
+  it('reads an absent field as "write regardless" rather than as null', () => {
+    expect(parseSystemPromptExpectedModified(undefined)).toBeUndefined();
+  });
+
+  it('refuses anything else', () => {
+    expect(() => parseSystemPromptExpectedModified(42)).toThrow(/must be a string or null/);
+  });
+});
+
+describe('diffSystemPromptText', () => {
+  it('reports identical text as nothing to write', () => {
+    const diff = diffSystemPromptText('# Rules\n', '# Rules\n');
+
+    expect(diff).toMatchObject({ identical: true, added: 0, removed: 0, lines: [] });
+  });
+
+  it('shows a changed line as a removal beside its replacement', () => {
+    const diff = diffSystemPromptText('# Rules\n\nBe brief.\n', '# Rules\n\nBe terse.\n');
+
+    expect(diff.identical).toBe(false);
+    expect(diff.added).toBe(1);
+    expect(diff.removed).toBe(1);
+    expect(diff.lines.filter((l) => l.kind === 'removed').map((l) => l.text)).toEqual(['-Be brief.']);
+    expect(diff.lines.filter((l) => l.kind === 'added').map((l) => l.text)).toEqual(['+Be terse.']);
+  });
+
+  it('opens each changed region with a hunk header naming both line numbers', () => {
+    const diff = diffSystemPromptText('a\nb\nc\n', 'a\nB\nc\n');
+
+    expect(diff.lines[0]).toEqual({ kind: 'gap', text: '@@ -1,3 +1,3 @@' });
+  });
+
+  it('keeps only a few lines of context around a change in a long file', () => {
+    const before = `${Array.from({ length: 200 }, (_, i) => `line ${i}`).join('\n')}\n`;
+    const after = before.replace('line 100', 'line one hundred');
+
+    const diff = diffSystemPromptText(before, after);
+
+    // Three lines of context either side of the one change, plus the hunk header.
+    expect(diff.lines).toHaveLength(1 + 3 + 2 + 3);
+    expect(diff.lines.filter((l) => l.kind === 'context').map((l) => l.text)).toEqual([
+      ' line 97',
+      ' line 98',
+      ' line 99',
+      ' line 101',
+      ' line 102',
+      ' line 103',
+    ]);
+  });
+
+  it('gathers two nearby changes into one hunk and distant ones into two', () => {
+    const before = `${Array.from({ length: 60 }, (_, i) => `line ${i}`).join('\n')}\n`;
+    const near = before.replace('line 10', 'X').replace('line 12', 'Y');
+    const far = before.replace('line 10', 'X').replace('line 50', 'Y');
+
+    expect(diffSystemPromptText(before, near).lines.filter((l) => l.kind === 'gap')).toHaveLength(1);
+    expect(diffSystemPromptText(before, far).lines.filter((l) => l.kind === 'gap')).toHaveLength(2);
+  });
+
+  it('reads a first save as pure additions against an empty file', () => {
+    const diff = diffSystemPromptText('', '# Rules\n\nBe brief.\n');
+
+    expect(diff.removed).toBe(0);
+    expect(diff.added).toBe(3);
+    expect(diff.lines.every((l) => l.kind === 'gap' || l.kind === 'added')).toBe(true);
+  });
+
+  it('reads emptying the prompt as pure removals', () => {
+    const diff = diffSystemPromptText('# Rules\nBe brief.\n', '');
+
+    expect(diff.added).toBe(0);
+    expect(diff.removed).toBe(2);
+  });
+
+  it('shows no lines when only the trailing newline differs, and does not claim they match', () => {
+    const diff = diffSystemPromptText('# Rules', '# Rules\n');
+
+    expect(diff.identical).toBe(false);
+    expect(diff.lines).toEqual([]);
+  });
+
+  it('degrades a wholesale rewrite to a replacement rather than aligning it', () => {
+    const before = `${Array.from({ length: 2100 }, (_, i) => `old ${i}`).join('\n')}\n`;
+    const after = `${Array.from({ length: 2100 }, (_, i) => `new ${i}`).join('\n')}\n`;
+
+    const diff = diffSystemPromptText(before, after);
+
+    expect(diff.wholeFile).toBe(true);
+    expect(diff.removed).toBe(2100);
+    expect(diff.added).toBe(2100);
   });
 });
