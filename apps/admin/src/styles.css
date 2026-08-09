@@ -384,17 +384,17 @@ button:focus-visible {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  /* The controls never shrink, so a long title block has to be able to take its
-     own line rather than push them off the edge of a narrow workspace. */
+  /* The controls never shrink, so a long title block takes its own line rather
+     than pushing them off the edge. */
   flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 26px;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--line);
 }
-/* A title block sharing the head with a control cluster: it yields first and wraps
-   first, so the control keeps its full width instead of losing its last pill. The
-   basis applies only while the head is a row — stacked, it would read as a height. */
+/* A title block sharing the head with a control cluster: it yields and wraps first,
+   so the control keeps its full width. The basis applies only while the head is a
+   row — stacked, it would read as a height. */
 .pagehead-title {
   min-width: 0;
 }
@@ -551,7 +551,7 @@ button:focus-visible {
   min-width: 0;
 }
 /* A card that carries its own window switcher: the range caption and the control
-   travel together, and drop to their own row before either one is squeezed. */
+   drop to their own row together rather than either being squeezed. */
 .card-head-aside {
   display: flex;
   align-items: center;

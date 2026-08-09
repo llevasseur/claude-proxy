@@ -21,9 +21,8 @@ const BLENDED_COLUMNS: readonly SkeletonColumn[] = [{}, { className: 'num' }, {}
  */
 export function TrendsPage() {
   const [days, selectDays, isSwitching] = useTransitionState(30);
-  // The window's closing day is today, and the stream is what keeps it moving —
-  // the same summary feed the Overview's badge reports on, so the blend tracks the
-  // day as it happens rather than as it stood when the page loaded.
+  // The same summary feed the Overview's badge reports on: it keeps the window's
+  // closing day moving rather than frozen at page load.
   const summary = useQuery({ queryKey: ['summary'], queryFn: () => getSummary() });
   const summaryLive = useLiveQuery<SummaryResponse>('/api/summary/stream', ['summary']);
   // Same key and window as the Overview's mini charts, so switching between the
@@ -48,9 +47,6 @@ export function TrendsPage() {
             {live ? 'Today counts as far as it has run, so the figures track the day as it happens.' : ''}
           </div>
         </div>
-        {/* The Overview's page-head control, unchanged: one definition of the live
-            badge and the window switcher, wrapping rather than clipping when the
-            head runs out of room. */}
         <DayWindowControls days={days} onDays={selectDays} label='Trend window' busy={busy} live={summaryLive} />
       </div>
 

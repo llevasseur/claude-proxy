@@ -31,7 +31,7 @@ export function OverviewPage() {
   const usageLive = useLiveQuery<UsageResponse>('/api/usage/stream', ['usage']);
   const summaryLive = useLiveQuery<SummaryResponse>('/api/summary/stream', ['summary']);
   const data = summary.data;
-  // What this page head is set to, for every card below that has not pinned its own.
+  // What every card below follows until it pins a window of its own.
   const pageWindow = useMemo(() => ({ days, today: data?.digest }), [days, data]);
 
   return (
@@ -185,8 +185,8 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
         })}
       </div>
 
-      {/* Both plots follow the page head by default and read their own window once
-          their picker is touched, so each fetches the days it is actually drawing. */}
+      {/* Both plots follow the page head until their own picker is touched, and each
+          fetches the days it is actually drawing. */}
       <CostRateCard />
       <PerRequestCard />
 

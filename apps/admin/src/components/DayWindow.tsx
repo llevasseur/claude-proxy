@@ -9,7 +9,7 @@ import { DAY_WINDOWS, Segmented, type SegmentedOption } from './Segmented';
 
 /**
  * The day window a page is reading, and today's digest as the stream last reported
- * it. Every card under the page head follows this unless it is asked not to.
+ * it. Cards under the page head follow this unless they pin a window of their own.
  */
 export interface DayWindow {
   days: number;
@@ -32,10 +32,7 @@ export function usePageDayWindow(): DayWindow {
 
 /**
  * The right-hand cluster of a page head: the stream's health beside the window
- * switcher. This is the one definition of that control — the Overview and the
- * Trends page render this rather than each assembling the pair themselves.
- *
- * `live` is optional so a page with no stream behind it can still carry the picker.
+ * switcher. `live` is optional — a page with no stream still gets the picker.
  */
 export function DayWindowControls({
   days,
@@ -61,13 +58,9 @@ export function DayWindowControls({
 /** A card either follows the page head or pins a window of its own. */
 export type CardWindow = 'follow' | number;
 
-/** `Page` first, because following is where a card starts and what it returns to. */
 const CARD_WINDOWS: readonly SegmentedOption<CardWindow>[] = [{ value: 'follow', label: 'Page' }, ...DAY_WINDOWS];
 
-/**
- * A card's own window over the page's. It starts on `follow`, so the page head
- * speaks for the card until the card is told otherwise — and `Page` puts it back.
- */
+/** A card's own window over the page's. Starts on `follow`; `Page` puts it back. */
 export function useCardWindow(): {
   /** The window to plot: the page's while following, the pinned one after that. */
   days: number;
@@ -99,9 +92,9 @@ export function CardWindowPicker({
 
 /**
  * Today's digest as the summary stream last reported it, spliced into a fetched
- * window. `/api/trends` is a one-shot read, so a plot would otherwise hold today's
- * load-time values while the headline moved on. An empty window stays empty: a
- * page with nothing captured should say so rather than show a single zero day.
+ * window — `/api/trends` is a one-shot read, so a plot would otherwise hold today's
+ * load-time values while the headline moved on. An empty window stays empty rather
+ * than becoming a single zero day.
  */
 export function withLiveToday(digests: UsageDigest[], today: UsageDigest): UsageDigest[] {
   if (digests.length === 0) return digests;
@@ -111,9 +104,8 @@ export function withLiveToday(digests: UsageDigest[], today: UsageDigest): Usage
 }
 
 /**
- * The digests for one window, with today kept live. The key matches the one the
- * page head's own query uses, so a card that is following costs no extra fetch and
- * a card that pins the page's window shares its cache entry too.
+ * The digests for one window, with today kept live. The key matches the page head's
+ * own query, so a card on the page's window costs no extra fetch.
  */
 export function useWindowDigests(
   days: number,
