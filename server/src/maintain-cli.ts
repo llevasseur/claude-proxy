@@ -4,12 +4,15 @@
  *
  *   1. **Archive** every past day out of the live directory into `archive/<date>/`.
  *   2. **Evict** the `.md` and `.request.txt` bodies inside archived days older than
- *      `RETENTION_DAYS`, keeping every `.audit.json`.
+ *      `RETENTION_DAYS`, keeping every `.audit.json`. `RETENTION_DAYS=never` turns
+ *      this one step off; step 1 and step 3 run exactly as they otherwise would.
  *   3. **Digest** — print the day's summary through `buildSummary`. No LLM call,
  *      no network.
  *
  * Dry run is the default; `--apply` performs it. A dry run prints the same plan
- * object `--apply` executes. See `docs/features/retention-lifecycle.md`.
+ * object `--apply` executes. Either way it prices what is being **kept** as well
+ * as what is being reclaimed, so the scheduled job's log is a growth record and
+ * not only a reclamation one. See `docs/features/retention-lifecycle.md`.
  */
 import { buildSummary } from './api.js';
 import { resolveArchiveDir } from './archive.js';
@@ -18,8 +21,9 @@ import {
   applyRetention,
   collectRetentionCorpus,
   planRetention,
+  RETENTION_NEVER,
   type RetentionPlan,
-  resolveRetentionDays,
+  resolveRetentionWindow,
   resolveToday,
 } from './retention.js';
 import { renderSummary } from './summary-render.js';
@@ -40,12 +44,48 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/**
+ * What the run is choosing to keep, and where that leads. Printed on every run,
+ * not only a dry one — the scheduled job runs `--apply`, and its log is where
+ * this corpus's growth is recorded.
+ */
+function renderKeep(plan: RetentionPlan): string[] {
+  const { keep } = plan;
+  const lines: string[] = [];
+  const sidecars = keep.bytes - keep.bodyBytes;
+  lines.push(
+    `Keeping: ${fmtBytes(keep.bytes)} after this run — ${fmtBytes(keep.bodyBytes)} of bodies, ` +
+      `${fmtBytes(sidecars)} of everything else.`,
+  );
+
+  if (keep.bodyBytesPerDay === 0) {
+    lines.push('         no bodies retained, so there is no rate to project.');
+    return lines;
+  }
+
+  lines.push(
+    `         ${fmtBytes(keep.bodyBytesPerDay)}/day of bodies observed over ` +
+      `${plural(keep.spanDays, 'retained day')} (${plural(keep.days.length, 'day')} with capture).`,
+  );
+  lines.push(`         at that rate: ${keep.projection.map((p) => `${p.days}d ${fmtBytes(p.bytes)}`).join(' · ')}`);
+  lines.push(
+    keep.steadyStateBytes === null
+      ? `         retention is ${RETENTION_NEVER}, so nothing bounds that — the projection is the bill for keeping everything.`
+      : `         a ${plan.retentionDays}-day window bounds it at ~${fmtBytes(keep.steadyStateBytes)} of bodies.`,
+  );
+  return lines;
+}
+
 function renderPlan(plan: RetentionPlan, apply: boolean): string {
   const lines: string[] = [];
   const mode = apply ? 'apply' : 'dry run — nothing will be changed';
   lines.push(`Log maintenance — ${plan.today} (${mode})`);
   lines.push('='.repeat(28));
-  lines.push(`Retention: ${plan.retentionDays} days · bodies evicted in archived days before ${plan.cutoff}`);
+  lines.push(
+    plan.cutoff === null
+      ? `Retention: ${RETENTION_NEVER} · nothing is ever evicted; archiving still runs.`
+      : `Retention: ${plan.retentionDays} days · bodies evicted in archived days before ${plan.cutoff}`,
+  );
   lines.push('');
 
   if (plan.archive.moves.length === 0) {
@@ -57,7 +97,9 @@ function renderPlan(plan: RetentionPlan, apply: boolean): string {
     );
   }
 
-  if (plan.evict.files.length === 0) {
+  if (plan.cutoff === null) {
+    lines.push(`Evict:   off — \`RETENTION_DAYS=${RETENTION_NEVER}\` keeps every body ever captured.`);
+  } else if (plan.evict.files.length === 0) {
     lines.push(`Evict:   nothing past retention — no archived day is older than ${plan.cutoff}.`);
   } else {
     lines.push(
@@ -66,6 +108,9 @@ function renderPlan(plan: RetentionPlan, apply: boolean): string {
     );
     lines.push('         audit sidecars are kept; no day directory is removed.');
   }
+
+  lines.push('');
+  lines.push(...renderKeep(plan));
 
   return lines.join('\n');
 }
@@ -90,7 +135,7 @@ async function main(): Promise<void> {
   const apply = args.includes('--apply');
   const logDir = resolveLogDir();
   const today = resolveToday();
-  const retentionDays = resolveRetentionDays();
+  const retentionDays = resolveRetentionWindow();
 
   console.log(`[maintain] log directory: ${logDir}`);
   if (apply) await reconcileRuns(logDir);
