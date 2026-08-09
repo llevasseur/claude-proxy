@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -504,6 +504,36 @@ DELETE FROM ingest_watermark;
 UPDATE session SET bytes = -1;
 `;
 
+/**
+ * Body derivatives, extracted **before** eviction removes the body they came from.
+ *
+ * `md_path` / `request_path` / `blob_evicted` already make "retention deleted the
+ * body, we kept the metrics" queryable — for a *metric*. A value a view reads out
+ * of the body itself at query time had no such column, so `/api/skim` degraded
+ * silently past the retention edge while the usage views did not. `skim_text` is
+ * that value: the last user turn, bounded, computed once at ingest time by
+ * `deriveBodies`.
+ *
+ * `body_derived` is the flag, not `skim_text IS NOT NULL` — a body that carries no
+ * user turn derives a real `null`, and the two states have to stay apart or every
+ * pass would re-read the same body forever.
+ *
+ * This is deliberately **not** the content-addressed blob store ADR 0004 rejected:
+ * these are bounded derived strings and `logs/` remains the sole source of truth,
+ * so `rm logs/claude-proxy.db && pnpm --filter server ingest` still reconstructs
+ * everything that is on disk. What it cannot reconstruct is a derivative for a day
+ * whose body is already gone — the guarantee is forward-only by construction.
+ *
+ * Clearing the watermarks forces one backfill visit to every archived day, so rows
+ * whose bodies are still on disk pick the columns up on the next pass.
+ */
+const SCHEMA_V13 = `
+ALTER TABLE request ADD COLUMN skim_text    TEXT;
+ALTER TABLE request ADD COLUMN body_derived INTEGER NOT NULL DEFAULT 0;
+
+DELETE FROM ingest_watermark;
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -622,6 +652,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 10) db.exec(SCHEMA_V10);
   if (from < 11) db.exec(SCHEMA_V11);
   if (from < 12) db.exec(SCHEMA_V12);
+  if (from < 13) db.exec(SCHEMA_V13);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

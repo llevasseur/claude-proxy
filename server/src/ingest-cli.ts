@@ -21,6 +21,7 @@ async function main(): Promise<void> {
       `, ${stats.inserted} request${stats.inserted === 1 ? '' : 's'} added` +
       `, ${stats.deleted} row${stats.deleted === 1 ? '' : 's'} dropped` +
       `, ${stats.skipped} file${stats.skipped === 1 ? '' : 's'} unusable` +
+      `, ${stats.derived} bod${stats.derived === 1 ? 'y' : 'ies'} derived` +
       ` in ${seconds}s`,
   );
   console.log(

@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { type AuditSidecar, isAuditSidecar } from '@claude-proxy/core';
 import { commandStorePath } from '../command-runs.js';
+import { deriveFromBody } from '../derive.js';
 import { resolveSessionsDir } from '../sessions.js';
 import { ingestCommandRuns } from './ingest-commands.js';
 import { ingestConcepts } from './ingest-concepts.js';
@@ -36,6 +37,11 @@ export interface IngestStats {
   deleted: number;
   /** Files that were on disk but could not become a `request` row. */
   skipped: number;
+  /**
+   * Bodies read for their derivatives this pass — the extraction that has to
+   * happen while the `.request.txt` is still there. See `deriveBodies`.
+   */
+  derived: number;
   /** Session transcripts on disk. */
   sessions: number;
   /** Transcripts parsed this pass — new, or appended to since the last one. */
@@ -57,6 +63,7 @@ function emptyStats(): IngestStats {
     inserted: 0,
     deleted: 0,
     skipped: 0,
+    derived: 0,
     sessions: 0,
     sessionsParsed: 0,
     commandRuns: 0,
@@ -146,6 +153,8 @@ interface Statements {
   insertRateLimit: ReturnType<DatabaseSync['prepare']>;
   insertSkipped: ReturnType<DatabaseSync['prepare']>;
   refreshBlobs: ReturnType<DatabaseSync['prepare']>;
+  pendingDerive: ReturnType<DatabaseSync['prepare']>;
+  writeDerived: ReturnType<DatabaseSync['prepare']>;
   deleteRequest: ReturnType<DatabaseSync['prepare']>;
   deleteSkipped: ReturnType<DatabaseSync['prepare']>;
   unskip: ReturnType<DatabaseSync['prepare']>;
@@ -202,7 +211,17 @@ function prepare(db: DatabaseSync): Statements {
       ON CONFLICT(id) DO UPDATE SET source_dir = excluded.source_dir
       WHERE request_skipped.source_dir <> excluded.source_dir
     `),
+    // Deliberately leaves `skim_text` and `body_derived` alone. A body that has
+    // just disappeared is exactly the case the derivative exists for, so the
+    // column outlives the pointer that used to be beside it.
     refreshBlobs: db.prepare('UPDATE request SET md_path = ?, request_path = ?, blob_evicted = ? WHERE id = ?'),
+    // Rows whose body is still on disk and has not been read for its derivatives
+    // yet — new this pass, or pre-existing when a migration cleared the
+    // watermarks and sent the backfill round every archived day once.
+    pendingDerive: db.prepare(
+      'SELECT id, request_path FROM request WHERE source_dir = ? AND body_derived = 0 AND request_path IS NOT NULL',
+    ),
+    writeDerived: db.prepare('UPDATE request SET skim_text = ?, body_derived = 1 WHERE id = ?'),
     // Scoped by `source_dir` as well as id, so a stem already relocated to the
     // archive earlier in this pass is not deleted by the live directory.
     deleteRequest: db.prepare('DELETE FROM request WHERE id = ? AND source_dir = ?'),
@@ -298,6 +317,68 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
 
 /** How many files to parse before writing a batch — bounds peak memory on a full rebuild. */
 const BATCH = 500;
+
+/**
+ * Read every not-yet-derived body in one directory and store what the views read
+ * out of it. **This is the whole point of the pass**: eviction deletes the
+ * `.request.txt`, and a value only computed at query time goes with it, so the
+ * value is computed here instead — while the body is still on disk — into a column
+ * beside the row that points at it.
+ *
+ * Three outcomes, and they are three states rather than two:
+ *
+ * - **Body read.** Derivatives stored, `body_derived = 1`. Eviction later clears
+ *   `request_path` and sets `blob_evicted`; `skim_text` stays.
+ * - **Body present but unparseable.** `body_derived = 1` with a null derivative,
+ *   matching what the file backing answers for the same file. Marking it settles
+ *   it — otherwise every future pass re-reads the same broken body.
+ * - **Body gone between the select and the read.** Left at `body_derived = 0`,
+ *   because nothing was observed. It will not come back, and that is the
+ *   forward-only limit stated in `docs/features/retention-lifecycle.md`: a day
+ *   evicted before this shipped has no body left to derive from, and re-ingesting
+ *   cannot invent one.
+ */
+async function deriveBodies(
+  db: DatabaseSync,
+  st: Statements,
+  logDir: string,
+  sourceDir: string,
+  stats: IngestStats,
+): Promise<void> {
+  const pending = st.pendingDerive.all(sourceDir) as Array<{ id: string; request_path: string }>;
+  if (pending.length === 0) return;
+
+  for (let i = 0; i < pending.length; i += BATCH) {
+    const batch = await Promise.all(
+      pending.slice(i, i + BATCH).map(async (row) => {
+        let raw: string;
+        try {
+          raw = await readFile(path.join(logDir, row.request_path), 'utf8');
+        } catch {
+          return null;
+        }
+        try {
+          return { id: row.id, skimText: deriveFromBody(JSON.parse(raw)).skimText };
+        } catch {
+          return { id: row.id, skimText: null };
+        }
+      }),
+    );
+
+    db.exec('BEGIN');
+    try {
+      for (const derived of batch) {
+        if (!derived) continue;
+        st.writeDerived.run(derived.skimText, derived.id);
+        stats.derived += 1;
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+}
 
 /** Ingest one directory, reconciling it exactly with what is on disk. */
 async function ingestDir(
@@ -397,6 +478,11 @@ async function ingestDir(
     const batch = await Promise.all(fresh.slice(i, i + BATCH).map((stem) => readRow(dir, sourceDir, stem, nameSet)));
     writeBatch(db, st, sourceDir, batch, stats);
   }
+
+  // Last, so it sees every row this pass inserted as well as the ones already
+  // here — and before the watermark, so a failure part-way retries rather than
+  // marking the directory settled with bodies still unread.
+  await deriveBodies(db, st, logDir, sourceDir, stats);
 
   st.watermark.run(sourceDir, lastStem, stems.length, new Date().toISOString());
 }

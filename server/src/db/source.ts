@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { access, readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
@@ -16,6 +16,7 @@ import {
 } from '@claude-proxy/core';
 import { commandStorePath, readCommandRuns as readCommandRunsFromFiles, sortCommandRuns } from '../command-runs.js';
 import { conceptStorePath, readConcepts as readConceptsFromFiles } from '../concepts.js';
+import { latestUserText } from '../derive.js';
 import {
   type ArchivedDayOptions,
   type LoadResult,
@@ -357,6 +358,10 @@ interface RequestRow {
   cache_breakpoint_declined_by: string | null;
   rate_limit_present: number;
   source_dir: string;
+  /** The last user turn, extracted at ingest time. Null once derived if the body carried none. */
+  skim_text: string | null;
+  /** Whether the body was ever read for its derivatives. See `deriveBodies`. */
+  body_derived: number;
 }
 
 interface SkippedRow {
@@ -485,32 +490,6 @@ function dayFilter(
   return { keepDay: null, from: null, to: null };
 }
 
-function latestUserText(request: unknown): string | null {
-  if (typeof request !== 'object' || request === null) return null;
-  const messages = (request as { messages?: unknown }).messages;
-  if (!Array.isArray(messages)) return null;
-
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i] as { role?: unknown; content?: unknown };
-    if (message?.role !== 'user') continue;
-    if (typeof message.content === 'string' && message.content.trim()) return message.content.trim();
-    if (!Array.isArray(message.content)) continue;
-    const text = message.content
-      .filter(
-        (block): block is { type: 'text'; text: string } =>
-          typeof block === 'object' &&
-          block !== null &&
-          (block as { type?: unknown }).type === 'text' &&
-          typeof (block as { text?: unknown }).text === 'string',
-      )
-      .map((block) => block.text.trim())
-      .filter(Boolean)
-      .join('\n\n');
-    if (text) return text;
-  }
-  return null;
-}
-
 /**
  * One directory's worth of sidecars, straight out of SQLite. Valid rows and
  * skipped files merge back into a single filename-ordered stream — the order
@@ -552,6 +531,10 @@ type Entry = {
   make: () => Record<string, unknown>;
   parseError: boolean;
   day: string;
+  /** Whether ingest already read this row's body for its derivatives. */
+  derived: boolean;
+  /** The derivative itself, when `derived`. Null is a real answer, not a gap. */
+  skimText: string | null;
 };
 
 /**
@@ -614,6 +597,8 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[]): Entry[]
       make: () => toSidecar(row, toolsById.get(row.id) ?? [], rateById.get(row.id) ?? []),
       parseError: false,
       day: reportDay(row.timestamp) ?? row.id.slice(0, 10),
+      derived: row.body_derived === 1,
+      skimText: row.skim_text,
     });
   }
   for (const row of skippedRows) {
@@ -626,6 +611,9 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[]): Entry[]
       // A file that would not parse has no timestamp to be placed by, so the
       // file reader falls back to the filename's UTC day. So does this.
       day: parseError ? row.id.slice(0, 10) : (row.timestamp && reportDay(row.timestamp)) || row.id.slice(0, 10),
+      // A skipped file has no `request` row, so nothing derived one.
+      derived: false,
+      skimText: null,
     });
   }
   return entries;
@@ -648,24 +636,43 @@ async function materialize(
     if (entry.parseError) parseErrors += 1;
     if (opts.includeSkimRequests && !entry.parseError) {
       // The bodies stay on disk; the DB holds a pointer, not the blob. The
-      // eviction count is read off the disk here too — a row's `blob_evicted` is
-      // only as fresh as the last ingest, and parity needs both sides answering
-      // from the same observation.
+      // eviction count is read off the disk here either way — a row's
+      // `blob_evicted` is only as fresh as the last ingest, and parity needs both
+      // sides answering from the same observation.
       const rel =
         entry.sourceDir === LIVE ? `${entry.stem}.request.txt` : `${entry.sourceDir}/${entry.stem}.request.txt`;
-      let raw: string | null = null;
-      try {
-        raw = await readFile(path.join(logDir, rel), 'utf8');
-      } catch {
-        raw = null;
-      }
+      const abs = path.join(logDir, rel);
       let text: string | null = null;
-      if (raw === null) bodiesEvicted += 1;
-      else {
+      if (entry.derived) {
+        // Ingest already read this body while it existed, so the view no longer
+        // needs it: an existence check settles the eviction count, and the text
+        // comes from the column. Past the retention edge the count still rises
+        // and the answer survives — which is the whole point of deriving early.
+        let present = true;
         try {
-          text = latestUserText(JSON.parse(raw));
+          await access(abs);
         } catch {
-          text = null;
+          present = false;
+        }
+        if (!present) bodiesEvicted += 1;
+        text = entry.skimText;
+      } else {
+        // No derivative yet: a row ingested before the extraction existed, or one
+        // whose body vanished before any pass could read it. Fall back to the
+        // query-time read that was the only path before.
+        let raw: string | null = null;
+        try {
+          raw = await readFile(abs, 'utf8');
+        } catch {
+          raw = null;
+        }
+        if (raw === null) bodiesEvicted += 1;
+        else {
+          try {
+            text = latestUserText(JSON.parse(raw));
+          } catch {
+            text = null;
+          }
         }
       }
       sidecar.skimRequestText = text ?? undefined;

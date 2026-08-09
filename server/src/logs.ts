@@ -2,6 +2,7 @@ import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type AuditSidecar, isAuditSidecar, reportDay, shiftDay } from '@claude-proxy/core';
+import { latestUserText } from './derive.js';
 
 export { shiftDay };
 
@@ -50,32 +51,6 @@ export interface ReadOptions {
   /** Attach `__file` (the sidecar base name, minus `.audit.json`) to each parsed
    * object so callers can map a sidecar back to its raw request file. */
   includeFile?: boolean;
-}
-
-function latestUserText(request: unknown): string | null {
-  if (typeof request !== 'object' || request === null) return null;
-  const messages = (request as { messages?: unknown }).messages;
-  if (!Array.isArray(messages)) return null;
-
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i] as { role?: unknown; content?: unknown };
-    if (message?.role !== 'user') continue;
-    if (typeof message.content === 'string' && message.content.trim()) return message.content.trim();
-    if (!Array.isArray(message.content)) continue;
-    const text = message.content
-      .filter(
-        (block): block is { type: 'text'; text: string } =>
-          typeof block === 'object' &&
-          block !== null &&
-          (block as { type?: unknown }).type === 'text' &&
-          typeof (block as { text?: unknown }).text === 'string',
-      )
-      .map((block) => block.text.trim())
-      .filter(Boolean)
-      .join('\n\n');
-    if (text) return text;
-  }
-  return null;
 }
 
 /**
