@@ -103,7 +103,9 @@ destination: there is no page behind "Context", only the five stations it names.
 Each station has a [lucide](https://lucide.dev) icon. The headings cost the rail about a
 station's worth of height apiece, so on a short viewport the station list is what scrolls:
 the brand holds the top of the rail and the health badge stays pinned to the bottom, above
-its hairline, rather than dropping off with the last group. That scroller follows the page:
+its hairline, rather than dropping off with the last group. Both fixed ends carry a soft
+box-shadow over that scroller, so a station clipped at either edge reads as passing under
+them rather than as stopping short. That scroller follows the page:
 after a navigation, and again as the narrow-viewport drawer opens, the lit station is brought
 back inside it — reaching up stops at the station's section heading so it arrives labelled,
 reaching down only clears the bottom edge, and a station already in view leaves the reader's

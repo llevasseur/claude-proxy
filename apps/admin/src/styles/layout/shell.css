@@ -23,12 +23,17 @@
     border-right: 1px solid var(--line);
   }
 
+  /* Owns the gap to the stations, so its bottom edge is the line they scroll under
+   and the shadow falls there. `z-index` clears `.stations`, which is positioned. */
   .rail-head {
     flex: none;
     display: flex;
     align-items: center;
     gap: var(--space-5);
-    padding: var(--space-2) var(--space-3) 0;
+    padding: var(--space-2) var(--space-3) var(--space-10);
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 10px 16px -10px rgba(0, 0, 0, 0.75);
   }
   /* The wordmark is a link home to Overview, and should not read as one. */
   .brand-link {
@@ -67,7 +72,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-    margin-top: var(--space-10);
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -172,10 +176,14 @@
     border-color: var(--muted);
   }
 
+  /* The head's twin at the other end, lit from below. */
   .rail-foot {
     flex: none;
     padding-top: var(--space-9);
     border-top: 1px solid var(--line);
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 -10px 16px -10px rgba(0, 0, 0, 0.75);
   }
 
   /* drawer chrome — narrow breakpoint only */
@@ -237,7 +245,7 @@
       flex-direction: column;
       align-items: center;
       gap: var(--space-8);
-      padding: var(--space-2) 0 0;
+      padding: var(--space-2) 0 var(--space-10);
     }
     .app--rail-collapsed .brand {
       display: none;
@@ -302,23 +310,11 @@
   }
   .dot.ok {
     background: var(--signal);
-    animation: signal-pulse var(--motion-loop-slow) ease-out infinite;
   }
   .dot.bad {
     background: var(--coral);
   }
   .dot.warn {
     background: var(--amber);
-  }
-  @keyframes signal-pulse {
-    0% {
-      box-shadow: 0 0 0 0 rgba(70, 224, 192, 0.45);
-    }
-    70% {
-      box-shadow: 0 0 0 6px rgba(70, 224, 192, 0);
-    }
-    100% {
-      box-shadow: 0 0 0 0 rgba(70, 224, 192, 0);
-    }
   }
 }
