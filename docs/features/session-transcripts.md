@@ -139,7 +139,7 @@ and separates them. The blocker was a granularity problem, not a missing id.
   `useLiveQuery` mirrors each frame into the React Query cache under the page's existing query
   key, so the paired one-shot query stays the fallback; its status is `connecting`, `live`, or
   `offline`, shown by **LiveIndicator** as **Live** / **Connecting…** / **Offline** with a
-  pulsing teal, amber, or coral dot.
+  static teal, amber, or coral dot.
 
 The data path is `proxy/session.ts` (best-effort append on every observed request) →
 `logs/sessions/<threadId>.md` plus its `.nodes.jsonl` sidecar →
