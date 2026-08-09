@@ -43,9 +43,8 @@
     gap: var(--space-5);
     font-size: var(--text-5);
   }
-  /* Scoped to the list it bullets. Unscoped, this is a `components` rule against the
-   shell's `layout` one, so the layer order hands it every `.dot` in the sheet — and
-   its unsevered grey beat `.dot.ok`, leaving the health and live dots colourless. */
+  /* Scoped to the list it bullets: unscoped, this `components` rule outranks the
+   shell's `layout` `.dot.ok` by layer and greys every dot in the sheet. */
   .bucket-suggestions .dot {
     width: 7px;
     height: 7px;

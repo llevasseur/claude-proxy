@@ -23,9 +23,8 @@
     border-right: 1px solid var(--line);
   }
 
-  /* Carries the gap down to the stations itself, rather than leaving it on their
-   margin, so the head's bottom edge is the line they scroll under and its shadow
-   falls on that line. `z-index` puts it over them; `.stations` is positioned. */
+  /* Owns the gap to the stations, so its bottom edge is the line they scroll under
+   and the shadow falls there. `z-index` clears `.stations`, which is positioned. */
   .rail-head {
     flex: none;
     display: flex;
@@ -177,8 +176,7 @@
     border-color: var(--muted);
   }
 
-  /* The head's twin at the other end: lit from below, so the last stations read as
-   passing under it rather than stopping short of it. */
+  /* The head's twin at the other end, lit from below. */
   .rail-foot {
     flex: none;
     padding-top: var(--space-9);
@@ -310,8 +308,6 @@
     border-radius: 50%;
     flex: none;
   }
-  /* Colour alone carries the state: a stream that is up says so by being green, and
-   a dot that pulses forever reads as something asking to be looked at. */
   .dot.ok {
     background: var(--signal);
   }

@@ -25,8 +25,7 @@
       transform: none;
       visibility: visible;
     }
-    /* Navigation alone — the brand and collapse toggle stay on wide viewports. Its
-     gap to the stations goes with it, being the head's own padding now. */
+    /* Navigation alone — the brand and collapse toggle stay on wide viewports. */
     .rail-head {
       display: none;
     }
