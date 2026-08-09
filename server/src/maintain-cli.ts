@@ -130,6 +130,30 @@ async function reconcileRuns(logDir: string): Promise<void> {
   }
 }
 
+/**
+ * Move each `claimed` idea whose pull request has merged, closed, or lost its
+ * head branch. Skipped on a dry run — it writes. Never fatal: no `gh`, no
+ * network, no origin all mean "learned nothing this run", and the ledger is left
+ * exactly as it was.
+ *
+ * This is the step that makes the ideas ledger self-maintaining. Without it a
+ * merged idea sits `claimed` until a person notices, and a claim carrying a PR
+ * url never expires on its own by design.
+ */
+async function reconcileIdeas(logDir: string): Promise<void> {
+  try {
+    const { reconcileIdeaPrs, renderIdeaPrTransition } = await import('./ideas-pr.js');
+    const result = await reconcileIdeaPrs(logDir);
+    if (result.error) {
+      console.error(`[maintain] ideas: pull requests unreadable (${result.error}) — the ledger is untouched`);
+      return;
+    }
+    for (const t of result.transitions) console.log(`[maintain] ideas: ${renderIdeaPrTransition(t)}`);
+  } catch (err) {
+    console.error(`[maintain] ideas skipped: ${(err as Error).message}`);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const apply = args.includes('--apply');
@@ -138,7 +162,10 @@ async function main(): Promise<void> {
   const retentionDays = resolveRetentionWindow();
 
   console.log(`[maintain] log directory: ${logDir}`);
-  if (apply) await reconcileRuns(logDir);
+  if (apply) {
+    await reconcileRuns(logDir);
+    await reconcileIdeas(logDir);
+  }
 
   const corpus = await collectRetentionCorpus(logDir);
   const plan = planRetention({ corpus, today, retentionDays });

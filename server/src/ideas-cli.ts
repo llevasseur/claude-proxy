@@ -48,6 +48,7 @@ import {
   similarAreas,
   similarIdeaSlugs,
 } from '@claude-proxy/core';
+import { reconcileIdeaPrs, renderIdeaPrTransition } from './ideas-pr.js';
 import {
   addIdeasToStore,
   claimIdeasInStore,
@@ -66,6 +67,7 @@ const USAGE = `usage:
   ideas mark   --slug <slug> -s|--status <flag> [-n|--note <text>] [--thread <id>] [--json]
   ideas file   --slug <slug> --area <area> [--thread <id>] [--json]
   ideas note   --slug <slug> --text <text> [--thread <id>] [--json]
+  ideas sync   [--dry-run] [--thread <id>] [--json]
 
   <flags>    comma-separated: proposed, accepted, claimed, rejected, shipped
   <slug>     for --slug, the idea's kebab-case key; for --repo, a git remote
@@ -130,12 +132,23 @@ const USAGE = `usage:
   same attribution a bucket verdict carries. It is the answer to 'who accepted
   this'; unlike a verdict there is no window behind an idea, so nothing is counted.
 
+  sync reads the pull request linked on each 'claimed' and 'shipped' idea and
+  moves the status to match, so nobody has to remember to. A merged PR ships the
+  idea (with the PR url as the note, exactly as mark -s shipped writes it); a PR
+  closed unmerged, or one whose head branch is gone from the remote, RELEASES the
+  claim back to 'accepted'. An open PR changes nothing, and a 'shipped' idea is
+  terminal — no later PR event un-ships work that landed. A linked PR the listing
+  does not cover is reported and left alone rather than guessed at, since the
+  listing reads one repo while this ledger is device-wide. --dry-run prints the
+  plan and writes nothing. The scheduled 'maintain --apply' job runs this too,
+  which is what makes the status change without anyone asking for it.
+
   Only 'accepted' carries a human sign-off, and it is the only status /improve
   may act on. This CLI never sets one by itself.`;
 
 /** Flags that stand alone. Empty for `add`, whose `--json` carries the payload. */
 function booleanFlagsFor(command: string): string[] {
-  return command === 'add' ? [] : ['json', 'available'];
+  return command === 'add' ? [] : ['json', 'available', 'dry-run'];
 }
 
 function parseStatuses(raw: string): IdeaStatus[] {
@@ -381,6 +394,42 @@ async function run(argv: readonly string[]): Promise<void> {
     const what = flags.text.trim() ? 'commented on' : 'cleared the comment on';
     console.log(`${what} ${result.updated.join(', ')} in ${result.file}`);
     console.log(renderRows(ideaRows(result.store, {}).filter((r) => result.updated.includes(r.slug))).trimEnd());
+    return;
+  }
+
+  if (command === 'sync') {
+    if (flags.thread !== undefined && !isThreadId(flags.thread))
+      throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
+
+    const result = await reconcileIdeaPrs(logDir, {
+      dryRun: Boolean(flags['dry-run']),
+      ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }),
+    });
+    if (json) {
+      console.log(JSON.stringify(result, null, 2));
+      if (result.error) process.exitCode = 1;
+      return;
+    }
+    if (result.error) {
+      // Could not see GitHub at all. Distinct from "saw it, nothing to do".
+      console.log(`could not read pull requests: ${result.error} — the ledger is untouched`);
+      process.exitCode = 1;
+      return;
+    }
+    for (const t of result.transitions) console.log(renderIdeaPrTransition(t));
+    if (result.transitions.length === 0) console.log('no linked pull request implies a status change');
+    if (result.unobserved.length > 0) {
+      // Never guessed at: the listing reads one repo and is capped, while the
+      // ledger is device-wide.
+      console.log(`not covered by the listing, left alone: ${result.unobserved.map((l) => l.slug).join(', ')}`);
+    }
+    console.log(
+      result.dryRun
+        ? 'dry run — re-run without --dry-run to write this.'
+        : result.file
+          ? `written to ${result.file}`
+          : 'nothing written',
+    );
     return;
   }
 

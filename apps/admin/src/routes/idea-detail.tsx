@@ -117,7 +117,9 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
             {idea.claim.pr && (
               <>
                 {' — '}
-                <span className='mono-break'>{idea.claim.pr}</span>
+                <a className='link mono-break' href={idea.claim.pr} target='_blank' rel='noreferrer'>
+                  {idea.claim.pr}
+                </a>
               </>
             )}
           </div>

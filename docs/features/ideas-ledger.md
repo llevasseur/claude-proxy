@@ -167,6 +167,41 @@ and usable, but an implementing run only stops colliding once its command file c
 `ideas claim --by <branch>` as its first step and reads `list --available` in place of
 `list -s accepted`.
 
+### The linked PR moves the status, so nobody has to remember to
+
+The claim already carried the PR url. Nothing read it. So `shipped` was a thing a person asked an
+agent for after noticing a merge, and the two failure modes either side of that were worse: a merged
+idea sat `claimed` indefinitely, and a claim on a PR that was closed or whose branch went away held
+the idea **forever**, because a claim carrying `pr` deliberately never expires. `ideas sync` closes
+that loop — and `maintain --apply` runs it, which is what makes the status change without anyone
+asking.
+
+- **The decision is pure and the observation is not.** `planIdeaPrTransitions` in
+  `packages/core/src/ideas.ts` takes the store plus a list of `{ pr, outcome }` and returns the
+  transitions, the `IdeaMark[]` that performs them, and what it deliberately left alone.
+  `server/src/ideas-pr.ts` supplies the outcomes from `readPullRequests` and writes the marks.
+- **Four outcomes, and one of them is inferred.** `merged` and `closed` come off the PR row.
+  `open` is the rest. `detached` is an **open** PR whose `headRefName` is no longer in
+  `git ls-remote --heads origin` — not a PR state, but the shape an abandoned or already-cleaned-up
+  branch leaves, and reading it as `open` is what left the claim stuck.
+- **The moves.** `claimed` + merged → `shipped`, with the PR url as the note, which is byte for byte
+  the row `mark -s shipped -n <url>` writes by hand, so the automatic and manual paths agree and the
+  claim survives as the record of who built it. `claimed` + closed or detached → `accepted`: the
+  documented release, human sign-off intact, idea back on offer. `claimed` + open → nothing.
+- **`shipped` is terminal.** Its PR is still read, and no outcome moves it. Re-opening a merged PR or
+  deleting its branch must not un-ship landed work; the entry comes back under `unchanged` so a
+  reader can see it was checked rather than skipped.
+- **An unobserved link is missing data, never evidence.** The listing reads one repo and is capped at
+  `DEFAULT_PR_LIMIT`, while this ledger is device-wide, so a linked PR the listing does not cover is
+  reported under `unobserved` and left exactly as it was. The same principle governs the branch
+  check: an unreadable remote means *assume every branch is alive*, because the other reading would
+  release every live claim the first time the scheduled job ran offline.
+- **Failure is never fatal to the job.** No `gh`, no auth, no origin — `maintain` logs that the PRs
+  were unreadable and leaves the ledger untouched. That is distinct from a successful run with an
+  empty plan, and the two do not print the same thing.
+- `ideas sync --dry-run` prints the plan and writes nothing, which is the shape every other
+  maintenance step here has.
+
 ### Adjudicating from the dashboard
 
 The sign-off is a human decision, and requiring it at a terminal is what forced `/ideate` to stop
@@ -306,7 +341,9 @@ and a claim is `{ by, at, pr? }`.
 shape, the parse and apply functions, the slug, repo and area predicates, `SEED_IDEA_AREAS`,
 `countIdeaAreas`, `similarIdeaSlugs` and `similarAreas`. It sits beside `suggestion-status.ts` and
 imports nothing from it. `server/src/ideas-store.ts` is the only code that reads or writes the file,
-and `server/src/ideas-cli.ts` is the command line.
+and `server/src/ideas-cli.ts` is the command line. `server/src/ideas-pr.ts` is the PR reconciler —
+it observes through `server/src/github.ts` and writes through the store, and both `ideas sync` and
+`server/src/maintain-cli.ts`' `--apply` path call it.
 
 Over HTTP, `buildIdeas` is the read and `applyIdeaStatus`, `applyIdeaArea` and `applyIdeaComment` are
 the writes, all in `server/src/api.ts`; `server/src/server.ts` dispatches `/api/ideas`,
@@ -341,6 +378,16 @@ of the answer.
 - [x] `rejected` and `shipped` require a note; a mark on an unknown slug writes nothing.
 - [x] The pure half is unit-tested in `packages/core/test/ideas.test.ts` and the file handling in
       `server/test/ideas-store.test.ts`.
+- [x] A `claimed` idea whose linked PR merged becomes `shipped` with the PR url as its note, and
+      keeps the claim as the record of who built it.
+- [x] A `claimed` idea whose linked PR was closed unmerged, or whose head branch is gone from the
+      remote, is released to `accepted` with the claim dropped.
+- [x] A `shipped` idea is terminal: no PR outcome moves it, and it is reported as checked rather
+      than skipped.
+- [x] A linked PR the listing does not cover is reported and left alone, and an unreadable remote
+      is read as "every branch alive" rather than as "every branch deleted".
+- [x] `ideas sync --dry-run` writes nothing, and `maintain --apply` runs the same reconciliation
+      without failing the job when GitHub cannot be reached.
 - [x] Every verb works with no server running and takes `--json`.
 - [x] `GET /api/ideas` returns the rows with per-status counts, narrows by status and repo, refuses
       a checkout path, and refuses any non-GET under the read routes' 405 gate.
