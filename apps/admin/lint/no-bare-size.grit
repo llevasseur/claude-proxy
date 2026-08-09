@@ -57,8 +57,5 @@ or {
   `border-bottom-right-radius: $v`
 } where {
   $v <: r".*[1-9][0-9.]*px.*",
-  register_diagnostic(
-    span = $v,
-    message = "Bare px in a size declaration. Pick a step from the scale in @layer tokens — var(--space-N), var(--text-N) or var(--radius-N) — so this cannot drift from the component beside it."
-  )
+  register_diagnostic(span=$v, message="Bare px in a size declaration. Pick a step from the scale in @layer tokens — var(--space-N), var(--text-N) or var(--radius-N) — so this cannot drift from the component beside it.")
 }
