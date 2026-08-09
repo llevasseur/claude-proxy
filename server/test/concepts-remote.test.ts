@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildConcept, buildConcepts } from '../src/api.js';
 import { conceptStorePath } from '../src/concepts.js';
 import { RemoteConceptStoreError } from '../src/concepts-remote.js';
+import { PARITY_ROUTES } from '../src/parity.js';
 
 /**
  * The hosted store answers when it is configured, the local file when it is not,
@@ -196,6 +197,29 @@ describe('the local file, when a variable is missing', () => {
   });
 });
 
+describe('the parity harness', () => {
+  const conceptRoutes = () => PARITY_ROUTES.filter((route) => route.name.startsWith('/api/concepts'));
+
+  it('enumerates its concepts cases against the local file', async () => {
+    await writeFile(conceptStorePath(logDir), `${JSONL}\n`, 'utf8');
+    const counts = await Promise.all(
+      conceptRoutes().map(async (route) => (await route.cases({ logDir, limits: {} })).length),
+    );
+    expect(counts).toEqual([1, 2]);
+  });
+
+  it('enumerates nothing once the hosted store is configured', async () => {
+    await writeFile(conceptStorePath(logDir), `${JSONL}\n`, 'utf8');
+    configureRemote();
+    const fetchMock = stubWorker(ndjson(JSONL));
+
+    for (const route of conceptRoutes()) {
+      expect(await route.cases({ logDir, limits: {} })).toEqual([]);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('a hosted store that will not answer', () => {
   it('fails loudly on a non-2xx rather than serving the other store', async () => {
     configureRemote();
@@ -222,6 +246,17 @@ describe('a hosted store that will not answer', () => {
     expect(error.message).toContain('fetch failed');
     expect(error.message).toContain(EXPORT_URL);
     expect(error.message).not.toContain(TOKEN);
+  });
+
+  it('names the URL it actually requested when the configured URL carries a path prefix', async () => {
+    vi.stubEnv('CONCEPTS_URL', `${ORIGIN}/concepts`);
+    vi.stubEnv('CONCEPTS_TOKEN', TOKEN);
+    const fetchMock = stubWorker(ndjson('nope', 503));
+
+    const error = await rejection(buildConcepts(logDir));
+    const [requested] = fetchMock.mock.calls[0] as [string];
+    expect(requested).toBe(`${ORIGIN}/concepts/api/concepts/export`);
+    expect(error.message).toContain(requested);
   });
 
   it('names the store by origin and path only, so a credential in the URL cannot leak', async () => {

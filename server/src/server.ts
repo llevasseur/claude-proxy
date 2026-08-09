@@ -87,7 +87,7 @@ import {
 } from './chat.js';
 import { snapshotChatStream, subscribeChatStream } from './chat-stream.js';
 import { reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
-import { RemoteConceptStoreError } from './concepts-remote.js';
+import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.js';
 import { resolveDbPath } from './db/open.js';
 import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from './db/runtime.js';
 import { ALL_DAYS, resolveAllDays, type SidecarSource } from './db/source.js';
@@ -278,7 +278,7 @@ interface SseWatchSource {
  */
 interface SsePushSource {
   /** The value sent as the opening `snapshot`. */
-  snapshot: () => unknown;
+  snapshot: () => unknown | Promise<unknown>;
   /** Register for pushes; each one is sent as an `update`. Returns the unsubscribe. */
   subscribe: (push: (frame: unknown) => void) => () => void;
 }
@@ -291,6 +291,19 @@ type SseStream = (SseWatchSource | SsePushSource) & {
    */
   cors?: Record<string, string>;
 };
+
+/**
+ * A concepts stream, watching the log directory only when the local file is the
+ * backing store. `logs/` takes a write per proxied request and none of them say
+ * anything about the hosted store, so a remote-backed watch would refetch the
+ * whole corpus every debounce tick, per client, and drop each answer as
+ * unchanged. A remote-backed page refreshes on the next load instead.
+ */
+function conceptsStream(build: () => Promise<unknown>): SseStream {
+  // Nothing local to subscribe to: the snapshot and the heartbeat are the whole stream.
+  if (remoteConceptStore()) return { snapshot: build, subscribe: () => () => undefined };
+  return { watchPath: LOG_DIR, build, debounceMs: 600 };
+}
 
 /**
  * Serve one live JSON resource over Server-Sent Events. Sends the current value as a
@@ -311,10 +324,12 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
 
   let snapshot: unknown;
   try {
-    snapshot = watch ? await watch.build() : (stream as SsePushSource).snapshot();
+    snapshot = watch ? await watch.build() : await (stream as SsePushSource).snapshot();
   } catch (err) {
     const msg = (err as Error).message;
-    send(res, /(^|\b)not found:/.test(msg) ? 404 : 500, { error: msg }, cors);
+    // A configured concept store that will not answer is a 502 here too.
+    if (err instanceof RemoteConceptStoreError) send(res, 502, { error: msg }, cors);
+    else send(res, /(^|\b)not found:/.test(msg) ? 404 : 500, { error: msg }, cors);
     return;
   }
 
@@ -1039,11 +1054,11 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       case '/api/concepts/stream':
-        await serveSse(req, res, {
-          watchPath: LOG_DIR,
-          build: () => buildConcepts(LOG_DIR, readSource()),
-          debounceMs: 600,
-        });
+        await serveSse(
+          req,
+          res,
+          conceptsStream(() => buildConcepts(LOG_DIR, readSource())),
+        );
         return;
       // One concept, addressed by the line it sits on. The store is append-only,
       // so that line keeps pointing at the same record as newer ones land above
@@ -1057,7 +1072,7 @@ const server = http.createServer(async (req, res) => {
         }
         const build = () => buildConcept(LOG_DIR, ord, readSource());
         if (url.pathname.endsWith('/stream')) {
-          await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+          await serveSse(req, res, conceptsStream(build));
           return;
         }
         try {

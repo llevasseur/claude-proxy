@@ -46,16 +46,23 @@ export function remoteConceptStore(): RemoteConceptStore | null {
   return { origin: origin.replace(/\/+$/, ''), token };
 }
 
+/** The URL a read is issued to. */
+function exportUrl(store: RemoteConceptStore): string {
+  return `${store.origin}${EXPORT_PATH}`;
+}
+
 /**
  * The URL a read goes to, safe to show a reader.
  *
- * Rebuilt from `origin` + `pathname` so that a credential someone put in the
- * configured URL cannot ride along into a response body or an error message. An
- * unparseable URL is reported by its path alone for the same reason.
+ * Derived from {@link exportUrl}, so a configured URL carrying a path prefix
+ * cannot make the label name an address that was never requested, and reduced to
+ * `origin` + `pathname`, so a credential in that URL cannot ride along into a
+ * response body or an error message. An unparseable URL is reported by its path
+ * alone for the same reason.
  */
 export function remoteConceptStoreLabel(store: RemoteConceptStore): string {
   try {
-    const url = new URL(EXPORT_PATH, `${store.origin}/`);
+    const url = new URL(exportUrl(store));
     return `${url.origin}${url.pathname}`;
   } catch {
     return EXPORT_PATH;
@@ -81,7 +88,7 @@ export async function readRemoteConcepts(store: RemoteConceptStore): Promise<Sto
   const label = remoteConceptStoreLabel(store);
   let response: Response;
   try {
-    response = await fetch(`${store.origin}${EXPORT_PATH}`, {
+    response = await fetch(exportUrl(store), {
       headers: { authorization: `Bearer ${store.token}` },
     });
   } catch (err) {

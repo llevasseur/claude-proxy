@@ -42,9 +42,10 @@ mechanism, and this one does.
   (`CONCEPTS_URL/CONCEPTS_TOKEN unset`) when it did not. A page reading the local file on a
   device whose concepts live in the hosted store looks empty and correct, and that ambiguity —
   not the read itself — is what made a saved concept look lost.
-- **A configured store that will not answer is a 502, never a quiet fallback.** Falling back to
-  the local file on a failed remote read would reproduce the same wrong-store-looks-fine page the
-  labelling exists to prevent, so the read fails and the page shows an error.
+- **A configured store that will not answer is a 502, never a quiet fallback**, on the stream
+  routes as well as the two request routes. Falling back to the local file on a failed remote read
+  would reproduce the same wrong-store-looks-fine page the labelling exists to prevent, so the read
+  fails and the page shows an error.
 - The hosted read goes to `GET /api/concepts/export` rather than the compact listing route: the
   export carries the optional detail fields the detail page renders and every version of a term,
   which is the local file's own reading of itself. One request answers both routes.
