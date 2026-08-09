@@ -48,9 +48,8 @@ export function SystemPromptPage() {
   const [view, setView] = useState<EditorView>('edit');
   const [armedEmpty, setArmedEmpty] = useState(false);
   const [saved, setSaved] = useState<{ modified: string | null; backupPath: string | null } | null>(null);
-  // The file's mtime when editing began. A background refetch moves `prompt` on an
-  // idle tab, so this — not the current query data — is the version being edited,
-  // and the version the confirm step checks the disk against.
+  // The file's mtime when editing began — the version the confirm step checks the
+  // disk against. A background refetch moves `prompt` out from under an idle tab.
   const [editingFrom, setEditingFrom] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<SaveConfirm | null>(null);
 
@@ -67,8 +66,7 @@ export function SystemPromptPage() {
   const clearsPrompt = text.trim() === '' && onDisk.trim() !== '';
 
   // Save is a two-step: re-read the file, show what the write would change, then
-  // write against the version just read. The read is the point — the page may have
-  // been open for hours, and only the bytes on disk *now* say what is at stake.
+  // write against the version just read.
   const review = useMutation({
     mutationFn: getSystemPrompt,
     onSuccess: (res) => {
@@ -273,10 +271,9 @@ interface SaveConfirm {
  * The step between pressing Save and the file being replaced: a line diff of the
  * draft against the bytes on disk *now*, not the ones the page loaded with.
  *
- * The staleness check is the same read. If the file's mtime no longer matches the
- * one editing began from, something else wrote to it — and rather than refusing
- * with a message the reader would have to go to a terminal to check, the diff
- * already on screen is the evidence, taken against the new contents.
+ * The staleness check is that same read: when the mtime no longer matches the one
+ * editing began from, the card says so and the diff on screen — already taken
+ * against the new contents — is the evidence.
  */
 function SaveConfirmCard({
   confirm,
@@ -298,8 +295,8 @@ function SaveConfirmCard({
   const diff = useMemo(() => diffSystemPromptText(confirm.disk.text, confirm.proposed), [confirm]);
   const source = useMemo(() => diff.lines.map((line) => line.text).join('\n'), [diff]);
   const stale = confirm.disk.modified !== confirm.editingFrom;
-  // The server re-checks at write time, so the file can still move between this
-  // read and the click. That refusal comes back as a 409.
+  // The server re-checks at write time, so a file that moves between this read and
+  // the click still comes back refused, as a 409.
   const movedAgain = error !== null && /changed on disk/.test(error.message);
 
   const lineClass = (index: number) => {

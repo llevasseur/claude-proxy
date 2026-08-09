@@ -169,11 +169,7 @@ export interface SystemPromptDiff {
   removed: number;
   /** The two texts are byte-identical — a save would write nothing new. */
   identical: boolean;
-  /**
-   * The change was too large to line up, so it reads as a whole-file replacement
-   * rather than an edit. Honest rather than wrong: at that size there is no small
-   * set of edits to show.
-   */
+  /** The change was too large to line up, so it reads as a whole-file replacement. */
   wholeFile: boolean;
 }
 
@@ -181,9 +177,8 @@ export interface SystemPromptDiff {
 const DIFF_CONTEXT = 3;
 
 /**
- * Cells the alignment table may fill. The 200 KB ceiling allows a few thousand
- * lines, and a wholesale rewrite of one would square that — past this the diff
- * degrades to a replacement instead of allocating for it.
+ * Cells the alignment table may fill. Past this the diff degrades to a whole-file
+ * replacement instead of allocating for it.
  */
 const DIFF_MAX_CELLS = 4_000_000;
 
@@ -207,9 +202,8 @@ function replaceAll(before: string[], after: string[]): DiffOp[] {
 }
 
 /**
- * Longest-common-subsequence alignment of two line arrays. A plain table rather
- * than a diff library: the caller has already trimmed the matching head and tail,
- * so what reaches here is the changed region alone.
+ * Longest-common-subsequence alignment of two line arrays. The caller has already
+ * trimmed the matching head and tail, so this sees the changed region alone.
  */
 function alignLines(before: string[], after: string[]): DiffOp[] {
   const n = before.length;
@@ -253,8 +247,7 @@ const MARKERS: Record<DiffOp['kind'], string> = { equal: ' ', added: '+', remove
 /**
  * A unified line diff of `before` against `after`, ready to render as text.
  *
- * This is what the dashboard shows before it overwrites the device instruction
- * file: `before` is the bytes read back off disk at confirm time, `after` is the
+ * `before` is the bytes read back off disk at confirm time and `after` the
  * normalized draft about to land, so the diff describes the write itself rather
  * than the state the page happened to load with.
  */
@@ -264,8 +257,7 @@ export function diffSystemPromptText(before: string, after: string): SystemPromp
   const a = diffLines(before);
   const b = diffLines(after);
 
-  // A long instruction file usually changes in one place, so the matching head and
-  // tail come off first and only the middle is aligned.
+  // A long instruction file usually changes in one place, so only the middle is aligned.
   let head = 0;
   while (head < a.length && head < b.length && a[head] === b[head]) head++;
   let tail = 0;

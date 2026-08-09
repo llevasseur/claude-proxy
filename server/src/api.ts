@@ -2540,10 +2540,9 @@ export interface SystemPromptUpdateResponse extends SystemPromptResponse {
  * Replace the device system prompt with `text` and answer with a fresh read of the
  * file, not an echo. Invalid input throws before anything is written.
  *
- * `expectedModified` is the mtime the caller last read. When it is sent and the
- * file no longer carries it, something else wrote to the file since — the save is
- * refused rather than silently overwriting an edit nobody has seen. Omitting it
- * writes regardless, which is what a caller that never read the file wants.
+ * `expectedModified` is the mtime the caller last read. When it is sent and the file
+ * no longer carries it the save is refused, rather than overwriting an edit nobody
+ * has seen. Omitting it writes regardless.
  */
 export async function buildSystemPromptUpdate(
   promptPath: string,

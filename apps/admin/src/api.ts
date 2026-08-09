@@ -919,9 +919,8 @@ export const getConcept = (ord: number) => get<ConceptResponse>(`/api/concepts/c
 export const getSystemPrompt = () => get<SystemPromptResponse>('/api/system-prompt');
 /**
  * Overwrite it. The server keeps the previous contents in a `.bak` beside the file.
- * `expectedModified` is the mtime the save is replacing — the server refuses (409)
- * when the file no longer carries it, so a concurrent edit is never overwritten
- * unseen. Omit it to write regardless.
+ * `expectedModified` is the mtime the save is replacing; the server answers 409 when
+ * the file no longer carries it. Omit it to write regardless.
  */
 export const saveSystemPrompt = (text: string, expectedModified?: string | null) =>
   post<SystemPromptUpdateResponse>(
