@@ -67,7 +67,7 @@
   .gband {
     position: absolute;
     border: 1px dashed color-mix(in srgb, var(--violet) 50%, transparent);
-    border-radius: 16px;
+    border-radius: var(--radius-7);
     background: color-mix(in srgb, var(--violet) 6%, transparent);
     /* The canvas pans straight through a band; only its label takes the pointer. */
     pointer-events: none;
@@ -94,17 +94,17 @@
     pointer-events: auto;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-5);
     /* A narrow fold (mobile) makes the band barely a cell wide — clip, never spill. */
     max-width: calc(100% - 20px);
     overflow: hidden;
-    margin: 7px 0 0 14px;
-    padding: 3px 10px 3px 4px;
+    margin: var(--space-5) 0 0 var(--space-8);
+    padding: var(--space-3) var(--space-6) var(--space-3) var(--space-3);
     font: inherit;
     color: var(--muted);
     background: none;
     border: none;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     cursor: pointer;
   }
   .gband-head:hover {
@@ -112,7 +112,7 @@
   }
   .gband-kind {
     flex: none;
-    font-size: 9.5px;
+    font-size: var(--text-2);
     letter-spacing: 0.09em;
     text-transform: uppercase;
     font-weight: 700;
@@ -121,7 +121,7 @@
   .gband-type {
     flex: 0 1 auto;
     min-width: 0;
-    font-size: 11px;
+    font-size: var(--text-3);
     font-family: var(--font-mono);
     color: var(--text);
     white-space: nowrap;
@@ -133,20 +133,20 @@
     flex: 1 1 auto;
     min-width: 0;
     max-width: 34ch;
-    font-size: 11.5px;
+    font-size: var(--text-4);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .gband-state {
     flex: none;
-    font-size: 10px;
+    font-size: var(--text-2);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--faint);
     border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 1px 7px;
+    border-radius: var(--radius-pill);
+    padding: var(--space-1) var(--space-5);
   }
   .gband-state.is-flight {
     color: var(--violet);
@@ -159,7 +159,7 @@
     border: 1px dashed color-mix(in srgb, var(--coral) 45%, transparent);
     border-left-width: 3px;
     border-left-style: solid;
-    border-radius: 16px;
+    border-radius: var(--radius-7);
     background: color-mix(in srgb, var(--coral) 5%, transparent);
     /* Like a band, the canvas pans straight through it. */
     pointer-events: none;
@@ -167,15 +167,15 @@
   .gtrail-head {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-5);
     max-width: calc(100% - 20px);
     overflow: hidden;
-    margin: 7px 0 0 14px;
+    margin: var(--space-5) 0 0 var(--space-8);
     color: var(--muted);
   }
   .gtrail-kind {
     flex: none;
-    font-size: 9.5px;
+    font-size: var(--text-2);
     letter-spacing: 0.09em;
     text-transform: uppercase;
     font-weight: 700;
@@ -183,7 +183,7 @@
   }
   .gtrail-why {
     flex: none;
-    font-size: 11px;
+    font-size: var(--text-3);
     font-family: var(--font-mono);
     color: var(--text);
   }
@@ -191,7 +191,7 @@
     flex: 1 1 auto;
     min-width: 0;
     max-width: 44ch;
-    font-size: 11.5px;
+    font-size: var(--text-4);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -202,15 +202,15 @@
     position: absolute;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 8px 11px;
+    gap: var(--space-2);
+    padding: var(--space-5) var(--space-7);
     text-align: left;
     font: inherit;
     color: var(--text);
     background: var(--surface-2);
     border: 1px solid var(--line);
     border-left: 3px solid var(--gc);
-    border-radius: 9px;
+    border-radius: var(--radius-4);
     box-shadow: 0 10px 26px -14px var(--gc);
     cursor: pointer;
     overflow: hidden;
@@ -264,17 +264,17 @@
   .gnode--root,
   .gnode--agent {
     background: var(--surface);
-    gap: 3px;
+    gap: var(--space-3);
   }
   .gnode-kind {
-    font-size: 9.5px;
+    font-size: var(--text-2);
     letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--gc);
     font-weight: 600;
   }
   .gnode-title {
-    font-size: 12.5px;
+    font-size: var(--text-5);
     line-height: 1.35;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -288,11 +288,11 @@
   }
   /* Larger nodes: boxes are laid out roomier, so let each label run past the compact clamp. */
   .graph-canvas.is-roomy .gnode {
-    gap: 5px;
-    padding: 12px 15px;
+    gap: var(--space-4);
+    padding: var(--space-7) var(--space-8);
   }
   .graph-canvas.is-roomy .gnode-title {
-    font-size: 13.5px;
+    font-size: var(--text-6);
     line-height: 1.45;
     -webkit-line-clamp: 8;
   }
@@ -301,7 +301,7 @@
     -webkit-line-clamp: 5;
   }
   .gnode-sub {
-    font-size: 10.5px;
+    font-size: var(--text-3);
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
@@ -309,8 +309,8 @@
   }
   .gnode-chips {
     display: flex;
-    gap: 8px;
-    font-size: 10.5px;
+    gap: var(--space-5);
+    font-size: var(--text-3);
     color: var(--muted);
     margin-top: auto;
   }
@@ -342,19 +342,19 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: 12px;
+    gap: var(--space-7);
     max-width: calc(100% - 28px);
-    padding: 8px 12px;
+    padding: var(--space-5) var(--space-7);
     background: color-mix(in srgb, var(--surface) 88%, transparent);
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-5);
     backdrop-filter: blur(6px);
-    font-size: 12px;
+    font-size: var(--text-4);
   }
   .graph-status {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: var(--space-5);
     font-weight: 600;
   }
   .glive {
@@ -379,28 +379,28 @@
   .graph-limit {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-4);
     color: var(--muted);
   }
   .graph-limit select {
     background: var(--surface-2);
     color: var(--text);
     border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 2px 6px;
+    border-radius: var(--radius-3);
+    padding: var(--space-2) var(--space-4);
     font: inherit;
   }
   .graph-btns {
     display: inline-flex;
-    gap: 6px;
+    gap: var(--space-4);
   }
   .graph-btns button {
     min-width: 30px;
-    padding: 4px 10px;
+    padding: var(--space-3) var(--space-6);
     background: var(--surface-2);
     color: var(--text);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-3);
     font: inherit;
     cursor: pointer;
   }
@@ -412,7 +412,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 4px 8px;
+    padding: var(--space-3) var(--space-5);
   }
   .graph-btns .graph-icon-btn[aria-pressed="true"] {
     border-color: var(--signal);
@@ -421,18 +421,18 @@
   .graph-legend {
     display: inline-flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: var(--space-6);
     color: var(--muted);
   }
   .glegend-item {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: var(--space-4);
   }
   .glegend-dot {
     width: 9px;
     height: 9px;
-    border-radius: 2px;
+    border-radius: var(--radius-1);
   }
 
   .graph-note {
@@ -441,10 +441,10 @@
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 4;
-    padding: 10px 16px;
+    padding: var(--space-6) var(--space-9);
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-4);
   }
 
   /* Left session rail — fixed over the canvas, collapses to a narrow strip. It narrows
@@ -470,13 +470,13 @@
   }
   .graph-sessions.is-collapsed .gs-head {
     justify-content: center;
-    padding: 10px 0;
+    padding: var(--space-6) 0;
   }
   /* Collapsed rail label, turned on its side to fit. */
   .gs-rail-label {
     writing-mode: vertical-rl;
-    margin: 10px auto 0;
-    font-size: 10px;
+    margin: var(--space-6) auto 0;
+    font-size: var(--text-2);
     letter-spacing: 0.09em;
     text-transform: uppercase;
     white-space: nowrap;
@@ -487,12 +487,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    padding: 12px 14px;
+    gap: var(--space-5);
+    padding: var(--space-7) var(--space-8);
     border-bottom: 1px solid var(--line);
   }
   .gs-title {
-    font-size: 11px;
+    font-size: var(--text-3);
     letter-spacing: 0.09em;
     text-transform: uppercase;
     font-weight: 700;
@@ -502,7 +502,7 @@
     background: var(--surface-2);
     color: var(--muted);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-3);
     width: 24px;
     height: 24px;
     line-height: 1;
@@ -521,20 +521,20 @@
     touch-action: pan-y;
     display: flex;
     flex-direction: column;
-    padding: 8px;
-    gap: 4px;
+    padding: var(--space-5);
+    gap: var(--space-3);
   }
   /* One rail entry: a fold toggle plus the session button, indented by tree depth. */
   .gs-row {
     display: flex;
     align-items: flex-start;
-    gap: 2px;
+    gap: var(--space-2);
   }
   .gs-fold {
     flex: none;
     width: 16px;
-    padding: 8px 0 0;
-    font-size: 10px;
+    padding: var(--space-5) 0 0;
+    font-size: var(--text-2);
     line-height: 1;
     color: var(--faint);
     background: none;
@@ -553,15 +553,15 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    padding: 8px 10px;
+    gap: var(--space-3);
+    padding: var(--space-5) var(--space-6);
     text-align: left;
     font: inherit;
     color: var(--text);
     background: transparent;
     border: 1px solid transparent;
     border-left: 3px solid transparent;
-    border-radius: 8px;
+    border-radius: var(--radius-4);
     cursor: pointer;
     transition:
       background var(--motion-duration) ease,
@@ -582,8 +582,8 @@
     border-left-color: var(--violet);
   }
   .gs-item-type {
-    margin-right: 6px;
-    font-size: 10px;
+    margin-right: var(--space-4);
+    font-size: var(--text-2);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     font-weight: 700;
@@ -591,7 +591,7 @@
   }
   /* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
   .gs-item-title {
-    font-size: 12.5px;
+    font-size: var(--text-5);
     line-height: 1.35;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -599,7 +599,7 @@
     overflow: hidden;
   }
   .gs-item-meta {
-    font-size: 10.5px;
+    font-size: var(--text-3);
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
@@ -656,62 +656,62 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
+    padding: var(--space-8) var(--space-9);
     border-bottom: 1px solid var(--line);
   }
   .gi-kind {
-    font-size: 11px;
+    font-size: var(--text-3);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     font-weight: 700;
     color: var(--gc);
-    padding: 3px 10px;
+    padding: var(--space-3) var(--space-6);
     border: 1px solid var(--gc);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
   }
   .gi-actions {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-6);
   }
   .gi-close,
   .gi-wide {
     background: none;
     border: none;
     color: var(--muted);
-    font-size: 22px;
+    font-size: var(--text-9);
     line-height: 1;
     cursor: pointer;
   }
   .gi-wide {
-    font-size: 15px;
+    font-size: var(--text-7);
   }
   .gi-close:hover,
   .gi-wide:hover {
     color: var(--text);
   }
   .gi-body {
-    padding: 16px;
+    padding: var(--space-9);
     overflow-y: auto;
     overscroll-behavior: contain;
     touch-action: pan-y;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: var(--space-8);
   }
   .gi-field {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: var(--space-3);
   }
   .gi-label {
-    font-size: 10.5px;
+    font-size: var(--text-3);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--faint);
   }
   .gi-value {
-    font-size: 13px;
+    font-size: var(--text-5);
     word-break: break-word;
   }
   .gi-text {
@@ -734,18 +734,18 @@
   .gi-text.is-full {
     max-height: 42vh;
     overflow-y: auto;
-    margin-top: 2px;
-    padding: 8px 10px;
+    margin-top: var(--space-2);
+    padding: var(--space-5) var(--space-6);
     background: var(--surface-2);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-4);
   }
   .gi-more {
     display: block;
-    margin-top: 4px;
+    margin-top: var(--space-3);
     padding: 0;
     font: inherit;
-    font-size: 12px;
+    font-size: var(--text-4);
     background: none;
     border: none;
     cursor: pointer;
@@ -754,34 +754,34 @@
     text-decoration: underline;
   }
   .gi-note {
-    font-size: 12px;
+    font-size: var(--text-4);
   }
   .gi-stats {
     display: flex;
-    gap: 10px;
+    gap: var(--space-6);
   }
   .gi-stat {
     flex: 1;
-    padding: 8px 10px;
+    padding: var(--space-5) var(--space-6);
     background: var(--surface-2);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-4);
     text-align: center;
   }
   .gi-stat-value {
     display: block;
-    font-size: 18px;
+    font-size: var(--text-8);
     font-family: var(--font-display);
   }
   .gi-stat-bad {
     color: var(--coral);
   }
   .gi-stat-label {
-    font-size: 10.5px;
+    font-size: var(--text-3);
     color: var(--muted);
   }
   .gi-open {
-    margin-top: 4px;
+    margin-top: var(--space-3);
   }
   /* In-page actions wearing the link style. */
   button.gi-open {

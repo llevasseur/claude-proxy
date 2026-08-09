@@ -52,6 +52,16 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
     which is why it says so here.
   Everything else is suppressed per site with a stated reason rather than turned
   off; prefer that when a new rule fires on deliberate code.
+- `biome.json` loads one GritQL plugin, `apps/admin/lint/no-bare-size.grit`. It
+  refuses a bare px in a `padding`, `margin`, `gap`, `font-size` or
+  `border-radius` declaration, because those now name a step of the space, type
+  and radius scale in `apps/admin/src/styles/tokens.css`. If it fires, pick a
+  step (`var(--space-N)`, `var(--text-N)`, `var(--radius-N)`) rather than
+  suppressing — and if no step fits, add a *named* token beside `--space-page`,
+  since a size one rule reaches for still wants a name. The rule is meant to
+  scope to `@layer components`; Biome's GritQL has no working `within` for an
+  at-rule, so it scopes by file instead, which is the same statement here — the
+  dashboard sheet is the only CSS in the repo.
 - `.gitattributes` exists for exactly one line, `CHANGELOG.md merge=union`, and it
   is load-bearing rather than tidy-up. Nearly every commit here touches
   `CHANGELOG.md`, and every one of them **prepends** — so two branches in flight

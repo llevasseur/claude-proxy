@@ -30,6 +30,62 @@
     --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
+    /* space
+   *
+   * Every padding, margin and gap in the sheet is one of these steps. The
+   * rhythm is 2px to `--space-9` and 4px above it, because that is what the
+   * sheet already used — 6, 10 and 14 are load-bearing, not drift. `--space-1`
+   * is the hairline: the vertical padding of an inline chip, where 2px is
+   * already too much. */
+    --space-1: 1px;
+    --space-2: 2px;
+    --space-3: 4px;
+    --space-4: 6px;
+    --space-5: 8px;
+    --space-6: 10px;
+    --space-7: 12px;
+    --space-8: 14px;
+    --space-9: 16px;
+    --space-10: 20px;
+    --space-11: 24px;
+    --space-12: 32px;
+    /* The page shell's own frame — not steps a component picks, so they are
+   * named rather than a coarse tail on the ramp. */
+    --space-page: 40px;
+    --space-page-lg: 56px;
+    --space-page-xl: 72px;
+
+    /* type
+   *
+   * Seven steps and three display sizes. The half-pixel sizes this replaces —
+   * 9.5, 10.5, 11.5, 12.5, 13.5 — each round up half a pixel to the step
+   * above. */
+    --text-1: 9px;
+    --text-2: 10px;
+    --text-3: 11px;
+    --text-4: 12px;
+    --text-5: 13px;
+    --text-6: 14px;
+    --text-7: 15px;
+    /* Display sizes. */
+    --text-8: 18px;
+    --text-9: 22px;
+    --text-10: 28px;
+
+    /* radius
+   *
+   * The dashboard draws three shapes: the card, the badge and the pill.
+   * `--radius-pill` is the shape rather than a size — large enough that the
+   * corner is always a half-capsule. */
+    --radius-1: 2px;
+    --radius-2: 4px;
+    --radius-3: 6px;
+    --radius-4: 8px;
+    --radius-5: 10px;
+    --radius-6: 12px;
+    --radius-7: 16px;
+    --radius-pill: 999px;
+
     /* motion
    *
    * Every duration in the sheet is a multiple of this one. The reduced-motion

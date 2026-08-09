@@ -13,7 +13,7 @@
   .table th,
   .table td {
     text-align: left;
-    padding: 9px 10px;
+    padding: var(--space-5) var(--space-6);
     border-bottom: 1px solid var(--line);
     /* Break long unbreakable tokens so a cell can't force the table past its card. */
     overflow-wrap: anywhere;
@@ -22,14 +22,14 @@
     font-family: var(--font-mono);
     color: var(--muted);
     font-weight: 600;
-    font-size: 10.5px;
+    font-size: var(--text-3);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     /* Keep short headers on one line. */
     white-space: nowrap;
   }
   .table td {
-    font-size: 13px;
+    font-size: var(--text-5);
   }
   .table td.num,
   .table th.num {
@@ -52,10 +52,10 @@
   @container card (max-width: 560px) {
     .table th,
     .table td {
-      padding: 8px 6px;
+      padding: var(--space-5) var(--space-4);
     }
     .table td {
-      font-size: 12.5px;
+      font-size: var(--text-5);
     }
     /* A note anchored to a header cannot open wider than the card holding it. */
     .hint-bubble {
@@ -75,15 +75,15 @@
   }
   .table th .sort-arrow {
     display: inline-block;
-    margin-left: 4px;
+    margin-left: var(--space-3);
     opacity: 0.7;
-    font-size: 9px;
+    font-size: var(--text-1);
   }
   /* Column-header hints. The note is prose, so it resets the header's uppercase mono. */
   .hint {
     position: relative;
     display: inline-block;
-    margin-left: 5px;
+    margin-left: var(--space-4);
   }
   .hint-mark {
     width: 13px;
@@ -94,7 +94,7 @@
     background: transparent;
     color: var(--muted);
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: var(--text-1);
     line-height: 1;
     text-transform: none;
     vertical-align: middle;
@@ -114,11 +114,11 @@
     max-width: 260px;
     background: var(--surface-2);
     border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 7px 9px;
+    border-radius: var(--radius-4);
+    padding: var(--space-5) var(--space-5);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     font-family: var(--font-body);
-    font-size: 11.5px;
+    font-size: var(--text-4);
     font-weight: 400;
     line-height: 1.45;
     letter-spacing: normal;
@@ -174,15 +174,15 @@
   }
   .skim-request pre {
     max-height: 280px;
-    margin: 12px 0 4px;
-    padding: 12px;
+    margin: var(--space-7) 0 var(--space-3);
+    padding: var(--space-7);
     overflow: auto;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-4);
     background: var(--ink);
     color: var(--muted);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
     line-height: 1.5;
     white-space: pre-wrap;
   }
@@ -198,7 +198,7 @@
   .rowbar {
     height: 10px;
     background: linear-gradient(90deg, var(--signal-dim), var(--signal));
-    border-radius: 4px;
+    border-radius: var(--radius-2);
     min-width: 2px;
   }
 }

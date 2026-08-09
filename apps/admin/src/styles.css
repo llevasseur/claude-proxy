@@ -27,6 +27,9 @@
 /* One file per component. Order within the layer is not load-bearing except where
  * a file's own comments say so. */
 @import "./styles/components/stat-card.css";
+/* First among the components on purpose: a component file that names the same
+ * control still wins, so these stay a default to reach for. */
+@import "./styles/components/control.css";
 @import "./styles/components/controls.css";
 @import "./styles/components/chart.css";
 @import "./styles/components/trend-carousel.css";

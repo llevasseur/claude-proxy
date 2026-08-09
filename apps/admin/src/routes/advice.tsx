@@ -133,7 +133,7 @@ function HeuristicAdvice({
 
         {steady.length > 0 && (
           <div className='advice-steady'>
-            <button type='button' className='idea-toggle' onClick={() => setExpanded(!expanded)}>
+            <button type='button' className='btn-quiet idea-toggle' onClick={() => setExpanded(!expanded)}>
               {expanded ? 'Hide' : 'Show'} {steady.length} unchanged{since ? ` since ${since}` : ''}
             </button>
             {!expanded && <span className='muted advice-steady-names'>{steady.map((a) => a.title).join(' · ')}</span>}
