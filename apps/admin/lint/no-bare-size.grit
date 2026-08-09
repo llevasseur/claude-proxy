@@ -1,0 +1,64 @@
+// A padding, margin, gap, font size or corner radius names a step of the scale
+// declared in `@layer tokens`, never a bare pixel value.
+//
+// This is what makes the scale a rule rather than a tidy-up. Without it the next
+// component writes `padding: 7px` because 6px looked a shade tight, and the sheet
+// is back to 27 spacing values that differ from a neighbour by one pixel — the
+// drift `--rail-inset` was introduced to stop, at the scale of the whole sheet.
+//
+// Reach for `var(--space-N)`, `var(--text-N)` or `var(--radius-N)`. If no step
+// fits, the honest fix is usually a *named* token beside `--space-page` rather
+// than a literal, because a value one rule reaches for still wants a name.
+//
+// Scope. The rule is meant to hold inside `@layer components`, but Biome's GritQL
+// cannot express "within this at-rule" — a `within \`@layer components { $_ }\``
+// clause compiles and then matches nothing. Scoping is therefore by file, which
+// here is the same statement: the dashboard sheet is the only CSS in the repo,
+// each partial wraps its whole contents in one `@layer`, and `tokens.css` holds
+// only custom properties, which this pattern does not match.
+//
+// Allowed through: a value with no px at all (`0`, a `var()`, a ratio), and a
+// zero written as `0px` — the `[1-9]` in the pattern is what lets the `clamp()`
+// floors in chat.css keep their `0px`, since a zero has no size to snap.
+
+language css
+
+or {
+  `padding: $v`,
+  `padding-top: $v`,
+  `padding-right: $v`,
+  `padding-bottom: $v`,
+  `padding-left: $v`,
+  `padding-inline: $v`,
+  `padding-inline-start: $v`,
+  `padding-inline-end: $v`,
+  `padding-block: $v`,
+  `padding-block-start: $v`,
+  `padding-block-end: $v`,
+  `margin: $v`,
+  `margin-top: $v`,
+  `margin-right: $v`,
+  `margin-bottom: $v`,
+  `margin-left: $v`,
+  `margin-inline: $v`,
+  `margin-inline-start: $v`,
+  `margin-inline-end: $v`,
+  `margin-block: $v`,
+  `margin-block-start: $v`,
+  `margin-block-end: $v`,
+  `gap: $v`,
+  `row-gap: $v`,
+  `column-gap: $v`,
+  `font-size: $v`,
+  `border-radius: $v`,
+  `border-top-left-radius: $v`,
+  `border-top-right-radius: $v`,
+  `border-bottom-left-radius: $v`,
+  `border-bottom-right-radius: $v`
+} where {
+  $v <: r".*[1-9][0-9.]*px.*",
+  register_diagnostic(
+    span = $v,
+    message = "Bare px in a size declaration. Pick a step from the scale in @layer tokens — var(--space-N), var(--text-N) or var(--radius-N) — so this cannot drift from the component beside it."
+  )
+}
