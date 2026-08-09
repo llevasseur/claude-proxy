@@ -71,6 +71,39 @@ zone.
 The planner (`server/src/retention.ts`) is a pure function from a listing to a plan, so it
 is tested over a fixture corpus and no test can delete a real log.
 
+### Keeping everything, on purpose
+
+`RETENTION_DAYS=never` — `off` is accepted for it — turns **eviction** off and nothing
+else. Archiving is a separate phase and runs unchanged, so day directories, sidecars and
+the archive layout are what they would otherwise be; the plan simply evicts no files, its
+`cutoff` is `null`, and the run reports `Evict: off`.
+
+`0` is **rejected** and falls back to the default, because it was the most destructive
+value in the file rather than the way to say off: it puts the cutoff on today, which
+expires every archived day at once and hands the next `--apply` the whole body corpus.
+Nobody has ever meant "evict everything captured before this morning". Before `never`
+existed the only way to keep everything was a large magic number — a setting no reader
+could tell from a typo, and one no test covered.
+
+### The run prices what it keeps
+
+Eviction is a cost decision, and until now only its reclaim side was reported. Every run —
+dry or `--apply` — now also prints what it is **choosing to keep**: bytes surviving the
+plan, split into bodies and everything else; the body rate observed over the retained
+window; and where that rate leads at 30, 90 and 365 days.
+
+The rate's denominator is the **calendar span** the retained bodies cover, earliest
+retained body day through today inclusive, rather than the number of days that happen to
+hold a file — a quiet day still spent a day of the window. Under a finite window the
+projection is clamped at the steady state that window implies (`rate × RETENTION_DAYS`),
+because each new day displaces an expiring one. Under `never` nothing clamps it, and the
+projection is the bill for keeping everything. It is all computed by the pure planner from
+the listing it already walks with sizes, so it costs arithmetic rather than a second pass
+over the disk.
+
+That is what makes `never` a defensible informed setting, and the scheduled 21:00 job's log
+a **growth record** rather than only a reclamation record.
+
 ### Eviction as a typed state
 
 A missing body used to throw "request file not found", which reads the same as a bug. Now
@@ -101,6 +134,10 @@ is the part worth keeping.
 ## Acceptance criteria
 
 - `pnpm --filter server maintain` with no flags changes nothing on disk and prints the plan.
+- `RETENTION_DAYS=never` (or `off`) evicts nothing while archiving is unchanged; `0` is
+  rejected and falls back to 30.
+- Every run prints the bytes it is keeping, the observed per-day body rate, and the growth
+  that follows from it.
 - `--apply` archives past days, leaves today's logs in `logs/`, and reports bytes reclaimed.
 - No `.audit.json` is ever deleted, and no `archive/<date>/` directory is ever removed.
 - `logs/sessions/`, `logs/commands/`, `logs/.chat/` and `logs/suggestion-status.json` are
