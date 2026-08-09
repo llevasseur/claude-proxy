@@ -534,14 +534,24 @@ export interface ConceptRow {
   /** Skills the run turned up while researching, as opposed to those it applied. */
   surfacedSkills?: string[];
 }
+/**
+ * Which store answered, and its name for the page to show. `storePath` is the
+ * hosted store's read URL when the Worker answered, and the local file's path —
+ * with the reason it was read instead — when it did not.
+ */
+export interface ConceptStoreMeta {
+  storePath: string;
+  store: 'remote' | 'local';
+  total: number;
+}
 export interface ConceptsResponse {
   /** Newest first. */
   concepts: ConceptRow[];
-  meta: { storePath: string; total: number };
+  meta: ConceptStoreMeta;
 }
 export interface ConceptResponse {
   concept: ConceptRow;
-  meta: { storePath: string; total: number };
+  meta: ConceptStoreMeta;
 }
 /** One run as the command page lists it — no per-turn series, no per-step breakdown. */
 export interface CommandRunListItem {

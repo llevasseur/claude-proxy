@@ -145,6 +145,7 @@ import { loadArchivedDigest } from './archive.js';
 import { type CliBundleInfo, readCliCatalogue, readCliFunctionSource } from './cli-bundle.js';
 import { listInstalledCommands } from './command-runs.js';
 import { conceptStorePath } from './concepts.js';
+import { readRemoteConcepts, remoteConceptStore, remoteConceptStoreLabel } from './concepts-remote.js';
 import { fileSource, readWindow, type SidecarSource } from './db/source.js';
 import { DEFAULT_PR_LIMIT, readPullRequests, resolveRepoDir } from './github.js';
 import {
@@ -2869,13 +2870,47 @@ export async function buildCommandRun(
   };
 }
 
+/** Which store answered a concepts read. */
+export type ConceptStoreKind = 'remote' | 'local';
+
+export interface ConceptStoreMeta {
+  /**
+   * The store the answer came from, named for the page to show: the hosted
+   * store's read URL when it answered — never the token, and never anything
+   * else the configured URL carried — or the local file's path **and the reason
+   * it was read**, which is what stops an empty page reading as an empty corpus.
+   */
+  storePath: string;
+  /** The same fact as a value rather than a label. */
+  store: ConceptStoreKind;
+  total: number;
+}
+
 export interface ConceptsResponse {
   /** Newest first — the order the page renders. */
   concepts: StoredConcept[];
-  meta: {
-    /** The store the list came from, so the page can name its source. */
-    storePath: string;
-    total: number;
+  meta: ConceptStoreMeta;
+}
+
+/**
+ * The concepts to serve, and the store they came from.
+ *
+ * The hosted store wins whenever it is configured, and a failure to read it
+ * propagates rather than falling back — see `server/src/concepts-remote.ts`.
+ * With no credentials the local file answers exactly as it did before.
+ */
+async function readConceptsFromStore(
+  logDir: string,
+  source: SidecarSource,
+): Promise<{ concepts: StoredConcept[]; store: ConceptStoreKind; storePath: string }> {
+  const remote = remoteConceptStore();
+  if (remote) {
+    return { concepts: await readRemoteConcepts(remote), store: 'remote', storePath: remoteConceptStoreLabel(remote) };
+  }
+  return {
+    concepts: await source.readConcepts(logDir),
+    store: 'local',
+    storePath: `${conceptStorePath(logDir)} (local — CONCEPTS_URL/CONCEPTS_TOKEN unset, hosted store not read)`,
   };
 }
 
@@ -2900,17 +2935,14 @@ function toServedConcept(concept: StoredConcept): StoredConcept {
  * whole list is returned rather than paged.
  */
 export async function buildConcepts(logDir: string, source: SidecarSource = fileSource): Promise<ConceptsResponse> {
-  const concepts = (await source.readConcepts(logDir)).map(toServedConcept);
-  return { concepts, meta: { storePath: conceptStorePath(logDir), total: concepts.length } };
+  const read = await readConceptsFromStore(logDir, source);
+  const concepts = read.concepts.map(toServedConcept);
+  return { concepts, meta: { storePath: read.storePath, store: read.store, total: concepts.length } };
 }
 
 export interface ConceptResponse {
   concept: StoredConcept;
-  meta: {
-    storePath: string;
-    /** How many records the store holds. */
-    total: number;
-  };
+  meta: ConceptStoreMeta;
 }
 
 /**
@@ -2922,11 +2954,11 @@ export async function buildConcept(
   ord: number,
   source: SidecarSource = fileSource,
 ): Promise<ConceptResponse> {
-  const concepts = await source.readConcepts(logDir);
-  const concept = concepts.find((c) => c.ord === ord);
+  const read = await readConceptsFromStore(logDir, source);
+  const concept = read.concepts.find((c) => c.ord === ord);
   if (!concept) throw new Error(`concept not found: ${ord}`);
   return {
     concept: toServedConcept(concept),
-    meta: { storePath: conceptStorePath(logDir), total: concepts.length },
+    meta: { storePath: read.storePath, store: read.store, total: read.concepts.length },
   };
 }

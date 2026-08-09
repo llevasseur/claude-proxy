@@ -32,6 +32,7 @@ import {
 } from './api.js';
 import { clearArchiveCache } from './archive.js';
 import { resolveCommandsDir } from './command-runs.js';
+import { remoteConceptStore } from './concepts-remote.js';
 import { fileSource, type SidecarSource } from './db/source.js';
 import { resolveSettingsPath } from './settings.js';
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from './usage-history.js';
@@ -529,10 +530,15 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * `logs/concepts.jsonl` is inside the substrate's scope, so unlike
    * `/api/system-prompt` this one belongs here. One case: the store is a single
    * file with no key and no filter, so there is nothing to enumerate over.
+   *
+   * Both checks are about the *local* backings, so both enumerate nothing when
+   * the hosted store is configured — there the two sides would be one remote
+   * answer compared with another, at a full-corpus fetch per case per side.
    */
   {
     name: '/api/concepts',
-    cases: async (ctx) => [{ label: '/api/concepts', run: (source) => buildConcepts(ctx.logDir, source) }],
+    cases: async (ctx) =>
+      remoteConceptStore() ? [] : [{ label: '/api/concepts', run: (source) => buildConcepts(ctx.logDir, source) }],
   },
 
   /* Enumerated from the store the list route returns, so the `ord` values
@@ -540,6 +546,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
   {
     name: '/api/concepts/concept',
     cases: async (ctx) => {
+      if (remoteConceptStore()) return [];
       const { concepts } = await buildConcepts(ctx.logDir);
       return concepts.map((concept) => ({
         label: `/api/concepts/concept?ord=${concept.ord}`,
