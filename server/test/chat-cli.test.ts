@@ -3,12 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
+  type CliLiveEvent,
+  CliLiveReader,
   type CliRunHandle,
   cliArgs,
   cliEnv,
   cliSettings,
   decodeCliStream,
-  findInitEvent,
   resolveAgentCwd,
   runCliTurn,
 } from '../src/chat-cli.js';
@@ -160,12 +161,6 @@ describe('decodeCliStream', () => {
 
   it('leaves the permission mode null when the child never announced one', () => {
     expect(decodeCliStream(line({ type: 'result', result: 'done' })).permissionMode).toBeNull();
-  });
-
-  it('finds the init event in a prefix, and ignores a half-written trailing line', () => {
-    const raw = `${line({ type: 'system', subtype: 'init', permissionMode: 'plan' })}{"type":"assis`;
-    expect(findInitEvent(raw)).toEqual({ permissionMode: 'plan' });
-    expect(findInitEvent(`{"type":"assis`)).toBeNull();
   });
 
   it('falls back to assistant text when a run ends without a result', () => {
@@ -425,5 +420,96 @@ describe.skipIf(process.platform === 'win32')('runCliTurn — ending a run early
     const result = await runCliTurn({ ...turnInput(cliPath), onInit: (info) => seen.push(info.permissionMode) });
     expect(seen).toEqual(['bypassPermissions']); // once, not per chunk
     expect(result.permissionMode).toBe('bypassPermissions');
+  });
+});
+
+describe('CliLiveReader', () => {
+  const line = (o: unknown) => `${JSON.stringify(o)}\n`;
+
+  /** Feed a whole stream in one chunk and collect what was reported. */
+  const readAll = (raw: string, split = raw.length): CliLiveEvent[] => {
+    const seen: CliLiveEvent[] = [];
+    const reader = new CliLiveReader((e) => seen.push(e));
+    const buf = Buffer.from(raw, 'utf8');
+    for (let i = 0; i < buf.length; i += split) reader.write(buf.subarray(i, i + split));
+    return seen;
+  };
+
+  it('reports text and tools interleaved in the order the turn produced them', () => {
+    const raw =
+      line({ type: 'system', subtype: 'init', permissionMode: 'plan' }) +
+      line({
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'looking' },
+            { type: 'tool_use', id: 't1', name: 'Read' },
+          ],
+        },
+      }) +
+      line({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1' }] } }) +
+      line({
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 't2', name: 'Bash' }] },
+      }) +
+      line({
+        type: 'user',
+        message: {
+          content: [{ type: 'tool_result', tool_use_id: 't2', is_error: true, content: 'exit 1\nmore' }],
+        },
+      }) +
+      line({ type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } });
+
+    expect(readAll(raw)).toEqual([
+      { kind: 'init', permissionMode: 'plan' },
+      { kind: 'text', text: 'looking' },
+      { kind: 'tool', index: 0, name: 'Read' },
+      { kind: 'tool-result', index: 0, failed: false },
+      { kind: 'tool', index: 1, name: 'Bash' },
+      { kind: 'tool-result', index: 1, failed: true, error: 'exit 1\nmore' },
+      { kind: 'text', text: 'done' },
+    ]);
+  });
+
+  it('indexes tools the way the finished decode does, so a live chip is the summary chip', () => {
+    const raw =
+      line({
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Read' },
+            { type: 'tool_use', id: 't2', name: 'Bash' },
+          ],
+        },
+      }) + line({ type: 'result', result: 'done' });
+    const live = readAll(raw).filter((e) => e.kind === 'tool');
+    expect(live.map((e) => (e.kind === 'tool' ? e.name : ''))).toEqual(decodeCliStream(raw).tools.map((t) => t.name));
+    expect(live.map((e) => (e.kind === 'tool' ? e.index : -1))).toEqual([0, 1]);
+  });
+
+  it('reads the same events however the chunk boundaries fall, including mid-character', () => {
+    const raw =
+      line({ type: 'assistant', message: { content: [{ type: 'text', text: 'héllo — wörld' }] } }) +
+      line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Grep' }] } });
+    const whole = readAll(raw);
+    expect(readAll(raw, 1)).toEqual(whole);
+    expect(readAll(raw, 7)).toEqual(whole);
+  });
+
+  it('holds a half-written trailing line rather than reporting it', () => {
+    const seen: CliLiveEvent[] = [];
+    const reader = new CliLiveReader((e) => seen.push(e));
+    reader.write(Buffer.from(`{"type":"system","subtype":"init","permissionMode":"pl`));
+    expect(seen).toEqual([]);
+    reader.write(Buffer.from(`an"}\n`));
+    expect(seen).toEqual([{ kind: 'init', permissionMode: 'plan' }]);
+  });
+
+  it('ignores non-JSON chatter and a tool_result for a call it never saw', () => {
+    const raw =
+      'warning: something\n' +
+      line({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'nope' }] } }) +
+      line({ type: 'assistant', message: { content: [{ type: 'text', text: 'ok' }] } });
+    expect(readAll(raw)).toEqual([{ kind: 'text', text: 'ok' }]);
   });
 });

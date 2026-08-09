@@ -42,6 +42,7 @@ import {
   resolveCliCwd,
   runCliTurn,
 } from './chat-cli.js';
+import { closeChatTurn, dropChatStream, emitChatEvent, openChatTurn } from './chat-stream.js';
 import { listSessions, resolveSessionsDir } from './sessions.js';
 import { readLaunchAliases } from './shell-rc.js';
 
@@ -515,7 +516,50 @@ function chatHeaders(config: ChatConfig, apiKey: string, sessionId: string): Rec
   return headers;
 }
 
-async function postTurn(config: ChatConfig, session: ChatSession): Promise<{ text: string; usage: ChatUsage }> {
+/** The text a single streamed line carries, or null when it carries something else. */
+function textDeltaOf(line: string): string | null {
+  const payload = /^data:\s?(.*)$/.exec(line)?.[1];
+  if (!payload?.trim() || payload === '[DONE]') return null;
+  let ev: StreamEvent;
+  try {
+    ev = JSON.parse(payload) as StreamEvent;
+  } catch {
+    return null;
+  }
+  return ev.type === 'content_block_delta' && typeof ev.delta?.text === 'string' ? ev.delta.text : null;
+}
+
+/**
+ * Read the whole response body, reporting each text delta as it lands.
+ *
+ * The body is returned intact for {@link decodeChatStream}, which stays the authority on
+ * the finished reply and its usage — this only lets a watcher see the answer being
+ * written. A body arriving without a readable stream falls back to reading it whole,
+ * which is the old behaviour and still correct, just silent.
+ */
+async function readStreamedBody(res: Response, onText: (text: string) => void): Promise<string> {
+  if (!res.body) return await res.text();
+  const decoder = new TextDecoder();
+  let raw = '';
+  let pending = '';
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    const piece = decoder.decode(chunk, { stream: true });
+    raw += piece;
+    pending += piece;
+    for (let br = pending.indexOf('\n'); br >= 0; br = pending.indexOf('\n')) {
+      const text = textDeltaOf(pending.slice(0, br));
+      pending = pending.slice(br + 1);
+      if (text) onText(text);
+    }
+  }
+  return raw + decoder.decode();
+}
+
+async function postTurn(
+  config: ChatConfig,
+  session: ChatSession,
+  onText: (text: string) => void,
+): Promise<{ text: string; usage: ChatUsage }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error(`chat is not configured: ${config.readyHint ?? 'missing ANTHROPIC_API_KEY'}`);
 
@@ -543,7 +587,8 @@ async function postTurn(config: ChatConfig, session: ChatSession): Promise<{ tex
     throw new Error(`chat request to ${url} failed (${reason}) — is the proxy running on that port?`);
   }
 
-  const raw = await res.text();
+  // A rejection's body is an error payload, not a turn — read it whole and report nothing.
+  const raw = res.ok ? await readStreamedBody(res, onText) : await res.text();
   if (!res.ok) {
     throw new Error(`chat request rejected: HTTP ${res.status} ${raw.slice(0, 500)}`.trim());
   }
@@ -565,9 +610,14 @@ interface TurnResult {
 }
 
 async function runTurn(config: ChatConfig, session: ChatSession, prompt: string): Promise<TurnResult> {
+  // Every transport reports the same shape to a watcher, so the browser reads one
+  // stream rather than learning which one carried the turn. `api` has no tools, so
+  // its account of a turn is text alone.
+  const emitText = (text: string) => emitChatEvent(session.id, { type: 'text', text });
+
   if (session.transport === 'api') {
     return {
-      ...(await postTurn(config, session)),
+      ...(await postTurn(config, session, emitText)),
       tools: [],
       interrupted: null,
       cliSessionId: null,
@@ -603,6 +653,21 @@ async function runTurn(config: ChatConfig, session: ChatSession, prompt: string)
       onInit: (info) => {
         if (info.permissionMode) session.effectivePermissionMode = info.permissionMode;
       },
+      // The turn as it happens, forwarded to whoever is watching the session's stream.
+      // `init` is already handled above; the rest is the account the browser renders.
+      onEvent: (event) => {
+        if (event.kind === 'text') emitText(event.text);
+        else if (event.kind === 'tool') {
+          emitChatEvent(session.id, { type: 'tool', index: event.index, name: event.name });
+        } else if (event.kind === 'tool-result') {
+          emitChatEvent(session.id, {
+            type: 'tool-result',
+            index: event.index,
+            failed: event.failed,
+            ...(event.error ? { error: event.error } : {}),
+          });
+        }
+      },
     });
     return { ...turn, cliSessionId: turn.sessionId };
   } finally {
@@ -613,13 +678,20 @@ async function runTurn(config: ChatConfig, session: ChatSession, prompt: string)
 
 async function send(session: ChatSession, config: ChatConfig, logDir: string, prompt: string): Promise<ChatSendResult> {
   session.messages.push(textMessage('user', prompt));
+  // Opened before the turn rather than on its first event, so a reader that connects
+  // while the child is still starting is told a turn is running rather than nothing.
+  openChatTurn(session.id);
   let result: TurnResult;
   try {
     result = await runTurn(config, session, prompt);
   } catch (err) {
     session.messages.pop(); // keep the history exactly as the model last saw it
+    // A turn that failed has no partial reply worth showing: the error is the outcome,
+    // and it reaches the caller as the POST's own rejection.
+    closeChatTurn(session.id, null);
     throw err;
   }
+  closeChatTurn(session.id, result.interrupted);
   // A turn killed before the child opened its session left nothing to `--resume`, so the
   // next turn has to open it instead.
   if (session.transport !== 'cli' || result.cliSessionId) session.sent += 1;
@@ -730,6 +802,7 @@ export async function startChat(
     return await send(session, config, logDir, prompt);
   } catch (err) {
     sessions.delete(session.id); // nothing was recorded
+    dropChatStream(session.id);
     throw err;
   }
 }
@@ -811,11 +884,13 @@ export function endChat(input: { sessionId: unknown }): { sessionId: string; sto
   const run = session.run;
   run?.stop();
   sessions.delete(session.id);
+  dropChatStream(session.id);
   return { sessionId: session.id, stopped: !!run };
 }
 
-/** Test seam: forget in-memory chats. */
+/** Test seam: forget in-memory chats, and the live-turn buffers beside them. */
 export function _resetChats(): void {
+  for (const id of sessions.keys()) dropChatStream(id);
   sessions.clear();
 }
 
