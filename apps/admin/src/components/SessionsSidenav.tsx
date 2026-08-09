@@ -1,4 +1,4 @@
-import { sessionName } from '@claude-proxy/core';
+import { sessionName, sessionPreview } from '@claude-proxy/core';
 import { Link } from '@tanstack/react-router';
 import { AlertTriangle, ArrowUp, Check, Plus, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -280,7 +280,11 @@ function SessionRow({
   onToggle: (threadId: string) => void;
 }) {
   const name = sessionName(session);
-  const preview = session.subtitle ?? session.firstTask;
+  // Not the raw prompt: a slash-command session's opens with `<command-message>`, which
+  // clamped to two lines read as XML broken mid-tag. `sessionPreview` strips the envelope,
+  // cuts on a word boundary, and drops a line the name above already says; the two-line
+  // clamp on `.session-row-preview` is the second cut rather than the only one.
+  const preview = sessionPreview(session);
   const label = resolved ? 'Move back to Active' : 'Resolve';
   return (
     <div className={`session-row${active ? ' is-active' : ''}`}>
@@ -289,7 +293,7 @@ function SessionRow({
           <span className='session-row-name'>{name ?? session.threadId}</span>
           <span className='session-row-age'>{fmtAgeShort(session.modified)}</span>
         </div>
-        {preview && preview !== name && <span className='session-row-preview'>{preview}</span>}
+        {preview && <span className='session-row-preview'>{preview}</span>}
         <div className='session-row-meta'>
           {session.model && <span className='session-chip'>{session.model}</span>}
           {session.tools > 0 && <span className='session-chip'>{fmtInt(session.tools)} tools</span>}
