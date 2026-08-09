@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ADVICE_STEADY_PCT, ADVICE_THRESHOLDS, adviceMovement, HeuristicAdviceProvider } from '../src/advice.js';
+import { ADVICE_STEADY_PCT, ADVICE_THRESHOLDS, adviceMovement, heuristicAdvice } from '../src/advice.js';
 import { computeDigest } from '../src/digest.js';
 import { makeSidecar } from './helpers.js';
 
-const provider = new HeuristicAdviceProvider();
 const ids = (digestInput: Parameters<typeof computeDigest>[0], date = '2026-07-15') =>
-  provider.advise(computeDigest(digestInput, { date })).map((a) => a.id);
+  heuristicAdvice.advise(computeDigest(digestInput, { date })).map((a) => a.id);
 
-describe('HeuristicAdviceProvider', () => {
+describe('heuristicAdvice', () => {
   it('reports no activity on an empty day', () => {
     expect(ids([])).toEqual(['no-activity']);
   });
@@ -48,7 +47,7 @@ describe('HeuristicAdviceProvider', () => {
       tokens: { input: 0, output: 2_000_000, cacheRead: 0, cacheCreation: 0, realInput: 0 },
       tools: [{ name: 'A', bytes: 10, estTokens: 2 }],
     });
-    const advice = provider.advise(computeDigest([pricey], { date: '2026-07-15' }));
+    const advice = heuristicAdvice.advise(computeDigest([pricey], { date: '2026-07-15' }));
     const high = advice.find((a) => a.id === 'high-cost');
     expect(high?.severity).toBe('high');
     // High severity sorts first.
@@ -84,7 +83,7 @@ describe('adviceMovement', () => {
   it('calls a card steady when its metric barely moved since the prior day', () => {
     const today = dayOfPrompt(40_000, '2026-07-15');
     const prior = dayOfPrompt(40_500, '2026-07-14');
-    const advice = provider.advise(today);
+    const advice = heuristicAdvice.advise(today);
 
     const prompt = adviceMovement(advice, today, prior).find((m) => m.id === 'large-system-prompt');
     expect(prompt?.steady).toBe(true);
@@ -95,7 +94,7 @@ describe('adviceMovement', () => {
 
   it('leaves a card that moved materially in full', () => {
     const today = dayOfPrompt(40_000, '2026-07-15');
-    const advice = provider.advise(today);
+    const advice = heuristicAdvice.advise(today);
 
     const prompt = adviceMovement(advice, today, dayOfPrompt(20_000, '2026-07-14')).find(
       (m) => m.id === 'large-system-prompt',
@@ -106,7 +105,7 @@ describe('adviceMovement', () => {
 
   it('never calls a card steady on absent evidence', () => {
     const today = dayOfPrompt(40_000, '2026-07-15');
-    const advice = provider.advise(today);
+    const advice = heuristicAdvice.advise(today);
 
     // No prior day at all: nothing to compare, so the card renders rather than folding.
     for (const m of adviceMovement(advice, today, null)) {
@@ -125,7 +124,7 @@ describe('adviceMovement', () => {
       ],
       { date: '2026-07-15' },
     );
-    const healthy = adviceMovement(provider.advise(clean), clean, clean);
+    const healthy = adviceMovement(heuristicAdvice.advise(clean), clean, clean);
     expect(healthy).toEqual([
       { id: 'healthy', metric: null, current: null, prior: null, since: null, change: null, steady: false },
     ]);
@@ -135,11 +134,11 @@ describe('adviceMovement', () => {
     const idle = computeDigest([], { date: '2026-07-14' });
     const busy = dayOfPrompt(40_000, '2026-07-15');
 
-    const grew = adviceMovement(provider.advise(busy), busy, idle).find((m) => m.id === 'large-system-prompt');
+    const grew = adviceMovement(heuristicAdvice.advise(busy), busy, idle).find((m) => m.id === 'large-system-prompt');
     expect(grew?.change).toBe(1);
     expect(grew?.steady).toBe(false);
 
-    const stillIdle = adviceMovement(provider.advise(idle), idle, idle).find((m) => m.id === 'no-activity');
+    const stillIdle = adviceMovement(heuristicAdvice.advise(idle), idle, idle).find((m) => m.id === 'no-activity');
     expect(stillIdle?.steady).toBe(true);
   });
 });
