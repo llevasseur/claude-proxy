@@ -35,7 +35,7 @@ const LEGEND = [
  */
 export function CostRateCard() {
   const { days, choice, select, switching, today: liveToday } = useCardWindow();
-  const { digests, isFetching } = useWindowDigests(days, liveToday);
+  const { digests, isFetching, error } = useWindowDigests(days, liveToday);
   const points = costRatePoints(digests);
   const summary = summarizeCostRate(digests);
   const today = summary.today;
@@ -58,7 +58,9 @@ export function CostRateCard() {
 
       <Verdict summary={summary} priorDays={prior.length} />
 
-      {points.length === 0 ? (
+      {error ? (
+        <div className='empty'>Could not load this window: {error.message}</div>
+      ) : points.length === 0 ? (
         <div className='empty'>No tokens captured in this window.</div>
       ) : (
         <>

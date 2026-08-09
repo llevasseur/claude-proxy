@@ -93,13 +93,15 @@ export function CardWindowPicker({
 /**
  * Today's digest as the summary stream last reported it, spliced into a fetched
  * window — `/api/trends` is a one-shot read, so a plot would otherwise hold today's
- * load-time values while the headline moved on. An empty window stays empty rather
- * than becoming a single zero day.
+ * load-time values while the headline moved on. `/api/trends` omits a day with
+ * nothing captured, so today only joins a window it is missing from once it has
+ * activity: an idle day would otherwise arrive as a row of zeros. An empty window
+ * stays empty.
  */
 export function withLiveToday(digests: UsageDigest[], today: UsageDigest): UsageDigest[] {
   if (digests.length === 0) return digests;
   const at = digests.findIndex((x) => x.date === today.date);
-  if (at === -1) return [...digests, today];
+  if (at === -1) return today.requestCount > 0 ? [...digests, today] : digests;
   return digests.map((x, i) => (i === at ? today : x));
 }
 

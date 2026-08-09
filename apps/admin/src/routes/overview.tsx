@@ -42,8 +42,9 @@ export function OverviewPage() {
           loading={summary.isLoading}
           days={days}
           onDays={selectDays}
-          // Only the mini charts follow this window; the headline numbers come from
-          // today's digest, so the switcher marks itself and the cards stay at full strength.
+          // The mini charts and the two plots below follow this window; the headline
+          // numbers come from today's digest, so the switcher marks itself and the
+          // stat tiles stay at full strength.
           busy={isSwitching || trends.isFetching}
           live={worstStatus(usageLive, summaryLive)}
         />

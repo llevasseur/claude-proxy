@@ -29,7 +29,7 @@ function toPerRequestRow(d: UsageDigest) {
  */
 export function PerRequestCard() {
   const { days, choice, select, switching, today } = useCardWindow();
-  const { digests, isFetching } = useWindowDigests(days, today);
+  const { digests, isFetching, error } = useWindowDigests(days, today);
   const rows = digests.map(toPerRequestRow);
   const first = digests.at(0);
   const last = digests.at(-1);
@@ -49,15 +49,27 @@ export function PerRequestCard() {
           />
         </div>
       </div>
-      <SeriesLineChart data={rows} series={PER_REQUEST_SERIES} xKey='label' format={fmtInt} formatTick={fmtCompact} />
-      <div className='chartlegend'>
-        {PER_REQUEST_SERIES.map((s) => (
-          <span className='chartlegend-item' key={s.dataKey}>
-            <span className='chartlegend-swatch' style={{ background: s.color }} />
-            {s.name}
-          </span>
-        ))}
-      </div>
+      {error ? (
+        <div className='empty'>Could not load this window: {error.message}</div>
+      ) : (
+        <>
+          <SeriesLineChart
+            data={rows}
+            series={PER_REQUEST_SERIES}
+            xKey='label'
+            format={fmtInt}
+            formatTick={fmtCompact}
+          />
+          <div className='chartlegend'>
+            {PER_REQUEST_SERIES.map((s) => (
+              <span className='chartlegend-item' key={s.dataKey}>
+                <span className='chartlegend-swatch' style={{ background: s.color }} />
+                {s.name}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
