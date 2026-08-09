@@ -56,6 +56,12 @@ async function readRemoteHeads(repoDir: string): Promise<Set<string> | null> {
  * What one PR row means for a claim. `merged` and `closed` come straight off the
  * row; `detached` is inferred — an **open** PR whose head branch is no longer on
  * the remote, which is what an abandoned branch leaves behind.
+ *
+ * **The inference assumes the head branch lives on `origin`.** {@link PullRequestRow}
+ * carries `headRefName` and no head repository, so a PR opened from a fork has a
+ * branch name `origin` was never going to list and reads as `detached`. Every PR
+ * this repo's tooling serves is same-repo, and widening it would mean a field
+ * `gh pr list` is not currently asked for.
  */
 export function observePullRequest(pr: PullRequestRow, remoteHeads: Set<string> | null): IdeaPrObservation {
   if (pr.state === 'merged') return { pr: pr.url, outcome: 'merged' };
@@ -68,7 +74,11 @@ export function observePullRequest(pr: PullRequestRow, remoteHeads: Set<string> 
 
 /** Everything one reconciliation looked at and did. */
 export interface IdeaPrSyncResult extends IdeaPrPlan {
-  /** The repo whose PRs were read, as `owner/name`, or null when it could not be resolved. */
+  /**
+   * The repo whose PRs were read, as `owner/name`. Null when no listing was read
+   * at all — either the ledger carries no linked PR, or the repo could not be
+   * resolved; `error` is what tells those apart.
+   */
   repo: string | null;
   /** True when the plan was only computed. */
   dryRun: boolean;

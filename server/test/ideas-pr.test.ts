@@ -1,6 +1,16 @@
-import type { PullRequestRow } from '@claude-proxy/core';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import {
+  applyIdeaAdds,
+  applyIdeaClaims,
+  applyIdeaMarks,
+  emptyIdeasStore,
+  type PullRequestRow,
+} from '@claude-proxy/core';
 import { describe, expect, it } from 'vitest';
-import { observePullRequest, renderIdeaPrTransition } from '../src/ideas-pr.js';
+import { observePullRequest, reconcileIdeaPrs, renderIdeaPrTransition } from '../src/ideas-pr.js';
+import { resolveIdeasPath, writeIdeasStore } from '../src/ideas-store.js';
 
 function pr(over: Partial<PullRequestRow> = {}): PullRequestRow {
   return {
@@ -50,6 +60,38 @@ describe('what a PR row means for a claim', () => {
 
   it('does not call a merged PR detached just because its branch was deleted after', () => {
     expect(observePullRequest(pr({ state: 'merged' }), new Set(['main'])).outcome).toBe('merged');
+  });
+});
+
+describe('a reconciliation that cannot see GitHub', () => {
+  it('reports the failure, leaves every link unobserved, and does not touch the ledger', async () => {
+    const logDir = await mkdtemp(path.join(tmpdir(), 'ideas-pr-'));
+    const added = applyIdeaAdds(emptyIdeasStore(), [
+      {
+        slug: 'rolling-window',
+        title: 'Idea rolling-window',
+        rationale: 'Because the open question says so.',
+        evidence: [{ source: 'open-question', path: 'docs/features/session-suggestions.md' }],
+        repo: 'llevasseur/claude-proxy',
+        area: 'ui-ux',
+      },
+    ]).store;
+    const accepted = applyIdeaMarks(added, [{ slug: 'rolling-window', status: 'accepted' }]).store;
+    const claimed = applyIdeaClaims(accepted, [
+      { slug: 'rolling-window', by: 'feat/x', pr: 'https://github.com/llevasseur/claude-proxy/pull/141' },
+    ]).store;
+    await writeIdeasStore(logDir, claimed);
+    const before = await readFile(resolveIdeasPath(logDir), 'utf8');
+
+    // A directory that is a repo to nobody: `readPullRequests` cannot resolve an
+    // origin, so this exercises the offline path without reaching the network.
+    const result = await reconcileIdeaPrs(logDir, { repoDir: await mkdtemp(path.join(tmpdir(), 'ideas-pr-repo-')) });
+
+    expect(result.error).toBeTruthy();
+    expect(result.transitions).toEqual([]);
+    expect(result.file).toBeNull();
+    expect(result.unobserved.map((l) => l.slug)).toEqual(['rolling-window']);
+    expect(await readFile(resolveIdeasPath(logDir), 'utf8')).toBe(before);
   });
 });
 

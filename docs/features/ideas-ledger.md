@@ -146,10 +146,12 @@ same accepted entry.
   than the duplicate work the claim prevents — nobody would go and unstick it by hand. Expiry needs
   no heartbeat, no liveness protocol and no sweeper: it is computed at read time from the `at`
   already on the entry, so a claim expires without anybody writing the file.
-- **A claim carrying a `pr` never goes stale**, however old. An open PR is live evidence the work
-  exists, and expiring such a claim would invite exactly the duplicate implementation this state
-  was added to stop. This is what makes a six-hour TTL safe: the long part of an idea's life is PR
-  review, not writing, and `pr` covers that part.
+- **A claim carrying a `pr` never goes stale by age**, however old. An open PR is live evidence the
+  work exists, and expiring such a claim would invite exactly the duplicate implementation this
+  state was added to stop. This is what makes a six-hour TTL safe: the long part of an idea's life
+  is PR review, not writing, and `pr` covers that part. What ends such a claim is the PR itself
+  rather than the clock — `ideas sync` releases it once that PR is closed unmerged or has lost its
+  head branch, which is [the section below](#the-linked-pr-moves-the-status-so-nobody-has-to-remember-to).
 - **`ideas mark -s accepted` is the explicit release**, for a run that gives up before the expiry.
   Every mark but `shipped` drops the claim; `shipped` keeps it as the record of who built the thing.
 - **`ideas list --available` is what an implementation run should read** — `accepted` plus any
@@ -195,7 +197,12 @@ asking.
   `DEFAULT_PR_LIMIT`, while this ledger is device-wide, so a linked PR the listing does not cover is
   reported under `unobserved` and left exactly as it was. The same principle governs the branch
   check: an unreadable remote means *assume every branch is alive*, because the other reading would
-  release every live claim the first time the scheduled job ran offline.
+  release every live claim the first time the scheduled job ran offline. **The branch check assumes
+  the head branch is on `origin`**, which is the one place the refusal to guess does not reach:
+  `PullRequestRow` carries `headRefName` and no head repository, so a PR opened from a fork names a
+  branch `origin` never had and reads as `detached`. Every PR this repo's tooling serves is
+  same-repo, and covering the other case means asking `gh pr list` for a field it is not asked for
+  today.
 - **Failure is never fatal to the job.** No `gh`, no auth, no origin — `maintain` logs that the PRs
   were unreadable and leaves the ledger untouched. That is distinct from a successful run with an
   empty plan, and the two do not print the same thing.
