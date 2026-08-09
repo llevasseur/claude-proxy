@@ -141,11 +141,7 @@ declare module '@tanstack/react-router' {
 
 const BRAND = 'ClaudeProxy';
 
-/**
- * The wordmark, and the way back to Overview. The rail's head carries it on wide
- * viewports; the top bar carries a second copy, since the head is hidden once the
- * rail collapses into a drawer.
- */
+/** The wordmark, linking to Overview. Rendered twice: the rail's head hides below the drawer breakpoint, where the top bar carries it instead. */
 function BrandLink({
   className,
   pathname,
@@ -161,7 +157,7 @@ function BrandLink({
       className={className}
       aria-label='claude·proxy — Overview'
       onClick={(e) => {
-        // Already on Overview: scroll back up rather than re-navigating, as a lit station does.
+        // Already on Overview: scroll up rather than re-navigate, as a lit station does.
         if (pathname !== '/') return;
         // A modified click is opening a tab, not navigating here.
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
