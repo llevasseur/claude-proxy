@@ -770,13 +770,11 @@ export function parseIdeaClaims(raw: unknown): IdeaClaimRequest[] {
 
 /**
  * What GitHub says about a PR the ledger has linked, reduced to the four
- * outcomes a claim actually reacts to.
+ * outcomes a claim reacts to.
  *
- * **`detached` is the one that is not a PR state.** A PR whose head branch has
- * been deleted while it is still open is not merged and not closed, but nothing
- * is being built against the claim any more — the work it named is gone. Reading
- * it as `open` would leave the idea claimed forever, because
- * {@link isIdeaClaimStale} deliberately never expires a claim carrying a `pr`.
+ * **`detached` is not a PR state**: an open PR whose head branch has been
+ * deleted. Reading it as `open` would leave the idea claimed forever, because
+ * {@link isIdeaClaimStale} never expires a claim carrying a `pr`.
  */
 export const IDEA_PR_OUTCOMES = ['open', 'merged', 'closed', 'detached'] as const;
 
@@ -787,7 +785,7 @@ export function isIdeaPrOutcome(value: unknown): value is IdeaPrOutcome {
   return typeof value === 'string' && (IDEA_PR_OUTCOMES as readonly string[]).includes(value);
 }
 
-/** What was observed about one linked PR. The observing is somebody else's job — this module has no I/O. */
+/** What was observed about one linked PR. The observing happens elsewhere — this module has no I/O. */
 export interface IdeaPrObservation {
   /** The PR url, matched against the ledger's by {@link sameIdeaPr}. */
   pr: string;
@@ -802,11 +800,9 @@ export interface IdeaPrLink {
 }
 
 /**
- * Two PR urls naming the same PR. A trailing slash and surrounding whitespace are
- * the differences worth absorbing: the url is typed by whoever ran `ideas claim`,
- * while the one it is matched against comes back from `gh`. Case is **not**
- * folded — a GitHub path is case-sensitive, and two urls differing in case are
- * not reliably the same PR.
+ * Absorbs a trailing slash and surrounding whitespace, the differences between a
+ * url typed into `ideas claim` and one `gh` returns. Case is **not** folded — a
+ * GitHub path is case-sensitive.
  */
 function normalizePr(pr: string): string {
   return pr.trim().replace(/\/+$/, '');
@@ -818,14 +814,9 @@ export function sameIdeaPr(a: string, b: string): boolean {
 }
 
 /**
- * Every entry carrying a PR url, which is every entry whose status a PR can
- * settle.
- *
- * That is `claimed` and `shipped` and nothing else, and it falls out of the store
- * shape rather than being filtered for: the url lives on {@link IdeaClaim}, a
- * claim is dropped by every mark except `shipped`, and `shipped` keeps it as the
- * record of who built the thing. So the two statuses that can hold a link are
- * exactly the two this reconciliation has an opinion about.
+ * Every entry carrying a PR url — `claimed` and `shipped` and nothing else,
+ * since the url lives on {@link IdeaClaim} and every mark except `shipped` drops
+ * the claim.
  */
 export function ideaPrLinks(store: IdeasStore): IdeaPrLink[] {
   return ideaRows(store)
@@ -840,7 +831,7 @@ export interface IdeaPrTransition {
   from: IdeaStatus;
   to: IdeaStatus;
   outcome: IdeaPrOutcome;
-  /** Why, phrased for a log line — this runs unattended, so the record is the only account. */
+  /** Why, phrased for a log line. */
   why: string;
 }
 
@@ -848,7 +839,7 @@ export interface IdeaPrTransition {
 export interface IdeaPrPlan {
   /** The changes to make, oldest idea first. */
   transitions: IdeaPrTransition[];
-  /** The same changes as {@link applyIdeaMarks} input, so applying the plan needs no second translation. */
+  /** The same changes, as {@link applyIdeaMarks} input. */
   marks: IdeaMark[];
   /** Linked entries whose PR was observed and implies no change. */
   unchanged: IdeaPrLink[];
@@ -858,29 +849,21 @@ export interface IdeaPrPlan {
 
 /**
  * Decide what a batch of observed PRs does to the ledger. Pure: it plans, and a
- * caller writes.
+ * caller writes. The rules, all of them on `claimed` entries:
  *
- * The point is that a `claimed` idea whose PR merged should not need a person to
- * remember to say so. The rules, all of them on `claimed` entries:
+ * - **merged → `shipped`**, with the PR url as the note — byte for byte the mark
+ *   `ideas mark -s shipped -n <url>` makes by hand, and the claim survives it.
+ * - **closed unmerged → `accepted`**, the documented release: back on offer with
+ *   its human sign-off intact.
+ * - **detached → `accepted`**, likewise. See {@link IDEA_PR_OUTCOMES}.
+ * - **open → nothing.**
  *
- * - **merged → `shipped`**, with the PR url as the note. That is exactly the mark
- *   `ideas mark -s shipped -n <url>` makes by hand, so the automatic path and the
- *   manual one write the same row, and `shipped` keeps the claim as the record of
- *   who built it.
- * - **closed unmerged → `accepted`**, which is the documented release: the idea
- *   goes back on offer with its human sign-off intact, rather than being parked
- *   under a claim whose PR is never coming back.
- * - **detached → `accepted`**, for the same reason. See {@link IDEA_PR_OUTCOMES}.
- * - **open → nothing.** The claim is doing its job.
+ * **A `shipped` entry is terminal here.** Its PR is observed like any other and
+ * no outcome moves it, so re-opening or deleting the branch of a merged PR
+ * cannot un-ship the work; it comes back under `unchanged` rather than dropped.
  *
- * **A `shipped` entry is terminal here.** Its PR is observed like any other, but
- * no outcome moves it: an idea that landed stays landed, and re-opening or
- * deleting the branch of a merged PR must not un-ship the work. It is reported
- * under `unchanged` rather than dropped, so a reader can see it was checked.
- *
- * `by` stamps the marks with the reconciling run's provenance, exactly as
- * `ideas mark --thread` does; absent, each entry keeps whatever attribution it
- * had.
+ * `by` stamps the marks with the reconciling run's provenance, as
+ * `ideas mark --thread` does; absent, each entry keeps its attribution.
  */
 export function planIdeaPrTransitions(
   store: IdeasStore,
@@ -908,9 +891,8 @@ export function planIdeaPrTransitions(
   const marks: IdeaMark[] = transitions.map((t) => ({
     slug: t.slug,
     status: t.to,
-    // Only `shipped` carries one: it is the PR url the status is a claim about.
-    // A release writes no note, so a rejection reason an idea already carried is
-    // left exactly as it was.
+    // Only `shipped` carries a note. A release writes none, leaving a rejection
+    // reason the idea already carried untouched.
     ...(t.to === 'shipped' ? { note: t.pr } : {}),
     ...(by ? { by } : {}),
   }));
@@ -920,7 +902,7 @@ export function planIdeaPrTransitions(
 
 /** The one move an outcome implies for a link, or null when it implies none. */
 function transitionFor(link: IdeaPrLink, outcome: IdeaPrOutcome): IdeaPrTransition | null {
-  // Terminal: the work landed, and nothing that later happens to the PR undoes that.
+  // Only a `claimed` entry moves; `shipped` is terminal.
   if (link.status !== 'claimed') return null;
   const move = (to: IdeaStatus, why: string): IdeaPrTransition => ({
     slug: link.slug,

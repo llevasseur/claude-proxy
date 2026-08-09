@@ -222,8 +222,6 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
           {idea.claim.pr && (
             <>
               {' — '}
-              {/* The link is what the status now follows: `ideas sync` reads this PR and ships or
-                  releases the idea from it, so a reader should be one click from checking it. */}
               <a className='link' href={idea.claim.pr} target='_blank' rel='noreferrer'>
                 {idea.claim.pr}
               </a>

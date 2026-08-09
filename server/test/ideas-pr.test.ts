@@ -1,6 +1,3 @@
-// `detached` is the only outcome this layer infers rather than reads, and getting
-// it backwards would release every live claim on the ledger — so it is what these
-// pin down.
 import type { PullRequestRow } from '@claude-proxy/core';
 import { describe, expect, it } from 'vitest';
 import { observePullRequest, renderIdeaPrTransition } from '../src/ideas-pr.js';

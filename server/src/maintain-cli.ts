@@ -135,10 +135,6 @@ async function reconcileRuns(logDir: string): Promise<void> {
  * head branch. Skipped on a dry run — it writes. Never fatal: no `gh`, no
  * network, no origin all mean "learned nothing this run", and the ledger is left
  * exactly as it was.
- *
- * This is the step that makes the ideas ledger self-maintaining. Without it a
- * merged idea sits `claimed` until a person notices, and a claim carrying a PR
- * url never expires on its own by design.
  */
 async function reconcileIdeas(logDir: string): Promise<void> {
   try {

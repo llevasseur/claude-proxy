@@ -1,6 +1,3 @@
-// The manual step this removes: an idea claimed by the run building it stayed
-// `claimed` after its PR merged until a person remembered to say `mark -s shipped`.
-// These drive the decision that now makes itself.
 import { describe, expect, it } from 'vitest';
 import {
   applyIdeaAdds,
@@ -30,11 +27,7 @@ function add(slug: string): IdeaAdd {
   };
 }
 
-/**
- * An idea claimed by `feat/x` with `pr` recorded on the claim — the shape this
- * reconciles. `null` is how a caller asks for a claim with no PR; `undefined`
- * would silently take the default back.
- */
+/** An idea claimed by `feat/x` with `pr` on the claim. `null` asks for a claim with no PR. */
 function claimed(slug: string, pr: string | null = PR): IdeasStore {
   const added = applyIdeaAdds(emptyIdeasStore(), [add(slug)]).store;
   const accepted = applyIdeaMarks(added, [{ slug, status: 'accepted' }]).store;
@@ -116,8 +109,7 @@ describe('planning a status change from a PR', () => {
   });
 
   it('reports a link no observation covered rather than guessing at it', () => {
-    // The listing reads one repo and is capped; the ledger is device-wide. An
-    // absent PR is missing data, and treating it as closed would release a live claim.
+    // An absent PR is missing data; treating it as closed would release a live claim.
     const plan = planIdeaPrTransitions(claimed('a'), []);
     expect(plan.transitions).toEqual([]);
     expect(plan.unobserved).toEqual([{ slug: 'a', status: 'claimed', pr: PR }]);

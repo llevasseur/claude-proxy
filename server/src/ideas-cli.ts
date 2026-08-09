@@ -419,8 +419,7 @@ async function run(argv: readonly string[]): Promise<void> {
     for (const t of result.transitions) console.log(renderIdeaPrTransition(t));
     if (result.transitions.length === 0) console.log('no linked pull request implies a status change');
     if (result.unobserved.length > 0) {
-      // Never guessed at: the listing reads one repo and is capped, while the
-      // ledger is device-wide.
+      // Never guessed at: the listing reads one capped repo, the ledger is device-wide.
       console.log(`not covered by the listing, left alone: ${result.unobserved.map((l) => l.slug).join(', ')}`);
     }
     console.log(
