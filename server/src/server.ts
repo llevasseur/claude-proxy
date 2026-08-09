@@ -379,10 +379,13 @@ function chatErrorStatus(msg: string): number {
 
 /**
  * A rejected save is the body's fault; anything else — a permission error, a full
- * disk — is the server's, and a 400 would send the editor looking for a typo.
+ * disk — is the server's, and a 400 would send the editor looking for a typo. A
+ * stale save is neither: the request was well-formed and the file simply moved
+ * under it, which is a 409 for the editor to re-read and show.
  */
 function systemPromptErrorStatus(msg: string): number {
-  return /^(system prompt text|request body)\b/.test(msg) ? 400 : 500;
+  if (msg.startsWith('system prompt changed on disk')) return 409;
+  return /^(system prompt text|system prompt expectedModified|request body)\b/.test(msg) ? 400 : 500;
 }
 
 /**
@@ -1301,7 +1304,7 @@ const server = http.createServer(async (req, res) => {
           await servePost(
             req,
             res,
-            (body) => buildSystemPromptUpdate(SYSTEM_PROMPT_PATH, body.text),
+            (body) => buildSystemPromptUpdate(SYSTEM_PROMPT_PATH, body.text, body.expectedModified),
             systemPromptErrorStatus,
           );
           return;

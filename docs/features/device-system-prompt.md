@@ -56,6 +56,18 @@ instruction file is roughly 3000 tokens on every request of every session.
   file's text. `⌘S` / `Ctrl-S` saves from the editor. The response carries a fresh read of the
   file, which seeds the query cache directly, so the page shows what is *on disk* after a save
   rather than what it hoped it wrote.
+- **Save is a confirm step, not a button.** `Save` re-reads the file and swaps the editor for a
+  **line diff of the draft against the bytes on disk right now** — not the bytes the page loaded
+  with, which on a tab left open for hours is the wrong comparison. The diff renders through the
+  dashboard's own `CodeBlock`, so it inherits the shared code styling and needs no diff
+  dependency; additions and removals are tinted per line and each region opens with a
+  `@@ -old +new @@` header. `Back to the editor` leaves the file untouched.
+- **A concurrent edit shows up as that same diff.** The confirm-time read either still carries
+  the mtime editing began from or it does not. When it does not — another editor, another agent —
+  the step says so and the diff it is already showing is *against the new contents*, so the
+  question "what would I have lost" is answered on screen rather than in a terminal. The write is
+  refused until it is confirmed a second time, against a `Overwrite anyway` button in the danger
+  styling.
 - **Emptying the prompt is armed.** Saving an empty draft over a non-empty file takes a second
   click, because it discards authored text.
 - **A file that does not exist yet** is not an error: the page opens on an empty editor and says
@@ -66,12 +78,18 @@ instruction file is roughly 3000 tokens on every request of every session.
 Data flows `~/.claude/CLAUDE.md` → `server` → `packages/core` → `apps/admin`, with core in the
 middle for both directions. The shaping is pure and browser-safe (`TextEncoder`, not `Buffer`) —
 `outlineSystemPrompt`, `summarizeSystemPrompt`, `normalizeSystemPromptText`,
-`parseSystemPromptText` and `utf8Bytes` in `packages/core/src/system-prompt.ts`. File
+`parseSystemPromptText`, `parseSystemPromptExpectedModified`, `diffSystemPromptText` and
+`utf8Bytes` in `packages/core/src/system-prompt.ts`. File
 I/O is `server/src/system-prompt.ts` (`resolveSystemPromptPath`, `readSystemPromptFile`,
 `writeSystemPromptFile`). The path is `~/.claude/CLAUDE.md`, overridable with
 `CLAUDE_SYSTEM_PROMPT` — which is also how the tests drive the write path without touching the
 real file. The endpoint is `GET /api/system-prompt` (the file, its outline and the ceiling) and
-`POST /api/system-prompt` (`{ text }` → the same shape plus the backup path).
+`POST /api/system-prompt` (`{ text, expectedModified? }` → the same shape plus the backup path).
+
+The diff is core's, not a library's. It trims the matching head and tail first — a long
+instruction file usually changes in one place — and aligns only what is left with an LCS table,
+so the common edit costs almost nothing. Past a cell ceiling it stops aligning and reports the
+change as a whole-file replacement, which at that size is what it is.
 
 `outlineSystemPrompt` skips fenced code blocks, so a `# comment` inside a shell example is not
 mistaken for a section, and sizes each section from its heading to the next one or EOF in UTF-8
@@ -101,8 +119,16 @@ The write is the whole of the risk surface here, and it is fenced the same way t
   environment, so there is no id or filename to traverse with — unlike the jobs routes, this one
   cannot be pointed anywhere.
 
-Overwriting authored text gets two safeguards beyond that:
+Overwriting authored text gets four safeguards beyond that:
 
+- **Nothing is written blind.** The save is a confirm step over a diff, so the destructive part of
+  the write is seen before it happens rather than reconstructed from a `.bak` afterwards.
+- **A stale write is refused.** When the body carries `expectedModified` and the file's mtime no
+  longer matches it, the save throws before `writeSystemPromptFile` is reached — a **409**, since
+  the request was well-formed and the file simply moved under it. The browser always sends the
+  mtime it just read at confirm time, so even a change made *while the diff was on screen* is
+  caught. Omitting the field writes regardless, which is what a caller that never read the file
+  wants; `null` means "there was no file", and is refused once one appears.
 - **A `.bak` first.** Every save that finds an existing file copies it to `<path>.bak` before
   writing, so the previous contents survive a bad edit. The first save has nothing to back up and
   reports `backupPath: null`.
@@ -139,6 +165,15 @@ There is nothing for the DB to hold, so there is nothing to compare.
 - [x] Saved text is normalized: CRLF becomes LF and the file ends in exactly one newline; a
       whitespace-only draft writes an empty file rather than a lone newline.
 - [x] Emptying a non-empty prompt requires a second, armed click.
+- [x] `Save` does not write: it re-reads the file and shows a line diff of the draft against what
+      is on disk at that moment, through the shared `CodeBlock` and with no diff dependency.
+- [x] The diff carries `@@` hunk headers, a few lines of context either side of each change, and
+      tinted add/remove lines; a wholesale rewrite reads as a replacement rather than an
+      alignment.
+- [x] A file that changed since editing began is called out on that same screen, with the diff
+      taken against the new contents, and takes a deliberate `Overwrite anyway`.
+- [x] `POST /api/system-prompt` with a stale `expectedModified` is a 409 and leaves the file
+      untouched; omitting the field writes regardless.
 - [x] A non-string body and a body past the 200 KB ceiling are both 400s, and neither touches the
       file.
 - [x] `POST /api/system-prompt` is refused from a foreign origin (403), and the GET still answers
@@ -150,12 +185,18 @@ There is nothing for the DB to hold, so there is nothing to compare.
 
 ## Open questions
 
-- **The `.bak` is one deep.** Two bad saves in a row lose the good text. A rotating backup, or
-  keeping the last N under `~/.claude/.claude-md-history/`, would make the page safe to experiment
-  in.
-- **Nothing detects a concurrent edit.** If the file changes on disk while the page is open —
-  another editor, another agent — a save overwrites it without noticing. The read already returns
-  `modified`; sending it back and refusing a stale write is the obvious next step.
+- **The `.bak` is still one deep,** but it matters much less than it did. It existed because a
+  save was blind; a save you read as a diff first, and that refuses to land on a file it has not
+  seen, is a far smaller source of bad writes. A rotating backup under
+  `~/.claude/.claude-md-history/` was the answer while the write was unsupervised — it is now
+  worth doing only if bad saves actually turn up.
+- **The diff is line-level only.** A reworded sentence reads as one line gone and one line
+  arrived, with no intra-line highlighting. That is enough to decide whether to overwrite, which
+  is what the screen is for, but it is coarser than a word diff would be.
+- **The confirm step does not re-check while it is open.** The read happens once when `Save` is
+  pressed; a change arriving while the diff is on screen is caught by the server's
+  `expectedModified` check at write time rather than by the page noticing. That is correct but
+  late — the reader learns about it from a refusal, then re-reads.
 - **Only the device file.** Project instructions (`CLAUDE.md` / `AGENTS.md` in a repo) and the
   per-project memory the [project memory browser](project-memory-browser.md) shows are the other
   two layers that reach the system prompt, and neither is editable here. The device file was taken
@@ -164,9 +205,6 @@ There is nothing for the DB to hold, so there is nothing to compare.
   `packages/core/src/context.ts`. It is right to within a fifth or so for prose and wrong for
   dense punctuation; a real tokenizer would be exact but is a dependency this package does not
   have.
-- **No diff on save.** You cannot see what changed between the file and the draft before
-  overwriting a long instruction file.
-
 ## Related
 
 - [Admin dashboard for claude-proxy usage](admin-dashboard-for-claude-proxy-usage.md) — the

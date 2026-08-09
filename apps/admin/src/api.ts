@@ -917,8 +917,16 @@ export const getConcepts = () => get<ConceptsResponse>('/api/concepts');
 export const getConcept = (ord: number) => get<ConceptResponse>(`/api/concepts/concept?ord=${ord}`);
 /** The device system prompt as it is on disk — `~/.claude/CLAUDE.md`. */
 export const getSystemPrompt = () => get<SystemPromptResponse>('/api/system-prompt');
-/** Overwrite it. The server keeps the previous contents in a `.bak` beside the file. */
-export const saveSystemPrompt = (text: string) => post<SystemPromptUpdateResponse>('/api/system-prompt', { text });
+/**
+ * Overwrite it. The server keeps the previous contents in a `.bak` beside the file.
+ * `expectedModified` is the mtime the save is replacing; the server answers 409 when
+ * the file no longer carries it. Omit it to write regardless.
+ */
+export const saveSystemPrompt = (text: string, expectedModified?: string | null) =>
+  post<SystemPromptUpdateResponse>(
+    '/api/system-prompt',
+    expectedModified === undefined ? { text } : { text, expectedModified },
+  );
 /** The whole ledger, paired with the `/api/ideas/stream` subscription that pushes the same shape. */
 export const getIdeas = () => get<IdeasResponse>('/api/ideas');
 /**

@@ -79,6 +79,7 @@ import {
   type PullRequestRow,
   pairPromptRevisions,
   parseSessionErrors,
+  parseSystemPromptExpectedModified,
   parseSystemPromptText,
   patternFrequency,
   QUIET_AFTER_MS,
@@ -2538,9 +2539,27 @@ export interface SystemPromptUpdateResponse extends SystemPromptResponse {
 /**
  * Replace the device system prompt with `text` and answer with a fresh read of the
  * file, not an echo. Invalid input throws before anything is written.
+ *
+ * `expectedModified` is the mtime the caller last read. When it is sent and the file
+ * no longer carries it the save is refused, rather than overwriting an edit nobody
+ * has seen. Omitting it writes regardless.
  */
-export async function buildSystemPromptUpdate(promptPath: string, text: unknown): Promise<SystemPromptUpdateResponse> {
-  const written = await writeSystemPromptFile(promptPath, parseSystemPromptText(text));
+export async function buildSystemPromptUpdate(
+  promptPath: string,
+  text: unknown,
+  expectedModified?: unknown,
+): Promise<SystemPromptUpdateResponse> {
+  const parsedText = parseSystemPromptText(text);
+  const expected = parseSystemPromptExpectedModified(expectedModified);
+  if (expected !== undefined) {
+    const current = await readSystemPromptFile(promptPath);
+    if (current.modified !== expected) {
+      throw new Error(
+        `system prompt changed on disk since it was read: expected ${expected ?? 'no file'}, found ${current.modified ?? 'no file'}`,
+      );
+    }
+  }
+  const written = await writeSystemPromptFile(promptPath, parsedText);
   return {
     prompt: summarizeSystemPrompt({
       path: written.promptPath,
