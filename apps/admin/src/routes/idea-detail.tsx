@@ -4,7 +4,13 @@ import { Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { commentIdeas, fileIdeas, getIdeas, type IdeasResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
-import { IDEA_STATUS_LABEL, IDEAS_KEY, IdeaEvidenceList } from '../components/IdeaCard';
+import {
+  IDEA_STATUS_LABEL,
+  IDEAS_KEY,
+  IdeaDecisionControls,
+  IdeaEvidenceList,
+  IdeaRationale,
+} from '../components/IdeaCard';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonText } from '../components/Skeleton';
@@ -72,7 +78,7 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
           <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
           <code className='idea-repo muted'>{idea.repo}</code>
         </div>
-        <p>{idea.rationale}</p>
+        <IdeaRationale rationale={idea.rationale} />
         <div className='muted idea-when'>
           proposed {fmtLocalTsShort(idea.created)}
           {idea.updated && idea.updated !== idea.created ? ` · updated ${fmtLocalTsShort(idea.updated)}` : ''}
@@ -116,6 +122,17 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
           </div>
         </div>
       )}
+
+      {/* The decision, on the page the permalink opens. It was card-only, so a reader
+          who followed a link to read the rationale in full — the one thing the card
+          clamps — had to go back to the list to act on what they had just read. */}
+      <div className='card'>
+        <div className='card-head'>
+          <h2>Decision</h2>
+          <span className='muted'>the same sign-off the card carries — a rejection still needs its reason</span>
+        </div>
+        <IdeaDecisionControls idea={idea} />
+      </div>
 
       <AreaPicker idea={idea} areas={areas} />
       <CommentEditor idea={idea} />

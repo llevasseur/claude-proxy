@@ -14,6 +14,7 @@ import {
   type IdeaEvidence,
   ideaAreaLabel,
   ideaOf,
+  ideaRationaleBullets,
   ideaRows,
   isIdeaArea,
   isIdeaClaimStale,
@@ -640,5 +641,41 @@ describe('commenting', () => {
     expect(() => parseIdeaComments([{ slug: 'one' }])).toThrow(/text must be a string/);
     // An empty string is the clear, so it parses where a missing field does not.
     expect(parseIdeaComments([{ slug: 'one', text: '' }])[0]).toEqual({ slug: 'one', text: '' });
+  });
+});
+
+describe('ideaRationaleBullets', () => {
+  it('reads the shape /ideate writes, label and text apart', () => {
+    const rationale = [
+      '- **What it is** — a helper that splits a rationale into bullets.',
+      '- **The problem** — the dashboard renders the rationale as one line.',
+      '',
+      '- **Size** — small.',
+    ].join('\n');
+    expect(ideaRationaleBullets(rationale)).toEqual([
+      { label: 'What it is', text: 'a helper that splits a rationale into bullets.' },
+      { label: 'The problem', text: 'the dashboard renders the rationale as one line.' },
+      { label: 'Size', text: 'small.' },
+    ]);
+  });
+
+  it('accepts the other bullet markers and the other label separators', () => {
+    expect(ideaRationaleBullets('* **Size**: small.\n• plain bullet')).toEqual([
+      { label: 'Size', text: 'small.' },
+      { text: 'plain bullet' },
+    ]);
+  });
+
+  it('keeps a label-only bullet as text rather than as an empty label', () => {
+    expect(ideaRationaleBullets('- **Depends on `idea-areas`**')).toEqual([{ text: 'Depends on `idea-areas`' }]);
+  });
+
+  it('returns nothing for a paragraph, so the legacy shape renders as prose', () => {
+    expect(ideaRationaleBullets('One paragraph on why it is worth building.')).toEqual([]);
+    // All-or-nothing: prose beside a bullet is prose, never a list with an orphan.
+    expect(ideaRationaleBullets('Some prose — with a dash.\n- and a bullet')).toEqual([]);
+    expect(ideaRationaleBullets('   ')).toEqual([]);
+    // A dash with no word after it is a sentence's punctuation, not a marker.
+    expect(ideaRationaleBullets('- ')).toEqual([]);
   });
 });
