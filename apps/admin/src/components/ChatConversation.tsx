@@ -93,9 +93,8 @@ export function ChatConversation({
           </p>
         )}
 
-        {/* Tools the turn ran — agent turns only. Hidden while a turn is in flight, because
-            the bubble above is carrying that turn's chips live and these are the previous
-            turn's; two rows of chips at once would read as one list. */}
+        {/* Tools the turn ran — agent turns only. Hidden while a turn is in flight: the
+            bubble carries that turn's chips, and these are the previous turn's. */}
         {!pendingPrompt && chat && chat.tools.length > 0 && (
           <div className='chat-tools'>
             <span className='muted'>ran</span>
@@ -167,16 +166,15 @@ function ToolChip({ tool, running = false }: { tool: ChatToolUse; running?: bool
  * The turn in flight, as it happens: the reply's text so far and the tools beside it in the
  * order the turn ran them.
  *
- * **This bubble is provisional.** Nothing here is the record of the turn — when the POST
- * resolves, `chat.turns` replaces the whole thing with the finished text, which is also what
- * a dropped stream falls back to. So it renders the three-dot wait until the first slice
- * lands, and a stream that never connects looks exactly like the wait it replaced.
+ * **This bubble is provisional.** When the POST resolves, `chat.turns` replaces it with the
+ * finished text — which is also what a dropped stream falls back to. It renders the
+ * three-dot wait until the first slice lands, so a stream that never connects looks exactly
+ * like the wait it replaced.
  *
- * Announced rather than read out. The `role='status'` region the old wait span carried moves
- * here, but it carries a short sentence instead of the reply: a live region over streaming
- * prose re-announces half-written markdown on every append, which is noise rather than
- * access. The visible stream is `aria-hidden`, and the finished bubble underneath it is the
- * artifact a screen reader reads.
+ * The `role='status'` region the old wait span carried moves here, but carries a short
+ * sentence rather than the reply: a live region over streaming prose re-announces
+ * half-written markdown on every append. The visible stream is `aria-hidden`, and the
+ * finished bubble is what a screen reader reads.
  */
 function StreamingReply({ live }: { live: LiveTurn }) {
   const running = live.tools.some((t) => !t.done);

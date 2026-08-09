@@ -62,10 +62,8 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   // Stopping doesn't fail the send: the turn resolves with whatever it had reached.
   const stopMutation = useMutation({ mutationFn: () => stopChat(sessionId) });
 
-  // Watched for exactly as long as a prompt is in flight, and held here rather than in
-  // the chat pane so a streaming turn survives navigating away from it — the same reason
-  // the turn log is. `pendingPrompt` is set in the same tick as the POST, so the stream
-  // opens alongside the request that starts the turn rather than after it.
+  // Watched for exactly as long as a prompt is in flight, and held here rather than in the
+  // chat pane so a streaming turn survives navigating away from it, as the turn log does.
   const live = useChatStream(sessionId, pendingPrompt !== null);
 
   const send = useCallback(

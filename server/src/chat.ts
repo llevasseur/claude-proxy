@@ -533,9 +533,8 @@ function textDeltaOf(line: string): string | null {
  * Read the whole response body, reporting each text delta as it lands.
  *
  * The body is returned intact for {@link decodeChatStream}, which stays the authority on
- * the finished reply and its usage — this only lets a watcher see the answer being
- * written. A body arriving without a readable stream falls back to reading it whole,
- * which is the old behaviour and still correct, just silent.
+ * the finished reply and its usage. A body arriving without a readable stream is read
+ * whole instead — correct, just silent.
  */
 async function readStreamedBody(res: Response, onText: (text: string) => void): Promise<string> {
   if (!res.body) return await res.text();
@@ -610,9 +609,8 @@ interface TurnResult {
 }
 
 async function runTurn(config: ChatConfig, session: ChatSession, prompt: string): Promise<TurnResult> {
-  // Every transport reports the same shape to a watcher, so the browser reads one
-  // stream rather than learning which one carried the turn. `api` has no tools, so
-  // its account of a turn is text alone.
+  // Both transports report the same shape, so the browser reads one stream rather than
+  // learning which carried the turn. `api` has no tools, so its account is text alone.
   const emitText = (text: string) => emitChatEvent(session.id, { type: 'text', text });
 
   if (session.transport === 'api') {
@@ -653,8 +651,7 @@ async function runTurn(config: ChatConfig, session: ChatSession, prompt: string)
       onInit: (info) => {
         if (info.permissionMode) session.effectivePermissionMode = info.permissionMode;
       },
-      // The turn as it happens, forwarded to whoever is watching the session's stream.
-      // `init` is already handled above; the rest is the account the browser renders.
+      // The turn as it happens, forwarded to the session's watchers; `init` is handled above.
       onEvent: (event) => {
         if (event.kind === 'text') emitText(event.text);
         else if (event.kind === 'tool') {
@@ -686,8 +683,8 @@ async function send(session: ChatSession, config: ChatConfig, logDir: string, pr
     result = await runTurn(config, session, prompt);
   } catch (err) {
     session.messages.pop(); // keep the history exactly as the model last saw it
-    // A turn that failed has no partial reply worth showing: the error is the outcome,
-    // and it reaches the caller as the POST's own rejection.
+    // A failed turn has no partial reply worth showing; the error reaches the caller
+    // as the POST's own rejection.
     closeChatTurn(session.id, null);
     throw err;
   }

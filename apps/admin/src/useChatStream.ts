@@ -27,8 +27,7 @@ function apply(turn: LiveTurn, event: ChatStreamEvent): LiveTurn {
 
   if (event.type === 'tool') {
     // Indexed rather than appended: the server counts tools for the whole turn, so a
-    // reader that joined mid-turn has a gap rather than an off-by-n list of chips. The
-    // gap is filled rather than left as a hole, so the chips stay a dense list.
+    // reader that joined mid-turn has a gap, filled here rather than left as a hole.
     const tools = turn.tools.slice();
     while (tools.length < event.index) tools.push({ name: '…', failed: false, done: true });
     tools[event.index] = { name: event.name, failed: false, done: false };
@@ -51,16 +50,13 @@ function apply(turn: LiveTurn, event: ChatStreamEvent): LiveTurn {
  * The turn in flight, streamed into the page.
  *
  * The server re-emits the stream it is already decoding, so text and tool activity
- * arrive interleaved in the order the turn produced them — which is what makes a long
- * turn legible rather than merely less silent.
+ * arrive interleaved in the order the turn produced them.
  *
  * **This is never the record of a turn.** The POST that started it still answers with
- * the finished reply, and that is what the transcript agrees with. So there is no retry
- * policy here beyond `EventSource`'s own reconnect: a dropped stream reconnects and is
- * sent a fresh snapshot of the live buffer, and a stream that never recovers costs
- * nothing, because the finished text lands when the POST resolves. That is deliberate —
- * a broken stream must re-read the finished reply rather than leave a half-written one
- * on screen.
+ * the finished reply. So there is no retry policy here beyond `EventSource`'s own
+ * reconnect: a reconnecting stream is sent a fresh snapshot of the live buffer, and one
+ * that never recovers costs nothing, because the finished text lands when the POST
+ * resolves.
  *
  * `enabled: false` closes the stream and clears the turn, so the caller enables it for
  * exactly as long as a prompt is in flight.

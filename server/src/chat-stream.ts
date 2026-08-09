@@ -4,17 +4,12 @@
  * A turn's POST does not answer until the turn is over, and an agent turn runs for
  * minutes or hours. This is the second channel: the server is already decoding a stream
  * that interleaves the reply's text with the tools the turn runs, so it re-emits that
- * same interleaving to whoever is watching, over the dashboard's ordinary SSE plumbing.
- * The browser then appends text as it arrives and appends a chip per tool in the order
- * the turn actually ran them.
+ * same interleaving over the dashboard's ordinary SSE plumbing.
  *
  * **This channel is an accessory, never the record.** The POST's finished
- * `ChatSendResult` remains the truth about a turn: it is decoded from the whole stream
- * whether or not anyone watched, and it is what the transcript agrees with. A watcher
- * that connects late, drops mid-turn, or never connects at all changes nothing about
- * the turn — the reply still lands when the POST resolves. That is deliberate: a broken
- * stream must re-read the finished text rather than leave a half-written reply on
- * screen.
+ * `ChatSendResult` remains the truth about a turn — decoded from the whole stream
+ * whether or not anyone watched. A watcher that connects late, drops mid-turn, or never
+ * connects at all changes nothing about the turn.
  *
  * Buffers are per session id and hold the live turn only, so a reader that connects
  * mid-turn or reconnects after a drop is given what it missed.
@@ -55,8 +50,7 @@ export interface ChatStreamFrame {
 
 /**
  * How much of a turn is replayable to a reader that arrives late. A turn that outruns
- * this keeps streaming — only the replay is trimmed, and `truncated` says so, because a
- * reader silently shown a reply with a hole in it is worse than one told there is one.
+ * this keeps streaming — only the replay is trimmed, and `truncated` says so.
  */
 const MAX_BUFFERED_EVENTS = 4_000;
 
@@ -76,10 +70,8 @@ interface TurnStream {
 const streams = new Map<string, TurnStream>();
 
 /**
- * The buffer for a session, created on demand.
- *
- * Either side may arrive first: the dashboard names the session id before its first
- * turn and opens the stream in the same tick as the POST, so a reader routinely asks
+ * The buffer for a session, created on demand. Either side may arrive first: the
+ * dashboard opens the stream in the same tick as the POST, so a reader routinely asks
  * for a session the server has yet to hear of.
  */
 function streamFor(sessionId: string): TurnStream {

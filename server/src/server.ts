@@ -1265,8 +1265,6 @@ const server = http.createServer(async (req, res) => {
       // tool, interleaved in the order the turn ran them. The POST still answers with the
       // finished turn, so this is what makes a slow turn legible — never the record of it.
       case CHAT_STREAM_ROUTE: {
-        // It carries chat content, so it is scoped like the writes rather than the reads:
-        // a declared foreign origin is refused outright rather than served under `*`.
         const cors = { ...chatCors(req.headers.origin), 'access-control-allow-methods': 'GET, OPTIONS' };
         if (!originAllowed(req.headers.origin)) {
           send(res, 403, { error: `origin not allowed: ${req.headers.origin}` }, cors);

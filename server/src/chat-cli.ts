@@ -185,9 +185,8 @@ const MAX_TOOL_ERROR_CHARS = 400;
  * What a turn is doing, reported while it does it rather than once it is over.
  *
  * The same events {@link decodeCliStream} reads at the end, read a second time as they
- * land — so a watcher sees the turn happen. `index` is the tool's position in the
- * finished `tools` list, which is what makes a live chip and a summary chip the same
- * chip.
+ * land. `index` is the tool's position in the finished `tools` list, which is what makes
+ * a live chip and a summary chip the same chip.
  */
 export type CliLiveEvent =
   | { kind: 'init'; permissionMode: string | null }
@@ -198,16 +197,15 @@ export type CliLiveEvent =
 /**
  * A single line of `stream-json` can be a whole tool result, so a run of chunks with no
  * newline in them is normal — but an unbounded one is a leak. Past this the partial line
- * is abandoned and reading resumes at the next newline; the end-of-run decode still sees
- * the whole stream, so only the live view misses that event.
+ * is abandoned and reading resumes at the next newline; only the live view misses that
+ * event, since the end-of-run decode still sees the whole stream.
  */
 const MAX_PENDING_LINE_CHARS = 4_000_000;
 
 /**
  * Reads the child's stdout as it arrives and reports what the turn is doing.
  *
- * {@link decodeCliStream} remains the authority on the finished turn — it reads the
- * terminal `result` event, which is the reply the transcript records, and it is what a
+ * {@link decodeCliStream} remains the authority on the finished turn, and is what a
  * caller falls back on when nothing was watching. This reads the same stream for a
  * watcher who wants the turn *while* it runs: text as each assistant message lands, and
  * a tool announced when it is called and again when it is answered, interleaved in the
@@ -551,9 +549,8 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
     state.idle.unref?.();
   };
 
-  // Watchers read each chunk once as it lands, rather than re-reading the whole stream
-  // every time: a rescan per chunk is quadratic on exactly the long turns a watcher
-  // exists to report on. The reader is built only when someone is actually watching, so
+  // Watchers read each chunk once as it lands: a rescan per chunk is quadratic on exactly
+  // the long turns a watcher exists to report on. Built only when someone is watching, so
   // an unwatched turn still just buffers and decodes at the end.
   let announced = false;
   const live =
