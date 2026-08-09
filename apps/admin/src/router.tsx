@@ -66,30 +66,65 @@ import { WithheldPage } from './routes/withheld';
 import { useNavDrawer } from './useNavDrawer';
 import { useRailCollapsed } from './useRailCollapsed';
 
-/** Side-rail nav stations. */
-const STATIONS = [
-  { to: '/', label: 'Overview', hint: 'today', exact: true, icon: Monitor },
-  // Not exact: `/trends/$metric` keeps the station lit.
-  { to: '/trends', label: 'Trends', hint: 'blended', exact: false, icon: TrendingUp },
-  { to: '/context', label: 'Context size', hint: 'prompt', exact: false, icon: Gauge },
-  { to: '/tools', label: 'Tool bloat', hint: 'context', exact: false, icon: Wrench },
-  { to: '/skim', label: 'Skim', hint: 'cache', exact: false, icon: Zap },
-  { to: '/withheld', label: 'Not added', hint: 'withheld', exact: false, icon: EyeOff },
-  { to: '/filters', label: 'Proxy filters', hint: 'stripped', exact: false, icon: ListFilter },
-  { to: '/projects', label: 'Projects', hint: 'memory', exact: false, icon: FolderGit2 },
-  { to: '/sessions', label: 'Sessions', hint: 'transcripts', exact: true, icon: MessagesSquare },
-  { to: '/sessions/graph', label: 'Live graph', hint: 'sessions', exact: false, icon: Network },
-  { to: '/pull-requests', label: 'Pull requests', hint: 'github', exact: false, icon: GitPullRequest },
-  { to: '/jobs', label: 'Jobs', hint: 'device', exact: false, icon: HardDrive },
-  { to: '/hooks-plugins', label: 'Hooks & Plugins', hint: 'config', exact: false, icon: Puzzle },
-  { to: '/system-prompt', label: 'System prompt', hint: 'device', exact: false, icon: ScrollText },
-  { to: '/commands', label: 'Commands', hint: 'per step', exact: false, icon: TerminalSquare },
-  { to: '/cli-internals', label: 'CLI internals', hint: 'bundle', exact: false, icon: Binary },
-  { to: '/concepts', label: 'Concepts', hint: '/teach', exact: false, icon: BookOpen },
-  { to: '/advice', label: 'Advice', hint: 'coaching', exact: false, icon: Lightbulb },
-  // Beside Advice, which kept the coaching and handed the ledger over to this page.
-  { to: '/ideas', label: 'Ideas', hint: 'by area', exact: false, icon: Sparkles },
+/** Side-rail nav stations, grouped into sections. A section labels its stations; it is never a destination. */
+const NAV_SECTIONS = [
+  {
+    label: 'Dashboard',
+    stations: [
+      { to: '/', label: 'Overview', hint: 'today', exact: true, icon: Monitor },
+      // Not exact: `/trends/$metric` keeps the station lit.
+      { to: '/trends', label: 'Trends', hint: 'blended', exact: false, icon: TrendingUp },
+    ],
+  },
+  {
+    label: 'Context',
+    stations: [
+      { to: '/context', label: 'Context size', hint: 'prompt', exact: false, icon: Gauge },
+      { to: '/tools', label: 'Tool bloat', hint: 'context', exact: false, icon: Wrench },
+      { to: '/skim', label: 'Skim', hint: 'cache', exact: false, icon: Zap },
+      { to: '/withheld', label: 'Not added', hint: 'withheld', exact: false, icon: EyeOff },
+      { to: '/filters', label: 'Proxy filters', hint: 'stripped', exact: false, icon: ListFilter },
+    ],
+  },
+  {
+    label: 'Sessions',
+    stations: [
+      { to: '/projects', label: 'Projects', hint: 'memory', exact: false, icon: FolderGit2 },
+      { to: '/sessions', label: 'Sessions', hint: 'transcripts', exact: true, icon: MessagesSquare },
+      { to: '/sessions/graph', label: 'Live graph', hint: 'sessions', exact: false, icon: Network },
+    ],
+  },
+  {
+    label: 'Activity',
+    stations: [
+      { to: '/pull-requests', label: 'Pull requests', hint: 'github', exact: false, icon: GitPullRequest },
+      { to: '/jobs', label: 'Jobs', hint: 'device', exact: false, icon: HardDrive },
+    ],
+  },
+  {
+    label: 'Device',
+    stations: [
+      { to: '/hooks-plugins', label: 'Hooks & Plugins', hint: 'config', exact: false, icon: Puzzle },
+      { to: '/system-prompt', label: 'System prompt', hint: 'device', exact: false, icon: ScrollText },
+      { to: '/commands', label: 'Commands', hint: 'per step', exact: false, icon: TerminalSquare },
+      { to: '/cli-internals', label: 'CLI internals', hint: 'bundle', exact: false, icon: Binary },
+    ],
+  },
+  {
+    label: 'Learning',
+    stations: [
+      { to: '/concepts', label: 'Concepts', hint: '/teach', exact: false, icon: BookOpen },
+      { to: '/advice', label: 'Advice', hint: 'coaching', exact: false, icon: Lightbulb },
+      // Beside Advice, which kept the coaching and handed the ledger over to this page.
+      { to: '/ideas', label: 'Ideas', hint: 'by area', exact: false, icon: Sparkles },
+    ],
+  },
 ] as const;
+
+/** DOM id for a nav section's heading. */
+function navGroupId(label: string): string {
+  return `nav-group-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
 
 /** Scroll the document to the top, jumping rather than animating under `prefers-reduced-motion`. */
 function scrollToTop(): void {
@@ -150,29 +185,37 @@ function RootLayout() {
           </button>
         </div>
 
-        <nav className='stations' aria-label='Sections'>
-          {STATIONS.map((s) => (
-            <Link
-              key={s.to}
-              to={s.to}
-              className='station'
-              activeProps={activeProps}
-              activeOptions={s.exact ? { exact: true } : undefined}
-              title={collapsed ? s.label : undefined}
-              onClick={(e) => {
-                // Exact pathname, not lit state: a `/trends` station lit under `/trends/$metric` still navigates.
-                if (pathname !== s.to) return;
-                // A modified click is opening a tab, not navigating here.
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-                e.preventDefault();
-                // On a narrow viewport the drawer covers the page it just scrolled.
-                nav.close();
-                scrollToTop();
-              }}>
-              <s.icon className='station-icon' size={17} strokeWidth={1.75} aria-hidden />
-              <span className='station-label'>{s.label}</span>
-              <span className='station-hint'>{s.hint}</span>
-            </Link>
+        <nav className='stations' aria-label='Primary'>
+          {NAV_SECTIONS.map((section) => (
+            // biome-ignore lint/a11y/useSemanticElements: the suggested <fieldset> groups form controls; this groups nav links, and a nested <nav> per section would add six landmarks to the rail
+            <div key={section.label} className='nav-group' role='group' aria-labelledby={navGroupId(section.label)}>
+              <h2 className='nav-group-label' id={navGroupId(section.label)}>
+                {section.label}
+              </h2>
+              {section.stations.map((s) => (
+                <Link
+                  key={s.to}
+                  to={s.to}
+                  className='station'
+                  activeProps={activeProps}
+                  activeOptions={s.exact ? { exact: true } : undefined}
+                  title={collapsed ? s.label : undefined}
+                  onClick={(e) => {
+                    // Exact pathname, not lit state: a `/trends` station lit under `/trends/$metric` still navigates.
+                    if (pathname !== s.to) return;
+                    // A modified click is opening a tab, not navigating here.
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    // On a narrow viewport the drawer covers the page it just scrolled.
+                    nav.close();
+                    scrollToTop();
+                  }}>
+                  <s.icon className='station-icon' size={17} strokeWidth={1.75} aria-hidden />
+                  <span className='station-label'>{s.label}</span>
+                  <span className='station-hint'>{s.hint}</span>
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
 
