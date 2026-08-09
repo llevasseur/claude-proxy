@@ -181,9 +181,38 @@ pending prompt, and unsent draft. The owning session page renders prompt/reply p
 continuation input between stats and the durable, one-turn-lagging transcript; unrelated
 Claude Code sessions are unchanged. Drafts clear on submit and "New chat".
 
-**In-flight prompts render immediately** as a user turn above `Working…`, without waiting
-for returned history. The session page suppresses its duplicate running-turn Stop bar when
-this tab owns the turn.
+**In-flight prompts render immediately** as a user turn above the reply as it arrives,
+without waiting for returned history. The session page suppresses its duplicate
+running-turn Stop bar when this tab owns the turn.
+
+**The reply and its tool activity are one stream, not two features.** Both transports
+already decode a stream that interleaves text with the tools a turn runs — `chat-cli.ts`'s
+`CliLiveReader` over the headless child's `stream-json` stdout, and `chat.ts`'s
+`readStreamedBody` over `/v1/messages` SSE — so that same interleaving is re-emitted through
+the dashboard's existing `serveSse` plumbing on `GET /api/chat/stream?sessionId=`. The
+bubble appends text as it lands and appends a chip per tool in the order the turn actually
+ran them, which turns the chips from a post-hoc summary into a live account of the turn. The
+composer's summary chip row is hidden while a turn is in flight, since the bubble is
+carrying that turn's chips and the row still holds the previous turn's.
+
+**The stream is an accessory; the POST is the record.** `server/src/chat-stream.ts` is a
+per-session bus of live-turn buffers, keyed by session id independently of the session map —
+the dashboard names its session id before turn one and opens the stream in the same tick as
+the POST, so a reader routinely asks for a session the server has not heard of yet. Nothing
+about a turn depends on anyone watching: `ChatSendResult` is still decoded from the whole
+stream, and the browser replaces the live bubble with it when the POST resolves. So a
+dropped stream re-reads the finished reply rather than leaving a half-written one on screen,
+and there is no retry policy beyond `EventSource`'s own reconnect, which is answered with a
+snapshot of the live buffer. A turn that outruns the 4,000-event replay buffer keeps
+streaming; only the replay is trimmed, and the frame says `truncated` so a reader is told
+there is a hole rather than shown one. Because the frames carry chat content, the route is
+origin-checked like the write routes rather than open like the other read routes.
+
+**The live region moves onto the streaming bubble** rather than being deleted with the
+`Working…` span it replaces — otherwise a screen reader loses the turn's only announcement.
+It carries a short status ("Reply arriving — 3 tools run so far"), and the streaming prose
+and chips are `aria-hidden`, because a live region over streaming markdown re-announces a
+half-written document on every append.
 
 **Input** follows shadcn AI prompt-input anatomy: hand-rolled auto-growing textarea,
 Enter send, Shift+Enter newline, IME safety, and a send button disabled in flight. The
@@ -278,12 +307,44 @@ other route stays read-only.
       held above the router rather than in the Sessions page's state.
 - [x] A start that fails shows its error in the pane it was typed in, and on the session page
       when the chat is opened there.
+- [x] `CliLiveReader` reports the child's text and tools interleaved in the order the turn
+      produced them, indexes each tool the way the finished decode does — so a live chip and a
+      summary chip are the same chip — and reads the same events however the chunk boundaries
+      fall, including mid-character and mid-line.
+- [x] `GET /api/chat/stream?sessionId=` answers a session the server has never heard of with
+      an empty inactive turn rather than a 404, replays the live turn to a reader that
+      connects mid-turn, starts a new turn rather than appending to the last, and reports the
+      turn ending and how it ended.
+- [x] A turn that outruns the replay buffer keeps streaming; only the replay is trimmed, and
+      the frame says `truncated` so the reader is told its text starts mid-reply.
+- [x] The stream route validates `sessionId` as a uuid and answers a foreign origin `403`,
+      the same shape the write routes use — it carries chat content, unlike every other read
+      route.
+- [x] A buffer whose last reader leaves mid-turn survives, so a reconnect still finds what it
+      missed; an idle one is dropped, and "New chat" drops it outright.
+- [x] The three-dot wait still renders until the first slice lands, so a browser with no
+      `EventSource`, a blocked stream or a buffering proxy sees exactly the old behaviour and
+      the reply lands whole when the POST resolves.
+- [x] Proven end to end on a real `cli` agent turn: the raw frames arrive `tool` → `tool-result`
+      → `text` in the order the turn ran them, bracketed by the opening and closing frames, and
+      the foreign-origin `403` and non-uuid `400` were exercised against the running server.
+- [x] Watched live in a browser at 5173 against this server: mid-turn the bubble carried the
+      reply so far with `Bash` and `Read` chips beside it under the bubble's own rule, and when
+      the turn resolved the finished reply replaced it and the composer's summary row came back.
 
 ## Open questions
 
-- **The reply is not streamed to the browser.** The server decodes the whole SSE stream and
-  returns the finished text, so a long answer shows nothing until it completes. Streaming it
-  onward would reuse the dashboard's existing `serveSse` plumbing.
+- **The streamed reply is an accessory, so a browser that cannot open the stream sees the old
+  behaviour.** `EventSource` carries no headers, so the stream is origin-checked rather than
+  authenticated, and a reader behind a proxy that buffers `text/event-stream` gets nothing
+  until the turn ends. That is a degradation and not a failure — the POST still answers with
+  the finished reply — but it means the live view cannot be relied on as the only account of
+  a turn.
+- **The streamed prose is not announced.** The live region on the streaming bubble says a
+  reply is arriving and how many tools have run; the text itself is `aria-hidden` until the
+  turn resolves, because re-announcing half-written markdown on every append is noise rather
+  than access. A screen reader therefore learns *that* the reply is coming and reads it once
+  it is whole, rather than following it word by word.
 - **Sessions are in-memory.** A server restart loses the handle on a chat (the transcript
   survives, and under `cli` so does the CLI's own session); resuming a chat from either is
   not implemented.
@@ -296,17 +357,19 @@ other route stays read-only.
   browsers, not direct
   callers; exposing the port (tunnel or `0.0.0.0`) still needs authentication. Until then,
   use `CHAT_MODE=chat`.
-- **Tool activity is summarized, not streamed.** Chips name the tools a turn ran, mark
-  failures and say why; arguments and full results are only in the proxy's transcript. A
-  long agent turn still shows nothing until it finishes or is stopped.
+- **Tool arguments and results are still only in the transcript.** A live chip names the tool
+  and, on failure, the first line of its `tool_result`; what it was called with and what it
+  answered are the proxy's transcript's business. The chip says a turn is working, not what
+  it did.
 - **Permission mode is a standing answer, not a judgment.** A headless child cannot ask;
   `bypassPermissions` remains all-or-nothing for anything reaching the port. Real approval
   requires streaming permission requests to and from the dashboard.
 - **Stopping is not resuming.** A stopped turn returns what it had, and the session stays
   open for a follow-up, but the next turn resumes a session whose last turn was cut off
   rather than continuing the work in place.
-- **No UI screenshot evidence.** Browser automation was unavailable; verification used
-  API, typecheck, and build. The flow was not watched visually.
+- **UI evidence is partial.** The streaming turn has been watched in a browser; the rest of
+  the flow — the session page's chat section, the error states — was verified through the API,
+  typecheck and build rather than visually.
 - **The chat is one at a time, and in memory.** Held above the router, so it survives
   navigation, but not a reload and not a second concurrent chat. "New chat" still evicts
   it. A tab reloaded onto a pre-resolution URL recovers the transcript and loses the turn
