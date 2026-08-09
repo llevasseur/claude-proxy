@@ -109,14 +109,12 @@ button:focus-visible {
   flex-direction: column;
   gap: 2px;
   margin-top: 22px;
-  /* Takes the height left between head and foot, and scrolls whatever overflows it. */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* A rail scrolled to its end shouldn't carry on scrolling the page behind it. */
   overscroll-behavior: contain;
-  /* Bleed back out to the rail's edges: `overflow-y` also clips horizontally, and the
-     active station's marker sits in the rail's own inset. */
+  /* Bleeds back out to the rail's edges: `overflow-y` clips horizontally too, and the
+     active station's marker sits in the rail's inset. */
   margin-inline: calc(var(--rail-inset) * -1);
   padding-inline: var(--rail-inset);
 }
@@ -215,7 +213,6 @@ button:focus-visible {
   border-color: var(--muted);
 }
 
-/* Pinned under the stations, which scroll beneath it. */
 .rail-foot {
   flex: none;
   padding-top: 16px;
