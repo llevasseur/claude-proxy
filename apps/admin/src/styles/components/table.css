@@ -43,6 +43,28 @@
   .table tbody tr:last-child td {
     border-bottom: none;
   }
+  /* The one rule this file exists to hold. A table is cramped by the *card* it is in,
+   * never by the window: the same table is ~1,100px wide on Context and ~420px wide
+   * in one half of a `.grid.two`, at one viewport. Asking the card means the answer is
+   * right on every page at once, which is the difference between this and the two
+   * separate fixes recorded in the changelog months apart.
+   *
+   * Tightening the gutters is not cosmetic — cell padding is part of a column's
+   * intrinsic minimum, so 10px to 6px takes roughly 8px off every column, and a
+   * six-column table stops needing to scroll about 48px sooner. */
+  @container card (max-width: 560px) {
+    .table th,
+    .table td {
+      padding: 8px 6px;
+    }
+    .table td {
+      font-size: 12.5px;
+    }
+    /* A note anchored to a header cannot open wider than the card holding it. */
+    .hint-bubble {
+      max-width: min(260px, 74cqi);
+    }
+  }
   .table th.sortable {
     cursor: pointer;
     user-select: none;
@@ -140,11 +162,13 @@
   .table tbody tr.clickable:hover {
     background: rgba(255, 255, 255, 0.03);
   }
+  /* A cap in pixels is a guess about the card. `cqi` is a measurement of it, so the
+   * cell yields its share of a narrow card instead of holding it open at 380px. */
   .skim-request {
-    max-width: 380px;
+    max-width: min(380px, 60cqi);
   }
   .skim-request summary {
-    max-width: 340px;
+    max-width: min(340px, 56cqi);
     overflow: hidden;
     color: var(--text);
     cursor: pointer;

@@ -128,8 +128,11 @@
     font-size: 12px;
     padding: 5px 0;
   }
-  /* Below this the three parts stop sharing a line: the box takes its own row. */
-  @media (max-width: 900px) {
+  /* Below this the three parts stop sharing a line: the box takes its own row. The
+   * card is the box they are sharing, so the card is what decides — the same head
+   * inside a half-width grid column now breaks at the width that actually crowds it,
+   * rather than staying on one line until the whole window is narrow. */
+  @container card (max-width: 580px) {
     .card-head .context-search {
       flex-basis: 100%;
       order: 1;
@@ -350,7 +353,11 @@
     font-size: 13.5px;
   }
 
-  /* Narrow: the rail gives up its column and sits above the chat. */
+  /* Narrow: the rail gives up its column and sits above the chat. This one stays a
+   * viewport query on purpose. `.sessions-shell` is a full-height page shell sized
+   * against `100vh` inside `.content--full`, which opts out of containment — there is
+   * no container above it to ask, and "is there room for a rail beside the chat" is a
+   * question about the window in the same way the app shell's own breakpoint is. */
   @media (max-width: 900px) {
     .sessions-shell {
       grid-template-columns: minmax(0, 1fr);

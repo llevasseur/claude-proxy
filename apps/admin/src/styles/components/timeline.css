@@ -97,14 +97,4 @@
   .tok-key {
     color: var(--signal);
   }
-
-  /* Narrow: the tree stops holding a column and sits above the viewer. */
-  @media (max-width: 900px) {
-    .jobfiles {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .jobtree {
-      max-height: 40vh;
-    }
-  }
 }

@@ -118,6 +118,17 @@
   .jobfiles-view {
     min-width: 0;
   }
+  /* Narrow: the tree stops holding a column and sits above the viewer. Keyed to the
+   * card, because that is the box the two columns are actually dividing — this rule
+   * used to be a viewport query and so ignored the rail beside it entirely. */
+  @container card (max-width: 580px) {
+    .jobfiles {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .jobtree {
+      max-height: 40vh;
+    }
+  }
 
   /* The tree itself — one flat scroller of indented rows. */
   .jobtree {
