@@ -2,10 +2,10 @@
   /* badges */
   .badge {
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: var(--text-3);
     font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 999px;
+    padding: var(--space-2) var(--space-5);
+    border-radius: var(--radius-pill);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     white-space: nowrap;
@@ -134,11 +134,11 @@
   }
   .rule-name {
     font-family: var(--font-mono);
-    font-size: 12.5px;
+    font-size: var(--text-5);
   }
   .leak-note {
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-4);
   }
   .leak-note .present-tool {
     color: var(--coral);

@@ -8,11 +8,11 @@
   .minilist li {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
-    padding: 9px 0;
+    gap: var(--space-7);
+    padding: var(--space-5) 0;
     border-bottom: 1px solid var(--line);
     font-family: var(--font-mono);
-    font-size: 12.5px;
+    font-size: var(--text-5);
     font-variant-numeric: tabular-nums;
   }
   .minilist li:last-child {
@@ -23,17 +23,17 @@
   .segmented {
     display: inline-flex;
     border: 1px solid var(--line);
-    border-radius: 9px;
+    border-radius: var(--radius-4);
     overflow: hidden;
   }
   .segmented button {
     background: var(--surface);
     color: var(--muted);
     border: none;
-    padding: 6px 14px;
+    padding: var(--space-4) var(--space-8);
     cursor: pointer;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
   }
   .segmented button:hover:not(:disabled) {
     color: var(--text);
@@ -52,18 +52,18 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 20px;
+    gap: var(--space-7);
+    margin-bottom: var(--space-10);
   }
   .pager-btn {
     background: var(--surface);
     color: var(--text);
     border: 1px solid var(--line);
-    border-radius: 9px;
-    padding: 6px 14px;
+    border-radius: var(--radius-4);
+    padding: var(--space-4) var(--space-8);
     cursor: pointer;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
     letter-spacing: 0.02em;
     text-decoration: none;
   }
@@ -77,6 +77,6 @@
   }
   .pager-pos {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
   }
 }
