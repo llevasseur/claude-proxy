@@ -1,5 +1,4 @@
-# Every branch prepends its entry to the top of CHANGELOG.md, so any two branches
-# in flight edit the same first lines and the three-way merge conflicts every
-# time. `union` takes both sides' added lines instead of raising a conflict.
-# Deliberate — see the "Repository map" section of AGENTS.md before changing it.
+# Every branch prepends to the top of CHANGELOG.md, so two branches in flight
+# always conflict on the same first lines; union keeps both sides' added lines.
+# Deliberate — see the repository map in AGENTS.md before changing it.
 CHANGELOG.md merge=union
