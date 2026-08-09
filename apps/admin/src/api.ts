@@ -769,6 +769,31 @@ export interface ChatSendResponse {
   /** Set when the turn was stopped, went quiet, or hit its ceiling; the reply is the partial one. */
   interrupted: ChatInterruption | null;
 }
+/**
+ * One thing a turn did, pushed while it was doing it. Mirrors `ChatStreamEvent` in
+ * `server/src/chat-stream.ts`.
+ */
+export type ChatStreamEvent =
+  | { type: 'text'; text: string }
+  /** A tool was called; `index` is its place in the turn's finished `tools` list. */
+  | { type: 'tool'; index: number; name: string }
+  /** That tool answered. A failure carries its `tool_result` text, as the chip does. */
+  | { type: 'tool-result'; index: number; failed: boolean; error?: string };
+/** One SSE frame off the turn stream: a `snapshot` replaces, an `update` appends. */
+export interface ChatStreamFrame {
+  sessionId: string;
+  /** Which turn of the session these belong to; a change means start over. */
+  turn: number;
+  active: boolean;
+  interrupted: ChatInterruption | null;
+  events: ChatStreamEvent[];
+  seq: number;
+  /** True when the turn outran the server's replay buffer, so the text starts mid-reply. */
+  truncated: boolean;
+}
+/** Where a turn's live account arrives; an `EventSource` path, not a fetch. */
+export const chatStreamPath = (sessionId: string) => `/api/chat/stream?sessionId=${encodeURIComponent(sessionId)}`;
+
 export interface HealthResponse {
   ok: boolean;
   logDir: string;

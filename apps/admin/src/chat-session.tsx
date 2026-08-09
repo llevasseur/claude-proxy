@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ChatSendResponse, PermissionMode } from './api';
 import { endChat, getChatThread, sendChatMessage, startChat, stopChat } from './api';
+import { type LiveTurn, useChatStream } from './useChatStream';
 
 /** The one dashboard-started chat, held above the router so it outlives the page it was typed on. */
 export interface ChatSessionValue {
@@ -11,6 +12,11 @@ export interface ChatSessionValue {
   chat: ChatSendResponse | null;
   /** The prompt in flight; shown as a turn before the reply lands. */
   pendingPrompt: string | null;
+  /**
+   * The turn in flight as it happens — the reply's text so far and the tools it has run.
+   * Empty between turns, and always superseded by `chat` when the turn resolves.
+   */
+  live: LiveTurn;
   /** The unsent input, held here so navigating away doesn't discard it. */
   draft: string;
   setDraft: (next: string) => void;
@@ -56,6 +62,12 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
   // Stopping doesn't fail the send: the turn resolves with whatever it had reached.
   const stopMutation = useMutation({ mutationFn: () => stopChat(sessionId) });
 
+  // Watched for exactly as long as a prompt is in flight, and held here rather than in
+  // the chat pane so a streaming turn survives navigating away from it — the same reason
+  // the turn log is. `pendingPrompt` is set in the same tick as the POST, so the stream
+  // opens alongside the request that starts the turn rather than after it.
+  const live = useChatStream(sessionId, pendingPrompt !== null);
+
   const send = useCallback(
     (prompt: string) => {
       setPendingPrompt(prompt);
@@ -86,6 +98,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       sessionId,
       chat,
       pendingPrompt,
+      live,
       draft,
       setDraft,
       isSending: sendMutation.isPending,
@@ -102,6 +115,7 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       sessionId,
       chat,
       pendingPrompt,
+      live,
       draft,
       sendMutation.isPending,
       sendMutation.error,
