@@ -4,7 +4,14 @@ import { Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { commentIdeas, fileIdeas, getIdeas, type IdeasResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
-import { IDEA_STATUS_LABEL, IDEAS_KEY, IdeaEvidenceList } from '../components/IdeaCard';
+import {
+  hasIdeaDecision,
+  IDEA_STATUS_LABEL,
+  IDEAS_KEY,
+  IdeaDecisionControls,
+  IdeaEvidenceList,
+  IdeaRationale,
+} from '../components/IdeaCard';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonText } from '../components/Skeleton';
@@ -72,7 +79,7 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
           <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
           <code className='idea-repo muted'>{idea.repo}</code>
         </div>
-        <p>{idea.rationale}</p>
+        <IdeaRationale rationale={idea.rationale} />
         <div className='muted idea-when'>
           proposed {fmtLocalTsShort(idea.created)}
           {idea.updated && idea.updated !== idea.created ? ` · updated ${fmtLocalTsShort(idea.updated)}` : ''}
@@ -114,6 +121,18 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Decision — the same controls the card carries, so the rationale can be acted on here.
+          Absent where the controls have no move to offer, rather than a heading over an empty row. */}
+      {hasIdeaDecision(idea.status) && (
+        <div className='card'>
+          <div className='card-head'>
+            <h2>Decision</h2>
+            <span className='muted'>the same sign-off the card carries — a rejection still needs its reason</span>
+          </div>
+          <IdeaDecisionControls idea={idea} />
         </div>
       )}
 

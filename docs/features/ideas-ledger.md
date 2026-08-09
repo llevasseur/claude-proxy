@@ -217,16 +217,40 @@ proposals and ends, and the decision happens whenever somebody looks.
   which is the whole reason areas exist. Cards stay fully actionable — Accept, Reject-with-reason,
   Release and Undo are all still on them.
 - **`/ideas/$slug` is the detail page**, carrying the full rationale, every citation with its quote,
-  the claim holder and how long it has been held, the `by` provenance, the re-file picker and the
-  comment editor. **The area is deliberately absent from the permalink** — re-filing is a normal
-  thing to do, and a link that breaks when somebody corrects a misfile is worse than a less
-  descriptive url. There is no per-idea endpoint: the ledger is small and the list is already cached
-  under the same query key, so a write from either surface moves both.
+  the claim holder and how long it has been held, the `by` provenance, **the same Accept /
+  Reject-with-reason / Release / Undo controls the card carries**, the re-file picker and the comment
+  editor. The decision was card-only at first, which meant a reader who followed the permalink to see
+  the one thing the card clamps — the rationale in full — had to go back to the list to act on what
+  they had just read. Both surfaces render one `IdeaDecisionControls`, so neither can disagree with
+  the other about what a status may become — and the card is **absent for a `shipped` idea**, whose
+  status the controls offer no move out of. **The area is deliberately absent from the permalink** —
+  re-filing is a normal thing to do, and a link that breaks when somebody corrects a misfile is worse
+  than a less descriptive url. There is no per-idea endpoint: the ledger is small and the list is
+  already cached under the same query key, so a write from either surface moves both.
 - **`POST /api/ideas/area`** and **`POST /api/ideas/comment`** are the two new writes, on the same
   write allowlist and origin-checked CORS as `/api/ideas/status`, with their refusals in the apply
   functions rather than in the routes for the same reason as before.
 - A ledger that exists but does not parse **500s rather than rendering empty**, for the reason
   below: a page claiming a fresh ledger is how a rejected idea gets re-proposed.
+
+### The rationale is a list, and both shapes are on the ledger
+
+`/ideate` now writes a rationale as literal `- ` bullet lines in plain technical English, in a fixed
+order — what it is, the problem, how it works, what it replaces, size, and an optional
+`Depends on <slug>`. A reader deciding between two proposals compares them line for line instead of
+reading two paragraphs to find the claim each one turns on.
+
+**Nothing rewrites a row it did not write**, so every idea recorded before that shape existed is
+still a paragraph. `ideaRationaleBullets` in `packages/core` tells them apart by reading the text
+rather than by a stored flag, and the test is all-or-nothing: *every* non-empty line must open with a
+bullet marker. A paragraph that happens to contain a dash therefore renders as the paragraph it is,
+and a half-converted rationale never renders as a list with prose floating beside it. A leading
+`**Label**` is split off so the labels can hang, which is what makes the fixed order scannable.
+
+The card shows the **first three** bullets and the permalink shows all of them. The cut is by bullet
+rather than by height because `-webkit-line-clamp` requires `display: -webkit-box`, which stops a
+`<ul>` rendering as a list at all — and because the fixed order puts the three a scanning reader
+wants at the top. A legacy paragraph keeps the old three-line clamp.
 
 ### A corrupt ledger is an error, not an empty one
 
@@ -351,8 +375,10 @@ of the answer.
 - [x] `/ideas` renders the five seed tabs even at zero, then invented areas alphabetically, then
       Unfiled only while area-less rows exist; the tab is in `?area=` and an unknown one degrades to
       the default rather than erroring.
-- [x] `/ideas/$slug` carries the rationale, every citation, the claim, the provenance, the re-file
-      picker and the comment editor, and the area is absent from the permalink.
+- [x] `/ideas/$slug` carries the rationale, every citation, the claim, the provenance, the decision
+      controls, the re-file picker and the comment editor, and the area is absent from the permalink.
+- [x] A bulleted rationale renders as a list on both surfaces, a paragraph one renders as prose, and
+      a rationale mixing the two renders as prose rather than as a broken list.
 - [ ] `/ideate` and `/improve` claim before building and read `--available` instead of
       `-s accepted`. **Those command files live outside this repo**, so this one is not closed by
       anything in this checkout.
