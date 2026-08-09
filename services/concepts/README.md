@@ -7,7 +7,9 @@ running in a throwaway cloud box that has no copy of your files.
 It is a D1 (SQLite) database behind two interfaces over the same data:
 
 - **REST**, which `/teach` posts to and which `server/` will proxy.
-- **MCP**, at `POST /mcp`, which is how an agent queries it.
+- **MCP**, at `POST /mcp`, which is how an agent queries it. It implements
+  revision `2026-07-28` and nothing earlier — see [MCP protocol
+  revision](#mcp-protocol-revision).
 
 Design rationale — why the database is truth here when ADR 0004 says files are,
 why there is one token rather than two, why the MCP layer is hand-rolled — is in
@@ -20,7 +22,7 @@ why there is one token rather than two, why the MCP layer is hand-rolled — is 
 | `src/index.ts` | Worker entry: auth, routing, the daily backup trigger |
 | `src/store.ts` | Every SQL query; the only file that knows the schema |
 | `src/db.ts` | The `Db` port — D1 in production, `node:sqlite` in tests |
-| `src/mcp.ts` | JSON-RPC and the three tool definitions |
+| `src/mcp.ts` | JSON-RPC, per-request version checks, the three tool definitions |
 | `src/rest.ts` | The HTTP surface |
 | `src/backup.ts` | Nightly commit of the corpus to a private git repo |
 | `migrations/0001_init.sql` | The schema, and the source of truth for the tests |
@@ -62,6 +64,34 @@ Every route except `/health` requires `Authorization: Bearer $CONCEPTS_TOKEN`.
 
 Listing, search and facets all accept `field`, `skill`, `since`, `hasNotes`,
 `includeSuperseded` and `limit`.
+
+## MCP protocol revision
+
+**Modern-era clients only: this server implements MCP `2026-07-28` and no
+earlier revision.** That revision drops the `initialize` handshake, sessions,
+and the GET stream, which is exactly the shape this service already had — every
+answer is one `application/json` body it can produce immediately — so
+supporting only it removes per-connection state rather than adding any.
+
+What that means for a client:
+
+- **Declare the version on every request**, in `params._meta` under
+  `io.modelcontextprotocol/protocolVersion` *and* in the `MCP-Protocol-Version`
+  header. The two must agree. There is no handshake and nothing is remembered
+  between requests; each one is accepted or rejected on its own.
+- **Mirror `Mcp-Method`**, and `Mcp-Name` on a `tools/call`, into the headers.
+  A missing or disagreeing header is `400 Bad Request` with JSON-RPC code
+  `-32020` (`HeaderMismatch`).
+- **Ask `server/discover`** for the supported versions, capabilities and
+  identity in one call. It is optional — any RPC can be sent cold — but it is
+  the cheapest way to see what is here.
+- **A version this server does not implement** comes back as `400` with code
+  `-32022` (`UnsupportedProtocolVersionError`), whose `data.supported` lists
+  every version it does. A legacy client's `initialize` gets that same error
+  rather than "method not found", because naming the versions is the only
+  diagnostic such a client can surface — it has no way to fall forward.
+- **An unknown method** is `404` with code `-32601`, carrying a JSON-RPC body so
+  a client can tell a modern MCP endpoint from a host that serves no MCP at all.
 
 ## MCP tools
 
