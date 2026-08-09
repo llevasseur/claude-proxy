@@ -9,27 +9,20 @@ import { resolveLogDir } from '../src/logs.js';
 /**
  * The deletion test for `packages/core/src/fallbacks.ts`.
  *
- * Every entry in that registry is a branch serving captures written before some
- * field existed. This reads the oldest capture the install *actually retains* and
- * fails for any entry whose field predates that floor: at that point no retained
- * capture can reach the branch, deleting it cannot change behaviour, and it is pure
- * carried weight. The failure names the file, the line and what to delete — it never
- * deletes anything itself, because removing a compatibility branch is a change
- * somebody reviews.
+ * Reads the oldest capture the install actually retains and fails for any entry
+ * whose field predates that floor, naming the file, the line and what to delete. It
+ * never deletes: removing a compatibility branch is a change somebody reviews.
  *
  * **The floor is read as a listing, not a walk.** `fileSource.oldestDay` is two
- * `readdir`s — the archive's day directories plus the live root's dated filenames —
- * and opens no capture. That matters here specifically: the one other test that
- * reads the real `logs/archive` reads the corpus and takes minutes.
+ * `readdir`s and opens no capture — the one other test that reads the real
+ * `logs/archive` reads the corpus and takes minutes.
  */
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * The entries carrying no `since`, written down so an undated fallback cannot pass
- * silently. Adding one to the registry without adding it here fails the suite: the
- * point of the registry is that nobody gets to leave a compatibility branch undated
- * without saying so out loud, and a list nobody has to update is a list nobody reads.
+ * The entries carrying no `since`. Adding one to the registry without adding it here
+ * fails the suite, so an undated fallback cannot pass silently.
  */
 const ACKNOWLEDGED_UNDATED = ['digest-legacy-cache-hit-ratio', 'request-filename-legacy-colon'];
 
@@ -62,9 +55,8 @@ describe('the fallback registry describes real code', () => {
       }
     }
 
-    // A line number is the whole anchor, and line numbers move. Re-point the entry
-    // rather than loosening the match — a registry that drifts off its own code
-    // retires the wrong branch, which is worse than retiring none.
+    // Re-point the entry rather than loosening the match: a registry that drifts off
+    // its own code retires the wrong branch.
     expect(wrong, `registry anchors have drifted:\n${wrong.join('\n')}`).toEqual([]);
   });
 });
@@ -76,9 +68,8 @@ describe('what the retained corpus can still reach', () => {
     const verdicts = auditFallbacks(FALLBACK_REGISTRY, floor);
     const retirable = verdicts.filter((v) => v.status === 'retirable');
 
-    // Not a threshold to tune. `logs/` holds roughly today plus a rolling archive,
-    // so this goes red on its own as the floor moves — that is the whole mechanism,
-    // and the fix is to delete the branch it names, not to re-date the entry.
+    // Not a threshold to tune. This goes red on its own as the archive rolls; the fix
+    // is to delete the branch it names, not to re-date the entry.
     expect(
       retirable,
       `no capture retained since ${floor} can reach these any more — delete them:\n${formatFallbackVerdicts(retirable)}`,

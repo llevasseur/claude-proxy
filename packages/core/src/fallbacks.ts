@@ -2,37 +2,30 @@
  * Every legacy-compatibility branch in the repo, with the day the field that
  * superseded it began being written.
  *
- * A compatibility fallback is speculative generality on a timer. It served a real
- * case the day it was written — a capture that predates some field — and it keeps
- * serving that case only for as long as such a capture is still on disk. `logs/`
- * holds roughly today plus `logs/archive/<date>/`, and that archive rolls, so every
- * one of these branches has a date after which deleting it cannot change behaviour.
- * Nothing in the repo knew that date, which is why three separate feature docs each
- * asked "once those age out, should this go?" and none of them could be answered.
+ * A fallback serves captures written before some field existed, and keeps serving
+ * them only while such a capture is on disk. `logs/` holds roughly today plus a
+ * rolling `logs/archive/<date>/`, so every branch here has a date after which
+ * deleting it cannot change behaviour.
  *
- * This table is the missing half of that question, and on its own it buys nothing —
- * a list of dates is a comment. The other half is
+ * The table alone buys nothing. The other half is
  * `server/test/fallback-retirement.test.ts`, which reads the oldest capture the
- * install *actually retains* and fails for any entry this table dates before that
- * floor, naming the file, the line and the branch to delete. The test never deletes:
- * removing a compatibility branch is a change somebody reviews.
+ * install actually retains and fails for any entry dated before that floor, naming
+ * the file, the line and the branch to delete. It never deletes: removing a
+ * compatibility branch is a change somebody reviews.
  *
  * ## What belongs here
  *
  * A branch whose reachability the **retention floor decides** — one that reads a
  * captured artifact under `logs/` (an audit sidecar, a session transcript, an
- * archived digest) and copes with that artifact lacking a field. A legacy branch
- * over a store that never rolls (`logs/ideas.jsonl`, settings) does not belong: no
- * amount of archiving ages its old rows out, so the floor says nothing about it.
+ * archived digest) and copes with a missing field. A legacy branch over a store that
+ * never rolls (`logs/ideas.jsonl`, settings) does not: nothing ages its rows out.
  *
  * ## Dates are established, never guessed
  *
- * `since` is the day the **writer** started emitting the superseding field — found
- * with `git log -S<field> -- proxy` for a field the proxy writes. Where the history
- * cannot establish one, `since` is `null` and the entry reads as **undated**. That is
- * a supported state, not a gap to paper over with a plausible-looking date: an
- * undated entry is reported on every run rather than passing silently, because a
- * compatibility branch nobody dated is the thing this registry exists to end.
+ * `since` is the day the **writer** started emitting the superseding field, found
+ * with `git log -S<field> -- proxy`. Where the history cannot establish one, `since`
+ * is `null` and the entry reads as **undated** — a supported state, reported on every
+ * run rather than papered over with a plausible-looking date.
  */
 
 /** One legacy-compatibility branch, dated. */
@@ -44,15 +37,14 @@ export interface FallbackEntry {
   /** 1-based line the branch sits on. */
   line: number;
   /**
-   * Text {@link line} must contain. The anchor is a line number, and line numbers
-   * move; this is what makes the move loud instead of silent, so the registry cannot
-   * quietly come to point at unrelated code.
+   * Text {@link line} must contain. Line numbers move; this makes the move loud
+   * rather than letting the entry point at unrelated code.
    */
   match: string;
   /**
    * The reporting day (`YYYY-MM-DD`) the superseding field began being written, or
-   * `null` when the git history cannot establish one. A capture from before this day
-   * is the only thing that still reaches the branch.
+   * `null` when the git history cannot establish one. Only a capture from before this
+   * day still reaches the branch.
    */
   since: string | null;
   /** The commit that started writing the field, for anyone re-deriving `since`. */
@@ -61,10 +53,7 @@ export interface FallbackEntry {
   note: string;
 }
 
-/**
- * The registry. Ordered by file, then by line, so a diff to it reads as a diff to
- * the code it describes.
- */
+/** The registry, ordered by file then by line. */
 export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'digest-legacy-cache-hit-ratio',
@@ -201,12 +190,9 @@ export interface FallbackVerdict {
  * Judge every entry against `floor` — the oldest reporting day the install still
  * retains, as `server/src/db/source.ts` resolves it, or `null` for an empty corpus.
  *
- * The comparison is **strict**. A field introduced *on* the floor day is not
- * retirable, because a capture from earlier that same day can still be in the
- * floor's directory: reporting days are whole days, and the field started partway
- * through one. Retirement waits until the field predates the oldest retained day
- * outright, which costs at most one extra day of a branch nobody was going to delete
- * that morning anyway.
+ * The comparison is **strict**: a field introduced *on* the floor day is not
+ * retirable, since a capture from earlier that same day sits in the floor's own
+ * directory.
  */
 export function auditFallbacks(
   entries: readonly FallbackEntry[] = FALLBACK_REGISTRY,
