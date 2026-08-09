@@ -19,8 +19,8 @@ function post(headers: Record<string, string>, body: unknown) {
 }
 
 /**
- * A well-formed modern request: the version declared in `_meta` and mirrored
- * into `MCP-Protocol-Version`, alongside the other headers the binding requires.
+ * A well-formed modern request: version in `_meta`, mirrored into
+ * `MCP-Protocol-Version`, plus the other headers the binding requires.
  */
 function rpc(method: string, params: Record<string, unknown> = {}, version = PROTOCOL_VERSION) {
   const headers: Record<string, string> = { 'mcp-protocol-version': version, 'mcp-method': method };
@@ -55,7 +55,6 @@ describe('handleMcp', () => {
     expect(response.status).toBe(200);
     expect(body.result.supportedVersions).toEqual([PROTOCOL_VERSION]);
     expect(body.result.capabilities.tools).toBeDefined();
-    // A map of extension identifier to settings object; this server has none.
     expect(body.result.capabilities.extensions).toEqual({});
     expect(body.result._meta['io.modelcontextprotocol/serverInfo']).toEqual({ name: 'concepts', version: '0.1.0' });
   });
