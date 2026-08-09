@@ -769,6 +769,176 @@ export function parseIdeaClaims(raw: unknown): IdeaClaimRequest[] {
 }
 
 /**
+ * What GitHub says about a PR the ledger has linked, reduced to the four
+ * outcomes a claim reacts to.
+ *
+ * **`detached` is not a PR state**: an open PR whose head branch has been
+ * deleted. Reading it as `open` would leave the idea claimed forever, because
+ * {@link isIdeaClaimStale} never expires a claim carrying a `pr`.
+ */
+export const IDEA_PR_OUTCOMES = ['open', 'merged', 'closed', 'detached'] as const;
+
+export type IdeaPrOutcome = (typeof IDEA_PR_OUTCOMES)[number];
+
+/** True when `value` names one of the PR outcomes. */
+export function isIdeaPrOutcome(value: unknown): value is IdeaPrOutcome {
+  return typeof value === 'string' && (IDEA_PR_OUTCOMES as readonly string[]).includes(value);
+}
+
+/** What was observed about one linked PR. The observing happens elsewhere — this module has no I/O. */
+export interface IdeaPrObservation {
+  /** The PR url, matched against the ledger's by {@link sameIdeaPr}. */
+  pr: string;
+  outcome: IdeaPrOutcome;
+}
+
+/** An idea the ledger has a PR for, and the status that PR is currently pinning. */
+export interface IdeaPrLink {
+  slug: string;
+  status: IdeaStatus;
+  pr: string;
+}
+
+/**
+ * Absorbs a trailing slash and surrounding whitespace, the differences between a
+ * url typed into `ideas claim` and one `gh` returns. Case is **not** folded — a
+ * GitHub path is case-sensitive.
+ */
+function normalizePr(pr: string): string {
+  return pr.trim().replace(/\/+$/, '');
+}
+
+/** True when two recorded PR urls name the same pull request. */
+export function sameIdeaPr(a: string, b: string): boolean {
+  return normalizePr(a) === normalizePr(b);
+}
+
+/**
+ * Every entry carrying a PR url — `claimed` and `shipped` and nothing else,
+ * since the url lives on {@link IdeaClaim} and every mark except `shipped` drops
+ * the claim.
+ */
+export function ideaPrLinks(store: IdeasStore): IdeaPrLink[] {
+  return ideaRows(store)
+    .filter((entry) => entry.claim?.pr)
+    .map((entry) => ({ slug: entry.slug, status: entry.status, pr: entry.claim?.pr ?? '' }));
+}
+
+/** One status change a PR's outcome implies, with the sentence explaining it. */
+export interface IdeaPrTransition {
+  slug: string;
+  pr: string;
+  from: IdeaStatus;
+  to: IdeaStatus;
+  outcome: IdeaPrOutcome;
+  /** Why, phrased for a log line. */
+  why: string;
+}
+
+/** What {@link planIdeaPrTransitions} decided, in full, before anything is written. */
+export interface IdeaPrPlan {
+  /** The changes to make, oldest idea first. */
+  transitions: IdeaPrTransition[];
+  /** The same changes, as {@link applyIdeaMarks} input. */
+  marks: IdeaMark[];
+  /** Linked entries whose PR was observed and implies no change. */
+  unchanged: IdeaPrLink[];
+  /** Linked entries no observation covered. **Left alone** — an unobserved PR is missing data, never evidence. */
+  unobserved: IdeaPrLink[];
+}
+
+/**
+ * Decide what a batch of observed PRs does to the ledger. Pure: it plans, and a
+ * caller writes. The rules, all of them on `claimed` entries:
+ *
+ * - **merged → `shipped`**, with the PR url as the note — byte for byte the mark
+ *   `ideas mark -s shipped -n <url>` makes by hand, and the claim survives it.
+ * - **closed unmerged → `accepted`**, the documented release: back on offer with
+ *   its human sign-off intact.
+ * - **detached → `accepted`**, likewise. See {@link IDEA_PR_OUTCOMES}.
+ * - **open → nothing.**
+ *
+ * **A `shipped` entry is terminal here.** Its PR is observed like any other and
+ * no outcome moves it, so re-opening or deleting the branch of a merged PR
+ * cannot un-ship the work; it comes back under `unchanged` rather than dropped.
+ *
+ * `by` stamps the marks with the reconciling run's provenance, as
+ * `ideas mark --thread` does; absent, each entry keeps its attribution.
+ */
+export function planIdeaPrTransitions(
+  store: IdeasStore,
+  observations: readonly IdeaPrObservation[],
+  by?: WriteProvenance,
+): IdeaPrPlan {
+  const transitions: IdeaPrTransition[] = [];
+  const unchanged: IdeaPrLink[] = [];
+  const unobserved: IdeaPrLink[] = [];
+
+  for (const link of ideaPrLinks(store)) {
+    const seen = observations.find((o) => sameIdeaPr(o.pr, link.pr));
+    if (!seen) {
+      unobserved.push(link);
+      continue;
+    }
+    const move = transitionFor(link, seen.outcome);
+    if (!move) {
+      unchanged.push(link);
+      continue;
+    }
+    transitions.push(move);
+  }
+
+  const marks: IdeaMark[] = transitions.map((t) => ({
+    slug: t.slug,
+    status: t.to,
+    // Only `shipped` carries a note. A release writes none, leaving a rejection
+    // reason the idea already carried untouched.
+    ...(t.to === 'shipped' ? { note: t.pr } : {}),
+    ...(by ? { by } : {}),
+  }));
+
+  return { transitions, marks, unchanged, unobserved };
+}
+
+/** The one move an outcome implies for a link, or null when it implies none. */
+function transitionFor(link: IdeaPrLink, outcome: IdeaPrOutcome): IdeaPrTransition | null {
+  // Only a `claimed` entry moves; `shipped` is terminal.
+  if (link.status !== 'claimed') return null;
+  const move = (to: IdeaStatus, why: string): IdeaPrTransition => ({
+    slug: link.slug,
+    pr: link.pr,
+    from: link.status,
+    to,
+    outcome,
+    why,
+  });
+  switch (outcome) {
+    case 'merged':
+      return move('shipped', `${link.pr} merged`);
+    case 'closed':
+      return move('accepted', `${link.pr} was closed without merging — the claim is released`);
+    case 'detached':
+      return move('accepted', `the head branch behind ${link.pr} is gone — the claim is released`);
+    default:
+      return null;
+  }
+}
+
+/** Read untrusted input as PR observations, or throw with the first thing wrong. */
+export function parseIdeaPrObservations(raw: unknown): IdeaPrObservation[] {
+  if (!Array.isArray(raw)) throw new Error('observations must be an array');
+
+  return raw.map((item, i) => {
+    const where = `observations[${i}]`;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
+    const { pr, outcome } = item as Record<string, unknown>;
+    if (typeof pr !== 'string' || !pr.trim()) throw new Error(`${where}.pr must be a non-empty PR url`);
+    if (!isIdeaPrOutcome(outcome)) throw new Error(`${where}.outcome must be one of ${IDEA_PR_OUTCOMES.join(', ')}`);
+    return { pr: pr.trim(), outcome };
+  });
+}
+
+/**
  * Read untrusted input (a CLI's `--json`, an HTTP body) as adds, or throw with
  * the first thing wrong. **The evidence rule is enforced here**, not left to the
  * caller: an idea citing nothing is the failure mode this whole store exists to

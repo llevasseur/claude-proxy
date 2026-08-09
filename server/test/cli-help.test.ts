@@ -18,7 +18,7 @@ const SRC = path.join(HERE, '..', 'src');
 /** Every subcommand each CLI dispatches, plus the bare invocation. */
 const ENTRIES = [
   { cli: 'suggestions', file: 'suggestions-cli.ts', commands: ['', 'list', 'mark', 'buckets', 'judge', 'defects'] },
-  { cli: 'ideas', file: 'ideas-cli.ts', commands: ['', 'list', 'add', 'mark', 'file', 'note'] },
+  { cli: 'ideas', file: 'ideas-cli.ts', commands: ['', 'list', 'add', 'claim', 'mark', 'file', 'note', 'sync'] },
 ] as const;
 
 /** A throwaway log directory, so a help run can never read or write the real one. */

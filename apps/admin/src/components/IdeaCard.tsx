@@ -219,7 +219,14 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
       {idea.claim && (
         <div className='suggestion-note idea-claim'>
           held by <strong>{idea.claim.by}</strong> since {fmtLocalTsShort(idea.claim.at)}
-          {idea.claim.pr && ` — ${idea.claim.pr}`}
+          {idea.claim.pr && (
+            <>
+              {' — '}
+              <a className='link' href={idea.claim.pr} target='_blank' rel='noreferrer'>
+                {idea.claim.pr}
+              </a>
+            </>
+          )}
         </div>
       )}
 

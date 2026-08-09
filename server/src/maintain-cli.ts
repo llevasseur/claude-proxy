@@ -151,6 +151,26 @@ async function deriveBeforeEvict(logDir: string): Promise<void> {
   }
 }
 
+/**
+ * Move each `claimed` idea whose pull request has merged, closed, or lost its
+ * head branch. Skipped on a dry run — it writes. Never fatal: no `gh`, no
+ * network, no origin all mean "learned nothing this run", and the ledger is left
+ * exactly as it was.
+ */
+async function reconcileIdeas(logDir: string): Promise<void> {
+  try {
+    const { reconcileIdeaPrs, renderIdeaPrTransition } = await import('./ideas-pr.js');
+    const result = await reconcileIdeaPrs(logDir);
+    if (result.error) {
+      console.error(`[maintain] ideas: pull requests unreadable (${result.error}) — the ledger is untouched`);
+      return;
+    }
+    for (const t of result.transitions) console.log(`[maintain] ideas: ${renderIdeaPrTransition(t)}`);
+  } catch (err) {
+    console.error(`[maintain] ideas skipped: ${(err as Error).message}`);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const apply = args.includes('--apply');
@@ -162,6 +182,9 @@ async function main(): Promise<void> {
   if (apply) {
     await reconcileRuns(logDir);
     await deriveBeforeEvict(logDir);
+    // Last of the three: unlike the two above it consumes nothing a later phase
+    // of this run removes, so it has no ordering constraint to honour.
+    await reconcileIdeas(logDir);
   }
 
   const corpus = await collectRetentionCorpus(logDir);
