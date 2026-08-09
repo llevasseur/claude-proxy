@@ -1,0 +1,87 @@
+@layer components {
+  /* The three jobs the dashboard asks a control to do, over the `@layer base`
+   * floor: an action, a disclosure, and a select. Anything else already has a
+   * component file of its own. */
+
+  /* The action a form exists to perform — Re-file, Save, Accept. One per group;
+   * the signal colour is what says "this is the one". */
+  .btn-primary {
+    background: var(--surface-2);
+    border-color: var(--signal-dim);
+    border-radius: var(--radius-3);
+    color: var(--signal);
+    padding: var(--space-4) var(--space-7);
+    font-family: var(--font-mono);
+    font-size: var(--text-4);
+    letter-spacing: 0.02em;
+  }
+  .btn-primary:hover:not(:disabled) {
+    border-color: var(--signal);
+  }
+  .btn-primary:disabled {
+    background: var(--ink);
+    border-color: var(--line);
+    color: var(--faint);
+  }
+
+  /* Everything beside the primary: Cancel, Undo, Release, and a disclosure like
+   * the Advice page's "Show N unchanged". */
+  .btn-quiet {
+    background: none;
+    border-color: var(--line);
+    border-radius: var(--radius-3);
+    color: var(--muted);
+    padding: var(--space-4) var(--space-7);
+    font-family: var(--font-mono);
+    font-size: var(--text-4);
+  }
+  .btn-quiet:hover:not(:disabled) {
+    border-color: var(--signal-dim);
+    color: var(--text);
+  }
+  .btn-quiet:disabled {
+    background: none;
+    border-color: var(--line);
+    color: var(--faint);
+  }
+
+  /* A wrapper rather than a class on the `select`, because `appearance: none`
+   * takes the platform's disclosure arrow with it and an arrowless select reads
+   * as a text field. The arrow comes back as the wrapper's background image. */
+  .select-field {
+    --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%23808c9e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M1 1l4 4 4-4'/></svg>");
+    display: inline-flex;
+    align-items: center;
+    background: var(--surface) var(--select-arrow) no-repeat right var(--space-6) center;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-3);
+  }
+  .select-field:hover {
+    border-color: var(--signal-dim);
+  }
+  .select-field:focus-within {
+    border-color: var(--signal);
+  }
+  /* `appearance: none` is here rather than in `@layer base`: there it would
+   * strip the arrow from every select the sheet already styles, none of which
+   * has a wrapper to put one back. */
+  .select-field select {
+    appearance: none;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    padding: var(--space-4) var(--space-11) var(--space-4) var(--space-6);
+  }
+  .select-field select:focus-visible {
+    outline: none;
+  }
+  .select-field:has(select:disabled) {
+    opacity: 0.7;
+  }
+  .select-field select:disabled {
+    background: none;
+    color: var(--muted);
+    cursor: default;
+  }
+}

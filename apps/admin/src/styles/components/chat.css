@@ -36,6 +36,9 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-7);
+    /* The hint drops below the controls rather than over them: `min-width: 0`
+     * below let the options row shrink past its own content and overlap. */
+    flex-wrap: wrap;
     padding: var(--space-4) var(--space-6) var(--space-5) var(--space-8);
   }
   /* The session's own controls, in the input's toolbar. */
@@ -44,7 +47,7 @@
     align-items: center;
     gap: var(--space-5);
     flex-wrap: wrap;
-    min-width: 0;
+    min-width: min-content;
   }
   .prompt-input-hint {
     margin-left: auto;
@@ -322,19 +325,12 @@
     display: inline-block;
     vertical-align: bottom;
   }
-  /* The standing permission answer, chosen per session. */
-  select.chat-permission {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-4);
-    color: var(--text);
-    padding: var(--space-3) var(--space-5);
+  /* The standing permission answer, chosen per session. Surface, border, radius,
+   * arrow and disabled state come from `.select-field`; what is left is the mono
+   * face the rest of the composer's fine print uses. */
+  .chat-permission {
     font-family: var(--font-mono);
     font-size: var(--text-4);
-  }
-  select.chat-permission:disabled {
-    cursor: default;
-    opacity: 0.7;
   }
   /* Ends the turn in flight; shown only while one runs. */
   button.chat-stop {
