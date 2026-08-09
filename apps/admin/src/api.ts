@@ -14,9 +14,13 @@ import type {
   CommandRunTotals,
   CommandStep,
   CommandSummary,
+  ContextEntry,
   ContextSummary,
   HookRow,
+  IdeaAreaCounts,
+  IdeaComment,
   IdeaEntry,
+  IdeaFiling,
   IdeaMark,
   IdeaStatus,
   InterruptionKind,
@@ -32,6 +36,8 @@ import type {
   PromptMixDay,
   PromptRevision,
   ProxyFilterEntry,
+  PrSessionLink,
+  PullRequestRow,
   RequestBreakdown,
   RequestMessageDetail,
   RequestToolDetail,
@@ -156,6 +162,13 @@ export interface ContextResponse {
   summary: ContextSummary;
   meta: { days: number; files: number; parseErrors: number };
 }
+export interface ContextThreadResponse {
+  threadId: string;
+  /** Every captured request of the thread in the window, oldest first. */
+  entries: ContextEntry[];
+  prompt: string | null;
+  meta: { days: number; files: number; parseErrors: number };
+}
 /**
  * A drill-down whose captured body retention has evicted. The sidecar is kept, so
  * `retained` still carries the metrics. Discriminate on `evicted` first.
@@ -205,6 +218,15 @@ export interface WithheldResponse {
   report: WithheldReport;
   launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[]; posture: LaunchAliasPosture };
   meta: { days: number; files: number; parseErrors: number };
+}
+export interface PullRequestsResponse {
+  repo: string | null;
+  prs: PullRequestRow[];
+  /** A setup problem phrased for the page (no `gh`, not signed in, no remote). */
+  error: string | null;
+  /** Sessions that worked on each PR, keyed by number. */
+  sessions: Record<number, PrSessionLink[]>;
+  meta: { fetchedAt: string; cached: boolean; total: number; limit: number };
 }
 export interface ProjectSummary {
   name: string;
@@ -563,6 +585,12 @@ export interface IdeasResponse {
     file: string;
     /** Counts over the rows returned. */
     counts: Record<IdeaStatus, number>;
+    /**
+     * Counts per area over the **whole** ledger, with every seed area present at
+     * zero — what the tab strip renders from, so selecting a tab never changes
+     * the numbers on the others.
+     */
+    areas: IdeaAreaCounts;
     /** Entries on the whole ledger, however the view was filtered. */
     total: number;
   };
@@ -576,6 +604,17 @@ export interface IdeasStatusResponse {
     /** Slugs the ledger does not carry — nothing was written for these. */
     unknown: string[];
     counts: Record<IdeaStatus, number>;
+    total: number;
+  };
+}
+/** The entries a re-file or a comment touched, plus the ledger-wide area counts. */
+export interface IdeasEditResponse {
+  rows: IdeaEntry[];
+  meta: {
+    file: string;
+    updated: string[];
+    unknown: string[];
+    areas: IdeaAreaCounts;
     total: number;
   };
 }
@@ -725,6 +764,8 @@ export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(da
 export const getToolSchema = (name: string, days: number) =>
   get<ToolSchemaResponse>(`/api/tool-schema?name=${encodeURIComponent(name)}&days=${days}`);
 export const getContext = (days: number) => get<ContextResponse>(`/api/context?days=${days}`);
+export const getContextThread = (threadId: string, days: number) =>
+  get<ContextThreadResponse>(`/api/context/thread?thread=${encodeURIComponent(threadId)}&days=${days}`);
 export const getContextDetail = (file: string) =>
   get<ContextDetailResponse>(`/api/context/detail?file=${encodeURIComponent(file)}`);
 export const getContextMessage = (file: string, index: number) =>
@@ -792,6 +833,8 @@ export const markSuggestionStatus = (updates: SuggestionStatusUpdate[]) =>
 export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
 export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
+/** The project's pull requests, read through `gh` on the server. */
+export const getPullRequests = () => get<PullRequestsResponse>('/api/pull-requests');
 export const getHooksPlugins = () => get<HooksPluginsResponse>('/api/hooks-plugins');
 /** The catalogued CLI internals, resolved against the bundle installed right now. */
 export const getCliInternals = () => get<CliInternalsResponse>('/api/cli-internals');
@@ -814,6 +857,14 @@ export const getIdeas = () => get<IdeasResponse>('/api/ideas');
  * with no note is refused — the reason is what stops the idea being re-proposed.
  */
 export const markIdeas = (marks: IdeaMark[]) => post<IdeasStatusResponse>('/api/ideas/status', { marks });
+/**
+ * Re-file ideas under an area. Its own route rather than a field on the mark: a
+ * status change must never move an idea between tabs as a side effect. An idea
+ * citing `command-gap` cannot leave the Commands area and is refused with 400.
+ */
+export const fileIdeas = (filings: IdeaFiling[]) => post<IdeasEditResponse>('/api/ideas/area', { filings });
+/** Write the comment on an idea. It replaces the previous one; `''` clears it. */
+export const commentIdeas = (comments: IdeaComment[]) => post<IdeasEditResponse>('/api/ideas/comment', { comments });
 export const getFilters = () => get<FiltersResponse>('/api/filters');
 export const getChatConfig = () => get<ChatConfigResponse>('/api/chat/config');
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */

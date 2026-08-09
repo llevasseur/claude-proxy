@@ -5,6 +5,7 @@ import {
   EyeOff,
   FolderGit2,
   Gauge,
+  GitPullRequest,
   HardDrive,
   Lightbulb,
   ListFilter,
@@ -16,6 +17,7 @@ import {
   PanelLeftOpen,
   Puzzle,
   ScrollText,
+  Sparkles,
   TerminalSquare,
   TrendingUp,
   Wrench,
@@ -34,9 +36,12 @@ import { ConceptsPage } from './routes/concepts';
 import { ContextPage } from './routes/context';
 import { ContextDetailPage } from './routes/context-detail';
 import { ContextMessagePage } from './routes/context-message';
+import { ContextThreadPage } from './routes/context-thread';
 import { ContextToolPage } from './routes/context-tool';
 import { FiltersPage } from './routes/filters';
 import { HooksPluginsPage } from './routes/hooks-plugins';
+import { IdeaDetailPage } from './routes/idea-detail';
+import { IdeasPage } from './routes/ideas';
 import { JobDetailPage } from './routes/job-detail';
 import { JobsPage } from './routes/jobs';
 import { MemoryDetailPage } from './routes/memory-detail';
@@ -45,6 +50,7 @@ import { ProjectDetailPage } from './routes/project-detail';
 import { ProjectsPage } from './routes/projects';
 import { PromptDetailPage } from './routes/prompt-detail';
 import { PromptSectionPage } from './routes/prompt-section';
+import { PullRequestsPage } from './routes/pull-requests';
 import { SessionDetailPage } from './routes/session-detail';
 import { SessionErrorsPage } from './routes/session-errors';
 import { SessionGraphPage } from './routes/session-graph';
@@ -60,27 +66,71 @@ import { WithheldPage } from './routes/withheld';
 import { useNavDrawer } from './useNavDrawer';
 import { useRailCollapsed } from './useRailCollapsed';
 
-/** Side-rail nav stations. */
-const STATIONS = [
-  { to: '/', label: 'Overview', hint: 'today', exact: true, icon: Monitor },
-  // Not exact: `/trends/$metric` keeps the station lit.
-  { to: '/trends', label: 'Trends', hint: 'blended', exact: false, icon: TrendingUp },
-  { to: '/context', label: 'Context size', hint: 'prompt', exact: false, icon: Gauge },
-  { to: '/tools', label: 'Tool bloat', hint: 'context', exact: false, icon: Wrench },
-  { to: '/skim', label: 'Skim', hint: 'cache', exact: false, icon: Zap },
-  { to: '/withheld', label: 'Not added', hint: 'withheld', exact: false, icon: EyeOff },
-  { to: '/filters', label: 'Proxy filters', hint: 'stripped', exact: false, icon: ListFilter },
-  { to: '/projects', label: 'Projects', hint: 'memory', exact: false, icon: FolderGit2 },
-  { to: '/sessions', label: 'Sessions', hint: 'transcripts', exact: true, icon: MessagesSquare },
-  { to: '/sessions/graph', label: 'Live graph', hint: 'sessions', exact: false, icon: Network },
-  { to: '/jobs', label: 'Jobs', hint: 'device', exact: false, icon: HardDrive },
-  { to: '/hooks-plugins', label: 'Hooks & Plugins', hint: 'config', exact: false, icon: Puzzle },
-  { to: '/system-prompt', label: 'System prompt', hint: 'device', exact: false, icon: ScrollText },
-  { to: '/commands', label: 'Commands', hint: 'per step', exact: false, icon: TerminalSquare },
-  { to: '/cli-internals', label: 'CLI internals', hint: 'bundle', exact: false, icon: Binary },
-  { to: '/concepts', label: 'Concepts', hint: '/teach', exact: false, icon: BookOpen },
-  { to: '/advice', label: 'Advice', hint: 'coaching', exact: false, icon: Lightbulb },
+/** Side-rail nav stations, grouped into sections. A section labels its stations; it is never a destination. */
+const NAV_SECTIONS = [
+  {
+    label: 'Dashboard',
+    stations: [
+      { to: '/', label: 'Overview', hint: 'today', exact: true, icon: Monitor },
+      // Not exact: `/trends/$metric` keeps the station lit.
+      { to: '/trends', label: 'Trends', hint: 'blended', exact: false, icon: TrendingUp },
+    ],
+  },
+  {
+    label: 'Context',
+    stations: [
+      { to: '/context', label: 'Context size', hint: 'prompt', exact: false, icon: Gauge },
+      { to: '/tools', label: 'Tool bloat', hint: 'context', exact: false, icon: Wrench },
+      { to: '/skim', label: 'Skim', hint: 'cache', exact: false, icon: Zap },
+      { to: '/withheld', label: 'Not added', hint: 'withheld', exact: false, icon: EyeOff },
+      { to: '/filters', label: 'Proxy filters', hint: 'stripped', exact: false, icon: ListFilter },
+    ],
+  },
+  {
+    label: 'Sessions',
+    stations: [
+      { to: '/projects', label: 'Projects', hint: 'memory', exact: false, icon: FolderGit2 },
+      { to: '/sessions', label: 'Sessions', hint: 'transcripts', exact: true, icon: MessagesSquare },
+      { to: '/sessions/graph', label: 'Live graph', hint: 'sessions', exact: false, icon: Network },
+    ],
+  },
+  {
+    label: 'Activity',
+    stations: [
+      { to: '/pull-requests', label: 'Pull requests', hint: 'github', exact: false, icon: GitPullRequest },
+      { to: '/jobs', label: 'Jobs', hint: 'device', exact: false, icon: HardDrive },
+    ],
+  },
+  {
+    label: 'Device',
+    stations: [
+      { to: '/hooks-plugins', label: 'Hooks & Plugins', hint: 'config', exact: false, icon: Puzzle },
+      { to: '/system-prompt', label: 'System prompt', hint: 'device', exact: false, icon: ScrollText },
+      { to: '/commands', label: 'Commands', hint: 'per step', exact: false, icon: TerminalSquare },
+      { to: '/cli-internals', label: 'CLI internals', hint: 'bundle', exact: false, icon: Binary },
+    ],
+  },
+  {
+    label: 'Learning',
+    stations: [
+      { to: '/concepts', label: 'Concepts', hint: '/teach', exact: false, icon: BookOpen },
+      { to: '/advice', label: 'Advice', hint: 'coaching', exact: false, icon: Lightbulb },
+      // Beside Advice, which kept the coaching and handed the ledger over to this page.
+      { to: '/ideas', label: 'Ideas', hint: 'by area', exact: false, icon: Sparkles },
+    ],
+  },
 ] as const;
+
+/** DOM id for a nav section's heading. */
+function navGroupId(label: string): string {
+  return `nav-group-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
+
+/** Scroll the document to the top, jumping rather than animating under `prefers-reduced-motion`. */
+function scrollToTop(): void {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+}
 
 /** Browser-tab title for a route, appended after the ClaudeProxy brand. */
 declare module '@tanstack/react-router' {
@@ -135,19 +185,37 @@ function RootLayout() {
           </button>
         </div>
 
-        <nav className='stations' aria-label='Sections'>
-          {STATIONS.map((s) => (
-            <Link
-              key={s.to}
-              to={s.to}
-              className='station'
-              activeProps={activeProps}
-              activeOptions={s.exact ? { exact: true } : undefined}
-              title={collapsed ? s.label : undefined}>
-              <s.icon className='station-icon' size={17} strokeWidth={1.75} aria-hidden />
-              <span className='station-label'>{s.label}</span>
-              <span className='station-hint'>{s.hint}</span>
-            </Link>
+        <nav className='stations' aria-label='Primary'>
+          {NAV_SECTIONS.map((section) => (
+            // biome-ignore lint/a11y/useSemanticElements: the suggested <fieldset> groups form controls; this groups nav links, and a nested <nav> per section would add six landmarks to the rail
+            <div key={section.label} className='nav-group' role='group' aria-labelledby={navGroupId(section.label)}>
+              <h2 className='nav-group-label' id={navGroupId(section.label)}>
+                {section.label}
+              </h2>
+              {section.stations.map((s) => (
+                <Link
+                  key={s.to}
+                  to={s.to}
+                  className='station'
+                  activeProps={activeProps}
+                  activeOptions={s.exact ? { exact: true } : undefined}
+                  title={collapsed ? s.label : undefined}
+                  onClick={(e) => {
+                    // Exact pathname, not lit state: a `/trends` station lit under `/trends/$metric` still navigates.
+                    if (pathname !== s.to) return;
+                    // A modified click is opening a tab, not navigating here.
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    // On a narrow viewport the drawer covers the page it just scrolled.
+                    nav.close();
+                    scrollToTop();
+                  }}>
+                  <s.icon className='station-icon' size={17} strokeWidth={1.75} aria-hidden />
+                  <span className='station-label'>{s.label}</span>
+                  <span className='station-hint'>{s.hint}</span>
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -235,11 +303,41 @@ const contextRoute = createRoute({
   component: ContextPage,
   staticData: { title: 'Context size' },
 });
+/** `?days=` clamped to 1–365 the way `/api/context` clamps it; anything unreadable
+ * falls back to the default rather than erroring. */
+function contextDays(raw: unknown): number {
+  const days = Number(raw);
+  return Number.isFinite(days) && days > 0 ? Math.min(Math.round(days), 365) : 14;
+}
+/** `?days=` carries the window the thread was reached from. */
+export interface ContextThreadSearch {
+  days: number;
+}
+const contextThreadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // A static segment, so it can never be read as a `$file` drill-down.
+  path: '/context/thread/$threadId',
+  component: ContextThreadPage,
+  staticData: { title: 'Context thread' },
+  validateSearch: (search: Record<string, unknown>): ContextThreadSearch => ({ days: contextDays(search.days) }),
+});
+/** `?thread=` names the thread this request was reached through — the only way the
+ * breakdown can crumb back, since a request body records no ids. `?days=` rides
+ * along so that crumb reopens the window it came from. */
+export interface ContextDetailSearch {
+  thread?: string;
+  days?: number;
+}
 const contextDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/context/$file',
   component: ContextDetailPage,
   staticData: { title: 'Context size' },
+  validateSearch: (search: Record<string, unknown>): ContextDetailSearch => {
+    const thread = search.thread;
+    if (typeof thread !== 'string' || thread === '') return {};
+    return { thread, days: contextDays(search.days) };
+  },
 });
 const contextMessageRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -339,6 +437,12 @@ const filtersRoute = createRoute({
   component: FiltersPage,
   staticData: { title: 'Proxy filters' },
 });
+const pullRequestsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/pull-requests',
+  component: PullRequestsPage,
+  staticData: { title: 'Pull requests' },
+});
 const hooksPluginsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/hooks-plugins',
@@ -383,6 +487,31 @@ const adviceRoute = createRoute({
   component: AdvicePage,
   staticData: { title: 'Advice' },
 });
+/**
+ * `?area=` is the selected tab, so a filtered view is linkable and survives a
+ * reload. An unreadable one is dropped here and the page falls back to its
+ * default view — a renamed or deleted area must degrade, never error.
+ */
+export interface IdeasSearch {
+  area?: string;
+}
+const ideasRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ideas',
+  component: IdeasPage,
+  staticData: { title: 'Ideas' },
+  validateSearch: (search: Record<string, unknown>): IdeasSearch => {
+    const area = search.area;
+    return typeof area === 'string' && area !== '' ? { area } : {};
+  },
+});
+const ideaDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  // The slug alone: the area is never in a permalink, so re-filing cannot break a link.
+  path: '/ideas/$slug',
+  component: IdeaDetailPage,
+  staticData: { title: 'Idea' },
+});
 const suggestionBucketRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/advice/sessions/$bucket',
@@ -417,6 +546,7 @@ const routeTree = rootRoute.addChildren([
   promptSectionRoute,
   toolSchemaRoute,
   contextRoute,
+  contextThreadRoute,
   contextDetailRoute,
   contextMessageRoute,
   contextToolRoute,
@@ -433,6 +563,7 @@ const routeTree = rootRoute.addChildren([
   skimRoute,
   withheldRoute,
   filtersRoute,
+  pullRequestsRoute,
   hooksPluginsRoute,
   systemPromptRoute,
   cliInternalsRoute,
@@ -440,6 +571,8 @@ const routeTree = rootRoute.addChildren([
   conceptsRoute,
   conceptDetailRoute,
   adviceRoute,
+  ideasRoute,
+  ideaDetailRoute,
   suggestionBucketRoute,
   commandsRoute,
   commandDetailRoute,

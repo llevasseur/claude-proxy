@@ -6,7 +6,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { applyIdeaStatus, BROWSER_IDEA_STATUSES, buildIdeas } from '../src/api.js';
+import { applyIdeaArea, applyIdeaComment, applyIdeaStatus, BROWSER_IDEA_STATUSES, buildIdeas } from '../src/api.js';
 import { addIdeasToStore, claimIdeasInStore, readIdeasStore } from '../src/ideas-store.js';
 
 let logDir: string;
@@ -20,8 +20,15 @@ const ADD = {
     { source: 'judge-note' as const, bucket: 3, id: 'serial-discovery' },
   ],
   repo: 'llevasseur/claude-proxy',
+  area: 'ui-ux',
 };
-const OTHER = { ...ADD, slug: 'step-reach-chart', title: 'Chart declared steps reached', repo: 'llevasseur/other' };
+const OTHER = {
+  ...ADD,
+  slug: 'step-reach-chart',
+  title: 'Chart declared steps reached',
+  repo: 'llevasseur/other',
+  area: 'infrastructure',
+};
 
 beforeEach(async () => {
   logDir = await mkdtemp(path.join(tmpdir(), 'ideas-api-'));
@@ -47,6 +54,18 @@ describe('buildIdeas', () => {
     const mine = await buildIdeas(logDir, { repo: 'llevasseur/other' });
     expect(mine.rows.map((r) => r.slug)).toEqual(['step-reach-chart']);
     expect(mine.meta.total).toBe(2);
+  });
+
+  it('narrows by area, and counts every area over the whole ledger', async () => {
+    const ui = await buildIdeas(logDir, { area: 'ui-ux' });
+    expect(ui.rows.map((r) => r.slug)).toEqual(['rolling-window']);
+    // Counted over the whole ledger, never the filtered rows — otherwise selecting
+    // one tab would rewrite the numbers on all the others.
+    expect(ui.meta.areas).toEqual({
+      areas: { 'ui-ux': 1, infrastructure: 1, 'code-quality': 0, services: 0, commands: 0 },
+      unfiled: 0,
+    });
+    expect((await buildIdeas(logDir, { area: 'services' })).rows).toEqual([]);
   });
 
   it('reads an empty ledger as no rows rather than failing', async () => {
@@ -140,5 +159,56 @@ describe('applyIdeaStatus', () => {
 
   it('refuses an empty batch', async () => {
     await expect(applyIdeaStatus(logDir, [])).rejects.toThrow(/no idea marks given/);
+  });
+});
+
+describe('applyIdeaArea', () => {
+  it('re-files an idea, leaving its decision exactly where it was', async () => {
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'rejected', note: 'covered by /trends' }]);
+    const filed = await applyIdeaArea(logDir, [{ slug: 'rolling-window', area: 'services' }]);
+
+    expect(filed.meta.updated).toEqual(['rolling-window']);
+    expect(filed.rows[0]?.area).toBe('services');
+    expect(filed.rows[0]?.status).toBe('rejected');
+    expect(filed.rows[0]?.note).toBe('covered by /trends');
+    expect(filed.meta.areas.areas.services).toBe(1);
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.area).toBe('services');
+  });
+
+  it('refuses an area that is not kebab-case, and an empty batch, writing nothing', async () => {
+    await expect(applyIdeaArea(logDir, [{ slug: 'rolling-window', area: 'Not Kebab' }])).rejects.toThrow(
+      /not a kebab-case area/,
+    );
+    await expect(applyIdeaArea(logDir, [])).rejects.toThrow(/no idea filings given/);
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.area).toBe('ui-ux');
+  });
+
+  it('writes nothing for a slug the ledger does not carry', async () => {
+    const result = await applyIdeaArea(logDir, [{ slug: 'never-proposed', area: 'services' }]);
+    expect(result.meta.unknown).toEqual(['never-proposed']);
+    expect(result.rows).toEqual([]);
+  });
+});
+
+describe('applyIdeaComment', () => {
+  it('writes a comment beside the note rather than over it', async () => {
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'rejected', note: 'covered by /trends' }]);
+    const commented = await applyIdeaComment(logDir, [{ slug: 'rolling-window', text: 'revisit once /trends lands' }]);
+
+    expect(commented.rows[0]?.comment).toBe('revisit once /trends lands');
+    expect(commented.rows[0]?.note).toBe('covered by /trends');
+    expect(commented.rows[0]?.status).toBe('rejected');
+
+    // And an empty one clears it, which is the editor's Clear button.
+    const cleared = await applyIdeaComment(logDir, [{ slug: 'rolling-window', text: '' }]);
+    expect(cleared.rows[0]?.comment).toBeUndefined();
+    expect(cleared.rows[0]?.note).toBe('covered by /trends');
+  });
+
+  it('refuses a comment that is not text, and an empty batch', async () => {
+    await expect(applyIdeaComment(logDir, [{ slug: 'rolling-window', text: 42 as unknown as string }])).rejects.toThrow(
+      /needs a comment/,
+    );
+    await expect(applyIdeaComment(logDir, [])).rejects.toThrow(/no idea comments given/);
   });
 });

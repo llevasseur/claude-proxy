@@ -1,10 +1,10 @@
-import type { Advice, AdviceMovement, IdeaEntry, SessionBucket, SuggestionStatusRow } from '@claude-proxy/core';
+import type { Advice, AdviceMovement, SessionBucket, SuggestionStatusRow } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { getIdeas, getSessionSuggestions, getSuggestionStatus, getSummary, type IdeasResponse } from '../api';
 import { AdviceCard } from '../components/AdviceCard';
-import { IDEAS_KEY, IdeaCard } from '../components/IdeaCard';
+import { IDEAS_KEY } from '../components/IdeaCard';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonCardList } from '../components/Skeleton';
 import {
@@ -46,26 +46,14 @@ export function AdvicePage() {
 }
 
 /**
- * The ideas ledger — invented proposals, each awaiting the sign-off that is the only
- * thing making one actionable. Above the heuristic cards, being the half of the page
- * waiting on a human, and live through SSE so an idea `/ideate` writes from a
- * terminal appears without a reload.
+ * A summary line, and a way across to the ledger.
+ *
+ * The full list moved to `/ideas`, where the proposals are tabbed by area. What
+ * stays is how many decisions are outstanding, still live over SSE.
  */
 function Ideas() {
   const query = useQuery({ queryKey: [IDEAS_KEY], queryFn: getIdeas });
   useLiveQuery<IdeasResponse>('/api/ideas/stream', [IDEAS_KEY]);
-  const [showRejected, setShowRejected] = useState(false);
-
-  const rows = query.data?.rows ?? [];
-  // Newest first, unlike the ledger's own oldest-first order.
-  const byNewest = (a: IdeaEntry, b: IdeaEntry) => b.created.localeCompare(a.created);
-  const open = rows.filter((r) => r.status === 'proposed').sort(byNewest);
-  // Kept visible, so it is clear what /improve picks up next, and what is already being built.
-  const settled = rows
-    .filter((r) => r.status === 'accepted' || r.status === 'claimed' || r.status === 'shipped')
-    .sort(byNewest);
-  // Never deleted, only collapsed: the reasons are what stop an idea being re-proposed.
-  const rejected = rows.filter((r) => r.status === 'rejected').sort(byNewest);
   const counts = query.data?.meta.counts;
 
   return (
@@ -74,39 +62,29 @@ function Ideas() {
         <h2>Ideas</h2>
         <span className='muted'>
           {counts
-            ? `${counts.proposed} awaiting a decision · ${counts.accepted} accepted · ${counts.claimed} being built · ${counts.rejected} rejected · ${counts.shipped} shipped`
+            ? `${counts.accepted} accepted · ${counts.claimed} being built · ${counts.rejected} rejected · ${counts.shipped} shipped`
             : ''}
         </span>
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<SkeletonCardList count={2} lines={4} />}>
-        {rows.length === 0 ? (
-          <div className='card empty'>
-            No ideas on the ledger. <code>/ideate</code> proposes them; each one cites evidence a person wrote down.
-          </div>
-        ) : (
-          <>
-            <div className='advice-list wide'>
-              {[...open, ...settled].map((idea) => (
-                <IdeaCard key={idea.slug} idea={idea} />
-              ))}
-            </div>
-            {rejected.length > 0 && (
-              <div className='idea-rejected-fold'>
-                <button type='button' className='idea-toggle' onClick={() => setShowRejected(!showRejected)}>
-                  {showRejected ? 'Hide' : 'Show'} {rejected.length} rejected
-                </button>
-                {showRejected && (
-                  <div className='advice-list wide'>
-                    {rejected.map((idea) => (
-                      <IdeaCard key={idea.slug} idea={idea} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
+      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<SkeletonCardList count={1} lines={1} />}>
+        <div className='card idea-summary'>
+          {counts && counts.proposed > 0 ? (
+            <>
+              <strong>{counts.proposed}</strong> awaiting a decision.{' '}
+              <Link to='/ideas' className='link'>
+                Adjudicate them by area →
+              </Link>
+            </>
+          ) : (
+            <>
+              Nothing awaiting a decision.{' '}
+              <Link to='/ideas' className='link'>
+                The ledger →
+              </Link>
+            </>
+          )}
+        </div>
       </QueryState>
     </>
   );

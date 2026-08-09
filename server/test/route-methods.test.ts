@@ -50,6 +50,7 @@ beforeAll(async () => {
       rationale: 'The fixed windows split a habit that spans a boundary.',
       evidence: [{ source: 'open-question', path: 'docs/features/session-suggestions.md' }],
       repo: 'llevasseur/claude-proxy',
+      area: 'ui-ux',
     },
   ]);
   child = spawn('npx', ['tsx', ENTRY], {
@@ -160,6 +161,40 @@ describe('read routes', () => {
 
     // On the write allowlist, so a declared foreign origin is refused outright.
     expect((await mark([{ slug: 'rolling-window', status: 'accepted' }], 'http://evil.example')).status).toBe(403);
+  });
+
+  it('files an idea and comments on it through their own write routes', async () => {
+    const post = (route: string, body: unknown, origin?: string) =>
+      fetch(`${BASE}/api/ideas/${route}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
+        body: JSON.stringify(body),
+      });
+
+    const filed = await post('area', { filings: [{ slug: 'rolling-window', area: 'services' }] });
+    expect(filed.status).toBe(200);
+    expect((await filed.json()) as { rows: IdeaEntry[] }).toMatchObject({ rows: [{ area: 'services' }] });
+
+    const commented = await post('comment', { comments: [{ slug: 'rolling-window', text: 'start small' }] });
+    expect(commented.status).toBe(200);
+    expect((await commented.json()) as { rows: IdeaEntry[] }).toMatchObject({ rows: [{ comment: 'start small' }] });
+
+    // Malformed input is a 400, and both routes are on the write allowlist, so a
+    // declared foreign origin is refused before any of that.
+    expect((await post('area', { filings: [{ slug: 'rolling-window', area: 'Not Kebab' }] })).status).toBe(400);
+    expect((await post('comment', { comments: [{ slug: 'rolling-window' }] })).status).toBe(400);
+    expect(
+      (await post('area', { filings: [{ slug: 'rolling-window', area: 'services' }] }, 'http://evil.example')).status,
+    ).toBe(403);
+  });
+
+  it('narrows the list by area, and refuses one that is not an area', async () => {
+    const rows = async (query: string) =>
+      ((await (await fetch(`${BASE}/api/ideas${query}`)).json()) as { rows: IdeaEntry[] }).rows.map((r) => r.slug);
+
+    expect(await rows('?area=services')).toEqual(['rolling-window']);
+    expect(await rows('?area=ui-ux')).toEqual([]);
+    expect((await fetch(`${BASE}/api/ideas?area=Not%20Kebab`)).status).toBe(400);
   });
 
   it('leaves the write allowlist to its own origin check', async () => {

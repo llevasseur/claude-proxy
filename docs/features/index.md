@@ -23,6 +23,7 @@ Add one with `okq new feature "<title>"`.
 | Live session graph | [live-session-graph.md](live-session-graph.md) |
 | Message drill-down | [message-drill-down.md](message-drill-down.md) |
 | Project memory browser | [project-memory-browser.md](project-memory-browser.md) |
+| Pull request tree | [pull-request-tree.md](pull-request-tree.md) |
 | Retention lifecycle | [retention-lifecycle.md](retention-lifecycle.md) |
 | Session suggestions | [session-suggestions.md](session-suggestions.md) |
 | Session transcripts | [session-transcripts.md](session-transcripts.md) |
