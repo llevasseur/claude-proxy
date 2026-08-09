@@ -3,7 +3,7 @@
   .pr-page {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: var(--space-8);
     min-height: 0;
   }
   .pr-head {
@@ -11,65 +11,65 @@
     flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-7);
   }
   .pr-head p {
-    margin: 4px 0 0;
+    margin: var(--space-3) 0 0;
     max-width: 62ch;
-    font-size: 12.5px;
+    font-size: var(--text-5);
   }
   .pr-counts {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-5);
   }
   .pr-count {
-    font-size: 11.5px;
+    font-size: var(--text-4);
     letter-spacing: 0.04em;
     color: var(--gc);
     border: 1px solid var(--gc);
-    border-radius: 999px;
-    padding: 3px 10px;
+    border-radius: var(--radius-pill);
+    padding: var(--space-3) var(--space-6);
   }
   .pr-error {
     margin: 0;
-    padding: 10px 12px;
+    padding: var(--space-6) var(--space-7);
     border: 1px solid var(--amber);
-    border-radius: 9px;
+    border-radius: var(--radius-4);
     color: var(--amber);
-    font-size: 12.5px;
+    font-size: var(--text-5);
   }
   /* Where main is, and the toggle for lines folded away. */
   .pr-main-bar {
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 12.5px;
+    gap: var(--space-7);
+    font-size: var(--text-5);
   }
   .pr-main-chip,
   .pr-main-marker {
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: var(--text-3);
     letter-spacing: 0.08em;
     color: var(--violet);
     border: 1px solid var(--violet);
-    border-radius: 999px;
-    padding: 1px 8px;
+    border-radius: var(--radius-pill);
+    padding: var(--space-1) var(--space-5);
   }
   .pr-main-at {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-5);
   }
   /* This checkout's own main, when it no longer agrees with origin's. */
   .pr-local {
     display: grid;
-    gap: 6px;
-    padding: 10px 12px;
+    gap: var(--space-4);
+    padding: var(--space-6) var(--space-7);
     border: 1px solid var(--line);
     border-left: 3px solid var(--violet);
-    border-radius: 9px;
-    font-size: 12.5px;
+    border-radius: var(--radius-4);
+    font-size: var(--text-5);
   }
   .pr-local p {
     margin: 0;
@@ -80,7 +80,7 @@
   .pr-local-act {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-6);
     flex-wrap: wrap;
   }
   .pr-local-done {
@@ -111,17 +111,17 @@
   .pr-tree {
     list-style: none;
     margin: 0;
-    padding: 4px 0 24px;
+    padding: var(--space-3) 0 var(--space-11);
     height: 100%;
     overflow-y: auto;
   }
   .pr-empty {
-    padding: 24px 0;
+    padding: var(--space-11) 0;
   }
   /* One trunk merge plus whatever hung off it, joined by the spine down the left. */
   .pr-row {
     position: relative;
-    padding-left: 26px;
+    padding-left: var(--space-11);
   }
   .pr-row::before {
     content: "";
@@ -141,7 +141,7 @@
  * stays the same width however many commits are above main.
  */
   .pr-row--off-main {
-    padding-left: calc(26px + var(--pr-lane, 1) * 18px);
+    padding-left: calc(var(--space-11) + var(--pr-lane, 1) * var(--space-9));
   }
   .pr-row--off-main::before {
     left: calc(7px + var(--pr-lane, 1) * 18px);
@@ -157,7 +157,7 @@
     height: 18px;
     border-right: 2px solid var(--violet);
     border-bottom: 2px solid var(--violet);
-    border-bottom-right-radius: 12px;
+    border-bottom-right-radius: var(--radius-6);
     pointer-events: none;
   }
   .pr-row.is-lane-base::before {
@@ -179,32 +179,32 @@
   /* Moving main, from inside the drawer. */
   .pr-slide {
     display: grid;
-    gap: 8px;
+    gap: var(--space-5);
     justify-items: start;
-    font-size: 12.5px;
+    font-size: var(--text-5);
   }
   .pr-slide-confirm p {
-    margin: 0 0 8px;
+    margin: 0 0 var(--space-5);
     max-width: 46ch;
   }
   .pr-slide-act {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-6);
   }
   .pr-node {
     position: relative;
     display: grid;
-    gap: 2px;
+    gap: var(--space-2);
     width: 100%;
     max-width: 760px;
-    margin: 6px 0;
-    padding: 9px 12px;
+    margin: var(--space-4) 0;
+    padding: var(--space-5) var(--space-7);
     text-align: left;
     background: var(--surface);
     border: 1px solid var(--line);
     border-left: 3px solid var(--gc);
-    border-radius: 9px;
+    border-radius: var(--radius-4);
     color: inherit;
     font: inherit;
     cursor: pointer;
@@ -226,7 +226,7 @@
   }
   /* A branch is indented and joined by a dashed stub, so it reads as never landing. */
   .pr-node--branch {
-    margin-left: 34px;
+    margin-left: var(--space-12);
     border-style: dashed;
     border-left-style: solid;
   }
@@ -238,13 +238,13 @@
     background: repeating-linear-gradient(90deg, var(--gc) 0 4px, transparent 4px 8px);
   }
   .pr-node-kind {
-    font-size: 10px;
+    font-size: var(--text-2);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--gc);
   }
   .pr-node-title {
-    font-size: 13.5px;
+    font-size: var(--text-6);
     line-height: 1.35;
   }
   .pr-node-num {
@@ -252,13 +252,13 @@
     color: var(--faint);
   }
   .pr-node-sub {
-    font-size: 11.5px;
+    font-size: var(--text-4);
     color: var(--muted);
   }
   /* Where PRs cut before the first merge attach. */
   .pr-root {
-    margin: 10px 0 2px;
-    font-size: 11px;
+    margin: var(--space-6) 0 var(--space-2);
+    font-size: var(--text-3);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--faint);
@@ -269,10 +269,10 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: var(--space-4);
   }
   .pr-note {
     margin: 0;
-    font-size: 11.5px;
+    font-size: var(--text-4);
   }
 }
