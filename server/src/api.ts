@@ -2875,17 +2875,13 @@ export type ConceptStoreKind = 'remote' | 'local';
 
 export interface ConceptStoreMeta {
   /**
-   * The store the answer came from, named for the page to show.
-   *
-   * The hosted store's read URL when it answered — never the token, and never
-   * anything the configured URL carried besides its origin and path. The local
-   * file's path **and the reason it was read** otherwise: a page reading the
-   * local file on a device whose concepts live in the hosted store looks empty
-   * and correct, and saying so here is what stops that being mistaken for an
-   * empty corpus.
+   * The store the answer came from, named for the page to show: the hosted
+   * store's read URL when it answered — never the token, and never anything
+   * else the configured URL carried — or the local file's path **and the reason
+   * it was read**, which is what stops an empty page reading as an empty corpus.
    */
   storePath: string;
-  /** The same fact as a value, for anything reading this other than a person. */
+  /** The same fact as a value rather than a label. */
   store: ConceptStoreKind;
   total: number;
 }
@@ -2901,8 +2897,7 @@ export interface ConceptsResponse {
  *
  * The hosted store wins whenever it is configured, and a failure to read it
  * propagates rather than falling back — see `server/src/concepts-remote.ts`.
- * With no credentials the local file answers exactly as it did before, so a
- * checkout that has never seen the Worker still renders the page.
+ * With no credentials the local file answers exactly as it did before.
  */
 async function readConceptsFromStore(
   logDir: string,

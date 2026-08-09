@@ -1010,23 +1010,20 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       // The Concepts page. With `CONCEPTS_URL` and `CONCEPTS_TOKEN` set this
-      // reads the hosted store, so a concept `/teach` saved on another device
-      // is on the page; without them it reads `logs/concepts.jsonl` as before,
-      // and `meta.storePath` says which of the two answered.
+      // reads the hosted store; without them, `logs/concepts.jsonl` as before.
+      // `meta.storePath` says which of the two answered.
       //
-      // `/teach` appends to the local store from outside this process, so the
-      // stream watches the log dir it sits in. That watch says nothing about
-      // the hosted store — a remote-backed page refreshes on the next local
-      // change or the next load, which is the same liveness the file had before
-      // `/teach` went remote.
+      // The stream watches the log dir, since `/teach` appends to the local
+      // store from outside this process. That watch says nothing about the
+      // hosted store — a remote-backed page refreshes on the next local change
+      // or the next load.
       case '/api/concepts': {
         let concepts: Awaited<ReturnType<typeof buildConcepts>>;
         try {
           concepts = await buildConcepts(LOG_DIR, readSource());
         } catch (err) {
           // A configured hosted store that will not answer is a bad gateway,
-          // never a quiet fall back to the local file: the page must say the
-          // store is unreachable rather than show a different store's corpus.
+          // never a quiet fall back to the local file's corpus.
           if (err instanceof RemoteConceptStoreError) {
             send(res, 502, { error: err.message });
             return;
@@ -1034,8 +1031,8 @@ const server = http.createServer(async (req, res) => {
           throw err;
         }
         send(res, 200, concepts);
-        // Shadow mode compares the two *local* backings. A remote answer came
-        // from neither, so comparing it would only re-issue the same request.
+        // Shadow mode compares the two *local* backings; a remote answer came
+        // from neither.
         if (concepts.meta.store === 'local') {
           shadow('/api/concepts', concepts, (source) => buildConcepts(LOG_DIR, source));
         }

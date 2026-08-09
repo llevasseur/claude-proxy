@@ -531,10 +531,8 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * file with no key and no filter, so there is nothing to enumerate over.
    *
    * These two checks are about the *local* backings. On a device configured for
-   * the hosted store both sides read that instead, so they compare one remote
-   * answer with another and say nothing about the file and the table — the
-   * request path skips its shadow check for the same reason. Unset
-   * `CONCEPTS_URL` to make this pair meaningful again.
+   * the hosted store both sides read that instead, comparing one remote answer
+   * with another; unset `CONCEPTS_URL` to make the pair meaningful again.
    */
   {
     name: '/api/concepts',

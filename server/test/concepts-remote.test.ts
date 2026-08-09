@@ -7,9 +7,9 @@ import { conceptStorePath } from '../src/concepts.js';
 import { RemoteConceptStoreError } from '../src/concepts-remote.js';
 
 /**
- * The hosted store answers when it is configured, the local file answers when it
- * is not, and the answer always says which of the two it was. **The network is
- * stubbed in every test here** — nothing in this file may reach the real Worker.
+ * The hosted store answers when it is configured, the local file when it is not,
+ * and the answer always says which. **The network is stubbed in every test
+ * here** — nothing in this file may reach the real Worker.
  */
 
 const ORIGIN = 'https://operator.example.workers.dev';
@@ -56,9 +56,8 @@ function configureRemote(): void {
 /**
  * A stub standing in for the Worker, recording what was asked of it.
  *
- * A fresh `Response` per call, because a body may only be read once and a test
- * that reads the store twice — the permalink one does — would otherwise fail on
- * the second read for a reason that has nothing to do with what it asserts.
+ * A fresh `Response` per call, because a body may only be read once and the
+ * permalink test reads the store twice.
  */
 function stubWorker(reply: (() => Response) | Error): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async () => {
@@ -75,8 +74,7 @@ function ndjson(body: string, status = 200): () => Response {
 
 /**
  * The error a read rejected with, typed as an `Error` — awaiting a `.catch()`
- * widens to a union with whatever the read would have resolved to, which has no
- * `message` to assert against.
+ * widens to a union with no `message` to assert against.
  */
 function rejection(read: Promise<unknown>): Promise<Error> {
   return read.then(
@@ -146,8 +144,8 @@ describe('the hosted store, when both variables are set', () => {
     configureRemote();
     stubWorker(ndjson(JSONL));
 
-    // Line 0 of the export is line 0 of `logs/concepts.jsonl` — the corpus was
-    // seeded from it in order — so `/concepts/0` still opens the same concept.
+    // Line 0 of the export is line 0 of `logs/concepts.jsonl`, so `/concepts/0`
+    // still opens the same concept.
     const { concept, meta } = await buildConcept(logDir, 0);
     expect(concept.term).toBe('carousel');
     expect(meta.store).toBe('remote');

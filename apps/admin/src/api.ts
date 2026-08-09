@@ -535,13 +535,9 @@ export interface ConceptRow {
   surfacedSkills?: string[];
 }
 /**
- * Which store answered, and its name for the page to show.
- *
- * `storePath` is the hosted store's read URL when the Worker answered, and the
- * local file's path — with the reason it was read instead — when it did not. A
- * page reading the local file on a device whose concepts live in the hosted
- * store looks empty and correct, so the reason is part of the label rather than
- * something only a server log knows.
+ * Which store answered, and its name for the page to show. `storePath` is the
+ * hosted store's read URL when the Worker answered, and the local file's path —
+ * with the reason it was read instead — when it did not.
  */
 export interface ConceptStoreMeta {
   storePath: string;
