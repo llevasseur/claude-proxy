@@ -2,7 +2,7 @@
   /* advice */
   .advice-list {
     display: grid;
-    gap: 12px;
+    gap: var(--space-7);
   }
   .advice-list.wide {
     grid-template-columns: 1fr;
@@ -23,12 +23,12 @@
   .advice-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 6px;
+    gap: var(--space-6);
+    margin-bottom: var(--space-4);
   }
   .advice-head h3 {
     font-family: var(--font-display);
-    font-size: 15px;
+    font-size: var(--text-7);
     font-weight: 600;
     margin: 0;
   }
@@ -37,19 +37,19 @@
     color: var(--text);
   }
   .advice-metric {
-    margin-top: 8px;
+    margin-top: var(--space-5);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
   }
 
   /* Advice that has not moved since the prior day: one line, expandable back to the
    full cards. */
   .advice-steady {
     display: grid;
-    gap: 8px;
-    margin-top: 12px;
+    gap: var(--space-5);
+    margin-top: var(--space-7);
   }
   .advice-steady-names {
-    font-size: 12px;
+    font-size: var(--text-4);
   }
 }

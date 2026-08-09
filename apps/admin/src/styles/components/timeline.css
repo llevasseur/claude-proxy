@@ -3,36 +3,36 @@
   .joblog {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-top: 12px;
+    gap: var(--space-6);
+    margin-top: var(--space-7);
   }
   .joblog-entry {
-    padding: 10px 12px;
+    padding: var(--space-6) var(--space-7);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-4);
     background: rgba(0, 0, 0, 0.18);
   }
   .joblog-head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 11.5px;
+    gap: var(--space-5);
+    font-size: var(--text-4);
   }
   .joblog-line {
     margin-left: auto;
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: var(--text-3);
   }
   .joblog-detail {
-    margin-top: 6px;
-    font-size: 13px;
+    margin-top: var(--space-4);
+    font-size: var(--text-5);
     color: var(--text);
   }
   .joblog-text {
-    margin-top: 6px;
+    margin-top: var(--space-4);
     max-height: 20rem;
     overflow: auto;
-    font-size: 12.5px;
+    font-size: var(--text-5);
     color: var(--muted);
   }
 
@@ -40,16 +40,16 @@
    from a counter so selecting the block copies only the code. */
   .codeblock {
     counter-reset: codeline;
-    margin: 12px 0 0;
-    padding: 12px 0;
+    margin: var(--space-7) 0 0;
+    padding: var(--space-7) 0;
     max-height: 620px;
     overflow: auto;
     list-style: none;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-4);
     background: rgba(0, 0, 0, 0.28);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
     line-height: 1.55;
     tab-size: 2;
   }
@@ -58,7 +58,7 @@
     display: block;
     /* Keeps a blank line the height of a full one. */
     min-height: 1.55em;
-    padding: 0 14px 0 0;
+    padding: 0 var(--space-8) 0 0;
     white-space: pre;
   }
   .codeblock.wrap li {

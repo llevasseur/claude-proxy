@@ -25,7 +25,7 @@
   }
   .stat-error-cta {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
     color: var(--coral);
   }
 
@@ -48,7 +48,7 @@
   }
   .stat-drill-cta {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
     color: var(--signal);
   }
 
@@ -60,16 +60,16 @@
   .error-meta {
     display: grid;
     grid-template-columns: max-content 1fr;
-    gap: 4px 12px;
-    margin-bottom: 10px;
-    font-size: 13px;
+    gap: var(--space-3) var(--space-7);
+    margin-bottom: var(--space-6);
+    font-size: var(--text-5);
   }
   .error-meta > div {
     display: contents;
   }
   .error-meta-label {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--muted);
@@ -79,9 +79,9 @@
   }
   /* The way from an error into the request message that carried it. */
   .error-cta-row {
-    margin-top: 10px;
+    margin-top: var(--space-6);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
   }
   .error-cta {
     color: var(--signal);
