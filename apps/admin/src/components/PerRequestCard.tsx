@@ -1,5 +1,6 @@
 import type { UsageDigest } from '@claude-proxy/core';
 import { fmtCompact, fmtInt } from '../format';
+import { CardWindowPicker, useCardWindow, useWindowDigests } from './DayWindow';
 import { type Series, SeriesLineChart } from './SeriesLineChart';
 import { SkeletonChartCard } from './Skeleton';
 
@@ -22,8 +23,13 @@ function toPerRequestRow(d: UsageDigest) {
   };
 }
 
-/** Tokens per request across every day in the selected window. */
-export function PerRequestCard({ digests }: { digests: UsageDigest[] }) {
+/**
+ * Tokens per request across every day in the selected window, which is the page
+ * head's until this card's own picker is touched.
+ */
+export function PerRequestCard() {
+  const { days, choice, select, switching, today } = useCardWindow();
+  const { digests, isFetching } = useWindowDigests(days, today);
   const rows = digests.map(toPerRequestRow);
   const first = digests.at(0);
   const last = digests.at(-1);
@@ -33,7 +39,15 @@ export function PerRequestCard({ digests }: { digests: UsageDigest[] }) {
     <div className='card'>
       <div className='card-head'>
         <h2>Tokens per request</h2>
-        <span className='range'>{rangeLabel}</span>
+        <div className='card-head-aside'>
+          <span className='range'>{rangeLabel}</span>
+          <CardWindowPicker
+            choice={choice}
+            onSelect={select}
+            label='Tokens-per-request window'
+            busy={switching || isFetching}
+          />
+        </div>
       </div>
       <SeriesLineChart data={rows} series={PER_REQUEST_SERIES} xKey='label' format={fmtInt} formatTick={fmtCompact} />
       <div className='chartlegend'>

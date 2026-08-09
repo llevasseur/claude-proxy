@@ -384,16 +384,32 @@ button:focus-visible {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  /* The controls never shrink, so a long title block has to be able to take its
+     own line rather than push them off the edge of a narrow workspace. */
+  flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 26px;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--line);
 }
+/* A title block sharing the head with a control cluster: it yields first and wraps
+   first, so the control keeps its full width instead of losing its last pill. The
+   basis applies only while the head is a row — stacked, it would read as a height. */
+.pagehead-title {
+  min-width: 0;
+}
+@media (min-width: 861px) {
+  .pagehead-title {
+    flex: 1 1 22rem;
+  }
+}
 /* Right-hand cluster of a pagehead: live badge alongside a window switcher. */
 .pagehead-controls {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px 14px;
   flex-shrink: 0;
 }
 .pagehead h1 {
@@ -533,6 +549,17 @@ button:focus-visible {
 /* A caption is prose: let it wrap rather than push the head wider. */
 .card-head > .muted {
   min-width: 0;
+}
+/* A card that carries its own window switcher: the range caption and the control
+   travel together, and drop to their own row before either one is squeezed. */
+.card-head-aside {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  min-width: 0;
+  margin-left: auto;
 }
 /* A phone has no room for the card's full gutter. */
 @media (max-width: 640px) {

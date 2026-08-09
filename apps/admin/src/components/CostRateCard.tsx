@@ -1,10 +1,4 @@
-import {
-  type CostRatePoint,
-  costRatePoints,
-  isPartialDay,
-  summarizeCostRate,
-  type UsageDigest,
-} from '@claude-proxy/core';
+import { type CostRatePoint, costRatePoints, isPartialDay, summarizeCostRate } from '@claude-proxy/core';
 import {
   CartesianGrid,
   ReferenceLine,
@@ -17,6 +11,7 @@ import {
   ZAxis,
 } from 'recharts';
 import { deltaLabel, deltaTone, fmtInt, fmtTokensShort, fmtUsd, fmtUsdCompact, fmtUsdPerMTok } from '../format';
+import { CardWindowPicker, useCardWindow, useWindowDigests } from './DayWindow';
 import { Skeleton, SkeletonCard } from './Skeleton';
 
 /** Plot height, in px. Matched by the skeleton so the card does not resize on load. */
@@ -35,8 +30,12 @@ const LEGEND = [
 /**
  * Spend against volume, one dot per day, over the median $/MTok of the earlier
  * days: a dot below the line bought its tokens more cheaply than usual.
+ *
+ * The window is the page head's until this card's own picker is touched.
  */
-export function CostRateCard({ digests }: { digests: UsageDigest[] }) {
+export function CostRateCard() {
+  const { days, choice, select, switching, today: liveToday } = useCardWindow();
+  const { digests, isFetching } = useWindowDigests(days, liveToday);
   const points = costRatePoints(digests);
   const summary = summarizeCostRate(digests);
   const today = summary.today;
@@ -46,7 +45,15 @@ export function CostRateCard({ digests }: { digests: UsageDigest[] }) {
     <div className='card'>
       <div className='card-head'>
         <h2>Cost per token</h2>
-        <span className='range'>{rangeLabel(points)}</span>
+        <div className='card-head-aside'>
+          <span className='range'>{rangeLabel(points)}</span>
+          <CardWindowPicker
+            choice={choice}
+            onSelect={select}
+            label='Cost-per-token window'
+            busy={switching || isFetching}
+          />
+        </div>
       </div>
 
       <Verdict summary={summary} priorDays={prior.length} />
