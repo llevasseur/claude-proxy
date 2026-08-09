@@ -141,6 +141,42 @@ declare module '@tanstack/react-router' {
 
 const BRAND = 'ClaudeProxy';
 
+/**
+ * The wordmark, and the way back to Overview. The rail's head carries it on wide
+ * viewports; the top bar carries a second copy, since the head is hidden once the
+ * rail collapses into a drawer.
+ */
+function BrandLink({
+  className,
+  pathname,
+  closeDrawer,
+}: {
+  className: string;
+  pathname: string;
+  closeDrawer: () => void;
+}) {
+  return (
+    <Link
+      to='/'
+      className={className}
+      aria-label='claude·proxy — Overview'
+      onClick={(e) => {
+        // Already on Overview: scroll back up rather than re-navigating, as a lit station does.
+        if (pathname !== '/') return;
+        // A modified click is opening a tab, not navigating here.
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        e.preventDefault();
+        closeDrawer();
+        scrollToTop();
+      }}>
+      <span className='brand-node' aria-hidden />
+      <span className='brand'>
+        claude<span className='brand-sep'>·</span>proxy
+      </span>
+    </Link>
+  );
+}
+
 /** Keep the document title in sync with the deepest active route's `staticData.title`. */
 function useDocumentTitle() {
   const title = useRouterState({
@@ -170,10 +206,7 @@ function RootLayout() {
     <div className={`app${collapsed ? ' app--rail-collapsed' : ''}${nav.open ? ' app--drawer-open' : ''}`}>
       <aside className='rail' id='rail-nav'>
         <div className='rail-head'>
-          <span className='brand-node' aria-hidden />
-          <span className='brand'>
-            claude<span className='brand-sep'>·</span>proxy
-          </span>
+          <BrandLink className='brand-link' pathname={pathname} closeDrawer={nav.close} />
           <button
             type='button'
             className='rail-toggle'
@@ -241,6 +274,7 @@ function RootLayout() {
             title='Open navigation'>
             <Menu size={20} aria-hidden />
           </button>
+          <BrandLink className='brand-link topbar-brand' pathname={pathname} closeDrawer={nav.close} />
         </div>
         <main className={`content${full ? ' content--full' : ''}`}>
           <Outlet />
