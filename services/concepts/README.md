@@ -78,15 +78,18 @@ entry averages ~148 bytes while one carrying notes and tips averages ~1.2 KB.
 **These steps are documented, not automated.** They create billable resources
 and handle secrets, so run them yourself.
 
-### 1. Create the database
+### 1. The database
+
+The Worker deploys as `operator` and binds the existing `operator-db` D1
+database as `operator_db`. Its `database_id` is already in `wrangler.jsonc` — a
+D1 database id is not a secret, so it is committed.
+
+To point this at a different database instead, create one and copy the printed
+`database_id` over the one in `wrangler.jsonc`:
 
 ```sh
-pnpm --filter concepts exec wrangler d1 create concepts
+pnpm --filter concepts exec wrangler d1 create <name>
 ```
-
-Copy the printed `database_id` into `wrangler.jsonc`, replacing
-`REPLACE_WITH_D1_DATABASE_ID`, and commit that — a D1 database id is not a
-secret.
 
 ### 2. Apply the schema
 

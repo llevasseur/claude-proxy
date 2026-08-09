@@ -43,7 +43,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: services/concepts
-          command: d1 migrations apply concepts --remote
+          command: d1 migrations apply operator-db --remote
 
       - name: Deploy worker
         uses: cloudflare/wrangler-action@v3

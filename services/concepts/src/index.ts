@@ -24,7 +24,7 @@ export default {
       });
     }
 
-    const db = d1Db(env.DB);
+    const db = d1Db(env.operator_db);
     try {
       if (url.pathname === '/mcp') return await handleMcp(request, db);
       const rest = await handleRest(request, url, db);
@@ -38,7 +38,7 @@ export default {
 
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      runBackup(d1Db(env.DB), env)
+      runBackup(d1Db(env.operator_db), env)
         .then((result) => console.log('concepts: backup', JSON.stringify(result)))
         .catch((error) => console.error('concepts: backup failed', error)),
     );

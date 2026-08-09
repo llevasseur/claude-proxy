@@ -2,7 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 
 /** Bindings the Worker is deployed with. See `wrangler.jsonc` and the README. */
 export interface Env {
-  DB: D1Database;
+  operator_db: D1Database;
   /** The single bearer token, presented by readers and writers alike. */
   CONCEPTS_TOKEN: string;
   /** Fine-grained PAT with contents:write on the backup repo. Absent disables backup. */
