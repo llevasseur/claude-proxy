@@ -65,6 +65,7 @@ import { TrendsPage } from './routes/trends';
 import { WithheldPage } from './routes/withheld';
 import { useNavDrawer } from './useNavDrawer';
 import { useRailCollapsed } from './useRailCollapsed';
+import { useStationInView } from './useStationInView';
 
 /** Side-rail nav stations, grouped into sections. A section labels its stations; it is never a destination. */
 const NAV_SECTIONS = [
@@ -198,6 +199,7 @@ function RootLayout() {
   const [collapsed, toggleRail] = useRailCollapsed();
   const toggleLabel = collapsed ? 'Expand navigation' : 'Collapse navigation';
   const nav = useNavDrawer();
+  const stations = useStationInView(pathname, nav.open);
   return (
     <div className={`app${collapsed ? ' app--rail-collapsed' : ''}${nav.open ? ' app--drawer-open' : ''}`}>
       <aside className='rail' id='rail-nav'>
@@ -214,7 +216,7 @@ function RootLayout() {
           </button>
         </div>
 
-        <nav className='stations' aria-label='Primary'>
+        <nav className='stations' aria-label='Primary' ref={stations}>
           {NAV_SECTIONS.map((section) => (
             // biome-ignore lint/a11y/useSemanticElements: the suggested <fieldset> groups form controls; this groups nav links, and a nested <nav> per section would add six landmarks to the rail
             <div key={section.label} className='nav-group' role='group' aria-labelledby={navGroupId(section.label)}>
