@@ -132,20 +132,25 @@ function ChatPane({
       // The session's own settings, carried in the input's toolbar.
       inputOptions={
         <>
-          {/* Locked once a session exists: its posture was fixed when it started. */}
-          <select
-            className='chat-permission'
-            aria-label='Permissions'
-            value={permission}
-            title={PERMISSION_NOTE[permission]}
-            disabled={started || isSending}
-            onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}>
-            {PERMISSION_MODES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+          {/* Locked once a session exists: its posture was fixed when it started.
+              `.select-field` is the shared primitive: it draws the disclosure arrow
+              the composer never had, and keeps the arrow's column inside the control
+              rather than in the platform's own gutter — which is what left the
+              "Enter to send" hint with nowhere to sit beside it. */}
+          <div className='select-field chat-permission'>
+            <select
+              aria-label='Permissions'
+              value={permission}
+              title={PERMISSION_NOTE[permission]}
+              disabled={started || isSending}
+              onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}>
+              {PERMISSION_MODES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
           {/* The child reports what it started under. Saying so beats inferring the
               answer from a turn full of denials — a server running older code pins
               its own default and the request's choice never lands. */}

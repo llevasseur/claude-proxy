@@ -157,15 +157,18 @@ function AreaPicker({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
           e.preventDefault();
           if (area && area !== idea.area) file.mutate(area);
         }}>
-        <select value={area} onChange={(e) => setArea(e.target.value)} aria-label='Area'>
-          {!idea.area && <option value=''>Unfiled</option>}
-          {areas.map((a) => (
-            <option key={a} value={a}>
-              {ideaAreaLabel(a)}
-            </option>
-          ))}
-        </select>
-        <button type='submit' disabled={!area || area === idea.area || file.isPending}>
+        {/* The wrapper is what draws the disclosure arrow — see `.select-field`. */}
+        <div className='select-field'>
+          <select value={area} onChange={(e) => setArea(e.target.value)} aria-label='Area'>
+            {!idea.area && <option value=''>Unfiled</option>}
+            {areas.map((a) => (
+              <option key={a} value={a}>
+                {ideaAreaLabel(a)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button type='submit' className='btn-primary' disabled={!area || area === idea.area || file.isPending}>
           Re-file
         </button>
       </form>
@@ -209,11 +212,18 @@ function CommentEditor({ idea }: { idea: IdeaEntry }) {
           onChange={(e) => setText(e.target.value)}
         />
         <div className='idea-controls'>
-          <button type='submit' disabled={save.isPending || text.trim() === (idea.comment ?? '')}>
+          <button
+            type='submit'
+            className='btn-primary'
+            disabled={save.isPending || text.trim() === (idea.comment ?? '')}>
             Save
           </button>
           {idea.comment && (
-            <button type='button' disabled={save.isPending} onClick={() => (setText(''), save.mutate(''))}>
+            <button
+              type='button'
+              className='btn-quiet'
+              disabled={save.isPending}
+              onClick={() => (setText(''), save.mutate(''))}>
               Clear
             </button>
           )}

@@ -119,12 +119,12 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
             {/* `accepted` is the recorded human sign-off, and the only status /improve acts on. */}
             <button
               type='button'
-              className='idea-accept'
+              className='btn-primary idea-accept'
               disabled={mark.isPending}
               onClick={() => mark.mutate({ status: 'accepted' })}>
               Accept
             </button>
-            <button type='button' disabled={mark.isPending} onClick={() => setRejecting(true)}>
+            <button type='button' className='btn-quiet' disabled={mark.isPending} onClick={() => setRejecting(true)}>
               Reject
             </button>
           </>
@@ -145,10 +145,10 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
               placeholder='Why not? This is what stops it being re-proposed.'
               onChange={(e) => setReason(e.target.value)}
             />
-            <button type='submit' disabled={!reason.trim() || mark.isPending}>
+            <button type='submit' className='btn-primary' disabled={!reason.trim() || mark.isPending}>
               Reject
             </button>
-            <button type='button' disabled={mark.isPending} onClick={() => setRejecting(false)}>
+            <button type='button' className='btn-quiet' disabled={mark.isPending} onClick={() => setRejecting(false)}>
               Cancel
             </button>
           </form>
@@ -157,14 +157,22 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
         {/* Releasing is `accepted`, not `proposed` — the idea goes back on offer with its
             sign-off intact, without waiting out the six-hour expiry. */}
         {idea.status === 'claimed' && (
-          <button type='button' disabled={mark.isPending} onClick={() => mark.mutate({ status: 'accepted' })}>
+          <button
+            type='button'
+            className='btn-quiet'
+            disabled={mark.isPending}
+            onClick={() => mark.mutate({ status: 'accepted' })}>
             Release
           </button>
         )}
 
         {/* `proposed` is the undo — it un-signs an idea without erasing it or its note. */}
         {decided && idea.status !== 'shipped' && idea.status !== 'claimed' && (
-          <button type='button' disabled={mark.isPending} onClick={() => mark.mutate({ status: 'proposed' })}>
+          <button
+            type='button'
+            className='btn-quiet'
+            disabled={mark.isPending}
+            onClick={() => mark.mutate({ status: 'proposed' })}>
             Undo
           </button>
         )}
