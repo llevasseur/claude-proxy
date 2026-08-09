@@ -351,7 +351,14 @@ other route stays read-only.
 - **The transports differ in what they cost and what they produce.** `cli` adds Claude
   Code's own system prompt and its out-of-band titling request, so a CLI-started chat gets a
   real title in the sessions list and an `api` one does not. Comparing token counts across
-  the two is not comparing like with like.
+  the two is not comparing like with like. **The naming half of this is decided and no longer
+  open**: a session the CLI never titled is named *and* previewed from its own opening prompt
+  — `deriveSessionName` and `deriveSessionPreview` in `packages/core/src/sessions.ts` — rather
+  than by asking a model for a title. That was the point of the choice: a fix routed through
+  the titling request would have depended on the very transport that is missing in exactly the
+  sessions that need it. The rail's preview line consequently shows a command's arguments
+  instead of its `<command-message>` envelope, and says a compacted session was continued
+  instead of quoting its predecessor's summary. The token-cost half stands as written.
 - **Agent mode has no authentication.** Apart from chat, suggestion-status, job-delete and
   device-system-prompt writes, the locally bound server is read-only. Origin checks constrain
   browsers, not direct
