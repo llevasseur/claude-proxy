@@ -13,8 +13,10 @@ timestamp: 2026-08-02
 `pnpm --filter server maintain` archives past-day logs, evicts request **bodies** older
 than `RETENTION_DAYS` (default 30) from `logs/archive/<date>/`, and prints the day's
 digest. Every `.audit.json` sidecar is kept forever, so an evicted day still answers
-usage, tools, trends and summary byte-identically. The command is a **dry run by default**
-and only touches the disk with `--apply`.
+usage, tools, trends and summary byte-identically. A view that reads something out of the
+**body** rather than the sidecar is not covered by that, so those values are now extracted
+into columns at ingest time, before eviction can remove the body they came from. The
+command is a **dry run by default** and only touches the disk with `--apply`.
 
 ## Motivation
 
@@ -42,12 +44,16 @@ essentially the whole disk win.
 
 ### The command
 
-`pnpm --filter server maintain [--apply]` does four things in order:
+`pnpm --filter server maintain [--apply]` does five things in order:
 
 0. **Reconcile command runs** — under `--apply` only, distil any still-visible command
    runs into `logs/commands/runs.jsonl`. It must run *before* archiving relocates the
    transcripts and bodies it reads. Never fatal, and skipped on a dry run because it
    writes.
+
+0.5. **Derive what the views read out of a body** — under `--apply` only, an ordinary
+   ingest pass, run here so it is *guaranteed* to happen before step 2 deletes the
+   bodies. See [Deriving before evicting](#deriving-before-evicting). Never fatal.
 
 1. **Archive** — every file in `logs/` whose name begins with a date strictly before today
    moves to `logs/archive/<that date>/`. Today's logs stay put. Directories are skipped
@@ -122,6 +128,51 @@ archive candidate comes from the filename's own date prefix, so it is one lookup
 sidecar whose body is gone. Both read backings derive it from the same disk observation, so
 the parity harness stays byte-identical.
 
+### Deriving before evicting
+
+"An evicted day still answers byte-identically" was true of everything read out of a
+**sidecar** and false of anything read out of a **body**. `/api/skim` renders each
+request's last user turn, and it got that by opening the `.request.txt` at query time — so
+past the retention edge the skim views degraded silently while the usage views did not.
+That is a claim this document made and eviction did not honour.
+
+The fix is a compaction pass, not a retention change. **Eviction deletes exactly what it
+deleted before, on exactly the same schedule.** What changed is that ingest now reads the
+body for the small values a view renders out of it *while the body is still on disk*, into
+columns beside the pointers ADR 0004 already sanctions:
+
+- `request.skim_text` — the last user turn, bounded.
+- `request.body_derived` — whether the body was ever read. Not `skim_text IS NOT NULL`: a
+  body carrying no user turn derives a real null, and a body that is unparseable derives
+  one too, so the flag is what stops every later pass re-reading the same file.
+
+`server/src/derive.ts` is the one home for those functions. `latestUserText` previously
+existed twice, once in each reader, which is a parity break waiting to happen for a value
+both sides must agree on byte for byte; now the file scan, the SQL read and ingest all call
+the same one.
+
+The read path prefers the column. When a row is derived, `/api/skim` no longer opens the
+blob at all — it does an existence check, because **`meta.bodiesEvicted` stays a live disk
+observation on both backings** (a row's `blob_evicted` is only as fresh as the last ingest,
+and an archived day whose audit listing is unchanged is skipped by its watermark). So the
+count keeps rising past the edge and the text stops disappearing with it.
+
+This is deliberately not the content-addressed blob store [ADR
+0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md) rejected. These are bounded
+derived strings, `logs/` remains the sole source of truth, and
+`rm logs/claude-proxy.db && pnpm --filter server ingest` still reconstructs everything that
+is on disk — asserted in `server/test/derive-before-evict.test.ts`, not assumed.
+
+One value was considered and left out: the system-prompt **section text** that
+`buildPromptSection` recovers by opening up to eight bodies. Its derivative is the whole
+section, which is unbounded — extracting it would be the cutover the ADR turned down. That
+path still opens bodies and still degrades at the retention edge.
+
+**The honest limit: this is forward-only.** For a day whose bodies are already gone there
+is nothing left to derive from, and re-ingesting cannot invent it — the rows already on the
+ledger as `blob_evicted` stay exactly as they are, underived. The guarantee improves every
+day from the day it ships and no day before it.
+
 ### The scheduled job
 
 `scripts/com.llevasseur.claude-proxy.maintain.plist` is the reviewable copy of the launchd
@@ -143,6 +194,9 @@ is the part worth keeping.
 - `logs/sessions/`, `logs/commands/`, `logs/.chat/` and `logs/suggestion-status.json` are
   untouched — `logs/sessions/` is what keeps `/revive` working off disk.
 - An evicted day serves usage, tools, trends and summary byte-identically to before.
+- A body derived before it was evicted still answers `/api/skim`'s text afterwards, and the
+  eviction is still counted. A body evicted before it was ever derived answers no text, and
+  a rebuild from disk does not recover one.
 - The context routes return the evicted marker with retained metrics; a never-captured file
   still 404s.
 - The parity harness stays green.

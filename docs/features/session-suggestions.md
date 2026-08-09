@@ -303,7 +303,12 @@ file scan under `DB_READS=0`, while the CLI always scans the files —
   into the `.nodes.jsonl` row beside the display text, `SessionNode.argsHash` carries it through
   both the file and SQLite sources, and the rule keys on `node.argsHash ?? node.tool`. The
   fallback is the legacy path, kept deliberately: a transcript written before the field has no
-  hashes and reads exactly as it did before. The rules still read distilled lines for everything
+  hashes and reads exactly as it did before. **It is also dated**, as `suggestions-args-hash-key`
+  in `packages/core/src/fallbacks.ts` (2026-08-07), so `server/test/fallback-retirement.test.ts`
+  says when it stops being reachable rather than leaving "kept deliberately" to quietly mean
+  "kept forever" — this fallback is the *wrong* key rather than merely an older one, so deleting
+  it the day no retained transcript needs it is worth doing. It is still reachable today: the
+  archive's floor is 2026-07-12. The rules still read distilled lines for everything
   else, so any *other* rule that wants to compare arguments has the same key available and does
   not yet use it.
 - Severity is fixed per rule rather than scaled by how badly a threshold was crossed. A window

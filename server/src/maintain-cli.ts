@@ -130,6 +130,27 @@ async function reconcileRuns(logDir: string): Promise<void> {
   }
 }
 
+/**
+ * Extract the derivatives the dashboard reads out of a body, while the bodies are
+ * all still here. Must run *before* the evict phase below deletes them, for the
+ * same reason `reconcileRuns` must run before archiving: the step consumes
+ * something a later step in this very run removes.
+ *
+ * An ordinary ingest pass — the watcher and `pnpm --filter server ingest` run the
+ * same one, so this is usually a no-op that finds nothing pending, and having it
+ * here is what makes the ordering a guarantee. Skipped on a dry run, and never
+ * fatal: the substrate is a disposable view.
+ */
+async function deriveBeforeEvict(logDir: string): Promise<void> {
+  try {
+    const { ingestOnce } = await import('./db/runtime.js');
+    const stats = await ingestOnce(logDir);
+    if (stats.derived > 0) console.log(`[maintain] derived ${plural(stats.derived, 'body')} before eviction`);
+  } catch (err) {
+    console.error(`[maintain] body derivation skipped: ${(err as Error).message}`);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const apply = args.includes('--apply');
@@ -138,7 +159,10 @@ async function main(): Promise<void> {
   const retentionDays = resolveRetentionWindow();
 
   console.log(`[maintain] log directory: ${logDir}`);
-  if (apply) await reconcileRuns(logDir);
+  if (apply) {
+    await reconcileRuns(logDir);
+    await deriveBeforeEvict(logDir);
+  }
 
   const corpus = await collectRetentionCorpus(logDir);
   const plan = planRetention({ corpus, today, retentionDays });

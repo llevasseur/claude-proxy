@@ -188,10 +188,17 @@ transcript.
 
 ## Open questions
 
-- The sidecar's `session` block is now typed as `AuditSession` and consumed — `sessionId` joins
-  a transcript to its captured requests for the Peak context link — but it is still optional and
-  unchecked by `isAuditSidecar`, since legacy sidecars predate it. Once those age out, should the
-  guard require it?
+- ~~The sidecar's `session` block is optional and unchecked by `isAuditSidecar`; once legacy
+  sidecars age out, should the guard require it?~~ — **dated rather than open now.** The block is
+  typed as `AuditSession` and consumed (`sessionId` joins a transcript to its captured requests
+  for the Peak context link), and it stays optional only for sidecars written before the proxy
+  emitted it. That day is on record as `audit-sidecar-session-block-optional` in
+  `packages/core/src/fallbacks.ts` — **2026-08-07** — and `server/test/fallback-retirement.test.ts`
+  compares it against the oldest capture the install actually retains. So "have they aged out?"
+  is a question the suite answers on every run rather than one a reader has to judge: the guard
+  may require the block on the day that test names it, and not before. Today it does not — the
+  archive's floor is **2026-07-12**, months of retained sidecars predate the field, and the
+  branch is load-bearing.
 - ~~Attribution is per session id, not per thread~~ — **resolved.** The proxy already computed
   `threadIdFor(sessionId, messages)` to name the transcript, so it now writes that id onto the
   audit sidecar's `session` block as well, and `sessionContextPeak` / `sessionContextEntries`
