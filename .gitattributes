@@ -1,0 +1,4 @@
+# Every branch prepends to the top of CHANGELOG.md, so two branches in flight
+# always conflict on the same first lines; union keeps both sides' added lines.
+# Deliberate — see the repository map in AGENTS.md before changing it.
+CHANGELOG.md merge=union
