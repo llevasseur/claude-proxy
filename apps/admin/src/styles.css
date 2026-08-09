@@ -63,20 +63,22 @@ button:focus-visible {
 
 /* side rail */
 .rail {
+  --rail-inset: 16px;
   position: sticky;
   top: 0;
   align-self: start;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 24px 16px;
-  /* Scrolls on a short viewport — the section headings cost a station's worth of height apiece. */
-  overflow-y: auto;
+  padding: 24px var(--rail-inset);
+  /* The stations scroll, not the rail: the brand and the log count stay put at either end. */
+  overflow: hidden;
   background: linear-gradient(180deg, var(--surface), var(--ink));
   border-right: 1px solid var(--line);
 }
 
 .rail-head {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -107,6 +109,14 @@ button:focus-visible {
   flex-direction: column;
   gap: 2px;
   margin-top: 22px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Bleeds back out to the rail's edges: `overflow-y` clips horizontally too, and the
+     active station's marker sits in the rail's inset. */
+  margin-inline: calc(var(--rail-inset) * -1);
+  padding-inline: var(--rail-inset);
 }
 /* A section of the rail: a label over its stations, nothing clickable. */
 .nav-group {
@@ -173,7 +183,7 @@ button:focus-visible {
 .station.active::before {
   content: "";
   position: absolute;
-  left: -16px;
+  left: calc(var(--rail-inset) * -1);
   top: 6px;
   bottom: 6px;
   width: 2px;
@@ -204,7 +214,7 @@ button:focus-visible {
 }
 
 .rail-foot {
-  margin-top: auto;
+  flex: none;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
@@ -258,7 +268,7 @@ button:focus-visible {
     grid-template-columns: 64px minmax(0, 1fr);
   }
   .app--rail-collapsed .rail {
-    padding: 24px 12px;
+    --rail-inset: 12px;
   }
   .app--rail-collapsed .rail-head {
     flex-direction: column;
@@ -301,9 +311,6 @@ button:focus-visible {
   }
   .app--rail-collapsed .station-hint {
     display: none;
-  }
-  .app--rail-collapsed .station.active::before {
-    left: -12px;
   }
   .app--rail-collapsed .health {
     justify-content: center;
@@ -1947,8 +1954,8 @@ button.link {
     z-index: 40;
     width: min(272px, 82vw);
     height: 100dvh;
-    overflow-y: auto;
-    padding: 20px 16px;
+    overflow: hidden;
+    padding: 20px var(--rail-inset);
     transform: translateX(-100%);
     /* Closed, the drawer keeps its stations out of the tab order. */
     visibility: hidden;
