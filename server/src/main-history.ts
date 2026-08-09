@@ -23,6 +23,7 @@ import { promisify } from 'node:util';
 import {
   buildMainHistory,
   hiddenRefFor,
+  lineTipFor,
   localOrphanRefFor,
   MAIN_HISTORY_PREFIX,
   type MainHistoryCommit,
@@ -117,6 +118,25 @@ export async function readMainHistoryRefs(repoDir: string): Promise<MainHistoryR
   return out
     .split('\n')
     .map((line) => line.trim().split(' '))
+    .filter((parts): parts is [string, string] => parts.length === 2 && Boolean(parts[0]) && Boolean(parts[1]))
+    .map(([sha, ref]) => ({ sha, ref }));
+}
+
+/**
+ * The refs `origin` itself holds under `refs/main-history/`.
+ *
+ * The local ref store is not a substitute when the question is whether a commit would be
+ * stranded: `syncLocal` writes refs into it with `update-ref` that were never pushed, and
+ * the wildcard fetch does not prune, so a local-only ref would vouch for a commit `origin`
+ * reaches from nothing.
+ */
+export async function readOriginMainHistoryRefs(repoDir: string): Promise<MainHistoryRef[]> {
+  const out = await gitOr(repoDir, ['ls-remote', 'origin', `${MAIN_HISTORY_PREFIX}*`]);
+  if (out === null) throw new Error(`${ERR.refused} could not read origin's refs`);
+  if (!out) return [];
+  return out
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/))
     .filter((parts): parts is [string, string] => parts.length === 2 && Boolean(parts[0]) && Boolean(parts[1]))
     .map(([sha, ref]) => ({ sha, ref }));
 }
@@ -251,7 +271,8 @@ export async function slideMain(
   const resolved = await gitOr(repoDir, ['rev-parse', '--verify', '--quiet', `${target}^{commit}`]);
   if (!resolved) throw new Error(`${ERR.bad} ${shortSha(target)} is not a commit in this repository`);
 
-  const refs = await readMainHistoryRefs(repoDir);
+  // Origin's refs, not this checkout's: the question is what `origin` would still reach.
+  const refs = await readOriginMainHistoryRefs(repoDir);
   const commits = await readCommitGraph(repoDir, [from, resolved, ...refs.map((r) => r.sha)]);
 
   // Pin what main is about to leave behind.
@@ -286,16 +307,28 @@ export async function slideMain(
  * Hiding writes a **separate** `hidden/` marker and never touches the pin, because
  * deleting the last ref to a line is exactly what would let GitHub collect those commits.
  * Showing again deletes only the marker — which holds nothing the pin does not.
+ *
+ * The marker is named for the line's pin rather than for `sha`, so a row partway up a line
+ * — which is what sliding back more than one position leaves — hides the same line the
+ * line's tip does instead of writing a marker no pin matches.
  */
 export async function setLineHidden(
   repoDir: string,
   input: { sha: unknown; hidden?: unknown },
   env: NodeJS.ProcessEnv = process.env,
-): Promise<{ ref: string; hidden: boolean }> {
-  const sha = typeof input.sha === 'string' ? input.sha.trim() : '';
-  if (!/^[0-9a-f]{7,40}$/i.test(sha)) throw new Error(`${ERR.bad} sha must be a commit sha`);
+): Promise<{ ref: string; sha: string; hidden: boolean }> {
+  const given = typeof input.sha === 'string' ? input.sha.trim() : '';
+  if (!/^[0-9a-f]{7,40}$/i.test(given)) throw new Error(`${ERR.bad} sha must be a commit sha`);
   const hidden = input.hidden === undefined ? true : input.hidden === true;
   await authorizeSlide(env);
+
+  await fetchMainHistory(repoDir);
+  const resolved = await gitOr(repoDir, ['rev-parse', '--verify', '--quiet', `${given}^{commit}`]);
+  if (!resolved) throw new Error(`${ERR.bad} ${shortSha(given)} is not a commit in this repository`);
+  const mainSha = (await readOriginMain(repoDir)) ?? '';
+  const refs = await readOriginMainHistoryRefs(repoDir);
+  const commits = await readCommitGraph(repoDir, [mainSha, resolved, ...refs.map((r) => r.sha)].filter(Boolean));
+  const sha = lineTipFor(resolved, { mainSha, commits, refs }) ?? resolved;
 
   const ref = hiddenRefFor(sha);
   // This must never be able to remove a pin.
@@ -308,7 +341,7 @@ export async function setLineHidden(
     throw new Error(`${ERR.refused} ${gitFailure(err, 'push failed')}`);
   }
   await fetchMainHistory(repoDir);
-  return { ref, hidden };
+  return { ref, sha, hidden };
 }
 
 /** A named reason a local sync will not run. */
@@ -459,7 +492,10 @@ export interface SyncLocalResult {
    * recoverable — the commit is still there under this sha.
    */
   stashSha: string | null;
-  /** Where the position before the reset was recorded. */
+  /**
+   * Where the position before the reset was recorded. A **local** ref: written with
+   * `update-ref` and never pushed, so `origin` does not have it.
+   */
   recorded: string;
   /** Where unpushed work was saved, when the caller asked to preserve it. */
   preservedAt: string | null;
@@ -501,8 +537,8 @@ export async function syncLocal(
     );
   }
 
-  // Record where this checkout was before anything moves. Local first, so the position
-  // survives even if the push below cannot run.
+  // Record where this checkout was before anything moves. Local only — nothing pushes
+  // this ref, so it is a way back on this device rather than a pin origin knows about.
   const recorded = pinRefFor(state.localMain);
   await git(repoDir, ['update-ref', recorded, state.localMain]);
 

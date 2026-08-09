@@ -5,6 +5,7 @@ import {
   buildMainHistory,
   classifyMainHistoryRefs,
   hiddenRefFor,
+  lineTipFor,
   type MainHistoryCommit,
   type MainHistoryRef,
   type MainPosition,
@@ -73,6 +74,20 @@ describe('ref naming', () => {
       'refs/main-history/local-orphan/20260808T101500Z',
     ]);
     expect([...hidden]).toEqual(['eeeeeee']);
+  });
+});
+
+describe('lineTipFor', () => {
+  const input = { mainSha: 'ccccccc3', commits: CHAIN, refs: [pin('eeeeeee5')] };
+
+  it('answers with the pin the line is named for, from any commit on it', () => {
+    expect(lineTipFor('eeeeeee5', input)).toBe('eeeeeee5');
+    expect(lineTipFor('ddddddd4', input)).toBe('eeeeeee5');
+  });
+
+  it('answers null on main, and on a commit no pin reaches', () => {
+    expect(lineTipFor('bbbbbbb2', input)).toBeNull();
+    expect(lineTipFor('ddddddd4', { ...input, refs: [] })).toBeNull();
   });
 });
 

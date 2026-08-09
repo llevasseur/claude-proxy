@@ -149,6 +149,22 @@ describe('slideMain', () => {
   );
 
   it(
+    'decides from the refs origin has, so a local-only ref cannot suppress the pin',
+    async () => {
+      const { origin, work, shas, env } = await fixture();
+      const [, b, , d] = shas as [string, string, string, string];
+      // The shape a sync leaves behind: a ref in this checkout's store that was never
+      // pushed. Deciding from it would skip the pin and strand d on origin.
+      await git(work, 'update-ref', pinRefFor(d), d);
+
+      const result = await slideMain(work, { expectedMain: d, target: b }, env);
+      expect(result.pinned).toBe(pinRefFor(d));
+      expect((await originRefs(origin))[pinRefFor(d)]).toBe(d);
+    },
+    TIMEOUT,
+  );
+
+  it(
     'refuses a stale expectedMain, an unknown target, and a login outside the allowlist',
     async () => {
       const { work, shas, env } = await fixture();
@@ -196,7 +212,7 @@ describe('setLineHidden', () => {
       await slideMain(work, { expectedMain: d, target: b }, env);
 
       const hide = await setLineHidden(work, { sha: d, hidden: true }, env);
-      expect(hide).toEqual({ ref: hiddenRefFor(d), hidden: true });
+      expect(hide).toEqual({ ref: hiddenRefFor(d), sha: d, hidden: true });
       let refs = await originRefs(origin);
       expect(refs[hiddenRefFor(d)]).toBe(d);
       expect(refs[pinRefFor(d)]).toBe(d);
@@ -205,6 +221,28 @@ describe('setLineHidden', () => {
       refs = await originRefs(origin);
       expect(refs[hiddenRefFor(d)]).toBeUndefined();
       // Un-hiding must never be the thing that lets the commits go.
+      expect(refs[pinRefFor(d)]).toBe(d);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'names the marker for the line, so a row partway up it hides the same line',
+    async () => {
+      const { origin, work, shas, env } = await fixture();
+      const [, b, c, d] = shas as [string, string, string, string];
+      // Two positions back, so the line is c and d and only d carries the pin.
+      await slideMain(work, { expectedMain: d, target: b }, env);
+
+      const hide = await setLineHidden(work, { sha: c, hidden: true }, env);
+      expect(hide).toEqual({ ref: hiddenRefFor(d), sha: d, hidden: true });
+      let refs = await originRefs(origin);
+      expect(refs[hiddenRefFor(d)]).toBe(d);
+      expect(refs[hiddenRefFor(c)]).toBeUndefined();
+
+      await setLineHidden(work, { sha: c, hidden: false }, env);
+      refs = await originRefs(origin);
+      expect(refs[hiddenRefFor(d)]).toBeUndefined();
       expect(refs[pinRefFor(d)]).toBe(d);
     },
     TIMEOUT,

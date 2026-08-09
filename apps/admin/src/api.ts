@@ -258,6 +258,7 @@ export interface MainSyncResponse {
   plan: 'branch-f' | 'stash-reset';
   /** The stash commit, when one was made — kept so a fumbled `stash drop` is recoverable. */
   stashSha: string | null;
+  /** Where the pre-reset position was recorded — a local ref, never pushed to origin. */
   recorded: string;
   preservedAt: string | null;
   preservedRemotely: boolean;
@@ -266,6 +267,8 @@ export interface MainSyncResponse {
 
 export interface MainHideResponse {
   ref: string;
+  /** The line's pin tip, which the marker is named for — not necessarily the row clicked. */
+  sha: string;
   hidden: boolean;
 }
 

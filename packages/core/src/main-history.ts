@@ -361,11 +361,36 @@ export function buildMainHistory(input: MainHistoryInput): MainHistoryGraph {
 }
 
 /**
+ * The tip of the pinned line `sha` sits on — the commit a pin is named for, and so the
+ * name a `hidden/` marker has to carry to hide that line.
+ *
+ * A landing commit partway up a line is not what the pin is named for, so a marker named
+ * after it would match no pin. Null when `sha` is on `main` or no pin reaches it.
+ */
+export function lineTipFor(sha: string, input: Omit<MainHistoryInput, 'positions'>): string | null {
+  const byS = new Map(input.commits.map((c) => [c.sha, c]));
+  const onMain = ancestorsOf([input.mainSha], byS);
+  if (onMain.has(sha)) return null;
+  const { pins } = classifyMainHistoryRefs(input.refs);
+  // Longest line first, matching how `buildMainHistory` folds a contained line into its
+  // host; the sha breaks a tie so the answer never depends on ref order.
+  const reaching = pins
+    .filter((p) => !onMain.has(p.sha))
+    .map((p) => ({ sha: p.sha, line: lineFrom(p.sha, onMain, byS) }))
+    .filter((c) => c.line.exclusive.has(sha))
+    .sort((a, b) => b.line.exclusive.size - a.line.exclusive.size || a.sha.localeCompare(b.sha));
+  return reaching[0]?.sha ?? null;
+}
+
+/**
  * Whether sliding `main` from `from` to `to` would strand `from`.
  *
  * This is the whole safety rule. GitHub's own merges only ever append to `main`, so a
  * slide is the only thing that can leave a commit unreferenced — and a commit already
  * reachable from a pin needs no second one.
+ *
+ * `input.refs` must be the refs `origin` holds. A ref only a local store has would answer
+ * for a commit `origin` itself reaches from nothing.
  */
 export function needsPin(from: string, to: string, input: Omit<MainHistoryInput, 'mainSha' | 'positions'>): boolean {
   const byS = new Map(input.commits.map((c) => [c.sha, c]));

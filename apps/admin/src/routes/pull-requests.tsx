@@ -359,7 +359,8 @@ function LocalMainBanner({
       {error ? <p className='pr-error'>{error}</p> : null}
       {result ? (
         <p className='pr-local-done'>
-          Synced ({result.plan}). Previous position kept at <code className='mono'>{result.recorded}</code>
+          Synced ({result.plan}). Previous position recorded in this checkout at{' '}
+          <code className='mono'>{result.recorded}</code> (a local ref, not pushed to origin)
           {result.stashSha ? (
             <>
               {' '}

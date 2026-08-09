@@ -99,6 +99,10 @@ journal and no bookkeeping to be sufficient.
 - **Pins are never deleted.** Deleting the last ref to a line is exactly what would let
   GitHub collect those commits, so a line is *hidden* instead, by a separate
   `refs/main-history/hidden/<short-sha>` marker — a ref, so hiding reaches every device.
+  The marker is named for the line's pin, so hiding from any row on a line hides the line.
+- **The pin decision reads `origin`'s refs**, via `git ls-remote`, not the local ref store:
+  a sync leaves local-only refs behind that would otherwise vouch for a commit `origin`
+  reaches from nothing.
 - **Authorization** is the device's `gh` identity: `gh api user` (REST, because `gh`'s
   GraphQL-backed calls resolve to an account that is not a collaborator on these repos)
   must return a login in an allowlist, `MAIN_HISTORY_ALLOWED_LOGINS`. The accepted
@@ -122,7 +126,8 @@ drawn rather than discovered on the press. It hard-refuses on an in-progress
 merge/rebase/cherry-pick/revert/bisect, on `main` being checked out in another worktree
 (named), and on unpushed local commits no pin reaches — the last of which offers an
 explicit "preserve and proceed" that saves them to `refs/main-history/local-orphan/<ts>`
-first. The pre-reset position is always recorded as a ref, and when `main` is the checked
+first. The pre-reset position is always recorded as a **local** ref — a way back on this
+device, not a pin `origin` knows about — and when `main` is the checked
 out branch the work in progress is stashed (`--include-untracked`, deliberately not
 `--all`) with the stash commit surfaced in the response, so a fumbled `stash drop` is not
 fatal.
