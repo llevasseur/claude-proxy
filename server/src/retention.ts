@@ -20,9 +20,8 @@ export const RETENTION_NEVER = 'never';
 const NEVER_ALIASES = new Set([RETENTION_NEVER, 'off']);
 
 /**
- * How long bodies are kept: a whole number of days, or `never`. `never` is a
- * value rather than a very large number of days because keeping everything is a
- * decision somebody made, and a magic number cannot say so.
+ * How long bodies are kept: a whole number of days, or `never`. A sentinel
+ * rather than a large number of days, so keeping everything reads as a decision.
  */
 export type RetentionWindow = number | typeof RETENTION_NEVER;
 
@@ -71,11 +70,7 @@ export interface EvictFile {
   bytes: number;
 }
 
-/**
- * What the plan is choosing to keep, priced. Eviction is the cost side of the
- * decision and was always reported; this is the other side, so `never` can be
- * held as an informed setting rather than as a footgun in the other direction.
- */
+/** What the plan is choosing to keep, priced — the other side of what it reclaims. */
 export interface RetentionKeep {
   /** Bytes left in the corpus once this plan is performed — live plus archive. */
   bytes: number;
@@ -149,12 +144,9 @@ export function resolveToday(env: NodeJS.ProcessEnv = process.env, now: Date = n
  * accepted for it). Anything else — non-numeric, negative, **or `0`** — falls
  * back to the default.
  *
- * `0` is rejected rather than honoured, and that is the point of this function.
- * It used to be the most destructive value in the file: it puts `cutoff` on
- * today, which expires every archived day and evicts the whole body corpus on
- * the next `--apply`. Nobody has ever meant "evict everything captured before
- * this morning", while plenty of people mean "keep everything" — so the value
- * that reads like off is refused and `never` is the supported way to say it.
+ * `0` is rejected rather than honoured: it puts `cutoff` on today, which expires
+ * every archived day and evicts the whole body corpus on the next `--apply`.
+ * `never` is the supported way to say off.
  */
 export function resolveRetentionWindow(env: NodeJS.ProcessEnv = process.env): RetentionWindow {
   const raw = env.RETENTION_DAYS?.trim();
@@ -165,10 +157,9 @@ export function resolveRetentionWindow(env: NodeJS.ProcessEnv = process.env): Re
 }
 
 /**
- * The window as a plain number of days, for the one caller that reports it
- * beside an already-evicted body and so has no `never` to render. Under `never`
- * nothing new is ever evicted, so that caller only ever describes a body some
- * earlier window removed; the default is the closest true thing to say about it.
+ * The window as a plain number of days, for the caller that reports it beside an
+ * already-evicted body and so has no `never` to render. Under `never` nothing new
+ * is evicted, so that caller only ever describes a body an earlier window took.
  */
 export function resolveRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
   const window = resolveRetentionWindow(env);
@@ -186,14 +177,12 @@ export function isEvictable(name: string): boolean {
 }
 
 /**
- * Price what the plan keeps: bytes surviving it, the body rate those bytes were
- * accumulated at, and where that rate leads. Pure, and derived from the same
- * listing the plan is — the corpus is already walked with sizes, so this costs
- * arithmetic rather than another pass over the disk.
+ * Price what the plan keeps: bytes surviving it, the body rate they accumulated
+ * at, and where that rate leads. Pure, over the listing the plan is derived from.
  *
  * The rate's denominator is the **calendar span** the retained bodies cover,
  * earliest retained body day through today inclusive, not the count of days that
- * happen to hold a file. A quiet day still spent a day of the window.
+ * hold a file — a quiet day still spent a day of the window.
  */
 function priceKeep(input: {
   corpus: RetentionCorpus;
@@ -224,8 +213,8 @@ function priceKeep(input: {
       count(day, file);
     }
   }
-  // Whatever archiving leaves behind in the live directory: today's logs, and
-  // every name with no date — the database, the authored state, the sidecar dirs.
+  // What archiving leaves behind in the live directory: today's logs, and every
+  // name with no date.
   for (const file of corpus.live) {
     if (moved.has(file.name)) continue;
     count(logFileDay(file.name), file);
@@ -239,8 +228,8 @@ function priceKeep(input: {
 
   const projection = PROJECTION_HORIZONS.map((horizon) => {
     const grown = bodyBytes + bodyBytesPerDay * horizon;
-    // A finite window is what stops the growth: the corpus climbs to the steady
-    // state and then holds there, because each new day displaces an expiring one.
+    // A finite window holds the corpus at its steady state: each new day
+    // displaces an expiring one.
     return { days: horizon, bytes: steadyStateBytes === null ? grown : Math.min(grown, steadyStateBytes) };
   });
 
@@ -294,8 +283,7 @@ export function planRetention(input: {
   }
 
   const evicted: EvictFile[] = [];
-  // `cutoff === null` is `never`: no day expires, so the eviction phase has no
-  // candidates. Archiving above already ran in full.
+  // `cutoff === null` is `never`: no day expires, so there are no candidates.
   if (cutoff !== null) {
     for (const day of [...byDay.keys()].sort()) {
       if (day >= cutoff) continue;

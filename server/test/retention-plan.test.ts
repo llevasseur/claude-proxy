@@ -105,8 +105,7 @@ describe('eviction', () => {
   });
 
   it('never evicts from the live directory — only archived days are candidates', () => {
-    // The same expired stem, but with archiving disabled by pretending it is
-    // today's, under the shortest window the resolver will hand out.
+    // The same expired stem, but with archiving disabled by pretending it is today's.
     const p = plan(corpus({ live: triple(`${TODAY}T10-00-00-000_anthropic`) }), 1);
     expect(p.archive.moves).toEqual([]);
     expect(p.evict.files).toEqual([]);
@@ -139,8 +138,7 @@ describe('never', () => {
   });
 
   it('evicts nothing, however far past the window a day is', () => {
-    // `off` is a spelling the resolver accepts; the planner only ever sees the
-    // one window value it resolves to.
+    // `off` is a spelling the resolver accepts; the planner sees only what it resolves to.
     for (const spelling of ['never', 'off']) {
       const p = plan(expired, resolveRetentionWindow({ RETENTION_DAYS: spelling }));
       expect(p.evict.files).toEqual([]);
@@ -152,8 +150,7 @@ describe('never', () => {
   });
 
   it('leaves archiving exactly as it would have been', () => {
-    // The two plans must agree on everything the archive phase decides — the
-    // sentinel turns off one phase, not the lifecycle.
+    // The sentinel turns off one phase, so the archive section must be identical.
     const off = plan(expired, 'never');
     const on = plan(expired, 30);
     expect(off.archive).toEqual(on.archive);
@@ -255,7 +252,6 @@ describe('helpers', () => {
 
   it('rejects 0 rather than reading it as off', () => {
     // 0 puts the cutoff on today, which expires every archived day at once.
-    // Nobody means that, so it falls back to the default like any other junk.
     expect(resolveRetentionWindow({ RETENTION_DAYS: '0' })).toBe(30);
     expect(planRetention({ corpus: corpus(), today: TODAY, retentionDays: 'never' }).cutoff).toBeNull();
   });

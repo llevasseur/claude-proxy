@@ -46,8 +46,8 @@ function plural(n: number, one: string, many = `${one}s`): string {
 
 /**
  * What the run is choosing to keep, and where that leads. Printed on every run,
- * not only a dry one: the scheduled job runs `--apply`, and its log is the only
- * place this corpus's growth is ever recorded.
+ * not only a dry one — the scheduled job runs `--apply`, and its log is where
+ * this corpus's growth is recorded.
  */
 function renderKeep(plan: RetentionPlan): string[] {
   const { keep } = plan;
