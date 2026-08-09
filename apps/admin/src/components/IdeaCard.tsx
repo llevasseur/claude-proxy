@@ -60,19 +60,10 @@ export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence
 }
 
 /**
- * The rationale, as the list it now is.
- *
- * `/ideate` writes it as plain-English bullets in a fixed order, so a reader
- * deciding between two ideas can compare them line for line. **A rationale
- * recorded before that shape existed is a paragraph, and renders as one** —
- * `ideaRationaleBullets` returns nothing for it, and nothing here rewrites a row
- * it did not write.
- *
- * `max` is how the card previews a rationale the permalink carries whole. It cuts
- * the list at a bullet rather than clamping its height, because the fixed order
- * puts what it is, the problem and the mechanism first — the three a reader
- * scanning the list actually wants — and because `-webkit-line-clamp` needs
- * `display: -webkit-box`, which stops a `<ul>` rendering as a list at all.
+ * The rationale — a list when it is written as bullets, a paragraph when it is
+ * not. `max` previews the first N bullets: the cut is by bullet rather than by
+ * height because `-webkit-line-clamp` needs `display: -webkit-box`, which stops
+ * a `<ul>` rendering as a list at all.
  */
 export function IdeaRationale({ rationale, className, max }: { rationale: string; className?: string; max?: number }) {
   const all = ideaRationaleBullets(rationale);
@@ -81,8 +72,7 @@ export function IdeaRationale({ rationale, className, max }: { rationale: string
   return (
     <ul className={`idea-rationale-list${className ? ` ${className}` : ''}`}>
       {bullets.map((b) => (
-        // The label is the bullet's identity — `What it is` appears once per rationale,
-        // and an unlabelled bullet is keyed by its own text.
+        // A label appears once per rationale; an unlabelled bullet is keyed by its own text.
         <li key={b.label ?? b.text}>
           {b.label && <strong className='idea-rationale-label'>{b.label}</strong>}
           {b.text}
@@ -93,12 +83,9 @@ export function IdeaRationale({ rationale, className, max }: { rationale: string
 }
 
 /**
- * Accept, reject, release, undo — the whole sign-off, in one place.
- *
- * Shared by the card and the permalink rather than duplicated across them: a
- * rejection needs its reason on both, and the two pages disagreeing about what a
- * status may become is the failure worth designing out. `children` carries
- * whatever the host wants on the same row, which is the timestamp on the card.
+ * Accept, reject, release, undo — the whole sign-off, shared by the card and the
+ * permalink so the two cannot disagree about what a status may become. `children`
+ * renders on the same row, which is the timestamp on the card.
  */
 export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; children?: ReactNode }) {
   const client = useQueryClient();
@@ -217,8 +204,7 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
         <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
         <code className='idea-repo muted'>{idea.repo}</code>
       </div>
-      {/* Three bullets is the card's preview of what the permalink carries whole —
-          what it is, the problem, the mechanism. The paragraph shape clamps instead. */}
+      {/* Three bullets of a preview; the permalink carries it whole. A paragraph clamps instead. */}
       <IdeaRationale rationale={idea.rationale} className='idea-rationale' max={3} />
       <IdeaEvidenceList evidence={idea.evidence} />
 

@@ -123,9 +123,7 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
         </div>
       )}
 
-      {/* The decision, on the page the permalink opens. It was card-only, so a reader
-          who followed a link to read the rationale in full — the one thing the card
-          clamps — had to go back to the list to act on what they had just read. */}
+      {/* Decision — the same controls the card carries, so the rationale can be acted on here. */}
       <div className='card'>
         <div className='card-head'>
           <h2>Decision</h2>

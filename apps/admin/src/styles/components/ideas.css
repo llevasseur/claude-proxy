@@ -65,9 +65,9 @@
     flex: 1 1 auto;
     min-width: 12rem;
   }
-  /* The card's rationale is a preview — the detail page carries it whole. A legacy
-   paragraph is clamped by line; the bulleted shape is cut by bullet in the component,
-   because the clamp needs `display: -webkit-box`, which unmakes the list. */
+  /* The card's rationale is a preview — the detail page carries it whole. Only the
+   paragraph shape clamps; the bulleted one is cut by bullet in the component, since
+   the clamp needs `display: -webkit-box`, which unmakes the list. */
   p.idea-rationale {
     display: -webkit-box;
     -webkit-line-clamp: 3;
@@ -75,9 +75,7 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  /* The rationale in the shape `/ideate` now writes: one claim per line, in a fixed
-   order, so two ideas are comparable line for line rather than paragraph for
-   paragraph. */
+  /* The bulleted rationale: one claim per line, in the fixed order `/ideate` writes. */
   .idea-rationale-list {
     list-style: none;
     margin: var(--space-6) 0 0;
