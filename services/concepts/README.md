@@ -131,16 +131,56 @@ repository *variable* to the deployed URL to enable the post-deploy smoke check.
 Dry-run first, which needs no credentials:
 
 ```sh
-pnpm --filter concepts import -- --dry-run
+pnpm --filter concepts seed --dry-run
 ```
 
 Then:
 
 ```sh
-CONCEPTS_URL=https://… CONCEPTS_TOKEN=… pnpm --filter concepts import
+CONCEPTS_URL=https://… CONCEPTS_TOKEN=… pnpm --filter concepts seed
 ```
 
-It posts through the real write path, so it is safe to re-run.
+It posts through the real write path, so it is safe to re-run — row ids are
+derived from record content, so a replay updates nothing.
+
+The script is named `seed` rather than `import` on purpose: `import` is a
+built-in pnpm subcommand, so `pnpm --filter concepts import` is intercepted by
+pnpm and never reaches the script.
+
+`seed` reads `.env` from this package when one exists, so the usual setup is to
+put both values there once and then run the bare command:
+
+```sh
+# services/concepts/.env — gitignored
+CONCEPTS_URL=https://…
+CONCEPTS_TOKEN=…
+```
+
+```sh
+pnpm --filter concepts seed
+```
+
+`.env` and `.env.*` are gitignored, so the token cannot be committed from here.
+Treat this file as a cache, not the system of record: `wrangler secret put`
+writes the only copy Cloudflare keeps and never reads it back, so a token that
+exists solely in `.env` is one `rm` away from being unrecoverable. Keep the
+authoritative copy in a password manager.
+
+To avoid the value on disk entirely, store a secret reference instead and run
+the script under `op run`, which resolves it into the child process:
+
+```sh
+# services/concepts/.env
+CONCEPTS_TOKEN=op://<vault>/<item>/credential
+```
+
+```sh
+op run --env-file=services/concepts/.env -- pnpm --filter concepts seed
+```
+
+Running `pnpm --filter concepts seed` directly with a reference in `.env` sends
+the literal `op://…` string as the bearer token and fails with `401
+{"error":"unauthorized"}` — the reference is only resolved under `op run`.
 
 ### 6. Point agents at it
 
@@ -159,4 +199,4 @@ A cron trigger commits the full corpus as JSONL to the private backup repo daily
 It compares the git blob sha of the new content against what is already there, so
 an unchanged day produces no commit. This is the escape hatch that keeps the
 "database is truth" decision reversible: the worst case is losing one day, and a
-restore is `pnpm --filter concepts import` pointed at the backed-up file.
+restore is `pnpm --filter concepts seed` pointed at the backed-up file.
