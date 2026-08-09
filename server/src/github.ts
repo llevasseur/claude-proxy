@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { type PullRequestRow, parsePullRequests, parseRepoSlug } from '@claude-proxy/core';
 import { findOnPath } from './chat-cli.js';
+import { fetchMainHistory } from './main-history.js';
 
 const run = promisify(execFile);
 
@@ -30,6 +31,9 @@ const PR_FIELDS = [
   'createdAt',
   'updatedAt',
   'mergedAt',
+  // The commit a merged PR landed on `main` — a squash commit here, a true merge commit
+  // in the early history. It is the position `main` can be slid to.
+  'mergeCommit',
   'closedAt',
   'additions',
   'deletions',
@@ -56,6 +60,11 @@ export interface PullRequestsResult {
   fetchedAt: string;
   /** Whether they came from the cache rather than a fresh `gh` run. */
   cached: boolean;
+  /**
+   * Why `main` and its pins could not be brought up to date, if they could not. The page
+   * still renders — it just draws the rail from whatever the ref store already had.
+   */
+  refError: string | null;
 }
 
 /**
@@ -97,12 +106,25 @@ export async function readPullRequests(repoDir: string, limit = DEFAULT_PR_LIMIT
   }
 
   const fetchedAt = new Date().toISOString();
+
+  /**
+   * `main` and its pins ride this cache rather than the page's 30s poll, so the network
+   * cost of drawing the rail is the same one `gh pr list` already pays. It writes refs
+   * only — never the index, never the worktree — so it is safe in a checkout being used.
+   */
+  const refError = await fetchMainHistory(repoDir).then(
+    () => null,
+    (err: unknown) =>
+      ((err as Error).message || 'could not fetch main and its pins').split('\n').slice(0, 2).join('; '),
+  );
+
   const fail = (repo: string | null, error: string): PullRequestsResult => ({
     repo,
     prs: [],
     error,
     fetchedAt,
     cached: false,
+    refError,
   });
 
   const gh = findOnPath('gh');
@@ -129,7 +151,14 @@ export async function readPullRequests(repoDir: string, limit = DEFAULT_PR_LIMIT
     return fail(repo, 'gh returned output that is not JSON');
   }
 
-  const result: PullRequestsResult = { repo, prs: parsePullRequests(parsed), error: null, fetchedAt, cached: false };
+  const result: PullRequestsResult = {
+    repo,
+    prs: parsePullRequests(parsed),
+    error: null,
+    fetchedAt,
+    cached: false,
+    refError,
+  };
   cache = { key, at: Date.now(), result };
   return result;
 }
