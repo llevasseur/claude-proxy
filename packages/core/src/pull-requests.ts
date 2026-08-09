@@ -28,6 +28,12 @@ export interface PullRequestRow {
   updatedAt: string;
   /** ISO timestamp, or null when it never merged. */
   mergedAt: string | null;
+  /**
+   * The commit this PR landed on the base branch — a squash commit, or a true merge
+   * commit in older history. Null while it is unmerged, and null on a merge GitHub no
+   * longer reports a commit for. It is the position `main` can be moved to.
+   */
+  mergeCommit: string | null;
   /** ISO timestamp, or null while it is still open. */
   closedAt: string | null;
   additions: number;
@@ -53,6 +59,13 @@ function readAuthor(raw: unknown): string {
   if (!raw || typeof raw !== 'object') return '';
   const { login, name } = raw as Record<string, unknown>;
   return str(login) || str(name);
+}
+
+/** `mergeCommit` is `{oid}` on the wire, and null on anything that never landed. */
+function readMergeCommit(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const oid = str((raw as Record<string, unknown>).oid);
+  return /^[0-9a-f]{7,40}$/i.test(oid) ? oid : null;
 }
 
 /** `labels` is a list of objects; only the names reach the page. */
@@ -91,6 +104,7 @@ export function parsePullRequests(raw: unknown): PullRequestRow[] {
       createdAt: str(pr.createdAt),
       updatedAt: str(pr.updatedAt),
       mergedAt: iso(pr.mergedAt),
+      mergeCommit: readMergeCommit(pr.mergeCommit),
       closedAt: iso(pr.closedAt),
       additions: num(pr.additions),
       deletions: num(pr.deletions),
