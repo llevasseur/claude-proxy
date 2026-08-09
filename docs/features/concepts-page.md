@@ -29,8 +29,25 @@ mechanism, and this one does.
 
 ## Behavior
 
-- `/api/concepts` returns the whole list. The store is one small file per device and nothing
-  retracts a line, so there is no filter and no paging.
+- `/api/concepts` returns the whole list. The store is small and nothing retracts a record, so
+  there is no filter and no paging.
+- **Which store answers depends on two environment variables.** With `CONCEPTS_URL` and
+  `CONCEPTS_TOKEN` both set, the list and the detail route read the hosted store — the
+  [Worker over D1](../adrs/0005-host-the-concept-store.md) that `/teach` posts to from every
+  device — so a concept taught on another machine is on the page. With either unset,
+  `logs/concepts.jsonl` answers exactly as it did before, which is what keeps a checkout with no
+  credentials rendering the page rather than erroring.
+- **The answer names the store it came from**, in `meta.storePath`, which the page already
+  prints: the Worker's read URL when it answered, and the local file's path *with the reason*
+  (`CONCEPTS_URL/CONCEPTS_TOKEN unset`) when it did not. A page reading the local file on a
+  device whose concepts live in the hosted store looks empty and correct, and that ambiguity —
+  not the read itself — is what made a saved concept look lost.
+- **A configured store that will not answer is a 502, never a quiet fallback.** Falling back to
+  the local file on a failed remote read would reproduce the same wrong-store-looks-fine page the
+  labelling exists to prevent, so the read fails and the page shows an error.
+- The hosted read goes to `GET /api/concepts/export` rather than the compact listing route: the
+  export carries the optional detail fields the detail page renders and every version of a term,
+  which is the local file's own reading of itself. One request answers both routes.
 - **A term taught twice appears twice.** The file has no key and no supersede, unlike the command
   store; two rows for one term is the file's own reading of itself, and is itself worth seeing.
 - `/api/concepts/stream` watches the log directory the store sits in, so a `/teach` run in another
