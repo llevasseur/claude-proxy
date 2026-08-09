@@ -299,7 +299,7 @@ export async function buildSummary(
   ]);
   const priorDigests = await baselineDigests(logDir, day, now, source, classifierHashes, archiveDir);
   const digest = computeDigest(cur.sidecars, { date: day, priorDigests, classifierHashes });
-  const advice = await heuristicAdvice.advise(digest);
+  const advice = heuristicAdvice.advise(digest);
   // `baselineDigests` walks backwards and unshifts, so the busy day it stopped on is
   // first; the idle days it passed carry no metric worth comparing against.
   const prior = priorDigests.find((d) => d.requestCount > 0) ?? null;
