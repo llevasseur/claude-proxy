@@ -4453,12 +4453,74 @@ button.btn-save:disabled {
   color: var(--amber);
   font-size: 12.5px;
 }
+/* Where main is, and the toggle for lines folded away. */
+.pr-main-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.pr-main-chip,
+.pr-main-marker {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--violet);
+  border: 1px solid var(--violet);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.pr-main-at {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* This checkout's own main, when it no longer agrees with origin's. */
+.pr-local {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--violet);
+  border-radius: 9px;
+  font-size: 12.5px;
+}
+.pr-local p {
+  margin: 0;
+}
+.pr-local-block {
+  color: var(--amber);
+}
+.pr-local-act {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pr-local-done {
+  color: var(--good);
+}
 /* The drawer overlays this frame, so it anchors the absolute inspector. */
 .pr-viewport {
   position: relative;
   flex: 1;
   min-height: 50vh;
   overflow: hidden;
+}
+/*
+ * Main's rail. It is drawn on the viewport rather than on the rows so it runs straight
+ * off the top of the frame: main is the one line that keeps going, and how far above the
+ * newest merge it goes is not something the list knows.
+ */
+.pr-viewport::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+  pointer-events: none;
 }
 .pr-tree {
   list-style: none;
@@ -4486,6 +4548,63 @@ button.btn-save:disabled {
 }
 .pr-row:last-child::before {
   bottom: 50%;
+}
+/*
+ * A line main has been slid off. It sits in its own lane, a constant 18px per lane to the
+ * right of the rail, and runs vertically the whole way — like a git graph, so the page
+ * stays the same width however many commits are above main.
+ */
+.pr-row--off-main {
+  padding-left: calc(26px + var(--pr-lane, 1) * 18px);
+}
+.pr-row--off-main::before {
+  left: calc(7px + var(--pr-lane, 1) * 18px);
+  background: var(--violet);
+}
+/* The one kink: at its oldest row the line curves back into the rail it forked from. */
+.pr-row.is-lane-base::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  bottom: -9px;
+  width: calc(var(--pr-lane, 1) * 18px);
+  height: 18px;
+  border-right: 2px solid var(--violet);
+  border-bottom: 2px solid var(--violet);
+  border-bottom-right-radius: 12px;
+  pointer-events: none;
+}
+.pr-row.is-lane-base::before {
+  bottom: 0;
+}
+.pr-row.is-hidden-line {
+  opacity: 0.5;
+}
+/* Main's own node, wherever it currently sits. */
+.pr-node.is-main {
+  border-color: var(--violet);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--violet) 35%, transparent);
+}
+.pr-main-marker {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+}
+/* Moving main, from inside the drawer. */
+.pr-slide {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  font-size: 12.5px;
+}
+.pr-slide-confirm p {
+  margin: 0 0 8px;
+  max-width: 46ch;
+}
+.pr-slide-act {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .pr-node {
   position: relative;

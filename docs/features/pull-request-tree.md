@@ -18,8 +18,10 @@ from. Clicking a node opens the same detail drawer the
 [live session graph](live-session-graph.md) uses, which also lists the sessions that
 worked on that PR.
 
-It is a **read**. There is no merge button, no comment box, and no write path — the
-route answers `GET` only and the server never calls a mutating `gh` subcommand.
+It is a read of GitHub — there is no merge button and no comment box, and the server never
+calls a mutating `gh` subcommand. It does have **one** write, and it is about this
+repository rather than about GitHub's records: [moving `main`](#moving-main) across the
+commits merged PRs landed. That path is separate, origin-checked, and allowlisted.
 
 ## Motivation
 
@@ -76,20 +78,75 @@ transcripts, and the drawer says which signal it came from rather than asserting
 Transcripts hold roughly today only, so an empty list means no transcript on record —
 not that nobody worked on it. The drawer says so.
 
+## Moving `main`
+
+A merged PR's landing commit — `gh`'s `mergeCommit`, a squash commit here and a true merge
+commit in the early history — is a **position**. Sliding `main` means force-pushing
+`refs/heads/main` to one of them, forwards or back, from the page.
+
+**Nothing is ever destroyed.** The whole safety property is one rule, checked at slide
+time: before `main` leaves a commit, that commit must be reachable from some
+`refs/main-history/*` ref, and if it is not, it is **pinned first** and that push is
+confirmed before `main` moves. GitHub's own merges only ever append to `main`, so a slide
+from this page is the only thing that can strand a commit — which is why the rule needs no
+journal and no bookkeeping to be sufficient.
+
+- **Pins are content-addressed**: `refs/main-history/<short-sha>`. Two devices pinning the
+  same commit write the same ref with the same value, so pinning is idempotent and
+  race-free, and the namespace keeps them out of GitHub's branch and tag lists.
+- **All shared state is refs on `origin`, never SQLite** — the database is per-device, and
+  the several machines this runs on would disagree about where `main` has been.
+- **Pins are never deleted.** Deleting the last ref to a line is exactly what would let
+  GitHub collect those commits, so a line is *hidden* instead, by a separate
+  `refs/main-history/hidden/<short-sha>` marker — a ref, so hiding reaches every device.
+- **Authorization** is the device's `gh` identity: `gh api user` (REST, because `gh`'s
+  GraphQL-backed calls resolve to an account that is not a collaborator on these repos)
+  must return a login in an allowlist, `MAIN_HISTORY_ALLOWED_LOGINS`. The accepted
+  limitation is that a local process sharing this device's token passes.
+- **The move itself** is `--force-with-lease=refs/heads/main:<sha the page displayed>`, so
+  a page that had gone stale is rejected by GitHub atomically rather than by a check here
+  that could race.
+
+The rail is drawn from real commit ancestry, which only the ref store has, so the lane
+layout is computed **server-side** and shipped with the rows; `packages/core`'s
+`main-history.ts` stays a pure function of a graph, a set of positions and a set of refs.
+`main` is a straight vertical rail that runs off the top of the frame, and each pinned line
+kinks off at its divergence point exactly once and then runs vertically in its own lane.
+
+### Syncing this checkout
+
+A plain `git pull` **will not** follow `main` backwards: the older commit is an ancestor of
+the local branch, so pull reports "Already up to date" and quietly keeps the newer one. The
+page detects the divergence and offers a button, with every refusal computed before it is
+drawn rather than discovered on the press. It hard-refuses on an in-progress
+merge/rebase/cherry-pick/revert/bisect, on `main` being checked out in another worktree
+(named), and on unpushed local commits no pin reaches — the last of which offers an
+explicit "preserve and proceed" that saves them to `refs/main-history/local-orphan/<ts>`
+first. The pre-reset position is always recorded as a ref, and when `main` is the checked
+out branch the work in progress is stashed (`--include-untracked`, deliberately not
+`--all`) with the stash commit surfaced in the response, so a fumbled `stash drop` is not
+fatal.
+
 ## Surfaces
 
-- `GET /api/pull-requests` — `{repo, prs, error, sessions, meta}`; read-only, so it keeps
-  the open `*` CORS and the 405 gate every other read route has.
+- `GET /api/pull-requests` — `{repo, prs, error, sessions, mainHistory, localMain,
+  refError, meta}`; read-only, so it keeps the open `*` CORS and the 405 gate every other
+  read route has. Fetching `main` and its pins rides the same 60 s cache as `gh pr list`,
+  and writes refs only — no index, no worktree.
+- `POST /api/main-history/slide`, `/sync-local`, `/hide` — the writes, on the
+  origin-checked `WRITE_ROUTES` allowlist.
 - `apps/admin/src/routes/pull-requests.tsx` — the page and its drawer.
+- `packages/core/src/main-history.ts` — lanes, divergence points and the pin rule, pure.
+- `server/src/main-history.ts` — every `git` and `gh` call behind the above.
 - `server/src/github.ts` — the `gh` reader and its cache.
 - `server/src/pr-sessions.ts` — one pass over `logs/sessions/`, every transcript read once
   and tested against every PR.
 
 ## Open questions
 
-- CRUD is out of scope by design. If a write path is ever added, it belongs on the
-  origin-checked `WRITE_ROUTES` allowlist rather than under the read routes' open CORS.
 - Checks and review state are not shown. `gh pr list` can return them, but the tree is
   about what landed, not about what is passing.
+- Hidden lines accumulate. Nothing prunes `refs/main-history/*`, by design — but a
+  repository slid back and forth often will grow a long list of pins.
 - The session link is textual evidence, not a record. Writing the PR url into a session's
   `.state.json` at `/pr` time would make it a fact.

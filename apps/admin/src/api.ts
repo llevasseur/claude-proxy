@@ -30,6 +30,7 @@ import type {
   LaunchAlias,
   LaunchAliasPosture,
   LinkedSessionError,
+  MainHistoryGraph,
   MixAttribution,
   PatternFrequency,
   PluginRow,
@@ -219,6 +220,55 @@ export interface WithheldResponse {
   launchAliases: { rcPath: string; rcReadable: boolean; aliases: LaunchAlias[]; posture: LaunchAliasPosture };
   meta: { days: number; files: number; parseErrors: number };
 }
+/** A named reason this checkout's `main` cannot be pointed back at origin's. */
+export interface SyncBlocker {
+  reason: 'in-progress-operation' | 'main-in-other-worktree' | 'unpushed-commits';
+  detail: string;
+}
+
+/** Whether the server's own checkout still agrees with `origin/main`, and what would fix it. */
+export interface LocalDivergence {
+  repoDir: string;
+  localMain: string | null;
+  originMain: string | null;
+  diverged: boolean;
+  /** `origin/main` is behind this checkout — the case a plain `git pull` silently ignores. */
+  behind: boolean;
+  ahead: string[];
+  /** The commits ahead that no pin reaches, i.e. the ones a reset would really lose. */
+  unreferenced: string[];
+  head: { branch: string | null; detached: boolean };
+  plan: 'branch-f' | 'stash-reset' | null;
+  blockers: SyncBlocker[];
+  /** The only thing in the way is work a sync can save to a ref first. */
+  preservable: boolean;
+}
+
+export interface MainSlideResponse {
+  from: string;
+  to: string;
+  /** The ref written to keep the old position reachable, or null when one already did. */
+  pinned: string | null;
+  login: string;
+}
+
+export interface MainSyncResponse {
+  from: string;
+  to: string;
+  plan: 'branch-f' | 'stash-reset';
+  /** The stash commit, when one was made — kept so a fumbled `stash drop` is recoverable. */
+  stashSha: string | null;
+  recorded: string;
+  preservedAt: string | null;
+  preservedRemotely: boolean;
+  note: string | null;
+}
+
+export interface MainHideResponse {
+  ref: string;
+  hidden: boolean;
+}
+
 export interface PullRequestsResponse {
   repo: string | null;
   prs: PullRequestRow[];
@@ -226,6 +276,11 @@ export interface PullRequestsResponse {
   error: string | null;
   /** Sessions that worked on each PR, keyed by number. */
   sessions: Record<number, PrSessionLink[]>;
+  /** Where `main` sits, and the pinned lines running beside it. */
+  mainHistory: MainHistoryGraph;
+  localMain: LocalDivergence;
+  /** Why `main` and its pins could not be refreshed, if they could not. */
+  refError: string | null;
   meta: { fetchedAt: string; cached: boolean; total: number; limit: number };
 }
 export interface ProjectSummary {
@@ -835,6 +890,18 @@ export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/
 export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
 /** The project's pull requests, read through `gh` on the server. */
 export const getPullRequests = () => get<PullRequestsResponse>('/api/pull-requests');
+/**
+ * Move `origin/main` to a merged PR's landing commit. `expectedMain` is the sha the page
+ * was showing: the server pushes with a lease against it, so a stale page is rejected by
+ * GitHub rather than by a check that could race. The commit `main` leaves is pinned first.
+ */
+export const slideMain = (expectedMain: string, target: string) =>
+  post<MainSlideResponse>('/api/main-history/slide', { expectedMain, target });
+/** Point the server checkout's own `main` back at `origin/main` — what `git pull` will not do. */
+export const syncLocalMain = (preserve = false) => post<MainSyncResponse>('/api/main-history/sync-local', { preserve });
+/** Hide a pinned line from the page, or show it again. The pin itself is never deleted. */
+export const setMainLineHidden = (sha: string, hidden: boolean) =>
+  post<MainHideResponse>('/api/main-history/hide', { sha, hidden });
 export const getHooksPlugins = () => get<HooksPluginsResponse>('/api/hooks-plugins');
 /** The catalogued CLI internals, resolved against the bundle installed right now. */
 export const getCliInternals = () => get<CliInternalsResponse>('/api/cli-internals');
