@@ -43,20 +43,23 @@
     gap: var(--space-5);
     font-size: var(--text-5);
   }
-  .dot {
+  /* Scoped to the list it bullets. Unscoped, this is a `components` rule against the
+   shell's `layout` one, so the layer order hands it every `.dot` in the sheet — and
+   its unsevered grey beat `.dot.ok`, leaving the health and live dots colourless. */
+  .bucket-suggestions .dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
     flex: none;
     background: var(--line);
   }
-  .dot.sev-high {
+  .bucket-suggestions .dot.sev-high {
     background: var(--high);
   }
-  .dot.sev-warn {
+  .bucket-suggestions .dot.sev-warn {
     background: var(--warn);
   }
-  .dot.sev-info {
+  .bucket-suggestions .dot.sev-info {
     background: var(--info);
   }
   .bucket-stats {
