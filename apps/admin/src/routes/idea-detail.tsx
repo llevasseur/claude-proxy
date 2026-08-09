@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { commentIdeas, fileIdeas, getIdeas, type IdeasResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import {
+  hasIdeaDecision,
   IDEA_STATUS_LABEL,
   IDEAS_KEY,
   IdeaDecisionControls,
@@ -123,14 +124,17 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
         </div>
       )}
 
-      {/* Decision — the same controls the card carries, so the rationale can be acted on here. */}
-      <div className='card'>
-        <div className='card-head'>
-          <h2>Decision</h2>
-          <span className='muted'>the same sign-off the card carries — a rejection still needs its reason</span>
+      {/* Decision — the same controls the card carries, so the rationale can be acted on here.
+          Absent where the controls have no move to offer, rather than a heading over an empty row. */}
+      {hasIdeaDecision(idea.status) && (
+        <div className='card'>
+          <div className='card-head'>
+            <h2>Decision</h2>
+            <span className='muted'>the same sign-off the card carries — a rejection still needs its reason</span>
+          </div>
+          <IdeaDecisionControls idea={idea} />
         </div>
-        <IdeaDecisionControls idea={idea} />
-      </div>
+      )}
 
       <AreaPicker idea={idea} areas={areas} />
       <CommentEditor idea={idea} />

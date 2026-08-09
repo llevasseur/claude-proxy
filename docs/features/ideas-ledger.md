@@ -222,10 +222,11 @@ proposals and ends, and the decision happens whenever somebody looks.
   editor. The decision was card-only at first, which meant a reader who followed the permalink to see
   the one thing the card clamps — the rationale in full — had to go back to the list to act on what
   they had just read. Both surfaces render one `IdeaDecisionControls`, so neither can disagree with
-  the other about what a status may become. **The area is deliberately absent from the permalink** —
+  the other about what a status may become — and the card is **absent for a `shipped` idea**, whose
+  status the controls offer no move out of. **The area is deliberately absent from the permalink** —
   re-filing is a normal thing to do, and a link that breaks when somebody corrects a misfile is worse
-  than a less descriptive url. There is no per-idea endpoint: the ledger is small and the list is already cached
-  under the same query key, so a write from either surface moves both.
+  than a less descriptive url. There is no per-idea endpoint: the ledger is small and the list is
+  already cached under the same query key, so a write from either surface moves both.
 - **`POST /api/ideas/area`** and **`POST /api/ideas/comment`** are the two new writes, on the same
   write allowlist and origin-checked CORS as `/api/ideas/status`, with their refusals in the apply
   functions rather than in the routes for the same reason as before.

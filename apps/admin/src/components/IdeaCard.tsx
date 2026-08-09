@@ -63,23 +63,29 @@ export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence
  * The rationale — a list when it is written as bullets, a paragraph when it is
  * not. `max` previews the first N bullets: the cut is by bullet rather than by
  * height because `-webkit-line-clamp` needs `display: -webkit-box`, which stops
- * a `<ul>` rendering as a list at all.
+ * a `<ul>` rendering as a list at all. `className` is the paragraph's alone, since
+ * the clamp it carries is `p.idea-rationale`; the list has its own class.
  */
 export function IdeaRationale({ rationale, className, max }: { rationale: string; className?: string; max?: number }) {
   const all = ideaRationaleBullets(rationale);
   if (all.length === 0) return <p className={className}>{rationale}</p>;
   const bullets = max === undefined ? all : all.slice(0, max);
   return (
-    <ul className={`idea-rationale-list${className ? ` ${className}` : ''}`}>
-      {bullets.map((b) => (
-        // A label appears once per rationale; an unlabelled bullet is keyed by its own text.
-        <li key={b.label ?? b.text}>
+    <ul className='idea-rationale-list'>
+      {bullets.map((b, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a bullet carries no id and nothing stops a rationale repeating a label or a whole line — the list is render-only and never reordered, so position is the only stable key available
+        <li key={`${b.label ?? ''}:${b.text}:${i}`}>
           {b.label && <strong className='idea-rationale-label'>{b.label}</strong>}
           {b.text}
         </li>
       ))}
     </ul>
   );
+}
+
+/** Whether the sign-off has a move to offer. `shipped` is terminal — nothing follows it. */
+export function hasIdeaDecision(status: IdeaStatus): boolean {
+  return status !== 'shipped';
 }
 
 /**
