@@ -133,10 +133,7 @@ function ChatPane({
       inputOptions={
         <>
           {/* Locked once a session exists: its posture was fixed when it started.
-              `.select-field` is the shared primitive: it draws the disclosure arrow
-              the composer never had, and keeps the arrow's column inside the control
-              rather than in the platform's own gutter — which is what left the
-              "Enter to send" hint with nowhere to sit beside it. */}
+              The `.select-field` wrapper is what draws the disclosure arrow. */}
           <div className='select-field chat-permission'>
             <select
               aria-label='Permissions'

@@ -36,10 +36,8 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-7);
-    /* The hint drops below the controls rather than being pushed over them. A
-     * pane this narrow could not fit both on one line, and `min-width: 0` below
-     * let the controls shrink past their own content and overlap the hint
-     * instead of moving it. */
+    /* The hint drops below the controls rather than over them: `min-width: 0`
+     * below let the options row shrink past its own content and overlap. */
     flex-wrap: wrap;
     padding: var(--space-4) var(--space-6) var(--space-5) var(--space-8);
   }
@@ -327,14 +325,9 @@
     display: inline-block;
     vertical-align: bottom;
   }
-  /* The standing permission answer, chosen per session.
-   *
-   * The surface, the border, the radius and the disabled state now come from
-   * `.select-field` in `control.css`, which is also where the disclosure arrow
-   * this control never drew comes from. What is left here is the only thing that
-   * is about *this* select rather than about selects: a permission mode is a
-   * value the agent was configured with, so it is set in the mono face the rest
-   * of the composer's fine print uses. */
+  /* The standing permission answer, chosen per session. Surface, border, radius,
+   * arrow and disabled state come from `.select-field`; what is left is the mono
+   * face the rest of the composer's fine print uses. */
   .chat-permission {
     font-family: var(--font-mono);
     font-size: var(--text-4);

@@ -1,18 +1,10 @@
 @layer components {
-  /* The three jobs the dashboard actually asks a control to do.
-   *
-   * `@layer base` gives every bare control a surface so none of them renders as
-   * platform chrome; these three name what a control is *for*, so a page picks a
-   * job rather than restating a background and a padding at the call site — which
-   * is how the same control came to be assembled twice in two places before.
-   *
-   * They are deliberately three, not a component library: an action, a
-   * disclosure, and a select. A control that needs to look like something else
-   * already has a component file of its own. */
+  /* The three jobs the dashboard asks a control to do, over the `@layer base`
+   * floor: an action, a disclosure, and a select. Anything else already has a
+   * component file of its own. */
 
-  /* The action a form exists to perform — Re-file, Save, Accept. One per group:
-   * the signal colour is what says "this is the one", so a second one beside it
-   * says nothing. */
+  /* The action a form exists to perform — Re-file, Save, Accept. One per group;
+   * the signal colour is what says "this is the one". */
   .btn-primary {
     background: var(--surface-2);
     border-color: var(--signal-dim);
@@ -33,8 +25,7 @@
   }
 
   /* Everything beside the primary: Cancel, Undo, Release, and a disclosure like
-   * the Advice page's "Show N unchanged". Present, legible, and quiet enough not
-   * to compete with the card it sits under. */
+   * the Advice page's "Show N unchanged". */
   .btn-quiet {
     background: none;
     border-color: var(--line);
@@ -54,12 +45,9 @@
     color: var(--faint);
   }
 
-  /* A select, and the reason this is a wrapper rather than a class on the
-   * `select` itself: `appearance: none` takes the platform's disclosure arrow
-   * with it, and a control with no arrow reads as a text field. The arrow comes
-   * back as the wrapper's background image, drawn where the wrapper decides, so
-   * the select's own box no longer has to reserve the platform's arrow gutter —
-   * which is what let the chat composer's "Enter to send" hint collide with it. */
+  /* A wrapper rather than a class on the `select`, because `appearance: none`
+   * takes the platform's disclosure arrow with it and an arrowless select reads
+   * as a text field. The arrow comes back as the wrapper's background image. */
   .select-field {
     --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%23808c9e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M1 1l4 4 4-4'/></svg>");
     display: inline-flex;
@@ -74,10 +62,9 @@
   .select-field:focus-within {
     border-color: var(--signal);
   }
-  /* The select keeps the box it needs for its own text and leaves the arrow's
-   * column to the wrapper. `appearance: none` is here rather than in `@layer
-   * base` on purpose: it would otherwise strip the arrow from every select the
-   * sheet already styles, none of which has a wrapper to put one back. */
+  /* `appearance: none` is here rather than in `@layer base`: there it would
+   * strip the arrow from every select the sheet already styles, none of which
+   * has a wrapper to put one back. */
   .select-field select {
     appearance: none;
     background: none;

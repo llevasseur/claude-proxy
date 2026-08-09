@@ -12,29 +12,19 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Controls the sheet has not named yet.
+  /* The floor under a control the sheet has not named, so it inherits the
+   * dashboard rather than the platform.
    *
-   * The dashboard styles the controls it named — `.segmented button`,
-   * `select.chat-permission`, `button.btn-save` — and left every other one at the
-   * browser default, so a control used somewhere new started as platform chrome:
-   * a grey bevel in the platform's own font, sitting under a designed card.
-   * These rules are the floor under that, so a bare control inherits the
-   * dashboard instead.
-   *
-   * This is `@layer base` on purpose, and that is the whole safety argument: a
-   * base rule loses to every rule in `@layer components` by layer order, not by
-   * specificity, so a component that already declares a property keeps rendering
-   * exactly as it did. What a bare control picks up here is only what nothing
-   * else already says about it.
+   * `@layer base` is the safety property: these lose to every rule in
+   * `@layer components` by layer order rather than specificity, so a component
+   * that already declares a property keeps rendering exactly as it did.
    *
    * Checkboxes and radios are excluded — a surface is not a substitute for the
-   * native box, and giving them one leaves nothing that reads as checked.
+   * native box, and leaves nothing that reads as checked.
    *
-   * `line-height` is deliberately absent. The safety argument above only covers a
-   * property a component actually declares, and almost none of them declare a
-   * line height — so setting one here silently retimes the height of every
-   * existing control by a pixel or two. The browser's own `normal` is what they
-   * are all sized against today, so it stays. */
+   * `line-height` is absent deliberately. Layer order only covers a property a
+   * component declares, and almost none declare a line height, so setting one
+   * here would retime the height of every existing control. */
   button,
   select,
   textarea,
@@ -47,8 +37,8 @@
     border-radius: var(--radius-3);
     padding: var(--space-4) var(--space-6);
   }
-  /* An input holds text rather than offering an action, so it sits *under* the
-   * page rather than on it — the same split `.sessions-search` already draws. */
+  /* A field holds text rather than offering an action, so it sits under the page
+   * rather than on it — the split `.sessions-search` already draws. */
   textarea,
   input:not([type="checkbox"], [type="radio"]) {
     background: var(--ink);
@@ -66,8 +56,7 @@
   button:active:not(:disabled) {
     background: var(--surface-2);
   }
-  /* Disabled reads as disabled — a receded surface and faint text — rather than
-   * as the whole control dimmed, which only makes it hard to read. */
+  /* A receded surface and faint text, rather than the whole control dimmed. */
   button:disabled,
   select:disabled,
   textarea:disabled,
@@ -84,8 +73,7 @@
     outline-offset: 2px;
     border-radius: var(--radius-3);
   }
-  /* The ring reaches the other three controls too, now that they have a surface
-   * worth ringing. */
+  /* The same ring on the other three, now that they have a surface to ring. */
   select:focus-visible,
   textarea:focus-visible,
   input:focus-visible {
