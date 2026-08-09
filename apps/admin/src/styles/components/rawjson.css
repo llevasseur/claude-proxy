@@ -1,0 +1,80 @@
+@layer components {
+  .rawjson {
+    margin: 12px 0 0;
+    max-height: 480px;
+    overflow: auto;
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre;
+    color: var(--text, #e9edf3);
+  }
+  /* Word-wrapped variant. */
+  .rawjson.wrap {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Pretty message view — one card-inset block per content block. */
+  .msg-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .msg-block {
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid var(--line);
+  }
+  .msg-block-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .msg-block-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .msg-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--coral);
+    border: 1px solid var(--coral);
+    border-radius: 5px;
+    padding: 1px 6px;
+  }
+  /* Wrapped, newline-preserving prose for text/thinking values. */
+  .msg-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text);
+  }
+  /* Nested raw JSON sits flush inside its block. */
+  .msg-block .rawjson {
+    margin-top: 0;
+  }
+
+  /* Long encoded project dir names — wrap anywhere, monospace. */
+  .mono-break {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+  }
+}

@@ -1,0 +1,138 @@
+@layer layout {
+  /* cards + grid */
+
+  /* The inner size container. A card is the box a table, a chart or a head with a
+   * search box has to fit inside: the same table is ~1,100px wide on Context and
+   * ~420px in half a `.grid.two`, at one viewport. Naming it lets its contents ask
+   * how much room is here, so a cramped-table fix is made once rather than per page. */
+  .card {
+    container: card / inline-size;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px 26px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 14px;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    /* A title, a search box and a caption do not share one line in a narrow card. */
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin-bottom: 14px;
+  }
+  .card-head h2 {
+    margin: 0;
+  }
+  /* A caption is prose: let it wrap rather than push the head wider. */
+  .card-head > .muted {
+    min-width: 0;
+  }
+  /* A card that carries its own window switcher: the range caption and the control
+   drop to their own row together rather than either being squeezed. */
+  .card-head-aside {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px 12px;
+    min-width: 0;
+    margin-left: auto;
+  }
+  /* A narrow column has no room for the card's full gutter. A card cannot query
+   * itself, so this is the one rule here that reads the column instead. */
+  @container workspace (max-width: 600px) {
+    .card {
+      padding: 18px 14px;
+    }
+  }
+  .link {
+    font-family: var(--font-mono);
+    color: var(--signal);
+    text-decoration: none;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+  .link:hover {
+    text-decoration: underline;
+  }
+  /* Breadcrumb trail above a drilled-down page's title. */
+  .breadcrumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .crumb-sep {
+    color: var(--muted);
+    opacity: 0.6;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .crumb-current {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+  .grid {
+    display: grid;
+    gap: 22px;
+  }
+  /* Inside a grid, let the grid gap own the spacing so rows and columns match. */
+  .grid > .card {
+    margin-bottom: 0;
+  }
+  /* Breathing room between a grid and the grid or standalone card stacked under it.
+   `SkeletonStatus` renders an out-of-flow `.sr-only` between them while a view loads,
+   so adjacency has to see through it. */
+  .grid + .grid,
+  .grid + .card,
+  .grid + .sr-only + .grid,
+  .grid + .sr-only + .card {
+    margin-top: 22px;
+  }
+  .grid.stats {
+    grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  }
+  /* Two up while two will fit, one when they will not — `auto-fit` works that out
+   * from the space the grid was given, so there is no breakpoint to keep in step.
+   * `min(…, 100%)` stops the floor overflowing a container narrower than itself. */
+  .grid.two {
+    grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr));
+  }
+  .grid.two > .card {
+    min-width: 0;
+  }
+  /* Cards that need real width before they share a row. The asymmetric
+   * `chart-lead` split cannot be expressed intrinsically, so this one keeps a
+   * threshold, read off the column rather than the window. */
+  .grid.wide-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @container workspace (min-width: 800px) {
+    .grid.wide-two {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: start;
+    }
+    .grid.wide-two.chart-lead {
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    }
+  }
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 44px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+}

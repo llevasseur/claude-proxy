@@ -1,0 +1,38 @@
+@layer components {
+  /* Sessions list — first-task preview under the thread id. */
+  .session-preview {
+    margin-top: 2px;
+    font-size: 12px;
+    max-width: 52ch;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The CLI-generated chat title — the primary label for a session. */
+  .session-title {
+    font-weight: 600;
+    color: var(--signal);
+    max-width: 52ch;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The thread id shown small under the title in the list. */
+  .session-id {
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  /* Session detail — title + subtitle above the stat tiles. */
+  .session-heading {
+    margin: 0 0 0.75rem;
+  }
+
+  .session-heading .session-title {
+    font-size: 1.05rem;
+    max-width: none;
+    white-space: normal;
+  }
+}

@@ -1,0 +1,121 @@
+@layer components {
+  /* trend carousel */
+  .trend-carousel {
+    margin-bottom: 22px;
+  }
+  .trend-carousel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+  /* The chooser: one chip per graph. */
+  .trend-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+  .trend-chip {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+    cursor: pointer;
+    /* Stated rather than inherited: a `<button>` takes the UA's `normal` and the
+     skeleton's `<span>` the page's 1.55, 2.5px apart per chip. */
+    line-height: 1.45;
+  }
+  .trend-chip:hover {
+    color: var(--text);
+    border-color: var(--signal-dim);
+  }
+  .trend-chip.active {
+    color: var(--text);
+    background: var(--surface-2);
+    border-color: var(--signal);
+  }
+  .trend-carousel-head .range {
+    flex: none;
+  }
+  /* A stack, not a row: every panel lands in the one grid cell, so the stage is
+   as tall as the tallest and the seat transform is all that separates them.
+   Clipped sideways only — the cards' own edges still show through vertically. */
+  /* The stage names itself: the seat widths below are percentages of it. Containment
+   * is inline-axis only, so the stage still sizes its height to the tallest panel. */
+  .trend-stage {
+    container: trend-stage / inline-size;
+    display: grid;
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+  .trend-panel {
+    grid-area: 1 / 1;
+    width: 78%;
+    justify-self: center;
+    min-width: 0;
+    /* Every seat is the same two properties, so the promotion is a composited
+     move: no layout runs while a panel crosses the stage. */
+    transition:
+      transform var(--motion-duration-slow) cubic-bezier(0.22, 1, 0.36, 1),
+      opacity var(--motion-duration-slow) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .trend-panel.seat-current {
+    z-index: 2;
+    transform: none;
+    opacity: 1;
+  }
+  /* The neighbours: mostly under the selection, with a sliver out either side. */
+  .trend-panel.seat-prev,
+  .trend-panel.seat-next {
+    z-index: 1;
+    opacity: 0.42;
+    cursor: pointer;
+  }
+  .trend-panel.seat-prev {
+    transform: translateX(-58%) scale(0.94);
+  }
+  .trend-panel.seat-next {
+    transform: translateX(58%) scale(0.94);
+  }
+  .trend-panel.seat-prev:hover,
+  .trend-panel.seat-next:hover {
+    opacity: 0.68;
+  }
+  /* Everything further out waits off-stage, behind and invisible, so a jump of
+   more than one seat still slides the panels rather than cutting to them. */
+  .trend-panel.seat-off {
+    z-index: 0;
+    transform: translateX(70%) scale(0.9);
+    opacity: 0;
+    pointer-events: none;
+  }
+  @container trend-stage (max-width: 660px) {
+    /* Narrower panels, so the slivers stay wide enough to hit with a thumb. */
+    .trend-panel {
+      width: 84%;
+    }
+    .trend-panel.seat-prev {
+      transform: translateX(-62%) scale(0.94);
+    }
+    .trend-panel.seat-next {
+      transform: translateX(62%) scale(0.94);
+    }
+  }
+  /* Clamped to two lines so a long description cannot make one slide taller. */
+  .trend-slide-note {
+    margin: 12px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+    height: 3em;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}

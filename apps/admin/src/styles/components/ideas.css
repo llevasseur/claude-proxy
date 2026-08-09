@@ -1,0 +1,146 @@
+@layer components {
+  /* ideas ledger — the advice card system, with citations and controls in place of a
+   severity. */
+  .idea {
+    border-left-color: var(--signal-dim);
+  }
+  .idea.idea-accepted {
+    border-left-color: var(--signal);
+  }
+  /* A record rather than a finding, but kept legible: the reason is the row's value. */
+  .idea.idea-rejected {
+    border-left-color: var(--line);
+    opacity: 0.8;
+  }
+  .idea.idea-rejected:hover,
+  .idea.idea-rejected:focus-within {
+    opacity: 1;
+  }
+  .idea-repo {
+    margin-left: auto;
+    font-size: 12px;
+  }
+  .idea-evidence {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+  }
+  .idea-evidence li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .idea-evidence-source {
+    font-family: var(--font-mono);
+    color: var(--muted);
+  }
+  .idea-evidence-where {
+    font-family: var(--font-mono);
+  }
+  .idea-evidence-quote {
+    font-style: italic;
+  }
+  .idea-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .idea-when {
+    margin-left: auto;
+    font-size: 12px;
+  }
+  .idea-reject {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 320px;
+  }
+  .idea-reject input {
+    flex: 1 1 auto;
+    min-width: 12rem;
+  }
+  /* The card's rationale is a preview — the detail page carries it whole. */
+  .idea-rationale {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .idea-comment {
+    border-left-color: var(--signal-dim);
+  }
+  .idea-summary {
+    font-size: 14px;
+  }
+
+  /* Area tabs. The five seeds always render; an empty one is dimmed, not hidden. */
+  .idea-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .idea-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--line);
+    background: transparent;
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    color: inherit;
+  }
+  .idea-tab:hover {
+    border-color: var(--signal-dim);
+  }
+  .idea-tab.is-selected {
+    border-color: var(--signal);
+    color: var(--signal);
+  }
+  .idea-tab.is-empty {
+    opacity: 0.5;
+  }
+  .idea-tab-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .idea-area-unfiled {
+    opacity: 0.7;
+  }
+  .idea-file,
+  .idea-comment-edit {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .idea-comment-edit {
+    display: grid;
+    gap: 8px;
+  }
+  .idea-comment-edit textarea {
+    width: 100%;
+    font: inherit;
+    resize: vertical;
+  }
+
+  /* The rejected fold: never deleted, only collapsed behind this toggle. */
+  .idea-rejected-fold {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .idea-toggle {
+    justify-self: start;
+  }
+}
