@@ -12,5 +12,7 @@ coverage/
 .env.*
 !.env.example
 .vite/
+# Local miniflare/wrangler state (D1, cache, traces) — regenerated on `wrangler dev`
+.wrangler/
 tmp/*
 !tmp/.gitkeep
