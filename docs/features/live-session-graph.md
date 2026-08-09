@@ -253,7 +253,13 @@ left are simply absent from `threads`, and keep their transcript text.
   `inferred: true` on the wire, so an uncertain pairing says so. The `Agent`/`Task` allow-list
   and the start-time heuristic **stay** — they are the legacy path for transcripts written
   before the header lines, and they are tested as such — but they no longer decide anything the
-  proxy saw for itself. Still open: linking is bidirectional in memory only, so a spawn observed
+  proxy saw for itself. **Both now carry the date they became legacy** —
+  `agent-spawn-tool-allow-list` and `agent-link-start-time-inference` in
+  `packages/core/src/fallbacks.ts`, 2026-08-07 — and `server/test/fallback-retirement.test.ts`
+  fails naming them once no retained transcript predates the header lines, so "stay" has an end
+  condition instead of being permanent by default. Today they stay: the archive's floor is
+  2026-07-12, weeks of transcripts predate the field, and both paths are load-bearing.
+  Still open: linking is bidirectional in memory only, so a spawn observed
   before its child *and* separated from it by a proxy restart falls back to inference, since the
   pending-spawn registry is not mirrored to disk the way pending titles are.
 - The `liveness` verdict is deliberately **not** downstream of that linkage: it reads one

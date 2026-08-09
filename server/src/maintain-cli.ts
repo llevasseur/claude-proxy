@@ -131,6 +131,27 @@ async function reconcileRuns(logDir: string): Promise<void> {
 }
 
 /**
+ * Extract the derivatives the dashboard reads out of a body, while the bodies are
+ * all still here. Must run *before* the evict phase below deletes them, for the
+ * same reason `reconcileRuns` must run before archiving: the step consumes
+ * something a later step in this very run removes.
+ *
+ * An ordinary ingest pass — the watcher and `pnpm --filter server ingest` run the
+ * same one, so this is usually a no-op that finds nothing pending, and having it
+ * here is what makes the ordering a guarantee. Skipped on a dry run, and never
+ * fatal: the substrate is a disposable view.
+ */
+async function deriveBeforeEvict(logDir: string): Promise<void> {
+  try {
+    const { ingestOnce } = await import('./db/runtime.js');
+    const stats = await ingestOnce(logDir);
+    if (stats.derived > 0) console.log(`[maintain] derived ${plural(stats.derived, 'body')} before eviction`);
+  } catch (err) {
+    console.error(`[maintain] body derivation skipped: ${(err as Error).message}`);
+  }
+}
+
+/**
  * Move each `claimed` idea whose pull request has merged, closed, or lost its
  * head branch. Skipped on a dry run — it writes. Never fatal: no `gh`, no
  * network, no origin all mean "learned nothing this run", and the ledger is left
@@ -160,6 +181,9 @@ async function main(): Promise<void> {
   console.log(`[maintain] log directory: ${logDir}`);
   if (apply) {
     await reconcileRuns(logDir);
+    await deriveBeforeEvict(logDir);
+    // Last of the three: unlike the two above it consumes nothing a later phase
+    // of this run removes, so it has no ordering constraint to honour.
     await reconcileIdeas(logDir);
   }
 

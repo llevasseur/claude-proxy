@@ -29,9 +29,6 @@
     .rail-head {
       display: none;
     }
-    .stations {
-      margin-top: 0;
-    }
     .station.active {
       background: var(--surface-2);
     }
