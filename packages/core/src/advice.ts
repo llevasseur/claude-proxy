@@ -11,15 +11,6 @@ export interface Advice {
   metric?: string;
 }
 
-/**
- * Pluggable source of coaching for a digest. The dashboard and daily job depend
- * only on this interface, so an LLM/agent-backed provider (e.g. an in-repo
- * `agents/` package) can replace the deterministic one without touching callers.
- */
-export interface AdviceProvider {
-  advise(digest: UsageDigest): Advice[] | Promise<Advice[]>;
-}
-
 /** Editable thresholds for the heuristic rules. */
 export const ADVICE_THRESHOLDS = {
   dominantToolPct: 15, // a single tool this % of tool bytes → flag it
@@ -36,7 +27,7 @@ const SEVERITY_RANK: Record<Severity, number> = { high: 0, warn: 1, info: 2 };
  * Deterministic advice from the digest numbers. Same digest in → same advice
  * out; no network, no model. Each rule is small and independently testable.
  */
-export class HeuristicAdviceProvider implements AdviceProvider {
+export class HeuristicAdviceProvider {
   advise(d: UsageDigest): Advice[] {
     const out: Advice[] = [];
 
