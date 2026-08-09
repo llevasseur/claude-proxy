@@ -27,6 +27,11 @@
 /* One file per component. Order within the layer is not load-bearing except where
  * a file's own comments say so. */
 @import "./styles/components/stat-card.css";
+/* The three named control jobs, sitting above the `@layer base` reset in
+ * `base.css`. First among the components on purpose: a component file that names
+ * the same control still wins, so these are a default to reach for rather than a
+ * rule anything has to fight. */
+@import "./styles/components/control.css";
 @import "./styles/components/controls.css";
 @import "./styles/components/chart.css";
 @import "./styles/components/trend-carousel.css";

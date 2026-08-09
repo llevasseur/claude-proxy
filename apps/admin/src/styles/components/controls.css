@@ -30,6 +30,12 @@
     background: var(--surface);
     color: var(--muted);
     border: none;
+    /* Square on purpose, and now said out loud: the group above draws the radius
+     * and clips to it, so a segment rounding its own corners is either invisible
+     * or wrong. It is stated here because the `@layer base` control floor gives
+     * every button a radius, and a property this rule never named is the one
+     * thing layer order cannot protect. */
+    border-radius: 0;
     padding: var(--space-4) var(--space-8);
     cursor: pointer;
     font-family: var(--font-mono);
