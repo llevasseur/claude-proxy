@@ -644,10 +644,9 @@ async function materialize(
       const abs = path.join(logDir, rel);
       let text: string | null = null;
       if (entry.derived) {
-        // Ingest already read this body while it existed, so the view no longer
-        // needs it: an existence check settles the eviction count, and the text
-        // comes from the column. Past the retention edge the count still rises
-        // and the answer survives — which is the whole point of deriving early.
+        // Ingest read this body while it existed, so the text comes from the
+        // column and only the eviction count still needs the disk. Past the
+        // retention edge the count rises and the answer survives.
         let present = true;
         try {
           await access(abs);

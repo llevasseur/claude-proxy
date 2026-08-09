@@ -37,10 +37,7 @@ export interface IngestStats {
   deleted: number;
   /** Files that were on disk but could not become a `request` row. */
   skipped: number;
-  /**
-   * Bodies read for their derivatives this pass — the extraction that has to
-   * happen while the `.request.txt` is still there. See `deriveBodies`.
-   */
+  /** Bodies read for their derivatives this pass. See `deriveBodies`. */
   derived: number;
   /** Session transcripts on disk. */
   sessions: number;
@@ -211,13 +208,12 @@ function prepare(db: DatabaseSync): Statements {
       ON CONFLICT(id) DO UPDATE SET source_dir = excluded.source_dir
       WHERE request_skipped.source_dir <> excluded.source_dir
     `),
-    // Deliberately leaves `skim_text` and `body_derived` alone. A body that has
-    // just disappeared is exactly the case the derivative exists for, so the
-    // column outlives the pointer that used to be beside it.
+    // Leaves `skim_text` and `body_derived` alone: a body that has just
+    // disappeared is the case the derivative exists for, so the column outlives
+    // the pointer that used to be beside it.
     refreshBlobs: db.prepare('UPDATE request SET md_path = ?, request_path = ?, blob_evicted = ? WHERE id = ?'),
-    // Rows whose body is still on disk and has not been read for its derivatives
-    // yet — new this pass, or pre-existing when a migration cleared the
-    // watermarks and sent the backfill round every archived day once.
+    // Rows whose body is still on disk and unread — new this pass, or picked up
+    // by the backfill a migration's watermark clear sends round every day once.
     pendingDerive: db.prepare(
       'SELECT id, request_path FROM request WHERE source_dir = ? AND body_derived = 0 AND request_path IS NOT NULL',
     ),
@@ -320,10 +316,7 @@ const BATCH = 500;
 
 /**
  * Read every not-yet-derived body in one directory and store what the views read
- * out of it. **This is the whole point of the pass**: eviction deletes the
- * `.request.txt`, and a value only computed at query time goes with it, so the
- * value is computed here instead — while the body is still on disk — into a column
- * beside the row that points at it.
+ * out of it, while the `.request.txt` is still there for eviction to delete.
  *
  * Three outcomes, and they are three states rather than two:
  *
@@ -333,10 +326,8 @@ const BATCH = 500;
  *   matching what the file backing answers for the same file. Marking it settles
  *   it — otherwise every future pass re-reads the same broken body.
  * - **Body gone between the select and the read.** Left at `body_derived = 0`,
- *   because nothing was observed. It will not come back, and that is the
- *   forward-only limit stated in `docs/features/retention-lifecycle.md`: a day
- *   evicted before this shipped has no body left to derive from, and re-ingesting
- *   cannot invent one.
+ *   since nothing was observed. It will not come back: that is the forward-only
+ *   limit stated in `docs/features/retention-lifecycle.md`.
  */
 async function deriveBodies(
   db: DatabaseSync,
@@ -479,9 +470,9 @@ async function ingestDir(
     writeBatch(db, st, sourceDir, batch, stats);
   }
 
-  // Last, so it sees every row this pass inserted as well as the ones already
-  // here — and before the watermark, so a failure part-way retries rather than
-  // marking the directory settled with bodies still unread.
+  // Last, so it sees the rows this pass inserted too — and before the watermark,
+  // so a failure part-way retries rather than settling the directory with bodies
+  // still unread.
   await deriveBodies(db, st, logDir, sourceDir, stats);
 
   st.watermark.run(sourceDir, lastStem, stems.length, new Date().toISOString());

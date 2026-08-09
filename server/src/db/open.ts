@@ -511,21 +511,19 @@ UPDATE session SET bytes = -1;
  * body, we kept the metrics" queryable — for a *metric*. A value a view reads out
  * of the body itself at query time had no such column, so `/api/skim` degraded
  * silently past the retention edge while the usage views did not. `skim_text` is
- * that value: the last user turn, bounded, computed once at ingest time by
- * `deriveBodies`.
+ * that value: the last user turn, bounded, computed once by `deriveBodies`.
  *
  * `body_derived` is the flag, not `skim_text IS NOT NULL` — a body that carries no
  * user turn derives a real `null`, and the two states have to stay apart or every
  * pass would re-read the same body forever.
  *
- * This is deliberately **not** the content-addressed blob store ADR 0004 rejected:
- * these are bounded derived strings and `logs/` remains the sole source of truth,
- * so `rm logs/claude-proxy.db && pnpm --filter server ingest` still reconstructs
- * everything that is on disk. What it cannot reconstruct is a derivative for a day
- * whose body is already gone — the guarantee is forward-only by construction.
+ * Bounded derived strings, deliberately **not** the content-addressed blob store
+ * ADR 0004 rejected: `logs/` stays the sole source of truth and
+ * `rm logs/claude-proxy.db && pnpm --filter server ingest` still reconstructs
+ * everything on disk. It cannot reconstruct a derivative for a day whose body is
+ * already gone — the guarantee is forward-only by construction.
  *
- * Clearing the watermarks forces one backfill visit to every archived day, so rows
- * whose bodies are still on disk pick the columns up on the next pass.
+ * Clearing the watermarks forces one backfill visit to every archived day.
  */
 const SCHEMA_V13 = `
 ALTER TABLE request ADD COLUMN skim_text    TEXT;

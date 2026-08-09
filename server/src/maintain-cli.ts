@@ -136,12 +136,10 @@ async function reconcileRuns(logDir: string): Promise<void> {
  * same reason `reconcileRuns` must run before archiving: the step consumes
  * something a later step in this very run removes.
  *
- * It is an ordinary ingest pass — the extraction lives in ingest rather than here,
- * so the watcher and `pnpm --filter server ingest` do it too and this call is
- * usually a no-op that finds nothing pending. Doing it here is what makes the
- * ordering a guarantee instead of a hope that the watcher was running. Skipped on
- * a dry run, and never fatal: the substrate is a disposable view, and failing to
- * refresh it is not a reason to abandon the maintenance run.
+ * An ordinary ingest pass — the watcher and `pnpm --filter server ingest` run the
+ * same one, so this is usually a no-op that finds nothing pending, and having it
+ * here is what makes the ordering a guarantee. Skipped on a dry run, and never
+ * fatal: the substrate is a disposable view.
  */
 async function deriveBeforeEvict(logDir: string): Promise<void> {
   try {

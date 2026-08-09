@@ -414,9 +414,8 @@ describe('route parity over a synthetic corpus', () => {
     expect((db.prepare('SELECT count(*) c FROM request').get() as { c: number }).c).toBe(8);
     expect((db.prepare('SELECT count(*) c FROM request_skipped').get() as { c: number }).c).toBe(2);
     expect((db.prepare('SELECT count(*) c FROM request WHERE blob_evicted = 1').get() as { c: number }).c).toBe(1);
-    // Every body still on disk was read for its derivatives at ingest time; the
-    // evicted one has nothing to read, so it stays underived rather than
-    // recording a null as though it had been looked at.
+    // Every body still on disk was derived at ingest time; the evicted one stays
+    // underived rather than recording a null as though it had been read.
     expect((db.prepare('SELECT count(*) c FROM request WHERE body_derived = 1').get() as { c: number }).c).toBe(7);
     expect(
       (db.prepare('SELECT count(*) c FROM request WHERE body_derived = 0 AND blob_evicted = 1').get() as { c: number })

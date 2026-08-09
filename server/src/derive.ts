@@ -2,17 +2,13 @@
  * Body derivatives — the small values a view renders out of a captured
  * `.request.txt`, as pure functions over the parsed body.
  *
- * They live here rather than beside either reader because there are two readers.
- * `readSidecars` opened the body during a directory scan and `readDir` opened it
- * again during a SQL read, and each carried its own copy of
- * {@link latestUserText}; two copies of a function whose answers have to agree
- * byte for byte is a parity break waiting to happen.
+ * They live here because there are two readers. `readSidecars` and `readDir` each
+ * carried their own copy of {@link latestUserText}, and two copies of a function
+ * whose answers have to agree byte for byte is a parity break waiting to happen.
  *
- * The other reason they are separate: a derivative computed *here* can be
- * computed once, at ingest time, into a column beside the row that points at the
- * body — which is what lets an evicted day still answer the question. See
- * `deriveBodies` in `server/src/db/ingest.ts` and the `skim_text` column in
- * `server/src/db/open.ts`.
+ * Being separate is also what lets a derivative be computed once, at ingest time,
+ * into a column beside the row that points at the body — see `deriveBodies` in
+ * `server/src/db/ingest.ts` and `skim_text` in `server/src/db/open.ts`.
  */
 
 /** What one captured body yields. Bounded strings only — never the body itself. */
