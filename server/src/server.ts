@@ -87,6 +87,7 @@ import {
 } from './chat.js';
 import { snapshotChatStream, subscribeChatStream } from './chat-stream.js';
 import { reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
+import { RemoteConceptStoreError } from './concepts-remote.js';
 import { resolveDbPath } from './db/open.js';
 import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from './db/runtime.js';
 import { ALL_DAYS, resolveAllDays, type SidecarSource } from './db/source.js';
@@ -1008,12 +1009,36 @@ const server = http.createServer(async (req, res) => {
         }
         return;
       }
-      // The Concepts page. `/teach` appends to the store from outside this
-      // process, so the stream watches the log dir the store sits in.
+      // The Concepts page. With `CONCEPTS_URL` and `CONCEPTS_TOKEN` set this
+      // reads the hosted store, so a concept `/teach` saved on another device
+      // is on the page; without them it reads `logs/concepts.jsonl` as before,
+      // and `meta.storePath` says which of the two answered.
+      //
+      // `/teach` appends to the local store from outside this process, so the
+      // stream watches the log dir it sits in. That watch says nothing about
+      // the hosted store — a remote-backed page refreshes on the next local
+      // change or the next load, which is the same liveness the file had before
+      // `/teach` went remote.
       case '/api/concepts': {
-        const concepts = await buildConcepts(LOG_DIR, readSource());
+        let concepts: Awaited<ReturnType<typeof buildConcepts>>;
+        try {
+          concepts = await buildConcepts(LOG_DIR, readSource());
+        } catch (err) {
+          // A configured hosted store that will not answer is a bad gateway,
+          // never a quiet fall back to the local file: the page must say the
+          // store is unreachable rather than show a different store's corpus.
+          if (err instanceof RemoteConceptStoreError) {
+            send(res, 502, { error: err.message });
+            return;
+          }
+          throw err;
+        }
         send(res, 200, concepts);
-        shadow('/api/concepts', concepts, (source) => buildConcepts(LOG_DIR, source));
+        // Shadow mode compares the two *local* backings. A remote answer came
+        // from neither, so comparing it would only re-issue the same request.
+        if (concepts.meta.store === 'local') {
+          shadow('/api/concepts', concepts, (source) => buildConcepts(LOG_DIR, source));
+        }
         return;
       }
       case '/api/concepts/stream':
@@ -1041,10 +1066,13 @@ const server = http.createServer(async (req, res) => {
         try {
           const concept = await build();
           send(res, 200, concept);
-          shadow('/api/concepts/concept', concept, (source) => buildConcept(LOG_DIR, ord, source));
+          if (concept.meta.store === 'local') {
+            shadow('/api/concepts/concept', concept, (source) => buildConcept(LOG_DIR, ord, source));
+          }
         } catch (err) {
           const msg = (err as Error).message;
-          if (msg.startsWith('concept not found')) send(res, 404, { error: msg });
+          if (err instanceof RemoteConceptStoreError) send(res, 502, { error: msg });
+          else if (msg.startsWith('concept not found')) send(res, 404, { error: msg });
           else throw err;
         }
         return;

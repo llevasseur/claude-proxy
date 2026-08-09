@@ -529,6 +529,12 @@ export const PARITY_ROUTES: ParityRoute[] = [
    * `logs/concepts.jsonl` is inside the substrate's scope, so unlike
    * `/api/system-prompt` this one belongs here. One case: the store is a single
    * file with no key and no filter, so there is nothing to enumerate over.
+   *
+   * These two checks are about the *local* backings. On a device configured for
+   * the hosted store both sides read that instead, so they compare one remote
+   * answer with another and say nothing about the file and the table — the
+   * request path skips its shadow check for the same reason. Unset
+   * `CONCEPTS_URL` to make this pair meaningful again.
    */
   {
     name: '/api/concepts',
