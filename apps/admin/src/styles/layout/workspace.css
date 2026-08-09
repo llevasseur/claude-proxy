@@ -13,7 +13,7 @@
     width: 100%;
     max-width: 1200px;
     margin: 0 auto;
-    padding: 40px clamp(20px, 3vw, 40px) 72px;
+    padding: var(--space-page) clamp(var(--space-10), 3vw, var(--space-page)) var(--space-page-xl);
   }
   /* The live graph escapes the padded, centered column and fills the workspace. It
    * pans its own canvas, so it opts out of containment. */
@@ -33,9 +33,9 @@
     /* The controls never shrink, so a long title block takes its own line rather
      than pushing them off the edge. */
     flex-wrap: wrap;
-    gap: 16px;
-    margin-bottom: 26px;
-    padding-bottom: 18px;
+    gap: var(--space-9);
+    margin-bottom: var(--space-11);
+    padding-bottom: var(--space-9);
     border-bottom: 1px solid var(--line);
   }
   /* A title block sharing the head with a control cluster: it yields and wraps first,
@@ -55,25 +55,25 @@
     align-items: center;
     flex-wrap: wrap;
     justify-content: flex-end;
-    gap: 10px 14px;
+    gap: var(--space-6) var(--space-8);
     flex-shrink: 0;
   }
   .pagehead h1 {
     font-family: var(--font-display);
-    font-size: 27px;
+    font-size: var(--text-10);
     font-weight: 600;
     letter-spacing: -0.02em;
     margin: 0;
   }
   .pagehead .muted {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
   }
   /* Day-over-day sentence under a trend page's description. */
   .trend-compare {
     font-family: var(--font-mono);
-    font-size: 12px;
-    margin-top: 6px;
+    font-size: var(--text-4);
+    margin-top: var(--space-4);
   }
   .trend-compare-value {
     font-variant-numeric: tabular-nums;
@@ -84,9 +84,9 @@
     font-family: var(--font-mono);
   }
   .mix-note {
-    font-size: 12px;
+    font-size: var(--text-4);
     line-height: 1.6;
-    margin: 0 0 14px;
+    margin: 0 0 var(--space-8);
   }
   .mix-note strong {
     color: var(--text);
@@ -95,10 +95,10 @@
   /* "How this is computed" — the provenance card beside a per-call composition. */
   .provenance h3 {
     color: var(--muted);
-    font-size: 11px;
+    font-size: var(--text-3);
     font-weight: 600;
     letter-spacing: 0.04em;
-    margin: 16px 0 6px;
+    margin: var(--space-9) 0 var(--space-4);
     text-transform: uppercase;
   }
   .provenance h3:first-child {
@@ -107,13 +107,13 @@
   .provenance-formula {
     background: var(--panel-2, rgb(255 255 255 / 4%));
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: var(--radius-3);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
     line-height: 1.6;
     margin: 0;
     overflow-x: auto;
-    padding: 8px 10px;
+    padding: var(--space-5) var(--space-6);
     white-space: pre-wrap;
     word-break: break-word;
   }
@@ -124,24 +124,24 @@
     color: var(--muted);
     display: flex;
     flex-direction: column;
-    font-size: 12px;
-    gap: 6px;
+    font-size: var(--text-4);
+    gap: var(--space-4);
     line-height: 1.6;
     margin: 0;
-    padding-left: 18px;
+    padding-left: var(--space-9);
   }
   .provenance-skeleton-note {
     margin: 0;
   }
   .mix-revision {
     border-top: 1px solid var(--line);
-    margin-top: 18px;
-    padding-top: 14px;
+    margin-top: var(--space-9);
+    padding-top: var(--space-8);
   }
   .mix-revision h3 {
-    font-size: 13px;
+    font-size: var(--text-5);
     font-weight: 600;
-    margin: 0 0 6px;
+    margin: 0 0 var(--space-4);
   }
   /* One prompt's sections: the heading indents to its depth, the share cell carries a bar. */
   .section-heading {
@@ -149,7 +149,7 @@
   }
   .share-cell .rowbar {
     height: 4px;
-    margin: 0 0 3px auto;
+    margin: 0 0 var(--space-3) auto;
     opacity: 0.75;
   }
   /* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
@@ -160,8 +160,8 @@
     color: var(--coral);
   }
   .state {
-    padding: 44px 0;
+    padding: var(--space-page) 0;
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: var(--text-5);
   }
 }

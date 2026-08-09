@@ -7,7 +7,7 @@
     flex-direction: column;
     background: var(--surface-2);
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: var(--radius-6);
     overflow: hidden;
   }
   .prompt-input:focus-within {
@@ -20,9 +20,9 @@
     background: transparent;
     color: var(--text);
     font-family: var(--font-body);
-    font-size: 13.5px;
+    font-size: var(--text-6);
     line-height: 21px;
-    padding: 10px 14px;
+    padding: var(--space-6) var(--space-8);
   }
   .prompt-input-textarea::placeholder {
     color: var(--faint);
@@ -35,37 +35,40 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 6px 10px 8px 14px;
+    gap: var(--space-7);
+    /* The hint drops below the controls rather than over them: `min-width: 0`
+     * below let the options row shrink past its own content and overlap. */
+    flex-wrap: wrap;
+    padding: var(--space-4) var(--space-6) var(--space-5) var(--space-8);
   }
   /* The session's own controls, in the input's toolbar. */
   .prompt-input-options {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-5);
     flex-wrap: wrap;
-    min-width: 0;
+    min-width: min-content;
   }
   .prompt-input-hint {
     margin-left: auto;
-    font-size: 11px;
+    font-size: var(--text-3);
   }
   .prompt-input-hint kbd {
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: var(--text-3);
     border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 0 4px;
+    border-radius: var(--radius-2);
+    padding: 0 var(--space-3);
   }
   .prompt-input-submit {
     background: var(--signal-dim);
     color: var(--ink);
     border: none;
-    border-radius: 9px;
-    padding: 6px 16px;
+    border-radius: var(--radius-4);
+    padding: var(--space-4) var(--space-9);
     cursor: pointer;
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
     font-weight: 600;
   }
   .prompt-input-submit:hover:not(:disabled) {
@@ -78,7 +81,7 @@
   }
 
   .chat-note {
-    margin: 0 0 12px;
+    margin: 0 0 var(--space-7);
   }
 
   /* A scrolling transcript over a pinned composer. */
@@ -94,17 +97,17 @@
   .chat-log {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: var(--space-9);
     overflow-y: auto;
     scroll-behavior: var(--motion-scroll);
     max-height: 44vh;
-    padding: 4px 2px 18px;
+    padding: var(--space-3) var(--space-2) var(--space-9);
   }
   .chat-panel--fill .chat-log {
     flex: 1;
     max-height: none;
     min-height: 0;
-    padding: 8px clamp(0px, 4vw, 60px) 22px;
+    padding: var(--space-5) clamp(0px, 4vw, var(--space-page-lg)) var(--space-10);
   }
   /* Anchor a short conversation to the composer rather than the top of the pane.
    `margin-top: auto` on the first turn, not `justify-content`, so an overflowing
@@ -119,14 +122,14 @@
   /* Even block padding for the centered state — the log's asymmetric bottom padding
    would otherwise ride it high. */
   .chat-panel--fill .chat-log--empty {
-    padding-block: 12px;
+    padding-block: var(--space-7);
   }
 
   /* One turn: avatar beside the bubble, the reader's own turns mirrored to the right. */
   .chat-turn {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: var(--space-6);
     max-width: 82%;
   }
   .chat-turn.user {
@@ -143,13 +146,13 @@
     place-items: center;
     width: 26px;
     height: 26px;
-    margin-top: 3px;
-    border-radius: 8px;
+    margin-top: var(--space-3);
+    border-radius: var(--radius-4);
     border: 1px solid var(--line);
     background: var(--surface-2);
     color: var(--muted);
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: var(--text-2);
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
@@ -159,25 +162,25 @@
   }
   .chat-bubble {
     min-width: 0;
-    border-radius: 14px;
-    padding: 10px 14px;
+    border-radius: var(--radius-6);
+    padding: var(--space-6) var(--space-8);
     background: var(--surface-2);
     border: 1px solid var(--line);
-    font-size: 13.5px;
+    font-size: var(--text-6);
   }
   .chat-turn.user .chat-bubble {
     background: rgba(70, 224, 192, 0.08);
     border-color: var(--signal-dim);
-    border-bottom-right-radius: 5px;
+    border-bottom-right-radius: var(--radius-2);
   }
   .chat-turn.assistant .chat-bubble {
-    border-bottom-left-radius: 5px;
+    border-bottom-left-radius: var(--radius-2);
   }
   /* The reply that hasn't arrived yet. */
   .chat-thinking {
     display: flex;
-    gap: 4px;
-    padding: 4px 0;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
   }
   .chat-thinking i {
     width: 6px;
@@ -205,7 +208,7 @@
     display: inline-block;
     width: 0.5em;
     height: 1em;
-    margin-left: 2px;
+    margin-left: var(--space-2);
     vertical-align: text-bottom;
     background: var(--signal);
     opacity: 0.7;
@@ -222,27 +225,27 @@
     flex: none;
   }
   .chat-panel--fill .chat-composer {
-    padding: 12px clamp(0px, 4vw, 60px) 4px;
+    padding: var(--space-7) clamp(0px, 4vw, var(--space-page-lg)) var(--space-3);
     border-top: 1px solid var(--line);
   }
   .chat-foot {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: var(--space-8);
     flex-wrap: wrap;
-    margin-top: 10px;
-    font-size: 12px;
+    margin-top: var(--space-6);
+    font-size: var(--text-4);
   }
   button.chat-new {
     margin-left: auto;
     background: none;
     border: 1px solid var(--line);
-    border-radius: 9px;
+    border-radius: var(--radius-4);
     color: var(--muted);
-    padding: 4px 12px;
+    padding: var(--space-3) var(--space-7);
     cursor: pointer;
     font-family: var(--font-mono);
-    font-size: 11.5px;
+    font-size: var(--text-4);
   }
   button.chat-new:hover:not(:disabled) {
     color: var(--text);
@@ -251,26 +254,26 @@
   .chat-footnote {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: var(--space-8);
     flex-wrap: wrap;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-5);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
   }
   /* What an agent turn actually ran. */
   .chat-tools {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-4);
     flex-wrap: wrap;
-    margin-top: 10px;
-    font-size: 11.5px;
+    margin-top: var(--space-6);
+    font-size: var(--text-4);
   }
   .chat-tool {
     font-family: var(--font-mono);
     border: 1px solid var(--line);
-    border-radius: 7px;
-    padding: 2px 8px;
+    border-radius: var(--radius-4);
+    padding: var(--space-2) var(--space-5);
     color: var(--muted);
   }
   .chat-tool.is-failed {
@@ -292,8 +295,8 @@
   }
   /* The live chips sit inside the bubble, so they take a rule of their own above them. */
   .chat-tools--live {
-    margin-top: 8px;
-    padding-top: 8px;
+    margin-top: var(--space-5);
+    padding-top: var(--space-5);
     border-top: 1px solid var(--line);
   }
   .chat-tools--live .chat-tool {
@@ -312,7 +315,7 @@
   }
   /* Why it failed, inline on the chip; the full text is the chip's title. */
   .chat-tool-why {
-    margin-left: 6px;
+    margin-left: var(--space-4);
     color: var(--muted);
     font-family: var(--font-body);
     max-width: 46ch;
@@ -322,30 +325,23 @@
     display: inline-block;
     vertical-align: bottom;
   }
-  /* The standing permission answer, chosen per session. */
-  select.chat-permission {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 9px;
-    color: var(--text);
-    padding: 4px 8px;
+  /* The standing permission answer, chosen per session. Surface, border, radius,
+   * arrow and disabled state come from `.select-field`; what is left is the mono
+   * face the rest of the composer's fine print uses. */
+  .chat-permission {
     font-family: var(--font-mono);
-    font-size: 11.5px;
-  }
-  select.chat-permission:disabled {
-    cursor: default;
-    opacity: 0.7;
+    font-size: var(--text-4);
   }
   /* Ends the turn in flight; shown only while one runs. */
   button.chat-stop {
     background: none;
     border: 1px solid var(--bad);
-    border-radius: 9px;
+    border-radius: var(--radius-4);
     color: var(--bad);
-    padding: 4px 12px;
+    padding: var(--space-3) var(--space-7);
     cursor: pointer;
     font-family: var(--font-mono);
-    font-size: 11.5px;
+    font-size: var(--text-4);
   }
   button.chat-stop:disabled {
     cursor: default;

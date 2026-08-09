@@ -42,6 +42,7 @@
       "!**/*.gen.*"
     ]
   },
+  "plugins": ["./apps/admin/lint/no-bare-size.grit"],
   "linter": {
     "enabled": true,
     "rules": {

@@ -239,7 +239,11 @@ export interface IdeaEntry {
   /** The stable kebab-case dedupe key. */
   slug: string;
   title: string;
-  /** One paragraph on why it is worth building. */
+  /**
+   * Why it is worth building. Written by `/ideate` as literal `- ` bullet lines;
+   * a row written before that shape carries one paragraph and stays that way.
+   * {@link ideaRationaleBullets} tells the two apart for whoever renders it.
+   */
   rationale: string;
   /** What it cites. Never empty — an idea with no evidence is not recorded. */
   evidence: IdeaEvidence[];
@@ -990,4 +994,36 @@ export function similarAreas(store: IdeasStore, area: string): string[] {
     .filter((s) => s.score >= 0.5)
     .sort((a, b) => b.score - a.score || a.area.localeCompare(b.area))
     .map((s) => s.area);
+}
+
+/** One line of a bulleted rationale — its leading bold label, and the rest. */
+export interface IdeaRationaleBullet {
+  /** The `**What it is**` lead-in, without its asterisks. Absent when there is none. */
+  label?: string;
+  /** Everything after the label, or the whole bullet when it carries no label. */
+  text: string;
+}
+
+/** `**Label** — rest`, `**Label**: rest`, or `**Label**` alone. */
+const BULLET_LABEL = /^\*\*(.+?)\*\*\s*(?:[—–:-]\s*)?(.*)$/;
+
+/**
+ * A rationale's bullets, or `[]` when it is a paragraph — the shape is read from
+ * the text, since both are on the ledger at once. All-or-nothing: *every* non-empty
+ * line must be a bullet, so a paragraph containing a dash stays prose and a
+ * half-converted rationale is never split into a list with prose beside it.
+ */
+export function ideaRationaleBullets(rationale: string): IdeaRationaleBullet[] {
+  const lines = rationale.split('\n').map((l) => l.trim());
+  const filled = lines.filter((l) => l !== '');
+  if (filled.length === 0) return [];
+  if (!filled.every((l) => /^[-*•]\s+\S/.test(l))) return [];
+
+  return filled.map((line) => {
+    const body = line.replace(/^[-*•]\s+/, '').trim();
+    const m = BULLET_LABEL.exec(body);
+    if (!m?.[1]) return { text: body };
+    const text = (m[2] ?? '').trim();
+    return text ? { label: m[1].trim(), text } : { text: m[1].trim() };
+  });
 }

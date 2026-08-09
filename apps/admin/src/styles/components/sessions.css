@@ -11,7 +11,7 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    padding: 22px clamp(16px, 2.5vw, 32px) 20px;
+    padding: var(--space-10) clamp(var(--space-9), 2.5vw, var(--space-12)) var(--space-10);
   }
 
   /* The rail of transcripts, scrolled on its own. */
@@ -40,12 +40,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-5);
     margin: 0;
-    padding: 12px 14px 8px;
+    padding: var(--space-7) var(--space-8) var(--space-5);
     color: var(--muted);
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: var(--text-3);
     font-weight: 500;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -75,7 +75,7 @@
     height: 34px;
     background: none;
     border: 1px dashed var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-5);
     color: var(--muted);
     cursor: pointer;
   }
@@ -91,11 +91,11 @@
   .sessions-search {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-5);
     background: var(--surface-2);
     border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0 10px;
+    border-radius: var(--radius-5);
+    padding: 0 var(--space-6);
     color: var(--faint);
   }
   .sessions-search:focus-within {
@@ -109,8 +109,8 @@
     background: none;
     color: var(--text);
     font-family: var(--font-body);
-    font-size: 13px;
-    padding: 7px 0;
+    font-size: var(--text-5);
+    padding: var(--space-5) 0;
   }
   .sessions-search input::placeholder {
     color: var(--faint);
@@ -122,11 +122,11 @@
     flex: 1 1 18rem;
     min-width: 0;
     margin: 0;
-    border-radius: 8px;
+    border-radius: var(--radius-4);
   }
   .card-head .context-search input {
-    font-size: 12px;
-    padding: 5px 0;
+    font-size: var(--text-4);
+    padding: var(--space-4) 0;
   }
   /* Below this the three parts stop sharing a line: the box takes its own row. The
    * card is what they are sharing, so the card decides — a head in a half-width
@@ -145,7 +145,7 @@
   .thread-link {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-2);
     color: inherit;
     text-decoration: none;
   }
@@ -165,19 +165,19 @@
     display: block;
     color: var(--muted);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
   }
   .thread-when {
     display: block;
   }
   .thread-id {
-    margin-right: 8px;
+    margin-right: var(--space-5);
     color: var(--faint);
   }
   /* The opening prompt above a thread's requests — free text, so it wraps, and it
    scrolls in place because a `/task` prompt runs to thousands of words. */
   .thread-prompt-text {
-    margin: 6px 0 10px;
+    margin: var(--space-4) 0 var(--space-6);
     max-height: 14rem;
     overflow-y: auto;
     line-height: 1.5;
@@ -186,7 +186,7 @@
   }
   .thread-prompt-foot {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
   }
 
   /* The scroll container the sentinel at its end pages against — one per list. */
@@ -194,16 +194,16 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 0 8px 8px;
+    padding: 0 var(--space-5) var(--space-5);
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-2);
   }
   .sessions-nav-empty,
   .sessions-nav-more {
     font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 12px 8px;
+    font-size: var(--text-4);
+    padding: var(--space-7) var(--space-5);
     text-align: center;
   }
   /* Search and "new chat", at the foot of the rail. */
@@ -211,31 +211,31 @@
     flex: none;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-4);
     border-top: 1px solid var(--line);
-    padding: 10px 14px 12px;
+    padding: var(--space-6) var(--space-8) var(--space-7);
   }
   .sessions-nav-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-5);
   }
   .sessions-nav-count {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
   }
 
   /* A card in the rail, with the control it reveals on hover. */
   .session-row {
     position: relative;
-    border-radius: 10px;
+    border-radius: var(--radius-5);
     border: 1px solid transparent;
   }
   .session-row-link {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 9px 34px 9px 10px;
+    gap: var(--space-3);
+    padding: var(--space-5) var(--space-12) var(--space-5) var(--space-6);
     text-decoration: none;
     color: inherit;
   }
@@ -250,7 +250,7 @@
     height: 24px;
     padding: 0;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-4);
     background: var(--surface);
     color: var(--muted);
     cursor: pointer;
@@ -274,12 +274,12 @@
   .session-row-top {
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    gap: var(--space-5);
   }
   .session-row-name {
     flex: 1;
     min-width: 0;
-    font-size: 13px;
+    font-size: var(--text-5);
     font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -288,12 +288,12 @@
   .session-row-age {
     flex: none;
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: var(--text-3);
     color: var(--faint);
   }
   .session-row-preview {
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-4);
     line-height: 1.4;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -303,19 +303,19 @@
   .session-row-meta {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-4);
     flex-wrap: wrap;
   }
   .session-chip {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: var(--space-3);
     border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 0 6px;
+    border-radius: var(--radius-3);
+    padding: 0 var(--space-4);
     color: var(--faint);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2);
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -335,21 +335,21 @@
     display: block;
     width: 14px;
     height: 14px;
-    margin: 0 auto 18px;
-    border-radius: 5px;
+    margin: 0 auto var(--space-9);
+    border-radius: var(--radius-2);
     background: var(--signal);
     box-shadow: 0 0 18px rgba(70, 224, 192, 0.6);
   }
   .chat-empty h2 {
     font-family: var(--font-display);
-    font-size: 30px;
+    font-size: var(--text-10);
     font-weight: 600;
     letter-spacing: -0.02em;
-    margin: 0 0 10px;
+    margin: 0 0 var(--space-6);
   }
   .chat-empty p {
     margin: 0;
-    font-size: 13.5px;
+    font-size: var(--text-6);
   }
 
   /* Narrow: the rail gives up its column and sits above the chat. Stays a viewport
@@ -376,16 +376,16 @@
   .session-running {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-6);
     flex-wrap: wrap;
-    margin: 0 0 12px;
-    padding: 8px 12px;
+    margin: 0 0 var(--space-7);
+    padding: var(--space-5) var(--space-7);
     border: 1px solid var(--signal-dim);
-    border-radius: 10px;
+    border-radius: var(--radius-5);
     background: var(--surface);
     color: var(--text);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
   }
   .session-running-dot {
     width: 8px;

@@ -6,31 +6,31 @@
   .stat-label {
     font-family: var(--font-mono);
     color: var(--muted);
-    font-size: 10.5px;
+    font-size: var(--text-3);
     text-transform: uppercase;
     letter-spacing: 0.11em;
   }
   .stat-value {
     font-family: var(--font-mono);
-    font-size: 28px;
+    font-size: var(--text-10);
     font-weight: 600;
     letter-spacing: -0.01em;
-    margin: 10px 0 6px;
+    margin: var(--space-6) 0 var(--space-4);
     font-variant-numeric: tabular-nums;
   }
   .stat-foot {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 12px;
+    gap: var(--space-5);
+    font-size: var(--text-4);
   }
   /* which day the delta chip above it is measured against */
   .stat-baseline {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
     color: var(--muted);
     font-variant-numeric: tabular-nums;
-    margin-top: 3px;
+    margin-top: var(--space-3);
   }
   .delta {
     font-family: var(--font-mono);
@@ -69,11 +69,11 @@
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: 10px;
+    gap: var(--space-6);
   }
   .usage-chip {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: var(--text-2);
     text-transform: uppercase;
     letter-spacing: 0.09em;
     font-weight: 600;
@@ -82,29 +82,29 @@
   }
   .usage-meter-value {
     font-family: var(--font-mono);
-    font-size: 28px;
+    font-size: var(--text-10);
     font-weight: 600;
     letter-spacing: -0.01em;
-    margin: 10px 0 10px;
+    margin: var(--space-6) 0 var(--space-6);
     font-variant-numeric: tabular-nums;
     color: var(--tone);
   }
   .usage-meter-unit {
-    font-size: 15px;
-    margin-left: 2px;
+    font-size: var(--text-7);
+    margin-left: var(--space-2);
     color: var(--muted);
   }
   .usage-bar {
     position: relative;
     height: 7px;
-    border-radius: 4px;
+    border-radius: var(--radius-2);
     background: var(--surface-2);
     overflow: hidden;
   }
   .usage-bar-fill {
     position: absolute;
     inset: 0 auto 0 0;
-    border-radius: 4px;
+    border-radius: var(--radius-2);
     background: var(--tone);
     transition: width var(--motion-duration-slow) ease;
   }
@@ -112,7 +112,7 @@
   .usage-bar-projected {
     position: absolute;
     inset: 0 auto 0 0;
-    border-radius: 4px;
+    border-radius: var(--radius-2);
     background: var(--tone);
     opacity: 0.24;
     transition: width var(--motion-duration-slow) ease;
@@ -121,10 +121,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    margin-top: 8px;
+    gap: var(--space-5);
+    margin-top: var(--space-5);
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
   }
   /* A denominator inferred from history; the dotted underline invites the hover. */
   .usage-learned {
@@ -137,8 +137,8 @@
     color: var(--amber);
   }
   .usage-blurb {
-    margin: 10px 0 0;
-    font-size: 12px;
+    margin: var(--space-6) 0 0;
+    font-size: var(--text-4);
     line-height: 1.5;
     color: var(--text);
     /* Legible without outshouting the number. */
@@ -149,15 +149,15 @@
     grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
   }
   .usage-note {
-    font-size: 12px;
+    font-size: var(--text-4);
     line-height: 1.5;
     color: var(--muted);
-    margin: 0 0 22px;
+    margin: 0 0 var(--space-10);
   }
 
   /* stat card: mini chart + clickable drill-down + hover popover */
   .sparkline {
-    margin-top: 14px;
+    margin-top: var(--space-8);
     /* Keep recharts' SVG from bleeding past the card's rounded corners. */
     overflow: hidden;
   }
@@ -184,8 +184,8 @@
     right: 0;
     background: var(--surface-2);
     border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 10px 12px;
+    border-radius: var(--radius-5);
+    padding: var(--space-6) var(--space-7);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     opacity: 0;
     visibility: hidden;
@@ -215,11 +215,11 @@
   }
   .stat-popover-head {
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: var(--text-3);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted);
-    margin-bottom: 6px;
+    margin-bottom: var(--space-4);
   }
   .stat-popover-list {
     list-style: none;
@@ -231,14 +231,14 @@
   .stat-popover-list li {
     display: flex;
     justify-content: space-between;
-    gap: 14px;
+    gap: var(--space-8);
     /* The negative margin cancels the padding: rows stay aligned to the head, and
      the highlight gets room around the text. */
-    padding: 3px 6px;
-    margin: 0 -6px;
-    border-radius: 6px;
+    padding: var(--space-3) var(--space-4);
+    margin: 0 calc(var(--space-4) * -1);
+    border-radius: var(--radius-3);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
     font-variant-numeric: tabular-nums;
   }
   /* The day under the cursor — on this row or on the mini chart's node. */

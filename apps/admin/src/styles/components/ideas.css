@@ -18,20 +18,20 @@
   }
   .idea-repo {
     margin-left: auto;
-    font-size: 12px;
+    font-size: var(--text-4);
   }
   .idea-evidence {
     list-style: none;
-    margin: 10px 0 0;
+    margin: var(--space-6) 0 0;
     padding: 0;
     display: grid;
-    gap: 4px;
-    font-size: 12px;
+    gap: var(--space-3);
+    font-size: var(--text-4);
   }
   .idea-evidence li {
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    gap: var(--space-5);
     flex-wrap: wrap;
   }
   .idea-evidence-source {
@@ -47,55 +47,74 @@
   .idea-controls {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-5);
     flex-wrap: wrap;
-    margin-top: 12px;
+    margin-top: var(--space-7);
   }
   .idea-when {
     margin-left: auto;
-    font-size: 12px;
+    font-size: var(--text-4);
   }
   .idea-reject {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-5);
     flex: 1 1 320px;
   }
   .idea-reject input {
     flex: 1 1 auto;
     min-width: 12rem;
   }
-  /* The card's rationale is a preview — the detail page carries it whole. */
-  .idea-rationale {
+  /* The card's rationale is a preview — the detail page carries it whole. Only the
+   paragraph shape clamps; the bulleted one is cut by bullet in the component, since
+   the clamp needs `display: -webkit-box`, which unmakes the list. */
+  p.idea-rationale {
     display: -webkit-box;
     -webkit-line-clamp: 3;
     line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  /* The bulleted rationale: one claim per line, in the fixed order `/ideate` writes. */
+  .idea-rationale-list {
+    list-style: none;
+    margin: var(--space-6) 0 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-4);
+  }
+  .idea-rationale-list li {
+    /* The label hangs, so the claims line up down the left edge under it. */
+    padding-left: var(--space-6);
+    text-indent: calc(-1 * var(--space-6));
+  }
+  .idea-rationale-label::after {
+    content: " — ";
+    color: var(--muted);
+  }
   .idea-comment {
     border-left-color: var(--signal-dim);
   }
   .idea-summary {
-    font-size: 14px;
+    font-size: var(--text-6);
   }
 
   /* Area tabs. The five seeds always render; an empty one is dimmed, not hidden. */
   .idea-tabs {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 14px;
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
   }
   .idea-tab {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-4);
     border: 1px solid var(--line);
     background: transparent;
-    border-radius: 999px;
-    padding: 5px 12px;
-    font-size: 13px;
+    border-radius: var(--radius-pill);
+    padding: var(--space-4) var(--space-7);
+    font-size: var(--text-5);
     cursor: pointer;
     color: inherit;
   }
@@ -111,7 +130,7 @@
   }
   .idea-tab-count {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: var(--text-3);
     color: var(--muted);
   }
   .idea-area-unfiled {
@@ -120,13 +139,13 @@
   .idea-file,
   .idea-comment-edit {
     display: flex;
-    gap: 8px;
+    gap: var(--space-5);
     align-items: center;
     flex-wrap: wrap;
   }
   .idea-comment-edit {
     display: grid;
-    gap: 8px;
+    gap: var(--space-5);
   }
   .idea-comment-edit textarea {
     width: 100%;
@@ -137,8 +156,8 @@
   /* The rejected fold: never deleted, only collapsed behind this toggle. */
   .idea-rejected-fold {
     display: grid;
-    gap: 8px;
-    margin-top: 12px;
+    gap: var(--space-5);
+    margin-top: var(--space-7);
   }
   .idea-toggle {
     justify-self: start;

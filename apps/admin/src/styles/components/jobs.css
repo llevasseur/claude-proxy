@@ -6,18 +6,18 @@
     font-weight: 600;
   }
   .job-id {
-    font-size: 11.5px;
-    margin-top: 1px;
+    font-size: var(--text-4);
+    margin-top: var(--space-1);
   }
   /* How many transcripts the liveness badge above it was rolled up from. */
   .job-threads {
-    font-size: 11px;
-    margin-top: 3px;
+    font-size: var(--text-3);
+    margin-top: var(--space-3);
   }
   .job-detail {
-    margin-top: 3px;
+    margin-top: var(--space-3);
     color: var(--muted);
-    font-size: 12px;
+    font-size: var(--text-4);
     /* A status line can be a paragraph; two lines is enough to recognise it by. */
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -35,12 +35,12 @@
   button.btn-danger {
     background: none;
     border: 1px solid var(--bad);
-    border-radius: 9px;
+    border-radius: var(--radius-4);
     color: var(--bad);
-    padding: 3px 11px;
+    padding: var(--space-3) var(--space-7);
     cursor: pointer;
     font-family: var(--font-mono);
-    font-size: 11.5px;
+    font-size: var(--text-4);
   }
   button.btn-danger:hover:not(:disabled) {
     background: color-mix(in srgb, var(--bad) 14%, transparent);
@@ -57,15 +57,15 @@
   .job-delete-confirm {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    font-size: 11.5px;
+    gap: var(--space-5);
+    font-size: var(--text-4);
   }
   /* Outcome of the last delete, above the table it just changed. */
   .job-delete-done,
   .job-delete-error {
-    padding: 8px 12px;
+    padding: var(--space-5) var(--space-7);
     border-top: 1px solid var(--line);
-    font-size: 12px;
+    font-size: var(--text-4);
   }
   .job-delete-done {
     color: var(--muted);
@@ -74,18 +74,18 @@
     overflow-wrap: anywhere;
   }
   .job-delete-done button.link {
-    margin-left: 8px;
+    margin-left: var(--space-5);
     color: var(--muted);
     text-decoration: underline;
-    font-size: 11.5px;
+    font-size: var(--text-4);
   }
   .job-delete-error {
     color: var(--bad);
   }
   /* The standing warning on the page header card. */
   .danger-note {
-    margin-top: 10px;
-    padding-top: 10px;
+    margin-top: var(--space-6);
+    padding-top: var(--space-6);
     border-top: 1px solid var(--line);
   }
   .danger-note strong {
@@ -94,7 +94,7 @@
 
   /* The prompt a job was given — preserve its newlines, cap its height. */
   .job-intent {
-    margin-top: 4px;
+    margin-top: var(--space-3);
     max-height: 12rem;
     overflow: auto;
   }
@@ -111,8 +111,8 @@
   .jobfiles {
     display: grid;
     grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
-    gap: 16px;
-    margin-top: 12px;
+    gap: var(--space-9);
+    margin-top: var(--space-7);
     align-items: start;
   }
   .jobfiles-view {
@@ -135,23 +135,23 @@
     flex-direction: column;
     max-height: 560px;
     overflow: auto;
-    padding: 6px;
+    padding: var(--space-4);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-4);
     background: rgba(0, 0, 0, 0.18);
   }
   .jobtree-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-4);
     width: 100%;
-    padding: 4px 8px 4px 0;
+    padding: var(--space-3) var(--space-5) var(--space-3) 0;
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-3);
     background: none;
     color: var(--text);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-4);
     text-align: left;
     cursor: pointer;
   }
@@ -190,15 +190,15 @@
   .jobtree-meta {
     flex: none;
     color: var(--faint);
-    font-size: 10.5px;
+    font-size: var(--text-3);
   }
   .jobtree-tag {
     flex: none;
-    padding: 0 5px;
-    border-radius: 4px;
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-2);
     background: var(--surface-2);
     color: var(--muted);
-    font-size: 9.5px;
+    font-size: var(--text-2);
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
@@ -208,7 +208,7 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-7);
     flex-wrap: wrap;
   }
   .jobview-title {
@@ -221,19 +221,19 @@
   .jobview-facts {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 4px;
-    font-size: 11.5px;
+    gap: var(--space-5);
+    margin-top: var(--space-3);
+    font-size: var(--text-4);
   }
   .jobview-note {
-    margin-top: 8px;
+    margin-top: var(--space-5);
   }
   /* An inlined screenshot, bounded so it can't run the page's length. */
   .jobview-image {
-    margin-top: 12px;
-    padding: 12px;
+    margin-top: var(--space-7);
+    padding: var(--space-7);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-4);
     background: rgba(0, 0, 0, 0.28);
   }
   .jobview-image img {
@@ -241,6 +241,6 @@
     max-width: 100%;
     max-height: 620px;
     margin: 0 auto;
-    border-radius: 4px;
+    border-radius: var(--radius-2);
   }
 }

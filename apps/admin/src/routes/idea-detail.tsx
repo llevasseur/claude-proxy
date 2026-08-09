@@ -4,7 +4,14 @@ import { Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { commentIdeas, fileIdeas, getIdeas, type IdeasResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
-import { IDEA_STATUS_LABEL, IDEAS_KEY, IdeaEvidenceList } from '../components/IdeaCard';
+import {
+  hasIdeaDecision,
+  IDEA_STATUS_LABEL,
+  IDEAS_KEY,
+  IdeaDecisionControls,
+  IdeaEvidenceList,
+  IdeaRationale,
+} from '../components/IdeaCard';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonText } from '../components/Skeleton';
@@ -72,7 +79,7 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
           <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
           <code className='idea-repo muted'>{idea.repo}</code>
         </div>
-        <p>{idea.rationale}</p>
+        <IdeaRationale rationale={idea.rationale} />
         <div className='muted idea-when'>
           proposed {fmtLocalTsShort(idea.created)}
           {idea.updated && idea.updated !== idea.created ? ` · updated ${fmtLocalTsShort(idea.updated)}` : ''}
@@ -117,6 +124,18 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
         </div>
       )}
 
+      {/* Decision — the same controls the card carries, so the rationale can be acted on here.
+          Absent where the controls have no move to offer, rather than a heading over an empty row. */}
+      {hasIdeaDecision(idea.status) && (
+        <div className='card'>
+          <div className='card-head'>
+            <h2>Decision</h2>
+            <span className='muted'>the same sign-off the card carries — a rejection still needs its reason</span>
+          </div>
+          <IdeaDecisionControls idea={idea} />
+        </div>
+      )}
+
       <AreaPicker idea={idea} areas={areas} />
       <CommentEditor idea={idea} />
     </>
@@ -157,15 +176,18 @@ function AreaPicker({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
           e.preventDefault();
           if (area && area !== idea.area) file.mutate(area);
         }}>
-        <select value={area} onChange={(e) => setArea(e.target.value)} aria-label='Area'>
-          {!idea.area && <option value=''>Unfiled</option>}
-          {areas.map((a) => (
-            <option key={a} value={a}>
-              {ideaAreaLabel(a)}
-            </option>
-          ))}
-        </select>
-        <button type='submit' disabled={!area || area === idea.area || file.isPending}>
+        {/* The wrapper is what draws the disclosure arrow — see `.select-field`. */}
+        <div className='select-field'>
+          <select value={area} onChange={(e) => setArea(e.target.value)} aria-label='Area'>
+            {!idea.area && <option value=''>Unfiled</option>}
+            {areas.map((a) => (
+              <option key={a} value={a}>
+                {ideaAreaLabel(a)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button type='submit' className='btn-primary' disabled={!area || area === idea.area || file.isPending}>
           Re-file
         </button>
       </form>
@@ -209,11 +231,18 @@ function CommentEditor({ idea }: { idea: IdeaEntry }) {
           onChange={(e) => setText(e.target.value)}
         />
         <div className='idea-controls'>
-          <button type='submit' disabled={save.isPending || text.trim() === (idea.comment ?? '')}>
+          <button
+            type='submit'
+            className='btn-primary'
+            disabled={save.isPending || text.trim() === (idea.comment ?? '')}>
             Save
           </button>
           {idea.comment && (
-            <button type='button' disabled={save.isPending} onClick={() => (setText(''), save.mutate(''))}>
+            <button
+              type='button'
+              className='btn-quiet'
+              disabled={save.isPending}
+              onClick={() => (setText(''), save.mutate(''))}>
               Clear
             </button>
           )}
