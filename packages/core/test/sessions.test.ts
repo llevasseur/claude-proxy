@@ -214,8 +214,7 @@ describe('truncateWords', () => {
   });
 
   it('takes the character cut when a single token runs past the budget', () => {
-    // No boundary worth honouring — a path, url or hash has none, and cutting back to the
-    // last space would throw the line away rather than shorten it.
+    // No boundary worth honouring: cutting back to the last space would throw the line away.
     expect(truncateWords(`a ${'x'.repeat(40)}`, 20)).toBe(`a ${'x'.repeat(18)}…`);
   });
 

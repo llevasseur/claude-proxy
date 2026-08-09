@@ -97,25 +97,21 @@ const LEAD_FILLER_RE =
 const SENTENCE_END_RE = /[.!?](?:\s|$)/;
 
 /**
- * What a compacted session's opening prompt leads with. Everything after it is the
- * *previous* conversation's summary — a document rather than a prompt, and the longest
- * shape in the store — so neither the name nor the preview is derived from it. An
- * interruption marker can ride in front of it.
+ * What a compacted session's opening prompt leads with; everything after it is the
+ * *previous* conversation's summary. An interruption marker can ride in front of it.
  */
 const CONTINUATION_RE = /^\s*(?:\[[^\]]*\]\s*)?This session is being continued from a previous conversation/i;
 
 /** What a continued session is called, in place of its predecessor's summary. */
 export const CONTINUATION_NAME = 'Continued from a previous conversation';
-/** …and what its preview line says: the same fact, at the length the preview has room for. */
+/** …and what its preview line says, at the length the preview has room for. */
 export const CONTINUATION_PREVIEW = 'Continued from a previous conversation that ran out of context.';
 
-/** Collapse to one line — every string derived here is one line by construction. */
 const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
 /**
- * Drop the context the harness injects ahead of what a person actually typed.
- * Transcripts predating the reminder-free subtitle open with such a blob, and one
- * truncated mid-block never closes its tag, so take that shape too.
+ * Drop the context the harness injects ahead of what a person typed. A blob truncated
+ * mid-block never closes its tag, so that shape comes off too.
  */
 const stripInjected = (s: string): string =>
   oneLine(s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '').replace(/<system-reminder>[\s\S]*$/i, ''));
@@ -136,8 +132,8 @@ export function deriveSessionName(prompt: string | null): string | null {
 
   let text = stripInjected(prompt);
 
-  // A compaction hands the next session its predecessor's summary. Naming a row from
-  // that gives every continued session the same opening clause and says nothing.
+  // Name the continuation itself; the summary behind it is the predecessor's, not this
+  // session's, and opens the same way every time.
   if (CONTINUATION_RE.test(text)) return CONTINUATION_NAME;
 
   // Name a slash command by its command and arguments, not the definition inlined after.
@@ -184,21 +180,18 @@ function capped(text: string): string | null {
 
 // --- Deriving a preview line to sit under that name ------------------------
 //
-// The rail shows a name over a line of the prompt behind it, and that line had been the
-// opening prompt verbatim. Three shapes make that unreadable, and all three are common:
-// a slash command opens with `<command-message>` — a third envelope tag, which neither
-// pattern above strips because neither had reason to — a locally-run command opens with
-// the CLI's caveat, and a compacted session opens with its predecessor's whole summary.
-// Stripping happens here rather than in the dashboard so every consumer of a preview
-// gets the same line.
+// Three common shapes make a verbatim opening prompt unreadable as a preview: a slash
+// command's `<command-message>` envelope, which neither pattern above strips; a locally
+// run command's CLI caveat; and a compacted session's predecessor summary. Stripping
+// happens here rather than in the dashboard so every consumer gets the same line.
 
 /** The most characters a preview carries before it is cut back to a word boundary. */
 const PREVIEW_CHARS = 180;
 
 /**
  * The least of the budget a word-boundary cut must still fill to be worth taking. Below
- * it the string is one long token — a path, a url, a hash — whose only boundary is far
- * enough back that honouring it would throw the line away rather than shorten it.
+ * it the string is one long token whose only boundary is far enough back that honouring
+ * it would throw the line away rather than shorten it.
  */
 const PREVIEW_BOUNDARY = 0.4;
 
@@ -207,8 +200,7 @@ const DANGLING_RE = /[\s,;:.\-—([{<'"]+$/;
 
 /**
  * Cut `text` to at most `max` characters on a word boundary, an `…` marking the cut.
- * Unlike a character cut this never ends mid-token, which is what made the old rows read
- * as broken rather than merely long.
+ * Never ends mid-token, unlike a plain character cut.
  */
 export function truncateWords(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -221,8 +213,7 @@ export function truncateWords(text: string, max: number): string {
 /**
  * The line that sits under a session's name in the rail: the opening prompt with its
  * envelope removed, cut to {@link PREVIEW_CHARS} on a word boundary. Null when the prompt
- * carries nothing the name does not already say — a command with no arguments is all
- * name, and the definition inlined after its envelope is identical on every run.
+ * carries nothing the name does not already say.
  */
 export function deriveSessionPreview(prompt: string | null): string | null {
   if (!prompt) return null;
@@ -230,8 +221,7 @@ export function deriveSessionPreview(prompt: string | null): string | null {
   if (!text) return null;
   if (CONTINUATION_RE.test(text)) return CONTINUATION_PREVIEW;
 
-  // A command's arguments are the only part of its prompt a reader has not seen in the
-  // name, and are what a `/fb` or `/god` row is actually about.
+  // A command's arguments are the only part of its prompt not already in the name.
   const command = COMMAND_NAME_RE.exec(text);
   if (command) {
     const args = oneLine(stripCommandNoise(COMMAND_ARGS_RE.exec(text)?.[1] ?? ''));
@@ -257,9 +247,8 @@ export function sessionDisplayName(meta: SessionMeta): string {
 
 /**
  * The preview line to show *under* {@link sessionName} — {@link deriveSessionPreview} of the
- * opening prompt, or null when it would only repeat the name above it. Both are condensed
- * from the same prompt, so for a short command they land on the same words; a name cut short
- * with an `…` is the case worth keeping, since the preview is where the rest of it is.
+ * opening prompt, or null when it would only repeat the name above it. A name cut short
+ * with an `…` keeps its preview — that is where the rest of it is.
  */
 export function sessionPreview(meta: SessionMeta): string | null {
   const preview = deriveSessionPreview(meta.subtitle ?? meta.firstTask);

@@ -280,10 +280,9 @@ function SessionRow({
   onToggle: (threadId: string) => void;
 }) {
   const name = sessionName(session);
-  // Not the raw prompt: a slash-command session's opens with `<command-message>`, which
-  // clamped to two lines read as XML broken mid-tag. `sessionPreview` strips the envelope,
-  // cuts on a word boundary, and drops a line the name above already says; the two-line
-  // clamp on `.session-row-preview` is the second cut rather than the only one.
+  // Not the raw prompt — a slash-command session's opens with `<command-message>`, which
+  // clamped to two lines reads as XML broken mid-tag. The clamp on `.session-row-preview`
+  // is the second cut rather than the only one.
   const preview = sessionPreview(session);
   const label = resolved ? 'Move back to Active' : 'Resolve';
   return (
