@@ -5,9 +5,7 @@
   "compatibility_date": "2026-08-09",
   "observability": { "enabled": true },
 
-  // `database_id` is the existing `operator-db` D1 database — a D1 database id
-  // is not a secret, so it is committed. Migrations live in `./migrations`,
-  // which is wrangler's default.
+  // The existing `operator-db` database. A D1 database id is not a secret.
   "d1_databases": [
     {
       "binding": "operator_db",
