@@ -12,10 +12,72 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* The floor under a control the sheet has not named, so it inherits the
+   * dashboard rather than the platform.
+   *
+   * `@layer base` is the safety property: these lose to every rule in
+   * `@layer components` by layer order rather than specificity, so a component
+   * that already declares a property keeps rendering exactly as it did.
+   *
+   * Checkboxes and radios are excluded — a surface is not a substitute for the
+   * native box, and leaves nothing that reads as checked.
+   *
+   * `line-height` is absent deliberately. Layer order only covers a property a
+   * component declares, and almost none declare a line height, so setting one
+   * here would retime the height of every existing control. */
+  button,
+  select,
+  textarea,
+  input:not([type="checkbox"], [type="radio"]) {
+    font-family: var(--font-body);
+    font-size: var(--text-5);
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-3);
+    padding: var(--space-4) var(--space-6);
+  }
+  /* A field holds text rather than offering an action, so it sits under the page
+   * rather than on it — the split `.sessions-search` already draws. */
+  textarea,
+  input:not([type="checkbox"], [type="radio"]) {
+    background: var(--ink);
+  }
+  textarea::placeholder,
+  input::placeholder {
+    color: var(--faint);
+  }
+  button {
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) {
+    border-color: var(--signal-dim);
+  }
+  button:active:not(:disabled) {
+    background: var(--surface-2);
+  }
+  /* A receded surface and faint text, rather than the whole control dimmed. */
+  button:disabled,
+  select:disabled,
+  textarea:disabled,
+  input:disabled {
+    background: var(--ink);
+    color: var(--faint);
+    border-color: var(--line);
+    cursor: default;
+  }
+
   a:focus-visible,
   button:focus-visible {
     outline: 2px solid var(--signal);
     outline-offset: 2px;
     border-radius: var(--radius-3);
+  }
+  /* The same ring on the other three, now that they have a surface to ring. */
+  select:focus-visible,
+  textarea:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
   }
 }

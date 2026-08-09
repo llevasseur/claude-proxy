@@ -30,6 +30,10 @@
     background: var(--surface);
     color: var(--muted);
     border: none;
+    /* Square: the group above draws the radius and clips to it. Said out loud
+     * because the `@layer base` control floor gives every button one, and a
+     * property this rule never named is what layer order cannot protect. */
+    border-radius: 0;
     padding: var(--space-4) var(--space-8);
     cursor: pointer;
     font-family: var(--font-mono);
