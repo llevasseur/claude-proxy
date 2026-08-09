@@ -1,12 +1,13 @@
 import { blendRate, isPartialDay, type UsageDigest } from '@claude-proxy/core';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { getTrends } from '../api';
+import { getSummary, type SummaryResponse } from '../api';
+import { DayWindowControls, useWindowDigests } from '../components/DayWindow';
 import { QueryState } from '../components/QueryState';
-import { DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { TrendCarousel, TrendCarouselSkeleton } from '../components/TrendCarousel';
 import { METRICS, REPORT_TZ_ABBR, type StatMetric } from '../metrics';
+import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 
 /** Metric, its blended value, what that value is per, and the days behind it. */
@@ -20,14 +21,14 @@ const BLENDED_COLUMNS: readonly SkeletonColumn[] = [{}, { className: 'num' }, {}
  */
 export function TrendsPage() {
   const [days, selectDays, isSwitching] = useTransitionState(30);
+  // The same summary feed the Overview's badge reports on: it keeps the window's
+  // closing day moving rather than frozen at page load.
+  const summary = useQuery({ queryKey: ['summary'], queryFn: () => getSummary() });
+  const summaryLive = useLiveQuery<SummaryResponse>('/api/summary/stream', ['summary']);
   // Same key and window as the Overview's mini charts, so switching between the
   // two pages costs no fetch.
-  const query = useQuery({
-    queryKey: ['trends', days],
-    queryFn: () => getTrends(days),
-    placeholderData: keepPreviousData,
-  });
-  const snapshots = query.data?.digests ?? [];
+  const query = useWindowDigests(days, summary.data?.digest);
+  const snapshots = query.digests;
   const busy = isSwitching || query.isFetching;
 
   const first = snapshots.at(0);
@@ -38,7 +39,7 @@ export function TrendsPage() {
   return (
     <section>
       <div className='pagehead'>
-        <div>
+        <div className='pagehead-title'>
           <h1>Trends</h1>
           <div className='muted'>
             Every statistic day by day, blended across the window — a rate weighted by volume rather than one day
@@ -46,10 +47,7 @@ export function TrendsPage() {
             {live ? 'Today counts as far as it has run, so the figures track the day as it happens.' : ''}
           </div>
         </div>
-        {/* `.pagehead` is a flex row; a bare control shrinks until its last pill clips. */}
-        <div className='pagehead-controls'>
-          <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label='Trend window' busy={busy} />
-        </div>
+        <DayWindowControls days={days} onDays={selectDays} label='Trend window' busy={busy} live={summaryLive} />
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<TrendsSkeleton days={days} />} busy={busy}>

@@ -5,10 +5,9 @@ import { useMemo } from 'react';
 import { getSummary, getTrends, getUsage, type SummaryResponse, type UsageResponse } from '../api';
 import { AdviceCard } from '../components/AdviceCard';
 import { CostRateCard, CostRateSkeleton } from '../components/CostRateCard';
-import { LiveIndicator } from '../components/LiveIndicator';
+import { DayWindowControls, DayWindowProvider, withLiveToday } from '../components/DayWindow';
 import { PerRequestCard, PerRequestSkeleton } from '../components/PerRequestCard';
 import { QueryState } from '../components/QueryState';
-import { DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { UsageMeter } from '../components/UsageMeter';
@@ -32,30 +31,35 @@ export function OverviewPage() {
   const usageLive = useLiveQuery<UsageResponse>('/api/usage/stream', ['usage']);
   const summaryLive = useLiveQuery<SummaryResponse>('/api/summary/stream', ['summary']);
   const data = summary.data;
+  // What every card below follows until it pins a window of its own.
+  const pageWindow = useMemo(() => ({ days, today: data?.digest }), [days, data]);
 
   return (
-    <section>
-      <PageHead
-        data={data}
-        loading={summary.isLoading}
-        days={days}
-        onDays={selectDays}
-        // Only the mini charts follow this window; the headline numbers come from
-        // today's digest, so the switcher marks itself and the cards stay at full strength.
-        busy={isSwitching || trends.isFetching}
-        live={worstStatus(usageLive, summaryLive)}
-      />
+    <DayWindowProvider value={pageWindow}>
+      <section>
+        <PageHead
+          data={data}
+          loading={summary.isLoading}
+          days={days}
+          onDays={selectDays}
+          // The mini charts and the two plots below follow this window; the headline
+          // numbers come from today's digest, so the switcher marks itself and the
+          // stat tiles stay at full strength.
+          busy={isSwitching || trends.isFetching}
+          live={worstStatus(usageLive, summaryLive)}
+        />
 
-      <UsageSection data={usage.data} isLoading={usage.isLoading} error={usage.error} />
-      {/* Both queries gate the skeleton: the tiles carry a mini chart drawn from the
-          trends window, so landing them separately would grow the row twice. */}
-      <QueryState
-        isLoading={summary.isLoading || trends.isLoading}
-        error={summary.error}
-        skeleton={<OverviewSkeleton days={days} />}>
-        {data && <OverviewBody data={data} digests={trends.data?.digests ?? []} />}
-      </QueryState>
-    </section>
+        <UsageSection data={usage.data} isLoading={usage.isLoading} error={usage.error} />
+        {/* Both queries gate the skeleton: the tiles carry a mini chart drawn from the
+            trends window, so landing them separately would grow the row twice. */}
+        <QueryState
+          isLoading={summary.isLoading || trends.isLoading}
+          error={summary.error}
+          skeleton={<OverviewSkeleton days={days} />}>
+          {data && <OverviewBody data={data} digests={trends.data?.digests ?? []} />}
+        </QueryState>
+      </section>
+    </DayWindowProvider>
   );
 }
 
@@ -148,17 +152,6 @@ function OverviewSkeleton({ days }: { days: number }) {
   );
 }
 
-/**
- * Today's digest as the summary stream last reported it, spliced into the trends
- * window. `/api/trends` is a one-shot read, so the mini charts and their popovers
- * would otherwise hold today's load-time values while the headline moved on.
- */
-function withLiveToday(digests: UsageDigest[], today: UsageDigest): UsageDigest[] {
-  const at = digests.findIndex((x) => x.date === today.date);
-  if (at === -1) return [...digests, today];
-  return digests.map((x, i) => (i === at ? today : x));
-}
-
 function OverviewBody({ data, digests }: { data: SummaryResponse; digests: UsageDigest[] }) {
   const d = data.digest;
   const trend = new Map((d.trend ?? []).map((t) => [t.field, t]));
@@ -193,9 +186,10 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
         })}
       </div>
 
-      {/* Both plots read the whole window, spliced so the newest day keeps moving. */}
-      <CostRateCard digests={series} />
-      <PerRequestCard digests={series} />
+      {/* Both plots follow the page head until their own picker is touched, and each
+          fetches the days it is actually drawing. */}
+      <CostRateCard />
+      <PerRequestCard />
 
       <div className='grid two'>
         <div className='card'>
@@ -256,7 +250,7 @@ function PageHead({
 }) {
   return (
     <div className='pagehead'>
-      <div>
+      <div className='pagehead-title'>
         <h1>Overview</h1>
         <div className='muted'>
           {data ? (
@@ -269,10 +263,7 @@ function PageHead({
           ) : null}
         </div>
       </div>
-      <div className='pagehead-controls'>
-        <LiveIndicator status={live} />
-        <Segmented options={DAY_WINDOWS} value={days} onSelect={onDays} label='Mini-chart window' busy={busy} />
-      </div>
+      <DayWindowControls days={days} onDays={onDays} label='Mini-chart window' busy={busy} live={live} />
     </div>
   );
 }
