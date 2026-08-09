@@ -52,6 +52,23 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
     which is why it says so here.
   Everything else is suppressed per site with a stated reason rather than turned
   off; prefer that when a new rule fires on deliberate code.
+- `.gitattributes` exists for exactly one line, `CHANGELOG.md merge=union`, and it
+  is load-bearing rather than tidy-up. Nearly every commit here touches
+  `CHANGELOG.md`, and every one of them **prepends** — so two branches in flight
+  always edit the same first lines and the three-way merge conflicts every single
+  time, in the identical place, with no semantic disagreement to resolve. `union`
+  takes both sides' added lines instead of raising a conflict, which makes the
+  conflict impossible rather than merely quick to resolve. It is safe **because of
+  what this file's format already is**: one bullet per entry on its own line, and
+  `### Added` / `### Changed` / `### Fixed` headings that already repeat down the
+  file, so a duplicated heading is the shape the file has rather than damage.
+  Two consequences to keep in mind. `union` is per-file and per-line: it applies to
+  `CHANGELOG.md` alone, never to code, where "keep both sides" would be a silent
+  wrong answer. And it resolves without asking, so a branch that *rewrites* an
+  existing entry rather than adding one gets both versions — re-read the top of the
+  file after a merge if you edited an entry in place. When a release is eventually
+  cut and `## [x.y.z]` headings appear, revisit this: the guarantee above rests on
+  `## [Unreleased]` being the only release heading.
 - `docs/` is an OKF bundle declared in `docs/index.md` frontmatter —
   `docs/features/`, `docs/specs/`, `docs/adrs/`, `docs/wayfinder/`. Go there for
   depth rather than re-deriving it from source.
