@@ -1,6 +1,15 @@
 @layer layout {
   /* cards + grid */
+
+  /* The inner size container, and the one that matters most. A card is the box a
+   * table, a chart or a head with a search box actually has to fit inside, and it
+   * is not the window: the same table is 1,100px wide on the Context page and
+   * 420px wide in one half of a `.grid.two`, at the same viewport. Naming the card
+   * lets its contents ask the only question worth asking — how much room is there
+   * here — so a fix for a cramped table is made once, in the table's own file,
+   * instead of being rediscovered per page. */
   .card {
+    container: card / inline-size;
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 14px;
@@ -41,8 +50,11 @@
     min-width: 0;
     margin-left: auto;
   }
-  /* A phone has no room for the card's full gutter. */
-  @media (max-width: 640px) {
+  /* A narrow column has no room for the card's full gutter. Keyed to the column
+   * rather than the window, so a card in the sessions pane gives up its gutter at
+   * the width that actually crowds it. A card cannot query itself, so this is the
+   * one size rule here that reads the column instead of the card. */
+  @container workspace (max-width: 600px) {
     .card {
       padding: 18px 14px;
     }
@@ -97,23 +109,24 @@
   .grid.stats {
     grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
   }
+  /* Two up while two will fit, one when they will not. `auto-fit` works this out
+   * from the space the grid was given, so there is no width to state and no query
+   * to keep in step with anything: the same grid drops to one column inside a
+   * narrow pane and stays at two on a wide page. `min(…, 100%)` keeps the floor
+   * from overflowing a container narrower than the floor itself. */
   .grid.two {
-    /* minmax(0,…) lets both columns shrink equally below their content width. */
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr));
   }
   .grid.two > .card {
     min-width: 0;
   }
-  @media (max-width: 720px) {
-    .grid.two {
-      grid-template-columns: 1fr;
-    }
-  }
-  /* Two-up for cards that need real width: stacked until the column can hold both. */
+  /* Cards that need real width before they will share a row. The asymmetric
+   * `chart-lead` split cannot be expressed intrinsically, so this one keeps a
+   * threshold — read off the column, not the window. */
   .grid.wide-two {
     grid-template-columns: minmax(0, 1fr);
   }
-  @media (min-width: 1080px) {
+  @container workspace (min-width: 800px) {
     .grid.wide-two {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       align-items: start;
