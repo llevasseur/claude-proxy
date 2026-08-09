@@ -254,7 +254,7 @@ export async function slideMain(
   const refs = await readMainHistoryRefs(repoDir);
   const commits = await readCommitGraph(repoDir, [from, resolved, ...refs.map((r) => r.sha)]);
 
-  // The whole invariant, in one line: pin what main is about to leave behind.
+  // Pin what main is about to leave behind.
   let pinned: string | null = null;
   if (needsPin(from, resolved, { commits, refs })) {
     pinned = pinRefFor(from);
@@ -298,7 +298,7 @@ export async function setLineHidden(
   await authorizeSlide(env);
 
   const ref = hiddenRefFor(sha);
-  // Belt and braces: this function must never be able to remove a pin.
+  // This must never be able to remove a pin.
   if (!ref.startsWith(`${MAIN_HISTORY_PREFIX}hidden/`)) throw new Error(`${ERR.bad} refusing to write ${ref}`);
 
   try {
