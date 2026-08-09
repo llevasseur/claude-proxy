@@ -1,0 +1,110 @@
+@layer components {
+  /* timeline.jsonl, pretty: one block per recorded state change. */
+  .joblog {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .joblog-entry {
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.18);
+  }
+  .joblog-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+  }
+  .joblog-line {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+  }
+  .joblog-detail {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .joblog-text {
+    margin-top: 6px;
+    max-height: 20rem;
+    overflow: auto;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  /* Numbered, coloured source — the "pretty" half of the file viewer. Numbers come
+   from a counter so selecting the block copies only the code. */
+  .codeblock {
+    counter-reset: codeline;
+    margin: 12px 0 0;
+    padding: 12px 0;
+    max-height: 620px;
+    overflow: auto;
+    list-style: none;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.28);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.55;
+    tab-size: 2;
+  }
+  .codeblock li {
+    counter-increment: codeline;
+    display: block;
+    /* Keeps a blank line the height of a full one. */
+    min-height: 1.55em;
+    padding: 0 14px 0 0;
+    white-space: pre;
+  }
+  .codeblock.wrap li {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .codeblock li::before {
+    content: counter(codeline);
+    display: inline-block;
+    width: 3.5em;
+    padding-right: 1em;
+    text-align: right;
+    color: var(--faint);
+    user-select: none;
+    /* A wrapped continuation lines up with the code, not under the number. */
+    vertical-align: top;
+  }
+  .codeblock li:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  /* Token colours, shared by every pretty code view. */
+  .tok-comment {
+    color: var(--faint);
+    font-style: italic;
+  }
+  .tok-string {
+    color: var(--good);
+  }
+  .tok-number {
+    color: var(--amber);
+  }
+  .tok-keyword {
+    color: var(--violet);
+  }
+  .tok-key {
+    color: var(--signal);
+  }
+
+  /* Narrow: the tree stops holding a column and sits above the viewer. */
+  @media (max-width: 900px) {
+    .jobfiles {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .jobtree {
+      max-height: 40vh;
+    }
+  }
+}

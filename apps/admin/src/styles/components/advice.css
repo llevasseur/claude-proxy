@@ -1,0 +1,55 @@
+@layer components {
+  /* advice */
+  .advice-list {
+    display: grid;
+    gap: 12px;
+  }
+  .advice-list.wide {
+    grid-template-columns: 1fr;
+  }
+  .advice {
+    margin: 0;
+    border-left: 3px solid var(--line);
+  }
+  .advice.sev-high {
+    border-left-color: var(--high);
+  }
+  .advice.sev-warn {
+    border-left-color: var(--warn);
+  }
+  .advice.sev-info {
+    border-left-color: var(--info);
+  }
+  .advice-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .advice-head h3 {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .advice p {
+    margin: 0;
+    color: var(--text);
+  }
+  .advice-metric {
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* Advice that has not moved since the prior day: one line, expandable back to the
+   full cards. */
+  .advice-steady {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .advice-steady-names {
+    font-size: 12px;
+  }
+}

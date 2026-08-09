@@ -1,0 +1,82 @@
+@layer components {
+  /* mini list */
+  .minilist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .minilist li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .minilist li:last-child {
+    border-bottom: none;
+  }
+
+  /* segmented control */
+  .segmented {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    overflow: hidden;
+  }
+  .segmented button {
+    background: var(--surface);
+    color: var(--muted);
+    border: none;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .segmented button:hover:not(:disabled) {
+    color: var(--text);
+  }
+  .segmented button.active {
+    background: var(--surface-2);
+    color: var(--signal);
+  }
+  .segmented button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  /* prev/next pager */
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .pager-btn {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+  }
+  a.pager-btn:hover {
+    color: var(--signal);
+    border-color: var(--signal);
+  }
+  .pager-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .pager-pos {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+}

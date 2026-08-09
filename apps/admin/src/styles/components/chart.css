@@ -1,0 +1,157 @@
+@layer components {
+  /* bar chart — height comes from `BAR_CHART_HEIGHT`, so a skeleton can reserve it. */
+  .barchart {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+  }
+  .barcol {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    min-width: 0;
+  }
+  .barval {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    white-space: nowrap;
+  }
+  .bartrack {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .bar {
+    width: 68%;
+    min-height: 2px;
+    border-radius: 4px 4px 0 0;
+  }
+  .barlabel {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--faint);
+    margin-top: 6px;
+  }
+
+  /* recharts focus: never the plot area, only the points. `accessibilityLayer={false}`
+   at each chart keeps the surface out of the tab order; recharts still stamps
+   `tabindex="-1"` on every inner `recharts-zIndex-layer_*` group, which a click
+   focuses and the browser then rings. */
+  .recharts-wrapper:focus,
+  .recharts-wrapper:focus-visible,
+  .recharts-wrapper :focus,
+  .recharts-wrapper :focus-visible {
+    outline: none;
+  }
+  /* Pin targets stay keyboard-reachable: a box outline round an SVG circle reads as the
+   area being focused, so the hit disc rings itself. `:focus-visible` only — a click
+   already shows its result by pinning the point. */
+  .recharts-wrapper [role="switch"]:focus-visible {
+    outline: none;
+    stroke: var(--signal);
+    stroke-width: 2;
+  }
+
+  /* recharts tooltip + legend */
+  .charttip {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    /* Sized to its rows, capped by a `max-height` set from the plot height. */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  /* The hovered point holds the top of the card; only the pins below it scroll. */
+  .charttip-lead {
+    flex: none;
+  }
+  .charttip-label {
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .charttip-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .charttip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+  }
+  /* Hollow, matching how a pinned point is drawn on the line itself. */
+  .charttip-dot.pinned {
+    box-sizing: border-box;
+    background: none;
+    border: 2px solid var(--line);
+  }
+  .charttip-name {
+    color: var(--muted);
+  }
+  .charttip-value {
+    color: var(--text);
+    margin-left: auto;
+  }
+  /* The only part that scrolls — the pin list is the one that grows unbounded. */
+  .charttip-pins {
+    min-height: 0;
+    overflow-y: auto;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .charttip-pin + .charttip-pin {
+    margin-top: 4px;
+  }
+  .charttip-delta {
+    color: var(--faint);
+    margin-left: 8px;
+  }
+  .charttip-hint {
+    flex: none;
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--faint);
+  }
+  .chartlegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .chartlegend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chartlegend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex: none;
+  }
+  .range {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+}

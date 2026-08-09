@@ -1,0 +1,236 @@
+@layer components {
+  /* jobs — the device's ~/.claude/jobs directories */
+
+  /* Listing: the job's name leads, its id and status detail sit under it. */
+  .job-title {
+    font-weight: 600;
+  }
+  .job-id {
+    font-size: 11.5px;
+    margin-top: 1px;
+  }
+  /* How many transcripts the liveness badge above it was rolled up from. */
+  .job-threads {
+    font-size: 11px;
+    margin-top: 3px;
+  }
+  .job-detail {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 12px;
+    /* A status line can be a paragraph; two lines is enough to recognise it by. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  /* Delete: outlined in the "bad" hue at rest, filled once the row is armed. */
+  .job-delete-head {
+    width: 1%;
+  }
+  .job-delete-cell {
+    white-space: nowrap;
+    text-align: right;
+  }
+  button.btn-danger {
+    background: none;
+    border: 1px solid var(--bad);
+    border-radius: 9px;
+    color: var(--bad);
+    padding: 3px 11px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+  button.btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--bad) 14%, transparent);
+  }
+  button.btn-danger:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+  button.btn-danger.armed {
+    background: var(--bad);
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .job-delete-confirm {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+  }
+  /* Outcome of the last delete, above the table it just changed. */
+  .job-delete-done,
+  .job-delete-error {
+    padding: 8px 12px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+  }
+  .job-delete-done {
+    color: var(--muted);
+  }
+  .job-delete-done .rule-name {
+    overflow-wrap: anywhere;
+  }
+  .job-delete-done button.link {
+    margin-left: 8px;
+    color: var(--muted);
+    text-decoration: underline;
+    font-size: 11.5px;
+  }
+  .job-delete-error {
+    color: var(--bad);
+  }
+  /* The standing warning on the page header card. */
+  .danger-note {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  .danger-note strong {
+    color: var(--bad);
+  }
+
+  /* The prompt a job was given — preserve its newlines, cap its height. */
+  .job-intent {
+    margin-top: 4px;
+    max-height: 12rem;
+    overflow: auto;
+  }
+  /* A fan-out task's label is a whole shell command. */
+  .job-fan-label {
+    display: block;
+    max-height: 4.5rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* Detail: folder tree beside the file it opens. */
+  .jobfiles {
+    display: grid;
+    grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 12px;
+    align-items: start;
+  }
+  .jobfiles-view {
+    min-width: 0;
+  }
+
+  /* The tree itself — one flat scroller of indented rows. */
+  .jobtree {
+    display: flex;
+    flex-direction: column;
+    max-height: 560px;
+    overflow: auto;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.18);
+  }
+  .jobtree-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 4px 8px 4px 0;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .jobtree-row:hover {
+    background: var(--surface-2);
+  }
+  .jobtree-row.active {
+    background: rgba(70, 224, 192, 0.14);
+    color: var(--signal);
+  }
+  .jobtree-row.is-dir {
+    color: var(--text);
+  }
+  .jobtree-caret {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    flex: none;
+    color: var(--muted);
+  }
+  .jobtree-icon {
+    flex: none;
+    color: var(--muted);
+  }
+  .jobtree-row.active .jobtree-icon {
+    color: var(--signal);
+  }
+  .jobtree-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .jobtree-meta {
+    flex: none;
+    color: var(--faint);
+    font-size: 10.5px;
+  }
+  .jobtree-tag {
+    flex: none;
+    padding: 0 5px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* The viewer's header: what the file is, and the pretty/raw switch. */
+  .jobview-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .jobview-title {
+    min-width: 0;
+  }
+  .jobview-path {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+  .jobview-facts {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 11.5px;
+  }
+  .jobview-note {
+    margin-top: 8px;
+  }
+  /* An inlined screenshot, bounded so it can't run the page's length. */
+  .jobview-image {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.28);
+  }
+  .jobview-image img {
+    display: block;
+    max-width: 100%;
+    max-height: 620px;
+    margin: 0 auto;
+    border-radius: 4px;
+  }
+}

@@ -1,0 +1,183 @@
+@layer components {
+  /* tables */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Scroller for a table whose columns carry `min-width` and so can't shrink to a
+   narrow card. Only scrolls below the columns' combined minimum. */
+  .table-scroll {
+    overflow-x: auto;
+  }
+  .table th,
+  .table td {
+    text-align: left;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--line);
+    /* Break long unbreakable tokens so a cell can't force the table past its card. */
+    overflow-wrap: anywhere;
+  }
+  .table th {
+    font-family: var(--font-mono);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    /* Keep short headers on one line. */
+    white-space: nowrap;
+  }
+  .table td {
+    font-size: 13px;
+  }
+  .table td.num,
+  .table th.num {
+    text-align: right;
+  }
+  .table td.num {
+    font-family: var(--font-mono);
+    /* Keep numbers on one line so the column holds its natural width. */
+    white-space: nowrap;
+  }
+  .table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .table th.sortable {
+    cursor: pointer;
+    user-select: none;
+  }
+  .table th.sortable:hover {
+    color: var(--text);
+  }
+  .table th.sortable[aria-sort="ascending"],
+  .table th.sortable[aria-sort="descending"] {
+    color: var(--text);
+  }
+  .table th .sort-arrow {
+    display: inline-block;
+    margin-left: 4px;
+    opacity: 0.7;
+    font-size: 9px;
+  }
+  /* Column-header hints. The note is prose, so it resets the header's uppercase mono. */
+  .hint {
+    position: relative;
+    display: inline-block;
+    margin-left: 5px;
+  }
+  .hint-mark {
+    width: 13px;
+    height: 13px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    line-height: 1;
+    text-transform: none;
+    vertical-align: middle;
+    cursor: help;
+  }
+  .hint-mark:hover,
+  .hint-mark:focus-visible {
+    border-color: var(--signal-dim);
+    color: var(--text);
+  }
+  .hint-bubble {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 6px);
+    left: 50%;
+    width: max-content;
+    max-width: 260px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 9px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    font-family: var(--font-body);
+    font-size: 11.5px;
+    font-weight: 400;
+    line-height: 1.45;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: normal;
+    color: var(--text);
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-50%, -4px);
+    transition:
+      opacity var(--motion-duration) ease,
+      transform var(--motion-duration) ease,
+      visibility var(--motion-duration) ease;
+    pointer-events: none;
+  }
+  .hint-mark:hover + .hint-bubble,
+  .hint-mark:focus-visible + .hint-bubble {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+  }
+  /* A right-aligned column opens its note inward, clear of the card's edge. */
+  .table th.num .hint-bubble,
+  .table th.bar-col .hint-bubble {
+    left: auto;
+    right: 0;
+    transform: translate(0, -4px);
+  }
+  .table th.num .hint-mark:hover + .hint-bubble,
+  .table th.num .hint-mark:focus-visible + .hint-bubble,
+  .table th.bar-col .hint-mark:hover + .hint-bubble,
+  .table th.bar-col .hint-mark:focus-visible + .hint-bubble {
+    transform: translate(0, 0);
+  }
+  .table tbody tr.clickable {
+    cursor: pointer;
+  }
+  .table tbody tr.clickable:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .skim-request {
+    max-width: 380px;
+  }
+  .skim-request summary {
+    max-width: 340px;
+    overflow: hidden;
+    color: var(--text);
+    cursor: pointer;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .skim-request pre {
+    max-height: 280px;
+    margin: 12px 0 4px;
+    padding: 12px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--ink);
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  .toolbloat .tool-name {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--text);
+  }
+  .bar-col {
+    width: 22%;
+  }
+  /* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
+  .rowbar {
+    height: 10px;
+    background: linear-gradient(90deg, var(--signal-dim), var(--signal));
+    border-radius: 4px;
+    min-width: 2px;
+  }
+}

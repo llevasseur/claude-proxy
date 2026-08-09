@@ -1,0 +1,73 @@
+@layer tokens {
+  :root {
+    /* ink & surfaces */
+    --ink: #0b0e14;
+    --surface: #12161c;
+    --surface-2: #1b212a;
+    --line: #262e39;
+    --text: #e9edf3;
+    --muted: #808c9e;
+    --faint: #4e5765;
+
+    /* signal palette */
+    --signal: #46e0c0; /* flow, links, real input */
+    --signal-dim: #2c8c7c;
+    --good: #6fe39a; /* output / positive delta */
+    --amber: #f4b15a; /* cost / cache / caution */
+    --coral: #ff6b81; /* regression / high severity */
+    --violet: #9d8cff; /* delegated work — subagent branches */
+
+    /* Aliases for chart colors referenced from JS. */
+    --accent: var(--signal);
+    --accent-2: var(--amber);
+    --bad: var(--coral);
+    --warn: var(--amber);
+    --high: var(--coral);
+    --info: var(--signal);
+
+    /* type */
+    --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* motion
+   *
+   * One number, and every duration in the sheet is written as a multiple of it.
+   * The sheet used to carry six separate `prefers-reduced-motion` blocks, and a
+   * new animation only honoured the preference if whoever wrote it remembered to
+   * add a seventh; the blanket `* { animation: none !important }` that backstopped
+   * them outranked every rule in the sheet to do it. Now the block at the bottom
+   * of this file has one job — set this to zero — and an animation honours the
+   * preference by being written in terms of it.
+   *
+   * The multiples exist so a rule still reads as its own duration rather than as a
+   * bare factor. They are `calc()` of the base, so they reach zero for free. */
+    --motion-duration: 0.18s;
+    /* A deliberate, watchable move: the trend carousel's slide, a meter filling. */
+    --motion-duration-slow: calc(var(--motion-duration) * 2);
+    /* Ambient loops — a pulsing dot, a shimmering placeholder. Three rates, because
+   * a thinking indicator and a slow status glow read as different things. */
+    --motion-loop-fast: calc(var(--motion-duration) * 7);
+    --motion-loop: calc(var(--motion-duration) * 9);
+    --motion-loop-slow: calc(var(--motion-duration) * 13);
+    /* Programmatic scrolling: `smooth` is motion the reader did not ask for. */
+    --motion-scroll: smooth;
+
+    /* The skeleton's sweep is a moving background rather than a duration, so
+   * zeroing the clock cannot flatten it — the fill itself has to change. */
+    --skeleton-fill: linear-gradient(90deg, var(--surface-2) 8%, var(--line) 38%, var(--surface-2) 68%);
+
+    font-family: var(--font-body);
+    color-scheme: dark;
+  }
+
+  /* The whole sheet's reduced-motion handling, in one place. */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --motion-duration: 0s;
+      --motion-scroll: auto;
+      /* Flat, or the halted sweep freezes mid-stroke and lights blocks unevenly. */
+      --skeleton-fill: var(--surface-2);
+    }
+  }
+}
