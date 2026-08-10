@@ -561,9 +561,8 @@ export interface ConceptResponse {
   meta: ConceptStoreMeta;
 }
 /**
- * A field of a concept the query's words were found in. The table renders the
- * first four; the last four are the record's prose, which it does not — and a
- * match there is the whole reason a search beats reading down the table.
+ * A field of a concept the query's words were found in. The table renders the first
+ * four; the last four are the record's prose, which it does not.
  */
 export type ConceptSearchField =
   | 'term'
@@ -1070,9 +1069,8 @@ export const getConcepts = () => read('/api/concepts');
 /** One saved concept, by the line it sits on in the store. */
 export const getConcept = (ord: number) => read('/api/concepts/concept', { ord });
 /**
- * The corpus searched by its prose — the notes, tips and sources the table does
- * not render, not only the columns it does. Ranked by the hosted store's bm25
- * when it is the backing; the answer's `ranked` says when it is not.
+ * The corpus searched by its prose — the notes, tips and sources the table does not
+ * render, not only the columns it does. `ranked` says whether bm25 ordered it.
  */
 export const searchConcepts = (q: string) => read('/api/concepts/search', { q });
 /** The device system prompt as it is on disk — `~/.claude/CLAUDE.md`. */

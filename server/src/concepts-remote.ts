@@ -26,19 +26,10 @@ import { parseConceptStore } from './concepts.js';
 /** The whole corpus, oldest first, in `logs/concepts.jsonl`'s own format. */
 const EXPORT_PATH = '/api/concepts/export';
 
-/**
- * The store's own ranked search. Its bm25 index spans the whole record — the
- * `notes` prose included, which neither the listing route nor the dashboard's
- * table carries — and that is the entire reason a search is issued here rather
- * than scanning the export in the browser.
- */
+/** The store's own ranked search. Its bm25 index spans the whole record, `notes` included. */
 const SEARCH_PATH = '/api/concepts/search';
 
-/**
- * How many hits to ask the store for. The corpus is small and the page shows
- * every version of a term, so this is a ceiling rather than a page size; it
- * matches the store's own `MAX_LIMIT`.
- */
+/** A ceiling rather than a page size, matching the store's own `MAX_LIMIT`. */
 const SEARCH_LIMIT = 1000;
 
 /** A configured hosted store: where it is, and the bearer token to read it. */

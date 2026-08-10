@@ -117,9 +117,8 @@ export const API_ROUTES = [
     params: ['ord'],
     streamOf: '/api/concepts/concept',
   },
-  // Searched by prose rather than by the listing's columns: the hosted store's
-  // bm25 index covers the notes the table never renders. No stream — a search is
-  // a question a reader asked, not a view that follows the store.
+  // Searched by prose rather than by the listing's columns. No stream — a search is a
+  // question a reader asked, not a view that follows the store.
   { path: '/api/concepts/search', methods: ['GET'], kind: 'json', cors: 'open', params: ['q'] },
   { path: '/api/ideas', methods: ['GET'], kind: 'json', cors: 'open', params: ['status', 'repo', 'area'] },
   {

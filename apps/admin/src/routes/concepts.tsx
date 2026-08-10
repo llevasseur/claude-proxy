@@ -20,13 +20,11 @@ import type { NavEntry } from './nav';
  *
  * **The search box is not a filter over the rows below it.** The table renders four
  * fields; a record also carries `notes`, `tips`, `sources` and `surfacedSkills`, which
- * are the bulk of what `/teach` wrote and appear nowhere on this page. `/api/concepts/search`
- * reads all eight — over the hosted store's own bm25 index when that store is the backing —
- * so a query reaches prose no amount of scanning this table could.
+ * appear nowhere on this page. `/api/concepts/search` reads all eight, over the hosted
+ * store's bm25 index when that store is the backing.
  *
- * The row pipeline below is deliberately three named steps — **source, narrow, order** —
- * because a second narrowing dimension (facets over field and skill) is queued behind this
- * one, and it joins at `narrowed` without touching either end.
+ * The row pipeline below is three named steps — source, narrow, order — so a second
+ * narrowing dimension joins at `narrowed` without touching either end.
  */
 
 type SortKey = 'term' | 'field' | 'savedAt';
@@ -36,13 +34,7 @@ type Sort = { key: SortKey; dir: SortDir };
 /** What a column sorts as when you first click it — dates newest first, names A→Z. */
 const DEFAULT_DIR: Record<SortKey, SortDir> = { term: 'asc', field: 'asc', savedAt: 'desc' };
 
-/**
- * How long the box waits before asking.
- *
- * Well under the 600ms the SSE routes debounce at: that number paces a stream nobody
- * asked for, while this one sits between a keystroke and an answer, where the delay is
- * felt. The corpus is small and the request is one indexed read.
- */
+/** How long the box waits before asking. Well under the 600ms the SSE routes debounce at. */
 const SEARCH_DEBOUNCE_MS = 200;
 
 /** A row as the table renders it: the record, plus why it is here when a search put it here. */
@@ -96,15 +88,9 @@ export function ConceptsPage() {
     enabled: searching,
   });
 
-  /**
-   * Relevance is the order a fresh search arrives in, and clicking a column is how a
-   * reader leaves it. A new query restores it, since the ranking is what was just asked
-   * for.
-   */
+  // Relevance is the order a fresh search arrives in; clicking a column leaves it, and a
+  // new query restores it — reset during render, so no frame shows the old order.
   const [byRelevance, setByRelevance] = useState(true);
-  // Reset during render on the query changing, rather than in an effect: the effect
-  // form declares a dependency it never reads, and this renders the restored order
-  // in the same pass instead of one frame of the old one.
   const [orderedFor, setOrderedFor] = useState(q);
   if (orderedFor !== q) {
     setOrderedFor(q);
@@ -119,17 +105,16 @@ export function ConceptsPage() {
   };
 
   // --- The row pipeline: source, narrow, order. ---
-  // 1. Source. A search replaces the corpus rather than filtering it in place: the
-  //    matches are not a subset of what the table can see, so filtering rows would
-  //    reach strictly less than this does.
+  // 1. Source. A search replaces the corpus rather than filtering it: the matches are
+  //    not a subset of what the table can see.
   const source: ConceptMatch[] = useMemo(
     () => (searching ? (search.data?.results ?? []) : concepts.map(asMatch)),
     [searching, search.data, concepts],
   );
   // 2. Narrow. Nothing narrows the source yet; the facet rail joins here.
   const narrowed = source;
-  // 3. Order. Relevance is an order the rows arrived in rather than a key to sort by,
-  //    so it is the absence of a sort rather than a fourth `SortKey`.
+  // 3. Order. Relevance is the order the rows arrived in — the absence of a sort, not a
+  //    fourth `SortKey`.
   const relevanceOrder = searching && byRelevance;
   const rows = useMemo(
     () => (relevanceOrder ? narrowed : sortRows(narrowed, sort.key, sort.dir)),
@@ -275,12 +260,9 @@ const COLUMN = {
 } as const satisfies Record<string, CSSProperties>;
 
 /**
- * What the head of the card says about what is on it.
- *
- * The unsearched line is the one that was always there. The searched line has to say
- * **which** search answered, because the two are not the same promise: the hosted store
- * ranks by relevance over the whole record, while the local file has no such index and
- * gets an honest substring pass instead.
+ * What the head of the card says about what is on it. A searched line names **which**
+ * search answered: ranked relevance and an unranked substring pass are not the same
+ * promise.
  */
 function SearchCaption({
   searching,
@@ -314,11 +296,9 @@ function SearchCaption({
 }
 
 /**
- * Why a row is in a set of results, when the reason is not on the row.
- *
- * A match in a rendered column needs no note — the reader can see it. A match in the
- * prose does, and the excerpt is that note: it is the only place on this page the
- * `notes` text ever appears.
+ * Why a row is in a set of results, when the reason is not on the row. A match in a
+ * rendered column needs no note; the excerpt is the only place on this page the `notes`
+ * text ever appears.
  */
 function MatchNote({ matchedIn, excerpt }: { matchedIn: ConceptSearchField[]; excerpt: string | null }) {
   const hidden = matchedIn.filter((field) => !RENDERED_FIELDS.includes(field));

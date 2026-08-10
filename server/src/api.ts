@@ -3245,12 +3245,9 @@ export interface ConceptResponse {
 /* --- Searching the corpus --- */
 
 /**
- * A field of a record the query text was found in.
- *
- * Named per field rather than as one boolean because *where* a hit matched is
- * the answer a reader needs: the Concepts table renders `term`, `sentence`,
- * `field` and `skills`, so a match in one of those is visible on the page
- * already, while a match in the four below is text no row on that page shows.
+ * A field of a record the query text was found in. Named per field because the
+ * Concepts table renders `term`, `sentence`, `field` and `skills` and nothing else, so
+ * *where* a hit matched is the difference between visible and unreachable text.
  */
 export type ConceptSearchField =
   | 'term'
@@ -3275,9 +3272,8 @@ const SEARCH_FIELDS: readonly ConceptSearchField[] = [
 ];
 
 /**
- * The fields the Concepts table does not render — the ones a search exists to
- * reach. An excerpt is taken from these and only these: quoting a `sentence`
- * back at a reader who is already looking at the `sentence` column says nothing.
+ * The fields the Concepts table does not render. An excerpt is taken from these and
+ * only these — quoting a `sentence` back at a reader looking at that column says nothing.
  */
 const UNRENDERED_FIELDS: readonly ConceptSearchField[] = ['notes', 'tips', 'sources', 'surfacedSkills'];
 
@@ -3299,9 +3295,8 @@ export interface ConceptSearchResponse {
   /** The query as it was searched — trimmed, and empty when there was none. */
   query: string;
   /**
-   * Whether the order below is the hosted store's bm25 relevance. `false` means
-   * the local file answered and these are substring matches in corpus order:
-   * still a search of the whole record, but ranked by nothing.
+   * Whether the order below is the hosted store's bm25 relevance. `false` means the
+   * local file answered: still a search of the whole record, but in corpus order.
    */
   ranked: boolean;
   results: ConceptSearchHit[];
@@ -3347,13 +3342,9 @@ function excerptAround(text: string, token: string): string | null {
 }
 
 /**
- * Where a query's words land in one record, and the prose to show for it.
- *
- * This is a *description* of a hit, never the ranking. On the hosted path the
- * store has already decided the order, and its bm25 index tokenizes text this
- * scan does not — so a genuine hit can legitimately come back with an empty
- * `matchedIn`, which reads as "ranked it, cannot point at the word" rather than
- * as a mistake.
+ * Where a query's words land in one record, and the prose to show for it. A description
+ * of a hit, never the ranking — the store's bm25 index tokenizes text this scan does
+ * not, so a genuine hit can come back with an empty `matchedIn`.
  */
 function describeMatch(
   concept: StoredConcept,
@@ -3381,12 +3372,9 @@ function conceptKey(term: string, savedAt: string): string {
 }
 
 /**
- * The corpus in the hosted store's ranked order.
- *
- * The ranking comes from the store and the records come from the export, joined
- * on term-and-timestamp, because a hit carries no `ord` and `ord` is what the
- * page addresses a row by. A hit that matches no corpus record is dropped rather
- * than synthesised — it would be a row with no permalink.
+ * The corpus in the hosted store's ranked order, joined on term-and-timestamp because a
+ * hit carries no `ord` and `ord` is what the page addresses a row by. A hit matching no
+ * corpus record is dropped — it would be a row with no permalink.
  */
 function inRankedOrder(concepts: StoredConcept[], hits: RemoteConceptHitLike[]): StoredConcept[] {
   const byKey = new Map<string, StoredConcept[]>();
@@ -3414,17 +3402,13 @@ interface RemoteConceptHitLike {
 }
 
 /**
- * The corpus searched by its prose.
+ * The corpus searched by its prose. With the hosted store configured this proxies the
+ * store's own bm25 route and rejoins its ranking to the corpus the page renders; with
+ * the local file there is no index, so it is a substring scan over the *same* fields
+ * and `ranked: false` says so.
  *
- * With the hosted store configured this is a thin proxy over the store's own
- * bm25 route, which already indexes the whole record and is already served to
- * `/teach`; the ranking is the store's and this only rejoins it to the corpus
- * the page renders. With the local file backing it there is no such index, so
- * the fallback is an honest substring scan over the *same* fields —
- * `ranked: false` says so, and the page says so to the reader.
- *
- * An empty query is not an error and not a match-nothing: it answers no results,
- * leaving the caller to show the corpus unranked as it always did.
+ * An empty query is neither an error nor a match-nothing: it answers no results,
+ * leaving the caller to show the corpus unranked.
  */
 export async function buildConceptSearch(
   logDir: string,
