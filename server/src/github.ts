@@ -10,7 +10,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { type PullRequestRow, parsePullRequests, parseRepoSlug } from '@claude-proxy/core';
+import { isGitHubHost, type PullRequestRow, parsePullRequests, parseRemoteUrl } from '@claude-proxy/core';
 import { findOnPath } from './chat-cli.js';
 import { fetchMainHistory } from './main-history.js';
 
@@ -76,14 +76,109 @@ export function resolveRepoDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 }
 
-/** The GitHub slug of `repoDir`'s `origin`, or null when it has no GitHub remote. */
-async function resolveSlug(repoDir: string): Promise<string | null> {
+/** `owner/name` and nothing else — the shape `REPO_SLUG` and `gh` both answer in. */
+const SLUG_SHAPE = /^[^/\s]+\/[^/\s]+$/;
+
+/** `ssh -G` reads config files only; it never opens a connection. */
+const SSH_TIMEOUT_MS = 5_000;
+
+/** What was established, and how — the `how` is what a failure reports. */
+interface SlugLookup {
+  slug: string | null;
+  detail: string;
+}
+
+/**
+ * The url `origin` is fetched from, with any `url.<base>.insteadOf` rewrite already
+ * applied — which `git remote get-url` does not do and `ls-remote --get-url` does.
+ */
+async function originUrl(repoDir: string): Promise<string | null> {
+  for (const args of [
+    ['ls-remote', '--get-url', 'origin'],
+    ['remote', 'get-url', 'origin'],
+  ]) {
+    try {
+      const { stdout } = await run('git', ['-C', repoDir, ...args], { timeout: GH_TIMEOUT_MS });
+      const url = stdout.trim();
+      // `ls-remote --get-url` echoes the name back when there is no such remote.
+      if (url && url !== 'origin') return url;
+    } catch {
+      // Try the next spelling; both failing means no origin.
+    }
+  }
+  return null;
+}
+
+/**
+ * The host an ssh alias stands for, per this device's `~/.ssh/config`. A per-account ssh
+ * identity names a host that exists nowhere but that file, so only `ssh` itself can say
+ * whether it is GitHub. Returns the alias unchanged when no `Host` block matches.
+ */
+async function resolveSshAlias(host: string): Promise<string | null> {
   try {
-    const { stdout } = await run('git', ['-C', repoDir, 'remote', 'get-url', 'origin'], { timeout: GH_TIMEOUT_MS });
-    return parseRepoSlug(stdout);
+    const { stdout } = await run('ssh', ['-G', host], { timeout: SSH_TIMEOUT_MS });
+    return /^hostname\s+(\S+)$/im.exec(stdout)?.[1]?.toLowerCase() ?? null;
   } catch {
     return null;
   }
+}
+
+/** What `gh` itself makes of the checkout — the last word, and it resolves aliases too. */
+async function ghSlug(gh: string, repoDir: string): Promise<string | null> {
+  try {
+    const { stdout } = await run(gh, ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'], {
+      cwd: repoDir,
+      timeout: GH_TIMEOUT_MS,
+    });
+    const slug = stdout.trim();
+    return SLUG_SHAPE.test(slug) ? slug : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The GitHub slug of `repoDir`'s `origin`, tried four ways so that no device's remote
+ * spelling is the one this feature cannot read:
+ *
+ * 1. `REPO_SLUG`, when the checkout's remote cannot speak for itself at all.
+ * 2. `origin`'s url, parsed for any host rather than a literal `github.com`.
+ * 3. `ssh -G` on that host, which is what turns an ssh alias into a real hostname.
+ * 4. `gh repo view` in the checkout, which resolves the remote on `gh`'s own terms.
+ *
+ * No token or device path is read here — swapping the identity `gh` and `git`
+ * authenticate with changes nothing above.
+ */
+export async function resolveSlug(
+  gh: string,
+  repoDir: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<SlugLookup> {
+  const override = env.REPO_SLUG?.trim();
+  if (override) {
+    if (SLUG_SHAPE.test(override)) return { slug: override, detail: 'REPO_SLUG' };
+    return { slug: null, detail: `REPO_SLUG is \`${override}\`, which is not \`owner/name\`` };
+  }
+
+  const url = await originUrl(repoDir);
+  const parsed = url ? parseRemoteUrl(url) : null;
+  // The same variable `gh` itself reads for an Enterprise install.
+  const extraHosts = env.GH_HOST?.trim() ? [env.GH_HOST] : [];
+
+  if (parsed) {
+    if (isGitHubHost(parsed.host, extraHosts)) return { slug: parsed.slug, detail: parsed.host };
+    if (parsed.scheme === 'ssh') {
+      const real = await resolveSshAlias(parsed.host);
+      if (real && real !== parsed.host && isGitHubHost(real, extraHosts)) {
+        return { slug: parsed.slug, detail: `${parsed.host} → ${real}` };
+      }
+    }
+  }
+
+  const fromGh = await ghSlug(gh, repoDir);
+  if (fromGh) return { slug: fromGh, detail: 'gh repo view' };
+
+  return { slug: null, detail: url ? `\`origin\` is \`${url}\`` : '`origin` is not set' };
 }
 
 /** `gh`'s own stderr is the useful part of a failure; the exit code is not. */
@@ -130,8 +225,13 @@ export async function readPullRequests(repoDir: string, limit = DEFAULT_PR_LIMIT
   const gh = findOnPath('gh');
   if (!gh) return fail(null, 'the GitHub CLI is not installed — `brew install gh`, then `gh auth login`');
 
-  const repo = await resolveSlug(repoDir);
-  if (!repo) return fail(null, `no GitHub remote found for ${repoDir}`);
+  const { slug: repo, detail } = await resolveSlug(gh, repoDir);
+  if (!repo) {
+    return fail(
+      null,
+      `no GitHub repository found for ${repoDir} (${detail}) — set REPO_SLUG=owner/name if this checkout's remote cannot be read`,
+    );
+  }
 
   let stdout: string;
   try {

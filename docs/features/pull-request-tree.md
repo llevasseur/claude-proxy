@@ -35,11 +35,58 @@ reading a branch name out of a transcript by hand.
 Through the **`gh` CLI**, not the REST API. The device is already authenticated for `gh`,
 so the dashboard needs no token of its own, no new secret in `.env`, and no write scope;
 the whole integration is one `gh pr list --state all --json …` per cache miss, scoped to
-the slug parsed off the checkout's `origin` remote.
+the `owner/name` slug of the checkout's `origin` remote.
+
+### Resolving the slug is device-agnostic, in four layers
+
+A remote's *spelling* is a property of the machine, not the project: one device writes
+`https://github.com/o/r.git`, the next uses a per-account ssh identity
+(`git@github-personal:o/r.git`, a host that exists only in that device's `~/.ssh/config`),
+a third rewrites urls with `url.<base>.insteadOf`. Matching the literal string `github.com`
+recognizes the first and rejects the other two, so `resolveSlug` in `server/src/github.ts`
+tries four things in order and takes the first that answers:
+
+1. **`REPO_SLUG`**, when it is `owner/name` — for a checkout whose remote cannot speak for
+   itself at all.
+2. **`git ls-remote --get-url origin`**, parsed by `parseRemoteUrl` for *any* host rather
+   than a hardcoded one, and accepted when `isGitHubHost` passes. It is `ls-remote
+   --get-url` rather than `remote get-url` because only that spelling applies
+   `insteadOf` rewrites, and it talks to no network.
+3. **`ssh -G <host>`** for an unrecognized ssh host, whose reported `hostname` is what
+   turns an alias into a real host. Config files only; no connection is opened.
+4. **`gh repo view --json nameWithOwner`** in the checkout, which resolves the remote on
+   `gh`'s own terms.
+
+`parseRemoteUrl` and `isGitHubHost` live in `packages/core` and stay pure — they read no
+env and run no subprocess, which is exactly why an alias is the *server's* to resolve and
+is handed back as an `extraHosts` entry. `isGitHubHost` accepts `github.com`,
+`*.github.com`, `*.ghe.com` (Enterprise Cloud with data residency) and whatever `GH_HOST`
+names. **No token or account is read anywhere in this path**: which identity `gh` and
+`git` authenticate with is theirs to hold, so swapping it changes nothing here.
 
 A setup gap is the page's **empty state, not a 500**. No `gh` on `PATH`, not signed in, or
-no GitHub remote each come back inside a 200 as an `error` string naming the command that
-fixes it, because an error boundary would hide the one thing the visitor needs to read.
+no slug to be found each come back inside a 200 as an `error` string naming the command
+that fixes it, because an error boundary would hide the one thing the visitor needs to
+read. The no-slug message names what was tried — ``(`origin` is `git@gitlab.com:o/r.git`)``
+— so the reader can see which layer fell through.
+
+### The two env vars, and where each belongs
+
+Neither is needed for the normal case, which resolves on its own. When one is, the scope
+differs, and that is the part worth getting right:
+
+- **`REPO_SLUG` is per-repository.** A slug is meaningless outside its checkout, so it
+  belongs in the project's own env — the repo `.env` the server already reads, or a
+  project `.claude/settings.json` `env` — and **never** device-wide, where it would claim
+  every other repository is this one.
+- **`GH_HOST` is per-device.** A GitHub Enterprise install is a property of the machine and
+  its `gh` auth, so it belongs in device-wide `~/.claude/settings.json` `env` (or the shell
+  profile), where every project and every session inherits the same one. It is the same
+  variable `gh` itself reads, deliberately, rather than a second name for it.
+
+**The limit on either:** a `.claude/settings.json` `env` only reaches processes Claude Code
+spawns. A server started from a plain terminal never sees it, so for that case the variable
+has to be in the repo `.env` or the shell profile instead.
 
 Results are cached for 60 s server-side and the page polls every 30 s, so a PR opened or
 merged elsewhere appears on its own without hammering GitHub's rate limit. The session

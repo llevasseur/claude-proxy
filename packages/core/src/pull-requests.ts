@@ -266,11 +266,68 @@ export function matchPrInText(pr: PullRequestRow, text: string): PrSessionVia[] 
   return prMatcher(pr).match(text);
 }
 
-/** `owner/name` from a git remote url, or null when it is not a GitHub remote. */
-export function parseRepoSlug(remoteUrl: string): string | null {
+/** The pieces of a git remote url this project reads, whatever spelling it uses. */
+export interface RemoteUrl {
+  /**
+   * The host exactly as the url spells it, lowercased. An ssh alias stays the alias —
+   * only the device's `~/.ssh/config` knows what it stands for.
+   */
+  host: string;
+  /** `ssh` for both `ssh://` and the scp-like `git@host:owner/name` spelling. */
+  scheme: string;
+  /** `owner/name`, with any `.git` suffix and trailing slash removed. */
+  slug: string;
+}
+
+/** Two path segments and no more: a GitHub repository is never nested deeper. */
+const REMOTE_PATH = /^\/*([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/;
+/** `scheme://[user[:secret]@]host[:port]/owner/name` — https, ssh, git, git+ssh. */
+const SCHEMED_URL = /^([a-z][a-z0-9+.-]*):\/\/(?:[^@/]*@)?([^/:]+)(?::\d+)?(\/.+)$/i;
+/** `[user@]host:owner/name` — the scp-like ssh spelling a `git@…` remote uses. */
+const SCP_URL = /^(?:[^@/\s]+@)?([^/:\s]+):(?!\/)(.+)$/;
+
+/**
+ * Split a git remote url into host, scheme and `owner/name`, for any host — whether it is
+ * GitHub is the caller's call. Null for a local path or anything with no `owner/name`.
+ */
+export function parseRemoteUrl(remoteUrl: string): RemoteUrl | null {
   const trimmed = remoteUrl.trim();
   if (!trimmed) return null;
-  const match = /github\.com[:/]+([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i.exec(trimmed);
-  if (!match) return null;
-  return `${match[1]}/${match[2]}`;
+  const schemed = SCHEMED_URL.exec(trimmed);
+  const scp = schemed ? null : SCP_URL.exec(trimmed);
+  const host = schemed?.[2] ?? scp?.[1];
+  const rest = schemed?.[3] ?? scp?.[2];
+  if (!host || !rest) return null;
+  const parts = REMOTE_PATH.exec(rest);
+  if (!parts) return null;
+  const scheme = schemed ? schemed[1]!.toLowerCase().replace(/^git\+/, '') : 'ssh';
+  return { host: host.toLowerCase(), scheme, slug: `${parts[1]}/${parts[2]}` };
+}
+
+const GITHUB_HOST = 'github.com';
+
+/**
+ * Whether `gh` would read repositories from this host. `extraHosts` carries what only
+ * the device knows — `GH_HOST` for an Enterprise install, or an ssh alias already
+ * resolved through `~/.ssh/config`.
+ */
+export function isGitHubHost(host: string, extraHosts: readonly string[] = []): boolean {
+  const normalize = (value: string): string => value.trim().toLowerCase().replace(/\.$/, '');
+  const target = normalize(host);
+  if (!target) return false;
+  if (target === GITHUB_HOST || target.endsWith(`.${GITHUB_HOST}`)) return true;
+  // Enterprise Cloud with data residency is `<tenant>.ghe.com`.
+  if (target.endsWith('.ghe.com')) return true;
+  return extraHosts.some((candidate) => normalize(candidate) === target);
+}
+
+/**
+ * `owner/name` from a git remote url, or null when it is not a GitHub remote. A host
+ * this cannot recognize — an ssh alias, most often — is the caller's to resolve and
+ * pass back in through `extraHosts`.
+ */
+export function parseRepoSlug(remoteUrl: string, extraHosts: readonly string[] = []): string | null {
+  const parsed = parseRemoteUrl(remoteUrl);
+  if (!parsed) return null;
+  return isGitHubHost(parsed.host, extraHosts) ? parsed.slug : null;
 }
