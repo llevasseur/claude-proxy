@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import {
+  API_ROUTES,
+  type ApiRoute,
+  type ApiRoutePath,
+  apiRoute,
   type IdeaStatus,
+  isApiWriteRoute,
   isIdeaArea,
   isIdeaRepo,
   isIdeaStatus,
@@ -162,81 +167,16 @@ const CORS = {
   'access-control-allow-headers': '*',
 };
 
-/** The write surface: the only routes that are not read-only GETs. */
-const CHAT_ROUTES = new Set([
-  '/api/chat/sessions',
-  '/api/chat/sessions/message',
-  '/api/chat/sessions/end',
-  '/api/chat/stop',
-]);
-
 /**
- * The live account of a turn in flight. A GET, so it is not on the write allowlist — but
- * unlike every other read it carries the chat's own **content**, so it answers the
- * dashboard's origins rather than the reads' open `*`.
- */
-const CHAT_STREAM_ROUTE = '/api/chat/stream';
-
-/** The suggestion flags: a GET list under the open read CORS, a POST that writes them. */
-const SUGGESTION_STATUS_ROUTE = '/api/sessions/suggestions/status';
-
-/**
- * The ideas ledger: a GET list under the open read CORS, a POST that adjudicates one.
- *
- * The POST is on the write allowlist rather than sharing the reads' `*`: it writes a
- * **device-wide** ledger whose `accepted` rows are what `/improve` acts on.
- */
-const IDEAS_ROUTE = '/api/ideas';
-const IDEAS_STATUS_ROUTE = '/api/ideas/status';
-/**
- * Re-filing and commenting: two more writes to the same ledger, so they sit on the
- * same allowlist. Filing is **its own route rather than a field on the status
- * write** — see `applyIdeaFilings`.
- */
-const IDEAS_AREA_ROUTE = '/api/ideas/area';
-const IDEAS_COMMENT_ROUTE = '/api/ideas/comment';
-/**
- * Taking one. Its own route rather than a `claimed` mark, because a claim must
- * name a holder a second run can recognise and a mark carries none — see
- * `applyIdeaClaim`.
- */
-const IDEAS_CLAIM_ROUTE = '/api/ideas/claim';
-
-/** The one destructive route: removes a `~/.claude/jobs/<id>` directory from disk. */
-const JOB_DELETE_ROUTE = '/api/jobs/delete';
-
-/** The device system prompt: a GET of `~/.claude/CLAUDE.md`, a POST that rewrites it. */
-const SYSTEM_PROMPT_ROUTE = '/api/system-prompt';
-
-/**
- * Moving `main`: a force-push of `refs/heads/main` on origin, the local checkout's own
- * catch-up, and the marker that hides a line. They are shared, remote and irreversible in
- * the sense that everyone sees them, so they belong behind the origin check rather than
- * under the read routes' open CORS — and `slideMain` gates them a second time on the
- * device's `gh` identity.
- */
-const MAIN_HISTORY_ROUTES = ['/api/main-history/slide', '/api/main-history/sync-local', '/api/main-history/hide'];
-
-/** Paths whose POST goes through the origin-checked write CORS. */
-const WRITE_ROUTES = new Set([
-  ...CHAT_ROUTES,
-  SUGGESTION_STATUS_ROUTE,
-  IDEAS_STATUS_ROUTE,
-  IDEAS_AREA_ROUTE,
-  IDEAS_COMMENT_ROUTE,
-  IDEAS_CLAIM_ROUTE,
-  JOB_DELETE_ROUTE,
-  SYSTEM_PROMPT_ROUTE,
-  ...MAIN_HISTORY_ROUTES,
-]);
-
-/**
- * Origins allowed to POST those routes — the dashboard's dev server by default,
+ * Origins allowed to POST the write routes — the dashboard's dev server by default,
  * overridable with a comma-separated `CHAT_ALLOWED_ORIGINS`.
  *
  * They cannot share the read-only `*`: a POST here can start an agent turn, which runs
  * commands in this checkout. A request that *declares* another origin is refused
  * outright, rather than relying on the browser to withhold the response.
+ *
+ * Which routes those are is not restated here: `API_ROUTES` declares each route's `cors`
+ * and methods, and `isApiWriteRoute` reads the allowlist back off them.
  */
 const CHAT_ORIGINS = (process.env.CHAT_ALLOWED_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173')
   .split(',')
@@ -517,13 +457,945 @@ async function servePost(
   }
 }
 
+/** What every handler is handed: the request, the response, and the parsing they share. */
+interface RouteContext {
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  url: URL;
+  /** `?date=`, when it is a real `YYYY-MM-DD` — the day parameter the digests take. */
+  date: string | undefined;
+}
+
+type RouteHandler = (ctx: RouteContext) => Promise<void>;
+
+/**
+ * One command's page and the stream that pushes the same payload: two routes in the
+ * manifest, one body here, because only the delivery differs.
+ */
+async function serveCommandDetail({ req, res, url }: RouteContext, stream: boolean): Promise<void> {
+  const name = url.searchParams.get('name');
+  if (!name) {
+    send(res, 400, { error: 'missing ?name=' });
+    return;
+  }
+  const flags = (url.searchParams.get('flags') ?? '').split(',').filter(Boolean);
+  const build = () => withCommandReconcile(() => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags, readSource()));
+  if (stream) {
+    await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+    return;
+  }
+  try {
+    const command = await build();
+    send(res, 200, command);
+    shadow('/api/commands/command', command, (source) => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags, source));
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.startsWith('command not found')) send(res, 404, { error: msg });
+    else throw err;
+  }
+}
+
+/** One run, and its stream — the same pairing. */
+async function serveCommandRun({ req, res, url }: RouteContext, stream: boolean): Promise<void> {
+  const id = url.searchParams.get('id');
+  if (!id) {
+    send(res, 400, { error: 'missing ?id=' });
+    return;
+  }
+  const build = () => withCommandReconcile(() => buildCommandRun(LOG_DIR, id, readSource()));
+  if (stream) {
+    await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+    return;
+  }
+  try {
+    const run = await build();
+    send(res, 200, run);
+    shadow('/api/commands/run', run, (source) => buildCommandRun(LOG_DIR, id, source));
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.startsWith('command run not found')) send(res, 404, { error: msg });
+    else throw err;
+  }
+}
+
+/**
+ * One concept, addressed by the line it sits on. The store is append-only, so that
+ * line keeps pointing at the same record as newer ones land above it on the page.
+ */
+async function serveConcept({ req, res, url }: RouteContext, stream: boolean): Promise<void> {
+  const ord = Number(url.searchParams.get('ord'));
+  if (!Number.isInteger(ord) || ord < 0) {
+    send(res, 400, { error: 'missing or invalid ?ord=' });
+    return;
+  }
+  const build = () => buildConcept(LOG_DIR, ord, readSource());
+  if (stream) {
+    await serveSse(req, res, conceptsStream(build));
+    return;
+  }
+  try {
+    const concept = await build();
+    send(res, 200, concept);
+    if (concept.meta.store === 'local') {
+      shadow('/api/concepts/concept', concept, (source) => buildConcept(LOG_DIR, ord, source));
+    }
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (err instanceof RemoteConceptStoreError) send(res, 502, { error: msg });
+    else if (msg.startsWith('concept not found')) send(res, 404, { error: msg });
+    else throw err;
+  }
+}
+
+/**
+ * The ideas ledger, listed or streamed. `/ideate` writes the file from outside this
+ * process, so the stream watches the log directory the store sits in.
+ */
+async function serveIdeas({ req, res, url }: RouteContext, stream: boolean): Promise<void> {
+  const statusParam = url.searchParams.get('status');
+  const repoParam = url.searchParams.get('repo');
+  const areaParam = url.searchParams.get('area');
+  let statuses: IdeaStatus[] | undefined;
+  try {
+    if (statusParam) {
+      statuses = statusParam.split(',').map((s) => {
+        const status = s.trim();
+        if (!isIdeaStatus(status)) throw new Error(`invalid status: ${status}`);
+        return status;
+      });
+    }
+    // A checkout path names a different thing on another machine, and this ledger
+    // is shared across every repo on this one.
+    if (repoParam && !isIdeaRepo(repoParam)) {
+      throw new Error(`invalid repo: ${repoParam} (expected a git remote slug like owner/name)`);
+    }
+    // Shape only. The vocabulary is free text, so an area nothing is filed
+    // under is an empty list rather than an error.
+    if (areaParam && !isIdeaArea(areaParam)) {
+      throw new Error(`invalid area: ${areaParam} (expected a kebab-case slug)`);
+    }
+  } catch (err) {
+    send(res, 400, { error: (err as Error).message });
+    return;
+  }
+  const filter = {
+    ...(statuses ? { statuses } : {}),
+    ...(repoParam ? { repo: repoParam } : {}),
+    ...(areaParam ? { area: areaParam } : {}),
+  };
+  if (stream) {
+    await serveSse(req, res, { watchPath: LOG_DIR, build: () => buildIdeas(LOG_DIR, filter), debounceMs: 600 });
+    return;
+  }
+  // No shadow read: authored state with no derived half, so there is nothing for
+  // the substrate to disagree about.
+  send(res, 200, await buildIdeas(LOG_DIR, filter));
+}
+
+/**
+ * The dispatch table, keyed by the manifest's own paths.
+ *
+ * `Record<ApiRoutePath, RouteHandler>` is what makes `API_ROUTES` load-bearing rather
+ * than documentation: a handler for a path the manifest does not declare will not
+ * compile, and a declared route with no handler will not either. The `switch` this
+ * replaced could drift from the route list in both directions without a word.
+ */
+const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
+  '/api/health': async ({ res }) => {
+    let sidecarCount: number | null = null;
+    let logDirReadable = true;
+    try {
+      sidecarCount = await countSidecarFiles(LOG_DIR);
+    } catch {
+      logDirReadable = false;
+    }
+    send(res, 200, { ok: logDirReadable, logDir: LOG_DIR, logDirReadable, sidecarCount });
+  },
+  '/api/summary': async ({ res, date }) => {
+    const now = new Date();
+    const summary = await buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
+    send(res, 200, summary);
+    shadow('/api/summary', summary, (source) => buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, source));
+  },
+  // Today's digest moves with every captured request, so this follows the log
+  // directory rather than any one file.
+  '/api/summary/stream': async ({ req, res, date }) => {
+    await serveSse(req, res, {
+      watchPath: LOG_DIR,
+      build: () => buildSummary(LOG_DIR, date, new Date(), ARCHIVE_DIR, readSource()),
+      debounceMs: 600,
+    });
+  },
+  '/api/trends': async ({ res, url }) => {
+    const days = await parseDays(url.searchParams.get('days'));
+    const now = new Date();
+    const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, readSource());
+    send(res, 200, trends);
+    shadow('/api/trends', trends, (source) => buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, source));
+  },
+  '/api/prompt-mix': async ({ res, url }) => {
+    const days = await parseDays(url.searchParams.get('days'));
+    const now = new Date();
+    const mix = await buildPromptMix(LOG_DIR, days, now, readSource());
+    send(res, 200, mix);
+    shadow('/api/prompt-mix', mix, (source) => buildPromptMix(LOG_DIR, days, now, source));
+  },
+  // One cohort from that mix, opened up — which sections its bytes are in.
+  '/api/prompt': async ({ res, url }) => {
+    const hash = url.searchParams.get('hash');
+    if (!hash) {
+      send(res, 400, { error: 'missing ?hash=' });
+      return;
+    }
+    const days = await parseDays(url.searchParams.get('days'));
+    const now = new Date();
+    const detail = await buildPromptDetail(LOG_DIR, hash, days, now, readSource());
+    send(res, 200, detail);
+    shadow('/api/prompt', detail, (source) => buildPromptDetail(LOG_DIR, hash, days, now, source));
+  },
+  // One section of that prompt, with the text a captured body still holds.
+  '/api/prompt/section': async ({ res, url }) => {
+    const hash = url.searchParams.get('hash');
+    if (!hash) {
+      send(res, 400, { error: 'missing ?hash=' });
+      return;
+    }
+    const index = Number(url.searchParams.get('index'));
+    if (!Number.isInteger(index) || index < 0) {
+      send(res, 400, { error: 'missing or invalid ?index=' });
+      return;
+    }
+    const days = await parseDays(url.searchParams.get('days'));
+    try {
+      send(res, 200, await buildPromptSection(LOG_DIR, hash, index, days, new Date(), readSource()));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('prompt outline not found') || msg.startsWith('prompt section index out of range')) {
+        send(res, 404, { error: msg });
+      } else throw err;
+    }
+  },
+  // One tool of the fixed prefix, opened up to the JSON schema behind its size.
+  '/api/tool-schema': async ({ res, url }) => {
+    const name = url.searchParams.get('name');
+    if (!name) {
+      send(res, 400, { error: 'missing ?name=' });
+      return;
+    }
+    const days = await parseDays(url.searchParams.get('days'));
+    const now = new Date();
+    const schema = await buildToolSchema(LOG_DIR, name, days, now, readSource());
+    send(res, 200, schema);
+    shadow('/api/tool-schema', schema, (source) => buildToolSchema(LOG_DIR, name, days, now, source));
+  },
+  '/api/usage': async ({ res }) => {
+    const now = new Date();
+    const usage = await buildUsage(LOG_DIR, USAGE_LIMITS, now, readSource());
+    send(res, 200, usage);
+    shadow('/api/usage', usage, (source) => buildUsage(LOG_DIR, USAGE_LIMITS, now, source));
+  },
+  // Debounced generously: a busy session writes three files per request and
+  // the numbers barely move between them.
+  '/api/usage/stream': async ({ req, res }) => {
+    await serveSse(req, res, {
+      watchPath: LOG_DIR,
+      build: () => buildUsage(LOG_DIR, USAGE_LIMITS, new Date(), readSource()),
+      debounceMs: 600,
+    });
+  },
+  '/api/tools': async ({ res, date }) => {
+    const now = new Date();
+    const tools = await buildTools(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
+    send(res, 200, tools);
+    shadow('/api/tools', tools, (source) => buildTools(LOG_DIR, date, now, ARCHIVE_DIR, source));
+  },
+  '/api/context': async ({ res, url }) => {
+    const days = await parseDays(url.searchParams.get('days'));
+    const now = new Date();
+    const context = await buildContext(LOG_DIR, days, now, readSource());
+    send(res, 200, context);
+    shadow('/api/context', context, (source) => buildContext(LOG_DIR, days, now, source));
+  },
+  '/api/context/thread': async ({ res, url }) => {
+    const threadId = url.searchParams.get('thread');
+    if (!threadId) {
+      send(res, 400, { error: 'missing ?thread=' });
+      return;
+    }
+    const days = await parseDays(url.searchParams.get('days'));
+    const now = new Date();
+    const thread = await buildContextThread(LOG_DIR, threadId, days, now, readSource());
+    send(res, 200, thread);
+    shadow('/api/context/thread', thread, (source) => buildContextThread(LOG_DIR, threadId, days, now, source));
+  },
+  '/api/context/detail': async ({ res, url }) => {
+    const file = url.searchParams.get('file');
+    if (!file) {
+      send(res, 400, { error: 'missing ?file=' });
+      return;
+    }
+    try {
+      send(res, 200, await buildContextDetail(LOG_DIR, file));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
+      else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
+        send(res, 404, { error: msg });
+      } else throw err;
+    }
+  },
+  '/api/context/message': async ({ res, url }) => {
+    const file = url.searchParams.get('file');
+    if (!file) {
+      send(res, 400, { error: 'missing ?file=' });
+      return;
+    }
+    const index = Number(url.searchParams.get('index'));
+    if (!Number.isInteger(index) || index < 0) {
+      send(res, 400, { error: 'missing or invalid ?index=' });
+      return;
+    }
+    try {
+      send(res, 200, await buildContextMessage(LOG_DIR, file, index));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
+      else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
+        send(res, 404, { error: msg });
+      } else if (msg.startsWith('message index out of range')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  '/api/context/tool': async ({ res, url }) => {
+    const file = url.searchParams.get('file');
+    if (!file) {
+      send(res, 400, { error: 'missing ?file=' });
+      return;
+    }
+    const index = Number(url.searchParams.get('index'));
+    if (!Number.isInteger(index) || index < 0) {
+      send(res, 400, { error: 'missing or invalid ?index=' });
+      return;
+    }
+    try {
+      send(res, 200, await buildContextTool(LOG_DIR, file, index));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
+      else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
+        send(res, 404, { error: msg });
+      } else if (msg.startsWith('tool index out of range')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  '/api/projects': async ({ res }) => {
+    send(res, 200, await buildProjects(PROJECTS_DIR));
+  },
+  '/api/projects/memories': async ({ res, url }) => {
+    const project = url.searchParams.get('project');
+    if (!project) {
+      send(res, 400, { error: 'missing ?project=' });
+      return;
+    }
+    try {
+      send(res, 200, await buildProjectMemories(PROJECTS_DIR, project));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid project name')) send(res, 400, { error: msg });
+      else if (msg.startsWith('project not found')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  '/api/projects/memory': async ({ res, url }) => {
+    const project = url.searchParams.get('project');
+    const name = url.searchParams.get('name');
+    if (!project || !name) {
+      send(res, 400, { error: 'missing ?project= or ?name=' });
+      return;
+    }
+    try {
+      send(res, 200, await buildMemory(PROJECTS_DIR, project, name));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid project name') || msg.startsWith('invalid memory file name')) {
+        send(res, 400, { error: msg });
+      } else if (msg.startsWith('project not found') || msg.startsWith('memory file not found')) {
+        send(res, 404, { error: msg });
+      } else throw err;
+    }
+  },
+  // The device's background jobs: `~/.claude/jobs`. Reads are open like their
+  // neighbours; the delete below is the one route here that changes the disk.
+  '/api/jobs': async ({ res }) => {
+    send(res, 200, await buildJobs(JOBS_DIR, LOG_DIR, new Date(), readSource()));
+  },
+  '/api/jobs/job': async ({ res, url }) => {
+    const id = url.searchParams.get('id');
+    if (!id) {
+      send(res, 400, { error: 'missing ?id=' });
+      return;
+    }
+    try {
+      send(res, 200, await buildJob(JOBS_DIR, id));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid job id')) send(res, 400, { error: msg });
+      else if (msg.startsWith('job not found')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  '/api/jobs/file': async ({ res, url }) => {
+    const id = url.searchParams.get('id');
+    const file = url.searchParams.get('file');
+    if (!id || !file) {
+      send(res, 400, { error: 'missing ?id= or ?file=' });
+      return;
+    }
+    try {
+      send(res, 200, await buildJobFile(JOBS_DIR, id, file));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (
+        msg.startsWith('invalid job id') ||
+        msg.startsWith('invalid job file path') ||
+        msg.startsWith('job file is a directory')
+      ) {
+        send(res, 400, { error: msg });
+      } else if (msg.startsWith('job not found') || msg.startsWith('job file not found')) {
+        send(res, 404, { error: msg });
+      } else throw err;
+    }
+  },
+  // Removes the directory for real. POST only, and through the origin-checked
+  // write CORS rather than the read routes' `*`.
+  '/api/jobs/delete': async ({ req, res }) => {
+    await servePost(
+      req,
+      res,
+      async (body) => {
+        const id = body.id;
+        if (typeof id !== 'string' || id === '') throw new Error('missing id');
+        return buildJobDelete(JOBS_DIR, LOG_DIR, id, new Date(), readSource());
+      },
+      (msg) => {
+        if (msg.startsWith('job not found')) return 404;
+        if (msg.startsWith('job is still running')) return 409;
+        return 400; // invalid/missing id, or a symlinked directory
+      },
+    );
+  },
+  '/api/sessions': async ({ res }) => {
+    const sessions = await buildSessions(LOG_DIR, readSource());
+    send(res, 200, sessions);
+    shadow('/api/sessions', sessions, (source) => buildSessions(LOG_DIR, source));
+  },
+  '/api/sessions/stream': async ({ req, res }) => {
+    await serveSse(req, res, {
+      watchPath: resolveSessionsDir(LOG_DIR),
+      build: () => buildSessions(LOG_DIR, readSource()),
+      debounceMs: 400,
+    });
+  },
+  '/api/sessions/session/stream': async ({ req, res, url }) => {
+    const id = url.searchParams.get('id');
+    if (!id) {
+      send(res, 400, { error: 'missing ?id=' });
+      return;
+    }
+    let file: string;
+    try {
+      file = resolveSessionFile(LOG_DIR, id);
+    } catch (err) {
+      send(res, 400, { error: (err as Error).message });
+      return;
+    }
+    await serveSse(req, res, {
+      watchPath: file,
+      build: () => buildSession(LOG_DIR, id, readSource()),
+      debounceMs: 150,
+    });
+  },
+  '/api/sessions/graph': async ({ res }) => {
+    // One `now` for both runs — a shadow read a moment later would otherwise diff
+    // against the primary on the clock alone.
+    const now = new Date();
+    const graph = await buildSessionsGraph(LOG_DIR, now, readSource());
+    send(res, 200, graph);
+    shadow('/api/sessions/graph', graph, (source) => buildSessionsGraph(LOG_DIR, now, source));
+  },
+  // Every branch's liveness verdict and nothing else — thin enough to poll from a shell.
+  '/api/sessions/liveness': async ({ res }) => {
+    const now = new Date();
+    const liveness = await buildSessionsLiveness(LOG_DIR, now, readSource());
+    send(res, 200, liveness);
+    shadow('/api/sessions/liveness', liveness, (source) => buildSessionsLiveness(LOG_DIR, now, source));
+  },
+  '/api/sessions/node-text': async ({ res, url }) => {
+    const id = url.searchParams.get('id');
+    if (!id) {
+      send(res, 400, { error: 'missing ?id=' });
+      return;
+    }
+    try {
+      const texts = await buildSessionNodeTexts(LOG_DIR, id, readSource());
+      send(res, 200, texts);
+      shadow('/api/sessions/node-text', texts, (source) => buildSessionNodeTexts(LOG_DIR, id, source));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
+      else throw err;
+    }
+  },
+  '/api/sessions/graph/nodes': async ({ res, url }) => {
+    const id = url.searchParams.get('id');
+    if (!id) {
+      send(res, 400, { error: 'missing ?id=' });
+      return;
+    }
+    try {
+      const now = new Date();
+      const nodes = await buildSessionGraphNodes(LOG_DIR, id, now, readSource());
+      send(res, 200, nodes);
+      shadow('/api/sessions/graph/nodes', nodes, (source) => buildSessionGraphNodes(LOG_DIR, id, now, source));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
+      else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  '/api/sessions/session': async ({ res, url }) => {
+    const id = url.searchParams.get('id');
+    if (!id) {
+      send(res, 400, { error: 'missing ?id=' });
+      return;
+    }
+    try {
+      const session = await buildSession(LOG_DIR, id, readSource());
+      send(res, 200, session);
+      shadow('/api/sessions/session', session, (source) => buildSession(LOG_DIR, id, source));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
+      else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  '/api/sessions/breakdown': async ({ res, url }) => {
+    const id = url.searchParams.get('id');
+    if (!id) {
+      send(res, 400, { error: 'missing ?id=' });
+      return;
+    }
+    try {
+      const now = new Date();
+      const breakdown = await buildSessionBreakdown(LOG_DIR, id, now, readSource());
+      send(res, 200, breakdown);
+      shadow('/api/sessions/breakdown', breakdown, (source) => buildSessionBreakdown(LOG_DIR, id, now, source));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
+      else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  // The Commands eval page. Every read reconciles first, so the store is current
+  // even on a cold server, and the streams follow a run as it happens.
+  '/api/commands': async ({ res }) => {
+    // The shadow read deliberately skips `withCommandReconcile`: the served
+    // read already reconciled, and reconciling twice would write again. Both
+    // sides then read the store that write produced — the DB side through
+    // `readCommandRuns`'s watermark check, which re-reads the file until
+    // ingest catches up.
+    const commands = await withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR, readSource()));
+    send(res, 200, commands);
+    shadow('/api/commands', commands, (source) => buildCommands(LOG_DIR, COMMANDS_DIR, source));
+  },
+  '/api/commands/stream': async ({ req, res }) => {
+    await serveSse(req, res, {
+      watchPath: LOG_DIR,
+      build: () => withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR, readSource())),
+      debounceMs: 600,
+    });
+  },
+  '/api/commands/command': (ctx) => serveCommandDetail(ctx, false),
+  '/api/commands/command/stream': (ctx) => serveCommandDetail(ctx, true),
+  '/api/commands/run': (ctx) => serveCommandRun(ctx, false),
+  '/api/commands/run/stream': (ctx) => serveCommandRun(ctx, true),
+  // The Concepts page. With `CONCEPTS_URL` and `CONCEPTS_TOKEN` set this
+  // reads the hosted store; without them, `logs/concepts.jsonl` as before.
+  // `meta.storePath` says which of the two answered.
+  //
+  // The stream watches the log dir, since `/teach` appends to the local
+  // store from outside this process. That watch says nothing about the
+  // hosted store — a remote-backed page refreshes on the next local change
+  // or the next load.
+  '/api/concepts': async ({ res }) => {
+    let concepts: Awaited<ReturnType<typeof buildConcepts>>;
+    try {
+      concepts = await buildConcepts(LOG_DIR, readSource());
+    } catch (err) {
+      // A configured hosted store that will not answer is a bad gateway,
+      // never a quiet fall back to the local file's corpus.
+      if (err instanceof RemoteConceptStoreError) {
+        send(res, 502, { error: err.message });
+        return;
+      }
+      throw err;
+    }
+    send(res, 200, concepts);
+    // Shadow mode compares the two *local* backings; a remote answer came
+    // from neither.
+    if (concepts.meta.store === 'local') {
+      shadow('/api/concepts', concepts, (source) => buildConcepts(LOG_DIR, source));
+    }
+  },
+  '/api/concepts/stream': async ({ req, res }) => {
+    await serveSse(
+      req,
+      res,
+      conceptsStream(() => buildConcepts(LOG_DIR, readSource())),
+    );
+  },
+  '/api/concepts/concept': (ctx) => serveConcept(ctx, false),
+  '/api/concepts/concept/stream': (ctx) => serveConcept(ctx, true),
+  '/api/ideas': (ctx) => serveIdeas(ctx, false),
+  '/api/ideas/stream': (ctx) => serveIdeas(ctx, true),
+  // Adjudicating one. POST only, through the origin-checked write CORS.
+  '/api/ideas/status': async ({ req, res }) => {
+    await servePost(
+      req,
+      res,
+      (body) => applyIdeaStatus(LOG_DIR, parseIdeaMarks(body.marks), new Date()),
+      () => 400,
+    );
+  },
+  // Re-filing one, and commenting on one. Same allowlist, same origin check.
+  // Filing is **its own route rather than a field on the status write** — see
+  // `applyIdeaFilings`.
+  '/api/ideas/area': async ({ req, res }) => {
+    await servePost(
+      req,
+      res,
+      (body) => applyIdeaArea(LOG_DIR, parseIdeaFilings(body.filings), new Date()),
+      () => 400,
+    );
+  },
+  '/api/ideas/comment': async ({ req, res }) => {
+    await servePost(
+      req,
+      res,
+      (body) => applyIdeaComment(LOG_DIR, parseIdeaComments(body.comments), new Date()),
+      () => 400,
+    );
+  },
+  // Taking one back. Its own route rather than a `claimed` mark, because a claim must
+  // name a holder a second run can recognise and a mark carries none — see
+  // `applyIdeaClaim`. A live holder comes back in the body as a refusal rather than as
+  // a status, so only a malformed request is a 400.
+  '/api/ideas/claim': async ({ req, res }) => {
+    await servePost(
+      req,
+      res,
+      (body) => applyIdeaClaim(LOG_DIR, parseIdeaClaims(body.claims), new Date()),
+      () => 400,
+    );
+  },
+  '/api/sessions/suggestions': async ({ res }) => {
+    const suggestions = await buildSessionSuggestions(LOG_DIR, readSource());
+    send(res, 200, suggestions);
+    shadow('/api/sessions/suggestions', suggestions, (source) => buildSessionSuggestions(LOG_DIR, source));
+  },
+  '/api/sessions/suggestions/bucket': async ({ res, url }) => {
+    const index = Number(url.searchParams.get('index'));
+    if (!Number.isInteger(index) || index < 1) {
+      send(res, 400, { error: 'missing or invalid ?index=' });
+      return;
+    }
+    try {
+      const now = new Date();
+      const bucket = await buildSessionSuggestionBucket(LOG_DIR, index, now, readSource());
+      send(res, 200, bucket);
+      shadow('/api/sessions/suggestions/bucket', bucket, (source) =>
+        buildSessionSuggestionBucket(LOG_DIR, index, now, source),
+      );
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('suggestion bucket not found')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  // The flags on those suggestions: GET lists them, POST records them. The GET is
+  // as read-only as its neighbours; the POST writes a file, so it goes through the
+  // origin-checked write CORS the chat routes use — which is why the manifest gives
+  // this route both methods and the narrow CORS.
+  '/api/sessions/suggestions/status': async ({ req, res, url }) => {
+    // Anything that isn't the GET goes through the write path, which refuses a
+    // method that is neither rather than letting it fall through to the list.
+    if (req.method !== 'GET') {
+      await servePost(
+        req,
+        res,
+        // The flags stay a JSON file; what goes through the seam is the
+        // derived half this echoes back — the bucket/suggestion join — so
+        // the response cannot describe a different corpus than the GET.
+        //
+        // A body carrying `judged` or `amnesty` takes the guarded judge path:
+        // it refuses an unorderable corpus and an incomplete bucket.
+        (body) => {
+          const judging = body.judged !== undefined || body.amnesty !== undefined;
+          if (!judging) {
+            return applySuggestionStatus(LOG_DIR, parseSuggestionStatusUpdates(body.updates), new Date(), readSource());
+          }
+          if (body.amnesty !== undefined && typeof body.amnesty !== 'boolean') {
+            throw new Error('amnesty must be a boolean');
+          }
+          // Refused when present and malformed — silently dropping it would file
+          // the verdict unattributed while the caller believed it had signed.
+          if (body.thread !== undefined && !isThreadId(body.thread)) {
+            throw new Error('thread must be a 16-hex-character thread id');
+          }
+          return applySuggestionJudge(
+            LOG_DIR,
+            {
+              ...(body.updates === undefined ? {} : { updates: parseSuggestionStatusUpdates(body.updates) }),
+              ...(body.judged === undefined ? {} : { judged: parseSuggestionJudgements(body.judged) }),
+              ...(body.amnesty === undefined ? {} : { amnesty: body.amnesty as boolean }),
+              ...(body.thread === undefined ? {} : { thread: body.thread as string }),
+            },
+            new Date(),
+            readSource(),
+          );
+        },
+        () => 400,
+      );
+      return;
+    }
+    const rangeParam = url.searchParams.get('range');
+    const statusParam = url.searchParams.get('status');
+    const recurrenceParam = url.searchParams.get('recurrence');
+    let buckets: number[] | undefined;
+    let statuses: SuggestionStatus[] | undefined;
+    let recurrences: SuggestionRecurrence[] | undefined;
+    try {
+      if (rangeParam) buckets = parseBucketRange(rangeParam);
+      if (statusParam) {
+        statuses = statusParam.split(',').map((s) => {
+          const status = s.trim();
+          if (!isSuggestionStatus(status)) throw new Error(`invalid status: ${status}`);
+          return status;
+        });
+      }
+      if (recurrenceParam) {
+        recurrences = recurrenceParam.split(',').map((s) => {
+          const recurrence = s.trim();
+          if (!isSuggestionRecurrence(recurrence)) throw new Error(`invalid recurrence: ${recurrence}`);
+          return recurrence;
+        });
+      }
+    } catch (err) {
+      send(res, 400, { error: (err as Error).message });
+      return;
+    }
+    const detail = url.searchParams.get('detail');
+    const filter = {
+      buckets,
+      statuses,
+      recurrences,
+      detail: detail === '1' || detail === 'true',
+    };
+    const status = await buildSuggestionStatus(LOG_DIR, filter, readSource());
+    send(res, 200, status);
+    shadow('/api/sessions/suggestions/status', status, (source) => buildSuggestionStatus(LOG_DIR, filter, source));
+  },
+  '/api/sessions/errors': async ({ res, url }) => {
+    const id = url.searchParams.get('id');
+    if (!id) {
+      send(res, 400, { error: 'missing ?id=' });
+      return;
+    }
+    try {
+      const now = new Date();
+      const errors = await buildSessionErrors(LOG_DIR, id, now, readSource());
+      send(res, 200, errors);
+      shadow('/api/sessions/errors', errors, (source) => buildSessionErrors(LOG_DIR, id, now, source));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
+      else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  // The chat routes: the only paths that send a request out through the proxy.
+  '/api/chat/config': async ({ res }) => {
+    send(res, 200, await resolveChatConfig());
+  },
+  // Which turns are in flight. A read, so it keeps the open CORS the other GETs have;
+  // it names running sessions, never their content.
+  '/api/chat/running': async ({ res }) => {
+    send(res, 200, { running: listRunningChats() });
+  },
+  // The transcript's own id for a chat session id, or null while the proxy has yet to
+  // write it. Answers from the sessions dir rather than the in-memory map, so it survives
+  // a restart and outlives the turn. Non-blocking — the caller polls.
+  '/api/chat/thread': async ({ res, url }) => {
+    const sessionId = url.searchParams.get('sessionId');
+    if (!sessionId) {
+      send(res, 400, { error: 'missing ?sessionId=' });
+      return;
+    }
+    if (!UUID_RE.test(sessionId)) {
+      send(res, 400, { error: 'invalid sessionId: expected a uuid' });
+      return;
+    }
+    send(res, 200, { sessionId, threadId: await resolveThreadId(LOG_DIR, sessionId, 0) });
+  },
+  // The turn in flight, as it happens: the reply's text as it arrives and a chip per
+  // tool, interleaved in the order the turn ran them. The POST still answers with the
+  // finished turn, so this is what makes a slow turn legible — never the record of it.
+  //
+  // A GET, so it is not on the write allowlist — but unlike every other read it carries
+  // the chat's own **content**, which is why the manifest declares it `cors: 'origin'`.
+  '/api/chat/stream': async ({ req, res, url }) => {
+    const cors = { ...chatCors(req.headers.origin), 'access-control-allow-methods': 'GET, OPTIONS' };
+    if (!originAllowed(req.headers.origin)) {
+      send(res, 403, { error: `origin not allowed: ${req.headers.origin}` }, cors);
+      return;
+    }
+    const sessionId = url.searchParams.get('sessionId');
+    if (!sessionId) {
+      send(res, 400, { error: 'missing ?sessionId=' }, cors);
+      return;
+    }
+    if (!UUID_RE.test(sessionId)) {
+      send(res, 400, { error: 'invalid sessionId: expected a uuid' }, cors);
+      return;
+    }
+    // A session the server has yet to hear of is not an error: the dashboard names
+    // the id and opens this stream in the same tick as the POST that starts it.
+    await serveSse(req, res, {
+      cors,
+      snapshot: () => snapshotChatStream(sessionId),
+      subscribe: (push) => subscribeChatStream(sessionId, push),
+    });
+  },
+  '/api/chat/sessions': async ({ req, res }) => {
+    await servePost(req, res, (body) =>
+      startChat(
+        {
+          prompt: body.prompt,
+          model: body.model,
+          maxTokens: body.maxTokens,
+          system: body.system,
+          mode: body.mode,
+          // The dashboard names the session up front so it can stop the first turn.
+          sessionId: body.sessionId,
+          permissionMode: body.permissionMode,
+        },
+        LOG_DIR,
+      ),
+    );
+  },
+  '/api/chat/sessions/message': async ({ req, res }) => {
+    await servePost(req, res, (body) => continueChat({ sessionId: body.sessionId, prompt: body.prompt }, LOG_DIR));
+  },
+  // Ends the turn, not the session: the in-flight send returns what it had.
+  '/api/chat/stop': async ({ req, res }) => {
+    await servePost(req, res, async (body) => stopChat({ sessionId: body.sessionId }));
+  },
+  // Ends the session: "New chat" evicts it rather than leaving it resident forever.
+  '/api/chat/sessions/end': async ({ req, res }) => {
+    await servePost(req, res, async (body) => endChat({ sessionId: body.sessionId }));
+  },
+  '/api/skim': async ({ res, date }) => {
+    const now = new Date();
+    const skim = await buildSkim(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
+    send(res, 200, skim);
+    shadow('/api/skim', skim, (source) => buildSkim(LOG_DIR, date, now, ARCHIVE_DIR, source));
+  },
+  '/api/skim/trend': async ({ res, url }) => {
+    const now = new Date();
+    const days = await parseDays(url.searchParams.get('days'));
+    const trend = await buildSkimTrend(LOG_DIR, days, now, readSource());
+    send(res, 200, trend);
+    shadow('/api/skim/trend', trend, (source) => buildSkimTrend(LOG_DIR, days, now, source));
+  },
+  '/api/withheld': async ({ res, url }) => {
+    const now = new Date();
+    const days = await parseDays(url.searchParams.get('days'));
+    const withheld = await buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, readSource());
+    send(res, 200, withheld);
+    shadow('/api/withheld', withheld, (source) => buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, source));
+  },
+  '/api/pull-requests': async ({ res }) => {
+    send(res, 200, await buildPullRequests(LOG_DIR));
+  },
+  // Moving `main`: a force-push of `refs/heads/main` on origin, the local checkout's
+  // own catch-up, and the marker that hides a line. They are shared, remote and
+  // irreversible in the sense that everyone sees them, so the manifest files them
+  // under the origin check rather than the read routes' open CORS — and `slideMain`
+  // gates them a second time on the device's `gh` identity.
+  '/api/main-history/slide': async ({ req, res }) => {
+    await servePost(req, res, (body) => buildMainHistorySlide(body), mainHistoryErrorStatus);
+  },
+  '/api/main-history/sync-local': async ({ req, res }) => {
+    await servePost(req, res, (body) => buildMainHistorySyncLocal(body), mainHistoryErrorStatus);
+  },
+  '/api/main-history/hide': async ({ req, res }) => {
+    await servePost(req, res, (body) => buildMainHistoryHide(body), mainHistoryErrorStatus);
+  },
+  '/api/hooks-plugins': async ({ res }) => {
+    send(res, 200, await buildHooksPlugins());
+  },
+  '/api/cli-internals': async ({ res }) => {
+    send(res, 200, await buildCliInternals());
+  },
+  '/api/cli-internals/function': async ({ res, url }) => {
+    const id = url.searchParams.get('id');
+    if (!id) {
+      send(res, 400, { error: 'missing ?id=' });
+      return;
+    }
+    try {
+      send(res, 200, await buildCliFunction(id));
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.startsWith('cli function not found')) send(res, 404, { error: msg });
+      else throw err;
+    }
+  },
+  // The device system prompt: a GET of `~/.claude/CLAUDE.md`, a POST that rewrites it.
+  '/api/system-prompt': async ({ req, res }) => {
+    // Anything but a GET is the save, which takes the origin-checked write path
+    // rather than the open read CORS.
+    if (req.method !== 'GET') {
+      await servePost(
+        req,
+        res,
+        (body) => buildSystemPromptUpdate(SYSTEM_PROMPT_PATH, body.text, body.expectedModified),
+        systemPromptErrorStatus,
+      );
+      return;
+    }
+    send(res, 200, await buildSystemPrompt(SYSTEM_PROMPT_PATH));
+  },
+  '/api/filters': async ({ res }) => {
+    send(res, 200, buildFilters());
+  },
+};
+
+/** Whether a declared route answers under the narrow, origin-checked CORS. */
+const narrowCors = (route: ApiRoute | undefined): boolean => route?.cors === 'origin';
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  // One lookup answers all three gates below — CORS, methods, and which handler runs.
+  const route = apiRoute(url.pathname);
 
   if (req.method === 'OPTIONS') {
-    // The turn stream is a GET, but it answers the same narrow origins the writes do.
-    const narrow = WRITE_ROUTES.has(url.pathname) || url.pathname === CHAT_STREAM_ROUTE;
-    res.writeHead(204, narrow ? chatCors(req.headers.origin) : CORS);
+    // The turn stream is a GET, but it answers the same narrow origins the writes do —
+    // which is why the manifest states CORS per route rather than deriving it from method.
+    res.writeHead(204, narrowCors(route) ? chatCors(req.headers.origin) : CORS);
     res.end();
     return;
   }
@@ -531,944 +1403,18 @@ const server = http.createServer(async (req, res) => {
   // Everything outside the write allowlist is a read, and the open `*` CORS it answers
   // under is only safe while it stays one. The allowlist gates its own methods inside
   // `servePost`, under the origin-checked CORS instead.
-  if (req.method !== 'GET' && !WRITE_ROUTES.has(url.pathname)) {
+  if (req.method !== 'GET' && !(route && isApiWriteRoute(route))) {
     send(res, 405, { error: `method not allowed: ${req.method}` }, { ...CORS, allow: 'GET, OPTIONS' });
     return;
   }
 
-  const date = parseDate(url.searchParams.get('date'));
+  if (!route) {
+    send(res, 404, { error: `not found: ${url.pathname}` });
+    return;
+  }
 
   try {
-    switch (url.pathname) {
-      case '/api/health': {
-        let sidecarCount: number | null = null;
-        let logDirReadable = true;
-        try {
-          sidecarCount = await countSidecarFiles(LOG_DIR);
-        } catch {
-          logDirReadable = false;
-        }
-        send(res, 200, { ok: logDirReadable, logDir: LOG_DIR, logDirReadable, sidecarCount });
-        return;
-      }
-      case '/api/summary': {
-        const now = new Date();
-        const summary = await buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
-        send(res, 200, summary);
-        shadow('/api/summary', summary, (source) => buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, source));
-        return;
-      }
-      // Today's digest moves with every captured request, so this follows the log
-      // directory rather than any one file.
-      case '/api/summary/stream':
-        await serveSse(req, res, {
-          watchPath: LOG_DIR,
-          build: () => buildSummary(LOG_DIR, date, new Date(), ARCHIVE_DIR, readSource()),
-          debounceMs: 600,
-        });
-        return;
-      case '/api/trends': {
-        const days = await parseDays(url.searchParams.get('days'));
-        const now = new Date();
-        const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, readSource());
-        send(res, 200, trends);
-        shadow('/api/trends', trends, (source) => buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, source));
-        return;
-      }
-      case '/api/prompt-mix': {
-        const days = await parseDays(url.searchParams.get('days'));
-        const now = new Date();
-        const mix = await buildPromptMix(LOG_DIR, days, now, readSource());
-        send(res, 200, mix);
-        shadow('/api/prompt-mix', mix, (source) => buildPromptMix(LOG_DIR, days, now, source));
-        return;
-      }
-      // One cohort from that mix, opened up — which sections its bytes are in.
-      case '/api/prompt': {
-        const hash = url.searchParams.get('hash');
-        if (!hash) {
-          send(res, 400, { error: 'missing ?hash=' });
-          return;
-        }
-        const days = await parseDays(url.searchParams.get('days'));
-        const now = new Date();
-        const detail = await buildPromptDetail(LOG_DIR, hash, days, now, readSource());
-        send(res, 200, detail);
-        shadow('/api/prompt', detail, (source) => buildPromptDetail(LOG_DIR, hash, days, now, source));
-        return;
-      }
-      // One section of that prompt, with the text a captured body still holds.
-      case '/api/prompt/section': {
-        const hash = url.searchParams.get('hash');
-        if (!hash) {
-          send(res, 400, { error: 'missing ?hash=' });
-          return;
-        }
-        const index = Number(url.searchParams.get('index'));
-        if (!Number.isInteger(index) || index < 0) {
-          send(res, 400, { error: 'missing or invalid ?index=' });
-          return;
-        }
-        const days = await parseDays(url.searchParams.get('days'));
-        try {
-          send(res, 200, await buildPromptSection(LOG_DIR, hash, index, days, new Date(), readSource()));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('prompt outline not found') || msg.startsWith('prompt section index out of range')) {
-            send(res, 404, { error: msg });
-          } else throw err;
-        }
-        return;
-      }
-      // One tool of the fixed prefix, opened up to the JSON schema behind its size.
-      case '/api/tool-schema': {
-        const name = url.searchParams.get('name');
-        if (!name) {
-          send(res, 400, { error: 'missing ?name=' });
-          return;
-        }
-        const days = await parseDays(url.searchParams.get('days'));
-        const now = new Date();
-        const schema = await buildToolSchema(LOG_DIR, name, days, now, readSource());
-        send(res, 200, schema);
-        shadow('/api/tool-schema', schema, (source) => buildToolSchema(LOG_DIR, name, days, now, source));
-        return;
-      }
-      case '/api/usage': {
-        const now = new Date();
-        const usage = await buildUsage(LOG_DIR, USAGE_LIMITS, now, readSource());
-        send(res, 200, usage);
-        shadow('/api/usage', usage, (source) => buildUsage(LOG_DIR, USAGE_LIMITS, now, source));
-        return;
-      }
-      // Debounced generously: a busy session writes three files per request and
-      // the numbers barely move between them.
-      case '/api/usage/stream':
-        await serveSse(req, res, {
-          watchPath: LOG_DIR,
-          build: () => buildUsage(LOG_DIR, USAGE_LIMITS, new Date(), readSource()),
-          debounceMs: 600,
-        });
-        return;
-      case '/api/tools': {
-        const now = new Date();
-        const tools = await buildTools(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
-        send(res, 200, tools);
-        shadow('/api/tools', tools, (source) => buildTools(LOG_DIR, date, now, ARCHIVE_DIR, source));
-        return;
-      }
-      case '/api/context': {
-        const days = await parseDays(url.searchParams.get('days'));
-        const now = new Date();
-        const context = await buildContext(LOG_DIR, days, now, readSource());
-        send(res, 200, context);
-        shadow('/api/context', context, (source) => buildContext(LOG_DIR, days, now, source));
-        return;
-      }
-      case '/api/context/thread': {
-        const threadId = url.searchParams.get('thread');
-        if (!threadId) {
-          send(res, 400, { error: 'missing ?thread=' });
-          return;
-        }
-        const days = await parseDays(url.searchParams.get('days'));
-        const now = new Date();
-        const thread = await buildContextThread(LOG_DIR, threadId, days, now, readSource());
-        send(res, 200, thread);
-        shadow('/api/context/thread', thread, (source) => buildContextThread(LOG_DIR, threadId, days, now, source));
-        return;
-      }
-      case '/api/context/detail': {
-        const file = url.searchParams.get('file');
-        if (!file) {
-          send(res, 400, { error: 'missing ?file=' });
-          return;
-        }
-        try {
-          send(res, 200, await buildContextDetail(LOG_DIR, file));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
-          else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
-            send(res, 404, { error: msg });
-          } else throw err;
-        }
-        return;
-      }
-      case '/api/context/message': {
-        const file = url.searchParams.get('file');
-        if (!file) {
-          send(res, 400, { error: 'missing ?file=' });
-          return;
-        }
-        const index = Number(url.searchParams.get('index'));
-        if (!Number.isInteger(index) || index < 0) {
-          send(res, 400, { error: 'missing or invalid ?index=' });
-          return;
-        }
-        try {
-          send(res, 200, await buildContextMessage(LOG_DIR, file, index));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
-          else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
-            send(res, 404, { error: msg });
-          } else if (msg.startsWith('message index out of range')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      case '/api/context/tool': {
-        const file = url.searchParams.get('file');
-        if (!file) {
-          send(res, 400, { error: 'missing ?file=' });
-          return;
-        }
-        const index = Number(url.searchParams.get('index'));
-        if (!Number.isInteger(index) || index < 0) {
-          send(res, 400, { error: 'missing or invalid ?index=' });
-          return;
-        }
-        try {
-          send(res, 200, await buildContextTool(LOG_DIR, file, index));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
-          else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
-            send(res, 404, { error: msg });
-          } else if (msg.startsWith('tool index out of range')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      case '/api/projects':
-        send(res, 200, await buildProjects(PROJECTS_DIR));
-        return;
-      case '/api/projects/memories': {
-        const project = url.searchParams.get('project');
-        if (!project) {
-          send(res, 400, { error: 'missing ?project=' });
-          return;
-        }
-        try {
-          send(res, 200, await buildProjectMemories(PROJECTS_DIR, project));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid project name')) send(res, 400, { error: msg });
-          else if (msg.startsWith('project not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      case '/api/projects/memory': {
-        const project = url.searchParams.get('project');
-        const name = url.searchParams.get('name');
-        if (!project || !name) {
-          send(res, 400, { error: 'missing ?project= or ?name=' });
-          return;
-        }
-        try {
-          send(res, 200, await buildMemory(PROJECTS_DIR, project, name));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid project name') || msg.startsWith('invalid memory file name')) {
-            send(res, 400, { error: msg });
-          } else if (msg.startsWith('project not found') || msg.startsWith('memory file not found')) {
-            send(res, 404, { error: msg });
-          } else throw err;
-        }
-        return;
-      }
-      // The device's background jobs: `~/.claude/jobs`. Reads are open like their
-      // neighbours; the delete below is the one route here that changes the disk.
-      case '/api/jobs':
-        send(res, 200, await buildJobs(JOBS_DIR, LOG_DIR, new Date(), readSource()));
-        return;
-      case '/api/jobs/job': {
-        const id = url.searchParams.get('id');
-        if (!id) {
-          send(res, 400, { error: 'missing ?id=' });
-          return;
-        }
-        try {
-          send(res, 200, await buildJob(JOBS_DIR, id));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid job id')) send(res, 400, { error: msg });
-          else if (msg.startsWith('job not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      case '/api/jobs/file': {
-        const id = url.searchParams.get('id');
-        const file = url.searchParams.get('file');
-        if (!id || !file) {
-          send(res, 400, { error: 'missing ?id= or ?file=' });
-          return;
-        }
-        try {
-          send(res, 200, await buildJobFile(JOBS_DIR, id, file));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (
-            msg.startsWith('invalid job id') ||
-            msg.startsWith('invalid job file path') ||
-            msg.startsWith('job file is a directory')
-          ) {
-            send(res, 400, { error: msg });
-          } else if (msg.startsWith('job not found') || msg.startsWith('job file not found')) {
-            send(res, 404, { error: msg });
-          } else throw err;
-        }
-        return;
-      }
-      // Removes the directory for real. POST only, and through the origin-checked
-      // write CORS rather than the read routes' `*`.
-      case JOB_DELETE_ROUTE:
-        await servePost(
-          req,
-          res,
-          async (body) => {
-            const id = body.id;
-            if (typeof id !== 'string' || id === '') throw new Error('missing id');
-            return buildJobDelete(JOBS_DIR, LOG_DIR, id, new Date(), readSource());
-          },
-          (msg) => {
-            if (msg.startsWith('job not found')) return 404;
-            if (msg.startsWith('job is still running')) return 409;
-            return 400; // invalid/missing id, or a symlinked directory
-          },
-        );
-        return;
-      case '/api/sessions': {
-        const sessions = await buildSessions(LOG_DIR, readSource());
-        send(res, 200, sessions);
-        shadow('/api/sessions', sessions, (source) => buildSessions(LOG_DIR, source));
-        return;
-      }
-      case '/api/sessions/stream':
-        await serveSse(req, res, {
-          watchPath: resolveSessionsDir(LOG_DIR),
-          build: () => buildSessions(LOG_DIR, readSource()),
-          debounceMs: 400,
-        });
-        return;
-      case '/api/sessions/session/stream': {
-        const id = url.searchParams.get('id');
-        if (!id) {
-          send(res, 400, { error: 'missing ?id=' });
-          return;
-        }
-        let file: string;
-        try {
-          file = resolveSessionFile(LOG_DIR, id);
-        } catch (err) {
-          send(res, 400, { error: (err as Error).message });
-          return;
-        }
-        await serveSse(req, res, {
-          watchPath: file,
-          build: () => buildSession(LOG_DIR, id, readSource()),
-          debounceMs: 150,
-        });
-        return;
-      }
-      case '/api/sessions/graph': {
-        // One `now` for both runs — a shadow read a moment later would otherwise diff
-        // against the primary on the clock alone.
-        const now = new Date();
-        const graph = await buildSessionsGraph(LOG_DIR, now, readSource());
-        send(res, 200, graph);
-        shadow('/api/sessions/graph', graph, (source) => buildSessionsGraph(LOG_DIR, now, source));
-        return;
-      }
-      // Every branch's liveness verdict and nothing else — thin enough to poll from a shell.
-      case '/api/sessions/liveness': {
-        const now = new Date();
-        const liveness = await buildSessionsLiveness(LOG_DIR, now, readSource());
-        send(res, 200, liveness);
-        shadow('/api/sessions/liveness', liveness, (source) => buildSessionsLiveness(LOG_DIR, now, source));
-        return;
-      }
-      case '/api/sessions/node-text': {
-        const id = url.searchParams.get('id');
-        if (!id) {
-          send(res, 400, { error: 'missing ?id=' });
-          return;
-        }
-        try {
-          const texts = await buildSessionNodeTexts(LOG_DIR, id, readSource());
-          send(res, 200, texts);
-          shadow('/api/sessions/node-text', texts, (source) => buildSessionNodeTexts(LOG_DIR, id, source));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      case '/api/sessions/graph/nodes': {
-        const id = url.searchParams.get('id');
-        if (!id) {
-          send(res, 400, { error: 'missing ?id=' });
-          return;
-        }
-        try {
-          const now = new Date();
-          const nodes = await buildSessionGraphNodes(LOG_DIR, id, now, readSource());
-          send(res, 200, nodes);
-          shadow('/api/sessions/graph/nodes', nodes, (source) => buildSessionGraphNodes(LOG_DIR, id, now, source));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
-          else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      case '/api/sessions/session': {
-        const id = url.searchParams.get('id');
-        if (!id) {
-          send(res, 400, { error: 'missing ?id=' });
-          return;
-        }
-        try {
-          const session = await buildSession(LOG_DIR, id, readSource());
-          send(res, 200, session);
-          shadow('/api/sessions/session', session, (source) => buildSession(LOG_DIR, id, source));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
-          else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      case '/api/sessions/breakdown': {
-        const id = url.searchParams.get('id');
-        if (!id) {
-          send(res, 400, { error: 'missing ?id=' });
-          return;
-        }
-        try {
-          const now = new Date();
-          const breakdown = await buildSessionBreakdown(LOG_DIR, id, now, readSource());
-          send(res, 200, breakdown);
-          shadow('/api/sessions/breakdown', breakdown, (source) => buildSessionBreakdown(LOG_DIR, id, now, source));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
-          else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      // The Commands eval page. Every read reconciles first, so the store is current
-      // even on a cold server, and the streams follow a run as it happens.
-      case '/api/commands': {
-        // The shadow read deliberately skips `withCommandReconcile`: the served
-        // read already reconciled, and reconciling twice would write again. Both
-        // sides then read the store that write produced — the DB side through
-        // `readCommandRuns`'s watermark check, which re-reads the file until
-        // ingest catches up.
-        const commands = await withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR, readSource()));
-        send(res, 200, commands);
-        shadow('/api/commands', commands, (source) => buildCommands(LOG_DIR, COMMANDS_DIR, source));
-        return;
-      }
-      case '/api/commands/stream':
-        await serveSse(req, res, {
-          watchPath: LOG_DIR,
-          build: () => withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR, readSource())),
-          debounceMs: 600,
-        });
-        return;
-      case '/api/commands/command':
-      case '/api/commands/command/stream': {
-        const name = url.searchParams.get('name');
-        if (!name) {
-          send(res, 400, { error: 'missing ?name=' });
-          return;
-        }
-        const flags = (url.searchParams.get('flags') ?? '').split(',').filter(Boolean);
-        const build = () => withCommandReconcile(() => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags, readSource()));
-        if (url.pathname.endsWith('/stream')) {
-          await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
-          return;
-        }
-        try {
-          const command = await build();
-          send(res, 200, command);
-          shadow('/api/commands/command', command, (source) =>
-            buildCommand(LOG_DIR, COMMANDS_DIR, name, flags, source),
-          );
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('command not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      case '/api/commands/run':
-      case '/api/commands/run/stream': {
-        const id = url.searchParams.get('id');
-        if (!id) {
-          send(res, 400, { error: 'missing ?id=' });
-          return;
-        }
-        const build = () => withCommandReconcile(() => buildCommandRun(LOG_DIR, id, readSource()));
-        if (url.pathname.endsWith('/stream')) {
-          await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
-          return;
-        }
-        try {
-          const run = await build();
-          send(res, 200, run);
-          shadow('/api/commands/run', run, (source) => buildCommandRun(LOG_DIR, id, source));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('command run not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      // The Concepts page. With `CONCEPTS_URL` and `CONCEPTS_TOKEN` set this
-      // reads the hosted store; without them, `logs/concepts.jsonl` as before.
-      // `meta.storePath` says which of the two answered.
-      //
-      // The stream watches the log dir, since `/teach` appends to the local
-      // store from outside this process. That watch says nothing about the
-      // hosted store — a remote-backed page refreshes on the next local change
-      // or the next load.
-      case '/api/concepts': {
-        let concepts: Awaited<ReturnType<typeof buildConcepts>>;
-        try {
-          concepts = await buildConcepts(LOG_DIR, readSource());
-        } catch (err) {
-          // A configured hosted store that will not answer is a bad gateway,
-          // never a quiet fall back to the local file's corpus.
-          if (err instanceof RemoteConceptStoreError) {
-            send(res, 502, { error: err.message });
-            return;
-          }
-          throw err;
-        }
-        send(res, 200, concepts);
-        // Shadow mode compares the two *local* backings; a remote answer came
-        // from neither.
-        if (concepts.meta.store === 'local') {
-          shadow('/api/concepts', concepts, (source) => buildConcepts(LOG_DIR, source));
-        }
-        return;
-      }
-      case '/api/concepts/stream':
-        await serveSse(
-          req,
-          res,
-          conceptsStream(() => buildConcepts(LOG_DIR, readSource())),
-        );
-        return;
-      // One concept, addressed by the line it sits on. The store is append-only,
-      // so that line keeps pointing at the same record as newer ones land above
-      // it on the page.
-      case '/api/concepts/concept':
-      case '/api/concepts/concept/stream': {
-        const ord = Number(url.searchParams.get('ord'));
-        if (!Number.isInteger(ord) || ord < 0) {
-          send(res, 400, { error: 'missing or invalid ?ord=' });
-          return;
-        }
-        const build = () => buildConcept(LOG_DIR, ord, readSource());
-        if (url.pathname.endsWith('/stream')) {
-          await serveSse(req, res, conceptsStream(build));
-          return;
-        }
-        try {
-          const concept = await build();
-          send(res, 200, concept);
-          if (concept.meta.store === 'local') {
-            shadow('/api/concepts/concept', concept, (source) => buildConcept(LOG_DIR, ord, source));
-          }
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (err instanceof RemoteConceptStoreError) send(res, 502, { error: msg });
-          else if (msg.startsWith('concept not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      // The ideas ledger. `/ideate` writes the file from outside this process, so the
-      // stream watches the log directory the store sits in.
-      case IDEAS_ROUTE:
-      case '/api/ideas/stream': {
-        const statusParam = url.searchParams.get('status');
-        const repoParam = url.searchParams.get('repo');
-        const areaParam = url.searchParams.get('area');
-        let statuses: IdeaStatus[] | undefined;
-        try {
-          if (statusParam) {
-            statuses = statusParam.split(',').map((s) => {
-              const status = s.trim();
-              if (!isIdeaStatus(status)) throw new Error(`invalid status: ${status}`);
-              return status;
-            });
-          }
-          // A checkout path names a different thing on another machine, and this ledger
-          // is shared across every repo on this one.
-          if (repoParam && !isIdeaRepo(repoParam)) {
-            throw new Error(`invalid repo: ${repoParam} (expected a git remote slug like owner/name)`);
-          }
-          // Shape only. The vocabulary is free text, so an area nothing is filed
-          // under is an empty list rather than an error.
-          if (areaParam && !isIdeaArea(areaParam)) {
-            throw new Error(`invalid area: ${areaParam} (expected a kebab-case slug)`);
-          }
-        } catch (err) {
-          send(res, 400, { error: (err as Error).message });
-          return;
-        }
-        const filter = {
-          ...(statuses ? { statuses } : {}),
-          ...(repoParam ? { repo: repoParam } : {}),
-          ...(areaParam ? { area: areaParam } : {}),
-        };
-        if (url.pathname.endsWith('/stream')) {
-          await serveSse(req, res, { watchPath: LOG_DIR, build: () => buildIdeas(LOG_DIR, filter), debounceMs: 600 });
-          return;
-        }
-        // No shadow read: authored state with no derived half, so there is nothing for
-        // the substrate to disagree about.
-        send(res, 200, await buildIdeas(LOG_DIR, filter));
-        return;
-      }
-      // Adjudicating one. POST only, through the origin-checked write CORS.
-      case IDEAS_STATUS_ROUTE:
-        await servePost(
-          req,
-          res,
-          (body) => applyIdeaStatus(LOG_DIR, parseIdeaMarks(body.marks), new Date()),
-          () => 400,
-        );
-        return;
-      // Re-filing one, and commenting on one. Same allowlist, same origin check.
-      case IDEAS_AREA_ROUTE:
-        await servePost(
-          req,
-          res,
-          (body) => applyIdeaArea(LOG_DIR, parseIdeaFilings(body.filings), new Date()),
-          () => 400,
-        );
-        return;
-      case IDEAS_COMMENT_ROUTE:
-        await servePost(
-          req,
-          res,
-          (body) => applyIdeaComment(LOG_DIR, parseIdeaComments(body.comments), new Date()),
-          () => 400,
-        );
-        return;
-      // Taking one back. A live holder comes back in the body as a refusal rather
-      // than as a status, so only a malformed request is a 400.
-      case IDEAS_CLAIM_ROUTE:
-        await servePost(
-          req,
-          res,
-          (body) => applyIdeaClaim(LOG_DIR, parseIdeaClaims(body.claims), new Date()),
-          () => 400,
-        );
-        return;
-      case '/api/sessions/suggestions': {
-        const suggestions = await buildSessionSuggestions(LOG_DIR, readSource());
-        send(res, 200, suggestions);
-        shadow('/api/sessions/suggestions', suggestions, (source) => buildSessionSuggestions(LOG_DIR, source));
-        return;
-      }
-      case '/api/sessions/suggestions/bucket': {
-        const index = Number(url.searchParams.get('index'));
-        if (!Number.isInteger(index) || index < 1) {
-          send(res, 400, { error: 'missing or invalid ?index=' });
-          return;
-        }
-        try {
-          const now = new Date();
-          const bucket = await buildSessionSuggestionBucket(LOG_DIR, index, now, readSource());
-          send(res, 200, bucket);
-          shadow('/api/sessions/suggestions/bucket', bucket, (source) =>
-            buildSessionSuggestionBucket(LOG_DIR, index, now, source),
-          );
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('suggestion bucket not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      // The flags on those suggestions: GET lists them, POST records them. The GET is
-      // as read-only as its neighbours; the POST writes a file, so it goes through the
-      // origin-checked write CORS the chat routes use.
-      case SUGGESTION_STATUS_ROUTE: {
-        // Anything that isn't the GET goes through the write path, which refuses a
-        // method that is neither rather than letting it fall through to the list.
-        if (req.method !== 'GET') {
-          await servePost(
-            req,
-            res,
-            // The flags stay a JSON file; what goes through the seam is the
-            // derived half this echoes back — the bucket/suggestion join — so
-            // the response cannot describe a different corpus than the GET.
-            //
-            // A body carrying `judged` or `amnesty` takes the guarded judge path:
-            // it refuses an unorderable corpus and an incomplete bucket.
-            (body) => {
-              const judging = body.judged !== undefined || body.amnesty !== undefined;
-              if (!judging) {
-                return applySuggestionStatus(
-                  LOG_DIR,
-                  parseSuggestionStatusUpdates(body.updates),
-                  new Date(),
-                  readSource(),
-                );
-              }
-              if (body.amnesty !== undefined && typeof body.amnesty !== 'boolean') {
-                throw new Error('amnesty must be a boolean');
-              }
-              // Refused when present and malformed — silently dropping it would file
-              // the verdict unattributed while the caller believed it had signed.
-              if (body.thread !== undefined && !isThreadId(body.thread)) {
-                throw new Error('thread must be a 16-hex-character thread id');
-              }
-              return applySuggestionJudge(
-                LOG_DIR,
-                {
-                  ...(body.updates === undefined ? {} : { updates: parseSuggestionStatusUpdates(body.updates) }),
-                  ...(body.judged === undefined ? {} : { judged: parseSuggestionJudgements(body.judged) }),
-                  ...(body.amnesty === undefined ? {} : { amnesty: body.amnesty as boolean }),
-                  ...(body.thread === undefined ? {} : { thread: body.thread as string }),
-                },
-                new Date(),
-                readSource(),
-              );
-            },
-            () => 400,
-          );
-          return;
-        }
-        const rangeParam = url.searchParams.get('range');
-        const statusParam = url.searchParams.get('status');
-        const recurrenceParam = url.searchParams.get('recurrence');
-        let buckets: number[] | undefined;
-        let statuses: SuggestionStatus[] | undefined;
-        let recurrences: SuggestionRecurrence[] | undefined;
-        try {
-          if (rangeParam) buckets = parseBucketRange(rangeParam);
-          if (statusParam) {
-            statuses = statusParam.split(',').map((s) => {
-              const status = s.trim();
-              if (!isSuggestionStatus(status)) throw new Error(`invalid status: ${status}`);
-              return status;
-            });
-          }
-          if (recurrenceParam) {
-            recurrences = recurrenceParam.split(',').map((s) => {
-              const recurrence = s.trim();
-              if (!isSuggestionRecurrence(recurrence)) throw new Error(`invalid recurrence: ${recurrence}`);
-              return recurrence;
-            });
-          }
-        } catch (err) {
-          send(res, 400, { error: (err as Error).message });
-          return;
-        }
-        const detail = url.searchParams.get('detail');
-        const filter = {
-          buckets,
-          statuses,
-          recurrences,
-          detail: detail === '1' || detail === 'true',
-        };
-        const status = await buildSuggestionStatus(LOG_DIR, filter, readSource());
-        send(res, 200, status);
-        shadow(SUGGESTION_STATUS_ROUTE, status, (source) => buildSuggestionStatus(LOG_DIR, filter, source));
-        return;
-      }
-      case '/api/sessions/errors': {
-        const id = url.searchParams.get('id');
-        if (!id) {
-          send(res, 400, { error: 'missing ?id=' });
-          return;
-        }
-        try {
-          const now = new Date();
-          const errors = await buildSessionErrors(LOG_DIR, id, now, readSource());
-          send(res, 200, errors);
-          shadow('/api/sessions/errors', errors, (source) => buildSessionErrors(LOG_DIR, id, now, source));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
-          else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      // The chat routes: the only paths that send a request out through the proxy.
-      case '/api/chat/config':
-        send(res, 200, await resolveChatConfig());
-        return;
-      // Which turns are in flight. A read, so it keeps the open CORS the other GETs have;
-      // it names running sessions, never their content.
-      case '/api/chat/running':
-        send(res, 200, { running: listRunningChats() });
-        return;
-      // The transcript's own id for a chat session id, or null while the proxy has yet to
-      // write it. Answers from the sessions dir rather than the in-memory map, so it survives
-      // a restart and outlives the turn. Non-blocking — the caller polls.
-      case '/api/chat/thread': {
-        const sessionId = url.searchParams.get('sessionId');
-        if (!sessionId) {
-          send(res, 400, { error: 'missing ?sessionId=' });
-          return;
-        }
-        if (!UUID_RE.test(sessionId)) {
-          send(res, 400, { error: 'invalid sessionId: expected a uuid' });
-          return;
-        }
-        send(res, 200, { sessionId, threadId: await resolveThreadId(LOG_DIR, sessionId, 0) });
-        return;
-      }
-      // The turn in flight, as it happens: the reply's text as it arrives and a chip per
-      // tool, interleaved in the order the turn ran them. The POST still answers with the
-      // finished turn, so this is what makes a slow turn legible — never the record of it.
-      case CHAT_STREAM_ROUTE: {
-        const cors = { ...chatCors(req.headers.origin), 'access-control-allow-methods': 'GET, OPTIONS' };
-        if (!originAllowed(req.headers.origin)) {
-          send(res, 403, { error: `origin not allowed: ${req.headers.origin}` }, cors);
-          return;
-        }
-        const sessionId = url.searchParams.get('sessionId');
-        if (!sessionId) {
-          send(res, 400, { error: 'missing ?sessionId=' }, cors);
-          return;
-        }
-        if (!UUID_RE.test(sessionId)) {
-          send(res, 400, { error: 'invalid sessionId: expected a uuid' }, cors);
-          return;
-        }
-        // A session the server has yet to hear of is not an error: the dashboard names
-        // the id and opens this stream in the same tick as the POST that starts it.
-        await serveSse(req, res, {
-          cors,
-          snapshot: () => snapshotChatStream(sessionId),
-          subscribe: (push) => subscribeChatStream(sessionId, push),
-        });
-        return;
-      }
-      case '/api/chat/sessions':
-        await servePost(req, res, (body) =>
-          startChat(
-            {
-              prompt: body.prompt,
-              model: body.model,
-              maxTokens: body.maxTokens,
-              system: body.system,
-              mode: body.mode,
-              // The dashboard names the session up front so it can stop the first turn.
-              sessionId: body.sessionId,
-              permissionMode: body.permissionMode,
-            },
-            LOG_DIR,
-          ),
-        );
-        return;
-      case '/api/chat/sessions/message':
-        await servePost(req, res, (body) => continueChat({ sessionId: body.sessionId, prompt: body.prompt }, LOG_DIR));
-        return;
-      // Ends the turn, not the session: the in-flight send returns what it had.
-      case '/api/chat/stop':
-        await servePost(req, res, async (body) => stopChat({ sessionId: body.sessionId }));
-        return;
-      // Ends the session: "New chat" evicts it rather than leaving it resident forever.
-      case '/api/chat/sessions/end':
-        await servePost(req, res, async (body) => endChat({ sessionId: body.sessionId }));
-        return;
-      case '/api/skim': {
-        const now = new Date();
-        const skim = await buildSkim(LOG_DIR, date, now, ARCHIVE_DIR, readSource());
-        send(res, 200, skim);
-        shadow('/api/skim', skim, (source) => buildSkim(LOG_DIR, date, now, ARCHIVE_DIR, source));
-        return;
-      }
-      case '/api/skim/trend': {
-        const now = new Date();
-        const days = await parseDays(url.searchParams.get('days'));
-        const trend = await buildSkimTrend(LOG_DIR, days, now, readSource());
-        send(res, 200, trend);
-        shadow('/api/skim/trend', trend, (source) => buildSkimTrend(LOG_DIR, days, now, source));
-        return;
-      }
-      case '/api/withheld': {
-        const now = new Date();
-        const days = await parseDays(url.searchParams.get('days'));
-        const withheld = await buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, readSource());
-        send(res, 200, withheld);
-        shadow('/api/withheld', withheld, (source) => buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, source));
-        return;
-      }
-      case '/api/pull-requests':
-        send(res, 200, await buildPullRequests(LOG_DIR));
-        return;
-      case '/api/main-history/slide':
-        await servePost(req, res, (body) => buildMainHistorySlide(body), mainHistoryErrorStatus);
-        return;
-      case '/api/main-history/sync-local':
-        await servePost(req, res, (body) => buildMainHistorySyncLocal(body), mainHistoryErrorStatus);
-        return;
-      case '/api/main-history/hide':
-        await servePost(req, res, (body) => buildMainHistoryHide(body), mainHistoryErrorStatus);
-        return;
-      case '/api/hooks-plugins':
-        send(res, 200, await buildHooksPlugins());
-        return;
-      case '/api/cli-internals':
-        send(res, 200, await buildCliInternals());
-        return;
-      case '/api/cli-internals/function': {
-        const id = url.searchParams.get('id');
-        if (!id) {
-          send(res, 400, { error: 'missing ?id=' });
-          return;
-        }
-        try {
-          send(res, 200, await buildCliFunction(id));
-        } catch (err) {
-          const msg = (err as Error).message;
-          if (msg.startsWith('cli function not found')) send(res, 404, { error: msg });
-          else throw err;
-        }
-        return;
-      }
-      case SYSTEM_PROMPT_ROUTE: {
-        // Anything but a GET is the save, which takes the origin-checked write path
-        // rather than the open read CORS.
-        if (req.method !== 'GET') {
-          await servePost(
-            req,
-            res,
-            (body) => buildSystemPromptUpdate(SYSTEM_PROMPT_PATH, body.text, body.expectedModified),
-            systemPromptErrorStatus,
-          );
-          return;
-        }
-        send(res, 200, await buildSystemPrompt(SYSTEM_PROMPT_PATH));
-        return;
-      }
-      case '/api/filters':
-        send(res, 200, buildFilters());
-        return;
-      default:
-        send(res, 404, { error: `not found: ${url.pathname}` });
-        return;
-    }
+    await HANDLERS[route.path]({ req, res, url, date: parseDate(url.searchParams.get('date')) });
   } catch (err) {
     send(res, 500, { error: (err as Error).message });
   }
@@ -1477,6 +1423,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, async () => {
   console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
+  console.log(`[claude-proxy-server] serving ${API_ROUTES.length} routes declared in @claude-proxy/core`);
   // The SQLite view of those logs, kept current by a watcher, and what the
   // routes read. Report which side is serving — a substrate that failed to open
   // falls back silently otherwise.

@@ -2,6 +2,10 @@ import type {
   Advice,
   AdviceMovement,
   AliasLoadExpectation,
+  ApiJsonGetPath,
+  ApiQueryValue,
+  ApiRouteParam,
+  ApiWritePath,
   AuditSidecar,
   BranchLiveness,
   BucketBreakdownSummary,
@@ -66,6 +70,7 @@ import type {
   UsageLimitsSnapshot,
   WithheldReport,
 } from '@claude-proxy/core';
+import { apiRouteUrl } from '@claude-proxy/core';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8788';
 
@@ -817,13 +822,97 @@ export interface ChatStreamFrame {
   truncated: boolean;
 }
 /** Where a turn's live account arrives; an `EventSource` path, not a fetch. */
-export const chatStreamPath = (sessionId: string) => `/api/chat/stream?sessionId=${encodeURIComponent(sessionId)}`;
+export const chatStreamPath = (sessionId: string) => apiRouteUrl('/api/chat/stream', { sessionId });
 
 export interface HealthResponse {
   ok: boolean;
   logDir: string;
   logDirReadable: boolean;
   sidecarCount: number | null;
+}
+/** What a stop or an end answers: the session it named, and whether it caught a turn. */
+export interface ChatStopResponse {
+  sessionId: string;
+  stopped: boolean;
+}
+
+/**
+ * What each declared read answers. `extends Record<ApiJsonGetPath, unknown>` keys it by
+ * the manifest's own GET paths: a declared route with no shape here does not compile,
+ * and neither does a shape for a path the server does not serve.
+ */
+interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
+  '/api/health': HealthResponse;
+  '/api/summary': SummaryResponse;
+  '/api/trends': TrendsResponse;
+  '/api/prompt-mix': PromptMixResponse;
+  '/api/prompt': PromptDetailResponse;
+  '/api/prompt/section': PromptSectionResponse;
+  '/api/tool-schema': ToolSchemaResponse;
+  '/api/usage': UsageResponse;
+  '/api/tools': ToolsResponse;
+  '/api/context': ContextResponse;
+  '/api/context/thread': ContextThreadResponse;
+  '/api/context/detail': ContextDetailResponse;
+  '/api/context/message': ContextMessageResponse;
+  '/api/context/tool': ContextToolResponse;
+  '/api/projects': ProjectsResponse;
+  '/api/projects/memories': ProjectMemoriesResponse;
+  '/api/projects/memory': MemoryResponse;
+  '/api/jobs': JobsResponse;
+  '/api/jobs/job': JobResponse;
+  '/api/jobs/file': JobFileResponse;
+  '/api/sessions': SessionsResponse;
+  '/api/sessions/graph': SessionsGraphResponse;
+  '/api/sessions/liveness': SessionsLivenessResponse;
+  '/api/sessions/node-text': SessionNodeTextsResponse;
+  '/api/sessions/graph/nodes': SessionGraphNodesResponse;
+  '/api/sessions/session': SessionResponse;
+  '/api/sessions/breakdown': SessionBreakdownResponse;
+  '/api/sessions/errors': SessionErrorsResponse;
+  '/api/sessions/suggestions': SessionSuggestionsResponse;
+  '/api/sessions/suggestions/bucket': SessionSuggestionBucketResponse;
+  '/api/sessions/suggestions/status': SuggestionStatusResponse;
+  '/api/commands': CommandsResponse;
+  '/api/commands/command': CommandResponse;
+  '/api/commands/run': CommandRunResponse;
+  '/api/concepts': ConceptsResponse;
+  '/api/concepts/concept': ConceptResponse;
+  '/api/ideas': IdeasResponse;
+  '/api/chat/config': ChatConfigResponse;
+  '/api/chat/running': RunningChatsResponse;
+  '/api/chat/thread': ChatThreadResponse;
+  '/api/skim': SkimResponse;
+  '/api/skim/trend': SkimTrendResponse;
+  '/api/withheld': WithheldResponse;
+  '/api/pull-requests': PullRequestsResponse;
+  '/api/hooks-plugins': HooksPluginsResponse;
+  '/api/cli-internals': CliInternalsResponse;
+  '/api/cli-internals/function': CliFunctionResponse;
+  '/api/system-prompt': SystemPromptResponse;
+  '/api/filters': FiltersResponse;
+}
+
+/**
+ * What each declared write answers — a second map rather than one, because
+ * `/api/system-prompt` and `/api/sessions/suggestions/status` answer a different shape
+ * to a POST than to a GET.
+ */
+interface ApiPostResponses extends Record<ApiWritePath, unknown> {
+  '/api/jobs/delete': JobDeleteResponse;
+  '/api/sessions/suggestions/status': SuggestionStatusUpdateResponse;
+  '/api/main-history/slide': MainSlideResponse;
+  '/api/main-history/sync-local': MainSyncResponse;
+  '/api/main-history/hide': MainHideResponse;
+  '/api/system-prompt': SystemPromptUpdateResponse;
+  '/api/ideas/status': IdeasStatusResponse;
+  '/api/ideas/claim': IdeasClaimResponse;
+  '/api/ideas/area': IdeasEditResponse;
+  '/api/ideas/comment': IdeasEditResponse;
+  '/api/chat/sessions': ChatSendResponse;
+  '/api/chat/sessions/message': ChatSendResponse;
+  '/api/chat/stop': ChatStopResponse;
+  '/api/chat/sessions/end': ChatStopResponse;
 }
 
 /** Unwrap a response, preferring the server's `{ error }` message over the status. */
@@ -841,13 +930,20 @@ async function unwrap<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function get<T>(path: string): Promise<T> {
-  return unwrap<T>(await fetch(`${API_BASE}${path}`));
+/**
+ * Read one declared route: the path must be a manifest JSON GET, the query keys must be
+ * parameters that route declares, and the answer's type comes off `ApiGetResponses`.
+ */
+async function read<P extends ApiJsonGetPath>(
+  path: P,
+  params: Partial<Record<ApiRouteParam<P>, ApiQueryValue>> = {},
+): Promise<ApiGetResponses[P]> {
+  return unwrap<ApiGetResponses[P]>(await fetch(`${API_BASE}${apiRouteUrl(path, params)}`));
 }
 
-/** The chat routes, the suggestion flags, the job delete and the system-prompt save are the only writes the API accepts. */
-async function post<T>(path: string, body: unknown): Promise<T> {
-  return unwrap<T>(
+/** Write one declared route — the manifest's `cors: 'origin'` POST paths, and only those. */
+async function write<P extends ApiWritePath>(path: P, body: unknown): Promise<ApiPostResponses[P]> {
+  return unwrap<ApiPostResponses[P]>(
     await fetch(`${API_BASE}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -856,129 +952,103 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   );
 }
 
-const qs = (date?: string) => (date ? `?date=${encodeURIComponent(date)}` : '');
-
-export const getHealth = () => get<HealthResponse>('/api/health');
-export const getSummary = (date?: string) => get<SummaryResponse>(`/api/summary${qs(date)}`);
-export const getTrends = (days: number) => get<TrendsResponse>(`/api/trends?days=${days}`);
-export const getPromptMix = (days: number) => get<PromptMixResponse>(`/api/prompt-mix?days=${days}`);
-export const getPromptDetail = (hash: string, days: number) =>
-  get<PromptDetailResponse>(`/api/prompt?hash=${encodeURIComponent(hash)}&days=${days}`);
+export const getHealth = () => read('/api/health');
+export const getSummary = (date?: string) => read('/api/summary', { date });
+export const getTrends = (days: number) => read('/api/trends', { days });
+export const getPromptMix = (days: number) => read('/api/prompt-mix', { days });
+export const getPromptDetail = (hash: string, days: number) => read('/api/prompt', { hash, days });
 export const getPromptSection = (hash: string, index: number, days: number) =>
-  get<PromptSectionResponse>(`/api/prompt/section?hash=${encodeURIComponent(hash)}&index=${index}&days=${days}`);
+  read('/api/prompt/section', { hash, index, days });
 /** Paired with the `/api/usage/stream` SSE subscription, which pushes the same shape. */
-export const getUsage = () => get<UsageResponse>('/api/usage');
-export const getTools = (date?: string) => get<ToolsResponse>(`/api/tools${qs(date)}`);
-export const getToolSchema = (name: string, days: number) =>
-  get<ToolSchemaResponse>(`/api/tool-schema?name=${encodeURIComponent(name)}&days=${days}`);
-export const getContext = (days: number) => get<ContextResponse>(`/api/context?days=${days}`);
+export const getUsage = () => read('/api/usage');
+export const getTools = (date?: string) => read('/api/tools', { date });
+export const getToolSchema = (name: string, days: number) => read('/api/tool-schema', { name, days });
+export const getContext = (days: number) => read('/api/context', { days });
 export const getContextThread = (threadId: string, days: number) =>
-  get<ContextThreadResponse>(`/api/context/thread?thread=${encodeURIComponent(threadId)}&days=${days}`);
-export const getContextDetail = (file: string) =>
-  get<ContextDetailResponse>(`/api/context/detail?file=${encodeURIComponent(file)}`);
-export const getContextMessage = (file: string, index: number) =>
-  get<ContextMessageResponse>(`/api/context/message?file=${encodeURIComponent(file)}&index=${index}`);
-export const getContextTool = (file: string, index: number) =>
-  get<ContextToolResponse>(`/api/context/tool?file=${encodeURIComponent(file)}&index=${index}`);
-export const getProjects = () => get<ProjectsResponse>('/api/projects');
-export const getProjectMemories = (project: string) =>
-  get<ProjectMemoriesResponse>(`/api/projects/memories?project=${encodeURIComponent(project)}`);
-export const getMemory = (project: string, name: string) =>
-  get<MemoryResponse>(`/api/projects/memory?project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`);
+  read('/api/context/thread', { thread: threadId, days });
+export const getContextDetail = (file: string) => read('/api/context/detail', { file });
+export const getContextMessage = (file: string, index: number) => read('/api/context/message', { file, index });
+export const getContextTool = (file: string, index: number) => read('/api/context/tool', { file, index });
+export const getProjects = () => read('/api/projects');
+export const getProjectMemories = (project: string) => read('/api/projects/memories', { project });
+export const getMemory = (project: string, name: string) => read('/api/projects/memory', { project, name });
 /** Every background job directory on the device, newest activity first. */
-export const getJobs = () => get<JobsResponse>('/api/jobs');
-export const getJob = (id: string) => get<JobResponse>(`/api/jobs/job?id=${encodeURIComponent(id)}`);
+export const getJobs = () => read('/api/jobs');
+export const getJob = (id: string) => read('/api/jobs/job', { id });
 /** One file from a job directory — `file` is a path relative to that directory. */
-export const getJobFile = (id: string, file: string) =>
-  get<JobFileResponse>(`/api/jobs/file?id=${encodeURIComponent(id)}&file=${encodeURIComponent(file)}`);
+export const getJobFile = (id: string, file: string) => read('/api/jobs/file', { id, file });
 /** Delete one job directory from `~/.claude/jobs` — no trash, and a running job is refused. */
-export const deleteJob = (id: string) => post<JobDeleteResponse>('/api/jobs/delete', { id });
-export const getSessions = () => get<SessionsResponse>('/api/sessions');
-export const getSessionsGraph = () => get<SessionsGraphResponse>('/api/sessions/graph');
+export const deleteJob = (id: string) => write('/api/jobs/delete', { id });
+export const getSessions = () => read('/api/sessions');
+export const getSessionsGraph = () => read('/api/sessions/graph');
 /** Every branch's liveness verdict, live branches first — the graph payload without the steps. */
-export const getSessionsLiveness = () => get<SessionsLivenessResponse>('/api/sessions/liveness');
-export const getSessionGraphNodes = (id: string) =>
-  get<SessionGraphNodesResponse>(`/api/sessions/graph/nodes?id=${encodeURIComponent(id)}`);
-export const getSession = (id: string) => get<SessionResponse>(`/api/sessions/session?id=${encodeURIComponent(id)}`);
-export const getSessionErrors = (id: string) =>
-  get<SessionErrorsResponse>(`/api/sessions/errors?id=${encodeURIComponent(id)}`);
-export const getSessionNodeTexts = (id: string) =>
-  get<SessionNodeTextsResponse>(`/api/sessions/node-text?id=${encodeURIComponent(id)}`);
-export const getSessionBreakdown = (id: string) =>
-  get<SessionBreakdownResponse>(`/api/sessions/breakdown?id=${encodeURIComponent(id)}`);
-export const getCommands = () => get<CommandsResponse>('/api/commands');
+export const getSessionsLiveness = () => read('/api/sessions/liveness');
+export const getSessionGraphNodes = (id: string) => read('/api/sessions/graph/nodes', { id });
+export const getSession = (id: string) => read('/api/sessions/session', { id });
+export const getSessionErrors = (id: string) => read('/api/sessions/errors', { id });
+export const getSessionNodeTexts = (id: string) => read('/api/sessions/node-text', { id });
+export const getSessionBreakdown = (id: string) => read('/api/sessions/breakdown', { id });
+export const getCommands = () => read('/api/commands');
 /** `flags` narrows which runs are aggregated; it never splits the command into variants. */
-export const getCommand = (command: string, flags: readonly string[] = []) => {
-  const params = new URLSearchParams({ name: command });
-  if (flags.length) params.set('flags', flags.join(','));
-  return get<CommandResponse>(`/api/commands/command?${params.toString()}`);
-};
-export const getCommandRun = (threadId: string) =>
-  get<CommandRunResponse>(`/api/commands/run?id=${encodeURIComponent(threadId)}`);
+export const getCommand = (command: string, flags: readonly string[] = []) =>
+  read('/api/commands/command', { name: command, flags: flags.length ? flags.join(',') : undefined });
+export const getCommandRun = (threadId: string) => read('/api/commands/run', { id: threadId });
 
 /** Every ten-session window, recomputed server-side on each load — this is the backfill. */
-export const getSessionSuggestions = () => get<SessionSuggestionsResponse>('/api/sessions/suggestions');
-export const getSessionSuggestionBucket = (index: number) =>
-  get<SessionSuggestionBucketResponse>(`/api/sessions/suggestions/bucket?index=${index}`);
+export const getSessionSuggestions = () => read('/api/sessions/suggestions');
+export const getSessionSuggestionBucket = (index: number) => read('/api/sessions/suggestions/bucket', { index });
 /**
  * The flags on those suggestions. `range` narrows to a bucket, list or span;
  * `recurrences` narrows by how each window stands against its rule's dated `done`.
  */
 export const getSuggestionStatus = (
   opts: { range?: string; statuses?: SuggestionStatus[]; recurrences?: SuggestionRecurrence[]; detail?: boolean } = {},
-) => {
-  const params = new URLSearchParams();
-  if (opts.range) params.set('range', opts.range);
-  if (opts.statuses?.length) params.set('status', opts.statuses.join(','));
-  if (opts.recurrences?.length) params.set('recurrence', opts.recurrences.join(','));
-  if (opts.detail) params.set('detail', '1');
-  const query = params.toString();
-  return get<SuggestionStatusResponse>(`/api/sessions/suggestions/status${query ? `?${query}` : ''}`);
-};
+) =>
+  read('/api/sessions/suggestions/status', {
+    range: opts.range,
+    status: opts.statuses?.length ? opts.statuses.join(',') : undefined,
+    recurrence: opts.recurrences?.length ? opts.recurrences.join(',') : undefined,
+    detail: opts.detail ? '1' : undefined,
+  });
 /** Record flags. Setting one back to `pending` deletes its entry — that is the undo. */
 export const markSuggestionStatus = (updates: SuggestionStatusUpdate[]) =>
-  post<SuggestionStatusUpdateResponse>('/api/sessions/suggestions/status', { updates });
-export const getSkim = (date?: string) => get<SkimResponse>(`/api/skim${qs(date)}`);
-export const getSkimTrend = (days: number) => get<SkimTrendResponse>(`/api/skim/trend?days=${days}`);
-export const getWithheld = (days = 14) => get<WithheldResponse>(`/api/withheld?days=${days}`);
+  write('/api/sessions/suggestions/status', { updates });
+export const getSkim = (date?: string) => read('/api/skim', { date });
+export const getSkimTrend = (days: number) => read('/api/skim/trend', { days });
+export const getWithheld = (days = 14) => read('/api/withheld', { days });
 /** The project's pull requests, read through `gh` on the server. */
-export const getPullRequests = () => get<PullRequestsResponse>('/api/pull-requests');
+export const getPullRequests = () => read('/api/pull-requests');
 /**
  * Move `origin/main` to a merged PR's landing commit. `expectedMain` is the sha the page
  * was showing: the server pushes with a lease against it, so a stale page is rejected by
  * GitHub rather than by a check that could race. The commit `main` leaves is pinned first.
  */
 export const slideMain = (expectedMain: string, target: string) =>
-  post<MainSlideResponse>('/api/main-history/slide', { expectedMain, target });
+  write('/api/main-history/slide', { expectedMain, target });
 /** Point the server checkout's own `main` back at `origin/main` — what `git pull` will not do. */
-export const syncLocalMain = (preserve = false) => post<MainSyncResponse>('/api/main-history/sync-local', { preserve });
+export const syncLocalMain = (preserve = false) => write('/api/main-history/sync-local', { preserve });
 /** Hide a pinned line from the page, or show it again. The pin itself is never deleted. */
-export const setMainLineHidden = (sha: string, hidden: boolean) =>
-  post<MainHideResponse>('/api/main-history/hide', { sha, hidden });
-export const getHooksPlugins = () => get<HooksPluginsResponse>('/api/hooks-plugins');
+export const setMainLineHidden = (sha: string, hidden: boolean) => write('/api/main-history/hide', { sha, hidden });
+export const getHooksPlugins = () => read('/api/hooks-plugins');
 /** The catalogued CLI internals, resolved against the bundle installed right now. */
-export const getCliInternals = () => get<CliInternalsResponse>('/api/cli-internals');
+export const getCliInternals = () => read('/api/cli-internals');
 /** One catalogued function, with its source read straight out of that bundle. */
-export const getCliFunction = (id: string) =>
-  get<CliFunctionResponse>(`/api/cli-internals/function?id=${encodeURIComponent(id)}`);
+export const getCliFunction = (id: string) => read('/api/cli-internals/function', { id });
 /** Everything `/teach` has saved, newest first. */
-export const getConcepts = () => get<ConceptsResponse>('/api/concepts');
+export const getConcepts = () => read('/api/concepts');
 /** One saved concept, by the line it sits on in the store. */
-export const getConcept = (ord: number) => get<ConceptResponse>(`/api/concepts/concept?ord=${ord}`);
+export const getConcept = (ord: number) => read('/api/concepts/concept', { ord });
 /** The device system prompt as it is on disk — `~/.claude/CLAUDE.md`. */
-export const getSystemPrompt = () => get<SystemPromptResponse>('/api/system-prompt');
+export const getSystemPrompt = () => read('/api/system-prompt');
 /**
  * Overwrite it. The server keeps the previous contents in a `.bak` beside the file.
  * `expectedModified` is the mtime the save is replacing; the server answers 409 when
  * the file no longer carries it. Omit it to write regardless.
  */
 export const saveSystemPrompt = (text: string, expectedModified?: string | null) =>
-  post<SystemPromptUpdateResponse>(
-    '/api/system-prompt',
-    expectedModified === undefined ? { text } : { text, expectedModified },
-  );
+  write('/api/system-prompt', expectedModified === undefined ? { text } : { text, expectedModified });
 /** The whole ledger, paired with the `/api/ideas/stream` subscription that pushes the same shape. */
-export const getIdeas = () => get<IdeasResponse>('/api/ideas');
+export const getIdeas = () => read('/api/ideas');
 /**
  * Adjudicate ideas. The browser may set `accepted`, `rejected`, `proposed` (the
  * undo) and `shipped`; only `claimed` stays off, since a claim names a holder and
@@ -987,40 +1057,37 @@ export const getIdeas = () => get<IdeasResponse>('/api/ideas');
  * `shipped` one (the note is the PR url), as is shipping an idea whose status
  * `canShipIdea` does not allow.
  */
-export const markIdeas = (marks: IdeaMark[]) => post<IdeasStatusResponse>('/api/ideas/status', { marks });
+export const markIdeas = (marks: IdeaMark[]) => write('/api/ideas/status', { marks });
 /**
  * Take an idea under a named holder — the way back from a release, which drops
  * the claim outright. Its own route rather than a `claimed` mark, since a mark
  * carries no holder. A live holder comes back under `meta.refused`, not as an
  * error.
  */
-export const claimIdeas = (claims: IdeaClaimRequest[]) => post<IdeasClaimResponse>('/api/ideas/claim', { claims });
+export const claimIdeas = (claims: IdeaClaimRequest[]) => write('/api/ideas/claim', { claims });
 /**
  * Re-file ideas under an area. Its own route rather than a field on the mark: a
  * status change must never move an idea between tabs as a side effect. An idea
  * citing `command-gap` cannot leave the Commands area and is refused with 400.
  */
-export const fileIdeas = (filings: IdeaFiling[]) => post<IdeasEditResponse>('/api/ideas/area', { filings });
+export const fileIdeas = (filings: IdeaFiling[]) => write('/api/ideas/area', { filings });
 /** Write the comment on an idea. It replaces the previous one; `''` clears it. */
-export const commentIdeas = (comments: IdeaComment[]) => post<IdeasEditResponse>('/api/ideas/comment', { comments });
-export const getFilters = () => get<FiltersResponse>('/api/filters');
-export const getChatConfig = () => get<ChatConfigResponse>('/api/chat/config');
+export const commentIdeas = (comments: IdeaComment[]) => write('/api/ideas/comment', { comments });
+export const getFilters = () => read('/api/filters');
+export const getChatConfig = () => read('/api/chat/config');
 /** Turns in flight — how a session page finds the Stop the starting tab may have lost. */
-export const getRunningChats = () => get<RunningChatsResponse>('/api/chat/running');
+export const getRunningChats = () => read('/api/chat/running');
 /** Which transcript a chat session id became — polled by the page it navigated to. */
-export const getChatThread = (sessionId: string) =>
-  get<ChatThreadResponse>(`/api/chat/thread?sessionId=${encodeURIComponent(sessionId)}`);
+export const getChatThread = (sessionId: string) => read('/api/chat/thread', { sessionId });
 /** The session id is chosen here, not read off the response, so the first turn is stoppable. */
 export const startChat = (
   sessionId: string,
   prompt: string,
   opts: { mode?: ChatMode; permissionMode?: PermissionMode } = {},
-) => post<ChatSendResponse>('/api/chat/sessions', { sessionId, prompt, ...opts });
+) => write('/api/chat/sessions', { sessionId, prompt, ...opts });
 export const sendChatMessage = (sessionId: string, prompt: string) =>
-  post<ChatSendResponse>('/api/chat/sessions/message', { sessionId, prompt });
+  write('/api/chat/sessions/message', { sessionId, prompt });
 /** Ends the turn in flight; the send it interrupts resolves with the partial reply. */
-export const stopChat = (sessionId: string) =>
-  post<{ sessionId: string; stopped: boolean }>('/api/chat/stop', { sessionId });
+export const stopChat = (sessionId: string) => write('/api/chat/stop', { sessionId });
 /** Ends the session, so the server stops holding it once the user moves on. */
-export const endChat = (sessionId: string) =>
-  post<{ sessionId: string; stopped: boolean }>('/api/chat/sessions/end', { sessionId });
+export const endChat = (sessionId: string) => write('/api/chat/sessions/end', { sessionId });
