@@ -154,8 +154,7 @@
   }
 
   /* The /task prompt: preview by default, edit for a one-off, copy from either.
-   The tab strip reuses `.idea-tabs`/`.idea-tab` above — the same control doing the
-   same job, so the two read as one system rather than as two tab designs. */
+   The tab strip reuses `.idea-tabs`/`.idea-tab` above rather than restyling one. */
   .idea-prompt-copy {
     margin-left: auto;
     display: inline-flex;

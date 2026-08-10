@@ -165,29 +165,22 @@ function CopyGlyph() {
 /**
  * The `/task` prompt that builds this idea, ready to paste into an agent.
  *
- * **Preview is the default tab and Edit is the exception**, because the prompt is
- * derived from the entry and is usually correct as generated — opening on a
- * textarea would present a composed artifact as a blank to fill in. Edit exists
- * for the one-off: a caveat that belongs in *this* copy of the prompt and not on
- * the ledger.
+ * Preview is the default tab; Edit is the exception, for a caveat that belongs
+ * in *this* copy of the prompt and not on the ledger.
  *
- * **The edit is local to the clipboard and deliberately not persisted.** The
- * ledger already has the field for a durable instruction —
- * {@link IdeaEntry.comment}, which the generated prompt quotes as build criteria
- * — and storing a second, freely-edited copy of the whole prompt beside it would
- * give one idea two disagreeing statements of its task with nothing to say which
- * is current. So an edit here changes what you copy now; the comment editor
- * below changes what everyone generates next, including
- * `ideas prompt --slug <slug>`, which an orchestrator reads to hand this work to
- * a subagent.
+ * **The edit is local to the clipboard and deliberately not persisted.** A
+ * durable instruction goes in {@link IdeaEntry.comment}, which the generated
+ * prompt quotes — storing a second freely-edited copy beside it would give one
+ * idea two disagreeing statements of its task. An edit here changes what you
+ * copy now; the comment editor below changes what everyone generates next,
+ * including `ideas prompt --slug <slug>`.
  */
 function TaskPromptCard({ idea }: { idea: IdeaEntry }) {
   const generated = ideaTaskPrompt(idea);
   const [tab, setTab] = useState<'preview' | 'edit'>('preview');
   // The generated prompt this draft was taken from. The page is live over SSE, so
-  // a re-file or a new comment arrives while the card is open: the draft follows
-  // the regenerated prompt, *unless* it was edited, in which case discarding the
-  // edit to track a change the reader did not make is the worse surprise.
+  // the draft follows a regenerated prompt — unless it was edited, since
+  // discarding an edit to track a change the reader did not make is worse.
   const [base, setBase] = useState(generated);
   const [draft, setDraft] = useState(generated);
   if (base !== generated) {

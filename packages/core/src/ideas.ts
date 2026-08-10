@@ -1167,10 +1167,7 @@ export function similarAreas(store: IdeasStore, area: string): string[] {
 }
 
 /**
- * Where a citation points, in a form a reader can go and check.
- *
- * A judge note lives in the suggestion store rather than in a file, so it is
- * located by `bucket`/`id`; everything else is a repo-relative path. A
+ * Where a citation points, in a form a reader can go and check. A
  * `command-gap` has nothing to locate and reads as the empty string.
  */
 export function ideaCitation(evidence: IdeaEvidence): string {
@@ -1183,24 +1180,19 @@ export function ideaCitation(evidence: IdeaEvidence): string {
  * The `/task` invocation that builds one idea, composed from what the ledger
  * already holds about it.
  *
- * **Derived, never stored.** There is no `prompt` field on {@link IdeaEntry} and
- * deliberately so: a stored copy would go stale the moment somebody re-filed the
- * idea or rewrote its comment, and the ledger would then hold two disagreeing
- * statements of the same task with nothing to say which one was current. The
- * entry is the single source, and this is a pure reading of it — so the
- * dashboard, the CLI and an orchestrator handing work to a subagent all emit the
- * same bytes without coordinating.
+ * **Derived, never stored.** There is deliberately no `prompt` field on
+ * {@link IdeaEntry}: a stored copy would go stale against a re-file or a
+ * rewritten comment, leaving the ledger holding two disagreeing statements of
+ * the same task. The entry is the single source, so the dashboard and the CLI
+ * emit the same bytes without coordinating.
  *
- * **The comment is the human's half and is quoted verbatim**, because it is the
- * one part of an idea a person wrote *as build criteria* — see
- * {@link IdeaEntry.comment}. A reader editing the prompt in the dashboard is
- * editing a copy for their clipboard; the way to change what this function
- * produces for everyone is to write the comment.
+ * {@link IdeaEntry.comment} is the one part a person wrote *as build criteria*
+ * and is quoted verbatim; editing the rendered prompt changes only that
+ * reader's copy, while writing the comment changes it for everyone.
  *
- * The claim lines are on every prompt rather than only on an unclaimed one. The
- * prompt is copied once and pasted into a run that starts later, so what was
- * free when it was rendered may not be by then, and `ideas claim` is what
- * refuses — an exit code beats a snapshot of the status taken minutes earlier.
+ * The claim lines are on every prompt, not only an unclaimed one — a prompt is
+ * pasted into a run that starts later, so what was free at render time may not
+ * be, and `ideas claim` is what refuses.
  */
 export function ideaTaskPrompt(entry: IdeaEntry): string {
   const lines: string[] = [
