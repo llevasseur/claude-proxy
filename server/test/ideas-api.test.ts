@@ -6,7 +6,14 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { applyIdeaArea, applyIdeaComment, applyIdeaStatus, BROWSER_IDEA_STATUSES, buildIdeas } from '../src/api.js';
+import {
+  applyIdeaArea,
+  applyIdeaClaim,
+  applyIdeaComment,
+  applyIdeaStatus,
+  BROWSER_IDEA_STATUSES,
+  buildIdeas,
+} from '../src/api.js';
 import { addIdeasToStore, claimIdeasInStore, readIdeasStore } from '../src/ideas-store.js';
 
 let logDir: string;
@@ -110,12 +117,54 @@ describe('applyIdeaStatus', () => {
     expect((await readIdeasStore(logDir)).ideas['rolling-window']?.status).toBe('proposed');
   });
 
-  it('refuses `shipped`, which carries a PR url and stays with the CLI', async () => {
+  it('ships a claimed idea with the PR url as its note, keeping the claim', async () => {
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+    await claimIdeasInStore(logDir, [{ slug: 'rolling-window', by: 'run-a' }]);
+
+    const shipped = await applyIdeaStatus(logDir, [
+      { slug: 'rolling-window', status: 'shipped', note: 'https://example.test/pr/1' },
+    ]);
+
+    expect(shipped.rows[0]?.status).toBe('shipped');
+    expect(shipped.rows[0]?.note).toBe('https://example.test/pr/1');
+    // `shipped` is the one mark that keeps the claim — the record of who built it.
+    expect(shipped.rows[0]?.claim?.by).toBe('run-a');
+    expect(BROWSER_IDEA_STATUSES).toEqual(['proposed', 'accepted', 'rejected', 'shipped']);
+  });
+
+  it('ships a released idea too, since letting the claim go did not un-land the PR', async () => {
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+
+    const shipped = await applyIdeaStatus(logDir, [
+      { slug: 'rolling-window', status: 'shipped', note: 'https://example.test/pr/2' },
+    ]);
+
+    expect(shipped.rows[0]?.status).toBe('shipped');
+    expect(shipped.rows[0]?.note).toBe('https://example.test/pr/2');
+  });
+
+  it('refuses a shipped mark with no PR url, writing nothing', async () => {
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+    for (const note of [undefined, '', '   ']) {
+      const mark = { slug: 'rolling-window', status: 'shipped' as const, ...(note === undefined ? {} : { note }) };
+      await expect(applyIdeaStatus(logDir, [mark])).rejects.toThrow(/needs the PR url/);
+    }
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.status).toBe('accepted');
+  });
+
+  it('refuses shipping an idea nobody signed off, and re-shipping a terminal one', async () => {
     await expect(
-      applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'shipped', note: 'https://example.test/pr/1' }]),
-    ).rejects.toThrow(/cannot be set from the dashboard/);
+      applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'shipped', note: 'https://example.test/pr/3' }]),
+    ).rejects.toThrow(/only an accepted or claimed idea may be shipped/);
     expect((await readIdeasStore(logDir)).ideas['rolling-window']?.status).toBe('proposed');
-    expect(BROWSER_IDEA_STATUSES).toEqual(['proposed', 'accepted', 'rejected']);
+
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'shipped', note: 'https://example.test/pr/3' }]);
+    await expect(
+      applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'shipped', note: 'https://example.test/pr/4' }]),
+    ).rejects.toThrow(/shipped is terminal/);
+    // The first url stands: nothing un-ships work that landed.
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.note).toBe('https://example.test/pr/3');
   });
 
   it('refuses `claimed`, since a claim names the run building the idea', async () => {
@@ -159,6 +208,51 @@ describe('applyIdeaStatus', () => {
 
   it('refuses an empty batch', async () => {
     await expect(applyIdeaStatus(logDir, [])).rejects.toThrow(/no idea marks given/);
+  });
+});
+
+describe('applyIdeaClaim', () => {
+  it('takes a released idea back under a named holder, with the PR url re-entered', async () => {
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+
+    const claimed = await applyIdeaClaim(logDir, [
+      { slug: 'rolling-window', by: 'feat/rolling-window', pr: 'https://example.test/pr/9' },
+    ]);
+
+    expect(claimed.meta.claimed).toEqual(['rolling-window']);
+    expect(claimed.rows[0]?.status).toBe('claimed');
+    expect(claimed.rows[0]?.claim?.by).toBe('feat/rolling-window');
+    expect(claimed.rows[0]?.claim?.pr).toBe('https://example.test/pr/9');
+  });
+
+  it('reports a live holder as a refusal rather than throwing, and writes nothing', async () => {
+    await applyIdeaStatus(logDir, [{ slug: 'rolling-window', status: 'accepted' }]);
+    await claimIdeasInStore(logDir, [{ slug: 'rolling-window', by: 'run-a' }]);
+
+    const refused = await applyIdeaClaim(logDir, [{ slug: 'rolling-window', by: 'run-b' }]);
+
+    expect(refused.meta.claimed).toEqual([]);
+    expect(refused.meta.refused[0]?.heldBy).toBe('run-a');
+    expect((await readIdeasStore(logDir)).ideas['rolling-window']?.claim?.by).toBe('run-a');
+  });
+
+  it('refuses a claim on an idea nobody signed off, since a claim may not skip the sign-off', async () => {
+    const refused = await applyIdeaClaim(logDir, [{ slug: 'rolling-window', by: 'run-a' }]);
+
+    expect(refused.meta.claimed).toEqual([]);
+    expect(refused.meta.refused[0]?.status).toBe('proposed');
+  });
+
+  it('refuses a blank holder and an empty batch, since a claim nobody holds parks the idea', async () => {
+    await expect(applyIdeaClaim(logDir, [{ slug: 'rolling-window', by: '  ' }])).rejects.toThrow(/needs a holder/);
+    await expect(applyIdeaClaim(logDir, [])).rejects.toThrow(/no idea claims given/);
+  });
+
+  it('writes nothing for a slug the ledger does not carry', async () => {
+    const result = await applyIdeaClaim(logDir, [{ slug: 'never-proposed', by: 'run-a' }]);
+
+    expect(result.meta.unknown).toEqual(['never-proposed']);
+    expect(result.rows).toEqual([]);
   });
 });
 

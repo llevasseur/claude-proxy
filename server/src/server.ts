@@ -9,6 +9,7 @@ import {
   isSuggestionStatus,
   isThreadId,
   parseBucketRange,
+  parseIdeaClaims,
   parseIdeaComments,
   parseIdeaFilings,
   parseIdeaMarks,
@@ -19,6 +20,7 @@ import {
 } from '@claude-proxy/core';
 import {
   applyIdeaArea,
+  applyIdeaClaim,
   applyIdeaComment,
   applyIdeaStatus,
   applySuggestionJudge,
@@ -193,6 +195,12 @@ const IDEAS_STATUS_ROUTE = '/api/ideas/status';
  */
 const IDEAS_AREA_ROUTE = '/api/ideas/area';
 const IDEAS_COMMENT_ROUTE = '/api/ideas/comment';
+/**
+ * Taking one. Its own route rather than a `claimed` mark, because a claim must
+ * name a holder a second run can recognise and a mark carries none — see
+ * `applyIdeaClaim`. It is the way back from a release, which drops the claim.
+ */
+const IDEAS_CLAIM_ROUTE = '/api/ideas/claim';
 
 /** The one destructive route: removes a `~/.claude/jobs/<id>` directory from disk. */
 const JOB_DELETE_ROUTE = '/api/jobs/delete';
@@ -216,6 +224,7 @@ const WRITE_ROUTES = new Set([
   IDEAS_STATUS_ROUTE,
   IDEAS_AREA_ROUTE,
   IDEAS_COMMENT_ROUTE,
+  IDEAS_CLAIM_ROUTE,
   JOB_DELETE_ROUTE,
   SYSTEM_PROMPT_ROUTE,
   ...MAIN_HISTORY_ROUTES,
@@ -1156,6 +1165,16 @@ const server = http.createServer(async (req, res) => {
           req,
           res,
           (body) => applyIdeaComment(LOG_DIR, parseIdeaComments(body.comments), new Date()),
+          () => 400,
+        );
+        return;
+      // Taking one back. A live holder comes back in the body as a refusal rather
+      // than as a status, so only a malformed request is a 400.
+      case IDEAS_CLAIM_ROUTE:
+        await servePost(
+          req,
+          res,
+          (body) => applyIdeaClaim(LOG_DIR, parseIdeaClaims(body.claims), new Date()),
           () => 400,
         );
         return;
