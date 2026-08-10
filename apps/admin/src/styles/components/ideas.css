@@ -55,9 +55,8 @@
     margin-left: auto;
     font-size: var(--text-4);
   }
-  /* The three revealed forms — reject, ship, re-claim — are one shape: the row of
-   buttons is replaced in place by the field that decision needs, so they take the
-   row's whole width and never stack a second submit beside the first. */
+  /* The three revealed forms — reject, ship, re-claim — are one shape: each
+   replaces the row of buttons in place and takes its whole width. */
   .idea-reject,
   .idea-ship,
   .idea-reclaim {
@@ -72,8 +71,7 @@
     flex: 1 1 auto;
     min-width: 12rem;
   }
-  /* Re-claim asks for two, and the holder is the required one — the PR url is
-   optional, so it yields the room when the row has to wrap. */
+  /* Re-claim asks for two; the optional url yields room to the required holder. */
   .idea-reclaim input[type="url"] {
     flex: 0 1 auto;
     min-width: 9rem;

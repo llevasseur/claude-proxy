@@ -198,7 +198,7 @@ const IDEAS_COMMENT_ROUTE = '/api/ideas/comment';
 /**
  * Taking one. Its own route rather than a `claimed` mark, because a claim must
  * name a holder a second run can recognise and a mark carries none — see
- * `applyIdeaClaim`. It is the way back from a release, which drops the claim.
+ * `applyIdeaClaim`.
  */
 const IDEAS_CLAIM_ROUTE = '/api/ideas/claim';
 

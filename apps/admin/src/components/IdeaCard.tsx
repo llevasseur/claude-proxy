@@ -90,9 +90,8 @@ export function hasIdeaDecision(status: IdeaStatus): boolean {
 }
 
 /**
- * Which revealed form is open, or `null` for the plain row of buttons. One at a
- * time: each replaces the buttons in place, so two open at once would leave a
- * reader looking at two submits that mean different things.
+ * Which revealed form is open, or `null` for the plain row of buttons — one at a
+ * time, since each replaces the buttons in place.
  */
 type IdeaForm = 'reject' | 'ship' | 'claim';
 
@@ -101,18 +100,15 @@ type IdeaForm = 'reject' | 'ship' | 'claim';
  * the card and the permalink so the two cannot disagree about what a status may
  * become. `children` renders on the same row, which is the timestamp on the card.
  *
- * **Release is no longer a one-way door.** It drops the claim, and with it the
- * holder and the PR url — see `applyIdeaMarks`, which rebuilds the entry without
- * the claim on every mark but `shipped`. So both ways back out of a released
- * idea are offered here, and both collect what the release discarded rather than
- * pretending to restore it: Ship takes the PR url as its note, and Re-claim takes
- * a holder and optionally the url again.
+ * Release drops the claim, and with it the holder and the PR url — see
+ * `applyIdeaMarks`. Both ways back out of a released idea collect what it
+ * discarded rather than restoring it: Ship takes the PR url as its note,
+ * Re-claim takes a holder and optionally the url again.
  */
 export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; children?: ReactNode }) {
   const client = useQueryClient();
   const [form, setForm] = useState<IdeaForm | null>(null);
   const [reason, setReason] = useState('');
-  // The url the mark wants is the one the claim already carries, when it has one.
   const [pr, setPr] = useState(idea.claim?.pr ?? '');
   const [holder, setHolder] = useState('');
   // The button each form replaced leaves the tab order with it, so focus would
@@ -122,8 +118,7 @@ export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; chil
   useEffect(() => {
     if (form) firstFieldRef.current?.focus();
   }, [form]);
-  // A claim can arrive from elsewhere — `ideas claim --pr`, or the sync job — while
-  // this card is mounted, and an untouched Ship field should show the new url.
+  // A claim can arrive from the CLI or the sync job while this card is mounted.
   const claimedPr = idea.claim?.pr ?? '';
   useEffect(() => {
     setPr(claimedPr);
@@ -151,8 +146,6 @@ export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; chil
   const busy = mark.isPending || claim.isPending;
   const decided = idea.status !== 'proposed';
   const released = idea.status === 'accepted';
-  // The status model's own rule, not this component's — `accepted` and `claimed`,
-  // never the terminal `shipped` and never an idea nobody signed off.
   const shippable = canShipIdea(idea.status);
   // Returned rather than thrown: somebody else holds it, which is an answer.
   const refusal = claim.data?.meta.refused[0];
@@ -212,8 +205,7 @@ export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; chil
           </button>
         )}
 
-        {/* The other direction out of a release, and the control the ledger was missing
-            entirely: a merged PR is recorded from here rather than only from the CLI. */}
+        {/* Recording a merged PR, which was CLI-only before. */}
         {shippable && !form && (
           <button type='button' className='btn-quiet idea-ship-open' disabled={busy} onClick={() => setForm('ship')}>
             Shipped
@@ -244,8 +236,8 @@ export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; chil
           </form>
         )}
 
-        {/* Re-claiming a released idea. The holder is typed rather than restored: the
-            release dropped the claim, so the previous one is genuinely gone. */}
+        {/* Re-claiming a released idea. The holder is typed rather than restored —
+            the release dropped the claim, so the previous one is gone. */}
         {released && !form && (
           <button type='button' className='btn-quiet' disabled={busy} onClick={() => setForm('claim')}>
             Re-claim

@@ -2065,11 +2065,8 @@ export async function buildIdeas(logDir: string, filter: IdeaFilter = {}): Promi
  *
  * `proposed` is the undo: it restores an idea to unsigned-off without erasing
  * the entry or its note. `shipped` carries the PR url as its note and is refused
- * without one, exactly as `ideas mark -s shipped` is — the person reading a
- * merged PR is as entitled to record that as the CLI is, and offering only
- * Release left them with a one-way door that dropped the claim and the url on it.
- * Which entries may take it is `canShipIdea`, checked against the stored status
- * in {@link applyIdeaStatus}.
+ * without one, exactly as `ideas mark -s shipped` is. Which entries may take it
+ * is `canShipIdea`, checked against the stored status in {@link applyIdeaStatus}.
  *
  * `claimed` is the one status still absent, and for a reason a note cannot fix:
  * it is not a decision a person makes but a registration that something has
@@ -2106,11 +2103,9 @@ export interface IdeasStatusResponse {
  * - **A `shipped` mark with no note is refused** for the sibling reason: the note
  *   *is* the PR url, and `shipped` with none is a claim about something landing
  *   with nothing to check it against.
- * - **A `shipped` mark is refused on a status `canShipIdea` does not allow**,
- *   which is the one check needing the stored entry rather than the mark. It
- *   costs a read of the ledger the write is about to read again; the alternative
- *   is the browser being the only writer that can un-ship terminal work or ship
- *   an idea nobody signed off.
+ * - **A `shipped` mark is refused on a status `canShipIdea` does not allow** —
+ *   the one check needing the stored entry rather than the mark, at the cost of
+ *   a read the write is about to make again.
  */
 export async function applyIdeaStatus(
   logDir: string,
@@ -2136,8 +2131,7 @@ export async function applyIdeaStatus(
     }
   }
 
-  // Read once for the whole batch, and refuse it whole — a half-applied batch is
-  // what `applyIdeaMarks` returning refusals rather than throwing already avoids.
+  // Read once for the whole batch, and refuse it whole rather than half-applied.
   const shipping = marks.filter((mark) => mark.status === 'shipped');
   if (shipping.length > 0) {
     const store = await readIdeasStore(logDir);
@@ -2186,15 +2180,12 @@ export interface IdeasClaimResponse {
 }
 
 /**
- * Claim an idea from the dashboard — the other direction out of a release, and
- * the reason `claimed` is not a mark.
+ * Claim an idea from the dashboard — the other direction out of a release.
  *
- * **The holder is required and is not invented here.** A claim's whole job is to
- * name something a second run can read and recognise as not itself, so a blank
- * one would park the idea for the six-hour TTL under nobody. The `pr` is
- * optional and is the url the claim carries; a release drops the claim outright,
- * so neither the previous holder nor its url survives to be restored, and both
- * are re-entered rather than recovered.
+ * **The holder is required and is not invented here**: a blank one would park
+ * the idea for the six-hour TTL under nobody. The optional `pr` is the url the
+ * claim carries; a release drops the claim outright, so neither it nor the
+ * previous holder survives to be restored, and both are re-entered.
  *
  * A refusal is **returned rather than thrown**, matching `applyIdeaClaims` and
  * the CLI: a live holder is an answer the page shows, not a failed request.

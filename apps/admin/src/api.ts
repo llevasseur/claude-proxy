@@ -991,8 +991,8 @@ export const markIdeas = (marks: IdeaMark[]) => post<IdeasStatusResponse>('/api/
 /**
  * Take an idea under a named holder — the way back from a release, which drops
  * the claim outright. Its own route rather than a `claimed` mark, since a mark
- * carries no holder and one nobody holds parks the idea for the whole expiry.
- * A live holder comes back under `meta.refused` rather than as an error.
+ * carries no holder. A live holder comes back under `meta.refused`, not as an
+ * error.
  */
 export const claimIdeas = (claims: IdeaClaimRequest[]) => post<IdeasClaimResponse>('/api/ideas/claim', { claims });
 /**

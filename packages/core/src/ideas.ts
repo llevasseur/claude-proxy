@@ -127,20 +127,13 @@ export function isIdeaStatus(value: unknown): value is IdeaStatus {
 /**
  * True when an idea in this status may be marked `shipped`.
  *
- * The rule is the sign-off, read in both directions. `claimed` is the ordinary
- * case — the work was taken and it landed. `accepted` is the released one: a
- * claim let go, by hand or by the six-hour expiry, does not un-land a PR that
- * merged, so the mark stays reachable without re-claiming first.
+ * `claimed` is the ordinary case, `accepted` the released one — letting a claim
+ * go does not un-land a PR that merged, so the mark stays reachable without
+ * re-claiming first. `shipped` is terminal, per {@link planIdeaPrTransitions};
+ * `proposed` and `rejected` carry no sign-off.
  *
- * The two refusals are the ones the rest of this module already states.
- * `shipped` is **terminal** — see {@link planIdeaPrTransitions}, where no PR
- * outcome moves a shipped entry. `proposed` and `rejected` carry no human
- * sign-off, and shipping one would record work against an idea nobody agreed to,
- * which is the same gate {@link applyIdeaClaims} refuses to let a claim skip.
- *
- * A predicate rather than a check inside {@link applyIdeaMarks}, because the
- * dashboard has to decide *whether to offer the control* before there is a mark
- * to validate.
+ * A predicate rather than a check inside {@link applyIdeaMarks}, since the
+ * dashboard decides whether to offer the control before there is a mark.
  */
 export function canShipIdea(status: IdeaStatus): boolean {
   return status === 'accepted' || status === 'claimed';
@@ -726,9 +719,7 @@ export interface IdeaClaimResult {
  * Everything else is refused, including `proposed` — letting a claim skip the
  * human sign-off would route around the one gate `/improve` respects.
  *
- * Exported beside {@link applyIdeaClaims}, which is its only enforcement point,
- * so a reader deciding *whether to offer* a claim asks the same question the
- * write will answer rather than restating it.
+ * {@link applyIdeaClaims} is its only enforcement point.
  */
 export function isIdeaTakeable(entry: IdeaEntry, by: string, now: Date = new Date()): boolean {
   if (entry.status === 'accepted') return true;
