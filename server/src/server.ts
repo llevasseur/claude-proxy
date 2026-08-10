@@ -73,13 +73,17 @@ import {
   buildSkimTrend,
   buildSuggestionStatus,
   buildSummary,
+  buildSummaryScoped,
   buildSystemPrompt,
   buildSystemPromptUpdate,
   buildToolSchema,
   buildTools,
   buildTrends,
   buildUsage,
+  buildUsageScoped,
   buildWithheld,
+  type RebuildScope,
+  rebuildScope,
 } from './api.js';
 import { resolveArchiveDir } from './archive.js';
 import {
@@ -214,8 +218,17 @@ const SSE_HEARTBEAT_MS = 25_000;
 interface SseWatchSource {
   /** File or directory to `fs.watch`; a change re-runs `build` and pushes an update. */
   watchPath: string;
-  /** Produce the JSON payload sent as the initial `snapshot` and each `update`. */
-  build: () => Promise<unknown>;
+  /**
+   * Produce the JSON payload sent as the initial `snapshot` and each `update`.
+   *
+   * `scope` names the reporting days this tick's fs events touched, and is
+   * `null` — **rebuild everything** — for the opening snapshot and for any
+   * change that maps to no day. A builder that cannot narrow itself ignores it.
+   *
+   * Resolving `null` means this tick's days cannot have moved the payload:
+   * nothing is sent and the client keeps what it has.
+   */
+  build: (scope: RebuildScope) => Promise<unknown>;
   /** Coalesce bursts of fs events within this window (ms) before rebuilding. */
   debounceMs: number;
 }
@@ -273,7 +286,8 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
 
   let snapshot: unknown;
   try {
-    snapshot = watch ? await watch.build() : await (stream as SsePushSource).snapshot();
+    // `null`: the opening snapshot has no change to be scoped to, and is always full.
+    snapshot = watch ? await watch.build(null) : await (stream as SsePushSource).snapshot();
   } catch (err) {
     const msg = (err as Error).message;
     // A configured concept store that will not answer is a 502 here too.
@@ -291,12 +305,20 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
   let unsubscribe: (() => void) | null = null;
 
   if (watch) {
+    // File names seen since the last rebuild. A `null` entry is an event
+    // `fs.watch` could not name, and taints the tick into a full rebuild.
+    let touched: (string | null)[] = [];
+
     const pushUpdate = () => {
       debounce = null;
+      const scope = rebuildScope(touched);
+      touched = [];
       watch
-        .build()
+        .build(scope)
         .then((data) => {
           if (res.writableEnded) return;
+          // The builder answered "this tick's days cannot have moved me".
+          if (data === null) return;
           const next = JSON.stringify(data);
           if (next === lastSent) return; // spurious fs event or no-op change
           lastSent = next;
@@ -308,7 +330,10 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
     };
 
     try {
-      watcher = fs.watch(watch.watchPath, () => {
+      watcher = fs.watch(watch.watchPath, (_event, filename) => {
+        // `fs.watch` does not always deliver a name, and gives a Buffer under a
+        // non-default encoding; either way the change cannot be placed on a day.
+        touched.push(typeof filename === 'string' ? filename : null);
         if (debounce) clearTimeout(debounce);
         debounce = setTimeout(pushUpdate, watch.debounceMs);
       });
@@ -618,11 +643,13 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     shadow('/api/summary', summary, (source) => buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, source));
   },
   // Today's digest moves with every captured request, so this follows the log
-  // directory rather than any one file.
+  // directory rather than any one file. Every capture's name maps onto today, so
+  // the day in progress still recomputes; the scope only skips a tick touching no
+  // day this summary reads — outside the baseline walk, or beside a `?date=` pin.
   '/api/summary/stream': async ({ req, res, date }) => {
     await serveSse(req, res, {
       watchPath: LOG_DIR,
-      build: () => buildSummary(LOG_DIR, date, new Date(), ARCHIVE_DIR, readSource()),
+      build: (scope) => buildSummaryScoped(scope, LOG_DIR, date, new Date(), ARCHIVE_DIR, readSource()),
       debounceMs: 600,
     });
   },
@@ -699,7 +726,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   '/api/usage/stream': async ({ req, res }) => {
     await serveSse(req, res, {
       watchPath: LOG_DIR,
-      build: () => buildUsage(LOG_DIR, USAGE_LIMITS, new Date(), readSource()),
+      build: (scope) => buildUsageScoped(scope, LOG_DIR, USAGE_LIMITS, new Date(), readSource()),
       debounceMs: 600,
     });
   },

@@ -1,8 +1,12 @@
 import type { AliasLoadExpectation } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
+import { createRoute } from '@tanstack/react-router';
+import { Puzzle } from 'lucide-react';
 import { getHooksPlugins } from '../api';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
+import { rootRoute } from '../route-root';
+import type { NavEntry } from './nav';
 
 /**
  * "Hooks & Plugins" — config inventory of the device's `~/.claude/settings.json`
@@ -218,3 +222,19 @@ function HooksPluginsSkeleton() {
     </>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/hooks-plugins',
+  component: HooksPluginsPage,
+  staticData: { title: 'Hooks & Plugins' },
+});
+
+export const nav = {
+  section: 'Device',
+  to: '/hooks-plugins',
+  label: 'Hooks & Plugins',
+  hint: 'config',
+  exact: false,
+  icon: Puzzle,
+} as const satisfies NavEntry;

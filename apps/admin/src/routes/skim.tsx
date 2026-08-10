@@ -1,5 +1,7 @@
 import type { SkimDigest } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { createRoute } from '@tanstack/react-router';
+import { Zap } from 'lucide-react';
 import { useMemo } from 'react';
 import { getSkim, getSkimTrend } from '../api';
 import { BAR_CHART_HEIGHT, BarChart } from '../components/BarChart';
@@ -9,7 +11,9 @@ import { type Series, SeriesLineChart } from '../components/SeriesLineChart';
 import { SkeletonChartCard, type SkeletonColumn, SkeletonStats, SkeletonTableCard } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtInt, fmtPct, fmtUsd, fmtUsdCompact } from '../format';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
+import type { NavEntry } from './nav';
 
 const HIT_RATE_SERIES: Series[] = [{ dataKey: 'hitRate', name: 'Hit rate', color: 'var(--good)' }];
 const SAVED_SERIES: Series[] = [{ dataKey: 'cumUsd', name: 'Cumulative saved', color: 'var(--accent-2)' }];
@@ -181,3 +185,19 @@ function SkimSkeleton({ days, stats = true }: { days: number; stats?: boolean })
     </>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/skim',
+  component: SkimPage,
+  staticData: { title: 'Skim' },
+});
+
+export const nav = {
+  section: 'Context',
+  to: '/skim',
+  label: 'Skim',
+  hint: 'cache',
+  exact: false,
+  icon: Zap,
+} as const satisfies NavEntry;

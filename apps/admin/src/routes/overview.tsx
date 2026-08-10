@@ -1,6 +1,7 @@
 import type { UsageDigest } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
+import { Monitor } from 'lucide-react';
 import { useMemo } from 'react';
 import { getSummary, getTrends, getUsage, type SummaryResponse, type UsageResponse } from '../api';
 import { AdviceCard } from '../components/AdviceCard';
@@ -13,8 +14,10 @@ import { StatCard } from '../components/StatCard';
 import { UsageMeter } from '../components/UsageMeter';
 import { fmtInt, fmtPct } from '../format';
 import { METRICS, REPORT_TZ_ABBR } from '../metrics';
+import { rootRoute } from '../route-root';
 import { type LiveStatus, useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
+import type { NavEntry } from './nav';
 
 export function OverviewPage() {
   const [days, selectDays, isSwitching] = useTransitionState(7);
@@ -267,3 +270,19 @@ function PageHead({
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  component: OverviewPage,
+  staticData: { title: 'Overview' },
+});
+
+export const nav = {
+  section: 'Dashboard',
+  to: '/',
+  label: 'Overview',
+  hint: 'today',
+  exact: true,
+  icon: Monitor,
+} as const satisfies NavEntry;

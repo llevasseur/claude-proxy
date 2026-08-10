@@ -1,6 +1,7 @@
 import type { Advice, AdviceMovement, SessionBucket, SuggestionStatusRow } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
+import { Lightbulb } from 'lucide-react';
 import { useState } from 'react';
 import { getIdeas, getSessionSuggestions, getSuggestionStatus, getSummary, type IdeasResponse } from '../api';
 import { AdviceCard } from '../components/AdviceCard';
@@ -17,7 +18,9 @@ import {
   ThinPassBadge,
 } from '../components/SuggestionStatus';
 import { fmtInt, fmtLocalTsShort } from '../format';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
+import type { NavEntry } from './nav';
 
 export function AdvicePage() {
   const query = useQuery({ queryKey: ['summary'], queryFn: () => getSummary() });
@@ -294,3 +297,19 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
     </Link>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/advice',
+  component: AdvicePage,
+  staticData: { title: 'Advice' },
+});
+
+export const nav = {
+  section: 'Learning',
+  to: '/advice',
+  label: 'Advice',
+  hint: 'coaching',
+  exact: false,
+  icon: Lightbulb,
+} as const satisfies NavEntry;

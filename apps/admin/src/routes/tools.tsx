@@ -1,8 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
+import { createRoute } from '@tanstack/react-router';
+import { Wrench } from 'lucide-react';
 import { getTools } from '../api';
 import { QueryState } from '../components/QueryState';
 import { type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
+import { rootRoute } from '../route-root';
+import type { NavEntry } from './nav';
 
 /** Tool, three numeric columns, then the share bar. */
 const TOOL_COLUMNS: readonly SkeletonColumn[] = [
@@ -63,3 +67,19 @@ export function ToolsPage() {
     </section>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/tools',
+  component: ToolsPage,
+  staticData: { title: 'Tool bloat' },
+});
+
+export const nav = {
+  section: 'Context',
+  to: '/tools',
+  label: 'Tool bloat',
+  hint: 'context',
+  exact: false,
+  icon: Wrench,
+} as const satisfies NavEntry;

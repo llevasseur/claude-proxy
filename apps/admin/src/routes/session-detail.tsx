@@ -1,6 +1,6 @@
 import { sessionName } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import type { SessionDetail } from '../api';
 import { getRunningChats, getSession, getSessionBreakdown, stopChat } from '../api';
@@ -13,6 +13,7 @@ import { QueryState } from '../components/QueryState';
 import { PRETTY_RAW, type PrettyRawView, Segmented } from '../components/Segmented';
 import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtLocalTsShort } from '../format';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 
@@ -318,3 +319,10 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sessions/$id',
+  component: SessionDetailPage,
+  staticData: { title: 'Session' },
+});

@@ -1,6 +1,6 @@
 import type { CommandRun, CommandRunStepStats, CommandRunTurn } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import { type CommandRunResponse, getCommandRun, getContextMessage } from '../api';
 import { CodeBlock } from '../components/CodeBlock';
@@ -17,6 +17,7 @@ import {
 } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtBytes, fmtDuration, fmtInt, fmtLocalTs, fmtPct, fmtUsd } from '../format';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { fmtFlag } from './command-detail';
 
@@ -485,3 +486,11 @@ function WasteTable({ steps }: { steps: CommandRunStepStats[] }) {
 function turnTokens(turn: CommandRunTurn): number {
   return turn.tokens.realInput + turn.tokens.output + turn.tokens.cacheCreation;
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  // The run id, not the thread id: a nested run shares its host's session.
+  path: '/commands/$command/$runId',
+  component: CommandRunPage,
+  staticData: { title: 'Command run' },
+});

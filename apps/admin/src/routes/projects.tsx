@@ -1,12 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate } from '@tanstack/react-router';
+import { FolderGit2 } from 'lucide-react';
 import { useMemo } from 'react';
 import type { ProjectSummary } from '../api';
 import { getProjects } from '../api';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
 import { fmtInt } from '../format';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
+import type { NavEntry } from './nav';
 
 /** Project name, its memory count, then the share bar. */
 const PROJECT_COLUMNS: readonly SkeletonColumn[] = [{ cell: '62%' }, { className: 'num' }, { className: 'bar-col' }];
@@ -164,3 +167,19 @@ function SortHeader({
     </th>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects',
+  component: ProjectsPage,
+  staticData: { title: 'Projects' },
+});
+
+export const nav = {
+  section: 'Sessions',
+  to: '/projects',
+  label: 'Projects',
+  hint: 'memory',
+  exact: false,
+  icon: FolderGit2,
+} as const satisfies NavEntry;
