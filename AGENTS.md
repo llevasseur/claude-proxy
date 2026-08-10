@@ -12,11 +12,24 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
   `server/src/suggestions-cli.ts` (`pnpm --filter server suggestions`),
   `daily-summary.ts`, `chat-cli.ts`, `maintain-cli.ts`, and `ingest-cli.ts`; the
   SQLite substrate lives under `server/src/db/`.
-- `apps/admin/src/router.tsx` is the whole route table — routes are declared there
-  with `createRoute` and imported from `apps/admin/src/routes/<name>.tsx`, one file
-  per page. There is **no** file-based routing and no generated route tree, so a new
-  page means a new file in `routes/` plus a registration in `router.tsx`. Shared UI
-  is `apps/admin/src/components/`, data fetching is `src/api.ts` + `useLiveQuery.ts`.
+- **Each page in `apps/admin/src/routes/<name>.tsx` declares its own route.** The file
+  exports its component as before, plus `route` — its own `createRoute` call, carrying
+  path, component, `staticData.title` and any `validateSearch` — and, if it belongs in
+  the side rail, `nav`, its station. There is still **no** file-based routing and no
+  generated route tree: `apps/admin/src/routes/registry.ts` is a hand-written list of
+  the 38 modules, so a new page is a new file in `routes/` plus one line there.
+  `apps/admin/src/router.tsx` is now ~20 lines — it imports that list and calls
+  `addChildren`; the root route and the layout live in `apps/admin/src/route-root.tsx`,
+  which builds the rail from the same list. Three things there are load-bearing rather
+  than style: `ROUTES` and the rail's `STATIONS` are `as const` (a plain array literal
+  widens to a union array and the route tree loses which paths exist, which silently
+  degrades `<Link to>` and `useParams({ from })`); a `nav` is written
+  `as const satisfies NavEntry`, never `: NavEntry`, for the same reason; and the
+  import cycle between `registry`, the page files and `route-root` is deliberate and
+  benign, since every edge is read lazily. Section order lives in `NAV_SECTION_ORDER`
+  in `apps/admin/src/routes/nav.ts` and station order is the registry's own order, so a
+  page in no section simply exports no `nav`. Shared UI is
+  `apps/admin/src/components/`, data fetching is `src/api.ts` + `useLiveQuery.ts`.
 - `packages/core/src/` is one file per domain (`sessions.ts`, `suggestions.ts`,
   `usage-limits.ts`, …) re-exported from `index.ts`. It ships **no build**: its
   `exports` map points straight at `./src/index.ts`, so consumers import TypeScript
