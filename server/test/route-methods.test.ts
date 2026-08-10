@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import type { IdeaEntry, IdeaStatus } from '@claude-proxy/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addIdeasToStore } from '../src/ideas-store.js';
+import { startFakeIdeasServer } from './ideas-fake-worker.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(HERE, '..', 'src', 'server.ts');
@@ -18,6 +19,15 @@ const BASE = `http://127.0.0.1:${PORT}`;
 let child: ChildProcess;
 /** The device system prompt this server edits — a temp file, never the real one. */
 let promptPath: string;
+/**
+ * The hosted ideas ledger, stood up on a real socket for the duration.
+ *
+ * The server under test runs as a child process, so the ledger it reads has to
+ * be reachable over the network rather than stubbed in this process — and it
+ * has to exist at all, since an unconfigured device now refuses the ideas
+ * routes outright rather than falling back to a file. See ADR 0006.
+ */
+let ledger: { url: string; stop: () => Promise<void> };
 
 /** `Response.json()` answers `unknown`; these routes always reply with a `prompt` payload. */
 async function promptOf(res: Response): Promise<unknown> {
@@ -42,8 +52,11 @@ async function waitForListening(deadlineMs = 30_000): Promise<void> {
 beforeAll(async () => {
   const logDir = await mkdtemp(path.join(tmpdir(), 'route-methods-'));
   promptPath = path.join(logDir, 'CLAUDE.md');
+  ledger = await startFakeIdeasServer();
+  process.env.IDEAS_URL = ledger.url;
+  process.env.IDEAS_TOKEN = 'test-token';
   // Seeded so the ideas route below has a row to list and one to refuse a mark on.
-  await addIdeasToStore(logDir, [
+  await addIdeasToStore([
     {
       slug: 'rolling-window',
       title: 'A rolling last-10 window beside the fixed buckets',
@@ -66,8 +79,9 @@ beforeAll(async () => {
   await waitForListening();
 }, 40_000);
 
-afterAll(() => {
+afterAll(async () => {
   child?.kill();
+  await ledger?.stop();
 });
 
 describe('read routes', () => {

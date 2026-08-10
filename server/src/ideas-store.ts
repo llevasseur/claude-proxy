@@ -1,171 +1,151 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import path from 'node:path';
-import {
-  applyIdeaAdds,
-  applyIdeaClaims,
-  applyIdeaComments,
-  applyIdeaFilings,
-  applyIdeaMarks,
-  emptyIdeasStore,
-  type IdeaAdd,
-  type IdeaAddResult,
-  type IdeaClaimRequest,
-  type IdeaClaimResult,
-  type IdeaComment,
-  type IdeaEditResult,
-  type IdeaFiling,
-  type IdeaMark,
-  type IdeaMarkResult,
-  type IdeasStore,
-  parseIdeasStore,
+import type {
+  IdeaAdd,
+  IdeaAddResult,
+  IdeaClaimRequest,
+  IdeaClaimResult,
+  IdeaComment,
+  IdeaEditResult,
+  IdeaFiling,
+  IdeaMark,
+  IdeaMarkResult,
+  IdeasStore,
 } from '@claude-proxy/core';
+import {
+  addRemoteIdeas,
+  claimRemoteIdeas,
+  commentRemoteIdeas,
+  fetchRemoteIdeas,
+  fileRemoteIdeas,
+  markRemoteIdeas,
+  remoteIdeasStoreLabel,
+  requireRemoteIdeasStore,
+} from './ideas-remote.js';
 
 /**
- * Where the ideas ledger lives, and the only code that writes it.
+ * The ideas ledger, and the only code that reaches it.
  *
- * It sits beside the logs (`<logDir>/ideas.json`) for the same reason the
- * suggestion flags do — it travels with a `LOG_DIR` override and stays
- * device-local, since `logs/` is gitignored. It is a **separate file from
- * `suggestion-status.json`**, and nothing here touches that one: an idea is
- * invented and carries a human sign-off as its only trace, a suggestion is
- * counted from transcripts and carries source sessions. One evidence standard
- * per file.
- */
-
-/** The ledger file for a log directory. */
-export function resolveIdeasPath(logDir: string): string {
-  return path.join(logDir, 'ideas.json');
-}
-
-/**
- * Read the ledger. A missing file is the normal starting state and reads as
- * empty.
+ * **It is no longer a file.** The ledger lives on the `operator` Worker over D1
+ * (ADR 0006), so an idea accepted on one machine is visible on every machine and
+ * a new proposal is deduped against what every device already holds — including
+ * the rejected rows, which are the ones that stop an idea coming back. What was
+ * `<logDir>/ideas.json` is now a hosted event log replayed through
+ * `packages/core/src/ideas.ts`, which stays the only place the semantics live.
  *
- * **A file that exists but cannot be read or parsed throws**, and that is the
- * deliberate difference from {@link readSuggestionStatusStore}. There, a corrupt
- * file reads as empty because the suggestions underneath are recomputed from the
- * transcripts on every load — the flags are the only loss, and refusing to
- * render the dashboard would be the worse failure. An idea exists **nowhere
- * else**. Reading a broken ledger as empty would let a caller conclude the
- * ledger is fresh, re-propose everything already rejected in it, and then
- * overwrite the file with that conclusion. Callers walking a store waterfall
- * depend on this distinction: a missing store is *absent* and they may fall
- * through to a lower tier, while a broken one is a **stop**.
+ * This module keeps the shape it always had — one function per verb, each
+ * returning the resulting store plus what was refused — so `ideas-cli.ts`,
+ * `ideas-pr.ts` and the HTTP handlers in `api.ts` did not have to learn that the
+ * store moved. Three things did change, and each is deliberate:
+ *
+ * - **There is no `logDir` argument.** The ledger is device-independent now, so
+ *   naming a device's log directory would be describing the wrong thing.
+ * - **An unconfigured device throws** rather than falling back to the file. See
+ *   `ideas-remote.ts` for why that is the opposite of what the concept store
+ *   does, and why the opposite is right here.
+ * - **`file` in the returned metadata is a URL**, not a path. It is still "where
+ *   this landed", which is what every caller printed it for.
  */
-export async function readIdeasStore(logDir: string): Promise<IdeasStore> {
-  const file = resolveIdeasPath(logDir);
-  let text: string;
-  try {
-    text = await readFile(file, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return emptyIdeasStore();
-    throw new Error(`cannot read the ideas ledger at ${file}: ${(err as Error).message}`);
-  }
-  try {
-    return parseIdeasStore(JSON.parse(text));
-  } catch (err) {
-    throw new Error(
-      `the ideas ledger at ${file} exists but is not valid JSON (${(err as Error).message}) — refusing to treat it as empty, since an idea is recorded nowhere else`,
-    );
-  }
+
+/** Where the ledger lives, for a caller that reports what it wrote to. */
+export function resolveIdeasPath(): string {
+  return remoteIdeasStoreLabel(requireRemoteIdeasStore());
 }
 
 /**
- * Write the ledger through a temp file in the same directory, then rename — a
- * reader never sees a half-written file, and a crash mid-write leaves the
- * previous ledger intact.
+ * Read the ledger.
+ *
+ * **An unreachable ledger throws**, and an empty one is empty — the same
+ * distinction the file reader drew between a missing file and a corrupt one, for
+ * the same reason. An idea exists nowhere else, so a caller that read the ledger
+ * as empty would conclude it was fresh, re-propose everything already rejected
+ * in it, and write that conclusion back.
  */
-export async function writeIdeasStore(logDir: string, store: IdeasStore): Promise<string> {
-  const file = resolveIdeasPath(logDir);
-  await mkdir(logDir, { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
-  await rename(tmp, file);
-  return file;
+export async function readIdeasStore(): Promise<IdeasStore> {
+  return fetchRemoteIdeas(requireRemoteIdeasStore());
 }
 
-/** Where a mutation landed, so a caller can name the file it wrote. */
+/** Where a mutation landed, so a caller can name what it wrote to. */
 export interface IdeasWriteMeta {
   file: string;
 }
 
 /**
- * Read, add, write. Returns what was added and what was refused for an existing
- * slug, so the caller reports the collision rather than silently recording less
- * than it was asked to.
- */
-export async function addIdeasToStore(
-  logDir: string,
-  adds: readonly IdeaAdd[],
-  now: Date = new Date(),
-): Promise<IdeaAddResult & IdeasWriteMeta> {
-  const result = applyIdeaAdds(await readIdeasStore(logDir), adds, now);
-  const file = await writeIdeasStore(logDir, result.store);
-  return { ...result, file };
-}
-
-/**
- * Read, mark, write.
+ * Add, then read back.
  *
- * Not concurrency-safe against a second writer racing between the read and the
- * rename, exactly as the suggestion store is not; the writers are one agent at a
- * time and the loss would be one entry rather than the file.
+ * The read-back is what lets every caller keep rendering the rows it just
+ * touched, and it is the authoritative answer rather than a local guess: the
+ * store the Worker replays is the one the next device will see.
  */
-export async function markIdeasInStore(
-  logDir: string,
-  marks: readonly IdeaMark[],
-  now: Date = new Date(),
-): Promise<IdeaMarkResult & IdeasWriteMeta> {
-  const result = applyIdeaMarks(await readIdeasStore(logDir), marks, now);
-  const file = await writeIdeasStore(logDir, result.store);
-  return { ...result, file };
+export interface IdeasAddMeta {
+  /** Existing slugs that look like a near-duplicate, checked against every device's ideas. */
+  similar: Record<string, string[]>;
+  /** Areas already in use that look like the one asked for. Reported, never refused. */
+  similarAreas: Record<string, string[]>;
+}
+
+export async function addIdeasToStore(
+  adds: readonly IdeaAdd[],
+): Promise<IdeaAddResult & IdeasWriteMeta & IdeasAddMeta> {
+  const remote = requireRemoteIdeasStore();
+  const result = await addRemoteIdeas(remote, adds);
+  return {
+    store: await fetchRemoteIdeas(remote),
+    added: result.added,
+    refused: result.refused,
+    similar: result.similar,
+    similarAreas: result.similarAreas,
+    file: remoteIdeasStoreLabel(remote),
+  };
+}
+
+/** Mark, then read back. */
+export async function markIdeasInStore(marks: readonly IdeaMark[]): Promise<IdeaMarkResult & IdeasWriteMeta> {
+  const remote = requireRemoteIdeasStore();
+  const result = await markRemoteIdeas(remote, marks);
+  return { store: await fetchRemoteIdeas(remote), ...result, file: remoteIdeasStoreLabel(remote) };
 }
 
 /**
- * Read, file, write — the only way an idea changes area.
+ * Re-file, then read back — the only way an idea changes area.
  *
  * Separate from {@link markIdeasInStore} for the reason on `applyIdeaFilings`: a
  * status change must never move an idea between tabs as a side effect.
  */
-export async function fileIdeasInStore(
-  logDir: string,
-  filings: readonly IdeaFiling[],
-  now: Date = new Date(),
-): Promise<IdeaEditResult & IdeasWriteMeta> {
-  const result = applyIdeaFilings(await readIdeasStore(logDir), filings, now);
-  const file = await writeIdeasStore(logDir, result.store);
-  return { ...result, file };
+export async function fileIdeasInStore(filings: readonly IdeaFiling[]): Promise<IdeaEditResult & IdeasWriteMeta> {
+  const remote = requireRemoteIdeasStore();
+  const result = await fileRemoteIdeas(remote, filings);
+  return { store: await fetchRemoteIdeas(remote), ...result, file: remoteIdeasStoreLabel(remote) };
 }
 
-/** Read, comment, write. Each write replaces the whole comment; `''` clears it. */
-export async function commentIdeasInStore(
-  logDir: string,
-  comments: readonly IdeaComment[],
-  now: Date = new Date(),
-): Promise<IdeaEditResult & IdeasWriteMeta> {
-  const result = applyIdeaComments(await readIdeasStore(logDir), comments, now);
-  const file = await writeIdeasStore(logDir, result.store);
-  return { ...result, file };
+/** Comment, then read back. Each write replaces the whole comment; `''` clears it. */
+export async function commentIdeasInStore(comments: readonly IdeaComment[]): Promise<IdeaEditResult & IdeasWriteMeta> {
+  const remote = requireRemoteIdeasStore();
+  const result = await commentRemoteIdeas(remote, comments);
+  return { store: await fetchRemoteIdeas(remote), ...result, file: remoteIdeasStoreLabel(remote) };
 }
 
 /**
- * Read, claim, write — the write an implementation run makes *before* it starts,
- * so a second run reads the idea as taken.
+ * Claim, then read back — the write an implementation run makes *before* it
+ * starts, so a second run reads the idea as taken.
  *
- * **It narrows the duplicate-work window without closing it absolutely.** Like
- * the two writers above it is not atomic against a second process racing between
- * the read and the rename, so two runs claiming within the same few milliseconds
- * can both believe they won. The collision this was built for was eleven minutes
- * wide; closing the residue would mean a lock file with an owner, a timeout, and
- * a recovery path — machinery with its own stuck states, on a ledger whose worst
- * outcome is a duplicate PR.
+ * **The race this used to concede is closed.** The file version was a
+ * read-modify-write and was not atomic against a second process in the same few
+ * milliseconds; it said so, and accepted a duplicate PR as the worst outcome.
+ * The Worker takes the claim with a single conditional write whose `changes`
+ * count decides the winner, so two runs claiming at once produce one holder and
+ * one refusal naming them. See ADR 0006.
  */
 export async function claimIdeasInStore(
-  logDir: string,
   claims: readonly IdeaClaimRequest[],
-  now: Date = new Date(),
 ): Promise<IdeaClaimResult & IdeasWriteMeta> {
-  const result = applyIdeaClaims(await readIdeasStore(logDir), claims, now);
-  const file = await writeIdeasStore(logDir, result.store);
-  return { ...result, file };
+  const remote = requireRemoteIdeasStore();
+  const result = await claimRemoteIdeas(remote, claims);
+  return {
+    store: await fetchRemoteIdeas(remote),
+    claimed: result.claimed,
+    // The Worker answers in the same shape `applyIdeaClaims` returns, so a
+    // refusal renders identically wherever it came from.
+    refused: result.refused as IdeaClaimResult['refused'],
+    unknown: result.unknown,
+    file: remoteIdeasStoreLabel(remote),
+  };
 }

@@ -103,6 +103,7 @@ import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.j
 import { resolveDbPath } from './db/open.js';
 import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from './db/runtime.js';
 import { ALL_DAYS, resolveAllDays, type SidecarSource } from './db/source.js';
+import { IdeasStoreUnconfiguredError, RemoteIdeasStoreError } from './ideas-remote.js';
 import { resolveJobsDir } from './jobs.js';
 import { countSidecarFiles, resolveLogDir } from './logs.js';
 import { ERR } from './main-history.js';
@@ -246,7 +247,25 @@ interface SsePushSource {
   subscribe: (push: (frame: unknown) => void) => () => void;
 }
 
-type SseStream = (SseWatchSource | SsePushSource) & {
+/**
+ * A resource that lives somewhere this process cannot watch: re-read it on a
+ * timer and send an `update` only when the payload actually changed.
+ *
+ * This exists for the hosted ideas ledger (ADR 0006), which has no file to
+ * `fs.watch` once it is a database on a Worker. **Polling with a diff is the
+ * whole mechanism, deliberately** — a Durable Object or a WebSocket would push
+ * instead, at the cost of the per-connection state ADR 0005 rejected outright,
+ * to serve a dashboard list. The dedupe means an idle ledger costs one request
+ * per interval and sends nothing, and the SSE contract a client sees is
+ * identical to the watch source's.
+ */
+interface ScheduledPollSource {
+  build: () => Promise<unknown>;
+  /** How often to re-read. Slower than a watch debounce, since each tick is a network call. */
+  intervalMs: number;
+}
+
+type SseStream = (SseWatchSource | SsePushSource | ScheduledPollSource) & {
   /**
    * Response CORS. Defaults to the read routes' open `*`, which is only right for a
    * payload every other reader may see — a stream carrying chat content passes the
@@ -284,15 +303,20 @@ function conceptsStream(build: () => Promise<unknown>): SseStream {
 async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, stream: SseStream): Promise<void> {
   const cors = stream.cors ?? CORS;
   const watch = 'watchPath' in stream ? stream : null;
+  const poll = 'intervalMs' in stream ? stream : null;
 
   let snapshot: unknown;
   try {
     // `null`: the opening snapshot has no change to be scoped to, and is always full.
-    snapshot = watch ? await watch.build(null) : await (stream as SsePushSource).snapshot();
+    if (watch) snapshot = await watch.build(null);
+    else if (poll) snapshot = await poll.build();
+    else snapshot = await (stream as SsePushSource).snapshot();
   } catch (err) {
     const msg = (err as Error).message;
     // A configured concept store that will not answer is a 502 here too.
     if (err instanceof RemoteConceptStoreError) send(res, 502, { error: msg }, cors);
+    else if (err instanceof RemoteIdeasStoreError) send(res, 502, { error: msg }, cors);
+    else if (err instanceof IdeasStoreUnconfiguredError) send(res, 501, { error: msg }, cors);
     else send(res, /(^|\b)not found:/.test(msg) ? 404 : 500, { error: msg }, cors);
     return;
   }
@@ -343,6 +367,24 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
     } catch {
       /* watch unsupported / path missing — client keeps the snapshot, heartbeat holds it open */
     }
+  } else if (poll) {
+    // Same dedupe the watch source does, for the same reason: a tick that reads
+    // an unchanged ledger must be indistinguishable, to the client, from no tick.
+    const timer = setInterval(() => {
+      poll
+        .build()
+        .then((data) => {
+          if (res.writableEnded) return;
+          const next = JSON.stringify(data);
+          if (next === lastSent) return;
+          lastSent = next;
+          res.write(`event: update\ndata: ${next}\n\n`);
+        })
+        .catch(() => {
+          /* the ledger was unreachable this tick — the client keeps what it has and the next tick re-reads */
+        });
+    }, poll.intervalMs);
+    unsubscribe = () => clearInterval(timer);
   } else {
     // Subscribed after the snapshot was written, so the opening frame and the pushes
     // cannot interleave and the client never sees an update it has no baseline for.
@@ -573,9 +615,16 @@ async function serveConcept({ req, res, url }: RouteContext, stream: boolean): P
   }
 }
 
+/** How often the ideas stream re-reads the hosted ledger. See {@link ScheduledPollSource}. */
+const IDEAS_POLL_MS = 5_000;
+
 /**
- * The ideas ledger, listed or streamed. `/ideate` writes the file from outside this
- * process, so the stream watches the log directory the store sits in.
+ * The ideas ledger, listed or streamed.
+ *
+ * **The stream polls rather than watching.** The ledger is hosted now (ADR
+ * 0006), so there is no file for `fs.watch` to see change — and the writers that
+ * matter are on *other machines*, which a local watch could never have seen
+ * anyway. The frames a client receives are unchanged.
  */
 async function serveIdeas({ req, res, url }: RouteContext, stream: boolean): Promise<void> {
   const statusParam = url.searchParams.get('status');
@@ -610,12 +659,20 @@ async function serveIdeas({ req, res, url }: RouteContext, stream: boolean): Pro
     ...(areaParam ? { area: areaParam } : {}),
   };
   if (stream) {
-    await serveSse(req, res, { watchPath: LOG_DIR, build: () => buildIdeas(LOG_DIR, filter), debounceMs: 600 });
+    await serveSse(req, res, { build: () => buildIdeas(filter), intervalMs: IDEAS_POLL_MS });
     return;
   }
   // No shadow read: authored state with no derived half, so there is nothing for
   // the substrate to disagree about.
-  send(res, 200, await buildIdeas(LOG_DIR, filter));
+  try {
+    send(res, 200, await buildIdeas(filter));
+  } catch (err) {
+    // An unconfigured device is a 501 rather than a 500: the ledger is not
+    // broken, this machine simply has no address for it, and the message says so.
+    if (err instanceof IdeasStoreUnconfiguredError) send(res, 501, { error: err.message });
+    else if (err instanceof RemoteIdeasStoreError) send(res, 502, { error: err.message });
+    else throw err;
+  }
 }
 
 /**
@@ -1106,7 +1163,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     await servePost(
       req,
       res,
-      (body) => applyIdeaStatus(LOG_DIR, parseIdeaMarks(body.marks), new Date()),
+      (body) => applyIdeaStatus(parseIdeaMarks(body.marks)),
       () => 400,
     );
   },
@@ -1117,7 +1174,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     await servePost(
       req,
       res,
-      (body) => applyIdeaArea(LOG_DIR, parseIdeaFilings(body.filings), new Date()),
+      (body) => applyIdeaArea(parseIdeaFilings(body.filings)),
       () => 400,
     );
   },
@@ -1125,7 +1182,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     await servePost(
       req,
       res,
-      (body) => applyIdeaComment(LOG_DIR, parseIdeaComments(body.comments), new Date()),
+      (body) => applyIdeaComment(parseIdeaComments(body.comments)),
       () => 400,
     );
   },
@@ -1137,7 +1194,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     await servePost(
       req,
       res,
-      (body) => applyIdeaClaim(LOG_DIR, parseIdeaClaims(body.claims), new Date()),
+      (body) => applyIdeaClaim(parseIdeaClaims(body.claims)),
       () => 400,
     );
   },

@@ -160,7 +160,7 @@ async function deriveBeforeEvict(logDir: string): Promise<void> {
 async function reconcileIdeas(logDir: string): Promise<void> {
   try {
     const { reconcileIdeaPrs, renderIdeaPrTransition } = await import('./ideas-pr.js');
-    const result = await reconcileIdeaPrs(logDir);
+    const result = await reconcileIdeaPrs();
     if (result.error) {
       console.error(`[maintain] ideas: pull requests unreadable (${result.error}) — the ledger is untouched`);
       return;

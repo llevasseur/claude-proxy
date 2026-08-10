@@ -2256,13 +2256,13 @@ export interface IdeasResponse {
  * the route lets that surface as a 500 rather than answering with an empty
  * ledger a caller would re-propose everything into.
  */
-export async function buildIdeas(logDir: string, filter: IdeaFilter = {}): Promise<IdeasResponse> {
-  const store = await readIdeasStore(logDir);
+export async function buildIdeas(filter: IdeaFilter = {}): Promise<IdeasResponse> {
+  const store = await readIdeasStore();
   const rows = ideaRows(store, filter);
   return {
     rows,
     meta: {
-      file: resolveIdeasPath(logDir),
+      file: resolveIdeasPath(),
       counts: countIdeaStatuses(rows),
       areas: countIdeaAreas(ideaRows(store)),
       total: Object.keys(store.ideas).length,
@@ -2318,7 +2318,6 @@ export interface IdeasStatusResponse {
  *   a read the write is about to make again.
  */
 export async function applyIdeaStatus(
-  logDir: string,
   marks: readonly IdeaMark[],
   now: Date = new Date(),
 ): Promise<IdeasStatusResponse> {
@@ -2344,7 +2343,7 @@ export async function applyIdeaStatus(
   // Read once for the whole batch, and refuse it whole rather than half-applied.
   const shipping = marks.filter((mark) => mark.status === 'shipped');
   if (shipping.length > 0) {
-    const store = await readIdeasStore(logDir);
+    const store = await readIdeasStore();
     for (const mark of shipping) {
       const current = ideaOf(store, mark.slug);
       // An absent slug writes nothing and is reported under `unknown`, as ever.
@@ -2357,7 +2356,7 @@ export async function applyIdeaStatus(
     }
   }
 
-  const result = await markIdeasInStore(logDir, marks, now);
+  const result = await markIdeasInStore(marks);
   const touched = new Set(result.updated);
   const all = ideaRows(result.store);
   return {
@@ -2401,7 +2400,6 @@ export interface IdeasClaimResponse {
  * the CLI: a live holder is an answer the page shows, not a failed request.
  */
 export async function applyIdeaClaim(
-  logDir: string,
   claims: readonly IdeaClaimRequest[],
   now: Date = new Date(),
 ): Promise<IdeasClaimResponse> {
@@ -2414,7 +2412,7 @@ export async function applyIdeaClaim(
     }
   }
 
-  const result = await claimIdeasInStore(logDir, claims, now);
+  const result = await claimIdeasInStore(claims);
   const touched = new Set(result.claimed);
   const all = ideaRows(result.store);
   return {
@@ -2455,7 +2453,6 @@ export interface IdeasEditResponse {
  * `applyIdeaFilings`.
  */
 export async function applyIdeaArea(
-  logDir: string,
   filings: readonly IdeaFiling[],
   now: Date = new Date(),
 ): Promise<IdeasEditResponse> {
@@ -2465,7 +2462,7 @@ export async function applyIdeaArea(
       throw new Error(`${filing.area} is not a kebab-case area (a-z, 0-9, single dashes)`);
     }
   }
-  return editResponse(await fileIdeasInStore(logDir, filings, now));
+  return editResponse(await fileIdeasInStore(filings));
 }
 
 /**
@@ -2474,7 +2471,6 @@ export async function applyIdeaArea(
  * It is not `note`, which stays the rejection reason or the shipped PR url.
  */
 export async function applyIdeaComment(
-  logDir: string,
   comments: readonly IdeaComment[],
   now: Date = new Date(),
 ): Promise<IdeasEditResponse> {
@@ -2482,7 +2478,7 @@ export async function applyIdeaComment(
   for (const comment of comments) {
     if (typeof comment.text !== 'string') throw new Error(`${comment.slug} needs a comment, as text`);
   }
-  return editResponse(await commentIdeasInStore(logDir, comments, now));
+  return editResponse(await commentIdeasInStore(comments));
 }
 
 /** The shared tail of both edits: the touched rows, plus ledger-wide area counts. */
