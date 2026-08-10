@@ -125,6 +125,21 @@ export function isIdeaStatus(value: unknown): value is IdeaStatus {
 }
 
 /**
+ * True when an idea in this status may be marked `shipped`.
+ *
+ * `claimed` is the ordinary case, `accepted` the released one — letting a claim
+ * go does not un-land a PR that merged, so the mark stays reachable without
+ * re-claiming first. `shipped` is terminal, per {@link planIdeaPrTransitions};
+ * `proposed` and `rejected` carry no sign-off.
+ *
+ * A predicate rather than a check inside {@link applyIdeaMarks}, since the
+ * dashboard decides whether to offer the control before there is a mark.
+ */
+export function canShipIdea(status: IdeaStatus): boolean {
+  return status === 'accepted' || status === 'claimed';
+}
+
+/**
  * A stable kebab-case slug — the dedupe key. Enforced rather than merely
  * documented because everything about this store's usefulness rests on two runs
  * naming the same idea the same way.
@@ -691,21 +706,34 @@ export interface IdeaClaimResult {
 }
 
 /**
- * Take ideas for implementation, returning a new store — the input is never
- * mutated. Called as the *first* step of an implementation run, not at PR-open
- * time. Only these are claimable:
+ * True when `by` may take this entry right now. The whole claimability rule, and
+ * the three ways an idea is takeable:
  *
  * - an `accepted` entry — the signed-off, unclaimed state;
  * - a `claimed` entry whose claim is stale per {@link isIdeaClaimStale}, so a run
  *   that died does not park the idea forever;
- * - a `claimed` entry already held by the same `by`, which re-stamps `at` and can
- *   attach a `pr`. That makes claiming idempotent, so a run that retries a step
- *   does not have to distinguish "I already hold this" from "somebody does".
+ * - a `claimed` entry already held by the same `by`, which makes claiming
+ *   idempotent — a run that retries a step does not have to distinguish "I
+ *   already hold this" from "somebody does".
  *
- * Everything else is refused with the status that refused it, including
- * `proposed` — letting a claim skip the human sign-off would route around the one
- * gate `/improve` respects. Refusals are returned rather than thrown, so a batch
- * still takes the ideas that were free.
+ * Everything else is refused, including `proposed` — letting a claim skip the
+ * human sign-off would route around the one gate `/improve` respects.
+ *
+ * {@link applyIdeaClaims} is its only enforcement point.
+ */
+export function isIdeaTakeable(entry: IdeaEntry, by: string, now: Date = new Date()): boolean {
+  if (entry.status === 'accepted') return true;
+  if (entry.status !== 'claimed') return false;
+  const held = entry.claim;
+  return !held || held.by === by || isIdeaClaimStale(entry, now);
+}
+
+/**
+ * Take ideas for implementation, returning a new store — the input is never
+ * mutated. Called as the *first* step of an implementation run, not at PR-open
+ * time. What may be taken is {@link isIdeaTakeable}; everything else is refused
+ * with the status that refused it. Refusals are returned rather than thrown, so
+ * a batch still takes the ideas that were free.
  */
 export function applyIdeaClaims(
   store: IdeasStore,
@@ -725,10 +753,7 @@ export function applyIdeaClaims(
       continue;
     }
     const held = current.status === 'claimed' ? current.claim : undefined;
-    const takeable =
-      current.status === 'accepted' ||
-      (current.status === 'claimed' && (!held || held.by === request.by || isIdeaClaimStale(current, now)));
-    if (!takeable) {
+    if (!isIdeaTakeable(current, request.by, now)) {
       refused.push({
         slug: request.slug,
         status: current.status,

@@ -155,12 +155,18 @@ describe('read routes', () => {
     expect(accepted.status).toBe(200);
     expect((await accepted.json()) as { rows: IdeaEntry[] }).toMatchObject({ rows: [{ status: 'accepted' }] });
 
-    // `shipped` carries a PR url, so it stays with the CLI; a rejection needs its reason.
-    expect((await mark([{ slug: 'rolling-window', status: 'shipped', note: 'https://x.test/1' }])).status).toBe(400);
+    // Both notes are required: a rejection's reason, and a shipped mark's PR url.
     expect((await mark([{ slug: 'rolling-window', status: 'rejected' }])).status).toBe(400);
+    expect((await mark([{ slug: 'rolling-window', status: 'shipped' }])).status).toBe(400);
 
     // On the write allowlist, so a declared foreign origin is refused outright.
     expect((await mark([{ slug: 'rolling-window', status: 'accepted' }], 'http://evil.example')).status).toBe(403);
+
+    // Last, because it is terminal — re-shipping is then refused.
+    const shipped = await mark([{ slug: 'rolling-window', status: 'shipped', note: 'https://x.test/1' }]);
+    expect(shipped.status).toBe(200);
+    expect((await shipped.json()) as { rows: IdeaEntry[] }).toMatchObject({ rows: [{ status: 'shipped' }] });
+    expect((await mark([{ slug: 'rolling-window', status: 'shipped', note: 'https://x.test/2' }])).status).toBe(400);
   });
 
   it('files an idea and comments on it through their own write routes', async () => {
