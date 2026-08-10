@@ -133,9 +133,9 @@ function BadgeCard({ title, items, empty }: { title: string; items: string[]; em
       {items.length === 0 ? (
         <div className='muted'>{empty}</div>
       ) : (
-        <div>
+        <div className='badge-row'>
           {items.map((item) => (
-            <span className='badge sev-info' key={item} style={{ marginRight: 4 }}>
+            <span className='badge sev-info' key={item}>
               {item}
             </span>
           ))}
