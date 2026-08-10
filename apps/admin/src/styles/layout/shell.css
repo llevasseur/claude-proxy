@@ -80,9 +80,8 @@
      active station's marker sits in the rail's inset. */
     margin-inline: calc(var(--rail-inset) * -1);
     padding-inline: var(--rail-inset);
-    /* Clears the head's shadow, which reaches about 8px past the clip line: the first
-     group's label starts below it rather than under it. Padding, not the head's
-     `padding-bottom`, because the shadow is drawn on that edge and would move with it. */
+    /* Clears the head's shadow, which reaches about 8px past the clip line. Belongs here,
+     not on the head's `padding-bottom` — the shadow is drawn on that edge and moves with it. */
     padding-block-start: var(--space-7);
   }
   /* A section of the rail: a label over its stations, nothing clickable. */
