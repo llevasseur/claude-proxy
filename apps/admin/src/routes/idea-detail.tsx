@@ -1,7 +1,7 @@
-import { type IdeaEntry, ideaAreaLabel, SEED_IDEA_AREAS } from '@claude-proxy/core';
+import { type IdeaEntry, ideaAreaLabel, ideaTaskPrompt, SEED_IDEA_AREAS } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { commentIdeas, fileIdeas, getIdeas, type IdeasResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import {
@@ -10,9 +10,9 @@ import {
   IDEAS_KEY,
   IdeaDecisionControls,
   IdeaEvidenceList,
-  IdeaRationale,
 } from '../components/IdeaCard';
 import { LiveIndicator } from '../components/LiveIndicator';
+import { Markdown } from '../components/Markdown';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonText } from '../components/Skeleton';
 import { fmtLocalTsShort } from '../format';
@@ -79,7 +79,11 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
           <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
           <code className='idea-repo muted'>{idea.repo}</code>
         </div>
-        <IdeaRationale rationale={idea.rationale} />
+        {/* Markdown, not the card's preview: the card's clamp needs a `-webkit-box`,
+            which unmakes a list. */}
+        <div className='idea-rationale-md'>
+          <Markdown source={idea.rationale} />
+        </div>
         <div className='muted idea-when'>
           proposed {fmtLocalTsShort(idea.created)}
           {idea.updated && idea.updated !== idea.created ? ` · updated ${fmtLocalTsShort(idea.updated)}` : ''}
@@ -138,9 +142,136 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
         </div>
       )}
 
-      <AreaPicker idea={idea} areas={areas} />
-      <CommentEditor idea={idea} />
+      {/* Keyed by slug: these three hold reader-edited drafts, and the route
+          re-renders rather than remounting when one permalink links to another. */}
+      <TaskPromptCard key={idea.slug} idea={idea} />
+      <AreaPicker key={idea.slug} idea={idea} areas={areas} />
+      <CommentEditor key={idea.slug} idea={idea} />
     </>
+  );
+}
+
+/** The clipboard glyph, inline so the button carries no icon dependency. */
+function CopyGlyph() {
+  return (
+    <svg
+      viewBox='0 0 16 16'
+      width='14'
+      height='14'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth='1.3'
+      aria-hidden='true'>
+      <rect x='5.5' y='5.5' width='8' height='9' rx='1.5' />
+      <path d='M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1' />
+    </svg>
+  );
+}
+
+/**
+ * The `/task` prompt that builds this idea, ready to paste into an agent.
+ *
+ * Preview is the default tab; Edit is the exception, for a caveat that belongs
+ * in *this* copy of the prompt and not on the ledger.
+ *
+ * **The edit is local to the clipboard and deliberately not persisted.** A
+ * durable instruction goes in {@link IdeaEntry.comment}, which the generated
+ * prompt quotes — storing a second freely-edited copy beside it would give one
+ * idea two disagreeing statements of its task. An edit here changes what you
+ * copy now; the comment editor below changes what everyone generates next,
+ * including `ideas prompt --slug <slug>`.
+ */
+function TaskPromptCard({ idea }: { idea: IdeaEntry }) {
+  const generated = ideaTaskPrompt(idea);
+  const [tab, setTab] = useState<'preview' | 'edit'>('preview');
+  // The generated prompt this draft was taken from. The page is live over SSE, so
+  // the draft follows a regenerated prompt — unless it was edited, since
+  // discarding an edit to track a change the reader did not make is worse.
+  const [base, setBase] = useState(generated);
+  const [draft, setDraft] = useState(generated);
+  if (base !== generated) {
+    setBase(generated);
+    if (draft === base) setDraft(generated);
+  }
+
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  const copy = async () => {
+    try {
+      // Absent outside a secure context, which is exactly where somebody hits it
+      // over plain HTTP on another machine — say so rather than failing silently.
+      if (!navigator.clipboard) throw new Error('the clipboard needs a secure context (https or localhost)');
+      await navigator.clipboard.writeText(draft);
+      setCopyError('');
+      setCopied(true);
+    } catch (err) {
+      setCopyError((err as Error).message);
+    }
+  };
+
+  const edited = draft !== generated;
+
+  return (
+    <div className='card'>
+      <div className='card-head'>
+        <h2>Task prompt</h2>
+        <span className='muted'>
+          derived from this entry — paste it into an agent, or read it with{' '}
+          <span className='rule-name'>ideas prompt</span>
+        </span>
+        <button type='button' className='btn-quiet idea-prompt-copy' onClick={copy} aria-label='Copy the task prompt'>
+          <CopyGlyph />
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+
+      {/* The badge sits beside the strip rather than in it — a tablist takes
+          role="tab" children only. */}
+      <div className='idea-prompt-tabrow'>
+        <div className='idea-tabs' role='tablist' aria-label='Task prompt view'>
+          {(['preview', 'edit'] as const).map((value) => (
+            <button
+              key={value}
+              type='button'
+              role='tab'
+              id={`idea-prompt-tab-${value}`}
+              aria-selected={value === tab}
+              aria-controls='idea-prompt-panel'
+              className={`idea-tab${value === tab ? ' is-selected' : ''}`}
+              onClick={() => setTab(value)}>
+              {value === 'preview' ? 'Preview' : 'Edit'}
+            </button>
+          ))}
+        </div>
+        {edited && <span className='muted idea-prompt-edited'>edited — this copy only</span>}
+      </div>
+
+      <div id='idea-prompt-panel' role='tabpanel' aria-labelledby={`idea-prompt-tab-${tab}`}>
+        {tab === 'preview' ? (
+          <pre className='idea-prompt-preview'>{draft}</pre>
+        ) : (
+          <div className='idea-prompt-edit'>
+            <textarea value={draft} rows={16} aria-label='Task prompt' onChange={(e) => setDraft(e.target.value)} />
+            <div className='idea-controls'>
+              <button type='button' className='btn-quiet' disabled={!edited} onClick={() => setDraft(generated)}>
+                Reset
+              </button>
+              <span className='muted'>
+                a lasting instruction belongs in the comment below, which every generated prompt quotes
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {copyError && <div className='suggestion-mark-error'>{copyError}</div>}
+    </div>
   );
 }
 

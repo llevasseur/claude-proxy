@@ -19,6 +19,7 @@ import {
   ideaOf,
   ideaRationaleBullets,
   ideaRows,
+  ideaTaskPrompt,
   isIdeaArea,
   isIdeaClaimStale,
   isIdeaRepo,
@@ -703,6 +704,74 @@ describe('commenting', () => {
   });
 });
 
+describe('the /task prompt an idea produces', () => {
+  function entryOf(over: Partial<IdeaAdd> = {}) {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('rolling-window-view', over)]);
+    return { store, entry: ideaOf(store, 'rolling-window-view')! };
+  }
+
+  it('opens as a /task invocation naming the slug, area and repo', () => {
+    const { entry } = entryOf({ title: 'Rolling window view' });
+    const prompt = ideaTaskPrompt(entry);
+
+    expect(prompt.startsWith('/task ')).toBe(true);
+    expect(prompt).toContain('Rolling window view');
+    expect(prompt).toContain('rolling-window-view');
+    expect(prompt).toContain('llevasseur/claude-proxy');
+    expect(prompt).toContain('UI/UX');
+  });
+
+  it('carries the rationale and every citation, so the premise can be checked', () => {
+    const { entry } = entryOf({
+      evidence: [{ source: 'open-question', path: 'docs/features/x.md', quote: 'nobody counts a missing command' }],
+    });
+    const prompt = ideaTaskPrompt(entry);
+
+    expect(prompt).toContain('Because the open question says so.');
+    expect(prompt).toContain('open-question docs/features/x.md');
+    expect(prompt).toContain('"nobody counts a missing command"');
+  });
+
+  it('tells a run to claim the idea before it writes anything, and to attach the PR after', () => {
+    const { entry } = entryOf();
+    const prompt = ideaTaskPrompt(entry);
+
+    expect(prompt).toContain('ideas claim --slug rolling-window-view --by <your branch>');
+    expect(prompt).toContain('--pr <PR url>');
+  });
+
+  it('quotes the comment as build criteria, and says nothing about them when there is none', () => {
+    const { store, entry } = entryOf();
+    expect(ideaTaskPrompt(entry)).not.toContain('Build criteria');
+
+    const commented = applyIdeaComments(store, [{ slug: 'rolling-window-view', text: 'start with the reader' }]);
+    const after = ideaOf(commented.store, 'rolling-window-view')!;
+    const prompt = ideaTaskPrompt(after);
+
+    expect(prompt).toContain('Build criteria');
+    expect(prompt).toContain('start with the reader');
+  });
+
+  // Derived rather than stored: the ledger holds no copy to go stale, so a
+  // re-filing or a rewritten comment moves the prompt with it.
+  it('follows the entry rather than a stored copy', () => {
+    const { store } = entryOf();
+    const filed = applyIdeaFilings(store, [{ slug: 'rolling-window-view', area: 'infrastructure' }]);
+    const prompt = ideaTaskPrompt(ideaOf(filed.store, 'rolling-window-view')!);
+
+    expect(prompt).toContain('Infrastructure');
+    expect(prompt).not.toContain('UI/UX');
+  });
+
+  it('renders a locator-less command-gap citation without a dangling path', () => {
+    const { entry } = entryOf({ area: 'commands', evidence: [{ source: 'command-gap' }] });
+    const prompt = ideaTaskPrompt(entry);
+
+    expect(prompt).toContain('command-gap');
+    expect(prompt).toContain('the command was never written');
+  });
+});
+
 describe('ideaRationaleBullets', () => {
   it('reads the shape /ideate writes, label and text apart', () => {
     const rationale = [
@@ -729,9 +798,17 @@ describe('ideaRationaleBullets', () => {
     expect(ideaRationaleBullets('- **Depends on `idea-areas`**')).toEqual([{ text: 'Depends on `idea-areas`' }]);
   });
 
+  it('reads the leading run, so bullets closed by a paragraph still preview as a list', () => {
+    const rationale = ['- What it is: a preview reading.', '- Size: small.', '', 'The evidence, in prose.'].join('\n');
+    expect(ideaRationaleBullets(rationale)).toEqual([
+      { text: 'What it is: a preview reading.' },
+      { text: 'Size: small.' },
+    ]);
+  });
+
   it('returns nothing for a paragraph, so the legacy shape renders as prose', () => {
     expect(ideaRationaleBullets('One paragraph on why it is worth building.')).toEqual([]);
-    // All-or-nothing: prose beside a bullet is prose, never a list with an orphan.
+    // The run leads: prose *before* a bullet is prose, never a list with an orphan.
     expect(ideaRationaleBullets('Some prose — with a dash.\n- and a bullet')).toEqual([]);
     expect(ideaRationaleBullets('   ')).toEqual([]);
     // A dash with no word after it is a sentence's punctuation, not a marker.

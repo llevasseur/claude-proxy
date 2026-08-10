@@ -4,6 +4,7 @@ import {
   type IdeaEvidence,
   type IdeaStatus,
   ideaAreaLabel,
+  ideaCitation,
   ideaRationaleBullets,
 } from '@claude-proxy/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,17 +33,6 @@ export const IDEA_STATUS_LABEL: Record<IdeaStatus, string> = {
   shipped: 'Shipped',
 };
 
-/**
- * Where a citation points, in a form a reader can go and check. A judge note
- * lives in the suggestion store rather than in a file, so it is located by
- * `bucket`/`id`; everything else is a repo-relative path.
- */
-export function citationOf(evidence: IdeaEvidence): string {
-  if (evidence.path) return evidence.path;
-  if (evidence.bucket !== undefined) return `bucket ${evidence.bucket}/${evidence.id ?? ''}`;
-  return '';
-}
-
 /** What an idea cites, on every card — the evidence is what makes it approvable. */
 export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence[] }) {
   if (evidence.length === 0) return null;
@@ -50,9 +40,9 @@ export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence
     <ul className='idea-evidence'>
       {evidence.map((e, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: an evidence item carries no id, and two entries may legitimately cite the same path under the same source — the list is render-only and never reordered, so position is the only stable key available
-        <li key={`${e.source}:${citationOf(e)}:${i}`}>
+        <li key={`${e.source}:${ideaCitation(e)}:${i}`}>
           <span className='idea-evidence-source'>{e.source}</span>
-          <code className='idea-evidence-where'>{citationOf(e)}</code>
+          <code className='idea-evidence-where'>{ideaCitation(e)}</code>
           {e.quote && <span className='idea-evidence-quote muted'>“{e.quote}”</span>}
         </li>
       ))}
@@ -61,11 +51,14 @@ export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence
 }
 
 /**
- * The rationale — a list when it is written as bullets, a paragraph when it is
- * not. `max` previews the first N bullets: the cut is by bullet rather than by
- * height because `-webkit-line-clamp` needs `display: -webkit-box`, which stops
- * a `<ul>` rendering as a list at all. `className` is the paragraph's alone, since
- * the clamp it carries is `p.idea-rationale`; the list has its own class.
+ * The rationale **as a card preview** — a list when it opens with bullets, a
+ * paragraph when it does not. `max` previews the first N bullets: the cut is by
+ * bullet rather than by height because `-webkit-line-clamp` needs
+ * `display: -webkit-box`, which stops a `<ul>` rendering as a list at all.
+ * `className` is the paragraph's alone, since the clamp it carries is
+ * `p.idea-rationale`; the list has its own class.
+ *
+ * The permalink does **not** use this — it renders the rationale through `Markdown`.
  */
 export function IdeaRationale({ rationale, className, max }: { rationale: string; className?: string; max?: number }) {
   const all = ideaRationaleBullets(rationale);
