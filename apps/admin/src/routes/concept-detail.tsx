@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { type ConceptRow, getConcept } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { Markdown } from '../components/Markdown';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonText } from '../components/Skeleton';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 
 /**
@@ -169,3 +170,11 @@ function ConceptSkeleton() {
     </>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  // `$ord` is the line the record sits on in the store — unique where a term is not.
+  path: '/concepts/$ord',
+  component: ConceptDetailPage,
+  staticData: { title: 'Concept' },
+});

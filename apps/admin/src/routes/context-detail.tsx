@@ -1,6 +1,6 @@
 import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { getContextDetail } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -9,8 +9,10 @@ import { HeaderHint } from '../components/HeaderHint';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
+import { rootRoute } from '../route-root';
 import { useRestoredScroll } from '../useRestoredScroll';
 import { useTransitionState } from '../useTransitionState';
+import { contextDays } from './context';
 
 export function ContextDetailPage() {
   const { file } = useParams({ from: '/context/$file' });
@@ -432,3 +434,25 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+/**
+ * `?thread=` names the thread this request was reached through — the only way the
+ * breakdown can crumb back, since a request body records no ids. `?days=` rides
+ * along so that crumb reopens the window it came from.
+ */
+export interface ContextDetailSearch {
+  thread?: string;
+  days?: number;
+}
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/context/$file',
+  component: ContextDetailPage,
+  staticData: { title: 'Context size' },
+  validateSearch: (search: Record<string, unknown>): ContextDetailSearch => {
+    const thread = search.thread;
+    if (typeof thread !== 'string' || thread === '') return {};
+    return { thread, days: contextDays(search.days) };
+  },
+});

@@ -1,6 +1,6 @@
 import { isPartialDay, lastNonZeroComparison, type UsageDigest } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getTrends } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { FixedPrefixTools } from '../components/FixedPrefixTools';
@@ -13,6 +13,7 @@ import { SeriesLineChart } from '../components/SeriesLineChart';
 import { Skeleton, SkeletonChartCard, type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { deltaLabel, deltaTone } from '../format';
 import { findMetric, REPORT_TZ_ABBR, type StatMetric } from '../metrics';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 
 /** The tall chart this page leads with, in px. */
@@ -247,3 +248,10 @@ function TrendDetailSkeleton({
     </>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/trends/$metric',
+  component: TrendDetailPage,
+  staticData: { title: 'Trend' },
+});

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useMemo } from 'react';
 import type { MemoryFileSummary } from '../api';
 import { getProjectMemories } from '../api';
@@ -8,6 +8,7 @@ import { HeaderHint } from '../components/HeaderHint';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
 import { fmtBytes, fmtLocalTsShort } from '../format';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 
 /** File name, size, and modified time. */
@@ -192,3 +193,10 @@ function SortHeader({
     </th>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$project',
+  component: ProjectDetailPage,
+  staticData: { title: 'Project' },
+});

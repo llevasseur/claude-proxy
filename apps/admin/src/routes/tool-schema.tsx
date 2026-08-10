@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getToolSchema, type ToolSchemaResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
+import { rootRoute } from '../route-root';
 
 /** How far back bodies are searched for the schema — a search depth, not a filter. */
 const LOOKBACK_DAYS = 30;
@@ -110,3 +111,12 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  // Nested under the metric it drills into. The param is the tool's wire name,
+  // which is what the schema is looked up by.
+  path: '/trends/fixed-prefix/tool/$name',
+  component: ToolSchemaPage,
+  staticData: { title: 'Tool schema' },
+});

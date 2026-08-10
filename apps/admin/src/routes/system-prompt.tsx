@@ -8,6 +8,8 @@ import {
   utf8Bytes,
 } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { createRoute } from '@tanstack/react-router';
+import { ScrollText } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { SystemPromptResponse } from '../api';
 import { getSystemPrompt, saveSystemPrompt } from '../api';
@@ -17,6 +19,8 @@ import { QueryState } from '../components/QueryState';
 import { Segmented, type SegmentedOption } from '../components/Segmented';
 import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtLocalTsShort } from '../format';
+import { rootRoute } from '../route-root';
+import type { NavEntry } from './nav';
 
 /**
  * "System prompt" — `~/.claude/CLAUDE.md`, the device-wide instructions Claude Code
@@ -420,3 +424,19 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/system-prompt',
+  component: SystemPromptPage,
+  staticData: { title: 'System prompt' },
+});
+
+export const nav = {
+  section: 'Device',
+  to: '/system-prompt',
+  label: 'System prompt',
+  hint: 'device',
+  exact: false,
+  icon: ScrollText,
+} as const satisfies NavEntry;

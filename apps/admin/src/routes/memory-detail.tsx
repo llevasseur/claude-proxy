@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import type { MemoryDetail } from '../api';
 import { getMemory } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -9,6 +9,7 @@ import { QueryState } from '../components/QueryState';
 import { PRETTY_RAW, type PrettyRawView, Segmented } from '../components/Segmented';
 import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
 import { fmtBytes, fmtLocalTsShort } from '../format';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 
 export function MemoryDetailPage() {
@@ -101,3 +102,10 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/projects/$project/memory/$name',
+  component: MemoryDetailPage,
+  staticData: { title: 'Memory' },
+});

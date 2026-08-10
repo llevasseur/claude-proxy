@@ -1,8 +1,8 @@
 import type { InterruptionKind, SessionNode } from '@claude-proxy/core';
 import { mergeSessionNodes, sessionName, spawnAgentType } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { Expand, Maximize2, Minimize2, Shrink } from 'lucide-react';
+import { createRoute, Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { Expand, Maximize2, Minimize2, Network, Shrink } from 'lucide-react';
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionGraphEntry } from '../api';
@@ -10,6 +10,8 @@ import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessio
 import { livenessTitle } from '../components/LivenessBadge';
 import { Skeleton, SkeletonStatus } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort } from '../format';
+import { rootRoute } from '../route-root';
+import type { NavEntry } from './nav';
 
 /**
  * Live session graph — one session at a time, its appended steps (task / decision /
@@ -1487,3 +1489,28 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'ba
     </div>
   );
 }
+
+/** `?session=` names the session the graph opens on. */
+export interface SessionGraphSearch {
+  session?: string;
+}
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sessions/graph',
+  component: SessionGraphPage,
+  staticData: { title: 'Live graph' },
+  validateSearch: (search: Record<string, unknown>): SessionGraphSearch => {
+    const session = search.session;
+    return typeof session === 'string' && session !== '' ? { session } : {};
+  },
+});
+
+export const nav = {
+  section: 'Sessions',
+  to: '/sessions/graph',
+  label: 'Live graph',
+  hint: 'sessions',
+  exact: false,
+  icon: Network,
+} as const satisfies NavEntry;

@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getPromptSection, type PromptSectionResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
+import { rootRoute } from '../route-root';
 
 /**
  * The window bodies are looked for in. The text is a property of the prompt
@@ -126,3 +127,11 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  // The index is into the prompt's own ranked section table, not the outline.
+  path: '/trends/avg-system-prompt/$hash/section/$index',
+  component: PromptSectionPage,
+  staticData: { title: 'Prompt section' },
+});

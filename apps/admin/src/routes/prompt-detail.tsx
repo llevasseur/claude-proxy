@@ -1,6 +1,6 @@
 import type { SectionShare } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { useMemo } from 'react';
 import { getPromptDetail, type PromptDayUsage, type PromptDetailResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -10,6 +10,7 @@ import { DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
 import { REPORT_TZ_ABBR } from '../metrics';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 
 const SECTION_COLUMNS: readonly SkeletonColumn[] = [
@@ -311,3 +312,12 @@ function PromptDetailSkeleton({ days }: { days: number }) {
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  // Nested under the metric it drills into. The param is the prompt's content
+  // hash, which is also its cohort key on that page.
+  path: '/trends/avg-system-prompt/$hash',
+  component: PromptDetailPage,
+  staticData: { title: 'System prompt' },
+});

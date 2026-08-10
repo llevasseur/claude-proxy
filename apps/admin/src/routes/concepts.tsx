@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { createRoute, useNavigate } from '@tanstack/react-router';
+import { BookOpen } from 'lucide-react';
 import { type CSSProperties, useMemo, useState } from 'react';
 import { type ConceptRow, getConcepts } from '../api';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
+import type { NavEntry } from './nav';
 
 /**
  * "Concepts" — every term `/teach` has explained, newest first.
@@ -194,3 +197,19 @@ function ConceptsSkeleton() {
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/concepts',
+  component: ConceptsPage,
+  staticData: { title: 'Concepts' },
+});
+
+export const nav = {
+  section: 'Learning',
+  to: '/concepts',
+  label: 'Concepts',
+  hint: '/teach',
+  exact: false,
+  icon: BookOpen,
+} as const satisfies NavEntry;
