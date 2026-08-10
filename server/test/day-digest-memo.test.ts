@@ -6,10 +6,8 @@ import { buildSummary, buildTrends, clearRawArchiveCache } from '../src/api.js';
 import { fileSource, type SidecarSource } from '../src/db/source.js';
 
 /**
- * A closed day's digest cannot change, so it is computed once per process and
- * served from the memo after that. These tests pin the two halves of that
- * claim: the archived read for a finished day happens exactly once across
- * repeated builds, and the day still in progress is re-read every single time.
+ * The archived read for a finished day happens exactly once across repeated
+ * builds; the day still in progress is re-read every time.
  */
 
 /** 11:00 EDT on 2026-08-02 — already rotated into `archive/2026-08-02/`. */

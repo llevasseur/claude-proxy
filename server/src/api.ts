@@ -275,13 +275,9 @@ async function baselineDigests(
   classifierHashes: ReadonlySet<string>,
   archiveDir?: string,
 ): Promise<UsageDigest[]> {
-  // The walk stays sequential on purpose, unlike {@link buildTrends}'s. It stops
-  // at the first day that captured anything — normally the very first — and a
-  // day that resolves to nothing is deliberately not memoised, since it can
-  // still gain its archive later. Loading the run together would therefore
-  // re-read the same idle days on every request forever, to save an await on a
-  // day the walk was never going to reach. What makes the walk cheap is the memo
-  // underneath it: after the first pass each day answers without any I/O at all.
+  // Sequential, unlike {@link buildTrends}'s: the walk stops at the first day
+  // that captured anything, and a day resolving to nothing is never memoised, so
+  // loading the run together would re-read the same idle days on every request.
   const digests: UsageDigest[] = [];
   for (let back = 1; back <= SUMMARY_BASELINE_LOOKBACK_DAYS; back += 1) {
     const digest = await baselineDayDigest(logDir, shiftDay(day, -back), now, source, classifierHashes, archiveDir);
@@ -294,11 +290,9 @@ async function baselineDigests(
 /**
  * One baseline day's digest, memoised once the day can no longer change.
  *
- * The memo is consulted *before* either half is read, so a hit costs no I/O at
- * all. On a miss the two halves go out together — the same shape `readWindow`
- * uses for its archived days — and the result is kept only when the live
- * directory contributed nothing: a day it still holds part of is mid-rotation,
- * so it is recomputed on every read until the archiver has finished with it.
+ * The memo is consulted before either half is read, so a hit costs no I/O. The
+ * result is kept only when the live directory contributed nothing — a day it
+ * still holds part of is mid-rotation, and is recomputed on every read.
  */
 async function baselineDayDigest(
   logDir: string,
@@ -323,8 +317,7 @@ async function baselineDayDigest(
     source.readSidecars(logDir, { date }, now),
   ]);
 
-  // Nothing on record either side: fall back to the finalized digest, which
-  // outlives the raw triples the retention clock prunes.
+  // Nothing on record either side: the finalized digest outlives the raw triples.
   if (archived.files === 0 && live.files === 0) {
     const finalized = archiveDir ? await loadArchivedDigest(archiveDir, date) : null;
     // An absent day is left uncached — its archive may simply not have run yet.
@@ -455,8 +448,7 @@ export interface TrendsResponse {
  * Test-only: drop the in-process closed-day digest memo.
  *
  * Kept under its original name because `parity.ts` and the split-day tests call
- * it; the store itself now lives in `day-digest-memo.ts`, shared by
- * {@link baselineDigests} and {@link buildTrends}.
+ * it; the store itself lives in `day-digest-memo.ts`.
  */
 export function clearRawArchiveCache(): void {
   clearDayDigestMemo();
@@ -466,10 +458,10 @@ export function clearRawArchiveCache(): void {
  * One archived day's digest, computed from the raw sidecars the summary job
  * moved into `<logDir>/archive/<date>/`. `null` when that day isn't archived.
  *
- * Read through the memo, so a *closed* day is computed once per process. Today
- * is excluded by the memo itself: the archiver rotates on the UTC day while a
+ * Read through the memo, so a closed day is computed once per process. Today is
+ * excluded by the memo itself — the archiver rotates on the UTC day while a
  * reporting day is a `REPORT_TZ` day, so the archive can already hold part of
- * the day in progress, and caching that half-day would pin it until restart.
+ * the day in progress.
  */
 async function rawArchivedDigest(
   logDir: string,
@@ -498,10 +490,8 @@ async function rawArchivedDigest(
  * otherwise the finalized `digest.json` the summary job wrote. `null` when the
  * day is on record in neither.
  *
- * This is the single resolution order for a day with nothing live left, shared
- * by {@link baselineDigests} and {@link buildTrends} — raw triples are pruned on
- * a retention clock while a finalized digest is kept indefinitely, so the raw
- * read is tried first and the finalized digest is the long tail.
+ * Raw triples are pruned on a retention clock while a finalized digest is kept
+ * indefinitely, so the raw read comes first and the finalized one is the tail.
  */
 async function archivedDayDigest(
   logDir: string,
@@ -561,9 +551,8 @@ export async function buildTrends(
   for (let i = days - 1; i >= 0; i -= 1) dates.push(shiftDay(end, -i));
 
   // Resolved first, digested second: `trend` chains each day against the one before it.
-  // Every day goes out together rather than one await at a time — a closed day
-  // with nothing live left comes straight back from the memo after its first
-  // read, and the days that do still need reading are independent of each other.
+  // Every day goes out together: the days are independent, and a closed one with
+  // nothing live left comes straight back from the memo after its first read.
   const reads = await Promise.all(
     dates.map(async (date): Promise<DayRead> => {
       const live = liveByDate.get(date);
