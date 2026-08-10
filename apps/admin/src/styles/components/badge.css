@@ -10,6 +10,16 @@
     letter-spacing: 0.04em;
     white-space: nowrap;
   }
+  /*
+   * A run of badges. Adjacent badges in JSX carry no whitespace between them, so
+   * an inline run of them has no break opportunity and overflows its card once
+   * it is wider than the card — wrapping is the row's job, not the badge's.
+   */
+  .badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
   .badge.sev-high {
     background: rgba(255, 107, 129, 0.16);
     color: var(--high);
