@@ -10,12 +10,11 @@ import { useStationInView } from './useStationInView';
 /**
  * The root route and the chrome every page renders inside.
  *
- * This lives apart from `router.tsx` so a page file can name its parent without
- * importing the router it is a child of. The remaining import cycle is deliberate and
- * benign: `registry` imports the page files, the page files import `rootRoute` from
- * here, and this file imports the rail back off `registry`. Every one of those reads is
- * deferred — `getParentRoute` is a thunk, and `NAV_RAIL` is read inside a component
- * body — so every binding is initialized long before anything touches it.
+ * This lives apart from `router.tsx` so a page file can name its parent without importing
+ * the router it is a child of. The remaining cycle — `registry` imports the page files,
+ * they import `rootRoute` from here, and this file imports the rail back off `registry` —
+ * is benign: every read is deferred, `getParentRoute` being a thunk and `NAV_RAIL` being
+ * read inside a component body.
  */
 
 /** Browser-tab title for a route, appended after the ClaudeProxy brand. */

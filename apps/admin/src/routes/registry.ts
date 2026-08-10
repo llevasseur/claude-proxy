@@ -39,25 +39,15 @@ import { nav as trendsNav, route as trendsRoute } from './trends';
 import { nav as withheldNav, route as withheldRoute } from './withheld';
 
 /**
- * Every page in the dashboard, in one place.
+ * Every page in the dashboard, in one place. Written out rather than globbed:
+ * `import.meta.glob` is typed `Record<string, unknown>` and would erase the route types.
+ * Modules are listed in rail order; registration order itself is inert, since TanStack
+ * ranks routes by specificity rather than by position.
  *
- * The list is written out rather than globbed. `import.meta.glob` would be shorter, but
- * it is a Vite feature typed as `Record<string, unknown>`, which would erase the route
- * types this whole arrangement exists to keep — and it would hide the list, which is
- * the one thing a registry is for. Adding a page is still two edits: the file, and a
- * line here.
- *
- * Modules are listed in rail order, so a section's stations read down this list in the
- * order they appear in the nav. Route *registration* order is inert — TanStack ranks
- * routes by specificity, not by position — so ordering it for the nav's benefit costs
- * nothing.
- */
-
-/**
  * `as const` is load-bearing. A plain array literal widens to `(A | B | …)[]`, and
  * `addChildren` would then build a route tree that has lost which paths exist —
  * `<Link to>` would stop rejecting a bad path and `useParams({ from })` would stop
- * resolving. The readonly tuple keeps each route's own type in its own slot.
+ * resolving.
  */
 export const ROUTES = [
   overviewRoute,
@@ -101,11 +91,10 @@ export const ROUTES = [
 ] as const;
 
 /**
- * The pages that appear in the rail, in rail order. A page with no `nav` export is
- * simply absent here — that is how "in no section" is expressed.
+ * The pages that appear in the rail, in rail order. A page with no `nav` export is simply
+ * absent here — that is how "in no section" is expressed.
  *
- * `as const` for the same reason as `ROUTES`: it keeps each entry's `to` a string
- * literal, so the union that reaches `<Link to>` is still the set of real paths.
+ * `as const` for the same reason as `ROUTES`: it keeps each entry's `to` a string literal.
  */
 const STATIONS = [
   overviewNav,
@@ -131,9 +120,8 @@ const STATIONS = [
 
 /**
  * The rail, grouped and ordered: sections in `NAV_SECTION_ORDER`, stations within a
- * section in `STATIONS` order. Filtering a readonly tuple yields an array of the
- * element *union*, so `to` survives as the union of path literals rather than widening
- * to `string`.
+ * section in `STATIONS` order. Filtering a readonly tuple yields an array of the element
+ * *union*, so `to` survives as the union of path literals rather than widening to `string`.
  */
 export const NAV_RAIL = NAV_SECTION_ORDER.map((label) => ({
   label,
