@@ -1241,19 +1241,33 @@ export interface IdeaRationaleBullet {
 /** `**Label** — rest`, `**Label**: rest`, or `**Label**` alone. */
 const BULLET_LABEL = /^\*\*(.+?)\*\*\s*(?:[—–:-]\s*)?(.*)$/;
 
+/** A bullet marker with a word after it. A dash alone is a sentence's punctuation. */
+const BULLET_LINE = /^[-*•]\s+\S/;
+
 /**
- * A rationale's bullets, or `[]` when it is a paragraph — the shape is read from
- * the text, since both are on the ledger at once. All-or-nothing: *every* non-empty
- * line must be a bullet, so a paragraph containing a dash stays prose and a
- * half-converted rationale is never split into a list with prose beside it.
+ * A rationale's bullets, or `[]` when it opens as a paragraph — the shape is read
+ * from the text, since both are on the ledger at once.
+ *
+ * The bullets are the **leading run**: every line up to the first that is not a
+ * bullet, so `/ideate`'s bullets still read as bullets when a paragraph of evidence
+ * closes them. The first non-empty line must still be a bullet, so a paragraph
+ * containing a dash stays prose rather than becoming a list with an orphan.
+ *
+ * A preview reading: the trailing prose is not in it, and the permalink renders the
+ * rationale as markdown instead.
  */
 export function ideaRationaleBullets(rationale: string): IdeaRationaleBullet[] {
-  const lines = rationale.split('\n').map((l) => l.trim());
-  const filled = lines.filter((l) => l !== '');
-  if (filled.length === 0) return [];
-  if (!filled.every((l) => /^[-*•]\s+\S/.test(l))) return [];
+  const filled = rationale
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '');
+  const run: string[] = [];
+  for (const line of filled) {
+    if (!BULLET_LINE.test(line)) break;
+    run.push(line);
+  }
 
-  return filled.map((line) => {
+  return run.map((line) => {
     const body = line.replace(/^[-*•]\s+/, '').trim();
     const m = BULLET_LABEL.exec(body);
     if (!m?.[1]) return { text: body };

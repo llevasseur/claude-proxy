@@ -284,15 +284,23 @@ reading two paragraphs to find the claim each one turns on.
 
 **Nothing rewrites a row it did not write**, so every idea recorded before that shape existed is
 still a paragraph. `ideaRationaleBullets` in `packages/core` tells them apart by reading the text
-rather than by a stored flag, and the test is all-or-nothing: *every* non-empty line must open with a
-bullet marker. A paragraph that happens to contain a dash therefore renders as the paragraph it is,
-and a half-converted rationale never renders as a list with prose floating beside it. A leading
-`**Label**` is split off so the labels can hang, which is what makes the fixed order scannable.
+rather than by a stored flag, reading the **leading run**: every line up to the first one that is not
+a bullet. The *first* non-empty line must still be a bullet, so a paragraph that happens to contain a
+dash renders as the paragraph it is rather than as a list with an orphan. `/ideate` may close its
+bullets with a paragraph of evidence, and the run is what keeps that rationale a list instead of
+dropping the whole of it back to prose, where the newlines fold into one line. A leading `**Label**`
+is split off so the labels can hang, which is what makes the fixed order scannable.
 
-The card shows the **first three** bullets and the permalink shows all of them. The cut is by bullet
-rather than by height because `-webkit-line-clamp` requires `display: -webkit-box`, which stops a
-`<ul>` rendering as a list at all — and because the fixed order puts the three a scanning reader
-wants at the top. A legacy paragraph keeps the old three-line clamp.
+The card shows the **first three** bullets. The cut is by bullet rather than by height because
+`-webkit-line-clamp` requires `display: -webkit-box`, which stops a `<ul>` rendering as a list at
+all — and because the fixed order puts the three a scanning reader wants at the top. A legacy
+paragraph keeps the old three-line clamp.
+
+The permalink does not use that reading at all. It renders the rationale through the dashboard's
+`Markdown` component, the same one behind the memory, command, concept and job-file views, so the
+`- ` lines become a real `<ul>`, a `**Label**` lead-in is bold, inline code stays code, and a closing
+paragraph of evidence keeps its own block instead of running on from the last bullet. The card cannot
+share that renderer, because the clamp above unmakes a list.
 
 ### The `/task` prompt an idea produces, so nobody retypes the brief
 
@@ -400,7 +408,9 @@ the writes, all in `server/src/api.ts`; `server/src/server.ts` dispatches `/api/
 takes a `SidecarSource` and none is shadowed: the ledger is *authored* state with no derived half, so
 there is nothing for the SQLite substrate to disagree about. In the dashboard,
 `apps/admin/src/components/IdeaCard.tsx` is the card, `apps/admin/src/routes/ideas.tsx` is the tabbed
-list, `apps/admin/src/routes/idea-detail.tsx` is one idea in full, and both are registered by hand in
+list, `apps/admin/src/routes/idea-detail.tsx` is one idea in full — rendering its rationale through
+`apps/admin/src/components/Markdown.tsx` rather than through the card's reading — and both are
+registered by hand in
 `apps/admin/src/router.tsx`; the Ideas section of `apps/admin/src/routes/advice.tsx` is now a summary
 line linking across.
 
