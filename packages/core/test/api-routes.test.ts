@@ -1,7 +1,5 @@
-// The manifest is the single statement of the API's shape: the server keys its
-// dispatch table by these paths and the dashboard derives every client function from
-// them. Types cover the two consumers agreeing with it; these cover the declarations
-// themselves being coherent — which no type can say.
+// Types cover the two consumers agreeing with the manifest; these cover the
+// declarations themselves being coherent, which no type can say.
 import { describe, expect, it } from 'vitest';
 import {
   API_ROUTES,
@@ -13,10 +11,9 @@ import {
 } from '../src/api-routes.js';
 
 /**
- * The declarations widened back to the interface. `as const` gives each entry its own
- * literal type — which is what makes the derived path and parameter types work — and an
- * entry with no `streamOf` has no such property to read at all, so a pass over the whole
- * array reads them through the shape they all satisfy.
+ * The declarations widened back to the interface. Under `as const` an entry with no
+ * `streamOf` has no such property to read, so a pass over the whole array reads them
+ * through the shape they all satisfy.
  */
 const ROUTES: readonly ApiRouteDeclaration[] = API_ROUTES;
 

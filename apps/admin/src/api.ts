@@ -837,12 +837,9 @@ export interface ChatStopResponse {
 }
 
 /**
- * What each declared read answers.
- *
- * `extends Record<ApiJsonGetPath, unknown>` is the whole point: the keys are the
- * manifest's own GET paths, so a route declared in `@claude-proxy/core` with no shape
- * stated here does not compile, and neither does a shape stated for a path the server
- * does not serve. The client no longer holds its own list of routes to drift from.
+ * What each declared read answers. `extends Record<ApiJsonGetPath, unknown>` keys it by
+ * the manifest's own GET paths: a declared route with no shape here does not compile,
+ * and neither does a shape for a path the server does not serve.
  */
 interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/health': HealthResponse;
@@ -934,9 +931,8 @@ async function unwrap<T>(res: Response): Promise<T> {
 }
 
 /**
- * Read one declared route. The path must be a route the manifest declares as a JSON
- * GET, the query keys must be parameters that route declares, and the answer's type
- * comes back off `ApiGetResponses` — none of which the caller restates.
+ * Read one declared route: the path must be a manifest JSON GET, the query keys must be
+ * parameters that route declares, and the answer's type comes off `ApiGetResponses`.
  */
 async function read<P extends ApiJsonGetPath>(
   path: P,

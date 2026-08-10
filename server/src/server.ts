@@ -175,10 +175,8 @@ const CORS = {
  * commands in this checkout. A request that *declares* another origin is refused
  * outright, rather than relying on the browser to withhold the response.
  *
- * **Which** routes those are is no longer restated here: `API_ROUTES` declares each
- * route's `cors` and methods, and `isApiWriteRoute` reads the allowlist back off them.
- * The hand-kept `WRITE_ROUTES` set this replaced was a second statement of a fact the
- * dispatch already made, and could drift from it silently.
+ * Which routes those are is not restated here: `API_ROUTES` declares each route's `cors`
+ * and methods, and `isApiWriteRoute` reads the allowlist back off them.
  */
 const CHAT_ORIGINS = (process.env.CHAT_ALLOWED_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173')
   .split(',')

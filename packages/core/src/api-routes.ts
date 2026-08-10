@@ -1,24 +1,15 @@
 /**
  * Every route the HTTP API answers, declared once.
  *
- * The server used to state each route twice — a `case` in the dispatch switch and a
- * membership test in a hand-written `WRITE_ROUTES` set — and the dashboard stated the
- * same route a third and fourth time, in a client function and in the `fetch` path it
- * built. Four statements of one fact drift independently: a route can be dispatched but
- * unreachable, or reachable but off the write allowlist, and nothing says so.
+ * `server/src/server.ts` builds its dispatch table from {@link API_ROUTES}, keyed by
+ * {@link ApiRoutePath}: a handler for an undeclared route does not compile, and a
+ * declared route with no handler does not either. `apps/admin/src/api.ts` derives every
+ * client function from the same array — path, method and the query parameters a call may
+ * name — with the response type bound to the route by its path.
  *
- * This module is the one statement. `server/src/server.ts` builds its dispatch table
- * from {@link API_ROUTES} — the handler map is keyed by {@link ApiRoutePath}, so a
- * handler for a route that is not declared here does not compile, and a declared route
- * with no handler does not either. `apps/admin/src/api.ts` derives every client function
- * from the same array: the path, the method and the query parameters a call may name all
- * come from here, and the response type is bound to the route by its path.
- *
- * **Response types are types, not runtime entries.** The payloads are the dashboard's
- * `Response` interfaces, which are structural mirrors of what `server/src/api.ts` builds;
- * carrying them as values would mean a schema and a second thing to keep true. The
- * binding is a compile-time map keyed by the paths below, so a route with no response
- * type is a type error at the client helper rather than a silent `unknown`.
+ * **Response types are types, not runtime entries.** The binding is a compile-time map
+ * keyed by the paths below, so a route with no response type is a type error at the
+ * client helper rather than a silent `unknown`.
  */
 
 /** The methods a route answers. Everything else gets a 405. */
@@ -28,12 +19,8 @@ export type ApiMethod = 'GET' | 'POST';
 export type ApiRouteKind = 'json' | 'sse';
 
 /**
- * Which CORS a route answers under.
- *
- * `open` is the read routes' `*`, which is only safe while they stay reads. `origin` is
- * the narrow, origin-checked headers: every write is on it, because a POST here can start
- * an agent turn that runs commands in this checkout — and so is the chat turn stream,
- * which is a GET but carries the chat's own content.
+ * Which CORS a route answers under: `open` is the read routes' `*`, `origin` the narrow
+ * origin-checked headers. Every write is `origin`, and so is the chat turn stream.
  */
 export type ApiRouteCors = 'open' | 'origin';
 
@@ -139,16 +126,16 @@ export const API_ROUTES = [
     params: ['status', 'repo', 'area'],
     streamOf: '/api/ideas',
   },
-  // The ledger's four writes. They are `origin` rather than `open` because they write a
-  // **device-wide** file whose `accepted` rows are what `/improve` acts on.
+  // The ledger's four writes. `origin` rather than `open`: the file is device-wide, and
+  // its `accepted` rows are what `/improve` acts on.
   { path: '/api/ideas/status', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/ideas/area', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/ideas/comment', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/ideas/claim', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/sessions/suggestions', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
   { path: '/api/sessions/suggestions/bucket', methods: ['GET'], kind: 'json', cors: 'open', params: ['index'] },
-  // A GET list and a POST that writes the flags, on one path. The GET answers under the
-  // narrow headers too, which costs it nothing: no browser reads it cross-origin.
+  // A GET list and a POST that writes the flags, on one path — so the GET answers under
+  // the narrow headers too.
   {
     path: '/api/sessions/suggestions/status',
     methods: ['GET', 'POST'],
@@ -160,8 +147,8 @@ export const API_ROUTES = [
   { path: '/api/chat/config', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
   { path: '/api/chat/running', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
   { path: '/api/chat/thread', methods: ['GET'], kind: 'json', cors: 'open', params: ['sessionId'] },
-  // A GET, so it is not a write — but it carries the chat's own content, so it answers
-  // the dashboard's origins rather than the reads' open `*`.
+  // A GET, so not a write — but it carries the chat's own content, so it answers the
+  // dashboard's origins rather than the open `*`.
   { path: '/api/chat/stream', methods: ['GET'], kind: 'sse', cors: 'origin', params: ['sessionId'] },
   { path: '/api/chat/sessions', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/chat/sessions/message', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
@@ -215,9 +202,8 @@ export function apiRoute(path: string): ApiRoute | undefined {
 }
 
 /**
- * Whether a route is on the write allowlist — the set the server used to keep by hand as
- * `WRITE_ROUTES`. A write is a POST answered under the origin-checked CORS; the chat turn
- * stream shares those headers without being one, which is why both halves are asked.
+ * Whether a route is on the write allowlist: a POST answered under the origin-checked
+ * CORS. Both halves are asked because the chat turn stream shares those headers as a GET.
  */
 export function isApiWriteRoute(route: ApiRoute): boolean {
   return route.cors === 'origin' && (route.methods as readonly ApiMethod[]).includes('POST');
@@ -239,10 +225,8 @@ export function apiRouteUrl<P extends ApiRoutePath>(
   path: P,
   params: Partial<Record<ApiRouteParam<P>, ApiQueryValue>> = {},
 ): string {
-  // Encoded by hand rather than through `URLSearchParams`: this package is pure logic and
-  // its typecheck loads neither the DOM nor node's lib, while `encodeURIComponent` is
-  // available in every runtime that imports it. It also percent-encodes a space, where
-  // the form encoding `URLSearchParams` applies would write a `+`.
+  // Hand-encoded rather than via `URLSearchParams`: this package's typecheck loads
+  // neither the DOM nor node's lib. It also writes `%20` for a space, not `+`.
   const pairs: string[] = [];
   for (const [key, value] of Object.entries(params as Record<string, ApiQueryValue>)) {
     if (value === undefined || value === '') continue;
