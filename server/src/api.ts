@@ -150,6 +150,13 @@ import { type CliBundleInfo, readCliCatalogue, readCliFunctionSource } from './c
 import { listInstalledCommands } from './command-runs.js';
 import { conceptStorePath } from './concepts.js';
 import { readRemoteConcepts, remoteConceptStore, remoteConceptStoreLabel } from './concepts-remote.js';
+import {
+  cacheDayDigest,
+  cachedDayDigest,
+  clearDayDigestMemo,
+  type DayDigestKey,
+  memoisedDayDigest,
+} from './day-digest-memo.js';
 import { fileSource, readWindow, type SidecarSource } from './db/source.js';
 import { DEFAULT_PR_LIMIT, readPullRequests, resolveRepoDir } from './github.js';
 import {
@@ -268,18 +275,65 @@ async function baselineDigests(
   classifierHashes: ReadonlySet<string>,
   archiveDir?: string,
 ): Promise<UsageDigest[]> {
+  // The walk stays sequential on purpose, unlike {@link buildTrends}'s. It stops
+  // at the first day that captured anything — normally the very first — and a
+  // day that resolves to nothing is deliberately not memoised, since it can
+  // still gain its archive later. Loading the run together would therefore
+  // re-read the same idle days on every request forever, to save an await on a
+  // day the walk was never going to reach. What makes the walk cheap is the memo
+  // underneath it: after the first pass each day answers without any I/O at all.
   const digests: UsageDigest[] = [];
   for (let back = 1; back <= SUMMARY_BASELINE_LOOKBACK_DAYS; back += 1) {
-    const date = shiftDay(day, -back);
-    const read = await daySidecars(logDir, date, now, source, archiveDir);
-    const digest =
-      read.files === 0 && archiveDir
-        ? ((await loadArchivedDigest(archiveDir, date)) ?? computeDigest([], { date, classifierHashes }))
-        : computeDigest(read.sidecars, { date, classifierHashes });
+    const digest = await baselineDayDigest(logDir, shiftDay(day, -back), now, source, classifierHashes, archiveDir);
     digests.unshift(digest);
     if (digest.requestCount > 0) break;
   }
   return digests;
+}
+
+/**
+ * One baseline day's digest, memoised once the day can no longer change.
+ *
+ * The memo is consulted *before* either half is read, so a hit costs no I/O at
+ * all. On a miss the two halves go out together — the same shape `readWindow`
+ * uses for its archived days — and the result is kept only when the live
+ * directory contributed nothing: a day it still holds part of is mid-rotation,
+ * so it is recomputed on every read until the archiver has finished with it.
+ */
+async function baselineDayDigest(
+  logDir: string,
+  date: string,
+  now: Date,
+  source: SidecarSource,
+  classifierHashes: ReadonlySet<string>,
+  archiveDir?: string,
+): Promise<UsageDigest> {
+  const key: DayDigestKey = {
+    logDir,
+    date,
+    source,
+    classifierHashes,
+    ...(archiveDir === undefined ? {} : { archiveDir }),
+  };
+  const hit = cachedDayDigest(key);
+  if (hit) return hit;
+
+  const [archived, live] = await Promise.all([
+    source.readArchivedDay(logDir, date, { archiveDir }),
+    source.readSidecars(logDir, { date }, now),
+  ]);
+
+  // Nothing on record either side: fall back to the finalized digest, which
+  // outlives the raw triples the retention clock prunes.
+  if (archived.files === 0 && live.files === 0) {
+    const finalized = archiveDir ? await loadArchivedDigest(archiveDir, date) : null;
+    // An absent day is left uncached — its archive may simply not have run yet.
+    return finalized ? cacheDayDigest(key, now, finalized, true) : computeDigest([], { date, classifierHashes });
+  }
+
+  // Archived half first, so the stream stays chronological across the seam.
+  const digest = computeDigest([...archived.sidecars, ...live.sidecars], { date, classifierHashes });
+  return cacheDayDigest(key, now, digest, live.files === 0);
 }
 
 /**
@@ -397,42 +451,75 @@ export interface TrendsResponse {
   meta: { days: number; files: number; parseErrors: number; archivedDays: number };
 }
 
-// Archived days are immutable, so their digests are cached for the process
-// lifetime. Misses aren't cached — a day can still gain its archive later.
-const rawArchiveDigests = new Map<string, UsageDigest>();
-
-/** Test-only: drop the in-process raw-archive digest cache. */
+/**
+ * Test-only: drop the in-process closed-day digest memo.
+ *
+ * Kept under its original name because `parity.ts` and the split-day tests call
+ * it; the store itself now lives in `day-digest-memo.ts`, shared by
+ * {@link baselineDigests} and {@link buildTrends}.
+ */
 export function clearRawArchiveCache(): void {
-  rawArchiveDigests.clear();
+  clearDayDigestMemo();
 }
 
 /**
  * One archived day's digest, computed from the raw sidecars the summary job
  * moved into `<logDir>/archive/<date>/`. `null` when that day isn't archived.
+ *
+ * Read through the memo, so a *closed* day is computed once per process. Today
+ * is excluded by the memo itself: the archiver rotates on the UTC day while a
+ * reporting day is a `REPORT_TZ` day, so the archive can already hold part of
+ * the day in progress, and caching that half-day would pin it until restart.
  */
 async function rawArchivedDigest(
   logDir: string,
   date: string,
+  now: Date,
   source: SidecarSource,
   classifierHashes: ReadonlySet<string>,
   archiveDir?: string,
 ): Promise<UsageDigest | null> {
-  // Keyed by backing as well as day: the parity harness computes both, and a
-  // shared entry would hand the second run the first one's answer. The hash-set
-  // size joins the key because the store only grows — a digest computed before a
-  // new classifier revision was recorded would otherwise never be recomputed.
-  // `archiveDir` joins it too, since it decides which roots the day was read from.
-  const key = `${source.kind} ${logDir} ${archiveDir ?? ''} ${date} ${classifierHashes.size}`;
-  const hit = rawArchiveDigests.get(key);
-  if (hit) return hit;
-
-  const { sidecars, files } = await source.readArchivedDay(logDir, date, { archiveDir });
-  if (files === 0) return null;
-
-  const digest = computeDigest(sidecars, { date, classifierHashes });
-  rawArchiveDigests.set(key, digest);
-  return digest;
+  const key: DayDigestKey = {
+    logDir,
+    date,
+    source,
+    classifierHashes,
+    ...(archiveDir === undefined ? {} : { archiveDir }),
+  };
+  return memoisedDayDigest(key, now, async () => {
+    const { sidecars, files } = await source.readArchivedDay(logDir, date, { archiveDir });
+    if (files === 0) return null;
+    return computeDigest(sidecars, { date, classifierHashes });
+  });
 }
+
+/**
+ * One finished day's digest: the raw archived triples where they survive,
+ * otherwise the finalized `digest.json` the summary job wrote. `null` when the
+ * day is on record in neither.
+ *
+ * This is the single resolution order for a day with nothing live left, shared
+ * by {@link baselineDigests} and {@link buildTrends} — raw triples are pruned on
+ * a retention clock while a finalized digest is kept indefinitely, so the raw
+ * read is tried first and the finalized digest is the long tail.
+ */
+async function archivedDayDigest(
+  logDir: string,
+  date: string,
+  now: Date,
+  source: SidecarSource,
+  classifierHashes: ReadonlySet<string>,
+  archiveDir?: string,
+): Promise<UsageDigest | null> {
+  const raw = await rawArchivedDigest(logDir, date, now, source, classifierHashes, archiveDir);
+  if (raw) return raw;
+  return archiveDir ? await loadArchivedDigest(archiveDir, date) : null;
+}
+
+/** How {@link buildTrends} resolved one day before any digest was computed. */
+type DayRead =
+  | { date: string; kind: 'finalized'; digest: UsageDigest | null }
+  | { date: string; kind: 'raw'; sidecars: unknown[]; archived: boolean };
 
 /** Live sidecars bucketed by the reporting day they fall in, malformed ones dropped. */
 function liveSidecarsByDay(sidecars: readonly unknown[]): Map<string, unknown[]> {
@@ -474,25 +561,37 @@ export async function buildTrends(
   for (let i = days - 1; i >= 0; i -= 1) dates.push(shiftDay(end, -i));
 
   // Resolved first, digested second: `trend` chains each day against the one before it.
+  // Every day goes out together rather than one await at a time — a closed day
+  // with nothing live left comes straight back from the memo after its first
+  // read, and the days that do still need reading are independent of each other.
+  const reads = await Promise.all(
+    dates.map(async (date): Promise<DayRead> => {
+      const live = liveByDate.get(date);
+      if (!live?.length) {
+        return {
+          date,
+          kind: 'finalized',
+          digest: await archivedDayDigest(logDir, date, now, source, classifierHashes, archiveDir),
+        };
+      }
+      // The archived slice precedes the live one, so this order stays chronological.
+      const archived = await source.readArchivedDay(logDir, date, { archiveDir });
+      return { date, kind: 'raw', sidecars: [...archived.sidecars, ...live], archived: archived.files > 0 };
+    }),
+  );
+
   const raw = new Map<string, unknown[]>();
   const finalized = new Map<string, UsageDigest>();
   let archivedDays = 0;
-  for (const date of dates) {
-    const live = liveByDate.get(date);
-    if (!live?.length) {
-      const digest =
-        (await rawArchivedDigest(logDir, date, source, classifierHashes, archiveDir)) ??
-        (archiveDir ? await loadArchivedDigest(archiveDir, date) : null);
-      if (digest) {
-        finalized.set(date, digest);
-        archivedDays += 1;
-      }
+  for (const read of reads) {
+    if (read.kind === 'finalized') {
+      if (!read.digest) continue;
+      finalized.set(read.date, read.digest);
+      archivedDays += 1;
       continue;
     }
-    // The archived slice precedes the live one, so this order stays chronological.
-    const archived = await source.readArchivedDay(logDir, date, { archiveDir });
-    if (archived.files > 0) archivedDays += 1;
-    raw.set(date, [...archived.sidecars, ...live]);
+    if (read.archived) archivedDays += 1;
+    raw.set(read.date, read.sidecars);
   }
 
   const digests: UsageDigest[] = [];
