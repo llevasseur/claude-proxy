@@ -302,6 +302,46 @@ The permalink does not use that reading at all. It renders the rationale through
 paragraph of evidence keeps its own block instead of running on from the last bullet. The card cannot
 share that renderer, because the clamp above unmakes a list.
 
+### The `/task` prompt an idea produces, so nobody retypes the brief
+
+Every idea already carried what a run needs to start: the title, the rationale in the fixed order
+`/ideate` writes, the `comment` a human left as build criteria, every citation, and the claim
+protocol above. Nothing assembled it. A person who accepted an idea then wrote the task out again by
+hand, and `/improve` splitting accepted ideas across subagents had to re-derive the same brief once
+per subagent — which is where two runs' briefs drift apart.
+
+`ideaTaskPrompt` in `packages/core/src/ideas.ts` composes that brief, and both surfaces call it, so
+the dashboard's copy button and `ideas prompt --slug <slug>` emit the **same bytes** rather than two
+paraphrases of one idea.
+
+- **Derived, never stored.** There is no `prompt` field on `IdeaEntry` and deliberately so. A stored
+  copy goes stale the moment somebody re-files the idea or rewrites its comment, and the ledger would
+  then hold two disagreeing statements of the same task with nothing to say which one is current. The
+  entry is the single source and the prompt is a pure reading of it.
+- **The comment is the human's half, quoted verbatim**, and the prompt says it overrides the
+  rationale where the two disagree — it is the one part of an idea written *as build criteria*.
+- **The claim lines are on every prompt**, not only on an unclaimed one. A prompt is copied once and
+  pasted into a run that starts later, so what was free when it rendered may not be by then; the
+  non-zero exit from `ideas claim` is a better refusal than a status snapshot taken minutes earlier.
+- **A locator-less `command-gap` reads as what it is** rather than as a dangling path — the citation
+  says the command was never written, which is the whole condition it describes.
+- **`ideas prompt --slug <slug>`** prints it bare on stdout, so `| pbcopy` is the whole workflow, and
+  `--json` wraps it as `{ slug, prompt }` for a caller that would rather not parse stdout. An unknown
+  slug prints the same refusal every other verb makes and exits 1, inventing nothing to answer with.
+- **On `/ideas/$slug` it is a Preview | Edit pair, opening on Preview.** The text is generated and
+  usually correct; opening on a textarea would present a composed artifact as a blank to fill in.
+- **The edit is local to the clipboard and is not persisted.** The durable instruction already has a
+  field — `comment` — which the generated prompt quotes, so writing there changes what everyone
+  generates next, including what an orchestrator reads, while editing in the card changes only what
+  you paste now. The card says exactly that beside its Reset button. Storing a second freely-edited
+  copy of the whole prompt beside the comment is the two-disagreeing-statements problem again.
+- **The draft follows a live entry unless it has been edited.** The page streams over SSE, so a
+  re-file or a new comment arrives while the card is open; regenerating over a reader's own words
+  would be the worse surprise, so an edited draft stays put.
+- **The copy button reports the one failure it has.** `navigator.clipboard` is absent outside a
+  secure context — precisely the case when the dashboard is opened over plain HTTP from another
+  machine — and saying so beats appearing to succeed.
+
 ### A corrupt ledger is an error, not an empty one
 
 `readSuggestionStatusStore` reads a corrupt file as empty, and that is right there: the suggestions
@@ -326,6 +366,7 @@ ideas claim  --slug <slug> --by <holder> [--pr <url>] [--json]
 ideas mark   --slug <slug> -s|--status <flag> [-n|--note <text>] [--json]
 ideas file   --slug <slug> --area <area> [--thread <id>] [--json]
 ideas note   --slug <slug> --text <text> [--thread <id>] [--json]
+ideas prompt --slug <slug> [--json]
 ```
 
 - `-s` / `--status` — comma-separated subset of `proposed`, `accepted`, `claimed`, `rejected`,
@@ -354,7 +395,8 @@ and a claim is `{ by, at, pr? }`.
 
 `packages/core/src/ideas.ts` is pure — no I/O, no clock (callers pass `now`) — holding the store
 shape, the parse and apply functions, the slug, repo and area predicates, `SEED_IDEA_AREAS`,
-`countIdeaAreas`, `similarIdeaSlugs` and `similarAreas`. It sits beside `suggestion-status.ts` and
+`countIdeaAreas`, `similarIdeaSlugs`, `similarAreas`, and `ideaTaskPrompt` with its `ideaCitation`
+helper — the `/task` brief, derived from an entry and stored nowhere. It sits beside `suggestion-status.ts` and
 imports nothing from it. `server/src/ideas-store.ts` is the only code that reads or writes the file,
 and `server/src/ideas-cli.ts` is the command line. `server/src/ideas-pr.ts` is the PR reconciler —
 it observes through `server/src/github.ts` and writes through the store, and both `ideas sync` and
@@ -441,9 +483,21 @@ of the answer.
       the default rather than erroring.
 - [x] `/ideas/$slug` carries the rationale, every citation, the claim, the provenance, the decision
       controls, the re-file picker and the comment editor, and the area is absent from the permalink.
-- [x] A bulleted rationale renders as a list on both surfaces and a paragraph one renders as prose;
-      one that opens with bullets and closes with prose previews as its leading bullets on the card
-      and renders in full — bullets and closing paragraph both — on the permalink.
+- [x] A bulleted rationale renders as a list on both surfaces, a paragraph one renders as prose, and
+      a rationale mixing the two renders as prose rather than as a broken list.
+- [x] `ideaTaskPrompt` composes a `/task` invocation from the entry alone — slug, title, area, repo,
+      rationale, every citation, and the claim lines — with no `prompt` field stored anywhere, so a
+      re-file or a rewritten comment moves the prompt with it.
+- [x] The comment is quoted as build criteria when there is one, and the prompt says nothing about
+      build criteria when there is not.
+- [x] A locator-less `command-gap` citation renders as the gap it describes rather than as a
+      dangling path.
+- [x] `ideas prompt --slug <slug>` prints that same string bare on stdout, wraps it as
+      `{ slug, prompt }` under `--json`, and exits 1 on a slug the ledger lacks.
+- [x] `/ideas/$slug` carries the prompt in a Preview | Edit pair opening on Preview, with a copy
+      button that reports a missing `navigator.clipboard` rather than appearing to succeed, an edit
+      that is local to the clipboard and resettable, and a draft that follows a live entry unless it
+      has been edited.
 - [ ] `/ideate` and `/improve` claim before building and read `--available` instead of
       `-s accepted`. **Those command files live outside this repo**, so this one is not closed by
       anything in this checkout.

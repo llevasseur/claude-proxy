@@ -18,6 +18,7 @@
  *   pnpm --filter server ideas mark --slug rolling-window -s shipped -n "<PR url>"
  *   pnpm --filter server ideas file --slug rolling-window --area ui-ux
  *   pnpm --filter server ideas note --slug rolling-window --text "start with the reader"
+ *   pnpm --filter server ideas prompt --slug rolling-window            # the /task prompt to build it
  *
  * **This is not the suggestions CLI and shares no store with it.** A suggestion is
  * counted from transcripts and traces back to source sessions; an idea is
@@ -38,7 +39,10 @@ import {
   type IdeaEntry,
   type IdeaStatus,
   ideaAreaLabel,
+  ideaCitation,
+  ideaOf,
   ideaRows,
+  ideaTaskPrompt,
   isIdeaArea,
   isIdeaStatus,
   isThreadId,
@@ -68,6 +72,7 @@ const USAGE = `usage:
   ideas file   --slug <slug> --area <area> [--thread <id>] [--json]
   ideas note   --slug <slug> --text <text> [--thread <id>] [--json]
   ideas sync   [--dry-run] [--thread <id>] [--json]
+  ideas prompt --slug <slug> [--json]
 
   <flags>    comma-separated: proposed, accepted, claimed, rejected, shipped
   <slug>     for --slug, the idea's kebab-case key; for --repo, a git remote
@@ -143,6 +148,15 @@ const USAGE = `usage:
   plan and writes nothing. The scheduled 'maintain --apply' job runs this too,
   which is what makes the status change without anyone asking for it.
 
+  prompt prints the ready-to-paste /task invocation that builds one idea,
+  composed from the entry itself — title, rationale, the human's comment as
+  build criteria, every citation, and the claim lines a run should take before
+  it writes anything. It is DERIVED rather than stored, so it cannot go stale
+  against a re-filed or re-commented entry, and the dashboard's copy button
+  emits the same bytes. An orchestrator splitting accepted ideas across
+  subagents reads this to know exactly what to hand each one; --json wraps it
+  as { slug, prompt } for a caller that would rather not parse stdout.
+
   Only 'accepted' carries a human sign-off, and it is the only status /improve
   may act on. This CLI never sets one by itself.`;
 
@@ -177,7 +191,7 @@ function renderRows(rows: readonly IdeaEntry[]): string {
       const comment = r.comment ? `\n      comment: ${r.comment}` : '';
       const actor = r.by ? `\n      by: ${r.by.thread}` : '';
       const cites = r.evidence.map((e) => {
-        const where = e.path ?? (e.bucket === undefined ? '' : `bucket ${e.bucket}/${e.id ?? ''}`);
+        const where = ideaCitation(e);
         return `        · ${e.source}: ${where}${e.quote ? ` — ${e.quote}` : ''}`;
       });
       // Its own row above the note — this is what a second run reads to decide
@@ -434,6 +448,24 @@ async function run(argv: readonly string[]): Promise<void> {
           ? `written to ${result.file}`
           : 'nothing written',
     );
+    return;
+  }
+
+  if (command === 'prompt') {
+    if (!flags.slug) throw new Error('prompt needs --slug <slug>');
+    const store = await readIdeasStore(logDir);
+    const entry = ideaOf(store, flags.slug);
+    if (!entry) {
+      // The same refusal every other verb makes on an unknown slug: nothing is
+      // invented to answer with, and `--json` still answers in JSON.
+      if (json) console.log(JSON.stringify({ slug: flags.slug, unknown: [flags.slug] }, null, 2));
+      else console.log(`no idea on the ledger is called: ${flags.slug}`);
+      process.exitCode = 1;
+      return;
+    }
+    const prompt = ideaTaskPrompt(entry);
+    // Bare on stdout, so `ideas prompt --slug x | pbcopy` is the whole workflow.
+    console.log(json ? JSON.stringify({ slug: entry.slug, prompt }, null, 2) : prompt);
     return;
   }
 

@@ -1166,6 +1166,70 @@ export function similarAreas(store: IdeasStore, area: string): string[] {
     .map((s) => s.area);
 }
 
+/**
+ * Where a citation points, in a form a reader can go and check. A
+ * `command-gap` has nothing to locate and reads as the empty string.
+ */
+export function ideaCitation(evidence: IdeaEvidence): string {
+  if (evidence.path) return evidence.path;
+  if (evidence.bucket !== undefined) return `bucket ${evidence.bucket}/${evidence.id ?? ''}`;
+  return '';
+}
+
+/**
+ * The `/task` invocation that builds one idea, composed from what the ledger
+ * already holds about it.
+ *
+ * **Derived, never stored.** There is deliberately no `prompt` field on
+ * {@link IdeaEntry}: a stored copy would go stale against a re-file or a
+ * rewritten comment, leaving the ledger holding two disagreeing statements of
+ * the same task. The entry is the single source, so the dashboard and the CLI
+ * emit the same bytes without coordinating.
+ *
+ * {@link IdeaEntry.comment} is the one part a person wrote *as build criteria*
+ * and is quoted verbatim; editing the rendered prompt changes only that
+ * reader's copy, while writing the comment changes it for everyone.
+ *
+ * The claim lines are on every prompt, not only an unclaimed one — a prompt is
+ * pasted into a run that starts later, so what was free at render time may not
+ * be, and `ideas claim` is what refuses.
+ */
+export function ideaTaskPrompt(entry: IdeaEntry): string {
+  const lines: string[] = [
+    `/task implement the "${entry.title}" idea from the ledger (slug: ${entry.slug}, area: ${ideaAreaLabel(entry.area)}, repo: ${entry.repo}).`,
+    '',
+    'Why it is worth building:',
+    entry.rationale,
+  ];
+
+  if (entry.comment) {
+    lines.push(
+      '',
+      'Build criteria a human wrote on the idea — these override the rationale where they disagree:',
+      entry.comment,
+    );
+  }
+
+  if (entry.evidence.length > 0) {
+    lines.push('', 'What it cites, so you can check the premise before building on it:');
+    for (const e of entry.evidence) {
+      const where = ideaCitation(e);
+      lines.push(
+        `- ${e.source}${where ? ` ${where}` : ' (no locator — the gap is that the command was never written)'}${e.quote ? ` — "${e.quote}"` : ''}`,
+      );
+    }
+  }
+
+  lines.push(
+    '',
+    'Claim it on the ledger before you write anything, so a second run does not build it too, and attach the PR once it opens:',
+    `  pnpm --filter server ideas claim --slug ${entry.slug} --by <your branch>`,
+    `  pnpm --filter server ideas claim --slug ${entry.slug} --by <your branch> --pr <PR url>`,
+  );
+
+  return lines.join('\n');
+}
+
 /** One line of a bulleted rationale — its leading bold label, and the rest. */
 export interface IdeaRationaleBullet {
   /** The `**What it is**` lead-in, without its asterisks. Absent when there is none. */

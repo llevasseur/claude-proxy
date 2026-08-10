@@ -16,6 +16,7 @@ import {
   ideaOf,
   ideaRationaleBullets,
   ideaRows,
+  ideaTaskPrompt,
   isIdeaArea,
   isIdeaClaimStale,
   isIdeaRepo,
@@ -641,6 +642,74 @@ describe('commenting', () => {
     expect(() => parseIdeaComments([{ slug: 'one' }])).toThrow(/text must be a string/);
     // An empty string is the clear, so it parses where a missing field does not.
     expect(parseIdeaComments([{ slug: 'one', text: '' }])[0]).toEqual({ slug: 'one', text: '' });
+  });
+});
+
+describe('the /task prompt an idea produces', () => {
+  function entryOf(over: Partial<IdeaAdd> = {}) {
+    const { store } = applyIdeaAdds(emptyIdeasStore(), [add('rolling-window-view', over)]);
+    return { store, entry: ideaOf(store, 'rolling-window-view')! };
+  }
+
+  it('opens as a /task invocation naming the slug, area and repo', () => {
+    const { entry } = entryOf({ title: 'Rolling window view' });
+    const prompt = ideaTaskPrompt(entry);
+
+    expect(prompt.startsWith('/task ')).toBe(true);
+    expect(prompt).toContain('Rolling window view');
+    expect(prompt).toContain('rolling-window-view');
+    expect(prompt).toContain('llevasseur/claude-proxy');
+    expect(prompt).toContain('UI/UX');
+  });
+
+  it('carries the rationale and every citation, so the premise can be checked', () => {
+    const { entry } = entryOf({
+      evidence: [{ source: 'open-question', path: 'docs/features/x.md', quote: 'nobody counts a missing command' }],
+    });
+    const prompt = ideaTaskPrompt(entry);
+
+    expect(prompt).toContain('Because the open question says so.');
+    expect(prompt).toContain('open-question docs/features/x.md');
+    expect(prompt).toContain('"nobody counts a missing command"');
+  });
+
+  it('tells a run to claim the idea before it writes anything, and to attach the PR after', () => {
+    const { entry } = entryOf();
+    const prompt = ideaTaskPrompt(entry);
+
+    expect(prompt).toContain('ideas claim --slug rolling-window-view --by <your branch>');
+    expect(prompt).toContain('--pr <PR url>');
+  });
+
+  it('quotes the comment as build criteria, and says nothing about them when there is none', () => {
+    const { store, entry } = entryOf();
+    expect(ideaTaskPrompt(entry)).not.toContain('Build criteria');
+
+    const commented = applyIdeaComments(store, [{ slug: 'rolling-window-view', text: 'start with the reader' }]);
+    const after = ideaOf(commented.store, 'rolling-window-view')!;
+    const prompt = ideaTaskPrompt(after);
+
+    expect(prompt).toContain('Build criteria');
+    expect(prompt).toContain('start with the reader');
+  });
+
+  // Derived rather than stored: the ledger holds no copy to go stale, so a
+  // re-filing or a rewritten comment moves the prompt with it.
+  it('follows the entry rather than a stored copy', () => {
+    const { store } = entryOf();
+    const filed = applyIdeaFilings(store, [{ slug: 'rolling-window-view', area: 'infrastructure' }]);
+    const prompt = ideaTaskPrompt(ideaOf(filed.store, 'rolling-window-view')!);
+
+    expect(prompt).toContain('Infrastructure');
+    expect(prompt).not.toContain('UI/UX');
+  });
+
+  it('renders a locator-less command-gap citation without a dangling path', () => {
+    const { entry } = entryOf({ area: 'commands', evidence: [{ source: 'command-gap' }] });
+    const prompt = ideaTaskPrompt(entry);
+
+    expect(prompt).toContain('command-gap');
+    expect(prompt).toContain('the command was never written');
   });
 });
 
