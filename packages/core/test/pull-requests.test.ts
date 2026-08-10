@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPrTree,
+  isGitHubHost,
   matchPrInText,
   type PullRequestRow,
   parsePullRequests,
+  parseRemoteUrl,
   parseRepoSlug,
   prCounts,
 } from '../src/pull-requests.js';
@@ -139,8 +141,60 @@ describe('parseRepoSlug', () => {
     expect(parseRepoSlug('https://github.com/llevasseur/claude-proxy')).toBe('llevasseur/claude-proxy');
   });
 
+  it('reads the spellings a device may equally have written', () => {
+    expect(parseRepoSlug('ssh://git@github.com/o/r.git')).toBe('o/r');
+    expect(parseRepoSlug('ssh://git@github.com:22/o/r.git')).toBe('o/r');
+    // A token embedded in the remote must not be mistaken for the host.
+    expect(parseRepoSlug('https://x-access-token:ghp_secret@github.com/o/r.git')).toBe('o/r');
+    expect(parseRepoSlug('git://github.com/o/r.git')).toBe('o/r');
+    expect(parseRepoSlug('https://github.com/o/r/')).toBe('o/r');
+  });
+
   it('is null for a remote that is not GitHub', () => {
     expect(parseRepoSlug('git@gitlab.com:o/r.git')).toBeNull();
     expect(parseRepoSlug('')).toBeNull();
+    expect(parseRepoSlug('/Users/someone/checkouts/repo.git')).toBeNull();
+    expect(parseRepoSlug('file:///Users/someone/checkouts/repo.git')).toBeNull();
+  });
+
+  it('takes an ssh alias only once the device has resolved it', () => {
+    // The shape of a per-account ssh identity: a host that exists only in ~/.ssh/config.
+    expect(parseRepoSlug('git@github-personal:llevasseur/claude-proxy.git')).toBeNull();
+    expect(parseRepoSlug('git@github-personal:llevasseur/claude-proxy.git', ['github-personal'])).toBe(
+      'llevasseur/claude-proxy',
+    );
+  });
+});
+
+describe('parseRemoteUrl', () => {
+  it('keeps the host as written and normalises the scheme', () => {
+    expect(parseRemoteUrl('git@github-personal:o/r.git')).toEqual({
+      host: 'github-personal',
+      scheme: 'ssh',
+      slug: 'o/r',
+    });
+    expect(parseRemoteUrl('SSH://git@GitHub.com/o/r')).toEqual({ host: 'github.com', scheme: 'ssh', slug: 'o/r' });
+    expect(parseRemoteUrl('git+ssh://git@github.com/o/r.git')?.scheme).toBe('ssh');
+    expect(parseRemoteUrl('https://github.com/o/r.git')?.scheme).toBe('https');
+  });
+
+  it('is null when there is no owner/name to read', () => {
+    expect(parseRemoteUrl('https://github.com/o')).toBeNull();
+    expect(parseRemoteUrl('https://gitlab.com/group/sub/r.git')).toBeNull();
+  });
+});
+
+describe('isGitHubHost', () => {
+  it('accepts the hosts gh can read and refuses the rest', () => {
+    expect(isGitHubHost('github.com')).toBe(true);
+    expect(isGitHubHost('GitHub.com.')).toBe(true);
+    expect(isGitHubHost('tenant.ghe.com')).toBe(true);
+    expect(isGitHubHost('gitlab.com')).toBe(false);
+    expect(isGitHubHost('')).toBe(false);
+  });
+
+  it('accepts a host only the device knows about', () => {
+    expect(isGitHubHost('github.acme.internal')).toBe(false);
+    expect(isGitHubHost('github.acme.internal', ['github.acme.internal'])).toBe(true);
   });
 });
