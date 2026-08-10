@@ -186,7 +186,12 @@ function renderRows(rows: readonly IdeaEntry[]): string {
         ? `\n      held by ${r.claim.by} since ${r.claim.at.slice(0, 16).replace('T', ' ')}${r.claim.pr ? ` — ${r.claim.pr}` : ''}`
         : '';
       const head = `  ${r.status.padEnd(8)} ${r.slug.padEnd(width)}  ${r.title}  [${r.repo} · ${ideaAreaLabel(r.area)}]${when ? `  updated ${when}` : ''}`;
-      return [head, `      ${r.rationale}`, ...cites].join('\n') + held + note + comment + actor;
+      // Every line, not just the first: a bulleted rationale carries newlines.
+      const why = r.rationale
+        .split('\n')
+        .map((l) => `      ${l}`.trimEnd())
+        .join('\n');
+      return [head, why, ...cites].join('\n') + held + note + comment + actor;
     })
     .join('\n');
 }

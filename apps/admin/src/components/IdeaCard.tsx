@@ -60,11 +60,14 @@ export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence
 }
 
 /**
- * The rationale — a list when it is written as bullets, a paragraph when it is
- * not. `max` previews the first N bullets: the cut is by bullet rather than by
- * height because `-webkit-line-clamp` needs `display: -webkit-box`, which stops
- * a `<ul>` rendering as a list at all. `className` is the paragraph's alone, since
- * the clamp it carries is `p.idea-rationale`; the list has its own class.
+ * The rationale **as a card preview** — a list when it opens with bullets, a
+ * paragraph when it does not. `max` previews the first N bullets: the cut is by
+ * bullet rather than by height because `-webkit-line-clamp` needs
+ * `display: -webkit-box`, which stops a `<ul>` rendering as a list at all.
+ * `className` is the paragraph's alone, since the clamp it carries is
+ * `p.idea-rationale`; the list has its own class.
+ *
+ * The permalink does **not** use this — it renders the rationale through `Markdown`.
  */
 export function IdeaRationale({ rationale, className, max }: { rationale: string; className?: string; max?: number }) {
   const all = ideaRationaleBullets(rationale);

@@ -10,9 +10,9 @@ import {
   IDEAS_KEY,
   IdeaDecisionControls,
   IdeaEvidenceList,
-  IdeaRationale,
 } from '../components/IdeaCard';
 import { LiveIndicator } from '../components/LiveIndicator';
+import { Markdown } from '../components/Markdown';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonText } from '../components/Skeleton';
 import { fmtLocalTsShort } from '../format';
@@ -79,7 +79,11 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
           <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
           <code className='idea-repo muted'>{idea.repo}</code>
         </div>
-        <IdeaRationale rationale={idea.rationale} />
+        {/* Markdown, not the card's preview: the card's clamp needs a `-webkit-box`,
+            which unmakes a list. */}
+        <div className='idea-rationale-md'>
+          <Markdown source={idea.rationale} />
+        </div>
         <div className='muted idea-when'>
           proposed {fmtLocalTsShort(idea.created)}
           {idea.updated && idea.updated !== idea.created ? ` · updated ${fmtLocalTsShort(idea.updated)}` : ''}

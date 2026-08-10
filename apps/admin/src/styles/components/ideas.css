@@ -92,6 +92,14 @@
     content: " — ";
     color: var(--muted);
   }
+  /* The `.md-*` blocks carry their own bottom margin; the last one would double the
+   gap before the timestamp under it, so it gives that margin up. */
+  .idea-rationale-md {
+    margin-top: var(--space-6);
+  }
+  .idea-rationale-md > :last-child {
+    margin-bottom: 0;
+  }
   .idea-comment {
     border-left-color: var(--signal-dim);
   }
