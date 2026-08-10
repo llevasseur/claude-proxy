@@ -79,9 +79,8 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
           <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
           <code className='idea-repo muted'>{idea.repo}</code>
         </div>
-        {/* Markdown, not the card's preview: `/ideate` writes literal `- ` lines and
-            may close with a paragraph, and only a real renderer keeps that shape. The
-            card cannot do this — its clamp needs a `-webkit-box`, which unmakes a list. */}
+        {/* Markdown, not the card's preview: the card's clamp needs a `-webkit-box`,
+            which unmakes a list. */}
         <div className='idea-rationale-md'>
           <Markdown source={idea.rationale} />
         </div>

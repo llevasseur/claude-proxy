@@ -67,9 +67,7 @@ export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence
  * `className` is the paragraph's alone, since the clamp it carries is
  * `p.idea-rationale`; the list has its own class.
  *
- * The permalink does **not** use this — it renders the rationale through the
- * `Markdown` component, so the bullets are a real list and a closing paragraph keeps
- * its own shape instead of folding into the line above it.
+ * The permalink does **not** use this — it renders the rationale through `Markdown`.
  */
 export function IdeaRationale({ rationale, className, max }: { rationale: string; className?: string; max?: number }) {
   const all = ideaRationaleBullets(rationale);

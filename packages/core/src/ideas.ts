@@ -1184,15 +1184,13 @@ const BULLET_LINE = /^[-*•]\s+\S/;
  * A rationale's bullets, or `[]` when it opens as a paragraph — the shape is read
  * from the text, since both are on the ledger at once.
  *
- * The bullets are the **leading run**: every line up to the first one that is not a
- * bullet. `/ideate` writes its six bullets and may close with a paragraph of
- * evidence, so demanding that *every* line be a bullet dropped that whole rationale
- * back to prose, where the newlines fold and the card reads as one line. The first
- * non-empty line must still be a bullet, so a paragraph containing a dash stays
- * prose rather than becoming a list with an orphan.
+ * The bullets are the **leading run**: every line up to the first that is not a
+ * bullet, so `/ideate`'s bullets still read as bullets when a paragraph of evidence
+ * closes them. The first non-empty line must still be a bullet, so a paragraph
+ * containing a dash stays prose rather than becoming a list with an orphan.
  *
- * This is a preview reading, and the trailing prose is deliberately not in it — the
- * permalink renders the rationale as markdown instead, so nothing is lost there.
+ * A preview reading: the trailing prose is not in it, and the permalink renders the
+ * rationale as markdown instead.
  */
 export function ideaRationaleBullets(rationale: string): IdeaRationaleBullet[] {
   const filled = rationale

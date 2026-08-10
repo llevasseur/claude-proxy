@@ -186,8 +186,7 @@ function renderRows(rows: readonly IdeaEntry[]): string {
         ? `\n      held by ${r.claim.by} since ${r.claim.at.slice(0, 16).replace('T', ' ')}${r.claim.pr ? ` — ${r.claim.pr}` : ''}`
         : '';
       const head = `  ${r.status.padEnd(8)} ${r.slug.padEnd(width)}  ${r.title}  [${r.repo} · ${ideaAreaLabel(r.area)}]${when ? `  updated ${when}` : ''}`;
-      // Every line, not just the first — a bulleted rationale carries newlines, and
-      // indenting only the head of it left the rest hanging at column zero.
+      // Every line, not just the first: a bulleted rationale carries newlines.
       const why = r.rationale
         .split('\n')
         .map((l) => `      ${l}`.trimEnd())

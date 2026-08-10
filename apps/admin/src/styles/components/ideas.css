@@ -92,8 +92,7 @@
     content: " — ";
     color: var(--muted);
   }
-  /* The permalink's rationale, rendered as markdown so the bullets are a real list.
-   The `.md-*` blocks carry their own bottom margin; the last one would double the
+  /* The `.md-*` blocks carry their own bottom margin; the last one would double the
    gap before the timestamp under it, so it gives that margin up. */
   .idea-rationale-md {
     margin-top: var(--space-6);
