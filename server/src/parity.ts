@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { runKey, type UsageLimitConfig } from '@claude-proxy/core';
@@ -54,6 +55,13 @@ export interface ParityContext {
   archiveDir?: string;
   limits: UsageLimitConfig;
   /**
+   * The archived days a {@link ParityRoute.perDay} route enumerates over. Unset
+   * means every day in `logDir/archive`. Scoping lets a suite put each day in
+   * its own test; it never narrows what is compared, since each day is still
+   * replayed whole.
+   */
+  days?: string[];
+  /**
    * The installed command catalogue (`~/.claude/commands` by default). Pinned on
    * the context rather than resolved per call, so both replays read the same
    * directory even though it sits outside `logs/`.
@@ -76,6 +84,12 @@ export interface ParityCase {
 export interface ParityRoute {
   /** The API path, e.g. `/api/usage`. */
   name: string;
+  /**
+   * Whether this route enumerates one case per archived day, and so honours
+   * {@link ParityContext.days}. A route taking no date, or replaying as of the
+   * newest day only, leaves it unset.
+   */
+  perDay?: boolean;
   cases(ctx: ParityContext): Promise<ParityCase[]>;
 }
 
@@ -190,13 +204,36 @@ export function resetCaches(): void {
   clearLearnedCeilingsCache();
 }
 
+/** The day directories out of one `archive/` listing, oldest first. */
+function dayDirs(names: string[]): string[] {
+  return names.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+}
+
 /** Archived day directories on disk, oldest first. Empty when nothing is archived. */
 export async function archivedDays(logDir: string): Promise<string[]> {
   try {
-    return (await readdir(path.join(logDir, 'archive'))).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    return dayDirs(await readdir(path.join(logDir, 'archive')));
   } catch {
     return [];
   }
+}
+
+/**
+ * The same listing as {@link archivedDays}, taken synchronously — a suite
+ * declaring one test per archived day needs the list while it is being
+ * *collected*, which is before any `beforeAll` has run.
+ */
+export function archivedDaysSync(logDir: string): string[] {
+  try {
+    return dayDirs(readdirSync(path.join(logDir, 'archive')));
+  } catch {
+    return [];
+  }
+}
+
+/** The days a {@link ParityRoute.perDay} route enumerates over: the scoped subset, else all of them. */
+async function daysOf(ctx: ParityContext): Promise<string[]> {
+  return ctx.days ?? (await archivedDays(ctx.logDir));
 }
 
 /**
@@ -212,24 +249,27 @@ function endOf(day: string): Date {
 export const PARITY_ROUTES: ParityRoute[] = [
   {
     name: '/api/summary',
+    perDay: true,
     cases: async (ctx) =>
-      (await archivedDays(ctx.logDir)).map((day) => ({
+      (await daysOf(ctx)).map((day) => ({
         label: `/api/summary?date=${day}`,
         run: (source) => buildSummary(ctx.logDir, day, endOf(day), ctx.archiveDir, source),
       })),
   },
   {
     name: '/api/tools',
+    perDay: true,
     cases: async (ctx) =>
-      (await archivedDays(ctx.logDir)).map((day) => ({
+      (await daysOf(ctx)).map((day) => ({
         label: `/api/tools?date=${day}`,
         run: (source) => buildTools(ctx.logDir, day, endOf(day), ctx.archiveDir, source),
       })),
   },
   {
     name: '/api/trends',
+    perDay: true,
     cases: async (ctx) => {
-      const days = await archivedDays(ctx.logDir);
+      const days = await daysOf(ctx);
       const cases: ParityCase[] = [];
       for (const day of days) {
         for (const window of [7, 30]) {
@@ -244,8 +284,9 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/prompt-mix',
+    perDay: true,
     cases: async (ctx) =>
-      (await archivedDays(ctx.logDir)).map((day) => ({
+      (await daysOf(ctx)).map((day) => ({
         label: `/api/prompt-mix?days=7 as of ${day}`,
         run: (source) => buildPromptMix(ctx.logDir, 7, endOf(day), source),
       })),
@@ -271,8 +312,9 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/usage',
+    perDay: true,
     cases: async (ctx) =>
-      (await archivedDays(ctx.logDir)).map((day) => ({
+      (await daysOf(ctx)).map((day) => ({
         label: `/api/usage as of ${day}`,
         run: (source) => buildUsage(ctx.logDir, ctx.limits, endOf(day), source),
       })),
@@ -374,7 +416,7 @@ export const PARITY_ROUTES: ParityRoute[] = [
       // Bucket numbering is derived from the transcripts, so the indices to
       // replay come from the file side's own answer.
       const { buckets } = await buildSessionSuggestions(ctx.logDir, fileSource);
-      return buckets.map((bucket) => ({
+      return buckets.slice(0, BUCKETS_PER_RUN).map((bucket) => ({
         label: `/api/sessions/suggestions/bucket?index=${bucket.index}`,
         run: (source) => buildSessionSuggestionBucket(ctx.logDir, bucket.index, now, source),
       }));
@@ -454,8 +496,9 @@ export const PARITY_ROUTES: ParityRoute[] = [
    */
   {
     name: '/api/skim',
+    perDay: true,
     cases: async (ctx) =>
-      (await archivedDays(ctx.logDir)).map((day) => ({
+      (await daysOf(ctx)).map((day) => ({
         label: `/api/skim?date=${day}`,
         run: (source) => buildSkim(ctx.logDir, day, endOf(day), ctx.archiveDir, source),
       })),
@@ -511,9 +554,10 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/context',
+    perDay: true,
     cases: async (ctx) => {
       const cases: ParityCase[] = [];
-      for (const day of await archivedDays(ctx.logDir)) {
+      for (const day of await daysOf(ctx)) {
         for (const window of [7, 30]) {
           cases.push({
             label: `/api/context?days=${window} as of ${day}`,
@@ -573,6 +617,16 @@ const PER_THREAD_CASES = 20;
  * past its timeout. The biggest cohorts are the ones the mix page links to.
  */
 const PROMPTS_PER_DAY = 3;
+
+/**
+ * How many suggestion buckets the drill-down route replays, newest first.
+ *
+ * Buckets accrue every fifty sessions and never retire, so uncapped this route's
+ * cost climbs for as long as the machine is used. Coverage is not lost:
+ * `/api/sessions/suggestions` replays whole and carries every bucket with its
+ * suggestions, so the cap bounds only the per-bucket drill-down.
+ */
+const BUCKETS_PER_RUN = 20;
 
 /** The catalogue a run replays against — pinned on the context, else the installed one. */
 function commandsDirOf(ctx: ParityContext): string {
