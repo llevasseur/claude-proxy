@@ -5,13 +5,16 @@ import {
   applyIdeaComments,
   applyIdeaFilings,
   applyIdeaMarks,
+  canShipIdea,
   claimableIdeaRows,
   countIdeaAreas,
   countIdeaStatuses,
   emptyIdeasStore,
   IDEA_CLAIM_TTL_MS,
   type IdeaAdd,
+  type IdeaEntry,
   type IdeaEvidence,
+  type IdeasStore,
   ideaAreaLabel,
   ideaOf,
   ideaRationaleBullets,
@@ -20,6 +23,7 @@ import {
   isIdeaClaimStale,
   isIdeaRepo,
   isIdeaSlug,
+  isIdeaTakeable,
   parseIdeaAdds,
   parseIdeaClaims,
   parseIdeaComments,
@@ -268,6 +272,61 @@ describe('releasing a claim', () => {
     const released = applyIdeaMarks(claimed(), [{ slug: 'one', status: 'accepted' }]).store;
     const retaken = applyIdeaClaims(released, [{ slug: 'one', by: 'run-b' }], new Date(T0.getTime() + 60_000));
     expect(retaken.claimed).toEqual(['one']);
+  });
+
+  // The release drops the holder and the PR url with it, so a reader offering a
+  // re-claim has to collect both again rather than restore them.
+  it('takes the PR url with the claim, leaving nothing to restore it from', () => {
+    const withPr = applyIdeaClaims(claimed(), [{ slug: 'one', by: 'run-a', pr: 'https://…/141' }], T0).store;
+    const released = applyIdeaMarks(withPr, [{ slug: 'one', status: 'accepted' }]).store;
+
+    expect(ideaOf(released, 'one')?.claim).toBeUndefined();
+    expect(ideaOf(released, 'one')?.note).toBeUndefined();
+  });
+});
+
+describe('what may be shipped', () => {
+  it('is the two statuses carrying a sign-off, and never the terminal one', () => {
+    // `claimed` is the ordinary case; `accepted` is a released claim whose PR
+    // merged anyway, which the release did not un-land.
+    expect(canShipIdea('claimed')).toBe(true);
+    expect(canShipIdea('accepted')).toBe(true);
+    // Terminal by design — see `planIdeaPrTransitions`, where no outcome moves it.
+    expect(canShipIdea('shipped')).toBe(false);
+    // No sign-off, so shipping one would record work against an idea nobody agreed to.
+    expect(canShipIdea('proposed')).toBe(false);
+    expect(canShipIdea('rejected')).toBe(false);
+  });
+});
+
+describe('what a holder may take', () => {
+  const T0 = new Date('2026-08-07T00:00:00.000Z');
+
+  function stored(slug: string): IdeasStore {
+    return applyIdeaAdds(emptyIdeasStore(), [add(slug)], new Date('2026-08-01')).store;
+  }
+  function entry(store: IdeasStore, slug: string): IdeaEntry {
+    const found = ideaOf(store, slug);
+    if (!found) throw new Error(`no entry for ${slug}`);
+    return found;
+  }
+
+  it('answers exactly what applyIdeaClaims then does', () => {
+    const proposed = stored('one');
+    expect(isIdeaTakeable(entry(proposed, 'one'), 'run-a', T0)).toBe(false);
+    expect(applyIdeaClaims(proposed, [{ slug: 'one', by: 'run-a' }], T0).claimed).toEqual([]);
+
+    const accepted = applyIdeaMarks(proposed, [{ slug: 'one', status: 'accepted' }]).store;
+    expect(isIdeaTakeable(entry(accepted, 'one'), 'run-a', T0)).toBe(true);
+
+    const held = applyIdeaClaims(accepted, [{ slug: 'one', by: 'run-a' }], T0).store;
+    // The holder's own re-claim is idempotent; a second run is refused until the TTL.
+    expect(isIdeaTakeable(entry(held, 'one'), 'run-a', T0)).toBe(true);
+    expect(isIdeaTakeable(entry(held, 'one'), 'run-b', T0)).toBe(false);
+    expect(isIdeaTakeable(entry(held, 'one'), 'run-b', new Date(T0.getTime() + IDEA_CLAIM_TTL_MS))).toBe(true);
+
+    const shipped = applyIdeaMarks(held, [{ slug: 'one', status: 'shipped', note: 'https://…/141' }]).store;
+    expect(isIdeaTakeable(entry(shipped, 'one'), 'run-a', T0)).toBe(false);
   });
 });
 
