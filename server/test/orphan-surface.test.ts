@@ -7,29 +7,22 @@ import { describe, expect, it } from 'vitest';
 /**
  * The orphan gate for the two API surfaces.
  *
- * `packages/core/src/api-routes.ts` declares every route once. This derives two lists
- * from it and fails by **naming** what reaches no route: an exported `build*`/`apply*`
- * handler in `server/src/api.ts` that no longer sits behind a route, and an exported
- * client function in `apps/admin/src/api.ts` that names no declared path. A removed
- * feature leaves dead functions in files of 3000 and 1000 lines, and manual review was
- * the only thing looking for them.
+ * Derives two lists from the route manifest and fails by **naming** what reaches no
+ * route: an exported `build*`/`apply*` handler in `server/src/api.ts` sitting behind no
+ * route, and an exported client function in `apps/admin/src/api.ts` naming no declared
+ * path.
  *
- * **It is a static parse, not a runtime import — deliberately, and for two reasons.**
- * `apps/admin/src/api.ts` cannot be imported here at all: it reads `import.meta.env`,
- * which only Vite defines, and `apps/admin` has no test suite of its own (`typecheck` is
- * its only gate), so a server-side test reading its source is the only route to it. And
- * the server half is not observable at runtime either — a handler's link to its route is
- * a textual reference inside the `HANDLERS` map, whose values are closures that name
- * nothing about themselves once constructed.
+ * **A static parse, not a runtime import.** `apps/admin/src/api.ts` reads
+ * `import.meta.env`, which only Vite defines, and `apps/admin` has no test suite of its
+ * own. The server half is no better at runtime: a handler's link to its route is a
+ * textual reference inside the `HANDLERS` map, whose values are closures.
  *
- * **What anchors the parse is the first assertion below.** `HANDLERS` is keyed by
- * `ApiRoutePath`, so its keys and the manifest's paths are the same list or the server
- * does not compile; asserting it here is what lets the rest of this file treat
- * `server/src/server.ts` as *the* routed surface rather than as one file among several.
+ * The first assertion below — that `HANDLERS`' keys are the manifest's paths — is what
+ * lets the rest of the file read `server/src/server.ts` as *the* routed surface.
  *
- * It never deletes. An orphan is somebody's review, and a deliberately-unrouted export
- * is exempted in {@link UNROUTED_BY_DESIGN} with a reason and the entry point that does
- * reach it — both re-checked below, so a stale exemption fails as loudly as an orphan.
+ * It never deletes. A deliberately-unrouted export is exempted in
+ * {@link UNROUTED_BY_DESIGN} with a reason and the entry point that does reach it, both
+ * re-checked below.
  */
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -84,10 +77,7 @@ const read = (file: string) => readFile(path.join(REPO_ROOT, file), 'utf8');
 /** Names of the exempted exports declared for one file. */
 const exemptedIn = (file: string) => new Set(UNROUTED_BY_DESIGN.filter((e) => e.file === file).map((e) => e.name));
 
-/**
- * The `build*`/`apply*` handlers `server/src/api.ts` exports. Both prefixes, because the
- * dispatch table imports both and an orphan of either kind is the same dead code.
- */
+/** The `build*`/`apply*` handlers `server/src/api.ts` exports — both, as the dispatch imports both. */
 function exportedHandlers(source: string): string[] {
   return [...source.matchAll(/^export (?:async function|function|const) ((?:build|apply)[A-Z]\w*)/gm)].map(
     (m) => m[1]!,
@@ -113,8 +103,8 @@ function namesUsedByDispatch(source: string): Set<string> {
 
 /**
  * The exported `const`s of `apps/admin/src/api.ts`, each with the `/api/…` literals its
- * declaration names. A declaration runs to the next top-level `export const`, which is
- * how this file is written throughout — one exported arrow per entry.
+ * declaration names. A declaration runs to the next top-level `export const` — that file
+ * is one exported arrow per entry throughout.
  */
 function clientExports(source: string): { name: string; paths: string[] }[] {
   const lines = source.split('\n');
@@ -138,8 +128,7 @@ describe('the dispatch table is the manifest', () => {
     const keys = handlerRoutePaths(await read(SERVER_DISPATCH));
 
     // Type-enforced by `Record<ApiRoutePath, RouteHandler>`, and asserted anyway: every
-    // check below reads `server.ts` as the whole routed surface, which is only true
-    // while this holds.
+    // check below reads `server.ts` as the whole routed surface only while this holds.
     const undeclared = keys.filter((p) => !MANIFEST_PATHS.has(p));
     const unhandled = [...MANIFEST_PATHS].filter((p) => !keys.includes(p));
     expect(undeclared, `handled but not declared:\n${undeclared.join('\n')}`).toEqual([]);
