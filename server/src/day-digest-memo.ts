@@ -54,11 +54,6 @@ export function clearDayDigestMemo(): void {
   dayDigests.clear();
 }
 
-/** Test-only: how many closed days are currently held. */
-export function dayDigestMemoSize(): number {
-  return dayDigests.size;
-}
-
 function keyOf(key: DayDigestKey): string {
   return `${key.source.kind} ${key.logDir} ${key.archiveDir ?? ''} ${key.date} ${key.classifierHashes.size}`;
 }
