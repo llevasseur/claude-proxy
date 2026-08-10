@@ -149,7 +149,12 @@ import { loadArchivedDigest } from './archive.js';
 import { type CliBundleInfo, readCliCatalogue, readCliFunctionSource } from './cli-bundle.js';
 import { listInstalledCommands } from './command-runs.js';
 import { conceptStorePath } from './concepts.js';
-import { readRemoteConcepts, remoteConceptStore, remoteConceptStoreLabel } from './concepts-remote.js';
+import {
+  readRemoteConcepts,
+  remoteConceptStore,
+  remoteConceptStoreLabel,
+  searchRemoteConcepts,
+} from './concepts-remote.js';
 import {
   cacheDayDigest,
   cachedDayDigest,
@@ -3235,6 +3240,235 @@ export async function buildConcepts(logDir: string, source: SidecarSource = file
 export interface ConceptResponse {
   concept: StoredConcept;
   meta: ConceptStoreMeta;
+}
+
+/* --- Searching the corpus --- */
+
+/**
+ * A field of a record the query text was found in.
+ *
+ * Named per field rather than as one boolean because *where* a hit matched is
+ * the answer a reader needs: the Concepts table renders `term`, `sentence`,
+ * `field` and `skills`, so a match in one of those is visible on the page
+ * already, while a match in the four below is text no row on that page shows.
+ */
+export type ConceptSearchField =
+  | 'term'
+  | 'sentence'
+  | 'field'
+  | 'skills'
+  | 'notes'
+  | 'tips'
+  | 'sources'
+  | 'surfacedSkills';
+
+/** Every field searched, in the order a match is reported and excerpted. */
+const SEARCH_FIELDS: readonly ConceptSearchField[] = [
+  'term',
+  'sentence',
+  'field',
+  'skills',
+  'notes',
+  'tips',
+  'sources',
+  'surfacedSkills',
+];
+
+/**
+ * The fields the Concepts table does not render — the ones a search exists to
+ * reach. An excerpt is taken from these and only these: quoting a `sentence`
+ * back at a reader who is already looking at the `sentence` column says nothing.
+ */
+const UNRENDERED_FIELDS: readonly ConceptSearchField[] = ['notes', 'tips', 'sources', 'surfacedSkills'];
+
+/** Characters of context either side of a match in an excerpt. */
+const EXCERPT_RADIUS = 90;
+
+export interface ConceptSearchHit {
+  /** The corpus record, exactly as `/api/concepts` serves it — `ord` included. */
+  concept: StoredConcept;
+  /** bm25 relevance from the hosted store, higher is better; `null` when unranked. */
+  score: number | null;
+  /** Which of the record's fields the query's words appear in. */
+  matchedIn: ConceptSearchField[];
+  /** A window of the matching prose, from a field the table never renders. */
+  excerpt: string | null;
+}
+
+export interface ConceptSearchResponse {
+  /** The query as it was searched — trimmed, and empty when there was none. */
+  query: string;
+  /**
+   * Whether the order below is the hosted store's bm25 relevance. `false` means
+   * the local file answered and these are substring matches in corpus order:
+   * still a search of the whole record, but ranked by nothing.
+   */
+  ranked: boolean;
+  results: ConceptSearchHit[];
+  meta: ConceptStoreMeta;
+}
+
+/** One field's text, flattened so a list searches as the words it holds. */
+function conceptFieldText(concept: StoredConcept, field: ConceptSearchField): string {
+  switch (field) {
+    case 'term':
+      return concept.term;
+    case 'sentence':
+      return concept.sentence;
+    case 'field':
+      return concept.field;
+    case 'skills':
+      return concept.skills.join(' ');
+    case 'notes':
+      return concept.notes ?? '';
+    case 'tips':
+      return (concept.tips ?? []).join('\n');
+    case 'sources':
+      return (concept.sources ?? []).join('\n');
+    case 'surfacedSkills':
+      return (concept.surfacedSkills ?? []).join(' ');
+  }
+}
+
+/** The query's words, lowercased. Punctuation is matched literally. */
+function searchTokens(query: string): string[] {
+  return query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+/** A window of `text` around the first occurrence of `token`, elided at both ends. */
+function excerptAround(text: string, token: string): string | null {
+  const at = text.toLowerCase().indexOf(token);
+  if (at < 0) return null;
+  const start = Math.max(0, at - EXCERPT_RADIUS);
+  const end = Math.min(text.length, at + token.length + EXCERPT_RADIUS);
+  const body = text.slice(start, end).replace(/\s+/g, ' ').trim();
+  if (!body) return null;
+  return `${start > 0 ? '…' : ''}${body}${end < text.length ? '…' : ''}`;
+}
+
+/**
+ * Where a query's words land in one record, and the prose to show for it.
+ *
+ * This is a *description* of a hit, never the ranking. On the hosted path the
+ * store has already decided the order, and its bm25 index tokenizes text this
+ * scan does not — so a genuine hit can legitimately come back with an empty
+ * `matchedIn`, which reads as "ranked it, cannot point at the word" rather than
+ * as a mistake.
+ */
+function describeMatch(
+  concept: StoredConcept,
+  tokens: string[],
+): { matchedIn: ConceptSearchField[]; excerpt: string | null } {
+  const matchedIn = SEARCH_FIELDS.filter((field) => {
+    const text = conceptFieldText(concept, field).toLowerCase();
+    return text !== '' && tokens.some((token) => text.includes(token));
+  });
+
+  for (const field of UNRENDERED_FIELDS) {
+    if (!matchedIn.includes(field)) continue;
+    const text = conceptFieldText(concept, field);
+    for (const token of tokens) {
+      const excerpt = excerptAround(text, token);
+      if (excerpt) return { matchedIn, excerpt };
+    }
+  }
+  return { matchedIn, excerpt: null };
+}
+
+/** A record's identity across the export and the store's search: term plus timestamp. */
+function conceptKey(term: string, savedAt: string): string {
+  return `${term.trim().toLowerCase().replace(/\s+/g, ' ')} ${savedAt}`;
+}
+
+/**
+ * The corpus in the hosted store's ranked order.
+ *
+ * The ranking comes from the store and the records come from the export, joined
+ * on term-and-timestamp, because a hit carries no `ord` and `ord` is what the
+ * page addresses a row by. A hit that matches no corpus record is dropped rather
+ * than synthesised — it would be a row with no permalink.
+ */
+function inRankedOrder(concepts: StoredConcept[], hits: RemoteConceptHitLike[]): StoredConcept[] {
+  const byKey = new Map<string, StoredConcept[]>();
+  for (const concept of concepts) {
+    const key = conceptKey(concept.term, concept.savedAt);
+    const bucket = byKey.get(key);
+    if (bucket) bucket.push(concept);
+    else byKey.set(key, [concept]);
+  }
+  const ordered: StoredConcept[] = [];
+  for (const hit of hits) {
+    // Shift rather than peek: two records genuinely identical on both halves of
+    // the key are still two rows, and each hit should claim its own.
+    const concept = byKey.get(conceptKey(hit.term, hit.savedAt))?.shift();
+    if (concept) ordered.push(concept);
+  }
+  return ordered;
+}
+
+/** The shape {@link inRankedOrder} needs of a hit — see `concepts-remote.ts`. */
+interface RemoteConceptHitLike {
+  term: string;
+  savedAt: string;
+  score: number;
+}
+
+/**
+ * The corpus searched by its prose.
+ *
+ * With the hosted store configured this is a thin proxy over the store's own
+ * bm25 route, which already indexes the whole record and is already served to
+ * `/teach`; the ranking is the store's and this only rejoins it to the corpus
+ * the page renders. With the local file backing it there is no such index, so
+ * the fallback is an honest substring scan over the *same* fields —
+ * `ranked: false` says so, and the page says so to the reader.
+ *
+ * An empty query is not an error and not a match-nothing: it answers no results,
+ * leaving the caller to show the corpus unranked as it always did.
+ */
+export async function buildConceptSearch(
+  logDir: string,
+  query: string,
+  source: SidecarSource = fileSource,
+): Promise<ConceptSearchResponse> {
+  const read = await readConceptsFromStore(logDir, source);
+  const concepts = read.concepts.map(toServedConcept);
+  const meta: ConceptStoreMeta = { storePath: read.storePath, store: read.store, total: concepts.length };
+  const ranked = read.store === 'remote';
+
+  const tokens = searchTokens(query);
+  if (tokens.length === 0) return { query: '', ranked, results: [], meta };
+  const trimmed = query.trim();
+
+  const remote = remoteConceptStore();
+  let matched: { concept: StoredConcept; score: number | null }[];
+  if (ranked && remote) {
+    const hits = await searchRemoteConcepts(remote, trimmed);
+    const scoreByKey = new Map(hits.map((hit) => [conceptKey(hit.term, hit.savedAt), hit.score]));
+    matched = inRankedOrder(concepts, hits).map((concept) => ({
+      concept,
+      score: scoreByKey.get(conceptKey(concept.term, concept.savedAt)) ?? null,
+    }));
+  } else {
+    // Every word must appear somewhere in the record, which is what the store's
+    // FTS query does with bare tokens — the ordering is what differs, not the
+    // reach.
+    matched = concepts
+      .filter((concept) => {
+        const haystack = SEARCH_FIELDS.map((field) => conceptFieldText(concept, field))
+          .join('\n')
+          .toLowerCase();
+        return tokens.every((token) => haystack.includes(token));
+      })
+      .map((concept) => ({ concept, score: null }));
+  }
+
+  return {
+    query: trimmed,
+    ranked,
+    results: matched.map(({ concept, score }) => ({ concept, score, ...describeMatch(concept, tokens) })),
+    meta,
+  };
 }
 
 /**

@@ -560,6 +560,36 @@ export interface ConceptResponse {
   concept: ConceptRow;
   meta: ConceptStoreMeta;
 }
+/**
+ * A field of a concept the query's words were found in. The table renders the
+ * first four; the last four are the record's prose, which it does not — and a
+ * match there is the whole reason a search beats reading down the table.
+ */
+export type ConceptSearchField =
+  | 'term'
+  | 'sentence'
+  | 'field'
+  | 'skills'
+  | 'notes'
+  | 'tips'
+  | 'sources'
+  | 'surfacedSkills';
+export interface ConceptSearchHit {
+  concept: ConceptRow;
+  /** bm25 relevance from the hosted store, higher is better; `null` when unranked. */
+  score: number | null;
+  matchedIn: ConceptSearchField[];
+  /** A window of the matching prose, from a field the table never renders. */
+  excerpt: string | null;
+}
+export interface ConceptSearchResponse {
+  query: string;
+  /** `false` means the local file answered and these are unranked substring matches. */
+  ranked: boolean;
+  /** Best first when `ranked`, corpus order otherwise. */
+  results: ConceptSearchHit[];
+  meta: ConceptStoreMeta;
+}
 /** One run as the command page lists it — no per-turn series, no per-step breakdown. */
 export interface CommandRunListItem {
   /** A thread id for a top-level run, `<threadId>~<node>` for one nested inside another. */
@@ -878,6 +908,7 @@ interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/commands/run': CommandRunResponse;
   '/api/concepts': ConceptsResponse;
   '/api/concepts/concept': ConceptResponse;
+  '/api/concepts/search': ConceptSearchResponse;
   '/api/ideas': IdeasResponse;
   '/api/chat/config': ChatConfigResponse;
   '/api/chat/running': RunningChatsResponse;
@@ -1038,6 +1069,12 @@ export const getCliFunction = (id: string) => read('/api/cli-internals/function'
 export const getConcepts = () => read('/api/concepts');
 /** One saved concept, by the line it sits on in the store. */
 export const getConcept = (ord: number) => read('/api/concepts/concept', { ord });
+/**
+ * The corpus searched by its prose — the notes, tips and sources the table does
+ * not render, not only the columns it does. Ranked by the hosted store's bm25
+ * when it is the backing; the answer's `ranked` says when it is not.
+ */
+export const searchConcepts = (q: string) => read('/api/concepts/search', { q });
 /** The device system prompt as it is on disk — `~/.claude/CLAUDE.md`. */
 export const getSystemPrompt = () => read('/api/system-prompt');
 /**

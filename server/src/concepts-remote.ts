@@ -26,6 +26,21 @@ import { parseConceptStore } from './concepts.js';
 /** The whole corpus, oldest first, in `logs/concepts.jsonl`'s own format. */
 const EXPORT_PATH = '/api/concepts/export';
 
+/**
+ * The store's own ranked search. Its bm25 index spans the whole record — the
+ * `notes` prose included, which neither the listing route nor the dashboard's
+ * table carries — and that is the entire reason a search is issued here rather
+ * than scanning the export in the browser.
+ */
+const SEARCH_PATH = '/api/concepts/search';
+
+/**
+ * How many hits to ask the store for. The corpus is small and the page shows
+ * every version of a term, so this is a ceiling rather than a page size; it
+ * matches the store's own `MAX_LIMIT`.
+ */
+const SEARCH_LIMIT = 1000;
+
 /** A configured hosted store: where it is, and the bearer token to read it. */
 export interface RemoteConceptStore {
   /** The Worker's base URL, without a trailing slash. */
@@ -52,21 +67,31 @@ function exportUrl(store: RemoteConceptStore): string {
 }
 
 /**
+ * A requested URL reduced to what is safe to show a reader: `origin` +
+ * `pathname` and nothing else.
+ *
+ * Dropping the query string is not tidiness — it is what keeps a credential in
+ * a configured URL, and the reader's own search text, out of a response body and
+ * out of an error message. An unparseable URL is reported by its path alone for
+ * the same reason.
+ */
+function safeLabel(requested: string, fallbackPath: string): string {
+  try {
+    const url = new URL(requested);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return fallbackPath;
+  }
+}
+
+/**
  * The URL a read goes to, safe to show a reader.
  *
  * Derived from {@link exportUrl}, so a configured URL carrying a path prefix
- * cannot make the label name an address that was never requested, and reduced to
- * `origin` + `pathname`, so a credential in that URL cannot ride along into a
- * response body or an error message. An unparseable URL is reported by its path
- * alone for the same reason.
+ * cannot make the label name an address that was never requested.
  */
 export function remoteConceptStoreLabel(store: RemoteConceptStore): string {
-  try {
-    const url = new URL(exportUrl(store));
-    return `${url.origin}${url.pathname}`;
-  } catch {
-    return EXPORT_PATH;
-  }
+  return safeLabel(exportUrl(store), EXPORT_PATH);
 }
 
 /** A read that did not produce a corpus. The server answers it as a 502. */
@@ -100,4 +125,62 @@ export async function readRemoteConcepts(store: RemoteConceptStore): Promise<Sto
   // Same parse as the file, so a torn or unknown record degrades identically;
   // `ord` is the export's own oldest-first position.
   return sortConcepts(parseConceptStore(text).map((concept, ord) => ({ ...concept, ord })));
+}
+
+/**
+ * One ranked hit, reduced to what identifies the record and how well it scored.
+ *
+ * The store answers with the whole record, and the whole record is deliberately
+ * dropped here: the corpus read by {@link readRemoteConcepts} is what the page
+ * renders — it carries `ord`, which a hit does not — so a hit's only job is to
+ * say *which* corpus record matched and in what order. `term` plus `savedAt` is
+ * that identity, the store having no key the export exposes.
+ */
+export interface RemoteConceptHit {
+  term: string;
+  savedAt: string;
+  /** bm25 relevance, higher is better. */
+  score: number;
+}
+
+/** A hit as the store sends it, before it is narrowed to the fields above. */
+function toHit(value: unknown): RemoteConceptHit | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.term !== 'string' || typeof row.savedAt !== 'string') return null;
+  return { term: row.term, savedAt: row.savedAt, score: typeof row.score === 'number' ? row.score : 0 };
+}
+
+/**
+ * The store's ranked answer for `query`, best first.
+ *
+ * `includeSuperseded` is set because the corpus this ranks is the export, where
+ * a term taught twice appears twice — the store's default keeps only the newest
+ * version per term, which would rank a hit the page still lists as absent.
+ *
+ * A failure **throws**, exactly as the corpus read does: a search that quietly
+ * answers nothing is indistinguishable from a corpus that holds nothing, which
+ * is the failure this module exists to keep off the page.
+ */
+export async function searchRemoteConcepts(store: RemoteConceptStore, query: string): Promise<RemoteConceptHit[]> {
+  const url = new URL(`${store.origin}${SEARCH_PATH}`);
+  url.searchParams.set('q', query);
+  url.searchParams.set('includeSuperseded', 'true');
+  url.searchParams.set('limit', String(SEARCH_LIMIT));
+  // Names the route, never the query text and never a credential in the origin.
+  const label = safeLabel(url.toString(), SEARCH_PATH);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { headers: { authorization: `Bearer ${store.token}` } });
+  } catch (err) {
+    throw new RemoteConceptStoreError(`${label} (${(err as Error).message})`);
+  }
+  if (!response.ok) throw new RemoteConceptStoreError(`${label} answered ${response.status}`);
+
+  const body = (await response.json().catch(() => null)) as { results?: unknown } | null;
+  const results = Array.isArray(body?.results) ? body.results : [];
+  // Read defensively, like the corpus parse: a row this code does not recognise
+  // is dropped from the ranking rather than emptying it.
+  return results.map(toHit).filter((hit): hit is RemoteConceptHit => hit !== null);
 }

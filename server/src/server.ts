@@ -36,6 +36,7 @@ import {
   buildCommandRun,
   buildCommands,
   buildConcept,
+  buildConceptSearch,
   buildConcepts,
   buildContext,
   buildContextDetail,
@@ -1086,6 +1087,19 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   },
   '/api/concepts/concept': (ctx) => serveConcept(ctx, false),
   '/api/concepts/concept/stream': (ctx) => serveConcept(ctx, true),
+  // Searching that corpus by its prose. With the hosted store configured this
+  // is a proxy over its bm25 route; without it, a substring scan of the same
+  // fields, which the answer's `ranked` reports rather than implying. A store
+  // that will not answer is a 502 here for the reason it is on the list route —
+  // a silently empty result set reads as a corpus that holds nothing.
+  '/api/concepts/search': async ({ res, url }) => {
+    try {
+      send(res, 200, await buildConceptSearch(LOG_DIR, url.searchParams.get('q') ?? '', readSource()));
+    } catch (err) {
+      if (err instanceof RemoteConceptStoreError) send(res, 502, { error: err.message });
+      else throw err;
+    }
+  },
   '/api/ideas': (ctx) => serveIdeas(ctx, false),
   '/api/ideas/stream': (ctx) => serveIdeas(ctx, true),
   // Adjudicating one. POST only, through the origin-checked write CORS.
