@@ -10,11 +10,8 @@
     letter-spacing: 0.04em;
     white-space: nowrap;
   }
-  /*
-   * A run of badges. Adjacent badges in JSX carry no whitespace between them, so
-   * an inline run of them has no break opportunity and overflows its card once
-   * it is wider than the card — wrapping is the row's job, not the badge's.
-   */
+  /* Adjacent badges in JSX carry no whitespace between them, so an inline run of
+   them has no break opportunity and overflows its card. Wrapping is the row's job. */
   .badge-row {
     display: flex;
     flex-wrap: wrap;
