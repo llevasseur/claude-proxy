@@ -82,7 +82,7 @@ const SLUG_SHAPE = /^[^/\s]+\/[^/\s]+$/;
 /** `ssh -G` reads config files only; it never opens a connection. */
 const SSH_TIMEOUT_MS = 5_000;
 
-/** What was established, and how — the `how` is what a failure has to say for itself. */
+/** What was established, and how — the `how` is what a failure reports. */
 interface SlugLookup {
   slug: string | null;
   detail: string;
@@ -103,17 +103,16 @@ async function originUrl(repoDir: string): Promise<string | null> {
       // `ls-remote --get-url` echoes the name back when there is no such remote.
       if (url && url !== 'origin') return url;
     } catch {
-      // Try the next spelling; both failing is "no origin", reported by the caller.
+      // Try the next spelling; both failing means no origin.
     }
   }
   return null;
 }
 
 /**
- * The host an ssh alias stands for, per this device's `~/.ssh/config`. A remote spelled
- * `git@github-personal:owner/name` — the ordinary shape of a per-account ssh identity —
- * names a host that exists nowhere but that file, so only `ssh` itself can say it is
- * GitHub. Returns the alias unchanged when no `Host` block matches, which is not GitHub.
+ * The host an ssh alias stands for, per this device's `~/.ssh/config`. A per-account ssh
+ * identity names a host that exists nowhere but that file, so only `ssh` itself can say
+ * whether it is GitHub. Returns the alias unchanged when no `Host` block matches.
  */
 async function resolveSshAlias(host: string): Promise<string | null> {
   try {
@@ -147,8 +146,8 @@ async function ghSlug(gh: string, repoDir: string): Promise<string | null> {
  * 3. `ssh -G` on that host, which is what turns an ssh alias into a real hostname.
  * 4. `gh repo view` in the checkout, which resolves the remote on `gh`'s own terms.
  *
- * Nothing here reads a token or a device path: the identity `gh` and `git` authenticate
- * with is theirs to hold, and swapping it changes nothing above.
+ * No token or device path is read here — swapping the identity `gh` and `git`
+ * authenticate with changes nothing above.
  */
 export async function resolveSlug(
   gh: string,
@@ -163,7 +162,7 @@ export async function resolveSlug(
 
   const url = await originUrl(repoDir);
   const parsed = url ? parseRemoteUrl(url) : null;
-  // `GH_HOST` is the variable `gh` reads for an Enterprise install; honour the same one.
+  // The same variable `gh` itself reads for an Enterprise install.
   const extraHosts = env.GH_HOST?.trim() ? [env.GH_HOST] : [];
 
   if (parsed) {

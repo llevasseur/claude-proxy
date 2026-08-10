@@ -269,8 +269,8 @@ export function matchPrInText(pr: PullRequestRow, text: string): PrSessionVia[] 
 /** The pieces of a git remote url this project reads, whatever spelling it uses. */
 export interface RemoteUrl {
   /**
-   * The host exactly as the url spells it, lowercased. An ssh alias stays the alias:
-   * only `~/.ssh/config` on the device knows what it stands for, and this is pure.
+   * The host exactly as the url spells it, lowercased. An ssh alias stays the alias —
+   * only the device's `~/.ssh/config` knows what it stands for.
    */
   host: string;
   /** `ssh` for both `ssh://` and the scp-like `git@host:owner/name` spelling. */
@@ -287,9 +287,8 @@ const SCHEMED_URL = /^([a-z][a-z0-9+.-]*):\/\/(?:[^@/]*@)?([^/:]+)(?::\d+)?(\/.+
 const SCP_URL = /^(?:[^@/\s]+@)?([^/:\s]+):(?!\/)(.+)$/;
 
 /**
- * Split a git remote url into host, scheme and `owner/name` — for any host, so an ssh
- * alias parses as readily as `github.com` and the caller decides whether it is GitHub.
- * Null for a local path or anything with no `owner/name` to it.
+ * Split a git remote url into host, scheme and `owner/name`, for any host — whether it is
+ * GitHub is the caller's call. Null for a local path or anything with no `owner/name`.
  */
 export function parseRemoteUrl(remoteUrl: string): RemoteUrl | null {
   const trimmed = remoteUrl.trim();
@@ -305,7 +304,6 @@ export function parseRemoteUrl(remoteUrl: string): RemoteUrl | null {
   return { host: host.toLowerCase(), scheme, slug: `${parts[1]}/${parts[2]}` };
 }
 
-/** The one host every device shares. */
 const GITHUB_HOST = 'github.com';
 
 /**

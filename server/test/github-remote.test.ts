@@ -1,13 +1,11 @@
 /**
- * The slug lookup is the one part of the pull requests read that depends on how a
- * *device* spelled its remote, so these drive it over throwaway repos rather than over
- * this checkout — whose own `origin` is an ssh alias and would prove only this machine.
+ * The slug lookup depends on how a *device* spelled its remote, so these drive it over
+ * throwaway repos rather than over this checkout, whose `origin` would prove one machine.
  *
- * Two things are deliberately kept out. `ssh -G` is never exercised: it answers from the
- * device's real `~/.ssh/config`, so a test over it would pass or fail per machine, and
- * the alias case is covered purely in `packages/core` through `extraHosts`. And `gh` is
- * pointed at a path that cannot execute, so the last layer always declines and no test
- * reaches the network.
+ * Two layers are deliberately left out. `ssh -G` answers from the real `~/.ssh/config`, so
+ * a test over it would pass or fail per machine — the alias case is covered in
+ * `packages/core` through `extraHosts`. And `gh` is pointed at a path that cannot execute,
+ * so the last layer always declines and no test reaches the network.
  */
 import { execFile } from 'node:child_process';
 import { mkdtemp } from 'node:fs/promises';
