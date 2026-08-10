@@ -439,6 +439,132 @@ export async function buildUsage(
   };
 }
 
+/**
+ * Which reporting days a rebuild has to recompute.
+ *
+ * A set names every reporting day one debounce tick's fs events touched — a
+ * tick that coalesced writes across several days carries all of them, which is
+ * why this is a set rather than a single day. `null` is the other answer, and
+ * the load-bearing one: the change could not be placed on any day, so the whole
+ * payload is rebuilt. A narrowed rebuild that misses a capture is worse than a
+ * slow one that does not, so every uncertainty resolves to `null`.
+ */
+export type RebuildScope = ReadonlySet<string> | null;
+
+/** `<utc-timestamp>_anthropic.{audit.json,md,request.txt}` — the proxy's per-request triple. */
+const SIDECAR_FILE_RE = /^(\d{4}-\d{2}-\d{2})T[^/\\]*_anthropic\.(?:audit\.json|md|request\.txt)$/;
+
+/**
+ * The reporting days one changed file in the live log directory could carry
+ * requests for, or `null` when it carries none that can be named.
+ *
+ * File names carry the proxy's **UTC** timestamp while a reporting day is a
+ * `REPORT_TZ` day, and `REPORT_TZ` is behind UTC — so a file named `D…` holds a
+ * request from `D` or from `D-1`. That is the exact inverse of the superset
+ * `readSidecars` matches for a day (`startsWith(date) || startsWith(date + 1)`),
+ * and the two have to stay inverses or a scoped rebuild would miss a capture.
+ *
+ * Everything else is **out of band** and answers `null`: an event with no file
+ * name at all, a write nested under `sessions/` or `archive/`, `concepts.jsonl`,
+ * `suggestion-status.json`, an editor temp file. None of those can be placed on
+ * a reporting day, and "cannot be placed" means rebuild everything.
+ */
+export function sidecarDays(file: string | null | undefined): ReadonlySet<string> | null {
+  const utcDay = file ? SIDECAR_FILE_RE.exec(file)?.[1] : undefined;
+  if (!utcDay) return null;
+  return new Set([shiftDay(utcDay, -1), utcDay]);
+}
+
+/**
+ * One debounce tick's scope: the union of the days its files touched, or `null`
+ * as soon as any one of them is out of band — including a tick that reported no
+ * file name at all, which is what `fs.watch` gives on the platforms that cannot
+ * name the entry that changed.
+ */
+export function rebuildScope(files: Iterable<string | null | undefined>): RebuildScope {
+  const days = new Set<string>();
+  let seen = false;
+  for (const file of files) {
+    seen = true;
+    const touched = sidecarDays(file);
+    if (!touched) return null;
+    for (const day of touched) days.add(day);
+  }
+  return seen ? days : null;
+}
+
+/** Whether a payload that reads `covers` can have moved under `scope`. */
+export function rebuildNeeded(scope: RebuildScope, covers: Iterable<string>): boolean {
+  if (scope === null) return true;
+  for (const day of covers) if (scope.has(day)) return true;
+  return false;
+}
+
+/** The inclusive run of `length` reporting days ending at `end`. */
+function daysEndingAt(end: string, length: number): Set<string> {
+  const days = new Set<string>();
+  for (let back = 0; back < length; back += 1) days.add(shiftDay(end, -back));
+  return days;
+}
+
+/**
+ * The reporting days {@link buildSummary} reads: the day it reports, plus the
+ * baseline walk behind it. An unpinned summary always carries today, which is
+ * what keeps the day in progress recomputing on every capture.
+ */
+export function summaryDays(date: string | undefined, now: Date): ReadonlySet<string> {
+  return daysEndingAt(date ?? today(now), SUMMARY_BASELINE_LOOKBACK_DAYS + 1);
+}
+
+/**
+ * The widest window {@link buildUsage} spans — the learned ceilings' 28 days in
+ * `usage-history.ts`, longer than either the meters' trailing week or the
+ * archived read's eight days.
+ *
+ * Over-covering is the safe direction: a day named here that the payload does
+ * not really read costs one rebuild that was not needed, while a day missing
+ * from here would silently drop a capture.
+ */
+const USAGE_WINDOW_DAYS = 28;
+
+/** The reporting days {@link buildUsage} reads — see {@link USAGE_WINDOW_DAYS}. */
+export function usageDays(now: Date): ReadonlySet<string> {
+  return daysEndingAt(today(now), USAGE_WINDOW_DAYS);
+}
+
+/**
+ * {@link buildSummary} under a rebuild scope: the same response, or `null` for
+ * "nothing to send" when this tick's days are days the summary never reads.
+ *
+ * The narrowing is the **skip**, not a partial payload. When the scope does
+ * touch the summary's days it rebuilds in full — and `day-digest-memo.ts` is
+ * what makes that cheap, since every closed day of the baseline walk comes back
+ * from the memo without I/O and only the day that actually moved is recomputed.
+ */
+export async function buildSummaryScoped(
+  scope: RebuildScope,
+  logDir: string,
+  date: string | undefined,
+  now: Date,
+  archiveDir?: string,
+  source: SidecarSource = fileSource,
+): Promise<SummaryResponse | null> {
+  if (!rebuildNeeded(scope, summaryDays(date, now))) return null;
+  return buildSummary(logDir, date, now, archiveDir, source);
+}
+
+/** {@link buildUsage} under a rebuild scope — the same skip, over {@link usageDays}. */
+export async function buildUsageScoped(
+  scope: RebuildScope,
+  logDir: string,
+  limits: UsageLimitConfig,
+  now: Date,
+  source: SidecarSource = fileSource,
+): Promise<UsageResponse | null> {
+  if (!rebuildNeeded(scope, usageDays(now))) return null;
+  return buildUsage(logDir, limits, now, source);
+}
+
 export interface TrendsResponse {
   digests: UsageDigest[];
   meta: { days: number; files: number; parseErrors: number; archivedDays: number };
