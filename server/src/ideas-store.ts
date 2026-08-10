@@ -68,13 +68,6 @@ export interface IdeasWriteMeta {
   file: string;
 }
 
-/**
- * Add, then read back.
- *
- * The read-back is what lets every caller keep rendering the rows it just
- * touched, and it is the authoritative answer rather than a local guess: the
- * store the Worker replays is the one the next device will see.
- */
 export interface IdeasAddMeta {
   /** Existing slugs that look like a near-duplicate, checked against every device's ideas. */
   similar: Record<string, string[]>;
@@ -82,6 +75,12 @@ export interface IdeasAddMeta {
   similarAreas: Record<string, string[]>;
 }
 
+/**
+ * Add, then read back.
+ *
+ * The read-back is the authoritative answer rather than a local guess: the store
+ * the Worker replays is the one the next device will see.
+ */
 export async function addIdeasToStore(
   adds: readonly IdeaAdd[],
 ): Promise<IdeaAddResult & IdeasWriteMeta & IdeasAddMeta> {

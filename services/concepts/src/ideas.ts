@@ -59,10 +59,9 @@ export class IdeaError extends Error {
 /**
  * The four things that happen to an idea and are recorded forever.
  *
- * **Claiming is deliberately absent.** It is a lease rather than a fact about
- * the idea, it expires without anyone writing anything, and it is the one
- * transition two devices can genuinely race for — so it lives in `idea_claim`
- * and is taken by the conditional write in {@link claimIdeas}.
+ * **Claiming is deliberately absent**: it is an expiring lease rather than a
+ * fact about the idea, so it lives in `idea_claim` and is taken by the
+ * conditional write in {@link claimIdeas}.
  */
 export type IdeaEventKind = 'add' | 'mark' | 'file' | 'comment';
 
@@ -261,9 +260,8 @@ export interface IdeaWriteOutcome {
  * Change statuses.
  *
  * Two writes, and the second is bookkeeping rather than meaning: the event goes
- * in the log, and **every mark but `shipped` drops the lease**, which is the
- * explicit release beside the age-based expiry. `applyIdeaMarks` already says so
- * for the replayed half; this keeps the lease table from disagreeing with it.
+ * in the log, and **every mark but `shipped` drops the lease**, which keeps the
+ * lease table from disagreeing with what `applyIdeaMarks` did to the replay.
  */
 export async function markIdeas(db: Db, marks: readonly IdeaMark[], now: Date = new Date()): Promise<IdeaWriteOutcome> {
   const store = await readIdeas(db, now);
@@ -379,7 +377,7 @@ export async function claimIdeas(
       unknown.push(request.slug);
       continue;
     }
-    // The status half of the rule, unchanged and not restated in SQL: only an
+    // The status half of the rule, in core rather than in SQL: only an
     // `accepted` idea — or a stale or already-yours `claimed` one — may be taken.
     if (!isIdeaTakeable(entry, request.by, now)) {
       refused.push(refusalFor(entry));

@@ -91,10 +91,9 @@ export function remoteIdeasStoreLabel(store: RemoteIdeasStore): string {
  * One call to the ledger, with the token attached and every failure turned into
  * a {@link RemoteIdeasStoreError}.
  *
- * **A non-2xx answer throws rather than resolving to an empty result**, which is
- * the same reasoning as the corpus read next door: an empty ledger and an
- * unreachable one are indistinguishable to a caller, and the caller here is
- * about to decide whether an idea has been proposed before.
+ * **A non-2xx answer throws rather than resolving to an empty result**: an empty
+ * ledger and an unreachable one are indistinguishable to a caller, and the
+ * caller here is about to decide whether an idea has been proposed before.
  */
 async function call<T>(store: RemoteIdeasStore, path: string, init?: RequestInit): Promise<T> {
   const url = `${store.origin}${path}`;

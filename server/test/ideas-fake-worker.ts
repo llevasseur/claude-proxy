@@ -1,19 +1,16 @@
 /**
  * An in-memory stand-in for the hosted ideas ledger, installed over `fetch`.
  *
- * **This is not a second implementation of the ledger, and it is not where the
- * ledger's rules are tested.** Those live in `services/concepts/src/ideas.ts`
- * and are exercised in `services/concepts/test/ideas.test.ts` against real
- * SQLite — replay order, the atomic claim, the TTL boundary, cross-corpus
- * dedupe. What the suites *here* test is everything on this side of the wire:
- * the refusals `server/src/api.ts` enforces before a write is sent, the shapes
- * the CLI prints, and the PR reconciler's reading of the store. Those need a
+ * **This is not where the ledger's rules are tested.** Those live in
+ * `services/concepts/src/ideas.ts` and are exercised against real SQLite in
+ * `services/concepts/test/ideas.test.ts` — replay order, the atomic claim, the
+ * TTL boundary, cross-corpus dedupe. The suites *here* test this side of the
+ * wire: the refusals `server/src/api.ts` enforces before a write is sent, the
+ * shapes the CLI prints, the PR reconciler's reading of the store. Those need a
  * ledger that answers, not a ledger that is also under test.
  *
- * So this keeps the corpus in memory and drives it through the same
- * `packages/core` apply functions both real implementations use, which is what
- * stops it from being a *different* ledger while staying far too small to be
- * mistaken for the real one.
+ * It drives the same `packages/core` apply functions both real implementations
+ * use, which is what stops it from being a *different* ledger.
  */
 
 import http from 'node:http';
