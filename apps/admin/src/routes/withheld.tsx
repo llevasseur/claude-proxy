@@ -1,8 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
+import { createRoute } from '@tanstack/react-router';
+import { EyeOff } from 'lucide-react';
 import { getWithheld } from '../api';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable, SkeletonText } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort, LOCAL_TZ_ABBR } from '../format';
+import { rootRoute } from '../route-root';
+import type { NavEntry } from './nav';
 
 const WINDOW_DAYS = 14;
 
@@ -371,3 +375,19 @@ function WithheldSkeleton() {
     </>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/withheld',
+  component: WithheldPage,
+  staticData: { title: 'Not added' },
+});
+
+export const nav = {
+  section: 'Context',
+  to: '/withheld',
+  label: 'Not added',
+  hint: 'withheld',
+  exact: false,
+  icon: EyeOff,
+} as const satisfies NavEntry;

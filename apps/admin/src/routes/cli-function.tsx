@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getCliFunction } from '../api';
 import { QueryState } from '../components/QueryState';
 import { Segmented, type SegmentedOption } from '../components/Segmented';
 import { Skeleton, SkeletonText } from '../components/Skeleton';
 import { fmtInt } from '../format';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 import { fmtBundleSize, MISS_DETAIL, MISS_LABEL } from './cli-internals';
 
@@ -155,3 +156,11 @@ function CliFunctionSkeleton() {
     </>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  // `$id` is the catalogue's own key, which is stable where the minified name is not.
+  path: '/cli-internals/$id',
+  component: CliFunctionPage,
+  staticData: { title: 'CLI function' },
+});

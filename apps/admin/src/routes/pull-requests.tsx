@@ -1,13 +1,16 @@
 import type { MainHistoryRow, PrBranch, PrSessionLink, PullRequestRow, PullRequestState } from '@claude-proxy/core';
 import { buildPrTree, prCounts, shortSha } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
+import { GitPullRequest } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import type { LocalDivergence } from '../api';
 import { getPullRequests, setMainLineHidden, slideMain, syncLocalMain } from '../api';
 import { Skeleton, SkeletonStatus } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort } from '../format';
+import { rootRoute } from '../route-root';
+import type { NavEntry } from './nav';
 
 /**
  * The project's pull requests as the tree they actually formed: merged PRs form the
@@ -617,3 +620,19 @@ function Stat({ label, value }: { label: string; value: number }) {
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/pull-requests',
+  component: PullRequestsPage,
+  staticData: { title: 'Pull requests' },
+});
+
+export const nav = {
+  section: 'Activity',
+  to: '/pull-requests',
+  label: 'Pull requests',
+  hint: 'github',
+  exact: false,
+  icon: GitPullRequest,
+} as const satisfies NavEntry;

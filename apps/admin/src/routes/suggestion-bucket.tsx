@@ -6,7 +6,7 @@ import type {
   SuggestionStatusRow,
 } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getSessionSuggestionBucket, getSuggestionStatus, type SessionSummary } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { QueryState } from '../components/QueryState';
@@ -28,6 +28,7 @@ import {
   SuggestionStatusControl,
 } from '../components/SuggestionStatus';
 import { fmtBytes, fmtInt, fmtLocalTsShort, fmtPct } from '../format';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 
 const SEV_LABEL = { high: 'High', warn: 'Warn', info: 'Info' } as const;
@@ -375,3 +376,10 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/advice/sessions/$bucket',
+  component: SuggestionBucketPage,
+  staticData: { title: 'Session suggestions' },
+});

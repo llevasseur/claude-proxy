@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
+import { MessagesSquare } from 'lucide-react';
 import type { PermissionMode } from '../api';
 import { getChatConfig, getSessions, PERMISSION_MODES } from '../api';
 import { useChatSession, useChatThread } from '../chat-session';
@@ -8,7 +9,9 @@ import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { SessionsSidenav } from '../components/SessionsSidenav';
 import { Skeleton } from '../components/Skeleton';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
+import type { NavEntry } from './nav';
 
 /**
  * Sessions, laid out the way a chat client is: the transcripts as a scrolling rail on
@@ -204,3 +207,19 @@ function ChatEmptyState() {
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sessions',
+  component: SessionsPage,
+  staticData: { title: 'Sessions' },
+});
+
+export const nav = {
+  section: 'Sessions',
+  to: '/sessions',
+  label: 'Sessions',
+  hint: 'transcripts',
+  exact: true,
+  icon: MessagesSquare,
+} as const satisfies NavEntry;
