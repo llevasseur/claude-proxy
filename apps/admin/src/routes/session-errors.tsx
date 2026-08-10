@@ -1,10 +1,11 @@
 import type { LinkedSessionError } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getSessionErrors } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonMsgBlocks } from '../components/Skeleton';
+import { rootRoute } from '../route-root';
 
 /** Per-session drill-down listing every errored tool result, re-linked to its task and tool call. */
 export function SessionErrorsPage() {
@@ -121,3 +122,10 @@ function ErrorTurnLink({ link }: { link: LinkedSessionError['link'] }) {
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sessions/$id/errors',
+  component: SessionErrorsPage,
+  staticData: { title: 'Session errors' },
+});

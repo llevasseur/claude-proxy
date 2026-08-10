@@ -1,6 +1,7 @@
 import type { CommandSummary } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate } from '@tanstack/react-router';
+import { TerminalSquare } from 'lucide-react';
 import { getCommands } from '../api';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
@@ -8,7 +9,9 @@ import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../
 import { Sparkline } from '../components/Sparkline';
 import { StatCard } from '../components/StatCard';
 import { fmtInt, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
+import type { NavEntry } from './nav';
 
 /**
  * "Commands" — what each installed slash command costs to run.
@@ -198,3 +201,19 @@ function CommandsTable({ commands, storePath }: { commands: CommandSummary[]; st
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/commands',
+  component: CommandsPage,
+  staticData: { title: 'Commands' },
+});
+
+export const nav = {
+  section: 'Device',
+  to: '/commands',
+  label: 'Commands',
+  hint: 'per step',
+  exact: false,
+  icon: TerminalSquare,
+} as const satisfies NavEntry;

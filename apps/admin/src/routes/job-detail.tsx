@@ -1,6 +1,6 @@
 import type { JobTreeNode } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { Fragment, useMemo, useState } from 'react';
 import type { JobSummary } from '../api';
 import { getJob, getJobFile } from '../api';
@@ -11,6 +11,7 @@ import { JobFileView } from '../components/JobFileView';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonStats, SkeletonText, SkeletonTextCard } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtLocalTs } from '../format';
+import { rootRoute } from '../route-root';
 import { cwdLabel, StateBadge } from './jobs';
 
 /**
@@ -316,3 +317,10 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/jobs/$id',
+  component: JobDetailPage,
+  staticData: { title: 'Job' },
+});

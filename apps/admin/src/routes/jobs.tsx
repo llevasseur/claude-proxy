@@ -1,6 +1,7 @@
 import { type JobTone, jobStateTone, type LivenessState } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate } from '@tanstack/react-router';
+import { HardDrive } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { JobDeleteResult, JobSummary } from '../api';
 import { deleteJob, getJobs } from '../api';
@@ -8,6 +9,8 @@ import { LivenessBadge } from '../components/LivenessBadge';
 import { QueryState } from '../components/QueryState';
 import { type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtLocalTsShort } from '../format';
+import { rootRoute } from '../route-root';
+import type { NavEntry } from './nav';
 
 /**
  * "Jobs" — every background job directory under `~/.claude/jobs` on this device.
@@ -382,3 +385,19 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/jobs',
+  component: JobsPage,
+  staticData: { title: 'Jobs' },
+});
+
+export const nav = {
+  section: 'Activity',
+  to: '/jobs',
+  label: 'Jobs',
+  hint: 'device',
+  exact: false,
+  icon: HardDrive,
+} as const satisfies NavEntry;

@@ -1,8 +1,12 @@
 import type { ProxyFilterEntry, ProxyFilterKind } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
+import { createRoute } from '@tanstack/react-router';
+import { ListFilter } from 'lucide-react';
 import { getFilters } from '../api';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
+import { rootRoute } from '../route-root';
+import type { NavEntry } from './nav';
 
 /**
  * "Proxy filters" — the inventory of what `proxy/proxy.ts` strips out of every
@@ -124,3 +128,19 @@ function FiltersSkeleton() {
     </>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/filters',
+  component: FiltersPage,
+  staticData: { title: 'Proxy filters' },
+});
+
+export const nav = {
+  section: 'Context',
+  to: '/filters',
+  label: 'Proxy filters',
+  hint: 'stripped',
+  exact: false,
+  icon: ListFilter,
+} as const satisfies NavEntry;

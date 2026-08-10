@@ -1,9 +1,12 @@
 import type { CliFunctionEntry, CliFunctionMiss } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { createRoute, useNavigate } from '@tanstack/react-router';
+import { Binary } from 'lucide-react';
 import { type CliBundleInfo, getCliInternals } from '../api';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
+import { rootRoute } from '../route-root';
+import type { NavEntry } from './nav';
 
 /**
  * "CLI internals" — functions inside the Claude Code bundle this machine has
@@ -180,3 +183,19 @@ function CliInternalsSkeleton() {
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/cli-internals',
+  component: CliInternalsPage,
+  staticData: { title: 'CLI internals' },
+});
+
+export const nav = {
+  section: 'Device',
+  to: '/cli-internals',
+  label: 'CLI internals',
+  hint: 'bundle',
+  exact: false,
+  icon: Binary,
+} as const satisfies NavEntry;

@@ -1,6 +1,6 @@
 import type { RequestMessageDetail } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getContextMessage } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { EvictedBody } from '../components/EvictedBody';
@@ -8,6 +8,7 @@ import { QueryState } from '../components/QueryState';
 import { PRETTY_RAW, type PrettyRawView, Segmented } from '../components/Segmented';
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
 import { fmtBytes, fmtInt } from '../format';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 
 export function ContextMessagePage() {
@@ -262,3 +263,10 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
     </div>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/context/$file/message/$index',
+  component: ContextMessagePage,
+  staticData: { title: 'Context message' },
+});

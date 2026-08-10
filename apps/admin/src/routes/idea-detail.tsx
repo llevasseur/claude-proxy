@@ -1,6 +1,6 @@
 import { type IdeaEntry, ideaAreaLabel, ideaTaskPrompt, SEED_IDEA_AREAS } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { commentIdeas, fileIdeas, getIdeas, type IdeasResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -16,6 +16,7 @@ import { Markdown } from '../components/Markdown';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonText } from '../components/Skeleton';
 import { fmtLocalTsShort } from '../format';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 
 /**
@@ -404,3 +405,11 @@ function IdeaSkeleton() {
     </>
   );
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  // The slug alone: the area is never in a permalink, so re-filing cannot break a link.
+  path: '/ideas/$slug',
+  component: IdeaDetailPage,
+  staticData: { title: 'Idea' },
+});

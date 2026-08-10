@@ -1,15 +1,17 @@
 import { type ContextThreadGroup, groupContextThreads, promptExcerpt, promptMatches } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { Search } from 'lucide-react';
+import { createRoute, Link } from '@tanstack/react-router';
+import { Gauge, Search } from 'lucide-react';
 import { type CSSProperties, useMemo, useState } from 'react';
 import { type ContextResponse, getContext } from '../api';
 import { QueryState } from '../components/QueryState';
-import { DAY_WINDOWS, Segmented } from '../components/Segmented';
+import { ALL_DAYS, DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtBytes, fmtInt, fmtLocalTs, LOCAL_TZ_ABBR } from '../format';
+import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
+import type { NavEntry } from './nav';
 
 /** Thread, when, model, three numeric columns, then the size bar. */
 const THREAD_COLUMNS: readonly SkeletonColumn[] = [
@@ -336,3 +338,34 @@ function SortHeader({
     </th>
   );
 }
+
+/**
+ * `?days=` clamped to 1–365 the way `/api/context` clamps it, plus `ALL_DAYS` for
+ * every day on record; anything unreadable falls back to the default rather than
+ * erroring. The clamp bounds a requested count, not the corpus — `All` passes
+ * through it untouched and has its floor resolved server-side.
+ *
+ * Exported because the two drill-downs below this page validate `?days=` the same way.
+ */
+export function contextDays(raw: unknown): number {
+  const days = Number(raw);
+  if (!Number.isFinite(days)) return 14;
+  if (days === ALL_DAYS) return ALL_DAYS;
+  return days > 0 ? Math.min(Math.round(days), 365) : 14;
+}
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/context',
+  component: ContextPage,
+  staticData: { title: 'Context size' },
+});
+
+export const nav = {
+  section: 'Context',
+  to: '/context',
+  label: 'Context size',
+  hint: 'prompt',
+  exact: false,
+  icon: Gauge,
+} as const satisfies NavEntry;

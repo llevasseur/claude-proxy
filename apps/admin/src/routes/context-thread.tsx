@@ -1,6 +1,6 @@
 import type { ContextEntry } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams, useSearch } from '@tanstack/react-router';
+import { createRoute, Link, useParams, useSearch } from '@tanstack/react-router';
 import { type CSSProperties, useMemo } from 'react';
 import { getContextThread } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -8,7 +8,9 @@ import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtBytes, fmtInt, fmtLocalTs, LOCAL_TZ_ABBR } from '../format';
+import { rootRoute } from '../route-root';
 import { useRestoredScroll } from '../useRestoredScroll';
+import { contextDays } from './context';
 
 /** When, model, three numeric columns, then the size bar. */
 const REQUEST_COLUMNS: readonly SkeletonColumn[] = [
@@ -199,3 +201,17 @@ function RequestsTable({
     </div>
   );
 }
+
+/** `?days=` carries the window the thread was reached from. */
+export interface ContextThreadSearch {
+  days: number;
+}
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  // A static segment, so it can never be read as a `$file` drill-down.
+  path: '/context/thread/$threadId',
+  component: ContextThreadPage,
+  staticData: { title: 'Context thread' },
+  validateSearch: (search: Record<string, unknown>): ContextThreadSearch => ({ days: contextDays(search.days) }),
+});

@@ -1,12 +1,15 @@
 import { type IdeaEntry, ideaAreaLabel, SEED_IDEA_AREAS, UNFILED_IDEA_AREA_LABEL } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { createRoute, useNavigate, useSearch } from '@tanstack/react-router';
+import { Sparkles } from 'lucide-react';
 import { getIdeas, type IdeasResponse } from '../api';
 import { IDEAS_KEY, IdeaCard } from '../components/IdeaCard';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { SkeletonCardList } from '../components/Skeleton';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
+import type { NavEntry } from './nav';
 
 /**
  * The ideas ledger, one area at a time.
@@ -131,3 +134,33 @@ export function IdeasPage() {
     </section>
   );
 }
+
+/**
+ * `?area=` is the selected tab, so a filtered view is linkable and survives a
+ * reload. An unreadable one is dropped here and the page falls back to its
+ * default view — a renamed or deleted area must degrade, never error.
+ */
+export interface IdeasSearch {
+  area?: string;
+}
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ideas',
+  component: IdeasPage,
+  staticData: { title: 'Ideas' },
+  validateSearch: (search: Record<string, unknown>): IdeasSearch => {
+    const area = search.area;
+    return typeof area === 'string' && area !== '' ? { area } : {};
+  },
+});
+
+/** Beside Advice, which kept the coaching and handed the ledger over to this page. */
+export const nav = {
+  section: 'Learning',
+  to: '/ideas',
+  label: 'Ideas',
+  hint: 'by area',
+  exact: false,
+  icon: Sparkles,
+} as const satisfies NavEntry;

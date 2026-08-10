@@ -1,6 +1,6 @@
 import type { CommandRunOutcome, CommandStep, StepReach } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { createRoute, Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';
 import {
   CartesianGrid,
@@ -31,6 +31,7 @@ import {
 } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtCompact, fmtDuration, fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 
@@ -808,3 +809,10 @@ function median(values: number[]): number {
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
+
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/commands/$command',
+  component: CommandDetailPage,
+  staticData: { title: 'Command' },
+});

@@ -1,14 +1,17 @@
 import { blendRate, isPartialDay, type UsageDigest } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { createRoute, Link } from '@tanstack/react-router';
+import { TrendingUp } from 'lucide-react';
 import { getSummary, type SummaryResponse } from '../api';
 import { DayWindowControls, useWindowDigests } from '../components/DayWindow';
 import { QueryState } from '../components/QueryState';
 import { type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { TrendCarousel, TrendCarouselSkeleton } from '../components/TrendCarousel';
 import { METRICS, REPORT_TZ_ABBR, type StatMetric } from '../metrics';
+import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
+import type { NavEntry } from './nav';
 
 /** Metric, its blended value, what that value is per, and the days behind it. */
 const BLENDED_COLUMNS: readonly SkeletonColumn[] = [{}, { className: 'num' }, {}, { className: 'num' }];
@@ -122,3 +125,24 @@ function TrendsSkeleton({ days }: { days: number }) {
     </>
   );
 }
+
+/**
+ * End-of-day snapshots of every metric, blended across the window. `/trends/$metric`
+ * is a sibling route, not a child.
+ */
+export const route = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/trends',
+  component: TrendsPage,
+  staticData: { title: 'Trends' },
+});
+
+/** Not exact: `/trends/$metric` keeps the station lit. */
+export const nav = {
+  section: 'Dashboard',
+  to: '/trends',
+  label: 'Trends',
+  hint: 'blended',
+  exact: false,
+  icon: TrendingUp,
+} as const satisfies NavEntry;
