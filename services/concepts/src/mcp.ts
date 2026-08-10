@@ -5,7 +5,16 @@
  * session, and the answer is always a single `application/json` body.
  */
 
+import {
+  type IdeaFilter,
+  type IdeaStatus,
+  isIdeaStatus,
+  parseIdeaAdds,
+  parseIdeaClaims,
+  parseIdeaMarks,
+} from '@claude-proxy/core';
 import type { Db } from './db.ts';
+import { addIdeas, claimIdeas, listIdeas, markIdeas } from './ideas.ts';
 import { conceptFacets, getConceptById, getConceptsByTerm, listConcepts, searchConcepts } from './store.ts';
 
 /**
@@ -13,7 +22,7 @@ import { conceptFacets, getConceptById, getConceptsByTerm, listConcepts, searchC
  * expects a handshake is turned away rather than served.
  */
 const SUPPORTED_VERSIONS: readonly string[] = ['2026-07-28'];
-const SERVER_INFO = { name: 'concepts', version: '0.1.0' };
+const SERVER_INFO = { name: 'operator', version: '0.2.0' };
 
 /** `_meta` keys the revision reserves for per-request protocol metadata. */
 const META_PROTOCOL_VERSION = 'io.modelcontextprotocol/protocolVersion';
@@ -95,7 +104,82 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'ideas_list',
+    description:
+      "List the ideas ledger — features and commands somebody proposed building, and what a human decided about each one. This is NOT the same thing as a session suggestion: an idea is invented and carries no source sessions, so only the `accepted` status (a recorded human sign-off) makes one actionable. Statuses are proposed, accepted, claimed, rejected and shipped, and rejected rows are kept deliberately, with their reasons, because they are what stops an idea being proposed twice. Set available:true to get exactly what an implementation run may take right now — `accepted` plus any `claimed` idea whose claim has expired; that is the query to use before building something, because plain status:accepted misses an idea abandoned by a run that died, and status:'accepted,claimed' would take one out from under a live holder.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', description: 'Comma-separated: proposed, accepted, claimed, rejected, shipped.' },
+        repo: { type: 'string', description: 'A git remote slug like owner/name. Never a checkout path.' },
+        area: { type: 'string', description: 'One kebab-case area, matched exactly.' },
+        available: { type: 'boolean', description: 'Only what may be claimed right now. Overrides status.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'ideas_add',
+    description:
+      'Record one or more proposals on the ledger. Each entry is { slug, title, rationale, evidence[], repo, area }, where the slug is a kebab-case dedupe key and evidence cites at least one of open-question, judge-note, changelog, deferral or command-gap — each with a locator (a path, or bucket + id for a judge note) except command-gap, which describes a command nobody wrote and so has none, and is confined to the "commands" area. An entry citing nothing is refused rather than stored. A slug already on the ledger in ANY status, including rejected, is refused without being overwritten, and the rest of the batch still lands. The reply also reports near-duplicate existing slugs under `similar`, checked against the whole shared corpus rather than one machine\'s — look at those before insisting on your slug, because a near-duplicate under a different name defeats the dedupe key.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ideas: { type: 'array', description: 'The entries to record.', items: { type: 'object' } },
+      },
+      required: ['ideas'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'ideas_claim',
+    description:
+      'Take an idea for implementation. This is the FIRST thing an implementation run does, before it writes any code — not something it does when its PR opens, because that gap is what let two runs build the same accepted idea eleven minutes apart. `by` names the holder: a branch, a run id, a person, whatever a second run can recognise as not itself. Only an `accepted` idea may be claimed, or a `claimed` one whose claim has gone stale (six hours with no PR recorded; a claim carrying a pr never goes stale). A claim held by somebody else comes back under `refused` naming the holder — walk away and pick a different idea, do not retry. Re-claiming as the same `by` is idempotent, and is how a run attaches its `pr` later.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: "The idea's kebab-case key." },
+        by: { type: 'string', description: 'The holder to record.' },
+        pr: { type: 'string', description: 'The PR url, once one exists. Pins the claim open indefinitely.' },
+      },
+      required: ['slug', 'by'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'ideas_mark',
+    description:
+      "Change an idea's status. `rejected` requires a note giving the reason — it is the ledger's record of why, and what stops the idea being re-proposed — and `shipped` requires the PR url as its note, since shipped is a claim about something that landed. `proposed` is the undo, restoring an idea to unsigned-off without erasing it or its note. Marking anything other than `shipped` RELEASES any claim, which is how a run that gives up hands an idea back before the six-hour expiry; `shipped` keeps the claim as the record of who built the thing. A mark on a slug the ledger does not carry writes nothing and comes back under `unknown`.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: "The idea's kebab-case key." },
+        status: { type: 'string', description: 'proposed, accepted, claimed, rejected or shipped.' },
+        note: { type: 'string', description: 'The reason for rejected; the PR url for shipped.' },
+      },
+      required: ['slug', 'status'],
+      additionalProperties: false,
+    },
+  },
 ] as const;
+
+/** Reads the ledger filter arguments the way the REST route reads its query string. */
+function ideaFilterFromArgs(args: Record<string, unknown>): IdeaFilter {
+  const filter: IdeaFilter = {};
+  const status = str(args, 'status');
+  if (status) {
+    const statuses = status.split(',').map((part) => part.trim());
+    const bad = statuses.find((value) => !isIdeaStatus(value));
+    if (bad !== undefined) throw new Error(`invalid status: ${bad}`);
+    filter.statuses = statuses as IdeaStatus[];
+  }
+  const repo = str(args, 'repo');
+  if (repo) filter.repo = repo;
+  const area = str(args, 'area');
+  if (area) filter.area = area;
+  return filter;
+}
 
 function str(args: Record<string, unknown>, key: string): string | undefined {
   const value = args[key];
@@ -146,7 +230,58 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
     return { count: results.length, results };
   }
 
+  if (name === 'ideas_list') {
+    return await listIdeas(db, ideaFilterFromArgs(args), args.available === true);
+  }
+
+  if (name === 'ideas_add') {
+    // Parsed by the same function the CLI and the dashboard use, so the evidence
+    // and area rules refuse identically wherever an idea is proposed from.
+    return await addIdeas(db, parseIdeaAdds(args.ideas));
+  }
+
+  if (name === 'ideas_claim') {
+    const [claim] = parseIdeaClaims([
+      { slug: args.slug, by: args.by, ...(args.pr === undefined ? {} : { pr: args.pr }) },
+    ]);
+    const result = await claimIdeas(db, [claim!]);
+    // A refusal is reported as a tool error so the model cannot read a plain
+    // result as permission to start building what somebody else already is.
+    return result.claimed.length > 0 ? result : { error: refusalMessage(result), ...result };
+  }
+
+  if (name === 'ideas_mark') {
+    const [mark] = parseIdeaMarks([
+      { slug: args.slug, status: args.status, ...(args.note === undefined ? {} : { note: args.note }) },
+    ]);
+    if ((mark!.status === 'rejected' || mark!.status === 'shipped') && !mark!.note?.trim()) {
+      return {
+        error:
+          mark!.status === 'rejected'
+            ? 'rejecting an idea needs the reason as `note` — it is the row a later run most needs'
+            : 'shipping an idea needs the PR url as `note` — `shipped` is a claim about something that landed',
+      };
+    }
+    const result = await markIdeas(db, [mark!]);
+    return result.unknown.length > 0
+      ? { error: `no idea on the ledger is called ${result.unknown.join(', ')}` }
+      : result;
+  }
+
   return { error: `unknown tool ${name}` };
+}
+
+/** Says who holds the idea, or which status refused it, in one line a model can act on. */
+function refusalMessage(result: {
+  refused: { slug: string; status: string; heldBy?: string; since?: string }[];
+  unknown: string[];
+}): string {
+  if (result.unknown.length > 0) return `no idea on the ledger is called ${result.unknown.join(', ')}`;
+  const [refusal] = result.refused;
+  if (!refusal) return 'nothing was claimed';
+  return refusal.heldBy
+    ? `${refusal.slug} is already held by ${refusal.heldBy} since ${refusal.since} — pick a different idea`
+    : `${refusal.slug} is ${refusal.status}, and only an accepted idea may be claimed`;
 }
 
 function jsonBody(payload: unknown, status: number): Response {
@@ -264,7 +399,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
       supportedVersions: SUPPORTED_VERSIONS,
       capabilities: CAPABILITIES,
       instructions:
-        'The glossary of terms the user has taught themselves. Call concepts_list first for a cheap overview of everything available, then concepts_get or concepts_search when you need the prose.',
+        'Two datasets over one database. CONCEPTS is the glossary of terms the user has taught themselves — call concepts_list first for a cheap overview of everything available, then concepts_get or concepts_search when you need the prose. IDEAS is the ledger of proposals and what a human decided about each: call ideas_list with available:true to see what may be built right now, ideas_claim before you write any code, ideas_add to propose something (it dedupes against every machine, rejected rows included), and ideas_mark to record the outcome.',
       _meta: { [META_SERVER_INFO]: SERVER_INFO },
     });
   }

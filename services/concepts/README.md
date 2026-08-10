@@ -1,8 +1,19 @@
-# concepts — the hosted concept store
+# operator — the hosted concept store and ideas ledger
+
+**The directory is named after the first dataset, not the scope.** This Worker
+deploys as `operator` over a D1 database called `operator-db`, and it now serves
+two datasets: the **concepts** glossary (ADR 0005) and the **ideas** ledger
+(ADR 0006). Auth, the `Db` port, the derived-ULID ids, the `/mcp` dispatch and
+the nightly backup are shared by both — which is why the second dataset landed
+here rather than in a second Worker with its own deploy, token, cron and backup
+repo.
 
 The Cloudflare Worker that holds everything `/teach` has ever saved, so the
 glossary is reachable from any machine and from any agent — including agents
-running in a throwaway cloud box that has no copy of your files.
+running in a throwaway cloud box that has no copy of your files. And everything
+`/ideate` has ever proposed, so an idea accepted on one machine is visible on
+every machine and a new proposal is deduped against what every machine already
+holds.
 
 It is a D1 (SQLite) database behind two interfaces over the same data:
 
@@ -20,13 +31,16 @@ why there is one token rather than two, why the MCP layer is hand-rolled — is 
 | Path | What it is |
 | --- | --- |
 | `src/index.ts` | Worker entry: auth, routing, the daily backup trigger |
-| `src/store.ts` | Every SQL query; the only file that knows the schema |
+| `src/store.ts` | Every concepts SQL query; the only file that knows that schema |
+| `src/ideas.ts` | The ideas event log, its replay through `packages/core`, and the atomic claim |
 | `src/db.ts` | The `Db` port — D1 in production, `node:sqlite` in tests |
-| `src/mcp.ts` | JSON-RPC, per-request version checks, the three tool definitions |
+| `src/mcp.ts` | JSON-RPC, per-request version checks, the seven tool definitions |
 | `src/rest.ts` | The HTTP surface |
-| `src/backup.ts` | Nightly commit of the corpus to a private git repo |
-| `migrations/0001_init.sql` | The schema, and the source of truth for the tests |
+| `src/backup.ts` | Nightly commit of both datasets to a private git repo |
+| `migrations/0001_init.sql` | The concepts schema, and the source of truth for the tests |
+| `migrations/0002_ideas.sql` | The ideas schema — the event log and the claim lease |
 | `scripts/import-store.ts` | One-time seed from `logs/concepts.jsonl` |
+| `scripts/import-ideas.ts` | Per-device backfill from `logs/ideas.json` |
 
 ## How the tests reach the database
 
@@ -61,9 +75,29 @@ Every route except `/health` requires `Authorization: Bearer $CONCEPTS_TOKEN`.
 | `GET /api/concepts/concept?term=` or `?id=` | One concept in full, plus its older versions |
 | `GET /api/concepts/search?q=` | BM25 full-text search |
 | `GET /api/concepts/export` | The whole corpus as JSONL |
+| `GET /api/ideas` | The ledger, with per-status and per-area counts. `?status=`, `?repo=`, `?area=`, `?available=true` |
+| `GET /api/ideas/export` | The whole ledger as JSON, in the shape `logs/ideas.json` held |
+| `POST /api/ideas` | Record proposals. Refuses a slug already present in any status, and reports look-alikes |
+| `POST /api/ideas/mark` | Change statuses. Every mark but `shipped` releases the claim |
+| `POST /api/ideas/claim` | Take ideas. One atomic conditional write decides a race |
+| `POST /api/ideas/file` | Re-file under an area. Touches nothing else |
+| `POST /api/ideas/comment` | Write the human-authored build criteria |
 
 Listing, search and facets all accept `field`, `skill`, `since`, `hasNotes`,
 `includeSuperseded` and `limit`.
+
+## The ideas ledger in one paragraph
+
+It is an **append-only event log** — `add`, `mark`, `file`, `comment` — replayed
+through `packages/core/src/ideas.ts` on every read, so no status, evidence or
+filing rule is restated in SQL and the hosted ledger cannot disagree with the CLI
+about what a mark means. Replay orders by timestamp and then by an insertion
+`seq` rather than by id, because a derived ULID's low bits are a hash and two
+events sharing a millisecond would otherwise replay in hash order. **Claiming is
+the one exception**, and the one thing replay cannot arbitrate: it is a mutable
+lease row taken by a single `INSERT … ON CONFLICT DO UPDATE … WHERE` whose
+`changes` count decides which of two racing runs won. Even there the six-hour
+cutoff comes from `IDEA_CLAIM_TTL_MS` rather than being written out again.
 
 ## MCP protocol revision
 
@@ -156,7 +190,7 @@ package — see `.github/workflows/deploy-concepts.yml`. It needs a
 template, plus a `CLOUDFLARE_ACCOUNT_ID` secret. Set the `CONCEPTS_URL`
 repository *variable* to the deployed URL to enable the post-deploy smoke check.
 
-### 5. Seed from the existing file
+### 5. Seed from the existing files
 
 Dry-run first, which needs no credentials:
 
@@ -176,6 +210,26 @@ derived from record content, so a replay updates nothing.
 The script is named `seed` rather than `import` on purpose: `import` is a
 built-in pnpm subcommand, so `pnpm --filter concepts import` is intercepted by
 pnpm and never reaches the script.
+
+The ideas ledger has its own importer, and it is run differently:
+
+```sh
+pnpm --filter concepts seed:ideas --dry-run
+pnpm --filter concepts seed:ideas
+```
+
+**Run it on every machine that has a `logs/ideas.json`, not just one.** Each
+device accumulated its own ideas while the ledger was local, and the point of
+ADR 0006 is that they end up in one place. It is safe to run twice and safe to
+run on two devices holding the same idea, because event ids are derived from
+event content — a replay lands on the row it already wrote. A **claim is not
+imported**: it is a six-hour lease belonging to a run on one machine, so a
+claimed idea arrives as `accepted`.
+
+**Do not delete `logs/ideas.json` yet.** The order is: this service ships,
+`/ideate` and `/improve` are repointed in the `my-command` repo and synced to
+every device, and only then the file is retired. The reverse order silently drops
+ideas from any device still running the old commands.
 
 `seed` reads `.env` from this package when one exists, so the usual setup is to
 put both values there once and then run the bare command:
@@ -225,8 +279,14 @@ environment rather than carrying it.
 
 ## Backups
 
-A cron trigger commits the full corpus as JSONL to the private backup repo daily.
-It compares the git blob sha of the new content against what is already there, so
-an unchanged day produces no commit. This is the escape hatch that keeps the
-"database is truth" decision reversible: the worst case is losing one day, and a
-restore is `pnpm --filter concepts seed` pointed at the backed-up file.
+A cron trigger commits **both datasets** to the private backup repo daily — the
+corpus as `concepts.jsonl` and the ledger as `ideas.json`. Each is compared by
+git blob sha against what is already there, so an unchanged day produces no
+commit and a day on which only one dataset moved touches only that file. This is
+the escape hatch that keeps the "database is truth" decision reversible for both
+carve-outs: the worst case is losing one day, and a restore is
+`pnpm --filter concepts seed` or `seed:ideas` pointed at the backed-up file.
+
+**A dataset added to this Worker is added to the backup too, or the ADR 0004
+carve-out is unpaid.** That is why the two exports go through one loop in
+`src/backup.ts` rather than one function each.

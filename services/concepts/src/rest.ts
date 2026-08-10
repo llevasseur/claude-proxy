@@ -1,4 +1,26 @@
+import {
+  type IdeaFilter,
+  type IdeaStatus,
+  isIdeaArea,
+  isIdeaRepo,
+  isIdeaStatus,
+  parseIdeaAdds,
+  parseIdeaClaims,
+  parseIdeaComments,
+  parseIdeaFilings,
+  parseIdeaMarks,
+} from '@claude-proxy/core';
 import type { Db } from './db.ts';
+import {
+  addIdeas,
+  claimIdeas,
+  commentIdeas,
+  exportIdeas,
+  fileIdeas,
+  IdeaError,
+  listIdeas,
+  markIdeas,
+} from './ideas.ts';
 import {
   ConceptError,
   type ConceptFilter,
@@ -87,5 +109,114 @@ export async function handleRest(request: Request, url: URL, db: Db): Promise<Re
     });
   }
 
+  if (path.startsWith('/api/ideas')) return handleIdeas(request, path, params, db);
+
   return null;
+}
+
+/** Reads `?status=`, `?repo=` and `?area=` the way the local server's route does. */
+function ideaFilterFromParams(params: URLSearchParams): IdeaFilter {
+  const filter: IdeaFilter = {};
+  const status = params.get('status');
+  if (status) {
+    filter.statuses = status.split(',').map((part) => {
+      const value = part.trim();
+      if (!isIdeaStatus(value)) throw new IdeaError(400, `invalid status: ${value}`);
+      return value as IdeaStatus;
+    });
+  }
+  const repo = params.get('repo');
+  if (repo) {
+    // A checkout path names a different thing on another machine, and this
+    // ledger is now shared across every machine rather than only every repo.
+    if (!isIdeaRepo(repo))
+      throw new IdeaError(400, `invalid repo: ${repo} (expected a git remote slug like owner/name)`);
+    filter.repo = repo;
+  }
+  const area = params.get('area');
+  if (area) {
+    if (!isIdeaArea(area)) throw new IdeaError(400, `invalid area: ${area} (expected a kebab-case slug)`);
+    filter.area = area;
+  }
+  return filter;
+}
+
+/** A parse refusal from `packages/core` is the client's fault, so it is a 400 rather than a 500. */
+function parsed<T>(read: () => T): T {
+  try {
+    return read();
+  } catch (error) {
+    throw new IdeaError(400, (error as Error).message);
+  }
+}
+
+/**
+ * The ideas surface. See ADR 0006.
+ *
+ * Every write takes the same batch shape the local CLI and the dashboard already
+ * post, and is parsed by the same `parseIdea*` functions, so a refusal here is
+ * word for word the refusal a caller would have got from the file.
+ */
+async function handleIdeas(request: Request, path: string, params: URLSearchParams, db: Db): Promise<Response> {
+  if (path === '/api/ideas/export' && request.method === 'GET') {
+    return new Response(await exportIdeas(db), { headers: { 'content-type': 'application/json; charset=utf-8' } });
+  }
+
+  if (path === '/api/ideas' && request.method === 'GET') {
+    return json(await listIdeas(db, ideaFilterFromParams(params), params.get('available') === 'true'));
+  }
+
+  if (path === '/api/ideas' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as { ideas?: unknown } | null;
+    return json(
+      await addIdeas(
+        db,
+        parsed(() => parseIdeaAdds(body?.ideas)),
+      ),
+    );
+  }
+
+  if (path === '/api/ideas/mark' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as { marks?: unknown } | null;
+    return json(
+      await markIdeas(
+        db,
+        parsed(() => parseIdeaMarks(body?.marks)),
+      ),
+    );
+  }
+
+  if (path === '/api/ideas/file' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as { filings?: unknown } | null;
+    return json(
+      await fileIdeas(
+        db,
+        parsed(() => parseIdeaFilings(body?.filings)),
+      ),
+    );
+  }
+
+  if (path === '/api/ideas/comment' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as { comments?: unknown } | null;
+    return json(
+      await commentIdeas(
+        db,
+        parsed(() => parseIdeaComments(body?.comments)),
+      ),
+    );
+  }
+
+  if (path === '/api/ideas/claim' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as { claims?: unknown } | null;
+    // A live holder comes back in the body as a refusal rather than as an error
+    // status: it is an answer the caller renders, not a failed request.
+    return json(
+      await claimIdeas(
+        db,
+        parsed(() => parseIdeaClaims(body?.claims)),
+      ),
+    );
+  }
+
+  throw new IdeaError(404, `no route for ${request.method} ${path}`);
 }

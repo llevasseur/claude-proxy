@@ -1,11 +1,18 @@
 /**
- * Nightly backup: commit the whole corpus to a private git repo. The database
- * is the source of truth for concepts, so this daily JSONL copy is what bounds
- * data loss to a single day. See ADR 0005.
+ * Nightly backup: commit the whole of both datasets to a private git repo. The
+ * database is the source of truth for concepts *and* for ideas, so this daily
+ * copy is what bounds data loss to a single day and what keeps the ADR 0004
+ * carve-out honest. See ADR 0005 for the first dataset and ADR 0006 for the
+ * second.
+ *
+ * **A dataset added to this Worker is added here too, or the carve-out is
+ * unpaid.** That is the whole reason the two exports go through one loop rather
+ * than one function each.
  */
 
 import type { Db } from './db.ts';
 import type { Env } from './env.ts';
+import { exportIdeas } from './ideas.ts';
 import { exportJsonl } from './store.ts';
 
 export type BackupStatus = 'disabled' | 'unchanged' | 'committed';
@@ -14,6 +21,12 @@ export interface BackupResult {
   status: BackupStatus;
   bytes?: number;
   detail?: string;
+}
+
+/** What the nightly run did, per dataset. */
+export interface BackupSummary {
+  concepts: BackupResult;
+  ideas: BackupResult;
 }
 
 function toBase64(text: string): string {
@@ -42,20 +55,49 @@ async function gitBlobSha(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function runBackup(db: Db, env: Env): Promise<BackupResult> {
+/**
+ * Commit both exports, then report on each.
+ *
+ * The two are committed independently rather than as one tree write: a day on
+ * which only ideas moved should leave `concepts.jsonl` untouched, which is what
+ * the blob-sha comparison below already buys per file.
+ */
+export async function runBackup(db: Db, env: Env): Promise<BackupSummary> {
+  const conceptsContent = `${await exportJsonl(db)}\n`;
+  const concepts = await commitFile(env, env.BACKUP_PATH || 'concepts.jsonl', conceptsContent, 'concepts', (text) =>
+    text.trimEnd() === '' ? 0 : text.trimEnd().split('\n').length,
+  );
+  // The ideas export is one JSON object rather than JSONL, so "records" counts
+  // entries rather than lines.
+  const ideasContent = await exportIdeas(db);
+  const ideas = await commitFile(env, env.BACKUP_IDEAS_PATH || 'ideas.json', ideasContent, 'ideas', (text) => {
+    try {
+      return Object.keys((JSON.parse(text) as { ideas?: Record<string, unknown> }).ideas ?? {}).length;
+    } catch {
+      return 0;
+    }
+  });
+  return { concepts, ideas };
+}
+
+async function commitFile(
+  env: Env,
+  path: string,
+  content: string,
+  label: string,
+  count: (text: string) => number,
+): Promise<BackupResult> {
   const repo = env.BACKUP_REPO;
   const token = env.BACKUP_GITHUB_TOKEN;
   if (!repo || !token) return { status: 'disabled', detail: 'BACKUP_REPO or BACKUP_GITHUB_TOKEN is unset' };
 
-  const path = env.BACKUP_PATH || 'concepts.jsonl';
   const branch = env.BACKUP_BRANCH || 'main';
-  const content = `${await exportJsonl(db)}\n`;
-  const lines = content.trimEnd() === '' ? 0 : content.trimEnd().split('\n').length;
+  const lines = count(content);
 
   const headers = {
     authorization: `Bearer ${token}`,
     accept: 'application/vnd.github+json',
-    'user-agent': 'claude-proxy-concepts',
+    'user-agent': 'claude-proxy-operator',
     'content-type': 'application/json',
   };
   const endpoint = `https://api.github.com/repos/${repo}/contents/${encodeURIComponent(path)}`;
@@ -75,7 +117,7 @@ export async function runBackup(db: Db, env: Env): Promise<BackupResult> {
     method: 'PUT',
     headers,
     body: JSON.stringify({
-      message: `chore(concepts): backup ${today} (${lines} records)`,
+      message: `chore(${label}): backup ${today} (${lines} records)`,
       content: toBase64(content),
       branch,
       ...(sha ? { sha } : {}),

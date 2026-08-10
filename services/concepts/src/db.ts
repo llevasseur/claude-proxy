@@ -17,6 +17,14 @@ export interface Db {
   all<T>(sql: string, params?: DbValue[]): Promise<T[]>;
   /** Runs every statement, atomically where the driver can. */
   batch(statements: DbStatement[]): Promise<void>;
+  /**
+   * One statement, reporting how many rows it changed.
+   *
+   * `batch` cannot answer that, and the count is the whole point at exactly one
+   * call site: the conditional claim in `ideas.ts` decides who won a race by
+   * whether its `UPDATE` matched. See ADR 0006.
+   */
+  run(sql: string, params?: DbValue[]): Promise<{ changes: number }>;
 }
 
 export function d1Db(database: D1Database): Db {
@@ -27,6 +35,15 @@ export function d1Db(database: D1Database): Db {
         .bind(...params)
         .all<T>();
       return result.results;
+    },
+    async run(sql: string, params: DbValue[] = []): Promise<{ changes: number }> {
+      const result = await database
+        .prepare(sql)
+        .bind(...params)
+        .run();
+      // D1 reports it as `meta.changes`; a driver that omits it reads as 0,
+      // which fails the claim closed rather than handing it to both runs.
+      return { changes: Number(result.meta?.changes ?? 0) };
     },
     async batch(statements: DbStatement[]): Promise<void> {
       if (statements.length === 0) return;

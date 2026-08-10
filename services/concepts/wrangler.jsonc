@@ -22,6 +22,7 @@
   "vars": {
     "BACKUP_REPO": "llevasseur/concepts-backup",
     "BACKUP_PATH": "concepts.jsonl",
+    "BACKUP_IDEAS_PATH": "ideas.json",
     "BACKUP_BRANCH": "main"
   }
 }

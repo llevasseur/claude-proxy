@@ -56,13 +56,23 @@ describe('handleMcp', () => {
     expect(body.result.supportedVersions).toEqual([PROTOCOL_VERSION]);
     expect(body.result.capabilities.tools).toBeDefined();
     expect(body.result.capabilities.extensions).toEqual({});
-    expect(body.result._meta['io.modelcontextprotocol/serverInfo']).toEqual({ name: 'concepts', version: '0.1.0' });
+    // `operator`, not `concepts`: the Worker serves two datasets, and the
+    // package directory is the only narrow thing about it. See ADR 0006.
+    expect(body.result._meta['io.modelcontextprotocol/serverInfo']).toEqual({ name: 'operator', version: '0.2.0' });
   });
 
-  it('advertises exactly the three concept tools, each with a schema', async () => {
+  it('advertises the three concept tools and the four ideas tools, each with a schema', async () => {
     const response = await handleMcp(rpc('tools/list'), testDb());
     const body = (await response.json()) as { result: { tools: { name: string; inputSchema: unknown }[] } };
-    expect(body.result.tools.map((t) => t.name)).toEqual(['concepts_list', 'concepts_get', 'concepts_search']);
+    expect(body.result.tools.map((t) => t.name)).toEqual([
+      'concepts_list',
+      'concepts_get',
+      'concepts_search',
+      'ideas_list',
+      'ideas_add',
+      'ideas_claim',
+      'ideas_mark',
+    ]);
     for (const tool of body.result.tools) expect(tool.inputSchema).toHaveProperty('properties');
   });
 
