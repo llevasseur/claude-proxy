@@ -55,15 +55,10 @@ export interface ParityContext {
   archiveDir?: string;
   limits: UsageLimitConfig;
   /**
-   * The archived days a {@link ParityRoute.perDay} route enumerates its cases
-   * over, when the replay is scoped to a subset of them. Unset means every day
-   * in `logDir/archive`, which is what a whole-corpus replay wants.
-   *
-   * Scoping exists so a suite can put each archived day in its own test rather
-   * than replaying the whole archive inside one: the archive only grows, and a
-   * single case whose cost is the sum over every day eventually outruns any
-   * per-test budget. It never narrows what is compared — each day is still
-   * replayed, and still compared whole.
+   * The archived days a {@link ParityRoute.perDay} route enumerates over. Unset
+   * means every day in `logDir/archive`. Scoping lets a suite put each day in
+   * its own test; it never narrows what is compared, since each day is still
+   * replayed whole.
    */
   days?: string[];
   /**
@@ -90,9 +85,9 @@ export interface ParityRoute {
   /** The API path, e.g. `/api/usage`. */
   name: string;
   /**
-   * Whether this route enumerates one case per archived day — and so honours
-   * {@link ParityContext.days}. A route that replays as of the newest day only,
-   * or that takes no date at all, leaves this unset and is replayed once.
+   * Whether this route enumerates one case per archived day, and so honours
+   * {@link ParityContext.days}. A route taking no date, or replaying as of the
+   * newest day only, leaves it unset.
    */
   perDay?: boolean;
   cases(ctx: ParityContext): Promise<ParityCase[]>;
@@ -224,11 +219,9 @@ export async function archivedDays(logDir: string): Promise<string[]> {
 }
 
 /**
- * The same listing as {@link archivedDays}, taken synchronously.
- *
- * A suite declaring one test per archived day needs the list while it is being
- * *collected*, which is before any `beforeAll` has run — so the async reader is
- * a tick too late to name the cases with.
+ * The same listing as {@link archivedDays}, taken synchronously — a suite
+ * declaring one test per archived day needs the list while it is being
+ * *collected*, which is before any `beforeAll` has run.
  */
 export function archivedDaysSync(logDir: string): string[] {
   try {
@@ -628,14 +621,10 @@ const PROMPTS_PER_DAY = 3;
 /**
  * How many suggestion buckets the drill-down route replays, newest first.
  *
- * Buckets accumulate with every fifty sessions and never retire, so uncapped
- * this route's cost climbs for as long as the machine is used — it was the
- * slowest case in the whole replay by a factor of three. Coverage is not lost
- * for the same reason it is not lost by {@link PER_THREAD_CASES}:
- * `/api/sessions/suggestions` replays whole and carries *every* bucket with its
- * suggestions, so what the cap bounds is only the per-bucket drill-down, which
- * re-derives each bucket's breakdown patterns from its sessions' captured
- * requests.
+ * Buckets accrue every fifty sessions and never retire, so uncapped this route's
+ * cost climbs for as long as the machine is used. Coverage is not lost:
+ * `/api/sessions/suggestions` replays whole and carries every bucket with its
+ * suggestions, so the cap bounds only the per-bucket drill-down.
  */
 const BUCKETS_PER_RUN = 20;
 

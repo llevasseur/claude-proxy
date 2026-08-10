@@ -375,11 +375,9 @@ async function flagOneSuggestion(logDir: string): Promise<void> {
  * manage: a corpus that mutates between replays wants them dropped each time, a
  * frozen one replayed in several passes wants them kept.
  *
- * The count comes back rather than being asserted here, because "replayed
- * nothing" only means something to a caller that knows it asked for something:
- * a whole-corpus replay and a day's replay always have cases, while a single
- * route legitimately has none — `/api/concepts` enumerates nothing when the
- * hosted store is configured.
+ * The count comes back rather than being asserted here, because a single route
+ * legitimately has no cases — `/api/concepts` enumerates nothing when the hosted
+ * store is configured.
  */
 async function replay(
   ctx: ParityContext,
@@ -896,16 +894,14 @@ async function snapshotSettings(): Promise<string> {
 
 /**
  * This machine's archived days, listed while the suite is being *collected* —
- * which is what lets each day be named as its own case below. `beforeAll` would
- * be a tick too late: by then the cases are already fixed.
+ * which is what lets each day be named as its own case below. `beforeAll` is a
+ * tick too late: by then the cases are already fixed.
  */
 const REAL_DAYS = archivedDaysSync(resolveLogDir());
 
 /**
- * The split the cases below are drawn along. A `perDay` route enumerates one
- * case per archived day and honours the days pinned on the context; every other
- * route takes no date, or replays as of the newest day alone, and is replayed
- * once.
+ * The split the cases below are drawn along: a `perDay` route gets one case per
+ * archived day, everything else is replayed once.
  */
 const PER_DAY_ROUTES = PARITY_ROUTES.filter((r) => r.perDay);
 const WHOLE_ROUTES = PARITY_ROUTES.filter((r) => !r.perDay);
@@ -915,11 +911,8 @@ const WHOLE_ROUTES = PARITY_ROUTES.filter((r) => !r.perDay);
  * Skipped where there is no archive to replay — a clean clone, or CI.
  *
  * One case per archived day, rather than one case for all of them. What is
- * compared is unchanged — every day still replays every per-day route, and each
- * answer is still compared whole — but the archive only ever grows, so a single
- * case carrying the sum of every day outgrows any budget it is given, and did:
- * it timed out at twenty days. Split, a case's cost is one day's work and stays
- * there however long the archive gets.
+ * compared is unchanged, but the archive only ever grows, so a single case
+ * carrying the sum of every day outgrows any budget it is given, and did.
  */
 describe('route parity over the real logs/archive', () => {
   let snapshot: string | null = null;
@@ -934,11 +927,10 @@ describe('route parity over the real logs/archive', () => {
     settingsPath = await snapshotSettings();
     db = openDb(snapshot);
     await ingest(db, snapshot);
-    // Once for the suite rather than once per case. Every memo keys on the
+    // Once for the suite rather than once per case: every memo keys on the
     // backing that filled it and the directory it read, so a warm cache cannot
-    // let one backing answer for the other — while dropping it between days
-    // would re-read the whole archive once per day, which is the cost the split
-    // above exists to avoid paying.
+    // let one backing answer for the other, while dropping it between days would
+    // re-read the whole archive once per day.
     resetCaches();
   }, 300_000);
 
@@ -986,10 +978,9 @@ describe('route parity over the real logs/archive', () => {
   );
 
   // One case per undated route, for the reason the days are split: replayed
-  // together these overran the same budget on their own, and the per-thread ones
-  // among them re-read request bodies across a corpus that keeps growing. Each
-  // route's own case count is already capped in `parity.ts` — by transcript, by
-  // run and by prompt cohort — so a route is where the cost stops growing.
+  // together these overran the same budget on their own. Each route's own case
+  // count is already capped in `parity.ts` — by transcript, by run and by prompt
+  // cohort — so a route is where the cost stops growing.
   for (const route of WHOLE_ROUTES) {
     it(`answers ${route.name} byte-identically`, async () => {
       if (!db) return;
