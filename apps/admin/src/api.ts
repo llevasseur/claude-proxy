@@ -18,6 +18,8 @@ import type {
   ContextSummary,
   HookRow,
   IdeaAreaCounts,
+  IdeaClaimRefusal,
+  IdeaClaimRequest,
   IdeaComment,
   IdeaEntry,
   IdeaFiling,
@@ -675,6 +677,19 @@ export interface IdeasStatusResponse {
     total: number;
   };
 }
+/** The entries a claim took, plus the holders that refused the rest. */
+export interface IdeasClaimResponse {
+  rows: IdeaEntry[];
+  meta: {
+    file: string;
+    claimed: string[];
+    /** A live holder is an answer the page shows, not a failed request. */
+    refused: IdeaClaimRefusal[];
+    unknown: string[];
+    counts: Record<IdeaStatus, number>;
+    total: number;
+  };
+}
 /** The entries a re-file or a comment touched, plus the ledger-wide area counts. */
 export interface IdeasEditResponse {
   rows: IdeaEntry[];
@@ -965,11 +980,21 @@ export const saveSystemPrompt = (text: string, expectedModified?: string | null)
 /** The whole ledger, paired with the `/api/ideas/stream` subscription that pushes the same shape. */
 export const getIdeas = () => get<IdeasResponse>('/api/ideas');
 /**
- * Adjudicate ideas. The browser may set `accepted`, `rejected` and `proposed` (the
- * undo); `shipped` carries a PR url and stays with `ideas mark`. A `rejected` mark
- * with no note is refused — the reason is what stops the idea being re-proposed.
+ * Adjudicate ideas. The browser may set `accepted`, `rejected`, `proposed` (the
+ * undo) and `shipped`; only `claimed` stays off, since a claim names a holder and
+ * a mark carries none — that is `claimIdeas`. A `rejected` mark with no note is
+ * refused (the reason is what stops the idea being re-proposed) and so is a
+ * `shipped` one (the note is the PR url), as is shipping an idea whose status
+ * `canShipIdea` does not allow.
  */
 export const markIdeas = (marks: IdeaMark[]) => post<IdeasStatusResponse>('/api/ideas/status', { marks });
+/**
+ * Take an idea under a named holder — the way back from a release, which drops
+ * the claim outright. Its own route rather than a `claimed` mark, since a mark
+ * carries no holder and one nobody holds parks the idea for the whole expiry.
+ * A live holder comes back under `meta.refused` rather than as an error.
+ */
+export const claimIdeas = (claims: IdeaClaimRequest[]) => post<IdeasClaimResponse>('/api/ideas/claim', { claims });
 /**
  * Re-file ideas under an area. Its own route rather than a field on the mark: a
  * status change must never move an idea between tabs as a side effect. An idea

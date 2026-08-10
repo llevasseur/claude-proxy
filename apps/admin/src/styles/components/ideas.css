@@ -55,15 +55,28 @@
     margin-left: auto;
     font-size: var(--text-4);
   }
-  .idea-reject {
+  /* The three revealed forms — reject, ship, re-claim — are one shape: the row of
+   buttons is replaced in place by the field that decision needs, so they take the
+   row's whole width and never stack a second submit beside the first. */
+  .idea-reject,
+  .idea-ship,
+  .idea-reclaim {
     display: flex;
     align-items: center;
     gap: var(--space-5);
     flex: 1 1 320px;
   }
-  .idea-reject input {
+  .idea-reject input,
+  .idea-ship input,
+  .idea-reclaim input {
     flex: 1 1 auto;
     min-width: 12rem;
+  }
+  /* Re-claim asks for two, and the holder is the required one — the PR url is
+   optional, so it yields the room when the row has to wrap. */
+  .idea-reclaim input[type="url"] {
+    flex: 0 1 auto;
+    min-width: 9rem;
   }
   /* The card's rationale is a preview — the detail page carries it whole. Only the
    paragraph shape clamps; the bulleted one is cut by bullet in the component, since

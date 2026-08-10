@@ -1,4 +1,5 @@
 import {
+  canShipIdea,
   type IdeaEntry,
   type IdeaEvidence,
   type IdeaStatus,
@@ -8,7 +9,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { markIdeas } from '../api';
+import { claimIdeas, markIdeas } from '../api';
 import { fmtLocalTsShort } from '../format';
 
 /**
@@ -89,55 +90,93 @@ export function hasIdeaDecision(status: IdeaStatus): boolean {
 }
 
 /**
- * Accept, reject, release, undo — the whole sign-off, shared by the card and the
- * permalink so the two cannot disagree about what a status may become. `children`
- * renders on the same row, which is the timestamp on the card.
+ * Which revealed form is open, or `null` for the plain row of buttons. One at a
+ * time: each replaces the buttons in place, so two open at once would leave a
+ * reader looking at two submits that mean different things.
+ */
+type IdeaForm = 'reject' | 'ship' | 'claim';
+
+/**
+ * Accept, reject, release, re-claim, ship, undo — the whole sign-off, shared by
+ * the card and the permalink so the two cannot disagree about what a status may
+ * become. `children` renders on the same row, which is the timestamp on the card.
+ *
+ * **Release is no longer a one-way door.** It drops the claim, and with it the
+ * holder and the PR url — see `applyIdeaMarks`, which rebuilds the entry without
+ * the claim on every mark but `shipped`. So both ways back out of a released
+ * idea are offered here, and both collect what the release discarded rather than
+ * pretending to restore it: Ship takes the PR url as its note, and Re-claim takes
+ * a holder and optionally the url again.
  */
 export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; children?: ReactNode }) {
   const client = useQueryClient();
-  const [rejecting, setRejecting] = useState(false);
+  const [form, setForm] = useState<IdeaForm | null>(null);
   const [reason, setReason] = useState('');
-  // The Reject button the form replaced leaves the tab order with it, so focus would
+  // The url the mark wants is the one the claim already carries, when it has one.
+  const [pr, setPr] = useState(idea.claim?.pr ?? '');
+  const [holder, setHolder] = useState('');
+  // The button each form replaced leaves the tab order with it, so focus would
   // otherwise fall to the document. Keyed on the reveal, so it fires on the click that
   // opened the form rather than on every keystroke's re-render.
-  const reasonRef = useRef<HTMLInputElement>(null);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (rejecting) reasonRef.current?.focus();
-  }, [rejecting]);
+    if (form) firstFieldRef.current?.focus();
+  }, [form]);
+  // A claim can arrive from elsewhere — `ideas claim --pr`, or the sync job — while
+  // this card is mounted, and an untouched Ship field should show the new url.
+  const claimedPr = idea.claim?.pr ?? '';
+  useEffect(() => {
+    setPr(claimedPr);
+  }, [claimedPr]);
+
+  const close = () => {
+    setForm(null);
+    setReason('');
+    setHolder('');
+    // Re-ask rather than patch: every list showing this idea moves together.
+    return client.invalidateQueries({ queryKey: [IDEAS_KEY] });
+  };
 
   const mark = useMutation({
     mutationFn: (next: { status: IdeaStatus; note?: string }) =>
       markIdeas([{ slug: idea.slug, status: next.status, ...(next.note === undefined ? {} : { note: next.note }) }]),
-    // Re-ask rather than patch: every list showing this idea moves together.
-    onSuccess: () => {
-      setRejecting(false);
-      setReason('');
-      return client.invalidateQueries({ queryKey: [IDEAS_KEY] });
-    },
+    onSuccess: close,
+  });
+  const claim = useMutation({
+    mutationFn: (next: { by: string; pr?: string }) =>
+      claimIdeas([{ slug: idea.slug, by: next.by, ...(next.pr ? { pr: next.pr } : {}) }]),
+    onSuccess: close,
   });
 
+  const busy = mark.isPending || claim.isPending;
   const decided = idea.status !== 'proposed';
+  const released = idea.status === 'accepted';
+  // The status model's own rule, not this component's — `accepted` and `claimed`,
+  // never the terminal `shipped` and never an idea nobody signed off.
+  const shippable = canShipIdea(idea.status);
+  // Returned rather than thrown: somebody else holds it, which is an answer.
+  const refusal = claim.data?.meta.refused[0];
 
   return (
     <>
       <div className='idea-controls'>
-        {idea.status === 'proposed' && !rejecting && (
+        {idea.status === 'proposed' && !form && (
           <>
             {/* `accepted` is the recorded human sign-off, and the only status /improve acts on. */}
             <button
               type='button'
               className='btn-primary idea-accept'
-              disabled={mark.isPending}
+              disabled={busy}
               onClick={() => mark.mutate({ status: 'accepted' })}>
               Accept
             </button>
-            <button type='button' className='btn-quiet' disabled={mark.isPending} onClick={() => setRejecting(true)}>
+            <button type='button' className='btn-quiet' disabled={busy} onClick={() => setForm('reject')}>
               Reject
             </button>
           </>
         )}
 
-        {rejecting && (
+        {form === 'reject' && (
           // Required, not encouraged — the server refuses a rejection with no reason.
           <form
             className='idea-reject'
@@ -148,14 +187,14 @@ export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; chil
             <input
               type='text'
               value={reason}
-              ref={reasonRef}
+              ref={firstFieldRef}
               placeholder='Why not? This is what stops it being re-proposed.'
               onChange={(e) => setReason(e.target.value)}
             />
-            <button type='submit' className='btn-primary' disabled={!reason.trim() || mark.isPending}>
+            <button type='submit' className='btn-primary' disabled={!reason.trim() || busy}>
               Reject
             </button>
-            <button type='button' className='btn-quiet' disabled={mark.isPending} onClick={() => setRejecting(false)}>
+            <button type='button' className='btn-quiet' disabled={busy} onClick={() => setForm(null)}>
               Cancel
             </button>
           </form>
@@ -163,22 +202,91 @@ export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; chil
 
         {/* Releasing is `accepted`, not `proposed` — the idea goes back on offer with its
             sign-off intact, without waiting out the six-hour expiry. */}
-        {idea.status === 'claimed' && (
+        {idea.status === 'claimed' && !form && (
           <button
             type='button'
             className='btn-quiet'
-            disabled={mark.isPending}
+            disabled={busy}
             onClick={() => mark.mutate({ status: 'accepted' })}>
             Release
           </button>
         )}
 
+        {/* The other direction out of a release, and the control the ledger was missing
+            entirely: a merged PR is recorded from here rather than only from the CLI. */}
+        {shippable && !form && (
+          <button type='button' className='btn-quiet idea-ship-open' disabled={busy} onClick={() => setForm('ship')}>
+            Shipped
+          </button>
+        )}
+
+        {form === 'ship' && (
+          // The note *is* the PR url, and the server refuses a shipped mark without one.
+          <form
+            className='idea-ship'
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (pr.trim()) mark.mutate({ status: 'shipped', note: pr.trim() });
+            }}>
+            <input
+              type='url'
+              value={pr}
+              ref={firstFieldRef}
+              placeholder='The PR that landed it — this is the note `shipped` carries.'
+              onChange={(e) => setPr(e.target.value)}
+            />
+            <button type='submit' className='btn-primary' disabled={!pr.trim() || busy}>
+              Ship
+            </button>
+            <button type='button' className='btn-quiet' disabled={busy} onClick={() => setForm(null)}>
+              Cancel
+            </button>
+          </form>
+        )}
+
+        {/* Re-claiming a released idea. The holder is typed rather than restored: the
+            release dropped the claim, so the previous one is genuinely gone. */}
+        {released && !form && (
+          <button type='button' className='btn-quiet' disabled={busy} onClick={() => setForm('claim')}>
+            Re-claim
+          </button>
+        )}
+
+        {form === 'claim' && (
+          <form
+            className='idea-reclaim'
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (holder.trim()) claim.mutate({ by: holder.trim(), pr: pr.trim() });
+            }}>
+            <input
+              type='text'
+              value={holder}
+              ref={firstFieldRef}
+              placeholder='Who is building it — a branch, a run id, a person.'
+              onChange={(e) => setHolder(e.target.value)}
+            />
+            <input
+              type='url'
+              value={pr}
+              placeholder='Its PR, if there is one yet (optional).'
+              onChange={(e) => setPr(e.target.value)}
+            />
+            <button type='submit' className='btn-primary' disabled={!holder.trim() || busy}>
+              Claim
+            </button>
+            <button type='button' className='btn-quiet' disabled={busy} onClick={() => setForm(null)}>
+              Cancel
+            </button>
+          </form>
+        )}
+
         {/* `proposed` is the undo — it un-signs an idea without erasing it or its note. */}
-        {decided && idea.status !== 'shipped' && idea.status !== 'claimed' && (
+        {decided && idea.status !== 'shipped' && idea.status !== 'claimed' && !form && (
           <button
             type='button'
             className='btn-quiet'
-            disabled={mark.isPending}
+            disabled={busy}
             onClick={() => mark.mutate({ status: 'proposed' })}>
             Undo
           </button>
@@ -187,7 +295,16 @@ export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; chil
         {children}
       </div>
 
-      {mark.error && <div className='suggestion-mark-error'>{(mark.error as Error).message}</div>}
+      {refusal && (
+        <div className='suggestion-mark-error'>
+          {refusal.heldBy
+            ? `${idea.slug} is already held by ${refusal.heldBy} since ${refusal.since} — nothing was written`
+            : `${idea.slug} is ${refusal.status}, and only an accepted idea may be claimed`}
+        </div>
+      )}
+      {(mark.error || claim.error) && (
+        <div className='suggestion-mark-error'>{((mark.error ?? claim.error) as Error).message}</div>
+      )}
     </>
   );
 }
