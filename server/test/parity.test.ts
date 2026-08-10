@@ -13,9 +13,11 @@ import { dbSource, fileSource } from '../src/db/source.js';
 import { resolveLogDir } from '../src/logs.js';
 import {
   archivedDays,
+  archivedDaysSync,
   NORMALIZATIONS,
   PARITY_ROUTES,
   type ParityContext,
+  type ParityRoute,
   resetCaches,
   runCase,
 } from '../src/parity.js';
@@ -367,13 +369,25 @@ async function flagOneSuggestion(logDir: string): Promise<void> {
   );
 }
 
-/** Replay every registered route's every case, and return the ones that differed. */
-async function mismatches(ctx: ParityContext, db: DatabaseSync): Promise<string[]> {
+/**
+ * Replay the given routes' every case both ways, and return the ones that
+ * differed alongside how many cases that was. The caches are the caller's to
+ * manage: a corpus that mutates between replays wants them dropped each time, a
+ * frozen one replayed in several passes wants them kept.
+ *
+ * The count comes back rather than being asserted here, because a single route
+ * legitimately has no cases — `/api/concepts` enumerates nothing when the hosted
+ * store is configured.
+ */
+async function replay(
+  ctx: ParityContext,
+  db: DatabaseSync,
+  routes: ParityRoute[],
+): Promise<{ diffs: string[]; cases: number }> {
   const fromDb = dbSource(db);
   const out: string[] = [];
   let cases = 0;
-  resetCaches();
-  for (const route of PARITY_ROUTES) {
+  for (const route of routes) {
     for (const testCase of await route.cases(ctx)) {
       cases += 1;
       const result = await runCase(route, testCase, fileSource, fromDb);
@@ -385,8 +399,15 @@ async function mismatches(ctx: ParityContext, db: DatabaseSync): Promise<string[
       }
     }
   }
+  return { diffs: out, cases };
+}
+
+/** Every registered route, from a cold cache — the whole-corpus replay. */
+async function mismatches(ctx: ParityContext, db: DatabaseSync): Promise<string[]> {
+  resetCaches();
+  const { diffs, cases } = await replay(ctx, db, PARITY_ROUTES);
   expect(cases, 'the harness replayed nothing, so it proved nothing').toBeGreaterThan(0);
-  return out;
+  return diffs;
 }
 
 describe('route parity over a synthetic corpus', () => {
@@ -872,25 +893,45 @@ async function snapshotSettings(): Promise<string> {
 }
 
 /**
+ * This machine's archived days, listed while the suite is being *collected* —
+ * which is what lets each day be named as its own case below. `beforeAll` is a
+ * tick too late: by then the cases are already fixed.
+ */
+const REAL_DAYS = archivedDaysSync(resolveLogDir());
+
+/**
+ * The split the cases below are drawn along: a `perDay` route gets one case per
+ * archived day, everything else is replayed once.
+ */
+const PER_DAY_ROUTES = PARITY_ROUTES.filter((r) => r.perDay);
+const WHOLE_ROUTES = PARITY_ROUTES.filter((r) => !r.perDay);
+
+/**
  * The same replay against this machine's real archive, snapshotted first.
  * Skipped where there is no archive to replay — a clean clone, or CI.
+ *
+ * One case per archived day, rather than one case for all of them. What is
+ * compared is unchanged, but the archive only ever grows, so a single case
+ * carrying the sum of every day outgrows any budget it is given, and did.
  */
 describe('route parity over the real logs/archive', () => {
-  let days: string[] = [];
   let snapshot: string | null = null;
   let commandsDir: string | null = null;
   let settingsPath: string | null = null;
   let db: DatabaseSync | null = null;
 
   beforeAll(async () => {
-    const logDir = resolveLogDir();
-    days = await archivedDays(logDir);
-    if (!days.length) return;
-    snapshot = await snapshotLogs(logDir, days);
+    if (!REAL_DAYS.length) return;
+    snapshot = await snapshotLogs(resolveLogDir(), REAL_DAYS);
     commandsDir = await snapshotCommandsDir();
     settingsPath = await snapshotSettings();
     db = openDb(snapshot);
     await ingest(db, snapshot);
+    // Once for the suite rather than once per case: every memo keys on the
+    // backing that filled it and the directory it read, so a warm cache cannot
+    // let one backing answer for the other, while dropping it between days would
+    // re-read the whole archive once per day.
+    resetCaches();
   }, 300_000);
 
   afterAll(async () => {
@@ -899,27 +940,51 @@ describe('route parity over the real logs/archive', () => {
     if (commandsDir) await rm(commandsDir, { recursive: true, force: true });
   });
 
+  /** The frozen corpus, with the days scoped to `days` when a case replays a subset. */
+  function contextFor(days?: string[]): ParityContext {
+    return {
+      logDir: snapshot ?? '',
+      days,
+      limits: resolveUsageLimits({}),
+      commandsDir: commandsDir ?? undefined,
+      settingsPath: settingsPath ?? undefined,
+    };
+  }
+
   it('snapshots the archive it is about to replay', async () => {
-    if (!days.length || !snapshot) return;
-    expect(await archivedDays(snapshot)).toEqual(days);
-    expect((await stat(path.join(snapshot, 'archive', days[0]!))).isDirectory()).toBe(true);
+    if (!REAL_DAYS.length || !snapshot) return;
+    expect(await archivedDays(snapshot)).toEqual(REAL_DAYS);
+    expect((await stat(path.join(snapshot, 'archive', REAL_DAYS[0]!))).isDirectory()).toBe(true);
   });
 
-  it('answers every wired route byte-identically for every archived day', async () => {
-    if (!days.length || !db || !snapshot) {
-      expect(days).toEqual([]);
-      return;
-    }
-    expect(
-      await mismatches(
-        {
-          logDir: snapshot,
-          limits: resolveUsageLimits({}),
-          commandsDir: commandsDir ?? undefined,
-          settingsPath: settingsPath ?? undefined,
-        },
-        db,
-      ),
-    ).toEqual([]);
-  }, 600_000);
+  // Nothing archived is the clean-clone and CI case: there is no corpus to
+  // replay, and saying so is the whole of what this suite can assert there.
+  if (!REAL_DAYS.length) {
+    it('has no archived day to replay', () => {
+      expect(REAL_DAYS).toEqual([]);
+    });
+    return;
+  }
+
+  it.each(REAL_DAYS)(
+    'answers every dated route byte-identically for %s',
+    async (day) => {
+      if (!db) return;
+      const { diffs, cases } = await replay(contextFor([day]), db, PER_DAY_ROUTES);
+      expect(cases, 'the harness replayed nothing, so it proved nothing').toBeGreaterThan(0);
+      expect(diffs).toEqual([]);
+    },
+    300_000,
+  );
+
+  // One case per undated route, for the reason the days are split: replayed
+  // together these overran the same budget on their own. Each route's own case
+  // count is already capped in `parity.ts` — by transcript, by run and by prompt
+  // cohort — so a route is where the cost stops growing.
+  for (const route of WHOLE_ROUTES) {
+    it(`answers ${route.name} byte-identically`, async () => {
+      if (!db) return;
+      expect((await replay(contextFor(), db, [route])).diffs).toEqual([]);
+    }, 300_000);
+  }
 });
