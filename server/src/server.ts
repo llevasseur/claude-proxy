@@ -221,15 +221,12 @@ interface SseWatchSource {
   /**
    * Produce the JSON payload sent as the initial `snapshot` and each `update`.
    *
-   * `scope` names the reporting days the fs events this tick coalesced actually
-   * touched. It is `null` — **rebuild everything** — for the opening snapshot,
-   * for a watcher that could not name the file that changed, and for any change
-   * that maps to no reporting day at all. A builder that cannot narrow itself
-   * ignores the argument, which is what every stream but the summary and usage
-   * pair does.
+   * `scope` names the reporting days this tick's fs events touched, and is
+   * `null` — **rebuild everything** — for the opening snapshot and for any
+   * change that maps to no day. A builder that cannot narrow itself ignores it.
    *
-   * Resolving `null` is the builder saying this tick's days cannot have moved
-   * its payload: nothing is sent and the client keeps what it already has.
+   * Resolving `null` means this tick's days cannot have moved the payload:
+   * nothing is sent and the client keeps what it has.
    */
   build: (scope: RebuildScope) => Promise<unknown>;
   /** Coalesce bursts of fs events within this window (ms) before rebuilding. */
@@ -308,12 +305,8 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
   let unsubscribe: (() => void) | null = null;
 
   if (watch) {
-    /**
-     * File names seen since the last rebuild — one debounce tick's worth, which
-     * is why the scope below is a *set* of days rather than one day. A `null`
-     * entry is an event `fs.watch` could not name, and taints the whole tick
-     * into a full rebuild.
-     */
+    // File names seen since the last rebuild. A `null` entry is an event
+    // `fs.watch` could not name, and taints the tick into a full rebuild.
     let touched: (string | null)[] = [];
 
     const pushUpdate = () => {
@@ -650,11 +643,9 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     shadow('/api/summary', summary, (source) => buildSummary(LOG_DIR, date, now, ARCHIVE_DIR, source));
   },
   // Today's digest moves with every captured request, so this follows the log
-  // directory rather than any one file — and every capture's file name maps onto
-  // today, so the day in progress still recomputes on every tick. What the scope
-  // buys is the tick that touched no day this summary reads: a write for a day
-  // outside the baseline walk, or one pinned by `?date=` to a day that did not
-  // change, is skipped outright instead of re-deriving the whole payload.
+  // directory rather than any one file. Every capture's name maps onto today, so
+  // the day in progress still recomputes; the scope only skips a tick touching no
+  // day this summary reads — outside the baseline walk, or beside a `?date=` pin.
   '/api/summary/stream': async ({ req, res, date }) => {
     await serveSse(req, res, {
       watchPath: LOG_DIR,

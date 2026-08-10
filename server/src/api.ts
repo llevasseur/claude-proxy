@@ -442,12 +442,10 @@ export async function buildUsage(
 /**
  * Which reporting days a rebuild has to recompute.
  *
- * A set names every reporting day one debounce tick's fs events touched — a
- * tick that coalesced writes across several days carries all of them, which is
- * why this is a set rather than a single day. `null` is the other answer, and
- * the load-bearing one: the change could not be placed on any day, so the whole
- * payload is rebuilt. A narrowed rebuild that misses a capture is worse than a
- * slow one that does not, so every uncertainty resolves to `null`.
+ * A set names every reporting day one debounce tick's fs events touched; one
+ * tick can coalesce writes across several days, hence a set. `null` means the
+ * change could not be placed on any day, and rebuilds the whole payload — every
+ * uncertainty resolves to `null`.
  */
 export type RebuildScope = ReadonlySet<string> | null;
 
@@ -464,10 +462,8 @@ const SIDECAR_FILE_RE = /^(\d{4}-\d{2}-\d{2})T[^/\\]*_anthropic\.(?:audit\.json|
  * `readSidecars` matches for a day (`startsWith(date) || startsWith(date + 1)`),
  * and the two have to stay inverses or a scoped rebuild would miss a capture.
  *
- * Everything else is **out of band** and answers `null`: an event with no file
- * name at all, a write nested under `sessions/` or `archive/`, `concepts.jsonl`,
- * `suggestion-status.json`, an editor temp file. None of those can be placed on
- * a reporting day, and "cannot be placed" means rebuild everything.
+ * Every other name under the log directory — a nested write, a status file, an
+ * editor temp file, an unnamed event — is out of band and answers `null`.
  */
 export function sidecarDays(file: string | null | undefined): ReadonlySet<string> | null {
   const utcDay = file ? SIDECAR_FILE_RE.exec(file)?.[1] : undefined;
@@ -519,11 +515,8 @@ export function summaryDays(date: string | undefined, now: Date): ReadonlySet<st
 /**
  * The widest window {@link buildUsage} spans — the learned ceilings' 28 days in
  * `usage-history.ts`, longer than either the meters' trailing week or the
- * archived read's eight days.
- *
- * Over-covering is the safe direction: a day named here that the payload does
- * not really read costs one rebuild that was not needed, while a day missing
- * from here would silently drop a capture.
+ * archived read's eight days. Over-covering is the safe direction: a spare day
+ * costs one needless rebuild, a missing one silently drops a capture.
  */
 const USAGE_WINDOW_DAYS = 28;
 
@@ -536,10 +529,8 @@ export function usageDays(now: Date): ReadonlySet<string> {
  * {@link buildSummary} under a rebuild scope: the same response, or `null` for
  * "nothing to send" when this tick's days are days the summary never reads.
  *
- * The narrowing is the **skip**, not a partial payload. When the scope does
- * touch the summary's days it rebuilds in full — and `day-digest-memo.ts` is
- * what makes that cheap, since every closed day of the baseline walk comes back
- * from the memo without I/O and only the day that actually moved is recomputed.
+ * The narrowing is the **skip**, not a partial payload: a scope that does touch
+ * the summary's days rebuilds in full, which `day-digest-memo.ts` keeps cheap.
  */
 export async function buildSummaryScoped(
   scope: RebuildScope,

@@ -15,13 +15,9 @@ import {
 import { fileSource, type SidecarSource } from '../src/db/source.js';
 
 /**
- * The scoped stream rebuild: a debounce tick carries the reporting days its fs
- * events touched, and a builder whose payload reads none of them does nothing.
- *
- * The two constraints under test are the ones a narrowed rebuild can get wrong.
- * Today has to keep recomputing, because it genuinely moves with every capture;
- * and a change that cannot be placed on a day has to rebuild *everything*,
- * never nothing.
+ * A debounce tick carries the reporting days its fs events touched, and a
+ * builder whose payload reads none of them does nothing. Today keeps
+ * recomputing; a change that cannot be placed on a day rebuilds everything.
  */
 
 /** 11:00 EDT on 2026-08-02 — already rotated into `archive/2026-08-02/`. */
@@ -105,7 +101,6 @@ describe('mapping a changed file to its reporting days', () => {
   });
 
   it('refuses to place anything it cannot name a day for', () => {
-    // Every one of these is a real write into the watched directory.
     expect(sidecarDays(null)).toBeNull();
     expect(sidecarDays(undefined)).toBeNull();
     expect(sidecarDays('')).toBeNull();
@@ -134,8 +129,6 @@ describe('one debounce tick’s scope', () => {
   });
 
   it('taints the whole tick when any one file in it is out of band', () => {
-    // The scoped days of the sidecar are known; the sessions write is not, and
-    // one unplaceable change is enough to rebuild everything.
     expect(rebuildScope([`${stemFor(TODAY_LIVE_ISO)}.audit.json`, 'sessions/9f2c1ab4d5e60718.md'])).toBeNull();
   });
 
