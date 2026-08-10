@@ -670,9 +670,17 @@ describe('ideaRationaleBullets', () => {
     expect(ideaRationaleBullets('- **Depends on `idea-areas`**')).toEqual([{ text: 'Depends on `idea-areas`' }]);
   });
 
+  it('reads the leading run, so bullets closed by a paragraph still preview as a list', () => {
+    const rationale = ['- What it is: a preview reading.', '- Size: small.', '', 'The evidence, in prose.'].join('\n');
+    expect(ideaRationaleBullets(rationale)).toEqual([
+      { text: 'What it is: a preview reading.' },
+      { text: 'Size: small.' },
+    ]);
+  });
+
   it('returns nothing for a paragraph, so the legacy shape renders as prose', () => {
     expect(ideaRationaleBullets('One paragraph on why it is worth building.')).toEqual([]);
-    // All-or-nothing: prose beside a bullet is prose, never a list with an orphan.
+    // The run leads: prose *before* a bullet is prose, never a list with an orphan.
     expect(ideaRationaleBullets('Some prose — with a dash.\n- and a bullet')).toEqual([]);
     expect(ideaRationaleBullets('   ')).toEqual([]);
     // A dash with no word after it is a sentence's punctuation, not a marker.
