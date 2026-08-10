@@ -25,6 +25,7 @@ import {
   type CommandSummary,
   type ContextEntry,
   type ContextSummary,
+  canShipIdea,
   commandRunShapes,
   computeAliasPosture,
   computeDigest,
@@ -49,6 +50,8 @@ import {
   heuristicAdvice,
   hookPluginLoadExpectations,
   type IdeaAreaCounts,
+  type IdeaClaimRefusal,
+  type IdeaClaimRequest,
   type IdeaComment,
   type IdeaEditResult,
   type IdeaEntry,
@@ -56,6 +59,7 @@ import {
   type IdeaFilter,
   type IdeaMark,
   type IdeaStatus,
+  ideaOf,
   ideaRows,
   isAuditSidecar,
   isIdeaArea,
@@ -149,6 +153,7 @@ import { readRemoteConcepts, remoteConceptStore, remoteConceptStoreLabel } from 
 import { fileSource, readWindow, type SidecarSource } from './db/source.js';
 import { DEFAULT_PR_LIMIT, readPullRequests, resolveRepoDir } from './github.js';
 import {
+  claimIdeasInStore,
   commentIdeasInStore,
   fileIdeasInStore,
   markIdeasInStore,
@@ -2058,17 +2063,19 @@ export async function buildIdeas(logDir: string, filter: IdeaFilter = {}): Promi
 /**
  * The statuses a browser may set.
  *
- * `shipped` is deliberately absent — it carries a PR url and is a claim made by
- * whoever landed the change, so it stays with the CLI. `proposed` is the undo: it
- * restores an idea to unsigned-off without erasing the entry or its note.
+ * `proposed` is the undo: it restores an idea to unsigned-off without erasing
+ * the entry or its note. `shipped` carries the PR url as its note and is refused
+ * without one, exactly as `ideas mark -s shipped` is. Which entries may take it
+ * is `canShipIdea`, checked against the stored status in {@link applyIdeaStatus}.
  *
- * `claimed` is absent for a different reason: it is not a decision a person
- * makes but a machine registering that it has started building, and it must
- * carry a holder a second run can recognise — a button would park the idea for
- * the whole TTL under a holder nobody can find. **Releasing** one from here is
- * allowed, and is `accepted`.
+ * `claimed` is the one status still absent, and for a reason a note cannot fix:
+ * it is not a decision a person makes but a registration that something has
+ * started building, and it must carry a holder a second run can recognise. A
+ * mark carries no holder, so setting it here would park the idea for the whole
+ * TTL under nobody. Claiming from the dashboard goes through
+ * {@link applyIdeaClaim}, which names one.
  */
-export const BROWSER_IDEA_STATUSES = ['proposed', 'accepted', 'rejected'] as const;
+export const BROWSER_IDEA_STATUSES = ['proposed', 'accepted', 'rejected', 'shipped'] as const;
 
 export interface IdeasStatusResponse {
   /** The entries the write touched, as they now stand. */
@@ -2085,13 +2092,20 @@ export interface IdeasStatusResponse {
 }
 
 /**
- * Adjudicate ideas from the dashboard. Two refusals are enforced here rather
+ * Adjudicate ideas from the dashboard. Every refusal is enforced here rather
  * than in the route, so the HTTP contract cannot drift from the CLI's:
  *
- * - **`shipped` is refused**, per {@link BROWSER_IDEA_STATUSES}.
+ * - **`claimed` is refused**, per {@link BROWSER_IDEA_STATUSES} — it needs a
+ *   holder, which is {@link applyIdeaClaim}.
  * - **A `rejected` mark with no note is refused.** The reason is the ledger's
  *   dedupe record, and an empty one looks like a decision while carrying nothing
  *   a later reader can act on.
+ * - **A `shipped` mark with no note is refused** for the sibling reason: the note
+ *   *is* the PR url, and `shipped` with none is a claim about something landing
+ *   with nothing to check it against.
+ * - **A `shipped` mark is refused on a status `canShipIdea` does not allow** —
+ *   the one check needing the stored entry rather than the mark, at the cost of
+ *   a read the write is about to make again.
  */
 export async function applyIdeaStatus(
   logDir: string,
@@ -2103,15 +2117,32 @@ export async function applyIdeaStatus(
     if (!(BROWSER_IDEA_STATUSES as readonly IdeaStatus[]).includes(mark.status)) {
       throw new Error(
         `${mark.status} cannot be set from the dashboard (${BROWSER_IDEA_STATUSES.join(', ')} only): ` +
-          (mark.status === 'claimed'
-            ? 'a claim names the run that is building the idea, so it is taken by `ideas claim --by <holder>`; ' +
-              'mark it accepted to release one'
-            : 'it carries a PR url, so it stays with `ideas mark`'),
+          'a claim names the run that is building the idea, so it is taken by `ideas claim --by <holder>`; ' +
+          'mark it accepted to release one',
       );
     }
     if (mark.status === 'rejected' && !mark.note?.trim()) {
       throw new Error(
         `rejecting ${mark.slug} needs a reason: it is the ledger's record of why, and what stops the idea being re-proposed`,
+      );
+    }
+    if (mark.status === 'shipped' && !mark.note?.trim()) {
+      throw new Error(`shipping ${mark.slug} needs the PR url as its note: \`shipped\` is a claim about what landed`);
+    }
+  }
+
+  // Read once for the whole batch, and refuse it whole rather than half-applied.
+  const shipping = marks.filter((mark) => mark.status === 'shipped');
+  if (shipping.length > 0) {
+    const store = await readIdeasStore(logDir);
+    for (const mark of shipping) {
+      const current = ideaOf(store, mark.slug);
+      // An absent slug writes nothing and is reported under `unknown`, as ever.
+      if (!current || canShipIdea(current.status)) continue;
+      throw new Error(
+        current.status === 'shipped'
+          ? `${mark.slug} is already shipped, and shipped is terminal — nothing un-ships work that landed`
+          : `${mark.slug} is ${current.status}, and only an accepted or claimed idea may be shipped: shipping one nobody signed off would record work against an idea that was never agreed to`,
       );
     }
   }
@@ -2127,6 +2158,62 @@ export async function applyIdeaStatus(
       unknown: result.unknown,
       // Over the whole ledger rather than the rows returned: what is still awaiting a
       // sign-off is not a fact about the write that just happened.
+      counts: countIdeaStatuses(all),
+      total: all.length,
+    },
+  };
+}
+
+/** What a dashboard claim did, in the shape a status write answers in, plus its refusals. */
+export interface IdeasClaimResponse {
+  /** The entries now claimed, as they stand. */
+  rows: IdeaEntry[];
+  meta: {
+    file: string;
+    claimed: string[];
+    /** Left exactly as they were, with the holder that refused them — never an error. */
+    refused: IdeaClaimRefusal[];
+    unknown: string[];
+    counts: Record<IdeaStatus, number>;
+    total: number;
+  };
+}
+
+/**
+ * Claim an idea from the dashboard — the other direction out of a release.
+ *
+ * **The holder is required and is not invented here**: a blank one would park
+ * the idea for the six-hour TTL under nobody. The optional `pr` is the url the
+ * claim carries; a release drops the claim outright, so neither it nor the
+ * previous holder survives to be restored, and both are re-entered.
+ *
+ * A refusal is **returned rather than thrown**, matching `applyIdeaClaims` and
+ * the CLI: a live holder is an answer the page shows, not a failed request.
+ */
+export async function applyIdeaClaim(
+  logDir: string,
+  claims: readonly IdeaClaimRequest[],
+  now: Date = new Date(),
+): Promise<IdeasClaimResponse> {
+  if (claims.length === 0) throw new Error('no idea claims given');
+  for (const claim of claims) {
+    if (!claim.by.trim()) {
+      throw new Error(
+        `claiming ${claim.slug} needs a holder: a branch, a run id, a person — whatever a second run can read and recognise as not itself`,
+      );
+    }
+  }
+
+  const result = await claimIdeasInStore(logDir, claims, now);
+  const touched = new Set(result.claimed);
+  const all = ideaRows(result.store);
+  return {
+    rows: all.filter((row) => touched.has(row.slug)),
+    meta: {
+      file: result.file,
+      claimed: result.claimed,
+      refused: result.refused,
+      unknown: result.unknown,
       counts: countIdeaStatuses(all),
       total: all.length,
     },
