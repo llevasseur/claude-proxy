@@ -39,6 +39,7 @@ import {
   type IdeaEntry,
   type IdeaStatus,
   ideaAreaLabel,
+  ideaCitation,
   ideaOf,
   ideaRows,
   ideaTaskPrompt,
@@ -190,7 +191,7 @@ function renderRows(rows: readonly IdeaEntry[]): string {
       const comment = r.comment ? `\n      comment: ${r.comment}` : '';
       const actor = r.by ? `\n      by: ${r.by.thread}` : '';
       const cites = r.evidence.map((e) => {
-        const where = e.path ?? (e.bucket === undefined ? '' : `bucket ${e.bucket}/${e.id ?? ''}`);
+        const where = ideaCitation(e);
         return `        · ${e.source}: ${where}${e.quote ? ` — ${e.quote}` : ''}`;
       });
       // Its own row above the note — this is what a second run reads to decide
@@ -451,8 +452,9 @@ async function run(argv: readonly string[]): Promise<void> {
     const entry = ideaOf(store, flags.slug);
     if (!entry) {
       // The same refusal every other verb makes on an unknown slug: nothing is
-      // invented to answer with.
-      console.log(`no idea on the ledger is called: ${flags.slug}`);
+      // invented to answer with, and `--json` still answers in JSON.
+      if (json) console.log(JSON.stringify({ slug: flags.slug, unknown: [flags.slug] }, null, 2));
+      else console.log(`no idea on the ledger is called: ${flags.slug}`);
       process.exitCode = 1;
       return;
     }

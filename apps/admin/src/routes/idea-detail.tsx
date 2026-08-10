@@ -138,9 +138,11 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
         </div>
       )}
 
-      <TaskPromptCard idea={idea} />
-      <AreaPicker idea={idea} areas={areas} />
-      <CommentEditor idea={idea} />
+      {/* Keyed by slug: these three hold reader-edited drafts, and the route
+          re-renders rather than remounting when one permalink links to another. */}
+      <TaskPromptCard key={idea.slug} idea={idea} />
+      <AreaPicker key={idea.slug} idea={idea} areas={areas} />
+      <CommentEditor key={idea.slug} idea={idea} />
     </>
   );
 }
@@ -225,20 +227,24 @@ function TaskPromptCard({ idea }: { idea: IdeaEntry }) {
         </button>
       </div>
 
-      <div className='idea-tabs' role='tablist' aria-label='Task prompt view'>
-        {(['preview', 'edit'] as const).map((value) => (
-          <button
-            key={value}
-            type='button'
-            role='tab'
-            id={`idea-prompt-tab-${value}`}
-            aria-selected={value === tab}
-            aria-controls='idea-prompt-panel'
-            className={`idea-tab${value === tab ? ' is-selected' : ''}`}
-            onClick={() => setTab(value)}>
-            {value === 'preview' ? 'Preview' : 'Edit'}
-          </button>
-        ))}
+      {/* The badge sits beside the strip rather than in it — a tablist takes
+          role="tab" children only. */}
+      <div className='idea-prompt-tabrow'>
+        <div className='idea-tabs' role='tablist' aria-label='Task prompt view'>
+          {(['preview', 'edit'] as const).map((value) => (
+            <button
+              key={value}
+              type='button'
+              role='tab'
+              id={`idea-prompt-tab-${value}`}
+              aria-selected={value === tab}
+              aria-controls='idea-prompt-panel'
+              className={`idea-tab${value === tab ? ' is-selected' : ''}`}
+              onClick={() => setTab(value)}>
+              {value === 'preview' ? 'Preview' : 'Edit'}
+            </button>
+          ))}
+        </div>
         {edited && <span className='muted idea-prompt-edited'>edited — this copy only</span>}
       </div>
 
