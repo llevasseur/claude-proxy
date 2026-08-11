@@ -1,10 +1,9 @@
 ---
 type: reference
 title: Ideas ledger (tier 2)
-description: The committed fallback ledger of proposed features and commands for this repo, used when the device-wide claude-proxy ideas store is absent.
+description: The committed fallback ledger of proposed features and commands for this repo, used when the hosted claude-proxy ideas store is absent.
 tags: [ideas, advice, process]
 timestamp: 2026-08-05
-dirty: true
 ---
 
 # Ideas ledger (tier 2)
@@ -30,8 +29,13 @@ substitute for that, and both are required:
 
 The ledger resolves to the highest available store, and this file is the middle one:
 
-1. **`<logDir>/ideas.json`** in claude-proxy, through `pnpm --filter server ideas`. Device-wide,
-   shared across every repo on the machine.
+1. **The hosted ledger**, through `pnpm --filter server ideas` in claude-proxy. It was
+   `<logDir>/ideas.json` and is now an append-only event log on the `operator` Worker's D1 database
+   ([ADR 0006](adrs/0006-host-the-ideas-ledger.md)), so it is shared across every repo *and* every
+   machine rather than being device-wide. The CLI is the same; only what answers it changed.
+   **There is no local fallback**: a device without `IDEAS_URL`/`IDEAS_TOKEN` refuses every read and
+   every write rather than quietly answering from a file, because a second complete-looking ledger
+   is the exact failure hosting was meant to end.
 2. **This file.** Committed markdown, so the ledger survives a machine without claude-proxy and is
    reviewable in a PR.
 3. **`~/.claude/ideas/<repo-slug>.md`** — device-local, same shape as this file.
@@ -42,10 +46,14 @@ Three rules keep a waterfall safe for something used as a dedupe key:
   two runs is how a rejected idea comes back.
 - **Dedupe reads every tier that exists, not just the winning one.** A machine that gains
   claude-proxy later must not forget what this file already recorded.
-- **Fall through on absence only, never on error.** An unset `CLAUDE_PROXY_STORE`, a missing store,
-  a checkout with no `server/package.json`, or an `ideas` CLI that is not installed all mean tier 1
-  is *absent*. A tier-1 store that exists and fails to read is a **stop** — writing here behind a
-  broken tier 1 forks one ledger into two that each look complete.
+- **Fall through on absence only, never on error.** An unset `CLAUDE_PROXY_STORE`, a checkout with
+  no `server/package.json`, or an `ideas` CLI that is not installed all mean tier 1 is *absent*. A
+  tier-1 store that exists and fails to read is a **stop** — writing here behind a broken tier 1
+  forks one ledger into two that each look complete. **Hosting adds a case the original three did
+  not cover**, and which tier-1 refusal it is has not been settled by anything in this repo: a
+  device with the CLI installed but no `IDEAS_URL`/`IDEAS_TOKEN` now refuses rather than reading an
+  empty file, and that refusal names the two variables. Read it as a stop until the resolving
+  command says otherwise — the command doing the resolving lives outside this repo.
 
 ## The contract on these rows
 
@@ -54,9 +62,14 @@ Three rules keep a waterfall safe for something used as a dedupe key:
   failure this key prevents, and the rejection reason is the most valuable row in the file.
 - **Rejected rows are never deleted.** They are the record of what was already considered and turned
   down. A ledger holding only the accepted ideas cannot dedupe.
-- **`shipped` is set by whoever landed the PR**, with the url. An idea whose PR did not land stays
-  `accepted` and comes back next run.
-- **Statuses** are `proposed` → `accepted` / `rejected`, and `accepted` → `shipped`.
+- **`shipped` carries the url of the PR that landed it.** On tier 1 nobody has to remember to set
+  it: `ideas sync` reads the PR the claim recorded and moves the entry, and a PR closed unmerged or
+  whose branch is gone releases the idea back to `accepted` instead. On this file it is still set by
+  hand by whoever landed the PR. An idea whose PR did not land stays `accepted` and comes back next
+  run.
+- **Statuses** are `proposed` → `accepted` / `rejected`, `accepted` → `claimed` while a run is
+  building it, and `claimed` → `shipped`. `claimed` is a tier-1 state: it carries a holder and a
+  six-hour lease so two runs cannot build one idea, and this file has no mechanism for it.
 
 ## Ledger
 

@@ -1,7 +1,7 @@
 ---
 type: feature
 title: Concepts page
-description: A page over logs/concepts.jsonl — every term /teach has explained, with its one Simplified Technical English sentence, field, skills and date, sortable, indexed into the substrate, and each row opening a detail page of the research behind it.
+description: A page over logs/concepts.jsonl — every term /teach has explained, with its one Simplified Technical English sentence, field, skills and date, sortable, searchable across the prose the table does not show, indexed by a field and skill facet rail, and each row opening a detail page of the research behind it.
 tags: [dashboard, teach, sqlite, architecture]
 timestamp: 2026-08-03
 ---
@@ -30,7 +30,8 @@ mechanism, and this one does.
 ## Behavior
 
 - `/api/concepts` returns the whole list. The store is small and nothing retracts a record, so
-  there is no filter and no paging.
+  there is no paging, and narrowing is not this route's job: the facet rail narrows the list already
+  in hand, client-side, and searching is its own route. Both are below.
 - **Which store answers depends on two environment variables.** With `CONCEPTS_URL` and
   `CONCEPTS_TOKEN` both set, the list and the detail route read the hosted store — the
   [Worker over D1](../adrs/0005-host-the-concept-store.md) that `/teach` posts to from every
@@ -67,6 +68,43 @@ mechanism, and this one does.
   `packages/core/src/concepts.ts` drops it, applied once in `buildConcepts`/`buildConcept` rather
   than in the store or the table: the file keeps every word `/teach` wrote, and only the served
   answer is trimmed.
+
+### Searching the prose, not the table
+
+The table renders four fields — term, explanation, field, skills — while a record also carries
+`notes`, `tips`, `sources` and `surfacedSkills`, which appear nowhere on the page. So **the search
+box is deliberately not a filter over the rows below it**: `/api/concepts/search?q=` reads all eight,
+and a hit is reported with the field it matched in and an excerpt, so a row that arrives on the
+strength of its notes says so rather than looking like a mystery.
+
+- **The ranking depends on which store answered.** Against the hosted store the query goes to its
+  BM25 FTS index and the rows come back in relevance order with a score. Against `logs/concepts.jsonl`
+  there is no index, so it is a substring scan requiring every token to appear somewhere in the
+  record — **the reach is the same and only the ordering differs**, and the answer says which it was
+  in `ranked` rather than leaving the reader to guess why two devices ordered one query differently.
+- **Relevance is the absence of a sort, not a fourth sort key.** A fresh search renders in the order
+  it arrived; clicking a column leaves that order for the sort, and the sorted-by marker only appears
+  when a sort is what put the rows where they are.
+- An empty query searches nothing rather than everything, and a configured store that will not answer
+  is a 502 here as on the list route — an empty result set would read as a corpus holding nothing.
+
+### The facet rail
+
+`field` and `skill` are the two dimensions the corpus actually has, and the rail indexes the page by
+them: one group each, facets commonest first, counts beside them, with an explicit bucket for records
+carrying neither, which sorts last whatever its count.
+
+- **The rail and the search box compose rather than replace one another.** The pipeline is three
+  named steps — *source*, *narrow*, *order*: the search box chooses **which corpus** is being read,
+  the rail chooses **which part of it**, and a row has to survive both. A rail that reset the search
+  would undo the step above it.
+- **Within a dimension the selections are a union and across dimensions an intersection**, which is
+  what "field X or Y, and skill Z" means to a reader picking chips.
+- **The counts are over the corpus in view, not over what is left after picking.** A facet's number
+  says what selecting it would give you, so the rail stays legible instead of collapsing to zeroes
+  and ones the moment anything is picked. They do follow the search, because a count that outran the
+  table would be describing a different page.
+- Facet keys are lowercased, so two spellings of one field are one facet rather than two.
 
 ### Detail page
 
@@ -127,11 +165,20 @@ that is normal here, since `/teach` appends from outside the server.
 - [x] The detail page renders `notes`, `tips`, `sources` and `surfacedSkills` when recorded and
       nothing at all when not; a record predating them still renders.
 - [x] Both backings answer `/api/concepts/concept` identically for every `ord` the list returns.
+- [x] `/api/concepts/search` reads all eight fields, reports which field matched and an excerpt,
+      ranks by BM25 against the hosted store and by substring scan against the file, and says which
+      it did in `ranked`; an empty query returns nothing and an unanswerable store is a 502.
+- [x] The facet rail groups by field and by skill with a bucket for records carrying neither, unions
+      within a dimension and intersects across them, counts over the corpus in view, and composes
+      with the search box rather than resetting it.
 
 ## Open questions
 
-- Nothing groups by `field` or `skill` yet. Both are indexed columns and `concept_skill` exists
-  precisely so a listing can group without unpacking every `document`, but no view uses them.
+- ~~Nothing groups by `field` or `skill` yet.~~ **Closed by the facet rail**, which indexes the page
+  by both. It groups client-side over the list already fetched rather than through the indexed
+  columns: the corpus is small enough that one request answers, so `concept` and `concept_skill`
+  still carry no query that groups. They remain the way a server-side grouping would be written if
+  the corpus ever outgrows fetching it whole.
 - Nothing links a concept to the session that taught it. The record carries no thread id, so the
   join would have to come from the store's writer rather than from here.
 - **`/teach` does not yet write the detail fields.** The contract accepts `notes`, `tips`, `sources`
