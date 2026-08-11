@@ -170,8 +170,7 @@ describe('suggestBucket', () => {
   });
 
   it('breaks a run on reasoning recorded between two turns', () => {
-    // The reasoning is the transcript's own record that the agent read what came back before
-    // issuing the next call, so the calls either side of it were never independent.
+    // Reasoning between two turns records that the agent read what came back first.
     const reasoned = session('c4', day(1), [
       '## Task: One',
       ...turn('Read(file_path=/a.ts)'),
@@ -185,9 +184,8 @@ describe('suggestBucket', () => {
   });
 
   it('never flags a chain whose every step was chosen from the step before it', () => {
-    // A file that isn't on this branch: the Read fails, so the agent locates it, finds which
-    // branch carries it, reads it from there, then reads what that produced. Every argument
-    // came from the previous result, and the transcript narrates each hop.
+    // A file that isn't on this branch: every argument comes from the previous result, and
+    // the transcript narrates each hop.
     const chained = session('c7', day(1), [
       '## Task: One',
       ...turn('Read(file_path=/repo/docs/specs/thing.md)'),

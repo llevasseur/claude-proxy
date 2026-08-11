@@ -120,7 +120,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'suggestions-args-hash-key',
     file: 'packages/core/src/suggestions.ts',
-    line: 498,
+    line: 491,
     match: 'node.argsHash ?? node.tool',
     since: '2026-08-07',
     supersededBy: '0bbaec8',

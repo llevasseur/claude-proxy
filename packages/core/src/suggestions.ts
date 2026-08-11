@@ -400,18 +400,12 @@ interface DiscoveryTurn {
 /**
  * The steps split into turns, with everything that is *not* a tool call left in as a break.
  * A `task`, `done`, or errored result between two turns means the second reacted to what
- * came back — and so does a `decision`, which is the narrowing this function carries.
+ * came back — and so does a `decision`.
  *
  * A `decision` is the reasoning an assistant message wrote *before* the calls in that same
- * message, so one standing between two turns is the transcript's own record that the agent
- * read the previous result and reasoned from it. The rule's claim is that the calls were
- * *independent by construction*; recorded reasoning between them is direct evidence against
- * it. Every chain a judge dismissed carried one at each step — a failed `Read` narrated into
- * a `find`, into `git show --stat`, into `git show <branch>:<path>`; a verification tail
- * where each gate was picked from the failure of the one before. The chains that survive are
- * the ones the transcript shows nothing came back for: the per-file loop, and the walk
- * through targets an opening batch had already named, both running call after call with no
- * reasoning in between.
+ * message, so one standing between two turns records that the agent read the previous result
+ * and reasoned from it — direct evidence against the rule's claim that those calls were
+ * independent by construction.
  */
 function discoveryTurns(nodes: readonly SessionNode[]): (DiscoveryTurn | null)[] {
   const out: (DiscoveryTurn | null)[] = [];
@@ -442,10 +436,9 @@ const isSerialDiscoveryTurn = (turn: DiscoveryTurn | null): boolean =>
  * in **turns**, not calls: a turn that issued its reads together is never flagged, however
  * many. A transcript recording no turn boundaries yields nothing here.
  *
- * Two shapes are deliberately outside it, because in neither was one turn ever available:
- * a batch issued in parallel (one turn, so one round-trip, whatever its length), and a
- * dependent chain, which `discoveryTurns` recognizes by the reasoning recorded between its
- * steps. What is left is the run of bare single-call turns — the per-file loop.
+ * Two shapes are outside it, because neither could have gone out in one turn: a batch issued
+ * in parallel, and a dependent chain, which `discoveryTurns` recognizes by the reasoning
+ * recorded between its steps.
  */
 const serialDiscovery: Rule = (sessions) => {
   const hits: { session: SuggestibleSession; node: SessionNode }[] = [];
