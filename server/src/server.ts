@@ -430,6 +430,19 @@ async function parseDays(raw: string | null, now: Date = new Date()): Promise<nu
   return Math.min(365, Math.max(1, Math.floor(n)));
 }
 
+/**
+ * The `?models=` filter: a comma-separated list of model ids, or nothing at all.
+ * An absent, blank, or all-blank list reads as no filter rather than as a filter
+ * matching nothing, so a cleared picker answers the whole window again.
+ */
+function parseModels(raw: string | null): string[] | undefined {
+  const names = (raw ?? '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter((m) => m !== '');
+  return names.length > 0 ? names : undefined;
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 function parseDate(raw: string | null): string | undefined {
   return raw && DATE_RE.test(raw) ? raw : undefined;
@@ -713,10 +726,11 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   },
   '/api/trends': async ({ res, url }) => {
     const days = await parseDays(url.searchParams.get('days'));
+    const models = parseModels(url.searchParams.get('models'));
     const now = new Date();
-    const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, readSource());
+    const trends = await buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, readSource(), models);
     send(res, 200, trends);
-    shadow('/api/trends', trends, (source) => buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, source));
+    shadow('/api/trends', trends, (source) => buildTrends(LOG_DIR, days, now, ARCHIVE_DIR, source, models));
   },
   '/api/prompt-mix': async ({ res, url }) => {
     const days = await parseDays(url.searchParams.get('days'));

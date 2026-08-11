@@ -151,6 +151,16 @@ export interface ComputeDigestOptions {
    * leaves `perCall.identified` false and every request in `work`.
    */
   classifierHashes?: ReadonlySet<string>;
+  /**
+   * Restrict the day to requests made against these models, so a digest can be
+   * read for one model rather than the whole day. Omitted (or empty) counts
+   * every model, which is what every caller outside the model filter wants.
+   *
+   * A request left out this way is not malformed, so it is counted in neither
+   * `skipped` nor `requestCount` — the digest reads as though the day held only
+   * the traffic that matched.
+   */
+  models?: ReadonlySet<string>;
 }
 
 /**
@@ -255,11 +265,17 @@ export function dayOf(sidecar: AuditSidecar): string {
  */
 export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestOptions): UsageDigest {
   const topN = opts.topN ?? 12;
+  // An empty set would otherwise select nothing, and no caller means "no models".
+  const wanted = opts.models?.size ? opts.models : undefined;
   const valid: AuditSidecar[] = [];
   let skipped = 0;
   for (const s of sidecars) {
-    if (isAuditSidecar(s)) valid.push(s);
-    else skipped += 1;
+    if (!isAuditSidecar(s)) {
+      skipped += 1;
+      continue;
+    }
+    if (wanted && !wanted.has(s.model)) continue;
+    valid.push(s);
   }
 
   const models: Record<string, number> = {};

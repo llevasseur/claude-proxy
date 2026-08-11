@@ -37,6 +37,50 @@ describe('computeDigest', () => {
     expect(d.cost.total).toBeGreaterThan(single.cost.total);
   });
 
+  it('narrows the day to the models asked for', () => {
+    const sidecars = [
+      makeSidecar({ model: 'claude-opus-4-8' }),
+      makeSidecar({ model: 'claude-haiku-4-5' }),
+      makeSidecar({ model: 'claude-haiku-4-5' }),
+    ];
+    const all = computeDigest(sidecars, { date: '2026-07-15' });
+    const haiku = computeDigest(sidecars, { date: '2026-07-15', models: new Set(['claude-haiku-4-5']) });
+
+    expect(haiku.requestCount).toBe(2);
+    expect(haiku.models).toEqual({ 'claude-haiku-4-5': 2 });
+    // The day reads as though it held that model's traffic alone.
+    expect(haiku.tokens.realInput).toBeLessThan(all.tokens.realInput);
+    // A request the filter left out is not malformed, so it is not `skipped` either.
+    expect(haiku.skipped).toBe(0);
+  });
+
+  it('takes several models at once, and reads an empty set as no filter', () => {
+    const sidecars = [
+      makeSidecar({ model: 'claude-opus-4-8' }),
+      makeSidecar({ model: 'claude-haiku-4-5' }),
+      makeSidecar({ model: 'claude-sonnet-4-5' }),
+    ];
+    const two = computeDigest(sidecars, {
+      date: '2026-07-15',
+      models: new Set(['claude-opus-4-8', 'claude-sonnet-4-5']),
+    });
+    expect(two.requestCount).toBe(2);
+
+    // A cleared picker must answer the whole day rather than nothing at all.
+    const none = computeDigest(sidecars, { date: '2026-07-15', models: new Set<string>() });
+    expect(none.requestCount).toBe(3);
+  });
+
+  it('answers a model the day never used with an empty digest', () => {
+    const d = computeDigest([makeSidecar({ model: 'claude-opus-4-8' })], {
+      date: '2026-07-15',
+      models: new Set(['claude-nonexistent']),
+    });
+    expect(d.requestCount).toBe(0);
+    expect(d.models).toEqual({});
+    expect(d.cost.total).toBe(0);
+  });
+
   it('counts the requests the proxy put a cache breakpoint back on', () => {
     const d = computeDigest(
       [

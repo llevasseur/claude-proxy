@@ -563,7 +563,18 @@ export async function buildUsageScoped(
 
 export interface TrendsResponse {
   digests: UsageDigest[];
-  meta: { days: number; files: number; parseErrors: number; archivedDays: number };
+  meta: {
+    days: number;
+    files: number;
+    parseErrors: number;
+    archivedDays: number;
+    /**
+     * Days a model filter had to leave out: on record only as a finalized daily
+     * digest, which holds a request count per model but not the tokens or spend
+     * behind them, so it cannot be split. Always zero without a filter.
+     */
+    unfilterableDays: number;
+  };
 }
 
 /**
@@ -631,7 +642,11 @@ async function archivedDayDigest(
 /** How {@link buildTrends} resolved one day before any digest was computed. */
 type DayRead =
   | { date: string; kind: 'finalized'; digest: UsageDigest | null }
-  | { date: string; kind: 'raw'; sidecars: unknown[]; archived: boolean };
+  | { date: string; kind: 'raw'; sidecars: unknown[]; archived: boolean }
+  // Only reachable under a model filter: the day survives as a finalized digest
+  // alone, which no filter can split, so it is dropped and counted rather than
+  // silently answered with the whole day's figures.
+  | { date: string; kind: 'unfilterable'; onRecord: boolean };
 
 /** Live sidecars bucketed by the reporting day they fall in, malformed ones dropped. */
 function liveSidecarsByDay(sidecars: readonly unknown[]): Map<string, unknown[]> {
@@ -656,6 +671,13 @@ function liveSidecarsByDay(sidecars: readonly unknown[]): Map<string, unknown[]>
  *
  * A day with no live requests at all is fully archived, so its digest is read
  * (and cached) whole, falling back to the archive of finalized digests.
+ *
+ * `models` narrows every day to the requests made against those models. It is
+ * applied to the raw sidecars, which are the only record carrying a model per
+ * request — so a day left with nothing but its finalized digest is dropped and
+ * counted in `meta.unfilterableDays` rather than answered unfiltered. A day that
+ * captured traffic but none of it against these models stays in the window as a
+ * zero, since "this model did nothing that day" is a reading, not a gap.
  */
 export async function buildTrends(
   logDir: string,
@@ -663,7 +685,10 @@ export async function buildTrends(
   now: Date = new Date(),
   archiveDir?: string,
   source: SidecarSource = fileSource,
+  models?: readonly string[],
 ): Promise<TrendsResponse> {
+  // An empty list is no filter, so the fast path below stays the unfiltered one.
+  const wanted = models?.length ? new Set(models) : undefined;
   const { sidecars, files, parseErrors } = await source.readSidecars(logDir, { sinceDays: days }, now);
   const classifierHashes = await classifierPromptHashes(logDir);
   const liveByDate = liveSidecarsByDay(sidecars);
@@ -679,6 +704,13 @@ export async function buildTrends(
     dates.map(async (date): Promise<DayRead> => {
       const live = liveByDate.get(date);
       if (!live?.length) {
+        // The memo below holds whole-day digests, so a filter cannot go through it.
+        if (wanted) {
+          const archived = await source.readArchivedDay(logDir, date, { archiveDir });
+          if (archived.files > 0) return { date, kind: 'raw', sidecars: archived.sidecars, archived: true };
+          const finalized = archiveDir ? await loadArchivedDigest(archiveDir, date) : null;
+          return { date, kind: 'unfilterable', onRecord: !!finalized };
+        }
         return {
           date,
           kind: 'finalized',
@@ -694,7 +726,12 @@ export async function buildTrends(
   const raw = new Map<string, unknown[]>();
   const finalized = new Map<string, UsageDigest>();
   let archivedDays = 0;
+  let unfilterableDays = 0;
   for (const read of reads) {
+    if (read.kind === 'unfilterable') {
+      if (read.onRecord) unfilterableDays += 1;
+      continue;
+    }
     if (read.kind === 'finalized') {
       if (!read.digest) continue;
       finalized.set(read.date, read.digest);
@@ -709,12 +746,12 @@ export async function buildTrends(
   for (const date of dates) {
     const bucket = raw.get(date);
     const digest: UsageDigest | undefined = bucket
-      ? computeDigest(bucket, { date, priorDigests: digests, classifierHashes })
+      ? computeDigest(bucket, { date, priorDigests: digests, classifierHashes, ...(wanted ? { models: wanted } : {}) })
       : finalized.get(date);
     if (!digest) continue;
     digests.push(digest);
   }
-  return { digests, meta: { days, files, parseErrors, archivedDays } };
+  return { digests, meta: { days, files, parseErrors, archivedDays, unfilterableDays } };
 }
 
 /** A prompt revision with both outlines resolved and diffed. */
