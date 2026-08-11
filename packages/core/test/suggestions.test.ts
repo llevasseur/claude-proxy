@@ -155,20 +155,7 @@ describe('suggestBucket', () => {
     expect(serialDiscoveryIn(batches)).toBeUndefined();
   });
 
-  it('breaks a run on a result the next turn had to wait for, but not on the turn’s own reasoning', () => {
-    // A decision is what the assistant wrote *in* the turn it called from, so it separates
-    // nothing.
-    const reasoned = session('c4', day(1), [
-      '## Task: One',
-      ...turn('Read(file_path=/a.ts)'),
-      '- decided: Now I know where to look.',
-      ...turn('Read(file_path=/b.ts)'),
-      ...turn('Read(file_path=/c.ts)'),
-      ...turn('Read(file_path=/d.ts)'),
-      '- done: ok',
-    ]);
-    expect(serialDiscoveryIn(reasoned)).toBeDefined();
-
+  it('breaks a run on a result the next turn had to wait for', () => {
     // An errored result did come back in between, so the next read reacted to it.
     const reacted = session('c5', day(1), [
       '## Task: One',
@@ -180,6 +167,94 @@ describe('suggestBucket', () => {
       '- done: ok',
     ]);
     expect(serialDiscoveryIn(reacted)).toBeUndefined();
+  });
+
+  it('breaks a run on reasoning recorded between two turns', () => {
+    // The reasoning is the transcript's own record that the agent read what came back before
+    // issuing the next call, so the calls either side of it were never independent.
+    const reasoned = session('c4', day(1), [
+      '## Task: One',
+      ...turn('Read(file_path=/a.ts)'),
+      '- decided: Now I know where to look.',
+      ...turn('Read(file_path=/b.ts)'),
+      ...turn('Read(file_path=/c.ts)'),
+      ...turn('Read(file_path=/d.ts)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(reasoned)).toBeUndefined();
+  });
+
+  it('never flags a chain whose every step was chosen from the step before it', () => {
+    // A file that isn't on this branch: the Read fails, so the agent locates it, finds which
+    // branch carries it, reads it from there, then reads what that produced. Every argument
+    // came from the previous result, and the transcript narrates each hop.
+    const chained = session('c7', day(1), [
+      '## Task: One',
+      ...turn('Read(file_path=/repo/docs/specs/thing.md)'),
+      '- ✗ File does not exist',
+      ...turn('Bash(command=find docs -iname "*thing*")'),
+      '- decided: It is not on main — it lives on the spec branch.',
+      ...turn('Bash(command=git show docs/spec-branch --stat)'),
+      ...turn('Bash(command=git show docs/spec-branch:docs/specs/thing.md)'),
+      ...turn('Read(file_path=/repo/tmp/spec.md)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(chained)).toBeUndefined();
+
+    // The same shape in a verification tail: each gate was picked from the failure of the last.
+    const gates = session('c8', day(1), [
+      '## Task: One',
+      ...turn('Bash(command=cat gates.json)'),
+      '- decided: Gate names differ here. Running biome directly.',
+      ...turn('Bash(command=git diff --stat)'),
+      '- decided: A sibling worktree nested a biome.json — scoping to real source paths.',
+      ...turn('Bash(command=git status --short)'),
+      '- decided: Clean. Now the docs index check.',
+      ...turn('Bash(command=ls docs)'),
+      ...turn('Bash(command=cat docs/index.md)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(gates)).toBeUndefined();
+  });
+
+  it('still flags the runs the transcripts confirm — bare single-call turns', () => {
+    // A subagent walking the tree one call at a time with no reasoning between any of them.
+    const explore = session('c9', day(1), [
+      '## Task: One',
+      ...turn('Bash(command=ls docs/features)'),
+      ...turn('Bash(command=grep -rn "palette" docs)'),
+      ...turn('Bash(command=grep -rn "ramp" docs)'),
+      ...turn('Bash(command=grep -rn "token" docs)'),
+      ...turn('Bash(command=head -80 docs/features/color.md)'),
+      ...turn('Bash(command=grep -rn "chart" docs)'),
+      '- decided: I have enough material now.',
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(explore)!.evidence).toContain('6 single-call turns');
+
+    // Targets an opening batch had already named, then walked one per turn.
+    const known = session('c10', day(1), [
+      '## Task: One',
+      ...turn('Bash(command=rg -n "no GitHub remote found")', 'Bash(command=git remote -v)'),
+      ...turn('Read(file_path=/repo/server/src/github.ts)'),
+      ...turn('Bash(command=rg -n "parseRepoSlug" -A 30)'),
+      ...turn('Bash(command=rg -n -A5 -i "host github-personal" ~/.ssh/config)'),
+      ...turn('Bash(command=rg -n "REPO_SLUG|GITHUB_REPO")'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(known)!.evidence).toContain('4 single-call turns');
+
+    // The per-file loop: one Read per turn over a list that arrived complete in one call.
+    const perFile = session('c11', day(1), [
+      '## Task: One',
+      ...turn('Bash(command=git diff --name-only origin/main)'),
+      ...turn('Read(file_path=/repo/a.ts)'),
+      ...turn('Read(file_path=/repo/b.ts)'),
+      ...turn('Read(file_path=/repo/c.ts)'),
+      ...turn('Read(file_path=/repo/d.ts)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(perFile)!.evidence).toContain('5 single-call turns');
   });
 
   it('says nothing about a transcript written before turn boundaries were recorded', () => {
