@@ -69,7 +69,9 @@ export function TrendsPage() {
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<TrendsSkeleton days={days} />} busy={busy}>
         <UnfilterableNote days={query.unfilterableDays} />
-        {snapshots.length === 0 ? (
+        {/* A filtered window keeps an unused day as a zero rather than dropping it, so
+            the window is empty when every day in it is, not when the array is. */}
+        {snapshots.every((d) => d.requestCount === 0) ? (
           <div className='card empty'>
             {model ? `No ${shortModelName(model)} requests captured` : 'Nothing was captured'} in the last {days} days.
           </div>

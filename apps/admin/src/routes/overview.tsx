@@ -43,12 +43,19 @@ export function OverviewPage() {
   const data = summary.data;
   // What every card below follows until it pins a window of its own.
   const pageWindow = useMemo(() => ({ days, today: data?.digest, model }), [days, data, model]);
+  // The head's counts answer under the selector beside them: the summary meta covers
+  // every model, so a filtered head reads the day out of the filtered window instead.
+  const headDay = trends.digests.find((x) => x.date === data?.digest.date);
+  const counts = model
+    ? headDay && { requests: headDay.requestCount, skipped: headDay.skipped }
+    : data && { requests: data.meta.files, skipped: data.meta.parseErrors };
 
   return (
     <DayWindowProvider value={pageWindow}>
       <section>
         <PageHead
           data={data}
+          counts={counts}
           loading={summary.isLoading}
           days={days}
           onDays={selectDays}
@@ -194,7 +201,7 @@ function OverviewBody({
 
   return (
     <>
-      {d ? (
+      {d && d.requestCount > 0 ? (
         <div className='grid stats'>
           {METRICS.map((m) => {
             const t = m.trendField ? trend.get(m.trendField) : undefined;
@@ -273,6 +280,7 @@ function OverviewBody({
  */
 function PageHead({
   data,
+  counts,
   loading,
   days,
   onDays,
@@ -283,6 +291,7 @@ function PageHead({
   live,
 }: {
   data?: SummaryResponse;
+  counts?: { requests: number; skipped: number };
   loading: boolean;
   days: number;
   onDays: (d: number) => void;
@@ -299,8 +308,9 @@ function PageHead({
         <div className='muted'>
           {data ? (
             <>
-              {data.digest.date} ({REPORT_TZ_ABBR}) · {data.meta.files} request{data.meta.files === 1 ? '' : 's'}
-              {data.meta.parseErrors > 0 && ` · ${data.meta.parseErrors} skipped`}
+              {data.digest.date} ({REPORT_TZ_ABBR})
+              {counts && ` · ${counts.requests} request${counts.requests === 1 ? '' : 's'}`}
+              {counts && counts.skipped > 0 && ` · ${counts.skipped} skipped`}
             </>
           ) : loading ? (
             <Skeleton w='14rem' />

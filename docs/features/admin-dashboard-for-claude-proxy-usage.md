@@ -37,7 +37,18 @@ destination: there is no page behind "Context", only the five stations it names.
   weekly [usage limit meters](usage-limit-meters.md).
 - **Trends** (`/trends`) — per-day tokens and cost over a 7/14/30-day window (bar
   charts + table), a tokens-per-request line chart, and a per-metric drill-down
-  (`/trends/$metric`).
+  (`/trends/$metric`). A model picker in the page head narrows every card on the page
+  to one model; the drill-down instead adds up to five models as extra lines beside
+  the all-models one; and the Overview carries the same single-select picker in its
+  range-picker cluster, which its whole page follows. The split is server-side because
+  a digest's `models` field is request counts alone: `/api/trends` takes `?models=`
+  (comma-separated, empty meaning no filter) and `computeDigest` keeps only the
+  sidecars that match, so an excluded request counts in neither `requestCount` nor
+  `skipped`. Two limits are reported rather than papered over — a day surviving only
+  as a finalized digest cannot be split, so it is dropped under a filter and counted
+  in `meta.unfilterableDays`, which the page states above the cards; and today is not
+  spliced in from the summary stream while filtered, since that stream reports the day
+  across every model.
 **Context**
 
 - **Context size** (`/context`) — how large the prompt to the model gets, and why the
