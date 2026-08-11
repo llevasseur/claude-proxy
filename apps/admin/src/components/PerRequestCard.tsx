@@ -28,8 +28,8 @@ function toPerRequestRow(d: UsageDigest) {
  * head's until this card's own picker is touched.
  */
 export function PerRequestCard() {
-  const { days, choice, select, switching, today } = useCardWindow();
-  const { digests, isFetching, error } = useWindowDigests(days, today);
+  const { days, choice, select, switching, today, model } = useCardWindow();
+  const { digests, isFetching, error } = useWindowDigests(days, today, model);
   const rows = digests.map(toPerRequestRow);
   const first = digests.at(0);
   const last = digests.at(-1);

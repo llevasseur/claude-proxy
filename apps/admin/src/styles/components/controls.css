@@ -51,6 +51,61 @@
     cursor: default;
   }
 
+  /* Model series toggle: which models are drawn beside a chart's own line. Not a
+   * `.segmented`, because these are independent switches rather than one choice —
+   * so each chip keeps its own border and its own pressed state, and carries the
+   * colour of the line it turns on. */
+  .model-toggle {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+  }
+  .model-toggle-label {
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-3);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .model-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-4);
+    padding: var(--space-3) var(--space-6);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--text-4);
+  }
+  .model-chip:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--signal-dim);
+  }
+  .model-chip.active {
+    background: var(--surface-2);
+    color: var(--text);
+    border-color: var(--signal-dim);
+  }
+  .model-chip:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  /* Also the table's column marker, where it stands in for the chip around it. */
+  .model-chip-dot {
+    display: inline-block;
+    width: var(--space-5);
+    height: var(--space-5);
+    border-radius: var(--radius-pill);
+    margin-right: var(--space-3);
+  }
+  .model-chip .model-chip-dot {
+    margin-right: 0;
+  }
+
   /* prev/next pager */
   .pager {
     display: flex;
