@@ -89,7 +89,8 @@ export interface UsageResponse {
 }
 export interface TrendsResponse {
   digests: UsageDigest[];
-  meta: { days: number; files: number; parseErrors: number; archivedDays: number };
+  /** `unfilterableDays` counts days a model filter had to drop — finalized digests cannot be split by model. */
+  meta: { days: number; files: number; parseErrors: number; archivedDays: number; unfilterableDays: number };
 }
 export interface ToolsResponse {
   date: string;
@@ -984,7 +985,9 @@ async function write<P extends ApiWritePath>(path: P, body: unknown): Promise<Ap
 
 export const getHealth = () => read('/api/health');
 export const getSummary = (date?: string) => read('/api/summary', { date });
-export const getTrends = (days: number) => read('/api/trends', { days });
+/** `models` narrows every day to those models; omit it (or pass none) for the whole window. */
+export const getTrends = (days: number, models?: readonly string[]) =>
+  read('/api/trends', { days, models: models?.length ? models.join(',') : undefined });
 export const getPromptMix = (days: number) => read('/api/prompt-mix', { days });
 export const getPromptDetail = (hash: string, days: number) => read('/api/prompt', { hash, days });
 export const getPromptSection = (hash: string, index: number, days: number) =>

@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { TrendingUp } from 'lucide-react';
 import { getSummary, type SummaryResponse } from '../api';
-import { DayWindowControls, useWindowDigests } from '../components/DayWindow';
+import { DayWindowControls, UnfilterableNote, useModelOptions, useWindowDigests } from '../components/DayWindow';
+import { shortModelName } from '../components/ModelPicker';
 import { QueryState } from '../components/QueryState';
 import { type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { TrendCarousel, TrendCarouselSkeleton } from '../components/TrendCarousel';
@@ -24,15 +25,18 @@ const BLENDED_COLUMNS: readonly SkeletonColumn[] = [{}, { className: 'num' }, {}
  */
 export function TrendsPage() {
   const [days, selectDays, isSwitching] = useTransitionState(30);
+  // Which model the whole page is blended over, beside how far back it reaches.
+  const [model, selectModel, isModelSwitching] = useTransitionState<string | null>(null);
   // The same summary feed the Overview's badge reports on: it keeps the window's
   // closing day moving rather than frozen at page load.
   const summary = useQuery({ queryKey: ['summary'], queryFn: () => getSummary() });
   const summaryLive = useLiveQuery<SummaryResponse>('/api/summary/stream', ['summary']);
+  const models = useModelOptions(days);
   // Same key and window as the Overview's mini charts, so switching between the
   // two pages costs no fetch.
-  const query = useWindowDigests(days, summary.data?.digest);
+  const query = useWindowDigests(days, summary.data?.digest, model);
   const snapshots = query.digests;
-  const busy = isSwitching || query.isFetching;
+  const busy = isSwitching || isModelSwitching || query.isFetching;
 
   const first = snapshots.at(0);
   const last = snapshots.at(-1);
@@ -50,12 +54,26 @@ export function TrendsPage() {
             {live ? 'Today counts as far as it has run, so the figures track the day as it happens.' : ''}
           </div>
         </div>
-        <DayWindowControls days={days} onDays={selectDays} label='Trend window' busy={busy} live={summaryLive} />
+        <DayWindowControls
+          days={days}
+          onDays={selectDays}
+          label='Trend window'
+          busy={busy}
+          live={summaryLive}
+          model={model}
+          onModel={selectModel}
+          models={models}
+          modelLabel='Model these trends cover'
+        />
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<TrendsSkeleton days={days} />} busy={busy}>
-        {snapshots.length === 0 ? (
-          <div className='card empty'>Nothing was captured in the last {days} days.</div>
+        <UnfilterableNote days={query.unfilterableDays} />
+        {/* A filtered window keeps an unused day as a zero, so the array is never empty. */}
+        {snapshots.every((d) => d.requestCount === 0) ? (
+          <div className='card empty'>
+            {model ? `No ${shortModelName(model)} requests captured` : 'Nothing was captured'} in the last {days} days.
+          </div>
         ) : (
           <>
             <TrendCarousel metrics={METRICS} digests={snapshots} />

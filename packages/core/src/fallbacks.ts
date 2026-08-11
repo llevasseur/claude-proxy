@@ -58,7 +58,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'digest-legacy-cache-hit-ratio',
     file: 'packages/core/src/digest.ts',
-    line: 470,
+    line: 485,
     match: 'cacheHitRatio:',
     since: null,
     supersededBy: null,

@@ -1,15 +1,18 @@
 import { isPartialDay, lastNonZeroComparison, type UsageDigest } from '@claude-proxy/core';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
+import { useState } from 'react';
 import { getTrends } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { trendsKey, UnfilterableNote, useModelOptions } from '../components/DayWindow';
 import { FixedPrefixTools } from '../components/FixedPrefixTools';
 import { HeaderHint } from '../components/HeaderHint';
+import { MAX_MODEL_SERIES, ModelSeriesToggle, modelColor, shortModelName } from '../components/ModelPicker';
 import { PerCallNextSteps, PerCallPanel, PerCallSkeleton } from '../components/PerCallPanel';
 import { PromptMixPanel, PromptMixSkeleton } from '../components/PromptMixPanel';
 import { QueryState } from '../components/QueryState';
 import { DAY_WINDOWS, Segmented } from '../components/Segmented';
-import { SeriesLineChart } from '../components/SeriesLineChart';
+import { type ChartRow, SeriesLineChart } from '../components/SeriesLineChart';
 import { Skeleton, SkeletonChartCard, type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { deltaLabel, deltaTone } from '../format';
 import { findMetric, REPORT_TZ_ABBR, type StatMetric } from '../metrics';
@@ -22,19 +25,44 @@ const CHART_HEIGHT = 340;
 /** Date and the metric's own value. */
 const BY_DAY_COLUMNS: readonly SkeletonColumn[] = [{}, { className: 'num' }];
 
+/**
+ * A model's column in the chart rows. recharts reads a `dataKey` holding a dot as a
+ * path into the row, so the id is reduced to word characters rather than used whole.
+ */
+const seriesKey = (id: string) => `m_${id.replace(/\W/g, '_')}`;
+
 /** Large-scale trend for one Overview statistic, reached by clicking its card. */
 export function TrendDetailPage() {
   const { metric } = useParams({ from: '/trends/$metric' });
   const def = findMetric(metric);
   const [days, selectDays, isSwitching] = useTransitionState(30);
+  // Models drawn beside the all-models line, in the order they were added — the
+  // order their colours follow, so removing one does not recolour the rest above it.
+  const [selected, setSelected] = useState<readonly string[]>([]);
+  const models = useModelOptions(days);
   const query = useQuery({
-    queryKey: ['trends', days],
+    queryKey: trendsKey(days, null),
     queryFn: () => getTrends(days),
     enabled: !!def,
     placeholderData: keepPreviousData,
   });
+  // One window per added model. The key is the one the Trends and Overview pages
+  // filter under, so a model already looked at there costs no fetch here.
+  const modelQueries = useQueries({
+    queries: selected.map((id) => ({
+      queryKey: trendsKey(days, id),
+      queryFn: () => getTrends(days, [id]),
+      enabled: !!def,
+      placeholderData: keepPreviousData,
+    })),
+  });
   const digests = query.data?.digests ?? [];
-  const busy = isSwitching || query.isFetching;
+  const busy = isSwitching || query.isFetching || modelQueries.some((q) => q.isFetching);
+
+  const toggleModel = (id: string) =>
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= MAX_MODEL_SERIES ? prev : [...prev, id],
+    );
 
   if (!def) {
     return (
@@ -50,7 +78,31 @@ export function TrendDetailPage() {
     );
   }
 
-  const rows = digests.map((d) => ({ label: d.date, value: def.value(d) }));
+  // One entry per added model: where its line goes, its colour, and the metric's
+  // value on each day it was used. A day the model missed is left out of the row
+  // rather than zeroed, so the line breaks over it instead of diving to the floor.
+  const modelSeries = selected.map((id, i) => ({
+    id,
+    key: seriesKey(id),
+    color: modelColor(i),
+    byDate: new Map((modelQueries[i]?.data?.digests ?? []).map((d) => [d.date, def.value(d)])),
+  }));
+  // What the filtered windows had to leave out. The models share a window, so the
+  // largest count is the one to state rather than their sum.
+  const unfilterable = modelQueries.reduce((most, q) => Math.max(most, q.data?.meta.unfilterableDays ?? 0), 0);
+
+  const rows: ChartRow[] = digests.map((d) => {
+    const row: ChartRow = { label: d.date, value: def.value(d) };
+    for (const s of modelSeries) {
+      const v = s.byDate.get(d.date);
+      if (v !== undefined) row[s.key] = v;
+    }
+    return row;
+  });
+  const series = [
+    { dataKey: 'value', name: modelSeries.length ? `${def.label} (all models)` : def.label, color: def.color },
+    ...modelSeries.map((s) => ({ dataKey: s.key, name: shortModelName(s.id), color: s.color })),
+  ];
   const first = digests.at(0);
   const last = digests.at(-1);
   const rangeLabel = !first || !last ? '—' : first.date === last.date ? first.date : `${first.date} → ${last.date}`;
@@ -86,7 +138,11 @@ export function TrendDetailPage() {
             )
           )}
         </div>
-        <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label='Trend window' busy={busy} />
+        {/* Which models are drawn, beside how far back. */}
+        <div className='pagehead-controls'>
+          <ModelSeriesToggle options={models} selected={selected} onToggle={toggleModel} busy={busy} />
+          <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label='Trend window' busy={busy} />
+        </div>
       </div>
 
       <QueryState
@@ -98,6 +154,7 @@ export function TrendDetailPage() {
           <div className='card empty'>No usage captured in the last {days} days.</div>
         ) : (
           <>
+            <UnfilterableNote days={unfilterable} />
             {hasMix && <PromptMixPanel days={days} />}
             {hasPerCall && <PerCallPanel digests={digests} def={def} />}
 
@@ -111,7 +168,7 @@ export function TrendDetailPage() {
                     so days can be read against each other. */}
                 <SeriesLineChart
                   data={rows}
-                  series={[{ dataKey: 'value', name: def.label, color: def.color }]}
+                  series={series}
                   xKey='label'
                   format={def.format}
                   formatTick={def.formatTick}
@@ -132,16 +189,34 @@ export function TrendDetailPage() {
                         />
                       </th>
                       <th className='num'>
-                        {def.label}
+                        {modelSeries.length > 0 ? 'All models' : def.label}
                         <HeaderHint text={`${def.description} The chart beside this table plots the same values.`} />
                       </th>
+                      {/* One column per added model, in the chart's own order and colour. */}
+                      {modelSeries.map((s) => (
+                        <th className='num' key={s.id}>
+                          <span className='model-chip-dot' style={{ background: s.color }} />
+                          {shortModelName(s.id)}
+                          <HeaderHint
+                            text={`${def.label} across ${s.id} alone. An em dash is a day it was not used.`}
+                          />
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {[...rows].reverse().map((r) => (
-                      <tr key={r.label}>
+                      <tr key={String(r.label)}>
                         <td>{r.label}</td>
-                        <td className='num'>{def.format(r.value)}</td>
+                        <td className='num'>{def.format(Number(r.value))}</td>
+                        {modelSeries.map((s) => {
+                          const v = r[s.key];
+                          return (
+                            <td className='num' key={s.id}>
+                              {typeof v === 'number' ? def.format(v) : '—'}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </tbody>

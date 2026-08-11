@@ -1,12 +1,19 @@
 import type { UsageDigest } from '@claude-proxy/core';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { Monitor } from 'lucide-react';
 import { useMemo } from 'react';
-import { getSummary, getTrends, getUsage, type SummaryResponse, type UsageResponse } from '../api';
+import { getSummary, getUsage, type SummaryResponse, type UsageResponse } from '../api';
 import { AdviceCard } from '../components/AdviceCard';
 import { CostRateCard, CostRateSkeleton } from '../components/CostRateCard';
-import { DayWindowControls, DayWindowProvider, withLiveToday } from '../components/DayWindow';
+import {
+  DayWindowControls,
+  DayWindowProvider,
+  UnfilterableNote,
+  useModelOptions,
+  useWindowDigests,
+} from '../components/DayWindow';
+import { type ModelOption, shortModelName } from '../components/ModelPicker';
 import { PerRequestCard, PerRequestSkeleton } from '../components/PerRequestCard';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
@@ -21,13 +28,13 @@ import type { NavEntry } from './nav';
 
 export function OverviewPage() {
   const [days, selectDays, isSwitching] = useTransitionState(7);
+  // What the page is showing, beside how far back. Every plot here reads both off
+  // the same context, so this one control moves the whole page.
+  const [model, selectModel, isModelSwitching] = useTransitionState<string | null>(null);
   const summary = useQuery({ queryKey: ['summary'], queryFn: () => getSummary() });
+  const models = useModelOptions(days);
   // Per-day history feeds every card's mini chart; shares cache with /trends.
-  const trends = useQuery({
-    queryKey: ['trends', days],
-    queryFn: () => getTrends(days),
-    placeholderData: keepPreviousData,
-  });
+  const trends = useWindowDigests(days, summary.data?.digest, model);
   const usage = useQuery({ queryKey: ['usage'], queryFn: () => getUsage() });
   // Both streams watch the log directory, so a request in flight moves the meters
   // and today's digest without a reload; the queries above cover SSE being down.
@@ -35,20 +42,30 @@ export function OverviewPage() {
   const summaryLive = useLiveQuery<SummaryResponse>('/api/summary/stream', ['summary']);
   const data = summary.data;
   // What every card below follows until it pins a window of its own.
-  const pageWindow = useMemo(() => ({ days, today: data?.digest }), [days, data]);
+  const pageWindow = useMemo(() => ({ days, today: data?.digest, model }), [days, data, model]);
+  // The summary meta counts every model, so a filtered head reads its day out of the
+  // filtered window instead.
+  const headDay = trends.digests.find((x) => x.date === data?.digest.date);
+  const counts = model
+    ? headDay && { requests: headDay.requestCount, skipped: headDay.skipped }
+    : data && { requests: data.meta.files, skipped: data.meta.parseErrors };
 
   return (
     <DayWindowProvider value={pageWindow}>
       <section>
         <PageHead
           data={data}
+          counts={counts}
           loading={summary.isLoading}
           days={days}
           onDays={selectDays}
+          model={model}
+          onModel={selectModel}
+          models={models}
           // The mini charts and the two plots below follow this window; the headline
           // numbers come from today's digest, so the switcher marks itself and the
           // stat tiles stay at full strength.
-          busy={isSwitching || trends.isFetching}
+          busy={isSwitching || isModelSwitching || trends.isFetching}
           live={worstStatus(usageLive, summaryLive)}
         />
 
@@ -59,7 +76,12 @@ export function OverviewPage() {
           isLoading={summary.isLoading || trends.isLoading}
           error={summary.error}
           skeleton={<OverviewSkeleton days={days} />}>
-          {data && <OverviewBody data={data} digests={trends.data?.digests ?? []} />}
+          {data && (
+            <>
+              <UnfilterableNote days={trends.unfilterableDays} />
+              <OverviewBody data={data} digests={trends.digests} model={model} />
+            </>
+          )}
         </QueryState>
       </section>
     </DayWindowProvider>
@@ -155,39 +177,59 @@ function OverviewSkeleton({ days }: { days: number }) {
   );
 }
 
-function OverviewBody({ data, digests }: { data: SummaryResponse; digests: UsageDigest[] }) {
-  const d = data.digest;
-  const trend = new Map((d.trend ?? []).map((t) => [t.field, t]));
-  const series = useMemo(() => withLiveToday(digests, d), [digests, d]);
+/**
+ * Everything under the head. `model` narrows the series and the day the tiles
+ * headline — the summary stream reports today across every model, so a filtered
+ * page reads its own day out of the filtered window instead.
+ */
+function OverviewBody({
+  data,
+  digests,
+  model,
+}: {
+  data: SummaryResponse;
+  digests: UsageDigest[];
+  model: string | null;
+}) {
+  const date = data.digest.date;
+  const d = model ? digests.find((x) => x.date === date) : data.digest;
+  const trend = new Map((d?.trend ?? []).map((t) => [t.field, t]));
 
-  if (d.requestCount === 0) {
-    return <div className='card empty'>No Claude activity captured for {d.date}.</div>;
+  if (!model && data.digest.requestCount === 0) {
+    return <div className='card empty'>No Claude activity captured for {date}.</div>;
   }
 
   return (
     <>
-      <div className='grid stats'>
-        {METRICS.map((m) => {
-          const t = m.trendField ? trend.get(m.trendField) : undefined;
-          return (
-            <StatCard
-              key={m.key}
-              label={m.label}
-              value={m.headline ? m.headline(d) : m.format(m.value(d))}
-              sub={m.sub?.(d)}
-              deltaPct={t?.deltaPct}
-              baseline={t?.priorDate ? { date: t.priorDate, value: m.format(t.prior) } : undefined}
-              increaseIsBad={m.increaseIsBad}
-              metric={m.key}
-              spark={{
-                points: series.map((x) => ({ date: x.date, value: m.value(x) })),
-                color: m.color,
-                format: m.format,
-              }}
-            />
-          );
-        })}
-      </div>
+      {d && d.requestCount > 0 ? (
+        <div className='grid stats'>
+          {METRICS.map((m) => {
+            const t = m.trendField ? trend.get(m.trendField) : undefined;
+            return (
+              <StatCard
+                key={m.key}
+                label={m.label}
+                value={m.headline ? m.headline(d) : m.format(m.value(d))}
+                sub={m.sub?.(d)}
+                deltaPct={t?.deltaPct}
+                baseline={t?.priorDate ? { date: t.priorDate, value: m.format(t.prior) } : undefined}
+                increaseIsBad={m.increaseIsBad}
+                metric={m.key}
+                spark={{
+                  points: digests.map((x) => ({ date: x.date, value: m.value(x) })),
+                  color: m.color,
+                  format: m.format,
+                }}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        // The window can still hold this model on earlier days, so the plots below stay.
+        <div className='card empty'>
+          No {model && shortModelName(model)} requests captured for {date}.
+        </div>
+      )}
 
       {/* Both plots follow the page head until their own picker is touched, and each
           fetches the days it is actually drawing. */}
@@ -203,7 +245,7 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
             </Link>
           </div>
           <ul className='minilist'>
-            {d.topTools.slice(0, 5).map((t) => (
+            {(d?.topTools ?? []).slice(0, 5).map((t) => (
               <li key={t.name}>
                 <span>{t.name}</span>
                 <span className='muted'>
@@ -238,16 +280,24 @@ function OverviewBody({ data, digests }: { data: SummaryResponse; digests: Usage
  */
 function PageHead({
   data,
+  counts,
   loading,
   days,
   onDays,
+  model,
+  onModel,
+  models,
   busy,
   live,
 }: {
   data?: SummaryResponse;
+  counts?: { requests: number; skipped: number };
   loading: boolean;
   days: number;
   onDays: (d: number) => void;
+  model: string | null;
+  onModel: (next: string | null) => void;
+  models: readonly ModelOption[];
   busy?: boolean;
   live: LiveStatus;
 }) {
@@ -258,15 +308,26 @@ function PageHead({
         <div className='muted'>
           {data ? (
             <>
-              {data.digest.date} ({REPORT_TZ_ABBR}) · {data.meta.files} request{data.meta.files === 1 ? '' : 's'}
-              {data.meta.parseErrors > 0 && ` · ${data.meta.parseErrors} skipped`}
+              {data.digest.date} ({REPORT_TZ_ABBR})
+              {counts && ` · ${counts.requests} request${counts.requests === 1 ? '' : 's'}`}
+              {counts && counts.skipped > 0 && ` · ${counts.skipped} skipped`}
             </>
           ) : loading ? (
             <Skeleton w='14rem' />
           ) : null}
         </div>
       </div>
-      <DayWindowControls days={days} onDays={onDays} label='Mini-chart window' busy={busy} live={live} />
+      <DayWindowControls
+        days={days}
+        onDays={onDays}
+        label='Mini-chart window'
+        busy={busy}
+        live={live}
+        model={model}
+        onModel={onModel}
+        models={models}
+        modelLabel='Model shown on this page'
+      />
     </div>
   );
 }

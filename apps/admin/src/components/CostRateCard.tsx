@@ -34,8 +34,8 @@ const LEGEND = [
  * The window is the page head's until this card's own picker is touched.
  */
 export function CostRateCard() {
-  const { days, choice, select, switching, today: liveToday } = useCardWindow();
-  const { digests, isFetching, error } = useWindowDigests(days, liveToday);
+  const { days, choice, select, switching, today: liveToday, model } = useCardWindow();
+  const { digests, isFetching, error } = useWindowDigests(days, liveToday, model);
   const points = costRatePoints(digests);
   const summary = summarizeCostRate(digests);
   const today = summary.today;

@@ -49,7 +49,8 @@ export const API_ROUTES = [
     params: ['date'],
     streamOf: '/api/summary',
   },
-  { path: '/api/trends', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
+  // `models` is a comma-separated list; absent means every model the days hold.
+  { path: '/api/trends', methods: ['GET'], kind: 'json', cors: 'open', params: ['days', 'models'] },
   { path: '/api/prompt-mix', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
   { path: '/api/prompt', methods: ['GET'], kind: 'json', cors: 'open', params: ['hash', 'days'] },
   { path: '/api/prompt/section', methods: ['GET'], kind: 'json', cors: 'open', params: ['hash', 'index', 'days'] },
