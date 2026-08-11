@@ -4,7 +4,6 @@ title: Ideas ledger
 description: A store for invented proposals, kept separate from the suggestion flags because an idea has no source sessions behind it — only a recorded human sign-off makes one actionable, and a claim stamped at the start of work keeps two runs from building the same one.
 tags: [advice, cli, ideas]
 timestamp: 2026-08-07
-dirty: true
 ---
 
 # Ideas ledger
@@ -18,7 +17,7 @@ database, replayed through `packages/core` on read
 rather than one per machine. It is read and written by `pnpm --filter server ideas`, which needs no
 running local server, and adjudicated from the [dashboard's](admin-dashboard-for-claude-proxy-usage.md)
 `/ideas` page — one tab per area, one detail page per idea — over `GET /api/ideas` and the
-`POST /api/ideas/status`, `/api/ideas/area` and `/api/ideas/comment` writes.
+`POST /api/ideas/status`, `/api/ideas/area`, `/api/ideas/comment` and `/api/ideas/claim` writes.
 
 It exists because [session suggestions](session-suggestions.md) cannot answer the question it
 answers. A suggestion is produced by a rule counting what a transcript did, so it always traces
@@ -226,6 +225,41 @@ done.
 The nightly cron commits the ideas export beside `concepts.jsonl` in the same private repo, which
 is what keeps the ADR 0004 carve-out paid for rather than merely widened.
 
+#### Landing the code is not the same as having the ledger
+
+**The ledger does not exist until the migration is applied and the Worker is redeployed**, and both
+are manual — they touch a billable remote database and a live deploy, so they are documented rather
+than automated, exactly as the rest of
+[`services/concepts/README.md`'s operator setup](../../services/concepts/README.md#operator-setup)
+is. Merging the code changes nothing about what the Worker serves. The order is:
+
+1. **Apply the remote D1 migration.** `pnpm --filter concepts schema:apply` runs
+   `services/concepts/migrations/0002_ideas.sql` — the event log and the claim lease — against
+   `operator-db`. `schema:apply:local` is the local-only sibling and does not touch the deployed
+   database.
+2. **Deploy the Worker.** `pnpm --filter concepts deploy`. **Until this lands there is no
+   `/api/ideas/*` route at all**, whatever the migration did: the routes are code, and the deployed
+   build is whatever was pushed last.
+3. **Seed each device that still has a local ledger.** `pnpm --filter concepts seed:ideas`, run **on
+   every machine holding a `logs/ideas.json`** rather than once — each accumulated its own while the
+   ledger was per-device. It is safe to re-run and safe to run on two machines holding the same
+   idea, because event ids are derived from event content. The README documents this half in full.
+
+**A 404 here means a stale Worker build, not a misconfigured client**, and the distinction is worth
+knowing because the failure reads backwards. A call against a Worker deployed before step 2 comes
+back as
+
+```json
+{"error":"no route for GET /api/ideas/export"}
+```
+
+which looks like a wrong `IDEAS_URL` or a path typo, and sends a reader to check their environment.
+It is not: **every `/api/ideas/*` route on a deployed build is authenticated**, so a request that
+actually reaches one answers `401 {"error":"unauthorized"}` even with no token at all. So the two
+answers separate the two faults cleanly — **401 means the route is deployed and the credentials are
+the question; 404 means the route is not deployed and step 2 has not been run.** Diagnosing this the
+other way round cost a real debugging session.
+
 **Retiring `logs/ideas.json` is a later step, deliberately.** Nothing reads it now, but it is not
 deleted, because the sequencing is a correctness requirement: the service ships, then `/ideate` and
 `/improve` are repointed and synced to **every** device, and only then does the file go. Deleting
@@ -289,20 +323,30 @@ proposals and ends, and the decision happens whenever somebody looks.
   says how much it hid, and `meta.areas` counts per area **over the whole ledger too** — otherwise
   selecting one tab would rewrite the numbers on all the others. It is a sibling of `meta.counts`
   rather than a key inside it, because the two are counted over different vocabularies and a caller
-  reading `counts` wants the five statuses. **`/api/ideas/stream`** shadows the list over SSE
-  watching the log directory, so an idea `/ideate` writes from a terminal appears without a reload.
+  reading `counts` wants the five statuses. **`/api/ideas/stream`** shadows the list over SSE by
+  **polling the Worker every five seconds and diffing**, emitting an `update` only when the payload
+  changed — there is no local file to watch now the ledger is hosted, and the writers that matter are
+  on other machines, which a local watch could never have seen. So an idea `/ideate` writes from a
+  terminal on *any* device appears without a reload. See
+  [The ledger is hosted](#the-ledger-is-hosted-so-every-device-sees-one-ledger).
 - **`POST /api/ideas/status`** takes `{ marks: [{ slug, status, note? }] }` through the same
   `parseIdeaMarks` / `applyIdeaMarks` the CLI uses. It is on the server's **write allowlist**, under
   the origin-checked CORS the chat routes use rather than the reads' open `*`: this ledger is
   device-wide, shared across every repo on the machine, and an `accepted` row is the sign-off
   `/improve` then acts on.
-- **The browser may set `accepted`, `rejected` and `proposed` (the undo) only.** `shipped` stays
-  CLI-only because it carries a PR url and is a claim made by whoever landed the change, not a
-  button beside Accept. `claimed` is absent for a different reason: it is not a decision a person
-  makes but a machine registering that it has started building, and it must carry a holder a second
-  run can recognise — a button would park an idea for the whole expiry under a holder nobody can
-  find. **Releasing** one is allowed, and is `accepted`: the card's Release button frees an idea
-  from a run that hung without waiting the six hours out, and leaves the sign-off intact.
+- **A status mark from the browser may set `accepted`, `rejected`, `proposed` (the undo) and
+  `shipped`.** `shipped` is on that list because a person reading the card is often the person who
+  just watched the PR land, and it is held to the CLI's own contract rather than made a button
+  beside Accept: it opens a form, the PR url is required as the note, and only an `accepted` or
+  `claimed` idea may be shipped, checked over the whole batch against the stored status before
+  anything writes. **`claimed` is the one status the route refuses**, and for a reason a status mark
+  cannot satisfy: it is not a decision a person makes but a machine registering that it has started
+  building, and it must carry a holder a second run can recognise, which a mark has nowhere to put.
+  So claiming from the dashboard is its own write — **`POST /api/ideas/claim`**, behind the card's
+  Re-claim control, which asks for the holder (and optionally the PR) rather than inventing one, and
+  reports a live holder as a refusal in the body rather than as an error. **Releasing** a claim is
+  allowed and is `accepted`: the card's Release button frees an idea from a run that hung without
+  waiting the six hours out, and leaves the sign-off intact.
 - **A `rejected` mark with no note is refused with 400**, matching the CLI contract. The reason is
   the ledger's dedupe record — it is what stops a rejected idea being re-proposed — and an empty one
   is worse than none, because it looks like a decision while carrying nothing a later reader can
@@ -474,17 +518,27 @@ and `server/src/ideas-cli.ts` is the command line. `server/src/ideas-pr.ts` is t
 it observes through `server/src/github.ts` and writes through the store, and both `ideas sync` and
 `server/src/maintain-cli.ts`' `--apply` path call it.
 
-Over HTTP, `buildIdeas` is the read and `applyIdeaStatus`, `applyIdeaArea` and `applyIdeaComment` are
-the writes, all in `server/src/api.ts`; `server/src/server.ts` dispatches `/api/ideas`,
-`/api/ideas/stream`, `/api/ideas/status`, `/api/ideas/area` and `/api/ideas/comment`. No builder here
+Over HTTP, `buildIdeas` is the read and `applyIdeaStatus`, `applyIdeaArea`, `applyIdeaComment` and
+`applyIdeaClaim` are the writes, all in `server/src/api.ts`. The six routes — `/api/ideas`,
+`/api/ideas/stream`, `/api/ideas/status`, `/api/ideas/area`, `/api/ideas/comment` and
+`/api/ideas/claim` — are **declared in `packages/core/src/api-routes.ts`** along with every other
+route the API answers, carrying their methods, CORS class and query parameters;
+`server/src/server.ts` builds its dispatch table from that declaration and `apps/admin/src/api.ts`
+derives its client functions from the same array, so a handler for an undeclared route and a
+declared route with no handler each fail to compile. No builder here
 takes a `SidecarSource` and none is shadowed: the ledger is *authored* state with no derived half, so
 there is nothing for the SQLite substrate to disagree about. In the dashboard,
 `apps/admin/src/components/IdeaCard.tsx` is the card, `apps/admin/src/routes/ideas.tsx` is the tabbed
 list, `apps/admin/src/routes/idea-detail.tsx` is one idea in full — rendering its rationale through
-`apps/admin/src/components/Markdown.tsx` rather than through the card's reading — and both are
-registered by hand in
-`apps/admin/src/router.tsx`; the Ideas section of `apps/admin/src/routes/advice.tsx` is now a summary
-line linking across.
+`apps/admin/src/components/Markdown.tsx` rather than through the card's reading. **Each of those two
+files declares the route it is reached by**, in its own `createRoute` call exported as `route` —
+there is no route table to add a page to. `apps/admin/src/routes/registry.ts` is the hand-written
+list of route modules both are named in, `apps/admin/src/router.tsx` is the ~20 lines that import
+that list and call `addChildren`, and the root route and layout live in
+`apps/admin/src/route-root.tsx`, which builds the side rail from the same list. `ideas.tsx` also
+exports a `nav` station, so `/ideas` appears in the rail; `idea-detail.tsx` exports none, which is
+how "in no section" is written. The Ideas section of `apps/admin/src/routes/advice.tsx` is now a
+summary line linking across.
 
 The store is still **device-wide** while the page is about one proxy's logs, which is why the repo is
 on the card: a reader has to be able to see that an idea belongs to another checkout. That is the
@@ -539,9 +593,9 @@ of the answer.
 - [x] Every verb works with no server running and takes `--json`.
 - [x] `GET /api/ideas` returns the rows with per-status counts, narrows by status and repo, refuses
       a checkout path, and refuses any non-GET under the read routes' 405 gate.
-- [x] `POST /api/ideas/status` round-trips accepted and rejected, refuses `shipped` and a
-      note-less rejection with 400, writes nothing for an unknown slug, and sits on the write
-      allowlist so a foreign origin is refused with 403.
+- [x] `POST /api/ideas/status` round-trips accepted and rejected, refuses `claimed`, a note-less
+      rejection and a note-less ship with 400, writes nothing for an unknown slug, and sits on the
+      write allowlist so a foreign origin is refused with 403.
 - [x] The Advice page renders each idea's citations, keeps `accepted` visible, collapses `rejected`
       behind a toggle, and shows an empty state for a ledger with no rows.
 - [x] A claim is stamped at the start of work and carries a holder and a start time, so a second
@@ -554,7 +608,13 @@ of the answer.
       keeps it as the record of who built the thing.
 - [x] `ideas list --available` returns `accepted` plus expired claims, and the test pins what the
       two obvious alternative queries each get wrong.
-- [x] `claimed` cannot be set from the dashboard, but a claim can be released there.
+- [x] `claimed` cannot be set by a status mark from the dashboard — it is refused with a message
+      naming the holder a mark has nowhere to carry — and is taken there only through
+      `POST /api/ideas/claim` with a typed holder, which reports a live holder as a refusal rather
+      than an error. A claim can be released from the dashboard, and releasing is `accepted`.
+- [x] `shipped` can be set from the dashboard, but only with the PR url as its note and only on an
+      idea the store already holds as `accepted` or `claimed`, checked against the stored status
+      over the whole batch before anything is written.
 - [x] Every entry carries a kebab-case `area`, required by `parseIdeaAdds` and tolerated absent by
       `parseIdeasStore`, so a legacy row survives the read with its rejection reason and renders as
       Unfiled.
@@ -587,14 +647,20 @@ of the answer.
       button that reports a missing `navigator.clipboard` rather than appearing to succeed, an edit
       that is local to the clipboard and resettable, and a draft that follows a live entry unless it
       has been edited.
-- [ ] `/ideate` and `/improve` claim before building and read `--available` instead of
-      `-s accepted`. **Those command files live outside this repo**, so this one is not closed by
-      anything in this checkout.
+- [x] `/improve` claims before building and reads `--available` instead of `-s accepted`. The
+      installed command claims with `ideas claim --by <branch>` before it dispatches the work, and
+      reads the queue with `ideas list --available`. **The file lives outside this repo**, at
+      `~/.claude/commands/`, so nothing in this checkout proves it and nothing here can regress it —
+      this box records what the installed command does today.
+- [ ] `/ideate` claims before building and reads `--available` instead of `-s accepted`. **Same
+      story, and not yet verified**: the command file is outside this checkout, and no one has
+      checked the installed copy against this criterion the way `/improve`'s was checked.
 - [ ] `logs/ideas.json` is deleted, on every device, **after** every device has the repointed
       `/ideate` and `/improve` and has run `seed:ideas`. **Deliberately not done in the change that
       hosted the ledger**: nothing reads the file now, and retiring it before the out-of-repo
-      command files are synced would silently drop whatever a lagging device recorded. The three
-      boxes above are the ones this waits on.
+      command files are synced would silently drop whatever a lagging device recorded. What it waits
+      on is the other out-of-repo command boxes in this list — the `/ideate` one above and the two
+      below — rather than anything in this checkout.
 - [ ] `/ideate` chooses an area for every proposal it records and cites `command-gap` when the gap is
       a command that was never written. **That command file lives outside this repo**, at
       `~/.claude/commands/`, so nothing in this checkout closes it.

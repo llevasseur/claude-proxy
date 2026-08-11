@@ -136,8 +136,9 @@ still read each other's claim as their own idempotent re-claim.
 requirement.** The service ships first (this ADR). Then `/ideate` and `/improve`
 are repointed and synced to every device — those command files live in the
 `my-command` repo under `~/.claude/commands/`, outside this checkout, which is
-why the feature doc's last three acceptance boxes are unchecked and stay
-unchecked here. **Only then** is `logs/ideas.json` retired. Deleting it before
+why the feature doc's out-of-repo command boxes are not closed by anything here.
+`/improve` has since been repointed and its box records that; the rest stay open.
+**Only then** is `logs/ideas.json` retired. Deleting it before
 every device has the updated commands silently drops ideas, so this change
 deliberately does not delete it: it stops being read, and a `seed:ideas` importer
 pushes each device's existing file into the hosted ledger first. Because ids are
