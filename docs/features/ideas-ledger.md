@@ -11,9 +11,12 @@ dirty: true
 
 ## Summary
 
-`<logDir>/ideas.json` records features and commands somebody proposed building, and what a human
-decided about each one. It is read and written by `pnpm --filter server ideas`, which needs no
-running server, and adjudicated from the [dashboard's](admin-dashboard-for-claude-proxy-usage.md)
+The ideas ledger records features and commands somebody proposed building, and what a human
+decided about each one. **It is hosted** — an append-only event log on the `operator` Worker's D1
+database, replayed through `packages/core` on read
+([ADR 0006](../adrs/0006-host-the-ideas-ledger.md)) — so it is one ledger across every machine
+rather than one per machine. It is read and written by `pnpm --filter server ideas`, which needs no
+running local server, and adjudicated from the [dashboard's](admin-dashboard-for-claude-proxy-usage.md)
 `/ideas` page — one tab per area, one detail page per idea — over `GET /api/ideas` and the
 `POST /api/ideas/status`, `/api/ideas/area` and `/api/ideas/comment` writes.
 
@@ -41,14 +44,15 @@ trace, which is the one thing the separation buys.
 
 ## Behavior
 
-- **The store** — `<logDir>/ideas.json`, beside the transcripts, so it travels with a `LOG_DIR`
-  override and stays device-local (`logs/` is gitignored). Written through a temp file and a
-  rename, so a reader never sees a half-written file and a crash mid-write leaves the previous
-  ledger intact. Version 1.
-- **The key is the slug alone**, not `(repo, slug)`. The store is device-wide and shared across
-  every repo on the machine, so the repo an idea lands in is a *field*, carried as a git remote
-  slug (`llevasseur/claude-proxy`). **An absolute checkout path is refused**, because it names a
-  different thing — or nothing — on another machine.
+- **The store** — the `operator` Worker over D1, reached with `IDEAS_URL` and `IDEAS_TOKEN`.
+  Writes append events; reads replay them. Version 1, and the export is byte-for-byte the JSON
+  shape `<logDir>/ideas.json` held, so the nightly backup is restorable and a reader of either
+  is reading the same thing.
+- **The key is the slug alone**, not `(repo, slug)`. The store is shared across every repo *and*
+  every machine, so the repo an idea lands in is a *field*, carried as a git remote slug
+  (`llevasseur/claude-proxy`). **An absolute checkout path is refused**, because it names a
+  different thing — or nothing — on another machine. That refusal is what made the ledger portable
+  enough to host.
 - **The statuses** — `proposed` (the default), `accepted` (a human signed it off), `claimed` (a run
   is building it), `rejected` (with the reason), `shipped` (with the PR url). Only `accepted`
   carries a sign-off, and it is the only status `/improve` may act on; a `proposed` or `rejected`
@@ -157,17 +161,81 @@ same accepted entry.
 - **`ideas list --available` is what an implementation run should read** — `accepted` plus any
   `claimed` entry whose claim has expired. Plain `-s accepted` never recovers an idea abandoned by
   a dead run, and `-s accepted,claimed` would take one out from under a live holder.
-- **The race is narrowed, not eliminated, and the residue is stated rather than papered over.** Like
-  every other writer here, `claimIdeasInStore` is a read-modify-write and is not atomic against a
-  second process in the same few milliseconds. The failure it was built for was eleven minutes wide;
-  closing it absolutely would mean a lock file with an owner, a timeout and a recovery path — its
-  own stuck states, on a ledger with one writer at a time and a duplicate PR as the worst outcome.
+- **The race is closed, by an atomic conditional write.** It used to be narrowed rather than
+  eliminated: `claimIdeasInStore` was a read-modify-write and was not atomic against a second
+  process in the same few milliseconds. That residue was tolerable while one agent at a time wrote
+  one file, and stopped being tolerable once the ledger became genuinely shared — then two racing
+  writers are the normal case rather than the pathological one. Taking a claim is now a single
+  `INSERT … ON CONFLICT DO UPDATE … WHERE` against D1 whose `changes` count decides the winner, so
+  one run gets the idea and the other gets a refusal naming the holder. It needed no lock file, no
+  owner and no recovery path — the database already arbitrates. **The status rule did not move into
+  SQL**: `isIdeaTakeable` still decides whether an idea may be taken, in `packages/core`, and the
+  `WHERE` covers only the lease — already yours, or expired with no PR pinning it open. The
+  six-hour cutoff is computed from `IDEA_CLAIM_TTL_MS` rather than written out again, and the
+  comparison is inclusive because `isIdeaClaimStale` expires at `>=`; a boundary the two disagreed
+  about would be a claim the reader calls free and the writer refuses.
 
 **The command prose that has to change lives outside this repo.** `/ideate` and `/improve` are
 user-level command files on the device, not files in this checkout. The mechanism here is complete
 and usable, but an implementing run only stops colliding once its command file calls
 `ideas claim --by <branch>` as its first step and reads `list --available` in place of
 `list -s accepted`.
+
+### The ledger is hosted, so every device sees one ledger
+
+The store was `<logDir>/ideas.json`, and `logs/` is gitignored, so it was one ledger *per machine*.
+Two things followed, and the second is worse than the first.
+
+An idea accepted on the laptop was invisible on the desktop, and `accepted` is the one status
+`/improve` acts on. And **dedupe — the thing the store exists for — could only ever be as good as
+one machine's memory**: `add` refuses a slug already present, and a rejection reason is the most
+valuable row in the file, but a proposal made here was checked against *here*. An idea another
+device had already rejected, with the reason written down, came back as new.
+
+[ADR 0006](../adrs/0006-host-the-ideas-ledger.md) moves it onto the Worker that already hosts the
+[concept store](concepts-page.md) — the same deploy, the same D1 database, the same token. Four
+things about how are worth stating, because three of them deliberately depart from how concepts was
+done.
+
+- **An append-only event log, replayed through `packages/core`.** The database holds `add`, `mark`,
+  `file` and `comment` events; a read replays them oldest-first through the same `applyIdeaAdds`,
+  `applyIdeaMarks`, `applyIdeaFilings` and `applyIdeaComments` the CLI and the dashboard use.
+  **No status rule, evidence rule or filing rule is restated in SQL.** That is what keeps the four
+  surfaces from drifting into four dialects of one ledger, and it is also why two devices writing
+  at once is not a conflict: appending two events never was one, where rewriting one JSON blob
+  always is.
+- **Ids are derived, as they are for concepts** — a ULID whose time half is the event's timestamp
+  and whose remaining bits hash the event — so a replayed write lands on the row it already wrote.
+  **Replay order is `at` then an insertion `seq`, not the id**, and that is a real difference from
+  the concept store: the low bits of a derived ULID are a *hash*, so two events sharing a
+  millisecond would otherwise replay in hash order, and a mark replayed before its own add applies
+  to an idea that does not exist yet.
+- **There is no local fallback, and that is the point.** `remoteConceptStore()` returns null and
+  the local file answers; doing that here would recreate the exact failure the move was made to
+  fix, since an unconfigured device would keep a second divergent ledger that looks complete. So a
+  device without `IDEAS_URL` and `IDEAS_TOKEN` **refuses every read and every write**, with a
+  message naming both. `CONCEPTS_URL`/`CONCEPTS_TOKEN` answer for the address when the ideas ones
+  are unset, since both datasets are one Worker behind one token.
+- **`/api/ideas/stream` polls instead of watching.** It watched the log directory, and there is no
+  file to watch — and the writers that matter are on *other machines*, which a local watch could
+  never have seen anyway. `server/` re-reads the ledger every five seconds and diffs, sending an
+  `update` only when the payload changed, which is the same dedupe the watch source did. **The SSE
+  contract is unchanged** and the dashboard is untouched. Durable Objects and WebSockets were
+  rejected: they reintroduce the per-connection state ADR 0005 rejected, to serve a list.
+
+The nightly cron commits the ideas export beside `concepts.jsonl` in the same private repo, which
+is what keeps the ADR 0004 carve-out paid for rather than merely widened.
+
+**Retiring `logs/ideas.json` is a later step, deliberately.** Nothing reads it now, but it is not
+deleted, because the sequencing is a correctness requirement: the service ships, then `/ideate` and
+`/improve` are repointed and synced to **every** device, and only then does the file go. Deleting
+it first would silently drop the ideas on any device still running the old commands.
+`pnpm --filter concepts seed:ideas` is the migration — run it **on every machine that has a local
+ledger**, since each one accumulated its own. It decomposes each entry back into the events that
+produced it, stamped with the entry's own timestamps, and because ids are derived it is safe to run
+twice and safe to run on two machines holding the same idea. A **claim is not imported**: it is a
+six-hour lease belonging to a run on one machine, and importing one would park a now-shared idea
+under a holder nobody else can find, so a claimed idea arrives as `accepted`.
 
 ### The linked PR moves the status, so nobody has to remember to
 
@@ -397,7 +465,11 @@ and a claim is `{ by, at, pr? }`.
 shape, the parse and apply functions, the slug, repo and area predicates, `SEED_IDEA_AREAS`,
 `countIdeaAreas`, `similarIdeaSlugs`, `similarAreas`, and `ideaTaskPrompt` with its `ideaCitation`
 helper — the `/task` brief, derived from an entry and stored nowhere. It sits beside `suggestion-status.ts` and
-imports nothing from it. `server/src/ideas-store.ts` is the only code that reads or writes the file,
+imports nothing from it. The hosted half is `services/concepts/src/ideas.ts` — the event log, the
+replay and the atomic claim — over `migrations/0002_ideas.sql`, exposed by `src/rest.ts` and as four
+tools in `src/mcp.ts`, with `scripts/import-ideas.ts` as the per-device backfill.
+`server/src/ideas-remote.ts` is the client and the place the refusal-without-fallback lives;
+`server/src/ideas-store.ts` is the only code that reaches the ledger,
 and `server/src/ideas-cli.ts` is the command line. `server/src/ideas-pr.ts` is the PR reconciler —
 it observes through `server/src/github.ts` and writes through the store, and both `ideas sync` and
 `server/src/maintain-cli.ts`' `--apply` path call it.
@@ -421,10 +493,27 @@ of the answer.
 
 ## Acceptance criteria
 
-- [x] The ledger lives at `<logDir>/ideas.json`, is written through temp-file-plus-rename, and a
-      missing file reads as empty.
-- [x] A file that exists but does not parse throws rather than reading as empty, so a waterfall
-      caller can tell an absent tier from a broken one.
+- [x] The ledger is hosted on the `operator` Worker as an append-only event log, replayed through
+      `packages/core` on read, and an empty database reads as an empty ledger.
+- [x] A device with no `IDEAS_URL`/`IDEAS_TOKEN` refuses every read and every write, naming both,
+      rather than falling back to `logs/ideas.json` and keeping a second divergent ledger.
+- [x] An unreachable ledger throws rather than reading as empty, and the error names the route
+      without carrying the token.
+- [x] Two runs claiming one idea at the same instant produce exactly one holder and one refusal
+      naming them, decided by the `changes` count of a single conditional write.
+- [x] The claim gate agrees with `isIdeaClaimStale` at the exact TTL boundary, and never takes a
+      claim carrying a PR however old it is.
+- [x] Events sharing a millisecond replay in insertion order rather than in id order, so a mark
+      never replays before the add it marks.
+- [x] `ideas_list` (with `--available`), `ideas_add`, `ideas_claim` and `ideas_mark` are served
+      over MCP, and `ideas_add` runs `similarIdeaSlugs` server-side over the whole corpus,
+      rejected rows included.
+- [x] `/api/ideas/stream` polls the Worker and diffs, emitting an `update` only on a real change,
+      with the SSE contract and the dashboard unchanged.
+- [x] The nightly backup commits the ideas export beside `concepts.jsonl`, and an unchanged day
+      makes no commit.
+- [x] `pnpm --filter concepts seed:ideas` imports a device's `logs/ideas.json` and is safe to
+      re-run and to run on several devices, because event ids are derived from event content.
 - [x] The two stores never merge: `suggestions list` returns no idea and `ideas list` no
       suggestion, verified by driving both against one log directory.
 - [x] The key is a kebab-case slug, and the repo is a git remote slug with a checkout path refused.
@@ -501,6 +590,11 @@ of the answer.
 - [ ] `/ideate` and `/improve` claim before building and read `--available` instead of
       `-s accepted`. **Those command files live outside this repo**, so this one is not closed by
       anything in this checkout.
+- [ ] `logs/ideas.json` is deleted, on every device, **after** every device has the repointed
+      `/ideate` and `/improve` and has run `seed:ideas`. **Deliberately not done in the change that
+      hosted the ledger**: nothing reads the file now, and retiring it before the out-of-repo
+      command files are synced would silently drop whatever a lagging device recorded. The three
+      boxes above are the ones this waits on.
 - [ ] `/ideate` chooses an area for every proposal it records and cites `command-gap` when the gap is
       a command that was never written. **That command file lives outside this repo**, at
       `~/.claude/commands/`, so nothing in this checkout closes it.
@@ -509,10 +603,13 @@ of the answer.
 
 ## Open questions
 
-- The ledger is device-local, like the suggestion flags, so an idea accepted on one machine is
-  invisible on another. That is consistent and it is also why the repo field is a remote slug
-  rather than a path — the data is portable even though the file is not. Syncing it would need a
-  home that is not `logs/`.
+- ~~The ledger is device-local, so an idea accepted on one machine is invisible on another.
+  Syncing it would need a home that is not `logs/`.~~ **Closed by hosting it**, in
+  [ADR 0006](../adrs/0006-host-the-ideas-ledger.md): the ledger is an append-only event log on
+  the `operator` Worker's D1 database, replayed through `packages/core` on read. The repo field
+  staying a remote slug rather than a path is what made the data portable enough for this to be a
+  move rather than a migration. See [The ledger is hosted](#the-ledger-is-hosted-so-every-device-sees-one-ledger)
+  below.
 - `similarIdeaSlugs` compares slug tokens, so it catches a rename and misses a genuine restatement
   under unrelated words. A comparison over the title and rationale would catch more, and would need
   a threshold nobody has evidence for yet.
@@ -534,9 +631,13 @@ of the answer.
 - A claim's `by` is free text, so nothing stops two runs picking the same holder string and each
   reading the other's claim as its own idempotent re-claim. With branch names as holders that does
   not happen; it would need a real run id if anything ever generated holders automatically.
-- Claiming is still a read-modify-write, so two processes writing within the same few milliseconds
-  can both believe they won. Closing that would need a lock with an owner and a recovery path, and
-  the failure it guards against is a duplicate PR rather than data loss.
+- ~~Claiming is still a read-modify-write, so two processes writing within the same few
+  milliseconds can both believe they won.~~ **Closed by the atomic claim** in
+  [ADR 0006](../adrs/0006-host-the-ideas-ledger.md): a claim is one conditional `UPDATE` against
+  D1 whose `changes` count decides the winner, so two runs claiming at once produce one holder and
+  one refusal naming them. It needed no lock file, no owner and no recovery path — the database
+  already arbitrates. What is *not* closed is the line below it: a holder is free text, so two runs
+  choosing the same holder string still read each other's claim as their own re-claim.
 - There is no `ideas defects` analogue. A rule can be systematically wrong and the dismissals prove
   it; an idea is a one-off, so there is no population to indict. If a *source* turns out to produce
   bad ideas repeatedly, nothing currently notices. The provenance envelope is the *precondition*

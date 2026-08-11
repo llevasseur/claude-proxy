@@ -10,6 +10,7 @@
     "schema:apply": "wrangler d1 migrations apply operator-db --remote",
     "schema:apply:local": "wrangler d1 migrations apply operator-db --local",
     "seed": "tsx --env-file-if-exists=.env scripts/import-store.ts",
+    "seed:ideas": "tsx --env-file-if-exists=.env scripts/import-ideas.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
     "test": "vitest run"
   },

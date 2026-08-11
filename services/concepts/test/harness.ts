@@ -20,10 +20,17 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  */
 export function testDb(): Db {
   const database = new sqlite.DatabaseSync(':memory:');
-  database.exec(readFileSync(join(HERE, '..', 'migrations', '0001_init.sql'), 'utf8'));
+  // Every migration, in order — the same files `wrangler d1 migrations apply`
+  // runs, so a schema the suite accepts is a schema D1 accepts.
+  for (const migration of ['0001_init.sql', '0002_ideas.sql']) {
+    database.exec(readFileSync(join(HERE, '..', 'migrations', migration), 'utf8'));
+  }
   return {
     async all<T>(sql: string, params: DbValue[] = []): Promise<T[]> {
       return database.prepare(sql).all(...params) as T[];
+    },
+    async run(sql: string, params: DbValue[] = []): Promise<{ changes: number }> {
+      return { changes: Number(database.prepare(sql).run(...params).changes) };
     },
     async batch(statements: DbStatement[]): Promise<void> {
       database.exec('BEGIN');

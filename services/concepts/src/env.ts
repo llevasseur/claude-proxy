@@ -9,6 +9,9 @@ export interface Env {
   BACKUP_GITHUB_TOKEN?: string;
   /** `owner/name` of the private backup repo. Absent disables backup. */
   BACKUP_REPO?: string;
+  /** Where the concepts export is committed in the backup repo. Defaults to `concepts.jsonl`. */
   BACKUP_PATH?: string;
+  /** Where the ideas export is committed. Defaults to `ideas.json`. See ADR 0006. */
+  BACKUP_IDEAS_PATH?: string;
   BACKUP_BRANCH?: string;
 }

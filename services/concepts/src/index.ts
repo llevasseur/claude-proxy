@@ -3,6 +3,7 @@ import { isAuthorized } from './auth.ts';
 import { runBackup } from './backup.ts';
 import { d1Db } from './db.ts';
 import type { Env } from './env.ts';
+import { IdeaError } from './ideas.ts';
 import { handleMcp } from './mcp.ts';
 import { handleRest, json } from './rest.ts';
 import { ConceptError } from './store.ts';
@@ -12,7 +13,8 @@ export default {
     const url = new URL(request.url);
 
     // The one unauthenticated route, so the deploy smoke check has something to hit.
-    if (url.pathname === '/health') return json({ ok: true, service: 'concepts' });
+    // Names both datasets, since this Worker serves concepts and ideas alike.
+    if (url.pathname === '/health') return json({ ok: true, service: 'operator', datasets: ['concepts', 'ideas'] });
 
     if (!isAuthorized(request, env.CONCEPTS_TOKEN)) {
       return new Response(JSON.stringify({ error: 'unauthorized' }), {
@@ -31,7 +33,8 @@ export default {
       return rest ?? json({ error: `no route for ${request.method} ${url.pathname}` }, 404);
     } catch (error) {
       if (error instanceof ConceptError) return json({ error: error.message }, error.status);
-      console.error('concepts: unhandled', error);
+      if (error instanceof IdeaError) return json({ error: error.message }, error.status);
+      console.error('operator: unhandled', error);
       return json({ error: 'internal error' }, 500);
     }
   },
@@ -39,8 +42,8 @@ export default {
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       runBackup(d1Db(env.operator_db), env)
-        .then((result) => console.log('concepts: backup', JSON.stringify(result)))
-        .catch((error) => console.error('concepts: backup failed', error)),
+        .then((result) => console.log('operator: backup', JSON.stringify(result)))
+        .catch((error) => console.error('operator: backup failed', error)),
     );
   },
 };

@@ -19,4 +19,5 @@ Add one with `okq new adr "<title>"`.
 | Allow narrowly scoped writes in the local server | [0003-allow-narrowly-scoped-writes-in-the-local-server.md](0003-allow-narrowly-scoped-writes-in-the-local-server.md) |
 | Adopt SQLite as the query substrate over the log files | [0004-adopt-sqlite-as-the-query-substrate.md](0004-adopt-sqlite-as-the-query-substrate.md) |
 | Host the concept store as a Cloudflare Worker over D1 | [0005-host-the-concept-store.md](0005-host-the-concept-store.md) |
+| Host the ideas ledger on the existing operator Worker | [0006-host-the-ideas-ledger.md](0006-host-the-ideas-ledger.md) |
 <!-- okq:index:end -->

@@ -114,7 +114,6 @@ export interface IdeaPrSyncOptions {
   by?: WriteProvenance;
   /** Overrides the repo the PRs are read from; defaults to {@link resolveRepoDir}. */
   repoDir?: string;
-  now?: Date;
 }
 
 /**
@@ -125,10 +124,12 @@ export interface IdeaPrSyncOptions {
  * device-wide, so an absent PR is missing data; treating it as closed would
  * silently release live claims.
  */
-export async function reconcileIdeaPrs(logDir: string, options: IdeaPrSyncOptions = {}): Promise<IdeaPrSyncResult> {
-  const { dryRun = false, by, repoDir = resolveRepoDir(), now = new Date() } = options;
+export async function reconcileIdeaPrs(options: IdeaPrSyncOptions = {}): Promise<IdeaPrSyncResult> {
+  // No `now`: the hosted ledger stamps every write with its own clock, so a
+  // caller's idea of the time is no longer the ledger's. See ADR 0006.
+  const { dryRun = false, by, repoDir = resolveRepoDir() } = options;
 
-  const store = await readIdeasStore(logDir);
+  const store = await readIdeasStore();
   const links = ideaPrLinks(store);
   // No linked idea means no reason to spend a `gh` call.
   if (links.length === 0) return EMPTY(null, dryRun, null, []);
@@ -146,7 +147,7 @@ export async function reconcileIdeaPrs(logDir: string, options: IdeaPrSyncOption
     return { ...plan, repo: listing.repo, dryRun, file: null, error: null };
   }
 
-  const written = await markIdeasInStore(logDir, plan.marks, now);
+  const written = await markIdeasInStore(plan.marks);
   return { ...plan, repo: listing.repo, dryRun, file: written.file, error: null };
 }
 

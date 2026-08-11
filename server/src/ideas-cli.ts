@@ -1,8 +1,16 @@
 /**
  * The ideas ledger from the command line — the interface an agent uses to record
  * what it proposed, read back what a human decided, and find out whether an idea
- * has already been considered. Reads the log directory directly, so it works with
- * no server running.
+ * has already been considered. It talks to the hosted ledger directly, so it
+ * works with no local server running.
+ *
+ * **It needs `IDEAS_URL` and `IDEAS_TOKEN`, and refuses without them.** The
+ * ledger moved off `<logDir>/ideas.json` and onto the `operator` Worker (ADR
+ * 0006) so that an idea accepted on one machine is visible on every machine, and
+ * so that a new proposal is deduped against what every machine already holds.
+ * There is deliberately **no fallback to the local file**: a device answering
+ * from its own copy would keep a second ledger that looks complete and would
+ * re-propose ideas the shared one already rejected.
  *
  *   pnpm --filter server ideas list                                  # the whole ledger
  *   pnpm --filter server ideas list -s accepted                      # only what was signed off
@@ -49,8 +57,6 @@ import {
   parseCliArgs,
   parseIdeaAdds,
   SEED_IDEA_AREAS,
-  similarAreas,
-  similarIdeaSlugs,
 } from '@claude-proxy/core';
 import { reconcileIdeaPrs, renderIdeaPrTransition } from './ideas-pr.js';
 import {
@@ -62,7 +68,6 @@ import {
   readIdeasStore,
   resolveIdeasPath,
 } from './ideas-store.js';
-import { resolveLogDir } from './logs.js';
 
 const USAGE = `usage:
   ideas list  [-s|--status <flags>] [--repo <slug>] [--area <area>] [--available] [--json]
@@ -226,10 +231,9 @@ async function run(argv: readonly string[]): Promise<void> {
     return;
   }
   const json = switches.has('json');
-  const logDir = resolveLogDir();
 
   if (command === 'list') {
-    const store = await readIdeasStore(logDir);
+    const store = await readIdeasStore();
     if (flags.area !== undefined && !isIdeaArea(flags.area))
       throw new Error(`--area ${flags.area} is not a kebab-case area (a-z, 0-9, single dashes)`);
     const filter = {
@@ -241,7 +245,7 @@ async function run(argv: readonly string[]): Promise<void> {
     const rows = switches.has('available') ? claimableIdeaRows(store, filter) : ideaRows(store, filter);
     const counts = countIdeaStatuses(rows);
     if (json) {
-      console.log(JSON.stringify({ rows, meta: { counts, file: resolveIdeasPath(logDir) } }, null, 2));
+      console.log(JSON.stringify({ rows, meta: { counts, file: resolveIdeasPath() } }, null, 2));
       return;
     }
     console.log(
@@ -263,22 +267,20 @@ async function run(argv: readonly string[]): Promise<void> {
     const adds = parseIdeaAdds(raw);
 
     // Look-alikes are reported, never refused — only a reader can tell a rename
-    // from a genuine sibling.
-    const existing = await readIdeasStore(logDir);
-    const similar = Object.fromEntries(
-      adds
-        .map((add) => [add.slug, similarIdeaSlugs(existing, add.slug)] as const)
-        .filter(([, hits]) => hits.length > 0),
-    );
-    // Same restraint as the slug look-alikes: reported, never refused.
-    const areaHits = Object.fromEntries(
-      adds.map((add) => [add.slug, similarAreas(existing, add.area)] as const).filter(([, hits]) => hits.length > 0),
-    );
-
-    const result = await addIdeasToStore(logDir, adds);
+    // from a genuine sibling. **The comparison happens on the server**, against
+    // every device's ideas and every status including `rejected`, which is the
+    // thing a device-local ledger could not do and the reason this is no longer
+    // computed here from a corpus this machine happens to hold.
+    const result = await addIdeasToStore(adds);
     console.log(
       JSON.stringify(
-        { added: result.added, refused: result.refused, similar, similarAreas: areaHits, meta: { file: result.file } },
+        {
+          added: result.added,
+          refused: result.refused,
+          similar: result.similar,
+          similarAreas: result.similarAreas,
+          meta: { file: result.file },
+        },
         null,
         2,
       ),
@@ -294,7 +296,7 @@ async function run(argv: readonly string[]): Promise<void> {
         'claim needs --by <holder>: a branch, a run id, a person — whatever a second run can read and recognise as not itself',
       );
 
-    const result = await claimIdeasInStore(logDir, [
+    const result = await claimIdeasInStore([
       { slug: flags.slug, by: flags.by, ...(flags.pr === undefined ? {} : { pr: flags.pr }) },
     ]);
     if (json) {
@@ -342,7 +344,7 @@ async function run(argv: readonly string[]): Promise<void> {
     if (flags.thread !== undefined && !isThreadId(flags.thread)) {
       throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
     }
-    const result = await markIdeasInStore(logDir, [
+    const result = await markIdeasInStore([
       {
         slug: flags.slug,
         status,
@@ -374,7 +376,7 @@ async function run(argv: readonly string[]): Promise<void> {
     if (flags.thread !== undefined && !isThreadId(flags.thread))
       throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
 
-    const result = await fileIdeasInStore(logDir, [
+    const result = await fileIdeasInStore([
       { slug: flags.slug, area: flags.area, ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }) },
     ]);
     if (json) {
@@ -398,7 +400,7 @@ async function run(argv: readonly string[]): Promise<void> {
     if (flags.thread !== undefined && !isThreadId(flags.thread))
       throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
 
-    const result = await commentIdeasInStore(logDir, [
+    const result = await commentIdeasInStore([
       { slug: flags.slug, text: flags.text, ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }) },
     ]);
     if (json) {
@@ -420,7 +422,7 @@ async function run(argv: readonly string[]): Promise<void> {
     if (flags.thread !== undefined && !isThreadId(flags.thread))
       throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
 
-    const result = await reconcileIdeaPrs(logDir, {
+    const result = await reconcileIdeaPrs({
       dryRun: Boolean(flags['dry-run']),
       ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }),
     });
@@ -453,7 +455,7 @@ async function run(argv: readonly string[]): Promise<void> {
 
   if (command === 'prompt') {
     if (!flags.slug) throw new Error('prompt needs --slug <slug>');
-    const store = await readIdeasStore(logDir);
+    const store = await readIdeasStore();
     const entry = ideaOf(store, flags.slug);
     if (!entry) {
       // The same refusal every other verb makes on an unknown slug: nothing is
