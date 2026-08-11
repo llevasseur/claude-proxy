@@ -43,8 +43,8 @@ export function OverviewPage() {
   const data = summary.data;
   // What every card below follows until it pins a window of its own.
   const pageWindow = useMemo(() => ({ days, today: data?.digest, model }), [days, data, model]);
-  // The head's counts answer under the selector beside them: the summary meta covers
-  // every model, so a filtered head reads the day out of the filtered window instead.
+  // The summary meta counts every model, so a filtered head reads its day out of the
+  // filtered window instead.
   const headDay = trends.digests.find((x) => x.date === data?.digest.date);
   const counts = model
     ? headDay && { requests: headDay.requestCount, skipped: headDay.skipped }
