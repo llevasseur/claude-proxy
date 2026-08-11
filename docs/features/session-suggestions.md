@@ -153,8 +153,10 @@ or not anyone acted on it. A flag per suggestion records that someone did.
 ### The judgement layer
 
 The rules are deterministic pattern matches over transcripts. They have high recall and **no
-judgment**, so some of what they report is simply wrong: `serial-discovery` fires on reads that were
-genuinely dependent, `redundant-reads` collapses two long paths that share a truncated prefix.
+judgment**, so some of what they report is simply wrong: `redundant-reads` collapses two long paths
+that share a truncated prefix, and `serial-discovery` used to fire on reads that were genuinely
+dependent — a misread the dismissals themselves eventually closed, by naming the reasoning recorded
+between those reads as the evidence the rule was missing.
 Before this layer nothing could record that a finding was *wrong* — `skipped` means the finding was
 right and was deliberately passed over — so a wrongly-fired rule cost attention in every `/improve`
 run forever. An agent now adjudicates a window before `/improve` acts on it.

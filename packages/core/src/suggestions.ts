@@ -400,7 +400,12 @@ interface DiscoveryTurn {
 /**
  * The steps split into turns, with everything that is *not* a tool call left in as a break.
  * A `task`, `done`, or errored result between two turns means the second reacted to what
- * came back; a `decision` is the turn's own reasoning and breaks nothing.
+ * came back — and so does a `decision`.
+ *
+ * A `decision` is the reasoning an assistant message wrote *before* the calls in that same
+ * message, so one standing between two turns records that the agent read the previous result
+ * and reasoned from it — direct evidence against the rule's claim that those calls were
+ * independent by construction.
  */
 function discoveryTurns(nodes: readonly SessionNode[]): (DiscoveryTurn | null)[] {
   const out: (DiscoveryTurn | null)[] = [];
@@ -416,7 +421,6 @@ function discoveryTurns(nodes: readonly SessionNode[]): (DiscoveryTurn | null)[]
       }
       continue;
     }
-    if (node.type === 'decision') continue;
     open = null;
     out.push(null); // a break in the chain
   }
@@ -431,6 +435,10 @@ const isSerialDiscoveryTurn = (turn: DiscoveryTurn | null): boolean =>
  * Read-only calls that each cost their own round-trip — the cheapest latency win. Counted
  * in **turns**, not calls: a turn that issued its reads together is never flagged, however
  * many. A transcript recording no turn boundaries yields nothing here.
+ *
+ * Two shapes are outside it, because neither could have gone out in one turn: a batch issued
+ * in parallel, and a dependent chain, which `discoveryTurns` recognizes by the reasoning
+ * recorded between its steps.
  */
 const serialDiscovery: Rule = (sessions) => {
   const hits: { session: SuggestibleSession; node: SessionNode }[] = [];
@@ -458,7 +466,7 @@ const serialDiscovery: Rule = (sessions) => {
     id: 'serial-discovery',
     severity: 'warn',
     title: 'Read-only calls went out one at a time',
-    detail: `${SUGGESTION_THRESHOLDS.serialRunLength}+ turns in a row each spent their whole round-trip on a single read/grep, with nothing coming back in between that the next one needed — so they were independent by construction. Issuing them as parallel calls in one turn collapses that many round-trips into one, for the same steps and the same context.`,
+    detail: `${SUGGESTION_THRESHOLDS.serialRunLength}+ turns in a row each spent their whole round-trip on a single read/grep, with no reasoning recorded between any of them — so nothing came back that the next one needed, and they were independent by construction. Issuing them as parallel calls in one turn collapses that many round-trips into one, for the same steps and the same context.`,
     evidence: `${runs} serial run${runs === 1 ? '' : 's'} covering ${hits.length} single-call turns across ${sources.length} session${sources.length === 1 ? '' : 's'}`,
     sources,
   };
