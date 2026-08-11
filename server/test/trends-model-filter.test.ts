@@ -7,11 +7,9 @@ import { clearArchiveCache } from '../src/archive.js';
 import { fileSource } from '../src/db/source.js';
 
 /**
- * `/api/trends?models=` narrows a window to the traffic that went to one model.
- * It reads the raw sidecars, which are the only record that carries a model per
- * request — a finalized daily digest counts requests per model but not the
- * tokens or spend behind them, so a day left only in that form cannot be split
- * and is reported as dropped rather than answered with everyone's figures.
+ * `/api/trends?models=` narrows a window to the traffic that went to one model. It
+ * reads the raw sidecars, the only record carrying a model per request, so a day
+ * left only as a finalized digest cannot be split and is reported as dropped.
  */
 
 const OPUS = 'claude-opus-5';
@@ -19,8 +17,8 @@ const SONNET = 'claude-sonnet-5';
 
 /** 11:00 EDT on the given reporting day, which is also that UTC day. */
 const morning = (day: string) => `${day}T15:00:00.000Z`;
-/** 14:00 EDT on the same reporting day — `REPORT_TZ` is behind UTC, so both
- * timestamps have to sit late enough in the UTC day to bucket onto it. */
+/** 14:00 EDT on the same reporting day. `REPORT_TZ` is behind UTC, so both
+ * timestamps sit late enough in the UTC day to bucket onto it. */
 const afternoon = (day: string) => `${day}T18:00:00.000Z`;
 
 const TOKENS = { input: 100, output: 50, cacheRead: 400, cacheCreation: 25, realInput: 525 };

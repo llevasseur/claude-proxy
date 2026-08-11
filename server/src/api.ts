@@ -570,8 +570,8 @@ export interface TrendsResponse {
     archivedDays: number;
     /**
      * Days a model filter had to leave out: on record only as a finalized daily
-     * digest, which holds a request count per model but not the tokens or spend
-     * behind them, so it cannot be split. Always zero without a filter.
+     * digest, which counts requests per model but not the tokens or spend behind
+     * them, so it cannot be split. Always zero without a filter.
      */
     unfilterableDays: number;
   };
@@ -644,8 +644,7 @@ type DayRead =
   | { date: string; kind: 'finalized'; digest: UsageDigest | null }
   | { date: string; kind: 'raw'; sidecars: unknown[]; archived: boolean }
   // Only reachable under a model filter: the day survives as a finalized digest
-  // alone, which no filter can split, so it is dropped and counted rather than
-  // silently answered with the whole day's figures.
+  // alone, which no filter can split, so it is dropped and counted instead.
   | { date: string; kind: 'unfilterable'; onRecord: boolean };
 
 /** Live sidecars bucketed by the reporting day they fall in, malformed ones dropped. */
@@ -673,11 +672,10 @@ function liveSidecarsByDay(sidecars: readonly unknown[]): Map<string, unknown[]>
  * (and cached) whole, falling back to the archive of finalized digests.
  *
  * `models` narrows every day to the requests made against those models. It is
- * applied to the raw sidecars, which are the only record carrying a model per
- * request — so a day left with nothing but its finalized digest is dropped and
- * counted in `meta.unfilterableDays` rather than answered unfiltered. A day that
- * captured traffic but none of it against these models stays in the window as a
- * zero, since "this model did nothing that day" is a reading, not a gap.
+ * applied to the raw sidecars, the only record carrying a model per request, so a
+ * day left with nothing but its finalized digest is dropped and counted in
+ * `meta.unfilterableDays`. A day that captured traffic but none of it against these
+ * models stays in the window as a zero.
  */
 export async function buildTrends(
   logDir: string,

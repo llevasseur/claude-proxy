@@ -152,9 +152,8 @@ export interface ComputeDigestOptions {
    */
   classifierHashes?: ReadonlySet<string>;
   /**
-   * Restrict the day to requests made against these models, so a digest can be
-   * read for one model rather than the whole day. Omitted (or empty) counts
-   * every model, which is what every caller outside the model filter wants.
+   * Restrict the day to requests made against these models. Omitted (or empty)
+   * counts every model.
    *
    * A request left out this way is not malformed, so it is counted in neither
    * `skipped` nor `requestCount` — the digest reads as though the day held only

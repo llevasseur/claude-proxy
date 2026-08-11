@@ -8,9 +8,8 @@ export interface ModelOption {
 }
 
 /**
- * Every model a window's digests recorded, busiest first. Read off `models`,
- * which each digest carries whether it was computed from raw sidecars or read
- * back from a finalized day — so the picker offers the same list either way.
+ * Every model a window's digests recorded, busiest first. Read off `models`, which
+ * a digest carries whether it was computed from sidecars or read back finalized.
  */
 export function modelsIn(digests: readonly UsageDigest[]): ModelOption[] {
   const counts = new Map<string, number>();
@@ -26,19 +25,16 @@ export function modelsIn(digests: readonly UsageDigest[]): ModelOption[] {
 const DATED = /-\d{8}$/;
 
 /**
- * A model id at label length: the vendor prefix and the release date carry no
- * information a picker of Claude models needs, and dropping them is what lets
- * several sit in one legend. Anything that is not shaped that way is left alone,
- * since a name this does not recognise is better shown whole than truncated.
+ * A model id at label length: vendor prefix and release date dropped, so several
+ * sit in one legend. An id shaped some other way is left whole rather than cut.
  */
 export function shortModelName(id: string): string {
   return id.replace(/^claude-/, '').replace(DATED, '') || id;
 }
 
 /**
- * Line colours for model series, in the order models are added. Five, because a
- * sixth would have to repeat one of the metric colours the chart already uses
- * for its own line — the picker stops offering at that point instead.
+ * Line colours for model series, in the order models are added. Five: a sixth would
+ * have to repeat a metric colour the chart already spends on its own line.
  */
 export const MODEL_SERIES_COLORS: readonly string[] = [
   'var(--accent)',
@@ -56,11 +52,8 @@ export const modelColor = (index: number): string =>
   MODEL_SERIES_COLORS[index % MODEL_SERIES_COLORS.length] ?? 'var(--accent)';
 
 /**
- * The whole window, or one model of it. A select rather than a segmented control:
- * model ids are long and there is no fixed number of them.
- *
- * Renders nothing when the window holds a single model — a filter offering only
- * the answer already on screen is chrome, not a control.
+ * The whole window, or one model of it. Renders nothing when the window holds a
+ * single model and none is selected.
  */
 export function ModelFilter({
   value,
@@ -90,8 +83,8 @@ export function ModelFilter({
             {shortModelName(m.id)}
           </option>
         ))}
-        {/* A model selected in a wider window, then kept while the window narrowed
-            past its last request: listed so the select still shows what it filters by. */}
+        {/* A model kept while the window narrowed past its last request, listed so
+            the select still shows what it filters by. */}
         {value !== null && !options.some((m) => m.id === value) && (
           <option value={value}>{shortModelName(value)} (none in window)</option>
         )}

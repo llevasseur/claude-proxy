@@ -26,10 +26,8 @@ const CHART_HEIGHT = 340;
 const BY_DAY_COLUMNS: readonly SkeletonColumn[] = [{}, { className: 'num' }];
 
 /**
- * A model's column in the chart rows. recharts reads a `dataKey` holding a dot as
- * a path into the row, so the id is reduced to word characters rather than used
- * as it stands — the mapping only has to be stable and collision-free within one
- * page, which a per-character substitution is.
+ * A model's column in the chart rows. recharts reads a `dataKey` holding a dot as a
+ * path into the row, so the id is reduced to word characters rather than used whole.
  */
 const seriesKey = (id: string) => `m_${id.replace(/\W/g, '_')}`;
 
@@ -38,9 +36,8 @@ export function TrendDetailPage() {
   const { metric } = useParams({ from: '/trends/$metric' });
   const def = findMetric(metric);
   const [days, selectDays, isSwitching] = useTransitionState(30);
-  // Models drawn beside the all-models line, in the order they were added — which
-  // is the order their colours follow, so removing one does not recolour the rest
-  // above it.
+  // Models drawn beside the all-models line, in the order they were added — the
+  // order their colours follow, so removing one does not recolour the rest above it.
   const [selected, setSelected] = useState<readonly string[]>([]);
   const models = useModelOptions(days);
   const query = useQuery({
@@ -81,10 +78,9 @@ export function TrendDetailPage() {
     );
   }
 
-  // One entry per added model: where its line goes, what colour it is, and the
-  // metric's value on each day that model was used. A day the model missed is
-  // left out of the row rather than written as a zero, so the line breaks over it
-  // instead of diving to the floor.
+  // One entry per added model: where its line goes, its colour, and the metric's
+  // value on each day it was used. A day the model missed is left out of the row
+  // rather than zeroed, so the line breaks over it instead of diving to the floor.
   const modelSeries = selected.map((id, i) => ({
     id,
     key: seriesKey(id),
@@ -104,7 +100,6 @@ export function TrendDetailPage() {
     return row;
   });
   const series = [
-    // Named plainly until there is something to distinguish it from.
     { dataKey: 'value', name: modelSeries.length ? `${def.label} (all models)` : def.label, color: def.color },
     ...modelSeries.map((s) => ({ dataKey: s.key, name: shortModelName(s.id), color: s.color })),
   ];
@@ -143,8 +138,7 @@ export function TrendDetailPage() {
             )
           )}
         </div>
-        {/* Which models are drawn sits beside how far back, for the same reason it
-            does on the Overview: both answer "what am I looking at". */}
+        {/* Which models are drawn, beside how far back. */}
         <div className='pagehead-controls'>
           <ModelSeriesToggle options={models} selected={selected} onToggle={toggleModel} busy={busy} />
           <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label='Trend window' busy={busy} />

@@ -52,9 +52,8 @@
   }
 
   /* Model series toggle: which models are drawn beside a chart's own line. Not a
-   * `.segmented`, because these are independent switches rather than one choice —
-   * so each chip keeps its own border and its own pressed state, and carries the
-   * colour of the line it turns on. */
+   * `.segmented` — these are independent switches, so each chip keeps its own
+   * border and pressed state, and carries the colour of the line it turns on. */
   .model-toggle {
     display: inline-flex;
     align-items: center;

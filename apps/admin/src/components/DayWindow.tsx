@@ -9,9 +9,8 @@ import { ModelFilter, type ModelOption, modelsIn } from './ModelPicker';
 import { DAY_WINDOWS, Segmented, type SegmentedOption } from './Segmented';
 
 /**
- * The query key every trends read shares: window, then model. `null` for the
- * unfiltered window is written out rather than left off, so a filtered read can
- * never collide with the unfiltered one under a shorter key.
+ * The query key every trends read shares: window, then model. `null` is written out
+ * rather than left off, so a filtered read cannot collide with the unfiltered one.
  */
 export const trendsKey = (days: number, model: string | null) => ['trends', days, model] as const;
 
@@ -22,11 +21,7 @@ export const trendsKey = (days: number, model: string | null) => ['trends', days
 export interface DayWindow {
   days: number;
   today?: UsageDigest;
-  /**
-   * The model every series under this head is narrowed to, or null for all of
-   * them. Cards read it alongside `days`, so the page head's picker moves the
-   * plots on the page without each of them owning a control.
-   */
+  /** The model every series under this head is narrowed to, or null for all of them. */
   model?: string | null;
 }
 
@@ -48,10 +43,6 @@ export function usePageDayWindow(): DayWindow {
  * The right-hand cluster of a page head: the stream's health, then what is being
  * shown, then how far back. `live` is optional — a page with no stream still gets
  * the picker; so is the model filter, which only appears once `models` is passed.
- *
- * The two pickers sit in one cluster deliberately. They select the same thing —
- * which slice of the corpus the page is drawing — so a reader looking for "what
- * am I looking at" finds both in the place they already go for the window.
  */
 export function DayWindowControls({
   days,
@@ -87,11 +78,9 @@ export function DayWindowControls({
 }
 
 /**
- * The models a window captured, for a picker to offer. Deliberately read from the
- * *unfiltered* window: the list has to keep offering the models a filter is not
- * currently showing, or selecting one would empty the control that selected it.
- * The key is the one an unfiltered page already uses, so it costs no extra fetch
- * until something is actually filtered.
+ * The models a window captured, for a picker to offer. Read from the *unfiltered*
+ * window: a list built from the filtered one would empty the control that filtered
+ * it. Shares the key an unfiltered page already uses, so it costs no extra fetch.
  */
 export function useModelOptions(days: number): ModelOption[] {
   const query = useQuery({
@@ -117,11 +106,7 @@ export function useCardWindow(): {
   /** True while the re-render the switch triggered is still in flight. */
   switching: boolean;
   today?: UsageDigest;
-  /**
-   * The page head's model filter. A card pins its own *window*, never its own
-   * model — the head's selector speaks for every plot on the page, which is what
-   * lets one control say what the whole page is showing.
-   */
+  /** The page head's model filter. A card pins its own *window*, never its own model. */
   model: string | null;
 } {
   const page = usePageDayWindow();
@@ -172,10 +157,8 @@ export function withLiveToday(digests: UsageDigest[], today: UsageDigest): Usage
  * page's window costs no extra fetch.
  *
  * Today is spliced in only for the unfiltered window: the live digest comes from
- * the summary stream, which reports the day across every model, so splicing it
- * into a filtered series would put the whole day's figures on one model's line.
- * A filtered series is a fetch behind on the day in progress instead, which is
- * the honest of the two.
+ * the summary stream, which reports the day across every model, so a filtered
+ * series is a fetch behind on the day in progress rather than wrong about it.
  */
 export function useWindowDigests(
   days: number,
@@ -210,11 +193,7 @@ export function useWindowDigests(
   };
 }
 
-/**
- * What a filtered window had to leave out, said on the page rather than left as a
- * shorter line. Renders nothing when nothing was dropped, which is every
- * unfiltered window and most filtered ones.
- */
+/** What a filtered window had to leave out. Renders nothing when nothing was dropped. */
 export function UnfilterableNote({ days }: { days: number }) {
   if (days <= 0) return null;
   return (

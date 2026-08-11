@@ -431,9 +431,8 @@ async function parseDays(raw: string | null, now: Date = new Date()): Promise<nu
 }
 
 /**
- * The `?models=` filter: a comma-separated list of model ids, or nothing at all.
- * An absent, blank, or all-blank list reads as no filter rather than as a filter
- * matching nothing, so a cleared picker answers the whole window again.
+ * The `?models=` filter: a comma-separated list of model ids, or nothing at all. An
+ * absent, blank, or all-blank list reads as no filter rather than one matching nothing.
  */
 function parseModels(raw: string | null): string[] | undefined {
   const names = (raw ?? '')

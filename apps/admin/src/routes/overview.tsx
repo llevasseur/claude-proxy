@@ -28,8 +28,8 @@ import type { NavEntry } from './nav';
 
 export function OverviewPage() {
   const [days, selectDays, isSwitching] = useTransitionState(7);
-  // What the page is showing, beside how far back it shows it. Every plot here
-  // reads both off the same context, so this one control moves the whole page.
+  // What the page is showing, beside how far back. Every plot here reads both off
+  // the same context, so this one control moves the whole page.
   const [model, selectModel, isModelSwitching] = useTransitionState<string | null>(null);
   const summary = useQuery({ queryKey: ['summary'], queryFn: () => getSummary() });
   const models = useModelOptions(days);
@@ -171,10 +171,9 @@ function OverviewSkeleton({ days }: { days: number }) {
 }
 
 /**
- * Everything under the head. `model` narrows the series to one model, and with it
- * the day the tiles headline — the summary stream reports today across every
- * model, so a filtered page reads its own day out of the filtered window rather
- * than pairing one model's chart with the whole day's number.
+ * Everything under the head. `model` narrows the series and the day the tiles
+ * headline — the summary stream reports today across every model, so a filtered
+ * page reads its own day out of the filtered window instead.
  */
 function OverviewBody({
   data,
