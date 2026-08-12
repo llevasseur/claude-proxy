@@ -1,9 +1,25 @@
 /**
  * Which sessions touched which pull request.
  *
- * Nothing records the link, so it is recovered from the transcripts: a session names
- * either the PR's branch or its number. One pass over `logs/sessions/`, each
- * transcript tested against every PR.
+ * **A session records the pull request it opened**, so the usual answer is a join rather
+ * than a search: the proxy writes the url its `/pr` run was handed into the thread's
+ * `.state.json`, ingest carries it into `session.pr_url`, and {@link readPrSessions} reads
+ * that column first. On the substrate that is one small query.
+ *
+ * The transcript scan is unchanged — one pass over `logs/sessions/`, each transcript tested
+ * against every pull request — but it now runs **only for the pull requests no session
+ * recorded**: everything opened before the record existed, and anything opened outside a
+ * captured run. Each match still says which signal found it, `recorded` included.
+ *
+ * Two consequences, since they are the price of the trade:
+ *
+ * - The scan disappears entirely only once every displayed pull request is named. The record
+ *   is **forward-only** — nothing backfills it, since inventing a record out of the textual
+ *   evidence it replaces is the very thing this ends — so older pull requests keep the scan
+ *   alive, and the single-slot cache below is kept for them.
+ * - A recorded pull request lists the session that **opened** it, not every session that
+ *   mentioned it. A review run that only quoted the number no longer appears once the opener
+ *   is on file.
  */
 
 import { readdir, readFile, stat } from 'node:fs/promises';
@@ -13,8 +29,10 @@ import {
   type PullRequestRow,
   parseSessionTranscript,
   prMatcher,
+  prUrlKey,
   sessionDisplayName,
 } from '@claude-proxy/core';
+import { fileSource, type SidecarSource } from './db/source.js';
 import { resolveSessionsDir, SESSION_FILE_RE } from './sessions.js';
 
 /** Keyed by PR number; only PRs with at least one session appear. */
@@ -34,22 +52,118 @@ async function inBatches<T>(items: readonly T[], limit: number, each: (item: T) 
 
 let cached: { key: string; index: PrSessionIndex } | null = null;
 
+/** Newest first, ties broken by thread id — the order the drawer lists links in. */
+function sortLinks(index: PrSessionIndex): PrSessionIndex {
+  for (const links of Object.values(index)) {
+    links.sort((a, b) => b.modified.localeCompare(a.modified) || a.threadId.localeCompare(b.threadId));
+  }
+  return index;
+}
+
+/**
+ * The recorded links among `prs`, PR number → the threads that opened it.
+ *
+ * A recorded url is compared by `owner/name#number`, never by number alone: the url is
+ * whatever the session's own command printed, and a run that opened a pull request in
+ * another repository must not be read as this one's.
+ */
+function recordedFor(prs: readonly PullRequestRow[], links: Map<string, string>): Map<number, string[]> {
+  const byKey = new Map<string, number>();
+  for (const pr of prs) {
+    const key = prUrlKey(pr.url);
+    // A row `gh` gave no url for has no key to match on, so it falls through to the scan.
+    if (key !== null && !byKey.has(key)) byKey.set(key, pr.number);
+  }
+  if (byKey.size === 0) return new Map();
+
+  const out = new Map<number, string[]>();
+  for (const [threadId, url] of links) {
+    const key = prUrlKey(url);
+    const number = key === null ? undefined : byKey.get(key);
+    if (number === undefined) continue;
+    const existing = out.get(number);
+    if (existing) existing.push(threadId);
+    else out.set(number, [threadId]);
+  }
+  return out;
+}
+
+/**
+ * Name the recorded threads, through the same per-thread read the session routes use.
+ *
+ * `readSession` rather than a listing: it is a handful of threads, both backings answer it
+ * identically (the substrate re-parses a row its watermark says is behind the file), and a
+ * whole-directory listing on the file backing would re-introduce the very cost this path
+ * exists to avoid. A thread whose transcript has rotated away is dropped — there is
+ * nothing left to link to.
+ */
+async function nameRecorded(
+  logDir: string,
+  recorded: Map<number, string[]>,
+  source: SidecarSource,
+): Promise<PrSessionIndex> {
+  const wanted = [...new Set([...recorded.values()].flat())];
+  const named = new Map<string, { title: string; modified: string }>();
+  await Promise.all(
+    wanted.map(async (threadId) => {
+      try {
+        const detail = await source.readSession(logDir, threadId);
+        named.set(threadId, { title: sessionDisplayName(detail.meta), modified: detail.modified });
+      } catch {
+        // no transcript on disk for a thread that recorded a link
+      }
+    }),
+  );
+
+  const index: PrSessionIndex = {};
+  for (const [number, threadIds] of recorded) {
+    const links = threadIds.flatMap((threadId) => {
+      const row = named.get(threadId);
+      return row ? [{ threadId, title: row.title, modified: row.modified, via: ['recorded' as const] }] : [];
+    });
+    if (links.length) index[number] = links;
+  }
+  return index;
+}
+
 /**
  * Index the transcripts under `logDir` against `prs`. A missing `sessions/` directory
  * is an empty index, not an error.
  *
- * `cacheKey` reuses the last index built under the same key. The scan reads every
- * transcript on disk, so a polling page must not repeat it per request.
+ * `cacheKey` reuses the last *scanned* index built under the same key. Recorded links are
+ * re-read every call, because reading them is cheap and a run that opens a pull request
+ * should appear beside it without waiting for a cache key to move.
  */
 export async function readPrSessions(
   logDir: string,
   prs: readonly PullRequestRow[],
   cacheKey: string | null = null,
+  source: SidecarSource = fileSource,
 ): Promise<PrSessionIndex> {
-  if (cacheKey !== null && cached?.key === cacheKey) return cached.index;
-  const index = await buildIndex(logDir, prs);
-  if (cacheKey !== null) cached = { key: cacheKey, index };
-  return index;
+  if (prs.length === 0) return {};
+
+  const recorded = recordedFor(prs, await source.readPrLinks(logDir));
+  const index = await nameRecorded(logDir, recorded, source);
+
+  // Only what no column named. Once that is nothing, the directory is never read.
+  const unnamed = prs.filter((pr) => !recorded.has(pr.number));
+  if (unnamed.length === 0) return sortLinks(index);
+
+  // The key carries which pull requests were scanned, not just the fetch they came from:
+  // a link recorded since the last fetch shrinks this set without moving the caller's key.
+  const scanKey = cacheKey === null ? null : `${cacheKey}|${unnamed.map((pr) => pr.number).join(',')}`;
+  let scanned: PrSessionIndex;
+  if (scanKey !== null && cached?.key === scanKey) {
+    scanned = cached.index;
+  } else {
+    scanned = await buildIndex(logDir, unnamed);
+    if (scanKey !== null) cached = { key: scanKey, index: scanned };
+  }
+
+  // Disjoint by construction — a scanned pull request is one nothing recorded — so the
+  // halves are concatenated rather than merged per thread.
+  for (const [number, links] of Object.entries(scanned)) index[Number(number)] = links;
+  return sortLinks(index);
 }
 
 async function buildIndex(logDir: string, prs: readonly PullRequestRow[]): Promise<PrSessionIndex> {
@@ -96,8 +210,5 @@ async function buildIndex(logDir: string, prs: readonly PullRequestRow[]): Promi
     },
   );
 
-  for (const links of Object.values(index)) {
-    links.sort((a, b) => b.modified.localeCompare(a.modified) || a.threadId.localeCompare(b.threadId));
-  }
-  return index;
+  return sortLinks(index);
 }

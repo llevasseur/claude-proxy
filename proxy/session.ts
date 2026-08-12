@@ -84,6 +84,11 @@ interface ThreadEntry {
   agentType: string | null;
   /** Whether the parentage above already reached the transcript. */
   linked: boolean;
+  /**
+   * The pull request this run opened, as its own command reported the url. Null on a
+   * thread that opened none — which is nearly all of them.
+   */
+  pr: string | null;
   model?: string;
   sessionId?: string;
   startedAt?: string;
@@ -454,6 +459,9 @@ function readState(statePath: string): ThreadEntry | null {
       spawnIndex: typeof s.spawnIndex === 'number' ? s.spawnIndex : null,
       agentType: (s.agentType as string | null) ?? null,
       linked: (s.linked as boolean) ?? false,
+      // Absent on state written before the link was recorded; that thread stays one the
+      // transcript scan has to speak for.
+      pr: (s.pr as string | null) ?? null,
     };
   } catch {
     return null;
@@ -477,6 +485,7 @@ function writeState(statePath: string, entry: StoredState): void {
         spawnIndex: entry.spawnIndex ?? null,
         agentType: entry.agentType ?? null,
         linked: entry.linked ?? false,
+        pr: entry.pr ?? null,
       }),
     );
   } catch {
@@ -772,6 +781,52 @@ function claimSpawn(dir: string, threadId: string, entry: ThreadEntry): void {
   }
 }
 
+// --- The pull request a run opened ------------------------------------------
+//
+// The run that opens a PR is told the url by the command that opened it, so it is recorded
+// here rather than recovered later by reading every transcript in `logs/sessions/`.
+//
+// It stays an observation: the url is copied out of traffic the proxy was already reading,
+// and it goes to the `.state.json` sidecar rather than into the transcript, which no
+// reader's byte-for-byte comparison depends on.
+
+/** A url naming a pull request, on any host — an Enterprise install is not `github.com`. */
+const PR_URL_RE = /https?:\/\/[\w.-]+(?:\/[\w.-]+)+\/pulls?\/\d+/g;
+
+/**
+ * A command that opens or updates a pull request. The url on its own is **not** evidence
+ * — a run that merely reads or reviews a PR quotes one just as often — so a url counts
+ * only when it came back from one of these.
+ */
+const PR_COMMAND_RE = /gh\s+pr\s+(?:create|edit)\b|my-command-tools\s+pr\b|gh\s+api\b[^\n]*\/pulls\b/;
+
+/**
+ * The pull request a run opened, out of the results its own commands returned, or null.
+ *
+ * Calls are paired to their results rather than matched as loose text: a `tool_use` block
+ * reaches the wire in the turn *after* it ran, alongside the `tool_result` it produced, so
+ * one pass over the delta has both halves in hand. The last url wins.
+ */
+export function openedPullRequest(delta: unknown): string | null {
+  const opening = new Set<string>();
+  let url: string | null = null;
+  for (const msg of asArrayOf<WireMessage>(delta)) {
+    for (const b of asBlocks(msg?.content)) {
+      if (b?.type === 'tool_use') {
+        const input = b.input as Record<string, unknown> | null | undefined;
+        const command = typeof input?.command === 'string' ? input.command : '';
+        if (b.id && PR_COMMAND_RE.test(command)) opening.add(b.id);
+        continue;
+      }
+      if (b?.type !== 'tool_result' || b.is_error || !b.tool_use_id || !opening.has(b.tool_use_id)) continue;
+      const text = resultText(b);
+      PR_URL_RE.lastIndex = 0;
+      for (let m = PR_URL_RE.exec(text); m !== null; m = PR_URL_RE.exec(text)) url = m[0];
+    }
+  }
+  return url;
+}
+
 /** One observed request: the body, who sent it, and the reply it drew. */
 export interface AppendSessionInput {
   logDir: string;
@@ -822,6 +877,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
         spawnIndex: null,
         agentType: null,
         linked: false,
+        pr: null,
       };
       threads.set(threadId, entry);
     }
@@ -861,7 +917,13 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
 
     const total = messages.length;
     if (total <= entry.count) return; // no growth — retry or duplicate
-    const entries = distillMessagesEntries(messages.slice(entry.count));
+    const delta = messages.slice(entry.count);
+    const entries = distillMessagesEntries(delta);
+
+    // Recorded before either write path below, so the url rides whichever `writeState`
+    // this sighting reaches — including the flush that confirms an unbuffered thread.
+    const opened = openedPullRequest(delta);
+    if (opened) entry.pr = opened;
 
     if (entry.started) {
       if (entries.length) {

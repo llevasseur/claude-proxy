@@ -33,6 +33,7 @@ import {
   extractTitle,
   firstUserText,
   isTitleRequest,
+  openedPullRequest,
   rootPrompt,
   sessionsDir,
   threadIdFor,
@@ -1012,6 +1013,78 @@ test('appendSession: a spawn seen before its child rides into the child’s head
   assert.match(out, /- agent: general-purpose/);
   // In the header block, before the first task — not appended after it.
   assert.ok(out.indexOf('- parent:') < out.indexOf('## Task:'));
+
+  fs.rmSync(logDir, { recursive: true, force: true });
+});
+
+// --- The pull request a run opened -----------------------------------------
+
+/** One turn: a tool call and the result it came back with. */
+function toolTurn(command: string, result: string, isError = false): WireMessage[] {
+  return [
+    { role: 'assistant', content: [{ type: 'tool_use', id: 'tu_1', name: 'Bash', input: { command } }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: result, is_error: isError }] },
+  ];
+}
+
+test('openedPullRequest: the url counts only when a PR-opening command returned it', () => {
+  const url = 'https://github.com/llevasseur/claude-proxy/pull/200';
+
+  // The two forms a run actually opens one with.
+  assert.equal(openedPullRequest(toolTurn('my-command-tools pr --title x --body -', `{"url":"${url}"}`)), url);
+  assert.equal(openedPullRequest(toolTurn('gh pr create --fill', `${url}\n`)), url);
+  // And the REST fallback this repo documents for the wrong-identity case.
+  assert.equal(openedPullRequest(toolTurn('gh api -X POST repos/o/r/pulls -f title=x', `{"html_url":"${url}"}`)), url);
+
+  // A run that merely read a PR quotes the url just as often — that is not a record.
+  assert.equal(openedPullRequest(toolTurn('gh pr view 200 --json url', `{"url":"${url}"}`)), null);
+  assert.equal(openedPullRequest(toolTurn('git log --oneline', `merged ${url}`)), null);
+  // A url in the agent's own prose is not one a command returned either.
+  assert.equal(openedPullRequest([{ role: 'assistant', content: [{ type: 'text', text: `opened ${url}` }] }]), null);
+  // A failed open opened nothing.
+  assert.equal(openedPullRequest(toolTurn('gh pr create --fill', `already exists: ${url}`, true)), null);
+
+  // An `edit` after a `create` names the same PR; the latest wins either way.
+  const second = 'https://github.com/llevasseur/claude-proxy/pull/201';
+  assert.equal(
+    openedPullRequest([...toolTurn('gh pr create --fill', url), ...toolTurn('gh pr edit --body x', second)]),
+    second,
+  );
+
+  assert.equal(openedPullRequest(undefined), null);
+});
+
+test('appendSession: the PR a run opened is recorded in its state sidecar', () => {
+  _resetThreads();
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sess-pr-'));
+  const dir = sessionsDir(logDir);
+  const url = 'https://github.com/llevasseur/claude-proxy/pull/200';
+
+  const tid = confirmThread(logDir, 'sess-PR', 'ship the thing');
+  const headers = { 'x-claude-code-session-id': 'sess-PR' };
+  const first = userText('ship the thing');
+  appendSession({
+    logDir,
+    reqPath: '/v1/messages',
+    reqJson: {
+      model: 'claude-opus-4-8',
+      messages: [
+        first,
+        { role: 'assistant', content: [{ type: 'text', text: 'on it' }] },
+        ...toolTurn('my-command-tools pr --title x --body -', `{"url":"${url}"}`),
+      ],
+    },
+    headers,
+  });
+
+  const state = JSON.parse(fs.readFileSync(path.join(dir, `${tid}.state.json`), 'utf8'));
+  assert.equal(state.pr, url);
+  // The transcript is untouched — the record is a sidecar field, not a new line.
+  assert.equal(fs.readFileSync(path.join(dir, `${tid}.md`), 'utf8').includes(url), false);
+
+  // A thread that opened nothing records null, which readers treat as "no record".
+  const plain = confirmThread(logDir, 'sess-PR2', 'just read something');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, `${plain}.state.json`), 'utf8')).pr, null);
 
   fs.rmSync(logDir, { recursive: true, force: true });
 });

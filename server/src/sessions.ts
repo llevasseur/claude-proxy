@@ -113,6 +113,44 @@ export async function readRootPrompts(logDir: string, threadIds: readonly string
   return out;
 }
 
+/** A `.state.json` sidecar's own name, the one file per thread that records these facts. */
+const STATE_FILE_RE = /^([0-9a-f]{16})\.state\.json$/;
+
+/**
+ * Every thread that recorded a pull request it opened, thread id → url — the same `pr`
+ * field the substrate ingests into `session.pr_url`, read off the sidecars directly.
+ *
+ * Read wholesale rather than by id, because the question this answers is the reverse one:
+ * which threads name *this* pull request. That is a directory of small JSON sidecars, not
+ * the megabytes of transcript `server/src/pr-sessions.ts` reads when nothing recorded a
+ * link. A thread with no sidecar, a torn one, or one written before the proxy recorded the
+ * field is simply absent.
+ */
+export async function readPrLinks(logDir: string): Promise<Map<string, string>> {
+  const dir = resolveSessionsDir(logDir);
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return new Map(); // no `sessions/` yet
+  }
+
+  const out = new Map<string, string>();
+  await Promise.all(
+    names.map(async (name) => {
+      const threadId = STATE_FILE_RE.exec(name)?.[1];
+      if (!threadId) return;
+      try {
+        const state = JSON.parse(await readFile(path.join(dir, name), 'utf8')) as { pr?: unknown };
+        if (typeof state.pr === 'string' && state.pr) out.set(threadId, state.pr);
+      } catch {
+        // unreadable or torn sidecar — the thread just has no link on record
+      }
+    }),
+  );
+  return out;
+}
+
 /**
  * The per-node argument fingerprints off a transcript's `.nodes.jsonl`, or none when
  * the sidecar is absent or predates the field.

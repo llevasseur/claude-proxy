@@ -109,9 +109,33 @@ degrades to an empty value and only a row with no usable number is dropped.
 
 ## Linking sessions to a PR
 
-Nothing records which session produced which PR, so the link is **recovered** from the
-transcripts, and the drawer says which signal it came from rather than asserting a fact:
+**A session records the pull request it opened**, so the usual answer is a join. The proxy
+watches for a `tool_result` that came back from a PR-opening command — `gh pr create`,
+`gh pr edit`, `my-command-tools pr`, or the `gh api …/pulls` REST fallback — and writes the
+url it printed into that thread's `.state.json` sidecar. Ingest carries it into
+`session.pr_url`, beside the `root_prompt` it already takes from the same file, and
+`readPrSessions` reads that column first.
 
+Three things about the recording are deliberate:
+
+- **The call is paired to its result**, never matched as loose text. A run that merely reads
+  or reviews a PR quotes the url just as often, so a url counts only when it came back from
+  a command that opens one. A failed open records nothing.
+- **It goes to the sidecar, not the transcript.** The record is a derived *pointer* — ADR
+  0004's rule that `logs/` is the source of truth is untouched, and
+  `rm logs/claude-proxy.db && pnpm --filter server ingest` refills the column from the
+  sidecars.
+- **A recorded url is compared by `owner/name#number`**, so a run that opened
+  `other/repo#14` is not read as this checkout's #14. Host is excluded from that key,
+  because the same repository is reachable as `github.com` and as a device's ssh alias.
+
+The **text scan stays**, unchanged, for a pull request no column names — everything opened
+before the record existed, and anything opened outside a captured run. Each match still
+says which signal found it, and the drawer prints all three:
+
+- **recorded** — the session's own record of the PR it opened. A fact, not evidence, which
+  is why it never appears beside the other two: a PR some session recorded is not scanned
+  for text at all.
 - **branch** — the transcript names the PR's head branch. A session that built a PR names
   its own branch constantly, including the slash-flattened `feat-x` spelling a worktree
   directory uses. Branches shorter than four characters are too generic to match on, and
@@ -122,8 +146,26 @@ transcripts, and the drawer says which signal it came from rather than asserting
   tied PR #1 to four unrelated sessions and PR #10 to a transcript asking about "message
   #10". A url needs no such help and matches at any size.
 
-Transcripts hold roughly today only, so an empty list means no transcript on record —
-not that nobody worked on it. The drawer says so.
+Transcripts hold roughly today only, so an empty list means nothing on record — no session
+recorded the PR and no surviving transcript mentions it — not that nobody worked on it. The
+drawer says so.
+
+### What the record costs, and what it does not yet buy
+
+The scan measured **14.67s** against this device's corpus, answering again in 14.31s and
+only then 0.44s once the single-slot cache key held; the page re-requests the 677 KB payload
+every 30 seconds, and the server is single-threaded, so a cold `/api/health` beside it
+answered in 7.0–9.1s against 37ms warm. Two consequences follow from replacing the *primary*
+path rather than the whole path:
+
+- **The record is forward-only and nothing backfills it.** Deriving a record from the
+  textual evidence it replaces would be exactly the conflation this change exists to end, so
+  a repository's older pull requests keep the scan alive and the single-slot cache is kept
+  for them. The scan disappears entirely — and the measured 14s with it — only once every
+  displayed PR is named. Whether to retire the cache after that is not settled here.
+- **A recorded PR lists the session that opened it, not every session that mentioned it.**
+  That is the point of a record, and it is also a loss: a review or follow-up run that only
+  quoted the number stops appearing once the opener is on file.
 
 ## Moving `main`
 
@@ -191,8 +233,13 @@ fatal.
 - `packages/core/src/main-history.ts` — lanes, divergence points and the pin rule, pure.
 - `server/src/main-history.ts` — every `git` and `gh` call behind the above.
 - `server/src/github.ts` — the `gh` reader and its cache.
-- `server/src/pr-sessions.ts` — one pass over `logs/sessions/`, every transcript read once
-  and tested against every PR.
+- `server/src/pr-sessions.ts` — the recorded column first, then one pass over
+  `logs/sessions/` for whatever it did not name, every transcript read once and tested
+  against every PR still unnamed.
+- `proxy/session.ts` — `openedPullRequest`, which reads the url off a PR-opening command's
+  own result, and the `pr` field of the `.state.json` sidecar it lands in.
+- `server/src/sessions.ts` / `server/src/db/source.ts` — `readPrLinks`, the recorded links
+  read off the sidecars on one backing and out of `session.pr_url` on the other.
 
 ## Open questions
 
@@ -200,5 +247,6 @@ fatal.
   about what landed, not about what is passing.
 - Hidden lines accumulate. Nothing prunes `refs/main-history/*`, by design — but a
   repository slid back and forth often will grow a long list of pins.
-- The session link is textual evidence, not a record. Writing the PR url into a session's
-  `.state.json` at `/pr` time would make it a fact.
+- Every PR opened before the record existed still costs the transcript scan, and nothing
+  backfills them — see [what the record costs](#what-the-record-costs-and-what-it-does-not-yet-buy).
+  Retiring the single-slot cache waits on that.

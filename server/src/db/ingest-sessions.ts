@@ -52,8 +52,8 @@ function prepare(db: DatabaseSync): SessionStatements {
         tasks, decisions, tools, errors,
         first_task, title, subtitle, derived_title,
         bytes, modified, md_path, root_prompt,
-        parent_thread_id, spawn_index, spawn_agent_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        parent_thread_id, spawn_index, spawn_agent_type, pr_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         model = excluded.model, session_id = excluded.session_id, started = excluded.started,
         tasks = excluded.tasks, decisions = excluded.decisions, tools = excluded.tools,
@@ -61,7 +61,8 @@ function prepare(db: DatabaseSync): SessionStatements {
         subtitle = excluded.subtitle, derived_title = excluded.derived_title,
         bytes = excluded.bytes, modified = excluded.modified, md_path = excluded.md_path,
         root_prompt = excluded.root_prompt, parent_thread_id = excluded.parent_thread_id,
-        spawn_index = excluded.spawn_index, spawn_agent_type = excluded.spawn_agent_type
+        spawn_index = excluded.spawn_index, spawn_agent_type = excluded.spawn_agent_type,
+        pr_url = excluded.pr_url
     `),
     insertNode: db.prepare(`
       INSERT INTO session_node (thread_id, idx, type, text, tool, task, interruption, interrupted, message, turn, args_hash)
@@ -86,18 +87,30 @@ interface ParsedSession {
   bytes: number;
   modified: string;
   rootPrompt: string | null;
+  /** The pull request the run recorded having opened, off the same sidecar. */
+  prUrl: string | null;
   nodeTexts: Record<number, string>;
   /** Per-node argument fingerprints off the same sidecar — see `SessionNode.argsHash`. */
   nodeHashes: Record<number, string>;
 }
 
-/** The untruncated opening prompt, mirroring `readRootPrompt` in `command-runs.ts`. */
-async function readRootPrompt(dir: string, threadId: string): Promise<string | null> {
+/**
+ * The two facts the `.state.json` sidecar records about a thread: its untruncated opening
+ * prompt (mirroring `readRootPrompt` in `command-runs.ts`) and the pull request it opened.
+ * One read for both — a thread that has either has the same file to open.
+ */
+async function readSidecarFacts(dir: string, threadId: string): Promise<{ root: string | null; pr: string | null }> {
   try {
-    const state = JSON.parse(await readFile(path.join(dir, `${threadId}.state.json`), 'utf8')) as { root?: unknown };
-    return typeof state.root === 'string' ? state.root : null;
+    const state = JSON.parse(await readFile(path.join(dir, `${threadId}.state.json`), 'utf8')) as {
+      root?: unknown;
+      pr?: unknown;
+    };
+    return {
+      root: typeof state.root === 'string' ? state.root : null,
+      pr: typeof state.pr === 'string' && state.pr ? state.pr : null,
+    };
   } catch {
-    return null; // no sidecar, or it went away
+    return { root: null, pr: null }; // no sidecar, or it went away
   }
 }
 
@@ -134,8 +147,17 @@ async function readSessionFiles(dir: string, threadId: string): Promise<ParsedSe
   } catch {
     return null;
   }
-  const [rootPrompt, sidecar] = await Promise.all([readRootPrompt(dir, threadId), readNodeSidecar(dir, threadId)]);
-  return { threadId, content, bytes, modified, rootPrompt, nodeTexts: sidecar.texts, nodeHashes: sidecar.hashes };
+  const [facts, sidecar] = await Promise.all([readSidecarFacts(dir, threadId), readNodeSidecar(dir, threadId)]);
+  return {
+    threadId,
+    content,
+    bytes,
+    modified,
+    rootPrompt: facts.root,
+    prUrl: facts.pr,
+    nodeTexts: sidecar.texts,
+    nodeHashes: sidecar.hashes,
+  };
 }
 
 /** Write one transcript's row and its node stream, replacing whatever was there. */
@@ -162,6 +184,7 @@ function writeSession(st: SessionStatements, parsed: ParsedSession): void {
     recorded?.parentThreadId ?? null,
     recorded?.spawnIndex ?? null,
     recorded?.agentType ?? null,
+    parsed.prUrl,
   );
 
   // Delete then insert: a transcript can be rewritten, not only extended.
