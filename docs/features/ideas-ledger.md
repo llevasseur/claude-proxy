@@ -440,11 +440,11 @@ paraphrases of one idea.
 - **`ideas prompt --slug <slug>`** prints it bare on stdout, so `| pbcopy` is the whole workflow, and
   `--json` wraps it as `{ slug, prompt }` for a caller that would rather not parse stdout. An unknown
   slug prints the same refusal every other verb makes and exits 1, inventing nothing to answer with.
-- **On `/ideas/$slug` it is one editable field, not two renderings of itself.** The card carried the
-  same bytes twice — a read-only preview and a textarea, behind a Preview | Edit tab pair — so the
-  page held two components of one prompt and a control for choosing which copy to look at. The
-  textarea is the superset: it reads the same and already takes the one-off caveat, so the preview
-  and the tabs went and the editing stayed.
+- **On `/ideas/$slug` it is one editable field, and only one.** The card renders the prompt once, in a
+  textarea it is read from, edited in and copied from — a second rendering of a pure function of the
+  same entry would be a duplicate rather than a view, and would need a control for choosing between
+  two copies of identical bytes. The edit that field takes is the one-off caveat that belongs in
+  *this* copy of the prompt and not on the ledger.
 - **The edit is local to the clipboard and is not persisted.** The durable instruction already has a
   field — `comment` — which the generated prompt quotes, so writing there changes what everyone
   generates next, including what an orchestrator reads, while editing in the card changes only what
