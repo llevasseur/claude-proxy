@@ -51,12 +51,8 @@ export interface ContextSummary {
 }
 
 /**
- * The summary's aggregate half: every field that does not depend on the entry
- * list's chronological order, and so does not need one to be answered.
- *
- * Named separately from {@link ContextSummary} because it is the half a caller can
- * supply from somewhere cheaper than a pass over the window — an aggregate read off
- * the substrate, or a paged entries list that no longer holds the whole corpus.
+ * The summary's aggregate half — every field that does not depend on the entry
+ * list's chronological order, and so can be answered without one.
  */
 export interface ContextAggregates {
   requestCount: number;
@@ -73,9 +69,8 @@ export interface SummarizeContextOptions {
   /** How many of the largest requests to include in `top`. Default 10. */
   topN?: number;
   /**
-   * The aggregate half, already computed — for a caller that can answer it without
-   * the whole window. Omitted, {@link aggregateContext} derives it from `entries`,
-   * which is what the file-backed read does.
+   * The aggregate half, already computed. Omitted, {@link aggregateContext} derives
+   * it from `entries`.
    */
   aggregates?: ContextAggregates;
 }
@@ -91,18 +86,13 @@ function median(sorted: readonly number[]): number {
  * Count, mean, median, peak and largest-`topN` over the entries — in one pass,
  * **without sorting the entries themselves**. Pure.
  *
- * The peak and the largest-N came from sorting a copy of the whole array by
- * `realInput` descending and slicing the front, which allocated a second array of
- * every entry in the window and ran a comparator across all of it to keep ten. Both
- * are now bounded: `max` is the running maximum, and `top` is held as a `topN`-slot
- * list. **Insertion is on strictly-greater**, which is what reproduces the old
- * result exactly rather than approximately — `Array.prototype.sort` is stable, so a
- * tie kept the entry that appeared first in the read order, and refusing to displace
- * an equal value keeps that same entry.
+ * `max` is the running maximum and `top` a `topN`-slot list. **Insertion is on
+ * strictly-greater**, which is what reproduces the old descending sort exactly:
+ * `Array.prototype.sort` is stable, so a tie kept the entry that appeared first in
+ * the read order, and refusing to displace an equal value keeps that same entry.
  *
- * The median still needs order statistics, so the token values are collected and
- * sorted; that array is numbers rather than entries, and sorting it is what makes
- * the median exact instead of estimated.
+ * The median needs order statistics, so the token values are collected and sorted —
+ * numbers rather than entries.
  */
 export function aggregateContext(entries: readonly ContextEntry[], opts: { topN?: number } = {}): ContextAggregates {
   const topN = opts.topN ?? 10;

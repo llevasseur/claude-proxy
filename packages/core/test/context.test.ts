@@ -113,13 +113,12 @@ describe('summarizeContext', () => {
 });
 
 /**
- * The aggregate half used to come from sorting a copy of the whole entry array
- * descending by `realInput`. `/api/context` is compared byte-for-byte across both
- * read backings, so the one-pass version has to agree with that sort exactly —
- * including where it put ties, which is the only place the two could differ.
+ * `/api/context` is compared byte-for-byte across both read backings, so the one-pass
+ * aggregate has to agree with the descending sort it replaced exactly — including
+ * where it put ties, which is the only place the two could differ.
  */
 describe('aggregateContext', () => {
-  /** What the two whole-array sorts produced, kept as the reference to agree with. */
+  /** What the two whole-array sorts produced — the reference to agree with. */
   function bySorting(entries: readonly ContextEntry[], topN = 10) {
     const tokens = entries.map((e) => e.realInput).sort((a, b) => a - b);
     const sum = tokens.reduce((n, v) => n + v, 0);
@@ -137,8 +136,7 @@ describe('aggregateContext', () => {
   }
 
   it('agrees with the sorts it replaced over a corpus dense in ties', () => {
-    // A deterministic pseudo-random spread with a small value range, so ties are
-    // frequent rather than incidental — ties are the whole risk.
+    // A deterministic spread over a small value range, so ties are frequent.
     let seed = 1;
     const next = () => {
       seed = (seed * 1103515245 + 12345) % 2147483648;
