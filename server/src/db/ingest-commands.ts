@@ -235,34 +235,25 @@ function readMark(db: DatabaseSync): { bytes: number; modified: string } | undef
 
 /**
  * Fold an append the server itself just made into the command tables, and move the
- * watermark to match — no parse.
+ * watermark to match — no parse. `withCommandReconcile` appends to the store and
+ * reads it back inside one request, and the reconcile already holds the records it
+ * wrote, so handing them here beats reading them back off disk.
  *
- * **Why this exists.** `withCommandReconcile` appends to the store and reads it
- * back inside one request. That append moves the store's size *and* its mtime, so
- * the watermark equality in `dbSource.readCommandRuns` could never hold on that
- * route, and the six command tables were bypassed on exactly the route they were
- * built to serve — a 48 MB re-parse per request. The reconcile already holds the
- * records it wrote, so handing them here is strictly cheaper than reading them
- * back off disk.
+ * **The watermark stays the guard.** It must sit *exactly* at `append.before` — the
+ * store as the pass found it — or there is no correct prefix to add these records
+ * to: returns `false`, leaves the watermark alone, and `readCommandRuns` re-reads
+ * the file. That is the case the guard was written for, an append the server did
+ * not make.
  *
- * **Why it is still safe.** The watermark stays the guard it was written to be. It
- * must sit *exactly* at `append.before` — the store as the pass found it — for the
- * fold to happen at all. Rows anywhere else do not cover the prefix these records
- * extend, so there is nothing correct to add them to: this returns `false`, the
- * watermark is left where it was, and `readCommandRuns` re-reads the file, which
- * is what it did before this function existed. That is the case the guard was
- * written for — an append the server did not make.
+ * **`ord` is reproduced, not appended to blindly.** `parseCommandRunStore` keys on
+ * {@link runKey} in *first-appearance* order, so a later line supersedes an earlier
+ * one **in place**: a key already on file keeps its position and only a new key takes
+ * the tail. The listing sorts on `started` alone and is stable, so `ord` is what
+ * breaks ties — a wrong one reorders equal-`started` runs against the file reader
+ * without losing any.
  *
- * **Why `ord` is reproduced rather than appended to blindly.** `parseCommandRunStore`
- * keys on {@link runKey} in *first-appearance* order, so a later line supersedes an
- * earlier one **in place**. A record for a key already on file therefore keeps that
- * key's position, and only a genuinely new key takes the next one at the tail. The
- * listing sorts on `started` alone and is stable, so `ord` is what breaks ties —
- * getting it wrong would reorder equal-`started` runs against the file reader and
- * fail parity, without ever losing a row.
- *
- * One transaction, so a part-way failure leaves the previous view and the previous
- * watermark intact rather than a half-folded one.
+ * One transaction, so a part-way failure leaves the previous view and watermark
+ * intact rather than a half-folded one.
  */
 export function applyCommandRunAppend(db: DatabaseSync, append: StoreAppend): boolean {
   if (append.records.length === 0) return false;
@@ -283,8 +274,8 @@ export function applyCommandRunAppend(db: DatabaseSync, append: StoreAppend): bo
       const prior = ordOf.get(id) as { ord: number } | undefined;
       let ord: number;
       if (prior) {
-        // Superseded in place, keeping its position. The children cascade off the
-        // delete, the same way a whole-store rebuild replaces them.
+        // Superseded in place. The children cascade off the delete, the same way a
+        // whole-store rebuild replaces them.
         ord = prior.ord;
         drop.run(id);
       } else {

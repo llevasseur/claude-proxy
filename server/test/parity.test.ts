@@ -733,15 +733,13 @@ describe('route parity over a synthetic corpus', () => {
   });
 
   /**
-   * The other half of that: the reconcile's own append, folded into the rows
-   * instead of read back off disk. The re-read above is the fallback, and it is
-   * correct but costs a whole-store parse on the route that just wrote to the
-   * store; this is the path `/api/commands` actually takes.
+   * The other half of that: the reconcile's own append, folded into the rows instead
+   * of read back off disk. The re-read above is the fallback; this is the path
+   * `/api/commands` actually takes.
    *
-   * Parity is the point. The fold writes rows by hand rather than from a parse, so
-   * the whole replay has to stay byte-identical afterwards — a wrong `ord` would
-   * reorder two runs sharing a `started` without losing either, and only a replay
-   * catches that.
+   * Parity is the point — the fold writes rows without a parse, and a wrong `ord`
+   * would reorder two runs sharing a `started` without losing either, which only a
+   * replay catches.
    */
   it('folds a reconcile append into the rows and still answers every route byte-identically', async () => {
     // A live run growing: one more turn on the parent's transcript, which is what
@@ -759,8 +757,8 @@ describe('route parity over a synthetic corpus', () => {
     expect(result.appended, 'the grown transcript should have been rewritten').not.toBeNull();
     expect(applyCommandRunAppend(db, result.appended!), 'the rows sat level, so the fold applies').toBe(true);
 
-    // No parse, and yet the rows are the store: the watermark moved with them, so
-    // `readCommandRuns` queries rather than falling through to the file.
+    // The watermark moved with the rows, so `readCommandRuns` queries rather than
+    // falling through to the file.
     const info = await stat(commandStorePath(ctx.logDir));
     expect(db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get('commands/runs.jsonl')).toEqual({
       bytes: info.size,
@@ -769,8 +767,7 @@ describe('route parity over a synthetic corpus', () => {
     expect(await dbSource(db).readCommandRuns(ctx.logDir)).toEqual(await fileSource.readCommandRuns(ctx.logDir));
     expect(await mismatches(ctx, db)).toEqual([]);
 
-    // And a parse of the same store agrees with what the fold wrote, position for
-    // position — the fold has to be indistinguishable from the rebuild.
+    // And a parse of the same store agrees position for position.
     const folded = db.prepare('SELECT run_id, ord, document FROM command_run ORDER BY ord').all();
     db.prepare('DELETE FROM file_watermark WHERE path = ?').run('commands/runs.jsonl');
     await ingest(db, ctx.logDir);

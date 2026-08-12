@@ -1,14 +1,11 @@
 /**
- * `/api/commands` reconciles the command store and then reads it back inside the
- * same request. That append moves the store's size *and* its mtime, so the
- * watermark equality in `dbSource.readCommandRuns` could never hold on this route
- * and every request re-parsed the whole store — 48 MB of it on this device, with
- * the six command tables bypassed on the one route they were built to serve.
+ * `/api/commands` reconciles the command store and reads it back inside one request,
+ * and that append moves both halves of the watermark equality `dbSource.readCommandRuns`
+ * gates its query path on. The reconcile now reports what it appended and the substrate
+ * folds those records in, moving the watermark with them.
  *
- * The reconcile now reports what it appended, and the substrate folds those records
- * into the tables and moves the watermark with them. These tests hold both halves
- * down: the rows must answer *without* opening the file, and they must be exactly
- * the rows a whole-store parse would have written.
+ * Both halves are held down here: the rows must answer *without* opening the file, and
+ * they must be exactly the rows a whole-store parse would have written.
  */
 
 import crypto from 'node:crypto';
@@ -115,8 +112,7 @@ afterEach(async () => {
 
 describe('the reconcile hands its appends to the command tables', () => {
   it('leaves the watermark level with the store, so the read that follows queries rows', async () => {
-    // The run grows, which is what makes the pass rewrite its record — and what
-    // used to make the watermark unsatisfiable for the rest of the request.
+    // The run grows, which is what makes the pass rewrite its record.
     await writeSession(
       SESSION_A,
       ROOT_A,
@@ -128,8 +124,7 @@ describe('the reconcile hands its appends to the command tables', () => {
     expect(append?.records).toHaveLength(1);
     expect(folded).toBe(true);
 
-    // The equality `readCommandRuns` gates the query path on now holds, on the
-    // very route that did the appending.
+    // The equality now holds on the very route that did the appending.
     expect(watermark()).toEqual(await markOf());
     expect(await dbSource(db).readCommandRuns(logDir)).toEqual(await fileSource.readCommandRuns(logDir));
   });
@@ -147,9 +142,8 @@ describe('the reconcile hands its appends to the command tables', () => {
     expect(expected).toHaveLength(1);
 
     // Overwrite the store's *contents* with unparseable bytes of the same length,
-    // then put its mtime back. Nothing the watermark can see has changed, so a
-    // reader that opens the file finds no runs and one that queries rows finds
-    // them all — which is the difference this asserts.
+    // then put its mtime back. Nothing the watermark can see has changed, so a reader
+    // that opens the file finds no runs and one that queries rows finds them all.
     const file = commandStorePath(logDir);
     const before = await markOf();
     const disguised = 'x'.repeat((await readFile(file, 'utf8')).length);
@@ -179,8 +173,7 @@ describe('the reconcile hands its appends to the command tables', () => {
     const folded_rows = rows();
     expect(folded_rows).toHaveLength(2);
 
-    // Now make the substrate parse the store from scratch and compare. The fold
-    // is only correct if it is indistinguishable from the rebuild.
+    // The fold is only correct if it is indistinguishable from a rebuild.
     db.prepare('DELETE FROM file_watermark WHERE path = ?').run(STORE_PATH);
     const stats = await ingestCommandRuns(db, logDir);
     expect(stats.parsed).toBe(true);
@@ -200,9 +193,8 @@ describe('the reconcile hands its appends to the command tables', () => {
 
 describe('the watermark still guards an append the server did not make', () => {
   it('refuses to fold into rows that do not sit where the append started', async () => {
-    // Something else appended after the substrate last looked — the case the
-    // watermark check was written for. The pass's records extend a prefix the
-    // rows do not cover, so there is nothing correct to add them to.
+    // Something else appended after the substrate last looked: the records extend a
+    // prefix the rows do not cover, so there is nothing correct to add them to.
     const outsider = (await fileSource.readCommandRuns(logDir))[0];
     expect(outsider).toBeDefined();
     const append: StoreAppend = {

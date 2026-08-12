@@ -140,9 +140,9 @@ const SYSTEM_PROMPT_PATH = resolveSystemPromptPath();
  * than racing to append the same records. A failure is swallowed: the store is a cache
  * of the logs, and serving it slightly stale beats 500-ing the page.
  *
- * The pass's appends are then folded into the substrate's command tables, inside the
- * same shared promise — so the read that follows answers from rows rather than
- * re-parsing the store this pass has just written to. See {@link syncCommandRows}.
+ * The pass's appends are then folded into the substrate's command tables, inside that
+ * same shared promise, so the read that follows answers from rows rather than
+ * re-parsing the store this pass just wrote to. See {@link syncCommandRows}.
  */
 let reconciling: Promise<unknown> | null = null;
 function reconcileCommands(): Promise<unknown> {
@@ -159,18 +159,13 @@ function reconcileCommands(): Promise<unknown> {
  * Hand the reconcile's own appends to the substrate, so the command tables are level
  * with the store before the route reads them back.
  *
- * Without this the append moved the store's size and mtime, `readCommandRuns`'
- * watermark check could never hold on this route, and every request re-parsed the
- * whole store — the six command tables bypassed on the one route they exist for.
- *
  * The **substrate**, not `readSource()`: under `DB_READS=0` the files answer and the
  * substrate is the shadow, and a shadow whose rows are stale reports differences that
  * are its own. Both sides want the rows current.
  *
- * Best-effort by design. A substrate that never opened, a backing with no rows to
- * move, a pass that appended nothing, or rows the append cannot be safely folded into
- * all end here doing nothing — and `readCommandRuns` falls back to the file read it
- * has always done.
+ * Best-effort. A substrate that never opened, a backing with no rows to move, a pass
+ * that appended nothing, or rows the append cannot safely fold into all end here
+ * doing nothing, and `readCommandRuns` falls back to the file read.
  */
 async function syncCommandRows(result: ReconcileResult): Promise<void> {
   if (!result.appended) return;

@@ -218,19 +218,12 @@ export interface StoreMark {
 }
 
 /**
- * What one reconcile pass appended, and the two watermarks that bracket it.
+ * What one reconcile pass appended, and the marks that bracket it.
  *
- * A reader that already holds the store as it was at {@link before} can fold
- * {@link records} in and arrive at the store as it is at {@link after}, without
- * opening the file — which is the whole point: the pass has just parsed 48 MB to
- * decide what to write, and the route that triggered it would otherwise parse the
- * same bytes again to read the result back.
- *
- * `before` is `stat`ed ahead of the pass's own read and `after` once every append
- * has landed, so a consumer can check both ends: `before` says which prefix these
- * records extend, `after` says how far they reach. Neither is trusted blindly —
- * see `applyCommandRunAppend`, which refuses unless its rows sit exactly at
- * `before`.
+ * A reader holding the store as it was at {@link before} can fold {@link records}
+ * in and arrive at it as it is at {@link after}, without opening the file. Neither
+ * mark is trusted blindly — `applyCommandRunAppend` refuses unless its rows sit
+ * exactly at `before`.
  */
 export interface StoreAppend {
   /** The records written this pass, in the order they were appended. */
@@ -252,12 +245,9 @@ async function markStore(logDir: string): Promise<StoreMark | null> {
 }
 
 /**
- * Bracket a pass's appends, or report that they cannot be bracketed.
- *
- * `null` for a pass that wrote nothing (there is nothing to fold in, and the store
- * has not moved) and for one whose store could not be `stat`ed at either end — an
- * unbracketed append is not a safe one to describe, and a consumer that gets
- * `null` simply reads the file as it did before.
+ * Bracket a pass's appends. `null` for a pass that wrote nothing, and for one whose
+ * store could not be `stat`ed at either end — an unbracketed append is not safe to
+ * describe, and a consumer given `null` reads the file as it did before.
  */
 async function bracket(logDir: string, before: StoreMark | null, records: CommandRun[]): Promise<StoreAppend | null> {
   if (records.length === 0 || !before) return null;
@@ -317,10 +307,9 @@ export interface ReconcileResult {
   /** True when the read cap stopped the pass short — the next one picks up the rest. */
   capped: boolean;
   /**
-   * What this pass appended, bracketed by the store's mark either side — or `null`
-   * when it appended nothing, or the store could not be `stat`ed. The caller hands
-   * this to the substrate so the command tables can be brought level without a
-   * second parse of the store this pass just read.
+   * What this pass appended, bracketed by the store's mark either side — `null` when
+   * it appended nothing, or the store could not be `stat`ed. The caller hands it to
+   * the substrate, which brings the command tables level without a second parse.
    */
   appended: StoreAppend | null;
 }
@@ -353,8 +342,8 @@ export async function reconcileCommandRuns(
   commandsDir: string = resolveCommandsDir(),
   now: Date = new Date(),
 ): Promise<ReconcileResult> {
-  // Marked in the same breath as the read it brackets, so `records` below and
-  // `storeBefore` describe the same prefix of the store.
+  // Marked in the same breath as the read it brackets, so `storeBefore` and
+  // `records` describe the same prefix of the store.
   const [graphs, installed, storeBefore, records, index] = await Promise.all([
     listSessionGraphs(logDir),
     listInstalledCommands(commandsDir),
@@ -521,9 +510,9 @@ export async function reconcileCommandRuns(
     runs: live.size,
     requestsRead,
     capped: pending.length > requestsRead,
-    // Both appends in the order they landed: the retirements went out first, and
-    // the two sets are disjoint by construction — a retired key is one no target
-    // claims — so folding them in this order reproduces the file.
+    // Both appends in the order they landed. The two sets are disjoint by
+    // construction — a retired key is one no target claims — so folding them in
+    // this order reproduces the file.
     appended: await bracket(logDir, storeBefore, [...retired, ...written]),
   };
 }
