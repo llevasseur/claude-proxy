@@ -8,6 +8,7 @@ import { applySuggestionStatus, buildSessionSuggestions } from '../src/api.js';
 import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from '../src/command-runs.js';
 import { conceptStorePath } from '../src/concepts.js';
 import { ingest } from '../src/db/ingest.js';
+import { applyCommandRunAppend } from '../src/db/ingest-commands.js';
 import { openDb } from '../src/db/open.js';
 import { dbSource, fileSource } from '../src/db/source.js';
 import { resolveLogDir } from '../src/logs.js';
@@ -728,6 +729,49 @@ describe('route parity over a synthetic corpus', () => {
 
     // Catch the corpus up, and the whole replay is still byte-identical.
     await ingest(db, ctx.logDir);
+    expect(await mismatches(ctx, db)).toEqual([]);
+  });
+
+  /**
+   * The other half of that: the reconcile's own append, folded into the rows instead
+   * of read back off disk. The re-read above is the fallback; this is the path
+   * `/api/commands` actually takes.
+   *
+   * Parity is the point — the fold writes rows without a parse, and a wrong `ord`
+   * would reorder two runs sharing a `started` without losing either, which only a
+   * replay catches.
+   */
+  it('folds a reconcile append into the rows and still answers every route byte-identically', async () => {
+    // A live run growing: one more turn on the parent's transcript, which is what
+    // makes the pass rewrite that run's record. Ingested first, the way the watcher
+    // would have — the transcript change is not what is under test here, and a
+    // stale `session` row would fail the replay for its own reasons.
+    await appendFile(
+      path.join(ctx.logDir, 'sessions', '00000000000000a1.md'),
+      '- Bash(command=my-command-tools verify)\n',
+      'utf8',
+    );
+    await ingest(db, ctx.logDir);
+
+    const result = await reconcileCommandRuns(ctx.logDir, ctx.commandsDir!, new Date('2026-07-19T00:00:00.000Z'));
+    expect(result.appended, 'the grown transcript should have been rewritten').not.toBeNull();
+    expect(applyCommandRunAppend(db, result.appended!), 'the rows sat level, so the fold applies').toBe(true);
+
+    // The watermark moved with the rows, so `readCommandRuns` queries rather than
+    // falling through to the file.
+    const info = await stat(commandStorePath(ctx.logDir));
+    expect(db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get('commands/runs.jsonl')).toEqual({
+      bytes: info.size,
+      modified: info.mtime.toISOString(),
+    });
+    expect(await dbSource(db).readCommandRuns(ctx.logDir)).toEqual(await fileSource.readCommandRuns(ctx.logDir));
+    expect(await mismatches(ctx, db)).toEqual([]);
+
+    // And a parse of the same store agrees position for position.
+    const folded = db.prepare('SELECT run_id, ord, document FROM command_run ORDER BY ord').all();
+    db.prepare('DELETE FROM file_watermark WHERE path = ?').run('commands/runs.jsonl');
+    await ingest(db, ctx.logDir);
+    expect(db.prepare('SELECT run_id, ord, document FROM command_run ORDER BY ord').all()).toEqual(folded);
     expect(await mismatches(ctx, db)).toEqual([]);
   });
 

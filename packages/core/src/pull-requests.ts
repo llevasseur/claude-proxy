@@ -180,8 +180,18 @@ export function prCounts(rows: readonly PullRequestRow[]): Record<PullRequestSta
   return counts;
 }
 
-/** How a transcript was tied to a pull request. */
-export type PrSessionVia = 'branch' | 'number';
+/**
+ * How a transcript was tied to a pull request.
+ *
+ * `recorded` is the session's own record — the url its `/pr` run was handed, written into
+ * its `.state.json` sidecar and carried into `session.pr_url`. It is a fact rather than
+ * evidence, which is why it never appears beside the other two: a pull request some
+ * session recorded is not scanned for text at all.
+ *
+ * `branch` and `number` are the recovered signals, kept for a pull request no session
+ * recorded — every one that predates the record, and any opened outside a captured run.
+ */
+export type PrSessionVia = 'recorded' | 'branch' | 'number';
 
 /** A session transcript that worked on a pull request, as the drawer lists it. */
 export interface PrSessionLink {
@@ -264,6 +274,24 @@ export function prMatcher(pr: PullRequestRow): PrMatcher {
 /** How a transcript refers to a pull request, if it does. */
 export function matchPrInText(pr: PullRequestRow, text: string): PrSessionVia[] {
   return prMatcher(pr).match(text);
+}
+
+/** The repository path and number in a pull request url, whatever host it is on. */
+const PR_URL_RE = /^https?:\/\/[\w.-]+\/([\w.-]+\/[\w.-]+)\/pulls?\/(\d+)/;
+
+/**
+ * A pull request url reduced to the pair that identifies it: `owner/name#number`, or null
+ * for a string that is not one.
+ *
+ * **The repository half is what makes it safe to compare.** A recorded link is whatever
+ * url the session's own command printed, and a run that opened `other/repo#200` must not
+ * be read as this checkout's #200 — matching on the number alone would do exactly that.
+ * Host is deliberately excluded: the same repository is reachable as `github.com` and as a
+ * device's ssh alias, and both name one pull request.
+ */
+export function prUrlKey(url: string | null | undefined): string | null {
+  const m = PR_URL_RE.exec(String(url ?? '').trim());
+  return m ? `${m[1]}#${m[2]}` : null;
 }
 
 /** The pieces of a git remote url this project reads, whatever spelling it uses. */

@@ -100,10 +100,17 @@ import {
   UUID_RE,
 } from './chat.js';
 import { snapshotChatStream, subscribeChatStream } from './chat-stream.js';
-import { reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
+import { type ReconcileResult, reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
 import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.js';
 import { resolveDbPath } from './db/open.js';
-import { dbReadsEnabled, readSource, shadowSource, startSubstrate, stopSubstrate } from './db/runtime.js';
+import {
+  dbReadsEnabled,
+  readSource,
+  shadowSource,
+  startSubstrate,
+  stopSubstrate,
+  substrateSource,
+} from './db/runtime.js';
 import { ALL_DAYS, resolveAllDays, type SidecarSource } from './db/source.js';
 import { IdeasStoreUnconfiguredError, RemoteIdeasStoreError } from './ideas-remote.js';
 import { resolveJobsDir } from './jobs.js';
@@ -134,15 +141,39 @@ const SYSTEM_PROMPT_PATH = resolveSystemPromptPath();
  * firing on the same log change that woke a request — share one in-flight pass rather
  * than racing to append the same records. A failure is swallowed: the store is a cache
  * of the logs, and serving it slightly stale beats 500-ing the page.
+ *
+ * The pass's appends are then folded into the substrate's command tables, inside that
+ * same shared promise, so the read that follows answers from rows rather than
+ * re-parsing the store this pass just wrote to. See {@link syncCommandRows}.
  */
 let reconciling: Promise<unknown> | null = null;
 function reconcileCommands(): Promise<unknown> {
   reconciling ??= reconcileCommandRuns(LOG_DIR, COMMANDS_DIR)
+    .then(syncCommandRows)
     .catch(() => undefined)
     .finally(() => {
       reconciling = null;
     });
   return reconciling;
+}
+
+/**
+ * Hand the reconcile's own appends to the substrate, so the command tables are level
+ * with the store before the route reads them back.
+ *
+ * The **substrate**, not `readSource()`: under `DB_READS=0` the files answer and the
+ * substrate is the shadow, and a shadow whose rows are stale reports differences that
+ * are its own. Both sides want the rows current.
+ *
+ * Best-effort. A substrate that never opened, a backing with no rows to move, a pass
+ * that appended nothing, or rows the append cannot safely fold into all end here
+ * doing nothing, and `readCommandRuns` falls back to the file read.
+ */
+async function syncCommandRows(result: ReconcileResult): Promise<void> {
+  if (!result.appended) return;
+  const substrate = substrateSource();
+  if (!substrate?.syncCommandRuns) return;
+  await substrate.syncCommandRuns(LOG_DIR, result.appended);
 }
 
 async function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
@@ -1525,7 +1556,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     shadow('/api/withheld', withheld, (source) => buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, source));
   },
   '/api/pull-requests': async ({ res }) => {
-    send(res, 200, await buildPullRequests(LOG_DIR));
+    send(res, 200, await buildPullRequests(LOG_DIR, undefined, undefined, readSource()));
   },
   // Moving `main`: a force-push of `refs/heads/main` on origin, the local checkout's
   // own catch-up, and the marker that hides a line. They are shared, remote and

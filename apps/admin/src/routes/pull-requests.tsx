@@ -553,7 +553,7 @@ function PrInspector({
 
         <Field label='Sessions'>
           {sessions.length === 0 ? (
-            <span className='muted'>No transcript on record mentions this PR.</span>
+            <span className='muted'>No session recorded this PR, and no transcript on record mentions it.</span>
           ) : (
             <ul className='pr-sessions'>
               {sessions.map((s) => (
@@ -563,7 +563,9 @@ function PrInspector({
                   </Link>
                   <span className='muted'>
                     {' '}
-                    · matched by {s.via.join(' + ')} · {fmtLocalTsShort(s.modified)}
+                    ·{' '}
+                    {s.via.includes('recorded') ? 'recorded when it opened the PR' : `matched by ${s.via.join(' + ')}`}{' '}
+                    · {fmtLocalTsShort(s.modified)}
                   </span>
                 </li>
               ))}

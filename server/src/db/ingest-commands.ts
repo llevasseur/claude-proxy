@@ -9,7 +9,7 @@ import {
   runKey,
   ZERO_WASTE,
 } from '@claude-proxy/core';
-import { commandStorePath, parseCommandRunStore } from '../command-runs.js';
+import { commandStorePath, parseCommandRunStore, type StoreAppend } from '../command-runs.js';
 
 /**
  * Index `logs/commands/runs.jsonl` into the `command_run` tree.
@@ -226,6 +226,73 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
   });
 }
 
+/** The store's watermark row, or `undefined` when the store was never indexed. */
+function readMark(db: DatabaseSync): { bytes: number; modified: string } | undefined {
+  return db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(STORE_PATH) as
+    | { bytes: number; modified: string }
+    | undefined;
+}
+
+/**
+ * Fold an append the server itself just made into the command tables, and move the
+ * watermark to match — no parse. `withCommandReconcile` appends to the store and
+ * reads it back inside one request, and the reconcile already holds the records it
+ * wrote, so handing them here beats reading them back off disk.
+ *
+ * **The watermark stays the guard.** It must sit *exactly* at `append.before` — the
+ * store as the pass found it — or there is no correct prefix to add these records
+ * to: returns `false`, leaves the watermark alone, and `readCommandRuns` re-reads
+ * the file. That is the case the guard was written for, an append the server did
+ * not make.
+ *
+ * **`ord` is reproduced, not appended to blindly.** `parseCommandRunStore` keys on
+ * {@link runKey} in *first-appearance* order, so a later line supersedes an earlier
+ * one **in place**: a key already on file keeps its position and only a new key takes
+ * the tail. The listing sorts on `started` alone and is stable, so `ord` is what
+ * breaks ties — a wrong one reorders equal-`started` runs against the file reader
+ * without losing any.
+ *
+ * One transaction, so a part-way failure leaves the previous view and watermark
+ * intact rather than a half-folded one.
+ */
+export function applyCommandRunAppend(db: DatabaseSync, append: StoreAppend): boolean {
+  if (append.records.length === 0) return false;
+
+  const mark = readMark(db);
+  if (!mark || mark.bytes !== append.before.bytes || mark.modified !== append.before.modified) return false;
+
+  const st = prepare(db);
+  const ordOf = db.prepare('SELECT ord FROM command_run WHERE run_id = ?');
+  const drop = db.prepare('DELETE FROM command_run WHERE run_id = ?');
+
+  db.exec('BEGIN');
+  try {
+    // Ords are contiguous from 0, so the next tail position is the row count.
+    let tail = ((db.prepare('SELECT max(ord) m FROM command_run').get() as { m: number | null }).m ?? -1) + 1;
+    for (const run of append.records) {
+      const id = runKey(run);
+      const prior = ordOf.get(id) as { ord: number } | undefined;
+      let ord: number;
+      if (prior) {
+        // Superseded in place. The children cascade off the delete, the same way a
+        // whole-store rebuild replaces them.
+        ord = prior.ord;
+        drop.run(id);
+      } else {
+        ord = tail;
+        tail += 1;
+      }
+      writeRun(st, run, ord);
+    }
+    st.watermark.run(STORE_PATH, append.after.bytes, append.after.modified, new Date().toISOString());
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return true;
+}
+
 /**
  * Bring the command tables level with `logs/commands/runs.jsonl`. Safe to call
  * repeatedly: an unchanged store is skipped on its watermark, and the rebuild
@@ -258,9 +325,7 @@ export async function ingestCommandRuns(db: DatabaseSync, logDir: string): Promi
     return stats;
   }
 
-  const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(STORE_PATH) as
-    | { bytes: number; modified: string }
-    | undefined;
+  const mark = readMark(db);
   if (mark && mark.bytes === bytes && mark.modified === modified) {
     stats.runs = (db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c;
     return stats;
