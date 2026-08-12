@@ -14,7 +14,12 @@ import {
   type StoredConcept,
   sortConcepts,
 } from '@claude-proxy/core';
-import { commandStorePath, readCommandRuns as readCommandRunsFromFiles, sortCommandRuns } from '../command-runs.js';
+import {
+  commandStorePath,
+  readCommandRuns as readCommandRunsFromFiles,
+  type StoreAppend,
+  sortCommandRuns,
+} from '../command-runs.js';
 import { conceptStorePath, readConcepts as readConceptsFromFiles } from '../concepts.js';
 import { latestUserText } from '../derive.js';
 import {
@@ -39,7 +44,7 @@ import {
   type SessionNodeTexts,
   type SessionSummary,
 } from '../sessions.js';
-import { STORE_PATH as COMMAND_STORE_PATH } from './ingest-commands.js';
+import { applyCommandRunAppend, STORE_PATH as COMMAND_STORE_PATH } from './ingest-commands.js';
 import { STORE_PATH as CONCEPT_STORE_PATH } from './ingest-concepts.js';
 
 /**
@@ -110,6 +115,18 @@ export interface SidecarSource {
    * — it lives outside `logs/`, so both backings read it the same way.
    */
   readCommandRuns(logDir: string): Promise<CommandRun[]>;
+
+  /**
+   * Fold an append the server itself just made into whatever this backing reads
+   * from, so the read beside it does not have to go back to the file for it.
+   *
+   * Returns whether the fold happened. Optional because only the substrate has
+   * anything to move: the file backing *is* the store, so it has nothing to bring
+   * level and does not implement this at all. A `false` — from a backing that
+   * declines, or rows that do not sit where the append started — is not a failure;
+   * {@link readCommandRuns} then re-reads the file exactly as it did before.
+   */
+  syncCommandRuns?(logDir: string, append: StoreAppend): Promise<boolean>;
 
   /* --- Concepts --- *
    *
@@ -1009,12 +1026,20 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       }
       return { threadId: id, texts };
     },
-    // The store is indexed whole, so this reads no file at all.
+    // The store is indexed whole, so this reads no file at all — beyond the one
+    // `stat` below.
     readCommandRuns: async (logDir) => {
       // The server reconciles the store and reads it back inside the same
       // request, so rows behind the file would answer with the pre-reconcile
       // view. Same watermark equality `ingestCommandRuns` uses; anything else
       // re-reads the store, which is what the file reader would have answered.
+      //
+      // That equality used to be unsatisfiable here, because the reconcile's own
+      // append moved both halves of it and nothing moved the watermark to match
+      // until the next ingest pass — so this route always fell through to the
+      // parse. `syncCommandRuns` below now folds that append into the rows and
+      // advances the watermark as part of the reconcile, which leaves this check
+      // guarding what it was written to guard: an append the server did not make.
       const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(COMMAND_STORE_PATH) as
         | { bytes: number; modified: string }
         | undefined;
@@ -1028,6 +1053,10 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       }
       return readCommandRunsFromFiles(logDir);
     },
+    // The reconcile hands over the records it just appended; folding them in is
+    // what makes the check above hold on the route that did the appending. Async
+    // to match the seam — the work itself is synchronous SQLite.
+    syncCommandRuns: async (_logDir, append) => applyCommandRunAppend(db, append),
     // The store is indexed whole, so this reads no file at all — as long as the
     // rows are provably current. `/teach` appends from outside the server, so a
     // record can land between two ingest passes; the same watermark equality
