@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -532,6 +532,36 @@ ALTER TABLE request ADD COLUMN body_derived INTEGER NOT NULL DEFAULT 0;
 DELETE FROM ingest_watermark;
 `;
 
+/**
+ * One closed day's digest, kept so a restart does not recompute it — level two of
+ * the cache `server/src/day-digest-memo.ts` is level one of. See
+ * `server/src/db/day-digest-store.ts` for what a row means and when it is written.
+ *
+ * The primary key is that memo's own key, component for component: the backing,
+ * the log directory, the relocated archive root (`''` for none), the reporting
+ * day, and the *size* of the classifier hash set. `revision` is the one addition —
+ * schema version plus digest revision — since a row, unlike a memo entry, has to
+ * survive the code changes a restart used to clear.
+ *
+ * Derived and disposable, so no watermark is cleared and nothing is backfilled:
+ * rows appear as closed days are read, and the table can be emptied at any time
+ * for the price of recomputing them.
+ */
+const SCHEMA_V14 = `
+CREATE TABLE IF NOT EXISTS day_digest (
+  backing          TEXT    NOT NULL,
+  log_dir          TEXT    NOT NULL,
+  archive_dir      TEXT    NOT NULL,
+  date             TEXT    NOT NULL,
+  classifier_count INTEGER NOT NULL,
+  revision         TEXT    NOT NULL,
+  -- The digest as JSON, in the shape the routes already send it.
+  digest           TEXT    NOT NULL,
+  computed_at      TEXT    NOT NULL,
+  PRIMARY KEY (backing, log_dir, archive_dir, date, classifier_count, revision)
+);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -651,6 +681,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 11) db.exec(SCHEMA_V11);
   if (from < 12) db.exec(SCHEMA_V12);
   if (from < 13) db.exec(SCHEMA_V13);
+  if (from < 14) db.exec(SCHEMA_V14);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
