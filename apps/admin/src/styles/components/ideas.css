@@ -172,9 +172,7 @@
     resize: vertical;
   }
 
-  /* The /task prompt: one editable field, copied from where it is read. There is
-   no preview pane and no tab strip — a second rendering of the same bytes is
-   what this card used to carry, and the textarea already reads as one. */
+  /* The /task prompt: one editable field, copied from where it is read. */
   .idea-prompt-copy {
     margin-left: auto;
     display: inline-flex;

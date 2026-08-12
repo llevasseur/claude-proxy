@@ -172,12 +172,9 @@ function CopyGlyph() {
 /**
  * The `/task` prompt that builds this idea, ready to paste into an agent.
  *
- * **One component, not two.** The card used to render the same prompt twice —
- * a read-only preview and a textarea, behind a Preview | Edit tab pair — so the
- * page carried two views of identical bytes and a control for choosing between
- * them. The textarea is the superset: it reads the same and already accepts a
- * caveat that belongs in *this* copy of the prompt and not on the ledger, so
- * the preview and the tabs are gone rather than the editing.
+ * **One editable field, not a preview beside it.** The textarea reads the
+ * prompt and takes a caveat that belongs in *this* copy of it, not on the
+ * ledger.
  *
  * **The edit is local to the clipboard and deliberately not persisted.** A
  * durable instruction goes in {@link IdeaEntry.comment}, which the generated
