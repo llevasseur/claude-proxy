@@ -1438,7 +1438,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     shadow('/api/withheld', withheld, (source) => buildWithheld(LOG_DIR, days, SETTINGS_PATH, now, source));
   },
   '/api/pull-requests': async ({ res }) => {
-    send(res, 200, await buildPullRequests(LOG_DIR));
+    send(res, 200, await buildPullRequests(LOG_DIR, undefined, undefined, readSource()));
   },
   // Moving `main`: a force-push of `refs/heads/main` on origin, the local checkout's
   // own catch-up, and the marker that hides a line. They are shared, remote and

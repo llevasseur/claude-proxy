@@ -30,6 +30,7 @@ import { listArchiveDays, logFileDay } from '../retention.js';
 import {
   listSessionGraphs as listSessionGraphsFromFiles,
   listSessions as listSessionsFromFiles,
+  readPrLinks as readPrLinksFromFiles,
   readRootPrompts as readRootPromptsFromFiles,
   readSession as readSessionFromFiles,
   readSessionNodeTexts as readSessionNodeTextsFromFiles,
@@ -102,6 +103,18 @@ export interface SidecarSource {
    * cannot disagree about which flavour of "no prompt" a thread has.
    */
   readRootPrompts(logDir: string, threadIds: readonly string[]): Promise<Map<string, string>>;
+  /**
+   * Every thread that recorded the pull request it opened, thread id → url. Asked
+   * for wholesale rather than by id, because the caller's question runs the other
+   * way: which threads name the pull requests it is about to draw.
+   *
+   * A thread with nothing on record is absent, so both backings agree that "no
+   * link" is one state rather than two. **This is the fast path behind
+   * `/api/pull-requests`** — on the substrate it is one indexed query, in place of
+   * reading every transcript in `logs/sessions/` to recover the same link from
+   * text.
+   */
+  readPrLinks(logDir: string): Promise<Map<string, string>>;
 
   /* --- Command runs (slice 3) --- *
    *
@@ -159,6 +172,7 @@ export const fileSource: SidecarSource = {
   readSession: (logDir, id) => readSessionFromFiles(logDir, id),
   readSessionNodeTexts: (logDir, id) => readSessionNodeTextsFromFiles(logDir, id),
   readRootPrompts: (logDir, threadIds) => readRootPromptsFromFiles(logDir, threadIds),
+  readPrLinks: (logDir) => readPrLinksFromFiles(logDir),
   readCommandRuns: (logDir) => readCommandRunsFromFiles(logDir),
   readConcepts: (logDir) => readConceptsFromFiles(logDir),
 };
@@ -870,6 +884,18 @@ function rootPromptsFromDb(db: DatabaseSync, threadIds: readonly string[]): Map<
   return out;
 }
 
+/**
+ * Every recorded pull request link, out of the column ingest copied it into. One
+ * indexed-free but tiny scan — the predicate rejects all but the handful of threads
+ * that opened something.
+ */
+function prLinksFromDb(db: DatabaseSync): Map<string, string> {
+  const rows = db
+    .prepare("SELECT thread_id, pr_url FROM session WHERE pr_url IS NOT NULL AND pr_url != ''")
+    .all() as unknown as Array<{ thread_id: string; pr_url: string }>;
+  return new Map(rows.map((row) => [row.thread_id, row.pr_url]));
+}
+
 /** Newest first, ties broken by thread id — the order both listings return. */
 function sortListing<T extends { modified: string; threadId: string }>(rows: T[]): T[] {
   rows.sort((a, b) => b.modified.localeCompare(a.modified) || a.threadId.localeCompare(b.threadId));
@@ -963,6 +989,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return sortListing(rows.map(({ recorded: _recorded, ...row }) => ({ ...row, ...links.get(row.threadId)! })));
     },
     readRootPrompts: async (_logDir, threadIds) => rootPromptsFromDb(db, threadIds),
+    readPrLinks: async () => prLinksFromDb(db),
     readSession: async (logDir, id) => {
       // Validates the URL-supplied id and confirms the path stays inside
       // `sessions/`, as the file reader does.
