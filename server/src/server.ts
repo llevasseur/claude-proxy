@@ -204,15 +204,10 @@ function chatCors(origin: string | undefined): Record<string, string> {
   return headers;
 }
 
-/**
- * Below this, a gzip frame plus the deflate costs more than the bytes it saves.
- */
+/** Below this, a gzip frame plus the deflate costs more than the bytes it saves. */
 const COMPRESS_MIN_BYTES = 1024;
 
-/**
- * Whether the request will take a gzip body. `gzip;q=0` says it will not, which is
- * how a caller asks for the bytes it can hash or diff itself.
- */
+/** Whether the request will take a gzip body. `gzip;q=0` says it will not. */
 function acceptsGzip(req: http.IncomingMessage): boolean {
   const raw = req.headers['accept-encoding'];
   const header = Array.isArray(raw) ? raw.join(',') : (raw ?? '');
@@ -226,11 +221,9 @@ function acceptsGzip(req: http.IncomingMessage): boolean {
 }
 
 /**
- * Weak-compare an `If-None-Match` list against the tag this response carries.
- *
- * **Weak, because the tag names the payload rather than the encoding it went out
- * in**: it is a hash of the serialized JSON, so an identity answer and a gzipped
- * one are the same representation to a client that already holds it.
+ * Weak-compare an `If-None-Match` list against this response's tag. Weak because the
+ * tag hashes the serialized JSON, so an identity answer and a gzipped one are one
+ * representation.
  */
 function etagMatches(req: http.IncomingMessage, etag: string): boolean {
   const raw = req.headers['if-none-match'];
@@ -242,23 +235,20 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
 }
 
 /**
- * The one place a JSON body goes out — so the one place a repeated poll can be
- * answered without re-sending what the client already has.
+ * The one place a JSON body goes out, and so the one place a repeated poll can be
+ * answered without re-sending it.
  *
  * A 200 answering a read carries a weak ETag over the serialized body and
- * `cache-control: no-cache`, which asks the client to revalidate every time rather
- * than to reuse a stale copy; a matching `If-None-Match` then gets a 304 with the
- * validator and the CORS headers but no body and no `content-length`. Anything over
- * {@link COMPRESS_MIN_BYTES} that the request accepts gzip for goes out compressed.
+ * `cache-control: no-cache`; a matching `If-None-Match` gets a 304 with the validator
+ * and the CORS headers, no body and no `content-length`. A body over
+ * {@link COMPRESS_MIN_BYTES} the request accepts gzip for goes out compressed.
  *
- * **This is a transport change and nothing else.** The bytes hashed are exactly the
- * bytes a route already produced, so the parity harness keeps comparing identical
- * payloads. Server-sent events never come through here — `serveSse` writes its own
- * `no-cache` headers and stays uncompressed, since a stream has no complete body to
- * hash and an encoder would sit on its frames.
+ * The bytes hashed are the bytes a route already produced, so parity comparisons keep
+ * seeing identical payloads. Server-sent events never come through here — `serveSse`
+ * writes its own `no-cache` headers and stays uncompressed.
  *
- * `res.req` is the request this response answers, handed back by node, so the
- * negotiation needs no `req` threaded through a hundred call sites.
+ * `res.req` is the request this response answers, so the negotiation needs no `req`
+ * threaded through every call site.
  */
 function send(res: http.ServerResponse, status: number, body: unknown, cors: Record<string, string> = CORS): void {
   const req = res.req;
@@ -266,13 +256,12 @@ function send(res: http.ServerResponse, status: number, body: unknown, cors: Rec
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     ...cors,
-    // Appended rather than overwritten: the chat CORS path already varies on `origin`,
-    // and losing that would let a cache serve one origin's answer to another.
+    // Appended rather than overwritten: the chat CORS path already varies on `origin`.
     vary: cors.vary ? `${cors.vary}, accept-encoding` : 'accept-encoding',
   };
 
-  // Only where a cache entry can exist at all: a 200 answering a read. An error body
-  // gets no validator, so a 4xx/5xx is byte-for-byte what it was.
+  // Only where a cache entry can exist: a 200 answering a read. An error body gets no
+  // validator.
   if (status === 200 && (req.method === 'GET' || req.method === 'HEAD')) {
     const etag = `W/"${crypto.createHash('sha1').update(json).digest('base64url')}"`;
     headers.etag = etag;
@@ -296,9 +285,8 @@ function send(res: http.ServerResponse, status: number, body: unknown, cors: Rec
     return;
   }
 
-  // Async rather than `gzipSync`: the graph payload is megabytes, and the event loop
-  // has other requests to answer while it deflates. A failed deflate still answers,
-  // uncompressed — the body is the point, the encoding is the saving.
+  // Async rather than `gzipSync`: the graph payload is megabytes. A failed deflate
+  // still answers, uncompressed.
   zlib.gzip(json, (err, gzipped) => {
     if (res.writableEnded) return;
     if (err) write(json);

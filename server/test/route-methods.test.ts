@@ -38,11 +38,9 @@ interface RawReply {
 }
 
 /**
- * One request with no content negotiation but what the caller asks for.
- *
- * The conditional and gzip assertions at the bottom of this file cannot go through
- * `fetch`: undici sets its own `accept-encoding`, and transparently decompresses what
- * comes back — which is the exact layer under test.
+ * One request with no content negotiation but what the caller asks for. `fetch` sets
+ * its own `accept-encoding` and transparently decompresses, which is the layer the
+ * assertions at the bottom of this file are about.
  */
 function raw(pathname: string, headers: Record<string, string> = {}, method = 'GET'): Promise<RawReply> {
   return new Promise((resolve, reject) => {
@@ -256,15 +254,14 @@ describe('read routes', () => {
 });
 
 /**
- * Transport, not payload: the JSON each route builds is untouched, and what these
- * assert is the envelope around it.
+ * Transport, not payload: these assert the envelope around a JSON body rather than the
+ * body itself.
  *
- * They share this file's server rather than standing up their own, deliberately —
- * a second `tsx` process racing this one for a cold start is what makes both time
- * out under the full suite, and there is only one `send` to exercise either way.
+ * They share this file's server rather than standing up their own — a second `tsx`
+ * process racing it for a cold start times both out under the full suite.
  */
 describe('conditional and compressed reads', () => {
-  /** Big enough to be worth gzipping — written through the save route this file already drives. */
+  /** Big enough to be worth gzipping. */
   const BIG_PROMPT = `${'# Device rules\n'.repeat(400)}`;
 
   beforeAll(async () => {
@@ -282,7 +279,6 @@ describe('conditional and compressed reads', () => {
     expect(res.status).toBe(200);
     expect(res.headers.etag).toMatch(/^W\/"[\w-]+"$/);
     expect(res.headers['cache-control']).toBe('no-cache');
-    // The open read CORS survives, and the encoding now has to be varied on too.
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect(res.headers.vary).toBe('accept-encoding');
     expect(res.headers['content-length']).toBe(String(res.body.length));
@@ -296,8 +292,6 @@ describe('conditional and compressed reads', () => {
 
     expect(second.status).toBe(304);
     expect(second.body.length).toBe(0);
-    // A 304 carries the validator and the CORS headers — a client given neither could
-    // not reuse what it holds — and never a `content-length`.
     expect(second.headers.etag).toBe(etag);
     expect(second.headers['access-control-allow-origin']).toBe('*');
     expect(second.headers['content-length']).toBeUndefined();
@@ -322,8 +316,7 @@ describe('conditional and compressed reads', () => {
     expect(zipped.headers['content-encoding']).toBe('gzip');
     expect(zipped.headers['content-length']).toBe(String(zipped.body.length));
     expect(zipped.body.length).toBeLessThan(plain.body.length);
-    // The bytes the route produced are what went out either way, which is what keeps
-    // the validator a function of the payload rather than of the encoding.
+    // Same payload either way, so the validator is a function of the body, not the encoding.
     expect(gunzipSync(zipped.body).toString('utf8')).toBe(plain.body.toString('utf8'));
     expect(zipped.headers.etag).toBe(plain.headers.etag);
   });
