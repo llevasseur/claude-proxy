@@ -140,8 +140,8 @@ describe('the persisted closed-day digest', () => {
     const { source, archivedReads } = counting(dbSource(db));
     await buildTrends(logDir, 3, NOW, undefined, source);
 
-    // The file-backed row must not answer for the DB-backed read, or the parity
-    // harness would compare one backing's work against itself.
+    // A file-backed row answering a DB-backed read would have the parity harness
+    // compare one backing's work against itself.
     expect(archivedReads).toContain(CLOSED_DAY);
   });
 

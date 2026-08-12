@@ -100,8 +100,7 @@ export function cachedDayDigest(key: DayDigestKey): UsageDigest | undefined {
  * rather than keyed on something that would have to be invalidated.
  *
  * The write reaches both levels, and this one condition is the whole gate on
- * persistence: a day that is not stable and closed is no more written to the table
- * than it is to the map.
+ * persistence: an unstable or open day reaches the table no more than the map.
  */
 export function cacheDayDigest(key: DayDigestKey, now: Date, digest: UsageDigest, stable: boolean): UsageDigest {
   if (stable && isClosedDay(key.date, now)) {

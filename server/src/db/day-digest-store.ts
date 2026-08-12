@@ -7,26 +7,23 @@ import { openDb, resolveDbPath, SCHEMA_VERSION } from './open.js';
  * Level two of the closed-day digest cache: one row per closed day, so the work
  * a process did survives that process.
  *
- * `day-digest-memo.ts` is level one and keeps its own contract — the map is
- * consulted first and a row is promoted into it on a hit. This file only answers
- * "did some earlier process already compute this exact day?", which the in-process
- * memo cannot: a cold server pays the full corpus scan for the first read of
- * every window route, and that was the memo's own stated limit.
+ * `day-digest-memo.ts` is level one: the map is consulted first and a row is
+ * promoted into it on a hit. This file answers the one question that map cannot —
+ * did an earlier process already compute this exact day — which is where a cold
+ * server's first read of every window route used to go.
  *
  * A row is a **derived** value for a day that can no longer change, never a
  * source of truth. `logs/` still holds every sidecar, and
  * `rm logs/claude-proxy.db && pnpm --filter server ingest` still reconstructs
- * everything — a lost row costs one recomputation and nothing else. See
- * `docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md`.
+ * everything. See `docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md`.
  */
 
 /**
  * Bump when `computeDigest` would answer differently for the same sidecars — a
- * new digest field, a changed formula, an edited pricing table. Nothing in the
- * key can notice that on its own, and a row that outlives such a change would
- * pin the old answer in place; the in-process memo never had to care because a
- * code change implies a restart. Stale revisions are pruned on open, so a bump
- * costs one recomputation per day.
+ * new digest field, a changed formula, an edited pricing table. Nothing else in
+ * the key notices that, and a row outliving such a change would pin the old
+ * answer in place, where the in-process memo was cleared by the restart. Stale
+ * revisions are pruned on open, so a bump costs one recomputation per day.
  */
 const DAY_DIGEST_REVISION = 1;
 
@@ -78,11 +75,10 @@ const handles = new Map<string, DatabaseSync>();
 /**
  * The substrate for `logDir`, or `null` when there is none.
  *
- * The file is never *created* here. This is a cache over the view the ingest
- * maintains, so where no view exists there is nothing to cache into — and a
- * read route must not leave a database behind in a log directory that had none.
- * A negative answer is deliberately not remembered: `startSubstrate` may open
- * the file after the first read went through.
+ * The file is never *created* here: a read route must not leave a database behind
+ * in a log directory that had none. A negative answer is deliberately not
+ * remembered — `startSubstrate` may open the file after the first read went
+ * through.
  */
 function handleFor(logDir: string): DatabaseSync | null {
   const held = handles.get(logDir);
@@ -90,8 +86,7 @@ function handleFor(logDir: string): DatabaseSync | null {
   if (!existsSync(resolveDbPath(logDir))) return null;
   try {
     const db = openDb(logDir);
-    // A revision bump orphans every row it wrote; drop them rather than keep
-    // rows no key can reach.
+    // A revision bump orphans the rows it wrote — no key reaches them again.
     db.prepare('DELETE FROM day_digest WHERE revision <> ?').run(REVISION);
     handles.set(logDir, db);
     return db;
@@ -101,10 +96,8 @@ function handleFor(logDir: string): DatabaseSync | null {
 }
 
 /**
- * The digest an earlier process stored for `key`, or `undefined`.
- *
- * Best-effort throughout: any failure reads as a miss, and a miss only costs the
- * computation the caller would have done anyway.
+ * The digest an earlier process stored for `key`, or `undefined`. Best-effort:
+ * any failure reads as a miss.
  */
 export function readStoredDayDigest(key: StoredDayDigestKey): UsageDigest | undefined {
   const db = handleFor(key.logDir);
