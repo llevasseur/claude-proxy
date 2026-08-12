@@ -172,8 +172,9 @@ function CopyGlyph() {
 /**
  * The `/task` prompt that builds this idea, ready to paste into an agent.
  *
- * Preview is the default tab; Edit is the exception, for a caveat that belongs
- * in *this* copy of the prompt and not on the ledger.
+ * **One editable field, not a preview beside it.** The textarea reads the
+ * prompt and takes a caveat that belongs in *this* copy of it, not on the
+ * ledger.
  *
  * **The edit is local to the clipboard and deliberately not persisted.** A
  * durable instruction goes in {@link IdeaEntry.comment}, which the generated
@@ -184,7 +185,6 @@ function CopyGlyph() {
  */
 function TaskPromptCard({ idea }: { idea: IdeaEntry }) {
   const generated = ideaTaskPrompt(idea);
-  const [tab, setTab] = useState<'preview' | 'edit'>('preview');
   // The generated prompt this draft was taken from. The page is live over SSE, so
   // the draft follows a regenerated prompt — unless it was edited, since
   // discarding an edit to track a change the reader did not make is worse.
@@ -226,49 +226,23 @@ function TaskPromptCard({ idea }: { idea: IdeaEntry }) {
           derived from this entry — paste it into an agent, or read it with{' '}
           <span className='rule-name'>ideas prompt</span>
         </span>
+        {edited && <span className='muted idea-prompt-edited'>edited — this copy only</span>}
         <button type='button' className='btn-quiet idea-prompt-copy' onClick={copy} aria-label='Copy the task prompt'>
           <CopyGlyph />
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
 
-      {/* The badge sits beside the strip rather than in it — a tablist takes
-          role="tab" children only. */}
-      <div className='idea-prompt-tabrow'>
-        <div className='idea-tabs' role='tablist' aria-label='Task prompt view'>
-          {(['preview', 'edit'] as const).map((value) => (
-            <button
-              key={value}
-              type='button'
-              role='tab'
-              id={`idea-prompt-tab-${value}`}
-              aria-selected={value === tab}
-              aria-controls='idea-prompt-panel'
-              className={`idea-tab${value === tab ? ' is-selected' : ''}`}
-              onClick={() => setTab(value)}>
-              {value === 'preview' ? 'Preview' : 'Edit'}
-            </button>
-          ))}
+      <div className='idea-prompt-edit'>
+        <textarea value={draft} rows={16} aria-label='Task prompt' onChange={(e) => setDraft(e.target.value)} />
+        <div className='idea-controls'>
+          <button type='button' className='btn-quiet' disabled={!edited} onClick={() => setDraft(generated)}>
+            Reset
+          </button>
+          <span className='muted'>
+            a lasting instruction belongs in the comment below, which every generated prompt quotes
+          </span>
         </div>
-        {edited && <span className='muted idea-prompt-edited'>edited — this copy only</span>}
-      </div>
-
-      <div id='idea-prompt-panel' role='tabpanel' aria-labelledby={`idea-prompt-tab-${tab}`}>
-        {tab === 'preview' ? (
-          <pre className='idea-prompt-preview'>{draft}</pre>
-        ) : (
-          <div className='idea-prompt-edit'>
-            <textarea value={draft} rows={16} aria-label='Task prompt' onChange={(e) => setDraft(e.target.value)} />
-            <div className='idea-controls'>
-              <button type='button' className='btn-quiet' disabled={!edited} onClick={() => setDraft(generated)}>
-                Reset
-              </button>
-              <span className='muted'>
-                a lasting instruction belongs in the comment below, which every generated prompt quotes
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
       {copyError && <div className='suggestion-mark-error'>{copyError}</div>}

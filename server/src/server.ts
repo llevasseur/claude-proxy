@@ -1,5 +1,7 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
+import zlib from 'node:zlib';
 import {
   API_ROUTES,
   type ApiRoute,
@@ -202,9 +204,94 @@ function chatCors(origin: string | undefined): Record<string, string> {
   return headers;
 }
 
+/** Below this, a gzip frame plus the deflate costs more than the bytes it saves. */
+const COMPRESS_MIN_BYTES = 1024;
+
+/** Whether the request will take a gzip body. `gzip;q=0` says it will not. */
+function acceptsGzip(req: http.IncomingMessage): boolean {
+  const raw = req.headers['accept-encoding'];
+  const header = Array.isArray(raw) ? raw.join(',') : (raw ?? '');
+  for (const part of header.split(',')) {
+    const [token, ...params] = part.split(';').map((p) => p.trim().toLowerCase());
+    if (token !== 'gzip' && token !== '*') continue;
+    const q = params.find((p) => p.startsWith('q='));
+    return !(q && Number(q.slice(2)) === 0);
+  }
+  return false;
+}
+
+/**
+ * Weak-compare an `If-None-Match` list against this response's tag. Weak because the
+ * tag hashes the serialized JSON, so an identity answer and a gzipped one are one
+ * representation.
+ */
+function etagMatches(req: http.IncomingMessage, etag: string): boolean {
+  const raw = req.headers['if-none-match'];
+  if (!raw) return false;
+  const header = Array.isArray(raw) ? raw.join(',') : raw;
+  if (header.trim() === '*') return true;
+  const bare = (tag: string) => tag.trim().replace(/^W\//, '');
+  return header.split(',').some((tag) => bare(tag) === bare(etag));
+}
+
+/**
+ * The one place a JSON body goes out, and so the one place a repeated poll can be
+ * answered without re-sending it.
+ *
+ * A 200 answering a read carries a weak ETag over the serialized body and
+ * `cache-control: no-cache`; a matching `If-None-Match` gets a 304 with the validator
+ * and the CORS headers, no body and no `content-length`. A body over
+ * {@link COMPRESS_MIN_BYTES} the request accepts gzip for goes out compressed.
+ *
+ * The bytes hashed are the bytes a route already produced, so parity comparisons keep
+ * seeing identical payloads. Server-sent events never come through here — `serveSse`
+ * writes its own `no-cache` headers and stays uncompressed.
+ *
+ * `res.req` is the request this response answers, so the negotiation needs no `req`
+ * threaded through every call site.
+ */
 function send(res: http.ServerResponse, status: number, body: unknown, cors: Record<string, string> = CORS): void {
-  res.writeHead(status, { 'content-type': 'application/json', ...cors });
-  res.end(JSON.stringify(body));
+  const req = res.req;
+  const json = Buffer.from(JSON.stringify(body), 'utf8');
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...cors,
+    // Appended rather than overwritten: the chat CORS path already varies on `origin`.
+    vary: cors.vary ? `${cors.vary}, accept-encoding` : 'accept-encoding',
+  };
+
+  // Only where a cache entry can exist: a 200 answering a read. An error body gets no
+  // validator.
+  if (status === 200 && (req.method === 'GET' || req.method === 'HEAD')) {
+    const etag = `W/"${crypto.createHash('sha1').update(json).digest('base64url')}"`;
+    headers.etag = etag;
+    headers['cache-control'] = 'no-cache';
+    if (etagMatches(req, etag)) {
+      res.writeHead(304, headers);
+      res.end();
+      return;
+    }
+  }
+
+  const write = (payload: Buffer, encoding?: string): void => {
+    if (encoding) headers['content-encoding'] = encoding;
+    headers['content-length'] = String(payload.length);
+    res.writeHead(status, headers);
+    res.end(payload);
+  };
+
+  if (json.length < COMPRESS_MIN_BYTES || !acceptsGzip(req)) {
+    write(json);
+    return;
+  }
+
+  // Async rather than `gzipSync`: the graph payload is megabytes. A failed deflate
+  // still answers, uncompressed.
+  zlib.gzip(json, (err, gzipped) => {
+    if (res.writableEnded) return;
+    if (err) write(json);
+    else write(gzipped, 'gzip');
+  });
 }
 
 const SSE_BASE_HEADERS = {

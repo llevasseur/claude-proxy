@@ -440,8 +440,11 @@ paraphrases of one idea.
 - **`ideas prompt --slug <slug>`** prints it bare on stdout, so `| pbcopy` is the whole workflow, and
   `--json` wraps it as `{ slug, prompt }` for a caller that would rather not parse stdout. An unknown
   slug prints the same refusal every other verb makes and exits 1, inventing nothing to answer with.
-- **On `/ideas/$slug` it is a Preview | Edit pair, opening on Preview.** The text is generated and
-  usually correct; opening on a textarea would present a composed artifact as a blank to fill in.
+- **On `/ideas/$slug` it is one editable field, and only one.** The card renders the prompt once, in a
+  textarea it is read from, edited in and copied from — a second rendering of a pure function of the
+  same entry would be a duplicate rather than a view, and would need a control for choosing between
+  two copies of identical bytes. The edit that field takes is the one-off caveat that belongs in
+  *this* copy of the prompt and not on the ledger.
 - **The edit is local to the clipboard and is not persisted.** The durable instruction already has a
   field — `comment` — which the generated prompt quotes, so writing there changes what everyone
   generates next, including what an orchestrator reads, while editing in the card changes only what
@@ -643,10 +646,10 @@ of the answer.
       dangling path.
 - [x] `ideas prompt --slug <slug>` prints that same string bare on stdout, wraps it as
       `{ slug, prompt }` under `--json`, and exits 1 on a slug the ledger lacks.
-- [x] `/ideas/$slug` carries the prompt in a Preview | Edit pair opening on Preview, with a copy
-      button that reports a missing `navigator.clipboard` rather than appearing to succeed, an edit
-      that is local to the clipboard and resettable, and a draft that follows a live entry unless it
-      has been edited.
+- [x] `/ideas/$slug` carries the prompt in a single editable field — no preview pane and no tab
+      pair — with a copy button that reports a missing `navigator.clipboard` rather than appearing
+      to succeed, an edit that is local to the clipboard and resettable, and a draft that follows a
+      live entry unless it has been edited.
 - [x] `/improve` claims before building and reads `--available` instead of `-s accepted`. The
       installed command claims with `ideas claim --by <branch>` before it dispatches the work, and
       reads the queue with `ideas list --available`. **The file lives outside this repo**, at
