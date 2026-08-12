@@ -172,36 +172,12 @@
     resize: vertical;
   }
 
-  /* The /task prompt: preview by default, edit for a one-off, copy from either.
-   The tab strip reuses `.idea-tabs`/`.idea-tab` above rather than restyling one. */
-  .idea-prompt-tabrow {
-    display: flex;
-    align-items: center;
-    gap: var(--space-5);
-    flex-wrap: wrap;
-    margin-bottom: var(--space-8);
-  }
-  .idea-prompt-tabrow .idea-tabs {
-    margin-bottom: 0;
-  }
+  /* The /task prompt: one editable field, copied from where it is read. */
   .idea-prompt-copy {
     margin-left: auto;
     display: inline-flex;
     align-items: center;
     gap: var(--space-4);
-  }
-  .idea-prompt-preview {
-    margin: 0;
-    padding: var(--space-7);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-3);
-    background: var(--surface-2);
-    font-family: var(--font-mono);
-    font-size: var(--text-4);
-    /* The prompt is written with its own line breaks and must keep them, while a
-     long citation path still has to wrap rather than widen the card. */
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
   .idea-prompt-edit {
     display: grid;
