@@ -2717,10 +2717,12 @@ export async function buildPullRequests(
   logDir: string,
   repoDir: string = resolveRepoDir(),
   limit: number = DEFAULT_PR_LIMIT,
+  source: SidecarSource = fileSource,
 ): Promise<PullRequestsResponse> {
   const { repo, prs, error, fetchedAt, cached, refError } = await readPullRequests(repoDir, limit);
-  // Keyed on the fetch the rows came from, so the scan tracks the `gh` cache.
-  const sessions = await readPrSessions(logDir, prs, `${logDir}:${repoDir}:${fetchedAt}`);
+  // Recorded links are read every call; the key is for the transcript scan the pull
+  // requests nothing recorded still need, so it tracks the `gh` cache as before.
+  const sessions = await readPrSessions(logDir, prs, `${logDir}:${repoDir}:${fetchedAt}`, source);
   const [mainHistory, localMain] = await Promise.all([
     readMainHistory(repoDir, mainPositions(prs)),
     readLocalDivergence(repoDir),

@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -562,6 +562,34 @@ CREATE TABLE IF NOT EXISTS day_digest (
 );
 `;
 
+/**
+ * `session.pr_url` — the pull request the run opened, as it recorded the url itself.
+ *
+ * It sits beside `root_prompt` because it comes from the same place: the
+ * `<threadId>.state.json` sidecar, copied in by ingest rather than derived here. The
+ * proxy writes it when a run's own `gh pr create` / `my-command-tools pr` result names a
+ * pull request, so a row with it is a **record** of what that session shipped, where
+ * `server/src/pr-sessions.ts` previously had only textual evidence read back out of every
+ * transcript on disk.
+ *
+ * Nullable, and null is a real reading rather than a gap: a run that opened no pull
+ * request, or one whose sidecar predates the field. `readPrSessions` falls back to the
+ * transcript scan for a pull request no row names, so null costs the old behaviour and
+ * nothing more.
+ *
+ * A derived **pointer**, deliberately not a second copy of anything ADR 0004 keeps on
+ * disk: `logs/` stays the source of truth, and `rm logs/claude-proxy.db && pnpm --filter
+ * server ingest` refills this column from the sidecars.
+ *
+ * Blanking `bytes` is what makes the column fill — a transcript is re-parsed only when its
+ * `stat` differs from the row's, and migrating does not touch the file.
+ */
+const SCHEMA_V15 = `
+ALTER TABLE session ADD COLUMN pr_url TEXT;
+
+UPDATE session SET bytes = -1;
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -682,6 +710,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 12) db.exec(SCHEMA_V12);
   if (from < 13) db.exec(SCHEMA_V13);
   if (from < 14) db.exec(SCHEMA_V14);
+  if (from < 15) db.exec(SCHEMA_V15);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

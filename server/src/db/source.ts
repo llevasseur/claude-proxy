@@ -14,7 +14,12 @@ import {
   type StoredConcept,
   sortConcepts,
 } from '@claude-proxy/core';
-import { commandStorePath, readCommandRuns as readCommandRunsFromFiles, sortCommandRuns } from '../command-runs.js';
+import {
+  commandStorePath,
+  readCommandRuns as readCommandRunsFromFiles,
+  type StoreAppend,
+  sortCommandRuns,
+} from '../command-runs.js';
 import { conceptStorePath, readConcepts as readConceptsFromFiles } from '../concepts.js';
 import { latestUserText } from '../derive.js';
 import {
@@ -30,6 +35,7 @@ import { listArchiveDays, logFileDay } from '../retention.js';
 import {
   listSessionGraphs as listSessionGraphsFromFiles,
   listSessions as listSessionsFromFiles,
+  readPrLinks as readPrLinksFromFiles,
   readRootPrompts as readRootPromptsFromFiles,
   readSession as readSessionFromFiles,
   readSessionNodeTexts as readSessionNodeTextsFromFiles,
@@ -39,7 +45,7 @@ import {
   type SessionNodeTexts,
   type SessionSummary,
 } from '../sessions.js';
-import { STORE_PATH as COMMAND_STORE_PATH } from './ingest-commands.js';
+import { applyCommandRunAppend, STORE_PATH as COMMAND_STORE_PATH } from './ingest-commands.js';
 import { STORE_PATH as CONCEPT_STORE_PATH } from './ingest-concepts.js';
 
 /**
@@ -102,6 +108,18 @@ export interface SidecarSource {
    * cannot disagree about which flavour of "no prompt" a thread has.
    */
   readRootPrompts(logDir: string, threadIds: readonly string[]): Promise<Map<string, string>>;
+  /**
+   * Every thread that recorded the pull request it opened, thread id → url. Asked
+   * for wholesale rather than by id, because the caller's question runs the other
+   * way: which threads name the pull requests it is about to draw.
+   *
+   * A thread with nothing on record is absent, so both backings agree that "no
+   * link" is one state rather than two. **This is the fast path behind
+   * `/api/pull-requests`** — on the substrate it is one indexed query, in place of
+   * reading every transcript in `logs/sessions/` to recover the same link from
+   * text.
+   */
+  readPrLinks(logDir: string): Promise<Map<string, string>>;
 
   /* --- Command runs (slice 3) --- *
    *
@@ -110,6 +128,18 @@ export interface SidecarSource {
    * — it lives outside `logs/`, so both backings read it the same way.
    */
   readCommandRuns(logDir: string): Promise<CommandRun[]>;
+
+  /**
+   * Fold an append the server itself just made into whatever this backing reads
+   * from, so the read beside it need not go back to the file for it. Returns whether
+   * the fold happened.
+   *
+   * Optional because only the substrate has anything to move — the file backing *is*
+   * the store. A `false`, from a backing that declines or rows that do not sit where
+   * the append started, is not a failure: {@link readCommandRuns} then re-reads the
+   * file exactly as it did before.
+   */
+  syncCommandRuns?(logDir: string, append: StoreAppend): Promise<boolean>;
 
   /* --- Concepts --- *
    *
@@ -159,6 +189,7 @@ export const fileSource: SidecarSource = {
   readSession: (logDir, id) => readSessionFromFiles(logDir, id),
   readSessionNodeTexts: (logDir, id) => readSessionNodeTextsFromFiles(logDir, id),
   readRootPrompts: (logDir, threadIds) => readRootPromptsFromFiles(logDir, threadIds),
+  readPrLinks: (logDir) => readPrLinksFromFiles(logDir),
   readCommandRuns: (logDir) => readCommandRunsFromFiles(logDir),
   readConcepts: (logDir) => readConceptsFromFiles(logDir),
 };
@@ -870,6 +901,17 @@ function rootPromptsFromDb(db: DatabaseSync, threadIds: readonly string[]): Map<
   return out;
 }
 
+/**
+ * Every recorded pull request link, out of the column ingest copied it into. Unindexed but
+ * tiny: the predicate keeps only the handful of threads that opened something.
+ */
+function prLinksFromDb(db: DatabaseSync): Map<string, string> {
+  const rows = db
+    .prepare("SELECT thread_id, pr_url FROM session WHERE pr_url IS NOT NULL AND pr_url != ''")
+    .all() as unknown as Array<{ thread_id: string; pr_url: string }>;
+  return new Map(rows.map((row) => [row.thread_id, row.pr_url]));
+}
+
 /** Newest first, ties broken by thread id — the order both listings return. */
 function sortListing<T extends { modified: string; threadId: string }>(rows: T[]): T[] {
   rows.sort((a, b) => b.modified.localeCompare(a.modified) || a.threadId.localeCompare(b.threadId));
@@ -963,6 +1005,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return sortListing(rows.map(({ recorded: _recorded, ...row }) => ({ ...row, ...links.get(row.threadId)! })));
     },
     readRootPrompts: async (_logDir, threadIds) => rootPromptsFromDb(db, threadIds),
+    readPrLinks: async () => prLinksFromDb(db),
     readSession: async (logDir, id) => {
       // Validates the URL-supplied id and confirms the path stays inside
       // `sessions/`, as the file reader does.
@@ -1009,12 +1052,16 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       }
       return { threadId: id, texts };
     },
-    // The store is indexed whole, so this reads no file at all.
+    // The store is indexed whole, so this reads no file at all — beyond the one
+    // `stat` below.
     readCommandRuns: async (logDir) => {
       // The server reconciles the store and reads it back inside the same
       // request, so rows behind the file would answer with the pre-reconcile
       // view. Same watermark equality `ingestCommandRuns` uses; anything else
       // re-reads the store, which is what the file reader would have answered.
+      // `syncCommandRuns` below is what makes the equality reachable here at all:
+      // the reconcile's own append moves both halves of it, so without the fold this
+      // route always fell through to the parse.
       const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(COMMAND_STORE_PATH) as
         | { bytes: number; modified: string }
         | undefined;
@@ -1028,6 +1075,8 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       }
       return readCommandRunsFromFiles(logDir);
     },
+    // Async to match the seam; the work itself is synchronous SQLite.
+    syncCommandRuns: async (_logDir, append) => applyCommandRunAppend(db, append),
     // The store is indexed whole, so this reads no file at all — as long as the
     // rows are provably current. `/teach` appends from outside the server, so a
     // record can land between two ingest passes; the same watermark equality

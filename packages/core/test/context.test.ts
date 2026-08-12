@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aggregateContext,
   analyzeRequestBody,
   attachContextPrompts,
   type ContextEntry,
@@ -74,6 +75,86 @@ describe('summarizeContext', () => {
       entry({ file: 'c', timestamp: '2026-07-20T13:31:01.000Z' }),
     ]);
     expect(s.entries.map((e) => e.file)).toEqual(['a', 'c', 'b']);
+  });
+
+  it('keeps the earlier entry ahead of a tie in top, and as max', () => {
+    const entries = [
+      entry({ file: 'first-500', realInput: 500 }),
+      entry({ file: 'only-400', realInput: 400 }),
+      entry({ file: 'second-500', realInput: 500 }),
+    ];
+    const s = summarizeContext(entries, { topN: 2 });
+    expect(s.top.map((e) => e.file)).toEqual(['first-500', 'second-500']);
+    expect(s.max?.file).toBe('first-500');
+  });
+
+  it('caps top at the number of entries when topN is larger', () => {
+    const s = summarizeContext([entry({ realInput: 1 }), entry({ realInput: 2 })], { topN: 10 });
+    expect(s.top).toHaveLength(2);
+  });
+
+  it('still reports max when topN asks for no top list', () => {
+    const s = summarizeContext([entry({ realInput: 10 }), entry({ realInput: 90 })], { topN: 0 });
+    expect(s.top).toEqual([]);
+    expect(s.max?.realInput).toBe(90);
+    expect(s.maxRealInput).toBe(90);
+  });
+
+  it('takes a precomputed aggregate half verbatim and still sorts entries', () => {
+    const entries = [
+      entry({ file: 'b', timestamp: '2026-07-20T13:31:02.000Z' }),
+      entry({ file: 'a', timestamp: '2026-07-20T13:31:00.000Z' }),
+    ];
+    const supplied = aggregateContext(entries);
+    const s = summarizeContext(entries, { aggregates: { ...supplied, requestCount: 99 } });
+    expect(s.requestCount).toBe(99);
+    expect(s.entries.map((e) => e.file)).toEqual(['a', 'b']);
+  });
+});
+
+/**
+ * `/api/context` is compared byte-for-byte across both read backings, so the one-pass
+ * aggregate has to agree with the descending sort it replaced exactly — including
+ * where it put ties, which is the only place the two could differ.
+ */
+describe('aggregateContext', () => {
+  /** What the two whole-array sorts produced — the reference to agree with. */
+  function bySorting(entries: readonly ContextEntry[], topN = 10) {
+    const tokens = entries.map((e) => e.realInput).sort((a, b) => a - b);
+    const sum = tokens.reduce((n, v) => n + v, 0);
+    const byLargest = [...entries].sort((a, b) => b.realInput - a.realInput);
+    const n = tokens.length;
+    const mid = Math.floor(n / 2);
+    return {
+      requestCount: n,
+      avgRealInput: n === 0 ? 0 : Math.round(sum / n),
+      medianRealInput: n === 0 ? 0 : n % 2 === 0 ? Math.round((tokens[mid - 1]! + tokens[mid]!) / 2) : tokens[mid]!,
+      maxRealInput: n === 0 ? 0 : tokens[n - 1]!,
+      max: byLargest[0] ?? null,
+      top: byLargest.slice(0, topN),
+    };
+  }
+
+  it('agrees with the sorts it replaced over a corpus dense in ties', () => {
+    // A deterministic spread over a small value range, so ties are frequent.
+    let seed = 1;
+    const next = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed;
+    };
+    const entries = Array.from({ length: 500 }, (_, i) =>
+      entry({ file: `f${i}`, realInput: next() % 25, timestamp: `2026-07-20T13:31:00.${String(i).padStart(3, '0')}Z` }),
+    );
+
+    for (const topN of [0, 1, 10, 499, 500, 501]) {
+      expect(aggregateContext(entries, { topN })).toEqual(bySorting(entries, topN));
+    }
+  });
+
+  it('agrees with the sorts it replaced on an even count and on none at all', () => {
+    const even = [40, 10, 30, 20].map((n, i) => entry({ file: `f${i}`, realInput: n }));
+    expect(aggregateContext(even)).toEqual(bySorting(even));
+    expect(aggregateContext([])).toEqual(bySorting([]));
   });
 });
 

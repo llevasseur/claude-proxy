@@ -8,6 +8,7 @@ import {
   parseRemoteUrl,
   parseRepoSlug,
   prCounts,
+  prUrlKey,
 } from '../src/pull-requests.js';
 
 /** A row with everything filled in, so a test only states the fields it cares about. */
@@ -132,6 +133,26 @@ describe('matchPrInText', () => {
     expect(matchPrInText(low, 'step #1 of the plan')).toEqual([]);
     expect(matchPrInText(low, 'https://github.com/o/r/pull/1')).toEqual(['number']);
     expect(matchPrInText(row({ number: 10, headRefName: 'feat/tenth' }), 'why is message #10 output')).toEqual([]);
+  });
+});
+
+describe('prUrlKey', () => {
+  it('reduces a url to the repository and number that identify it', () => {
+    expect(prUrlKey('https://github.com/llevasseur/claude-proxy/pull/200')).toBe('llevasseur/claude-proxy#200');
+    // A recorded url may carry a tail, or arrive with whitespace off a command's stdout.
+    expect(prUrlKey('  https://github.com/o/r/pull/14/files\n')).toBe('o/r#14');
+    // Any host: the same repository is `github.com` here and an Enterprise install there.
+    expect(prUrlKey('https://git.acme.ghe.com/o/r/pulls/7')).toBe('o/r#7');
+  });
+
+  it('keeps two repositories apart, which is the whole reason the repo half is in the key', () => {
+    expect(prUrlKey('https://github.com/o/r/pull/14')).not.toBe(prUrlKey('https://github.com/other/repo/pull/14'));
+  });
+
+  it('is null for anything that does not name a pull request', () => {
+    for (const url of ['', null, undefined, 'https://github.com/o/r/issues/14', 'https://github.com/o/r', 'nope']) {
+      expect(prUrlKey(url)).toBeNull();
+    }
   });
 });
 

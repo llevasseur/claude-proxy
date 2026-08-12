@@ -50,9 +50,29 @@ export interface ContextSummary {
   entries: ContextEntry[];
 }
 
+/**
+ * The summary's aggregate half — every field that does not depend on the entry
+ * list's chronological order, and so can be answered without one.
+ */
+export interface ContextAggregates {
+  requestCount: number;
+  avgRealInput: number;
+  medianRealInput: number;
+  maxRealInput: number;
+  /** The single largest-context request, or null when there were none. */
+  max: ContextEntry | null;
+  /** Largest requests first, capped at `topN`. */
+  top: ContextEntry[];
+}
+
 export interface SummarizeContextOptions {
   /** How many of the largest requests to include in `top`. Default 10. */
   topN?: number;
+  /**
+   * The aggregate half, already computed. Omitted, {@link aggregateContext} derives
+   * it from `entries`.
+   */
+  aggregates?: ContextAggregates;
 }
 
 function median(sorted: readonly number[]): number {
@@ -63,30 +83,72 @@ function median(sorted: readonly number[]): number {
 }
 
 /**
- * Aggregate context entries into averages, the peak, the largest N, and the full
- * chronological list. Pure.
+ * Count, mean, median, peak and largest-`topN` over the entries — in one pass,
+ * **without sorting the entries themselves**. Pure.
+ *
+ * `max` is the running maximum and `top` a `topN`-slot list. **Insertion is on
+ * strictly-greater**, which is what reproduces the old descending sort exactly:
+ * `Array.prototype.sort` is stable, so a tie kept the entry that appeared first in
+ * the read order, and refusing to displace an equal value keeps that same entry.
+ *
+ * The median needs order statistics, so the token values are collected and sorted —
+ * numbers rather than entries.
  */
-export function summarizeContext(entries: readonly ContextEntry[], opts: SummarizeContextOptions = {}): ContextSummary {
+export function aggregateContext(entries: readonly ContextEntry[], opts: { topN?: number } = {}): ContextAggregates {
   const topN = opts.topN ?? 10;
   const requestCount = entries.length;
 
   if (requestCount === 0) {
-    return { requestCount: 0, avgRealInput: 0, medianRealInput: 0, maxRealInput: 0, max: null, top: [], entries: [] };
+    return { requestCount: 0, avgRealInput: 0, medianRealInput: 0, maxRealInput: 0, max: null, top: [] };
   }
 
-  const sortedTokens = entries.map((e) => e.realInput).sort((a, b) => a - b);
-  const sum = sortedTokens.reduce((n, v) => n + v, 0);
-  const byLargest = [...entries].sort((a, b) => b.realInput - a.realInput);
-  const chronological = [...entries].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const tokens: number[] = new Array(requestCount);
+  const top: ContextEntry[] = [];
+  let sum = 0;
+  let max: ContextEntry | null = null;
+
+  for (let i = 0; i < requestCount; i += 1) {
+    const entry = entries[i]!;
+    const value = entry.realInput;
+    tokens[i] = value;
+    sum += value;
+    // Strictly greater, so a tie keeps the earlier entry — the stable sort's answer.
+    if (max === null || value > max.realInput) max = entry;
+    if (topN <= 0) continue;
+    if (top.length === topN && value <= top[top.length - 1]!.realInput) continue;
+    let at = top.length;
+    while (at > 0 && value > top[at - 1]!.realInput) at -= 1;
+    top.splice(at, 0, entry);
+    if (top.length > topN) top.pop();
+  }
+
+  tokens.sort((a, b) => a - b);
 
   return {
     requestCount,
     avgRealInput: Math.round(sum / requestCount),
-    medianRealInput: median(sortedTokens),
-    maxRealInput: sortedTokens[sortedTokens.length - 1]!,
-    max: byLargest[0]!,
-    top: byLargest.slice(0, topN),
-    entries: chronological,
+    medianRealInput: median(tokens),
+    maxRealInput: max!.realInput,
+    max,
+    top,
+  };
+}
+
+/**
+ * Aggregate context entries into averages, the peak, the largest N, and the full
+ * chronological list. Pure.
+ */
+export function summarizeContext(entries: readonly ContextEntry[], opts: SummarizeContextOptions = {}): ContextSummary {
+  const aggregates = opts.aggregates ?? aggregateContext(entries, opts);
+
+  return {
+    requestCount: aggregates.requestCount,
+    avgRealInput: aggregates.avgRealInput,
+    medianRealInput: aggregates.medianRealInput,
+    maxRealInput: aggregates.maxRealInput,
+    max: aggregates.max,
+    top: aggregates.top,
+    entries: [...entries].sort((a, b) => a.timestamp.localeCompare(b.timestamp)),
   };
 }
 
