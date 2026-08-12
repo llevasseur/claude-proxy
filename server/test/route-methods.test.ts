@@ -3,9 +3,11 @@
 // socket rather than a handler stub.
 import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdtemp, readFile } from 'node:fs/promises';
+import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 import type { IdeaEntry, IdeaStatus } from '@claude-proxy/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addIdeasToStore } from '../src/ideas-store.js';
@@ -28,6 +30,31 @@ let promptPath: string;
  * routes outright rather than falling back to a file. See ADR 0006.
  */
 let ledger: { url: string; stop: () => Promise<void> };
+
+interface RawReply {
+  status: number;
+  headers: http.IncomingHttpHeaders;
+  body: Buffer;
+}
+
+/**
+ * One request with no content negotiation but what the caller asks for.
+ *
+ * The conditional and gzip assertions at the bottom of this file cannot go through
+ * `fetch`: undici sets its own `accept-encoding`, and transparently decompresses what
+ * comes back — which is the exact layer under test.
+ */
+function raw(pathname: string, headers: Record<string, string> = {}, method = 'GET'): Promise<RawReply> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: pathname, method, headers }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 /** `Response.json()` answers `unknown`; these routes always reply with a `prompt` payload. */
 async function promptOf(res: Response): Promise<unknown> {
@@ -225,5 +252,113 @@ describe('read routes', () => {
       headers: { origin: 'http://evil.example' },
     });
     expect(res.status).toBe(403);
+  });
+});
+
+/**
+ * Transport, not payload: the JSON each route builds is untouched, and what these
+ * assert is the envelope around it.
+ *
+ * They share this file's server rather than standing up their own, deliberately —
+ * a second `tsx` process racing this one for a cold start is what makes both time
+ * out under the full suite, and there is only one `send` to exercise either way.
+ */
+describe('conditional and compressed reads', () => {
+  /** Big enough to be worth gzipping — written through the save route this file already drives. */
+  const BIG_PROMPT = `${'# Device rules\n'.repeat(400)}`;
+
+  beforeAll(async () => {
+    const res = await fetch(`${BASE}/api/system-prompt`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: BIG_PROMPT }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('tags a read with a validator and asks the client to revalidate', async () => {
+    const res = await raw('/api/health');
+
+    expect(res.status).toBe(200);
+    expect(res.headers.etag).toMatch(/^W\/"[\w-]+"$/);
+    expect(res.headers['cache-control']).toBe('no-cache');
+    // The open read CORS survives, and the encoding now has to be varied on too.
+    expect(res.headers['access-control-allow-origin']).toBe('*');
+    expect(res.headers.vary).toBe('accept-encoding');
+    expect(res.headers['content-length']).toBe(String(res.body.length));
+  });
+
+  it('answers an unchanged poll with a bodyless 304 that still validates', async () => {
+    const first = await raw('/api/health');
+    const etag = first.headers.etag!;
+
+    const second = await raw('/api/health', { 'if-none-match': etag });
+
+    expect(second.status).toBe(304);
+    expect(second.body.length).toBe(0);
+    // A 304 carries the validator and the CORS headers — a client given neither could
+    // not reuse what it holds — and never a `content-length`.
+    expect(second.headers.etag).toBe(etag);
+    expect(second.headers['access-control-allow-origin']).toBe('*');
+    expect(second.headers['content-length']).toBeUndefined();
+  });
+
+  it('matches a strong tag, an entry in a list, and `*`, but not a stale one', async () => {
+    const etag = (await raw('/api/health')).headers.etag!;
+
+    expect((await raw('/api/health', { 'if-none-match': etag.replace(/^W\//, '') })).status).toBe(304);
+    expect((await raw('/api/health', { 'if-none-match': `"nope", ${etag}` })).status).toBe(304);
+    expect((await raw('/api/health', { 'if-none-match': '*' })).status).toBe(304);
+    expect((await raw('/api/health', { 'if-none-match': '"stale"' })).status).toBe(200);
+  });
+
+  it('compresses a body worth compressing, and sends the identical payload either way', async () => {
+    const plain = await raw('/api/system-prompt', { 'accept-encoding': 'identity' });
+    const zipped = await raw('/api/system-prompt', { 'accept-encoding': 'gzip, br' });
+
+    expect(plain.body.length).toBeGreaterThan(1024);
+    expect(plain.headers['content-encoding']).toBeUndefined();
+
+    expect(zipped.headers['content-encoding']).toBe('gzip');
+    expect(zipped.headers['content-length']).toBe(String(zipped.body.length));
+    expect(zipped.body.length).toBeLessThan(plain.body.length);
+    // The bytes the route produced are what went out either way, which is what keeps
+    // the validator a function of the payload rather than of the encoding.
+    expect(gunzipSync(zipped.body).toString('utf8')).toBe(plain.body.toString('utf8'));
+    expect(zipped.headers.etag).toBe(plain.headers.etag);
+  });
+
+  it('leaves a small body, and a caller that refuses gzip, uncompressed', async () => {
+    const small = await raw('/api/health', { 'accept-encoding': 'gzip' });
+    expect(small.body.length).toBeLessThan(1024);
+    expect(small.headers['content-encoding']).toBeUndefined();
+
+    const refused = await raw('/api/system-prompt', { 'accept-encoding': 'gzip;q=0' });
+    expect(refused.body.length).toBeGreaterThan(1024);
+    expect(refused.headers['content-encoding']).toBeUndefined();
+  });
+
+  it('leaves errors, the method gate and the preflight as they were', async () => {
+    const method = await raw('/api/filters', {}, 'POST');
+    expect(method.status).toBe(405);
+    expect(method.headers.allow).toBe('GET, OPTIONS');
+    // No validator on a body nothing should be caching.
+    expect(method.headers.etag).toBeUndefined();
+    expect(JSON.parse(method.body.toString('utf8'))).toEqual({ error: 'method not allowed: POST' });
+
+    const missing = await raw('/api/nope');
+    expect(missing.status).toBe(404);
+    expect(missing.headers.etag).toBeUndefined();
+
+    const preflight = await raw('/api/health', {}, 'OPTIONS');
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers['access-control-allow-methods']).toBe('GET, OPTIONS');
+  });
+
+  it('keeps varying on the origin where the chat CORS already did', async () => {
+    const res = await raw('/api/chat/stream?sessionId=nope', { origin: 'http://evil.example' });
+
+    expect(res.status).toBe(403);
+    expect(res.headers.vary).toBe('origin, accept-encoding');
   });
 });
