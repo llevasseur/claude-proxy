@@ -15,7 +15,7 @@
  * so a steady-state pass opens only the request bodies that have appeared since.
  */
 
-import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -211,6 +211,50 @@ export function sortCommandRuns(runs: CommandRun[]): CommandRun[] {
   return runs.sort((a, b) => (b.started ?? '').localeCompare(a.started ?? ''));
 }
 
+/** The store's size and mtime — the pair `file_watermark` keys the store on. */
+export interface StoreMark {
+  bytes: number;
+  modified: string;
+}
+
+/**
+ * What one reconcile pass appended, and the marks that bracket it.
+ *
+ * A reader holding the store as it was at {@link before} can fold {@link records}
+ * in and arrive at it as it is at {@link after}, without opening the file. Neither
+ * mark is trusted blindly — `applyCommandRunAppend` refuses unless its rows sit
+ * exactly at `before`.
+ */
+export interface StoreAppend {
+  /** The records written this pass, in the order they were appended. */
+  records: CommandRun[];
+  /** The store as the pass found it. */
+  before: StoreMark;
+  /** The store once every append had landed. */
+  after: StoreMark;
+}
+
+/** The store's mark, or `null` when there is no store yet — or it went away. */
+async function markStore(logDir: string): Promise<StoreMark | null> {
+  try {
+    const info = await stat(commandStorePath(logDir));
+    return { bytes: info.size, modified: info.mtime.toISOString() };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Bracket a pass's appends. `null` for a pass that wrote nothing, and for one whose
+ * store could not be `stat`ed at either end — an unbracketed append is not safe to
+ * describe, and a consumer given `null` reads the file as it did before.
+ */
+async function bracket(logDir: string, before: StoreMark | null, records: CommandRun[]): Promise<StoreAppend | null> {
+  if (records.length === 0 || !before) return null;
+  const after = await markStore(logDir);
+  return after ? { records, before, after } : null;
+}
+
 /** Append records to the store, creating `logs/commands/` on first write. */
 export async function appendCommandRuns(logDir: string, runs: readonly CommandRun[]): Promise<void> {
   if (runs.length === 0) return;
@@ -262,6 +306,12 @@ export interface ReconcileResult {
   requestsRead: number;
   /** True when the read cap stopped the pass short — the next one picks up the rest. */
   capped: boolean;
+  /**
+   * What this pass appended, bracketed by the store's mark either side — `null` when
+   * it appended nothing, or the store could not be `stat`ed. The caller hands it to
+   * the substrate, which brings the command tables level without a second parse.
+   */
+  appended: StoreAppend | null;
 }
 
 /** What a record says it is, before its transcript and turns are read. */
@@ -292,9 +342,12 @@ export async function reconcileCommandRuns(
   commandsDir: string = resolveCommandsDir(),
   now: Date = new Date(),
 ): Promise<ReconcileResult> {
-  const [graphs, installed, records, index] = await Promise.all([
+  // Marked in the same breath as the read it brackets, so `storeBefore` and
+  // `records` describe the same prefix of the store.
+  const [graphs, installed, storeBefore, records, index] = await Promise.all([
     listSessionGraphs(logDir),
     listInstalledCommands(commandsDir),
+    markStore(logDir),
     readCommandRunRecords(logDir),
     readRequestIndex(logDir),
   ]);
@@ -366,7 +419,13 @@ export async function reconcileCommandRuns(
   if (retired.length > 0) await appendCommandRuns(logDir, retired);
 
   if (targets.length === 0) {
-    return { written: retired.length, runs: liveKeys.size - retired.length, requestsRead: 0, capped: false };
+    return {
+      written: retired.length,
+      runs: liveKeys.size - retired.length,
+      requestsRead: 0,
+      capped: false,
+      appended: await bracket(logDir, storeBefore, retired),
+    };
   }
 
   // One sidecar sweep for every run, from the earliest run's reporting day, narrowed to
@@ -451,6 +510,10 @@ export async function reconcileCommandRuns(
     runs: live.size,
     requestsRead,
     capped: pending.length > requestsRead,
+    // Both appends in the order they landed. The two sets are disjoint by
+    // construction — a retired key is one no target claims — so folding them in
+    // this order reproduces the file.
+    appended: await bracket(logDir, storeBefore, [...retired, ...written]),
   };
 }
 
