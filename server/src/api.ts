@@ -295,9 +295,10 @@ async function baselineDigests(
 /**
  * One baseline day's digest, memoised once the day can no longer change.
  *
- * The memo is consulted before either half is read, so a hit costs no I/O. The
- * result is kept only when the live directory contributed nothing — a day it
- * still holds part of is mid-rotation, and is recomputed on every read.
+ * The memo is consulted before either half is read, so a hit costs no corpus read
+ * — including on a cold process, which reads the day's row instead. The result is
+ * kept only when the live directory contributed nothing — a day it still holds
+ * part of is mid-rotation, and is recomputed on every read.
  */
 async function baselineDayDigest(
   logDir: string,
@@ -578,7 +579,8 @@ export interface TrendsResponse {
 }
 
 /**
- * Test-only: drop the in-process closed-day digest memo.
+ * Test-only: drop the closed-day digest cache — the in-process memo and the rows
+ * behind it both.
  *
  * Kept under its original name because `parity.ts` and the split-day tests call
  * it; the store itself lives in `day-digest-memo.ts`.
@@ -591,7 +593,8 @@ export function clearRawArchiveCache(): void {
  * One archived day's digest, computed from the raw sidecars the summary job
  * moved into `<logDir>/archive/<date>/`. `null` when that day isn't archived.
  *
- * Read through the memo, so a closed day is computed once per process. Today is
+ * Read through the memo, so a closed day is computed once and then kept — in this
+ * process, and in a row every later process reads instead of recomputing. Today is
  * excluded by the memo itself — the archiver rotates on the UTC day while a
  * reporting day is a `REPORT_TZ` day, so the archive can already hold part of
  * the day in progress.
