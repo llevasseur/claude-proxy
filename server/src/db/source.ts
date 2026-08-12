@@ -885,9 +885,8 @@ function rootPromptsFromDb(db: DatabaseSync, threadIds: readonly string[]): Map<
 }
 
 /**
- * Every recorded pull request link, out of the column ingest copied it into. One
- * indexed-free but tiny scan — the predicate rejects all but the handful of threads
- * that opened something.
+ * Every recorded pull request link, out of the column ingest copied it into. Unindexed but
+ * tiny: the predicate keeps only the handful of threads that opened something.
  */
 function prLinksFromDb(db: DatabaseSync): Map<string, string> {
   const rows = db

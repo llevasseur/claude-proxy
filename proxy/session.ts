@@ -783,20 +783,14 @@ function claimSpawn(dir: string, threadId: string, entry: ThreadEntry): void {
 
 // --- The pull request a run opened ------------------------------------------
 //
-// Which session produced which pull request used to be *recovered*, by reading every
-// transcript in `logs/sessions/` and testing it against every PR — a 14-second read the
-// dashboard repeated every 30 seconds. The run that opens a PR is told the url by the
-// command that opened it, so it is recorded here instead, and the scan is left as the
-// fallback for a PR nothing recorded.
+// The run that opens a PR is told the url by the command that opened it, so it is recorded
+// here rather than recovered later by reading every transcript in `logs/sessions/`.
 //
-// It stays an observation: the url is copied out of traffic the proxy was already
-// reading, and it goes to the `.state.json` sidecar rather than into the transcript,
-// which no reader's byte-for-byte comparison depends on.
+// It stays an observation: the url is copied out of traffic the proxy was already reading,
+// and it goes to the `.state.json` sidecar rather than into the transcript, which no
+// reader's byte-for-byte comparison depends on.
 
-/**
- * A url naming a pull request, on any host — GitHub Enterprise installs and ssh-alias
- * devices are why `packages/core` refuses to hardcode `github.com` either.
- */
+/** A url naming a pull request, on any host — an Enterprise install is not `github.com`. */
 const PR_URL_RE = /https?:\/\/[\w.-]+(?:\/[\w.-]+)+\/pulls?\/\d+/g;
 
 /**
@@ -811,9 +805,7 @@ const PR_COMMAND_RE = /gh\s+pr\s+(?:create|edit)\b|my-command-tools\s+pr\b|gh\s+
  *
  * Calls are paired to their results rather than matched as loose text: a `tool_use` block
  * reaches the wire in the turn *after* it ran, alongside the `tool_result` it produced, so
- * one pass over the delta has both halves in hand. The last url wins — a `create` followed
- * by an `edit` names the same PR, and a run that somehow opened two is best described by
- * its latest.
+ * one pass over the delta has both halves in hand. The last url wins.
  */
 export function openedPullRequest(delta: unknown): string | null {
   const opening = new Set<string>();

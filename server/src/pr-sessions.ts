@@ -6,22 +6,20 @@
  * `.state.json`, ingest carries it into `session.pr_url`, and {@link readPrSessions} reads
  * that column first. On the substrate that is one small query.
  *
- * The transcript scan is still here, and still does exactly what it did — one pass over
- * `logs/sessions/`, each transcript tested against every pull request — but it now runs
- * **only for the pull requests no session recorded**: everything opened before the record
- * existed, and anything opened outside a captured run. Each match still says which signal
- * found it, and `recorded` is one of those signals rather than a silent upgrade.
+ * The transcript scan is unchanged — one pass over `logs/sessions/`, each transcript tested
+ * against every pull request — but it now runs **only for the pull requests no session
+ * recorded**: everything opened before the record existed, and anything opened outside a
+ * captured run. Each match still says which signal found it, `recorded` included.
  *
- * Two consequences worth stating plainly, because they are the price of the trade:
+ * Two consequences, since they are the price of the trade:
  *
- * - The scan disappears entirely only once every displayed pull request is named by a
- *   column. The record is **forward-only** — nothing backfills it, since inventing a
- *   record out of textual evidence is the very thing this replaces — so a repository's
- *   older pull requests keep the scan alive, and the single-slot cache below is kept for
- *   exactly that reason.
+ * - The scan disappears entirely only once every displayed pull request is named. The record
+ *   is **forward-only** — nothing backfills it, since inventing a record out of the textual
+ *   evidence it replaces is the very thing this ends — so older pull requests keep the scan
+ *   alive, and the single-slot cache below is kept for them.
  * - A recorded pull request lists the session that **opened** it, not every session that
- *   mentioned it. That is the point of a record, but it does mean a review or follow-up run
- *   that only quoted the number no longer appears once the opener is on file.
+ *   mentioned it. A review run that only quoted the number no longer appears once the opener
+ *   is on file.
  */
 
 import { readdir, readFile, stat } from 'node:fs/promises';
@@ -73,8 +71,7 @@ function recordedFor(prs: readonly PullRequestRow[], links: Map<string, string>)
   const byKey = new Map<string, number>();
   for (const pr of prs) {
     const key = prUrlKey(pr.url);
-    // First writer wins, and a row `gh` gave no url for simply has no key to match on —
-    // it falls through to the scan like any other unnamed pull request.
+    // A row `gh` gave no url for has no key to match on, so it falls through to the scan.
     if (key !== null && !byKey.has(key)) byKey.set(key, pr.number);
   }
   if (byKey.size === 0) return new Map();
