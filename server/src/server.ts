@@ -135,26 +135,60 @@ const SETTINGS_PATH = resolveSettingsPath();
 const SYSTEM_PROMPT_PATH = resolveSystemPromptPath();
 
 /**
- * Bring the command-run store up to date, then build.
+ * Bring the command-run store up to date — in the background, never as a step of a read.
  *
- * The reconcile pass is the only writer, so concurrent requests — and the SSE watcher
- * firing on the same log change that woke a request — share one in-flight pass rather
- * than racing to append the same records. A failure is swallowed: the store is a cache
- * of the logs, and serving it slightly stale beats 500-ing the page.
+ * The pass is a full file scan: every session graph in `logs/`, each one's root prompt,
+ * and the request index — tens of seconds, against a substrate read of tens of
+ * milliseconds. So it no longer sits in front of an `/api/commands*` response: the read
+ * beside it answers from the rows already on record, and {@link onCommandStoreChange}
+ * pushes newly-reconciled rows to open streams when the pass lands.
+ *
+ * The pass is the only writer, so concurrent requests — and the SSE watcher firing on the
+ * same log change that woke a request — share one in-flight pass rather than racing to
+ * append the same records. {@link RECONCILE_MIN_INTERVAL_MS} bounds it further: every
+ * proxied request writes into `logs/`, so the watch ticks are continuous and without a
+ * floor the scan would run back to back forever. A failure is swallowed: the store is a
+ * cache of the logs, and serving it slightly stale beats 500-ing the page.
  *
  * The pass's appends are then folded into the substrate's command tables, inside that
- * same shared promise, so the read that follows answers from rows rather than
- * re-parsing the store this pass just wrote to. See {@link syncCommandRows}.
+ * same shared promise, so the next read answers from rows rather than re-parsing the
+ * store this pass just wrote to. See {@link syncCommandRows}.
  */
 let reconciling: Promise<unknown> | null = null;
-function reconcileCommands(): Promise<unknown> {
+let reconciledAt = 0;
+
+/** The floor between two reconcile passes. See {@link reconcileCommands}. */
+const RECONCILE_MIN_INTERVAL_MS = 15_000;
+
+function reconcileCommands(force = false): Promise<unknown> {
+  if (!force && !reconciling && Date.now() - reconciledAt < RECONCILE_MIN_INTERVAL_MS) return Promise.resolve();
   reconciling ??= reconcileCommandRuns(LOG_DIR, COMMANDS_DIR)
-    .then(syncCommandRows)
+    .then(async (result) => {
+      await syncCommandRows(result);
+      if (result.appended) for (const fire of [...commandStoreListeners]) fire();
+    })
     .catch(() => undefined)
     .finally(() => {
+      reconciledAt = Date.now();
       reconciling = null;
     });
   return reconciling;
+}
+
+/**
+ * Woken when a background reconcile pass appended to the command store — what keeps the
+ * command streams live now that their `build` no longer waits for the pass.
+ *
+ * Not `fs.watch(LOG_DIR)`: the pass writes `logs/commands/runs.jsonl`, a file in a
+ * *subdirectory*, which a non-recursive watch on the log root may never report.
+ */
+const commandStoreListeners = new Set<() => void>();
+
+function onCommandStoreChange(fire: () => void): () => void {
+  commandStoreListeners.add(fire);
+  return () => {
+    commandStoreListeners.delete(fire);
+  };
 }
 
 /**
@@ -176,9 +210,27 @@ async function syncCommandRows(result: ReconcileResult): Promise<void> {
   await substrate.syncCommandRuns(LOG_DIR, result.appended);
 }
 
-async function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
-  await reconcileCommands();
+/** Build now, reconcile behind — see {@link reconcileCommands} for why it is not awaited. */
+function withCommandReconcile<T>(build: () => Promise<T>): Promise<T> {
+  void reconcileCommands();
   return build();
+}
+
+/**
+ * The one case a read still waits for a pass: the record asked for is not on file.
+ *
+ * A list route has a degraded answer — one fewer row, filled in by the pass behind it. A
+ * detail route addressed at a single run has none, so a miss, and only a miss, forces a
+ * pass and asks once more. A genuine 404 pays for one scan and still 404s.
+ */
+async function afterReconcileIfMissing<T>(build: () => Promise<T>, missing: string): Promise<T> {
+  try {
+    return await build();
+  } catch (err) {
+    if (!(err as Error).message.startsWith(missing)) throw err;
+    await reconcileCommands(true);
+    return build();
+  }
 }
 
 /**
@@ -351,6 +403,13 @@ interface SseWatchSource {
   build: (scope: RebuildScope) => Promise<unknown>;
   /** Coalesce bursts of fs events within this window (ms) before rebuilding. */
   debounceMs: number;
+  /**
+   * A second trigger, for a change this process witnesses but `watchPath` will not
+   * report — a background pass writing under a subdirectory, say. Registered like a push
+   * source's `subscribe` and returning the same unsubscribe. It carries no payload: the
+   * tick runs through `build` and the dedupe as an fs event does, and is unscoped.
+   */
+  notify?: (fire: () => void) => () => void;
 }
 
 /**
@@ -484,6 +543,16 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
       watcher.on('error', () => {});
     } catch {
       /* watch unsupported / path missing — client keeps the snapshot, heartbeat holds it open */
+    }
+
+    // Coalesced through the same debounce as an fs event; the `null` taints the tick into
+    // a full rebuild, since this change was never placed on a day.
+    if (watch.notify) {
+      unsubscribe = watch.notify(() => {
+        touched.push(null);
+        if (debounce) clearTimeout(debounce);
+        debounce = setTimeout(pushUpdate, watch.debounceMs);
+      });
     }
   } else if (poll) {
     // Same dedupe the watch source does, for the same reason: a tick that reads
@@ -679,11 +748,11 @@ async function serveCommandDetail({ req, res, url }: RouteContext, stream: boole
   const flags = (url.searchParams.get('flags') ?? '').split(',').filter(Boolean);
   const build = () => withCommandReconcile(() => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags, readSource()));
   if (stream) {
-    await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+    await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600, notify: onCommandStoreChange });
     return;
   }
   try {
-    const command = await build();
+    const command = await afterReconcileIfMissing(build, 'command not found');
     send(res, 200, command);
     shadow('/api/commands/command', command, (source) => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags, source));
   } catch (err) {
@@ -702,11 +771,11 @@ async function serveCommandRun({ req, res, url }: RouteContext, stream: boolean)
   }
   const build = () => withCommandReconcile(() => buildCommandRun(LOG_DIR, id, readSource()));
   if (stream) {
-    await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600 });
+    await serveSse(req, res, { watchPath: LOG_DIR, build, debounceMs: 600, notify: onCommandStoreChange });
     return;
   }
   try {
-    const run = await build();
+    const run = await afterReconcileIfMissing(build, 'command run not found');
     send(res, 200, run);
     shadow('/api/commands/run', run, (source) => buildCommandRun(LOG_DIR, id, source));
   } catch (err) {
@@ -1232,6 +1301,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       watchPath: LOG_DIR,
       build: () => withCommandReconcile(() => buildCommands(LOG_DIR, COMMANDS_DIR, readSource())),
       debounceMs: 600,
+      notify: onCommandStoreChange,
     });
   },
   '/api/commands/command': (ctx) => serveCommandDetail(ctx, false),
