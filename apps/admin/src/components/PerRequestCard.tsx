@@ -52,8 +52,7 @@ export function PerRequestCard() {
       {error ? (
         <div className='empty'>Could not load this window: {error.message}</div>
       ) : isLoading ? (
-        // A model switch drops the old window rather than holding it, so this is the
-        // gap the new values land in — the plot's own shape, kept out of the flow.
+        // The gap a model switch's new values land in — the plot's own shape, no card around it.
         <SkeletonChart bars={days} legend={PER_REQUEST_SERIES.length} />
       ) : (
         <>

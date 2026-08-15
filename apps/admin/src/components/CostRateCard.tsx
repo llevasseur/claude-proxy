@@ -57,9 +57,7 @@ export function CostRateCard() {
       </div>
 
       {isLoading ? (
-        // A model switch drops the old window rather than holding it, so the verdict
-        // goes with it: stated over numbers that are on their way out it would be a
-        // claim about the wrong model until the new ones land.
+        // The verdict goes with the numbers: stated over an outgoing window it names the wrong model.
         <CostRateSkeletonBody days={days} />
       ) : (
         <>
@@ -246,9 +244,8 @@ function CostRateTooltip({ active, payload }: CostRateTooltipProps) {
 }
 
 /**
- * The verdict line, plot and legend as placeholders. Not `SkeletonChart`, which
- * reserves a plot and a legend but not the verdict line above them. Rendered without a
- * card of its own, so the card already on screen can drop to it while it reloads.
+ * The verdict line, plot and legend as placeholders — unlike `SkeletonChart`, which has
+ * no verdict line. No card of its own, so a card already on screen can drop to it.
  */
 function CostRateSkeletonBody({ days }: { days: number }) {
   // Deterministic sawtooth, so the bars don't flicker between renders.

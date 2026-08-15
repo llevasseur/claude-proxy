@@ -182,8 +182,8 @@ export function SkeletonTableCard({
 }
 
 /**
- * A plot and its legend, without a card around them — the body a chart card reserves
- * on first load, and the body a card already on screen falls back to while it reloads.
+ * A plot and its legend, without a card around them — a chart card's body, and what a
+ * card already on screen falls back to while it reloads.
  * `height` must match the real chart's fixed height (`SeriesLineChart` defaults to 220;
  * a `BarChart` is `BAR_CHART_HEIGHT`). `legend` reserves that many `.chartlegend`
  * entries beneath the plot.

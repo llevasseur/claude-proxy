@@ -82,9 +82,8 @@ export function DayWindowControls({
  * window: a list built from the filtered one would empty the control that filtered
  * it. Shares the key an unfiltered page already uses, so it costs no extra fetch.
  *
- * This one keeps its placeholder unconditionally: its key never carries a model, so a
- * model switch is not a change to it, and the list of models has to stay under the
- * control that is selecting from it while the window it describes reloads.
+ * Keeps its placeholder unconditionally: the key carries no model, and the list has to
+ * stay under the control selecting from it while the window reloads.
  */
 export function useModelOptions(days: number): ModelOption[] {
   const query = useQuery({
@@ -157,22 +156,14 @@ export function withLiveToday(digests: UsageDigest[], today: UsageDigest): Usage
 
 /**
  * Placeholder rule for a trends read: hold the previous window's numbers under the new
- * one, unless the *model* is what changed.
- *
- * A window switch asks the same models for a wider or narrower span, so the numbers it
- * supersedes are close enough to the next set to be worth sitting under them while they
- * arrive. A model switch replaces them with a different model's entirely, and that is
- * the one switch whose answer has to be unmistakable: kept in place it lands as a few
- * digits quietly changing inside an unmoved layout, which reads the same whether the
- * fetch finished or not. Dropping the placeholder puts the query back to loading, so
- * the view reloads through the skeleton it already has and the layout shifts as the new
- * values arrive — the shift is what says they did.
+ * one, unless the *model* is what changed. Held across a model switch they change digit
+ * by digit inside an unmoved layout; dropped, the query is back to loading and the view
+ * reloads through its skeleton, so the layout shifts as the new values arrive.
  */
 const keepUnlessModelChanged =
   (model: string | null) =>
   <T,>(previous: T | undefined, previousQuery?: { queryKey: readonly unknown[] }): T | undefined => {
-    // The model half of `trendsKey`. Absent on the very first read, where there is no
-    // previous data to hold anyway.
+    // The model half of `trendsKey` — absent on the first read, which has nothing to hold.
     const previousModel = previousQuery?.queryKey[2] as string | null | undefined;
     return previousModel === model ? previous : undefined;
   };
