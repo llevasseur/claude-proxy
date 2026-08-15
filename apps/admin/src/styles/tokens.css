@@ -27,35 +27,24 @@
 
     /* type
    *
-   * Two families, and each one states what it is for. `--font-ui` is the
-   * interface — every label, chip, heading, control, caption and sentence.
-   * `--font-mono` is *data*: an identifier, a path, a hash, a timestamp, code,
-   * a numeric column. Nothing else. That split is the whole point of having
-   * two: while the chrome was also monospaced, the monospace face said
-   * "small print" rather than "this is a value, and it lines up", and the
-   * distinction had no way to show.
+   * Two families, each with a stated role. `--font-ui` is the interface —
+   * every label, chip, heading, control, caption and sentence. `--font-mono`
+   * is *data*: an identifier, a path, a hash, a timestamp, code, a numeric
+   * column. Nothing else.
    *
    * `--font-ui` is what `:root` sets, so the interface family is inherited
-   * rather than declared. A chrome rule therefore names no family at all, and
+   * rather than declared. A chrome rule names no family at all, and
    * `font-family: var(--font-mono)` in this sheet is a positive claim that the
    * element holds data.
    *
-   * Both are platform stacks. The display family and the two Google-hosted
-   * web fonts are gone with the `<link>`s that fetched them: nothing blocks
-   * first paint, and there is no swap. */
+   * Both are platform stacks; no web font is fetched. */
     --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
     /* The small uppercase label — a rail section heading, a card label, a status
-   * chip, a table header, a graph band's kind. It is one gesture, so it gets one
-   * tracking value rather than a number chosen per component. Nine of them were
-   * in the sheet, from 0.03em to 0.14em, which is not a scale: at these sizes the
-   * difference is visible side by side and says nothing, so a chip and the heading
-   * above it read as two different treatments of the same thing.
-   *
-   * It is a named token rather than a step, because tracking has no scale here and
-   * one rule reaches for it. Non-uppercase tracking — a button, a link, a
-   * breadcrumb — is a separate concern and keeps its own value. */
+   * chip, a table header, a graph band's kind. One gesture, so one tracking
+   * value rather than a number chosen per component. Non-uppercase tracking — a
+   * button, a link, a breadcrumb — is a separate concern and keeps its own. */
     --tracking-label: 0.08em;
 
     /* space

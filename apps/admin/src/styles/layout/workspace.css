@@ -72,8 +72,7 @@
     font-size: var(--text-4);
     margin-top: var(--space-4);
   }
-  /* The sentence around it is prose; the number in it is a value, and it is the
-   * one part of `.trend-compare` that still asks for the data face. */
+  /* The number inside `.trend-compare`'s sentence: a value, not prose. */
   .trend-compare-value {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;

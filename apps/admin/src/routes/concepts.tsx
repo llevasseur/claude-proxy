@@ -435,8 +435,6 @@ const LAYOUT = {
 
 const RAIL = {
   head: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 10 },
-  // No family and no tracking: both were there to open up a monospaced title, and the
-  // rail's headings are interface text rather than data.
   title: { fontSize: 'var(--text-4)' },
   clear: {
     background: 'transparent',
