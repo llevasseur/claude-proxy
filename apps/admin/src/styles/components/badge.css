@@ -1,13 +1,12 @@
 @layer components {
   /* badges */
   .badge {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     font-weight: 600;
     padding: var(--space-2) var(--space-5);
     border-radius: var(--radius-pill);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-label);
     white-space: nowrap;
   }
   /* Adjacent badges in JSX carry no whitespace between them, so an inline run of

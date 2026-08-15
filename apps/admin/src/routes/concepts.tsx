@@ -435,18 +435,19 @@ const LAYOUT = {
 
 const RAIL = {
   head: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 10 },
-  title: { fontFamily: 'var(--font-mono)', fontSize: 'var(--text-4)', letterSpacing: '0.06em' },
+  // No family and no tracking: both were there to open up a monospaced title, and the
+  // rail's headings are interface text rather than data.
+  title: { fontSize: 'var(--text-4)' },
   clear: {
     background: 'transparent',
     border: 'none',
     padding: 0,
     color: 'var(--signal)',
     cursor: 'pointer',
-    fontFamily: 'var(--font-mono)',
     fontSize: 'var(--text-3)',
   },
   group: { marginBottom: 18 },
-  groupHead: { fontFamily: 'var(--font-mono)', fontSize: 'var(--text-3)', letterSpacing: '0.06em' },
+  groupHead: { fontSize: 'var(--text-3)' },
   hint: { fontSize: 'var(--text-3)', marginBottom: 6 },
   label: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   count: { flex: 'none', fontVariantNumeric: 'tabular-nums' },
@@ -467,7 +468,6 @@ function facetStyle(active: boolean): CSSProperties {
     borderRadius: 'var(--radius-3)',
     padding: '4px 6px',
     cursor: 'pointer',
-    fontFamily: 'var(--font-mono)',
     fontSize: 'var(--text-4)',
   };
 }

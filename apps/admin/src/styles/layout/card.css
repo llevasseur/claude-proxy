@@ -14,7 +14,6 @@
     margin-bottom: var(--space-10);
   }
   .card h2 {
-    font-family: var(--font-display);
     font-size: var(--text-7);
     font-weight: 600;
     letter-spacing: -0.01em;
@@ -55,7 +54,6 @@
     }
   }
   .link {
-    font-family: var(--font-mono);
     color: var(--signal);
     text-decoration: none;
     font-size: var(--text-4);
@@ -75,12 +73,10 @@
   .crumb-sep {
     color: var(--muted);
     opacity: 0.6;
-    font-family: var(--font-mono);
     font-size: var(--text-4);
   }
   .crumb-current {
     color: var(--muted);
-    font-family: var(--font-mono);
     font-size: var(--text-4);
     letter-spacing: 0.02em;
   }
@@ -132,13 +128,11 @@
     color: var(--muted);
     text-align: center;
     padding: var(--space-page);
-    font-family: var(--font-mono);
     font-size: var(--text-5);
   }
   /* What a filter had to leave out, said above the cards it applies to. Not a
    * `.card`: it qualifies the panels below rather than sitting among them. */
   .filter-note {
-    font-family: var(--font-mono);
     font-size: var(--text-4);
     margin-bottom: var(--space-8);
   }

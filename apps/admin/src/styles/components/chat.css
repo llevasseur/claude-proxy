@@ -19,7 +19,6 @@
     outline: none;
     background: transparent;
     color: var(--text);
-    font-family: var(--font-body);
     font-size: var(--text-6);
     line-height: 21px;
     padding: var(--space-6) var(--space-8);
@@ -67,7 +66,6 @@
     border-radius: var(--radius-4);
     padding: var(--space-4) var(--space-9);
     cursor: pointer;
-    font-family: var(--font-mono);
     font-size: var(--text-4);
     font-weight: 600;
   }
@@ -151,9 +149,8 @@
     border: 1px solid var(--line);
     background: var(--surface-2);
     color: var(--muted);
-    font-family: var(--font-mono);
     font-size: var(--text-2);
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
   }
   .chat-turn.assistant .chat-avatar {
@@ -244,7 +241,6 @@
     color: var(--muted);
     padding: var(--space-3) var(--space-7);
     cursor: pointer;
-    font-family: var(--font-mono);
     font-size: var(--text-4);
   }
   button.chat-new:hover:not(:disabled) {
@@ -257,7 +253,6 @@
     gap: var(--space-8);
     flex-wrap: wrap;
     margin-bottom: var(--space-5);
-    font-family: var(--font-mono);
     font-size: var(--text-3);
   }
   /* What an agent turn actually ran. */
@@ -317,7 +312,6 @@
   .chat-tool-why {
     margin-left: var(--space-4);
     color: var(--muted);
-    font-family: var(--font-body);
     max-width: 46ch;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -326,10 +320,9 @@
     vertical-align: bottom;
   }
   /* The standing permission answer, chosen per session. Surface, border, radius,
-   * arrow and disabled state come from `.select-field`; what is left is the mono
-   * face the rest of the composer's fine print uses. */
+   * arrow and disabled state come from `.select-field`; what is left is the size
+   * the rest of the composer's fine print uses. */
   .chat-permission {
-    font-family: var(--font-mono);
     font-size: var(--text-4);
   }
   /* Ends the turn in flight; shown only while one runs. */
@@ -340,7 +333,6 @@
     color: var(--bad);
     padding: var(--space-3) var(--space-7);
     cursor: pointer;
-    font-family: var(--font-mono);
     font-size: var(--text-4);
   }
   button.chat-stop:disabled {

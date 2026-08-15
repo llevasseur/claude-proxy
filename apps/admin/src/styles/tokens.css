@@ -25,10 +25,38 @@
     --high: var(--coral);
     --info: var(--signal);
 
-    /* type */
-    --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* type
+   *
+   * Two families, and each one states what it is for. `--font-ui` is the
+   * interface — every label, chip, heading, control, caption and sentence.
+   * `--font-mono` is *data*: an identifier, a path, a hash, a timestamp, code,
+   * a numeric column. Nothing else. That split is the whole point of having
+   * two: while the chrome was also monospaced, the monospace face said
+   * "small print" rather than "this is a value, and it lines up", and the
+   * distinction had no way to show.
+   *
+   * `--font-ui` is what `:root` sets, so the interface family is inherited
+   * rather than declared. A chrome rule therefore names no family at all, and
+   * `font-family: var(--font-mono)` in this sheet is a positive claim that the
+   * element holds data.
+   *
+   * Both are platform stacks. The display family and the two Google-hosted
+   * web fonts are gone with the `<link>`s that fetched them: nothing blocks
+   * first paint, and there is no swap. */
+    --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* The small uppercase label — a rail section heading, a card label, a status
+   * chip, a table header, a graph band's kind. It is one gesture, so it gets one
+   * tracking value rather than a number chosen per component. Nine of them were
+   * in the sheet, from 0.03em to 0.14em, which is not a scale: at these sizes the
+   * difference is visible side by side and says nothing, so a chip and the heading
+   * above it read as two different treatments of the same thing.
+   *
+   * It is a named token rather than a step, because tracking has no scale here and
+   * one rule reaches for it. Non-uppercase tracking — a button, a link, a
+   * breadcrumb — is a separate concern and keeps its own value. */
+    --tracking-label: 0.08em;
 
     /* space
    *
@@ -107,7 +135,7 @@
    * zeroing the clock cannot flatten it — the fill itself has to change. */
     --skeleton-fill: linear-gradient(90deg, var(--surface-2) 8%, var(--line) 38%, var(--surface-2) 68%);
 
-    font-family: var(--font-body);
+    font-family: var(--font-ui);
     color-scheme: dark;
   }
 

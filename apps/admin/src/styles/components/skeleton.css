@@ -216,7 +216,6 @@
     color: var(--signal);
     padding: var(--space-3) var(--space-7);
     cursor: pointer;
-    font-family: var(--font-mono);
     font-size: var(--text-4);
   }
   button.btn-save:hover:not(:disabled) {

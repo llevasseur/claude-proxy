@@ -39,7 +39,6 @@
     color: var(--bad);
     padding: var(--space-3) var(--space-7);
     cursor: pointer;
-    font-family: var(--font-mono);
     font-size: var(--text-4);
   }
   button.btn-danger:hover:not(:disabled) {
@@ -199,7 +198,7 @@
     background: var(--surface-2);
     color: var(--muted);
     font-size: var(--text-2);
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
   }
 

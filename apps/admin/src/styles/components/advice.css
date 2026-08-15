@@ -27,7 +27,6 @@
     margin-bottom: var(--space-4);
   }
   .advice-head h3 {
-    font-family: var(--font-display);
     font-size: var(--text-7);
     font-weight: 600;
     margin: 0;

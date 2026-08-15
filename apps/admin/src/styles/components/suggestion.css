@@ -21,7 +21,6 @@
     margin-bottom: var(--space-5);
   }
   .bucket-label {
-    font-family: var(--font-display);
     font-size: var(--text-7);
     font-weight: 600;
   }
@@ -63,7 +62,6 @@
   }
   .bucket-stats {
     margin-top: var(--space-6);
-    font-family: var(--font-mono);
     font-size: var(--text-4);
   }
   .suggestion-sources {
@@ -74,7 +72,7 @@
   .suggestion-sources-label {
     font-size: var(--text-3);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: var(--tracking-label);
     color: var(--muted);
   }
   .suggestion-sources ul {
@@ -105,10 +103,9 @@
     color: var(--faint);
   }
   .suggestion-flag {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-label);
     color: var(--muted);
   }
   .suggestion-mark {
@@ -125,7 +122,6 @@
     font-size: var(--text-4);
   }
   .suggestion-mark-error {
-    font-family: var(--font-mono);
     font-size: var(--text-4);
     color: var(--coral);
   }
@@ -137,10 +133,9 @@
   }
   /* The judge's context, kept apart from the entry's own note. */
   .suggestion-enrichment-label {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-label);
     color: var(--faint);
   }
   /* Sits after .is-resolved and shares its specificity, so it dims further still. The
