@@ -182,26 +182,18 @@ export function SkeletonTableCard({
 }
 
 /**
- * A chart card. `height` must match the real chart's fixed height (`SeriesLineChart`
- * defaults to 220; a `BarChart` is `BAR_CHART_HEIGHT`). `legend` reserves that many
- * `.chartlegend` entries beneath the plot.
+ * A plot and its legend, without a card around them — the body a chart card reserves
+ * on first load, and the body a card already on screen falls back to while it reloads.
+ * `height` must match the real chart's fixed height (`SeriesLineChart` defaults to 220;
+ * a `BarChart` is `BAR_CHART_HEIGHT`). `legend` reserves that many `.chartlegend`
+ * entries beneath the plot.
  */
-export function SkeletonChartCard({
-  title,
-  height = 220,
-  bars = 14,
-  legend = 0,
-}: {
-  title?: string;
-  height?: number;
-  bars?: number;
-  legend?: number;
-}) {
+export function SkeletonChart({ height = 220, bars = 14, legend = 0 }: SkeletonChartProps) {
   // Deterministic sawtooth, so the bars don't flicker between renders.
   const heights = Array.from({ length: bars }, (_, i) => 34 + ((i * 37) % 61));
 
   return (
-    <SkeletonCard title={title} head={title === undefined}>
+    <>
       <div className='skeleton-chart' style={{ height }} aria-hidden>
         {heights.map((h, i) => (
           <span className='skeleton skeleton-bar' key={i} style={{ height: `${h}%` }} />
@@ -216,6 +208,21 @@ export function SkeletonChartCard({
           ))}
         </div>
       )}
+    </>
+  );
+}
+
+export interface SkeletonChartProps {
+  height?: number;
+  bars?: number;
+  legend?: number;
+}
+
+/** That chart in its own card. */
+export function SkeletonChartCard({ title, ...chart }: { title?: string } & SkeletonChartProps) {
+  return (
+    <SkeletonCard title={title} head={title === undefined}>
+      <SkeletonChart {...chart} />
     </SkeletonCard>
   );
 }
