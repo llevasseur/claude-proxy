@@ -1,4 +1,4 @@
-import type { CommandSummary } from '@claude-proxy/core';
+import type { AgentTypeUsage, CommandSummary } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { TerminalSquare } from 'lucide-react';
@@ -91,11 +91,32 @@ export function CommandsPage() {
   );
 }
 
+/** What a spawn whose call named no type is called on the page — a real answer, not a gap. */
+const UNNAMED_AGENT = 'unnamed';
+
+/**
+ * The agent types a command delegates to, most-used first, as `type ×N`.
+ *
+ * A row is one line of a table, so only the two busiest types are named and the rest are
+ * counted; the full list is the cell's `title`, which is where "and what else?" is asked.
+ */
+function agentTypesLabel(types: readonly AgentTypeUsage[] = []): string {
+  const top = types.slice(0, 2).map((t) => `${t.agentType ?? UNNAMED_AGENT} ×${t.spawns}`);
+  const rest = types.length - top.length;
+  return rest > 0 ? `${top.join(' · ')} +${rest}` : top.join(' · ');
+}
+
+/** Every type and what it spent, for the cell's tooltip. */
+function agentTypesTitle(types: readonly AgentTypeUsage[] = []): string {
+  return types.map((t) => `${t.agentType ?? UNNAMED_AGENT}: ${t.spawns} spawns, ${fmtUsd(t.cost)}`).join('\n');
+}
+
 /** The columns `CommandsTable` draws. */
 const COMMAND_COLUMNS: SkeletonColumn[] = [
   { cell: '42%' },
   { className: 'num', cell: '34%' },
   { className: 'num', cell: '34%' },
+  { cell: '58%' },
   { className: 'num', cell: '44%' },
   { className: 'num', cell: '52%' },
   { className: 'num', cell: '44%' },
@@ -145,6 +166,7 @@ function CommandsTable({ commands, storePath }: { commands: CommandSummary[]; st
             <th>Command</th>
             <th className='num'>Steps</th>
             <th className='num'>Runs</th>
+            <th>Delegates to</th>
             <th className='num'>Reached the end</th>
             <th className='num'>Tokens</th>
             <th className='num'>Cost</th>
@@ -176,6 +198,15 @@ function CommandsTable({ commands, storePath }: { commands: CommandSummary[]; st
                 {c.steps.length === 0 ? <span className='muted'>none declared</span> : c.steps.length}
               </td>
               <td className='num'>{fmtInt(c.runs)}</td>
+              <td>
+                {(c.agentTypes ?? []).length === 0 ? (
+                  <span className='muted'>—</span>
+                ) : (
+                  <span className='rule-name' title={agentTypesTitle(c.agentTypes)}>
+                    {agentTypesLabel(c.agentTypes)}
+                  </span>
+                )}
+              </td>
               <td className='num'>
                 {c.runs === 0 ? <span className='muted'>—</span> : fmtPct(c.completionRate * 100)}
               </td>

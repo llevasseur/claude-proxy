@@ -204,6 +204,8 @@ function RunBody({ data }: { data: CommandRunResponse }) {
 
       <WasteTable steps={run.stepStats ?? []} />
 
+      <SpawnTable run={run} />
+
       {data.patterns.filter((p) => p.runs > 0).length > 0 && (
         <div className='card'>
           <div className='card-head'>
@@ -479,6 +481,72 @@ function WasteTable({ steps }: { steps: CommandRunStepStats[] }) {
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+/**
+ * Every subagent this run spawned, in family order — parents before their own children —
+ * with the type the spawning call named and what that subagent's *own* turns cost.
+ *
+ * Read defensively and drawn only when there is something to draw: a record written before
+ * this field existed carries no spawns, and there is no backfill, so an older run says
+ * nothing here rather than claiming it delegated nothing.
+ */
+function SpawnTable({ run }: { run: CommandRun }) {
+  const spawns = run.spawns ?? [];
+  if (spawns.length === 0) return null;
+
+  const delegated = spawns.reduce((n, s) => n + s.cost, 0);
+  const share = run.totals.cost > 0 ? delegated / run.totals.cost : 0;
+
+  return (
+    <div className='card'>
+      <div className='card-head'>
+        <h2>Spawns</h2>
+        <span className='muted'>
+          {fmtInt(spawns.length)} subagent{spawns.length === 1 ? '' : 's'} · {fmtUsd(delegated)} ({fmtPct(share * 100)})
+          of this run
+        </span>
+      </div>
+      <table className='table'>
+        <thead>
+          <tr>
+            <th>
+              Agent type
+              <HeaderHint text="What the spawning call named — its subagent_type, else the skill it invoked. A call that named neither reads 'unnamed', which is a fact about the call rather than missing data." />
+            </th>
+            <th>
+              Step
+              <HeaderHint text='The step that was current in the parent when it spawned this agent, so a whole delegated branch is charged to the step that chose to delegate.' />
+            </th>
+            <th className='num'>Turns</th>
+            <th className='num'>Tokens</th>
+            <th className='num'>Cost</th>
+            <th>Transcript</th>
+          </tr>
+        </thead>
+        <tbody>
+          {spawns.map((s) => (
+            <tr key={s.threadId}>
+              <td style={{ paddingLeft: `calc(var(--space-3) * ${s.depth})` }}>
+                <span className='rule-name'>{s.agentType ?? 'unnamed'}</span>
+              </td>
+              <td>{s.step === null ? <span className='muted'>unplaced</span> : `Step ${s.step}`}</td>
+              <td className='num'>{fmtInt(s.turns)}</td>
+              <td className='num'>
+                {s.turns === 0 ? <span className='muted'>aged out</span> : fmtInt(s.tokens.realInput + s.tokens.output)}
+              </td>
+              <td className='num'>{s.turns === 0 ? <span className='muted'>—</span> : fmtUsd(s.cost)}</td>
+              <td>
+                <Link to='/sessions/$id' params={{ id: s.threadId }} className='link rule-name' title={s.threadId}>
+                  {s.threadId.slice(0, 8)}
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

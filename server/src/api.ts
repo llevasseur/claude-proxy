@@ -1,6 +1,7 @@
 import {
   type Advice,
   type AdviceMovement,
+  type AgentTypeUsage,
   type AliasLoadExpectation,
   type AuditSidecar,
   adviceMovement,
@@ -132,6 +133,7 @@ import {
   stepReach,
   suggestFromBreakdown,
   suggestionStatusRows,
+  summarizeAgentTypes,
   summarizeBreakdownPatterns,
   summarizeCommands,
   summarizePromptMix,
@@ -3242,6 +3244,8 @@ export interface CommandResponse {
   /** The facet actually applied. */
   appliedFlags: string[];
   runs: CommandRunListItem[];
+  /** What the filtered runs delegate to, most-used first. Empty before schema 4. */
+  agentTypes: AgentTypeUsage[];
   stepReach: StepReach[];
   patterns: PatternFrequency[];
   hashMarkers: CommandHashMarker[];
@@ -3305,6 +3309,7 @@ export async function buildCommand(
     flags: [...new Set(own.flatMap((r) => r.flags ?? []))].sort(),
     appliedFlags: [...flags],
     runs: filtered.map(toListItem).reverse(), // newest first for the list; the scatter re-sorts
+    agentTypes: summarizeAgentTypes(filtered),
     stepReach: stepReach(steps, filtered),
     patterns: patternFrequency(filtered),
     hashMarkers: markers,
