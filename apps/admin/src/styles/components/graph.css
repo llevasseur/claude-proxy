@@ -266,6 +266,14 @@
     background: var(--surface);
     gap: var(--space-3);
   }
+  /* A command run at the command grain: filled with its family's colour and framed by that
+   * family's border. The pair is what carries the contrast — two fills are not asked to be
+   * distinguishable from each other, a fill and its own border are. */
+  .gnode--cmd {
+    background: var(--cf);
+    border-color: var(--gc);
+    border-left-width: 3px;
+  }
   .gnode-kind {
     font-size: var(--text-2);
     letter-spacing: var(--tracking-label);
@@ -282,7 +290,8 @@
     overflow: hidden;
   }
   .gnode--root .gnode-title,
-  .gnode--agent .gnode-title {
+  .gnode--agent .gnode-title,
+  .gnode--cmd .gnode-title {
     font-weight: 600;
     -webkit-line-clamp: 2;
   }
@@ -463,6 +472,10 @@
     width: 9px;
     height: 9px;
     border-radius: var(--radius-1);
+  }
+  /* A family reads as its box does — a fill inside its own border, not a bare dot. */
+  .glegend-dot.is-cmd {
+    border: 1px solid var(--gc);
   }
 
   .graph-note {

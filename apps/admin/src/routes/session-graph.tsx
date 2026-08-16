@@ -6,12 +6,14 @@ import { Expand, Maximize2, Minimize2, Network, Shrink } from 'lucide-react';
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionGraphEntry } from '../api';
-import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from '../api';
+import { getCommands, getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from '../api';
 import { livenessTitle } from '../components/LivenessBadge';
 import { Skeleton, SkeletonStatus } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort } from '../format';
+import type { CommandFamily, CommandRunSpan } from '../graph-commands';
+import { FAMILY_LABEL, FAMILY_TOKEN, indexCommandRuns, runLabel } from '../graph-commands';
 import type { GrainId } from '../graph-grains';
-import { GRAINS, grainById, isBuilt, TURN_GRAIN } from '../graph-grains';
+import { commandGrain, GRAINS, grainById, isBuilt, TURN_GRAIN } from '../graph-grains';
 import type { Box, ChildIndex, Tone } from '../graph-layout';
 import {
   boxTone,
@@ -68,6 +70,9 @@ const LEGEND: { tone: Tone; label: string }[] = [
   { tone: 'cut', label: 'interrupted' },
 ];
 
+/** The command grain's own legend: one swatch per family, most-changing first. */
+const COMMAND_LEGEND: CommandFamily[] = ['build', 'shape', 'review', 'read', 'other'];
+
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 /** Harness-injected context, not the user's words — including a block cut off mid-way. */
@@ -115,15 +120,21 @@ interface View {
   k: number;
 }
 
-/** Node style carries its glow color via the `--gc` custom property, plus the cut's for a severed step. */
-function boxStyle(box: Box): CSSProperties {
+/**
+ * Node style carries its glow color via the `--gc` custom property, plus the cut's for a severed
+ * step. A command run overrides both that and its fill with its family's pair, so the box is
+ * coloured by what the command does rather than by the step type the projection folded away.
+ */
+function boxStyle(box: Box, run?: CommandRunSpan): CSSProperties {
+  const family = run ? FAMILY_TOKEN[run.family] : null;
   return {
     left: box.x,
     top: box.y,
     width: box.w,
     height: box.h,
-    '--gc': color(boxTone(box)),
+    '--gc': family ? family.edge : color(boxTone(box)),
     '--cut': color('cut'),
+    ...(family ? { '--cf': family.fill } : {}),
   } as CSSProperties;
 }
 
@@ -261,14 +272,43 @@ export function SessionGraphPage() {
   const [roomy, setRoomy] = useState(false);
   /** The grain the engine draws at. Only built grains are selectable, so this always resolves. */
   const [grainId, setGrainId] = useState<GrainId>(TURN_GRAIN.id);
+
+  // Which `Skill(…)` names open a command run is a fact about what is installed, so the command
+  // grain is bound to the catalogue rather than guessing from the transcript. Fetched only for
+  // that grain; until it lands, every skill call counts, which over-draws rather than emptying.
+  const commandsQuery = useQuery({
+    queryKey: ['commands'],
+    queryFn: getCommands,
+    enabled: grainId === 'command',
+    staleTime: 5 * 60_000,
+  });
+  const installed = useMemo(
+    () => new Set((commandsQuery.data?.commands ?? []).map((c) => c.command.toLowerCase())),
+    [commandsQuery.data],
+  );
+  const isCommand = useCallback((name: string) => installed.size === 0 || installed.has(name), [installed]);
+
   const grain = useMemo(() => {
     const picked = grainById(grainId);
+    if (picked.id === 'command') return commandGrain(isCommand);
     return isBuilt(picked) ? picked : TURN_GRAIN;
-  }, [grainId]);
+  }, [grainId, isCommand]);
   const size = roomy ? ROOMY : COMPACT;
   const { boxes, edges, bands, trails, contentW, contentH } = useMemo(
     () => layoutGraph({ entry, cols, index: childIndex, size, grain }),
     [entry, cols, childIndex, size, grain],
+  );
+
+  // The runs behind the boxes the command grain placed — a projected node keeps the index of the
+  // step that opened its run, so a box finds its span by thread and index.
+  const runIndex = useMemo(
+    () => (grainId === 'command' ? indexCommandRuns(all, isCommand) : null),
+    [grainId, all, isCommand],
+  );
+  const runOf = useCallback(
+    (box: Box): CommandRunSpan | undefined =>
+      box.node ? runIndex?.get(box.entry.threadId)?.get(box.node.index) : undefined,
+    [runIndex],
   );
 
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -539,17 +579,17 @@ export function SessionGraphPage() {
 
           {boxes.map((box) =>
             box.kind === 'node' ? (
-              <button
+              <CommandOrStepBox
                 key={box.key}
-                type='button'
-                className={`gnode gnode--${boxTone(box)}${cutClass(box.node!)}${selected?.node && selected.entry.threadId === box.entry.threadId && selected.node.index === box.node!.index ? ' is-selected' : ''}`}
-                style={boxStyle(box)}
-                onClick={() => setSelected({ entry: box.entry, node: box.node })}>
-                <span className='gnode-kind'>{nodeKind(box.node!)}</span>
-                <span className='gnode-title' title={hoverLabel(box.node!)}>
-                  {nodeLabel(box.node!)}
-                </span>
-              </button>
+                box={box}
+                run={runOf(box)}
+                selected={
+                  !!selected?.node &&
+                  selected.entry.threadId === box.entry.threadId &&
+                  selected.node.index === box.node!.index
+                }
+                onSelect={() => setSelected({ entry: box.entry, node: box.node })}
+              />
             ) : (
               <button
                 key={box.key}
@@ -628,12 +668,27 @@ export function SessionGraphPage() {
             </button>
           </div>
           <div className='graph-legend'>
-            {LEGEND.map((l) => (
-              <span key={l.tone} className='glegend-item'>
-                <span className='glegend-dot' style={{ background: color(l.tone) }} />
-                {l.label}
-              </span>
-            ))}
+            {grainId === 'command'
+              ? COMMAND_LEGEND.map((family) => (
+                  <span key={family} className='glegend-item'>
+                    <span
+                      className='glegend-dot is-cmd'
+                      style={
+                        {
+                          background: FAMILY_TOKEN[family].fill,
+                          '--gc': FAMILY_TOKEN[family].edge,
+                        } as CSSProperties
+                      }
+                    />
+                    {FAMILY_LABEL[family]}
+                  </span>
+                ))
+              : LEGEND.map((l) => (
+                  <span key={l.tone} className='glegend-item'>
+                    <span className='glegend-dot' style={{ background: color(l.tone) }} />
+                    {l.label}
+                  </span>
+                ))}
           </div>
         </div>
 
@@ -656,6 +711,48 @@ export function SessionGraphPage() {
     </section>
   );
 }
+
+/**
+ * One placed step. `run` is set only at the command grain, where the box stands for a whole
+ * command run: it then reads its family rather than a step type, and carries what the run
+ * actually did — steps, tool calls, errors — since the steps themselves are folded away.
+ */
+function CommandOrStepBox({
+  box,
+  run,
+  selected,
+  onSelect,
+}: {
+  box: Box;
+  run: CommandRunSpan | undefined;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const node = box.node!;
+  return (
+    <button
+      type='button'
+      className={`gnode gnode--${boxTone(box)}${run ? ' gnode--cmd' : ''}${cutClass(node)}${selected ? ' is-selected' : ''}`}
+      style={boxStyle(box, run)}
+      onClick={onSelect}>
+      <span className='gnode-kind'>{run ? FAMILY_LABEL[run.family] : nodeKind(node)}</span>
+      <span className='gnode-title' title={run ? commandHover(run) : hoverLabel(node)}>
+        {run ? runLabel(run) : nodeLabel(node)}
+      </span>
+      {run ? (
+        <span className='gnode-chips'>
+          <span>{fmtInt(run.steps)} steps</span>
+          <span>{fmtInt(run.tools)} tools</span>
+          {run.errors > 0 ? <span className='gchip-error'>{fmtInt(run.errors)} err</span> : null}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+/** What a command box says on hover: which command, and the span of the transcript it holds. */
+const commandHover = (run: CommandRunSpan): string =>
+  `${runLabel(run)} — steps #${run.from}–${run.to - 1}${run.command === null ? ' (the host run, before its first nested command)' : ''}`;
 
 /**
  * The grain switcher: every grain the engine knows about, in order. A grain nobody has

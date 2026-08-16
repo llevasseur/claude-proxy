@@ -1,5 +1,6 @@
 import type { SessionNode } from '@claude-proxy/core';
 import type { SessionGraphEntry } from './api';
+import { projectCommandRuns } from './graph-commands';
 
 /**
  * How coarse the live graph draws — the "grain" the layout engine is asked for.
@@ -8,7 +9,7 @@ import type { SessionGraphEntry } from './api';
  * draws for it. The engine takes that set and knows nothing else about the grain, so a
  * coarser view is a new projection here rather than a second layout pass.
  *
- * Only `turn` is built. `command` and `agent` are registered without a `project` and render
+ * `turn` and `command` are built. `agent` is registered without a `project` and renders
  * disabled; a later view registers itself by supplying one.
  */
 export type GrainId = 'turn' | 'command' | 'agent';
@@ -40,10 +41,28 @@ export const TURN_GRAIN: BuiltGrain = {
   project: (entry) => entry.nodes,
 };
 
+/**
+ * One box per command run rather than per turn.
+ *
+ * Which names open a run is a question about what is *installed*, not about the transcript, so
+ * the grain is a factory: the page binds the installed catalogue and hands the engine the bound
+ * grain. {@link COMMAND_GRAIN} is what the registry holds, bound to no catalogue — it treats
+ * every `Skill(…)` call as a run, which is what the view degrades to for the moment before the
+ * catalogue arrives, and is why the control's pill is enabled from the first paint.
+ */
+export const commandGrain = (isCommand: (name: string) => boolean): BuiltGrain => ({
+  id: 'command',
+  label: 'Command',
+  hint: 'One box per command the run invoked',
+  project: (entry) => projectCommandRuns(entry, isCommand),
+});
+
+export const COMMAND_GRAIN: BuiltGrain = commandGrain(() => true);
+
 /** Every grain the control offers, coarsest last. */
 export const GRAINS: readonly GrainSpec[] = [
   TURN_GRAIN,
-  { id: 'command', label: 'Command', hint: 'One box per command the run invoked' },
+  COMMAND_GRAIN,
   { id: 'agent', label: 'Agent', hint: 'One box per agent in the family' },
 ];
 
