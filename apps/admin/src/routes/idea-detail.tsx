@@ -151,9 +151,7 @@ function IdeaBody({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
 
       {/* Keyed by slug: these three hold reader-edited drafts, and the route
           re-renders rather than remounting when one permalink links to another.
-          Each key is prefixed, because a key is only unique among *siblings* — the
-          bare slug on all three is one key repeated, which React answers by
-          duplicating children rather than by remounting them. */}
+          Each key is prefixed: a key is unique only among siblings. */}
       <TaskPromptCard key={`prompt-${idea.slug}`} idea={idea} />
       <AreaPicker key={`area-${idea.slug}`} idea={idea} areas={areas} />
       <CommentEditor key={`comment-${idea.slug}`} idea={idea} />
