@@ -1,4 +1,4 @@
-import { access, readdir, readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import {
@@ -393,6 +393,12 @@ interface RequestRow {
   skim_text: string | null;
   /** Whether the body was ever read for its derivatives. See `deriveBodies`. */
   body_derived: number;
+  /**
+   * The `.request.txt` beside this sidecar, or null once eviction deleted it.
+   * The eviction ledger the skim reads — `blob_evicted` beside it means *both*
+   * bodies are gone, a stricter question than the one `bodiesEvicted` asks.
+   */
+  request_path: string | null;
 }
 
 interface SkippedRow {
@@ -566,6 +572,12 @@ type Entry = {
   derived: boolean;
   /** The derivative itself, when `derived`. Null is a real answer, not a gap. */
   skimText: string | null;
+  /**
+   * Whether this row's `.request.txt` is gone, off the column ingest maintains.
+   * `null` where there is no column to answer from — a skipped file, which has
+   * no `request` row — and only those go back to the disk.
+   */
+  evicted: boolean | null;
 };
 
 /**
@@ -630,6 +642,7 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[]): Entry[]
       day: reportDay(row.timestamp) ?? row.id.slice(0, 10),
       derived: row.body_derived === 1,
       skimText: row.skim_text,
+      evicted: row.request_path === null,
     });
   }
   for (const row of skippedRows) {
@@ -642,9 +655,11 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[]): Entry[]
       // A file that would not parse has no timestamp to be placed by, so the
       // file reader falls back to the filename's UTC day. So does this.
       day: parseError ? row.id.slice(0, 10) : (row.timestamp && reportDay(row.timestamp)) || row.id.slice(0, 10),
-      // A skipped file has no `request` row, so nothing derived one.
+      // A skipped file has no `request` row, so nothing derived one — and no
+      // column records whether its body is still there either.
       derived: false,
       skimText: null,
+      evicted: null,
     });
   }
   return entries;
@@ -666,30 +681,30 @@ async function materialize(
     const sidecar = entry.make();
     if (entry.parseError) parseErrors += 1;
     if (opts.includeSkimRequests && !entry.parseError) {
-      // The bodies stay on disk; the DB holds a pointer, not the blob. The
-      // eviction count is read off the disk here either way — a row's
-      // `blob_evicted` is only as fresh as the last ingest, and parity needs both
-      // sides answering from the same observation.
+      // The bodies stay on disk; the DB holds a pointer, not the blob, and the
+      // eviction count comes off that pointer rather than a `stat` per row.
+      //
+      // The column is trustworthy at the one moment eviction moves it because
+      // `ingestDir` fingerprints the whole directory listing rather than its
+      // audit stems, so deleting a body invalidates that day's watermark.
+      // `maintain --apply` runs a pass on both sides of its evict phase.
       const rel =
         entry.sourceDir === LIVE ? `${entry.stem}.request.txt` : `${entry.sourceDir}/${entry.stem}.request.txt`;
       const abs = path.join(logDir, rel);
       let text: string | null = null;
-      if (entry.derived) {
-        // Ingest read this body while it existed, so the text comes from the
-        // column and only the eviction count still needs the disk. Past the
-        // retention edge the count rises and the answer survives.
-        let present = true;
-        try {
-          await access(abs);
-        } catch {
-          present = false;
-        }
-        if (!present) bodiesEvicted += 1;
+      if (entry.evicted === true) {
+        // The pointer is null: the body is gone. `skim_text` outlives it when a
+        // pass derived it first.
+        bodiesEvicted += 1;
+        text = entry.skimText;
+      } else if (entry.derived) {
+        // Ingest read this body and the pointer says it is still there, so
+        // nothing touches the disk.
         text = entry.skimText;
       } else {
-        // No derivative yet: a row ingested before the extraction existed, or one
-        // whose body vanished before any pass could read it. Fall back to the
-        // query-time read that was the only path before.
+        // No derivative and no pointer to trust: a row ingested before the
+        // extraction existed, or a skipped file, which has no `request` row.
+        // Falls back to the query-time read that was the only path before.
         let raw: string | null = null;
         try {
           raw = await readFile(abs, 'utf8');

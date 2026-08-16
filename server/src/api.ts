@@ -2658,7 +2658,10 @@ export async function buildSkim(
 export interface SkimTrendResponse {
   digests: SkimDigest[];
   topShapes: SkimShape[];
-  /** `bodiesEvicted` as in {@link SkimResponse}, across the whole window. */
+  /**
+   * `bodiesEvicted` as in {@link SkimResponse}, across the whole window. On the
+   * substrate it is a sum over the `request_path` column, not a `stat` per row.
+   */
   meta: { days: number; files: number; parseErrors: number; bodiesEvicted: number };
 }
 
