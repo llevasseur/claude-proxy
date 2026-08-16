@@ -20,6 +20,9 @@ import {
   parseIdeaComments,
   parseIdeaFilings,
   parseIdeaMarks,
+  parseNoteCreate,
+  parseNoteId,
+  parseNoteUpdate,
   parseSuggestionJudgements,
   parseSuggestionStatusUpdates,
   type SuggestionRecurrence,
@@ -117,6 +120,20 @@ import { IdeasStoreUnconfiguredError, RemoteIdeasStoreError } from './ideas-remo
 import { resolveJobsDir } from './jobs.js';
 import { countSidecarFiles, resolveLogDir } from './logs.js';
 import { ERR } from './main-history.js';
+import {
+  archiveRemoteNote,
+  createRemoteNote,
+  getRemoteNote,
+  listRemoteNotes,
+  type NoteListQuery,
+  NotesStoreUnconfiguredError,
+  RemoteNotesResponseError,
+  RemoteNotesStoreError,
+  requireRemoteNotesStore,
+  restoreRemoteNote,
+  searchRemoteNotes,
+  updateRemoteNote,
+} from './notes-remote.js';
 import { shadowCheck, shadowEnabled } from './parity.js';
 import { resolveProjectsDir } from './projects.js';
 import { resolveSessionFile, resolveSessionsDir } from './sessions.js';
@@ -134,6 +151,9 @@ const USAGE_LIMITS = resolveUsageLimits();
 const COMMANDS_DIR = resolveCommandsDir();
 const SETTINGS_PATH = resolveSettingsPath();
 const SYSTEM_PROMPT_PATH = resolveSystemPromptPath();
+const configuredNotesPollMs = Number(process.env.NOTES_POLL_MS ?? 5_000);
+const NOTES_POLL_MS =
+  Number.isFinite(configuredNotesPollMs) && configuredNotesPollMs > 0 ? configuredNotesPollMs : 5_000;
 
 /**
  * Bring the command-run store up to date — in the background, never as a step of a read.
@@ -722,6 +742,63 @@ async function servePost(
   } catch (err) {
     const msg = (err as Error).message;
     send(res, errorStatus(msg), { error: msg }, cors);
+  }
+}
+
+function notesError(res: http.ServerResponse, error: unknown, cors: Record<string, string> = CORS): void {
+  if (error instanceof NotesStoreUnconfiguredError) send(res, 501, { error: error.message }, cors);
+  else if (error instanceof RemoteNotesResponseError) send(res, error.status, error.body, cors);
+  else if (error instanceof RemoteNotesStoreError) send(res, 502, { error: error.message }, cors);
+  else send(res, 400, { error: (error as Error).message }, cors);
+}
+
+function notesListQuery(url: URL): NoteListQuery {
+  const limitRaw = url.searchParams.get('limit');
+  const limit = limitRaw === null ? undefined : Number(limitRaw);
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1))
+    throw new Error('limit must be a positive integer');
+  const archivedRaw = url.searchParams.get('archived');
+  if (archivedRaw !== null && archivedRaw !== 'true' && archivedRaw !== 'false') {
+    throw new Error('archived must be true or false');
+  }
+  return {
+    cursor: url.searchParams.get('cursor') ?? undefined,
+    limit,
+    archived: archivedRaw === null ? undefined : archivedRaw === 'true',
+  };
+}
+
+async function serveNotesList({ req, res, url }: RouteContext, stream: boolean): Promise<void> {
+  try {
+    const options = notesListQuery(url);
+    const build = async () => (await listRemoteNotes(requireRemoteNotesStore(), options)).body;
+    if (stream) await serveSse(req, res, { build, intervalMs: NOTES_POLL_MS });
+    else send(res, 200, await build());
+  } catch (error) {
+    notesError(res, error);
+  }
+}
+
+async function serveNoteWrite(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  handler: (body: Record<string, unknown>) => Promise<{ status: number; body: unknown }>,
+): Promise<void> {
+  const origin = req.headers.origin;
+  const cors = chatCors(origin);
+  if (!originAllowed(origin)) {
+    send(res, 403, { error: `origin not allowed: ${origin}` }, cors);
+    return;
+  }
+  if (req.method !== 'POST') {
+    send(res, 405, { error: `method not allowed: ${req.method}` }, cors);
+    return;
+  }
+  try {
+    const reply = await handler(await readJsonBody(req));
+    send(res, reply.status, reply.body, cors);
+  } catch (error) {
+    notesError(res, error, cors);
   }
 }
 
@@ -1408,6 +1485,49 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       (body) => applyIdeaClaim(parseIdeaClaims(body.claims)),
       () => 400,
     );
+  },
+  '/api/notes': (ctx) => serveNotesList(ctx, false),
+  '/api/notes/stream': (ctx) => serveNotesList(ctx, true),
+  '/api/notes/search': async ({ res, url }) => {
+    try {
+      const query = url.searchParams.get('q')?.trim();
+      if (!query) throw new Error('q is required');
+      const page = notesListQuery(url);
+      send(
+        res,
+        200,
+        (
+          await searchRemoteNotes(requireRemoteNotesStore(), {
+            query,
+            cursor: page.cursor,
+            limit: page.limit,
+          })
+        ).body,
+      );
+    } catch (error) {
+      notesError(res, error);
+    }
+  },
+  '/api/notes/note': async ({ res, url }) => {
+    try {
+      const id = url.searchParams.get('id');
+      if (!id) throw new Error('id is required');
+      send(res, 200, (await getRemoteNote(requireRemoteNotesStore(), id)).body);
+    } catch (error) {
+      notesError(res, error);
+    }
+  },
+  '/api/notes/create': async ({ req, res }) => {
+    await serveNoteWrite(req, res, (body) => createRemoteNote(requireRemoteNotesStore(), parseNoteCreate(body)));
+  },
+  '/api/notes/update': async ({ req, res }) => {
+    await serveNoteWrite(req, res, (body) => updateRemoteNote(requireRemoteNotesStore(), parseNoteUpdate(body)));
+  },
+  '/api/notes/archive': async ({ req, res }) => {
+    await serveNoteWrite(req, res, (body) => archiveRemoteNote(requireRemoteNotesStore(), parseNoteId(body)));
+  },
+  '/api/notes/restore': async ({ req, res }) => {
+    await serveNoteWrite(req, res, (body) => restoreRemoteNote(requireRemoteNotesStore(), parseNoteId(body)));
   },
   '/api/sessions/suggestions': async ({ res }) => {
     const suggestions = await buildSessionSuggestions(LOG_DIR, readSource());

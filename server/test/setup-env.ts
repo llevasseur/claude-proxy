@@ -6,3 +6,5 @@
  */
 delete process.env.CONCEPTS_URL;
 delete process.env.CONCEPTS_TOKEN;
+delete process.env.NOTES_URL;
+delete process.env.NOTES_TOKEN;
