@@ -9,6 +9,7 @@ import {
 } from '@claude-proxy/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { Check, Fingerprint } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { claimIdeas, markIdeas } from '../api';
 import { fmtLocalTsShort } from '../format';
@@ -32,6 +33,62 @@ export const IDEA_STATUS_LABEL: Record<IdeaStatus, string> = {
   rejected: 'Rejected',
   shipped: 'Shipped',
 };
+
+/**
+ * The idea's key, as a fingerprint that copies it. The key is the slug — the
+ * same string the permalink and every `ideas_*` MCP tool take.
+ *
+ * The slot renders unconditionally and swaps one glyph for another of the same
+ * size, so nothing on the row moves when a copy lands. Vertical centring against
+ * a wrapped title is `.idea-key` in `styles/components/ideas.css`.
+ */
+export function IdeaKey({ slug }: { slug: string }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (state === 'idle') return;
+    const t = setTimeout(() => setState('idle'), 1500);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  const copy = async () => {
+    try {
+      // The API is absent, not failing, over plain http from another host.
+      if (!navigator.clipboard) throw new Error('the clipboard needs a secure context (https or localhost)');
+      await navigator.clipboard.writeText(slug);
+      setError('');
+      setState('copied');
+    } catch (err) {
+      setError((err as Error).message);
+      setState('failed');
+    }
+  };
+
+  const label =
+    state === 'copied'
+      ? `Copied the key ${slug}`
+      : state === 'failed'
+        ? `Could not copy the key ${slug} — ${error}`
+        : `Copy the key ${slug}`;
+
+  return (
+    <>
+      <button
+        type='button'
+        className={`idea-key${state === 'idle' ? '' : ` is-${state}`}`}
+        onClick={copy}
+        title={label}
+        aria-label={label}>
+        {state === 'copied' ? <Check size={14} aria-hidden='true' /> : <Fingerprint size={14} aria-hidden='true' />}
+      </button>
+      {/* Out of flow, so announcing the outcome adds no item to the row. */}
+      <span className='sr-only' role='status'>
+        {state === 'idle' ? '' : label}
+      </span>
+    </>
+  );
+}
 
 /** What an idea cites, on every card — the evidence is what makes it approvable. */
 export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence[] }) {
@@ -308,6 +365,7 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
             {idea.title}
           </Link>
         </h3>
+        <IdeaKey slug={idea.slug} />
         {/* Unfiled for a row written before areas existed — `ideas file` classifies it. */}
         <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
         <code className='idea-repo muted'>{idea.repo}</code>

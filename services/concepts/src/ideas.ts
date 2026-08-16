@@ -36,8 +36,10 @@ import {
   type IdeaMark,
   type IdeaStatus,
   type IdeasStore,
+  ideaOf,
   ideaRows,
   isIdeaClaimStale,
+  isIdeaSlug,
   isIdeaTakeable,
   similarAreas,
   similarIdeaSlugs,
@@ -116,7 +118,16 @@ export async function readIdeas(db: Db, now: Date = new Date()): Promise<IdeasSt
   // event, so events sharing a millisecond would otherwise replay in hash order
   // and a mark could land before the add it marks.
   const events = await db.all<EventRow>('SELECT id, slug, kind, at, document FROM idea_event ORDER BY at ASC, seq ASC');
+  return overlayClaims(replay(events), await db.all<ClaimRow>('SELECT slug, holder, at, pr FROM idea_claim'), now);
+}
 
+/**
+ * Fold events into a store, oldest first. Shared by the whole-ledger read and
+ * the by-key read, so the two cannot disagree about what an event means — every
+ * `applyIdea*` keys on the event's own slug, which is what makes replaying one
+ * key's events alone produce the entry a full replay would have.
+ */
+function replay(events: readonly EventRow[]): IdeasStore {
   let store = emptyIdeasStore();
   for (const event of events) {
     // A row this code cannot read is skipped rather than emptying the ledger,
@@ -142,7 +153,7 @@ export async function readIdeas(db: Db, now: Date = new Date()): Promise<IdeasSt
     }
   }
 
-  return overlayClaims(store, await db.all<ClaimRow>('SELECT slug, holder, at, pr FROM idea_claim'), now);
+  return store;
 }
 
 /**
@@ -207,6 +218,30 @@ export async function listIdeas(
     areas: countIdeaAreas(ideaRows(store)),
     total: Object.keys(store.ideas).length,
   };
+}
+
+/**
+ * One idea, by its key. The key is the slug alone — the same string the dedupe
+ * check, the permalink and every write already take.
+ *
+ * Reads that key's own events, which the `idea_event_slug` index serves
+ * directly, so the cost is one idea's history rather than the whole log. `null`
+ * means nothing was ever added under the key; a rejected row is kept and still
+ * answers.
+ */
+export async function getIdea(db: Db, slug: string, now: Date = new Date()): Promise<IdeaEntry | null> {
+  // A malformed key is refused, not reported as absent — 404 would read as
+  // merely not on the ledger yet.
+  if (!isIdeaSlug(slug)) throw new IdeaError(400, `invalid slug: ${slug} (expected a kebab-case key)`);
+
+  const events = await db.all<EventRow>(
+    'SELECT id, slug, kind, at, document FROM idea_event WHERE slug = ? ORDER BY at ASC, seq ASC',
+    [slug],
+  );
+  if (events.length === 0) return null;
+
+  const claims = await db.all<ClaimRow>('SELECT slug, holder, at, pr FROM idea_claim WHERE slug = ?', [slug]);
+  return ideaOf(overlayClaims(replay(events), claims, now), slug);
 }
 
 export interface IdeaAddOutcome {

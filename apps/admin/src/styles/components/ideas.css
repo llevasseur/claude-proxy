@@ -172,6 +172,50 @@
     resize: vertical;
   }
 
+  /* The key, as a fingerprint that copies it. See `IdeaKey` in IdeaCard.tsx.
+
+   Two declarations are the requirement rather than styling. `flex: 0 0 auto`
+   with an explicit square holds the slot at one width in every state, so a card
+   never reflows as a copy lands. `align-self: center` centres it against a title
+   wrapped to several lines, and stating it here rather than on the container is
+   what makes it hold in `.pagehead`, whose alignment is `baseline`. */
+  .idea-key {
+    flex: 0 0 auto;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--space-11);
+    height: var(--space-11);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-3);
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition:
+      color var(--motion-duration) ease,
+      border-color var(--motion-duration) ease;
+  }
+  .idea-key:hover {
+    color: var(--text);
+    border-color: var(--line);
+  }
+  .idea-key.is-copied {
+    color: var(--good);
+  }
+  .idea-key.is-failed {
+    color: var(--high);
+    border-color: var(--high);
+  }
+  /* A page title carrying its key: one head item, so `space-between` cannot
+   strand the key at the opposite edge. */
+  .idea-titled {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+  }
+
   /* The /task prompt: one editable field, copied from where it is read. */
   .idea-prompt-copy {
     margin-left: auto;
