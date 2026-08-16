@@ -64,6 +64,55 @@ const FILTER_PROPERTIES = {
   limit: { type: 'number', description: 'Maximum records to return. Default and ceiling 1000.' },
 } as const;
 
+const NOTE_PROPERTIES = {
+  id: { type: 'string', description: 'Opaque note id.' },
+  version: { type: 'integer', minimum: 1 },
+  title: { type: 'string' },
+  body: { type: 'string', description: 'Full unmodified Markdown body.' },
+  createdAt: { type: 'string', description: 'ISO-8601 creation timestamp.' },
+  updatedAt: { type: 'string', description: 'ISO-8601 timestamp of the last successful content edit.' },
+  archivedAt: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+} as const;
+
+const NOTE_SCHEMA = {
+  type: 'object',
+  properties: NOTE_PROPERTIES,
+  required: ['id', 'version', 'title', 'body', 'createdAt', 'updatedAt', 'archivedAt'],
+  additionalProperties: false,
+} as const;
+
+const NOTE_SUMMARY_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: NOTE_PROPERTIES.id,
+    version: NOTE_PROPERTIES.version,
+    title: NOTE_PROPERTIES.title,
+    createdAt: NOTE_PROPERTIES.createdAt,
+    updatedAt: NOTE_PROPERTIES.updatedAt,
+    archivedAt: NOTE_PROPERTIES.archivedAt,
+    excerpt: { type: 'string', description: 'Approximately 200 characters of derived plain text.' },
+  },
+  required: ['id', 'version', 'title', 'createdAt', 'updatedAt', 'archivedAt', 'excerpt'],
+  additionalProperties: false,
+} as const;
+
+const NOTE_PAGE_SCHEMA = {
+  type: 'object',
+  properties: {
+    notes: { type: 'array', items: NOTE_SUMMARY_SCHEMA },
+    nextCursor: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+  },
+  required: ['notes', 'nextCursor'],
+  additionalProperties: false,
+} as const;
+
+const NOTE_RESULT_SCHEMA = {
+  type: 'object',
+  properties: { note: NOTE_SCHEMA },
+  required: ['note'],
+  additionalProperties: false,
+} as const;
+
 const TOOLS = [
   {
     name: 'concepts_list',
@@ -189,6 +238,7 @@ const TOOLS = [
       },
       additionalProperties: false,
     },
+    outputSchema: NOTE_PAGE_SCHEMA,
   },
   {
     name: 'notes_search',
@@ -204,6 +254,7 @@ const TOOLS = [
       required: ['query'],
       additionalProperties: false,
     },
+    outputSchema: NOTE_PAGE_SCHEMA,
   },
   {
     name: 'notes_get',
@@ -215,6 +266,7 @@ const TOOLS = [
       required: ['id'],
       additionalProperties: false,
     },
+    outputSchema: NOTE_RESULT_SCHEMA,
   },
   {
     name: 'notes_create',
@@ -229,6 +281,7 @@ const TOOLS = [
       required: ['title', 'body'],
       additionalProperties: false,
     },
+    outputSchema: NOTE_RESULT_SCHEMA,
   },
   {
     name: 'notes_update',
@@ -245,6 +298,30 @@ const TOOLS = [
       required: ['id', 'expectedVersion'],
       additionalProperties: false,
     },
+    outputSchema: {
+      anyOf: [
+        {
+          type: 'object',
+          properties: { note: NOTE_SCHEMA, changed: { type: 'boolean' } },
+          required: ['note', 'changed'],
+          additionalProperties: false,
+        },
+        {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            conflict: { const: true },
+            code: { const: 'stale_version' },
+            noteId: { type: 'string' },
+            expectedVersion: { type: 'integer' },
+            currentVersion: { type: 'integer' },
+            attemptedRevisionId: { type: 'string' },
+          },
+          required: ['error', 'conflict', 'code', 'noteId', 'expectedVersion', 'currentVersion', 'attemptedRevisionId'],
+          additionalProperties: false,
+        },
+      ],
+    },
   },
   {
     name: 'notes_archive',
@@ -255,6 +332,7 @@ const TOOLS = [
       required: ['id'],
       additionalProperties: false,
     },
+    outputSchema: NOTE_RESULT_SCHEMA,
   },
   {
     name: 'notes_restore',
@@ -265,6 +343,7 @@ const TOOLS = [
       required: ['id'],
       additionalProperties: false,
     },
+    outputSchema: NOTE_RESULT_SCHEMA,
   },
 ] as const;
 
@@ -553,7 +632,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
       supportedVersions: SUPPORTED_VERSIONS,
       capabilities: CAPABILITIES,
       instructions:
-        "Two datasets over one database. CONCEPTS is the glossary of terms the user has taught themselves — call concepts_list first for a cheap overview of everything available, then concepts_get or concepts_search when you need the prose. IDEAS is the ledger of proposals and what a human decided about each: call ideas_list with available:true to see what may be built right now, ideas_get to pull one idea whole when you already hold its key (the kebab-case slug is the idea's only identifier, and every ideas_* tool takes it), ideas_claim before you write any code, ideas_add to propose something (it dedupes against every machine, rejected rows included), and ideas_mark to record the outcome.",
+        'Three datasets over one database. CONCEPTS is the glossary of terms the user has taught themselves — call concepts_list first for a cheap overview, then concepts_get or concepts_search for prose. IDEAS is the proposal ledger: call ideas_list with available:true, ideas_get for one key, ideas_claim before coding, ideas_add to propose, and ideas_mark to record the outcome. NOTES is authored Markdown: call notes_list or notes_search for compact results, notes_get for the full body, and always pass the last observed version to notes_update.',
       _meta: { [META_SERVER_INFO]: SERVER_INFO },
     });
   }
@@ -570,6 +649,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
       const isError = typeof payload === 'object' && payload !== null && 'error' in payload;
       return result(id, {
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+        structuredContent: payload,
         isError,
       });
     } catch (error) {

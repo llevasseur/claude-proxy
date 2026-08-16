@@ -312,10 +312,12 @@ the corpus as `concepts.jsonl`, the ledger as `ideas.json`, and the complete
 notes projection plus revision history as `notes.json`. Each is compared by
 git blob sha against what is already there, so an unchanged day produces no
 commit and a day on which only one dataset moved touches only that file. This is
-the escape hatch that keeps the "database is truth" decision reversible for both
-carve-outs: the worst case is losing one day, and a restore is
-`pnpm --filter concepts seed` or `seed:ideas` pointed at the backed-up file.
+the escape hatch that keeps the "database is truth" decision reversible for all
+hosted datasets: the worst case is losing one day. Concepts and ideas can be
+restored with `pnpm --filter concepts seed` or `seed:ideas` pointed at the
+backed-up file; `notes.json` retains both tables needed to reconstruct the notes
+projection, immutable revisions, archive state, and FTS index.
 
 **A dataset added to this Worker is added to the backup too, or the ADR 0004
-carve-out is unpaid.** That is why the two exports go through one loop in
+carve-out is unpaid.** That is why all three exports go through one loop in
 `src/backup.ts` rather than one function each.

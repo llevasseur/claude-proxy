@@ -1,4 +1,5 @@
 import type { Db } from './db.ts';
+import { toMatchQuery } from './store.ts';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
@@ -118,6 +119,7 @@ export function noteExcerpt(markdown: string): string {
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`([^`]*)`/g, '$1')
     .replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, '$1')
+    .replace(/<[^>]*>/g, ' ')
     .replace(/^\s{0,3}(?:#{1,6}|>|[-+*]|\d+\.)\s+/gm, '')
     .replace(/[*_~]/g, '')
     .replace(/\s+/g, ' ')
@@ -164,11 +166,12 @@ export async function searchNotes(
   query: string,
   options: { cursor?: string; limit?: number } = {},
 ): Promise<NotePage> {
-  if (!query.trim()) throw new NoteError(400, '`q` is required');
+  const match = toMatchQuery(query);
+  if (!match) throw new NoteError(400, '`q` is required');
   const limit = limitOf(options.limit);
   const cursor = decodeCursor(options.cursor);
   const clauses = ['note_fts MATCH ?', 'n.archived_at IS NULL'];
-  const params: (string | number | null)[] = [query];
+  const params: (string | number | null)[] = [match];
   if (cursor) {
     clauses.push('(n.updated_at < ? OR (n.updated_at = ? AND n.id < ?))');
     params.push(cursor.updatedAt, cursor.updatedAt, cursor.id);
@@ -261,8 +264,15 @@ async function retainConflict(
   expectedVersion: number,
   now: Date,
 ): Promise<string> {
-  const title = input.title === undefined ? current.title : asText(input.title, 'title');
-  const body = input.body === undefined ? current.body : asText(input.body, 'body');
+  const [expected] = await db.all<Pick<RevisionRow, 'title' | 'body'>>(
+    `SELECT title, body FROM note_revision
+      WHERE note_id = ? AND version = ? AND outcome = 'committed'
+      ORDER BY created_at DESC, id DESC LIMIT 1`,
+    [current.id, expectedVersion],
+  );
+  const base = expected ?? current;
+  const title = input.title === undefined ? base.title : asText(input.title, 'title');
+  const body = input.body === undefined ? base.body : asText(input.body, 'body');
   const revisionId = crypto.randomUUID();
   await db.batch([
     {

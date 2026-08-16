@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { runBackup } from '../src/backup.ts';
 import type { Db } from '../src/db.ts';
+import worker from '../src/index.ts';
 import {
   archiveNote,
   createNote,
@@ -50,9 +52,9 @@ describe('notes domain', () => {
   });
 
   it('derives an approximately 200-character plain-text excerpt', () => {
-    const excerpt = noteExcerpt(`# Title\n\n${'**word** '.repeat(40)}[link](https://example.com)`);
+    const excerpt = noteExcerpt(`# Title\n\n${'**word** '.repeat(40)}<em>HTML</em> [link](https://example.com)`);
     expect(excerpt.startsWith('Title word word')).toBe(true);
-    expect(excerpt).not.toMatch(/[*#[\]()]/);
+    expect(excerpt).not.toMatch(/[*#[\]()<]/);
     expect(excerpt.length).toBeLessThanOrEqual(200);
   });
 
@@ -75,6 +77,13 @@ describe('notes domain', () => {
     expect(page.notes).toHaveLength(1);
     expect(page.notes[0]).toMatchObject({ id: note.id, excerpt: 'The aardvark rollout plan.' });
     expect(page.notes[0]).not.toHaveProperty('body');
+  });
+
+  it('treats search input as text instead of exposing FTS operators and syntax errors', async () => {
+    const db = testDb();
+    await createNote(db, { title: 'C++ move semantics', body: 'Handle an "unbalanced quote.' }, T0);
+    await expect(searchNotes(db, 'C++ (move)')).resolves.toMatchObject({ notes: [{ title: 'C++ move semantics' }] });
+    await expect(searchNotes(db, '"unbalanced')).resolves.toMatchObject({ notes: [{ title: 'C++ move semantics' }] });
   });
 
   it('does not advance updatedAt or version for no-op updates, archive, or restore', async () => {
@@ -110,6 +119,21 @@ describe('notes domain', () => {
       'conflict',
     ]);
   });
+
+  it("retains a stale partial update against the writer's expected revision", async () => {
+    const db = testDb();
+    const note = await createNote(db, { title: 'original title', body: 'base' }, T0);
+    await updateNote(db, note.id, { expectedVersion: 1, title: 'winner title' }, T1);
+    await updateNote(db, note.id, { expectedVersion: 1, body: 'loser body' }, T1);
+
+    const exported = JSON.parse(await exportNotes(db)) as {
+      revisions: { title: string; body: string; outcome: string }[];
+    };
+    expect(exported.revisions.find((revision) => revision.outcome === 'conflict')).toMatchObject({
+      title: 'original title',
+      body: 'loser body',
+    });
+  });
 });
 
 describe('notes REST', () => {
@@ -144,5 +168,63 @@ describe('notes REST', () => {
       currentVersion: 2,
       attemptedRevisionId: expect.any(String),
     });
+  });
+});
+
+describe('notes Worker auth', () => {
+  it('rejects every notes REST operation and MCP before opening the database', async () => {
+    const paths = [
+      ['/api/notes', 'GET'],
+      ['/api/notes', 'POST'],
+      ['/api/notes/search?q=test', 'GET'],
+      ['/api/notes/note?id=test', 'GET'],
+      ['/api/notes/update', 'POST'],
+      ['/api/notes/archive', 'POST'],
+      ['/api/notes/restore', 'POST'],
+      ['/mcp', 'POST'],
+    ] as const;
+    for (const [path, method] of paths) {
+      const response = await worker.fetch(new Request(`https://operator.example${path}`, { method }), {
+        CONCEPTS_TOKEN: 'secret',
+      } as never);
+      expect(response.status, `${method} ${path}`).toBe(401);
+    }
+  });
+});
+
+describe('notes backup', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('writes every revision and archive state to the configured nightly backup path', async () => {
+    const db = testDb();
+    const note = await createNote(db, { title: 'Backup', body: 'version one' }, T0);
+    await updateNote(db, note.id, { expectedVersion: 1, body: 'version two' }, T1);
+    await archiveNote(db, note.id, T1);
+
+    const writes = new Map<string, string>();
+    vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (init?.method !== 'PUT') return new Response('', { status: 404 });
+      const body = JSON.parse(String(init.body)) as { content: string };
+      writes.set(new URL(url).pathname, Buffer.from(body.content, 'base64').toString('utf8'));
+      return new Response('{}', { status: 200 });
+    });
+
+    const result = await runBackup(db, {
+      operator_db: {} as never,
+      CONCEPTS_TOKEN: 'secret',
+      BACKUP_GITHUB_TOKEN: 'backup-token',
+      BACKUP_REPO: 'owner/private-backup',
+      BACKUP_NOTES_PATH: 'operator-notes.json',
+    });
+
+    expect(result.notes.status).toBe('committed');
+    const backup = JSON.parse(writes.get('/repos/owner/private-backup/contents/operator-notes.json')!) as {
+      notes: { archived_at: string | null }[];
+      revisions: { body: string; outcome: string }[];
+    };
+    expect(backup.notes).toEqual([expect.objectContaining({ archived_at: T1.toISOString() })]);
+    expect(backup.revisions.map((revision) => revision.body)).toEqual(['version one', 'version two']);
+    expect(backup.revisions.every((revision) => revision.outcome === 'committed')).toBe(true);
   });
 });
