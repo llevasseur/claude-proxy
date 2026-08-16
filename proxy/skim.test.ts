@@ -15,7 +15,7 @@ import { evict, lookup, store } from './skim.ts';
 const SSE = '.sse';
 const META = '.meta.json';
 
-/** A throwaway cache directory per test; the runner's tmp is cleaned by the OS. */
+/** A throwaway cache directory per test. */
 function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'skim-evict-'));
 }

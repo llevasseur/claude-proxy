@@ -34,7 +34,7 @@ const DEFAULT_MAX_ENTRIES = 2_000;
 const SSE_EXT = '.sse';
 const META_EXT = '.meta.json';
 
-/** `SKIM_MAX_ENTRIES`, read per call so it is settable in a test. Junk or <=0 falls back. */
+/** `SKIM_MAX_ENTRIES`, read per call rather than at load. Junk or <=0 falls back. */
 function envMaxEntries(): number {
   const raw = Number(process.env.SKIM_MAX_ENTRIES ?? DEFAULT_MAX_ENTRIES);
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_MAX_ENTRIES;
@@ -73,12 +73,8 @@ export function cacheable(reqPath: string, reqJson: RequestBody | null): boolean
 export const keyFor = (rawBody: Buffer | string): string => crypto.createHash('sha256').update(rawBody).digest('hex');
 
 /**
- * Mark an entry as just-used by setting its body's mtime to now.
- *
- * This is what makes the eviction below LRU without an index to maintain: the
- * filesystem already stores one timestamp per file, so a hit costs one extra
- * syscall on a path that was reading the file anyway. Best-effort — a failed
- * touch must never turn a hit into a miss.
+ * Mark an entry as just-used by moving its body's mtime to now — the LRU key
+ * `evict` orders on. Best-effort: a failed touch must not turn a hit into a miss.
  */
 function touch(dir: string, key: string): void {
   try {
@@ -129,28 +125,18 @@ export interface EvictOptions {
 }
 
 /**
- * Bound the cache directory. Called on the write path only, so the read path —
- * which runs on every request, against a write path that runs only on a miss —
- * is untouched.
+ * Bound the cache directory: one `readdir`, then drop a `.meta.json` whose body
+ * is gone, drop anything past the TTL, and drop the oldest of whatever survives
+ * until the count is within `maxEntries`. Write path only — the read path runs
+ * on every request, this runs only on a miss. Returns how many entries went.
  *
- * One `readdir` of the cache's own directory, then three passes over what it
- * returned: drop a `.meta.json` whose body is gone (it can never be served),
- * drop anything past the TTL, and drop the oldest of whatever survives until
- * the count is within `maxEntries`.
+ * Expiry is judged on mtime rather than the meta's `storedAt`, which is the
+ * conservative side of the same TTL: mtime is set at write and only ever moves
+ * forward, so it is always >= `storedAt`, and eviction can never delete
+ * something `lookup` would still have served.
  *
- * **Expiry is judged on mtime, not on the meta's `storedAt`, and that is a
- * deliberately conservative reading of the same TTL.** mtime is set when the
- * entry is written and only ever moved *forward* by `touch`, so it is always
- * >= `storedAt`; an entry stale by mtime is therefore necessarily stale by
- * `storedAt` as well, and eviction can never delete something `lookup` would
- * still have served. It costs one `stat` per entry instead of reading and
- * parsing every sidecar on a path that is already writing a response body. An
- * entry that expired but was hit shortly before falls to the count cap
- * instead, one pass later.
- *
- * Best-effort throughout, per decision 004's "fail safe, not loud": a failed
- * `readdir`, `stat`, or `unlink` leaves the file in place rather than
- * disturbing the request that triggered it. Returns how many entries went.
+ * Best-effort throughout — a failed `readdir`, `stat`, or `unlink` leaves the
+ * file in place rather than disturbing the request that triggered it.
  */
 export function evict(dir: string, options: EvictOptions = {}): number {
   const { ttlMs = TTL_MS, maxEntries = envMaxEntries(), keep } = options;
@@ -176,7 +162,7 @@ export function evict(dir: string, options: EvictOptions = {}): number {
       try {
         mtimeMs = fs.statSync(path.join(dir, `${key}${SSE_EXT}`)).mtimeMs;
       } catch {
-        continue; // vanished under us; nothing to bound
+        continue; // vanished under us
       }
       if (key !== keep && Number.isFinite(ttlMs) && now - mtimeMs > ttlMs) {
         if (unlinkEntry(dir, key)) removed += 1;
