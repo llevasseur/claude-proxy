@@ -390,6 +390,36 @@
     padding: var(--space-2) var(--space-4);
     font: inherit;
   }
+  /* The grain switcher — one pill per grain, the unbuilt ones dimmed rather than hidden. */
+  .graph-grains {
+    display: inline-flex;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+  }
+  .graph-grains button {
+    padding: var(--space-2) var(--space-7);
+    font: inherit;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+  }
+  .graph-grains button:hover:not(:disabled) {
+    color: var(--signal);
+  }
+  .graph-grains button.is-on {
+    color: var(--ink);
+    background: var(--signal);
+  }
+  .graph-grains button:disabled {
+    color: var(--faint);
+    cursor: not-allowed;
+  }
+
   .graph-btns {
     display: inline-flex;
     gap: var(--space-4);
