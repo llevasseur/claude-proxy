@@ -9,15 +9,22 @@
     height: 0.72em;
     border-radius: var(--radius-2);
     background: var(--skeleton-fill);
-    background-size: 260% 100%;
-    animation: skeleton-shimmer var(--motion-loop) ease-in-out infinite;
+    /* The tile is twice the block wide and both its edges are `--surface-2`, so it
+   repeats seamlessly and the loop below can translate it by whole tiles. */
+    background-size: 200% 100%;
+    animation: skeleton-shimmer var(--motion-loop) linear infinite;
   }
+  /* A loop only reads as continuous if its last frame is its first. A percentage
+   `background-position` resolves against (block width − tile width) = −W, so each
+   −200% slides the tile a full +2W — its own width — and −400% is two whole tiles,
+   which renders identically to none. `linear` keeps the sweep from easing to a halt
+   at that seam, which stutters even once the frames match. */
   @keyframes skeleton-shimmer {
     from {
-      background-position: 130% 0;
+      background-position: 0 0;
     }
     to {
-      background-position: -130% 0;
+      background-position: -400% 0;
     }
   }
   /* Stands in for an `h2`, at the height the heading will have. */
