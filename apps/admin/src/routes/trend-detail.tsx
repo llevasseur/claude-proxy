@@ -1,12 +1,13 @@
 import { isPartialDay, lastNonZeroComparison, type UsageDigest } from '@claude-proxy/core';
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
-import { useState } from 'react';
-import { getTrends } from '../api';
+import { useMemo, useState } from 'react';
+import { getSummary, getTrends, type SummaryResponse } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
-import { trendsKey, UnfilterableNote, useModelOptions } from '../components/DayWindow';
+import { trendsKey, UnfilterableNote, useModelOptions, withLiveToday } from '../components/DayWindow';
 import { FixedPrefixTools } from '../components/FixedPrefixTools';
 import { HeaderHint } from '../components/HeaderHint';
+import { LiveIndicator } from '../components/LiveIndicator';
 import { MAX_MODEL_SERIES, ModelSeriesToggle, modelColor, shortModelName } from '../components/ModelPicker';
 import { PerCallNextSteps, PerCallPanel, PerCallSkeleton } from '../components/PerCallPanel';
 import { PromptMixPanel, PromptMixSkeleton } from '../components/PromptMixPanel';
@@ -17,6 +18,7 @@ import { Skeleton, SkeletonChartCard, type SkeletonColumn, SkeletonTableCard } f
 import { deltaLabel, deltaTone } from '../format';
 import { findMetric, REPORT_TZ_ABBR, type StatMetric } from '../metrics';
 import { rootRoute } from '../route-root';
+import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 
 /** The tall chart this page leads with, in px. */
@@ -40,6 +42,13 @@ export function TrendDetailPage() {
   // order their colours follow, so removing one does not recolour the rest above it.
   const [selected, setSelected] = useState<readonly string[]>([]);
   const models = useModelOptions(days);
+  // The same summary feed the Overview and Trends pages read: it carries today's
+  // digest as the day is written, which is what keeps the closing point moving
+  // rather than frozen at whatever it was when this page was opened. Both are
+  // gated on the metric existing, as the window read below is — an unknown
+  // `$metric` renders a card and no chart, which is nothing for a stream to move.
+  const summary = useQuery({ queryKey: ['summary'], queryFn: () => getSummary(), enabled: !!def });
+  const summaryLive = useLiveQuery<SummaryResponse>('/api/summary/stream', ['summary'], !!def);
   const query = useQuery({
     queryKey: trendsKey(days, null),
     queryFn: () => getTrends(days),
@@ -56,7 +65,15 @@ export function TrendDetailPage() {
       placeholderData: keepPreviousData,
     })),
   });
-  const digests = query.data?.digests ?? [];
+  const fetched = query.data?.digests;
+  const today = summary.data?.digest;
+  // Today spliced onto the all-models line, and onto that line alone: the summary
+  // digest counts every model, so the per-model series above stay a fetch behind on
+  // the day in progress rather than being told an all-models figure is theirs.
+  const digests = useMemo(() => {
+    const rows = fetched ?? [];
+    return today ? withLiveToday(rows, today) : rows;
+  }, [fetched, today]);
   const busy = isSwitching || query.isFetching || modelQueries.some((q) => q.isFetching);
 
   const toggleModel = (id: string) =>
@@ -138,8 +155,10 @@ export function TrendDetailPage() {
             )
           )}
         </div>
-        {/* Which models are drawn, beside how far back. */}
+        {/* The stream's health, then which models are drawn, beside how far back —
+            the order `DayWindowControls` puts them in on the other trends pages. */}
         <div className='pagehead-controls'>
+          <LiveIndicator status={summaryLive} />
           <ModelSeriesToggle options={models} selected={selected} onToggle={toggleModel} busy={busy} />
           <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label='Trend window' busy={busy} />
         </div>
