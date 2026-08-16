@@ -49,12 +49,15 @@ Official references:
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 03 | notes-dashboard | [notes-03-notes-dashboard](notes-03-notes-dashboard.md) | `task/notes-03-notes-dashboard` | todo |
 | 04 | notes-docs-and-verification | [notes-04-notes-docs-and-verification](notes-04-notes-docs-and-verification.md) | `task/notes-04-notes-docs-and-verification` | todo |
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 03 — notes-dashboard
+
+PR [#223](https://github.com/llevasseur/claude-proxy/pull/223) added the Activity-station `/notes` workspace in `apps/admin`: a full-bleed responsive recent/archive list and Markdown editor with typed local API calls, URL-stable selection, metadata-only search and cursor pagination, presentation-only `Untitled`, serialized debounced autosave, explicit idle/saving/saved/error/offline/conflict states, draft-preserving SSE reconciliation, and reversible archive/restore. Independent review corrected the server's `{ note }` response unwrapping, serialized overlapping saves, blocked selection/create actions that could discard dirty drafts, removed repetitive selection animation, and limited hover treatment to fine pointers; admin typecheck, production build, scoped Biome, and `git diff --check` passed. Vite served `/notes` on its actual bound port 5173, but the required in-app browser exposed no browser backends, so desktop, responsive, and interaction proof could not be captured; the repository-wide verifier also emitted no output and remained hung for more than two minutes before being interrupted.
 
 ### 02 — notes-local-api
 
