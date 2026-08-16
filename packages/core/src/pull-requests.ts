@@ -22,12 +22,9 @@ export interface PullRequestRow {
   baseRefName: string;
   headRefName: string;
   /**
-   * The PR description, verbatim markdown.
-   *
-   * Optional because it is the one field the list does not carry: it is 70 percent of a
-   * 200-row payload and nothing in the tree draws it, so `/api/pull-requests` omits it
-   * and the drawer asks `/api/pull-requests/body` for the one it is showing. A row read
-   * straight from `gh`, and the document the `pull_request` table stores, both have it.
+   * The PR description, verbatim markdown. Optional: `/api/pull-requests` omits it and
+   * the drawer asks `/api/pull-requests/body` for the one it shows. A row read straight
+   * from `gh`, and the document the `pull_request` table stores, both carry it.
    */
   body?: string;
   labels: string[];

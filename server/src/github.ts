@@ -24,11 +24,8 @@ import { fetchMainHistory } from './main-history.js';
 const run = promisify(execFile);
 
 /**
- * The fields the tree and its drawer read.
- *
- * `body` stays on the list: it is what the stored document holds, so the drawer's body
- * read is a primary-key lookup rather than a second trip to GitHub. It is dropped one
- * layer up, where the response is built — see `buildPullRequests`.
+ * The fields the tree and its drawer read. `body` stays on the list because it is what
+ * the stored document holds; it is dropped one layer up, in `buildPullRequests`.
  */
 const PR_FIELDS = [
   'number',
@@ -279,13 +276,8 @@ export interface PullRequestBodyResult {
 }
 
 /**
- * The description of one pull request.
- *
- * The stored document is the answer in every warm case, which is the case the drawer is
- * opened in: the list read the drawer is sitting on top of came from that same table, so
- * the row is there and this is a primary-key lookup. The `gh pr view` below is the cold
- * fallback — a checkout with no substrate to have stored into, which
- * {@link servePullRequests} serves directly from `gh` too.
+ * The description of one pull request — the stored document when there is one, and a
+ * `gh pr view` for the cold case of a checkout with no substrate to have stored into.
  */
 export async function servePullRequestBody(
   logDir: string,

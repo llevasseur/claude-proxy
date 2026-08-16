@@ -324,13 +324,7 @@ export interface MainHideResponse {
   hidden: boolean;
 }
 
-/**
- * A pull request as the list carries it: everything except the description.
- *
- * The bodies were about 70 percent of the payload and the tree draws none of them, so
- * the list omits it and the drawer asks {@link getPullRequestBody} for the one it shows.
- * `Omit` rather than a comment, so reaching for `body` on a list row does not compile.
- */
+/** A pull request as the list carries it: everything except the description. */
 export type PullRequestListRow = Omit<PullRequestRow, 'body'>;
 
 export interface PullRequestsResponse {

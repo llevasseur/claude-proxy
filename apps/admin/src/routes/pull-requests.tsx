@@ -582,14 +582,7 @@ function PrInspector({
   );
 }
 
-/**
- * The description, asked for by number when the drawer opens.
- *
- * It is the one field `/api/pull-requests` does not carry: 200 bodies were about 70
- * percent of that payload and the tree draws none of them, so the read moved here, where
- * exactly one is wanted. Nothing is drawn for a pull request with no description, which
- * is what an empty body did before.
- */
+/** The description, asked for by number when the drawer opens — the one field the list omits. */
 function PrDescription({ number }: { number: number }) {
   const query = useQuery({
     queryKey: ['pull-request-body', number],

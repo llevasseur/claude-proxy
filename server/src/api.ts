@@ -2850,14 +2850,7 @@ export async function buildSkimTrend(
   };
 }
 
-/**
- * A pull request as the list carries it: everything except the description.
- *
- * The bodies are about 70 percent of a 200-row payload and the tree draws none of them —
- * only the drawer draws one, for the pull request a person opened. So the list omits it
- * and `/api/pull-requests/body` answers for that one. `Omit` rather than a comment, so a
- * component that reaches for `body` on a list row does not compile.
- */
+/** A pull request as the list carries it: everything except the description. */
 export type PullRequestListRow = Omit<PullRequestRow, 'body'>;
 
 export interface PullRequestsResponse {
@@ -2908,9 +2901,7 @@ export async function buildPullRequests(
   ]);
   return {
     repo,
-    // The one place the body is dropped. Everything above still sees it — the session
-    // scan and the rail read whole rows — and the stored document keeps it, so the
-    // drawer's read is a lookup rather than a second trip to GitHub.
+    // The one place the body is dropped; every layer above, and the stored document, keep it.
     prs: prs.map(({ body: _body, ...row }) => row),
     error,
     sessions,
@@ -2932,12 +2923,7 @@ export interface PullRequestBodyResponse {
   error: string | null;
 }
 
-/**
- * One pull request's description, by number — what `/api/pull-requests` leaves out.
- *
- * Read on demand because it is the whole reason the list is small: asked for once, when
- * a person opens a drawer, rather than 200 times on every poll.
- */
+/** One pull request's description, by number — what `/api/pull-requests` leaves out. */
 export function buildPullRequestBody(
   logDir: string,
   number: number,

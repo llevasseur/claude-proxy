@@ -43,7 +43,7 @@ SELECT repo, error, ref_error AS refError, fetched_at AS fetchedAt
 FROM pull_request_repo WHERE repo_dir = ?
 `;
 
-/** One row by number — a primary-key lookup, which is what the drawer's body read is. */
+/** One row by number — the primary key, unsorted and unlimited. */
 const SELECT_ROW = `
 SELECT document FROM pull_request WHERE repo_dir = ? AND number = ?
 `;
@@ -120,10 +120,8 @@ export function readStoredPullRequests(logDir: string, repoDir: string, limit: n
 /**
  * The description of one pull request, out of the document already on file.
  *
- * `null` is "no row for that number here" — no substrate, or a checkout no refresh has
- * landed for — and the caller falls back to asking GitHub for that one body. A row that
- * exists with an empty description answers `''`, which is a different thing and is why
- * the two are not collapsed.
+ * `null` is "no row for that number here", which sends the caller to GitHub; a row that
+ * exists with an empty description answers `''`.
  */
 export function readStoredPullRequestBody(logDir: string, repoDir: string, number: number): string | null {
   const db = handleFor(logDir);
