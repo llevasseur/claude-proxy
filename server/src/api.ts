@@ -1348,9 +1348,12 @@ export async function buildContext(
   source: SidecarSource = fileSource,
   page: ContextPageQuery = contextPageQuery(),
 ): Promise<ContextResponse> {
+  // `omitTools` because a `ContextEntry` reads `request.toolCount` and never the
+  // per-tool list: the substrate would otherwise fetch and group every tool
+  // schema of every request in the window to build an array nothing here opens.
   const { sidecars, files, parseErrors } = await readWindow(
     logDir,
-    { sinceDays: days, includeFile: true },
+    { sinceDays: days, includeFile: true, omitTools: true },
     now,
     source,
   );

@@ -103,7 +103,12 @@ The **windowed summary** goes through the `SidecarSource` seam
 ([ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md)): by default the SQLite
 substrate answers `readSidecars` from its tables with no directory read at all, `DB_READS=0`
 puts `buildContext` back on the original `logs/*.audit.json` scan, and `SHADOW_DB=1` re-runs
-the build against the other backing to compare. The **prompt text is fetched through that
+the build against the other backing to compare. That read asks for the window with
+**`omitTools`**, a `ReadOptions` flag saying the caller reads `request.toolCount` and never
+the per-tool list: the substrate then skips the `request_tool` join outright, and every
+sidecar comes back with an empty — not a missing — `tools` array, since `isAuditSidecar`
+requires one. The file backing empties it too, so the two backings keep handing the builder
+the same object and the byte-for-byte parity comparison is unaffected. The **prompt text is fetched through that
 same seam** by a bounded `readRootPrompts(logDir, threadIds)` — it names only the threads the
 window actually contains, reading `logs/sessions/<threadId>.state.json`'s untruncated `root`
 on the file backing and the `session.root_prompt` column on the SQLite one, then
