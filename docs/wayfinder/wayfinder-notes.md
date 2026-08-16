@@ -49,11 +49,14 @@ Official references:
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 04 | notes-docs-and-verification | [notes-04-notes-docs-and-verification](notes-04-notes-docs-and-verification.md) | `task/notes-04-notes-docs-and-verification` | todo |
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 04 — notes-docs-and-verification
+
+PR [#224](https://github.com/llevasseur/claude-proxy/pull/224) added the durable [Operator notes](../features/operator-notes.md) feature reference and [Operator Notes design spec](../specs/2026-08-16-operator-notes-design.md), then linked them from the root and operator READMEs and changelog: they reconcile the hosted revision/current/FTS model, every authenticated REST endpoint and MCP tool, the server-only token boundary and absence of local fallback, optimistic conflicts, archive/restore, search/cursors/excerpts, dashboard selection/serialized autosave/live SSE, complete revision/archive backup coverage, the manual recovery boundary, and conformance to all eleven unratified Notes ADRs. Independent review corrected three documentation contracts — byte-identical no-op updates create no revision, unauthenticated REST is rejected with `401` before D1 access, and recovery rebuilds FTS from every exported revision — and found no necessary cross-layer code fix; OKF indexes, validation (zero errors, twelve pre-existing recommended-field warnings), dead links, Concepts typecheck and 100 tests, 15 focused core Notes/API tests, 28 focused server bridge/route tests, server/admin typechecks, admin/root builds, repository check (nine pre-existing warnings), environment check, and diff check passed. The required single `my-command-tools verify` run had no concurrent suite but emitted no output and remained stuck for about four minutes in root `pnpm run test` → `pnpm -r --if-present test` with one Vitest coordinator and nine workers, never reaching build/check/check:env, so it was interrupted once and replaced only by the focused gates above; the supported in-app browser again returned no available backends (`[]`), so desktop, responsive, transition, live-selection, and draft-preservation proof remains unavailable and no unsupported backend was substituted.
 
 ### 03 — notes-dashboard
 
