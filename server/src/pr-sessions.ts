@@ -176,9 +176,8 @@ interface Transcript {
 /**
  * Every transcript under `dir`, stat'd but unread. `null` is a missing directory.
  *
- * The stat pass is what the stored scan is bought with: it says which transcripts are
- * newer than a pull request's mark, and therefore which of them anything has to be read
- * from. Statting a directory is cheap in a way reading it is not — the read is megabytes.
+ * The stat pass says which transcripts are newer than a pull request's mark, and so
+ * which of them anything has to be read from — the read being the megabytes.
  */
 async function listTranscripts(dir: string): Promise<Transcript[] | null> {
   let names: string[];
@@ -217,8 +216,7 @@ async function listTranscripts(dir: string): Promise<Transcript[] | null> {
  * The pass narrows twice. Only the pull requests whose mark is behind the newest
  * transcript are scanned at all, and they are scanned only against the transcripts past
  * the oldest of those marks. A pull request nothing has ever scanned has no mark, so it
- * takes the whole directory once and never again — which is the whole change: this used
- * to repeat about every 60 seconds, because the cache key carried `fetchedAt`.
+ * takes the whole directory once and never again.
  *
  * With no substrate to read (`repoDir` is null, or the log directory has no database)
  * this degrades to the full pass it replaced.

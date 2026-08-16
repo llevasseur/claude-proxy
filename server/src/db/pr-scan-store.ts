@@ -2,17 +2,14 @@
  * The `pr_scan` tables: what the transcript scan found, kept, so that a pull request is
  * scanned once rather than once per GitHub refresh.
  *
- * The scan is the last thing on `/api/pull-requests`'s request path. It was held in a
- * single slot in memory keyed on `fetchedAt`, which moves on every refresh — so the pass
- * repeated roughly once a minute, and a restart dropped it entirely. These rows are that
- * slot, on disk and per pull request.
+ * The scan is the last thing on `/api/pull-requests`'s request path. These rows replace
+ * the single in-memory slot it used to be held in, one entry per pull request.
  *
  * **Only the recovered signals live here.** `via` is `branch`, `number`, or both. A
  * `recorded` link is the session's own record of the pull request it opened, is read from
- * `session.pr_url` on every request because that read is cheap, and is never written to
- * this table — the separation `docs/features/pull-request-tree.md` guards is a column
- * constraint here rather than a convention, and {@link readScannedPrLinks} drops anything
- * else it finds.
+ * `session.pr_url` on every request, and is never written to this table — the separation
+ * `docs/features/pull-request-tree.md` guards is a column constraint here rather than a
+ * convention, and {@link readScannedPrLinks} drops anything else it finds.
  *
  * A row is **derived and disposable**, exactly as `pull-request-store.ts`'s rows are:
  * `logs/sessions/` owns the truth, so `rm logs/claude-proxy.db` costs one scan pass and
@@ -84,8 +81,7 @@ const handles = new Map<string, DatabaseSync>();
  *
  * The file is never *created* here, for the reason `pull-request-store.ts` gives: a read
  * route must not leave a database behind in a log directory that had none. A `null` sends
- * the caller back to scanning every transcript every time, which is what it did before
- * this table existed — correct, just not fast.
+ * the caller back to scanning every transcript every time — correct, just not fast.
  */
 function handleFor(logDir: string): DatabaseSync | null {
   const held = handles.get(logDir);

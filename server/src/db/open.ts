@@ -644,28 +644,27 @@ CREATE INDEX IF NOT EXISTS pull_request_updated_idx ON pull_request(repo_dir, up
  * The transcript scan's own results, so a pull request is scanned once rather than
  * once per `gh` refresh. See `server/src/db/pr-scan-store.ts`.
  *
- * Derived and disposable like every other table here, and doubly so: `logs/sessions/`
- * is the source of truth, and deleting the file costs one scan pass and no information.
+ * Derived and disposable: `logs/sessions/` is the source of truth, so deleting the file
+ * costs one scan pass and no information.
  *
- * The separation the feature doc guards is enforced by the column, not by convention:
- * `via` holds only `branch` and `number`, the two *recovered* signals. A `recorded`
- * link is a session's own record of the pull request it opened, is read from
- * `session.pr_url` on every request because reading it is cheap, and is never written
- * here — so a stored scanned link can never age into a recorded one.
+ * The separation the feature doc guards is enforced by the column rather than by
+ * convention: `via` holds only `branch` and `number`, the two *recovered* signals. A
+ * `recorded` link is a session's own record of the pull request it opened, is read from
+ * `session.pr_url` on every request, and is never written here — so a stored scanned
+ * link can never age into a recorded one.
  *
  * `scanned_through` is the mtime, in epoch milliseconds, of the newest transcript that
- * existed when this pull request was scanned. It is what makes the answer stay correct
- * as transcripts arrive: a pull request is rescanned once the directory holds something
- * newer than its own mark, and then only against the transcripts past that mark. A
- * stored row with no link rows is the useful negative — "scanned, matched nothing" —
- * and it is what keeps the 45 unnamed pull requests on this device off the request path.
+ * existed when this pull request was scanned. A pull request is rescanned once the
+ * directory holds something newer, and then only against the transcripts past that
+ * mark. A row with no link rows is the useful negative — scanned, matched nothing —
+ * which is what takes an unnamed pull request off the request path.
  */
 const SCHEMA_V17 = `
 CREATE TABLE IF NOT EXISTS pr_scan (
   -- Absolute path of the checkout the number belongs to, as \`pull_request\` is keyed.
   repo_dir        TEXT    NOT NULL,
   number          INTEGER NOT NULL,
-  -- Newest transcript mtime, epoch ms, at the time of the scan. See the note above.
+  -- Newest transcript mtime, epoch ms, at the time of the scan.
   scanned_through INTEGER NOT NULL,
   scanned_at      TEXT    NOT NULL,
   PRIMARY KEY (repo_dir, number)
