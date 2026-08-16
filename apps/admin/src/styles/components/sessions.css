@@ -44,10 +44,9 @@
     margin: 0;
     padding: var(--space-7) var(--space-8) var(--space-5);
     color: var(--muted);
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     font-weight: 500;
-    letter-spacing: 0.08em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
   }
   .sessions-group-count {
@@ -108,7 +107,6 @@
     outline: none;
     background: none;
     color: var(--text);
-    font-family: var(--font-body);
     font-size: var(--text-5);
     padding: var(--space-5) 0;
   }
@@ -185,7 +183,6 @@
     overflow-wrap: anywhere;
   }
   .thread-prompt-foot {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
   }
 
@@ -201,7 +198,6 @@
   }
   .sessions-nav-empty,
   .sessions-nav-more {
-    font-family: var(--font-mono);
     font-size: var(--text-4);
     padding: var(--space-7) var(--space-5);
     text-align: center;
@@ -221,7 +217,6 @@
     gap: var(--space-5);
   }
   .sessions-nav-count {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
   }
 
@@ -287,7 +282,6 @@
   }
   .session-row-age {
     flex: none;
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     color: var(--faint);
   }
@@ -314,7 +308,6 @@
     border-radius: var(--radius-3);
     padding: 0 var(--space-4);
     color: var(--faint);
-    font-family: var(--font-mono);
     font-size: var(--text-2);
     max-width: 100%;
     overflow: hidden;
@@ -341,7 +334,6 @@
     box-shadow: 0 0 18px rgba(70, 224, 192, 0.6);
   }
   .chat-empty h2 {
-    font-family: var(--font-display);
     font-size: var(--text-10);
     font-weight: 600;
     letter-spacing: -0.02em;
@@ -384,7 +376,6 @@
     border-radius: var(--radius-5);
     background: var(--surface);
     color: var(--text);
-    font-family: var(--font-mono);
     font-size: var(--text-4);
   }
   .session-running-dot {

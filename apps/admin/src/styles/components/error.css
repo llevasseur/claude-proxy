@@ -24,7 +24,6 @@
     color: var(--coral);
   }
   .stat-error-cta {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     color: var(--coral);
   }
@@ -47,7 +46,6 @@
     color: var(--signal);
   }
   .stat-drill-cta {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     color: var(--signal);
   }
@@ -68,9 +66,8 @@
     display: contents;
   }
   .error-meta-label {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     color: var(--muted);
   }
@@ -80,7 +77,6 @@
   /* The way from an error into the request message that carried it. */
   .error-cta-row {
     margin-top: var(--space-6);
-    font-family: var(--font-mono);
     font-size: var(--text-3);
   }
   .error-cta {

@@ -48,7 +48,6 @@
   }
   .pr-main-chip,
   .pr-main-marker {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     letter-spacing: 0.08em;
     color: var(--violet);
@@ -239,7 +238,7 @@
   }
   .pr-node-kind {
     font-size: var(--text-2);
-    letter-spacing: 0.1em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     color: var(--gc);
   }
@@ -259,7 +258,7 @@
   .pr-root {
     margin: var(--space-6) 0 var(--space-2);
     font-size: var(--text-3);
-    letter-spacing: 0.08em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     color: var(--faint);
   }

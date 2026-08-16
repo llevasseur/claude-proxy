@@ -18,7 +18,6 @@
     min-width: 0;
   }
   .trend-chip {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     color: var(--muted);
     background: var(--surface);

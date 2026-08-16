@@ -4,11 +4,10 @@
     margin: 0;
   }
   .stat-label {
-    font-family: var(--font-mono);
     color: var(--muted);
     font-size: var(--text-3);
     text-transform: uppercase;
-    letter-spacing: 0.11em;
+    letter-spacing: var(--tracking-label);
   }
   .stat-value {
     font-family: var(--font-mono);
@@ -72,10 +71,9 @@
     gap: var(--space-6);
   }
   .usage-chip {
-    font-family: var(--font-mono);
     font-size: var(--text-2);
     text-transform: uppercase;
-    letter-spacing: 0.09em;
+    letter-spacing: var(--tracking-label);
     font-weight: 600;
     color: var(--tone);
     white-space: nowrap;
@@ -123,7 +121,6 @@
     justify-content: space-between;
     gap: var(--space-5);
     margin-top: var(--space-5);
-    font-family: var(--font-mono);
     font-size: var(--text-3);
   }
   /* A denominator inferred from history; the dotted underline invites the hover. */
@@ -214,10 +211,9 @@
     pointer-events: auto;
   }
   .stat-popover-head {
-    font-family: var(--font-mono);
     font-size: var(--text-3);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: var(--tracking-label);
     color: var(--muted);
     margin-bottom: var(--space-4);
   }

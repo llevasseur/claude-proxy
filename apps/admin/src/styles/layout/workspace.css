@@ -59,23 +59,22 @@
     flex-shrink: 0;
   }
   .pagehead h1 {
-    font-family: var(--font-display);
     font-size: var(--text-10);
     font-weight: 600;
     letter-spacing: -0.02em;
     margin: 0;
   }
   .pagehead .muted {
-    font-family: var(--font-mono);
     font-size: var(--text-4);
   }
   /* Day-over-day sentence under a trend page's description. */
   .trend-compare {
-    font-family: var(--font-mono);
     font-size: var(--text-4);
     margin-top: var(--space-4);
   }
+  /* The number inside `.trend-compare`'s sentence: a value, not prose. */
   .trend-compare-value {
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     font-weight: 600;
   }
@@ -97,7 +96,7 @@
     color: var(--muted);
     font-size: var(--text-3);
     font-weight: 600;
-    letter-spacing: 0.04em;
+    letter-spacing: var(--tracking-label);
     margin: var(--space-9) 0 var(--space-4);
     text-transform: uppercase;
   }
@@ -161,7 +160,6 @@
   }
   .state {
     padding: var(--space-page) 0;
-    font-family: var(--font-mono);
     font-size: var(--text-5);
   }
 }

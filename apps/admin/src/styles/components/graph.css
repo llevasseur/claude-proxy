@@ -113,7 +113,7 @@
   .gband-kind {
     flex: none;
     font-size: var(--text-2);
-    letter-spacing: 0.09em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     font-weight: 700;
     color: var(--violet);
@@ -141,7 +141,7 @@
   .gband-state {
     flex: none;
     font-size: var(--text-2);
-    letter-spacing: 0.06em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     color: var(--faint);
     border: 1px solid var(--line);
@@ -176,7 +176,7 @@
   .gtrail-kind {
     flex: none;
     font-size: var(--text-2);
-    letter-spacing: 0.09em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     font-weight: 700;
     color: var(--coral);
@@ -268,7 +268,7 @@
   }
   .gnode-kind {
     font-size: var(--text-2);
-    letter-spacing: 0.09em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     color: var(--gc);
     font-weight: 600;
@@ -477,7 +477,7 @@
     writing-mode: vertical-rl;
     margin: var(--space-6) auto 0;
     font-size: var(--text-2);
-    letter-spacing: 0.09em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     white-space: nowrap;
     color: var(--faint);
@@ -493,7 +493,7 @@
   }
   .gs-title {
     font-size: var(--text-3);
-    letter-spacing: 0.09em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     font-weight: 700;
     color: var(--faint);
@@ -584,7 +584,7 @@
   .gs-item-type {
     margin-right: var(--space-4);
     font-size: var(--text-2);
-    letter-spacing: 0.06em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     font-weight: 700;
     color: var(--violet);
@@ -661,7 +661,7 @@
   }
   .gi-kind {
     font-size: var(--text-3);
-    letter-spacing: 0.1em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     font-weight: 700;
     color: var(--gc);
@@ -706,7 +706,7 @@
   }
   .gi-label {
     font-size: var(--text-3);
-    letter-spacing: 0.08em;
+    letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     color: var(--faint);
   }
@@ -771,7 +771,8 @@
   .gi-stat-value {
     display: block;
     font-size: var(--text-8);
-    font-family: var(--font-display);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
   .gi-stat-bad {
     color: var(--coral);

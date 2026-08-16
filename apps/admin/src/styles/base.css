@@ -29,7 +29,7 @@
   select,
   textarea,
   input:not([type="checkbox"], [type="radio"]) {
-    font-family: var(--font-body);
+    font-family: var(--font-ui);
     font-size: var(--text-5);
     color: var(--text);
     background: var(--surface);
