@@ -116,6 +116,19 @@ const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
 const stripInjected = (s: string): string =>
   oneLine(s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '').replace(/<system-reminder>[\s\S]*$/i, ''));
 
+/**
+ * Whether this transcript is the far side of a compaction: the CLI reopened the conversation
+ * by replaying the previous one's summary, so the proxy filed it under a *new* thread id
+ * while the CLI kept the same `- session:` uuid.
+ *
+ * That is what makes such a pair recognizable. A subagent shares its caller's uuid too, but
+ * it opens on its own task prompt and never on this preamble, so the two do not collide.
+ */
+export function isContinuedSession(meta: Pick<SessionMeta, 'subtitle' | 'firstTask'>): boolean {
+  const opening = meta.subtitle ?? meta.firstTask;
+  return !!opening && CONTINUATION_RE.test(stripInjected(opening));
+}
+
 /** The most words a derived name carries, matching the CLI's own 3–7 word titles. */
 const NAME_WORDS = 7;
 /** …and its hard character cap, so one long token can't run away with the row. */
@@ -127,20 +140,6 @@ const NAME_CHARS = 60;
  * and its first sentence kept, capped at {@link NAME_WORDS} words / {@link NAME_CHARS}
  * chars with an `…` marking the cut.
  */
-/**
- * Whether this transcript is the far side of a compaction: the CLI opened it by replaying
- * the previous conversation's summary, so the proxy filed it under a *new* thread id while
- * the CLI kept the same `- session:` uuid.
- *
- * That is what makes the pair recognizable. A subagent shares its caller's uuid too, but a
- * subagent opens on its own task prompt and never on this preamble, so the two cases do not
- * collide.
- */
-export function isContinuedSession(meta: Pick<SessionMeta, 'subtitle' | 'firstTask'>): boolean {
-  const opening = meta.subtitle ?? meta.firstTask;
-  return !!opening && CONTINUATION_RE.test(stripInjected(opening));
-}
-
 export function deriveSessionName(prompt: string | null): string | null {
   if (!prompt) return null;
 
