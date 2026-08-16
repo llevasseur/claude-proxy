@@ -88,9 +88,9 @@ function useDocumentTitle() {
 function RootLayout() {
   const activeProps = { className: 'station active' };
   useDocumentTitle();
-  // The live graph and the Sessions chat go full-bleed; every other page keeps the padded column.
+  // The live graph, Sessions chat, and Notes editor go full-bleed; every other page keeps the padded column.
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const full = pathname === '/sessions/graph' || pathname === '/sessions';
+  const full = pathname === '/sessions/graph' || pathname === '/sessions' || pathname === '/notes';
   const [collapsed, toggleRail] = useRailCollapsed();
   const toggleLabel = collapsed ? 'Expand navigation' : 'Collapse navigation';
   const nav = useNavDrawer();

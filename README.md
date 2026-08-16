@@ -10,6 +10,7 @@ packages/core/  pure, tested library: usage digest, cost, advice
 server/         Node API over logs + scoped local writes + daily-summary CLI
 apps/admin/     TanStack (Router + Query) + Vite dashboard
 docs/           okq (Open Knowledge Format) bundle — ADRs, features, design specs
+services/concepts/ hosted operator Worker: concepts, ideas, and authored notes
 ```
 
 ## 1. The proxy — capture requests
@@ -454,6 +455,11 @@ originating PR number on each entry. Add an entry with the work, not after it �
 
 ## Notes
 
+- **Operator Notes:** `/notes` is a responsive Markdown notebook backed by the hosted `operator`
+  Worker and shared with agents over authenticated REST and MCP. The local server keeps its token out
+  of the browser and provides conflict-aware autosave plus live list updates. See the
+  [feature reference](docs/features/operator-notes.md) and
+  [design spec](docs/specs/2026-08-16-operator-notes-design.md).
 - **Enterprise-safe:** the proxy is a near-transparent pass-through to
   `api.anthropic.com`; its only request-body edits strip the small
   `WITHHELD_TOOLS` and `INJECTED_REMINDERS` inventories documented on the Proxy

@@ -19,6 +19,7 @@ import { route as jobDetailRoute } from './job-detail';
 import { nav as jobsNav, route as jobsRoute } from './jobs';
 import { route as memoryDetailRoute } from './memory-detail';
 import { NAV_SECTION_ORDER } from './nav';
+import { nav as notesNav, route as notesRoute } from './notes';
 import { nav as overviewNav, route as overviewRoute } from './overview';
 import { route as projectDetailRoute } from './project-detail';
 import { nav as projectsNav, route as projectsRoute } from './projects';
@@ -73,6 +74,7 @@ export const ROUTES = [
   sessionDetailRoute,
   sessionErrorsRoute,
   pullRequestsRoute,
+  notesRoute,
   jobsRoute,
   jobDetailRoute,
   hooksPluginsRoute,
@@ -108,6 +110,7 @@ const STATIONS = [
   sessionsNav,
   sessionGraphNav,
   pullRequestsNav,
+  notesNav,
   jobsNav,
   hooksPluginsNav,
   systemPromptNav,

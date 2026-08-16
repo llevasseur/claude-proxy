@@ -12,6 +12,7 @@ import type { IdeaEntry, IdeaStatus } from '@claude-proxy/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addIdeasToStore } from '../src/ideas-store.js';
 import { startFakeIdeasServer } from './ideas-fake-worker.js';
+import { type FakeNotesServer, startFakeNotesServer } from './notes-fake-worker.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY = path.join(HERE, '..', 'src', 'server.ts');
@@ -30,6 +31,7 @@ let promptPath: string;
  * routes outright rather than falling back to a file. See ADR 0006.
  */
 let ledger: { url: string; stop: () => Promise<void> };
+let notes: FakeNotesServer;
 
 interface RawReply {
   status: number;
@@ -78,6 +80,7 @@ beforeAll(async () => {
   const logDir = await mkdtemp(path.join(tmpdir(), 'route-methods-'));
   promptPath = path.join(logDir, 'CLAUDE.md');
   ledger = await startFakeIdeasServer();
+  notes = await startFakeNotesServer();
   process.env.IDEAS_URL = ledger.url;
   process.env.IDEAS_TOKEN = 'test-token';
   // Seeded so the ideas route below has a row to list and one to refuse a mark on.
@@ -98,6 +101,9 @@ beforeAll(async () => {
       HOST: '127.0.0.1',
       LOG_DIR: logDir,
       CLAUDE_SYSTEM_PROMPT: promptPath,
+      NOTES_URL: notes.url,
+      NOTES_TOKEN: notes.token,
+      NOTES_POLL_MS: '50',
     },
     stdio: 'ignore',
   });
@@ -107,6 +113,7 @@ beforeAll(async () => {
 afterAll(async () => {
   child?.kill();
   await ledger?.stop();
+  await notes?.stop();
 });
 
 describe('read routes', () => {
@@ -250,6 +257,85 @@ describe('read routes', () => {
       headers: { origin: 'http://evil.example' },
     });
     expect(res.status).toBe(403);
+  });
+
+  it('proxies Notes reads with pagination while keeping the operator token out of responses', async () => {
+    const list = await fetch(`${BASE}/api/notes?limit=1`);
+    expect(list.status).toBe(200);
+    const listBody = await list.json();
+    expect(listBody).toMatchObject({
+      notes: [{ id: 'note-1', version: 1, title: 'First note', excerpt: 'hosted Markdown' }],
+      nextCursor: 'opaque-next',
+    });
+    const detail = await fetch(`${BASE}/api/notes/note?id=note-1`);
+    const detailBody = await detail.json();
+    expect(detailBody).toMatchObject({ note: { id: 'note-1', body: 'hosted Markdown' } });
+    const search = await fetch(`${BASE}/api/notes/search?q=Markdown`);
+    const searchBody = await search.json();
+    expect(searchBody).toMatchObject({ notes: [{ id: 'note-1' }] });
+    expect(JSON.stringify([listBody, detailBody, searchBody])).not.toContain(notes.token);
+    expect(notes.requests.slice(-3).every((request) => request.authorization === `Bearer ${notes.token}`)).toBe(true);
+  });
+
+  it('origin-checks every Notes write and preserves upstream status and structured conflicts', async () => {
+    const post = (path: string, body: unknown, origin?: string) =>
+      fetch(`${BASE}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
+        body: JSON.stringify(body),
+      });
+    expect((await post('/api/notes/create', { title: 'x', body: 'y' }, 'http://evil.example')).status).toBe(403);
+    const created = await post('/api/notes/create', { title: '', body: '# exact' });
+    expect(created.status).toBe(201);
+    const id = ((await created.json()) as { note: { id: string } }).note.id;
+    expect((await post('/api/notes/update', { id, expectedVersion: 1 })).status).toBe(400);
+    const updated = await post('/api/notes/update', { id, expectedVersion: 1, body: 'winner' });
+    expect(updated.status).toBe(200);
+    const conflict = await post('/api/notes/update', { id, expectedVersion: 1, body: 'loser' });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({
+      conflict: true,
+      code: 'stale_version',
+      expectedVersion: 1,
+      currentVersion: 2,
+      attemptedRevisionId: 'attempt-conflict',
+    });
+    expect((await post('/api/notes/archive', { id })).status).toBe(200);
+    expect((await post('/api/notes/restore', { id })).status).toBe(200);
+  });
+
+  it('polls Notes metadata, drops unchanged snapshots, and emits an SSE update when a version changes', async () => {
+    notes.set({ ...notes.note(), version: 2, updatedAt: '2026-08-16T12:00:00.000Z' });
+    const controller = new AbortController();
+    const response = await fetch(`${BASE}/api/notes/stream`, { signal: controller.signal });
+    expect(response.status).toBe(200);
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffered = '';
+    const event = async (name: string): Promise<Record<string, unknown>> => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const frameEnd = buffered.indexOf('\n\n');
+        if (frameEnd >= 0) {
+          const frame = buffered.slice(0, frameEnd);
+          buffered = buffered.slice(frameEnd + 2);
+          if (frame.startsWith(`event: ${name}\n`))
+            return JSON.parse(frame.split('\ndata: ')[1]!) as Record<string, unknown>;
+          continue;
+        }
+        const next = await reader.read();
+        if (next.done) break;
+        buffered += decoder.decode(next.value, { stream: true });
+      }
+      throw new Error(`timed out waiting for ${name}`);
+    };
+    const snapshot = await event('snapshot');
+    expect(snapshot).toMatchObject({ notes: [{ version: 2 }] });
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    notes.set({ ...notes.note(), version: 3, updatedAt: '2026-08-16T13:00:00.000Z' });
+    const update = await event('update');
+    expect(update).toMatchObject({ notes: [{ version: 3 }] });
+    controller.abort();
   });
 });
 

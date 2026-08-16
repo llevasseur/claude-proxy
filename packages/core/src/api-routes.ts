@@ -144,6 +144,21 @@ export const API_ROUTES = [
   { path: '/api/ideas/area', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/ideas/comment', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/ideas/claim', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/notes', methods: ['GET'], kind: 'json', cors: 'open', params: ['cursor', 'limit', 'archived'] },
+  {
+    path: '/api/notes/stream',
+    methods: ['GET'],
+    kind: 'sse',
+    cors: 'open',
+    params: ['cursor', 'limit', 'archived'],
+    streamOf: '/api/notes',
+  },
+  { path: '/api/notes/search', methods: ['GET'], kind: 'json', cors: 'open', params: ['q', 'cursor', 'limit'] },
+  { path: '/api/notes/note', methods: ['GET'], kind: 'json', cors: 'open', params: ['id'] },
+  { path: '/api/notes/create', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/notes/update', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/notes/archive', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
+  { path: '/api/notes/restore', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/sessions/suggestions', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
   { path: '/api/sessions/suggestions/bucket', methods: ['GET'], kind: 'json', cors: 'open', params: ['index'] },
   // A GET list and a POST that writes the flags, on one path — so the GET answers under
@@ -170,6 +185,8 @@ export const API_ROUTES = [
   { path: '/api/skim/trend', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
   { path: '/api/withheld', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
   { path: '/api/pull-requests', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  // One pull request's body — what the drawer asks for when it opens.
+  { path: '/api/pull-requests/body', methods: ['GET'], kind: 'json', cors: 'open', params: ['number'] },
   // Moving `main` is shared, remote and irreversible in the sense that everyone sees it.
   { path: '/api/main-history/slide', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/main-history/sync-local', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
