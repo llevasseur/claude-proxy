@@ -76,7 +76,13 @@ readers sit behind one `SidecarSource` interface, and a test replays each wired
 route against the whole archive both ways and asserts byte-identical JSON — the
 full payload, never a row count. Legitimate diffs are allowed only as explicitly
 named normalizations; a diff nobody can name is treated as a bug in the
-substrate. A **shadow mode** (`SHADOW_DB=1`, off by default) serves from the
+substrate. That replay is also **timed**: each case's duration through each
+backing is compared against a recorded per-route median in
+`server/test/route-budgets.json`, with headroom, so a route that keeps answering
+the same bytes far more slowly fails the suite rather than going unnoticed. The
+budgets are measurements and are re-recorded with `ROUTE_BUDGETS=record`; the
+gate is skipped where there is no archive to replay, and `ROUTE_BUDGETS=0` turns
+it off. A **shadow mode** (`SHADOW_DB=1`, off by default) serves from the
 files exactly as today and computes the DB answer alongside, logging any
 mismatch without ever touching the response.
 

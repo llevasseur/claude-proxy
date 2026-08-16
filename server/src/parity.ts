@@ -166,6 +166,8 @@ export interface ParityResult {
   label: string;
   /** `null` when the two answers were byte-identical. */
   diff: JsonDiff | null;
+  /** How long each backing took to answer this case. See {@link CaseTiming}. */
+  timing: CaseTiming;
 }
 
 /** Serialize the way the server does, so "identical" means identical on the wire. */
@@ -180,6 +182,9 @@ function wire(value: unknown): string {
  * by the backing that filled it, so a warm cache cannot hand the DB run the file
  * run's answer, and dropping them would make replaying the whole archive
  * impractical. Call {@link resetCaches} once before a run.
+ *
+ * Each side is timed while it is replayed, so the time budgets below cost two
+ * `performance.now()` reads rather than a second pass over the corpus.
  */
 export async function runCase(
   route: ParityRoute,
@@ -187,13 +192,23 @@ export async function runCase(
   fileBacked: SidecarSource,
   dbBacked: SidecarSource,
 ): Promise<ParityResult> {
+  const filesAt = performance.now();
   const fromFiles = await testCase.run(fileBacked);
+  const filesMs = performance.now() - filesAt;
+
+  const dbAt = performance.now();
   const fromDb = await testCase.run(dbBacked);
+  const dbMs = performance.now() - dbAt;
 
   const a = normalize(fromFiles);
   const b = normalize(fromDb);
   const diff = wire(a) === wire(b) ? null : (diffJson(a, b) ?? { path: '$', files: a, db: b });
-  return { route: route.name, label: testCase.label, diff };
+  return {
+    route: route.name,
+    label: testCase.label,
+    diff,
+    timing: { route: route.name, label: testCase.label, filesMs, dbMs },
+  };
 }
 
 /** Drop every per-process memo that would otherwise let one backing answer for the other. */
@@ -636,6 +651,235 @@ function commandsDirOf(ctx: ParityContext): string {
 /** The newest transcripts the *files* know about, in the listing's own order. */
 async function threadIds(ctx: ParityContext): Promise<string[]> {
   return (await buildSessions(ctx.logDir, fileSource)).sessions.slice(0, PER_THREAD_CASES).map((s) => s.threadId);
+}
+
+/* ------------------------------------------------------------------ *
+ * Time budgets
+ * ------------------------------------------------------------------ */
+
+/**
+ * The other half of the harness. Everything above proves the two backings agree
+ * on the *bytes*; none of it says a word about the *time*, and a route that got
+ * seven times slower stayed byte-identical the whole way down.
+ *
+ * That is not hypothetical. `CHANGELOG.md` records `/api/usage` at 3.13s over a
+ * 713 MB database holding 18 archived days; over a 1.43 GB database holding 24,
+ * the same route measures 26.6s. No gate reported it, because those numbers were
+ * taken by hand once and never became an assertion. Numbers in prose rot; this
+ * turns them into a recorded fixture that a replay compares itself against.
+ *
+ * What is asserted is a **regression against a recorded baseline on this
+ * harness's own replay**, not a service-level target for the HTTP route. The two
+ * are different quantities — the replay reads a frozen snapshot with the OS page
+ * cache in whatever state the previous case left it — and only the first is
+ * something a test can hold still enough to gate on.
+ */
+
+/** How long one replayed case took through each backing. */
+export interface CaseTiming {
+  route: string;
+  label: string;
+  filesMs: number;
+  dbMs: number;
+}
+
+/** Which reader a duration belongs to. Both are budgeted; see {@link RouteBudget}. */
+export type Backing = 'files' | 'db';
+
+/**
+ * One route's recorded per-case medians, in milliseconds.
+ *
+ * Both backings are budgeted rather than only the substrate, because the
+ * regression that prompted this is *comparative*: the substrate is slower than
+ * the file scan it replaced on `/api/summary` and `/api/trends`, which is a fact
+ * only visible when both sides are on record. The fixture states the two
+ * numbers; it deliberately does **not** assert `db < files`, since that assertion
+ * fails today for reasons this harness is not the place to fix.
+ */
+export interface RouteBudget {
+  files: number;
+  db: number;
+}
+
+/** The recorded fixture: what was measured, against what, and with how much slack. */
+export interface RouteBudgets {
+  /** When the numbers below were taken, so a stale fixture is legible as stale. */
+  recordedAt: string;
+  /** The corpus they were taken against — the archive only grows, so this moves. */
+  corpus: { archivedDays: number; note: string };
+  /**
+   * What a median may be multiplied by before it counts as a breach.
+   *
+   * Three. It is picked against the recorded spread rather than by taste: the
+   * changelog's own consecutive passes over one unchanged corpus vary by up to
+   * 29% (`/api/summary` 1.52s then 1.18s) and 20% (`/api/usage` 3.13s then
+   * 3.77s), so a machine under load plausibly doubles a number without anything
+   * having regressed. The failure this exists to catch is sevenfold. Three sits
+   * clear of the noise and well under the signal.
+   */
+  headroom: number;
+  /**
+   * The smallest allowance any route gets, in milliseconds, regardless of what
+   * it measured.
+   *
+   * Headroom is proportional and the noise it is calibrated against is not. Two
+   * routes in the recorded fixture answer in **0.1 ms** — they read one already
+   * loaded object — and ×3 on that is an allowance of 0.3 ms, which a single
+   * timer quantum or a scheduler hiccup crosses while nothing whatsoever has
+   * regressed. Below the floor, absolute jitter dominates and the ratio stops
+   * meaning anything; above it, the floor never binds, because ×3 of anything
+   * over ~17 ms is already larger. Fifty milliseconds sits above scheduling
+   * noise and below any duration a human would call slow.
+   */
+  floorMs: number;
+  /**
+   * Per-route medians. A route absent from this map is *unbudgeted*, which is
+   * reported and never failed: a newly registered route has nothing recorded yet,
+   * and failing the build for that would make adding a route to
+   * {@link PARITY_ROUTES} require a measurement pass first.
+   */
+  routes: Record<string, RouteBudget>;
+}
+
+/** One route/backing pair judged against its budget. */
+export interface BudgetCheck {
+  route: string;
+  backing: Backing;
+  cases: number;
+  medianMs: number;
+  budgetMs: number;
+  allowedMs: number;
+  over: boolean;
+}
+
+export interface BudgetReport {
+  checks: BudgetCheck[];
+  /** Human-readable breach lines, empty when every budgeted route was inside its allowance. */
+  breaches: string[];
+  /** Routes that were replayed but carry no recorded budget. Reported, never failed. */
+  unbudgeted: string[];
+}
+
+/**
+ * The middle value of a set of durations.
+ *
+ * Median rather than mean or max, because one case in a replay of several
+ * hundred reliably catches a GC pause — and a mean carries that outlier into the
+ * number while a max *is* the outlier. A route that genuinely regressed moves
+ * every case, which moves the median.
+ */
+export function medianMs(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+/** Per-route durations, split by backing, in the order the cases were replayed. */
+function byRoute(timings: CaseTiming[]): Map<string, { files: number[]; db: number[] }> {
+  const out = new Map<string, { files: number[]; db: number[] }>();
+  for (const t of timings) {
+    const entry = out.get(t.route) ?? { files: [], db: [] };
+    entry.files.push(t.filesMs);
+    entry.db.push(t.dbMs);
+    out.set(t.route, entry);
+  }
+  return out;
+}
+
+/** Judge a replay's timings against the recorded fixture. */
+export function checkBudgets(timings: CaseTiming[], budgets: RouteBudgets): BudgetReport {
+  const checks: BudgetCheck[] = [];
+  const breaches: string[] = [];
+  const unbudgeted: string[] = [];
+
+  for (const [route, durations] of byRoute(timings)) {
+    const budget = budgets.routes[route];
+    if (!budget) {
+      unbudgeted.push(route);
+      continue;
+    }
+    for (const backing of ['files', 'db'] as const) {
+      const observed = medianMs(durations[backing]);
+      const budgetMs = budget[backing];
+      const allowedMs = Math.max(budgetMs * budgets.headroom, budgets.floorMs);
+      const over = observed > allowedMs;
+      checks.push({
+        route,
+        backing,
+        cases: durations[backing].length,
+        medianMs: observed,
+        budgetMs,
+        allowedMs,
+        over,
+      });
+      if (over) {
+        breaches.push(
+          `${route} (${backing}) median ${observed.toFixed(0)}ms over ${durations[backing].length} cases ` +
+            `exceeds its allowance of ${allowedMs.toFixed(0)}ms ` +
+            `(recorded ${budgetMs.toFixed(0)}ms ×${budgets.headroom}, floor ${budgets.floorMs}ms)`,
+        );
+      }
+    }
+  }
+  return { checks, breaches: breaches.sort(), unbudgeted: unbudgeted.sort() };
+}
+
+/**
+ * Budgeted route names that no longer name a registered route.
+ *
+ * A rename would otherwise silently un-budget a route: the old key stops
+ * matching, the new name reads as merely unbudgeted, and the gate goes quiet on
+ * exactly the route someone was just editing.
+ */
+export function unknownBudgetRoutes(budgets: RouteBudgets): string[] {
+  const known = new Set(PARITY_ROUTES.map((r) => r.name));
+  return Object.keys(budgets.routes)
+    .filter((name) => !known.has(name))
+    .sort();
+}
+
+/**
+ * Whether the budget gate runs at all.
+ *
+ * On by default wherever there is a real archive to replay, which is this
+ * device and not CI — a clean clone has no `logs/archive`, so the suite that
+ * carries these timings already enumerates nothing there and the gate has
+ * nothing to judge. `ROUTE_BUDGETS=0` turns it off for a run on a machine known
+ * to be busy — an escape hatch rather than an opt-in flag nobody remembers to
+ * set on the one machine that can catch the regression.
+ */
+export function budgetsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = env.ROUTE_BUDGETS;
+  return v !== '0' && v !== 'false';
+}
+
+/** Whether this run rewrites the fixture instead of judging against it. */
+export function budgetsRecording(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ROUTE_BUDGETS === 'record';
+}
+
+/** Build the fixture a `ROUTE_BUDGETS=record` run writes out. */
+export function recordBudgets(
+  timings: CaseTiming[],
+  previous: RouteBudgets,
+  archivedDays: number,
+  at: Date,
+): RouteBudgets {
+  const routes: Record<string, RouteBudget> = {};
+  for (const [route, durations] of [...byRoute(timings)].sort(([a], [b]) => a.localeCompare(b))) {
+    routes[route] = {
+      files: Number(medianMs(durations.files).toFixed(1)),
+      db: Number(medianMs(durations.db).toFixed(1)),
+    };
+  }
+  return {
+    recordedAt: at.toISOString(),
+    corpus: { archivedDays, note: previous.corpus.note },
+    headroom: previous.headroom,
+    floorMs: previous.floorMs,
+    routes,
+  };
 }
 
 /* ------------------------------------------------------------------ *
