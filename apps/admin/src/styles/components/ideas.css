@@ -174,15 +174,11 @@
 
   /* The key, as a fingerprint that copies it. See `IdeaKey` in IdeaCard.tsx.
 
-   Three things here are the requirement rather than styling. `flex: 0 0 auto`
-   with an explicit square makes the slot **always** the same width, whether the
-   glyph is the fingerprint or the copied check, so a card never reflows as a
-   copy lands or a title changes. `align-self: center` centres it against the
-   flex line rather than the row, which is what puts it halfway down a title that
-   has wrapped to two or three lines — and stating it here rather than leaning on
-   the container's `align-items` is why it holds in `.pagehead` too, whose own
-   alignment is `baseline`. And the box is sized off the type scale rather than
-   the icon, so it stays a comfortable target at 14px of glyph. */
+   Two declarations are the requirement rather than styling. `flex: 0 0 auto`
+   with an explicit square holds the slot at one width in every state, so a card
+   never reflows as a copy lands. `align-self: center` centres it against a title
+   wrapped to several lines, and stating it here rather than on the container is
+   what makes it hold in `.pagehead`, whose alignment is `baseline`. */
   .idea-key {
     flex: 0 0 auto;
     align-self: center;
@@ -212,8 +208,8 @@
     color: var(--high);
     border-color: var(--high);
   }
-  /* A page title carrying its key: the pair travels together as one head item,
-   so `space-between` cannot strand the key at the opposite edge. */
+  /* A page title carrying its key: one head item, so `space-between` cannot
+   strand the key at the opposite edge. */
   .idea-titled {
     display: flex;
     align-items: center;

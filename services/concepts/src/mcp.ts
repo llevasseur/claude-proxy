@@ -252,13 +252,12 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
     if (!slug) return { error: '`slug` is required' };
     try {
       const idea = await getIdea(db, slug);
-      // Absence is reported as a tool error rather than `{ idea: null }`, so a
-      // model cannot read a successful call as the idea existing and unclaimed.
+      // Absence is a tool error, not `{ idea: null }` — a successful call must
+      // not read as the idea existing and unclaimed.
       return idea ? { idea } : { error: `no idea on the ledger is called ${slug}` };
     } catch (error) {
-      // A malformed key is the model's mistake to correct, so it comes back in
-      // the same `{ error }` shape every other tool refuses with, rather than as
-      // the bare `tool … failed:` string an escaped throw would produce.
+      // A malformed key comes back in the same `{ error }` shape every other
+      // tool refuses with, not the bare `tool … failed:` of an escaped throw.
       if (error instanceof IdeaError) return { error: error.message };
       throw error;
     }

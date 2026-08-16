@@ -262,7 +262,6 @@ describe('ideas_get', () => {
     expect(idea.slug).toBe('rolling-window');
     expect(idea.title).toMatch(/rolling last-10 window/);
     expect(idea.status).toBe('proposed');
-    // The prose and the locators are the point of fetching one rather than listing.
     expect(idea.evidence).toHaveLength(1);
   });
 

@@ -167,8 +167,7 @@ async function handleIdeas(request: Request, path: string, params: URLSearchPara
     return json(await listIdeas(db, ideaFilterFromParams(params), params.get('available') === 'true'));
   }
 
-  // One idea by its key, the sibling of `/api/concepts/concept`. The key is the
-  // kebab-case slug and nothing else, so this route needs no other parameter.
+  // One idea by its key, the sibling of `/api/concepts/concept`.
   if (path === '/api/ideas/idea' && request.method === 'GET') {
     const slug = params.get('slug');
     if (!slug) throw new IdeaError(400, '`slug` is required');

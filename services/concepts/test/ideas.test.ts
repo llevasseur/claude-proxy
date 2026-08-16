@@ -259,10 +259,9 @@ describe('claiming', () => {
 
 describe('reading one idea by its key', () => {
   /**
-   * The load-bearing assertion: `getIdea` replays **only that key's events**, so
-   * every case here checks it against what the whole-ledger replay holds for the
-   * same key. A partial replay that disagreed with the full one would be a
-   * ledger that answers differently depending on which route you asked through.
+   * `getIdea` replays only that key's events, so these cases check it against
+   * what the whole-ledger replay holds for the same key — a partial replay that
+   * disagreed would answer differently depending on the route asked through.
    */
   it('answers with exactly what a full replay holds for that key', async () => {
     await addIdeas(db, [idea(), idea({ slug: 'second-idea', area: 'services' })], T0);
@@ -300,8 +299,8 @@ describe('reading one idea by its key', () => {
     expect(held?.status).toBe('claimed');
     expect(held?.claim?.by).toBe('run-a');
 
-    // The lease row outlives the claim by design — nothing sweeps it — so the
-    // by-key read has to apply the same staleness rule the ledger read does.
+    // The lease row outlives the claim — nothing sweeps it — so the by-key read
+    // applies the same staleness rule the ledger read does.
     const later = new Date(T0.getTime() + IDEA_CLAIM_TTL_MS + 1000);
     expect((await getIdea(db, 'rolling-window', later))?.status).toBe('accepted');
   });

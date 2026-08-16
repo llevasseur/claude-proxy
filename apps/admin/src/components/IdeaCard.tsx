@@ -35,20 +35,12 @@ export const IDEA_STATUS_LABEL: Record<IdeaStatus, string> = {
 };
 
 /**
- * The idea's key, as a fingerprint that copies it.
+ * The idea's key, as a fingerprint that copies it. The key is the slug — the
+ * same string the permalink and every `ideas_*` MCP tool take.
  *
- * **The key is the slug** — the idea has no other identifier, and the same
- * string is the dedupe key, this page's permalink, and the `slug` argument the
- * hosted `ideas_get`, `ideas_claim` and `ideas_mark` MCP tools take. So copying
- * it is how a human hands one idea to an agent: paste the key, and the agent can
- * fetch that idea by key rather than listing the whole ledger. A fingerprint
- * rather than a clipboard glyph because what it copies is the idea's *identity*,
- * not the text of the card it sits on.
- *
- * The slot is rendered unconditionally and the copied state swaps one glyph for
- * another of the same size inside a fixed box, so nothing on the row moves when
- * a copy lands. Its vertical centring against a title that wraps is the CSS's
- * job (`.idea-key` in `styles/components/ideas.css`), not this component's.
+ * The slot renders unconditionally and swaps one glyph for another of the same
+ * size, so nothing on the row moves when a copy lands. Vertical centring against
+ * a wrapped title is `.idea-key` in `styles/components/ideas.css`.
  */
 export function IdeaKey({ slug }: { slug: string }) {
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -62,8 +54,7 @@ export function IdeaKey({ slug }: { slug: string }) {
 
   const copy = async () => {
     try {
-      // Same guard the /task prompt's copy uses: the API is absent rather than
-      // failing when the dashboard is served over plain http from another host.
+      // The API is absent, not failing, over plain http from another host.
       if (!navigator.clipboard) throw new Error('the clipboard needs a secure context (https or localhost)');
       await navigator.clipboard.writeText(slug);
       setError('');
@@ -374,7 +365,6 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
             {idea.title}
           </Link>
         </h3>
-        {/* The key, immediately right of the name it identifies. */}
         <IdeaKey slug={idea.slug} />
         {/* Unfiled for a row written before areas existed — `ideas file` classifies it. */}
         <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>

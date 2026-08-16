@@ -52,8 +52,8 @@ export function IdeaDetailPage() {
         <span className='crumb-current'>{idea?.title ?? slug}</span>
       </Breadcrumbs>
       <div className='pagehead'>
-        {/* The head is space-between, so the key needs to travel with the title
-            rather than sit as a sibling that would be flung to the far edge. */}
+        {/* The head is space-between, so the key travels with the title rather
+            than as a sibling flung to the far edge. */}
         <div className='pagehead-title idea-titled'>
           <h1>{idea?.title ?? 'Idea'}</h1>
           <IdeaKey slug={slug} />

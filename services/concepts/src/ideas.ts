@@ -122,12 +122,10 @@ export async function readIdeas(db: Db, now: Date = new Date()): Promise<IdeasSt
 }
 
 /**
- * Fold events into a store, oldest first.
- *
- * Shared by the whole-ledger read and the by-key read below so the two cannot
- * disagree about what an event means. Every `applyIdea*` keys on the event's own
- * slug, which is exactly what makes replaying one key's events **alone** produce
- * the same entry a full replay would have produced for it.
+ * Fold events into a store, oldest first. Shared by the whole-ledger read and
+ * the by-key read, so the two cannot disagree about what an event means — every
+ * `applyIdea*` keys on the event's own slug, which is what makes replaying one
+ * key's events alone produce the entry a full replay would have.
  */
 function replay(events: readonly EventRow[]): IdeasStore {
   let store = emptyIdeasStore();
@@ -223,23 +221,17 @@ export async function listIdeas(
 }
 
 /**
- * One idea, by its key.
+ * One idea, by its key. The key is the slug alone — the same string the dedupe
+ * check, the permalink and every write already take.
  *
- * **The key is the slug alone** — that is what `packages/core` says an idea is
- * identified by, and it is why this needs no new identifier to be queryable: the
- * dedupe key, the permalink and the argument every write already takes are the
- * same string. So this is the read that was missing rather than a new naming
- * scheme, and a caller holding a key can fetch that one idea instead of listing
- * the ledger and filtering it client-side.
- *
- * It reads **that key's own events**, which the `idea_event_slug` index serves
- * directly, so the cost is the one idea's history rather than the whole log.
- * `null` means no idea has ever been added under the key — including a key that
- * was proposed and rejected, since a rejected row is kept and still answers.
+ * Reads that key's own events, which the `idea_event_slug` index serves
+ * directly, so the cost is one idea's history rather than the whole log. `null`
+ * means nothing was ever added under the key; a rejected row is kept and still
+ * answers.
  */
 export async function getIdea(db: Db, slug: string, now: Date = new Date()): Promise<IdeaEntry | null> {
-  // A malformed key is the caller's mistake, not an absent idea: answering 404
-  // for it would report `typo_here` as merely not on the ledger yet.
+  // A malformed key is refused, not reported as absent — 404 would read as
+  // merely not on the ledger yet.
   if (!isIdeaSlug(slug)) throw new IdeaError(400, `invalid slug: ${slug} (expected a kebab-case key)`);
 
   const events = await db.all<EventRow>(
