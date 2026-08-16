@@ -396,14 +396,32 @@ async function ingestDir(
     .filter((n) => n.endsWith(AUDIT_SUFFIX))
     .map((n) => n.slice(0, -AUDIT_SUFFIX.length))
     .sort();
-  const lastStem = stems.length ? stems[stems.length - 1]! : null;
 
-  // An archived day is immutable once the summary job has moved it. When its
-  // listing still matches what we recorded, there is nothing to reconcile.
+  // **The fingerprint is the whole listing, not the audit stems.** Eviction is
+  // the one mutation an archived day still undergoes, and it deletes `.md` and
+  // `.request.txt` while keeping every `.audit.json` — so a count of stems is
+  // exactly the number eviction cannot move. Fingerprinting stems meant an
+  // evicted day matched its watermark, was skipped whole, and kept a
+  // `request_path` pointing at a file that is gone; `/api/skim/trend` reads that
+  // column, so the staleness was visible in the answer.
+  //
+  // The count and the greatest entry both change when a body is deleted. It also
+  // invalidates every watermark written by the old scheme exactly once — a stem
+  // never equals a listing entry, which still carries its suffix — so the first
+  // pass after this change re-reconciles each archived day and no migration is
+  // needed to clear the stale rows. The column is still named `last_stem`
+  // because the schema in `open.ts` names it that; what it holds is the last
+  // *entry*.
+  const listing = [...names].sort();
+  const lastEntry = listing.length ? listing[listing.length - 1]! : null;
+
+  // An archived day is immutable once the summary job has moved it, eviction
+  // aside. When its listing still matches what we recorded, there is nothing to
+  // reconcile.
   const mark = db.prepare('SELECT last_stem, files_seen FROM ingest_watermark WHERE source_dir = ?').get(sourceDir) as
     | { last_stem: string | null; files_seen: number }
     | undefined;
-  if (sourceDir !== LIVE && mark && mark.files_seen === stems.length && mark.last_stem === lastStem) {
+  if (sourceDir !== LIVE && mark && mark.files_seen === listing.length && mark.last_stem === lastEntry) {
     stats.dirsSkipped += 1;
     return;
   }
@@ -475,7 +493,7 @@ async function ingestDir(
   // still unread.
   await deriveBodies(db, st, logDir, sourceDir, stats);
 
-  st.watermark.run(sourceDir, lastStem, stems.length, new Date().toISOString());
+  st.watermark.run(sourceDir, lastEntry, listing.length, new Date().toISOString());
 }
 
 /**

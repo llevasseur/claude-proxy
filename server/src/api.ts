@@ -2658,7 +2658,13 @@ export async function buildSkim(
 export interface SkimTrendResponse {
   digests: SkimDigest[];
   topShapes: SkimShape[];
-  /** `bodiesEvicted` as in {@link SkimResponse}, across the whole window. */
+  /**
+   * `bodiesEvicted` as in {@link SkimResponse}, across the whole window. On the
+   * substrate it is a sum over the `request_path` column rather than a `stat` per
+   * row: a 30-day window holds over sixteen thousand rows, and awaiting one
+   * existence check for each of them is what used to make this route take a
+   * minute and never get faster on a repeat call.
+   */
   meta: { days: number; files: number; parseErrors: number; bodiesEvicted: number };
 }
 

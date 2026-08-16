@@ -19,7 +19,9 @@ import { dbSource, fileSource } from '../src/db/source.js';
  * These cases pin down both halves of the guarantee, because both are load-bearing:
  *
  * - **Forward.** A body derived and *then* evicted still answers, and the eviction
- *   is still counted — the count is a live disk observation on either backing.
+ *   is still counted — off the `request_path` column on the substrate, off the
+ *   disk on the file backing, and the two agree because ingest reconciles the
+ *   column the moment eviction changes the directory listing.
  * - **Backward, and it does not hold.** A body evicted before anything derived it
  *   is gone, and re-ingesting cannot invent the derivative. Total recovery
  *   (`rm logs/claude-proxy.db && pnpm --filter server ingest`) still reconstructs
@@ -121,7 +123,11 @@ describe('deriving a body before eviction removes it', () => {
   it('still answers the skim text after retention deletes the body', async () => {
     await evict(dayDir, keptStem);
     await evict(dayDir, brokenStem);
-    await ingest(db, logDir);
+    // Nothing was added or removed from the *audit* listing, which is precisely
+    // what the old stem-only watermark fingerprinted — it skipped this day whole
+    // and never saw the deletion.
+    const afterEvict = await ingest(db, logDir);
+    expect(afterEvict.dirsSkipped).toBe(0);
 
     // The derivative survived the body it came from.
     expect(
@@ -136,13 +142,16 @@ describe('deriving a body before eviction removes it', () => {
     expect(byFile.get(brokenStem)).toBeUndefined();
     expect(byFile.get(goneStem)).toBeUndefined();
 
-    // The count is still a live disk observation rather than a column read, and
-    // that is load-bearing here: an archived day whose audit listing is unchanged
-    // is skipped wholesale by its watermark, so `blob_evicted` on the row has not
-    // caught up with the deletion. The read still sees all three bodies gone, and
-    // both backings agree on the number.
+    // The count is a column read rather than a live disk observation — one
+    // `access` per derived row is what made `/api/skim/trend?days=30` take a
+    // minute — and this is where that is load-bearing: the ingest above had to
+    // notice the deletion for the column to be worth reading. It does, because
+    // the watermark fingerprints the whole directory listing rather than its
+    // audit stems, and eviction is invisible in the stems alone. All three rows
+    // have caught up, and both backings still agree on the number.
     expect(fromDb.bodiesEvicted).toBe(3);
-    expect((db.prepare('SELECT count(*) c FROM request WHERE blob_evicted = 1').get() as { c: number }).c).toBe(1);
+    expect((db.prepare('SELECT count(*) c FROM request WHERE blob_evicted = 1').get() as { c: number }).c).toBe(3);
+    expect((db.prepare('SELECT count(*) c FROM request WHERE request_path IS NULL').get() as { c: number }).c).toBe(3);
 
     // This is the degradation the change is about: the file scan opens the body at
     // query time, so it has nothing left to answer with.
@@ -150,6 +159,28 @@ describe('deriving a body before eviction removes it', () => {
     expect(fromFiles.bodiesEvicted).toBe(3);
     for (const sidecar of fromFiles.sidecars as Array<Record<string, unknown>>) {
       expect(sidecar.skimRequestText).toBeUndefined();
+    }
+  });
+
+  it('settles the day again once the deletion has been reconciled', async () => {
+    // The fingerprint is stronger than the old one, not merely different: an
+    // untouched archived day is still skipped whole, so the re-scan above costs
+    // one pass rather than becoming the standing cost of every pass.
+    expect((await ingest(db, logDir)).dirsSkipped).toBe(1);
+  });
+
+  it('counts the eviction from the column rather than a per-row disk check', async () => {
+    // Put the body back *without* re-ingesting, so disk and column disagree on
+    // purpose. A read that still answers 3 can only be reading the column — the
+    // per-row `access` this replaced would have answered 2, and would have paid
+    // one syscall per row to do it.
+    await writeFile(path.join(dayDir, `${keptStem}.request.txt`), '{}', 'utf8');
+    try {
+      const fromDb = await dbSource(db).readArchivedDay(logDir, DAY, { includeSkimRequests: true });
+      expect(fromDb.bodiesEvicted).toBe(3);
+    } finally {
+      // Leave the corpus as the eviction left it; the rebuild below reads disk.
+      await rm(path.join(dayDir, `${keptStem}.request.txt`), { force: true });
     }
   });
 

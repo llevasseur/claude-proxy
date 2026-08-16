@@ -152,6 +152,32 @@ async function deriveBeforeEvict(logDir: string): Promise<void> {
 }
 
 /**
+ * Level the substrate with what the evict phase just deleted.
+ *
+ * The pass in {@link deriveBeforeEvict} runs *before* eviction, so by
+ * construction it cannot see it — and eviction happens inside `archive/<day>/`,
+ * which fires no watcher event, because the server's watch is not recursive. So
+ * without a pass on this side of it, `request_path` keeps pointing at bodies
+ * this very run removed until something unrelated touches the live directory.
+ *
+ * That matters now that the count is a column read: `/api/skim/trend` sums the
+ * pointer instead of walking the disk, so a stale column is a wrong answer
+ * rather than merely a slow one. Never fatal, for the same reason as the pass
+ * before it — the substrate is a disposable view.
+ */
+async function reingestAfterEvict(logDir: string): Promise<void> {
+  try {
+    const { ingestOnce } = await import('./db/runtime.js');
+    const stats = await ingestOnce(logDir);
+    if (stats.dirs > 0) {
+      console.log(`[maintain] re-ingested ${plural(stats.dirs, 'directory', 'directories')} after eviction`);
+    }
+  } catch (err) {
+    console.error(`[maintain] post-eviction ingest skipped: ${(err as Error).message}`);
+  }
+}
+
+/**
  * Move each `claimed` idea whose pull request has merged, closed, or lost its
  * head branch. Skipped on a dry run — it writes. Never fatal: no `gh`, no
  * network, no origin all mean "learned nothing this run", and the ledger is left
@@ -200,6 +226,9 @@ async function main(): Promise<void> {
     );
     for (const err of result.errors.slice(0, 10)) console.error(`[maintain] ${err}`);
     if (result.errors.length > 10) console.error(`[maintain] …and ${result.errors.length - 10} more`);
+
+    // After the eviction, not before it — see the note on the function.
+    if (result.evicted > 0 || result.archived > 0) await reingestAfterEvict(logDir);
   } else if (plan.archive.moves.length > 0 || plan.evict.files.length > 0) {
     console.log('');
     console.log('Re-run with --apply to perform this.');
