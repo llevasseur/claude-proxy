@@ -15,16 +15,23 @@ import { resolveLogDir } from '../src/logs.js';
 import {
   archivedDays,
   archivedDaysSync,
+  budgetsEnabled,
+  budgetsRecording,
+  type CaseTiming,
+  checkBudgets,
   NORMALIZATIONS,
   PARITY_ROUTES,
   type ParityContext,
   type ParityRoute,
+  recordBudgets,
   resetCaches,
   runCase,
+  unknownBudgetRoutes,
 } from '../src/parity.js';
 import { resolveSettingsPath } from '../src/settings.js';
 import { updateSuggestionStatusStore } from '../src/suggestion-status.js';
 import { resolveUsageLimits } from '../src/usage-config.js';
+import { BUDGET_FILE, readRouteBudgets, writeRouteBudgets } from './route-budgets.js';
 
 /**
  * Every wired route, replayed against the same corpus through the file scan and
@@ -384,14 +391,16 @@ async function replay(
   ctx: ParityContext,
   db: DatabaseSync,
   routes: ParityRoute[],
-): Promise<{ diffs: string[]; cases: number }> {
+): Promise<{ diffs: string[]; cases: number; timings: CaseTiming[] }> {
   const fromDb = dbSource(db);
   const out: string[] = [];
+  const timings: CaseTiming[] = [];
   let cases = 0;
   for (const route of routes) {
     for (const testCase of await route.cases(ctx)) {
       cases += 1;
       const result = await runCase(route, testCase, fileSource, fromDb);
+      timings.push(result.timing);
       if (result.diff) {
         out.push(
           `${result.label} differs at ${result.diff.path}: ` +
@@ -400,7 +409,7 @@ async function replay(
       }
     }
   }
-  return { diffs: out, cases };
+  return { diffs: out, cases, timings };
 }
 
 /** Every registered route, from a cold cache — the whole-corpus replay. */
@@ -964,6 +973,14 @@ describe('route parity over the real logs/archive', () => {
   let settingsPath: string | null = null;
   let db: DatabaseSync | null = null;
 
+  /**
+   * Every case's two durations, accumulated across the replays below and judged
+   * once at the end. Collecting rather than asserting per case is what lets the
+   * budget be a *median*: a route's cases are spread over the per-day tests, so
+   * no single test sees enough of one route to take one.
+   */
+  const timings: CaseTiming[] = [];
+
   beforeAll(async () => {
     if (!REAL_DAYS.length) return;
     snapshot = await snapshotLogs(resolveLogDir(), REAL_DAYS);
@@ -1020,9 +1037,10 @@ describe('route parity over the real logs/archive', () => {
     'answers every dated route byte-identically for %s',
     async (day) => {
       if (!db) return;
-      const { diffs, cases } = await replay(contextFor([day]), db, PER_DAY_ROUTES);
-      expect(cases, 'the harness replayed nothing, so it proved nothing').toBeGreaterThan(0);
-      expect(diffs).toEqual([]);
+      const result = await replay(contextFor([day]), db, PER_DAY_ROUTES);
+      timings.push(...result.timings);
+      expect(result.cases, 'the harness replayed nothing, so it proved nothing').toBeGreaterThan(0);
+      expect(result.diffs).toEqual([]);
     },
     300_000,
   );
@@ -1034,7 +1052,40 @@ describe('route parity over the real logs/archive', () => {
   for (const route of WHOLE_ROUTES) {
     it(`answers ${route.name} byte-identically`, async () => {
       if (!db) return;
-      expect((await replay(contextFor(), db, [route])).diffs).toEqual([]);
+      const result = await replay(contextFor(), db, [route]);
+      timings.push(...result.timings);
+      expect(result.diffs).toEqual([]);
     }, 300_000);
   }
+
+  /**
+   * The time half of the harness, judged on the durations every test above
+   * already collected — so it costs one comparison rather than a second replay.
+   *
+   * It is declared last on purpose: vitest runs a file's tests in declaration
+   * order, so by the time this one runs `timings` holds every case.
+   */
+  it('answers every budgeted route inside its recorded time budget', async () => {
+    if (!db) return;
+    const budgets = readRouteBudgets();
+
+    // A budget keyed on a name no route answers to any more gates nothing, and
+    // reads as merely unbudgeted — so it fails here rather than going quiet.
+    expect(unknownBudgetRoutes(budgets), 'a budget names a route that is no longer registered').toEqual([]);
+    expect(timings.length, 'nothing was timed, so nothing was judged').toBeGreaterThan(0);
+
+    if (budgetsRecording()) {
+      await writeRouteBudgets(recordBudgets(timings, budgets, REAL_DAYS.length, new Date()));
+      console.info(`[budgets] recorded ${BUDGET_FILE} from ${timings.length} cases over ${REAL_DAYS.length} days`);
+      return;
+    }
+    if (!budgetsEnabled()) return;
+
+    const report = checkBudgets(timings, budgets);
+    if (report.unbudgeted.length) {
+      console.info(`[budgets] no budget recorded yet for: ${report.unbudgeted.join(', ')}`);
+    }
+    expect(report.checks.length, 'no budgeted route was replayed, so the gate judged nothing').toBeGreaterThan(0);
+    expect(report.breaches).toEqual([]);
+  });
 });

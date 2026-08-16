@@ -1,0 +1,111 @@
+{
+  "recordedAt": "2026-08-16T22:39:22.031Z",
+  "corpus": {
+    "archivedDays": 24,
+    "note": "Per-case medians in milliseconds, taken by the real-archive parity replay in server/test/parity.test.ts. Re-record with ROUTE_BUDGETS=record pnpm --filter server test parity."
+  },
+  "headroom": 3,
+  "floorMs": 50,
+  "routes": {
+    "/api/commands": {
+      "files": 247.9,
+      "db": 75
+    },
+    "/api/commands/command": {
+      "files": 259.1,
+      "db": 34.6
+    },
+    "/api/commands/run": {
+      "files": 425.9,
+      "db": 164.7
+    },
+    "/api/concepts": {
+      "files": 0.1,
+      "db": 0.1
+    },
+    "/api/context": {
+      "files": 1117.4,
+      "db": 1444
+    },
+    "/api/prompt": {
+      "files": 1477.3,
+      "db": 4345.2
+    },
+    "/api/prompt-mix": {
+      "files": 1090.5,
+      "db": 1610.1
+    },
+    "/api/sessions": {
+      "files": 103.6,
+      "db": 35.7
+    },
+    "/api/sessions/breakdown": {
+      "files": 1618.3,
+      "db": 4722.8
+    },
+    "/api/sessions/errors": {
+      "files": 1744.3,
+      "db": 4870.6
+    },
+    "/api/sessions/graph": {
+      "files": 152.9,
+      "db": 323.7
+    },
+    "/api/sessions/graph/nodes": {
+      "files": 2023.2,
+      "db": 5186.2
+    },
+    "/api/sessions/liveness": {
+      "files": 124.4,
+      "db": 97.9
+    },
+    "/api/sessions/node-text": {
+      "files": 0.2,
+      "db": 0.3
+    },
+    "/api/sessions/session": {
+      "files": 0.1,
+      "db": 0.1
+    },
+    "/api/sessions/suggestions": {
+      "files": 168.4,
+      "db": 201.5
+    },
+    "/api/sessions/suggestions/bucket": {
+      "files": 735.5,
+      "db": 1059.9
+    },
+    "/api/sessions/suggestions/status": {
+      "files": 172,
+      "db": 185.6
+    },
+    "/api/skim": {
+      "files": 752.2,
+      "db": 99.6
+    },
+    "/api/skim/trend": {
+      "files": 20263.4,
+      "db": 8956.3
+    },
+    "/api/summary": {
+      "files": 334.9,
+      "db": 298.1
+    },
+    "/api/tools": {
+      "files": 121.2,
+      "db": 103.5
+    },
+    "/api/trends": {
+      "files": 652.3,
+      "db": 1004
+    },
+    "/api/usage": {
+      "files": 1019,
+      "db": 1673.1
+    },
+    "/api/withheld": {
+      "files": 3269,
+      "db": 7097.2
+    }
+  }
+}
