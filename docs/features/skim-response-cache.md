@@ -36,7 +36,9 @@ floor; instrumentation determines whether a smarter key is worthwhile.
   `1`, `true`, `yes`, or `on` (case-insensitive) as enabled. Unset means `cacheable()`
   returns `false` for everything: nothing stored, nothing served.
 - **Env vars** — `SKIM_CACHE` (enable flag, default off), `SKIM_TTL_MS` (entry lifetime,
-  default `3600000` = 1 hour), `SKIM_DIR` (cache directory, default `<LOG_DIR>/../.skim-cache`,
+  default `3600000` = 1 hour), `SKIM_MAX_ENTRIES` (how many entries the directory may hold,
+  default `2000`; junk or a non-positive value falls back to that default),
+  `SKIM_DIR` (cache directory, default `<LOG_DIR>/../.skim-cache`,
   a sibling of the logs dir). Zero runtime dependencies — Node built-ins only.
 - **The gate** — `cacheable()` admits a request only when all three hold: the skim is
   enabled, the path contains `/v1/messages`, and the parsed body has `stream === true`
@@ -52,8 +54,29 @@ floor; instrumentation determines whether a smarter key is worthwhile.
   the proxy.
 - **TTL is a read-time check** — `lookup()` returns `null` when `Date.now() - storedAt`
   exceeds the TTL, and an expired entry is treated as an ordinary miss: the request goes
-  upstream and the entry is only replaced if that identical key recurs. Expired files are
-  never deleted.
+  upstream and the entry is only replaced if that identical key recurs. Whether the file
+  is still on disk at that point is the write path's business, below.
+- **The directory is bounded on write, never by a sweeper** — `evict()` runs at the end of
+  every `store()` and nowhere else, so the read path (on every request) is untouched and the
+  cost falls on the write path (only on a miss, which is already writing a response body).
+  It is one `readdir` of the cache's own directory followed by three passes: a `.meta.json`
+  whose `.sse` is gone is deleted (it can never be served), anything past `SKIM_TTL_MS` is
+  deleted, and the oldest of whatever survives is deleted until the count is within
+  `SKIM_MAX_ENTRIES`. The entry `store()` just wrote is always kept. There is deliberately no
+  timer, no background process, and no index file: `proxy/` has zero runtime dependencies and
+  no build, so a sweeper is the wrong shape for it.
+- **Eviction is LRU, and mtime is the whole index** — `lookup()` touches the `.sse` file's
+  mtime on a hit, which is one syscall on a path that was reading that file anyway, so
+  recency is recorded with nothing to keep in sync. `evict()` then orders on mtime, which
+  makes it least-recently-*used* rather than oldest-written; decision 004 left the choice
+  between the two open, and this settles it on the mechanism rather than a preference.
+  Expiry is judged on mtime too, and that is deliberately conservative: mtime is set at write
+  and only ever moved forward by a hit, so it is always ≥ `storedAt`, and an entry stale by
+  mtime is necessarily stale by `storedAt` — eviction can therefore never delete something
+  `lookup()` would still have served. The alternative, reading and parsing every sidecar per
+  write, buys only that an entry which expired just after its last hit is reclaimed one pass
+  sooner. Every step is best-effort per decision 004's "fail safe, not loud": a failed
+  `readdir`, `stat`, or `unlink` leaves the file in place rather than disturbing the request.
 - **Hit path: zero upstream call** — the proxy writes the stored status and content-type,
   ends the response with the stored bytes, and returns *before* any `https.request` is
   made. It still writes the full log set (`.request.txt`, `.md`, `.audit.json`) and appends
@@ -137,6 +160,13 @@ sibling `.request.txt` — which is why an evicted body costs the label and noth
       and a failed cache write never breaks the request.
 - [x] Entries are stored only for upstream `200`s, and an entry older than `SKIM_TTL_MS` is
       treated as a miss.
+- [x] The cache directory is bounded: every `store()` deletes expired entries and orphaned
+      sidecars, then trims the least-recently-used until at most `SKIM_MAX_ENTRIES` remain,
+      keeping the entry it just wrote. A hit touches mtime, so recency is use order rather
+      than write order, and eviction never removes an entry `lookup()` would still serve —
+      all unit-tested in `proxy/skim.test.ts` (TTL expiry, the count cap, the mtime touch on
+      a hit and its absence on a miss, orphaned sidecars, the just-written key, a junk
+      `SKIM_MAX_ENTRIES`, and a missing directory).
 - [x] Every audit sidecar carries a `skim` block with `enabled`, `servedFromCache`,
       `savedInputTokens`, and `cacheKey`; malformed and legacy blocks degrade to
       skim-disabled rather than aborting a digest.
@@ -161,11 +191,16 @@ sibling `.request.txt` — which is why an evicted body costs the label and noth
   answer-irrelevant volatility (`session_id`, embedded dates, `cache_control`). Research
   favors small stateless utility calls—quota ping, CLAUDE.md classifier, title/label
   jobs—not 64k-token agent turns.
-- **`SKIM_MAX_ENTRIES` and eviction were proposed but never implemented.**
-  [Correctness guardrails](../wayfinder/decision-004-guardrails.md) recommends a max entry
-  count with LRU/oldest-first eviction plus opportunistic deletion of expired files; none of
-  it exists in `proxy/skim.ts`. The TTL is enforced on read only, expired files are never
-  removed, and the cache directory therefore grows unbounded.
+- ~~**`SKIM_MAX_ENTRIES` and eviction were proposed but never implemented.**~~ **Resolved**,
+  and it settled the one thing
+  [correctness guardrails](../wayfinder/decision-004-guardrails.md) left explicitly open.
+  `evict()` runs on the write path, deleting expired entries and orphaned sidecars and then
+  trimming to `SKIM_MAX_ENTRIES` — see **The directory is bounded on write** above. Eviction
+  is **LRU** rather than oldest-first, because the read path already opens the entry it is
+  checking, so touching mtime on a hit makes the filesystem the index; the decision doc
+  ratified neither, and the mechanism rather than a preference is what chose. Two of that
+  doc's numbers are still unratified: the default max entry count (2000 here, against its
+  "a few thousand") and the default TTL, below.
 - **The `tool_result` refusal is proposal-only.** Nothing in `cacheable()` inspects message
   content, so a request whose messages carry `tool_result` snapshots of now-changed state is
   cached and replayable like any other. Decision 004 names this the highest-value exclusion
