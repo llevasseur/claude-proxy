@@ -341,8 +341,7 @@ describe('reconcileCommandRuns', () => {
     const run = (await readCommandRuns(logDir)).find((r) => r.threadId === THREAD_ID)!;
 
     expect(run.spawns).toHaveLength(1);
-    // The subagent is charged its own single turn, not the root's — the root's turn stays
-    // on the run's totals rather than on the spawn that followed it.
+    // The subagent is charged its own single turn, not the root's.
     expect(run.spawns[0]).toMatchObject({
       threadId: subThread,
       parentThreadId: THREAD_ID,

@@ -91,14 +91,14 @@ export function CommandsPage() {
   );
 }
 
-/** What a spawn whose call named no type is called on the page — a real answer, not a gap. */
+/** What a spawn whose call named no type reads as on the page. */
 const UNNAMED_AGENT = 'unnamed';
 
 /**
  * The agent types a command delegates to, most-used first, as `type ×N`.
  *
- * A row is one line of a table, so only the two busiest types are named and the rest are
- * counted; the full list is the cell's `title`, which is where "and what else?" is asked.
+ * Only the two busiest are named and the rest are counted; the full list is the cell's
+ * `title`.
  */
 function agentTypesLabel(types: readonly AgentTypeUsage[] = []): string {
   const top = types.slice(0, 2).map((t) => `${t.agentType ?? UNNAMED_AGENT} ×${t.spawns}`);

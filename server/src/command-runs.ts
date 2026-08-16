@@ -666,10 +666,8 @@ function buildRun(input: {
 
   // Spawns: every subagent below this run's root, charged with *its own* turns only, so a
   // subagent that delegated again is one row and its child is another rather than the
-  // parent absorbing both. The agent type is what the spawning call named — the proxy
-  // already records it on the child's header, and until now it only reached the session
-  // graph. `family` is root-first with parents before children, which is the order to read
-  // these in, so it is kept rather than re-sorted.
+  // parent absorbing both. `family` is root-first with parents before children, and that
+  // order is kept.
   const ownTurns = new Map<string, { tokens: AuditTokens; turns: number }>();
   for (const turn of turns) {
     const row = ownTurns.get(turn.threadId) ?? { tokens: ZERO_TOKENS, turns: 0 };

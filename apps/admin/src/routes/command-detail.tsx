@@ -669,9 +669,8 @@ function StepBar({
  * What this command delegates to, rolled up across the runs the facet keeps — one row per
  * agent type the spawning calls named, most-used first.
  *
- * Drawn only when some run recorded a spawn. Records written before spawns were stored
- * carry none and are never backfilled, so an empty card here would say "this command
- * delegates nothing" about runs that simply predate the field.
+ * Drawn only when some run recorded a spawn: records written before spawns were stored
+ * carry none and are never backfilled, so an empty card would misreport them.
  */
 function AgentTypes({ data }: { data: CommandResponse }) {
   const types = data.agentTypes ?? [];

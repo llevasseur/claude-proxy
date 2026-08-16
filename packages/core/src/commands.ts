@@ -774,11 +774,9 @@ export interface CommandRunTurn {
 
 // --- Spawns and agent types ------------------------------------------------
 //
-// A run's cost is not all its own: most of it is delegated. The proxy already records
-// what each spawn called itself (`subagent_type`, else the skill name) on the child
-// transcript's header, but until now that only ever reached the session graph as a
-// label on a node. These carry it into the run record, so "what does a `/task` spend on
-// `Explore`?" is a read off the store rather than a walk of the graph.
+// The proxy records what each spawn called itself (`subagent_type`, else the skill name)
+// on the child transcript's header. These carry it into the run record, so an agent
+// type's cost is a read off the store rather than a walk of the session graph.
 
 /** One subagent a run spawned, and what its own turns cost. */
 export interface CommandRunSpawn {
@@ -788,7 +786,7 @@ export interface CommandRunSpawn {
   parentThreadId: string | null;
   /**
    * What the spawn called itself: `subagent_type` from the call, else the skill name.
-   * Null when the call named none, which is a real answer rather than missing data.
+   * Null when the call named neither — a fact about the call, not missing data.
    */
   agentType: string | null;
   /** The spawning node in the parent's transcript, when the link records one. */
@@ -804,8 +802,8 @@ export interface CommandRunSpawn {
 }
 
 /**
- * Spawns of one agent type, rolled up. The natural key is the type the call named, so
- * `agentType: null` is its own bucket: a spawn whose call recorded no type.
+ * Spawns of one agent type, rolled up. Keyed on the type the call named, so
+ * `agentType: null` is its own bucket rather than folded away.
  */
 export interface AgentTypeUsage {
   agentType: string | null;
@@ -821,9 +819,8 @@ export interface AgentTypeUsage {
 /**
  * Roll every run's spawns up by agent type, most-used first.
  *
- * Reads `spawns` defensively, so a record written before this field existed contributes
- * nothing rather than crashing the page — the store is append-only and never backfilled.
- * Ties break on cost, then on name, with the unnamed bucket last so it never leads.
+ * A record written before this field existed contributes nothing rather than throwing.
+ * Ties break on cost, then on name, with the unnamed bucket last.
  */
 export function summarizeAgentTypes(runs: readonly CommandRun[]): AgentTypeUsage[] {
   const byType = new Map<string | null, AgentTypeUsage>();
@@ -946,10 +943,8 @@ export interface CommandRun {
   turns: CommandRunTurn[];
   /**
    * Every subagent in this run's family below its root, parents before children, each
-   * with the agent type its call named and what its own turns cost.
-   *
-   * Optional in practice: records written before schema 4 carry none, and there is no
-   * backfill — the transcripts a past run would need have already aged out.
+   * with the agent type its call named and what its own turns cost. Records written
+   * before schema 4 carry none, and there is no backfill.
    */
   spawns: CommandRunSpawn[];
   /** Per declared step, plus the unattributed bucket last. */

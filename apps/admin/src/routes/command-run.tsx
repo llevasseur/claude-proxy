@@ -489,9 +489,9 @@ function WasteTable({ steps }: { steps: CommandRunStepStats[] }) {
  * Every subagent this run spawned, in family order — parents before their own children —
  * with the type the spawning call named and what that subagent's *own* turns cost.
  *
- * Read defensively and drawn only when there is something to draw: a record written before
- * this field existed carries no spawns, and there is no backfill, so an older run says
- * nothing here rather than claiming it delegated nothing.
+ * Drawn only when there is something to draw: a record written before this field existed
+ * carries no spawns and is never backfilled, so it says nothing rather than claiming the
+ * run delegated nothing.
  */
 function SpawnTable({ run }: { run: CommandRun }) {
   const spawns = run.spawns ?? [];

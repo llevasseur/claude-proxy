@@ -709,8 +709,7 @@ describe('summarizeAgentTypes', () => {
       }),
     ]);
 
-    // Every bucket is one spawn, so the tie breaks on cost then name — and the unnamed one
-    // never leads, because "we do not know" is not an answer to put first.
+    // Every bucket is one spawn, so the tie breaks on cost then name, unnamed last.
     expect(rows.map((r) => r.agentType)).toEqual(['Explore', 'Plan', null]);
   });
 
