@@ -75,10 +75,7 @@ const LEGEND: { tone: Tone; label: string }[] = [
 /** The command grain's own legend: one swatch per family, most-changing first. */
 const COMMAND_LEGEND: CommandFamily[] = ['build', 'shape', 'review', 'read', 'other'];
 
-/**
- * The agent grain's legend. Only two kinds of box survive that projection, so listing the step
- * types would name colours the canvas is no longer drawing.
- */
+/** The agent grain's legend: the only two kinds of box that projection leaves on the canvas. */
 const AGENT_LEGEND: { tone: Tone; label: string }[] = [
   { tone: 'root', label: 'session' },
   { tone: 'agent', label: 'agent' },
@@ -323,9 +320,7 @@ export function SessionGraphPage() {
     [runIndex],
   );
 
-  // The agents behind the boxes the agent grain placed. Keyed the same way: the projection keeps
-  // the spawn step itself, so a box finds its agent by the thread it was dispatched from and the
-  // step that dispatched it.
+  // The agents behind the boxes the agent grain placed, keyed by dispatching thread and step.
   const agentIndex = useMemo(
     () => (grainId === 'agent' ? indexAgents(all, isCommand) : null),
     [grainId, all, isCommand],
@@ -486,9 +481,9 @@ export function SessionGraphPage() {
   };
 
   /**
-   * The agent drawer's way down into the finer views: redraw at the grain that shows the thing
-   * clicked, center the agent it belongs to, and open its drawer on that box. The grain change
-   * refits and the focus change recenters, so the step is on screen rather than merely selected.
+   * The agent drawer's way down into the finer views: redraw at the grain that shows what was
+   * clicked, center the agent it belongs to, and open the drawer on that box. The grain change
+   * refits and the focus change recenters, so the box lands on screen rather than merely selected.
    */
   const openAt = useCallback((grain: GrainId, target: SessionGraphEntry, node: SessionNode | null) => {
     setGrainId(grain);
@@ -753,9 +748,8 @@ export function SessionGraphPage() {
 
 /**
  * One placed step. `run` is set only at the command grain and `agent` only at the agent grain,
- * where the box stands for a whole command run or a whole agent rather than a step: it then
- * carries what that run or agent actually did — steps, tool calls, errors — since the steps
- * themselves are folded away.
+ * where the box stands for a whole run or agent and carries what it did — steps, tool calls,
+ * errors — in place of the folded-away steps.
  */
 function CommandOrStepBox({
   box,
@@ -1208,9 +1202,8 @@ function RequestMessage({ file, index }: { file: string; index: number }) {
 }
 
 /**
- * What one agent box folded away, as two ways down into the finer views: the turns it took,
- * and the commands it ran. Each row redraws the canvas at the grain that *does* draw that
- * thing and opens it there, which is what makes the agent view a way in rather than a dead end.
+ * What one agent box folded away: the turns it took and the commands it ran. Each row redraws
+ * the canvas at the grain that draws that thing and opens it there.
  */
 function AgentFold({
   agent,

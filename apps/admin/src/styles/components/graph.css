@@ -799,9 +799,8 @@
   .gi-note {
     font-size: var(--text-4);
   }
-  /* What an agent box folded away — its turns and its command runs, each a way down into the
-   * view that draws them. Capped in height so a long agent scrolls inside the drawer rather
-   * than pushing the fields under it off-screen, the way a long step text already does. */
+  /* What an agent box folded away — its turns and its command runs. Capped in height so a long
+   * agent scrolls inside the drawer rather than pushing the fields under it off-screen. */
   .gi-fold {
     display: flex;
     flex-direction: column;

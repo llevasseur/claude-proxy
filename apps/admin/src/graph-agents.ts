@@ -5,23 +5,14 @@ import type { CommandRunSpan } from './graph-commands';
 import { commandRuns } from './graph-commands';
 
 /**
- * The agent grain's projection: one box per agent the run dispatched, with every turn between
- * the dispatches folded away.
+ * The agent grain's projection: one box per agent the run dispatched, every turn between the
+ * dispatches folded away. A pure projection over one transcript — a spawn step names its own
+ * `subagent_type`, so nothing outside the transcript is needed.
  *
- * It is a **pure projection** over one transcript, like the command grain — a spawn step is
- * recognisable from the node itself (`Agent(…)` / `Task(…)` carries a `subagent_type`), so the
- * grain needs neither the family index nor the engine's help to answer which steps it keeps.
- *
- * Two consequences of keeping the *spawn* step rather than inventing a node are worth stating,
- * because they are what makes this a projection instead of an engine change:
- *
- * - **The engine's branch band still frames each agent.** A band is placed against the node
- *   index that spawned it, so keeping the spawn step is exactly what keeps the family tree
- *   drawn — the parent's snake becomes agent-only, and each agent's own snake (recursively at
- *   this grain) is the agents *it* dispatched.
- * - **A spawn whose transcript was never linked still draws.** The step says an agent was
- *   dispatched; whether a transcript for it survives is a separate question, and {@link
- *   AgentFacts.linked} is where the drawer says so rather than the box vanishing.
+ * It keeps the *spawn* step rather than inventing a node, and two things follow. The engine's
+ * branch band is placed against the index that spawned it, so the family tree stays drawn.
+ * And a spawn whose transcript was never linked still draws; {@link AgentFacts.linked} is
+ * where the drawer says so.
  */
 export const projectAgents = (entry: SessionGraphEntry): SessionNode[] => entry.nodes.filter(isAgentSpawn);
 

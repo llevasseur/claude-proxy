@@ -62,8 +62,7 @@ export const COMMAND_GRAIN: BuiltGrain = commandGrain(() => true);
 
 /**
  * The coarsest grain: one box per agent the run dispatched, every turn between the dispatches
- * folded away. Unlike the command grain it needs nothing bound to it — a spawn step names its
- * own `subagent_type`, so the projection reads the transcript alone.
+ * folded away. Nothing is bound to it — a spawn step names its own `subagent_type`.
  */
 export const AGENT_GRAIN: BuiltGrain = {
   id: 'agent',
