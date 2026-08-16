@@ -111,6 +111,12 @@
     gap: var(--space-7);
     margin-bottom: var(--space-10);
   }
+  /* A pager closing a card pages the table above it, so its gap belongs on top — and
+   * the card's own bottom padding is already the space the default margin would add. */
+  .card > .pager:last-child {
+    margin-top: var(--space-8);
+    margin-bottom: 0;
+  }
   .pager-btn {
     background: var(--surface);
     color: var(--text);

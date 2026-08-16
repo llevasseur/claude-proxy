@@ -4,6 +4,7 @@ import {
   type AliasLoadExpectation,
   type AuditSidecar,
   adviceMovement,
+  aggregateContext,
   analyzeRequestBody,
   assertJudgeableCorpus,
   attachContextPrompts,
@@ -23,8 +24,9 @@ import {
   type CommandRunShape,
   type CommandStep,
   type CommandSummary,
+  type ContextAggregates,
   type ContextEntry,
-  type ContextSummary,
+  type ContextThreadGroup,
   canShipIdea,
   commandRunShapes,
   computeAliasPosture,
@@ -46,6 +48,7 @@ import {
   familyLiveness,
   filterRunsByFlags,
   flattenHooks,
+  groupContextThreads,
   type HookRow,
   heuristicAdvice,
   hookPluginLoadExpectations,
@@ -86,6 +89,7 @@ import {
   parseSystemPromptExpectedModified,
   parseSystemPromptText,
   patternFrequency,
+  promptMatches,
   QUIET_AFTER_MS,
   type RequestBreakdown,
   type RequestErrorSite,
@@ -130,7 +134,6 @@ import {
   suggestionStatusRows,
   summarizeBreakdownPatterns,
   summarizeCommands,
-  summarizeContext,
   summarizePromptMix,
   summarizeSystemPrompt,
   type TopTool,
@@ -1172,9 +1175,138 @@ export async function buildToolSchema(
   };
 }
 
+/**
+ * The columns the Threads table orders by, and the values `?sort=` accepts. `size`
+ * is the bar column, which draws the same number as `realInput` — it stays its own
+ * key so the header a reader clicked is the header that carries the arrow.
+ */
+export const CONTEXT_SORTS = ['when', 'model', 'realInput', 'systemBytes', 'toolsBytes', 'size'] as const;
+export type ContextSort = (typeof CONTEXT_SORTS)[number];
+export type ContextSortDir = 'asc' | 'desc';
+
+/** Thread rows in a page when the caller names no `limit`. */
+export const CONTEXT_PAGE_SIZE = 100;
+/** The most one call may ask for, so `?limit=` cannot ask for the corpus back. */
+const CONTEXT_PAGE_MAX = 500;
+
+/** Which slice of the window's threads a call wants, and in what order. */
+export interface ContextPageQuery {
+  sort: ContextSort;
+  dir: ContextSortDir;
+  offset: number;
+  limit: number;
+  /** Plain-text search over the threads' opening prompts; empty matches every thread. */
+  q: string;
+}
+
+/**
+ * One thread's row, with the thread's own requests left on the server. Every cell
+ * the table draws is the thread's largest request — {@link ContextThreadGroup.peak} —
+ * so the request list behind it never had a reader.
+ */
+export interface ContextThreadRow {
+  key: string;
+  threadId: string | null;
+  /** The peak request's sidecar: what a thread-less row drills into. */
+  file: string;
+  requestCount: number;
+  prompt: string | null;
+  firstTimestamp: string;
+  lastTimestamp: string;
+  models: string[];
+  realInput: number;
+  systemBytes: number;
+  toolsBytes: number;
+}
+
+/** One page of thread rows, echoing back the query that selected it. */
+export interface ContextPage extends ContextPageQuery {
+  rows: ContextThreadRow[];
+  /** Threads in the window, before any search narrowed it. */
+  total: number;
+  /** Threads the search kept — equal to `total` when there is no search. */
+  matched: number;
+  /** Threads carrying an opening prompt at all, which is what a search can reach. */
+  searchable: number;
+}
+
 export interface ContextResponse {
-  summary: ContextSummary;
+  /**
+   * Over the **whole window**, never the page: the tiles and the `top` cap answer
+   * for the month, so paging and searching leave them where they were.
+   */
+  summary: ContextAggregates;
+  page: ContextPage;
   meta: { days: number; files: number; parseErrors: number };
+}
+
+/** Model reads best ascending; every other column leads with its largest. */
+function defaultDir(sort: ContextSort): ContextSortDir {
+  return sort === 'model' ? 'asc' : 'desc';
+}
+
+function clampInt(raw: string | number | null | undefined, fallback: number, min: number, max: number): number {
+  if (raw === null || raw === undefined || raw === '') return fallback;
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
+/**
+ * A page request as the query string states it, clamped. An unreadable column, a
+ * negative offset or a limit past {@link CONTEXT_PAGE_MAX} falls back instead of
+ * erroring: a page is a view of the window, and the default view is always answerable.
+ */
+export function contextPageQuery(
+  raw: {
+    sort?: string | null;
+    dir?: string | null;
+    offset?: string | number | null;
+    limit?: string | number | null;
+    q?: string | null;
+  } = {},
+): ContextPageQuery {
+  const sort = CONTEXT_SORTS.find((s) => s === raw.sort) ?? 'when';
+  return {
+    sort,
+    dir: raw.dir === 'asc' || raw.dir === 'desc' ? raw.dir : defaultDir(sort),
+    offset: clampInt(raw.offset, 0, 0, Number.MAX_SAFE_INTEGER),
+    limit: clampInt(raw.limit, CONTEXT_PAGE_SIZE, 1, CONTEXT_PAGE_MAX),
+    q: (raw.q ?? '').trim(),
+  };
+}
+
+/** Signed comparison for a column, ascending. */
+function compareThreads(a: ContextThreadRow, b: ContextThreadRow, sort: ContextSort): number {
+  switch (sort) {
+    case 'when':
+      return a.firstTimestamp.localeCompare(b.firstTimestamp);
+    case 'model':
+      return a.models.join(' ').localeCompare(b.models.join(' '));
+    case 'systemBytes':
+      return a.systemBytes - b.systemBytes;
+    case 'toolsBytes':
+      return a.toolsBytes - b.toolsBytes;
+    default:
+      return a.realInput - b.realInput;
+  }
+}
+
+/** A grouped thread reduced to the cells its row draws. */
+function toThreadRow(group: ContextThreadGroup): ContextThreadRow {
+  return {
+    key: group.key,
+    threadId: group.threadId,
+    file: group.peak.file,
+    requestCount: group.entries.length,
+    prompt: group.prompt,
+    firstTimestamp: group.firstTimestamp,
+    lastTimestamp: group.lastTimestamp,
+    models: group.models,
+    realInput: group.peak.realInput,
+    systemBytes: group.peak.systemBytes,
+    toolsBytes: group.peak.toolsBytes,
+  };
 }
 
 /**
@@ -1200,12 +1332,21 @@ function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
  * Each entry also carries the text a person typed to open its thread, so the
  * table can be searched by what was asked for. That costs one extra read per
  * distinct thread in the window.
+ *
+ * **The window is summarized whole and shipped by the page.** Grouping, the prompt
+ * search, the order and the slice all happen here, and the answer carries one page
+ * of thread rows — a month of traffic is tens of thousands of requests, and the
+ * table only ever drew one screen of threads from them. `summary` is deliberately
+ * outside the page: it is the aggregate over every request in the window, so the
+ * average, the median, the peak and the ten-row `top` do not move when a reader
+ * sorts, searches or pages.
  */
 export async function buildContext(
   logDir: string,
   days: number,
   now: Date = new Date(),
   source: SidecarSource = fileSource,
+  page: ContextPageQuery = contextPageQuery(),
 ): Promise<ContextResponse> {
   const { sidecars, files, parseErrors } = await readWindow(
     logDir,
@@ -1213,11 +1354,35 @@ export async function buildContext(
     now,
     source,
   );
-  const entries = toContextEntries(sidecars);
-  const threadIds = entries.map((e) => e.threadId).filter((id): id is string => id !== null);
+  const read = toContextEntries(sidecars);
+  const threadIds = read.map((e) => e.threadId).filter((id): id is string => id !== null);
   const prompts = await source.readRootPrompts(logDir, threadIds);
+  const entries = attachContextPrompts(read, prompts);
+
+  // In the read's own order, which is what decided the `top` list's ties before the
+  // page existed. Chronology is the grouping's concern, below, not the aggregate's.
+  const summary = aggregateContext(entries);
+
+  // Grouped from the chronological list, so a thread's `models` order and its
+  // opening prompt come from its earliest request whatever order the page asks for.
+  const chronological = [...entries].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const rows = groupContextThreads(chronological).map(toThreadRow);
+  const searchable = rows.filter((r) => r.prompt !== null).length;
+  const matched = page.q ? rows.filter((r) => promptMatches(r.prompt, page.q)) : rows;
+  const ordered = [...matched].sort((a, b) => {
+    const diff = compareThreads(a, b, page.sort);
+    return page.dir === 'asc' ? diff : -diff;
+  });
+
   return {
-    summary: summarizeContext(attachContextPrompts(entries, prompts)),
+    summary,
+    page: {
+      ...page,
+      rows: ordered.slice(page.offset, page.offset + page.limit),
+      total: rows.length,
+      matched: matched.length,
+      searchable,
+    },
     meta: { days, files, parseErrors },
   };
 }

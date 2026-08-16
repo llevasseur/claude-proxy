@@ -70,6 +70,20 @@ const UNROUTED_BY_DESIGN: readonly UnroutedExport[] = [
     reason:
       'the permission modes a chat turn may run under, exported for the picker that offers them. A value list, not a call.',
   },
+  {
+    name: 'CONTEXT_SORTS',
+    file: ADMIN_API,
+    reachedBy: null,
+    reason:
+      'the columns `/api/context` will order by, mirrored from the server so the table can only ask for one of them. A value list, not a call.',
+  },
+  {
+    name: 'CONTEXT_PAGE_SIZE',
+    file: ADMIN_API,
+    reachedBy: null,
+    reason:
+      'the page size the context table asks for, mirrored from the route that defaults to it. A number, not a call.',
+  },
 ];
 
 const read = (file: string) => readFile(path.join(REPO_ROOT, file), 'utf8');

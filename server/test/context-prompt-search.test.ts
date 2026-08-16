@@ -4,9 +4,13 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { promptMatches } from '@claude-proxy/core';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildContext } from '../src/api.js';
+import { buildContext, contextPageQuery } from '../src/api.js';
+import { fileSource } from '../src/db/source.js';
+
+/** One page of thread rows, ordered and searched the way the route orders them. */
+const pageOf = (logDir: string, raw: Parameters<typeof contextPageQuery>[0] = {}) =>
+  buildContext(logDir, 7, NOW, fileSource, contextPageQuery(raw));
 
 const NOW = new Date('2026-07-29T12:00:00.000Z');
 const SESSION = 'be4b71b3-ccaf-4350-b1aa-b0cf0218897a';
@@ -56,28 +60,39 @@ beforeAll(async () => {
 
 describe('the Context size requests table', () => {
   it('carries only the text a person typed, not the command definition around it', async () => {
-    const { summary } = await buildContext(logDir, 7, NOW);
-    const prompts = new Set(summary.entries.map((e) => e.prompt));
+    const { page } = await pageOf(logDir);
+    const prompts = new Set(page.rows.map((r) => r.prompt));
 
     expect(prompts).toContain('/task Make the request breakdown searchable by plain text');
     expect([...prompts].join(' ')).not.toContain('AGENTS.md');
     expect([...prompts].join(' ')).not.toContain('Set up the workspace');
   });
 
-  it('gives every request of a thread the same prompt, and null when none was recorded', async () => {
-    const { summary } = await buildContext(logDir, 7, NOW);
+  it('gives a thread one row carrying its prompt, and null when none was recorded', async () => {
+    const { page } = await pageOf(logDir);
 
-    const task = summary.entries.filter((e) => e.threadId === 'aaaa0000aaaa0001');
-    expect(task).toHaveLength(2);
-    expect(task.every((e) => e.prompt === '/task Make the request breakdown searchable by plain text')).toBe(true);
-    expect(summary.entries.filter((e) => e.threadId === 'aaaa0000aaaa0003').every((e) => e.prompt === null)).toBe(true);
+    const task = page.rows.filter((r) => r.threadId === 'aaaa0000aaaa0001');
+    expect(task).toHaveLength(1);
+    expect(task[0]?.requestCount).toBe(2);
+    expect(task[0]?.prompt).toBe('/task Make the request breakdown searchable by plain text');
+    expect(page.rows.find((r) => r.threadId === 'aaaa0000aaaa0003')?.prompt).toBe(null);
   });
 
-  it('narrows to the requests whose prompt answers a plain-text query', async () => {
-    const { summary } = await buildContext(logDir, 7, NOW);
+  it('narrows to the threads whose prompt answers a plain-text query', async () => {
+    const { page } = await pageOf(logDir, { q: 'SCROLLING panel' });
 
-    const found = summary.entries.filter((e) => promptMatches(e.prompt, 'SCROLLING panel'));
-    expect(found.map((e) => e.threadId)).toEqual(['aaaa0000aaaa0002', 'aaaa0000aaaa0002']);
-    expect(summary.entries.filter((e) => promptMatches(e.prompt, ''))).toHaveLength(6);
+    expect(page.rows.map((r) => r.threadId)).toEqual(['aaaa0000aaaa0002']);
+    expect(page.matched).toBe(1);
+    // The search reports what it searched over: three threads, two with a prompt.
+    expect(page.total).toBe(3);
+    expect(page.searchable).toBe(2);
+  });
+
+  it('leaves the whole window in the table when nothing is being searched', async () => {
+    const { page, summary } = await pageOf(logDir);
+
+    expect(page.rows).toHaveLength(3);
+    expect(page.matched).toBe(3);
+    expect(summary.requestCount).toBe(6);
   });
 });

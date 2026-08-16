@@ -58,7 +58,15 @@ export const API_ROUTES = [
   { path: '/api/usage', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
   { path: '/api/usage/stream', methods: ['GET'], kind: 'sse', cors: 'open', params: [], streamOf: '/api/usage' },
   { path: '/api/tools', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
-  { path: '/api/context', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
+  // The table's order and slice ride the query string: the window is summarized whole
+  // and shipped one page of thread rows at a time, so a month is not a 30 MB answer.
+  {
+    path: '/api/context',
+    methods: ['GET'],
+    kind: 'json',
+    cors: 'open',
+    params: ['days', 'sort', 'dir', 'offset', 'limit', 'q'],
+  },
   { path: '/api/context/thread', methods: ['GET'], kind: 'json', cors: 'open', params: ['thread', 'days'] },
   { path: '/api/context/detail', methods: ['GET'], kind: 'json', cors: 'open', params: ['file'] },
   { path: '/api/context/message', methods: ['GET'], kind: 'json', cors: 'open', params: ['file', 'index'] },
