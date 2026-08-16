@@ -15,6 +15,7 @@ import {
 } from '@claude-proxy/core';
 import type { Db } from './db.ts';
 import { addIdeas, claimIdeas, getIdea, IdeaError, listIdeas, markIdeas } from './ideas.ts';
+import { archiveNote, createNote, getNote, listNotes, restoreNote, searchNotes, updateNote } from './notes.ts';
 import { conceptFacets, getConceptById, getConceptsByTerm, listConcepts, searchConcepts } from './store.ts';
 
 /**
@@ -61,6 +62,55 @@ const FILTER_PROPERTIES = {
     description: 'Include older versions of a re-taught term. Default false, meaning newest per term.',
   },
   limit: { type: 'number', description: 'Maximum records to return. Default and ceiling 1000.' },
+} as const;
+
+const NOTE_PROPERTIES = {
+  id: { type: 'string', description: 'Opaque note id.' },
+  version: { type: 'integer', minimum: 1 },
+  title: { type: 'string' },
+  body: { type: 'string', description: 'Full unmodified Markdown body.' },
+  createdAt: { type: 'string', description: 'ISO-8601 creation timestamp.' },
+  updatedAt: { type: 'string', description: 'ISO-8601 timestamp of the last successful content edit.' },
+  archivedAt: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+} as const;
+
+const NOTE_SCHEMA = {
+  type: 'object',
+  properties: NOTE_PROPERTIES,
+  required: ['id', 'version', 'title', 'body', 'createdAt', 'updatedAt', 'archivedAt'],
+  additionalProperties: false,
+} as const;
+
+const NOTE_SUMMARY_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: NOTE_PROPERTIES.id,
+    version: NOTE_PROPERTIES.version,
+    title: NOTE_PROPERTIES.title,
+    createdAt: NOTE_PROPERTIES.createdAt,
+    updatedAt: NOTE_PROPERTIES.updatedAt,
+    archivedAt: NOTE_PROPERTIES.archivedAt,
+    excerpt: { type: 'string', description: 'Approximately 200 characters of derived plain text.' },
+  },
+  required: ['id', 'version', 'title', 'createdAt', 'updatedAt', 'archivedAt', 'excerpt'],
+  additionalProperties: false,
+} as const;
+
+const NOTE_PAGE_SCHEMA = {
+  type: 'object',
+  properties: {
+    notes: { type: 'array', items: NOTE_SUMMARY_SCHEMA },
+    nextCursor: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+  },
+  required: ['notes', 'nextCursor'],
+  additionalProperties: false,
+} as const;
+
+const NOTE_RESULT_SCHEMA = {
+  type: 'object',
+  properties: { note: NOTE_SCHEMA },
+  required: ['note'],
+  additionalProperties: false,
 } as const;
 
 const TOOLS = [
@@ -174,6 +224,126 @@ const TOOLS = [
       required: ['slug', 'status'],
       additionalProperties: false,
     },
+  },
+  {
+    name: 'notes_list',
+    description:
+      'List active notes ordered by most recent successful content edit. Returns metadata and a short plain-text excerpt, never the full Markdown body. Use nextCursor unchanged to fetch another page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cursor: { type: 'string', description: 'Opaque nextCursor returned by a previous notes_list call.' },
+        limit: { type: 'number', description: 'Page size. Defaults to 50 and is capped at 100.' },
+        archived: { type: 'boolean', description: 'List archived notes instead of active notes.' },
+      },
+      additionalProperties: false,
+    },
+    outputSchema: NOTE_PAGE_SCHEMA,
+  },
+  {
+    name: 'notes_search',
+    description:
+      'Full-text search active note titles and Markdown bodies. Results are ordered by last successful edit and contain metadata plus a short excerpt. Call notes_get for the full Markdown.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'FTS words to search for.' },
+        cursor: { type: 'string', description: 'Opaque nextCursor from a previous search page.' },
+        limit: { type: 'number', description: 'Page size. Defaults to 50 and is capped at 100.' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    outputSchema: NOTE_PAGE_SCHEMA,
+  },
+  {
+    name: 'notes_get',
+    description:
+      'Fetch one note by id, including its full unmodified Markdown body, plain-text title, version, timestamps, and archive state.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Opaque note id from create, list, or search.' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    outputSchema: NOTE_RESULT_SCHEMA,
+  },
+  {
+    name: 'notes_create',
+    description:
+      'Create a note from a plain-text title and Markdown body. Both strings are stored byte-for-byte; a blank title is valid. Returns the created note at version 1.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Plain-text title. May be blank.' },
+        body: { type: 'string', description: 'Markdown body, stored without transformation.' },
+      },
+      required: ['title', 'body'],
+      additionalProperties: false,
+    },
+    outputSchema: NOTE_RESULT_SCHEMA,
+  },
+  {
+    name: 'notes_update',
+    description:
+      'Update a note title and/or Markdown body using optimistic concurrency. expectedVersion is mandatory. A stale write is retained as a conflict revision and returns code stale_version with the current version and attempted revision id.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Note id.' },
+        expectedVersion: { type: 'number', description: 'Version returned by the last get/list/search/create/update.' },
+        title: { type: 'string', description: 'Replacement plain-text title. Omit to keep it unchanged.' },
+        body: { type: 'string', description: 'Replacement Markdown body. Omit to keep it unchanged.' },
+      },
+      required: ['id', 'expectedVersion'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      anyOf: [
+        {
+          type: 'object',
+          properties: { note: NOTE_SCHEMA, changed: { type: 'boolean' } },
+          required: ['note', 'changed'],
+          additionalProperties: false,
+        },
+        {
+          type: 'object',
+          properties: {
+            error: { type: 'string' },
+            conflict: { const: true },
+            code: { const: 'stale_version' },
+            noteId: { type: 'string' },
+            expectedVersion: { type: 'integer' },
+            currentVersion: { type: 'integer' },
+            attemptedRevisionId: { type: 'string' },
+          },
+          required: ['error', 'conflict', 'code', 'noteId', 'expectedVersion', 'currentVersion', 'attemptedRevisionId'],
+          additionalProperties: false,
+        },
+      ],
+    },
+  },
+  {
+    name: 'notes_archive',
+    description: 'Reversibly archive one note by id. It disappears from active list and search but is never purged.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Note id.' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    outputSchema: NOTE_RESULT_SCHEMA,
+  },
+  {
+    name: 'notes_restore',
+    description: 'Restore one archived note by id without changing its version or last-edit ordering timestamp.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Note id.' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    outputSchema: NOTE_RESULT_SCHEMA,
   },
 ] as const;
 
@@ -295,6 +465,40 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
     return result.unknown.length > 0
       ? { error: `no idea on the ledger is called ${result.unknown.join(', ')}` }
       : result;
+  }
+
+  if (name === 'notes_list') {
+    return await listNotes(db, {
+      cursor: str(args, 'cursor'),
+      limit: typeof args.limit === 'number' ? args.limit : undefined,
+      archived: args.archived === true,
+    });
+  }
+  if (name === 'notes_search') {
+    const query = str(args, 'query');
+    if (!query) return { error: '`query` is required' };
+    return await searchNotes(db, query, {
+      cursor: str(args, 'cursor'),
+      limit: typeof args.limit === 'number' ? args.limit : undefined,
+    });
+  }
+  if (name === 'notes_get') {
+    const id = str(args, 'id');
+    if (!id) return { error: '`id` is required' };
+    const note = await getNote(db, id);
+    return note ? { note } : { error: `no note with id ${id}` };
+  }
+  if (name === 'notes_create') return { note: await createNote(db, args) };
+  if (name === 'notes_update') {
+    const id = str(args, 'id');
+    if (!id) return { error: '`id` is required' };
+    const updated = await updateNote(db, id, args);
+    return 'conflict' in updated ? { error: 'stale note version', ...updated } : updated;
+  }
+  if (name === 'notes_archive' || name === 'notes_restore') {
+    const id = str(args, 'id');
+    if (!id) return { error: '`id` is required' };
+    return { note: name === 'notes_archive' ? await archiveNote(db, id) : await restoreNote(db, id) };
   }
 
   return { error: `unknown tool ${name}` };
@@ -428,7 +632,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
       supportedVersions: SUPPORTED_VERSIONS,
       capabilities: CAPABILITIES,
       instructions:
-        "Two datasets over one database. CONCEPTS is the glossary of terms the user has taught themselves — call concepts_list first for a cheap overview of everything available, then concepts_get or concepts_search when you need the prose. IDEAS is the ledger of proposals and what a human decided about each: call ideas_list with available:true to see what may be built right now, ideas_get to pull one idea whole when you already hold its key (the kebab-case slug is the idea's only identifier, and every ideas_* tool takes it), ideas_claim before you write any code, ideas_add to propose something (it dedupes against every machine, rejected rows included), and ideas_mark to record the outcome.",
+        'Three datasets over one database. CONCEPTS is the glossary of terms the user has taught themselves — call concepts_list first for a cheap overview, then concepts_get or concepts_search for prose. IDEAS is the proposal ledger: call ideas_list with available:true, ideas_get for one key, ideas_claim before coding, ideas_add to propose, and ideas_mark to record the outcome. NOTES is authored Markdown: call notes_list or notes_search for compact results, notes_get for the full body, and always pass the last observed version to notes_update.',
       _meta: { [META_SERVER_INFO]: SERVER_INFO },
     });
   }
@@ -445,6 +649,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
       const isError = typeof payload === 'object' && payload !== null && 'error' in payload;
       return result(id, {
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+        structuredContent: payload,
         isError,
       });
     } catch (error) {

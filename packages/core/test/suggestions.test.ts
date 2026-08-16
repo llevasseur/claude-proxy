@@ -14,18 +14,33 @@ import {
 } from '../src/suggestions.js';
 
 /** Build a session the rules can read, from real transcript text. */
-function session(threadId: string, started: string | null, body: string[]): SuggestibleSession {
+function session(
+  threadId: string,
+  started: string | null,
+  body: string[],
+  header: { sessionId?: string; subtitle?: string } = {},
+): SuggestibleSession {
   const content = [
     '',
     `# Session ${threadId}`,
     '- model: claude-opus-5',
-    `- session: sess-${threadId}`,
+    `- session: ${header.sessionId ?? `sess-${threadId}`}`,
     ...(started ? [`- started: ${started}`] : []),
     '- title: A session',
+    ...(header.subtitle ? [`- subtitle: ${header.subtitle}`] : []),
     '',
     ...body,
   ].join('\n');
   return { ...parseSessionTranscript(threadId, content), nodes: parseSessionNodes(content) };
+}
+
+/** The far side of a compaction: a fresh thread id, the same `- session:` uuid, the summary replayed. */
+function continued(threadId: string, started: string, sessionId: string, body: string[]): SuggestibleSession {
+  return session(threadId, started, body, {
+    sessionId,
+    subtitle:
+      'This session is being continued from a previous conversation that ran out of context. Summary: the earlier portion.',
+  });
 }
 
 /** The same transcript run as somebody's subagent, with the report its caller did or didn't get. */
@@ -49,6 +64,18 @@ describe('signature helpers', () => {
     expect(isDiscoveryCall('Bash(command=git status)')).toBe(true);
     expect(isDiscoveryCall('Bash(command=npm run build)')).toBe(false);
     expect(isDiscoveryCall('Edit(file_path=/a.ts)')).toBe(false);
+  });
+
+  it('reads the whole shell pipeline, so a mutation is never discovery for riding with a read', () => {
+    // Each of these matches an inspecting verb on a word doing none of the work.
+    expect(isDiscoveryCall('Bash(command=pnpm test 2>&1 | tail -40)')).toBe(false);
+    expect(isDiscoveryCall('Bash(command=git add -A && git status --short)')).toBe(false);
+    expect(isDiscoveryCall('Bash(command=git commit -m "wip" && git log -1)')).toBe(false);
+    expect(isDiscoveryCall('Bash(command=ls -R src > /tmp/tree.txt)')).toBe(false);
+    expect(isDiscoveryCall('Bash(command=rm -rf dist; ls dist)')).toBe(false);
+    // …while a genuinely read-only pipeline still is.
+    expect(isDiscoveryCall('Bash(command=cat docs/index.md | head -40)')).toBe(true);
+    expect(isDiscoveryCall('Bash(command=git diff --stat | wc -l)')).toBe(true);
   });
 
   it("collapses an error's wording to what recurs", () => {
@@ -213,6 +240,64 @@ describe('suggestBucket', () => {
       '- done: ok',
     ]);
     expect(serialDiscoveryIn(gates)).toBeUndefined();
+  });
+
+  it('never flags a wait — the same target polled while a background job writes it', () => {
+    // Parallelizing a wait is meaningless by construction, and one file read over and over is
+    // `redundant-reads`' finding rather than this one.
+    const polling = session('c12', day(1), [
+      '## Task: One',
+      ...turn('Bash(command=grep -c "elapsed_steps" /tmp/run.log)'),
+      ...turn('Bash(command=grep -c "elapsed_steps" /tmp/run.log)'),
+      ...turn('Bash(command=grep -c "elapsed_steps" /tmp/run.log)'),
+      ...turn('Bash(command=grep -c "elapsed_steps" /tmp/run.log)'),
+      ...turn('Bash(command=grep -c "elapsed_steps" /tmp/run.log)'),
+      ...turn('Bash(command=grep -c "elapsed_steps" /tmp/run.log)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(polling)).toBeUndefined();
+
+    // Alternating between two files it is waiting on is the same wait, not a batchable set.
+    const twoFiles = session('c13', day(1), [
+      '## Task: One',
+      ...turn('Read(file_path=/tmp/a.log)'),
+      ...turn('Read(file_path=/tmp/b.log)'),
+      ...turn('Read(file_path=/tmp/a.log)'),
+      ...turn('Read(file_path=/tmp/b.log)'),
+      ...turn('Read(file_path=/tmp/a.log)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(twoFiles)).toBeUndefined();
+  });
+
+  it('never flags a probe that narrowed onto the path the call before it turned up', () => {
+    // An unfamiliar layout: each answer chose the next path, so none of these arguments could
+    // have been written before its predecessor came back.
+    const probe = session('c14', day(1), [
+      '## Task: One',
+      ...turn('Bash(command=ls /repo)'),
+      ...turn('Bash(command=ls /repo/server)'),
+      ...turn('Bash(command=ls /repo/server/src)'),
+      ...turn('Bash(command=ls /repo/server/src/db)'),
+      ...turn('Read(file_path=/repo/server/src/db/ingest.ts)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(probe)).toBeUndefined();
+  });
+
+  it('never flags a run of calls that changed the tree', () => {
+    // A post-merge pipeline and a verification tail: every one of these matches an inspecting
+    // verb on a word doing none of the work.
+    const mutating = session('c15', day(1), [
+      '## Task: One',
+      ...turn('Bash(command=pnpm typecheck 2>&1 | tail -20)'),
+      ...turn('Bash(command=pnpm test 2>&1 | tail -40)'),
+      ...turn('Bash(command=pnpm build 2>&1 | tail -20)'),
+      ...turn('Bash(command=git add -A && git status --short)'),
+      ...turn('Bash(command=git commit -m "ship" && git log -1 --stat)'),
+      '- done: ok',
+    ]);
+    expect(serialDiscoveryIn(mutating)).toBeUndefined();
   });
 
   it('still flags the runs the transcripts confirm — bare single-call turns', () => {
@@ -406,6 +491,59 @@ describe('suggestBucket', () => {
 
   it('returns nothing for an empty bucket', () => {
     expect(suggestBucket([])).toEqual([]);
+  });
+});
+
+describe('threads recorded twice across a compaction', () => {
+  const blocked = ['## Task: One', '- Bash(command=curl x)', '- ✗ Blocked: tool not allowed', '- done: ok'];
+
+  it('counts one real thread once, however many thread ids the compaction gave it', () => {
+    // Two transcripts, one `- session:` uuid — the shape of bucket 76's 271b995a/3f4dac00 pair.
+    // Summed over both, the single refusal in it reads as two and trips the rule.
+    const pair = [continued('e1', day(1), 'uuid-1', blocked), continued('e2', day(2), 'uuid-1', blocked)];
+    expect(suggestBucket(pair).find((s) => s.id === 'blocked-guardrails')).toBeUndefined();
+
+    // Two genuinely different threads with the same refusal still trip it.
+    const distinct = [session('e3', day(1), blocked), session('e4', day(2), blocked)];
+    expect(suggestBucket(distinct).find((s) => s.id === 'blocked-guardrails')).toBeDefined();
+  });
+
+  it('keeps the fuller recording of the pair', () => {
+    const short = continued('e5', day(1), 'uuid-2', ['## Task: One', '- Read(file_path=/a.ts)']);
+    const full = continued('e6', day(2), 'uuid-2', [
+      '## Task: One',
+      '- Read(file_path=/a.ts)',
+      '- Read(file_path=/b.ts)',
+      '- ✗ Blocked: tool not allowed',
+      '- ✗ Permission denied by hook',
+      '- done: ok',
+    ]);
+    const kept = suggestBucket([short, full]).find((s) => s.id === 'blocked-guardrails');
+    expect(kept!.sources.map((s) => s.threadId)).toEqual(['e6']);
+  });
+
+  it('leaves a subagent alone, though it shares its caller uuid', () => {
+    // A subagent opens on its own task prompt, never on the continuation preamble.
+    const caller = session('e7', day(1), blocked, { sessionId: 'uuid-3' });
+    const spawned = session('e8', day(2), blocked, { sessionId: 'uuid-3' });
+    expect(suggestBucket([caller, spawned]).find((s) => s.id === 'blocked-guardrails')).toBeDefined();
+  });
+
+  it('dedupes the counting without renumbering or reshaping the windows', () => {
+    const sessions = [
+      session('f0', day(1), ['## Task: One', '- Edit(file_path=/a.ts)', '- done: ok']),
+      continued('f1', day(2), 'uuid-4', ['## Task: One', '- Edit(file_path=/a.ts)', '- done: ok']),
+      continued('f2', day(3), 'uuid-4', ['## Task: One', '- Edit(file_path=/a.ts)', '- done: ok']),
+    ];
+    const bucket = sessionSuggestionBuckets(sessions)[0]!;
+    // Membership and numbering are untouched — recorded verdicts point at these.
+    expect(bucket.index).toBe(1);
+    expect(bucket.label).toBe('1–3');
+    expect(bucket.threadIds).toEqual(['f0', 'f1', 'f2']);
+    // …but the arithmetic sees two threads, not three.
+    expect(bucket.stats.sessions).toBe(2);
+    expect(bucket.stats.tasks).toBe(2);
+    expect(bucket.stats.tools).toBe(2);
   });
 });
 

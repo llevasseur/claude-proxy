@@ -16,6 +16,7 @@ export * from './jobs.js';
 export * from './launch-aliases.js';
 export * from './liveness.js';
 export * from './main-history.js';
+export * from './notes.js';
 export * from './pricing.js';
 export * from './prompt-mix.js';
 export * from './prompt-text.js';

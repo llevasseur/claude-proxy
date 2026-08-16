@@ -1,12 +1,12 @@
-import type { MainHistoryRow, PrBranch, PrSessionLink, PullRequestRow, PullRequestState } from '@claude-proxy/core';
+import type { MainHistoryRow, PrBranch, PrSessionLink, PullRequestState } from '@claude-proxy/core';
 import { buildPrTree, prCounts, shortSha } from '@claude-proxy/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { GitPullRequest } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import type { LocalDivergence } from '../api';
-import { getPullRequests, setMainLineHidden, slideMain, syncLocalMain } from '../api';
+import type { LocalDivergence, PullRequestListRow } from '../api';
+import { getPullRequestBody, getPullRequests, setMainLineHidden, slideMain, syncLocalMain } from '../api';
 import { Skeleton, SkeletonStatus } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
@@ -37,10 +37,10 @@ const STATE_COLOR: Record<PullRequestState | 'draft', string> = {
 };
 
 /** Draft is a shade of open, not a fourth state — it only changes how a PR is drawn. */
-const toneOf = (pr: PullRequestRow): PullRequestState | 'draft' => (pr.isDraft ? 'draft' : pr.state);
+const toneOf = (pr: PullRequestListRow): PullRequestState | 'draft' => (pr.isDraft ? 'draft' : pr.state);
 
 /** The timestamp that says when a PR reached the state it is in now. */
-const stampOf = (pr: PullRequestRow): string => pr.mergedAt ?? pr.closedAt ?? pr.updatedAt ?? pr.createdAt;
+const stampOf = (pr: PullRequestListRow): string => pr.mergedAt ?? pr.closedAt ?? pr.updatedAt ?? pr.createdAt;
 
 export function PullRequestsPage() {
   const client = useQueryClient();
@@ -53,7 +53,7 @@ export function PullRequestsPage() {
   const history = query.data?.mainHistory;
   const rowByPr = new Map((history?.rows ?? []).map((r) => [r.prNumber, r]));
 
-  const [selected, setSelected] = useState<PullRequestRow | null>(null);
+  const [selected, setSelected] = useState<PullRequestListRow | null>(null);
   const [wide, setWide] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
 
@@ -87,7 +87,7 @@ export function PullRequestsPage() {
       .filter((b) => b.after === after)
       .sort((a, b) => b.pr.createdAt.localeCompare(a.pr.createdAt));
 
-  const node = (pr: PullRequestRow, cls: string) => (
+  const node = (pr: PullRequestListRow, cls: string) => (
     <PrNode
       key={pr.number}
       pr={pr}
@@ -105,7 +105,7 @@ export function PullRequestsPage() {
    * A hidden trunk point still had PRs cut from it, so those move down onto the next row
    * that is drawn rather than disappearing with the line they hung off.
    */
-  const trunkRows: Array<{ pr: PullRequestRow; i: number; extra: PrBranch[] }> = [];
+  const trunkRows: Array<{ pr: PullRequestListRow; i: number; extra: PrBranch[] }> = [];
   let carried: PrBranch[] = [];
   for (const { pr, i } of tree.trunk.map((pr, i) => ({ pr, i })).reverse()) {
     if (rowByPr.get(pr.number)?.hidden && !showHidden) {
@@ -261,7 +261,7 @@ function PrNode({
   selected,
   onSelect,
 }: {
-  pr: PullRequestRow;
+  pr: PullRequestListRow;
   className: string;
   /** Where this PR's landing commit sits relative to `main`, when it has one. */
   row: MainHistoryRow | null;
@@ -397,7 +397,7 @@ function SlideControls({
   onSlide,
   onHide,
 }: {
-  pr: PullRequestRow;
+  pr: PullRequestListRow;
   row: MainHistoryRow;
   mainSha: string;
   pending: boolean;
@@ -479,7 +479,7 @@ function PrInspector({
   onToggleWide,
   onClose,
 }: {
-  pr: PullRequestRow;
+  pr: PullRequestListRow;
   sessions: PrSessionLink[];
   /** Null for a PR that never landed — there is no position to move `main` to. */
   row: MainHistoryRow | null;
@@ -545,11 +545,7 @@ function PrInspector({
           <Stat label='added' value={pr.additions} />
           <Stat label='removed' value={pr.deletions} />
         </div>
-        {pr.body.trim() ? (
-          <Field label='Description'>
-            <LongText text={pr.body} />
-          </Field>
-        ) : null}
+        <PrDescription number={pr.number} />
 
         <Field label='Sessions'>
           {sessions.length === 0 ? (
@@ -583,6 +579,31 @@ function PrInspector({
         ) : null}
       </div>
     </aside>
+  );
+}
+
+/** The description, asked for by number when the drawer opens — the one field the list omits. */
+function PrDescription({ number }: { number: number }) {
+  const query = useQuery({
+    queryKey: ['pull-request-body', number],
+    queryFn: () => getPullRequestBody(number),
+    staleTime: REFETCH_MS,
+  });
+
+  const note = (text: string) => (
+    <Field label='Description'>
+      <span className='muted'>{text}</span>
+    </Field>
+  );
+  if (query.isPending) return note('Loading…');
+  if (query.isError) return note('The description could not be read.');
+  if (query.data.error) return note(query.data.error);
+  const body = query.data.body ?? '';
+  if (!body.trim()) return null;
+  return (
+    <Field label='Description'>
+      <LongText text={body} />
+    </Field>
   );
 }
 

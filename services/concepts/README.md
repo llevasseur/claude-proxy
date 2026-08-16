@@ -2,11 +2,11 @@
 
 **The directory is named after the first dataset, not the scope.** This Worker
 deploys as `operator` over a D1 database called `operator-db`, and it now serves
-two datasets: the **concepts** glossary (ADR 0005) and the **ideas** ledger
-(ADR 0006). Auth, the `Db` port, the derived-ULID ids, the `/mcp` dispatch and
-the nightly backup are shared by both — which is why the second dataset landed
-here rather than in a second Worker with its own deploy, token, cron and backup
-repo.
+three datasets: the **concepts** glossary (ADR 0005), the **ideas** ledger
+(ADR 0006), and authored Markdown **notes**. Auth, the `Db` port, the `/mcp`
+dispatch, and the nightly backup are shared — which is why each dataset lives
+here rather than in a separate Worker with its own deploy, token, cron, and
+backup repo.
 
 The Cloudflare Worker that holds everything `/teach` has ever saved, so the
 glossary is reachable from any machine and from any agent — including agents
@@ -33,12 +33,14 @@ why there is one token rather than two, why the MCP layer is hand-rolled — is 
 | `src/index.ts` | Worker entry: auth, routing, the daily backup trigger |
 | `src/store.ts` | Every concepts SQL query; the only file that knows that schema |
 | `src/ideas.ts` | The ideas event log, its replay through `packages/core`, and the atomic claim |
+| `src/notes.ts` | Immutable note revisions, current projection, search, pagination, archive, and conflicts |
 | `src/db.ts` | The `Db` port — D1 in production, `node:sqlite` in tests |
-| `src/mcp.ts` | JSON-RPC, per-request version checks, the seven tool definitions |
+| `src/mcp.ts` | JSON-RPC, per-request version checks, and tool definitions |
 | `src/rest.ts` | The HTTP surface |
-| `src/backup.ts` | Nightly commit of both datasets to a private git repo |
+| `src/backup.ts` | Nightly commit of all datasets to a private git repo |
 | `migrations/0001_init.sql` | The concepts schema, and the source of truth for the tests |
 | `migrations/0002_ideas.sql` | The ideas schema — the event log and the claim lease |
+| `migrations/0003_notes.sql` | Note revisions, current-note projection, archive state, and FTS |
 | `scripts/import-store.ts` | One-time seed from `logs/concepts.jsonl` |
 | `scripts/import-ideas.ts` | Per-device backfill from `logs/ideas.json` |
 
@@ -83,6 +85,13 @@ Every route except `/health` requires `Authorization: Bearer $CONCEPTS_TOKEN`.
 | `POST /api/ideas/claim` | Take ideas. One atomic conditional write decides a race |
 | `POST /api/ideas/file` | Re-file under an area. Touches nothing else |
 | `POST /api/ideas/comment` | Write the human-authored build criteria |
+| `GET /api/notes` | Cursor-page notes by last successful edit; `?archived=true` switches views |
+| `GET /api/notes/note?id=` | One note with its full Markdown body |
+| `GET /api/notes/search?q=` | Search current active titles and Markdown bodies |
+| `POST /api/notes` | Create a note from `{title, body}` |
+| `POST /api/notes/update` | Expected-version update; stale writes return 409 and remain retained |
+| `POST /api/notes/archive` | Reversibly archive by `{id}` |
+| `POST /api/notes/restore` | Restore by `{id}` without changing recency |
 
 Listing, search and facets all accept `field`, `skill`, `since`, `hasNotes`,
 `includeSuperseded` and `limit`.
@@ -146,6 +155,17 @@ same string everywhere it appears — the dedupe key `ideas_add` checks, the
 so a human can hand one idea to an agent. A key nothing was added under comes
 back as a tool error; a *rejected* key answers normally, carrying the reason it
 was turned down, which is what stops the idea being proposed a second time.
+
+Notes expose `notes_list`, `notes_search`, `notes_get`, `notes_create`,
+`notes_update`, `notes_archive`, and `notes_restore`. List and search return only
+metadata and a derived excerpt; get returns the full Markdown. Every update must
+carry the expected version. If two writers race, one advances the current
+projection and the other receives a structured stale-version conflict whose
+attempted revision remains in the immutable history.
+
+The complete Notes contract, including REST and tool examples, cursor and excerpt
+semantics, server-only credentials, dashboard autosave/SSE, and recovery steps, is
+in [Operator notes](../../docs/features/operator-notes.md).
 
 ---
 
@@ -291,14 +311,24 @@ environment rather than carrying it.
 
 ## Backups
 
-A cron trigger commits **both datasets** to the private backup repo daily — the
-corpus as `concepts.jsonl` and the ledger as `ideas.json`. Each is compared by
+A cron trigger commits **all three datasets** to the private backup repo daily —
+the corpus as `concepts.jsonl`, the ledger as `ideas.json`, and the complete
+notes projection plus revision history as `notes.json`. Each is compared by
 git blob sha against what is already there, so an unchanged day produces no
 commit and a day on which only one dataset moved touches only that file. This is
-the escape hatch that keeps the "database is truth" decision reversible for both
-carve-outs: the worst case is losing one day, and a restore is
-`pnpm --filter concepts seed` or `seed:ideas` pointed at the backed-up file.
+the escape hatch that keeps the "database is truth" decision reversible for all
+hosted datasets: the worst case is losing one day. Concepts and ideas can be
+restored with `pnpm --filter concepts seed` or `seed:ideas` pointed at the
+backed-up file; `notes.json` retains both tables needed to reconstruct the notes
+projection, immutable revisions, archive state, and FTS index.
+
+There is no Notes import command. Recover into a clean migrated D1 database by
+inserting every exported revision, then every current projection row, and rebuilding
+FTS from every revision. Validate every current pointer, version,
+archive timestamp, and active/archived/revision/conflict count before switching
+clients; the detailed procedure is in
+[Operator notes](../../docs/features/operator-notes.md#backup-and-recovery).
 
 **A dataset added to this Worker is added to the backup too, or the ADR 0004
-carve-out is unpaid.** That is why the two exports go through one loop in
+carve-out is unpaid.** That is why all three exports go through one loop in
 `src/backup.ts` rather than one function each.

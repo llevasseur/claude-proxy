@@ -34,8 +34,12 @@ reading a branch name out of a transcript by hand.
 
 Through the **`gh` CLI**, not the REST API. The device is already authenticated for `gh`,
 so the dashboard needs no token of its own, no new secret in `.env`, and no write scope;
-the whole integration is one `gh pr list --state all --json …` per cache miss, scoped to
-the `owner/name` slug of the checkout's `origin` remote.
+the whole integration is one `gh pr list --state all --json …`, scoped to the
+`owner/name` slug of the checkout's `origin` remote.
+
+**That call does not happen on the request path.** The page is answered from the
+`pull_request` table and the call runs behind the response — see
+[answering from the substrate](#answering-from-the-substrate).
 
 ### Resolving the slug is device-agnostic, in four layers
 
@@ -88,10 +92,42 @@ differs, and that is the part worth getting right:
 spawns. A server started from a plain terminal never sees it, so for that case the variable
 has to be in the repo `.env` or the shell profile instead.
 
-Results are cached for 60 s server-side and the page polls every 30 s, so a PR opened or
-merged elsewhere appears on its own without hammering GitHub's rate limit. The session
-index is keyed to the same fetch, so the transcript scan below happens once per `gh` read
-rather than once per poll.
+### Answering from the substrate
+
+**The route answers from the database, and refreshes GitHub behind the response.** A
+`pull_request` table in `logs/claude-proxy.db` holds one row per pull request, keyed on the
+checkout and its number, and `/api/pull-requests` reads it with one indexed query. Nothing
+on the request path shells out.
+
+What that replaced was a single 60-second slot in memory in `server/src/github.ts`. Every
+miss — the first load after a restart, or any load 60 s after the last one — paid a full
+200-pull-request `gh pr list` while the page held a "Reading pull requests from GitHub"
+skeleton. Measured against this repository on 2026-08-16: **1345 ms cold, 23 ms warm.**
+
+The refresh runs behind the served response, the same build-now-reconcile-behind shape
+`withCommandReconcile` already uses for `/api/commands` — one pass in flight at a time,
+with a 60 s floor under how often a new one starts. It fires from inside
+`servePullRequests` rather than at the route, so every caller of the route gets it without
+the route knowing.
+
+**The refresh asks GitHub only for new work.** It reads `MAX(updated_at)` out of the table
+and passes it as `gh pr list --search "updated:>=<that day>"`, then upserts each row that
+comes back. The list read already asks for `updatedAt`, so the watermark needed no new
+field. Rows are never deleted: an incremental pass returns only what changed, so a pull
+request the search window moved past must stay on the page. The window is day-granular,
+which re-fetches at most one day of overlap and cannot miss an edit inside the hour.
+
+A row is derived and disposable in exactly the sense
+[ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md) means: GitHub owns the
+truth, these rows are a copy of what `gh` last said, and `rm logs/claude-proxy.db` costs
+one full refetch and loses nothing. When the table has no row for this checkout — a cold
+install, or right after that delete — the route awaits one forced pass rather than serving
+an empty tree as though it were the answer.
+
+The page still polls every 30 s, so a PR opened or merged elsewhere appears on its own
+without hammering GitHub's rate limit; the poll now lands on the table and the refresh
+behind it is what reaches GitHub. The transcript scan below is stored too, so it no longer
+rides that fetch — see [the scan is stored](#the-scan-is-stored).
 
 ## The tree
 
@@ -160,12 +196,49 @@ path rather than the whole path:
 
 - **The record is forward-only and nothing backfills it.** Deriving a record from the
   textual evidence it replaces would be exactly the conflation this change exists to end, so
-  a repository's older pull requests keep the scan alive and the single-slot cache is kept
-  for them. The scan disappears entirely — and the measured 14s with it — only once every
-  displayed PR is named. Whether to retire the cache after that is not settled here.
+  a repository's older pull requests keep the scan alive. The scan disappears entirely —
+  and the measured 14s with it — only once every displayed PR is named. What carries the
+  cost in the meantime is the stored scan below, no longer a slot in memory.
 - **A recorded PR lists the session that opened it, not every session that mentioned it.**
   That is the point of a record, and it is also a loss: a review or follow-up run that only
   quoted the number stops appearing once the opener is on file.
+
+### The scan is stored
+
+**A pull request is scanned once, not once a minute.** What the scan finds is written to
+`pr_scan_link` in `logs/claude-proxy.db`, one row per link, keyed on the checkout and the
+number as `pull_request` is. Beside it `pr_scan` holds one mark per pull request: the mtime
+of the newest transcript that existed when it was scanned.
+
+What that replaced was a single slot in memory in `server/src/pr-sessions.ts`, keyed on
+`fetchedAt`. That value moves on every GitHub refresh, so the scan repeated roughly every
+60 seconds, and a restart dropped it outright. On this device 155 of 200 pull requests are
+named by the record and 45 are not, so every one of those passes had real work to do.
+
+Three properties are deliberate:
+
+- **A mark with no links is the useful case.** "Scanned, matched nothing" is most of those
+  45, and storing it is what takes them off the request path. A table of links alone would
+  rescan them forever.
+- **A stored link stays a `scanned` link.** `via` holds `branch` and `number` only, and
+  both the write and the read drop anything else, so the separation above — `recorded` is a
+  fact, `branch` and `number` are recovered evidence — is a column constraint rather than a
+  convention. A recorded link is still re-read from `session.pr_url` on every request,
+  because that read is cheap and a run that just opened a PR should appear beside it at once.
+- **New transcripts still land.** A pull request whose mark is behind the newest transcript
+  on disk is rescanned, and only against the transcripts past the oldest such mark. So the
+  cost of a poll after a session ends is that one new transcript, not the directory.
+
+What is left on the request path is one `stat` per transcript, which is how the pass knows
+what is newer than a mark. That is bounded by the number of transcripts rather than their
+size — the 14s the scan measured was reading megabytes of markdown, not listing them. A
+link whose transcript has rotated away is dropped and its row deleted, as a recorded link
+is; the mark stays, so losing the transcript does not buy back the scan.
+
+The rows are derived and disposable like every other table here: `logs/sessions/` owns the
+truth, and `rm logs/claude-proxy.db` costs one scan pass and no information. A log
+directory with no database still works — the scan simply runs in full every time, as it did
+before this table existed.
 
 ## Moving `main`
 
@@ -225,17 +298,21 @@ fatal.
 
 - `GET /api/pull-requests` — `{repo, prs, error, sessions, mainHistory, localMain,
   refError, meta}`; read-only, so it keeps the open `*` CORS and the 405 gate every other
-  read route has. Fetching `main` and its pins rides the same 60 s cache as `gh pr list`,
-  and writes refs only — no index, no worktree.
+  read route has. Fetching `main` and its pins rides the same background refresh as
+  `gh pr list`, and writes refs only — no index, no worktree.
 - `POST /api/main-history/slide`, `/sync-local`, `/hide` — the writes, on the
   origin-checked `WRITE_ROUTES` allowlist.
 - `apps/admin/src/routes/pull-requests.tsx` — the page and its drawer.
 - `packages/core/src/main-history.ts` — lanes, divergence points and the pin rule, pure.
 - `server/src/main-history.ts` — every `git` and `gh` call behind the above.
-- `server/src/github.ts` — the `gh` reader and its cache.
-- `server/src/pr-sessions.ts` — the recorded column first, then one pass over
-  `logs/sessions/` for whatever it did not name, every transcript read once and tested
-  against every PR still unnamed.
+- `server/src/github.ts` — the `gh` reader, the refresh behind the response, and the
+  served answer that comes off the table.
+- `server/src/db/pull-request-store.ts` — the `pull_request` rows: the read, the
+  `MAX(updated_at)` watermark, and the transactional upsert.
+- `server/src/pr-sessions.ts` — the recorded column first, then, for whatever it did not
+  name, the stored scan and a pass over the transcripts newer than it.
+- `server/src/db/pr-scan-store.ts` — the `pr_scan` mark and the `pr_scan_link` rows: what
+  the scan found, and how far it got.
 - `proxy/session.ts` — `openedPullRequest`, which reads the url off a PR-opening command's
   own result, and the `pr` field of the `.state.json` sidecar it lands in.
 - `server/src/sessions.ts` / `server/src/db/source.ts` — `readPrLinks`, the recorded links
@@ -247,6 +324,10 @@ fatal.
   about what landed, not about what is passing.
 - Hidden lines accumulate. Nothing prunes `refs/main-history/*`, by design — but a
   repository slid back and forth often will grow a long list of pins.
-- Every PR opened before the record existed still costs the transcript scan, and nothing
-  backfills them — see [what the record costs](#what-the-record-costs-and-what-it-does-not-yet-buy).
-  Retiring the single-slot cache waits on that.
+- Every PR opened before the record existed still costs the transcript scan once, and
+  nothing backfills them — see
+  [what the record costs](#what-the-record-costs-and-what-it-does-not-yet-buy). What is
+  left on the request path is the stat pass the stored scan needs, which grows with the
+  number of transcripts on disk rather than with their size.
+- The scan is stored per checkout and per number, and nothing prunes it. A pull request
+  that leaves the page keeps its mark and its links.

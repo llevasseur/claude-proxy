@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 17;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -590,6 +590,102 @@ ALTER TABLE session ADD COLUMN pr_url TEXT;
 UPDATE session SET bytes = -1;
 `;
 
+/**
+ * The repository's pull requests, one row each, so `/api/pull-requests` answers from
+ * an indexed query and the `gh` call happens behind the response rather than in front
+ * of it. See `server/src/db/pull-request-store.ts` for what a row means.
+ *
+ * **The one table here whose source is not `logs/`, and it is derived and disposable
+ * for the same reason every other one is.** GitHub holds the truth; these rows are a
+ * copy of what `gh pr list` last said, so deleting the file costs one full refetch and
+ * no information. Nothing authored lives here, and ADR 0004 stands.
+ *
+ * Keyed on the **checkout** rather than on the `owner/name` slug, because that is what
+ * the route has in hand — resolving a slug is four subprocess layers (`resolveSlug`),
+ * and a read that ran them first would put a fork back on the request path this exists
+ * to clear. The slug rides on `pull_request_repo` beside the last refresh's outcome, so
+ * one keyed lookup supplies `repo`, `error`, `refError` and `fetchedAt`.
+ *
+ * `updated_at` is `gh`'s own `updatedAt`, indexed because the refresh's watermark is
+ * `MAX(updated_at)` for the checkout — what `gh pr list --search "updated:>=<date>"` is
+ * then asked for, off a field the list read already returned.
+ *
+ * `document` is the parsed `PullRequestRow`'s own JSON, for the same reason
+ * `command_run` and `concept` carry one: the row round-trips through it, so adding a
+ * displayed field later is not a migration.
+ */
+const SCHEMA_V16 = `
+CREATE TABLE IF NOT EXISTS pull_request_repo (
+  -- Absolute path of the checkout whose pull requests these are.
+  repo_dir   TEXT PRIMARY KEY,
+  -- \`owner/name\`, or null when the remote could not be read as GitHub.
+  repo       TEXT,
+  -- The last refresh's setup failure, phrased for the page. Null when it succeeded.
+  error      TEXT,
+  -- Why \`main\` and its pins could not be brought up to date, if they could not.
+  ref_error  TEXT,
+  -- When the last refresh that reached GitHub ran.
+  fetched_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pull_request (
+  repo_dir   TEXT    NOT NULL,
+  number     INTEGER NOT NULL,
+  updated_at TEXT    NOT NULL,
+  -- The row's own JSON, verbatim. See the note above.
+  document   TEXT    NOT NULL,
+  PRIMARY KEY (repo_dir, number)
+);
+
+CREATE INDEX IF NOT EXISTS pull_request_updated_idx ON pull_request(repo_dir, updated_at);
+`;
+
+/**
+ * The transcript scan's own results, so a pull request is scanned once rather than
+ * once per `gh` refresh. See `server/src/db/pr-scan-store.ts`.
+ *
+ * Derived and disposable: `logs/sessions/` is the source of truth, so deleting the file
+ * costs one scan pass and no information.
+ *
+ * The separation the feature doc guards is enforced by the column rather than by
+ * convention: `via` holds only `branch` and `number`, the two *recovered* signals. A
+ * `recorded` link is a session's own record of the pull request it opened, is read from
+ * `session.pr_url` on every request, and is never written here — so a stored scanned
+ * link can never age into a recorded one.
+ *
+ * `scanned_through` is the mtime, in epoch milliseconds, of the newest transcript that
+ * existed when this pull request was scanned. A pull request is rescanned once the
+ * directory holds something newer, and then only against the transcripts past that
+ * mark. A row with no link rows is the useful negative — scanned, matched nothing —
+ * which is what takes an unnamed pull request off the request path.
+ */
+const SCHEMA_V17 = `
+CREATE TABLE IF NOT EXISTS pr_scan (
+  -- Absolute path of the checkout the number belongs to, as \`pull_request\` is keyed.
+  repo_dir        TEXT    NOT NULL,
+  number          INTEGER NOT NULL,
+  -- Newest transcript mtime, epoch ms, at the time of the scan.
+  scanned_through INTEGER NOT NULL,
+  scanned_at      TEXT    NOT NULL,
+  PRIMARY KEY (repo_dir, number)
+);
+
+CREATE TABLE IF NOT EXISTS pr_scan_link (
+  repo_dir  TEXT    NOT NULL,
+  number    INTEGER NOT NULL,
+  -- The transcript that produced the link.
+  thread_id TEXT    NOT NULL,
+  title     TEXT    NOT NULL,
+  -- The transcript's mtime, ISO 8601, as the drawer orders by.
+  modified  TEXT    NOT NULL,
+  -- Comma-joined recovered signals: \`branch\`, \`number\`, or both. Never \`recorded\`.
+  via       TEXT    NOT NULL,
+  PRIMARY KEY (repo_dir, number, thread_id)
+);
+
+CREATE INDEX IF NOT EXISTS pr_scan_link_thread_idx ON pr_scan_link(thread_id);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -711,6 +807,8 @@ function migrate(db: DatabaseSync): void {
   if (from < 13) db.exec(SCHEMA_V13);
   if (from < 14) db.exec(SCHEMA_V14);
   if (from < 15) db.exec(SCHEMA_V15);
+  if (from < 16) db.exec(SCHEMA_V16);
+  if (from < 17) db.exec(SCHEMA_V17);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

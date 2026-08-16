@@ -36,10 +36,14 @@ function rpc(method: string, params: Record<string, unknown> = {}, version = PRO
 
 async function call(db: Db, name: string, args: Record<string, unknown> = {}) {
   const response = await handleMcp(rpc('tools/call', { name, arguments: args }), db);
-  const body = (await response.json()) as { result: { content: { text: string }[]; isError?: boolean } };
+  const body = (await response.json()) as {
+    result: { content: { text: string }[]; structuredContent: Record<string, unknown>; isError?: boolean };
+  };
+  const payload = JSON.parse(body.result.content[0]!.text) as Record<string, unknown>;
+  expect(body.result.structuredContent).toEqual(payload);
   return {
     isError: body.result.isError === true,
-    payload: JSON.parse(body.result.content[0]!.text) as Record<string, unknown>,
+    payload,
   };
 }
 
@@ -57,14 +61,16 @@ describe('handleMcp', () => {
     expect(body.result.supportedVersions).toEqual([PROTOCOL_VERSION]);
     expect(body.result.capabilities.tools).toBeDefined();
     expect(body.result.capabilities.extensions).toEqual({});
-    // `operator`, not `concepts`: the Worker serves two datasets, and the
-    // package directory is the only narrow thing about it. See ADR 0006.
+    // `operator`, not `concepts`: the Worker serves three datasets, while the
+    // package directory retains the first dataset's historical name.
     expect(body.result._meta['io.modelcontextprotocol/serverInfo']).toEqual({ name: 'operator', version: '0.2.0' });
   });
 
-  it('advertises the three concept tools and the five ideas tools, each with a schema', async () => {
+  it('advertises the concept, ideas, and notes tools, with input and note output schemas', async () => {
     const response = await handleMcp(rpc('tools/list'), testDb());
-    const body = (await response.json()) as { result: { tools: { name: string; inputSchema: unknown }[] } };
+    const body = (await response.json()) as {
+      result: { tools: { name: string; inputSchema: unknown; outputSchema?: unknown }[] };
+    };
     expect(body.result.tools.map((t) => t.name)).toEqual([
       'concepts_list',
       'concepts_get',
@@ -74,8 +80,18 @@ describe('handleMcp', () => {
       'ideas_add',
       'ideas_claim',
       'ideas_mark',
+      'notes_list',
+      'notes_search',
+      'notes_get',
+      'notes_create',
+      'notes_update',
+      'notes_archive',
+      'notes_restore',
     ]);
     for (const tool of body.result.tools) expect(tool.inputSchema).toHaveProperty('properties');
+    for (const tool of body.result.tools.filter((tool) => tool.name.startsWith('notes_'))) {
+      expect(tool.outputSchema).toBeDefined();
+    }
   });
 
   it('rejects a version it does not implement, naming the ones it does', async () => {
@@ -238,6 +254,39 @@ describe('concepts_search', () => {
     const { isError, payload } = await call(testDb(), 'concepts_delete_everything');
     expect(isError).toBe(true);
     expect(payload.error).toMatch(/unknown tool/);
+  });
+});
+
+describe('notes tools', () => {
+  it('creates, lists compactly, and gets full Markdown', async () => {
+    const db = testDb();
+    const created = await call(db, 'notes_create', { title: '', body: '# Heading\n\nFull **Markdown** body.' });
+    const note = created.payload.note as { id: string; title: string; body: string; version: number };
+    expect(note).toMatchObject({ title: '', body: '# Heading\n\nFull **Markdown** body.', version: 1 });
+
+    const listed = await call(db, 'notes_list');
+    const [summary] = listed.payload.notes as Record<string, unknown>[];
+    expect(summary).toMatchObject({ id: note.id, title: '', excerpt: 'Heading Full Markdown body.' });
+    expect(summary).not.toHaveProperty('body');
+
+    const got = await call(db, 'notes_get', { id: note.id });
+    expect(got.payload.note).toMatchObject({ body: note.body });
+  });
+
+  it('returns a structured tool error for a stale expected version', async () => {
+    const db = testDb();
+    const created = await call(db, 'notes_create', { title: 'Race', body: 'base' });
+    const id = (created.payload.note as { id: string }).id;
+    await call(db, 'notes_update', { id, expectedVersion: 1, body: 'winner' });
+    const stale = await call(db, 'notes_update', { id, expectedVersion: 1, body: 'loser' });
+    expect(stale.isError).toBe(true);
+    expect(stale.payload).toMatchObject({
+      error: 'stale note version',
+      conflict: true,
+      code: 'stale_version',
+      currentVersion: 2,
+    });
+    expect(stale.payload.attemptedRevisionId).toEqual(expect.any(String));
   });
 });
 
