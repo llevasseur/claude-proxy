@@ -34,7 +34,7 @@ import type { AuditTokens } from './types.js';
  * Readers keep older records and render what they carry — see {@link isCommandRun},
  * which validates only the identity fields every version has had.
  */
-export const COMMAND_RUN_SCHEMA = 3;
+export const COMMAND_RUN_SCHEMA = 4;
 
 /** The bucket holding turns and steps no anchor could place. Never a real step id. */
 export const UNATTRIBUTED = null;
@@ -772,6 +772,90 @@ export interface CommandRunTurn {
   messageCount: number;
 }
 
+// --- Spawns and agent types ------------------------------------------------
+//
+// The proxy records what each spawn called itself (`subagent_type`, else the skill name)
+// on the child transcript's header. These carry it into the run record, so an agent
+// type's cost is a read off the store rather than a walk of the session graph.
+
+/** One subagent a run spawned, and what its own turns cost. */
+export interface CommandRunSpawn {
+  /** The subagent's own transcript. */
+  threadId: string;
+  /** The thread whose call spawned it — the run's root, or another subagent. */
+  parentThreadId: string | null;
+  /**
+   * What the spawn called itself: `subagent_type` from the call, else the skill name.
+   * Null when the call named neither — a fact about the call, not missing data.
+   */
+  agentType: string | null;
+  /** The spawning node in the parent's transcript, when the link records one. */
+  spawnNode: number | null;
+  /** The step the spawn is charged to, or {@link UNATTRIBUTED}. */
+  step: string | null;
+  /** How deep beneath this run's root it sits — 1 for a spawn the root made itself. */
+  depth: number;
+  /** This subagent's own turns only; a spawn of its own is a row of its own. */
+  tokens: AuditTokens;
+  cost: number;
+  turns: number;
+}
+
+/**
+ * Spawns of one agent type, rolled up. Keyed on the type the call named, so
+ * `agentType: null` is its own bucket rather than folded away.
+ */
+export interface AgentTypeUsage {
+  agentType: string | null;
+  spawns: number;
+  /** Captured requests those spawns sent between them. */
+  turns: number;
+  tokens: AuditTokens;
+  cost: number;
+  /** Runs that spawned at least one of this type. 1 when rolling up a single run. */
+  runs: number;
+}
+
+/**
+ * Roll every run's spawns up by agent type, most-used first.
+ *
+ * A record written before this field existed contributes nothing rather than throwing.
+ * Ties break on cost, then on name, with the unnamed bucket last.
+ */
+export function summarizeAgentTypes(runs: readonly CommandRun[]): AgentTypeUsage[] {
+  const byType = new Map<string | null, AgentTypeUsage>();
+  for (const run of runs) {
+    const seen = new Set<string | null>();
+    for (const spawn of run.spawns ?? []) {
+      const type = spawn.agentType ?? null;
+      const row = byType.get(type) ?? {
+        agentType: type,
+        spawns: 0,
+        turns: 0,
+        tokens: ZERO_TOKENS,
+        cost: 0,
+        runs: 0,
+      };
+      row.spawns += 1;
+      row.turns += spawn.turns ?? 0;
+      row.tokens = addTokens(row.tokens, spawn.tokens ?? ZERO_TOKENS);
+      row.cost += spawn.cost ?? 0;
+      if (!seen.has(type)) {
+        row.runs += 1;
+        seen.add(type);
+      }
+      byType.set(type, row);
+    }
+  }
+
+  return [...byType.values()].sort(
+    (a, b) =>
+      b.spawns - a.spawns ||
+      b.cost - a.cost ||
+      (a.agentType === null ? 1 : b.agentType === null ? -1 : a.agentType.localeCompare(b.agentType)),
+  );
+}
+
 export interface CommandRunTotals {
   tokens: AuditTokens;
   /** USD, via `pricing.ts`. */
@@ -857,6 +941,12 @@ export interface CommandRun {
   totals: CommandRunTotals;
   /** Per-turn series — context growth turn over turn, not just the total. */
   turns: CommandRunTurn[];
+  /**
+   * Every subagent in this run's family below its root, parents before children, each
+   * with the agent type its call named and what its own turns cost. Records written
+   * before schema 4 carry none, and there is no backfill.
+   */
+  spawns: CommandRunSpawn[];
   /** Per declared step, plus the unattributed bucket last. */
   stepStats: CommandRunStepStats[];
   outcome: CommandRunOutcome;
@@ -1016,6 +1106,8 @@ export interface CommandSummary {
   lastRun: string | null;
   /** Every flag any run of it used, for the facet control. */
   flags: string[];
+  /** What this command delegates to, most-used first — the agent-type column. */
+  agentTypes: AgentTypeUsage[];
 }
 
 /**
@@ -1055,6 +1147,7 @@ export function summarizeCommands(
       costSeries: own.map((r) => ({ date: r.started ?? '', value: runTotals(r).cost })),
       lastRun: own[own.length - 1]?.started ?? null,
       flags: [...new Set(own.flatMap((r) => r.flags ?? []))].sort(),
+      agentTypes: summarizeAgentTypes(own),
     });
   }
 

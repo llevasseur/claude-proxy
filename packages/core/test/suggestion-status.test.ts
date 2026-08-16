@@ -16,6 +16,7 @@ import {
   parseSuggestionStatusUpdates,
   ruleDefects,
   ruleResolutions,
+  type SuggestionStatusStore,
   suggestionRecurrence,
   suggestionStatusOf,
   suggestionStatusRows,
@@ -581,6 +582,9 @@ describe('ruleDefects', () => {
         dismissed: 3,
         fired: 4,
         ratio: 0.75,
+        span: { from: 1, to: 3 },
+        cleanTail: 0,
+        stale: false,
         buckets: [
           { bucket: 1, reason: 'wrong in 1' },
           { bucket: 2, reason: 'wrong in 2' },
@@ -620,6 +624,78 @@ describe('ruleDefects', () => {
       now,
     );
     expect(ruleDefects(firing(3, ['serial-discovery']), store)).toEqual([]);
+  });
+
+  /** Record a verdict on each of `buckets`, leaving the dismissals already in `store`. */
+  const judgeAll = (store: SuggestionStatusStore, buckets: readonly number[]) =>
+    applySuggestionJudgements(
+      store,
+      buckets.map((bucket) => ({ bucket })),
+      now,
+    );
+
+  /**
+   * `count` complete buckets, where only those in `on` fire `id` — the shape a repaired
+   * rule leaves behind, since a rule that was fixed stops firing as well as stops being
+   * dismissed.
+   */
+  const firingIn = (count: number, id: string, on: readonly number[]): SessionBucket[] =>
+    Array.from({ length: count }, (_, i) => bucket(i + 1, on.includes(i + 1) ? [id] : ['other']));
+
+  it('reports the age of the record alongside the counts', () => {
+    const store = judgeAll(dismissAll([1, 2, 3], 'serial-discovery'), [1, 2, 3, 4]);
+    const [defect] = ruleDefects(firingIn(6, 'serial-discovery', [1, 2, 3]), store);
+    // Buckets 5 and 6 are complete but unjudged, so they add nothing to the tail.
+    expect(defect).toMatchObject({ span: { from: 1, to: 3 }, cleanTail: 1, stale: false });
+  });
+
+  it('suppresses a rule whose dismissals all predate a long tail of clean judged buckets', () => {
+    const store = judgeAll(dismissAll([1, 2, 3], 'serial-discovery'), [1, 2, 3, 4, 5, 6, 7, 8]);
+    const [defect] = ruleDefects(firingIn(8, 'serial-discovery', [1, 2, 3]), store);
+    // Dismissed every time it fired — a record that indicts the rule on the counts alone.
+    // Five judged buckets have since passed without one, which is what a fix looks like.
+    expect(defect).toMatchObject({ id: 'serial-discovery', dismissed: 3, ratio: 1, cleanTail: 5, stale: true });
+    expect(defect?.staleReason).toMatch(/predates bucket 3/);
+  });
+
+  it('keeps a rule live when a recent dismissal breaks the tail', () => {
+    const store = judgeAll(dismissAll([1, 2, 3, 9], 'serial-discovery'), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    const [defect] = ruleDefects(firingIn(10, 'serial-discovery', [1, 2, 3, 9]), store);
+    // The five clean buckets 4–8 are not a *tail* — bucket 9 dismissed it again.
+    expect(defect).toMatchObject({ span: { from: 1, to: 9 }, cleanTail: 1, stale: false });
+  });
+
+  it('does not let unjudged buckets clear a rule', () => {
+    const store = dismissAll([1, 2, 3], 'serial-discovery');
+    const [defect] = ruleDefects(firingIn(20, 'serial-discovery', [1, 2, 3]), store);
+    // Seventeen complete buckets follow the newest dismissal and not one was judged, so
+    // nobody has looked — silence from an unjudged window is not evidence of a fix.
+    expect(defect).toMatchObject({ cleanTail: 0, stale: false });
+  });
+
+  it('sorts live defects ahead of suppressed ones', () => {
+    const buckets = Array.from({ length: 8 }, (_, i) => {
+      const index = i + 1;
+      const ids = [...(index <= 3 ? ['serial-discovery'] : []), ...(index >= 6 ? ['redundant-reads'] : []), 'other'];
+      return bucket(index, ids);
+    });
+    const store = judgeAll(
+      applySuggestionStatusUpdates(
+        emptySuggestionStatusStore(),
+        [
+          // Stale: dismissed early, then five judged buckets with nothing.
+          ...[1, 2, 3].map((b) => ({ bucket: b, id: 'serial-discovery', status: 'dismissed' as const })),
+          // Live: still being dismissed in the newest judged buckets.
+          ...[6, 7, 8].map((b) => ({ bucket: b, id: 'redundant-reads', status: 'dismissed' as const })),
+        ],
+        now,
+      ),
+      [1, 2, 3, 4, 5, 6, 7, 8],
+    );
+    expect(ruleDefects(buckets, store).map((d) => [d.id, d.stale])).toEqual([
+      ['redundant-reads', false],
+      ['serial-discovery', true],
+    ]);
   });
 
   it('ranks the worst offender first', () => {

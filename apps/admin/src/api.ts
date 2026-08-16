@@ -1,6 +1,7 @@
 import type {
   Advice,
   AdviceMovement,
+  AgentTypeUsage,
   AliasLoadExpectation,
   ApiJsonGetPath,
   ApiQueryValue,
@@ -685,6 +686,8 @@ export interface CommandResponse {
   flags: string[];
   appliedFlags: string[];
   runs: CommandRunListItem[];
+  /** What the filtered runs delegate to, most-used first. Empty for pre-schema-4 records. */
+  agentTypes: AgentTypeUsage[];
   stepReach: StepReach[];
   patterns: PatternFrequency[];
   hashMarkers: CommandHashMarker[];

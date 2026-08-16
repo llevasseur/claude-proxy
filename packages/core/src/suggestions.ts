@@ -97,14 +97,42 @@ export const SUGGESTION_THRESHOLDS = {
 
 /**
  * When repeated dismissals stop being noise about windows and start being evidence
- * about the *rule*. Both have to hold: the count alone would indict a rule that is
- * usually right, the ratio alone one that has barely fired.
+ * about the *rule*. The first two have to hold together: the count alone would indict a
+ * rule that is usually right, the ratio alone one that has barely fired.
+ *
+ * `minCleanTailBuckets` answers a different question — not whether the record indicts
+ * the rule, but whether the record is still *current*. Dismissals are permanent, so a
+ * rule keeps its whole history after it has been repaired: `serial-discovery` was still
+ * reported at 14 of 18 buckets (78%) after commits f22c269 and 83eaa7d fixed it. That is
+ * not a cosmetic wart. `/improve` turns a reported defect straight into a task criterion,
+ * so every run re-proposed a fix that had already shipped, and the only thing standing
+ * between that and a wasted PR was a human noticing.
+ *
+ * The signal that a rule was fixed is that its dismissals **stop**. So a rule is
+ * suppressed once enough *judged* buckets have passed since its newest dismissal without
+ * recording another. Judged is the operative word: an unjudged bucket is not evidence of
+ * anything, since nobody looked at it, and counting one would let a quiet backlog
+ * silence a live defect.
+ *
+ * Five is measured off the record rather than picked. While `serial-discovery` was
+ * genuinely misfiring its dismissals still went quiet for stretches — buckets 43–46,
+ * 48–51 and 62–67 are each four judged buckets carrying no dismissal — so a threshold of
+ * four or lower would have suppressed a live defect three separate times. Its tail since
+ * the fix is seven (77–83). Five is the smallest value strictly above the longest quiet
+ * stretch a *broken* rule showed, and it still leaves two buckets of margin beneath the
+ * tail a *fixed* one has.
+ *
+ * Raising `minDismissedBuckets` or `minDismissedRatio` instead would have suppressed the
+ * same stale record only by also hiding rules that are misfiring right now — the exact
+ * opposite of what this report is for.
  */
 export const SUGGESTION_DEFECT_THRESHOLDS = {
   /** Buckets a rule must be dismissed in before it counts as defective. */
   minDismissedBuckets: 3,
   /** Share of the buckets it fired in that those dismissals must reach, 0–1. */
   minDismissedRatio: 0.5,
+  /** Judged buckets since the newest dismissal that mark the record stale rather than live. */
+  minCleanTailBuckets: 5,
 } as const;
 
 const SEVERITY_RANK: Record<Severity, number> = { high: 0, warn: 1, info: 2 };
@@ -267,15 +295,60 @@ export function bucketSessions<T extends { started: string | null; threadId: str
   return buckets;
 }
 
+/** A `Skill(…)` call — the signature that injects another command's prompt body. */
+const SKILL_CALL_RE = /^Skill\(/;
+
+/**
+ * True when this `## Task:` heading was opened by a command *nested* inside this run
+ * rather than by the session itself.
+ *
+ * Invoking a command inline with the `Skill` tool replays that command's own prompt
+ * body as a user turn, so the transcript opens a fresh `## Task:` node for it — one
+ * belonging to the nested run, not to the session. It can never be closed. The
+ * closing-turn rule forbids a nested run from spending a text-only turn, since ending
+ * the assistant turn there would strand every step its parent still owes, and a `done:`
+ * line is only ever written from such a turn. So every nested run is structurally
+ * incapable of recording an outcome, and counting it as top-level work turns "this
+ * command was invoked" into "this task was abandoned": bucket 80 counted four of them
+ * in one thread (`/lookup`, `/read-tweet`, `/find-skills`, `/ideate`) and bucket 81 two
+ * more (`/clean`, `/pr`), inflating `topLevelTasks` and `unfinishedTasks` alike.
+ *
+ * The discriminator is structural rather than textual: the `Skill(…)` call that injected
+ * the body is the node immediately before the heading. Across the corpus that adjacency
+ * identifies 769 of 2996 task nodes, while only 25 more have a `Skill` call anywhere in
+ * the preceding three nodes — so widening the window buys almost nothing and starts
+ * charging a genuine task to whatever skill happened to run before it.
+ *
+ * The heading text is deliberately **not** consulted. `<command-name>` looks like it
+ * should mark these and marks the opposite: it appears when the *user* types a slash
+ * command, which is a genuine top-level task, and in none of the nested headings.
+ */
+function isSkillOpenedTask(nodes: readonly SessionNode[], index: number): boolean {
+  const prev = nodes[index - 1];
+  if (!prev || prev.type !== 'tool') return false;
+  return SKILL_CALL_RE.test(prev.tool ?? '');
+}
+
+/** The `## Task:` headings this session opened itself, with the nested Skill runs removed. */
+function topLevelTaskNodes(session: SuggestibleSession): SessionNode[] {
+  return session.nodes.filter((node, i) => node.type === 'task' && !isSkillOpenedTask(session.nodes, i));
+}
+
 /**
  * The `## Task:` nodes a transcript never closed: no `done:` before the next task, or
  * before the end. Only meaningful for a top-level thread.
+ *
+ * A nested Skill-opened task is skipped outright rather than treated as a boundary. It
+ * is not this session's to close, and leaving it as the open task would also let its
+ * structural silence mask the enclosing task's real outcome — the parent's eventual
+ * `done:` would close the nested heading instead of the one the session actually owed.
  */
 function openTaskNodes(session: SuggestibleSession): SessionNode[] {
   const open: SessionNode[] = [];
   let at: SessionNode | null = null;
-  for (const node of session.nodes) {
+  for (const [i, node] of session.nodes.entries()) {
     if (node.type === 'task') {
+      if (isSkillOpenedTask(session.nodes, i)) continue;
       if (at) open.push(at);
       at = node;
     } else if (node.type === 'done') at = null;
@@ -355,7 +428,12 @@ function bucketStats(sessions: readonly SuggestibleSession[]): SessionBucketStat
       subagentThreads += 1;
       if (!s.reported) unfinishedSubagents += 1;
     } else {
-      topLevelTasks += s.tasks;
+      // Counted off the nodes rather than `s.tasks`, which is the transcript's raw
+      // heading count and includes the nested runs. `stats.tasks` below keeps that raw
+      // count on purpose: it is the denominator of `toolsPerTask`, where a nested run's
+      // heading is a fair unit of work and dropping it would re-scale a threshold
+      // calibrated over the whole record.
+      topLevelTasks += topLevelTaskNodes(s).length;
       unfinishedTasks += openTaskNodes(s).length;
     }
 

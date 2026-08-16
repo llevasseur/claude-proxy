@@ -232,6 +232,7 @@ function CommandBody({
       <RunScatter data={data} command={command} />
       <ShapeTrends data={data} />
       <StepBar steps={data.steps} reach={data.stepReach} run={hoverRun} totalRuns={data.meta.filteredRuns} />
+      <AgentTypes data={data} />
       <PatternTable data={data} />
       <RunList runs={runs} command={command} onHover={setHoverRun} />
     </>
@@ -656,6 +657,70 @@ function StepBar({
               <td className='num'>{fmtInt(r.tokens)}</td>
               <td className='num'>{fmtUsd(r.cost)}</td>
               <td className='num'>{total === 0 ? '—' : fmtPct((r.tokens / total) * 100)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * What this command delegates to, rolled up across the runs the facet keeps — one row per
+ * agent type the spawning calls named, most-used first.
+ *
+ * Drawn only when some run recorded a spawn: records written before spawns were stored
+ * carry none and are never backfilled, so an empty card would misreport them.
+ */
+function AgentTypes({ data }: { data: CommandResponse }) {
+  const types = data.agentTypes ?? [];
+  if (types.length === 0) return null;
+
+  const spawns = types.reduce((n, t) => n + t.spawns, 0);
+  const cost = types.reduce((n, t) => n + t.cost, 0);
+
+  return (
+    <div className='card'>
+      <div className='card-head'>
+        <h2>Agent types</h2>
+        <span className='muted'>
+          {fmtInt(spawns)} spawn{spawns === 1 ? '' : 's'} · {fmtUsd(cost)} across {data.meta.filteredRuns} run
+          {data.meta.filteredRuns === 1 ? '' : 's'}
+        </span>
+      </div>
+      <table className='table'>
+        <thead>
+          <tr>
+            <th>
+              Agent type
+              <HeaderHint text="What the spawning call named — its subagent_type, else the skill it invoked. A call that named neither is counted as 'unnamed' rather than dropped." />
+            </th>
+            <th className='num'>Spawns</th>
+            <th className='num'>
+              Runs
+              <HeaderHint text='Runs of this command that spawned at least one agent of this type.' />
+            </th>
+            <th className='num'>Turns</th>
+            <th className='num'>Tokens</th>
+            <th className='num'>Cost</th>
+            <th className='num'>
+              Share
+              <HeaderHint text="This type's cost as a share of everything the counted runs delegated — not of the runs' whole cost, which includes their own turns." />
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {types.map((t) => (
+            <tr key={t.agentType ?? ''}>
+              <td>
+                <span className='rule-name'>{t.agentType ?? 'unnamed'}</span>
+              </td>
+              <td className='num'>{fmtInt(t.spawns)}</td>
+              <td className='num'>{fmtInt(t.runs)}</td>
+              <td className='num'>{fmtInt(t.turns)}</td>
+              <td className='num'>{fmtInt(t.tokens.realInput + t.tokens.output)}</td>
+              <td className='num'>{fmtUsd(t.cost)}</td>
+              <td className='num'>{cost > 0 ? fmtPct((t.cost / cost) * 100) : <span className='muted'>—</span>}</td>
             </tr>
           ))}
         </tbody>

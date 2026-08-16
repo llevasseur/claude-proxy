@@ -3,6 +3,7 @@ import {
   attributeSteps,
   COMMAND_RUN_SCHEMA,
   type CommandRun,
+  type CommandRunSpawn,
   type CommandRunStepStats,
   type CommandStep,
   classifyOutcome,
@@ -22,6 +23,7 @@ import {
   runKey,
   runTotals,
   stepReach,
+  summarizeAgentTypes,
   summarizeCommands,
   summarizeSteps,
   ZERO_TOKENS,
@@ -640,6 +642,7 @@ function run(over: Partial<CommandRun> = {}): CommandRun {
       wallMs: 5000,
     },
     turns: [],
+    spawns: [],
     stepStats: [],
     outcome: 'completed',
     interruption: null,
@@ -650,6 +653,71 @@ function run(over: Partial<CommandRun> = {}): CommandRun {
     ...over,
   };
 }
+
+function spawn(over: Partial<CommandRunSpawn> = {}): CommandRunSpawn {
+  return {
+    threadId: 'aaaa000000000001',
+    parentThreadId: '0000000000000001',
+    agentType: 'Explore',
+    spawnNode: 3,
+    step: '2',
+    depth: 1,
+    tokens: { ...ZERO_TOKENS, realInput: 10 },
+    cost: 0.5,
+    turns: 1,
+    ...over,
+  };
+}
+
+describe('summarizeAgentTypes', () => {
+  it('rolls spawns up by the type their call named, most-used first', () => {
+    const rows = summarizeAgentTypes([
+      run({
+        spawns: [
+          spawn({ threadId: 'a1' }),
+          spawn({ threadId: 'a2' }),
+          spawn({ threadId: 'b1', agentType: 'Plan', cost: 2, turns: 3 }),
+        ],
+      }),
+    ]);
+
+    expect(rows.map((r) => r.agentType)).toEqual(['Explore', 'Plan']);
+    expect(rows[0]!.spawns).toBe(2);
+    expect(rows[0]!.turns).toBe(2);
+    expect(rows[0]!.cost).toBe(1);
+    expect(rows[0]!.tokens.realInput).toBe(20);
+    expect(rows[1]!).toMatchObject({ agentType: 'Plan', spawns: 1, turns: 3, cost: 2 });
+  });
+
+  it('counts a run once per type, however many of that type it spawned', () => {
+    const rows = summarizeAgentTypes([
+      run({ spawns: [spawn({ threadId: 'a1' }), spawn({ threadId: 'a2' })] }),
+      run({ runId: '2', spawns: [spawn({ threadId: 'a3' })] }),
+    ]);
+
+    expect(rows[0]!).toMatchObject({ agentType: 'Explore', spawns: 3, runs: 2 });
+  });
+
+  it('keeps a spawn whose call named no type as its own bucket, ordered last', () => {
+    const rows = summarizeAgentTypes([
+      run({
+        spawns: [
+          spawn({ threadId: 'a1', agentType: null }),
+          spawn({ threadId: 'b1', agentType: 'Plan' }),
+          spawn({ threadId: 'c1', agentType: 'Explore' }),
+        ],
+      }),
+    ]);
+
+    // Every bucket is one spawn, so the tie breaks on cost then name, unnamed last.
+    expect(rows.map((r) => r.agentType)).toEqual(['Explore', 'Plan', null]);
+  });
+
+  it('contributes nothing for a record written before spawns were stored', () => {
+    const old = { ...run(), spawns: undefined } as unknown as CommandRun;
+    expect(summarizeAgentTypes([old])).toEqual([]);
+  });
+});
 
 describe('schema tolerance', () => {
   it('accepts a record from a newer or older writer', () => {
@@ -786,6 +854,17 @@ describe('summarizeCommands', () => {
       run({ threadId: 'b', flags: ['draft', 'sub'] }),
     ]);
     expect(rows[0]?.flags).toEqual(['draft', 'sub']);
+  });
+
+  it('carries the agent types its runs delegated to', () => {
+    const rows = summarizeCommands(installed, [
+      run({ threadId: 'a', spawns: [spawn({ threadId: 'a1' })] }),
+      run({ threadId: 'b', spawns: [spawn({ threadId: 'b1', agentType: 'Plan' })] }),
+    ]);
+    expect(rows[0]?.agentTypes.map((t) => [t.agentType, t.spawns])).toEqual([
+      ['Explore', 1],
+      ['Plan', 1],
+    ]);
   });
 
   it('orders the cost sparkline oldest first', () => {

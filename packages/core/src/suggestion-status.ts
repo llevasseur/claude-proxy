@@ -525,6 +525,22 @@ export interface RuleDefect {
   fired: number;
   /** `dismissed / fired`, 0–1, rounded to two places. */
   ratio: number;
+  /** Oldest and newest bucket the dismissals span — the age of the record, at a glance. */
+  span: { from: number; to: number };
+  /**
+   * Judged complete buckets after `span.to` that recorded no dismissal of this rule.
+   * A long tail is the evidence that the rule was repaired: dismissals stopped.
+   */
+  cleanTail: number;
+  /**
+   * True when {@link RuleDefect.cleanTail} cleared
+   * {@link SUGGESTION_DEFECT_THRESHOLDS.minCleanTailBuckets} — the counts still indict
+   * the rule, but every one of them predates a fix. Reported apart from the live
+   * defects rather than dropped, so the record stays readable.
+   */
+  stale: boolean;
+  /** Why it was suppressed, ready to print. Absent on a live defect. */
+  staleReason?: string;
   /** Each dismissal, oldest bucket first, with the reason recorded for it. */
   buckets: { bucket: number; reason?: string }[];
 }
@@ -540,7 +556,17 @@ export interface RuleDefect {
  * counting it in the denominator would dilute every ratio by a window that can
  * never contribute a dismissal.
  *
- * Worst first: most dismissals, then highest ratio, then id.
+ * Each defect also carries the **age** of its record — the span of the dismissals, the
+ * newest one, and how many judged buckets have passed since without another — and is
+ * marked `stale` once that tail clears
+ * {@link SUGGESTION_DEFECT_THRESHOLDS.minCleanTailBuckets}. A repaired rule keeps its
+ * dismissals forever, so without this a fixed rule is reported as a live defect until
+ * someone remembers the fix; see that constant for why the tail is the signal and why
+ * five is where it sits. Stale defects are returned rather than dropped, last, so a
+ * caller can show them as history instead of as work.
+ *
+ * Live first, then worst first within each half: most dismissals, then highest ratio,
+ * then id.
  */
 export function ruleDefects(buckets: readonly SessionBucket[], store: SuggestionStatusStore): RuleDefect[] {
   const fired = new Map<string, Set<number>>();
@@ -572,21 +598,43 @@ export function ruleDefects(buckets: readonly SessionBucket[], store: Suggestion
     }
   }
 
+  // The windows an agent actually looked at. A bucket nobody judged carries no verdict
+  // either way, so it can neither indict a rule nor clear one.
+  const judged = [...complete].filter((index) => store.judged[String(index)]).sort((a, b) => a - b);
+
   const out: RuleDefect[] = [];
   for (const [id, hits] of dismissals) {
     const total = fired.get(id)?.size ?? hits.length;
     const ratio = total === 0 ? 0 : hits.length / total;
     if (hits.length < SUGGESTION_DEFECT_THRESHOLDS.minDismissedBuckets) continue;
     if (ratio < SUGGESTION_DEFECT_THRESHOLDS.minDismissedRatio) continue;
+    const ordered = hits.slice().sort((a, b) => a.bucket - b.bucket);
+    const from = ordered[0]!.bucket;
+    const to = ordered[ordered.length - 1]!.bucket;
+    const cleanTail = judged.filter((index) => index > to).length;
+    const stale = cleanTail >= SUGGESTION_DEFECT_THRESHOLDS.minCleanTailBuckets;
     out.push({
       id,
       dismissed: hits.length,
       fired: total,
       ratio: Math.round(ratio * 100) / 100,
-      buckets: hits.slice().sort((a, b) => a.bucket - b.bucket),
+      span: { from, to },
+      cleanTail,
+      stale,
+      ...(stale
+        ? {
+            staleReason:
+              `every dismissal predates bucket ${to}, and the ${cleanTail} judged bucket${cleanTail === 1 ? '' : 's'} ` +
+              `since ${to} recorded none — the record reads as already fixed rather than still misfiring`,
+          }
+        : {}),
+      buckets: ordered,
     });
   }
-  return out.sort((a, b) => b.dismissed - a.dismissed || b.ratio - a.ratio || a.id.localeCompare(b.id));
+  return out.sort(
+    (a, b) =>
+      Number(a.stale) - Number(b.stale) || b.dismissed - a.dismissed || b.ratio - a.ratio || a.id.localeCompare(b.id),
+  );
 }
 
 /** One `<id>` or `<id>:<note>` entry, as the judge's command line spells it. */
