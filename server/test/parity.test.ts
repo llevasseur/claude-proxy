@@ -1063,9 +1063,7 @@ describe('route parity over the real logs/archive', () => {
    * already collected — so it costs one comparison rather than a second replay.
    *
    * It is declared last on purpose: vitest runs a file's tests in declaration
-   * order, so by the time this one runs `timings` holds every case. A route with
-   * no recorded budget is reported and not failed, which is what keeps adding a
-   * route to `PARITY_ROUTES` from requiring a measurement pass first.
+   * order, so by the time this one runs `timings` holds every case.
    */
   it('answers every budgeted route inside its recorded time budget', async () => {
     if (!db) return;

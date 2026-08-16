@@ -183,10 +183,8 @@ function wire(value: unknown): string {
  * run's answer, and dropping them would make replaying the whole archive
  * impractical. Call {@link resetCaches} once before a run.
  *
- * Each side is timed while it is replayed. The clock costs two `performance.now()`
- * reads per case and changes nothing about what is compared, so the time budgets
- * below are paid for by the replay that was already happening rather than by a
- * second pass over the corpus.
+ * Each side is timed while it is replayed, so the time budgets below cost two
+ * `performance.now()` reads rather than a second pass over the corpus.
  */
 export async function runCase(
   route: ParityRoute,
@@ -717,9 +715,7 @@ export interface RouteBudgets {
    * 29% (`/api/summary` 1.52s then 1.18s) and 20% (`/api/usage` 3.13s then
    * 3.77s), so a machine under load plausibly doubles a number without anything
    * having regressed. The failure this exists to catch is sevenfold. Three sits
-   * clear of the noise and well under the signal, and a budget that fires on a
-   * loaded laptop is worse than no budget at all — it teaches everyone to
-   * re-run the suite until it passes.
+   * clear of the noise and well under the signal.
    */
   headroom: number;
   /**
@@ -730,13 +726,10 @@ export interface RouteBudgets {
    * routes in the recorded fixture answer in **0.1 ms** — they read one already
    * loaded object — and ×3 on that is an allowance of 0.3 ms, which a single
    * timer quantum or a scheduler hiccup crosses while nothing whatsoever has
-   * regressed. That is precisely the "fails randomly and teaches everyone to
-   * re-run it" gate this design is trying not to be. Below the floor, absolute
-   * jitter dominates and the ratio stops meaning anything; above it, the floor
-   * never binds, because ×3 of anything over ~17 ms is already larger. Fifty
-   * milliseconds is comfortably above process-scheduling noise and far below
-   * any duration a human would call slow, so it discards no signal this gate
-   * could honestly claim to see.
+   * regressed. Below the floor, absolute jitter dominates and the ratio stops
+   * meaning anything; above it, the floor never binds, because ×3 of anything
+   * over ~17 ms is already larger. Fifty milliseconds sits above scheduling
+   * noise and below any duration a human would call slow.
    */
   floorMs: number;
   /**
@@ -771,10 +764,9 @@ export interface BudgetReport {
  * The middle value of a set of durations.
  *
  * Median rather than mean or max, because one case in a replay of several
- * hundred reliably catches a GC pause, a cold directory read, or the machine
- * doing something else — and a mean carries that outlier into the number while a
- * max *is* the outlier. A route that genuinely regressed moves every case, which
- * moves the median.
+ * hundred reliably catches a GC pause — and a mean carries that outlier into the
+ * number while a max *is* the outlier. A route that genuinely regressed moves
+ * every case, which moves the median.
  */
 export function medianMs(values: number[]): number {
   if (!values.length) return 0;
@@ -853,9 +845,9 @@ export function unknownBudgetRoutes(budgets: RouteBudgets): string[] {
  * On by default wherever there is a real archive to replay, which is this
  * device and not CI — a clean clone has no `logs/archive`, so the suite that
  * carries these timings already enumerates nothing there and the gate has
- * nothing to judge. `ROUTE_BUDGETS=0` turns it off for a run where the machine
- * is known to be busy, which is a better escape hatch than an opt-in flag that
- * nobody remembers to set on the one machine that can catch the regression.
+ * nothing to judge. `ROUTE_BUDGETS=0` turns it off for a run on a machine known
+ * to be busy — an escape hatch rather than an opt-in flag nobody remembers to
+ * set on the one machine that can catch the regression.
  */
 export function budgetsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const v = env.ROUTE_BUDGETS;

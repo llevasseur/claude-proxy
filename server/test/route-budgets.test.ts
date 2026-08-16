@@ -46,9 +46,8 @@ describe('per-route time budgets', () => {
     const inside = checkBudgets([timing('/api/usage', 900, 950), timing('/api/usage', 1100, 1050)], BUDGETS);
     expect(inside.breaches).toEqual([]);
 
-    // Twice the recorded number is a loaded machine, not a regression: the
-    // changelog's own back-to-back passes over one unchanged corpus varied by
-    // ~20-29%, so anything under ×3 has to stay green.
+    // Twice the recorded number is a loaded machine, not a regression, so
+    // anything under ×3 has to stay green.
     const loaded = checkBudgets([timing('/api/usage', 2000, 2200)], BUDGETS);
     expect(loaded.breaches).toEqual([]);
   });
@@ -85,8 +84,7 @@ describe('per-route time budgets', () => {
     expect(checkBudgets([timing('/api/usage', 40, 40)], tiny).checks[0]?.allowedMs).toBe(50);
     // Past the floor it fails, so the floor is a floor and not an exemption.
     expect(checkBudgets([timing('/api/usage', 60, 60)], tiny).breaches).toHaveLength(2);
-    // And the floor never binds for a route big enough for the ratio to mean
-    // something: 1000ms x3 is its own allowance.
+    // The floor never binds where the ratio means something: 1000ms x3 wins.
     expect(checkBudgets([timing('/api/usage', 100, 100)], BUDGETS).checks[0]?.allowedMs).toBe(3000);
   });
 

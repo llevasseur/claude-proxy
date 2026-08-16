@@ -7,10 +7,8 @@ import type { RouteBudgets } from '../src/parity.js';
  * The recorded per-route time budgets, and how the suite reads and rewrites them.
  *
  * A JSON fixture rather than constants in the test, because these are
- * *measurements* rather than decisions: they are rewritten wholesale by a
- * `ROUTE_BUDGETS=record` run, and a machine-written file is much easier to read
- * as data — and to review as a diff of numbers — than a machine-edited literal
- * in the middle of a suite.
+ * *measurements* rather than decisions: a `ROUTE_BUDGETS=record` run rewrites
+ * the file wholesale, and it reviews as a diff of numbers.
  */
 
 /** Absolute path to the fixture, so a failure message names a file that can be opened. */
