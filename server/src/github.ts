@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { isGitHubHost, type PullRequestRow, parsePullRequests, parseRemoteUrl } from '@claude-proxy/core';
 import { findOnPath } from './chat-cli.js';
+import { newestPullRequestUpdate, readStoredPullRequests, storePullRequests } from './db/pull-request-store.js';
 import { fetchMainHistory } from './main-history.js';
 
 const run = promisify(execFile);
@@ -42,9 +43,6 @@ const PR_FIELDS = [
 
 /** How many PRs to ask for. */
 export const DEFAULT_PR_LIMIT = 200;
-
-/** How long a fetch is reused before `gh` is run again. */
-const CACHE_MS = 60_000;
 
 /** A subprocess that hangs must not hold the request open. */
 const GH_TIMEOUT_MS = 20_000;
@@ -191,21 +189,34 @@ function ghFailure(err: unknown): string {
   return detail || 'gh pr list failed';
 }
 
-let cache: { key: string; at: number; result: PullRequestsResult } | null = null;
-
-/** Read the repository's pull requests. `limit` caps how many `gh` returns. */
+/**
+ * Read the repository's pull requests straight from GitHub — every one of them, up to
+ * `limit`, with no store between.
+ *
+ * This is the **whole** read for a caller that has no log directory to answer from:
+ * `ideas-pr.ts` matches ideas against pull requests from a CLI, once per run. The route
+ * does not come through here — see {@link servePullRequests}, which answers from the
+ * substrate and calls {@link refreshPullRequests} behind the response.
+ */
 export async function readPullRequests(repoDir: string, limit = DEFAULT_PR_LIMIT): Promise<PullRequestsResult> {
-  const key = `${repoDir}:${limit}`;
-  if (cache && cache.key === key && Date.now() - cache.at < CACHE_MS) {
-    return { ...cache.result, cached: true };
-  }
+  return fetchPullRequests(repoDir, limit, null);
+}
 
+/**
+ * One `gh pr list`, plus the ref fetch that draws the rail beside it.
+ *
+ * `since` is a `YYYY-MM-DD` day, and it is what makes a refresh incremental: GitHub is
+ * asked for `updated:>=<that day>` rather than for the last `limit` pull requests all
+ * over again. `null` asks for everything, which is the cold case.
+ */
+async function fetchPullRequests(repoDir: string, limit: number, since: string | null): Promise<PullRequestsResult> {
   const fetchedAt = new Date().toISOString();
 
   /**
-   * `main` and its pins ride this cache rather than the page's 30s poll, so the network
-   * cost of drawing the rail is the same one `gh pr list` already pays. It writes refs
-   * only — never the index, never the worktree — so it is safe in a checkout being used.
+   * `main` and its pins are fetched on this pass rather than on the page's poll, so the
+   * network cost of drawing the rail is the same one `gh pr list` already pays and it
+   * lands behind the response with it. It writes refs only — never the index, never the
+   * worktree — so it is safe in a checkout being used.
    */
   const refError = await fetchMainHistory(repoDir).then(
     () => null,
@@ -233,13 +244,12 @@ export async function readPullRequests(repoDir: string, limit = DEFAULT_PR_LIMIT
     );
   }
 
+  const args = ['pr', 'list', '--repo', repo, '--state', 'all', '--limit', String(limit), '--json', PR_FIELDS];
+  if (since) args.push('--search', `updated:>=${since}`);
+
   let stdout: string;
   try {
-    ({ stdout } = await run(
-      gh,
-      ['pr', 'list', '--repo', repo, '--state', 'all', '--limit', String(limit), '--json', PR_FIELDS],
-      { timeout: GH_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 },
-    ));
+    ({ stdout } = await run(gh, args, { timeout: GH_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 }));
   } catch (err) {
     return fail(repo, ghFailure(err));
   }
@@ -251,14 +261,109 @@ export async function readPullRequests(repoDir: string, limit = DEFAULT_PR_LIMIT
     return fail(repo, 'gh returned output that is not JSON');
   }
 
-  const result: PullRequestsResult = {
-    repo,
-    prs: parsePullRequests(parsed),
-    error: null,
-    fetchedAt,
-    cached: false,
-    refError,
-  };
-  cache = { key, at: Date.now(), result };
-  return result;
+  return { repo, prs: parsePullRequests(parsed), error: null, fetchedAt, cached: false, refError };
+}
+
+/**
+ * The day GitHub is asked from, out of the newest `updatedAt` on file.
+ *
+ * Day granularity rather than the timestamp itself, deliberately: `updated:>=` accepts
+ * either, and re-fetching the whole of the watermark's own day is a handful of rows
+ * against the risk of a boundary this code got wrong dropping an update on the floor.
+ * A watermark that is not a timestamp at all reads as no watermark, so the refresh asks
+ * for everything rather than for a window it cannot describe.
+ */
+function searchDay(newest: string | null): string | null {
+  const day = (newest ?? '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
+/** Passes in flight per log directory, so concurrent requests share one. */
+const refreshing = new Map<string, Promise<PullRequestsResult | null>>();
+
+/** When the last pass for a log directory finished. */
+const refreshedAt = new Map<string, number>();
+
+/**
+ * The floor between two refreshes of the same checkout. The page polls every 30
+ * seconds and every poll kicks off a pass, so without a floor the passes would run back
+ * to back forever — the same reason `RECONCILE_MIN_INTERVAL_MS` exists for the command
+ * store.
+ */
+export const REFRESH_MIN_INTERVAL_MS = 60_000;
+
+/**
+ * Bring the stored rows level with GitHub, and answer with what GitHub said.
+ *
+ * Deduped and floored: a pass already in flight is shared rather than started twice,
+ * and a pass inside {@link REFRESH_MIN_INTERVAL_MS} of the last one returns `null`
+ * without running unless `force` says otherwise. `force` is what the cold read uses,
+ * because it has no answer to serve while it waits.
+ *
+ * The result is returned as well as stored so the cold read can serve the pass it just
+ * waited for, rather than fetching a second time when there is no substrate to have
+ * written it into.
+ *
+ * A failure is swallowed for the caller that does not wait — the rows are a copy of
+ * GitHub, and serving yesterday's beats 500-ing the page. A *setup* failure that GitHub
+ * itself reported — no `gh`, not signed in, no remote — is stored rather than swallowed,
+ * since that is the hint the page renders in place of a tree.
+ */
+export function refreshPullRequests(
+  logDir: string,
+  repoDir: string,
+  limit = DEFAULT_PR_LIMIT,
+  force = false,
+): Promise<PullRequestsResult | null> {
+  const held = refreshing.get(logDir);
+  if (held) return held;
+  if (!force && Date.now() - (refreshedAt.get(logDir) ?? 0) < REFRESH_MIN_INTERVAL_MS) return Promise.resolve(null);
+
+  const pass = (async () => {
+    const since = searchDay(newestPullRequestUpdate(logDir, repoDir));
+    const result = await fetchPullRequests(repoDir, limit, since);
+    const { repo, error, fetchedAt, refError } = result;
+    storePullRequests(logDir, repoDir, { repo, error, refError, fetchedAt }, result.prs);
+    return result;
+  })()
+    .catch(() => null)
+    .finally(() => {
+      refreshedAt.set(logDir, Date.now());
+      refreshing.delete(logDir);
+    });
+
+  refreshing.set(logDir, pass);
+  return pass;
+}
+
+/**
+ * What the route serves: the rows already on file, with a refresh left running behind
+ * the answer.
+ *
+ * The wait is the cold case only — a substrate that has never held a row for this
+ * checkout has nothing to serve, and an empty tree is a claim about the repository
+ * rather than a state of the cache. Every load after that is one indexed query.
+ *
+ * `cached` is true for a stored answer, which is what the page already labels; the
+ * `fetchedAt` beside it is when the refresh that wrote those rows ran, not now.
+ */
+export async function servePullRequests(
+  logDir: string,
+  repoDir: string,
+  limit = DEFAULT_PR_LIMIT,
+): Promise<PullRequestsResult> {
+  const stored = readStoredPullRequests(logDir, repoDir, limit);
+  if (stored) {
+    void refreshPullRequests(logDir, repoDir, limit);
+    return { ...stored, cached: true };
+  }
+
+  const fresh = await refreshPullRequests(logDir, repoDir, limit, true);
+  const filled = readStoredPullRequests(logDir, repoDir, limit);
+  if (filled) return { ...filled, cached: true };
+
+  // Nothing to read back: no substrate to have stored into, or the pass itself threw.
+  // The pass's own result is then the whole answer, exactly as it was before this table
+  // existed — and a pass that threw falls through to one direct read.
+  return fresh ?? fetchPullRequests(repoDir, limit, null);
 }

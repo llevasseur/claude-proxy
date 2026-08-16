@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -590,6 +590,60 @@ ALTER TABLE session ADD COLUMN pr_url TEXT;
 UPDATE session SET bytes = -1;
 `;
 
+/**
+ * The repository's pull requests, one row each, so `/api/pull-requests` answers from
+ * an indexed query and the `gh` call happens behind the response rather than in front
+ * of it. See `server/src/db/pull-request-store.ts` for what a row means.
+ *
+ * **The one table here whose source is not `logs/`, and it is derived and disposable
+ * for the same reason every other one is.** GitHub holds the truth about a pull
+ * request; these rows are a materialized copy of what `gh pr list` last said, so
+ * deleting the file costs one full refetch and no information. Nothing authored lives
+ * here, and ADR 0004 stands.
+ *
+ * Keyed on the **checkout** rather than on the `owner/name` slug, because that is what
+ * the route has in hand: resolving a slug is itself four subprocess layers
+ * (`resolveSlug`), and a read that had to run them first would put a fork back on the
+ * request path this exists to clear. The slug is carried on `pull_request_repo`
+ * beside the last refresh's outcome, so one keyed lookup supplies `repo`, `error`,
+ * `refError` and `fetchedAt` while the row query supplies the rows.
+ *
+ * `updated_at` is `gh`'s own `updatedAt` for the row, indexed because the refresh's
+ * watermark is `MAX(updated_at)` for the checkout — the newest thing on file, which is
+ * what `gh pr list --search "updated:>=<date>"` is then asked for. It needs no field
+ * the list read did not already ask for.
+ *
+ * `document` is the parsed `PullRequestRow`'s own JSON, for the same reason
+ * `command_run` and `concept` carry one: the row round-trips through it, so the route
+ * answers with what `gh` said rather than something rebuilt from columns, and adding a
+ * displayed field later is not a migration.
+ */
+const SCHEMA_V16 = `
+CREATE TABLE IF NOT EXISTS pull_request_repo (
+  -- Absolute path of the checkout whose pull requests these are.
+  repo_dir   TEXT PRIMARY KEY,
+  -- \`owner/name\`, or null when the remote could not be read as GitHub.
+  repo       TEXT,
+  -- The last refresh's setup failure, phrased for the page. Null when it succeeded.
+  error      TEXT,
+  -- Why \`main\` and its pins could not be brought up to date, if they could not.
+  ref_error  TEXT,
+  -- When the last refresh that reached GitHub ran.
+  fetched_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pull_request (
+  repo_dir   TEXT    NOT NULL,
+  number     INTEGER NOT NULL,
+  updated_at TEXT    NOT NULL,
+  -- The row's own JSON, verbatim. See the note above.
+  document   TEXT    NOT NULL,
+  PRIMARY KEY (repo_dir, number)
+);
+
+CREATE INDEX IF NOT EXISTS pull_request_updated_idx ON pull_request(repo_dir, updated_at);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -711,6 +765,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 13) db.exec(SCHEMA_V13);
   if (from < 14) db.exec(SCHEMA_V14);
   if (from < 15) db.exec(SCHEMA_V15);
+  if (from < 16) db.exec(SCHEMA_V16);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
