@@ -20,11 +20,13 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   type AuditSidecar,
+  type AuditTokens,
   addTokens,
   analyzeRequestBody,
   attributeSteps,
   COMMAND_RUN_SCHEMA,
   type CommandRun,
+  type CommandRunSpawn,
   type CommandRunTurn,
   type CommandStep,
   classifyOutcome,
@@ -662,6 +664,38 @@ function buildRun(input: {
   const wallFrom = range ? started : (graph.started ?? started);
   const wallTo = range ? ended : (modified ?? ended);
 
+  // Spawns: every subagent below this run's root, charged with *its own* turns only, so a
+  // subagent that delegated again is one row and its child is another rather than the
+  // parent absorbing both. `family` is root-first with parents before children, and that
+  // order is kept.
+  const ownTurns = new Map<string, { tokens: AuditTokens; turns: number }>();
+  for (const turn of turns) {
+    const row = ownTurns.get(turn.threadId) ?? { tokens: ZERO_TOKENS, turns: 0 };
+    row.tokens = addTokens(row.tokens, turn.tokens);
+    row.turns += 1;
+    ownTurns.set(turn.threadId, row);
+  }
+  // Depth is recorded against the whole session tree, so a nested run's root may sit deep;
+  // restate it relative to this run, where 1 is a spawn the root made itself.
+  const rootDepth = byThread.get(graph.threadId)?.depth ?? 0;
+  const spawns: CommandRunSpawn[] = family
+    .filter((threadId) => threadId !== graph.threadId)
+    .map((threadId) => {
+      const link = byThread.get(threadId);
+      const own = ownTurns.get(threadId) ?? { tokens: ZERO_TOKENS, turns: 0 };
+      return {
+        threadId,
+        parentThreadId: link?.parentThreadId ?? null,
+        agentType: link?.agentType ?? null,
+        spawnNode: link?.spawnIndex ?? null,
+        step: stepOfThread.get(threadId) ?? null,
+        depth: Math.max(1, (link?.depth ?? 0) - rootDepth),
+        tokens: own.tokens,
+        cost: estimateCost(own.tokens, priced).total,
+        turns: own.turns,
+      };
+    });
+
   return {
     schema: COMMAND_RUN_SCHEMA,
     runId: identity.runId,
@@ -689,6 +723,7 @@ function buildRun(input: {
       wallMs: spanMs(wallFrom, wallTo),
     },
     turns,
+    spawns,
     stepStats: summarizeSteps({ steps, nodes, attributions, turns, model: priced }),
     outcome: classifyOutcome({
       reachedEnd: reached,

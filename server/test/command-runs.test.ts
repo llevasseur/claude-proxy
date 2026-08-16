@@ -320,6 +320,39 @@ describe('reconcileCommandRuns', () => {
     expect(run.turns.find((t) => t.threadId === subThread)!.step).toBe('2');
   });
 
+  it('records each spawn with the agent type its call named and its own tokens', async () => {
+    const subRoot = 'go and research the thing';
+    const subThread = threadIdFor(SESSION_ID, subRoot);
+    await writeSession(
+      THREAD_ID,
+      SESSION_ID,
+      ROOT,
+      [
+        '- Bash(command=my-command-tools verify)',
+        `- Agent(subagent_type=Explore, threadId=${subThread})`,
+        '- done: ok',
+      ].join('\n'),
+    );
+    await writeSession(subThread, SESSION_ID, subRoot, '- decided: looking');
+    await writeCapture({ iso: '2026-07-15T14:01:00.000Z', sessionId: SESSION_ID, root: ROOT, nodes: 2 });
+    await writeCapture({ iso: '2026-07-15T14:02:00.000Z', sessionId: SESSION_ID, root: subRoot, nodes: 2 });
+
+    await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-15T18:00:00.000Z'));
+    const run = (await readCommandRuns(logDir)).find((r) => r.threadId === THREAD_ID)!;
+
+    expect(run.spawns).toHaveLength(1);
+    // The subagent is charged its own single turn, not the root's.
+    expect(run.spawns[0]).toMatchObject({
+      threadId: subThread,
+      parentThreadId: THREAD_ID,
+      agentType: 'Explore',
+      step: '2',
+      depth: 1,
+      turns: 1,
+    });
+    expect(run.spawns[0]!.tokens.realInput).toBeLessThan(run.totals.tokens.realInput);
+  });
+
   it('still renders a run whose command has been uninstalled, against the steps it ran under', async () => {
     await writeSession(THREAD_ID, SESSION_ID, ROOT, '- Bash(command=my-command-tools verify)\n- done: ok');
     await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-15T18:00:00.000Z'));
