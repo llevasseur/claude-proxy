@@ -899,6 +899,15 @@ async function linkInto(
  * `commands/runs.jsonl` is *copied* for the same reason `sessions/` is: the
  * reconcile pass appends to it while a run is in flight, and a hardlink would
  * carry those appends into the snapshot.
+ *
+ * **Which is why two concurrent runs cannot share one snapshot or one ingest**, even
+ * though every worktree's `logs/` symlinks to the same checkout. The assertion is
+ * `file-read(snapshot) === db-read(database)` and only holds while the two name the
+ * same bytes. Two runs verifying at once are two agent sessions, each appending to
+ * its own `sessions/<thread>.md` and to the shared `commands/runs.jsonl` as it goes,
+ * so one run's database against the other's files disagrees — correctly, and about
+ * nothing under test. Sharing the snapshot too would freeze the corpus at an instant
+ * neither run chose and race one run's `afterAll` against the other's replay.
  */
 async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
   const snap = await mkdtemp(path.join(tmpdir(), 'parity-real-'));
@@ -946,11 +955,78 @@ async function snapshotSettings(): Promise<string> {
 }
 
 /**
+ * How many archived days the real-corpus replay covers by default, counting back
+ * from the most recent.
+ *
+ * The whole archive was the corpus until this cap, and that cost is linear in a
+ * directory that only ever grows: at 24 days, `beforeAll` snapshots it and ingests
+ * it single-threaded into a ~1.4 GB database before the first assertion runs — 7-15
+ * minutes of every `my-command-tools verify`, on one pinned core.
+ *
+ * Five is what a parity defect needs to surface. The suite compares two readers of
+ * the same row *shapes*, so a disagreement reproduces on any day carrying the shape
+ * rather than on one particular day; the days are near-identical samples, not
+ * independent ones.
+ *
+ * `PARITY_DAYS=all` restores the full sweep — the run to make before a substrate
+ * change lands. A positive integer sets the cap instead, for bisecting a day back
+ * into range.
+ */
+const DEFAULT_REAL_DAYS = 5;
+
+/**
+ * The most recent `PARITY_DAYS` entries of `days`, which arrive oldest first.
+ *
+ * Neither `all` nor a positive integer throws rather than falling back, since a
+ * typo'd override would otherwise replay five days for someone who asked for all of
+ * them and say nothing.
+ */
+function capDays(days: string[], raw: string | undefined = process.env.PARITY_DAYS): string[] {
+  if (raw === undefined || raw === '') return days.slice(-DEFAULT_REAL_DAYS);
+  if (raw.toLowerCase() === 'all') return days;
+  const limit = Number(raw);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`PARITY_DAYS must be "all" or a positive integer, got ${JSON.stringify(raw)}`);
+  }
+  return days.slice(-limit);
+}
+
+/**
  * This machine's archived days, listed while the suite is being *collected* —
  * which is what lets each day be named as its own case below. `beforeAll` is a
  * tick too late: by then the cases are already fixed.
+ *
+ * Capped to the most recent {@link DEFAULT_REAL_DAYS}; see {@link capDays}.
  */
-const REAL_DAYS = archivedDaysSync(resolveLogDir());
+const REAL_DAYS = capDays(archivedDaysSync(resolveLogDir()));
+
+describe('the archived-day cap', () => {
+  const days = ['2026-08-01', '2026-08-02', '2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06'];
+
+  it('keeps the most recent days, newest last', () => {
+    expect(capDays(days, undefined)).toEqual(days.slice(1));
+    expect(capDays(days, '')).toEqual(days.slice(1));
+    expect(capDays(days, '2')).toEqual(['2026-08-05', '2026-08-06']);
+  });
+
+  it('restores the full sweep on `all`, whatever case it is written in', () => {
+    expect(capDays(days, 'all')).toEqual(days);
+    expect(capDays(days, 'ALL')).toEqual(days);
+  });
+
+  it('asks for no more days than there are', () => {
+    expect(capDays(days, '99')).toEqual(days);
+    expect(capDays([], undefined)).toEqual([]);
+  });
+
+  // The one case that must not read as the default, since it would silently narrow
+  // a sweep someone asked for in full.
+  it('refuses a value that is neither `all` nor a positive count', () => {
+    for (const raw of ['alll', '0', '-1', '2.5', 'five']) {
+      expect(() => capDays(days, raw), raw).toThrow(/PARITY_DAYS/);
+    }
+  });
+});
 
 /**
  * The split the cases below are drawn along: a `perDay` route gets one case per
@@ -966,6 +1042,10 @@ const WHOLE_ROUTES = PARITY_ROUTES.filter((r) => !r.perDay);
  * One case per archived day, rather than one case for all of them. What is
  * compared is unchanged, but the archive only ever grows, so a single case
  * carrying the sum of every day outgrows any budget it is given, and did.
+ *
+ * The days replayed are the most recent {@link DEFAULT_REAL_DAYS}, which keeps the
+ * *suite* from outgrowing its budget the way a single case did. `PARITY_DAYS=all`
+ * restores the full sweep.
  */
 describe('route parity over the real logs/archive', () => {
   let snapshot: string | null = null;

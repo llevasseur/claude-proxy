@@ -37,6 +37,9 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
   `PRAGMA user_version`.
 - A slice is not done until the parity harness is green for its routes across
   every archived day, on the **full** JSON. A diff you cannot name is a bug.
+  Since the archive passed 24 days the suite replays only the most recent five by
+  default, so "every archived day" is `PARITY_DAYS=all pnpm --filter server test` —
+  the run to make before a substrate change lands, rather than on every `verify`.
 
 ## The six slices
 
