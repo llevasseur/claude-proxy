@@ -13,5 +13,7 @@ export interface Env {
   BACKUP_PATH?: string;
   /** Where the ideas export is committed. Defaults to `ideas.json`. See ADR 0006. */
   BACKUP_IDEAS_PATH?: string;
+  /** Where the complete Notes projection and revision history are committed. */
+  BACKUP_NOTES_PATH?: string;
   BACKUP_BRANCH?: string;
 }

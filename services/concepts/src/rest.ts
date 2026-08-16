@@ -23,6 +23,16 @@ import {
   markIdeas,
 } from './ideas.ts';
 import {
+  archiveNote,
+  createNote,
+  getNote,
+  listNotes,
+  NoteError,
+  restoreNote,
+  searchNotes,
+  updateNote,
+} from './notes.ts';
+import {
   ConceptError,
   type ConceptFilter,
   conceptFacets,
@@ -112,7 +122,61 @@ export async function handleRest(request: Request, url: URL, db: Db): Promise<Re
 
   if (path.startsWith('/api/ideas')) return handleIdeas(request, path, params, db);
 
+  if (path.startsWith('/api/notes')) return handleNotes(request, path, params, db);
+
   return null;
+}
+
+function noteLimit(params: URLSearchParams): number | undefined {
+  const value = params.get('limit');
+  return value === null ? undefined : Number(value);
+}
+
+async function handleNotes(request: Request, path: string, params: URLSearchParams, db: Db): Promise<Response> {
+  if (path === '/api/notes' && request.method === 'GET') {
+    return json(
+      await listNotes(db, {
+        cursor: params.get('cursor') ?? undefined,
+        limit: noteLimit(params),
+        archived: params.get('archived') === 'true',
+      }),
+    );
+  }
+  if (path === '/api/notes/search' && request.method === 'GET') {
+    return json(
+      await searchNotes(db, params.get('q') ?? '', {
+        cursor: params.get('cursor') ?? undefined,
+        limit: noteLimit(params),
+      }),
+    );
+  }
+  if (path === '/api/notes/note' && request.method === 'GET') {
+    const id = params.get('id');
+    if (!id) throw new NoteError(400, '`id` is required');
+    const note = await getNote(db, id);
+    if (!note) throw new NoteError(404, `no note with id ${id}`);
+    return json({ note });
+  }
+  if (path === '/api/notes' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) throw new NoteError(400, 'JSON body is required');
+    return json({ note: await createNote(db, body) }, 201);
+  }
+  if (path === '/api/notes/update' && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const id = typeof body?.id === 'string' ? body.id : '';
+    if (!id) throw new NoteError(400, '`id` is required');
+    const result = await updateNote(db, id, body ?? {});
+    return 'conflict' in result ? json(result, 409) : json(result);
+  }
+  if ((path === '/api/notes/archive' || path === '/api/notes/restore') && request.method === 'POST') {
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const id = typeof body?.id === 'string' ? body.id : '';
+    if (!id) throw new NoteError(400, '`id` is required');
+    const note = path.endsWith('/archive') ? await archiveNote(db, id) : await restoreNote(db, id);
+    return json({ note });
+  }
+  throw new NoteError(404, `no route for ${request.method} ${path}`);
 }
 
 /** Reads `?status=`, `?repo=` and `?area=` the way the local server's route does. */
