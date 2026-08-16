@@ -9,6 +9,7 @@ import {
 } from '@claude-proxy/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { Check, Fingerprint } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { claimIdeas, markIdeas } from '../api';
 import { fmtLocalTsShort } from '../format';
@@ -32,6 +33,71 @@ export const IDEA_STATUS_LABEL: Record<IdeaStatus, string> = {
   rejected: 'Rejected',
   shipped: 'Shipped',
 };
+
+/**
+ * The idea's key, as a fingerprint that copies it.
+ *
+ * **The key is the slug** — the idea has no other identifier, and the same
+ * string is the dedupe key, this page's permalink, and the `slug` argument the
+ * hosted `ideas_get`, `ideas_claim` and `ideas_mark` MCP tools take. So copying
+ * it is how a human hands one idea to an agent: paste the key, and the agent can
+ * fetch that idea by key rather than listing the whole ledger. A fingerprint
+ * rather than a clipboard glyph because what it copies is the idea's *identity*,
+ * not the text of the card it sits on.
+ *
+ * The slot is rendered unconditionally and the copied state swaps one glyph for
+ * another of the same size inside a fixed box, so nothing on the row moves when
+ * a copy lands. Its vertical centring against a title that wraps is the CSS's
+ * job (`.idea-key` in `styles/components/ideas.css`), not this component's.
+ */
+export function IdeaKey({ slug }: { slug: string }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (state === 'idle') return;
+    const t = setTimeout(() => setState('idle'), 1500);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  const copy = async () => {
+    try {
+      // Same guard the /task prompt's copy uses: the API is absent rather than
+      // failing when the dashboard is served over plain http from another host.
+      if (!navigator.clipboard) throw new Error('the clipboard needs a secure context (https or localhost)');
+      await navigator.clipboard.writeText(slug);
+      setError('');
+      setState('copied');
+    } catch (err) {
+      setError((err as Error).message);
+      setState('failed');
+    }
+  };
+
+  const label =
+    state === 'copied'
+      ? `Copied the key ${slug}`
+      : state === 'failed'
+        ? `Could not copy the key ${slug} — ${error}`
+        : `Copy the key ${slug}`;
+
+  return (
+    <>
+      <button
+        type='button'
+        className={`idea-key${state === 'idle' ? '' : ` is-${state}`}`}
+        onClick={copy}
+        title={label}
+        aria-label={label}>
+        {state === 'copied' ? <Check size={14} aria-hidden='true' /> : <Fingerprint size={14} aria-hidden='true' />}
+      </button>
+      {/* Out of flow, so announcing the outcome adds no item to the row. */}
+      <span className='sr-only' role='status'>
+        {state === 'idle' ? '' : label}
+      </span>
+    </>
+  );
+}
 
 /** What an idea cites, on every card — the evidence is what makes it approvable. */
 export function IdeaEvidenceList({ evidence }: { evidence: readonly IdeaEvidence[] }) {
@@ -308,6 +374,8 @@ export function IdeaCard({ idea }: { idea: IdeaEntry }) {
             {idea.title}
           </Link>
         </h3>
+        {/* The key, immediately right of the name it identifies. */}
+        <IdeaKey slug={idea.slug} />
         {/* Unfiled for a row written before areas existed — `ideas file` classifies it. */}
         <span className={`badge idea-area${idea.area ? '' : ' idea-area-unfiled'}`}>{ideaAreaLabel(idea.area)}</span>
         <code className='idea-repo muted'>{idea.repo}</code>

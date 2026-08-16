@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isAuthorized } from '../src/auth.ts';
 import type { Db } from '../src/db.ts';
+import { addIdeas, markIdeas } from '../src/ideas.ts';
 import { handleMcp } from '../src/mcp.ts';
 import { saveConcept } from '../src/store.ts';
 import { concept, testDb } from './harness.ts';
@@ -61,7 +62,7 @@ describe('handleMcp', () => {
     expect(body.result._meta['io.modelcontextprotocol/serverInfo']).toEqual({ name: 'operator', version: '0.2.0' });
   });
 
-  it('advertises the three concept tools and the four ideas tools, each with a schema', async () => {
+  it('advertises the three concept tools and the five ideas tools, each with a schema', async () => {
     const response = await handleMcp(rpc('tools/list'), testDb());
     const body = (await response.json()) as { result: { tools: { name: string; inputSchema: unknown }[] } };
     expect(body.result.tools.map((t) => t.name)).toEqual([
@@ -69,6 +70,7 @@ describe('handleMcp', () => {
       'concepts_get',
       'concepts_search',
       'ideas_list',
+      'ideas_get',
       'ideas_add',
       'ideas_claim',
       'ideas_mark',
@@ -232,6 +234,65 @@ describe('concepts_search', () => {
     expect(isError).toBe(true);
   });
 
+  it('reports an unknown tool rather than throwing', async () => {
+    const { isError, payload } = await call(testDb(), 'concepts_delete_everything');
+    expect(isError).toBe(true);
+    expect(payload.error).toMatch(/unknown tool/);
+  });
+});
+
+describe('ideas_get', () => {
+  const seed = async (db: Db) => {
+    await addIdeas(db, [
+      {
+        slug: 'rolling-window',
+        title: 'A rolling last-10 window beside the fixed buckets',
+        rationale: 'The fixed windows split a habit that spans a boundary.',
+        evidence: [{ source: 'open-question' as const, path: 'docs/features/session-suggestions.md' }],
+        repo: 'llevasseur/claude-proxy',
+        area: 'ui-ux',
+      },
+    ]);
+    return db;
+  };
+
+  it('returns one idea whole, addressed by its key alone', async () => {
+    const { payload } = await call(await seed(testDb()), 'ideas_get', { slug: 'rolling-window' });
+    const idea = payload.idea as { slug: string; title: string; status: string; evidence: unknown[] };
+    expect(idea.slug).toBe('rolling-window');
+    expect(idea.title).toMatch(/rolling last-10 window/);
+    expect(idea.status).toBe('proposed');
+    // The prose and the locators are the point of fetching one rather than listing.
+    expect(idea.evidence).toHaveLength(1);
+  });
+
+  it('carries the decision a human recorded, so the key answers with its status', async () => {
+    const db = await seed(testDb());
+    await markIdeas(db, [{ slug: 'rolling-window', status: 'rejected', note: 'covered by /trends' }]);
+    const { payload } = await call(db, 'ideas_get', { slug: 'rolling-window' });
+    expect(payload.idea).toMatchObject({ status: 'rejected', note: 'covered by /trends' });
+  });
+
+  it('flags a key nothing was added under as an error the model can act on', async () => {
+    const { payload, isError } = await call(await seed(testDb()), 'ideas_get', { slug: 'never-proposed' });
+    expect(isError).toBe(true);
+    expect(payload.error).toMatch(/no idea on the ledger is called never-proposed/);
+  });
+
+  it('refuses a malformed key rather than reporting it merely absent', async () => {
+    const { payload, isError } = await call(testDb(), 'ideas_get', { slug: 'Not A Slug' });
+    expect(isError).toBe(true);
+    expect(payload.error).toMatch(/invalid slug/);
+  });
+
+  it('requires a slug', async () => {
+    const { isError, payload } = await call(testDb(), 'ideas_get', {});
+    expect(isError).toBe(true);
+    expect(payload.error).toMatch(/`slug` is required/);
+  });
+});
+
+describe('tool dispatch', () => {
   it('reports an unknown tool rather than throwing', async () => {
     const { isError, payload } = await call(testDb(), 'concepts_delete_everything');
     expect(isError).toBe(true);

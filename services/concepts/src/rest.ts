@@ -17,6 +17,7 @@ import {
   commentIdeas,
   exportIdeas,
   fileIdeas,
+  getIdea,
   IdeaError,
   listIdeas,
   markIdeas,
@@ -164,6 +165,16 @@ async function handleIdeas(request: Request, path: string, params: URLSearchPara
 
   if (path === '/api/ideas' && request.method === 'GET') {
     return json(await listIdeas(db, ideaFilterFromParams(params), params.get('available') === 'true'));
+  }
+
+  // One idea by its key, the sibling of `/api/concepts/concept`. The key is the
+  // kebab-case slug and nothing else, so this route needs no other parameter.
+  if (path === '/api/ideas/idea' && request.method === 'GET') {
+    const slug = params.get('slug');
+    if (!slug) throw new IdeaError(400, '`slug` is required');
+    const idea = await getIdea(db, slug);
+    if (!idea) throw new IdeaError(404, `no idea on the ledger is called ${slug}`);
+    return json({ idea });
   }
 
   if (path === '/api/ideas' && request.method === 'POST') {

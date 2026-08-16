@@ -172,6 +172,54 @@
     resize: vertical;
   }
 
+  /* The key, as a fingerprint that copies it. See `IdeaKey` in IdeaCard.tsx.
+
+   Three things here are the requirement rather than styling. `flex: 0 0 auto`
+   with an explicit square makes the slot **always** the same width, whether the
+   glyph is the fingerprint or the copied check, so a card never reflows as a
+   copy lands or a title changes. `align-self: center` centres it against the
+   flex line rather than the row, which is what puts it halfway down a title that
+   has wrapped to two or three lines — and stating it here rather than leaning on
+   the container's `align-items` is why it holds in `.pagehead` too, whose own
+   alignment is `baseline`. And the box is sized off the type scale rather than
+   the icon, so it stays a comfortable target at 14px of glyph. */
+  .idea-key {
+    flex: 0 0 auto;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--space-11);
+    height: var(--space-11);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-3);
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition:
+      color var(--motion-duration) ease,
+      border-color var(--motion-duration) ease;
+  }
+  .idea-key:hover {
+    color: var(--text);
+    border-color: var(--line);
+  }
+  .idea-key.is-copied {
+    color: var(--good);
+  }
+  .idea-key.is-failed {
+    color: var(--high);
+    border-color: var(--high);
+  }
+  /* A page title carrying its key: the pair travels together as one head item,
+   so `space-between` cannot strand the key at the opposite edge. */
+  .idea-titled {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+  }
+
   /* The /task prompt: one editable field, copied from where it is read. */
   .idea-prompt-copy {
     margin-left: auto;

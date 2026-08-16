@@ -36,8 +36,10 @@ import {
   type IdeaMark,
   type IdeaStatus,
   type IdeasStore,
+  ideaOf,
   ideaRows,
   isIdeaClaimStale,
+  isIdeaSlug,
   isIdeaTakeable,
   similarAreas,
   similarIdeaSlugs,
@@ -116,7 +118,18 @@ export async function readIdeas(db: Db, now: Date = new Date()): Promise<IdeasSt
   // event, so events sharing a millisecond would otherwise replay in hash order
   // and a mark could land before the add it marks.
   const events = await db.all<EventRow>('SELECT id, slug, kind, at, document FROM idea_event ORDER BY at ASC, seq ASC');
+  return overlayClaims(replay(events), await db.all<ClaimRow>('SELECT slug, holder, at, pr FROM idea_claim'), now);
+}
 
+/**
+ * Fold events into a store, oldest first.
+ *
+ * Shared by the whole-ledger read and the by-key read below so the two cannot
+ * disagree about what an event means. Every `applyIdea*` keys on the event's own
+ * slug, which is exactly what makes replaying one key's events **alone** produce
+ * the same entry a full replay would have produced for it.
+ */
+function replay(events: readonly EventRow[]): IdeasStore {
   let store = emptyIdeasStore();
   for (const event of events) {
     // A row this code cannot read is skipped rather than emptying the ledger,
@@ -142,7 +155,7 @@ export async function readIdeas(db: Db, now: Date = new Date()): Promise<IdeasSt
     }
   }
 
-  return overlayClaims(store, await db.all<ClaimRow>('SELECT slug, holder, at, pr FROM idea_claim'), now);
+  return store;
 }
 
 /**
@@ -207,6 +220,36 @@ export async function listIdeas(
     areas: countIdeaAreas(ideaRows(store)),
     total: Object.keys(store.ideas).length,
   };
+}
+
+/**
+ * One idea, by its key.
+ *
+ * **The key is the slug alone** — that is what `packages/core` says an idea is
+ * identified by, and it is why this needs no new identifier to be queryable: the
+ * dedupe key, the permalink and the argument every write already takes are the
+ * same string. So this is the read that was missing rather than a new naming
+ * scheme, and a caller holding a key can fetch that one idea instead of listing
+ * the ledger and filtering it client-side.
+ *
+ * It reads **that key's own events**, which the `idea_event_slug` index serves
+ * directly, so the cost is the one idea's history rather than the whole log.
+ * `null` means no idea has ever been added under the key — including a key that
+ * was proposed and rejected, since a rejected row is kept and still answers.
+ */
+export async function getIdea(db: Db, slug: string, now: Date = new Date()): Promise<IdeaEntry | null> {
+  // A malformed key is the caller's mistake, not an absent idea: answering 404
+  // for it would report `typo_here` as merely not on the ledger yet.
+  if (!isIdeaSlug(slug)) throw new IdeaError(400, `invalid slug: ${slug} (expected a kebab-case key)`);
+
+  const events = await db.all<EventRow>(
+    'SELECT id, slug, kind, at, document FROM idea_event WHERE slug = ? ORDER BY at ASC, seq ASC',
+    [slug],
+  );
+  if (events.length === 0) return null;
+
+  const claims = await db.all<ClaimRow>('SELECT slug, holder, at, pr FROM idea_claim WHERE slug = ?', [slug]);
+  return ideaOf(overlayClaims(replay(events), claims, now), slug);
 }
 
 export interface IdeaAddOutcome {
