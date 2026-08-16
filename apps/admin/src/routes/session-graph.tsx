@@ -10,6 +10,8 @@ import { getCommands, getContextMessage, getSessionGraphNodes, getSessionNodeTex
 import { livenessTitle } from '../components/LivenessBadge';
 import { Skeleton, SkeletonStatus } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort } from '../format';
+import type { AgentFacts } from '../graph-agents';
+import { agentLabel, indexAgents } from '../graph-agents';
 import type { CommandFamily, CommandRunSpan } from '../graph-commands';
 import { FAMILY_LABEL, FAMILY_TOKEN, indexCommandRuns, runLabel } from '../graph-commands';
 import type { GrainId } from '../graph-grains';
@@ -72,6 +74,12 @@ const LEGEND: { tone: Tone; label: string }[] = [
 
 /** The command grain's own legend: one swatch per family, most-changing first. */
 const COMMAND_LEGEND: CommandFamily[] = ['build', 'shape', 'review', 'read', 'other'];
+
+/** The agent grain's legend: the only two kinds of box that projection leaves on the canvas. */
+const AGENT_LEGEND: { tone: Tone; label: string }[] = [
+  { tone: 'root', label: 'session' },
+  { tone: 'agent', label: 'agent' },
+];
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
@@ -276,10 +284,11 @@ export function SessionGraphPage() {
   // Which `Skill(…)` names open a command run is a fact about what is installed, so the command
   // grain is bound to the catalogue rather than guessing from the transcript. Fetched only for
   // that grain; until it lands, every skill call counts, which over-draws rather than emptying.
+  // The agent grain wants it too — an agent box's drawer lists the commands that agent ran.
   const commandsQuery = useQuery({
     queryKey: ['commands'],
     queryFn: getCommands,
-    enabled: grainId === 'command',
+    enabled: grainId === 'command' || grainId === 'agent',
     staleTime: 5 * 60_000,
   });
   const installed = useMemo(
@@ -309,6 +318,17 @@ export function SessionGraphPage() {
     (box: Box): CommandRunSpan | undefined =>
       box.node ? runIndex?.get(box.entry.threadId)?.get(box.node.index) : undefined,
     [runIndex],
+  );
+
+  // The agents behind the boxes the agent grain placed, keyed by dispatching thread and step.
+  const agentIndex = useMemo(
+    () => (grainId === 'agent' ? indexAgents(all, isCommand) : null),
+    [grainId, all, isCommand],
+  );
+  const agentOf = useCallback(
+    (box: Box): AgentFacts | undefined =>
+      box.node ? agentIndex?.get(box.entry.threadId)?.get(box.node.index) : undefined,
+    [agentIndex],
   );
 
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -460,6 +480,17 @@ export function SessionGraphPage() {
     void navigate({ to: '/sessions/graph', search: { session: picked.threadId }, replace: true });
   };
 
+  /**
+   * The agent drawer's way down into the finer views: redraw at the grain that shows what was
+   * clicked, center the agent it belongs to, and open the drawer on that box. The grain change
+   * refits and the focus change recenters, so the box lands on screen rather than merely selected.
+   */
+  const openAt = useCallback((grain: GrainId, target: SessionGraphEntry, node: SessionNode | null) => {
+    setGrainId(grain);
+    setFocusId(target.parentThreadId === null ? null : target.threadId);
+    setSelected({ entry: target, node });
+  }, []);
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
     if (
@@ -583,6 +614,7 @@ export function SessionGraphPage() {
                 key={box.key}
                 box={box}
                 run={runOf(box)}
+                agent={agentOf(box)}
                 selected={
                   !!selected?.node &&
                   selected.entry.threadId === box.entry.threadId &&
@@ -683,7 +715,7 @@ export function SessionGraphPage() {
                     {FAMILY_LABEL[family]}
                   </span>
                 ))
-              : LEGEND.map((l) => (
+              : (grainId === 'agent' ? AGENT_LEGEND : LEGEND).map((l) => (
                   <span key={l.tone} className='glegend-item'>
                     <span className='glegend-dot' style={{ background: color(l.tone) }} />
                     {l.label}
@@ -700,12 +732,14 @@ export function SessionGraphPage() {
         <Inspector
           panelRef={inspectorRef}
           selection={selected}
+          agent={selected?.node ? agentIndex?.get(selected.entry.threadId)?.get(selected.node.index) : undefined}
           byId={byId}
           sources={sources}
           wide={inspectorWide}
           onToggleWide={() => setInspectorWide((w) => !w)}
           onClose={() => setSelected(null)}
           onFocusAgent={setFocusId}
+          onOpenAt={openAt}
         />
       </div>
     </section>
@@ -713,18 +747,20 @@ export function SessionGraphPage() {
 }
 
 /**
- * One placed step. `run` is set only at the command grain, where the box stands for a whole
- * command run: it then reads its family rather than a step type, and carries what the run
- * actually did — steps, tool calls, errors — since the steps themselves are folded away.
+ * One placed step. `run` is set only at the command grain and `agent` only at the agent grain,
+ * where the box stands for a whole run or agent and carries what it did — steps, tool calls,
+ * errors — in place of the folded-away steps.
  */
 function CommandOrStepBox({
   box,
   run,
+  agent,
   selected,
   onSelect,
 }: {
   box: Box;
   run: CommandRunSpan | undefined;
+  agent: AgentFacts | undefined;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -735,9 +771,9 @@ function CommandOrStepBox({
       className={`gnode gnode--${boxTone(box)}${run ? ' gnode--cmd' : ''}${cutClass(node)}${selected ? ' is-selected' : ''}`}
       style={boxStyle(box, run)}
       onClick={onSelect}>
-      <span className='gnode-kind'>{run ? FAMILY_LABEL[run.family] : nodeKind(node)}</span>
-      <span className='gnode-title' title={run ? commandHover(run) : hoverLabel(node)}>
-        {run ? runLabel(run) : nodeLabel(node)}
+      <span className='gnode-kind'>{run ? FAMILY_LABEL[run.family] : agent ? 'agent' : nodeKind(node)}</span>
+      <span className='gnode-title' title={run ? commandHover(run) : agent ? agentHover(agent) : hoverLabel(node)}>
+        {run ? runLabel(run) : agent ? agentLabel(agent) : nodeLabel(node)}
       </span>
       {run ? (
         <span className='gnode-chips'>
@@ -746,9 +782,30 @@ function CommandOrStepBox({
           {run.errors > 0 ? <span className='gchip-error'>{fmtInt(run.errors)} err</span> : null}
         </span>
       ) : null}
+      {agent ? (
+        <span className='gnode-chips'>
+          {agent.linked ? (
+            <>
+              <span>{fmtInt(agent.turns.length)} turns</span>
+              <span>{fmtInt(agent.tools)} tools</span>
+              {agent.errors > 0 ? <span className='gchip-error'>{fmtInt(agent.errors)} err</span> : null}
+              {agent.agents > 0 ? <span className='gchip-flight'>{fmtInt(agent.agents)} agents</span> : null}
+              {agent.inFlight ? <span className='gchip-flight'>in flight</span> : null}
+            </>
+          ) : (
+            <span className='muted'>no transcript</span>
+          )}
+        </span>
+      ) : null}
     </button>
   );
 }
+
+/** What an agent box says on hover: what it was dispatched as, and how much it folds away. */
+const agentHover = (agent: AgentFacts): string =>
+  agent.linked
+    ? `${agentLabel(agent)} — ${agent.turns.length} turns and ${agent.runs.length} command runs folded inside, dispatched at step #${agent.spawnIndex}`
+    : `${agentLabel(agent)} — dispatched at step #${agent.spawnIndex}, no transcript captured`;
 
 /** What a command box says on hover: which command, and the span of the transcript it holds. */
 const commandHover = (run: CommandRunSpan): string =>
@@ -912,21 +969,25 @@ function SessionNav({
 function Inspector({
   panelRef,
   selection,
+  agent,
   byId,
   sources,
   wide,
   onToggleWide,
   onClose,
   onFocusAgent,
+  onOpenAt,
 }: {
   panelRef: Ref<HTMLElement>;
   selection: Selection | null;
+  agent: AgentFacts | undefined;
   byId: Map<string, SessionGraphEntry>;
   sources: Map<string, string>;
   wide: boolean;
   onToggleWide: () => void;
   onClose: () => void;
   onFocusAgent: (id: string) => void;
+  onOpenAt: (grain: GrainId, entry: SessionGraphEntry, node: SessionNode | null) => void;
 }) {
   if (!selection) return null;
   // Remount per selection so a step opened after the last fetch pulls its own text.
@@ -935,12 +996,14 @@ function Inspector({
       key={`${selection.entry.threadId}:${selection.node?.index ?? 'root'}`}
       panelRef={panelRef}
       selection={selection}
+      agent={agent}
       byId={byId}
       sources={sources}
       wide={wide}
       onToggleWide={onToggleWide}
       onClose={onClose}
       onFocusAgent={onFocusAgent}
+      onOpenAt={onOpenAt}
     />
   );
 }
@@ -948,21 +1011,25 @@ function Inspector({
 function InspectorBody({
   panelRef,
   selection,
+  agent,
   byId,
   sources,
   wide,
   onToggleWide,
   onClose,
   onFocusAgent,
+  onOpenAt,
 }: {
   panelRef: Ref<HTMLElement>;
   selection: Selection;
+  agent: AgentFacts | undefined;
   byId: Map<string, SessionGraphEntry>;
   sources: Map<string, string>;
   wide: boolean;
   onToggleWide: () => void;
   onClose: () => void;
   onFocusAgent: (id: string) => void;
+  onOpenAt: (grain: GrainId, entry: SessionGraphEntry, node: SessionNode | null) => void;
 }) {
   const { entry, node } = selection;
   const texts = useQuery({
@@ -1041,6 +1108,7 @@ function InspectorBody({
                 <span className='gi-cut'>{interruptionLabel(node.interruption)}</span>
               </Field>
             ) : null}
+            {agent?.child ? <AgentFold agent={agent} child={agent.child} onOpenAt={onOpenAt} /> : null}
             {agentType === null ? null : spawned ? (
               <>
                 <Field label='Subagent'>{entryLabel(spawned)}</Field>
@@ -1130,6 +1198,87 @@ function RequestMessage({ file, index }: { file: string; index: number }) {
       </span>
       <LongText key={`m:${file}:${index}`} text={message.content} mono />
     </Field>
+  );
+}
+
+/**
+ * What one agent box folded away: the turns it took and the commands it ran. Each row redraws
+ * the canvas at the grain that draws that thing and opens it there.
+ */
+function AgentFold({
+  agent,
+  child,
+  onOpenAt,
+}: {
+  agent: AgentFacts;
+  child: SessionGraphEntry;
+  onOpenAt: (grain: GrainId, entry: SessionGraphEntry, node: SessionNode | null) => void;
+}) {
+  return (
+    <>
+      <Field label={`Its turns · ${fmtInt(agent.turns.length)}`}>
+        <FoldList
+          empty='no turns recorded'
+          rows={agent.turns.map((node) => ({
+            key: `t${node.index}`,
+            lead: `#${node.index}`,
+            label: nodeLabel(node),
+            onOpen: () => onOpenAt(TURN_GRAIN.id, child, node),
+          }))}
+        />
+      </Field>
+      <Field label={`Its commands · ${fmtInt(agent.runs.length)}`}>
+        <FoldList
+          empty='no command runs'
+          rows={agent.runs.map((run) => ({
+            key: `c${run.from}`,
+            lead: FAMILY_LABEL[run.family],
+            label: `${runLabel(run)} · ${fmtInt(run.steps)} steps`,
+            onOpen: () => onOpenAt('command', child, child.nodes.find((n) => n.index === run.from) ?? null),
+          }))}
+        />
+      </Field>
+    </>
+  );
+}
+
+/** One row of a fold: what it is, what it says, and the view it opens in. */
+interface FoldRow {
+  key: string;
+  lead: string;
+  label: string;
+  onOpen: () => void;
+}
+
+/** Rows shown before a fold asks to be opened — an agent's turns run to the hundreds. */
+const FOLD_ROWS = 18;
+
+function FoldList({ rows, empty }: { rows: FoldRow[]; empty: string }) {
+  const [open, setOpen] = useState(false);
+  if (rows.length === 0) return <span className='muted'>{empty}</span>;
+  const shown = open ? rows : rows.slice(0, FOLD_ROWS);
+
+  return (
+    <>
+      <ul className='gi-fold'>
+        {shown.map((row) => (
+          <li key={row.key}>
+            <button type='button' className='gi-fold-row' onClick={row.onOpen} title={row.label}>
+              <span className='gi-fold-lead mono'>{row.lead}</span>
+              <span className='gi-fold-label'>{row.label}</span>
+              <span className='gi-fold-go' aria-hidden>
+                →
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {rows.length > FOLD_ROWS ? (
+        <button type='button' className='link gi-more' onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          {open ? 'Show fewer' : `Show all ${fmtInt(rows.length)}`}
+        </button>
+      ) : null}
+    </>
   );
 }
 

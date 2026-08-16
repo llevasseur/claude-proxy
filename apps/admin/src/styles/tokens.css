@@ -101,6 +101,9 @@
     --space-page: 40px;
     --space-page-lg: 56px;
     --space-page-xl: 72px;
+    /* How tall a list inside the graph drawer may grow before it scrolls itself — a
+   * share of the viewport rather than a step, like the opened long-text field beside it. */
+    --graph-fold-max-h: 34vh;
 
     /* type
    *
