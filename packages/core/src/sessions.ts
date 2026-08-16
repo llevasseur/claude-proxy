@@ -127,6 +127,20 @@ const NAME_CHARS = 60;
  * and its first sentence kept, capped at {@link NAME_WORDS} words / {@link NAME_CHARS}
  * chars with an `…` marking the cut.
  */
+/**
+ * Whether this transcript is the far side of a compaction: the CLI opened it by replaying
+ * the previous conversation's summary, so the proxy filed it under a *new* thread id while
+ * the CLI kept the same `- session:` uuid.
+ *
+ * That is what makes the pair recognizable. A subagent shares its caller's uuid too, but a
+ * subagent opens on its own task prompt and never on this preamble, so the two cases do not
+ * collide.
+ */
+export function isContinuedSession(meta: Pick<SessionMeta, 'subtitle' | 'firstTask'>): boolean {
+  const opening = meta.subtitle ?? meta.firstTask;
+  return !!opening && CONTINUATION_RE.test(stripInjected(opening));
+}
+
 export function deriveSessionName(prompt: string | null): string | null {
   if (!prompt) return null;
 
