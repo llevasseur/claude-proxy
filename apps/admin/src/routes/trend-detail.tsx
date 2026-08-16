@@ -42,11 +42,8 @@ export function TrendDetailPage() {
   // order their colours follow, so removing one does not recolour the rest above it.
   const [selected, setSelected] = useState<readonly string[]>([]);
   const models = useModelOptions(days);
-  // The same summary feed the Overview and Trends pages read: it carries today's
-  // digest as the day is written, which is what keeps the closing point moving
-  // rather than frozen at whatever it was when this page was opened. Both are
-  // gated on the metric existing, as the window read below is — an unknown
-  // `$metric` renders a card and no chart, which is nothing for a stream to move.
+  // The same summary feed Overview and Trends read: it carries today's digest as
+  // the day is written, which is what keeps the closing point moving.
   const summary = useQuery({ queryKey: ['summary'], queryFn: () => getSummary(), enabled: !!def });
   const summaryLive = useLiveQuery<SummaryResponse>('/api/summary/stream', ['summary'], !!def);
   const query = useQuery({
@@ -67,9 +64,9 @@ export function TrendDetailPage() {
   });
   const fetched = query.data?.digests;
   const today = summary.data?.digest;
-  // Today spliced onto the all-models line, and onto that line alone: the summary
-  // digest counts every model, so the per-model series above stay a fetch behind on
-  // the day in progress rather than being told an all-models figure is theirs.
+  // Today spliced onto the all-models line alone: the summary digest counts every
+  // model, so the per-model series above stay a fetch behind on the day in progress
+  // rather than being told an all-models figure is theirs.
   const digests = useMemo(() => {
     const rows = fetched ?? [];
     return today ? withLiveToday(rows, today) : rows;
@@ -155,8 +152,8 @@ export function TrendDetailPage() {
             )
           )}
         </div>
-        {/* The stream's health, then which models are drawn, beside how far back —
-            the order `DayWindowControls` puts them in on the other trends pages. */}
+        {/* Stream health, then which models are drawn, beside how far back — the
+            order `DayWindowControls` puts them in. */}
         <div className='pagehead-controls'>
           <LiveIndicator status={summaryLive} />
           <ModelSeriesToggle options={models} selected={selected} onToggle={toggleModel} busy={busy} />
