@@ -49,13 +49,16 @@ Official references:
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 02 | notes-local-api | [notes-02-notes-local-api](notes-02-notes-local-api.md) | `task/notes-02-notes-local-api` | todo |
 | 03 | notes-dashboard | [notes-03-notes-dashboard](notes-03-notes-dashboard.md) | `task/notes-03-notes-dashboard` | todo |
 | 04 | notes-docs-and-verification | [notes-04-notes-docs-and-verification](notes-04-notes-docs-and-verification.md) | `task/notes-04-notes-docs-and-verification` | todo |
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 02 — notes-local-api
+
+PR [#222](https://github.com/llevasseur/claude-proxy/pull/222) added the typed local Notes bridge: shared DTOs and route declarations, a required server-side hosted Notes client with no local fallback, authenticated list/search/get/create/update/archive/restore forwarding, trusted-origin write protection, structured conflict/status preservation, and deduplicated metadata polling over SSE. The implementation lives in `packages/core/src/notes.ts`, `packages/core/src/api-routes.ts`, `server/src/notes-remote.ts`, and `server/src/server.ts`, with focused core and server tests; independent review additionally mapped malformed upstream success bodies to HTTP 502 and redacted operator tokens from transport errors. Core and server typechecks, 876 core tests, 28 focused server tests, Biome, and `git diff --check` passed; the full server suite reported green test files but its Vitest worker pool did not exit during a concurrent repository-wide run and was interrupted after a bounded wait without an assertion failure.
 
 ### 01 — operator-notes-store
 
