@@ -1284,8 +1284,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return readConceptsFromFiles(logDir);
     },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
-    readThread: async (logDir, threadId, opts = {}, now = new Date()) =>
-      threadFromDb(db, logDir, threadId, opts, now),
+    readThread: async (logDir, threadId, opts = {}, now = new Date()) => threadFromDb(db, logDir, threadId, opts, now),
     oldestDay: async () => oldestDayFromDb(db),
     readAllDays: async (logDir, days, opts = {}) => {
       // `archiveDir` is a file-backing concern; the substrate reads by `source_dir`.
