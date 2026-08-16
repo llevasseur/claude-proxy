@@ -35,7 +35,7 @@ const LEGEND = [
  */
 export function CostRateCard() {
   const { days, choice, select, switching, today: liveToday, model } = useCardWindow();
-  const { digests, isFetching, error } = useWindowDigests(days, liveToday, model);
+  const { digests, isLoading, isFetching, error } = useWindowDigests(days, liveToday, model);
   const points = costRatePoints(digests);
   const summary = summarizeCostRate(digests);
   const today = summary.today;
@@ -56,23 +56,30 @@ export function CostRateCard() {
         </div>
       </div>
 
-      <Verdict summary={summary} priorDays={prior.length} />
-
-      {error ? (
-        <div className='empty'>Could not load this window: {error.message}</div>
-      ) : points.length === 0 ? (
-        <div className='empty'>No tokens captured in this window.</div>
+      {isLoading ? (
+        // The verdict goes with the numbers: stated over an outgoing window it names the wrong model.
+        <CostRateSkeletonBody days={days} />
       ) : (
         <>
-          <CostRateChart prior={prior} today={today} baseline={summary.baseline} />
-          <div className='chartlegend'>
-            {LEGEND.map((l) => (
-              <span className='chartlegend-item' key={l.name}>
-                <span className='chartlegend-swatch' style={{ background: l.color }} />
-                {l.name}
-              </span>
-            ))}
-          </div>
+          <Verdict summary={summary} priorDays={prior.length} />
+
+          {error ? (
+            <div className='empty'>Could not load this window: {error.message}</div>
+          ) : points.length === 0 ? (
+            <div className='empty'>No tokens captured in this window.</div>
+          ) : (
+            <>
+              <CostRateChart prior={prior} today={today} baseline={summary.baseline} />
+              <div className='chartlegend'>
+                {LEGEND.map((l) => (
+                  <span className='chartlegend-item' key={l.name}>
+                    <span className='chartlegend-swatch' style={{ background: l.color }} />
+                    {l.name}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
@@ -237,15 +244,15 @@ function CostRateTooltip({ active, payload }: CostRateTooltipProps) {
 }
 
 /**
- * The card at its loaded size. Not `SkeletonChartCard`, which reserves a plot
- * and a legend but not the verdict line between them.
+ * The verdict line, plot and legend as placeholders — unlike `SkeletonChart`, which has
+ * no verdict line. No card of its own, so a card already on screen can drop to it.
  */
-export function CostRateSkeleton({ days }: { days: number }) {
+function CostRateSkeletonBody({ days }: { days: number }) {
   // Deterministic sawtooth, so the bars don't flicker between renders.
   const heights = Array.from({ length: days }, (_, i) => 34 + ((i * 37) % 61));
 
   return (
-    <SkeletonCard title='Cost per token'>
+    <>
       <div className='trend-compare' aria-hidden>
         <Skeleton w='72%' />
       </div>
@@ -262,6 +269,15 @@ export function CostRateSkeleton({ days }: { days: number }) {
           </span>
         ))}
       </div>
+    </>
+  );
+}
+
+/** That body at the card's loaded size, for the page's own first load. */
+export function CostRateSkeleton({ days }: { days: number }) {
+  return (
+    <SkeletonCard title='Cost per token'>
+      <CostRateSkeletonBody days={days} />
     </SkeletonCard>
   );
 }

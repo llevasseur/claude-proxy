@@ -2,7 +2,7 @@ import type { UsageDigest } from '@claude-proxy/core';
 import { fmtCompact, fmtInt } from '../format';
 import { CardWindowPicker, useCardWindow, useWindowDigests } from './DayWindow';
 import { type Series, SeriesLineChart } from './SeriesLineChart';
-import { SkeletonChartCard } from './Skeleton';
+import { SkeletonChart, SkeletonChartCard } from './Skeleton';
 
 /** Per-request token series. */
 export const PER_REQUEST_SERIES: Series[] = [
@@ -29,7 +29,7 @@ function toPerRequestRow(d: UsageDigest) {
  */
 export function PerRequestCard() {
   const { days, choice, select, switching, today, model } = useCardWindow();
-  const { digests, isFetching, error } = useWindowDigests(days, today, model);
+  const { digests, isLoading, isFetching, error } = useWindowDigests(days, today, model);
   const rows = digests.map(toPerRequestRow);
   const first = digests.at(0);
   const last = digests.at(-1);
@@ -51,6 +51,9 @@ export function PerRequestCard() {
       </div>
       {error ? (
         <div className='empty'>Could not load this window: {error.message}</div>
+      ) : isLoading ? (
+        // The gap a model switch's new values land in — the plot's own shape, no card around it.
+        <SkeletonChart bars={days} legend={PER_REQUEST_SERIES.length} />
       ) : (
         <>
           <SeriesLineChart

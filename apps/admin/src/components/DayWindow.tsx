@@ -81,6 +81,9 @@ export function DayWindowControls({
  * The models a window captured, for a picker to offer. Read from the *unfiltered*
  * window: a list built from the filtered one would empty the control that filtered
  * it. Shares the key an unfiltered page already uses, so it costs no extra fetch.
+ *
+ * Keeps its placeholder unconditionally: the key carries no model, and the list has to
+ * stay under the control selecting from it while the window reloads.
  */
 export function useModelOptions(days: number): ModelOption[] {
   const query = useQuery({
@@ -152,6 +155,20 @@ export function withLiveToday(digests: UsageDigest[], today: UsageDigest): Usage
 }
 
 /**
+ * Placeholder rule for a trends read: hold the previous window's numbers under the new
+ * one, unless the *model* is what changed. Held across a model switch they change digit
+ * by digit inside an unmoved layout; dropped, the query is back to loading and the view
+ * reloads through its skeleton, so the layout shifts as the new values arrive.
+ */
+const keepUnlessModelChanged =
+  (model: string | null) =>
+  <T,>(previous: T | undefined, previousQuery?: { queryKey: readonly unknown[] }): T | undefined => {
+    // The model half of `trendsKey` — absent on the first read, which has nothing to hold.
+    const previousModel = previousQuery?.queryKey[2] as string | null | undefined;
+    return previousModel === model ? previous : undefined;
+  };
+
+/**
  * The digests for one window, narrowed to `model` when one is selected and with
  * today kept live. The key matches the page head's own query, so a card on the
  * page's window costs no extra fetch.
@@ -175,7 +192,7 @@ export function useWindowDigests(
   const query = useQuery({
     queryKey: trendsKey(days, model),
     queryFn: () => getTrends(days, model ? [model] : undefined),
-    placeholderData: keepPreviousData,
+    placeholderData: keepUnlessModelChanged(model),
   });
   const fetched = query.data?.digests;
   const live = model ? undefined : today;
