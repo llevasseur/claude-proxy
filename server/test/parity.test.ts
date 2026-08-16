@@ -890,6 +890,22 @@ async function linkInto(
  * `commands/runs.jsonl` is *copied* for the same reason `sessions/` is: the
  * reconcile pass appends to it while a run is in flight, and a hardlink would
  * carry those appends into the snapshot.
+ *
+ * **Which is also why two concurrent runs cannot share one snapshot or one ingest.**
+ * Every worktree's `logs/` is a symlink to the same main checkout, so it is tempting
+ * to build the database once and let a second run reuse it. But the parity assertion
+ * is `file-read(snapshot) === db-read(database)`, and it only means anything while
+ * the two name the same bytes — the freeze above is what makes it true. Two runs
+ * verifying at once are two *agent sessions*, each appending to its own
+ * `sessions/<thread>.md` and to the shared `commands/runs.jsonl` as it goes, so
+ * their corpora provably differ, and they differ in exactly the transcripts of the
+ * two runs doing the verifying. A database built from one run's snapshot, compared
+ * against the other run's files, would then disagree — correctly, and about nothing
+ * under test. Sharing the snapshot as well as the database would fix the divergence
+ * by handing both runs a corpus frozen at an instant neither chose, and would make
+ * one run's `afterAll` a race against the other's replay. The cap on
+ * {@link DEFAULT_REAL_DAYS} is the lever that was available here; deduplicating the
+ * ingest is not one.
  */
 async function snapshotLogs(logDir: string, days: string[]): Promise<string> {
   const snap = await mkdtemp(path.join(tmpdir(), 'parity-real-'));
@@ -937,11 +953,86 @@ async function snapshotSettings(): Promise<string> {
 }
 
 /**
+ * How many archived days the real-corpus replay covers by default, counting back
+ * from the most recent.
+ *
+ * The whole archive was the corpus until this cap, and what that costs is linear in
+ * a directory that only ever grows. On this device it reached **24 days**, which
+ * `beforeAll` snapshots and then ingests single-threaded into a ~1.4 GB database
+ * before the first assertion runs — 7-15 minutes of every `my-command-tools verify`,
+ * nearly all of it this one suite, on one pinned core while the rest idle.
+ *
+ * Five is what a parity defect actually needs to surface. What this suite compares
+ * is two readers of the same row *shapes*, so a disagreement reproduces on any day
+ * carrying the shape rather than on one particular day — the days are near-identical
+ * samples, not independent ones, and the twentieth adds the same evidence the fifth
+ * did. The suite stays on the default `test` path for the same reason it is capped
+ * rather than gated: a corpus small enough to run every time is worth more than a
+ * complete one nobody waits for.
+ *
+ * Set `PARITY_DAYS=all` to restore the full sweep — before a substrate change lands,
+ * and whenever the whole corpus is genuinely what is in question. A positive integer
+ * sets the cap instead, for bisecting a day back into range.
+ */
+const DEFAULT_REAL_DAYS = 5;
+
+/**
+ * The most recent `PARITY_DAYS` entries of `days`, which arrive oldest first.
+ *
+ * A value parsing as neither `all` nor a positive integer throws rather than falling
+ * back to the default: the fallback would quietly replay five days for someone who
+ * typed `PARITY_DAYS=alll` meaning every one of them, and the run where that
+ * distinction matters is the only run this override exists for.
+ */
+function capDays(days: string[], raw: string | undefined = process.env.PARITY_DAYS): string[] {
+  if (raw === undefined || raw === '') return days.slice(-DEFAULT_REAL_DAYS);
+  if (raw.toLowerCase() === 'all') return days;
+  const limit = Number(raw);
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`PARITY_DAYS must be "all" or a positive integer, got ${JSON.stringify(raw)}`);
+  }
+  return days.slice(-limit);
+}
+
+/**
  * This machine's archived days, listed while the suite is being *collected* —
  * which is what lets each day be named as its own case below. `beforeAll` is a
  * tick too late: by then the cases are already fixed.
+ *
+ * Capped to the most recent {@link DEFAULT_REAL_DAYS}, overridably — see
+ * {@link capDays}.
  */
-const REAL_DAYS = archivedDaysSync(resolveLogDir());
+const REAL_DAYS = capDays(archivedDaysSync(resolveLogDir()));
+
+// The cap decides how much corpus every `verify` on this device pays for, so it is
+// asserted rather than left to the one reading of it the suite below happens to take.
+describe('the archived-day cap', () => {
+  const days = ['2026-08-01', '2026-08-02', '2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06'];
+
+  it('keeps the most recent days, newest last', () => {
+    expect(capDays(days, undefined)).toEqual(days.slice(1));
+    expect(capDays(days, '')).toEqual(days.slice(1));
+    expect(capDays(days, '2')).toEqual(['2026-08-05', '2026-08-06']);
+  });
+
+  it('restores the full sweep on `all`, whatever case it is written in', () => {
+    expect(capDays(days, 'all')).toEqual(days);
+    expect(capDays(days, 'ALL')).toEqual(days);
+  });
+
+  it('asks for no more days than there are', () => {
+    expect(capDays(days, '99')).toEqual(days);
+    expect(capDays([], undefined)).toEqual([]);
+  });
+
+  // A typo'd override is the one case that must not read as the default: it would
+  // replay five days for someone who asked for twenty-four and say nothing.
+  it('refuses a value that is neither `all` nor a positive count', () => {
+    for (const raw of ['alll', '0', '-1', '2.5', 'five']) {
+      expect(() => capDays(days, raw), raw).toThrow(/PARITY_DAYS/);
+    }
+  });
+});
 
 /**
  * The split the cases below are drawn along: a `perDay` route gets one case per
@@ -957,6 +1048,10 @@ const WHOLE_ROUTES = PARITY_ROUTES.filter((r) => !r.perDay);
  * One case per archived day, rather than one case for all of them. What is
  * compared is unchanged, but the archive only ever grows, so a single case
  * carrying the sum of every day outgrows any budget it is given, and did.
+ *
+ * The days replayed are the most recent {@link DEFAULT_REAL_DAYS}, not all of them,
+ * which is what keeps the *suite* from outgrowing its budget the same way a single
+ * case did. `PARITY_DAYS=all` restores the full sweep.
  */
 describe('route parity over the real logs/archive', () => {
   let snapshot: string | null = null;
