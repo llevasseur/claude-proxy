@@ -259,8 +259,6 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
     <Link to='/advice/sessions/$bucket' params={{ bucket: String(bucket.index) }} className='card bucket-row'>
       <div className='bucket-row-head'>
         <span className='bucket-label'>Sessions {bucket.label}</span>
-        {/* The row links to `/advice/sessions/<index>`, so name that slug here — two windows
-            read the same from their labels alone, and the URL was the only way to tell them apart. */}
         <span className='muted bucket-slug' title={`/advice/sessions/${bucket.index}`}>
           #{bucket.index}
         </span>

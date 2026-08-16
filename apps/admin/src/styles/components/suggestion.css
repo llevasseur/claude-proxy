@@ -24,8 +24,7 @@
     font-size: var(--text-7);
     font-weight: 600;
   }
-  /* The bucket's own slug, as it appears in `/advice/sessions/<slug>`. Mono, so it reads
-     as an identifier rather than as part of the label beside it. */
+  /* the bucket's slug, as it appears in /advice/sessions/<slug> */
   .bucket-slug {
     font-family: var(--font-mono);
     font-size: var(--text-4);
