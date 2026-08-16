@@ -49,7 +49,6 @@ Official references:
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 01 | operator-notes-store | [notes-01-operator-notes-store](notes-01-operator-notes-store.md) | `task/notes-01-operator-notes-store` | todo |
 | 02 | notes-local-api | [notes-02-notes-local-api](notes-02-notes-local-api.md) | `task/notes-02-notes-local-api` | todo |
 | 03 | notes-dashboard | [notes-03-notes-dashboard](notes-03-notes-dashboard.md) | `task/notes-03-notes-dashboard` | todo |
 | 04 | notes-docs-and-verification | [notes-04-notes-docs-and-verification](notes-04-notes-docs-and-verification.md) | `task/notes-04-notes-docs-and-verification` | todo |
@@ -57,6 +56,10 @@ Official references:
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 01 — operator-notes-store
+
+PR [#221](https://github.com/llevasseur/claude-proxy/pull/221) added the immutable Notes store to the operator Worker: D1 revision/current/FTS schema, shared domain semantics, authenticated REST and MCP operations, opaque pagination, conflict retention, reversible archive/restore, and complete nightly export coverage. The implementation lives in `services/concepts/src/notes.ts` with migration `0003_notes.sql`, REST/MCP/backup integration, package documentation, and focused tests; independent review additionally hardened FTS query handling and stale partial-update reconstruction, completed MCP input/output schemas and structured content, and added Worker-auth and nightly-backup coverage. Verification passed the package typecheck, 100 tests, Biome, and `git diff --check`; the repository-wide Vitest gate stalled without failure output while another concurrent run was also hung.
 
 ## Agent kickoff prompt
 
