@@ -14,5 +14,4 @@
 | Map: Skim a thin layer off the top of requests to Anthropic | [map-proxy-skim.md](map-proxy-skim.md) |
 | Map: SQLite as the query substrate over the log files | [map-sqlite-substrate.md](map-sqlite-substrate.md) |
 | Research 002 — Which requests are safe to serve (cacheability gate) | [research-002-cacheability.md](research-002-cacheability.md) |
-| Wayfinder: Notes | [wayfinder-notes.md](wayfinder-notes.md) |
 <!-- okq:index:end -->
