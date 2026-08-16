@@ -30,9 +30,10 @@ writes also require a trusted local `Origin`.
 ## Storage, conflicts, and archive
 
 Titles are plain text and bodies are Markdown, both stored byte-for-byte. Blank titles are valid;
-only the dashboard renders **Untitled**. `note_revision` retains every create and update attempt as
-`committed`, `conflict`, or transient `pending`. `note_current` points to the committed revision and
-carries `version`, timestamps, and reversible `archivedAt`. `note_fts` indexes current content.
+only the dashboard renders **Untitled**. `note_revision` retains creates, content-changing updates,
+and stale attempts as `committed`, `conflict`, or transient `pending`; a byte-identical no-op creates
+no revision. `note_current` points to the committed revision and carries `version`, timestamps, and
+reversible `archivedAt`. `note_fts` indexes revision content.
 
 Every update carries the last observed `expectedVersion`. A match commits a revision, increments the
 version, and moves the note to the top. A stale write is retained as a conflict revision while the
@@ -63,8 +64,9 @@ and later pages remain request-driven.
 
 ## Hosted REST API
 
-Every operator route requires `Authorization: Bearer $CONCEPTS_TOKEN`. Validation and cursor failures
-are `400`, missing notes are `404`, and stale updates are `409` with structured conflict fields.
+Every operator route requires `Authorization: Bearer $CONCEPTS_TOKEN`; a missing or invalid token is
+`401` before D1 is opened. Validation and cursor failures are `400`, missing notes are `404`, and
+stale updates are `409` with structured conflict fields.
 
 | Route | Input | Success |
 | --- | --- | --- |
@@ -128,10 +130,10 @@ commit, and the interval bounds unreplicated loss to one day.
 
 There is no automated Notes importer. Recover into a clean migrated D1 database: insert every
 `revisions` row into `note_revision`, then every `notes` row into `note_current`; rebuild `note_fts`
-from referenced current revisions; verify that every pointer resolves and versions, archive timestamps,
-and active, archived, revision, and conflict counts match. Use one controlled transaction or an offline
-replacement database so no client observes a partial projection. Never restore current bodies alone,
-which would discard immutable history and losing writes.
+from every revision; verify that every pointer resolves and versions, archive timestamps, and active,
+archived, revision, and conflict counts match. Use one controlled transaction or an offline replacement
+database so no client observes a partial projection. Never restore current bodies alone, which would
+discard immutable history and losing writes.
 
 ## Verification and visual evidence
 

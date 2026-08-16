@@ -67,8 +67,8 @@ or malformed success JSON is 502; a valid upstream non-2xx passes through. Live 
 substitute local data, and offline or failed dashboard saves retain the draft.
 
 Nightly `notes.json` includes the projection and every revision. Recovery rebuilds both tables and
-derives FTS from current revisions. No automated importer ships, so the feature reference documents
-the controlled manual sequence and validation counts.
+derives FTS from every revision. No automated importer ships, so the feature reference documents the
+controlled manual sequence and validation counts.
 
 ## Evidence and limits
 

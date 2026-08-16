@@ -324,7 +324,7 @@ projection, immutable revisions, archive state, and FTS index.
 
 There is no Notes import command. Recover into a clean migrated D1 database by
 inserting every exported revision, then every current projection row, and rebuilding
-FTS from the referenced current revisions. Validate every current pointer, version,
+FTS from every revision. Validate every current pointer, version,
 archive timestamp, and active/archived/revision/conflict count before switching
 clients; the detailed procedure is in
 [Operator notes](../../docs/features/operator-notes.md#backup-and-recovery).
