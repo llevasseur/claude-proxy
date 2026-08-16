@@ -170,6 +170,9 @@ export const API_ROUTES = [
   { path: '/api/skim/trend', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
   { path: '/api/withheld', methods: ['GET'], kind: 'json', cors: 'open', params: ['days'] },
   { path: '/api/pull-requests', methods: ['GET'], kind: 'json', cors: 'open', params: [] },
+  // The body the list leaves behind, one pull request at a time — what the drawer asks
+  // for when it opens.
+  { path: '/api/pull-requests/body', methods: ['GET'], kind: 'json', cors: 'open', params: ['number'] },
   // Moving `main` is shared, remote and irreversible in the sense that everyone sees it.
   { path: '/api/main-history/slide', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },
   { path: '/api/main-history/sync-local', methods: ['POST'], kind: 'json', cors: 'origin', params: [] },

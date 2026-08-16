@@ -61,6 +61,7 @@ import {
   buildPromptDetail,
   buildPromptMix,
   buildPromptSection,
+  buildPullRequestBody,
   buildPullRequests,
   buildSession,
   buildSessionBreakdown,
@@ -1637,6 +1638,15 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   },
   '/api/pull-requests': async ({ res }) => {
     send(res, 200, await buildPullRequests(LOG_DIR, undefined, undefined, readSource()));
+  },
+  // The description the list leaves out, for the one pull request a drawer is showing.
+  '/api/pull-requests/body': async ({ res, url }) => {
+    const number = Number(url.searchParams.get('number'));
+    if (!Number.isInteger(number) || number <= 0) {
+      send(res, 400, { error: 'missing or invalid ?number=' });
+      return;
+    }
+    send(res, 200, await buildPullRequestBody(LOG_DIR, number));
   },
   // Moving `main`: a force-push of `refs/heads/main` on origin, the local checkout's
   // own catch-up, and the marker that hides a line. They are shared, remote and

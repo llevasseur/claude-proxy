@@ -324,9 +324,18 @@ export interface MainHideResponse {
   hidden: boolean;
 }
 
+/**
+ * A pull request as the list carries it: everything except the description.
+ *
+ * The bodies were about 70 percent of the payload and the tree draws none of them, so
+ * the list omits it and the drawer asks {@link getPullRequestBody} for the one it shows.
+ * `Omit` rather than a comment, so reaching for `body` on a list row does not compile.
+ */
+export type PullRequestListRow = Omit<PullRequestRow, 'body'>;
+
 export interface PullRequestsResponse {
   repo: string | null;
-  prs: PullRequestRow[];
+  prs: PullRequestListRow[];
   /** A setup problem phrased for the page (no `gh`, not signed in, no remote). */
   error: string | null;
   /** Sessions that worked on each PR, keyed by number. */
@@ -337,6 +346,15 @@ export interface PullRequestsResponse {
   /** Why `main` and its pins could not be refreshed, if they could not. */
   refError: string | null;
   meta: { fetchedAt: string; cached: boolean; total: number; limit: number };
+}
+export interface PullRequestBodyResponse {
+  number: number;
+  /** Verbatim markdown, or null when it could not be read — `error` says why. */
+  body: string | null;
+  /** Whether it came off the stored row rather than a fresh `gh pr view`. */
+  cached: boolean;
+  /** A setup problem phrased for the drawer, as the list's own is. Null on success. */
+  error: string | null;
 }
 export interface ProjectSummary {
   name: string;
@@ -961,6 +979,7 @@ interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/skim/trend': SkimTrendResponse;
   '/api/withheld': WithheldResponse;
   '/api/pull-requests': PullRequestsResponse;
+  '/api/pull-requests/body': PullRequestBodyResponse;
   '/api/hooks-plugins': HooksPluginsResponse;
   '/api/cli-internals': CliInternalsResponse;
   '/api/cli-internals/function': CliFunctionResponse;
@@ -1108,8 +1127,10 @@ export const markSuggestionStatus = (updates: SuggestionStatusUpdate[]) =>
 export const getSkim = (date?: string) => read('/api/skim', { date });
 export const getSkimTrend = (days: number) => read('/api/skim/trend', { days });
 export const getWithheld = (days = 14) => read('/api/withheld', { days });
-/** The project's pull requests, read through `gh` on the server. */
+/** The project's pull requests, read through `gh` on the server — without their bodies. */
 export const getPullRequests = () => read('/api/pull-requests');
+/** The description of one pull request, asked for when its drawer opens. */
+export const getPullRequestBody = (number: number) => read('/api/pull-requests/body', { number });
 /**
  * Move `origin/main` to a merged PR's landing commit. `expectedMain` is the sha the page
  * was showing: the server pushes with a lease against it, so a stale page is rejected by

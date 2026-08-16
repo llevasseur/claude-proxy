@@ -13,12 +13,23 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { isGitHubHost, type PullRequestRow, parsePullRequests, parseRemoteUrl } from '@claude-proxy/core';
 import { findOnPath } from './chat-cli.js';
-import { newestPullRequestUpdate, readStoredPullRequests, storePullRequests } from './db/pull-request-store.js';
+import {
+  newestPullRequestUpdate,
+  readStoredPullRequestBody,
+  readStoredPullRequests,
+  storePullRequests,
+} from './db/pull-request-store.js';
 import { fetchMainHistory } from './main-history.js';
 
 const run = promisify(execFile);
 
-/** The fields the tree and its drawer read. */
+/**
+ * The fields the tree and its drawer read.
+ *
+ * `body` stays on the list: it is what the stored document holds, so the drawer's body
+ * read is a primary-key lookup rather than a second trip to GitHub. It is dropped one
+ * layer up, where the response is built — see `buildPullRequests`.
+ */
 const PR_FIELDS = [
   'number',
   'title',
@@ -254,6 +265,54 @@ async function fetchPullRequests(repoDir: string, limit: number, since: string |
   }
 
   return { repo, prs: parsePullRequests(parsed), error: null, fetchedAt, cached: false, refError };
+}
+
+/** What one body read answers with, including the gap it could not fill. */
+export interface PullRequestBodyResult {
+  number: number;
+  /** The description, verbatim markdown — null when it could not be read at all. */
+  body: string | null;
+  /** Whether the row was already on file, rather than fetched for this read. */
+  cached: boolean;
+  /** Phrased for the drawer, as the list's `error` is. Null when the read succeeded. */
+  error: string | null;
+}
+
+/**
+ * The description of one pull request.
+ *
+ * The stored document is the answer in every warm case, which is the case the drawer is
+ * opened in: the list read the drawer is sitting on top of came from that same table, so
+ * the row is there and this is a primary-key lookup. The `gh pr view` below is the cold
+ * fallback — a checkout with no substrate to have stored into, which
+ * {@link servePullRequests} serves directly from `gh` too.
+ */
+export async function servePullRequestBody(
+  logDir: string,
+  repoDir: string,
+  number: number,
+): Promise<PullRequestBodyResult> {
+  const stored = readStoredPullRequestBody(logDir, repoDir, number);
+  if (stored !== null) return { number, body: stored, cached: true, error: null };
+
+  const gh = findOnPath('gh');
+  if (!gh) {
+    return { number, body: null, cached: false, error: 'the GitHub CLI is not installed — `brew install gh`' };
+  }
+  const { slug: repo, detail } = await resolveSlug(gh, repoDir);
+  if (!repo)
+    return { number, body: null, cached: false, error: `no GitHub repository found for ${repoDir} (${detail})` };
+
+  try {
+    const { stdout } = await run(gh, ['pr', 'view', String(number), '--repo', repo, '--json', 'body'], {
+      timeout: GH_TIMEOUT_MS,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    const parsed = JSON.parse(stdout) as { body?: unknown };
+    return { number, body: typeof parsed.body === 'string' ? parsed.body : '', cached: false, error: null };
+  } catch (err) {
+    return { number, body: null, cached: false, error: ghFailure(err) };
+  }
 }
 
 /**
