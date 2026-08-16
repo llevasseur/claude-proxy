@@ -2187,13 +2187,20 @@ export async function buildSuggestionBuckets(
 }
 
 export interface RuleDefectsResponse {
+  /** Rules whose dismissal record still reads as live — what there is to act on. */
   defects: RuleDefect[];
+  /**
+   * Rules the counts indict but whose dismissals all predate a long clean tail. Carried
+   * separately rather than mixed in, so a caller that turns defects into work — `/improve`
+   * builds task criteria straight from this — cannot re-propose a fix that already shipped.
+   */
+  stale: RuleDefect[];
   meta: {
     statusFile: string;
     /** Complete buckets the ratios were measured over. */
     buckets: number;
     /** The thresholds that were applied, so a report reads without the source. */
-    thresholds: { minDismissedBuckets: number; minDismissedRatio: number };
+    thresholds: { minDismissedBuckets: number; minDismissedRatio: number; minCleanTailBuckets: number };
   };
 }
 
@@ -2208,8 +2215,10 @@ export async function buildRuleDefects(
 ): Promise<RuleDefectsResponse> {
   const [sessions, store] = await Promise.all([source.listSessionGraphs(logDir), readSuggestionStatusStore(logDir)]);
   const buckets = sessionSuggestionBuckets(sessions);
+  const all = ruleDefects(buckets, store);
   return {
-    defects: ruleDefects(buckets, store),
+    defects: all.filter((d) => !d.stale),
+    stale: all.filter((d) => d.stale),
     meta: {
       statusFile: resolveSuggestionStatusPath(logDir),
       buckets: buckets.filter((b) => b.complete).length,

@@ -23,6 +23,11 @@
  * in one bucket. `--json` on either prints the API's own response, which is the
  * shape callers should parse.
  *
+ * That shape is stated in {@link USAGE} because guessing it is a recorded failure, not a
+ * hypothetical one: the payload's array is `rows`, and four separate windows recorded
+ * sessions crashing hand-written `jq`/`python` parsers against a guessed `.suggestions`
+ * — one of them four consecutive times before inspecting the keys.
+ *
  * **`list` hides `historical` rows by default** — windows a rule's `done` postdates,
  * with nothing left to act on. They are counted in the header and reachable with
  * `--recurrence`.
@@ -69,6 +74,13 @@ const USAGE = `usage:
   suggestions judge    -r|--range <bucket> [--confirm <id>[:<note>],...] [--dismiss <id>:<reason>,...] [--thread <id>] [--json]
   suggestions judge   --amnesty [--thread <id>] [--json]
   suggestions defects [--json]
+
+  --json prints the API response. The array is never called 'suggestions' — parse
+  these top-level keys:
+    list, mark   { meta, rows }
+    judge        { meta, rows, buckets }
+    buckets      { meta, buckets }
+    defects      { meta, defects, stale }   defects = live, stale = already fixed
 
   <spec>   one bucket (9), a list (2,3,9), a span (2-9), or a mix (2-4,9)
   <flags>  comma-separated: pending, done, skipped, dismissed
@@ -161,15 +173,29 @@ function renderBuckets(rows: readonly BucketJudgementRow[]): string {
     .join('\n');
 }
 
-/** One defect per rule, with the buckets and reasons underneath it. */
+/** One defect per rule, with its age and then the buckets and reasons underneath it. */
 function renderDefects(defects: readonly RuleDefect[]): string {
   if (defects.length === 0) return 'no rule has been dismissed often enough to indict it.';
   return defects
     .map((d) => {
       const head = `  ${d.id} — dismissed in ${d.dismissed} of ${d.fired} bucket${d.fired === 1 ? '' : 's'} it fired in (${Math.round(d.ratio * 100)}%)`;
+      // The age line, always: a reader deciding whether to act on a defect needs to see
+      // how old the record is even when it was not old enough to suppress.
+      const age = `      buckets ${d.span.from}–${d.span.to}, newest ${d.span.to}, ${d.cleanTail} judged bucket${d.cleanTail === 1 ? '' : 's'} since with no dismissal`;
       const lines = d.buckets.map((b) => `      · bucket ${b.bucket}${b.reason ? `: ${b.reason}` : ''}`);
-      return [head, ...lines].join('\n');
+      return [head, age, ...lines].join('\n');
     })
+    .join('\n');
+}
+
+/** The suppressed rules, named with the reason — never silently dropped. */
+function renderStaleDefects(stale: readonly RuleDefect[]): string {
+  return stale
+    .map(
+      (d) =>
+        `  ${d.id} — suppressed: ${d.staleReason ?? 'dismissals all predate a clean tail'}\n` +
+        `      (${d.dismissed} of ${d.fired} buckets, ${Math.round(d.ratio * 100)}%, spanning ${d.span.from}–${d.span.to})`,
+    )
     .join('\n');
 }
 
@@ -337,11 +363,17 @@ async function run(argv: readonly string[]): Promise<void> {
       console.log(JSON.stringify(result, null, 2));
       return;
     }
-    const { minDismissedBuckets, minDismissedRatio } = result.meta.thresholds;
+    const { minDismissedBuckets, minDismissedRatio, minCleanTailBuckets } = result.meta.thresholds;
     console.log(
       `${result.defects.length} defective rule(s) over ${result.meta.buckets} complete bucket(s) · threshold: ${minDismissedBuckets}+ dismissals and ${Math.round(minDismissedRatio * 100)}%+ of the buckets it fired in`,
     );
     console.log(renderDefects(result.defects));
+    if (result.stale.length > 0) {
+      console.log(
+        `\n${result.stale.length} rule(s) suppressed as already fixed — ${minCleanTailBuckets}+ judged buckets since the newest dismissal:`,
+      );
+      console.log(renderStaleDefects(result.stale));
+    }
     return;
   }
 

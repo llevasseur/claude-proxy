@@ -71,7 +71,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'session-turn-marker-absent',
     file: 'packages/core/src/sessions.ts',
-    line: 277,
+    line: 290,
     match: 'const TOOL_RE',
     since: '2026-08-06',
     supersededBy: '9e47271',
@@ -83,7 +83,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'session-subtitle-absent',
     file: 'packages/core/src/sessions.ts',
-    line: 396,
+    line: 409,
     match: 'meta.subtitle ?? meta.firstTask',
     since: '2026-07-24',
     supersededBy: 'd16c76f',
@@ -94,7 +94,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'agent-spawn-tool-allow-list',
     file: 'packages/core/src/sessions.ts',
-    line: 661,
+    line: 674,
     match: "SPAWN_TOOLS = new Set(['Agent', 'Task'])",
     since: '2026-08-07',
     supersededBy: '0bbaec8',
@@ -106,7 +106,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'agent-link-start-time-inference',
     file: 'packages/core/src/sessions.ts',
-    line: 842,
+    line: 855,
     match: 'for (const family of families.values())',
     since: '2026-08-07',
     supersededBy: '0bbaec8',
@@ -120,7 +120,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'suggestions-args-hash-key',
     file: 'packages/core/src/suggestions.ts',
-    line: 491,
+    line: 696,
     match: 'node.argsHash ?? node.tool',
     since: '2026-08-07',
     supersededBy: '0bbaec8',

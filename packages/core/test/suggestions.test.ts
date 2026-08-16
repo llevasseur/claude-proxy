@@ -405,6 +405,49 @@ describe('suggestBucket', () => {
     expect(unfinished!.evidence).toBe('2 of 2 top-level tasks have no outcome line');
   });
 
+  it('leaves an inline-nested Skill run out of the task counts entirely', () => {
+    // `/clean` and `/pr` invoked inline each open a `## Task:` in the caller's transcript
+    // and are forbidden from spending the text-only turn a `done:` is written from, so
+    // counting them makes one closed task read as three abandoned ones.
+    const sessions = [
+      session('e1', day(1), [
+        '## Task: Ship it',
+        '- Skill(skill=clean)',
+        '## Task: Clean up the comments in my changes.',
+        '- Edit(file_path=/a.ts)',
+        '- Skill(skill=pr)',
+        '## Task: You have explicit permission to write the PR description.',
+        '- Bash(command=gh pr create)',
+        '- done: opened PR #12',
+      ]),
+      session('e2', day(2), ['## Task: Two', '- Read(file_path=/b.ts)', '- done: ok']),
+    ];
+    expect(suggestBucket(sessions).find((s) => s.id === 'unfinished-tasks')).toBeUndefined();
+  });
+
+  it('still counts the enclosing task when a nested run is the last thing in it', () => {
+    // The nested opens must not become the open task themselves — the session's own
+    // task is the one with no outcome, and it is the one that must be reported.
+    const sessions = [
+      session('e1', day(1), ['## Task: Ship it', '- Skill(skill=clean)', '## Task: Clean up the comments.']),
+      session('e2', day(2), ['## Task: Ship it too', '- Skill(skill=pr)', '## Task: Write the PR description.']),
+    ];
+    const unfinished = suggestBucket(sessions).find((s) => s.id === 'unfinished-tasks');
+    expect(unfinished!.evidence).toBe('2 of 2 top-level tasks have no outcome line');
+    expect(unfinished!.sources.map((s) => s.sample)).toEqual(['Ship it', 'Ship it too']);
+  });
+
+  it('counts a slash command the user typed as a genuine top-level task', () => {
+    // `<command-name>` marks a command the *user* invoked — the opposite of a nested run,
+    // and no `Skill(…)` call precedes it.
+    const sessions = [
+      session('e1', day(1), ['## Task: <command-name>/task</command-name> fix the thing', '- Read(file_path=/a.ts)']),
+      session('e2', day(2), ['## Task: <command-name>/god</command-name> ship the thing', '- Read(file_path=/b.ts)']),
+    ];
+    const unfinished = suggestBucket(sessions).find((s) => s.id === 'unfinished-tasks');
+    expect(unfinished!.evidence).toBe('2 of 2 top-level tasks have no outcome line');
+  });
+
   it('leaves a subagent that reported back out of the unfinished count', () => {
     const sessions = [
       session('e1', day(1), ['## Task: One', '- Agent(subagent_type=Explore)']),
