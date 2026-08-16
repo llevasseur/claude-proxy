@@ -48,9 +48,14 @@ const DEFAULT_DIR: Record<ContextSort, ContextSortDir> = {
  * settles before it is asked. Long enough to swallow a word, short enough that the
  * table follows the typing.
  */
-const SEARCH_SETTLE_MS = 250;
+const SEARCH_DEBOUNCE_MS = 250;
 
-function useSettled(value: string, ms: number): string {
+/**
+ * `value`, but only after it has stopped changing for `ms`. Deliberately the same
+ * shape as the copy in `concepts.tsx`, which debounces the same kind of box; the two
+ * are worth hoisting into one module the next time a third search wants it.
+ */
+function useDebounced(value: string, ms: number): string {
   const [settled, setSettled] = useState(value);
   useEffect(() => {
     const timer = setTimeout(() => setSettled(value), ms);
@@ -70,7 +75,7 @@ export function ContextPage() {
   const [sort, setSort] = useState<Sort>({ key: 'when', dir: 'desc' });
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
-  const q = useSettled(search, SEARCH_SETTLE_MS);
+  const q = useDebounced(search, SEARCH_DEBOUNCE_MS);
 
   // A new order, a new search or a new window is a new first page.
   const chooseDays = (next: number) => {
