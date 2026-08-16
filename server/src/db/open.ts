@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -640,6 +640,52 @@ CREATE TABLE IF NOT EXISTS pull_request (
 CREATE INDEX IF NOT EXISTS pull_request_updated_idx ON pull_request(repo_dir, updated_at);
 `;
 
+/**
+ * The transcript scan's own results, so a pull request is scanned once rather than
+ * once per `gh` refresh. See `server/src/db/pr-scan-store.ts`.
+ *
+ * Derived and disposable: `logs/sessions/` is the source of truth, so deleting the file
+ * costs one scan pass and no information.
+ *
+ * The separation the feature doc guards is enforced by the column rather than by
+ * convention: `via` holds only `branch` and `number`, the two *recovered* signals. A
+ * `recorded` link is a session's own record of the pull request it opened, is read from
+ * `session.pr_url` on every request, and is never written here — so a stored scanned
+ * link can never age into a recorded one.
+ *
+ * `scanned_through` is the mtime, in epoch milliseconds, of the newest transcript that
+ * existed when this pull request was scanned. A pull request is rescanned once the
+ * directory holds something newer, and then only against the transcripts past that
+ * mark. A row with no link rows is the useful negative — scanned, matched nothing —
+ * which is what takes an unnamed pull request off the request path.
+ */
+const SCHEMA_V17 = `
+CREATE TABLE IF NOT EXISTS pr_scan (
+  -- Absolute path of the checkout the number belongs to, as \`pull_request\` is keyed.
+  repo_dir        TEXT    NOT NULL,
+  number          INTEGER NOT NULL,
+  -- Newest transcript mtime, epoch ms, at the time of the scan.
+  scanned_through INTEGER NOT NULL,
+  scanned_at      TEXT    NOT NULL,
+  PRIMARY KEY (repo_dir, number)
+);
+
+CREATE TABLE IF NOT EXISTS pr_scan_link (
+  repo_dir  TEXT    NOT NULL,
+  number    INTEGER NOT NULL,
+  -- The transcript that produced the link.
+  thread_id TEXT    NOT NULL,
+  title     TEXT    NOT NULL,
+  -- The transcript's mtime, ISO 8601, as the drawer orders by.
+  modified  TEXT    NOT NULL,
+  -- Comma-joined recovered signals: \`branch\`, \`number\`, or both. Never \`recorded\`.
+  via       TEXT    NOT NULL,
+  PRIMARY KEY (repo_dir, number, thread_id)
+);
+
+CREATE INDEX IF NOT EXISTS pr_scan_link_thread_idx ON pr_scan_link(thread_id);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -762,6 +808,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 14) db.exec(SCHEMA_V14);
   if (from < 15) db.exec(SCHEMA_V15);
   if (from < 16) db.exec(SCHEMA_V16);
+  if (from < 17) db.exec(SCHEMA_V17);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
