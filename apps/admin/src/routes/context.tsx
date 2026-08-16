@@ -1,9 +1,16 @@
-import { type ContextThreadGroup, groupContextThreads, promptExcerpt, promptMatches } from '@claude-proxy/core';
+import { promptExcerpt } from '@claude-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { Gauge, Search } from 'lucide-react';
-import { type CSSProperties, useMemo, useState } from 'react';
-import { type ContextResponse, getContext } from '../api';
+import { type CSSProperties, useEffect, useState } from 'react';
+import {
+  CONTEXT_PAGE_SIZE,
+  type ContextResponse,
+  type ContextSort,
+  type ContextSortDir,
+  type ContextThreadRow,
+  getContext,
+} from '../api';
 import { QueryState } from '../components/QueryState';
 import { ALL_DAYS, DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
@@ -24,25 +31,81 @@ const THREAD_COLUMNS: readonly SkeletonColumn[] = [
   { className: 'bar-col' },
 ];
 
+type Sort = { key: ContextSort; dir: ContextSortDir };
+
+/** Direction applied the first time a column becomes the sort key. */
+const DEFAULT_DIR: Record<ContextSort, ContextSortDir> = {
+  when: 'desc',
+  model: 'asc',
+  realInput: 'desc',
+  systemBytes: 'desc',
+  toolsBytes: 'desc',
+  size: 'desc',
+};
+
+/**
+ * A search is typed a letter at a time and answered by the server, so the query
+ * settles before it is asked. Long enough to swallow a word, short enough that the
+ * table follows the typing.
+ */
+const SEARCH_SETTLE_MS = 250;
+
+function useSettled(value: string, ms: number): string {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return settled;
+}
+
+/**
+ * The window's tiles, and one page of its threads. **The order, the search and the
+ * slice are all the server's**: a month is tens of thousands of requests and the
+ * table only ever draws a screenful, so sorting a column asks for that column's
+ * first page rather than re-sorting a corpus in the browser.
+ */
 export function ContextPage() {
   const [days, selectDays, isSwitching] = useTransitionState(14);
+  const [sort, setSort] = useState<Sort>({ key: 'when', dir: 'desc' });
+  const [offset, setOffset] = useState(0);
+  const [search, setSearch] = useState('');
+  const q = useSettled(search, SEARCH_SETTLE_MS);
+
+  // A new order, a new search or a new window is a new first page.
+  const chooseDays = (next: number) => {
+    setOffset(0);
+    selectDays(next);
+  };
+  const onSort = (key: ContextSort) => {
+    setOffset(0);
+    setSort((prev) =>
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: DEFAULT_DIR[key] },
+    );
+  };
+  const onSearch = (next: string) => {
+    setOffset(0);
+    setSearch(next);
+  };
+
   const query = useQuery({
-    queryKey: ['context', days],
-    queryFn: () => getContext(days),
+    queryKey: ['context', days, sort.key, sort.dir, offset, q],
+    queryFn: () => getContext(days, { sort: sort.key, dir: sort.dir, offset, limit: CONTEXT_PAGE_SIZE, q }),
     placeholderData: keepPreviousData,
   });
   const summary = query.data?.summary;
+  const page = query.data?.page;
   const busy = isSwitching || query.isFetching;
 
   return (
     <section>
       <div className='pagehead'>
         <h1>Context size</h1>
-        <Segmented options={DAY_WINDOWS} value={days} onSelect={selectDays} label='Context window' busy={busy} />
+        <Segmented options={DAY_WINDOWS} value={days} onSelect={chooseDays} label='Context window' busy={busy} />
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ContextSkeleton />} busy={busy}>
-        {!summary || summary.requestCount === 0 ? (
+        {!summary || !page || summary.requestCount === 0 ? (
           <div className='card empty'>No context captured in the last {days} days.</div>
         ) : (
           <>
@@ -58,7 +121,17 @@ export function ContextPage() {
               <StatCard label='Requests' value={fmtInt(summary.requestCount)} sub={`last ${days} days`} />
             </div>
 
-            <ThreadsTable summary={summary} days={days} />
+            <ThreadsTable
+              page={page}
+              peakOf={summary.maxRealInput}
+              days={days}
+              sort={sort}
+              onSort={onSort}
+              search={search}
+              onSearch={onSearch}
+              onOffset={setOffset}
+              stale={busy}
+            />
           </>
         )}
       </QueryState>
@@ -85,38 +158,6 @@ function ContextSkeleton() {
   );
 }
 
-type SortKey = 'when' | 'model' | 'realInput' | 'systemBytes' | 'toolsBytes' | 'size';
-type SortDir = 'asc' | 'desc';
-
-/** Direction applied the first time a column becomes the sort key. */
-const DEFAULT_DIR: Record<SortKey, SortDir> = {
-  when: 'desc',
-  model: 'asc',
-  realInput: 'desc',
-  systemBytes: 'desc',
-  toolsBytes: 'desc',
-  size: 'desc',
-};
-
-/**
- * Signed comparison for a column, ascending. Every numeric column reads the thread's
- * peak request, so Size sorts on the same value as Peak input.
- */
-function compare(a: ContextThreadGroup, b: ContextThreadGroup, key: SortKey): number {
-  switch (key) {
-    case 'when':
-      return a.firstTimestamp.localeCompare(b.firstTimestamp);
-    case 'model':
-      return a.models.join(' ').localeCompare(b.models.join(' '));
-    case 'systemBytes':
-      return a.peak.systemBytes - b.peak.systemBytes;
-    case 'toolsBytes':
-      return a.peak.toolsBytes - b.peak.toolsBytes;
-    default:
-      return a.peak.realInput - b.peak.realInput;
-  }
-}
-
 /**
  * Per-column floors — every column needs one, or a wrap in Thread squeezes its
  * neighbours. Their sum is wider than a phone, which is what `.table-scroll` is for.
@@ -129,35 +170,32 @@ const COLUMN = {
   bar: { minWidth: 90 },
 } as const satisfies Record<string, CSSProperties>;
 
-function ThreadsTable({ summary, days }: { summary: ContextResponse['summary']; days: number }) {
-  const [sort, setSort, isSorting] = useTransitionState<{ key: SortKey; dir: SortDir }>({
-    key: 'when',
-    dir: 'desc',
-  });
-  const [query, setQuery] = useState('');
-  const { entries, maxRealInput } = summary;
-  // Scaled by the whole window, so filtering doesn't re-scale the bars.
-  const max = Math.max(1, maxRealInput);
-
-  // Grouped before filtering and sorting, so a thread stays one row however its
-  // requests interleaved with another's.
-  const groups = useMemo(() => groupContextThreads(entries), [entries]);
-
-  const rows = useMemo(() => {
-    const kept = groups.filter((g) => promptMatches(g.prompt, query));
-    kept.sort((a, b) => {
-      const diff = compare(a, b, sort.key);
-      return sort.dir === 'asc' ? diff : -diff;
-    });
-    return kept;
-  }, [groups, sort, query]);
-
-  const searchable = useMemo(() => groups.filter((g) => g.prompt).length, [groups]);
-
-  const onSort = (key: SortKey) =>
-    setSort((prev) =>
-      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: DEFAULT_DIR[key] },
-    );
+function ThreadsTable({
+  page,
+  peakOf,
+  days,
+  sort,
+  onSort,
+  search,
+  onSearch,
+  onOffset,
+  stale,
+}: {
+  page: ContextResponse['page'];
+  peakOf: number;
+  days: number;
+  sort: Sort;
+  onSort: (key: ContextSort) => void;
+  search: string;
+  onSearch: (next: string) => void;
+  onOffset: (next: number) => void;
+  stale: boolean;
+}) {
+  // Scaled by the whole window, so paging and filtering don't re-scale the bars.
+  const max = Math.max(1, peakOf);
+  const searching = page.q.length > 0;
+  const first = page.matched === 0 ? 0 : page.offset + 1;
+  const last = Math.min(page.offset + page.rows.length, page.matched);
 
   return (
     <div className='card'>
@@ -167,20 +205,20 @@ function ThreadsTable({ summary, days }: { summary: ContextResponse['summary']; 
           <Search size={14} strokeWidth={1.75} aria-hidden />
           <input
             type='search'
-            value={query}
+            value={search}
             placeholder='Search what was asked'
             aria-label='Search threads by opening prompt'
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => onSearch(e.target.value)}
           />
         </label>
         <span className='muted'>
-          {query.trim()
-            ? `${fmtInt(rows.length)} of ${fmtInt(groups.length)} · searching ${fmtInt(searchable)} recorded prompt${searchable === 1 ? '' : 's'}`
+          {searching
+            ? `${fmtInt(page.matched)} of ${fmtInt(page.total)} · searching ${fmtInt(page.searchable)} recorded prompt${page.searchable === 1 ? '' : 's'}`
             : 'one row per thread, showing its largest request · click it to see every request it sent'}
         </span>
       </div>
       <div className='table-scroll'>
-        <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
+        <table className={stale ? 'table is-stale' : 'table'} aria-busy={stale || undefined}>
           <thead>
             <tr>
               <th style={COLUMN.thread}>Thread</th>
@@ -227,19 +265,40 @@ function ThreadsTable({ summary, days }: { summary: ContextResponse['summary']; 
             </tr>
           </thead>
           <tbody>
-            {rows.map((group) => (
-              <ThreadRow key={group.key} group={group} query={query} days={days} max={max} peakOf={maxRealInput} />
+            {page.rows.map((row) => (
+              <ThreadRow key={row.key} row={row} query={page.q} days={days} max={max} peakOf={peakOf} />
             ))}
-            {rows.length === 0 && (
+            {page.rows.length === 0 && (
               <tr>
                 <td colSpan={7} className='empty'>
-                  No thread's opening prompt matches “{query.trim()}”.
+                  {searching ? `No thread's opening prompt matches “${page.q}”.` : 'No threads on this page.'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+      {page.matched > page.limit && (
+        <nav className='pager' aria-label='Thread pages'>
+          <button
+            type='button'
+            className='pager-btn'
+            disabled={page.offset === 0}
+            onClick={() => onOffset(Math.max(0, page.offset - page.limit))}>
+            ‹ Previous
+          </button>
+          <span className='pager-pos muted'>
+            {fmtInt(first)}–{fmtInt(last)} of {fmtInt(page.matched)}
+          </span>
+          <button
+            type='button'
+            className='pager-btn'
+            disabled={last >= page.matched}
+            onClick={() => onOffset(page.offset + page.limit)}>
+            Next ›
+          </button>
+        </nav>
+      )}
     </div>
   );
 }
@@ -249,63 +308,63 @@ function ThreadsTable({ summary, days }: { summary: ContextResponse['summary']; 
  * thread page, so it links to its own breakdown instead.
  */
 function ThreadRow({
-  group,
+  row,
   query,
   days,
   max,
   peakOf,
 }: {
-  group: ContextThreadGroup;
+  row: ContextThreadRow;
   query: string;
   days: number;
   max: number;
   peakOf: number;
 }) {
-  const count = group.entries.length;
-  const title = group.prompt ? promptExcerpt(group.prompt, query) : 'No opening prompt recorded';
+  const count = row.requestCount;
+  const title = row.prompt ? promptExcerpt(row.prompt, query) : 'No opening prompt recorded';
   return (
     <tr>
       <td style={COLUMN.thread}>
-        {group.threadId ? (
+        {row.threadId ? (
           <Link
             to='/context/thread/$threadId'
-            params={{ threadId: group.threadId }}
+            params={{ threadId: row.threadId }}
             search={{ days }}
             className='thread-link'>
-            <span className='thread-title' title={group.prompt ?? undefined}>
+            <span className='thread-title' title={row.prompt ?? undefined}>
               {title}
             </span>
             <span className='thread-sub'>
-              <span className='thread-id'>{group.threadId.slice(-8)}</span>
+              <span className='thread-id'>{row.threadId.slice(-8)}</span>
               {fmtInt(count)} request{count === 1 ? '' : 's'}
             </span>
           </Link>
         ) : (
-          <Link to='/context/$file' params={{ file: group.peak.file }} className='thread-link'>
+          <Link to='/context/$file' params={{ file: row.file }} className='thread-link'>
             <span className='thread-title'>{title}</span>
             <span className='thread-sub'>no thread recorded · 1 request</span>
           </Link>
         )}
       </td>
       <td style={COLUMN.when}>
-        <span className='thread-when'>{fmtLocalTs(group.firstTimestamp)}</span>
-        {count > 1 && <span className='thread-sub'>→ {fmtLocalTs(group.lastTimestamp)}</span>}
+        <span className='thread-when'>{fmtLocalTs(row.firstTimestamp)}</span>
+        {count > 1 && <span className='thread-sub'>→ {fmtLocalTs(row.lastTimestamp)}</span>}
       </td>
       <td className='muted' style={COLUMN.model}>
-        {group.models.length === 1 ? group.models[0] : `${group.models.length} models`}
+        {row.models.length === 1 ? row.models[0] : `${row.models.length} models`}
       </td>
       <td className='num' style={COLUMN.num}>
-        {fmtInt(group.peak.realInput)}
-        {group.peak.realInput === peakOf && <span className='muted'> · peak</span>}
+        {fmtInt(row.realInput)}
+        {row.realInput === peakOf && <span className='muted'> · peak</span>}
       </td>
       <td className='num' style={COLUMN.num}>
-        {fmtBytes(group.peak.systemBytes)}
+        {fmtBytes(row.systemBytes)}
       </td>
       <td className='num' style={COLUMN.num}>
-        {fmtBytes(group.peak.toolsBytes)}
+        {fmtBytes(row.toolsBytes)}
       </td>
       <td className='bar-col' style={COLUMN.bar}>
-        <div className='rowbar' style={{ width: `${(group.peak.realInput / max) * 100}%` }} />
+        <div className='rowbar' style={{ width: `${(row.realInput / max) * 100}%` }} />
       </td>
     </tr>
   );
@@ -320,9 +379,9 @@ function SortHeader({
   style,
 }: {
   label: string;
-  sortKey: SortKey;
-  sort: { key: SortKey; dir: SortDir };
-  onSort: (key: SortKey) => void;
+  sortKey: ContextSort;
+  sort: Sort;
+  onSort: (key: ContextSort) => void;
   className?: string;
   style?: CSSProperties;
 }) {

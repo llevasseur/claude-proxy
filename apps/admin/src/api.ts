@@ -18,8 +18,8 @@ import type {
   CommandRunTotals,
   CommandStep,
   CommandSummary,
+  ContextAggregates,
   ContextEntry,
-  ContextSummary,
   HookRow,
   IdeaAreaCounts,
   IdeaClaimRefusal,
@@ -167,8 +167,52 @@ export interface ToolSchemaResponse {
   file: string | null;
   meta: { days: number; files: number; parseErrors: number; candidates: number };
 }
+/** The columns `/api/context` orders by. `size` draws the same number as `realInput`. */
+export const CONTEXT_SORTS = ['when', 'model', 'realInput', 'systemBytes', 'toolsBytes', 'size'] as const;
+export type ContextSort = (typeof CONTEXT_SORTS)[number];
+export type ContextSortDir = 'asc' | 'desc';
+
+/** How many thread rows one page carries, matching the server's own default. */
+export const CONTEXT_PAGE_SIZE = 100;
+
+/**
+ * One thread's row, already reduced to the cells the table draws — its largest
+ * request. The thread's own request list stays on the server; the thread page is
+ * what asks for it.
+ */
+export interface ContextThreadRow {
+  key: string;
+  threadId: string | null;
+  /** The peak request's sidecar: what a thread-less row drills into. */
+  file: string;
+  requestCount: number;
+  prompt: string | null;
+  firstTimestamp: string;
+  lastTimestamp: string;
+  models: string[];
+  realInput: number;
+  systemBytes: number;
+  toolsBytes: number;
+}
+/** One page of thread rows, echoing back the order and slice that selected it. */
+export interface ContextPage {
+  rows: ContextThreadRow[];
+  sort: ContextSort;
+  dir: ContextSortDir;
+  offset: number;
+  limit: number;
+  q: string;
+  /** Threads in the window, before any search narrowed it. */
+  total: number;
+  /** Threads the search kept — equal to `total` when there is no search. */
+  matched: number;
+  /** Threads carrying an opening prompt at all, which is what a search can reach. */
+  searchable: number;
+}
 export interface ContextResponse {
-  summary: ContextSummary;
+  /** The aggregate over the whole window, so the tiles hold still while a reader pages. */
+  summary: ContextAggregates;
+  page: ContextPage;
   meta: { days: number; files: number; parseErrors: number };
 }
 export interface ContextThreadResponse {
@@ -996,7 +1040,22 @@ export const getPromptSection = (hash: string, index: number, days: number) =>
 export const getUsage = () => read('/api/usage');
 export const getTools = (date?: string) => read('/api/tools', { date });
 export const getToolSchema = (name: string, days: number) => read('/api/tool-schema', { name, days });
-export const getContext = (days: number) => read('/api/context', { days });
+/**
+ * One page of the window's threads. The sort, the slice and the prompt search are the
+ * server's work, so a month-long window costs a page rather than its whole corpus.
+ */
+export const getContext = (
+  days: number,
+  page: { sort: ContextSort; dir: ContextSortDir; offset: number; limit?: number; q?: string },
+) =>
+  read('/api/context', {
+    days,
+    sort: page.sort,
+    dir: page.dir,
+    offset: page.offset,
+    limit: page.limit ?? CONTEXT_PAGE_SIZE,
+    q: page.q,
+  });
 export const getContextThread = (threadId: string, days: number) =>
   read('/api/context/thread', { thread: threadId, days });
 export const getContextDetail = (file: string) => read('/api/context/detail', { file });

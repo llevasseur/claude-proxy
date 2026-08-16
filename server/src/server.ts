@@ -85,6 +85,7 @@ import {
   buildUsage,
   buildUsageScoped,
   buildWithheld,
+  contextPageQuery,
   type RebuildScope,
   rebuildScope,
 } from './api.js';
@@ -996,10 +997,19 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   },
   '/api/context': async ({ res, url }) => {
     const days = await parseDays(url.searchParams.get('days'));
+    // The order, the slice and the search the table asked for. Clamped rather than
+    // rejected, so a hand-written query string still answers with the default view.
+    const page = contextPageQuery({
+      sort: url.searchParams.get('sort'),
+      dir: url.searchParams.get('dir'),
+      offset: url.searchParams.get('offset'),
+      limit: url.searchParams.get('limit'),
+      q: url.searchParams.get('q'),
+    });
     const now = new Date();
-    const context = await buildContext(LOG_DIR, days, now, readSource());
+    const context = await buildContext(LOG_DIR, days, now, readSource(), page);
     send(res, 200, context);
-    shadow('/api/context', context, (source) => buildContext(LOG_DIR, days, now, source));
+    shadow('/api/context', context, (source) => buildContext(LOG_DIR, days, now, source, page));
   },
   '/api/context/thread': async ({ res, url }) => {
     const threadId = url.searchParams.get('thread');

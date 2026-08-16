@@ -46,9 +46,14 @@ captured data, without touching the passive-observer proxy.
   command the arguments only, never the inlined command definition. Matching is
   case-insensitive and every whitespace-separated term must appear; `"a phrase"` in double
   quotes matches whole. A matching row shows an excerpt of that prompt windowed on the first
-  term. Grouping happens before filtering and sorting, and filtering is client-side over the
-  entries already loaded, so it needs no refetch; a thread that recorded no opening prompt is
-  never a match — the caption says how many prompts are searchable.
+  term. **Grouping, searching, ordering and slicing all happen on the server**, over the whole
+  window: the route takes `sort`, `dir`, `offset`, `limit` and `q` and answers with one page of
+  thread rows (100 by default, 500 at most), so clicking a column or typing in the search box
+  asks for that order's first page rather than re-sorting a month of requests in the browser —
+  a 30-day window was 40862 rows and 29.6 MB of JSON. Paging is Previous/Next below the table,
+  and a new order, a new search or a new window is a new first page. A thread that recorded no
+  opening prompt is never a match — the caption says how many prompts are searchable, and how
+  many of the window's threads the search matched.
 - **Thread page** (`/context/thread/$threadId?days=<n>`) — the shared drill-down a thread's
   single row opens: its opening prompt and full thread id, stat tiles for **requests**,
   **peak** and **average** context and the **span**, then a **"Requests"** table of every
@@ -74,14 +79,20 @@ captured data, without touching the passive-observer proxy.
   **"Tool schema"** card with a **Pretty** view (name, description, and a required-flagged
   parameter table drawn from `input_schema`) and a **Raw** JSON view.
 
-Data comes from the `server` API — `GET /api/context?days=<n>` (windowed summary; `days` is
+Data comes from the `server` API — `GET /api/context?days=<n>&sort=<col>&dir=<asc|desc>&offset=<n>&limit=<n>&q=<text>`
+(windowed aggregates plus one page of thread rows; `days` is
 clamped to 1–365, default 14, or `all` — the `0` the picker sends — for every day on record,
-whose floor is the oldest day the corpus holds rather than a clamp),
+whose floor is the oldest day the corpus holds rather than a clamp. `sort` is one of `when`,
+`model`, `realInput`, `systemBytes`, `toolsBytes`, `size`, and an unreadable or out-of-range
+paging parameter falls back to the default page rather than erroring. The response's `summary`
+is an `aggregateContext` over the **whole** window — average, median, largest and the `top`
+ten never describe the page — while `page` carries the ordered slice, `total`, `matched` and
+`searchable`),
 `GET /api/context/thread?thread=<id>&days=<n>` (one thread's
 requests, oldest first, plus its opening prompt), `GET /api/context/detail?file=<base>` (one
 request's breakdown + raw JSON), and `GET /api/context/tool?file=<base>&index=<n>` (one tool
-schema) — computed via `summarizeContext` / `analyzeRequestBody` / `extractRequestTool` in
-`packages/core`.
+schema) — computed via `aggregateContext` + `groupContextThreads` / `analyzeRequestBody` /
+`extractRequestTool` in `packages/core`.
 
 `buildContextThread` selects on **thread id alone** rather than reusing the session-id
 fallback that widens a session view, because that fallback would hand a subagent's page every
@@ -125,6 +136,9 @@ day), so no path traversal is possible.
 - Each row carries its thread's opening prompt reduced to human-authored text, and the search
   box narrows the table to the rows whose prompt contains every query term; a thread that
   recorded no prompt never matches.
+- `/api/context` answers with one page of thread rows rather than every request in the window,
+  ordered and searched server-side, and its summary tiles stay computed over the whole window
+  whichever page is asked for.
 - Every table stays inside its card at any viewport width, scrolling horizontally below its
   columns' combined minimum rather than overflowing.
 - The breakdown attributes a request's size across conversation messages, tool schemas, and
