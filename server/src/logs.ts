@@ -69,6 +69,25 @@ export interface ReadOptions {
    * harness rests on.
    */
   omitTools?: boolean;
+  /**
+   * Deliver the window in **timestamp order** rather than in the order the two
+   * halves happen to be read in.
+   *
+   * Without it a window arrives archived-half-first, then the live root — which
+   * is chronological everywhere except the seam, because a reporting day near
+   * the present genuinely sits in both places. A caller that wants chronology
+   * therefore sorts the whole window itself, and on a 30-day span that is a
+   * ~630,000-comparison sort of 41,000 rows for an order the substrate can seek.
+   *
+   * The order is `(timestamp, stem)`. The stem breaks ties so the two backings
+   * cannot disagree on same-instant rows, and a row with **no** timestamp — a
+   * file that would not parse, which has no `timestamp` to read — sorts as the
+   * empty string, ahead of every real one. Both backings apply that identical
+   * rule; only the substrate saves anything by the flag, exactly as with
+   * {@link ReadOptions.omitTools}, since the file backing has to parse the
+   * whole window off disk before it knows a single timestamp.
+   */
+  orderByTimestamp?: boolean;
 }
 
 /**
@@ -102,6 +121,60 @@ export function today(now: Date = new Date()): string {
 
 function cutoff(sinceDays: number, now: Date): string {
   return shiftDay(today(now), -(sinceDays - 1));
+}
+
+/** `<stem>.audit.json` -> `<stem>`, the name both backings key a row by. */
+function stemOf(file: string): string {
+  return file.replace(/\.audit\.json$/, '');
+}
+
+/**
+ * The window's total order, as a tuple rather than a joined string so no
+ * separator character has to sort below every character a stem can hold.
+ *
+ * Timestamp first, stem second. The stem is what stops the two backings from
+ * disagreeing about rows captured in the same millisecond, and an absent
+ * timestamp is the empty string, which sorts ahead of every real one.
+ */
+export function compareByTimestamp(
+  a: { timestamp: string; stem: string },
+  b: { timestamp: string; stem: string },
+): number {
+  if (a.timestamp !== b.timestamp) return a.timestamp < b.timestamp ? -1 : 1;
+  return a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0;
+}
+
+/**
+ * Two already-ordered halves of a window, merged into one ordered stream in a
+ * single linear pass — no sort, which is the entire point of asking for the
+ * order at the read.
+ *
+ * **Ties keep `a` first**, and that is what makes this a no-op rewrite of the
+ * concatenation it replaces: the halves are handed over in exactly the order
+ * they used to be appended in (an archived day before the day after it, the
+ * archived stream before the live root), so two rows the timestamps cannot
+ * separate come out in the order they always did.
+ */
+export function mergeByTimestamp(a: readonly unknown[], b: readonly unknown[]): unknown[] {
+  if (a.length === 0) return [...b];
+  if (b.length === 0) return [...a];
+  const out: unknown[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const left = timestampOf(a[i]) ?? '';
+    const right = timestampOf(b[j]) ?? '';
+    if (right < left) {
+      out.push(b[j]!);
+      j += 1;
+    } else {
+      out.push(a[i]!);
+      i += 1;
+    }
+  }
+  for (; i < a.length; i += 1) out.push(a[i]!);
+  for (; j < b.length; j += 1) out.push(b[j]!);
+  return out;
 }
 
 /** A sidecar's ISO `timestamp`, when it has a usable one. */
@@ -149,6 +222,11 @@ export async function readSidecars(
   files.sort();
 
   const sidecars: unknown[] = [];
+  // Parallel to `sidecars`, and only read when `orderByTimestamp` asks for it:
+  // the `(timestamp, stem)` key of each row, in the filename order they were
+  // pushed in. Kept alongside rather than folded into the rows because a
+  // sidecar is handed to callers as it was parsed, with nothing added to it.
+  const keys: Array<{ timestamp: string; stem: string }> = [];
   let parseErrors = 0;
   let kept = 0;
   let bodiesEvicted = 0;
@@ -162,6 +240,9 @@ export async function readSidecars(
       parseErrors += 1;
       kept += 1;
       sidecars.push({ __parseError: f });
+      // No timestamp to order by — the file did not parse. The empty key is the
+      // rule the substrate applies to its skipped rows too.
+      keys.push({ timestamp: '', stem: stemOf(f) });
       continue;
     }
 
@@ -185,6 +266,16 @@ export async function readSidecars(
     }
     kept += 1;
     sidecars.push(sidecar);
+    keys.push({ timestamp: timestampOf(sidecar) ?? '', stem: stemOf(f) });
+  }
+
+  if (opts.orderByTimestamp) {
+    // Sorting the index rather than the rows keeps the two arrays in step, and
+    // the file backing pays this sort in full: it has no index to seek, which
+    // is the whole reason the flag exists for the substrate's sake.
+    const order = keys.map((_, i) => i);
+    order.sort((a, b) => compareByTimestamp(keys[a]!, keys[b]!));
+    return { sidecars: order.map((i) => sidecars[i]), files: kept, parseErrors, bodiesEvicted };
   }
   return { sidecars, files: kept, parseErrors, bodiesEvicted };
 }
@@ -243,7 +334,12 @@ export async function readArchivedDay(
         continue;
       }
       if (r.files === 0) continue;
-      out.sidecars.push(...r.sidecars);
+      // A reporting day is read from `<day>` and `<day+1>`, so the two halves
+      // interleave in time. Concatenating them was fine while the caller sorted;
+      // an ordered read has to merge them, `<day>` first on a tie so the stream
+      // is the one the concatenation produced.
+      if (readOpts.orderByTimestamp) out.sidecars = mergeByTimestamp(out.sidecars, r.sidecars);
+      else out.sidecars.push(...r.sidecars);
       out.files += r.files;
       out.parseErrors += r.parseErrors;
       out.bodiesEvicted = (out.bodiesEvicted ?? 0) + (r.bodiesEvicted ?? 0);

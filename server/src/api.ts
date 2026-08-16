@@ -1348,12 +1348,18 @@ export async function buildContext(
   source: SidecarSource = fileSource,
   page: ContextPageQuery = contextPageQuery(),
 ): Promise<ContextResponse> {
+  // `orderByTimestamp` because everything below wants the window in time order
+  // and the read can seek it: `request.timestamp` is indexed, and the one place
+  // the two halves are not already chronological is the archived/live seam,
+  // which the read merges in a linear pass. Sorting it here instead was ~630,000
+  // comparisons over 41,000 rows on every request.
+  //
   // `omitTools` because a `ContextEntry` reads `request.toolCount` and never the
   // per-tool list: the substrate would otherwise fetch and group every tool
   // schema of every request in the window to build an array nothing here opens.
   const { sidecars, files, parseErrors } = await readWindow(
     logDir,
-    { sinceDays: days, includeFile: true, omitTools: true },
+    { sinceDays: days, includeFile: true, omitTools: true, orderByTimestamp: true },
     now,
     source,
   );
@@ -1362,14 +1368,18 @@ export async function buildContext(
   const prompts = await source.readRootPrompts(logDir, threadIds);
   const entries = attachContextPrompts(read, prompts);
 
-  // In the read's own order, which is what decided the `top` list's ties before the
-  // page existed. Chronology is the grouping's concern, below, not the aggregate's.
+  // In the read's own order, which is what decides the `top` list's ties — and
+  // that order is now chronological rather than archived-half-first. The set is
+  // the same either way; what changes is which of two equal-sized requests the
+  // `top` list keeps, and it changes from "whichever half happened to hold it"
+  // to "whichever came first", so the answer no longer moves when `maintain`
+  // archives a day.
   const summary = aggregateContext(entries);
 
-  // Grouped from the chronological list, so a thread's `models` order and its
-  // opening prompt come from its earliest request whatever order the page asks for.
-  const chronological = [...entries].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  const rows = groupContextThreads(chronological).map(toThreadRow);
+  // The read is already chronological, so a thread's `models` order and its
+  // opening prompt come from its earliest request whatever order the page asks
+  // for — without the whole-window sort this used to do to get there.
+  const rows = groupContextThreads(entries).map(toThreadRow);
   const searchable = rows.filter((r) => r.prompt !== null).length;
   const matched = page.q ? rows.filter((r) => promptMatches(r.prompt, page.q)) : rows;
   const ordered = [...matched].sort((a, b) => {
