@@ -16,7 +16,7 @@
 import type { Severity } from './advice.js';
 import type { RequestBreakdown } from './context.js';
 import { estTokens } from './context.js';
-import { type SessionMeta, type SessionNode, sessionDisplayName } from './sessions.js';
+import { isContinuedSession, type SessionMeta, type SessionNode, sessionDisplayName } from './sessions.js';
 
 /** How many sessions one bucket covers: 1–10, 11–20, … */
 export const SESSION_BUCKET_SIZE = 10;
@@ -122,18 +122,48 @@ export function toolName(signature: string | null): string | null {
   return SIG_RE.exec(signature)?.[1] ?? null;
 }
 
+/**
+ * The one argument a signature renders, with its `key=` prefix dropped — `command=git
+ * status` reads back as `git status`. Empty when the signature doesn't parse, so callers
+ * can match against it without special-casing.
+ */
+export function callArgs(signature: string | null): string {
+  if (!signature) return '';
+  const args = SIG_RE.exec(signature)?.[2] ?? '';
+  return args.replace(/^\w+=/, '').trim();
+}
+
 /** Tools whose call only gathers information — safe to issue several at once. */
 const DISCOVERY_TOOLS = new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'NotebookRead']);
 
 /** Shell verbs that only inspect the tree — a `Bash(…)` running one is discovery too. */
 const DISCOVERY_SHELL_RE = /\b(ls|find|cat|head|tail|wc|grep|rg|tree|stat|pwd|git\s+(status|log|diff|show))\b/;
 
-/** True when this call only reads state, so peers like it could have run in parallel. */
+/**
+ * Shell verbs that change something. A command carrying one is not discovery **however
+ * many inspecting verbs ride along with it**, which is the whole point: `pnpm test | tail
+ * -20` and `git commit … && git push` both match {@link DISCOVERY_SHELL_RE} on a word that
+ * is doing none of the work, and both were counted as parallelizable reads in transcripts
+ * where they built, committed and pushed. A redirection counts too — `> file` writes.
+ */
+const MUTATING_SHELL_RE =
+  /(?:^|[;&|(]\s*)(?:sudo\s+)?(?:rm|mv|cp|mkdir|rmdir|touch|chmod|chown|ln|tee|kill|pkill|npm|pnpm|yarn|npx|node|tsx|python\d?|pip\d?|make|cargo|go|docker|gh|curl|wget|apply|patch)\b|\bsed\s+-i\b|\bgit\s+(?:add|commit|push|pull|fetch|merge|rebase|reset|revert|checkout|switch|branch|tag|stash|worktree|cherry-pick|clean|init|remote)\b|>>?\s*\S/;
+
+/**
+ * True when this call only reads state, so peers like it could have run in parallel.
+ *
+ * A `Bash(…)` has to clear both bars: it must run an inspecting verb, and it must not run a
+ * mutating one anywhere in the pipeline. Reaching a verdict on the whole command rather
+ * than on its first matching word is what keeps a build, a commit or a push out of a count
+ * of "read-only calls that could have gone out together".
+ */
 export function isDiscoveryCall(signature: string | null): boolean {
   const name = toolName(signature);
   if (!name) return false;
   if (DISCOVERY_TOOLS.has(name)) return true;
-  return name === 'Bash' && DISCOVERY_SHELL_RE.test(signature ?? '');
+  if (name !== 'Bash') return false;
+  const command = callArgs(signature);
+  return DISCOVERY_SHELL_RE.test(command) && !MUTATING_SHELL_RE.test(command);
 }
 
 /** Error texts that mean a guardrail refused the call rather than the call failing. */
@@ -165,6 +195,7 @@ function sessionLabel(s: SuggestibleSession): string {
 
 /** What a bucket's transcripts add up to. */
 export interface SessionBucketStats {
+  /** Distinct threads counted — a compaction pair contributes one. See {@link dedupeContinuedThreads}. */
   sessions: number;
   tasks: number;
   decisions: number;
@@ -260,6 +291,52 @@ function openTaskNodes(session: SuggestibleSession): SessionNode[] {
 function openSubagentNode(session: SuggestibleSession): SessionNode | null {
   if (session.reported) return null;
   return session.nodes[session.nodes.length - 1] ?? null;
+}
+
+/**
+ * One thread, once. A conversation that crosses a compaction is recorded **twice** — the CLI
+ * reopens it with the previous conversation's summary replayed, the proxy files that under a
+ * fresh thread id, and both transcripts carry the same `- session:` uuid. Summed over such a
+ * pair, every count the rules produce counts one real event twice: bucket 76's 25.5
+ * calls-per-task average was inflated exactly this way.
+ *
+ * So the continuation transcripts of one uuid collapse to the fullest of them, and everything
+ * else is left alone:
+ *
+ *  - a **subagent** shares its caller's uuid but is not a continuation, so it still counts;
+ *  - the **pre-compaction** thread is not a continuation either, and keeps its own count —
+ *    it recorded steps the continuation never re-recorded.
+ *
+ * This is deliberately confined to what the rules *count*. Bucket membership and numbering
+ * come from {@link bucketSessions} and are untouched, because verdicts are already recorded
+ * against bucket numbers and renumbering would silently detach every one of them from its
+ * evidence. A duplicated thread therefore still occupies its own slot in the window; it just
+ * no longer contributes twice to any rule's arithmetic.
+ */
+export function dedupeContinuedThreads(sessions: readonly SuggestibleSession[]): SuggestibleSession[] {
+  const keptFor = new Map<string, SuggestibleSession>();
+  const out: SuggestibleSession[] = [];
+
+  for (const session of sessions) {
+    const uuid = session.sessionId;
+    if (!uuid || !isContinuedSession(session)) {
+      out.push(session);
+      continue;
+    }
+    const kept = keptFor.get(uuid);
+    if (!kept) {
+      keptFor.set(uuid, session);
+      out.push(session);
+      continue;
+    }
+    // Keep the fuller recording of the same thread — the shorter one is a strict re-record.
+    if (session.nodes.length > kept.nodes.length) {
+      out[out.indexOf(kept)] = session;
+      keptFor.set(uuid, session);
+    }
+  }
+
+  return out;
 }
 
 function bucketStats(sessions: readonly SuggestibleSession[]): SessionBucketStats {
@@ -432,13 +509,57 @@ const isSerialDiscoveryTurn = (turn: DiscoveryTurn | null): boolean =>
   turn !== null && turn.turn !== null && turn.tools.length === 1 && isDiscoveryCall(turn.tools[0]!.tool);
 
 /**
+ * What a run counts *distinct* targets by: the proxy's fingerprint of the whole argument
+ * object, falling back to the rendered signature when the sidecar predates it.
+ */
+const callKey = (node: SessionNode): string => node.argsHash ?? node.tool ?? `#${node.index}`;
+
+/** A path-like token — at least one `/` — which is what a narrowing probe walks down. */
+const PATH_TOKEN_RE = /[\w@.~-]*(?:\/[\w@.-]+)+/g;
+
+/** The last path this call named, or null when it named none worth matching on. */
+function probeTarget(node: SessionNode): string | null {
+  const found = callArgs(node.tool).match(PATH_TOKEN_RE);
+  const last = found?.[found.length - 1];
+  return last && last.length >= 4 ? last.toLowerCase() : null;
+}
+
+/**
+ * True when `next` names the path `prev` was pointed at — a probe that narrowed onto what
+ * the previous call turned up (`ls /repo/src` → `ls /repo/src/db` → `Read /repo/src/db/x.ts`).
+ * Its argument therefore could not have been written before `prev` came back, so the two
+ * were never issuable in one turn.
+ */
+function narrowsFrom(prev: SessionNode, next: SessionNode): boolean {
+  const target = probeTarget(prev);
+  if (!target) return false;
+  return callArgs(next.tool).toLowerCase().includes(target);
+}
+
+/**
  * Read-only calls that each cost their own round-trip — the cheapest latency win. Counted
  * in **turns**, not calls: a turn that issued its reads together is never flagged, however
  * many. A transcript recording no turn boundaries yields nothing here.
  *
- * Two shapes are outside it, because neither could have gone out in one turn: a batch issued
- * in parallel, and a dependent chain, which `discoveryTurns` recognizes by the reasoning
- * recorded between its steps.
+ * Four shapes are outside it, because none of them could have gone out in one turn:
+ *
+ *  - a batch issued in parallel — one turn, however many calls;
+ *  - a dependent chain, recognized two ways: by the reasoning or the errored result
+ *    `discoveryTurns` breaks on, and by {@link narrowsFrom}, where the next call's argument
+ *    is a path the previous call turned up;
+ *  - a **wait** — repeated access to one target while a background job writes it.
+ *    Parallelizing a wait is meaningless by construction, and re-reading one file is
+ *    `redundant-reads`' finding, not this one. A run therefore has to reach
+ *    {@link SUGGESTION_THRESHOLDS.serialRunLength} *distinct* targets, not merely that many
+ *    turns;
+ *  - anything that changed the tree — see {@link isDiscoveryCall}, which now reads the whole
+ *    shell pipeline rather than its first inspecting word.
+ *
+ * One shape stays out of reach: an argument of call N that came from the *output* of call
+ * N-1 without naming a path (a PID read off `ps` and passed to `lsof`, a symbol read off one
+ * `rg` and searched for by the next). Transcripts record errored results only — a successful
+ * call's output is never written down — so that dependency is unrecoverable here rather than
+ * merely untuned, and closing it would mean the proxy recording something of each result.
  */
 const serialDiscovery: Rule = (sessions) => {
   const hits: { session: SuggestibleSession; node: SessionNode }[] = [];
@@ -447,15 +568,21 @@ const serialDiscovery: Rule = (sessions) => {
   for (const session of sessions) {
     let run: DiscoveryTurn[] = [];
     const flush = () => {
-      if (run.length >= SUGGESTION_THRESHOLDS.serialRunLength) {
+      const distinct = new Set(run.map((t) => callKey(t.tools[0]!)));
+      if (distinct.size >= SUGGESTION_THRESHOLDS.serialRunLength) {
         runs += 1;
         for (const turn of run) hits.push({ session, node: turn.tools[0]! });
       }
       run = [];
     };
     for (const turn of discoveryTurns(session.nodes)) {
-      if (isSerialDiscoveryTurn(turn)) run.push(turn!);
-      else flush();
+      if (!isSerialDiscoveryTurn(turn)) {
+        flush();
+        continue;
+      }
+      const previous = run[run.length - 1];
+      if (previous && narrowsFrom(previous.tools[0]!, turn!.tools[0]!)) flush();
+      run.push(turn!);
     }
     flush();
   }
@@ -466,7 +593,7 @@ const serialDiscovery: Rule = (sessions) => {
     id: 'serial-discovery',
     severity: 'warn',
     title: 'Read-only calls went out one at a time',
-    detail: `${SUGGESTION_THRESHOLDS.serialRunLength}+ turns in a row each spent their whole round-trip on a single read/grep, with no reasoning recorded between any of them — so nothing came back that the next one needed, and they were independent by construction. Issuing them as parallel calls in one turn collapses that many round-trips into one, for the same steps and the same context.`,
+    detail: `${SUGGESTION_THRESHOLDS.serialRunLength}+ turns in a row each spent their whole round-trip on a single read/grep of a *different* target, with no reasoning recorded between any of them and no argument taken from the path the call before it turned up — so nothing came back that the next one needed, and they were independent by construction. Issuing them as parallel calls in one turn collapses that many round-trips into one, for the same steps and the same context.`,
     evidence: `${runs} serial run${runs === 1 ? '' : 's'} covering ${hits.length} single-call turns across ${sources.length} session${sources.length === 1 ? '' : 's'}`,
     sources,
   };
@@ -640,9 +767,13 @@ const RULES: Rule[] = [
   errorProneTool,
 ];
 
-/** Run every rule over one bucket's sessions, most severe first. */
-export function suggestBucket(sessions: readonly SuggestibleSession[]): SessionSuggestion[] {
-  if (sessions.length === 0) return [];
+/**
+ * Run every rule over one bucket's sessions, most severe first. Threads recorded twice
+ * across a compaction are collapsed first — see {@link dedupeContinuedThreads}.
+ */
+export function suggestBucket(input: readonly SuggestibleSession[]): SessionSuggestion[] {
+  if (input.length === 0) return [];
+  const sessions = dedupeContinuedThreads(input);
   const stats = bucketStats(sessions);
   const out: SessionSuggestion[] = [];
   for (const rule of RULES) {
@@ -685,8 +816,9 @@ export function sessionSuggestionBuckets(sessions: readonly SuggestibleSession[]
         complete: group.length === SESSION_BUCKET_SIZE,
         startedFirst: started[0] ?? null,
         startedLast: started[started.length - 1] ?? null,
+        // Membership stays the raw window — numbering is what recorded verdicts point at.
         threadIds: group.map((s) => s.threadId),
-        stats: bucketStats(group),
+        stats: bucketStats(dedupeContinuedThreads(group)),
         suggestions: suggestBucket(group),
       };
     })
