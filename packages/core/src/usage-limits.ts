@@ -1,5 +1,5 @@
 import { dayStartMs, shiftDay } from './time.js';
-import { type AuditSidecar, type AuditTokens, isAuditSidecar } from './types.js';
+import type { AuditTokens } from './types.js';
 
 /**
  * Usage meters for the rolling allowances a Claude subscription meters separately.
@@ -69,6 +69,49 @@ export const CACHE_READ_METERING_WEIGHT = 0.02;
  */
 export function usageUnits(t: AuditTokens): number {
   return t.input + t.output + t.cacheCreation + t.cacheRead * CACHE_READ_METERING_WEIGHT;
+}
+
+/**
+ * **Everything these meters read off one captured request** — when it happened,
+ * which model answered it, what it cost in tokens, and the rate-limit headers
+ * that came back with it. Every full `AuditSidecar` is one; nothing here reads
+ * `request`, `tools`, `session` or `skim`.
+ *
+ * Naming that subset is what lets a caller keep a day's requests as a compacted
+ * projection rather than as whole sidecars. `server/src/usage-history.ts` stores
+ * one such projection per closed archived day, so a cold read of the 28-day
+ * learning span deserializes a few fields per request instead of the whole
+ * corpus. See {@link isUsageRecord} for why widening the guard is safe.
+ */
+export interface UsageRecord {
+  /** ISO 8601 timestamp of the request. */
+  timestamp: string;
+  model: string;
+  tokens: AuditTokens;
+  /** Captured `anthropic-ratelimit-*` response headers, when the proxy recorded any. */
+  rateLimit?: Record<string, string>;
+}
+
+/**
+ * Whether `value` carries the fields above.
+ *
+ * Deliberately narrower than `isAuditSidecar`, which additionally demands
+ * `request` and `tools` — fields no meter consults. Nothing that used to be
+ * counted stops being counted, and nothing that used to be rejected starts:
+ * the markers the substrate emits for an unusable file (`__parseError`,
+ * `__invalidSidecar`) carry no `model` and no `tokens`, so they still fail here.
+ */
+export function isUsageRecord(value: unknown): value is UsageRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.timestamp !== 'string') return false;
+  if (typeof v.model !== 'string') return false;
+  const t = v.tokens as Record<string, unknown> | undefined;
+  if (typeof t !== 'object' || t === null) return false;
+  for (const key of ['input', 'output', 'cacheRead', 'cacheCreation', 'realInput']) {
+    if (typeof t[key] !== 'number') return false;
+  }
+  return true;
 }
 
 /** Per-window ceilings for the estimated path, in {@link usageUnits}. */
@@ -517,7 +560,7 @@ function assessPace(args: {
 }
 
 /** A sidecar's captured response rate-limit headers, if the proxy recorded any. */
-function rateLimitHeaders(s: AuditSidecar): Record<string, string> | null {
+function rateLimitHeaders(s: UsageRecord): Record<string, string> | null {
   const raw: unknown = s.rateLimit;
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
   return raw as Record<string, string>;
@@ -540,7 +583,7 @@ export function learnCeilings(sidecars: readonly unknown[], now: Date = new Date
   const entries: Array<{ at: number; model: string; tokens: AuditTokens }> = [];
   let oldest = Infinity;
   for (const raw of sidecars) {
-    if (!isAuditSidecar(raw)) continue;
+    if (!isUsageRecord(raw)) continue;
     const at = new Date(raw.timestamp).getTime();
     if (Number.isNaN(at) || at > nowMs + 60_000) continue; // skip clock-skewed futures
     entries.push({ at, model: raw.model, tokens: raw.tokens });
@@ -618,9 +661,9 @@ export function buildUsageLimits(
   const limits = opts.limits ?? {};
   const nowMs = now.getTime();
 
-  const valid: AuditSidecar[] = [];
+  const valid: UsageRecord[] = [];
   for (const raw of sidecars) {
-    if (!isAuditSidecar(raw)) continue;
+    if (!isUsageRecord(raw)) continue;
     const at = new Date(raw.timestamp).getTime();
     if (Number.isNaN(at) || at > nowMs + 60_000) continue; // skip clock-skewed futures
     if (nowMs - at > USAGE_WINDOW_MS.week) continue;

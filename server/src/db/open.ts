@@ -33,7 +33,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -686,6 +686,34 @@ CREATE TABLE IF NOT EXISTS pr_scan_link (
 CREATE INDEX IF NOT EXISTS pr_scan_link_thread_idx ON pr_scan_link(thread_id);
 `;
 
+/**
+ * One closed archived day of usage work, compacted to the fields the meters read.
+ * See `server/src/db/usage-day-store.ts`.
+ *
+ * `day_digest` beside it holds a *daily* digest, which cannot answer a 5-hour
+ * window: the usage meters need the individual requests, so this row keeps the
+ * day's requests projected down to `UsageRecord` rather than summed. That is what
+ * takes `/api/usage`'s 28-day learning span off the full corpus on a cold start.
+ *
+ * Derived and disposable, exactly like `day_digest`: no watermark is cleared and
+ * nothing is backfilled, rows appear as closed days are read, and the table can be
+ * emptied at any time for the price of recomputing them.
+ */
+const SCHEMA_V18 = `
+CREATE TABLE IF NOT EXISTS usage_day (
+  backing     TEXT    NOT NULL,
+  log_dir     TEXT    NOT NULL,
+  date        TEXT    NOT NULL,
+  revision    TEXT    NOT NULL,
+  -- The day's projected requests as a JSON array of \`UsageRecord\`.
+  records     TEXT    NOT NULL,
+  -- Files that would not parse, carried so the route's \`meta\` is unchanged.
+  parse_errors INTEGER NOT NULL,
+  computed_at TEXT    NOT NULL,
+  PRIMARY KEY (backing, log_dir, date, revision)
+);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -809,6 +837,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 15) db.exec(SCHEMA_V15);
   if (from < 16) db.exec(SCHEMA_V16);
   if (from < 17) db.exec(SCHEMA_V17);
+  if (from < 18) db.exec(SCHEMA_V18);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

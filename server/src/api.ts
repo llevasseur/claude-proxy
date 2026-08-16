@@ -420,11 +420,17 @@ export async function buildUsage(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<UsageResponse> {
-  const live = await source.readSidecars(logDir, { sinceDays: 8, includeFile: true }, now);
-  const archived = await loadArchivedUsage(logDir, now, source);
-  const learned = await loadLearnedCeilings(logDir, now, source);
-
-  const liveUsage = await loadLiveUsage(logDir, now);
+  // Four independent loads, issued together. They were four sequential awaits,
+  // and none of them takes an input from another — the route's wall time was
+  // their sum for no reason but the order they were written in. The archived read
+  // and the ceilings read overlap by eight days; `usage-history.ts` keys reads in
+  // flight, so a shared day is still read once.
+  const [live, archived, learned, liveUsage] = await Promise.all([
+    source.readSidecars(logDir, { sinceDays: 8, includeFile: true }, now),
+    loadArchivedUsage(logDir, now, source),
+    loadLearnedCeilings(logDir, now, source),
+    loadLiveUsage(logDir, now),
+  ]);
 
   const sidecars = dedupeByFile([...live.sidecars, ...archived.sidecars]);
   // The live directory is the current day's destination, so that day is retained

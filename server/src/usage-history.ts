@@ -1,6 +1,8 @@
 import { access } from 'node:fs/promises';
-import { type LearnedCeilings, learnCeilings } from '@claude-proxy/core';
+import { isUsageRecord, type LearnedCeilings, learnCeilings } from '@claude-proxy/core';
+import { isClosedDay } from './day-digest-memo.js';
 import { fileSource, type SidecarSource } from './db/source.js';
+import { clearStoredUsageDays, readStoredUsageDay, storeUsageDay } from './db/usage-day-store.js';
 import { rawArchiveDayDir, shiftDay, today } from './logs.js';
 
 /**
@@ -9,8 +11,15 @@ import { rawArchiveDayDir, shiftDay, today } from './logs.js';
  *
  * The live log directory holds roughly a day and cannot span a completed weekly
  * window, so the archive is the only place either can come from. Both passes are
- * expensive and slow-moving, hence the memos, and both read a day through the
+ * expensive and slow-moving, hence the caches, and both read a day through the
  * same one, so an overlapping day is parsed once rather than once each.
+ *
+ * That day cache has two levels, as `/api/summary`'s does. The map below is level
+ * one; `db/usage-day-store.ts` is level two, a row per closed archived day, and it
+ * is the one that makes a **cold** read cheap — a map only helps the second read,
+ * so a restarted server used to re-read all 28 days of the learning span for the
+ * first Overview load. Both levels are caches: a miss at each still reads the day
+ * exactly as before.
  */
 
 /** Four weeks — room for three completed weekly windows, without reading the whole archive. */
@@ -32,36 +41,110 @@ export function clearLearnedCeilingsCache(): void {
 // the gap in place until restart.
 const dayCache = new Map<string, { sidecars: unknown[]; parseErrors: number }>();
 
-/** Test-only: drop the per-day archived-sidecar memo. */
-export function clearArchivedUsageCache(): void {
+/**
+ * Reads already in flight, keyed as {@link dayCache} is.
+ *
+ * `loadArchivedUsage` and `loadLearnedCeilings` now run concurrently, and their
+ * spans overlap by eight days. Without this the two would miss the map together
+ * and read each shared day twice — the doc's promise that an overlapping day is
+ * parsed once, which a sequential pair used to get for free.
+ */
+const inFlight = new Map<string, Promise<ArchivedDayRead>>();
+
+/** Test-only: drop the per-day archived-sidecar cache, both levels. */
+export function clearArchivedUsageCache(opts: { keepPersisted?: boolean } = {}): void {
   dayCache.clear();
+  inFlight.clear();
+  if (!opts.keepPersisted) clearStoredUsageDays();
+}
+
+interface ArchivedDayRead {
+  sidecars: unknown[];
+  parseErrors: number;
+  retained: boolean;
 }
 
 /**
- * One archived day, parsed at most once per process, and whether it is retained
- * at all — its own directory being on disk is what makes it so.
+ * One entry of an archived day, cut down to what the meters read.
+ *
+ * `learnCeilings` and `buildUsageLimits` between them consult a request's
+ * timestamp, model, tokens and rate-limit headers, and `buildUsage` consults its
+ * `__file` to dedupe the archive/live seam. Everything else on a sidecar — the
+ * request metadata, the tool table, the session, the skim — is read off the
+ * *live* half or not at all, and it is the bulk of what a day costs to
+ * deserialize.
+ *
+ * An entry that is not a usable request keeps its `__file` and nothing else,
+ * rather than being dropped: `/api/usage` reports `meta.files` as the length of
+ * this stream, so dropping one would silently understate it.
+ */
+function projectUsage(sidecar: unknown): Record<string, unknown> {
+  const file = (sidecar as { __file?: unknown })?.__file;
+  const out: Record<string, unknown> = typeof file === 'string' ? { __file: file } : {};
+  if (!isUsageRecord(sidecar)) return out;
+  out.timestamp = sidecar.timestamp;
+  out.model = sidecar.model;
+  out.tokens = sidecar.tokens;
+  if (sidecar.rateLimit) out.rateLimit = sidecar.rateLimit;
+  return out;
+}
+
+/**
+ * One archived day, projected once per process, and whether it is retained at all
+ * — its own directory being on disk is what makes it so.
+ *
+ * Retention stays a question for the filesystem even on a level-two hit: a stored
+ * row says what the day held, never that the day is still there, and a pruned day
+ * has to keep reading as the hole in the window that it is.
  */
 async function readArchivedDayMemo(
   logDir: string,
   day: string,
   source: SidecarSource,
-): Promise<{ sidecars: unknown[]; parseErrors: number; retained: boolean }> {
+  now: Date,
+): Promise<ArchivedDayRead> {
   // The backing is part of the key: the parity harness reads the same day both
   // ways, and one shared entry would make the second read trivially agree.
   const key = `${source.kind}\n${logDir}\n${day}`;
   const hit = dayCache.get(key);
   if (hit) return { ...hit, retained: true };
-  // Retention is a fact about the filesystem: a day is retained when its own
-  // directory is on disk, whichever backing reads it.
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+
+  const read = (async (): Promise<ArchivedDayRead> => {
+    // Retention is a fact about the filesystem: a day is retained when its own
+    // directory is on disk, whichever backing reads it.
+    try {
+      await access(rawArchiveDayDir(logDir, day));
+    } catch {
+      return { sidecars: [], parseErrors: 0, retained: false }; // never archived, or pruned
+    }
+
+    const closed = isClosedDay(day, now);
+    const storedKey = { backing: source.kind, logDir, date: day };
+    const stored = closed ? readStoredUsageDay(storedKey) : undefined;
+    if (stored) {
+      const entry = { sidecars: stored.records, parseErrors: stored.parseErrors };
+      dayCache.set(key, entry);
+      return { ...entry, retained: true };
+    }
+
+    // `omitTools` because nothing below reads the tool table, and on the
+    // substrate it is the one query whose size is the day times its tool count.
+    const fresh = await source.readArchivedDay(logDir, day, { includeFile: true, omitTools: true });
+    const entry = { sidecars: fresh.sidecars.map(projectUsage), parseErrors: fresh.parseErrors };
+    dayCache.set(key, entry);
+    // Only a day that can no longer change is kept across the restart.
+    if (closed) storeUsageDay(storedKey, { records: entry.sidecars, parseErrors: entry.parseErrors });
+    return { ...entry, retained: true };
+  })();
+
+  inFlight.set(key, read);
   try {
-    await access(rawArchiveDayDir(logDir, day));
-  } catch {
-    return { sidecars: [], parseErrors: 0, retained: false }; // never archived, or pruned
+    return await read;
+  } finally {
+    inFlight.delete(key);
   }
-  const read = await source.readArchivedDay(logDir, day, { includeFile: true });
-  const entry = { sidecars: read.sidecars, parseErrors: read.parseErrors };
-  dayCache.set(key, entry);
-  return { ...entry, retained: true };
 }
 
 /**
@@ -74,7 +157,7 @@ async function readLearningCorpus(logDir: string, now: Date, source: SidecarSour
   let day = today(now);
   for (let i = 0; i < LEARN_DAYS; i += 1) {
     day = shiftDay(day, -1);
-    const archived = await readArchivedDayMemo(logDir, day, source);
+    const archived = await readArchivedDayMemo(logDir, day, source, now);
     corpus.push(...archived.sidecars);
   }
   return corpus;
@@ -124,7 +207,7 @@ export async function loadArchivedUsage(
   let day = today(now);
   for (let i = 0; i < USAGE_DAYS; i += 1) {
     day = shiftDay(day, -1);
-    const archived = await readArchivedDayMemo(logDir, day, source);
+    const archived = await readArchivedDayMemo(logDir, day, source, now);
     if (!archived.retained) continue; // a real hole in the window
     out.retainedDays.push(day);
     out.sidecars.push(...archived.sidecars);

@@ -205,12 +205,31 @@ So both halves of the estimate read the archive. `buildUsage` unions the live di
 the archived days the windows reach into, which is the count itself; `learnCeilings` reads
 four weeks of it for the ceiling that count is divided by. Both are cached rather than run per
 request — `/api/usage/stream` rebuilds on a 600ms debounce, and re-reading thousands of
-sidecar files per tick is not affordable. Archived days are memoised individually for the
-process lifetime, and both passes read a day through that one memo, so a day inside both spans
-is parsed once. An *absent* day is deliberately not cached: the archive job may not have run
-yet, and a sticky miss would pin the gap in place until restart. Live and archived reads are
-deduped by source filename, so an archiver that copies rather than moves cannot double every
-request in the seam.
+sidecar files per tick is not affordable. Archived days are memoised individually, and both
+passes read a day through that one memo, so a day inside both spans is parsed once. An
+*absent* day is deliberately not cached: the archive job may not have run yet, and a sticky
+miss would pin the gap in place until restart. Live and archived reads are deduped by source
+filename, so an archiver that copies rather than moves cannot double every request in the seam.
+
+That memo has two levels, the same shape `/api/summary` uses for its closed-day digests. Level
+one is the per-day map in `usage-history.ts` and lasts the process; level two is a row per
+closed archived day in the SQLite substrate (`usage_day`, `server/src/db/usage-day-store.ts`)
+and outlives it. A map only ever helps the *second* read, so before level two existed a
+restarted server re-parsed all 28 days of the learning span for the first Overview load — the
+route measured 26.6s cold on this device, of which `loadArchivedUsage` was 10.5s and
+`loadLearnedCeilings` 14.8s. A row is not a `UsageDigest`: a five-hour window needs the
+requests inside a day rather than a sum over it, so what is stored is the day's requests
+projected down to the four fields the meters read — timestamp, model, tokens, rate-limit
+headers — plus a `__file`-only placeholder for anything unusable, since `meta.files` is the
+length of that stream. Both levels are caches over `logs/`, keyed by backing and by a revision
+that pins the schema and the projection; a miss at either reads the day exactly as before, and
+`rm logs/claude-proxy.db` costs nothing but the re-read.
+
+`buildUsage`'s four loads — live sidecars, archived usage, learned ceilings, the proxy's live
+counters — take no input from one another and are issued together rather than awaited in
+sequence, so the route costs the slowest rather than their sum. Reads already in flight are
+keyed alongside the map, which is what keeps the eight days the two spans share parsed once now
+that they no longer run one after the other.
 
 Each estimated window reports `coverage`, the fraction of the window actually backed by
 retained logs. Below 0.95 the blurb says the real figure is higher, and the foot carries an
@@ -288,7 +307,13 @@ requests were captured at all no estimated window is emitted, because a 0% meter
   learns the fallback ceilings from them. Four weeks leaves room for three completed weekly
   windows. That result can only change when a window completes, so it is memoised for an hour
   rather than recomputed per request; `clearLearnedCeilingsCache()` drops the memo. Both passes share one per-day archive memo,
-  cleared by `clearArchivedUsageCache()`.
+  cleared by `clearArchivedUsageCache()` — which also drops the persisted rows unless passed
+  `{ keepPersisted: true }`, the flag the tests use to spell "restart the server".
+- `server/src/db/usage-day-store.ts` — level two of that memo: `readStoredUsageDay` /
+  `storeUsageDay` over the `usage_day` table, keyed on backing, log directory, date and a
+  revision pinning schema version and projection. It never *creates* a database — a read route
+  must not leave one behind in a log directory that had none — and every failure reads as a
+  miss, costing the read it would have saved and nothing else.
 - `proxy/proxy.ts` — `extractRateLimit` copies only `anthropic-ratelimit-*` / `x-ratelimit-*`
   names off the upstream response, so no auth can ride along. The field is omitted entirely
   when upstream sent none, and a skim-cache-served request records none because no upstream
