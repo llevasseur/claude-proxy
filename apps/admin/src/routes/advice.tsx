@@ -218,6 +218,9 @@ function BucketListSkeleton({ rows = 4, suggestions = 3 }: { rows?: number; sugg
             <span className='bucket-label'>
               <Skeleton w='8rem' />
             </span>
+            <span className='muted bucket-slug'>
+              <Skeleton w='2rem' />
+            </span>
             <Skeleton w='3rem' />
             <span className='muted bucket-range'>
               <Skeleton w='12rem' />
@@ -256,6 +259,9 @@ function BucketRow({ bucket, statusByKey }: { bucket: SessionBucket; statusByKey
     <Link to='/advice/sessions/$bucket' params={{ bucket: String(bucket.index) }} className='card bucket-row'>
       <div className='bucket-row-head'>
         <span className='bucket-label'>Sessions {bucket.label}</span>
+        <span className='muted bucket-slug' title={`/advice/sessions/${bucket.index}`}>
+          #{bucket.index}
+        </span>
         {worst && <span className={`badge sev-${worst.severity}`}>{SEV_LABEL[worst.severity]}</span>}
         {state && <BucketJudgementBadge state={state} />}
         <ThinPassBadge by={judgedBy} />

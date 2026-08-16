@@ -24,6 +24,11 @@
     font-size: var(--text-7);
     font-weight: 600;
   }
+  /* the bucket's slug, as it appears in /advice/sessions/<slug> */
+  .bucket-slug {
+    font-family: var(--font-mono);
+    font-size: var(--text-4);
+  }
   .bucket-range {
     margin-left: auto;
     font-family: var(--font-mono);
