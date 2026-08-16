@@ -45,6 +45,7 @@
 @import "./styles/components/graph.css";
 @import "./styles/components/chat.css";
 @import "./styles/components/sessions.css";
+@import "./styles/components/notes.css";
 @import "./styles/components/jobs.css";
 @import "./styles/components/timeline.css";
 @import "./styles/components/skeleton.css";
