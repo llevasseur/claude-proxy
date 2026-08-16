@@ -266,6 +266,14 @@
     background: var(--surface);
     gap: var(--space-3);
   }
+  /* A command run at the command grain: filled with its family's colour and framed by that
+   * family's border. The pair is what carries the contrast — two fills are not asked to be
+   * distinguishable from each other, a fill and its own border are. */
+  .gnode--cmd {
+    background: var(--cf);
+    border-color: var(--gc);
+    border-left-width: 3px;
+  }
   .gnode-kind {
     font-size: var(--text-2);
     letter-spacing: var(--tracking-label);
@@ -282,7 +290,8 @@
     overflow: hidden;
   }
   .gnode--root .gnode-title,
-  .gnode--agent .gnode-title {
+  .gnode--agent .gnode-title,
+  .gnode--cmd .gnode-title {
     font-weight: 600;
     -webkit-line-clamp: 2;
   }
@@ -390,6 +399,36 @@
     padding: var(--space-2) var(--space-4);
     font: inherit;
   }
+  /* The grain switcher — one pill per grain, the unbuilt ones dimmed rather than hidden. */
+  .graph-grains {
+    display: inline-flex;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+  }
+  .graph-grains button {
+    padding: var(--space-2) var(--space-7);
+    font: inherit;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+  }
+  .graph-grains button:hover:not(:disabled) {
+    color: var(--signal);
+  }
+  .graph-grains button.is-on {
+    color: var(--ink);
+    background: var(--signal);
+  }
+  .graph-grains button:disabled {
+    color: var(--faint);
+    cursor: not-allowed;
+  }
+
   .graph-btns {
     display: inline-flex;
     gap: var(--space-4);
@@ -433,6 +472,10 @@
     width: 9px;
     height: 9px;
     border-radius: var(--radius-1);
+  }
+  /* A family reads as its box does — a fill inside its own border, not a bare dot. */
+  .glegend-dot.is-cmd {
+    border: 1px solid var(--gc);
   }
 
   .graph-note {
@@ -755,6 +798,56 @@
   }
   .gi-note {
     font-size: var(--text-4);
+  }
+  /* What an agent box folded away — its turns and its command runs. Capped in height so a long
+   * agent scrolls inside the drawer rather than pushing the fields under it off-screen. */
+  .gi-fold {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    max-height: var(--graph-fold-max-h);
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+  }
+  .gi-fold-row {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    text-align: left;
+    font: inherit;
+    font-size: var(--text-4);
+    color: var(--text);
+    background: none;
+    border: none;
+    border-radius: var(--radius-3);
+    cursor: pointer;
+  }
+  .gi-fold-row:hover {
+    background: var(--surface-2);
+  }
+  .gi-fold-lead {
+    flex: none;
+    font-size: var(--text-3);
+    color: var(--faint);
+  }
+  .gi-fold-label {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gi-fold-go {
+    flex: none;
+    color: var(--faint);
+  }
+  .gi-fold-row:hover .gi-fold-go {
+    color: var(--signal);
   }
   .gi-stats {
     display: flex;

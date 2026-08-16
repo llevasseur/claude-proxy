@@ -6,10 +6,33 @@ import { Expand, Maximize2, Minimize2, Network, Shrink } from 'lucide-react';
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionGraphEntry } from '../api';
-import { getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from '../api';
+import { getCommands, getContextMessage, getSessionGraphNodes, getSessionNodeTexts, getSessionsGraph } from '../api';
 import { livenessTitle } from '../components/LivenessBadge';
 import { Skeleton, SkeletonStatus } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort } from '../format';
+import type { AgentFacts } from '../graph-agents';
+import { agentLabel, indexAgents } from '../graph-agents';
+import type { CommandFamily, CommandRunSpan } from '../graph-commands';
+import { FAMILY_LABEL, FAMILY_TOKEN, indexCommandRuns, runLabel } from '../graph-commands';
+import type { GrainId } from '../graph-grains';
+import { commandGrain, GRAINS, grainById, isBuilt, TURN_GRAIN } from '../graph-grains';
+import type { Box, ChildIndex, Tone } from '../graph-layout';
+import {
+  boxTone,
+  COMPACT,
+  childrenOf,
+  color,
+  colsForWidth,
+  edgePath,
+  GAP_X,
+  GAP_Y,
+  indexChildren,
+  isInFlight,
+  layoutGraph,
+  nodeLabel,
+  PAD,
+  ROOMY,
+} from '../graph-layout';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
 
@@ -31,47 +54,6 @@ import type { NavEntry } from './nav';
  * text comes from the canvased family's Request breakdown, where the same steps are whole.
  */
 
-/** Box geometry, in canvas px (pre-transform). The gaps and insets below don't vary with it. */
-interface Sizes {
-  rootW: number;
-  rootH: number;
-  nodeW: number;
-  nodeH: number;
-  /** Uniform grid cell; boxes are centered within it. */
-  cellW: number;
-  cellH: number;
-}
-
-const sizes = (rootW: number, rootH: number, nodeW: number, nodeH: number): Sizes => ({
-  rootW,
-  rootH,
-  nodeW,
-  nodeH,
-  cellW: rootW,
-  cellH: rootH,
-});
-
-/** The default: as many steps on screen as the fold allows, each a two-line gist. */
-const COMPACT = sizes(224, 96, 168, 64);
-/**
- * The "larger nodes" toggle: boxes roomy enough for a step's whole label. Toggling re-lays
- * out at the same zoom — a refit would scale the bigger boxes straight back down.
- */
-const ROOMY = sizes(360, 232, 320, 216);
-
-const GAP_X = 44;
-const GAP_Y = 58;
-const PAD = 64;
-/** A branch band's indent from its parent's left edge, its inner padding, and its label strip. */
-const BAND_INSET = 40;
-const BAND_PAD = 18;
-const BAND_HEAD = 34;
-/** Gap between a parent row and a branch band hanging beneath it. */
-const BAND_GAP = 26;
-/** A side trail's indent from its session's left edge, and the air above it. */
-const TRAIL_INSET = 72;
-const TRAIL_GAP = 52;
-
 /** Overlay panels with their own scrollbar; a collapsed rail has nothing to scroll. */
 const SCROLLS_ITSELF = '.graph-sessions:not(.is-collapsed), .graph-inspector';
 
@@ -79,21 +61,6 @@ const ZOOM_HINT = 'Scroll to pan · ⌘-scroll or pinch to zoom';
 
 /** Pointer travel, in px, past which a press on the canvas is a pan rather than a click. */
 const PAN_SLOP = 4;
-
-/** What a box or edge is about — drives its glow color. */
-type Tone = SessionNode['type'] | 'root' | 'agent' | 'cut';
-
-/** Tone → CSS color token. */
-const NODE_COLOR: Record<Tone, string> = {
-  task: 'var(--signal)',
-  decision: 'var(--muted)',
-  tool: 'var(--amber)',
-  error: 'var(--coral)',
-  done: 'var(--good)',
-  root: 'var(--signal-dim)',
-  agent: 'var(--violet)',
-  cut: 'var(--coral)',
-};
 
 const LEGEND: { tone: Tone; label: string }[] = [
   { tone: 'task', label: 'task' },
@@ -105,18 +72,16 @@ const LEGEND: { tone: Tone; label: string }[] = [
   { tone: 'cut', label: 'interrupted' },
 ];
 
-/** Total color lookup (indexing is `string | undefined` under noUncheckedIndexedAccess). */
-const color = (tone: Tone): string => NODE_COLOR[tone] ?? 'var(--signal)';
+/** The command grain's own legend: one swatch per family, most-changing first. */
+const COMMAND_LEGEND: CommandFamily[] = ['build', 'shape', 'review', 'read', 'other'];
+
+/** The agent grain's legend: the only two kinds of box that projection leaves on the canvas. */
+const AGENT_LEGEND: { tone: Tone; label: string }[] = [
+  { tone: 'root', label: 'session' },
+  { tone: 'agent', label: 'agent' },
+];
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
-
-/** Rows-per-fold from the viewport width: 1 = vertical (mobile), more = longer rows. */
-function colsForWidth(w: number): number {
-  if (w < 700) return 1;
-  if (w < 1024) return 3;
-  if (w < 1440) return 5;
-  return 7;
-}
 
 /** Harness-injected context, not the user's words — including a block cut off mid-way. */
 const stripReminders = (s: string): string =>
@@ -141,61 +106,6 @@ function entryLabel(entry: SessionGraphEntry): string {
   return entry.threadId;
 }
 
-/**
- * A subagent's parent hasn't taken a step past the spawn, so nothing has come back yet.
- * This is the parent's record, so it pairs with `entry.liveness` rather than duplicating
- * it: a dispatch whose result the harness ate reads as in flight *and* `running`.
- */
-const isInFlight = (entry: SessionGraphEntry): boolean => entry.parentThreadId !== null && entry.returnIndex === null;
-
-/** A placed box on the canvas plus the data behind it (node is null for a session root). */
-interface Box {
-  key: string;
-  /** `root` = the canvased session, `agent` = a subagent's own root, `node` = one step. */
-  kind: 'root' | 'agent' | 'node';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  entry: SessionGraphEntry;
-  node: SessionNode | null;
-}
-
-interface Edge {
-  key: string;
-  d: string;
-  color: string;
-  /**
-   * `step` follows one session's chain; `spawn`/`return` cross into and out of a branch;
-   * `sever` leaves an interrupted step for the side trail the run resumed on.
-   */
-  kind: 'step' | 'spawn' | 'return' | 'sever';
-}
-
-/** The nested frame drawn around one subagent's branch. */
-interface Band {
-  key: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  entry: SessionGraphEntry;
-  inFlight: boolean;
-}
-
-/** The frame drawn around the run of steps that followed one interruption. */
-interface Trail {
-  key: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  entry: SessionGraphEntry;
-  kind: InterruptionKind;
-  /** What the run was redirected to — the resuming step's own text. */
-  label: string;
-}
-
 /** How each interruption reads on a trail's head strip. */
 const INTERRUPTION_LABEL: Record<InterruptionKind, string> = {
   user: 'interrupted by user',
@@ -218,318 +128,21 @@ interface View {
   k: number;
 }
 
-/** Horizontal S-curve between two box edges (used within a snake row). */
-function edgePathH(x1: number, y1: number, x2: number, y2: number): string {
-  const mx = (x1 + x2) / 2;
-  return `M ${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`;
-}
-
-/** Vertical S-curve between two box edges (used at a snake's turn onto the next row). */
-function edgePathV(x1: number, y1: number, x2: number, y2: number): string {
-  const my = (y1 + y2) / 2;
-  return `M ${x1} ${y1} C ${x1} ${my} ${x2} ${my} ${x2} ${y2}`;
-}
-
-/** Vertical S-curve between two boxes, leaving whichever edge faces the other. */
-function boxPathV(from: Box, to: Box): string {
-  const above = to.y + to.h <= from.y;
-  return edgePathV(from.x + from.w / 2, above ? from.y : from.y + from.h, to.x + to.w / 2, above ? to.y + to.h : to.y);
-}
-
-/** Grid cell (row + left-to-right column) for the i-th item in a boustrophedon snake. */
-function cell(i: number, cols: number) {
-  const row = Math.floor(i / cols);
-  const posInRow = i % cols;
-  const leftToRight = row % 2 === 0;
-  const col = leftToRight ? posInRow : cols - 1 - posInRow;
-  return { row, col };
-}
-
-/** Subagents indexed by the step that spawned them: parent thread id → spawn index → child. */
-type ChildIndex = Map<string, Map<number, SessionGraphEntry>>;
-
-function indexChildren(entries: SessionGraphEntry[]): ChildIndex {
-  const index: ChildIndex = new Map();
-  for (const entry of entries) {
-    if (entry.parentThreadId === null || entry.spawnIndex === null) continue;
-    const bySpawn = index.get(entry.parentThreadId) ?? new Map<number, SessionGraphEntry>();
-    bySpawn.set(entry.spawnIndex, entry);
-    index.set(entry.parentThreadId, bySpawn);
-  }
-  return index;
-}
-
-/** Subagents of one transcript, in spawn order. */
-function childrenOf(index: ChildIndex, threadId: string): SessionGraphEntry[] {
-  return [...(index.get(threadId)?.entries() ?? [])].sort((a, b) => a[0] - b[0]).map(([, child]) => child);
-}
-
-interface Placed {
-  boxes: Box[];
-  edges: Edge[];
-  bands: Band[];
-  trails: Trail[];
-  /** Rightmost / lowest canvas coordinate reached, so a caller can frame around it. */
-  right: number;
-  bottom: number;
-}
-
-/** One box to place: a session/subagent root, or one step. */
-interface Item {
-  kind: Box['kind'];
-  node: SessionNode | null;
-}
-
 /**
- * Split a session's steps at every interruption. The first run continues the snake the
- * root opens; each later one is what the run picked up as after being cut off.
+ * Node style carries its glow color via the `--gc` custom property, plus the cut's for a severed
+ * step. A command run overrides both that and its fill with its family's pair, so the box is
+ * coloured by what the command does rather than by the step type the projection folded away.
  */
-function runsOf(nodes: SessionNode[]): SessionNode[][] {
-  const runs: SessionNode[][] = [[]];
-  for (const node of nodes) {
-    const current = runs[runs.length - 1]!;
-    // A leading interruption has nothing behind it to depart from — it opens the snake.
-    if (node.interruption && current.length > 0) runs.push([node]);
-    else current.push(node);
-  }
-  return runs;
-}
-
-/**
- * Snake one run of boxes from (`x0`, `y0`), folding every `cols` boxes. A step that spawned
- * a subagent hangs that subagent's own (recursive) layout beneath its row as an indented
- * band, and the rows below start under the band.
- */
-function layoutRun(
-  entry: SessionGraphEntry,
-  items: Item[],
-  cols: number,
-  x0: number,
-  y0: number,
-  index: ChildIndex,
-  depth: number,
-  runKey: string,
-  size: Sizes,
-): Placed {
-  const spawned = index.get(entry.threadId);
-
-  const boxes: Box[] = [];
-  const edges: Edge[] = [];
-  const bands: Band[] = [];
-  const trails: Trail[] = [];
-  let right = x0;
-  let y = y0;
-
-  const rows = Math.ceil(items.length / cols);
-  for (let row = 0; row < rows; row++) {
-    const rowTop = y;
-    const from = row * cols;
-    const to = Math.min(items.length, from + cols);
-
-    for (let i = from; i < to; i++) {
-      const it = items[i]!;
-      const cellX = x0 + cell(i, cols).col * (size.cellW + GAP_X);
-      const w = it.kind === 'node' ? size.nodeW : size.rootW;
-      const h = it.kind === 'node' ? size.nodeH : size.rootH;
-      boxes.push({
-        key: it.node ? `${entry.threadId}:${it.node.index}` : `r:${entry.threadId}`,
-        kind: it.kind,
-        x: cellX + (size.cellW - w) / 2,
-        y: rowTop + (size.cellH - h) / 2,
-        w,
-        h,
-        entry,
-        node: it.node,
-      });
-      right = Math.max(right, cellX + size.cellW);
-    }
-    y = rowTop + size.cellH;
-
-    // Branch bands for any spawns that landed in this row, in spawn order.
-    for (let i = from; i < to; i++) {
-      const node = items[i]!.node;
-      const child = node ? spawned?.get(node.index) : undefined;
-      if (!child) continue;
-
-      const bandTop = y + BAND_GAP;
-      const inner = layoutTree(
-        child,
-        Math.max(1, cols - 1),
-        x0 + BAND_INSET + BAND_PAD,
-        bandTop + BAND_HEAD,
-        index,
-        depth + 1,
-        size,
-      );
-      const bandRight = inner.right + BAND_PAD;
-      bands.push({
-        key: `b:${child.threadId}`,
-        x: x0 + BAND_INSET,
-        y: bandTop,
-        w: bandRight - (x0 + BAND_INSET),
-        h: inner.bottom + BAND_PAD - bandTop,
-        entry: child,
-        inFlight: isInFlight(child),
-      });
-      bands.push(...inner.bands);
-      boxes.push(...inner.boxes);
-      edges.push(...inner.edges);
-      trails.push(...inner.trails);
-      right = Math.max(right, bandRight);
-      y = inner.bottom + BAND_PAD;
-    }
-    y += GAP_Y;
-  }
-
-  // Chain this session's own boxes — nested ones were chained by the recursive call.
-  const own = boxes.filter((b) => b.entry.threadId === entry.threadId);
-  for (let i = 0; i < own.length - 1; i++) {
-    const a = own[i]!;
-    const b = own[i + 1]!;
-    let d: string;
-    if (cell(i, cols).row === cell(i + 1, cols).row) {
-      // Within a row — connect the facing horizontal edges, whichever way the row runs.
-      const ay = a.y + a.h / 2;
-      const by = b.y + b.h / 2;
-      d = a.x < b.x ? edgePathH(a.x + a.w, ay, b.x, by) : edgePathH(a.x, ay, b.x + b.w, by);
-    } else {
-      // Turning onto the next row — drop from one box's bottom to the next's top.
-      d = edgePathV(a.x + a.w / 2, a.y + a.h, b.x + b.w / 2, b.y);
-    }
-    edges.push({ key: `e:${runKey}:${i}`, d, color: color(boxTone(b)), kind: 'step' });
-  }
-
-  return { boxes, edges, bands, trails, right, bottom: Math.max(y0, y - GAP_Y) };
-}
-
-/**
- * Lay out one session: its root and steps as a snake, and everything after an interruption
- * as its own trail — inset, framed, and reached by a severed edge off the step that was cut
- * short. Trails stay at one indent however many there are, so a much-interrupted session
- * doesn't march off the right.
- */
-function layoutTree(
-  entry: SessionGraphEntry,
-  cols: number,
-  x0: number,
-  y0: number,
-  index: ChildIndex,
-  depth: number,
-  size: Sizes,
-): Placed {
-  const runs = runsOf(entry.nodes);
-  const head: Item[] = [
-    { kind: depth === 0 ? 'root' : 'agent', node: null },
-    ...runs[0]!.map((node) => ({ kind: 'node' as const, node })),
-  ];
-
-  const placed = layoutRun(entry, head, cols, x0, y0, index, depth, `${entry.threadId}:0`, size);
-  const boxes = [...placed.boxes];
-  const edges = [...placed.edges];
-  const bands = [...placed.bands];
-  const trails = [...placed.trails];
-  let right = placed.right;
-  let bottom = placed.bottom;
-
-  for (let r = 1; r < runs.length; r++) {
-    const steps = runs[r]!;
-    const opener = steps[0]!;
-    const trailTop = bottom + TRAIL_GAP;
-    const trailX = x0 + TRAIL_INSET;
-    const inner = layoutRun(
-      entry,
-      steps.map((node) => ({ kind: 'node' as const, node })),
-      Math.max(1, cols - 1),
-      trailX + BAND_PAD,
-      trailTop + BAND_HEAD,
-      index,
-      depth,
-      `${entry.threadId}:${r}`,
-      size,
-    );
-    const trailRight = inner.right + BAND_PAD;
-    trails.push({
-      key: `t:${entry.threadId}:${opener.index}`,
-      x: trailX,
-      y: trailTop,
-      w: trailRight - trailX,
-      h: inner.bottom + BAND_PAD - trailTop,
-      entry,
-      kind: opener.interruption ?? 'user',
-      label: nodeLabel(opener),
-    });
-    trails.push(...inner.trails);
-    bands.push(...inner.bands);
-    boxes.push(...inner.boxes);
-    edges.push(...inner.edges);
-
-    // The cut itself: off the step the interruption landed on, into the trail's first step.
-    const severed = boxes.find((b) => b.node?.index === opener.index - 1 && b.entry.threadId === entry.threadId);
-    const resumed = inner.boxes.find((b) => b.node?.index === opener.index);
-    if (severed && resumed) {
-      edges.push({
-        key: `sv:${entry.threadId}:${opener.index}`,
-        d: boxPathV(severed, resumed),
-        color: color('cut'),
-        kind: 'sever',
-      });
-    }
-
-    right = Math.max(right, trailRight);
-    bottom = inner.bottom + BAND_PAD;
-  }
-
-  return { boxes, edges, bands, trails, right, bottom };
-}
-
-/**
- * Lay out the selected session with every subagent branch beneath it, then wire the
- * cross-session edges: spawn (parent step → subagent root) and return (the subagent's
- * last step → the parent step its result flows into). Those wait until every box is
- * placed, since a return can land on a row below the branch.
- */
-function layout(entry: SessionGraphEntry | null, cols: number, index: ChildIndex, size: Sizes) {
-  if (!entry) return { boxes: [], edges: [], bands: [], trails: [], contentW: 0, contentH: 0 };
-
-  const placed = layoutTree(entry, cols, PAD, PAD, index, 0, size);
-  const boxAt = new Map(placed.boxes.map((b) => [b.key, b]));
-  const edges = [...placed.edges];
-
-  for (const { entry: child } of placed.bands) {
-    const spawn = boxAt.get(`${child.parentThreadId}:${child.spawnIndex}`);
-    const root = boxAt.get(`r:${child.threadId}`);
-    if (spawn && root) {
-      edges.push({ key: `sp:${child.threadId}`, d: boxPathV(spawn, root), color: color('agent'), kind: 'spawn' });
-    }
-
-    // The branch's last step back into the parent step it rejoins — absent while in flight.
-    const lastNode = child.nodes[child.nodes.length - 1];
-    const last = lastNode ? boxAt.get(`${child.threadId}:${lastNode.index}`) : root;
-    const rejoin = child.returnIndex === null ? undefined : boxAt.get(`${child.parentThreadId}:${child.returnIndex}`);
-    if (last && rejoin) {
-      edges.push({ key: `rt:${child.threadId}`, d: boxPathV(last, rejoin), color: color('agent'), kind: 'return' });
-    }
-  }
-
-  return { ...placed, edges, contentW: placed.right + PAD, contentH: placed.bottom + PAD };
-}
-
-/** What a box is about: a session root, a subagent (its root or the step spawning it), or a step. */
-function boxTone(box: Box): Tone {
-  if (box.kind === 'root') return 'root';
-  if (box.kind === 'agent') return 'agent';
-  return spawnAgentType(box.node!) === null ? box.node!.type : 'agent';
-}
-
-/** Node style carries its glow color via the `--gc` custom property, plus the cut's for a severed step. */
-function boxStyle(box: Box): CSSProperties {
+function boxStyle(box: Box, run?: CommandRunSpan): CSSProperties {
+  const family = run ? FAMILY_TOKEN[run.family] : null;
   return {
     left: box.x,
     top: box.y,
     width: box.w,
     height: box.h,
-    '--gc': color(boxTone(box)),
+    '--gc': family ? family.edge : color(boxTone(box)),
     '--cut': color('cut'),
+    ...(family ? { '--cf': family.fill } : {}),
   } as CSSProperties;
 }
 
@@ -577,14 +190,6 @@ function GraphSkeleton({ rows = 2, steps = 4 }: { rows?: number; steps?: number 
 /** The extra layer a step wears when the run was cut off on it, or resumed on it. */
 function cutClass(node: SessionNode): string {
   return `${node.interrupted ? ' is-cut' : ''}${node.interruption ? ' is-resumed' : ''}`;
-}
-
-/** A spawn step is labelled by the kind of agent it started, not its raw signature. */
-function nodeLabel(node: SessionNode): string {
-  const agent = spawnAgentType(node);
-  if (agent !== null) return agent || 'subagent';
-  if (node.type === 'tool' && node.tool) return node.tool;
-  return node.text || node.type;
 }
 
 const nodeKind = (node: SessionNode): string => (spawnAgentType(node) === null ? node.type : 'spawn');
@@ -673,10 +278,57 @@ export function SessionGraphPage() {
 
   const [cols, setCols] = useState(7);
   const [roomy, setRoomy] = useState(false);
+  /** The grain the engine draws at. Only built grains are selectable, so this always resolves. */
+  const [grainId, setGrainId] = useState<GrainId>(TURN_GRAIN.id);
+
+  // Which `Skill(…)` names open a command run is a fact about what is installed, so the command
+  // grain is bound to the catalogue rather than guessing from the transcript. Fetched only for
+  // that grain; until it lands, every skill call counts, which over-draws rather than emptying.
+  // The agent grain wants it too — an agent box's drawer lists the commands that agent ran.
+  const commandsQuery = useQuery({
+    queryKey: ['commands'],
+    queryFn: getCommands,
+    enabled: grainId === 'command' || grainId === 'agent',
+    staleTime: 5 * 60_000,
+  });
+  const installed = useMemo(
+    () => new Set((commandsQuery.data?.commands ?? []).map((c) => c.command.toLowerCase())),
+    [commandsQuery.data],
+  );
+  const isCommand = useCallback((name: string) => installed.size === 0 || installed.has(name), [installed]);
+
+  const grain = useMemo(() => {
+    const picked = grainById(grainId);
+    if (picked.id === 'command') return commandGrain(isCommand);
+    return isBuilt(picked) ? picked : TURN_GRAIN;
+  }, [grainId, isCommand]);
   const size = roomy ? ROOMY : COMPACT;
   const { boxes, edges, bands, trails, contentW, contentH } = useMemo(
-    () => layout(entry, cols, childIndex, size),
-    [entry, cols, childIndex, size],
+    () => layoutGraph({ entry, cols, index: childIndex, size, grain }),
+    [entry, cols, childIndex, size, grain],
+  );
+
+  // The runs behind the boxes the command grain placed — a projected node keeps the index of the
+  // step that opened its run, so a box finds its span by thread and index.
+  const runIndex = useMemo(
+    () => (grainId === 'command' ? indexCommandRuns(all, isCommand) : null),
+    [grainId, all, isCommand],
+  );
+  const runOf = useCallback(
+    (box: Box): CommandRunSpan | undefined =>
+      box.node ? runIndex?.get(box.entry.threadId)?.get(box.node.index) : undefined,
+    [runIndex],
+  );
+
+  // The agents behind the boxes the agent grain placed, keyed by dispatching thread and step.
+  const agentIndex = useMemo(
+    () => (grainId === 'agent' ? indexAgents(all, isCommand) : null),
+    [grainId, all, isCommand],
+  );
+  const agentOf = useCallback(
+    (box: Box): AgentFacts | undefined =>
+      box.node ? agentIndex?.get(box.entry.threadId)?.get(box.node.index) : undefined,
+    [agentIndex],
   );
 
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -719,15 +371,15 @@ export function SessionGraphPage() {
     setView({ x: area.left + (area.width - contentW * k) / 2, y: (area.height - contentH * k) / 2, k });
   }, [contentW, contentH, freeArea]);
 
-  // Refit only when the session or fold width changes — not on every poll, or streaming
-  // steps would keep yanking the view back. `fitRef` keeps the effect off `fit`'s deps.
+  // Refit only when the session, fold width or grain changes — not on every poll, or
+  // streaming steps would keep yanking the view back. `fitRef` keeps the effect off `fit`'s deps.
   const fitRef = useRef(fit);
   fitRef.current = fit;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refitting on these two and nothing else is the point — see the note above
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refitting on these three and nothing else is the point — see the note above
   useEffect(() => {
     const id = requestAnimationFrame(() => fitRef.current());
     return () => cancelAnimationFrame(id);
-  }, [selectedId, cols]);
+  }, [selectedId, cols, grainId]);
 
   // Center a focused branch. Boxes come through a ref so a poll's new steps can't
   // re-center; only a fresh pick (or a re-fold) moves the view.
@@ -827,6 +479,17 @@ export function SessionGraphPage() {
     setSelected(null);
     void navigate({ to: '/sessions/graph', search: { session: picked.threadId }, replace: true });
   };
+
+  /**
+   * The agent drawer's way down into the finer views: redraw at the grain that shows what was
+   * clicked, center the agent it belongs to, and open the drawer on that box. The grain change
+   * refits and the focus change recenters, so the box lands on screen rather than merely selected.
+   */
+  const openAt = useCallback((grain: GrainId, target: SessionGraphEntry, node: SessionNode | null) => {
+    setGrainId(grain);
+    setFocusId(target.parentThreadId === null ? null : target.threadId);
+    setSelected({ entry: target, node });
+  }, []);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
@@ -938,7 +601,7 @@ export function SessionGraphPage() {
               <path
                 key={e.key}
                 className={`graph-edge graph-edge--${e.kind}`}
-                d={e.d}
+                d={edgePath(e)}
                 style={{ stroke: e.color }}
                 markerEnd={e.kind === 'return' ? 'url(#graph-return-arrow)' : undefined}
               />
@@ -947,17 +610,18 @@ export function SessionGraphPage() {
 
           {boxes.map((box) =>
             box.kind === 'node' ? (
-              <button
+              <CommandOrStepBox
                 key={box.key}
-                type='button'
-                className={`gnode gnode--${boxTone(box)}${cutClass(box.node!)}${selected?.node && selected.entry.threadId === box.entry.threadId && selected.node.index === box.node!.index ? ' is-selected' : ''}`}
-                style={boxStyle(box)}
-                onClick={() => setSelected({ entry: box.entry, node: box.node })}>
-                <span className='gnode-kind'>{nodeKind(box.node!)}</span>
-                <span className='gnode-title' title={hoverLabel(box.node!)}>
-                  {nodeLabel(box.node!)}
-                </span>
-              </button>
+                box={box}
+                run={runOf(box)}
+                agent={agentOf(box)}
+                selected={
+                  !!selected?.node &&
+                  selected.entry.threadId === box.entry.threadId &&
+                  selected.node.index === box.node!.index
+                }
+                onSelect={() => setSelected({ entry: box.entry, node: box.node })}
+              />
             ) : (
               <button
                 key={box.key}
@@ -1011,6 +675,7 @@ export function SessionGraphPage() {
               <span className='graph-status-cut'> · {fmtInt(trails.length)} interrupted</span>
             ) : null}
           </span>
+          <GrainPicker value={grainId} onSelect={setGrainId} />
           <div className='graph-btns'>
             <button type='button' onClick={fit} title={ZOOM_HINT}>
               Fit
@@ -1035,12 +700,27 @@ export function SessionGraphPage() {
             </button>
           </div>
           <div className='graph-legend'>
-            {LEGEND.map((l) => (
-              <span key={l.tone} className='glegend-item'>
-                <span className='glegend-dot' style={{ background: color(l.tone) }} />
-                {l.label}
-              </span>
-            ))}
+            {grainId === 'command'
+              ? COMMAND_LEGEND.map((family) => (
+                  <span key={family} className='glegend-item'>
+                    <span
+                      className='glegend-dot is-cmd'
+                      style={
+                        {
+                          background: FAMILY_TOKEN[family].fill,
+                          '--gc': FAMILY_TOKEN[family].edge,
+                        } as CSSProperties
+                      }
+                    />
+                    {FAMILY_LABEL[family]}
+                  </span>
+                ))
+              : (grainId === 'agent' ? AGENT_LEGEND : LEGEND).map((l) => (
+                  <span key={l.tone} className='glegend-item'>
+                    <span className='glegend-dot' style={{ background: color(l.tone) }} />
+                    {l.label}
+                  </span>
+                ))}
           </div>
         </div>
 
@@ -1052,15 +732,110 @@ export function SessionGraphPage() {
         <Inspector
           panelRef={inspectorRef}
           selection={selected}
+          agent={selected?.node ? agentIndex?.get(selected.entry.threadId)?.get(selected.node.index) : undefined}
           byId={byId}
           sources={sources}
           wide={inspectorWide}
           onToggleWide={() => setInspectorWide((w) => !w)}
           onClose={() => setSelected(null)}
           onFocusAgent={setFocusId}
+          onOpenAt={openAt}
         />
       </div>
     </section>
+  );
+}
+
+/**
+ * One placed step. `run` is set only at the command grain and `agent` only at the agent grain,
+ * where the box stands for a whole run or agent and carries what it did — steps, tool calls,
+ * errors — in place of the folded-away steps.
+ */
+function CommandOrStepBox({
+  box,
+  run,
+  agent,
+  selected,
+  onSelect,
+}: {
+  box: Box;
+  run: CommandRunSpan | undefined;
+  agent: AgentFacts | undefined;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const node = box.node!;
+  return (
+    <button
+      type='button'
+      className={`gnode gnode--${boxTone(box)}${run ? ' gnode--cmd' : ''}${cutClass(node)}${selected ? ' is-selected' : ''}`}
+      style={boxStyle(box, run)}
+      onClick={onSelect}>
+      <span className='gnode-kind'>{run ? FAMILY_LABEL[run.family] : agent ? 'agent' : nodeKind(node)}</span>
+      <span className='gnode-title' title={run ? commandHover(run) : agent ? agentHover(agent) : hoverLabel(node)}>
+        {run ? runLabel(run) : agent ? agentLabel(agent) : nodeLabel(node)}
+      </span>
+      {run ? (
+        <span className='gnode-chips'>
+          <span>{fmtInt(run.steps)} steps</span>
+          <span>{fmtInt(run.tools)} tools</span>
+          {run.errors > 0 ? <span className='gchip-error'>{fmtInt(run.errors)} err</span> : null}
+        </span>
+      ) : null}
+      {agent ? (
+        <span className='gnode-chips'>
+          {agent.linked ? (
+            <>
+              <span>{fmtInt(agent.turns.length)} turns</span>
+              <span>{fmtInt(agent.tools)} tools</span>
+              {agent.errors > 0 ? <span className='gchip-error'>{fmtInt(agent.errors)} err</span> : null}
+              {agent.agents > 0 ? <span className='gchip-flight'>{fmtInt(agent.agents)} agents</span> : null}
+              {agent.inFlight ? <span className='gchip-flight'>in flight</span> : null}
+            </>
+          ) : (
+            <span className='muted'>no transcript</span>
+          )}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+/** What an agent box says on hover: what it was dispatched as, and how much it folds away. */
+const agentHover = (agent: AgentFacts): string =>
+  agent.linked
+    ? `${agentLabel(agent)} — ${agent.turns.length} turns and ${agent.runs.length} command runs folded inside, dispatched at step #${agent.spawnIndex}`
+    : `${agentLabel(agent)} — dispatched at step #${agent.spawnIndex}, no transcript captured`;
+
+/** What a command box says on hover: which command, and the span of the transcript it holds. */
+const commandHover = (run: CommandRunSpan): string =>
+  `${runLabel(run)} — steps #${run.from}–${run.to - 1}${run.command === null ? ' (the host run, before its first nested command)' : ''}`;
+
+/**
+ * The grain switcher: every grain the engine knows about, in order. A grain nobody has
+ * built yet is listed but disabled and says so on hover — the control is the seam those
+ * views arrive through, so it names them rather than appearing to grow an option later.
+ */
+function GrainPicker({ value, onSelect }: { value: GrainId; onSelect: (next: GrainId) => void }) {
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a <fieldset> brings its own box and legend layout; the toolbar's controls are styled from scratch
+    <div className='graph-grains' role='group' aria-label='Detail'>
+      {GRAINS.map((g) => {
+        const built = isBuilt(g);
+        return (
+          <button
+            key={g.id}
+            type='button'
+            className={g.id === value ? 'is-on' : undefined}
+            aria-pressed={g.id === value}
+            disabled={!built}
+            title={built ? g.hint : `${g.hint} — not built yet`}
+            onClick={() => onSelect(g.id)}>
+            {g.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1194,21 +969,25 @@ function SessionNav({
 function Inspector({
   panelRef,
   selection,
+  agent,
   byId,
   sources,
   wide,
   onToggleWide,
   onClose,
   onFocusAgent,
+  onOpenAt,
 }: {
   panelRef: Ref<HTMLElement>;
   selection: Selection | null;
+  agent: AgentFacts | undefined;
   byId: Map<string, SessionGraphEntry>;
   sources: Map<string, string>;
   wide: boolean;
   onToggleWide: () => void;
   onClose: () => void;
   onFocusAgent: (id: string) => void;
+  onOpenAt: (grain: GrainId, entry: SessionGraphEntry, node: SessionNode | null) => void;
 }) {
   if (!selection) return null;
   // Remount per selection so a step opened after the last fetch pulls its own text.
@@ -1217,12 +996,14 @@ function Inspector({
       key={`${selection.entry.threadId}:${selection.node?.index ?? 'root'}`}
       panelRef={panelRef}
       selection={selection}
+      agent={agent}
       byId={byId}
       sources={sources}
       wide={wide}
       onToggleWide={onToggleWide}
       onClose={onClose}
       onFocusAgent={onFocusAgent}
+      onOpenAt={onOpenAt}
     />
   );
 }
@@ -1230,21 +1011,25 @@ function Inspector({
 function InspectorBody({
   panelRef,
   selection,
+  agent,
   byId,
   sources,
   wide,
   onToggleWide,
   onClose,
   onFocusAgent,
+  onOpenAt,
 }: {
   panelRef: Ref<HTMLElement>;
   selection: Selection;
+  agent: AgentFacts | undefined;
   byId: Map<string, SessionGraphEntry>;
   sources: Map<string, string>;
   wide: boolean;
   onToggleWide: () => void;
   onClose: () => void;
   onFocusAgent: (id: string) => void;
+  onOpenAt: (grain: GrainId, entry: SessionGraphEntry, node: SessionNode | null) => void;
 }) {
   const { entry, node } = selection;
   const texts = useQuery({
@@ -1323,6 +1108,7 @@ function InspectorBody({
                 <span className='gi-cut'>{interruptionLabel(node.interruption)}</span>
               </Field>
             ) : null}
+            {agent?.child ? <AgentFold agent={agent} child={agent.child} onOpenAt={onOpenAt} /> : null}
             {agentType === null ? null : spawned ? (
               <>
                 <Field label='Subagent'>{entryLabel(spawned)}</Field>
@@ -1412,6 +1198,87 @@ function RequestMessage({ file, index }: { file: string; index: number }) {
       </span>
       <LongText key={`m:${file}:${index}`} text={message.content} mono />
     </Field>
+  );
+}
+
+/**
+ * What one agent box folded away: the turns it took and the commands it ran. Each row redraws
+ * the canvas at the grain that draws that thing and opens it there.
+ */
+function AgentFold({
+  agent,
+  child,
+  onOpenAt,
+}: {
+  agent: AgentFacts;
+  child: SessionGraphEntry;
+  onOpenAt: (grain: GrainId, entry: SessionGraphEntry, node: SessionNode | null) => void;
+}) {
+  return (
+    <>
+      <Field label={`Its turns · ${fmtInt(agent.turns.length)}`}>
+        <FoldList
+          empty='no turns recorded'
+          rows={agent.turns.map((node) => ({
+            key: `t${node.index}`,
+            lead: `#${node.index}`,
+            label: nodeLabel(node),
+            onOpen: () => onOpenAt(TURN_GRAIN.id, child, node),
+          }))}
+        />
+      </Field>
+      <Field label={`Its commands · ${fmtInt(agent.runs.length)}`}>
+        <FoldList
+          empty='no command runs'
+          rows={agent.runs.map((run) => ({
+            key: `c${run.from}`,
+            lead: FAMILY_LABEL[run.family],
+            label: `${runLabel(run)} · ${fmtInt(run.steps)} steps`,
+            onOpen: () => onOpenAt('command', child, child.nodes.find((n) => n.index === run.from) ?? null),
+          }))}
+        />
+      </Field>
+    </>
+  );
+}
+
+/** One row of a fold: what it is, what it says, and the view it opens in. */
+interface FoldRow {
+  key: string;
+  lead: string;
+  label: string;
+  onOpen: () => void;
+}
+
+/** Rows shown before a fold asks to be opened — an agent's turns run to the hundreds. */
+const FOLD_ROWS = 18;
+
+function FoldList({ rows, empty }: { rows: FoldRow[]; empty: string }) {
+  const [open, setOpen] = useState(false);
+  if (rows.length === 0) return <span className='muted'>{empty}</span>;
+  const shown = open ? rows : rows.slice(0, FOLD_ROWS);
+
+  return (
+    <>
+      <ul className='gi-fold'>
+        {shown.map((row) => (
+          <li key={row.key}>
+            <button type='button' className='gi-fold-row' onClick={row.onOpen} title={row.label}>
+              <span className='gi-fold-lead mono'>{row.lead}</span>
+              <span className='gi-fold-label'>{row.label}</span>
+              <span className='gi-fold-go' aria-hidden>
+                →
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {rows.length > FOLD_ROWS ? (
+        <button type='button' className='link gi-more' onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          {open ? 'Show fewer' : `Show all ${fmtInt(rows.length)}`}
+        </button>
+      ) : null}
+    </>
   );
 }
 

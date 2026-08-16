@@ -17,6 +17,36 @@
     --coral: #ff6b81; /* regression / high severity */
     --violet: #9d8cff; /* delegated work — subagent branches */
 
+    /* command families — the live graph's command grain
+     *
+     * Hue names the family; chroma says how much a run of it changes. That is the
+     * inversion the palette research asks for: hue is a weak predictor of how a
+     * colour reads, while chroma and lightness are strong, so a family owns a hue
+     * and the *amount* of colour carries the claim. `build` writes code and ships
+     * it, `shape` reworks what is there, `review` judges without changing, `read`
+     * only looks things up — and their chroma falls in that order. A command the
+     * table does not name is grey: zero chroma is zero claim about its power.
+     *
+     * There are 38 commands and no room for 38 hues — the signal palette above
+     * already spends teal 175, green 145, amber 35, coral 350 and violet 265, so
+     * these sit in the two windows left free, blue 205-262 and yellow 50-66.
+     *
+     * Each family is a pair: a dark fill and the border that frames it. Nothing
+     * asks two *fills* to be distinguishable at 3:1 — past three colours that is
+     * unachievable — so every command box carries a border instead, and the 3:1
+     * these hold is between a fill and its own border. Lightness is fixed across
+     * the families (0.3 against 0.78) so that ratio does not move with the hue. */
+    --cmd-build-fill: oklch(0.3 0.06 262);
+    --cmd-build-edge: oklch(0.78 0.16 262);
+    --cmd-shape-fill: oklch(0.3 0.045 205);
+    --cmd-shape-edge: oklch(0.78 0.115 205);
+    --cmd-review-fill: oklch(0.3 0.035 66);
+    --cmd-review-edge: oklch(0.78 0.09 66);
+    --cmd-read-fill: oklch(0.3 0.02 50);
+    --cmd-read-edge: oklch(0.78 0.05 50);
+    --cmd-other-fill: oklch(0.3 0 0);
+    --cmd-other-edge: oklch(0.78 0 0);
+
     /* Aliases for chart colors referenced from JS. */
     --accent: var(--signal);
     --accent-2: var(--amber);
@@ -71,6 +101,9 @@
     --space-page: 40px;
     --space-page-lg: 56px;
     --space-page-xl: 72px;
+    /* How tall a list inside the graph drawer may grow before it scrolls itself — a
+   * share of the viewport rather than a step, like the opened long-text field beside it. */
+    --graph-fold-max-h: 34vh;
 
     /* type
    *
