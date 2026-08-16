@@ -24,7 +24,9 @@ import { conceptStorePath, readConcepts as readConceptsFromFiles } from '../conc
 import { latestUserText } from '../derive.js';
 import {
   type ArchivedDayOptions,
+  compareByTimestamp,
   type LoadResult,
+  mergeByTimestamp,
   type ReadOptions,
   readArchivedDay as readArchivedDayFromFiles,
   readSidecars as readSidecarsFromFiles,
@@ -92,6 +94,20 @@ export interface SidecarSource {
    * per day in a span that now runs to the beginning of the corpus.
    */
   readAllDays?(logDir: string, days: readonly string[], opts?: ArchivedDayOptions): Promise<Map<string, LoadResult>>;
+
+  /**
+   * One thread's captured requests inside the window, and nothing else. Optional:
+   * a backing with nothing better than the window scan omits it, and
+   * {@link readThreadWindow} reads the window and filters, exactly as the thread
+   * route did before this method existed.
+   *
+   * The DB implements it, and that is the whole point — `request.thread_id` is
+   * indexed (`request_thread_idx`), so one thread comes back as an index seek
+   * rather than as every sidecar in the span materialized and then discarded.
+   * The window's day rules still apply: this answers the same rows the window
+   * read would have, not every row the thread ever sent.
+   */
+  readThread?(logDir: string, threadId: string, opts?: WindowOptions, now?: Date): Promise<ThreadReadResult>;
 
   /* --- Session transcripts (slice 2) --- *
    *
@@ -308,7 +324,7 @@ export async function readWindow(
     byDay.set(day, [...read.sidecars]);
   }
   for (const sidecar of live.sidecars) {
-    sidecars.push(sidecar);
+    if (!readOpts.orderByTimestamp) sidecars.push(sidecar);
     if (!isAuditSidecar(sidecar)) continue;
     const day = dayOf(sidecar);
     const bucket = byDay.get(day) ?? [];
@@ -316,7 +332,68 @@ export async function readWindow(
     byDay.set(day, bucket);
   }
 
-  return { sidecars, files, parseErrors, bodiesEvicted, byDay, archivedDays, days };
+  // The seam the flag exists for. A reporting day near the present sits in both
+  // halves, so archived-then-live is chronological everywhere except there —
+  // and a caller that wanted chronology had to sort the whole window to fix a
+  // handful of rows. Both halves arrive ordered, so one linear merge is the
+  // whole repair: `byDay` is untouched, because it is keyed by reporting day and
+  // a day's rows are the same set whichever half they were read from.
+  const ordered = readOpts.orderByTimestamp ? mergeByTimestamp(sidecars, live.sidecars) : sidecars;
+
+  return { sidecars: ordered, files, parseErrors, bodiesEvicted, byDay, archivedDays, days };
+}
+
+/** What a thread read answers: the window's rows for one thread, and their count. */
+export interface ThreadReadResult {
+  /** The thread's sidecars, in the order the window read would have produced them. */
+  sidecars: unknown[];
+  /**
+   * How many of them there are — **the thread's own captured requests, not the
+   * window's files.** A read that never materializes the rest of the window has
+   * no count of it to report, and the thread page never showed one.
+   */
+  files: number;
+  /**
+   * Always `0`. A file that would not parse, or that is not an audit sidecar,
+   * carries no thread id, so it belongs to no thread and cannot be counted
+   * against one. Kept in the shape so the route's `meta` stays what it was.
+   */
+  parseErrors: number;
+}
+
+/** The transcript a sidecar is a turn of, or `null` for anything that names none. */
+function sidecarThreadId(sidecar: unknown): string | null {
+  if (typeof sidecar !== 'object' || sidecar === null) return null;
+  const session = (sidecar as { session?: unknown }).session;
+  if (typeof session !== 'object' || session === null) return null;
+  const id = (session as { threadId?: unknown }).threadId;
+  return typeof id === 'string' ? id : null;
+}
+
+/**
+ * **One thread's slice of a window, asked for as a thread rather than as a
+ * window.** The thread page wants the requests of one transcript; reading every
+ * sidecar in the span to keep a handful of them is the cost that made a
+ * 394-byte answer take seconds.
+ *
+ * Which backing is in play decides how that is avoided, and the seam is where
+ * the two meet: {@link SidecarSource.readThread} answers from the thread index
+ * when the backing has one, and a backing without it falls through to exactly
+ * the read this function replaced — {@link readWindow}, then a filter — so the
+ * file side keeps the scan it has always done and the answers stay identical.
+ */
+export async function readThreadWindow(
+  logDir: string,
+  threadId: string,
+  opts: WindowOptions = {},
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<ThreadReadResult> {
+  if (source.readThread) return source.readThread(logDir, threadId, opts, now);
+
+  const { sidecars } = await readWindow(logDir, opts, now, source);
+  const mine = sidecars.filter((sidecar) => sidecarThreadId(sidecar) === threadId);
+  return { sidecars: mine, files: mine.length, parseErrors: 0 };
 }
 
 /** A day the whole-archive read returned nothing for; the walk's answer for it too. */
@@ -557,13 +634,21 @@ async function readDir(
   const clause = where.join(' AND ');
 
   const entries = entriesFrom(db, clause, args, opts);
-  entries.sort((a, b) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
+  if (opts.orderByTimestamp) entries.sort(compareByTimestamp);
+  else entries.sort((a, b) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
   return materialize(logDir, entries, keepDay, opts);
 }
 
 /** One row of the merged stream, before the day filter and the body reads. */
 type Entry = {
   stem: string;
+  /**
+   * The row's ISO `timestamp`, or `''` for a skipped file — which has no
+   * `request` row and so nothing to read one from. Only `orderByTimestamp`
+   * consults it, and the empty string is the same rule the file backing applies
+   * to a sidecar that would not parse.
+   */
+  timestamp: string;
   sourceDir: string;
   make: () => Record<string, unknown>;
   parseError: boolean;
@@ -643,6 +728,7 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[], opts: Re
   for (const row of rows) {
     entries.push({
       stem: row.id,
+      timestamp: row.timestamp,
       sourceDir: row.source_dir,
       make: () => toSidecar(row, toolsById.get(row.id) ?? [], rateById.get(row.id) ?? []),
       parseError: false,
@@ -656,6 +742,11 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[], opts: Re
     const parseError = row.reason === 'parse_error';
     entries.push({
       stem: row.id,
+      // A parse error yields a marker with no `timestamp` field at all, which is
+      // what the file backing keys as the empty string; anything else keeps the
+      // timestamp ingest recorded, which is the one the file backing reads back
+      // off the parsed object.
+      timestamp: parseError ? '' : (row.timestamp ?? ''),
       sourceDir: row.source_dir,
       make: () => (parseError ? parseErrorSidecar(row.id) : invalidSidecar(row.id, row.timestamp)),
       parseError,
@@ -778,11 +869,85 @@ async function readWholeArchive(
   const out = new Map<string, LoadResult>();
   for (const [day, list] of byDay) {
     const rank = (entry: Entry) => (archivedDayOf(entry.sourceDir) === day ? 0 : 1);
-    list.sort((a, b) => rank(a) - rank(b) || (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
+    // Ordered, the rank stops being the primary key and becomes the tie-break —
+    // and it has to stay in that role, because the per-day walk this replaces
+    // merges `<day>` and `<day+1>` and keeps `<day>` first on a tie. Dropping it
+    // here would make the one-query read and the walk disagree about two rows
+    // captured in the same millisecond on opposite sides of the archive seam.
+    if (opts.orderByTimestamp) {
+      list.sort(
+        (a, b) =>
+          (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0) ||
+          rank(a) - rank(b) ||
+          (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0),
+      );
+    } else list.sort((a, b) => rank(a) - rank(b) || (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
     // The day filter is already applied above, so nothing is left to reject.
     out.set(day, await materialize(logDir, list, null, opts));
   }
   return out;
+}
+
+/**
+ * **One thread, off the thread index.** `request.thread_id` is indexed, so the
+ * rows of one transcript are a seek; everything after it is the window's own
+ * bookkeeping applied to that handful of rows rather than to the span.
+ *
+ * The span is resolved exactly as {@link readWindow} resolves it, and the two
+ * day rules are the ones the window's halves already apply — {@link readDir}'s
+ * `keepDay` for the live root, and the archive's "read `<day>` and `<day+1>`,
+ * keep what reports `<day>`". Order is the concatenation's: archived halves in
+ * day order, then the live root. That is what keeps this answer byte-identical
+ * to the scan the file backing still does.
+ */
+async function threadFromDb(
+  db: DatabaseSync,
+  logDir: string,
+  threadId: string,
+  opts: WindowOptions,
+  now: Date,
+): Promise<ThreadReadResult> {
+  // `archiveDir` is a file-backing concern; the substrate reads by `source_dir`.
+  const { archiveDir: _archiveDir, all, ...requested } = opts;
+  const bounded = requested.date || requested.since || requested.sinceDays != null;
+  const floor = all && !bounded ? (oldestDayFromDb(db) ?? today(now)) : null;
+  const readOpts: ReadOptions = floor === null ? requested : { ...requested, since: floor };
+  const { date: _date, since: _since, sinceDays: _sinceDays, ...perFile } = readOpts;
+
+  const { keepDay } = dayFilter(readOpts, now);
+  const wanted = new Set(windowDays(readOpts, now));
+
+  // `request_skipped` has no thread column, and nothing in it could: a file that
+  // would not parse names no session. Selecting through the ids `request` holds
+  // asks both tables the one question that has an answer, and leaves the skipped
+  // half empty rather than erroring on a column that is not there.
+  const entries = entriesFrom(db, 'id IN (SELECT id FROM request WHERE thread_id = ?)', [threadId]);
+
+  const archived: Entry[] = [];
+  const live: Entry[] = [];
+  for (const entry of entries) {
+    const dir = archivedDayOf(entry.sourceDir);
+    if (dir === null) {
+      // Anything that is neither the live root nor an archived day was never in
+      // the window's reach either.
+      if (entry.sourceDir !== LIVE) continue;
+      if (keepDay && !keepDay(entry.day)) continue;
+      live.push(entry);
+      continue;
+    }
+    if (dir !== entry.day && dir !== shiftDay(entry.day, 1)) continue;
+    if (!wanted.has(entry.day)) continue;
+    archived.push(entry);
+  }
+
+  const byStem = (a: Entry, b: Entry) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0);
+  const rank = (entry: Entry) => (archivedDayOf(entry.sourceDir) === entry.day ? 0 : 1);
+  archived.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0) || rank(a) - rank(b) || byStem(a, b));
+  live.sort(byStem);
+
+  // The day filter is already applied above, so nothing is left to reject.
+  const { sidecars, files } = await materialize(logDir, [...archived, ...live], null, perFile);
+  return { sidecars, files, parseErrors: 0 };
 }
 
 /**
@@ -1119,6 +1284,7 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return readConceptsFromFiles(logDir);
     },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
+    readThread: async (logDir, threadId, opts = {}, now = new Date()) => threadFromDb(db, logDir, threadId, opts, now),
     oldestDay: async () => oldestDayFromDb(db),
     readAllDays: async (logDir, days, opts = {}) => {
       // `archiveDir` is a file-backing concern; the substrate reads by `source_dir`.
@@ -1133,7 +1299,11 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       // reporting day straddles two of them. Read both, keep only `date`.
       for (const day of [date, shiftDay(date, 1)]) {
         const r = await readDir(db, logDir, `archive/${day}`, { ...readOpts, date }, new Date());
-        out.sidecars.push(...r.sidecars);
+        // Same merge the file backing does across the same two directories, and
+        // for the same reason: the halves interleave in time, and `<day>` stays
+        // first on a tie so the stream is the concatenation's.
+        if (readOpts.orderByTimestamp) out.sidecars = mergeByTimestamp(out.sidecars, r.sidecars);
+        else out.sidecars.push(...r.sidecars);
         out.files += r.files;
         out.parseErrors += r.parseErrors;
         out.bodiesEvicted = (out.bodiesEvicted ?? 0) + (r.bodiesEvicted ?? 0);
