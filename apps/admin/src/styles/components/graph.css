@@ -799,6 +799,57 @@
   .gi-note {
     font-size: var(--text-4);
   }
+  /* What an agent box folded away — its turns and its command runs, each a way down into the
+   * view that draws them. Capped in height so a long agent scrolls inside the drawer rather
+   * than pushing the fields under it off-screen, the way a long step text already does. */
+  .gi-fold {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    max-height: var(--graph-fold-max-h);
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+  }
+  .gi-fold-row {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    text-align: left;
+    font: inherit;
+    font-size: var(--text-4);
+    color: var(--text);
+    background: none;
+    border: none;
+    border-radius: var(--radius-3);
+    cursor: pointer;
+  }
+  .gi-fold-row:hover {
+    background: var(--surface-2);
+  }
+  .gi-fold-lead {
+    flex: none;
+    font-size: var(--text-3);
+    color: var(--faint);
+  }
+  .gi-fold-label {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gi-fold-go {
+    flex: none;
+    color: var(--faint);
+  }
+  .gi-fold-row:hover .gi-fold-go {
+    color: var(--signal);
+  }
   .gi-stats {
     display: flex;
     gap: var(--space-6);

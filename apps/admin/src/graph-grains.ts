@@ -1,5 +1,6 @@
 import type { SessionNode } from '@claude-proxy/core';
 import type { SessionGraphEntry } from './api';
+import { projectAgents } from './graph-agents';
 import { projectCommandRuns } from './graph-commands';
 
 /**
@@ -9,8 +10,8 @@ import { projectCommandRuns } from './graph-commands';
  * draws for it. The engine takes that set and knows nothing else about the grain, so a
  * coarser view is a new projection here rather than a second layout pass.
  *
- * `turn` and `command` are built. `agent` is registered without a `project` and renders
- * disabled; a later view registers itself by supplying one.
+ * `turn`, `command` and `agent` are all built. A grain registered without a `project` renders
+ * disabled; that is the seam a later view arrives through.
  */
 export type GrainId = 'turn' | 'command' | 'agent';
 
@@ -59,11 +60,19 @@ export const commandGrain = (isCommand: (name: string) => boolean): BuiltGrain =
 
 export const COMMAND_GRAIN: BuiltGrain = commandGrain(() => true);
 
+/**
+ * The coarsest grain: one box per agent the run dispatched, every turn between the dispatches
+ * folded away. Unlike the command grain it needs nothing bound to it — a spawn step names its
+ * own `subagent_type`, so the projection reads the transcript alone.
+ */
+export const AGENT_GRAIN: BuiltGrain = {
+  id: 'agent',
+  label: 'Agent',
+  hint: 'One box per agent in the family',
+  project: projectAgents,
+};
+
 /** Every grain the control offers, coarsest last. */
-export const GRAINS: readonly GrainSpec[] = [
-  TURN_GRAIN,
-  COMMAND_GRAIN,
-  { id: 'agent', label: 'Agent', hint: 'One box per agent in the family' },
-];
+export const GRAINS: readonly GrainSpec[] = [TURN_GRAIN, COMMAND_GRAIN, AGENT_GRAIN];
 
 export const grainById = (id: GrainId): GrainSpec => GRAINS.find((g) => g.id === id) ?? TURN_GRAIN;
