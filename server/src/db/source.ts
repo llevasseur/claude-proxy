@@ -93,6 +93,20 @@ export interface SidecarSource {
    */
   readAllDays?(logDir: string, days: readonly string[], opts?: ArchivedDayOptions): Promise<Map<string, LoadResult>>;
 
+  /**
+   * One thread's captured requests inside the window, and nothing else. Optional:
+   * a backing with nothing better than the window scan omits it, and
+   * {@link readThreadWindow} reads the window and filters, exactly as the thread
+   * route did before this method existed.
+   *
+   * The DB implements it, and that is the whole point — `request.thread_id` is
+   * indexed (`request_thread_idx`), so one thread comes back as an index seek
+   * rather than as every sidecar in the span materialized and then discarded.
+   * The window's day rules still apply: this answers the same rows the window
+   * read would have, not every row the thread ever sent.
+   */
+  readThread?(logDir: string, threadId: string, opts?: WindowOptions, now?: Date): Promise<ThreadReadResult>;
+
   /* --- Session transcripts (slice 2) --- *
    *
    * The transcript body stays on disk: {@link readSession} returns the same
@@ -317,6 +331,59 @@ export async function readWindow(
   }
 
   return { sidecars, files, parseErrors, bodiesEvicted, byDay, archivedDays, days };
+}
+
+/** What a thread read answers: the window's rows for one thread, and their count. */
+export interface ThreadReadResult {
+  /** The thread's sidecars, in the order the window read would have produced them. */
+  sidecars: unknown[];
+  /**
+   * How many of them there are — **the thread's own captured requests, not the
+   * window's files.** A read that never materializes the rest of the window has
+   * no count of it to report, and the thread page never showed one.
+   */
+  files: number;
+  /**
+   * Always `0`. A file that would not parse, or that is not an audit sidecar,
+   * carries no thread id, so it belongs to no thread and cannot be counted
+   * against one. Kept in the shape so the route's `meta` stays what it was.
+   */
+  parseErrors: number;
+}
+
+/** The transcript a sidecar is a turn of, or `null` for anything that names none. */
+function sidecarThreadId(sidecar: unknown): string | null {
+  if (typeof sidecar !== 'object' || sidecar === null) return null;
+  const session = (sidecar as { session?: unknown }).session;
+  if (typeof session !== 'object' || session === null) return null;
+  const id = (session as { threadId?: unknown }).threadId;
+  return typeof id === 'string' ? id : null;
+}
+
+/**
+ * **One thread's slice of a window, asked for as a thread rather than as a
+ * window.** The thread page wants the requests of one transcript; reading every
+ * sidecar in the span to keep a handful of them is the cost that made a
+ * 394-byte answer take seconds.
+ *
+ * Which backing is in play decides how that is avoided, and the seam is where
+ * the two meet: {@link SidecarSource.readThread} answers from the thread index
+ * when the backing has one, and a backing without it falls through to exactly
+ * the read this function replaced — {@link readWindow}, then a filter — so the
+ * file side keeps the scan it has always done and the answers stay identical.
+ */
+export async function readThreadWindow(
+  logDir: string,
+  threadId: string,
+  opts: WindowOptions = {},
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<ThreadReadResult> {
+  if (source.readThread) return source.readThread(logDir, threadId, opts, now);
+
+  const { sidecars } = await readWindow(logDir, opts, now, source);
+  const mine = sidecars.filter((sidecar) => sidecarThreadId(sidecar) === threadId);
+  return { sidecars: mine, files: mine.length, parseErrors: 0 };
 }
 
 /** A day the whole-archive read returned nothing for; the walk's answer for it too. */
@@ -786,6 +853,68 @@ async function readWholeArchive(
 }
 
 /**
+ * **One thread, off the thread index.** `request.thread_id` is indexed, so the
+ * rows of one transcript are a seek; everything after it is the window's own
+ * bookkeeping applied to that handful of rows rather than to the span.
+ *
+ * The span is resolved exactly as {@link readWindow} resolves it, and the two
+ * day rules are the ones the window's halves already apply — {@link readDir}'s
+ * `keepDay` for the live root, and the archive's "read `<day>` and `<day+1>`,
+ * keep what reports `<day>`". Order is the concatenation's: archived halves in
+ * day order, then the live root. That is what keeps this answer byte-identical
+ * to the scan the file backing still does.
+ */
+async function threadFromDb(
+  db: DatabaseSync,
+  logDir: string,
+  threadId: string,
+  opts: WindowOptions,
+  now: Date,
+): Promise<ThreadReadResult> {
+  // `archiveDir` is a file-backing concern; the substrate reads by `source_dir`.
+  const { archiveDir: _archiveDir, all, ...requested } = opts;
+  const bounded = requested.date || requested.since || requested.sinceDays != null;
+  const floor = all && !bounded ? (oldestDayFromDb(db) ?? today(now)) : null;
+  const readOpts: ReadOptions = floor === null ? requested : { ...requested, since: floor };
+  const { date: _date, since: _since, sinceDays: _sinceDays, ...perFile } = readOpts;
+
+  const { keepDay } = dayFilter(readOpts, now);
+  const wanted = new Set(windowDays(readOpts, now));
+
+  // `request_skipped` has no thread column, and nothing in it could: a file that
+  // would not parse names no session. Selecting through the ids `request` holds
+  // asks both tables the one question that has an answer, and leaves the skipped
+  // half empty rather than erroring on a column that is not there.
+  const entries = entriesFrom(db, 'id IN (SELECT id FROM request WHERE thread_id = ?)', [threadId]);
+
+  const archived: Entry[] = [];
+  const live: Entry[] = [];
+  for (const entry of entries) {
+    const dir = archivedDayOf(entry.sourceDir);
+    if (dir === null) {
+      // Anything that is neither the live root nor an archived day was never in
+      // the window's reach either.
+      if (entry.sourceDir !== LIVE) continue;
+      if (keepDay && !keepDay(entry.day)) continue;
+      live.push(entry);
+      continue;
+    }
+    if (dir !== entry.day && dir !== shiftDay(entry.day, 1)) continue;
+    if (!wanted.has(entry.day)) continue;
+    archived.push(entry);
+  }
+
+  const byStem = (a: Entry, b: Entry) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0);
+  const rank = (entry: Entry) => (archivedDayOf(entry.sourceDir) === entry.day ? 0 : 1);
+  archived.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0) || rank(a) - rank(b) || byStem(a, b));
+  live.sort(byStem);
+
+  // The day filter is already applied above, so nothing is left to reject.
+  const { sidecars, files } = await materialize(logDir, [...archived, ...live], null, perFile);
+  return { sidecars, files, parseErrors: 0 };
+}
+
+/**
  * The oldest day the substrate can answer for. `MIN` over the primary key and
  * over `source_dir` — both indexed, so this is a seek rather than a scan, and
  * neither is a guess: the id carries the file's UTC date prefix and the
@@ -1119,6 +1248,8 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return readConceptsFromFiles(logDir);
     },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
+    readThread: async (logDir, threadId, opts = {}, now = new Date()) =>
+      threadFromDb(db, logDir, threadId, opts, now),
     oldestDay: async () => oldestDayFromDb(db),
     readAllDays: async (logDir, days, opts = {}) => {
       // `archiveDir` is a file-backing concern; the substrate reads by `source_dir`.

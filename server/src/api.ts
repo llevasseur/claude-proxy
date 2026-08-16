@@ -165,7 +165,7 @@ import {
   type DayDigestKey,
   memoisedDayDigest,
 } from './day-digest-memo.js';
-import { fileSource, readWindow, type SidecarSource } from './db/source.js';
+import { fileSource, readThreadWindow, readWindow, type SidecarSource } from './db/source.js';
 import { DEFAULT_PR_LIMIT, resolveRepoDir, servePullRequestBody, servePullRequests } from './github.js';
 import {
   claimIdeasInStore,
@@ -1396,6 +1396,12 @@ export interface ContextThreadResponse {
   entries: ContextEntry[];
   /** What the person typed to open the thread; null when it recorded none. */
   prompt: string | null;
+  /**
+   * `files` counts **this thread's** captured requests in the window, not the
+   * window's — the read is by thread id now, so there is no count of the rest of
+   * the span to report. `parseErrors` is 0 for the same reason: a file that would
+   * not parse names no thread, so it is never one of this thread's.
+   */
   meta: { days: number; files: number; parseErrors: number };
 }
 
@@ -1403,6 +1409,12 @@ export interface ContextThreadResponse {
  * One thread's captured requests, oldest first. Matches on thread id alone rather
  * than through {@link sessionContextEntries}'s session-id fallback, which spans a
  * whole agent family and would hand a parent's requests to a subagent's page.
+ *
+ * **Read as a thread, not as a window.** `readThreadWindow` asks the backing for
+ * this thread's rows, which the substrate answers off `request_thread_idx`; only
+ * a backing without that index falls back to reading the span and filtering it.
+ * The entry filter below stays as the seam's guarantee restated — it is what
+ * makes "thread id alone" true of this function whatever the backing returned.
  *
  * A thread with no requests in the window answers an empty list, not a 404.
  */
@@ -1413,8 +1425,9 @@ export async function buildContextThread(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<ContextThreadResponse> {
-  const { sidecars, files, parseErrors } = await readWindow(
+  const { sidecars, files, parseErrors } = await readThreadWindow(
     logDir,
+    threadId,
     { sinceDays: days, includeFile: true },
     now,
     source,
