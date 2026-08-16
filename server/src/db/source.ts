@@ -24,7 +24,9 @@ import { conceptStorePath, readConcepts as readConceptsFromFiles } from '../conc
 import { latestUserText } from '../derive.js';
 import {
   type ArchivedDayOptions,
+  compareByTimestamp,
   type LoadResult,
+  mergeByTimestamp,
   type ReadOptions,
   readArchivedDay as readArchivedDayFromFiles,
   readSidecars as readSidecarsFromFiles,
@@ -322,7 +324,7 @@ export async function readWindow(
     byDay.set(day, [...read.sidecars]);
   }
   for (const sidecar of live.sidecars) {
-    sidecars.push(sidecar);
+    if (!readOpts.orderByTimestamp) sidecars.push(sidecar);
     if (!isAuditSidecar(sidecar)) continue;
     const day = dayOf(sidecar);
     const bucket = byDay.get(day) ?? [];
@@ -330,7 +332,15 @@ export async function readWindow(
     byDay.set(day, bucket);
   }
 
-  return { sidecars, files, parseErrors, bodiesEvicted, byDay, archivedDays, days };
+  // The seam the flag exists for. A reporting day near the present sits in both
+  // halves, so archived-then-live is chronological everywhere except there —
+  // and a caller that wanted chronology had to sort the whole window to fix a
+  // handful of rows. Both halves arrive ordered, so one linear merge is the
+  // whole repair: `byDay` is untouched, because it is keyed by reporting day and
+  // a day's rows are the same set whichever half they were read from.
+  const ordered = readOpts.orderByTimestamp ? mergeByTimestamp(sidecars, live.sidecars) : sidecars;
+
+  return { sidecars: ordered, files, parseErrors, bodiesEvicted, byDay, archivedDays, days };
 }
 
 /** What a thread read answers: the window's rows for one thread, and their count. */
@@ -624,13 +634,21 @@ async function readDir(
   const clause = where.join(' AND ');
 
   const entries = entriesFrom(db, clause, args, opts);
-  entries.sort((a, b) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
+  if (opts.orderByTimestamp) entries.sort(compareByTimestamp);
+  else entries.sort((a, b) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
   return materialize(logDir, entries, keepDay, opts);
 }
 
 /** One row of the merged stream, before the day filter and the body reads. */
 type Entry = {
   stem: string;
+  /**
+   * The row's ISO `timestamp`, or `''` for a skipped file — which has no
+   * `request` row and so nothing to read one from. Only `orderByTimestamp`
+   * consults it, and the empty string is the same rule the file backing applies
+   * to a sidecar that would not parse.
+   */
+  timestamp: string;
   sourceDir: string;
   make: () => Record<string, unknown>;
   parseError: boolean;
@@ -710,6 +728,7 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[], opts: Re
   for (const row of rows) {
     entries.push({
       stem: row.id,
+      timestamp: row.timestamp,
       sourceDir: row.source_dir,
       make: () => toSidecar(row, toolsById.get(row.id) ?? [], rateById.get(row.id) ?? []),
       parseError: false,
@@ -723,6 +742,11 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[], opts: Re
     const parseError = row.reason === 'parse_error';
     entries.push({
       stem: row.id,
+      // A parse error yields a marker with no `timestamp` field at all, which is
+      // what the file backing keys as the empty string; anything else keeps the
+      // timestamp ingest recorded, which is the one the file backing reads back
+      // off the parsed object.
+      timestamp: parseError ? '' : (row.timestamp ?? ''),
       sourceDir: row.source_dir,
       make: () => (parseError ? parseErrorSidecar(row.id) : invalidSidecar(row.id, row.timestamp)),
       parseError,
@@ -845,7 +869,19 @@ async function readWholeArchive(
   const out = new Map<string, LoadResult>();
   for (const [day, list] of byDay) {
     const rank = (entry: Entry) => (archivedDayOf(entry.sourceDir) === day ? 0 : 1);
-    list.sort((a, b) => rank(a) - rank(b) || (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
+    // Ordered, the rank stops being the primary key and becomes the tie-break —
+    // and it has to stay in that role, because the per-day walk this replaces
+    // merges `<day>` and `<day+1>` and keeps `<day>` first on a tie. Dropping it
+    // here would make the one-query read and the walk disagree about two rows
+    // captured in the same millisecond on opposite sides of the archive seam.
+    if (opts.orderByTimestamp) {
+      list.sort(
+        (a, b) =>
+          (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0) ||
+          rank(a) - rank(b) ||
+          (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0),
+      );
+    } else list.sort((a, b) => rank(a) - rank(b) || (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
     // The day filter is already applied above, so nothing is left to reject.
     out.set(day, await materialize(logDir, list, null, opts));
   }
@@ -1263,7 +1299,11 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       // reporting day straddles two of them. Read both, keep only `date`.
       for (const day of [date, shiftDay(date, 1)]) {
         const r = await readDir(db, logDir, `archive/${day}`, { ...readOpts, date }, new Date());
-        out.sidecars.push(...r.sidecars);
+        // Same merge the file backing does across the same two directories, and
+        // for the same reason: the halves interleave in time, and `<day>` stays
+        // first on a tie so the stream is the concatenation's.
+        if (readOpts.orderByTimestamp) out.sidecars = mergeByTimestamp(out.sidecars, r.sidecars);
+        else out.sidecars.push(...r.sidecars);
         out.files += r.files;
         out.parseErrors += r.parseErrors;
         out.bodiesEvicted = (out.bodiesEvicted ?? 0) + (r.bodiesEvicted ?? 0);
