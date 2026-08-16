@@ -142,8 +142,10 @@
       box-shadow var(--motion-duration) ease;
   }
 
-  .notes-row:hover:not(:disabled) {
-    background: var(--surface-2);
+  @media (hover: hover) and (pointer: fine) {
+    .notes-row:hover:not(:disabled) {
+      background: var(--surface-2);
+    }
   }
 
   .notes-row.is-active {
@@ -211,18 +213,6 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    animation: notes-arrive var(--motion-duration) ease-out;
-  }
-
-  @keyframes notes-arrive {
-    from {
-      opacity: 0;
-      transform: translateY(var(--space-3));
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
   }
 
   .notes-editor-head {

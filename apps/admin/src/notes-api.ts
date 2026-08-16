@@ -55,7 +55,9 @@ export function searchNotes(query: string, cursor?: string): Promise<NotePage> {
 }
 
 export function getNote(id: string): Promise<NoteDocument> {
-  return fetch(`${API_BASE}${apiRouteUrl('/api/notes/note', { id })}`).then(responseJson<NoteDocument>);
+  return fetch(`${API_BASE}${apiRouteUrl('/api/notes/note', { id })}`)
+    .then(responseJson<{ note: NoteDocument }>)
+    .then(({ note }) => note);
 }
 
 export const createNote = (input: NoteCreateInput): Promise<NoteWriteResult> => post('/api/notes/create', input);

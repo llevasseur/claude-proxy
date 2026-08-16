@@ -87,6 +87,7 @@ export function NotesPage() {
   const [moreError, setMoreError] = useState<string | null>(null);
   const initialSelection = useRef(false);
   const seenSelectedInList = useRef<string | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
 
   const page = queryText ? found.data : firstPage.data;
   useEffect(() => {
@@ -102,6 +103,7 @@ export function NotesPage() {
   }, [page, more]);
 
   const select = (id?: string) => {
+    if (draft?.dirty || draft?.state === 'saving') return;
     void navigate({ search: { note: id, archived: archived || undefined }, replace: false });
   };
 
@@ -117,8 +119,6 @@ export function NotesPage() {
     enabled: Boolean(search.note),
     retry: (count, error) => !(error instanceof NotesApiError && error.status === 404) && count < 1,
   });
-  const [draft, setDraft] = useState<Draft | null>(null);
-
   useEffect(() => {
     const note = selected.data;
     if (!note) return;
@@ -224,10 +224,10 @@ export function NotesPage() {
   });
 
   useEffect(() => {
-    if (!draft?.dirty || draft.state !== 'idle') return;
+    if (!draft?.dirty || draft.state !== 'idle' || save.isPending) return;
     const timer = window.setTimeout(() => save.mutate(draft), AUTOSAVE_MS);
     return () => window.clearTimeout(timer);
-  }, [draft, save.mutate]);
+  }, [draft, save.isPending, save.mutate]);
 
   useEffect(() => {
     if (draft?.state !== 'saved') return;
@@ -275,11 +275,11 @@ export function NotesPage() {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'n') return;
       event.preventDefault();
-      if (!create.isPending) create.mutate();
+      if (!create.isPending && !(draft?.dirty || draft?.state === 'saving')) create.mutate();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [create]);
+  }, [create, draft]);
 
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
@@ -330,6 +330,7 @@ export function NotesPage() {
     );
   };
 
+  const navigationBlocked = Boolean(draft?.dirty || draft?.state === 'saving');
   const listError = queryText ? found.error : firstPage.error;
   return (
     <section className='notes-shell'>
@@ -343,7 +344,7 @@ export function NotesPage() {
             type='button'
             className='notes-icon-button'
             onClick={() => create.mutate()}
-            disabled={create.isPending}
+            disabled={create.isPending || navigationBlocked}
             aria-label='Create note'
             title='New note (⌘N)'>
             <FilePlus2 size={18} aria-hidden />
@@ -368,6 +369,7 @@ export function NotesPage() {
             type='button'
             className={!archived ? 'is-active' : undefined}
             aria-pressed={!archived}
+            disabled={navigationBlocked}
             onClick={() => void navigate({ search: { note: undefined }, replace: false })}>
             Recent
           </button>
@@ -375,6 +377,7 @@ export function NotesPage() {
             type='button'
             className={archived ? 'is-active' : undefined}
             aria-pressed={archived}
+            disabled={navigationBlocked}
             onClick={() => {
               setFilter('');
               void navigate({ search: { note: undefined, archived: true }, replace: false });
@@ -398,6 +401,7 @@ export function NotesPage() {
               type='button'
               className={`notes-row${note.id === search.note ? ' is-active' : ''}`}
               aria-current={note.id === search.note ? 'page' : undefined}
+              disabled={navigationBlocked && note.id !== search.note}
               onClick={() => select(note.id)}>
               <span className='notes-row-top'>
                 <strong>{noteTitle(note.title)}</strong>
