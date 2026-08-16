@@ -7,16 +7,13 @@ import { openDb, resolveDbPath } from './open.js';
  * The `pull_request` tables: what `/api/pull-requests` answers from, and what the
  * refresh behind that answer writes to.
  *
- * The route used to call `gh pr list` on the request path, behind a single 60-second
- * slot in memory — so a miss cost a full 200-pull-request fetch while the page drew a
- * skeleton, and a restart lost the slot. A row per pull request replaces both: the read
- * is one indexed query, and the fetch is a background pass that asks GitHub only for
- * what changed since the newest `updated_at` on file.
+ * The read is one indexed query; the fetch is a background pass that asks GitHub only
+ * for what changed since the newest `updated_at` on file. Between them they replace a
+ * `gh pr list` on the request path behind a single 60-second slot in memory.
  *
- * A row is **derived and disposable**, exactly as `day-digest-store.ts`'s rows are.
- * GitHub owns the truth about a pull request; these rows are a copy of what `gh` last
- * said, so `rm logs/claude-proxy.db` costs one full refetch and loses nothing. See
- * `docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md`.
+ * A row is **derived and disposable**, exactly as `day-digest-store.ts`'s rows are:
+ * GitHub owns the truth, so `rm logs/claude-proxy.db` costs one full refetch and loses
+ * nothing. See `docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md`.
  */
 
 /** The last refresh's outcome for a checkout, beside the rows it wrote. */
@@ -36,11 +33,7 @@ export interface StoredPullRequests extends StoredPullRequestMeta {
   prs: PullRequestRow[];
 }
 
-/**
- * Ordered by number descending, which is the order `parsePullRequests` already
- * returns and the page already draws — and which the primary key serves directly, so
- * no sort runs.
- */
+/** Number descending — what the page draws, and what the primary key serves without a sort. */
 const SELECT_ROWS = `
 SELECT document FROM pull_request WHERE repo_dir = ? ORDER BY number DESC LIMIT ?
 `;
@@ -55,10 +48,7 @@ const SELECT_WATERMARK = `
 SELECT MAX(updated_at) AS newest FROM pull_request WHERE repo_dir = ?
 `;
 
-/**
- * Last write wins for a number already on file, because that is what a refresh is:
- * `gh` was just asked about this pull request and answered.
- */
+/** Last write wins for a number already on file — `gh` was just asked and answered. */
 const UPSERT_ROW = `
 INSERT INTO pull_request (repo_dir, number, updated_at, document)
 VALUES (?, ?, ?, ?)
@@ -80,7 +70,7 @@ const handles = new Map<string, DatabaseSync>();
  *
  * The file is never *created* here, for the reason `day-digest-store.ts` gives: a read
  * route must not leave a database behind in a log directory that had none. A negative
- * answer is deliberately not remembered, since the substrate may open later.
+ * answer is not remembered, since the substrate may open later.
  */
 function handleFor(logDir: string): DatabaseSync | null {
   const held = handles.get(logDir);
@@ -96,11 +86,9 @@ function handleFor(logDir: string): DatabaseSync | null {
 }
 
 /**
- * What is on file for `repoDir`, or `null` when nothing is — no substrate, or a
- * checkout no refresh has landed for yet. `null` is what makes the caller wait for one
- * pass rather than serve an empty tree as though it were the answer.
- *
- * Best-effort: any failure reads as nothing on file.
+ * What is on file for `repoDir`, or `null` when nothing is — no substrate, or a checkout
+ * no refresh has landed for yet, which is what makes the caller wait for one pass rather
+ * than serve an empty tree. Best-effort: any failure reads as nothing on file.
  */
 export function readStoredPullRequests(logDir: string, repoDir: string, limit: number): StoredPullRequests | null {
   const db = handleFor(logDir);
@@ -116,8 +104,7 @@ export function readStoredPullRequests(logDir: string, repoDir: string, limit: n
       error: meta.error ?? null,
       refError: meta.refError ?? null,
       fetchedAt: meta.fetchedAt,
-      // Back through the same parser the fetch used, so a row answers with exactly what
-      // a live read would have — including every default it applies to a missing field.
+      // Back through the fetch's own parser, so a stored answer equals a live one.
       prs: parsePullRequests(rows.map((row) => JSON.parse(row.document))),
     };
   } catch {
@@ -126,11 +113,9 @@ export function readStoredPullRequests(logDir: string, repoDir: string, limit: n
 }
 
 /**
- * The newest `updatedAt` on file for `repoDir`, or `null` when there is none.
- *
- * This is the whole of the incremental refresh: GitHub is asked for what changed at or
- * after this, rather than for the last 200 pull requests again. `null` means ask for
- * everything, which is the cold case and the case after the file is deleted.
+ * The newest `updatedAt` on file for `repoDir` — what GitHub is asked for changes at or
+ * after, rather than the last 200 pull requests again. `null` means ask for everything,
+ * which is the cold case and the case after the file is deleted.
  */
 export function newestPullRequestUpdate(logDir: string, repoDir: string): string | null {
   const db = handleFor(logDir);
@@ -149,11 +134,10 @@ export function newestPullRequestUpdate(logDir: string, repoDir: string): string
  * One transaction, so a part-way failure leaves the previous view *and* the previous
  * `fetched_at` intact rather than a half-refreshed table claiming to be current.
  *
- * Rows are never deleted. A pull request GitHub stops returning — because the search
- * window moved past it, not because it ceased to exist — must not vanish from the page,
- * and an incremental refresh by construction returns only the changed ones. Returns
- * whether the write landed; `false` is a substrate that is absent or declined, and the
- * caller's answer is unaffected either way.
+ * Rows are never deleted: an incremental refresh returns only what changed, so a pull
+ * request the search window moved past must not vanish from the page. Returns whether
+ * the write landed — `false` is a substrate that is absent or declined, and the caller's
+ * answer is unaffected either way.
  */
 export function storePullRequests(
   logDir: string,

@@ -596,26 +596,22 @@ UPDATE session SET bytes = -1;
  * of it. See `server/src/db/pull-request-store.ts` for what a row means.
  *
  * **The one table here whose source is not `logs/`, and it is derived and disposable
- * for the same reason every other one is.** GitHub holds the truth about a pull
- * request; these rows are a materialized copy of what `gh pr list` last said, so
- * deleting the file costs one full refetch and no information. Nothing authored lives
- * here, and ADR 0004 stands.
+ * for the same reason every other one is.** GitHub holds the truth; these rows are a
+ * copy of what `gh pr list` last said, so deleting the file costs one full refetch and
+ * no information. Nothing authored lives here, and ADR 0004 stands.
  *
  * Keyed on the **checkout** rather than on the `owner/name` slug, because that is what
- * the route has in hand: resolving a slug is itself four subprocess layers
- * (`resolveSlug`), and a read that had to run them first would put a fork back on the
- * request path this exists to clear. The slug is carried on `pull_request_repo`
- * beside the last refresh's outcome, so one keyed lookup supplies `repo`, `error`,
- * `refError` and `fetchedAt` while the row query supplies the rows.
+ * the route has in hand — resolving a slug is four subprocess layers (`resolveSlug`),
+ * and a read that ran them first would put a fork back on the request path this exists
+ * to clear. The slug rides on `pull_request_repo` beside the last refresh's outcome, so
+ * one keyed lookup supplies `repo`, `error`, `refError` and `fetchedAt`.
  *
- * `updated_at` is `gh`'s own `updatedAt` for the row, indexed because the refresh's
- * watermark is `MAX(updated_at)` for the checkout — the newest thing on file, which is
- * what `gh pr list --search "updated:>=<date>"` is then asked for. It needs no field
- * the list read did not already ask for.
+ * `updated_at` is `gh`'s own `updatedAt`, indexed because the refresh's watermark is
+ * `MAX(updated_at)` for the checkout — what `gh pr list --search "updated:>=<date>"` is
+ * then asked for, off a field the list read already returned.
  *
  * `document` is the parsed `PullRequestRow`'s own JSON, for the same reason
- * `command_run` and `concept` carry one: the row round-trips through it, so the route
- * answers with what `gh` said rather than something rebuilt from columns, and adding a
+ * `command_run` and `concept` carry one: the row round-trips through it, so adding a
  * displayed field later is not a migration.
  */
 const SCHEMA_V16 = `

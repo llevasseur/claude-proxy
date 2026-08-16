@@ -3,7 +3,8 @@
  * else, on the device's own auth, so the dashboard needs no token.
  *
  * Setup problems (no `gh`, not signed in, no GitHub remote) come back as a message
- * rather than an exception, and the result is cached briefly.
+ * rather than an exception. The route reads the `pull_request` table and refreshes
+ * through here behind the response.
  */
 
 import { execFile } from 'node:child_process';
@@ -190,13 +191,9 @@ function ghFailure(err: unknown): string {
 }
 
 /**
- * Read the repository's pull requests straight from GitHub — every one of them, up to
- * `limit`, with no store between.
- *
- * This is the **whole** read for a caller that has no log directory to answer from:
- * `ideas-pr.ts` matches ideas against pull requests from a CLI, once per run. The route
- * does not come through here — see {@link servePullRequests}, which answers from the
- * substrate and calls {@link refreshPullRequests} behind the response.
+ * Every pull request up to `limit`, straight from GitHub with no store between — for a
+ * caller with no log directory to answer from, which is `ideas-pr.ts` alone. The route
+ * uses {@link servePullRequests} instead.
  */
 export async function readPullRequests(repoDir: string, limit = DEFAULT_PR_LIMIT): Promise<PullRequestsResult> {
   return fetchPullRequests(repoDir, limit, null);
@@ -205,19 +202,14 @@ export async function readPullRequests(repoDir: string, limit = DEFAULT_PR_LIMIT
 /**
  * One `gh pr list`, plus the ref fetch that draws the rail beside it.
  *
- * `since` is a `YYYY-MM-DD` day, and it is what makes a refresh incremental: GitHub is
- * asked for `updated:>=<that day>` rather than for the last `limit` pull requests all
- * over again. `null` asks for everything, which is the cold case.
+ * `since` is a `YYYY-MM-DD` day: GitHub is asked for `updated:>=<that day>` rather than
+ * for the last `limit` pull requests again. `null` asks for everything, the cold case.
  */
 async function fetchPullRequests(repoDir: string, limit: number, since: string | null): Promise<PullRequestsResult> {
   const fetchedAt = new Date().toISOString();
 
-  /**
-   * `main` and its pins are fetched on this pass rather than on the page's poll, so the
-   * network cost of drawing the rail is the same one `gh pr list` already pays and it
-   * lands behind the response with it. It writes refs only — never the index, never the
-   * worktree — so it is safe in a checkout being used.
-   */
+  // `main` and its pins ride this pass, so they land behind the response with the PRs.
+  // Refs only — never the index, never the worktree — so it is safe in a live checkout.
   const refError = await fetchMainHistory(repoDir).then(
     () => null,
     (err: unknown) =>
@@ -265,13 +257,9 @@ async function fetchPullRequests(repoDir: string, limit: number, since: string |
 }
 
 /**
- * The day GitHub is asked from, out of the newest `updatedAt` on file.
- *
- * Day granularity rather than the timestamp itself, deliberately: `updated:>=` accepts
- * either, and re-fetching the whole of the watermark's own day is a handful of rows
- * against the risk of a boundary this code got wrong dropping an update on the floor.
- * A watermark that is not a timestamp at all reads as no watermark, so the refresh asks
- * for everything rather than for a window it cannot describe.
+ * The day GitHub is asked from, out of the newest `updatedAt` on file. Day granularity
+ * re-fetches the watermark's own day rather than risk a boundary dropping an update.
+ * Anything that is not a date reads as no watermark, so the refresh asks for everything.
  */
 function searchDay(newest: string | null): string | null {
   const day = (newest ?? '').slice(0, 10);
@@ -285,29 +273,24 @@ const refreshing = new Map<string, Promise<PullRequestsResult | null>>();
 const refreshedAt = new Map<string, number>();
 
 /**
- * The floor between two refreshes of the same checkout. The page polls every 30
- * seconds and every poll kicks off a pass, so without a floor the passes would run back
- * to back forever — the same reason `RECONCILE_MIN_INTERVAL_MS` exists for the command
- * store.
+ * The floor between two refreshes of the same checkout. The page polls every 30 seconds
+ * and every poll starts a pass, so without it the passes run back to back forever —
+ * `RECONCILE_MIN_INTERVAL_MS` exists for the same reason on the command store.
  */
 export const REFRESH_MIN_INTERVAL_MS = 60_000;
 
 /**
  * Bring the stored rows level with GitHub, and answer with what GitHub said.
  *
- * Deduped and floored: a pass already in flight is shared rather than started twice,
- * and a pass inside {@link REFRESH_MIN_INTERVAL_MS} of the last one returns `null`
- * without running unless `force` says otherwise. `force` is what the cold read uses,
- * because it has no answer to serve while it waits.
+ * Deduped and floored: a pass in flight is shared, and a pass inside
+ * {@link REFRESH_MIN_INTERVAL_MS} of the last one returns `null` without running unless
+ * `force` — which the cold read passes, having no answer to serve while it waits. The
+ * result is returned as well as stored, so that read can serve the pass it waited for
+ * even when there is no substrate to have written it into.
  *
- * The result is returned as well as stored so the cold read can serve the pass it just
- * waited for, rather than fetching a second time when there is no substrate to have
- * written it into.
- *
- * A failure is swallowed for the caller that does not wait — the rows are a copy of
- * GitHub, and serving yesterday's beats 500-ing the page. A *setup* failure that GitHub
- * itself reported — no `gh`, not signed in, no remote — is stored rather than swallowed,
- * since that is the hint the page renders in place of a tree.
+ * A thrown failure is swallowed: the rows are a copy of GitHub, and serving yesterday's
+ * beats 500-ing the page. A setup failure `gh` itself reported is stored instead, since
+ * that is the hint the page renders in place of a tree.
  */
 export function refreshPullRequests(
   logDir: string,
@@ -340,12 +323,12 @@ export function refreshPullRequests(
  * What the route serves: the rows already on file, with a refresh left running behind
  * the answer.
  *
- * The wait is the cold case only — a substrate that has never held a row for this
- * checkout has nothing to serve, and an empty tree is a claim about the repository
- * rather than a state of the cache. Every load after that is one indexed query.
+ * The wait is the cold case only: an empty table is a state of the cache, not a claim
+ * about the repository, so a checkout with no row on file waits for one pass rather than
+ * serving an empty tree. Every load after that is one indexed query.
  *
- * `cached` is true for a stored answer, which is what the page already labels; the
- * `fetchedAt` beside it is when the refresh that wrote those rows ran, not now.
+ * `cached` is true for a stored answer, and `fetchedAt` beside it is when the refresh
+ * that wrote those rows ran, not now.
  */
 export async function servePullRequests(
   logDir: string,

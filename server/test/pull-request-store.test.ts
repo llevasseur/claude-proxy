@@ -2,12 +2,10 @@
  * `/api/pull-requests` answering from the `pull_request` table, and the refresh that
  * fills it behind the response.
  *
- * `gh` is a shell script on a temp `PATH` that records the argv it was called with and
- * prints whatever the test staged — so the search qualifier the refresh builds is
- * asserted directly, and no test reaches GitHub. `REPO_SLUG` short-circuits the slug
- * lookup, which `github-remote.test.ts` covers on its own. The repositories have no
- * `origin`, so the ref fetch fails fast and locally; it is a `refError` on the row and
- * never a reason the page does not render.
+ * `gh` is a shell script on a temp `PATH` that records its argv and prints whatever the
+ * test staged, so the search qualifier is asserted directly and no test reaches GitHub.
+ * `REPO_SLUG` short-circuits the slug lookup, which `github-remote.test.ts` covers. The
+ * repositories have no `origin`, so the ref fetch fails fast and locally.
  */
 import { execFile } from 'node:child_process';
 import { chmod, mkdtemp, readFile, writeFile } from 'node:fs/promises';
@@ -99,8 +97,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   // A pass left running behind a served response resolves `gh` off `process.env.PATH`
-  // when it gets there, which the next test has already swapped — so it would be logged
-  // against that test's fake. Settling it here is what keeps the counts each test's own.
+  // when it gets there, which the next test has already swapped — so settling it here is
+  // what keeps each test's argv counts its own.
   await refreshPullRequests(logDir, repoDir);
   clearStoredPullRequests();
   process.env.PATH = realPath;
@@ -130,8 +128,7 @@ describe('the pull request store', () => {
       { repo: 'o/r', error: null, refError: null, fetchedAt: '2026-08-10T10:00:00Z' },
       [prRow(7, '2026-08-10T10:00:00Z')],
     );
-    // Whatever `gh` would say, the answer is the row — and it is the answer before any
-    // pass behind it could have finished.
+    // Whatever `gh` would say, the answer is the row.
     await stageGh([ghRow(99, '2026-08-16T10:00:00Z')]);
 
     const served = await servePullRequests(logDir, repoDir, 200);
@@ -174,8 +171,8 @@ describe('the pull request store', () => {
     await stageGh([ghRow(5, '2026-08-10T10:00:00Z')]);
     await refreshPullRequests(logDir, repoDir, 200, true);
 
-    // A second connection is what a restarted server has: the rows are on disk, not in
-    // this process's memory, which is the whole difference from the single slot.
+    // A second connection is what a restarted server has — the rows are on disk, not in
+    // this process's memory.
     const db = openDb(logDir);
     const row = db.prepare('SELECT COUNT(*) AS n FROM pull_request WHERE repo_dir = ?').get(repoDir) as { n: number };
     db.close();

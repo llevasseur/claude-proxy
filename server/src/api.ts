@@ -2889,9 +2889,8 @@ export async function buildPullRequests(
 ): Promise<PullRequestsResponse> {
   const { repo, prs, error, fetchedAt, cached, refError } = await servePullRequests(logDir, repoDir, limit);
   // Recorded links are read every call; the key is for the transcript scan the pull
-  // requests nothing recorded still need. It still tracks the fetch, which is now the
-  // refresh behind the response rather than a slot in memory — so the scan is redone
-  // when the rows move and reused when they have not.
+  // requests nothing recorded still need. It tracks `fetchedAt`, now the refresh behind
+  // the response rather than a slot in memory, so the scan is redone when the rows move.
   const sessions = await readPrSessions(logDir, prs, `${logDir}:${repoDir}:${fetchedAt}`, source);
   const [mainHistory, localMain] = await Promise.all([
     readMainHistory(repoDir, mainPositions(prs)),
