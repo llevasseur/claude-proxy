@@ -22,6 +22,7 @@ Add one with `okq new feature "<title>"`.
 | Ideas ledger | [ideas-ledger.md](ideas-ledger.md) |
 | Live session graph | [live-session-graph.md](live-session-graph.md) |
 | Message drill-down | [message-drill-down.md](message-drill-down.md) |
+| Operator notes | [operator-notes.md](operator-notes.md) |
 | Project memory browser | [project-memory-browser.md](project-memory-browser.md) |
 | Pull request tree | [pull-request-tree.md](pull-request-tree.md) |
 | Retention lifecycle | [retention-lifecycle.md](retention-lifecycle.md) |
