@@ -77,11 +77,9 @@ export function usageUnits(t: AuditTokens): number {
  * that came back with it. Every full `AuditSidecar` is one; nothing here reads
  * `request`, `tools`, `session` or `skim`.
  *
- * Naming that subset is what lets a caller keep a day's requests as a compacted
- * projection rather than as whole sidecars. `server/src/usage-history.ts` stores
- * one such projection per closed archived day, so a cold read of the 28-day
- * learning span deserializes a few fields per request instead of the whole
- * corpus. See {@link isUsageRecord} for why widening the guard is safe.
+ * Naming that subset lets a caller keep a day's requests as a compacted
+ * projection rather than whole sidecars — `server/src/usage-history.ts` stores
+ * one per closed archived day.
  */
 export interface UsageRecord {
   /** ISO 8601 timestamp of the request. */
@@ -96,10 +94,9 @@ export interface UsageRecord {
  * Whether `value` carries the fields above.
  *
  * Deliberately narrower than `isAuditSidecar`, which additionally demands
- * `request` and `tools` — fields no meter consults. Nothing that used to be
- * counted stops being counted, and nothing that used to be rejected starts:
- * the markers the substrate emits for an unusable file (`__parseError`,
- * `__invalidSidecar`) carry no `model` and no `tokens`, so they still fail here.
+ * `request` and `tools` — fields no meter consults. The markers the substrate
+ * emits for an unusable file (`__parseError`, `__invalidSidecar`) carry no
+ * `model` and no `tokens`, so they still fail here.
  */
 export function isUsageRecord(value: unknown): value is UsageRecord {
   if (typeof value !== 'object' || value === null) return false;

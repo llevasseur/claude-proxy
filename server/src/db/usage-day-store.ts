@@ -9,28 +9,25 @@ import { openDb, resolveDbPath, SCHEMA_VERSION } from './open.js';
  *
  * `usage-history.ts` is level one — the per-day map it has always held. This file
  * answers the one question that map cannot: did an earlier process already read
- * this day. That is where a cold `/api/usage` used to go, and it went there 28
- * times, once per day of the learning span.
+ * this day. That is where a cold `/api/usage` used to go, 28 times, once per day
+ * of the learning span.
  *
  * `day-digest-store.ts` is the same shape for `/api/summary` and could not be
- * reused for this: it stores a *daily* `UsageDigest`, and a meter measuring a
- * five-hour window needs the requests inside the day, not a sum over it. So a row
- * here is the day's requests projected down to {@link UsageRecord} — the four
- * fields the meters read — which is what makes it small enough to be worth
- * keeping.
+ * reused: it stores a *daily* `UsageDigest`, and a meter measuring a five-hour
+ * window needs the requests inside the day, not a sum over it. So a row here is
+ * the day's requests projected down to {@link UsageRecord} — the four fields the
+ * meters read — which is what makes it small enough to be worth keeping.
  *
  * A row is a **derived** value for a day that can no longer change, never a
- * source of truth. `logs/` still holds every sidecar, and
- * `rm logs/claude-proxy.db && pnpm --filter server ingest` still reconstructs
- * everything. See `docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md`.
+ * source of truth: `logs/` still holds every sidecar. See
+ * `docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md`.
  */
 
 /**
  * Bump when the projection would answer differently for the same sidecars — a
  * new field on {@link UsageRecord}, or a change to which requests a day's read
- * yields. Nothing else in the key notices that, and a row outliving such a change
- * would pin the old answer in place where the in-process map was cleared by the
- * restart. Stale revisions are pruned on open, so a bump costs one re-read per day.
+ * yields. Nothing else in the key notices that. Stale revisions are pruned on
+ * open, so a bump costs one re-read per day.
  */
 const USAGE_DAY_REVISION = 1;
 
@@ -111,8 +108,8 @@ function handleFor(logDir: string): DatabaseSync | null {
 }
 
 /**
- * The day an earlier process stored for `key`, or `undefined`. Best-effort: any
- * failure reads as a miss, which costs the read it would have saved and nothing else.
+ * The day an earlier process stored for `key`, or `undefined`. Any failure reads
+ * as a miss, costing the read it would have saved and nothing else.
  */
 export function readStoredUsageDay(key: StoredUsageDayKey): StoredUsageDay | undefined {
   const db = handleFor(key.logDir);

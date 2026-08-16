@@ -18,8 +18,7 @@ import { rawArchiveDayDir, shiftDay, today } from './logs.js';
  * one; `db/usage-day-store.ts` is level two, a row per closed archived day, and it
  * is the one that makes a **cold** read cheap — a map only helps the second read,
  * so a restarted server used to re-read all 28 days of the learning span for the
- * first Overview load. Both levels are caches: a miss at each still reads the day
- * exactly as before.
+ * first Overview load. A miss at either level reads the day exactly as before.
  */
 
 /** Four weeks — room for three completed weekly windows, without reading the whole archive. */
@@ -44,10 +43,9 @@ const dayCache = new Map<string, { sidecars: unknown[]; parseErrors: number }>()
 /**
  * Reads already in flight, keyed as {@link dayCache} is.
  *
- * `loadArchivedUsage` and `loadLearnedCeilings` now run concurrently, and their
- * spans overlap by eight days. Without this the two would miss the map together
- * and read each shared day twice — the doc's promise that an overlapping day is
- * parsed once, which a sequential pair used to get for free.
+ * `loadArchivedUsage` and `loadLearnedCeilings` run concurrently and their spans
+ * overlap by eight days. Without this the two miss the map together and read each
+ * shared day twice.
  */
 const inFlight = new Map<string, Promise<ArchivedDayRead>>();
 
@@ -69,9 +67,8 @@ interface ArchivedDayRead {
  *
  * `learnCeilings` and `buildUsageLimits` between them consult a request's
  * timestamp, model, tokens and rate-limit headers, and `buildUsage` consults its
- * `__file` to dedupe the archive/live seam. Everything else on a sidecar — the
- * request metadata, the tool table, the session, the skim — is read off the
- * *live* half or not at all, and it is the bulk of what a day costs to
+ * `__file` to dedupe the archive/live seam. Everything else on a sidecar is read
+ * off the *live* half or not at all, and it is the bulk of what a day costs to
  * deserialize.
  *
  * An entry that is not a usable request keeps its `__file` and nothing else,

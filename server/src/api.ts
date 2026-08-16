@@ -420,11 +420,10 @@ export async function buildUsage(
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<UsageResponse> {
-  // Four independent loads, issued together. They were four sequential awaits,
-  // and none of them takes an input from another — the route's wall time was
-  // their sum for no reason but the order they were written in. The archived read
-  // and the ceilings read overlap by eight days; `usage-history.ts` keys reads in
-  // flight, so a shared day is still read once.
+  // Four independent loads, issued together rather than awaited in sequence —
+  // none takes an input from another. The archived read and the ceilings read
+  // overlap by eight days; `usage-history.ts` keys reads in flight, so a shared
+  // day is still read once.
   const [live, archived, learned, liveUsage] = await Promise.all([
     source.readSidecars(logDir, { sinceDays: 8, includeFile: true }, now),
     loadArchivedUsage(logDir, now, source),
