@@ -43,6 +43,11 @@ SELECT repo, error, ref_error AS refError, fetched_at AS fetchedAt
 FROM pull_request_repo WHERE repo_dir = ?
 `;
 
+/** One row by number — the primary key, unsorted and unlimited. */
+const SELECT_ROW = `
+SELECT document FROM pull_request WHERE repo_dir = ? AND number = ?
+`;
+
 /** The watermark the refresh asks GitHub from. Served by `pull_request_updated_idx`. */
 const SELECT_WATERMARK = `
 SELECT MAX(updated_at) AS newest FROM pull_request WHERE repo_dir = ?
@@ -107,6 +112,25 @@ export function readStoredPullRequests(logDir: string, repoDir: string, limit: n
       // Back through the fetch's own parser, so a stored answer equals a live one.
       prs: parsePullRequests(rows.map((row) => JSON.parse(row.document))),
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The description of one pull request, out of the document already on file.
+ *
+ * `null` is "no row for that number here", which sends the caller to GitHub; a row that
+ * exists with an empty description answers `''`.
+ */
+export function readStoredPullRequestBody(logDir: string, repoDir: string, number: number): string | null {
+  const db = handleFor(logDir);
+  if (!db) return null;
+  try {
+    const row = db.prepare(SELECT_ROW).get(repoDir, number) as { document?: string } | undefined;
+    if (!row?.document) return null;
+    const body = (JSON.parse(row.document) as { body?: unknown }).body;
+    return typeof body === 'string' ? body : '';
   } catch {
     return null;
   }

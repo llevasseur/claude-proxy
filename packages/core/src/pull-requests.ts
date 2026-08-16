@@ -21,8 +21,12 @@ export interface PullRequestRow {
   url: string;
   baseRefName: string;
   headRefName: string;
-  /** The PR description, verbatim markdown. */
-  body: string;
+  /**
+   * The PR description, verbatim markdown. Optional: `/api/pull-requests` omits it and
+   * the drawer asks `/api/pull-requests/body` for the one it shows. A row read straight
+   * from `gh`, and the document the `pull_request` table stores, both carry it.
+   */
+  body?: string;
   labels: string[];
   createdAt: string;
   updatedAt: string;

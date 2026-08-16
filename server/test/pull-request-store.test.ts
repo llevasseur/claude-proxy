@@ -18,10 +18,11 @@ import { openDb } from '../src/db/open.js';
 import {
   clearStoredPullRequests,
   newestPullRequestUpdate,
+  readStoredPullRequestBody,
   readStoredPullRequests,
   storePullRequests,
 } from '../src/db/pull-request-store.js';
-import { refreshPullRequests, servePullRequests } from '../src/github.js';
+import { refreshPullRequests, servePullRequestBody, servePullRequests } from '../src/github.js';
 
 const run = promisify(execFile);
 
@@ -187,6 +188,27 @@ describe('the pull request store', () => {
     await servePullRequests(logDir, repoDir, 200);
 
     expect(await ghCalls()).toHaveLength(1);
+  });
+
+  it('reads one description back by number, without asking gh again', async () => {
+    await stageGh([{ ...ghRow(4, '2026-08-10T10:00:00Z'), body: '## Why\nBecause.' }]);
+    await refreshPullRequests(logDir, repoDir, 200, true);
+
+    const found = await servePullRequestBody(logDir, repoDir, 4);
+
+    expect(found.body).toBe('## Why\nBecause.');
+    expect(found.cached).toBe(true);
+    expect(found.error).toBeNull();
+    // The refresh above is the only `gh` run: a stored row answers the body read.
+    expect(await ghCalls()).toHaveLength(1);
+  });
+
+  it('tells an empty description apart from no row at all', async () => {
+    await stageGh([ghRow(4, '2026-08-10T10:00:00Z')]);
+    await refreshPullRequests(logDir, repoDir, 200, true);
+
+    expect(readStoredPullRequestBody(logDir, repoDir, 4)).toBe('');
+    expect(readStoredPullRequestBody(logDir, repoDir, 9)).toBeNull();
   });
 
   it('stores a setup failure as the hint the page renders', async () => {

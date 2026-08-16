@@ -166,7 +166,7 @@ import {
   memoisedDayDigest,
 } from './day-digest-memo.js';
 import { fileSource, readWindow, type SidecarSource } from './db/source.js';
-import { DEFAULT_PR_LIMIT, resolveRepoDir, servePullRequests } from './github.js';
+import { DEFAULT_PR_LIMIT, resolveRepoDir, servePullRequestBody, servePullRequests } from './github.js';
 import {
   claimIdeasInStore,
   commentIdeasInStore,
@@ -2850,11 +2850,14 @@ export async function buildSkimTrend(
   };
 }
 
+/** A pull request as the list carries it: everything except the description. */
+export type PullRequestListRow = Omit<PullRequestRow, 'body'>;
+
 export interface PullRequestsResponse {
   /** `owner/name` the rows were read from; null when the checkout has no GitHub remote. */
   repo: string | null;
-  /** Newest first — the page orders them into the tree itself. */
-  prs: PullRequestRow[];
+  /** Newest first — the page orders them into the tree itself. No `body`; see the type. */
+  prs: PullRequestListRow[];
   /**
    * A setup gap phrased for the page — no `gh`, not signed in, no remote — rather than
    * a 500. Null on success.
@@ -2898,7 +2901,8 @@ export async function buildPullRequests(
   ]);
   return {
     repo,
-    prs,
+    // The one place the body is dropped; every layer above, and the stored document, keep it.
+    prs: prs.map(({ body: _body, ...row }) => row),
     error,
     sessions,
     mainHistory,
@@ -2906,6 +2910,26 @@ export async function buildPullRequests(
     refError,
     meta: { fetchedAt, cached, total: prs.length, limit },
   };
+}
+
+/** The description of one pull request, for the drawer that is showing it. */
+export interface PullRequestBodyResponse {
+  number: number;
+  /** Verbatim markdown, or null when it could not be read — `error` says why. */
+  body: string | null;
+  /** Whether it came off the stored row rather than a fresh `gh pr view`. */
+  cached: boolean;
+  /** A setup gap phrased for the drawer, as the list's own `error` is. Null on success. */
+  error: string | null;
+}
+
+/** One pull request's description, by number — what `/api/pull-requests` leaves out. */
+export function buildPullRequestBody(
+  logDir: string,
+  number: number,
+  repoDir: string = resolveRepoDir(),
+): Promise<PullRequestBodyResponse> {
+  return servePullRequestBody(logDir, repoDir, number);
 }
 
 /**
