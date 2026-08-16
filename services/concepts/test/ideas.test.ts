@@ -16,6 +16,7 @@ import {
   commentIdeas,
   exportIdeas,
   fileIdeas,
+  getIdea,
   listIdeas,
   markIdeas,
   readIdeas,
@@ -253,6 +254,65 @@ describe('claiming', () => {
     const result = await claimIdeas(db, [{ slug: 'never-proposed', by: 'run-a' }], T0);
     expect(result.unknown).toEqual(['never-proposed']);
     expect(result.claimed).toEqual([]);
+  });
+});
+
+describe('reading one idea by its key', () => {
+  /**
+   * `getIdea` replays only that key's events, so these cases check it against
+   * what the whole-ledger replay holds for the same key — a partial replay that
+   * disagreed would answer differently depending on the route asked through.
+   */
+  it('answers with exactly what a full replay holds for that key', async () => {
+    await addIdeas(db, [idea(), idea({ slug: 'second-idea', area: 'services' })], T0);
+    await markIdeas(db, [{ slug: 'rolling-window', status: 'accepted' }], T0);
+    await commentIdeas(db, [{ slug: 'rolling-window', text: 'revisit once /trends lands' }], T0);
+    await fileIdeas(db, [{ slug: 'rolling-window', area: 'infrastructure' }], T0);
+
+    const store = await readIdeas(db, T0);
+    expect(await getIdea(db, 'rolling-window', T0)).toEqual(store.ideas['rolling-window']);
+    expect(await getIdea(db, 'second-idea', T0)).toEqual(store.ideas['second-idea']);
+  });
+
+  it('replays that key in order, so a later mark wins over the add', async () => {
+    await addIdeas(db, [idea()], T0);
+    await markIdeas(db, [{ slug: 'rolling-window', status: 'accepted' }], T0);
+    await markIdeas(db, [{ slug: 'rolling-window', status: 'rejected', note: 'covered by /trends' }], T0);
+
+    const entry = await getIdea(db, 'rolling-window', T0);
+    expect(entry?.status).toBe('rejected');
+    expect(entry?.note).toBe('covered by /trends');
+  });
+
+  it('keeps answering for a rejected key, which is what stops it being re-proposed', async () => {
+    await addIdeas(db, [idea()], T0);
+    await markIdeas(db, [{ slug: 'rolling-window', status: 'rejected', note: 'not now' }], T0);
+    expect((await getIdea(db, 'rolling-window', T0))?.status).toBe('rejected');
+  });
+
+  it('overlays a live claim, and reads takeable again once it goes stale', async () => {
+    await addIdeas(db, [idea()], T0);
+    await markIdeas(db, [{ slug: 'rolling-window', status: 'accepted' }], T0);
+    await claimIdeas(db, [{ slug: 'rolling-window', by: 'run-a' }], T0);
+
+    const held = await getIdea(db, 'rolling-window', T0);
+    expect(held?.status).toBe('claimed');
+    expect(held?.claim?.by).toBe('run-a');
+
+    // The lease row outlives the claim — nothing sweeps it — so the by-key read
+    // applies the same staleness rule the ledger read does.
+    const later = new Date(T0.getTime() + IDEA_CLAIM_TTL_MS + 1000);
+    expect((await getIdea(db, 'rolling-window', later))?.status).toBe('accepted');
+  });
+
+  it('is null for a well-formed key nothing was ever added under', async () => {
+    await addIdeas(db, [idea()], T0);
+    expect(await getIdea(db, 'never-proposed', T0)).toBeNull();
+  });
+
+  it('refuses a malformed key as a 400, rather than reporting it merely absent', async () => {
+    await expect(getIdea(db, 'Not A Slug', T0)).rejects.toThrow(/invalid slug/);
+    await expect(getIdea(db, '', T0)).rejects.toThrow(/invalid slug/);
   });
 });
 

@@ -76,6 +76,7 @@ Every route except `/health` requires `Authorization: Bearer $CONCEPTS_TOKEN`.
 | `GET /api/concepts/search?q=` | BM25 full-text search |
 | `GET /api/concepts/export` | The whole corpus as JSONL |
 | `GET /api/ideas` | The ledger, with per-status and per-area counts. `?status=`, `?repo=`, `?area=`, `?available=true` |
+| `GET /api/ideas/idea?slug=` | One idea by its key. `404` when no idea was ever added under it |
 | `GET /api/ideas/export` | The whole ledger as JSON, in the shape `logs/ideas.json` held |
 | `POST /api/ideas` | Record proposals. Refuses a slug already present in any status, and reports look-alikes |
 | `POST /api/ideas/mark` | Change statuses. Every mark but `shipped` releases the claim |
@@ -134,6 +135,17 @@ realistic corpus sizes is tens of kilobytes and cheap to call blind.
 `concepts_get` and `concepts_search` return full records including notes and
 tips. That split is deliberate: measured against the current corpus, a compact
 entry averages ~148 bytes while one carrying notes and tips averages ~1.2 KB.
+
+The ideas half splits the same way. `ideas_list` is the browse — the ledger,
+filtered, with counts. `ideas_get` is the **query by key**: an idea's key is its
+kebab-case slug and nothing else, so a client holding one fetches that idea
+whole rather than listing the ledger and filtering it locally. That key is the
+same string everywhere it appears — the dedupe key `ideas_add` checks, the
+`slug` argument `ideas_claim` and `ideas_mark` take, and the dashboard's
+`/ideas/<slug>` permalink, where a fingerprint button beside the title copies it
+so a human can hand one idea to an agent. A key nothing was added under comes
+back as a tool error; a *rejected* key answers normally, carrying the reason it
+was turned down, which is what stops the idea being proposed a second time.
 
 ---
 

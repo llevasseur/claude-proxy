@@ -14,7 +14,7 @@ import {
   parseIdeaMarks,
 } from '@claude-proxy/core';
 import type { Db } from './db.ts';
-import { addIdeas, claimIdeas, listIdeas, markIdeas } from './ideas.ts';
+import { addIdeas, claimIdeas, getIdea, IdeaError, listIdeas, markIdeas } from './ideas.ts';
 import { conceptFacets, getConceptById, getConceptsByTerm, listConcepts, searchConcepts } from './store.ts';
 
 /**
@@ -116,6 +116,19 @@ const TOOLS = [
         area: { type: 'string', description: 'One kebab-case area, matched exactly.' },
         available: { type: 'boolean', description: 'Only what may be claimed right now. Overrides status.' },
       },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'ideas_get',
+    description:
+      "Fetch ONE idea by its key. The key is the kebab-case slug, and it is the idea's only identifier — the same string the dashboard's permalink uses, the same one ideas_add dedupes against, and the same `slug` argument ideas_claim and ideas_mark already take. Use this whenever you hold a key and want that idea whole: its rationale, its evidence with locators, its area and repo, its status, the human's note or comment, and the claim currently held on it. Prefer it over calling ideas_list and filtering client-side, which reads the entire ledger to answer about one row. A key nothing was ever added under comes back as an error naming it — which is NOT the same as a rejected idea, since rejected rows are kept deliberately and answer here carrying the reason they were turned down.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: "The idea's kebab-case key." },
+      },
+      required: ['slug'],
       additionalProperties: false,
     },
   },
@@ -232,6 +245,22 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
 
   if (name === 'ideas_list') {
     return await listIdeas(db, ideaFilterFromArgs(args), args.available === true);
+  }
+
+  if (name === 'ideas_get') {
+    const slug = str(args, 'slug');
+    if (!slug) return { error: '`slug` is required' };
+    try {
+      const idea = await getIdea(db, slug);
+      // Absence is a tool error, not `{ idea: null }` — a successful call must
+      // not read as the idea existing and unclaimed.
+      return idea ? { idea } : { error: `no idea on the ledger is called ${slug}` };
+    } catch (error) {
+      // A malformed key comes back in the same `{ error }` shape every other
+      // tool refuses with, not the bare `tool … failed:` of an escaped throw.
+      if (error instanceof IdeaError) return { error: error.message };
+      throw error;
+    }
   }
 
   if (name === 'ideas_add') {
@@ -399,7 +428,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
       supportedVersions: SUPPORTED_VERSIONS,
       capabilities: CAPABILITIES,
       instructions:
-        'Two datasets over one database. CONCEPTS is the glossary of terms the user has taught themselves — call concepts_list first for a cheap overview of everything available, then concepts_get or concepts_search when you need the prose. IDEAS is the ledger of proposals and what a human decided about each: call ideas_list with available:true to see what may be built right now, ideas_claim before you write any code, ideas_add to propose something (it dedupes against every machine, rejected rows included), and ideas_mark to record the outcome.',
+        "Two datasets over one database. CONCEPTS is the glossary of terms the user has taught themselves — call concepts_list first for a cheap overview of everything available, then concepts_get or concepts_search when you need the prose. IDEAS is the ledger of proposals and what a human decided about each: call ideas_list with available:true to see what may be built right now, ideas_get to pull one idea whole when you already hold its key (the kebab-case slug is the idea's only identifier, and every ideas_* tool takes it), ideas_claim before you write any code, ideas_add to propose something (it dedupes against every machine, rejected rows included), and ideas_mark to record the outcome.",
       _meta: { [META_SERVER_INFO]: SERVER_INFO },
     });
   }

@@ -565,6 +565,13 @@ of the answer.
 - [x] `ideas_list` (with `--available`), `ideas_add`, `ideas_claim` and `ideas_mark` are served
       over MCP, and `ideas_add` runs `similarIdeaSlugs` server-side over the whole corpus,
       rejected rows included.
+- [x] `ideas_get` fetches one idea **by its key** over MCP, with `GET /api/ideas/idea?slug=` as the
+      REST sibling: it replays only that key's events, agrees exactly with what a whole-ledger
+      replay holds for the same key, answers for a rejected key carrying its reason, and
+      distinguishes a malformed key (refused) from one nothing was added under (absent).
+- [x] Each idea's key is copiable from the dashboard as a fingerprint beside its name, on the card
+      and on the permalink, in a slot that is always reserved and stays vertically centred against
+      a title that wraps to more than one line.
 - [x] `/api/ideas/stream` polls the Worker and diffs, emitting an `update` only on a real change,
       with the SSE contract and the dashboard unchanged.
 - [x] The nightly backup commits the ideas export beside `concepts.jsonl`, and an unchanged day
