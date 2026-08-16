@@ -154,16 +154,12 @@ async function deriveBeforeEvict(logDir: string): Promise<void> {
 /**
  * Level the substrate with what the evict phase just deleted.
  *
- * The pass in {@link deriveBeforeEvict} runs *before* eviction, so by
- * construction it cannot see it — and eviction happens inside `archive/<day>/`,
- * which fires no watcher event, because the server's watch is not recursive. So
- * without a pass on this side of it, `request_path` keeps pointing at bodies
- * this very run removed until something unrelated touches the live directory.
- *
- * That matters now that the count is a column read: `/api/skim/trend` sums the
- * pointer instead of walking the disk, so a stale column is a wrong answer
- * rather than merely a slow one. Never fatal, for the same reason as the pass
- * before it — the substrate is a disposable view.
+ * {@link deriveBeforeEvict} runs *before* eviction, so it cannot see it, and
+ * eviction inside `archive/<day>/` fires no watcher event — the server's watch
+ * is not recursive. Without a pass on this side, `request_path` keeps pointing
+ * at bodies this run removed. `/api/skim/trend` sums that column, so a stale one
+ * is a wrong answer rather than merely a slow one. Never fatal: the substrate is
+ * a disposable view.
  */
 async function reingestAfterEvict(logDir: string): Promise<void> {
   try {

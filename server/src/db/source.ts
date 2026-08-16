@@ -395,9 +395,8 @@ interface RequestRow {
   body_derived: number;
   /**
    * The `.request.txt` beside this sidecar, or null once eviction deleted it.
-   * **This is the eviction ledger the skim reads** — `blob_evicted` beside it
-   * means *both* bodies are gone, which is a stricter question than the one
-   * `bodiesEvicted` asks.
+   * The eviction ledger the skim reads — `blob_evicted` beside it means *both*
+   * bodies are gone, a stricter question than the one `bodiesEvicted` asks.
    */
   request_path: string | null;
 }
@@ -574,9 +573,9 @@ type Entry = {
   /** The derivative itself, when `derived`. Null is a real answer, not a gap. */
   skimText: string | null;
   /**
-   * Whether this row's `.request.txt` is gone, straight off the column ingest
-   * maintains. `null` means the row has no column to answer from — a skipped
-   * file, which has no `request` row at all — and only those go back to the disk.
+   * Whether this row's `.request.txt` is gone, off the column ingest maintains.
+   * `null` where there is no column to answer from — a skipped file, which has
+   * no `request` row — and only those go back to the disk.
    */
   evicted: boolean | null;
 };
@@ -682,37 +681,30 @@ async function materialize(
     const sidecar = entry.make();
     if (entry.parseError) parseErrors += 1;
     if (opts.includeSkimRequests && !entry.parseError) {
-      // The bodies stay on disk; the DB holds a pointer, not the blob. **The
-      // eviction count comes off that pointer, not off a `stat` per row.** It
-      // used to be one `access` for every derived row, awaited in turn — over
-      // sixteen thousand of them for a 30-day window, which is what made
-      // `/api/skim/trend?days=30` a minute-long request that never got faster on
-      // a repeat call.
+      // The bodies stay on disk; the DB holds a pointer, not the blob, and the
+      // eviction count comes off that pointer rather than a `stat` per row.
       //
       // The column is trustworthy at the one moment eviction moves it because
-      // `ingestDir` now fingerprints the whole directory listing rather than its
-      // audit stems, so deleting a body invalidates that day's watermark and the
-      // next pass refreshes the pointer. `maintain --apply` runs such a pass on
-      // both sides of its evict phase. See the note in `db/ingest.ts`.
+      // `ingestDir` fingerprints the whole directory listing rather than its
+      // audit stems, so deleting a body invalidates that day's watermark.
+      // `maintain --apply` runs a pass on both sides of its evict phase.
       const rel =
         entry.sourceDir === LIVE ? `${entry.stem}.request.txt` : `${entry.sourceDir}/${entry.stem}.request.txt`;
       const abs = path.join(logDir, rel);
       let text: string | null = null;
       if (entry.evicted === true) {
         // The pointer is null: the body is gone. `skim_text` outlives it when a
-        // pass derived it first, which is the whole point of the column.
+        // pass derived it first.
         bodiesEvicted += 1;
         text = entry.skimText;
       } else if (entry.derived) {
-        // Ingest read this body while it existed, and the pointer says it is
-        // still there — so nothing needs the disk at all.
+        // Ingest read this body and the pointer says it is still there, so
+        // nothing touches the disk.
         text = entry.skimText;
       } else {
         // No derivative and no pointer to trust: a row ingested before the
-        // extraction existed, or a skipped file, which has no `request` row and
-        // so no column either. Fall back to the query-time read that was the only
-        // path before. Both are rare, so this is the exception rather than the
-        // per-row cost the branches above removed.
+        // extraction existed, or a skipped file, which has no `request` row.
+        // Falls back to the query-time read that was the only path before.
         let raw: string | null = null;
         try {
           raw = await readFile(abs, 'utf8');

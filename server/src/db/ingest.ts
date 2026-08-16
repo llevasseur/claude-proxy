@@ -397,21 +397,15 @@ async function ingestDir(
     .map((n) => n.slice(0, -AUDIT_SUFFIX.length))
     .sort();
 
-  // **The fingerprint is the whole listing, not the audit stems.** Eviction is
-  // the one mutation an archived day still undergoes, and it deletes `.md` and
-  // `.request.txt` while keeping every `.audit.json` — so a count of stems is
-  // exactly the number eviction cannot move. Fingerprinting stems meant an
-  // evicted day matched its watermark, was skipped whole, and kept a
-  // `request_path` pointing at a file that is gone; `/api/skim/trend` reads that
-  // column, so the staleness was visible in the answer.
+  // The fingerprint is the whole listing, not the audit stems. Eviction deletes
+  // `.md` and `.request.txt` and keeps every `.audit.json`, so a count of stems
+  // is the one number it cannot move — an evicted day matched its watermark and
+  // kept a `request_path` pointing at a file that was gone.
   //
-  // The count and the greatest entry both change when a body is deleted. It also
-  // invalidates every watermark written by the old scheme exactly once — a stem
-  // never equals a listing entry, which still carries its suffix — so the first
-  // pass after this change re-reconciles each archived day and no migration is
-  // needed to clear the stale rows. The column is still named `last_stem`
-  // because the schema in `open.ts` names it that; what it holds is the last
-  // *entry*.
+  // A bare stem never equals a listing entry, so every watermark written under
+  // the old scheme self-invalidates exactly once and no migration is needed. The
+  // column is still named `last_stem` because `open.ts` names it that; what it
+  // holds is the last *entry*.
   const listing = [...names].sort();
   const lastEntry = listing.length ? listing[listing.length - 1]! : null;
 
