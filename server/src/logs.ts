@@ -51,6 +51,24 @@ export interface ReadOptions {
   /** Attach `__file` (the sidecar base name, minus `.audit.json`) to each parsed
    * object so callers can map a sidecar back to its raw request file. */
   includeFile?: boolean;
+  /**
+   * The caller reads `request.toolCount` and nothing from the per-tool list, so
+   * every sidecar comes back with an **empty** `tools` array.
+   *
+   * It stays an array rather than being dropped, because `isAuditSidecar` in
+   * `packages/core` requires one — a missing key would make every row of the
+   * window fail the structural guard and vanish from the answer.
+   *
+   * **Both backings honour it**, though only one of them saves anything by it.
+   * The SQLite backing skips the `request_tool` join entirely, which is the
+   * point: a 30-day window is tens of thousands of requests, each carrying tens
+   * of tool schemas that were fetched, grouped and rebuilt for a caller that
+   * never looked. The file backing has already parsed the whole sidecar off
+   * disk, so emptying the array buys it nothing — it does it anyway so the two
+   * backings keep handing callers the same object, which is what the parity
+   * harness rests on.
+   */
+  omitTools?: boolean;
 }
 
 /**
@@ -157,6 +175,9 @@ export async function readSidecars(
         const { text, bodyPresent } = await skimRequestText(logDir, f);
         (sidecar as { skimRequestText?: string }).skimRequestText = text ?? undefined;
         if (!bodyPresent) bodiesEvicted += 1;
+      }
+      if (opts.omitTools && Array.isArray((sidecar as { tools?: unknown }).tools)) {
+        (sidecar as { tools: unknown[] }).tools = [];
       }
       if (opts.includeFile) {
         (sidecar as { __file?: string }).__file = f.replace(/\.audit\.json$/, '');

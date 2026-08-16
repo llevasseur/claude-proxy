@@ -556,7 +556,7 @@ async function readDir(
   }
   const clause = where.join(' AND ');
 
-  const entries = entriesFrom(db, clause, args);
+  const entries = entriesFrom(db, clause, args, opts);
   entries.sort((a, b) => (a.stem < b.stem ? -1 : a.stem > b.stem ? 1 : 0));
   return materialize(logDir, entries, keepDay, opts);
 }
@@ -584,8 +584,13 @@ type Entry = {
  * The valid and skipped rows a `WHERE` clause selects, merged into one unsorted
  * stream. Factored out of {@link readDir} so the whole-archive read can issue the
  * clause once for every day at a time rather than twice per day.
+ *
+ * `opts.omitTools` drops the `request_tool` fetch outright and leaves every
+ * sidecar's `tools` array empty — see {@link ReadOptions.omitTools}. That is the
+ * one query here whose size is the *window times the tool count*, so a caller
+ * reading only `request.toolCount` pays for a join whose result it throws away.
  */
-function entriesFrom(db: DatabaseSync, clause: string, args: unknown[]): Entry[] {
+function entriesFrom(db: DatabaseSync, clause: string, args: unknown[], opts: ReadOptions = {}): Entry[] {
   const rows = db
     .prepare(`SELECT * FROM request WHERE ${clause} ORDER BY id`)
     .all(...(args as never[])) as unknown as RequestRow[];
@@ -602,19 +607,21 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[]): Entry[]
     for (let i = 0; i < ids.length; i += 400) {
       const chunk = ids.slice(i, i + 400);
       const holes = chunk.map(() => '?').join(',');
-      for (const t of db
-        .prepare(
-          `SELECT request_id, name, bytes, est_tokens FROM request_tool WHERE request_id IN (${holes}) ORDER BY request_id, ord`,
-        )
-        .all(...(chunk as never[])) as unknown as Array<{
-        request_id: string;
-        name: string;
-        bytes: number;
-        est_tokens: number;
-      }>) {
-        const list = toolsById.get(t.request_id) ?? [];
-        list.push({ name: t.name, bytes: t.bytes, est_tokens: t.est_tokens });
-        toolsById.set(t.request_id, list);
+      if (!opts.omitTools) {
+        for (const t of db
+          .prepare(
+            `SELECT request_id, name, bytes, est_tokens FROM request_tool WHERE request_id IN (${holes}) ORDER BY request_id, ord`,
+          )
+          .all(...(chunk as never[])) as unknown as Array<{
+          request_id: string;
+          name: string;
+          bytes: number;
+          est_tokens: number;
+        }>) {
+          const list = toolsById.get(t.request_id) ?? [];
+          list.push({ name: t.name, bytes: t.bytes, est_tokens: t.est_tokens });
+          toolsById.set(t.request_id, list);
+        }
       }
       for (const h of db
         .prepare(
@@ -757,7 +764,7 @@ async function readWholeArchive(
   const wanted = new Set(days);
   const byDay = new Map<string, Entry[]>();
 
-  for (const entry of entriesFrom(db, "source_dir <> ''", [])) {
+  for (const entry of entriesFrom(db, "source_dir <> ''", [], opts)) {
     const dir = archivedDayOf(entry.sourceDir);
     if (dir === null) continue;
     // The day this row would have been read under, if it is read at all.

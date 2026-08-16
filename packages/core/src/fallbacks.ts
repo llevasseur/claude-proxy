@@ -158,7 +158,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'request-filename-legacy-colon',
     file: 'server/src/logs.ts',
-    line: 237,
+    line: 258,
     match: 'REQUEST_FILE_RE',
     since: null,
     supersededBy: null,

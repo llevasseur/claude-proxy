@@ -978,11 +978,17 @@ describe('route parity over the real logs/archive', () => {
     resetCaches();
   }, 300_000);
 
+  // The same budget `beforeAll` gets, and for the same reason: what this tears
+  // down is a snapshot of the real archive, which is 17 GB across 24 days on the
+  // device this suite actually runs on. Deleting that does not fit in vitest's
+  // 10s default, so the hook timed out and failed the suite while all 700 cases
+  // passed — the teardown, never an assertion. Same growth that #183 bounded the
+  // replay for; this is the other end of it.
   afterAll(async () => {
     db?.close();
     if (snapshot) await rm(snapshot, { recursive: true, force: true });
     if (commandsDir) await rm(commandsDir, { recursive: true, force: true });
-  });
+  }, 300_000);
 
   /** The frozen corpus, with the days scoped to `days` when a case replays a subset. */
   function contextFor(days?: string[]): ParityContext {
