@@ -8,9 +8,8 @@ import type { SessionGraphEntry } from './api';
  * draws for it. The engine takes that set and knows nothing else about the grain, so a
  * coarser view is a new projection here rather than a second layout pass.
  *
- * Only `turn` is built. `command` and `agent` are registered so the control lists what the
- * page is heading towards and a later view registers itself by supplying a `project` —
- * they render disabled until then rather than pretending to be a view that exists.
+ * Only `turn` is built. `command` and `agent` are registered without a `project` and render
+ * disabled; a later view registers itself by supplying one.
  */
 export type GrainId = 'turn' | 'command' | 'agent';
 

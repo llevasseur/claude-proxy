@@ -6,15 +6,13 @@ import type { BuiltGrain } from './graph-grains';
 /**
  * The live graph's layout engine — one pass that takes a **grain** and the node set that
  * grain projects, and answers placed boxes, edges, branch bands and interruption trails.
- * It is deliberately free of React and of anything the page renders: the route asks for a
- * layout and draws it, and a second view (a coarser grain) calls the same entry point with
- * a different projection rather than growing a layout pass of its own.
+ * It holds no React and nothing the page renders: the route asks for a layout and draws it,
+ * and a coarser view calls the same entry point with a different projection.
  *
  * Steps snake in rows so a long run folds onto the screen. A subagent draws as its own
  * (recursive) layout framed in a band, and **branches are packed into columns beside the
- * run** rather than each hanging below the last: two branches that were live at the same
- * moment stand side by side, and two that never overlapped share a column and cost no
- * width. So parallel work grows the canvas sideways instead of only downwards.
+ * run**: two live at the same moment stand side by side, two that never overlapped share a
+ * column and cost no width.
  */
 
 /** Box geometry, in canvas px (pre-transform). The gaps and insets below don't vary with it. */
@@ -362,11 +360,8 @@ function layoutRun(
     edges.push({ key: `e:${runKey}:${i}`, kind: 'step', color: color(boxTone(b)), ...ends });
   }
 
-  // Pack the branches into columns *beside* the fold rather than beneath it. Each band is
-  // measured at the origin, then moved into the leftmost column that is already clear at the
-  // height it wants — so branches that ran at the same time stand side by side, and ones that
-  // never overlapped share a column and cost no width. This is what replaces the old fixed
-  // inset, where every band went under the last one and parallel work only ever grew height.
+  // Pack the branches into columns beside the fold: each band is measured at the origin, then
+  // moved into the leftmost column already clear at the height it wants.
   if (branches.length > 0) {
     const childCols = Math.max(1, cols - 1);
     const columns: {
