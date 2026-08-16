@@ -15,6 +15,7 @@ import {
 } from '@claude-proxy/core';
 import type { Db } from './db.ts';
 import { addIdeas, claimIdeas, getIdea, IdeaError, listIdeas, markIdeas } from './ideas.ts';
+import { archiveNote, createNote, getNote, listNotes, restoreNote, searchNotes, updateNote } from './notes.ts';
 import { conceptFacets, getConceptById, getConceptsByTerm, listConcepts, searchConcepts } from './store.ts';
 
 /**
@@ -175,6 +176,96 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'notes_list',
+    description:
+      'List active notes ordered by most recent successful content edit. Returns metadata and a short plain-text excerpt, never the full Markdown body. Use nextCursor unchanged to fetch another page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cursor: { type: 'string', description: 'Opaque nextCursor returned by a previous notes_list call.' },
+        limit: { type: 'number', description: 'Page size. Defaults to 50 and is capped at 100.' },
+        archived: { type: 'boolean', description: 'List archived notes instead of active notes.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'notes_search',
+    description:
+      'Full-text search active note titles and Markdown bodies. Results are ordered by last successful edit and contain metadata plus a short excerpt. Call notes_get for the full Markdown.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'FTS words to search for.' },
+        cursor: { type: 'string', description: 'Opaque nextCursor from a previous search page.' },
+        limit: { type: 'number', description: 'Page size. Defaults to 50 and is capped at 100.' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'notes_get',
+    description:
+      'Fetch one note by id, including its full unmodified Markdown body, plain-text title, version, timestamps, and archive state.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Opaque note id from create, list, or search.' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'notes_create',
+    description:
+      'Create a note from a plain-text title and Markdown body. Both strings are stored byte-for-byte; a blank title is valid. Returns the created note at version 1.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Plain-text title. May be blank.' },
+        body: { type: 'string', description: 'Markdown body, stored without transformation.' },
+      },
+      required: ['title', 'body'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'notes_update',
+    description:
+      'Update a note title and/or Markdown body using optimistic concurrency. expectedVersion is mandatory. A stale write is retained as a conflict revision and returns code stale_version with the current version and attempted revision id.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Note id.' },
+        expectedVersion: { type: 'number', description: 'Version returned by the last get/list/search/create/update.' },
+        title: { type: 'string', description: 'Replacement plain-text title. Omit to keep it unchanged.' },
+        body: { type: 'string', description: 'Replacement Markdown body. Omit to keep it unchanged.' },
+      },
+      required: ['id', 'expectedVersion'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'notes_archive',
+    description: 'Reversibly archive one note by id. It disappears from active list and search but is never purged.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Note id.' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'notes_restore',
+    description: 'Restore one archived note by id without changing its version or last-edit ordering timestamp.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'Note id.' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+  },
 ] as const;
 
 /** Reads the ledger filter arguments the way the REST route reads its query string. */
@@ -295,6 +386,40 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
     return result.unknown.length > 0
       ? { error: `no idea on the ledger is called ${result.unknown.join(', ')}` }
       : result;
+  }
+
+  if (name === 'notes_list') {
+    return await listNotes(db, {
+      cursor: str(args, 'cursor'),
+      limit: typeof args.limit === 'number' ? args.limit : undefined,
+      archived: args.archived === true,
+    });
+  }
+  if (name === 'notes_search') {
+    const query = str(args, 'query');
+    if (!query) return { error: '`query` is required' };
+    return await searchNotes(db, query, {
+      cursor: str(args, 'cursor'),
+      limit: typeof args.limit === 'number' ? args.limit : undefined,
+    });
+  }
+  if (name === 'notes_get') {
+    const id = str(args, 'id');
+    if (!id) return { error: '`id` is required' };
+    const note = await getNote(db, id);
+    return note ? { note } : { error: `no note with id ${id}` };
+  }
+  if (name === 'notes_create') return { note: await createNote(db, args) };
+  if (name === 'notes_update') {
+    const id = str(args, 'id');
+    if (!id) return { error: '`id` is required' };
+    const updated = await updateNote(db, id, args);
+    return 'conflict' in updated ? { error: 'stale note version', ...updated } : updated;
+  }
+  if (name === 'notes_archive' || name === 'notes_restore') {
+    const id = str(args, 'id');
+    if (!id) return { error: '`id` is required' };
+    return { note: name === 'notes_archive' ? await archiveNote(db, id) : await restoreNote(db, id) };
   }
 
   return { error: `unknown tool ${name}` };

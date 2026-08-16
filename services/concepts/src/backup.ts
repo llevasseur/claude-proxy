@@ -13,6 +13,7 @@
 import type { Db } from './db.ts';
 import type { Env } from './env.ts';
 import { exportIdeas } from './ideas.ts';
+import { exportNotes } from './notes.ts';
 import { exportJsonl } from './store.ts';
 
 export type BackupStatus = 'disabled' | 'unchanged' | 'committed';
@@ -27,6 +28,7 @@ export interface BackupResult {
 export interface BackupSummary {
   concepts: BackupResult;
   ideas: BackupResult;
+  notes: BackupResult;
 }
 
 function toBase64(text: string): string {
@@ -77,7 +79,15 @@ export async function runBackup(db: Db, env: Env): Promise<BackupSummary> {
       return 0;
     }
   });
-  return { concepts, ideas };
+  const notesContent = await exportNotes(db);
+  const notes = await commitFile(env, env.BACKUP_NOTES_PATH || 'notes.json', notesContent, 'notes', (text) => {
+    try {
+      return (JSON.parse(text) as { revisions?: unknown[] }).revisions?.length ?? 0;
+    } catch {
+      return 0;
+    }
+  });
+  return { concepts, ideas, notes };
 }
 
 async function commitFile(

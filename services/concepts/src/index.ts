@@ -5,6 +5,7 @@ import { d1Db } from './db.ts';
 import type { Env } from './env.ts';
 import { IdeaError } from './ideas.ts';
 import { handleMcp } from './mcp.ts';
+import { NoteError } from './notes.ts';
 import { handleRest, json } from './rest.ts';
 import { ConceptError } from './store.ts';
 
@@ -13,8 +14,10 @@ export default {
     const url = new URL(request.url);
 
     // The one unauthenticated route, so the deploy smoke check has something to hit.
-    // Names both datasets, since this Worker serves concepts and ideas alike.
-    if (url.pathname === '/health') return json({ ok: true, service: 'operator', datasets: ['concepts', 'ideas'] });
+    // Names every dataset this shared Worker serves.
+    if (url.pathname === '/health') {
+      return json({ ok: true, service: 'operator', datasets: ['concepts', 'ideas', 'notes'] });
+    }
 
     if (!isAuthorized(request, env.CONCEPTS_TOKEN)) {
       return new Response(JSON.stringify({ error: 'unauthorized' }), {
@@ -34,6 +37,7 @@ export default {
     } catch (error) {
       if (error instanceof ConceptError) return json({ error: error.message }, error.status);
       if (error instanceof IdeaError) return json({ error: error.message }, error.status);
+      if (error instanceof NoteError) return json({ error: error.message }, error.status);
       console.error('operator: unhandled', error);
       return json({ error: 'internal error' }, 500);
     }

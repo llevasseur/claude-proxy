@@ -22,7 +22,7 @@ export function testDb(): Db {
   const database = new sqlite.DatabaseSync(':memory:');
   // Every migration, in order — the same files `wrangler d1 migrations apply`
   // runs, so a schema the suite accepts is a schema D1 accepts.
-  for (const migration of ['0001_init.sql', '0002_ideas.sql']) {
+  for (const migration of ['0001_init.sql', '0002_ideas.sql', '0003_notes.sql']) {
     database.exec(readFileSync(join(HERE, '..', 'migrations', migration), 'utf8'));
   }
   return {
