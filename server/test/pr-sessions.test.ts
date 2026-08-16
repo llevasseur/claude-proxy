@@ -1,7 +1,7 @@
 // A session records the pull request it opened, and the transcript scan is the fallback for
 // one nothing recorded — so these cases are written as files on disk (transcripts, and the
 // `.state.json` sidecars carrying the record) rather than as calls into the matcher.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -9,6 +9,7 @@ import type { PullRequestRow } from '@claude-proxy/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ingestSessions } from '../src/db/ingest-sessions.js';
 import { openDb } from '../src/db/open.js';
+import { clearScannedPrLinks } from '../src/db/pr-scan-store.js';
 import { dbSource } from '../src/db/source.js';
 import { readPrSessions } from '../src/pr-sessions.js';
 
@@ -34,6 +35,9 @@ const pr = (over: Partial<PullRequestRow> & { number: number }): PullRequestRow 
 });
 
 const THREADS = ['0123456789abcdef', 'fedcba9876543210', 'abcdefabcdef0123'];
+
+/** The checkout the scanned links are keyed under. Nothing reads it off disk. */
+const REPO_DIR = '/repo/o-r';
 
 /** A log directory holding `<thread>.md` transcripts with the given bodies. */
 async function logDirWith(transcripts: Record<string, string>): Promise<string> {
@@ -100,21 +104,18 @@ describe('readPrSessions', () => {
     expect(await readPrSessions(dir, [])).toEqual({});
   });
 
-  it('reuses a cached index under the same key, and rebuilds under a new one', async () => {
+  it('scans every transcript again when there is no substrate to store the result in', async () => {
     const [first, second] = THREADS as [string, string, ...string[]];
     const dir = await logDirWith({ [first]: 'merged PR #14' });
     const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
 
-    const before = await readPrSessions(dir, prs, `${dir}:one`);
+    const before = await readPrSessions(dir, prs, REPO_DIR);
     expect(before[14]?.map((l) => l.threadId)).toEqual([first]);
 
     await writeFile(path.join(dir, 'sessions', `${second}.md`), '# session\n\nmerged PR #14\n', 'utf8');
 
-    const cached = await readPrSessions(dir, prs, `${dir}:one`);
-    expect(cached[14]?.map((l) => l.threadId)).toEqual([first]);
-
-    const fresh = await readPrSessions(dir, prs, `${dir}:two`);
-    expect(fresh[14]?.map((l) => l.threadId).sort()).toEqual([first, second].sort());
+    const after = await readPrSessions(dir, prs, REPO_DIR);
+    expect(after[14]?.map((l) => l.threadId).sort()).toEqual([first, second].sort());
   });
 });
 
@@ -195,5 +196,152 @@ describe('readPrSessions, on the recorded link', () => {
 
     expect(fromDb).toEqual(fromFiles);
     expect(fromDb[14]?.map((l) => l.via)).toEqual([['recorded']]);
+  });
+});
+
+/**
+ * The scan's own results, kept. A stored answer is proved by rewriting a transcript's
+ * *body* while holding its mtime still: nothing on disk says the file changed, so a read
+ * that still answers the old way did not open it.
+ */
+describe('readPrSessions, on the stored scan', () => {
+  let dir: string;
+
+  /** A log directory with a substrate, since a read route never creates one. */
+  async function storedLogDirWith(transcripts: Record<string, string>): Promise<string> {
+    const root = await logDirWith(transcripts);
+    openDb(root).close();
+    return root;
+  }
+
+  /** Backdate a transcript, so "newer than the mark" is a decision and not a race. */
+  async function setMtime(root: string, threadId: string, when: string): Promise<void> {
+    const at = new Date(when);
+    await utimes(path.join(root, 'sessions', `${threadId}.md`), at, at);
+  }
+
+  /** Every stored link for the checkout, whatever pull request it belongs to. */
+  function storedLinks(root: string): { number: number; thread_id: string; via: string }[] {
+    const db = openDb(root);
+    const rows = db.prepare('SELECT number, thread_id, via FROM pr_scan_link WHERE repo_dir = ?').all(REPO_DIR);
+    db.close();
+    return rows as { number: number; thread_id: string; via: string }[];
+  }
+
+  /** The pull requests marked as scanned, ascending. */
+  function storedMarks(root: string): number[] {
+    const db = openDb(root);
+    const rows = db.prepare('SELECT number FROM pr_scan WHERE repo_dir = ? ORDER BY number').all(REPO_DIR);
+    db.close();
+    return (rows as { number: number }[]).map((row) => row.number);
+  }
+
+  afterEach(async () => {
+    clearScannedPrLinks();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('answers a second read from the stored links, without opening the transcripts again', async () => {
+    const [found] = THREADS as [string, ...string[]];
+    dir = await storedLogDirWith({ [found]: 'merged PR #14' });
+    await setMtime(dir, found, '2026-08-10T10:00:00Z');
+    const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
+
+    expect((await readPrSessions(dir, prs, REPO_DIR))[14]?.map((l) => l.threadId)).toEqual([found]);
+    expect(storedLinks(dir)).toEqual([{ number: 14, thread_id: found, via: 'number' }]);
+
+    // The body no longer mentions #14 at all, but the file is not newer than the mark.
+    await writeFile(path.join(dir, 'sessions', `${found}.md`), '# session\n\nnothing at all\n', 'utf8');
+    await setMtime(dir, found, '2026-08-10T10:00:00Z');
+
+    expect((await readPrSessions(dir, prs, REPO_DIR))[14]?.map((l) => l.threadId)).toEqual([found]);
+  });
+
+  it('remembers a pull request nothing matched, so it is not scanned a second time', async () => {
+    const [quiet] = THREADS as [string, ...string[]];
+    dir = await storedLogDirWith({ [quiet]: 'nothing about any pull request' });
+    await setMtime(dir, quiet, '2026-08-10T10:00:00Z');
+    const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
+
+    expect(await readPrSessions(dir, prs, REPO_DIR)).toEqual({});
+    // The mark is the useful negative: scanned, matched nothing.
+    expect(storedMarks(dir)).toEqual([14]);
+    expect(storedLinks(dir)).toEqual([]);
+
+    // Backdated, so nothing on disk claims to be newer than the mark.
+    await writeFile(path.join(dir, 'sessions', `${quiet}.md`), '# session\n\nmerged PR #14\n', 'utf8');
+    await setMtime(dir, quiet, '2026-08-10T10:00:00Z');
+
+    expect(await readPrSessions(dir, prs, REPO_DIR)).toEqual({});
+  });
+
+  it('rescans once a newer transcript arrives, and keeps the links it already had', async () => {
+    const [first, second] = THREADS as [string, string, ...string[]];
+    dir = await storedLogDirWith({ [first]: 'merged PR #14' });
+    await setMtime(dir, first, '2026-08-10T10:00:00Z');
+    const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
+
+    await readPrSessions(dir, prs, REPO_DIR);
+
+    await writeFile(path.join(dir, 'sessions', `${second}.md`), '# session\n\nmerged PR #14\n', 'utf8');
+    await setMtime(dir, second, '2026-08-12T10:00:00Z');
+
+    const after = await readPrSessions(dir, prs, REPO_DIR);
+    expect(after[14]?.map((l) => l.threadId).sort()).toEqual([first, second].sort());
+    expect(
+      storedLinks(dir)
+        .map((row) => row.thread_id)
+        .sort(),
+    ).toEqual([first, second].sort());
+  });
+
+  it('survives the process that scanned, so a restart does not rescan', async () => {
+    const [found] = THREADS as [string, ...string[]];
+    dir = await storedLogDirWith({ [found]: 'merged PR #14' });
+    await setMtime(dir, found, '2026-08-10T10:00:00Z');
+    const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
+
+    await readPrSessions(dir, prs, REPO_DIR);
+    // A connection this process never opened is what a restarted server reads through.
+    expect(storedMarks(dir)).toEqual([14]);
+
+    // The body would no longer match, and the mark is what says not to look.
+    await writeFile(path.join(dir, 'sessions', `${found}.md`), '# session\n\nnothing at all\n', 'utf8');
+    await setMtime(dir, found, '2026-08-10T10:00:00Z');
+
+    expect((await readPrSessions(dir, prs, REPO_DIR))[14]?.map((l) => l.threadId)).toEqual([found]);
+  });
+
+  it('never stores a recorded link, only the recovered signals', async () => {
+    const [opener, mentions] = THREADS as [string, string, ...string[]];
+    dir = await storedLogDirWith({ [opener]: 'opened it', [mentions]: 'shipped feat/pr-15 earlier' });
+    await recordPr(dir, opener, 'https://github.com/o/r/pull/14');
+    await setMtime(dir, opener, '2026-08-10T10:00:00Z');
+    await setMtime(dir, mentions, '2026-08-10T10:00:00Z');
+
+    const index = await readPrSessions(
+      dir,
+      [pr({ number: 14, headRefName: 'feat/pr-14' }), pr({ number: 15, headRefName: 'feat/pr-15' })],
+      REPO_DIR,
+    );
+
+    expect(index[14]?.map((l) => l.via)).toEqual([['recorded']]);
+    // #14 was never scanned, so it has neither a mark nor a stored link.
+    expect(storedMarks(dir)).toEqual([15]);
+    expect(storedLinks(dir)).toEqual([{ number: 15, thread_id: mentions, via: 'branch' }]);
+  });
+
+  it('drops a stored link whose transcript has rotated away, and keeps the mark', async () => {
+    const [gone] = THREADS as [string, ...string[]];
+    dir = await storedLogDirWith({ [gone]: 'merged PR #14' });
+    await setMtime(dir, gone, '2026-08-10T10:00:00Z');
+    const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
+
+    await readPrSessions(dir, prs, REPO_DIR);
+    await rm(path.join(dir, 'sessions', `${gone}.md`));
+
+    expect(await readPrSessions(dir, prs, REPO_DIR)).toEqual({});
+    expect(storedLinks(dir)).toEqual([]);
+    expect(storedMarks(dir)).toEqual([14]);
   });
 });

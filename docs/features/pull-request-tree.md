@@ -126,8 +126,8 @@ an empty tree as though it were the answer.
 
 The page still polls every 30 s, so a PR opened or merged elsewhere appears on its own
 without hammering GitHub's rate limit; the poll now lands on the table and the refresh
-behind it is what reaches GitHub. The session index is keyed to that fetch, so the
-transcript scan below happens once per `gh` read rather than once per poll.
+behind it is what reaches GitHub. The transcript scan below is stored too, so it no longer
+rides that fetch — see [the scan is stored](#the-scan-is-stored).
 
 ## The tree
 
@@ -197,12 +197,48 @@ path rather than the whole path:
 - **The record is forward-only and nothing backfills it.** Deriving a record from the
   textual evidence it replaces would be exactly the conflation this change exists to end, so
   a repository's older pull requests keep the scan alive. The scan disappears entirely —
-  and the measured 14s with it — only once every displayed PR is named. It is no longer
-  the single-slot cache that carries the cost of it in the meantime; see
-  [answering from the substrate](#answering-from-the-substrate).
+  and the measured 14s with it — only once every displayed PR is named. What carries the
+  cost in the meantime is the stored scan below, no longer a slot in memory.
 - **A recorded PR lists the session that opened it, not every session that mentioned it.**
   That is the point of a record, and it is also a loss: a review or follow-up run that only
   quoted the number stops appearing once the opener is on file.
+
+### The scan is stored
+
+**A pull request is scanned once, not once a minute.** What the scan finds is written to
+`pr_scan_link` in `logs/claude-proxy.db`, one row per link, keyed on the checkout and the
+number as `pull_request` is. Beside it `pr_scan` holds one mark per pull request: the mtime
+of the newest transcript that existed when it was scanned.
+
+What that replaced was a single slot in memory in `server/src/pr-sessions.ts`, keyed on
+`fetchedAt`. That value moves on every GitHub refresh, so the scan repeated roughly every
+60 seconds, and a restart dropped it outright. On this device 155 of 200 pull requests are
+named by the record and 45 are not, so every one of those passes had real work to do.
+
+Three properties are deliberate:
+
+- **A mark with no links is the useful case.** "Scanned, matched nothing" is most of those
+  45, and storing it is what takes them off the request path. A table of links alone would
+  rescan them forever.
+- **A stored link stays a `scanned` link.** `via` holds `branch` and `number` only, and
+  both the write and the read drop anything else, so the separation above — `recorded` is a
+  fact, `branch` and `number` are recovered evidence — is a column constraint rather than a
+  convention. A recorded link is still re-read from `session.pr_url` on every request,
+  because that read is cheap and a run that just opened a PR should appear beside it at once.
+- **New transcripts still land.** A pull request whose mark is behind the newest transcript
+  on disk is rescanned, and only against the transcripts past the oldest such mark. So the
+  cost of a poll after a session ends is that one new transcript, not the directory.
+
+What is left on the request path is one `stat` per transcript, which is how the pass knows
+what is newer than a mark. That is bounded by the number of transcripts rather than their
+size — the 14s the scan measured was reading megabytes of markdown, not listing them. A
+link whose transcript has rotated away is dropped and its row deleted, as a recorded link
+is; the mark stays, so losing the transcript does not buy back the scan.
+
+The rows are derived and disposable like every other table here: `logs/sessions/` owns the
+truth, and `rm logs/claude-proxy.db` costs one scan pass and no information. A log
+directory with no database still works — the scan simply runs in full every time, as it did
+before this table existed.
 
 ## Moving `main`
 
@@ -273,9 +309,10 @@ fatal.
   served answer that comes off the table.
 - `server/src/db/pull-request-store.ts` — the `pull_request` rows: the read, the
   `MAX(updated_at)` watermark, and the transactional upsert.
-- `server/src/pr-sessions.ts` — the recorded column first, then one pass over
-  `logs/sessions/` for whatever it did not name, every transcript read once and tested
-  against every PR still unnamed.
+- `server/src/pr-sessions.ts` — the recorded column first, then, for whatever it did not
+  name, the stored scan and a pass over the transcripts newer than it.
+- `server/src/db/pr-scan-store.ts` — the `pr_scan` mark and the `pr_scan_link` rows: what
+  the scan found, and how far it got.
 - `proxy/session.ts` — `openedPullRequest`, which reads the url off a PR-opening command's
   own result, and the `pr` field of the `.state.json` sidecar it lands in.
 - `server/src/sessions.ts` / `server/src/db/source.ts` — `readPrLinks`, the recorded links
@@ -287,6 +324,10 @@ fatal.
   about what landed, not about what is passing.
 - Hidden lines accumulate. Nothing prunes `refs/main-history/*`, by design — but a
   repository slid back and forth often will grow a long list of pins.
-- Every PR opened before the record existed still costs the transcript scan, and nothing
-  backfills them — see [what the record costs](#what-the-record-costs-and-what-it-does-not-yet-buy).
-  That scan is now the one thing left on the request path, since the `gh` read is not.
+- Every PR opened before the record existed still costs the transcript scan once, and
+  nothing backfills them — see
+  [what the record costs](#what-the-record-costs-and-what-it-does-not-yet-buy). What is
+  left on the request path is the stat pass the stored scan needs, which grows with the
+  number of transcripts on disk rather than with their size.
+- The scan is stored per checkout and per number, and nothing prunes it. A pull request
+  that leaves the page keeps its mark and its links.

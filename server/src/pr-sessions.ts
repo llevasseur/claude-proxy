@@ -16,7 +16,9 @@
  * - The scan disappears entirely only once every displayed pull request is named. The record
  *   is **forward-only** — nothing backfills it, since inventing a record out of the textual
  *   evidence it replaces is the very thing this ends — so older pull requests keep the scan
- *   alive, and the single-slot cache below is kept for them.
+ *   alive. What it costs them is now paid once: the scan writes its links to `pr_scan` and
+ *   `pr_scan_link`, and a pull request already scanned against every transcript on disk is
+ *   answered from those rows instead. See {@link scannedFor}.
  * - A recorded pull request lists the session that **opened** it, not every session that
  *   mentioned it. A review run that only quoted the number no longer appears once the opener
  *   is on file.
@@ -32,6 +34,7 @@ import {
   prUrlKey,
   sessionDisplayName,
 } from '@claude-proxy/core';
+import { forgetScannedPrLinks, readScannedPrLinks, type ScanToStore, storeScannedPrLinks } from './db/pr-scan-store.js';
 import { fileSource, type SidecarSource } from './db/source.js';
 import { resolveSessionsDir, SESSION_FILE_RE } from './sessions.js';
 
@@ -41,6 +44,9 @@ export type PrSessionIndex = Record<number, PrSessionLink[]>;
 /** Transcripts read at once. The whole directory in parallel is megabytes resident. */
 const READ_CONCURRENCY = 16;
 
+/** Transcripts stat'd at once. A stat holds nothing, so this is wider than the read. */
+const STAT_CONCURRENCY = 64;
+
 /** Run `each` over `items`, never more than `limit` at a time. */
 async function inBatches<T>(items: readonly T[], limit: number, each: (item: T) => Promise<void>): Promise<void> {
   let next = 0;
@@ -49,8 +55,6 @@ async function inBatches<T>(items: readonly T[], limit: number, each: (item: T) 
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
-
-let cached: { key: string; index: PrSessionIndex } | null = null;
 
 /** Newest first, ties broken by thread id — the order the drawer lists links in. */
 function sortLinks(index: PrSessionIndex): PrSessionIndex {
@@ -130,14 +134,17 @@ async function nameRecorded(
  * Index the transcripts under `logDir` against `prs`. A missing `sessions/` directory
  * is an empty index, not an error.
  *
- * `cacheKey` reuses the last *scanned* index built under the same key. Recorded links are
- * re-read every call, because reading them is cheap and a run that opens a pull request
- * should appear beside it without waiting for a cache key to move.
+ * `repoDir` is the checkout the numbers belong to — the key the scan's results are stored
+ * under, exactly as `pull_request` is keyed, because one log directory serves several
+ * checkouts and #14 does not mean the same thing in two of them. A `null` means do not
+ * store: the scan then runs in full every call, which is what it did before the table
+ * existed. Recorded links are re-read every call either way, because reading them is
+ * cheap and a run that opens a pull request should appear beside it at once.
  */
 export async function readPrSessions(
   logDir: string,
   prs: readonly PullRequestRow[],
-  cacheKey: string | null = null,
+  repoDir: string | null = null,
   source: SidecarSource = fileSource,
 ): Promise<PrSessionIndex> {
   if (prs.length === 0) return {};
@@ -149,66 +156,164 @@ export async function readPrSessions(
   const unnamed = prs.filter((pr) => !recorded.has(pr.number));
   if (unnamed.length === 0) return sortLinks(index);
 
-  // The key carries which pull requests were scanned, not just the fetch they came from:
-  // a link recorded since the last fetch shrinks this set without moving the caller's key.
-  const scanKey = cacheKey === null ? null : `${cacheKey}|${unnamed.map((pr) => pr.number).join(',')}`;
-  let scanned: PrSessionIndex;
-  if (scanKey !== null && cached?.key === scanKey) {
-    scanned = cached.index;
-  } else {
-    scanned = await buildIndex(logDir, unnamed);
-    if (scanKey !== null) cached = { key: scanKey, index: scanned };
-  }
-
   // Disjoint by construction — a scanned pull request is one nothing recorded — so the
   // halves are concatenated rather than merged per thread.
+  const scanned = await scannedFor(logDir, repoDir, unnamed);
   for (const [number, links] of Object.entries(scanned)) index[Number(number)] = links;
   return sortLinks(index);
 }
 
-async function buildIndex(logDir: string, prs: readonly PullRequestRow[]): Promise<PrSessionIndex> {
-  const index: PrSessionIndex = {};
-  if (prs.length === 0) return index;
+/** One transcript on disk, as the pass sees it before reading a byte of its body. */
+interface Transcript {
+  threadId: string;
+  file: string;
+  /** Epoch ms, floored — what a scan mark is compared against. */
+  mtimeMs: number;
+  /** The same instant as ISO 8601, which is what a link carries. */
+  modified: string;
+}
 
-  const dir = resolveSessionsDir(logDir);
+/**
+ * Every transcript under `dir`, stat'd but unread. `null` is a missing directory.
+ *
+ * The stat pass is what the stored scan is bought with: it says which transcripts are
+ * newer than a pull request's mark, and therefore which of them anything has to be read
+ * from. Statting a directory is cheap in a way reading it is not — the read is megabytes.
+ */
+async function listTranscripts(dir: string): Promise<Transcript[] | null> {
   let names: string[];
   try {
     names = await readdir(dir);
   } catch {
-    return index;
+    return null;
   }
 
-  const matchers = prs.map((pr) => ({ pr, matcher: prMatcher(pr) }));
-
+  const out: Transcript[] = [];
   await inBatches(
     names.filter((name) => SESSION_FILE_RE.test(name)),
-    READ_CONCURRENCY,
+    STAT_CONCURRENCY,
     async (name) => {
       const file = path.join(dir, name);
-      let content: string;
-      let modified: string;
       try {
-        const [text, info] = await Promise.all([readFile(file, 'utf8'), stat(file)]);
-        content = text;
-        modified = info.mtime.toISOString();
+        const info = await stat(file);
+        out.push({
+          threadId: name.replace(/\.md$/, ''),
+          file,
+          mtimeMs: Math.floor(info.mtimeMs),
+          modified: info.mtime.toISOString(),
+        });
       } catch {
-        return; // rotated away mid-read
-      }
-
-      const threadId = name.replace(/\.md$/, '');
-      let link: PrSessionLink | null = null;
-      for (const { pr, matcher } of matchers) {
-        const via = matcher.match(content);
-        if (via.length === 0) continue;
-        // Parsed only once a match is certain — most transcripts match nothing.
-        link ??= { threadId, title: sessionDisplayName(parseSessionTranscript(threadId, content)), modified, via };
-        const entry = { ...link, via };
-        const existing = index[pr.number];
-        if (existing) existing.push(entry);
-        else index[pr.number] = [entry];
+        // rotated away between the listing and the stat
       }
     },
   );
+  return out;
+}
+
+/**
+ * The scanned links for `prs` — from the table where a pull request has already been
+ * scanned against every transcript on disk, and from a fresh pass where it has not.
+ *
+ * The pass narrows twice. Only the pull requests whose mark is behind the newest
+ * transcript are scanned at all, and they are scanned only against the transcripts past
+ * the oldest of those marks. A pull request nothing has ever scanned has no mark, so it
+ * takes the whole directory once and never again — which is the whole change: this used
+ * to repeat about every 60 seconds, because the cache key carried `fetchedAt`.
+ *
+ * With no substrate to read (`repoDir` is null, or the log directory has no database)
+ * this degrades to the full pass it replaced.
+ */
+async function scannedFor(
+  logDir: string,
+  repoDir: string | null,
+  prs: readonly PullRequestRow[],
+): Promise<PrSessionIndex> {
+  const files = await listTranscripts(resolveSessionsDir(logDir));
+  if (files === null) return {};
+
+  const stored = repoDir === null ? null : readScannedPrLinks(logDir, repoDir);
+  if (stored === null || repoDir === null) return sortLinks(await matchTranscripts(files, prs));
+
+  const newest = files.reduce((max, file) => Math.max(max, file.mtimeMs), 0);
+  const onDisk = new Set(files.map((file) => file.threadId));
+
+  // Whatever is still linkable out of the table, before anything is read.
+  const index: PrSessionIndex = {};
+  const rotated = new Set<string>();
+  for (const pr of prs) {
+    for (const link of stored.get(pr.number)?.links ?? []) {
+      // A link to a transcript that has rotated away points at nothing, exactly as a
+      // recorded one does. The mark stays, so losing the transcript does not buy back
+      // the scan.
+      if (!onDisk.has(link.threadId)) {
+        rotated.add(link.threadId);
+        continue;
+      }
+      const kept = index[pr.number];
+      if (kept) kept.push({ ...link });
+      else index[pr.number] = [{ ...link }];
+    }
+  }
+  if (rotated.size > 0) forgetScannedPrLinks(logDir, [...rotated]);
+
+  // A pull request with no mark has never been scanned; one whose mark is behind the
+  // newest transcript has been, but not against everything now on disk.
+  const behind = prs.filter((pr) => (stored.get(pr.number)?.scannedThrough ?? -1) < newest);
+  if (behind.length === 0) return sortLinks(index);
+
+  const cutoff = behind.reduce((min, pr) => Math.min(min, stored.get(pr.number)?.scannedThrough ?? -1), newest);
+  const fresh = await matchTranscripts(
+    files.filter((file) => file.mtimeMs >= cutoff),
+    behind,
+  );
+
+  // Keyed by thread, because a rescan re-reads the transcript a stored link already
+  // names whenever that transcript sits on the cutoff.
+  for (const [key, links] of Object.entries(fresh)) {
+    const number = Number(key);
+    const byThread = new Map((index[number] ?? []).map((link) => [link.threadId, link]));
+    for (const link of links) byThread.set(link.threadId, link);
+    index[number] = [...byThread.values()];
+  }
+
+  const marks: ScanToStore[] = behind.map((pr) => ({
+    number: pr.number,
+    scannedThrough: newest,
+    // Empty is the useful case: scanned, matched nothing, never scanned again.
+    links: index[pr.number] ?? [],
+  }));
+  storeScannedPrLinks(logDir, repoDir, marks);
 
   return sortLinks(index);
+}
+
+/** Read `files` and match each against every pull request in `prs`. */
+async function matchTranscripts(files: readonly Transcript[], prs: readonly PullRequestRow[]): Promise<PrSessionIndex> {
+  const index: PrSessionIndex = {};
+  if (prs.length === 0 || files.length === 0) return index;
+
+  const matchers = prs.map((pr) => ({ pr, matcher: prMatcher(pr) }));
+
+  await inBatches(files, READ_CONCURRENCY, async ({ threadId, file, modified }) => {
+    let content: string;
+    try {
+      content = await readFile(file, 'utf8');
+    } catch {
+      return; // rotated away mid-read
+    }
+
+    let link: PrSessionLink | null = null;
+    for (const { pr, matcher } of matchers) {
+      const via = matcher.match(content);
+      if (via.length === 0) continue;
+      // Parsed only once a match is certain — most transcripts match nothing.
+      link ??= { threadId, title: sessionDisplayName(parseSessionTranscript(threadId, content)), modified, via };
+      const entry = { ...link, via };
+      const existing = index[pr.number];
+      if (existing) existing.push(entry);
+      else index[pr.number] = [entry];
+    }
+  });
+
+  return index;
 }

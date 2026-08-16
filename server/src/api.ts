@@ -2891,10 +2891,10 @@ export async function buildPullRequests(
   source: SidecarSource = fileSource,
 ): Promise<PullRequestsResponse> {
   const { repo, prs, error, fetchedAt, cached, refError } = await servePullRequests(logDir, repoDir, limit);
-  // Recorded links are read every call; the key is for the transcript scan the pull
-  // requests nothing recorded still need. It tracks `fetchedAt`, now the refresh behind
-  // the response rather than a slot in memory, so the scan is redone when the rows move.
-  const sessions = await readPrSessions(logDir, prs, `${logDir}:${repoDir}:${fetchedAt}`, source);
+  // Recorded links are read every call; `repoDir` is what the transcript scan the rest
+  // still need stores its results under. That scan no longer tracks `fetchedAt`, which
+  // moved on every refresh and so repeated the pass about once a minute.
+  const sessions = await readPrSessions(logDir, prs, repoDir, source);
   const [mainHistory, localMain] = await Promise.all([
     readMainHistory(repoDir, mainPositions(prs)),
     readLocalDivergence(repoDir),
