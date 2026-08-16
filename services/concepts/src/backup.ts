@@ -1,18 +1,16 @@
 /**
- * Nightly backup: commit the whole of both datasets to a private git repo. The
- * database is the source of truth for concepts *and* for ideas, so this daily
- * copy is what bounds data loss to a single day and what keeps the ADR 0004
- * carve-out honest. See ADR 0005 for the first dataset and ADR 0006 for the
- * second.
+ * Nightly backup: commit every hosted dataset to a private git repo. This daily
+ * copy bounds data loss to a single day and keeps the ADR 0004 carve-out honest.
  *
  * **A dataset added to this Worker is added here too, or the carve-out is
- * unpaid.** That is the whole reason the two exports go through one loop rather
+ * unpaid.** That is why all exports go through one loop rather
  * than one function each.
  */
 
 import type { Db } from './db.ts';
 import type { Env } from './env.ts';
 import { exportIdeas } from './ideas.ts';
+import { exportNotes } from './notes.ts';
 import { exportJsonl } from './store.ts';
 
 export type BackupStatus = 'disabled' | 'unchanged' | 'committed';
@@ -27,6 +25,7 @@ export interface BackupResult {
 export interface BackupSummary {
   concepts: BackupResult;
   ideas: BackupResult;
+  notes: BackupResult;
 }
 
 function toBase64(text: string): string {
@@ -56,9 +55,9 @@ async function gitBlobSha(text: string): Promise<string> {
 }
 
 /**
- * Commit both exports, then report on each.
+ * Commit every export, then report on each.
  *
- * The two are committed independently rather than as one tree write: a day on
+ * Exports are committed independently rather than as one tree write: a day on
  * which only ideas moved should leave `concepts.jsonl` untouched, which is what
  * the blob-sha comparison below already buys per file.
  */
@@ -77,7 +76,15 @@ export async function runBackup(db: Db, env: Env): Promise<BackupSummary> {
       return 0;
     }
   });
-  return { concepts, ideas };
+  const notesContent = await exportNotes(db);
+  const notes = await commitFile(env, env.BACKUP_NOTES_PATH || 'notes.json', notesContent, 'notes', (text) => {
+    try {
+      return (JSON.parse(text) as { revisions?: unknown[] }).revisions?.length ?? 0;
+    } catch {
+      return 0;
+    }
+  });
+  return { concepts, ideas, notes };
 }
 
 async function commitFile(

@@ -49,14 +49,26 @@ Official references:
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 01 | operator-notes-store | [notes-01-operator-notes-store](notes-01-operator-notes-store.md) | `task/notes-01-operator-notes-store` | todo |
-| 02 | notes-local-api | [notes-02-notes-local-api](notes-02-notes-local-api.md) | `task/notes-02-notes-local-api` | todo |
-| 03 | notes-dashboard | [notes-03-notes-dashboard](notes-03-notes-dashboard.md) | `task/notes-03-notes-dashboard` | todo |
-| 04 | notes-docs-and-verification | [notes-04-notes-docs-and-verification](notes-04-notes-docs-and-verification.md) | `task/notes-04-notes-docs-and-verification` | todo |
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 04 — notes-docs-and-verification
+
+PR [#224](https://github.com/llevasseur/claude-proxy/pull/224) added the durable [Operator notes](../features/operator-notes.md) feature reference and [Operator Notes design spec](../specs/2026-08-16-operator-notes-design.md), then linked them from the root and operator READMEs and changelog: they reconcile the hosted revision/current/FTS model, every authenticated REST endpoint and MCP tool, the server-only token boundary and absence of local fallback, optimistic conflicts, archive/restore, search/cursors/excerpts, dashboard selection/serialized autosave/live SSE, complete revision/archive backup coverage, the manual recovery boundary, and conformance to all eleven unratified Notes ADRs. Independent review corrected three documentation contracts — byte-identical no-op updates create no revision, unauthenticated REST is rejected with `401` before D1 access, and recovery rebuilds FTS from every exported revision — and found no necessary cross-layer code fix; OKF indexes, validation (zero errors, twelve pre-existing recommended-field warnings), dead links, Concepts typecheck and 100 tests, 15 focused core Notes/API tests, 28 focused server bridge/route tests, server/admin typechecks, admin/root builds, repository check (nine pre-existing warnings), environment check, and diff check passed. The required single `my-command-tools verify` run had no concurrent suite but emitted no output and remained stuck for about four minutes in root `pnpm run test` → `pnpm -r --if-present test` with one Vitest coordinator and nine workers, never reaching build/check/check:env, so it was interrupted once and replaced only by the focused gates above; the supported in-app browser again returned no available backends (`[]`), so desktop, responsive, transition, live-selection, and draft-preservation proof remains unavailable and no unsupported backend was substituted.
+
+### 03 — notes-dashboard
+
+PR [#223](https://github.com/llevasseur/claude-proxy/pull/223) added the Activity-station `/notes` workspace in `apps/admin`: a full-bleed responsive recent/archive list and Markdown editor with typed local API calls, URL-stable selection, metadata-only search and cursor pagination, presentation-only `Untitled`, serialized debounced autosave, explicit idle/saving/saved/error/offline/conflict states, draft-preserving SSE reconciliation, and reversible archive/restore. Independent review corrected the server's `{ note }` response unwrapping, serialized overlapping saves, blocked selection/create actions that could discard dirty drafts, removed repetitive selection animation, and limited hover treatment to fine pointers; admin typecheck, production build, scoped Biome, and `git diff --check` passed. Vite served `/notes` on its actual bound port 5173, but the required in-app browser exposed no browser backends, so desktop, responsive, and interaction proof could not be captured; the repository-wide verifier also emitted no output and remained hung for more than two minutes before being interrupted.
+
+### 02 — notes-local-api
+
+PR [#222](https://github.com/llevasseur/claude-proxy/pull/222) added the typed local Notes bridge: shared DTOs and route declarations, a required server-side hosted Notes client with no local fallback, authenticated list/search/get/create/update/archive/restore forwarding, trusted-origin write protection, structured conflict/status preservation, and deduplicated metadata polling over SSE. The implementation lives in `packages/core/src/notes.ts`, `packages/core/src/api-routes.ts`, `server/src/notes-remote.ts`, and `server/src/server.ts`, with focused core and server tests; independent review additionally mapped malformed upstream success bodies to HTTP 502 and redacted operator tokens from transport errors. Core and server typechecks, 876 core tests, 28 focused server tests, Biome, and `git diff --check` passed; the full server suite reported green test files but its Vitest worker pool did not exit during a concurrent repository-wide run and was interrupted after a bounded wait without an assertion failure.
+
+### 01 — operator-notes-store
+
+PR [#221](https://github.com/llevasseur/claude-proxy/pull/221) added the immutable Notes store to the operator Worker: D1 revision/current/FTS schema, shared domain semantics, authenticated REST and MCP operations, opaque pagination, conflict retention, reversible archive/restore, and complete nightly export coverage. The implementation lives in `services/concepts/src/notes.ts` with migration `0003_notes.sql`, REST/MCP/backup integration, package documentation, and focused tests; independent review additionally hardened FTS query handling and stale partial-update reconstruction, completed MCP input/output schemas and structured content, and added Worker-auth and nightly-backup coverage. Verification passed the package typecheck, 100 tests, Biome, and `git diff --check`; the repository-wide Vitest gate stalled without failure output while another concurrent run was also hung.
 
 ## Agent kickoff prompt
 

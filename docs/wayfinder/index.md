@@ -13,10 +13,6 @@
 | Decision 004 — Correctness guardrails for serving cached replies | [decision-004-guardrails.md](decision-004-guardrails.md) |
 | Map: Skim a thin layer off the top of requests to Anthropic | [map-proxy-skim.md](map-proxy-skim.md) |
 | Map: SQLite as the query substrate over the log files | [map-sqlite-substrate.md](map-sqlite-substrate.md) |
-| Operator notes store | [notes-01-operator-notes-store.md](notes-01-operator-notes-store.md) |
-| Notes local API bridge | [notes-02-notes-local-api.md](notes-02-notes-local-api.md) |
-| Notes dashboard | [notes-03-notes-dashboard.md](notes-03-notes-dashboard.md) |
-| Notes documentation and verification | [notes-04-notes-docs-and-verification.md](notes-04-notes-docs-and-verification.md) |
 | Research 002 — Which requests are safe to serve (cacheability gate) | [research-002-cacheability.md](research-002-cacheability.md) |
 | Wayfinder: Notes | [wayfinder-notes.md](wayfinder-notes.md) |
 <!-- okq:index:end -->
