@@ -228,4 +228,9 @@ and the resume procedure above is the whole recovery.
 - `pnpm --filter server ingest` — rebuilds the view from the logs; it should
   finish clean. If it does not, fix that before adding a schema on top of it.
 - `pnpm --filter server test` — the parity suite must be green *before* you
-  change anything, or you cannot tell your own diffs from inherited ones.
+  change anything, or you cannot tell your own diffs from inherited ones. It
+  asserts time as well as bytes: per-route medians recorded in
+  `server/test/route-budgets.json`, judged with headroom. A slice that makes a
+  route legitimately slower re-records them with `ROUTE_BUDGETS=record` and ships
+  the new numbers in its own diff; `ROUTE_BUDGETS=0` skips the timing half on a
+  machine that is busy doing something else.
