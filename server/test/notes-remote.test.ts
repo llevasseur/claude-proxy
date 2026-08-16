@@ -4,6 +4,7 @@ import {
   listRemoteNotes,
   NotesStoreUnconfiguredError,
   RemoteNotesResponseError,
+  RemoteNotesStoreError,
   requireRemoteNotesStore,
   searchRemoteNotes,
   updateRemoteNote,
@@ -101,5 +102,29 @@ describe('notes remote calls', () => {
     );
     expect(JSON.stringify(error.body)).not.toContain(TOKEN);
     expect(error.body).toEqual({ error: 'bad bearer [redacted]' });
+  });
+
+  it('maps a failed upstream body read to an unreachable-store error without leaking the token', async () => {
+    configure();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          ({
+            text: async () => {
+              throw new Error(`socket closed after ${TOKEN}`);
+            },
+          }) as unknown as Response,
+      ),
+    );
+    let error: unknown;
+    try {
+      await listRemoteNotes(requireRemoteNotesStore());
+    } catch (reason) {
+      error = reason;
+    }
+    expect(error).toBeInstanceOf(RemoteNotesStoreError);
+    expect((error as RemoteNotesStoreError).message).toContain('socket closed');
+    expect((error as RemoteNotesStoreError).message).not.toContain(TOKEN);
   });
 });

@@ -78,6 +78,11 @@ function decodedBody(text: string, token: string, label: string): unknown {
   }
 }
 
+function redactedReason(error: unknown, token: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split(token).join('[redacted]');
+}
+
 async function call<T>(store: RemoteNotesStore, path: string, init?: RequestInit): Promise<RemoteNotesReply<T>> {
   const requested = `${store.origin}${path}`;
   const label = safeLabel(requested, path.split('?')[0] ?? path);
@@ -92,9 +97,15 @@ async function call<T>(store: RemoteNotesStore, path: string, init?: RequestInit
       },
     });
   } catch (error) {
-    throw new RemoteNotesStoreError(`${label} (${(error as Error).message})`);
+    throw new RemoteNotesStoreError(`${label} (${redactedReason(error, store.token)})`);
   }
-  const body = decodedBody(await response.text(), store.token, label);
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (error) {
+    throw new RemoteNotesStoreError(`${label} (${redactedReason(error, store.token)})`);
+  }
+  const body = decodedBody(text, store.token, label);
   if (!response.ok) throw new RemoteNotesResponseError(response.status, body, label);
   return { status: response.status, body: body as T };
 }
