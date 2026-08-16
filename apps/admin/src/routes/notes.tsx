@@ -2,7 +2,7 @@ import type { NoteMetadata, NotePage, NoteVersionConflict } from '@claude-proxy/
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { Archive, ArchiveRestore, FilePlus2, NotebookPen, Search } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   archiveNote,
   createNote,
@@ -37,6 +37,15 @@ interface Draft {
   conflict?: NoteVersionConflict;
   remoteVersion?: number;
 }
+
+interface NewDraft {
+  title: string;
+  body: string;
+  state: 'idle' | 'saving' | 'error';
+  message?: string;
+}
+
+const EMPTY_NEW_DRAFT: NewDraft = { title: '', body: '', state: 'idle' };
 
 function useDebounced(value: string, delay: number): string {
   const [settled, setSettled] = useState(value);
@@ -88,6 +97,12 @@ export function NotesPage() {
   const initialSelection = useRef(false);
   const seenSelectedInList = useRef<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [startingNew, setStartingNew] = useState(false);
+  const [newDraft, setNewDraft] = useState<NewDraft>(EMPTY_NEW_DRAFT);
+  const newDraftRef = useRef(newDraft);
+  useEffect(() => {
+    newDraftRef.current = newDraft;
+  }, [newDraft]);
 
   const page = queryText ? found.data : firstPage.data;
   useEffect(() => {
@@ -101,17 +116,28 @@ export function NotesPage() {
     for (const note of [...(page?.notes ?? []), ...more]) byId.set(note.id, note);
     return sortNotes([...byId.values()]);
   }, [page, more]);
+  const composingNew = !archived && !queryText && !search.note && (startingNew || Boolean(page && notes.length === 0));
 
   const select = (id?: string) => {
-    if (draft?.dirty || draft?.state === 'saving') return;
+    const pendingNew = newDraftRef.current;
+    if (
+      draft?.dirty ||
+      draft?.state === 'saving' ||
+      pendingNew.state === 'saving' ||
+      pendingNew.title.trim() ||
+      pendingNew.body.trim()
+    ) {
+      return;
+    }
+    setStartingNew(false);
     void navigate({ search: { note: id, archived: archived || undefined }, replace: false });
   };
 
   useEffect(() => {
-    if (initialSelection.current || search.note || notes.length === 0) return;
+    if (composingNew || initialSelection.current || search.note || notes.length === 0) return;
     initialSelection.current = true;
     void navigate({ search: { note: notes[0]?.id, archived: archived || undefined }, replace: true });
-  }, [search.note, notes, navigate, archived]);
+  }, [composingNew, search.note, notes, navigate, archived]);
 
   const selected = useQuery({
     queryKey: ['notes', 'note', search.note],
@@ -248,12 +274,49 @@ export function NotesPage() {
   }, []);
 
   const create = useMutation({
-    mutationFn: () => createNote({ title: '', body: '' }),
-    onSuccess: ({ note }) => {
+    mutationFn: (value: Pick<NewDraft, 'title' | 'body'>) => createNote(value),
+    onMutate: () => setNewDraft((current) => ({ ...current, state: 'saving', message: undefined })),
+    onSuccess: ({ note }, sent) => {
+      const latest = newDraftRef.current;
+      const changedSinceSend = latest.title !== sent.title || latest.body !== sent.body;
+      client.setQueryData(['notes', 'note', note.id], note);
+      setDraft({
+        id: note.id,
+        version: note.version,
+        title: latest.title,
+        body: latest.body,
+        dirty: changedSinceSend,
+        state: changedSinceSend ? 'idle' : 'saved',
+      });
+      setNewDraft(EMPTY_NEW_DRAFT);
+      setStartingNew(false);
       refreshLists();
       void navigate({ search: { note: note.id }, replace: false });
     },
+    onError: (error) => setNewDraft((current) => ({ ...current, state: 'error', message: (error as Error).message })),
   });
+
+  useEffect(() => {
+    if (
+      !composingNew ||
+      create.isPending ||
+      newDraft.state !== 'idle' ||
+      (!newDraft.title.trim() && !newDraft.body.trim())
+    ) {
+      return;
+    }
+    const value = { title: newDraft.title, body: newDraft.body };
+    const timer = window.setTimeout(() => create.mutate(value), AUTOSAVE_MS);
+    return () => window.clearTimeout(timer);
+  }, [composingNew, create.isPending, create.mutate, newDraft]);
+
+  const startNew = useCallback(() => {
+    if (draft?.dirty || draft?.state === 'saving' || create.isPending) return;
+    setFilter('');
+    setNewDraft(EMPTY_NEW_DRAFT);
+    setStartingNew(true);
+    if (search.note || archived) void navigate({ search: { note: undefined }, replace: false });
+  }, [archived, create.isPending, draft?.dirty, draft?.state, navigate, search.note]);
   const archive = useMutation({
     mutationFn: (id: string) => archiveNote(id),
     onSuccess: ({ note }) => {
@@ -275,11 +338,11 @@ export function NotesPage() {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'n') return;
       event.preventDefault();
-      if (!create.isPending && !(draft?.dirty || draft?.state === 'saving')) create.mutate();
+      startNew();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [create, draft]);
+  }, [startNew]);
 
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
@@ -330,7 +393,12 @@ export function NotesPage() {
     );
   };
 
-  const navigationBlocked = Boolean(draft?.dirty || draft?.state === 'saving');
+  const navigationBlocked = Boolean(
+    draft?.dirty ||
+      draft?.state === 'saving' ||
+      newDraft.state === 'saving' ||
+      (composingNew && (newDraft.title.trim() || newDraft.body.trim())),
+  );
   const listError = queryText ? found.error : firstPage.error;
   return (
     <section className='notes-shell'>
@@ -343,11 +411,12 @@ export function NotesPage() {
           <button
             type='button'
             className='notes-icon-button'
-            onClick={() => create.mutate()}
+            onClick={startNew}
             disabled={create.isPending || navigationBlocked}
             aria-label='Create note'
             title='New note (⌘N)'>
             <FilePlus2 size={18} aria-hidden />
+            <span>New</span>
           </button>
         </header>
 
@@ -392,7 +461,11 @@ export function NotesPage() {
           {listError && <p className='notes-list-state is-error'>Notes unavailable: {listError.message}</p>}
           {!listError && page && notes.length === 0 && (
             <p className='notes-list-state'>
-              {queryText ? 'No notes match this search.' : archived ? 'No archived notes.' : 'No notes yet.'}
+              {queryText
+                ? 'No notes match this search.'
+                : archived
+                  ? 'No archived notes.'
+                  : 'No notes yet. Start writing on the right.'}
             </p>
           )}
           {notes.map((note) => (
@@ -420,11 +493,18 @@ export function NotesPage() {
       </aside>
 
       <main className='notes-editor-pane'>
-        {!search.note ? (
+        {composingNew ? (
+          <NewNoteEditor
+            draft={newDraft}
+            onTitle={(title) => setNewDraft((current) => ({ ...current, title, state: 'idle', message: undefined }))}
+            onBody={(body) => setNewDraft((current) => ({ ...current, body, state: 'idle', message: undefined }))}
+            onRetry={() => setNewDraft((current) => ({ ...current, state: 'idle', message: undefined }))}
+          />
+        ) : !search.note ? (
           <div className='notes-empty'>
             <NotebookPen size={28} aria-hidden />
             <h2>{archived ? 'Choose an archived note' : 'Choose a note'}</h2>
-            <p>{archived ? 'Archived notes remain restorable.' : 'Select a note or create a new one with ⌘N.'}</p>
+            <p>{archived ? 'Archived notes remain restorable.' : 'Select a note or start a new one with ⌘N.'}</p>
           </div>
         ) : selected.error ? (
           <div className='notes-empty is-error'>
@@ -451,6 +531,64 @@ export function NotesPage() {
         )}
       </main>
     </section>
+  );
+}
+
+function NewNoteEditor({
+  draft,
+  onTitle,
+  onBody,
+  onRetry,
+}: {
+  draft: NewDraft;
+  onTitle: (value: string) => void;
+  onBody: (value: string) => void;
+  onRetry: () => void;
+}) {
+  const stateLabel =
+    draft.state === 'saving'
+      ? 'Creating note…'
+      : draft.state === 'error'
+        ? draft.message
+          ? `Could not create note: ${draft.message}`
+          : 'Could not create note'
+        : 'Start typing to create this note';
+  return (
+    <article className='notes-editor'>
+      <header className='notes-editor-head'>
+        <span className={`notes-save-state is-${draft.state}`} role='status' aria-live='polite'>
+          {stateLabel}
+        </span>
+        {draft.state === 'error' && (
+          <button type='button' className='notes-retry-button' onClick={onRetry}>
+            Retry
+          </button>
+        )}
+      </header>
+      <label className='notes-title-label'>
+        <span className='visually-hidden'>Title</span>
+        <input
+          className='notes-title'
+          value={draft.title}
+          onChange={(event) => onTitle(event.target.value)}
+          placeholder='Untitled'
+        />
+      </label>
+      <label className='notes-body-label'>
+        <span className='visually-hidden'>Markdown body</span>
+        <textarea
+          className='notes-body'
+          value={draft.body}
+          onChange={(event) => onBody(event.target.value)}
+          placeholder='Write in Markdown…'
+          spellCheck
+        />
+      </label>
+      <footer className='notes-editor-foot'>
+        <span>Markdown</span>
+        <span>New note</span>
+      </footer>
+    </article>
   );
 }
 
