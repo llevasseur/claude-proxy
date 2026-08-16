@@ -163,6 +163,10 @@ carry the expected version. If two writers race, one advances the current
 projection and the other receives a structured stale-version conflict whose
 attempted revision remains in the immutable history.
 
+The complete Notes contract, including REST and tool examples, cursor and excerpt
+semantics, server-only credentials, dashboard autosave/SSE, and recovery steps, is
+in [Operator notes](../../docs/features/operator-notes.md).
+
 ---
 
 ## Operator setup
@@ -317,6 +321,13 @@ hosted datasets: the worst case is losing one day. Concepts and ideas can be
 restored with `pnpm --filter concepts seed` or `seed:ideas` pointed at the
 backed-up file; `notes.json` retains both tables needed to reconstruct the notes
 projection, immutable revisions, archive state, and FTS index.
+
+There is no Notes import command. Recover into a clean migrated D1 database by
+inserting every exported revision, then every current projection row, and rebuilding
+FTS from every revision. Validate every current pointer, version,
+archive timestamp, and active/archived/revision/conflict count before switching
+clients; the detailed procedure is in
+[Operator notes](../../docs/features/operator-notes.md#backup-and-recovery).
 
 **A dataset added to this Worker is added to the backup too, or the ADR 0004
 carve-out is unpaid.** That is why all three exports go through one loop in
