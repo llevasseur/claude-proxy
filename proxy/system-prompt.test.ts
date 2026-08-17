@@ -30,7 +30,13 @@ interface SidecarRequest {
   system?: { hash: string; blocks: number; sections: number; outline?: unknown };
 }
 
-const requestOf = (json: string): SidecarRequest => (JSON.parse(json) as { request: SidecarRequest }).request;
+const requestOf = (json: string): SidecarRequest => {
+  // SAFETY: `json` is the string `writeAuditSidecar` returned a line earlier in the
+  // same test, so its `request` object is the one that function built — not input
+  // from anywhere this test does not control.
+  const sidecar = JSON.parse(json) as { request: SidecarRequest };
+  return sidecar.request;
+};
 
 test('outline counts the same bytes the sidecar records as systemBytes', () => {
   const system = [block('# A\nhello'), block('# B\nworld')];
@@ -111,7 +117,10 @@ test('a request with no system prompt omits the field entirely', () => {
 
 test('the store writes one file per distinct hash and reuses it after', () => {
   const dir = tmpdir();
+  // SAFETY: `identifyPrompt` returns null only for an absent `system` field; this
+  // passes a one-block array.
   const first = identifyPrompt([block('# A\nhello')]) as PromptIdentity;
+  // SAFETY: same — a one-block array, so the null return is unreachable here.
   const second = identifyPrompt([block('# B\ndifferent')]) as PromptIdentity;
 
   assert.equal(recordPrompt(dir, first), true);
@@ -121,6 +130,8 @@ test('the store writes one file per distinct hash and reuses it after', () => {
   const stored = fs.readdirSync(path.join(dir, PROMPT_STORE_DIR)).sort();
   assert.deepEqual(stored, [`${first.hash}.json`, `${second.hash}.json`].sort());
 
+  // SAFETY: `recordPrompt` wrote this file two lines up, from `first` — so its three
+  // fields are the ones that call serialized.
   const record = JSON.parse(fs.readFileSync(path.join(dir, PROMPT_STORE_DIR, `${first.hash}.json`), 'utf8')) as {
     hash: string;
     bytes: number;
@@ -136,12 +147,17 @@ test('the store writes one file per distinct hash and reuses it after', () => {
 
 test('a record already on disk is not rewritten by a later process', () => {
   const dir = tmpdir();
+  // SAFETY: `identifyPrompt` returns null only for an absent `system` field, and this
+  // call passes a one-block array.
   const identity = identifyPrompt([block('# Shared\nbody')]) as PromptIdentity;
   fs.mkdirSync(path.join(dir, PROMPT_STORE_DIR), { recursive: true });
   const file = path.join(dir, PROMPT_STORE_DIR, `${identity.hash}.json`);
   fs.writeFileSync(file, '{"hash":"pre-existing"}');
 
   assert.equal(recordPrompt(dir, identity), false);
+  // SAFETY: this test wrote `{"hash":"pre-existing"}` to `file` itself and is asserting
+  // that `recordPrompt` left it alone, so the parsed value is that literal or the
+  // assertion below fails.
   assert.equal((JSON.parse(fs.readFileSync(file, 'utf8')) as { hash: string }).hash, 'pre-existing');
 });
 

@@ -32,6 +32,7 @@ import https from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type DeclinedGate, ensureMessageBreakpoint, estPrefixTokens, noteCacheRead } from './cache-breakpoint.ts';
+import { asList, asRecord, asText, type JsonValue, parseJson } from './json.ts';
 import * as session from './session.ts';
 import * as skim from './skim.ts';
 import { identifyPrompt, type PromptIdentity, recordPrompt } from './system-prompt.ts';
@@ -70,16 +71,17 @@ const REDACT = new Set(['authorization', 'x-api-key', 'api-key']);
  * Extend the set to withhold more unstrippable tools. */
 const WITHHELD_TOOLS = new Set(['EndConversation']);
 
+/** What one strip pass produced: the body to forward on, and what it took out. */
+interface StripResult {
+  reqJson: RequestBody | null;
+  removed: string[];
+}
+
 /** Remove withheld tools from a parsed request body. Returns the original object
  * (same reference) when there's nothing to strip; otherwise a shallow copy with
  * a filtered `tools` array, plus the removed names. */
-function stripWithheldTools(
-  reqJson: RequestBody | null,
-  withheld: Set<string> = WITHHELD_TOOLS,
-): { reqJson: RequestBody | null; removed: string[] } {
-  const tools = reqJson?.tools;
-  if (!Array.isArray(tools)) return { reqJson, removed: [] };
-  const defs = tools as ToolDefinition[];
+function stripWithheldTools(reqJson: RequestBody | null, withheld: Set<string> = WITHHELD_TOOLS): StripResult {
+  const defs = asArrayOf<ToolDefinition>(reqJson?.tools);
   const removed = defs.filter((t) => withheld.has(t?.name ?? '')).map((t) => t.name ?? '');
   if (removed.length === 0) return { reqJson, removed };
   return { reqJson: { ...reqJson, tools: defs.filter((t) => !withheld.has(t?.name ?? '')) }, removed };
@@ -114,9 +116,8 @@ const INJECTED_REMINDERS: InjectedReminder[] = [
 function stripInjectedReminders(
   reqJson: RequestBody | null,
   reminders: InjectedReminder[] = INJECTED_REMINDERS,
-): { reqJson: RequestBody | null; removed: string[] } {
-  const messages = reqJson?.messages;
-  if (!Array.isArray(messages)) return { reqJson, removed: [] };
+): StripResult {
+  if (asList(reqJson?.messages) === null) return { reqJson, removed: [] };
 
   const removed = new Set<string>();
   const strip = (text: string): string => {
@@ -137,39 +138,42 @@ function stripInjectedReminders(
   };
 
   const nextMessages: WireMessage[] = [];
-  for (const m of messages as WireMessage[]) {
-    const content = m?.content;
-    if (typeof content === 'string') {
-      const stripped = strip(content);
-      if (stripped === content) {
+  for (const m of asArrayOf<WireMessage>(reqJson?.messages)) {
+    const bare = asText(m?.content);
+    if (bare !== null) {
+      const stripped = strip(bare);
+      if (stripped === bare) {
         nextMessages.push(m);
         continue;
       }
       const trimmed = stripped.trim();
       if (trimmed) nextMessages.push({ ...m, content: trimmed }); // else: emptied → drop the message
-    } else if (Array.isArray(content)) {
-      let changed = false;
-      const blocks: ContentBlock[] = [];
-      for (const b of content as ContentBlock[]) {
-        if (b?.type === 'text' && typeof b.text === 'string') {
-          const stripped = strip(b.text);
-          if (stripped !== b.text) {
-            changed = true;
-            const trimmed = stripped.trim();
-            if (trimmed) blocks.push({ ...b, text: trimmed }); // else: drop the emptied block
-            continue;
-          }
-        }
-        blocks.push(b);
-      }
-      if (!changed) {
-        nextMessages.push(m);
-        continue;
-      }
-      if (blocks.length) nextMessages.push({ ...m, content: blocks }); // else: no blocks left → drop
-    } else {
-      nextMessages.push(m);
+      continue;
     }
+    if (asList(m?.content) === null) {
+      nextMessages.push(m);
+      continue;
+    }
+    let changed = false;
+    const blocks: ContentBlock[] = [];
+    for (const b of asArrayOf<ContentBlock>(m?.content)) {
+      const text = asText(b?.text);
+      if (b?.type === 'text' && text !== null) {
+        const stripped = strip(text);
+        if (stripped !== text) {
+          changed = true;
+          const trimmed = stripped.trim();
+          if (trimmed) blocks.push({ ...b, text: trimmed }); // else: drop the emptied block
+          continue;
+        }
+      }
+      blocks.push(b);
+    }
+    if (!changed) {
+      nextMessages.push(m);
+      continue;
+    }
+    if (blocks.length) nextMessages.push({ ...m, content: blocks }); // else: no blocks left → drop
   }
 
   if (removed.size === 0) return { reqJson, removed: [] };
@@ -269,28 +273,27 @@ function extractSession(headers: HeaderBag | undefined, reqJson: RequestBody | n
   let account: string | null = null;
   let metadataSessionId: string | null = null;
   let device: string | null = null;
-  const rawUserId = reqJson?.metadata?.user_id;
-  if (typeof rawUserId === 'string') {
-    try {
-      const m = JSON.parse(rawUserId) as { account_uuid?: string; session_id?: string; device_id?: string };
-      account = m.account_uuid ?? null;
-      metadataSessionId = m.session_id ?? null;
-      device = m.device_id ?? null;
-    } catch {
-      /* user_id not JSON — leave ids null */
-    }
+  const rawUserId = asText(reqJson?.metadata?.user_id);
+  if (rawUserId !== null) {
+    // A `user_id` that is not JSON leaves all three ids null.
+    const ids = asRecord(parseJson(rawUserId));
+    account = asText(ids?.account_uuid);
+    metadataSessionId = asText(ids?.session_id);
+    device = asText(ids?.device_id);
   }
   const sessionId = first(h['x-claude-code-session-id']);
-  const threadId = session.threadIdFor(sessionId, reqJson?.messages);
-  return {
+  const info: SessionInfo = {
     sessionId,
     app: first(h['x-app']), // "-bg" suffix marks a background agent
     userAgent: first(h['user-agent']),
     account,
     metadataSessionId,
     deviceId: device,
-    ...(threadId ? { threadId } : {}),
   };
+  // Absent, not null, when the body has no user text to root a thread on.
+  const threadId = session.threadIdFor(sessionId, reqJson?.messages);
+  if (threadId) info.threadId = threadId;
+  return info;
 }
 
 /**
@@ -342,6 +345,31 @@ interface SidecarInput {
   cacheBreakpointDeclinedBy?: DeclinedGate | null;
 }
 
+/** The sidecar's own contract — the stable JSON shape tooling reads back. */
+interface AuditSidecar {
+  timestamp: string;
+  model: string;
+  endpoint: string;
+  statusCode: number;
+  session: SessionInfo;
+  tokens: { input: number; output: number; cacheRead: number; cacheCreation: number; realInput: number };
+  request: {
+    toolCount: number;
+    toolsBytes: number;
+    systemBytes: number;
+    totalBytes: number;
+    /** Omitted when the request carried no system prompt. */
+    system?: { hash: string; blocks: number; sections: number };
+  };
+  skim: SkimInfo;
+  cacheBreakpointInjected: boolean;
+  cacheBreakpointObserved: boolean;
+  cacheBreakpointDeclinedBy: DeclinedGate | null;
+  tools: { name: string; bytes: number; estTokens: number }[];
+  /** Omitted when upstream sent none, so a sidecar never implies a reading it lacks. */
+  rateLimit?: Record<string, string>;
+}
+
 /** Structured sidecar next to each `.md` — the machine-readable facts the daily
  * usage-summary reads (token/cost, context bloat, activity). The `.md` stays for
  * humans; this is stable JSON for tooling. Auth is never included. */
@@ -364,9 +392,9 @@ function writeAuditSidecar({
 }: SidecarInput): string {
   const u = usage ?? {};
   const rateLimit = extractRateLimit(respHeaders);
-  const sidecar: Record<string, unknown> = {
+  const sidecar: AuditSidecar = {
     timestamp,
-    model: reqJson?.model ?? respModel ?? 'unknown',
+    model: asText(reqJson?.model) ?? respModel ?? 'unknown',
     endpoint: `${method} ${reqPath}`,
     statusCode,
     session: extractSession(headers, reqJson),
@@ -382,16 +410,6 @@ function writeAuditSidecar({
       toolsBytes: audit.toolsBytes,
       systemBytes: audit.systemBytes,
       totalBytes: audit.totalBytes,
-      // Omitted when the request carried no system prompt.
-      ...(audit.systemPrompt
-        ? {
-            system: {
-              hash: audit.systemPrompt.hash,
-              blocks: audit.systemPrompt.blocks,
-              sections: audit.systemPrompt.sections,
-            },
-          }
-        : {}),
     },
     // App-layer skim (not Anthropic's prefix cache); recorded on every request so
     // hit-rate + saved spend are computable from the sidecar.
@@ -404,6 +422,14 @@ function writeAuditSidecar({
     cacheBreakpointDeclinedBy: cacheBreakpointDeclinedBy ?? null,
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
+  // Omitted when the request carried no system prompt.
+  if (audit.systemPrompt) {
+    sidecar.request.system = {
+      hash: audit.systemPrompt.hash,
+      blocks: audit.systemPrompt.blocks,
+      sections: audit.systemPrompt.sections,
+    };
+  }
   // Omitted when upstream sent none, so a sidecar never implies a reading it lacks.
   if (rateLimit) sidecar.rateLimit = rateLimit;
   return JSON.stringify(sidecar, null, 2);
@@ -456,24 +482,24 @@ function printAudit(a: Audit, base: string): void {
 // Readable Markdown render (Anthropic /messages only)
 // ---------------------------------------------------------------------------
 
-const fenceJson = (v: unknown): string => `\`\`\`json\n${JSON.stringify(v, null, 2)}\n\`\`\``;
+const fenceJson = (v: JsonValue | undefined): string => `\`\`\`json\n${JSON.stringify(v, null, 2)}\n\`\`\``;
 const fence = (t: string, lang = ''): string => `\`\`\`${lang}\n${t}\n\`\`\``;
 
-function blockText(b: unknown): string {
-  if (typeof b === 'string') return b;
-  const block = b as ContentBlock | null;
-  if (block?.type === 'text' && typeof block.text === 'string') return block.text;
-  return '';
+function blockText(b: JsonValue | undefined): string {
+  const bare = asText(b);
+  if (bare !== null) return bare;
+  const block = asRecord(b);
+  return block?.type === 'text' ? (asText(block.text) ?? '') : '';
 }
 
-function renderSystem(system: unknown): string {
-  if (typeof system === 'string') return system;
-  if (Array.isArray(system)) {
-    return (system as ContentBlock[])
-      .map((b) => blockText(b) + (b?.cache_control ? '\n\n<!-- cache_control breakpoint -->' : ''))
-      .join('\n\n');
-  }
-  return fenceJson(system);
+function renderSystem(system: JsonValue | undefined): string {
+  const bare = asText(system);
+  if (bare !== null) return bare;
+  const blocks = asList(system);
+  if (blocks === null) return fenceJson(system);
+  return blocks
+    .map((b) => blockText(b) + (asRecord(b)?.cache_control ? '\n\n<!-- cache_control breakpoint -->' : ''))
+    .join('\n\n');
 }
 
 function renderTools(tools: ToolDefinition[]): string {
@@ -488,14 +514,15 @@ function renderTools(tools: ToolDefinition[]): string {
 
 function imagePlaceholder(b: ContentBlock): string {
   const src = b.source ?? {};
-  const bytes = typeof src.data === 'string' ? src.data.length : 0;
+  const bytes = asText(src.data)?.length ?? 0;
   return `\`[image: ${String(src.media_type ?? 'unknown')}, ${bytes} base64 chars — full data in .request.txt]\``;
 }
 
-function renderContent(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return fenceJson(content);
-  return (content as ContentBlock[])
+function renderContent(content: JsonValue | undefined): string {
+  const bare = asText(content);
+  if (bare !== null) return bare;
+  if (asList(content) === null) return fenceJson(content);
+  return asArrayOf<ContentBlock>(content)
     .map((b) => {
       switch (b?.type) {
         case 'text':
@@ -509,14 +536,14 @@ function renderContent(content: unknown): string {
             '</tool-use>',
           ].join('\n');
         case 'tool_result': {
+          const bareResult = asText(b.content);
           const inner =
-            typeof b.content === 'string'
-              ? b.content
-              : Array.isArray(b.content)
-                ? (b.content as ContentBlock[])
-                    .map((x) => (x?.type === 'image' ? imagePlaceholder(x) : blockText(x) || fenceJson(x)))
-                    .join('\n\n')
-                : fenceJson(b.content);
+            bareResult ??
+            (asList(b.content) === null
+              ? fenceJson(b.content)
+              : asArrayOf<ContentBlock>(b.content)
+                  .map((x) => (x?.type === 'image' ? imagePlaceholder(x) : blockText(x) || fenceJson(x)))
+                  .join('\n\n'));
           return [
             `<tool-result tool-use-id="${b.tool_use_id ?? ''}" is-error="${!!b.is_error}">`,
             '',
@@ -536,9 +563,9 @@ function renderContent(content: unknown): string {
     .join('\n\n');
 }
 
-function renderMessages(messages: unknown): string {
-  if (!Array.isArray(messages)) return '<messages></messages>';
-  const rendered = (messages as WireMessage[]).map((m, i) =>
+function renderMessages(messages: JsonValue | undefined): string {
+  if (asList(messages) === null) return '<messages></messages>';
+  const rendered = asArrayOf<WireMessage>(messages).map((m, i) =>
     [`<message index="${i + 1}" role="${m.role ?? 'unknown'}">`, '', renderContent(m.content), '', '</message>'].join(
       '\n',
     ),
@@ -580,6 +607,10 @@ function decodeResponse(raw: string): DecodedResponse {
     const payload = m?.[1];
     if (payload === undefined || payload === '[DONE]' || payload.trim() === '') continue;
     try {
+      // SAFETY: `StreamEvent` declares every field optional, and the reassembly below
+      // branches on `type` before reading any of them — so a frame this proxy has
+      // never seen contributes nothing rather than a wrong type. A frame that is not
+      // JSON throws into the `catch` and is skipped.
       events.push(JSON.parse(payload) as StreamEvent);
     } catch {
       /* skip */
@@ -590,8 +621,16 @@ function decodeResponse(raw: string): DecodedResponse {
   // usage at the top level.
   if (events.length === 0) {
     try {
-      const obj = JSON.parse(raw) as { usage?: Usage; content?: unknown; stop_reason?: string; model?: string } | null;
-      if (obj && typeof obj === 'object' && (obj.usage || obj.content)) {
+      // SAFETY: every field claimed here is optional, and the guard below requires
+      // `usage` or `content` to be present before any of them is read — so a body that
+      // is JSON but not a message object falls through to the raw fence instead.
+      const obj = JSON.parse(raw) as {
+        usage?: Usage;
+        content?: JsonValue;
+        stop_reason?: string;
+        model?: string;
+      } | null;
+      if (obj && (obj.usage || obj.content)) {
         const usage = obj.usage ?? null;
         const parts: string[] = [];
         if (obj.stop_reason) parts.push(`- **stop reason**: ${obj.stop_reason}`);
@@ -627,11 +666,11 @@ function decodeResponse(raw: string): DecodedResponse {
       const d = ev.delta ?? {};
       blocks[index].text += d.text ?? d.partial_json ?? d.thinking ?? '';
     } else if (ev.type === 'message_start') {
-      if (ev.message?.usage) usage = { ...ev.message.usage, ...(usage ?? {}) };
+      if (ev.message?.usage) usage = { ...ev.message.usage, ...usage };
       if (ev.message?.model) model = ev.message.model;
     } else if (ev.type === 'message_delta') {
       if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
-      if (ev.usage) usage = { ...(usage ?? {}), ...ev.usage };
+      if (ev.usage) usage = { ...usage, ...ev.usage };
     }
   }
   const parts: string[] = [];
@@ -690,7 +729,8 @@ function renderMarkdown(c: RenderContext, audit: Audit, responseMd: string): str
   ];
   if (req?.system != null)
     parts.push(['<system-prompt>', '', renderSystem(req.system), '', '</system-prompt>'].join('\n'));
-  if (Array.isArray(req?.tools) && req.tools.length) parts.push(renderTools(req.tools as ToolDefinition[]));
+  const tools = asArrayOf<ToolDefinition>(req?.tools);
+  if (tools.length) parts.push(renderTools(tools));
   parts.push(renderMessages(req?.messages));
   parts.push(`<response>\n\n${responseMd}\n\n</response>`);
   return `${parts.join('\n\n')}\n`;
@@ -701,7 +741,7 @@ function renderMarkdown(c: RenderContext, audit: Audit, responseMd: string): str
 // ---------------------------------------------------------------------------
 
 /** A caught value is `unknown`; this is the message it would have shown. */
-const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+const errorMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
 function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
   const reqPath = req.url ?? '/';
@@ -718,6 +758,10 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     // Parse the request body once — the skim gate and the logging both need it.
     let reqJson: RequestBody | null = null;
     try {
+      // SAFETY: `RequestBody` declares every field optional over a JSON-value index,
+      // and each one is decoded through `json.ts` before it is used — so a body that
+      // parses but is not a `/v1/messages` request reads as absent fields rather than
+      // as a wrong type. A body that is not JSON at all throws into the `catch` below.
       reqJson = JSON.parse(body.toString('utf8')) as RequestBody;
     } catch {
       /* non-JSON body */
@@ -885,7 +929,7 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
                 contentType: up.headers['content-type'],
                 rawResponse,
                 inputTokens,
-                model: reqJson?.model,
+                model: asText(reqJson?.model) ?? undefined,
               });
             }
             const skimInfo: SkimInfo = {

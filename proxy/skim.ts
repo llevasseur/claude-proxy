@@ -92,6 +92,10 @@ function touch(dir: string, key: string): void {
  */
 export function lookup(dir: string, key: string): SkimHit | null {
   try {
+    // SAFETY: this file is not user input — `store` wrote it, in this same process's
+    // format, and every field `SkimMeta` declares is optional, so a sidecar from an
+    // older format reads as absent fields rather than as a wrong type. A file that is
+    // not JSON at all throws into the `catch` below and counts as a miss.
     const meta = JSON.parse(fs.readFileSync(path.join(dir, `${key}${META_EXT}`), 'utf8')) as SkimMeta;
     if (Date.now() - (meta.storedAt ?? 0) > TTL_MS) return null;
     const body = fs.readFileSync(path.join(dir, `${key}${SSE_EXT}`));

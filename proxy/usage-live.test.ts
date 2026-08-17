@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import type { JsonValue } from './json.ts';
 import { type FetchLike, hasAuth, LIVE_USAGE_FILE, noteAuth, pollOnce, resetAuth } from './usage-live.ts';
 
 const tmpDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'usage-live-'));
@@ -17,7 +18,7 @@ const readOut = (dir: string): { fetchedAt?: string; payload?: unknown } =>
   JSON.parse(fs.readFileSync(path.join(dir, LIVE_USAGE_FILE), 'utf8'));
 
 const okFetch =
-  (payload: unknown): FetchLike =>
+  (payload: JsonValue): FetchLike =>
   async () => ({ ok: true, status: 200, json: async () => payload });
 
 test('remembers an OAuth bearer and ignores an API key', () => {
