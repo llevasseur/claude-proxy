@@ -157,10 +157,6 @@ export function summarizeContext(entries: readonly ContextEntry[], opts: Summari
  * Map an audit sidecar to a {@link ContextEntry}. Returns null for a malformed
  * sidecar so callers can skip it. `file` is the sidecar's base name, supplied
  * by the caller (the sidecar itself doesn't carry its filename).
- *
- * `sidecar` is generic rather than a named shape because every caller hands over
- * whatever `JSON.parse` gave it and has not classified it yet; `isAuditSidecar`
- * is the classification, and nothing below it runs until that returns true.
  */
 export function toContextEntry<Candidate>(sidecar: Candidate, file: string): ContextEntry | null {
   if (!isAuditSidecar(sidecar)) return null;
@@ -359,10 +355,6 @@ export const estTokens = (bytes: number): number => Math.round(bytes / 4);
  * Break a captured request body into its size-contributing regions: the system
  * prompt, each tool schema, and each conversation message. Pure and tolerant of
  * malformed shapes — missing/renamed fields yield zeros rather than throwing.
- *
- * `body` is generic rather than a named shape because callers hand over a
- * captured request straight from `JSON.parse`, with no promise about it at all;
- * the decoders below are where it gets one.
  */
 export function analyzeRequestBody<Candidate>(body: Candidate): RequestBreakdown {
   const value = jsonValueOf(body);
@@ -417,9 +409,6 @@ export interface RequestMessageDetail {
  * its full content (pretty-printed JSON) and the same size facts
  * {@link analyzeRequestBody} reports. Returns null for a missing messages array
  * or out-of-range `index`. Pure and tolerant of malformed shapes.
- *
- * `body` is generic for the same reason {@link analyzeRequestBody}'s is: it is a
- * captured payload the caller has not classified.
  */
 export function extractRequestMessage<Candidate>(body: Candidate, index: number): RequestMessageDetail | null {
   const rawMessages = arrayAt(jsonObject(jsonValueOf(body)), 'messages');
@@ -454,9 +443,6 @@ export interface RequestToolDetail {
  * `tools` array, with its full definition (pretty-printed JSON) and the same
  * size facts {@link analyzeRequestBody} reports. Returns null for a missing
  * tools array or out-of-range `index`. Pure and tolerant of malformed shapes.
- *
- * `body` is generic for the same reason {@link analyzeRequestBody}'s is: it is a
- * captured payload the caller has not classified.
  */
 export function extractRequestTool<Candidate>(body: Candidate, index: number): RequestToolDetail | null {
   const rawTools = arrayAt(jsonObject(jsonValueOf(body)), 'tools');

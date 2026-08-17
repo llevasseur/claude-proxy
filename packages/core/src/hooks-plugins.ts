@@ -37,9 +37,6 @@ export interface PluginRow {
  * Flatten the settings `hooks` object — `{ Event: [{ matcher?, hooks: [{ command,
  * statusMessage? }] }] }` — into one row per command, preserving event and group
  * order. Tolerant of malformed shapes: anything not matching is skipped.
- *
- * The parameter is generic rather than a `JsonValue`, because the server hands this
- * whatever its own settings reader parsed and keeps that value's type across the call.
  */
 export function flattenHooks<Candidate>(hooks: Candidate): HookRow[] {
   const rows: HookRow[] = [];
@@ -75,9 +72,6 @@ export function flattenHooks<Candidate>(hooks: Candidate): HookRow[] {
  * Normalize the settings `enabledPlugins` map — `{ "name@marketplace": boolean }` —
  * into rows, splitting each key on its last `@`. Non-boolean values are skipped;
  * output follows the map's key order.
- *
- * Generic for the same reason as {@link flattenHooks}: the caller's parsed settings
- * value passes through unchanged.
  */
 export function normalizePlugins<Candidate>(enabledPlugins: Candidate): PluginRow[] {
   const rows: PluginRow[] = [];

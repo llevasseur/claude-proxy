@@ -103,10 +103,6 @@ function readLabels(raw: JsonValue | undefined): string[] {
  *
  * A row with no usable number is dropped; every other field degrades to an empty
  * value rather than emptying the page.
- *
- * The parameter is generic rather than a `JsonValue`, so the server and the store —
- * which hand over whatever their own `JSON.parse` produced — keep their type across
- * the call without this package's decoders leaking into their signatures.
  */
 export function parsePullRequests<Candidate>(raw: Candidate): PullRequestRow[] {
   const items = jsonArray(jsonValueOf(raw));

@@ -43,19 +43,12 @@ export function parseJsonText(text: string): JsonValue | null {
   }
 }
 
-/**
- * Accept a value a caller already parsed and carry it into the JSON domain.
- *
- * The parameter is generic rather than `unknown` so callers outside this package
- * keep their own type through the call; `Candidate` is only ever instantiated
- * with whatever `JSON.parse` handed the caller.
- */
+/** Accept a value a caller already parsed and carry it into the JSON domain. */
 export function jsonValueOf<Candidate>(value: Candidate): JsonValue {
-  // SAFETY: every caller of this function passes the result of a `JSON.parse`
-  // it performed itself, so the runtime value is one of the six JSON
-  // productions. The decoders below re-check the specific production before any
-  // field is read, so a caller that breaks that promise gets `null` from them
-  // rather than a wrong value.
+  // SAFETY: every caller passes the result of a `JSON.parse` it performed itself,
+  // so the runtime value is one of the six JSON productions. The decoders below
+  // re-check the production before any field is read, so a caller that breaks
+  // that promise gets `null` rather than a wrong value.
   return value as JsonValue;
 }
 

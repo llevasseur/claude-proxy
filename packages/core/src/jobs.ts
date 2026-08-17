@@ -141,10 +141,6 @@ function normalizeInFlight(value: JsonValue | undefined): JobStateFields['inFlig
  * Shape a parsed `state.json` into {@link JobStateFields}. Tolerant by design —
  * an unreadable or half-written file yields all-empty fields rather than an error,
  * which is how a job directory left behind with no state renders as a husk.
- *
- * The parameter is generic rather than a `JsonValue`, because the server reads and
- * parses `state.json` itself and passes the result straight in; `Candidate` lets it
- * keep whatever type its reader gave that value.
  */
 export function normalizeJobState<Candidate>(raw: Candidate): JobStateFields {
   const s = jsonObject(jsonValueOf(raw));

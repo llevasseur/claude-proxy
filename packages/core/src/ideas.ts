@@ -79,14 +79,10 @@ export const IDEA_COMMAND_AREA = 'commands';
 /**
  * True when `value` names one of the evidence sources.
  *
- * The five predicates in this file — this one, {@link isIdeaStatus},
- * {@link isIdeaSlug}, {@link isIdeaArea}, {@link isIdeaRepo} and
- * {@link isIdeaPrOutcome} — take a generic `Candidate` rather than a named input
- * type because they are the *first* thing a caller reaches for: the server calls
- * them on query-string fragments, this module calls them on freshly decoded
- * `JsonValue`s, and neither should have to widen its value to a common type to
- * ask the question. Narrowing to `Candidate & …` means each caller keeps
- * whatever it already knew alongside the answer.
+ * Generic like the other predicates here ({@link isIdeaStatus}, {@link isIdeaSlug},
+ * {@link isIdeaArea}, {@link isIdeaRepo}, {@link isIdeaPrOutcome}): the caller —
+ * a query-string fragment or a decoded `JsonValue` — keeps its own type alongside
+ * the answer.
  */
 export function isIdeaEvidenceSource<Candidate>(value: Candidate): value is Candidate & IdeaEvidenceSource {
   const text = jsonText(jsonValueOf(value));

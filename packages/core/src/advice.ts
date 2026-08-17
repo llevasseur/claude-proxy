@@ -131,11 +131,9 @@ const METRIC_READERS = {
 
 /** The reader for a rule's declared `metric`, or `undefined` when none reads it. */
 function metricReader(metric: string): ((d: UsageDigest) => number) | undefined {
-  // SAFETY: the index type is widened back to `string` only to perform the same
-  // property read this did when `METRIC_READERS` carried an open `Record<string, …>`
-  // annotation. The return type re-admits `undefined`, which is what the read
-  // actually yields for a metric no rule above declares, and every caller branches
-  // on that before invoking the reader.
+  // SAFETY: the same property read `METRIC_READERS`' former open `Record<string, …>`
+  // annotation allowed. The return type re-admits `undefined` — what an undeclared
+  // metric actually yields — and every caller branches on it first.
   return METRIC_READERS[metric as keyof typeof METRIC_READERS];
 }
 

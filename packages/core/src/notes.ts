@@ -52,15 +52,6 @@ export interface NoteWriteResult {
   changed?: boolean;
 }
 
-/**
- * The three parsers below take a generic candidate rather than a `JsonValue`
- * because their one production caller is the HTTP layer, which hands them a
- * request body it has not given a domain type yet. `jsonValueOf` carries that
- * value into the JSON domain, and `jsonObject` re-checks the production before
- * any field is read — so a caller that passes something else gets the same
- * `must be an object` refusal it always did.
- */
-
 /** The member map `value` is, or a refusal naming what was expected. */
 function fields(value: JsonValue, label: string): JsonObject {
   const found = jsonObject(value);

@@ -289,9 +289,8 @@ function isFableScope(entry: JsonObject): boolean {
  * falls through to the estimate instead of landing on the wrong meter. Entries
  * without a usable `percent` are dropped for the same reason.
  *
- * `raw` is generic because the caller holds an HTTP response body it parsed but
- * has not classified; the payload may be the entry array itself or an object
- * wrapping it in `limits`, and both readings are taken here.
+ * The payload may be the entry array itself or an object wrapping it in
+ * `limits`; both readings are taken here.
  */
 export function parseLiveUsage<Candidate>(raw: Candidate, now: Date = new Date()) {
   const payload = jsonValueOf(raw);

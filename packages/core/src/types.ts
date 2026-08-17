@@ -137,11 +137,8 @@ export interface AuditSidecar {
  * Structural guard for a parsed-but-untrusted sidecar. Malformed files are
  * skipped by the digest rather than aborting the whole run.
  *
- * The candidate is generic rather than `unknown` so a caller keeps its own type
- * through the guard — that is what lets the `readonly unknown[]` a log directory
- * reader holds filter down to `AuditSidecar[]` at the call sites in `server/`.
- * Every caller passes a value it got from `JSON.parse`, which is what
- * {@link jsonValueOf} carries into the JSON domain here.
+ * Generic in its input, which is what lets the `readonly unknown[]` a log
+ * directory reader holds filter down to `AuditSidecar[]` in `server/`.
  */
 export function isAuditSidecar<Candidate>(value: Candidate): value is Candidate & AuditSidecar {
   const record = jsonObject(jsonValueOf(value));

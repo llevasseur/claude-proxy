@@ -72,11 +72,6 @@ export function withoutMetaSkills(skills: readonly string[] | undefined): string
  * fields that make a record identifiable — a record from a writer this code does
  * not know is kept and rendered from what it has, rather than emptying the page.
  * Callers read the rest defensively, which is what {@link normalizeConcept} is for.
- *
- * The parameter is generic rather than `JsonValue` because every caller is a
- * reader that has just parsed a store line or an HTTP body and has not yet given
- * it a domain type; `jsonValueOf` carries the candidate in and `jsonObject`
- * re-checks the production before either field is read.
  */
 export function isConcept<Candidate>(value: Candidate): value is Candidate & Concept {
   const record = jsonObject(jsonValueOf(value));

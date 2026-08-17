@@ -30,14 +30,7 @@ import type { SessionNode } from './sessions.js';
 /** A thread id is the 16-hex-char stem the proxy names a transcript with. */
 const THREAD_ID_RE = /^[0-9a-f]{16}$/;
 
-/**
- * True when `value` is a well-formed thread id.
- *
- * The parameter is generic rather than `JsonValue` because the callers are CLI
- * flags and HTTP bodies, which reach this guard before anything has given them a
- * domain type; `jsonValueOf` carries the candidate in and `jsonText` re-checks
- * that it is a string before the pattern is applied.
- */
+/** True when `value` is a well-formed thread id. */
 export function isThreadId<Candidate>(value: Candidate): value is Candidate & string {
   const found = jsonText(jsonValueOf(value));
   return found !== null && THREAD_ID_RE.test(found);

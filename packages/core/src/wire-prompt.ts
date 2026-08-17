@@ -156,10 +156,6 @@ function blockCacheTtl(block: JsonValue): string | null {
  * Decompose a captured `system` field. Tolerant of every shape the API accepts
  * — absent, a bare string, or an array of blocks — and of malformed ones, which
  * yield zeros rather than throwing.
- *
- * The parameter is generic rather than a plain {@link JsonValue} because the
- * callers are request-body readers holding whatever `JSON.parse` gave them; the
- * decoders re-check each production before a field is read.
  */
 export function outlineWirePrompt<Candidate>(system: Candidate): WirePromptOutline {
   if (system === undefined || system === null) return { bytes: 0, blocks: [], sections: [] };
@@ -213,11 +209,7 @@ export interface StoredWirePrompt extends WirePromptOutline {
   firstSeen: string;
 }
 
-/**
- * Structural guard for a parsed-but-untrusted store record. Generic in its input
- * so a caller holding a freshly parsed store file keeps its own type through the
- * narrowing; the record itself is decoded field by field.
- */
+/** Structural guard for a parsed-but-untrusted store record, decoded field by field. */
 export function isStoredWirePrompt<Candidate>(value: Candidate): value is Candidate & StoredWirePrompt {
   const record = jsonObject(jsonValueOf(value));
   if (record === null) return false;

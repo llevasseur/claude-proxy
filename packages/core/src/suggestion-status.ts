@@ -61,10 +61,8 @@ export const DEFAULT_SUGGESTION_STATUS: SuggestionStatus = 'pending';
 /**
  * True when `value` names one of the flags.
  *
- * The parameter is generic rather than `JsonValue` because the guard runs on CLI
- * argv and HTTP bodies before either has been given a domain type; `jsonValueOf`
- * carries the candidate in and `jsonText` re-checks it is a string before the
- * membership test.
+ * Generic in its input: the guard runs on CLI argv and HTTP bodies, and each
+ * caller keeps its own type alongside the answer.
  */
 export function isSuggestionStatus<Candidate>(value: Candidate): value is Candidate & SuggestionStatus {
   const found = jsonText(jsonValueOf(value));

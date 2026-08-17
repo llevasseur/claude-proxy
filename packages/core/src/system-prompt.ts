@@ -132,9 +132,6 @@ export function normalizeSystemPromptText(text: string): string {
 /**
  * Validate a proposed replacement and return its canonical form. Throws on a
  * non-string or anything past the ceiling — the route maps that to a 400.
- *
- * Generic in its input because the caller is a request-body reader handing over
- * whatever field it found; this function is where that field becomes text.
  */
 export function parseSystemPromptText<Candidate>(value: Candidate): string {
   const text = jsonText(jsonValueOf(value));
