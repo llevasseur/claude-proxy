@@ -108,10 +108,13 @@
     margin: 0 auto;
   }
   /* The slot above the dial for the projected empty time — always laid out,
-   filled only when the pace crosses empty before the reset. */
+   filled only when the pace crosses empty before the reset. Bare clock time,
+   centred over the dial. */
   .gauge-empty-eta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     min-height: 1.2em;
-    text-align: center;
     font-family: var(--font-mono);
     font-size: var(--text-3);
     color: var(--coral);

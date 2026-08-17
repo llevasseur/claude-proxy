@@ -208,7 +208,7 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
       <div className='gauge-cluster'>
         {/* Reserved line above the dial: filled only when the tank runs dry
             before the reset, blank otherwise so the dial never shifts. */}
-        <div className='gauge-empty-eta'>{emptiesAt ? `empty ~${resetClock(emptiesAt.toISOString())}` : null}</div>
+        <div className='gauge-empty-eta'>{emptiesAt ? resetClock(emptiesAt.toISOString()) : null}</div>
         <FuelGauge left={left} projectedLeft={projectedLeft} low={low} label={w.label} />
         <div className='gauge-readout'>
           <span className='usage-meter-value'>
