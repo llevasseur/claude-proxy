@@ -30,6 +30,9 @@ describe('readSidecars date filtering', () => {
   it('claims an evening request whose filename lands on the next UTC day', async () => {
     const { sidecars, files } = await readSidecars(logDir, { date: '2026-07-15' });
     expect(files).toBe(2);
+    // SAFETY: `LoadResult.sidecars` is `unknown[]` because a parse-error entry can share the
+    // array, but `writeSidecar` above wrote every file here as `{ timestamp: iso }` with no
+    // parse failures seeded, so each element is that literal shape.
     expect(sidecars.map((s) => (s as { timestamp: string }).timestamp).sort()).toEqual(
       [MORNING_15TH, EVENING_15TH].sort(),
     );
@@ -38,11 +41,15 @@ describe('readSidecars date filtering', () => {
   it('does not leak that request into the following day', async () => {
     const { sidecars, files } = await readSidecars(logDir, { date: '2026-07-16' });
     expect(files).toBe(1);
+    // SAFETY: same fixture as above — `sidecars[0]` is the one `{ timestamp: iso }` object
+    // `writeSidecar` wrote for `MORNING_16TH`.
     expect((sidecars[0] as { timestamp: string }).timestamp).toBe(MORNING_16TH);
   });
 
   it('excludes pre-window evenings from a `since` range', async () => {
     const { sidecars } = await readSidecars(logDir, { since: '2026-07-16' });
+    // SAFETY: the `since` filter only narrows which of `writeSidecar`'s `{ timestamp }`
+    // objects come back, not their shape.
     expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).toEqual([MORNING_16TH]);
   });
 });
@@ -52,6 +59,8 @@ describe('readSidecars date filtering', () => {
 describe("a session's own start as a `since` floor", () => {
   it('keeps the captures of a session that started in the Eastern evening', async () => {
     const { sidecars } = await readSidecars(logDir, { since: reportDay(EVENING_15TH)! });
+    // SAFETY: the corpus this `since` floor reads from is still the `writeSidecar`
+    // fixture written in `beforeAll` — every element is a `{ timestamp: iso }` object.
     expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).toContain(EVENING_15TH);
   });
 });
@@ -71,6 +80,9 @@ describe('readArchivedDay', () => {
 
     const { sidecars, files } = await readArchivedDay(archiveRoot, '2026-07-15');
     expect(files).toBe(2);
+    // SAFETY: `readArchivedDay` merges the two folders written just above, each holding
+    // only the `{ timestamp: iso }` objects `writeSidecar` wrote — no parse-error entries
+    // were seeded into this archive.
     expect(sidecars.map((s) => (s as { timestamp: string }).timestamp).sort()).toEqual(
       [MORNING_15TH, EVENING_15TH].sort(),
     );

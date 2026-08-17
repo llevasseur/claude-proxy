@@ -103,6 +103,9 @@ describe('an all-time window', () => {
     // UTC day its files are named for.
     expect(days[0]).toBe('2026-05-03');
     expect(days.at(-1)).toBe(TODAY);
+    // SAFETY: `readWindow`'s `sidecars` is `unknown[]` in general, but this corpus's
+    // `beforeEach` wrote only well-formed `writeSidecar(...)` bodies, each carrying the
+    // `timestamp` it was written with.
     expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).toEqual([
       morning(OLDEST_DAY),
       morning(MIDDLE_DAY),

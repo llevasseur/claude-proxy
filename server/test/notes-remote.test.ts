@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { JsonValue } from '../../proxy/json.ts';
 import {
   createRemoteNote,
   listRemoteNotes,
@@ -23,7 +24,7 @@ function configure(): void {
   vi.stubEnv('NOTES_TOKEN', TOKEN);
 }
 
-function reply(body: unknown, status = 200): ReturnType<typeof vi.fn> {
+function reply(body: JsonValue, status = 200): ReturnType<typeof vi.fn> {
   const mock = vi.fn(async () => new Response(JSON.stringify(body), { status }));
   vi.stubGlobal('fetch', mock);
   return mock;
@@ -52,8 +53,13 @@ describe('notes remote calls', () => {
     const fetchMock = reply({ notes: [], nextCursor: null });
     const result = await listRemoteNotes(requireRemoteNotesStore(), { cursor: 'opaque+cursor', limit: 20 });
     expect(result.body).toEqual({ notes: [], nextCursor: null });
+    // SAFETY: `fetchMock` is the `vi.fn` stubbed in for global `fetch` by `reply()`
+    // above, and every remote-notes call invokes it as `fetch(url, init)`.
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`${ORIGIN}/api/notes?cursor=opaque%2Bcursor&limit=20`);
+    // SAFETY: `call()` in notes-remote.ts builds `headers` as a plain object
+    // literal with lowercase string keys (`authorization`, `content-type`), never
+    // a `Headers` instance or tuple array.
     expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${TOKEN}`);
     expect(JSON.stringify(result)).not.toContain(TOKEN);
   });
@@ -63,6 +69,9 @@ describe('notes remote calls', () => {
     const fetchMock = reply({ note: { id: 'note-1' } }, 201);
     expect((await createRemoteNote(requireRemoteNotesStore(), { title: '', body: '# body' })).status).toBe(201);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(`${ORIGIN}/api/notes`);
+    // SAFETY: the assertion just above already read this same call's [0], so a
+    // second element at index 0 of this array is a real, present call — [1] is
+    // the `init` `call()` passed to that same `fetch` invocation.
     const [, createInit] = fetchMock.mock.calls[0]! as [string, RequestInit];
     expect(JSON.parse(String(createInit.body))).toEqual({
       title: '',
@@ -85,11 +94,14 @@ describe('notes remote calls', () => {
       attemptedRevisionId: 'attempt-2',
     };
     reply(conflict, 409);
+    // SAFETY: `call()` throws `RemoteNotesResponseError` for every non-ok response,
+    // and `reply(conflict, 409)` above is exactly that — the mocked fetch always
+    // answers 409, so this rejection is never anything else.
     const error = await updateRemoteNote(requireRemoteNotesStore(), {
       id: 'note-1',
       expectedVersion: 1,
       body: 'mine',
-    }).catch((reason: unknown) => reason as RemoteNotesResponseError);
+    }).catch((reason) => reason as RemoteNotesResponseError);
     expect(error).toBeInstanceOf(RemoteNotesResponseError);
     expect(error).toMatchObject({ status: 409, body: conflict });
   });
@@ -97,8 +109,11 @@ describe('notes remote calls', () => {
   it('redacts the token even if an upstream response accidentally echoes it', async () => {
     configure();
     reply({ error: `bad bearer ${TOKEN}` }, 500);
+    // SAFETY: the mocked fetch above always answers 500, and `call()` throws
+    // `RemoteNotesResponseError` for every non-ok status — there is no other
+    // rejection this catch can observe.
     const error = await listRemoteNotes(requireRemoteNotesStore()).catch(
-      (reason: unknown) => reason as RemoteNotesResponseError,
+      (reason) => reason as RemoteNotesResponseError,
     );
     expect(JSON.stringify(error.body)).not.toContain(TOKEN);
     expect(error.body).toEqual({ error: 'bad bearer [redacted]' });
@@ -106,16 +121,15 @@ describe('notes remote calls', () => {
 
   it('maps a failed upstream body read to an unreachable-store error without leaking the token', async () => {
     configure();
+    // `vi.stubGlobal` takes the replacement as `unknown`, so this stand-in needs only
+    // the one member `call()` reads.
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        async () =>
-          ({
-            text: async () => {
-              throw new Error(`socket closed after ${TOKEN}`);
-            },
-          }) as unknown as Response,
-      ),
+      vi.fn(async () => ({
+        text: async () => {
+          throw new Error(`socket closed after ${TOKEN}`);
+        },
+      })),
     );
     let error: unknown;
     try {
@@ -124,7 +138,10 @@ describe('notes remote calls', () => {
       error = reason;
     }
     expect(error).toBeInstanceOf(RemoteNotesStoreError);
+    // SAFETY: the assertion just above confirmed this catch caught the
+    // `RemoteNotesStoreError` `call()` throws when `response.text()` rejects.
     expect((error as RemoteNotesStoreError).message).toContain('socket closed');
+    // SAFETY: same catch, same instance checked two lines up — still that error.
     expect((error as RemoteNotesStoreError).message).not.toContain(TOKEN);
   });
 });

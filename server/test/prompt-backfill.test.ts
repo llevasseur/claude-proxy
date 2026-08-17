@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { isAuditSidecar, outlineWirePrompt } from '@claude-proxy/core';
+import { type AuditSidecar, isAuditSidecar, outlineWirePrompt } from '@claude-proxy/core';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { JsonObject, JsonValue } from '../../proxy/json.ts';
 import { backfillPromptIdentity, collectBackfillTargets } from '../src/prompt-backfill.js';
 import { hashWirePrompt, readStoredPrompt, readStoredPrompts, writeStoredPrompt } from '../src/prompt-store.js';
 
@@ -16,7 +17,7 @@ async function tmpLogDir(): Promise<string> {
 
 const block = (text: string) => ({ type: 'text', text });
 
-function sidecar(overrides: Record<string, unknown> = {}) {
+function sidecar(overrides: JsonObject = {}) {
   return {
     timestamp: '2026-08-02T13:31:00.278Z',
     model: 'claude-opus-5',
@@ -30,13 +31,13 @@ function sidecar(overrides: Record<string, unknown> = {}) {
 }
 
 /** Write a sidecar and, unless `body` is null, the request body beside it. */
-async function capture(dir: string, base: string, body: unknown, extra: Record<string, unknown> = {}): Promise<void> {
+async function capture(dir: string, base: string, body: JsonValue, extra: JsonObject = {}): Promise<void> {
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, `${base}.audit.json`), JSON.stringify(sidecar(extra), null, 2), 'utf8');
   if (body !== null) await writeFile(path.join(dir, `${base}.request.txt`), JSON.stringify(body), 'utf8');
 }
 
-async function readSidecar(dir: string, base: string): Promise<Record<string, any>> {
+async function readSidecar(dir: string, base: string): Promise<AuditSidecar> {
   return JSON.parse(await readFile(path.join(dir, `${base}.audit.json`), 'utf8'));
 }
 
@@ -120,7 +121,7 @@ describe('backfillPromptIdentity', () => {
     const after = await readSidecar(logDir, '2026-08-02T10-00-00-000_anthropic');
 
     expect(isAuditSidecar(after)).toBe(true);
-    const { system, ...requestRest } = after.request;
+    const { system: _system, ...requestRest } = after.request;
     expect({ ...after, request: requestRest }).toEqual(before);
   });
 
@@ -167,7 +168,11 @@ describe('backfillPromptIdentity', () => {
     await capture(dayDir, '2026-07-20T10-00-00-000_anthropic', { system: [block('# Old\nprompt')] });
 
     await backfillPromptIdentity(logDir, { apply: true });
-    expect((await readSidecar(dayDir, '2026-07-20T10-00-00-000_anthropic')).request.system.blocks).toBe(1);
+    // `AuditSidecar.request.system` is optional — an untagged sidecar has none — so the
+    // outline's presence is asserted rather than assumed.
+    const { system } = (await readSidecar(dayDir, '2026-07-20T10-00-00-000_anthropic')).request;
+    expect(system, 'the archived sidecar was tagged, so it carries a system outline').toBeDefined();
+    expect(system?.blocks).toBe(1);
     // The store lives at the log root, not inside the archived day.
     expect((await readStoredPrompts(logDir)).size).toBe(1);
   });

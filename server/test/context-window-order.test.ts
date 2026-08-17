@@ -82,6 +82,8 @@ const CHRONOLOGICAL = [at(RECENT_DAY, 14), at(TODAY, 12), at(TODAY, 15), at(TODA
 const READ_ORDER = [at(RECENT_DAY, 14), at(TODAY, 12), at(TODAY, 20), at(TODAY, 15), at(TODAY, 17)];
 
 function timestamps(sidecars: readonly unknown[]): string[] {
+  // SAFETY: every sidecar in this file is written by `writeSidecar` above, whose
+  // JSON body always includes a `timestamp: string` field.
   return sidecars.map((s) => (s as { timestamp: string }).timestamp);
 }
 

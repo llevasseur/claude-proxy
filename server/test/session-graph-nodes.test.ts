@@ -4,11 +4,12 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { JsonValue } from '../../proxy/json.ts';
 import { threadIdFor } from '../../proxy/session.ts';
 import { buildSessionGraphNodes } from '../src/api.js';
 import { listSessionGraphs, threadIdForBody } from '../src/sessions.js';
 
-const CASES: { name: string; messages: unknown[] }[] = [
+const CASES: { name: string; messages: JsonValue[] }[] = [
   { name: 'a plain string prompt', messages: [{ role: 'user', content: 'Fix the login bug' }] },
   {
     name: 'a block-array prompt',

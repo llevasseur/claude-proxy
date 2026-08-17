@@ -35,6 +35,14 @@ const LINES = [
 let logDir: string;
 let db: DatabaseSync;
 
+/** The single number behind a `count(*) c` query, for the row-count assertions below. */
+const countOf = (sql: string): number => {
+  // SAFETY: the four `concept`/`concept_skill` tallies below are each a bare
+  // `count(*) c` — no GROUP BY, so SQLite answers with exactly one row, and `c` is
+  // the only column it carries.
+  return (db.prepare(sql).get() as { c: number }).c;
+};
+
 beforeEach(async () => {
   logDir = await mkdtemp(path.join(tmpdir(), 'concepts-'));
   db = openDb(logDir);
@@ -83,7 +91,7 @@ describe('ingestConcepts', () => {
     await writeStore(LINES);
     const first = await ingestConcepts(db, logDir);
     expect(first).toMatchObject({ concepts: 2, parsed: true, deleted: 0 });
-    expect((db.prepare('SELECT count(*) c FROM concept_skill').get() as { c: number }).c).toBe(3);
+    expect(countOf('SELECT count(*) c FROM concept_skill')).toBe(3);
 
     // A second pass over an untouched store is skipped on its watermark.
     const second = await ingestConcepts(db, logDir);
@@ -93,9 +101,9 @@ describe('ingestConcepts', () => {
     await writeStore([...LINES, { ...LINES[0], term: 'carousel', savedAt: '2026-08-03T00:00:00.000Z' }]);
     const third = await ingestConcepts(db, logDir);
     expect(third).toMatchObject({ concepts: 3, parsed: true });
-    expect((db.prepare('SELECT count(*) c FROM concept').get() as { c: number }).c).toBe(3);
+    expect(countOf('SELECT count(*) c FROM concept')).toBe(3);
     // The skills went with them: without the cascade these would have accumulated.
-    expect((db.prepare('SELECT count(*) c FROM concept_skill').get() as { c: number }).c).toBe(5);
+    expect(countOf('SELECT count(*) c FROM concept_skill')).toBe(5);
   });
 
   it('drops the rows and its watermark when the store is gone', async () => {
@@ -104,7 +112,7 @@ describe('ingestConcepts', () => {
     await rm(conceptStorePath(logDir));
 
     expect(await ingestConcepts(db, logDir)).toMatchObject({ concepts: 0, deleted: 2 });
-    expect((db.prepare('SELECT count(*) c FROM concept').get() as { c: number }).c).toBe(0);
+    expect(countOf('SELECT count(*) c FROM concept')).toBe(0);
     const mark = db.prepare('SELECT path FROM file_watermark WHERE path = ?').get('concepts.jsonl');
     expect(mark).toBeUndefined();
   });
@@ -137,7 +145,10 @@ describe('optional detail fields', () => {
     await ingestConcepts(db, logDir);
     expect(await dbSource(db).readConcepts(logDir)).toEqual(await fileSource.readConcepts(logDir));
 
-    const items = db.prepare('SELECT kind, item FROM concept_item ORDER BY kind, item_ord').all() as unknown as Array<{
+    // SAFETY: `ingestConcepts` wrote these rows from `DETAILED` moments ago, and the
+    // two fields named here are the two this SELECT asks for — `node:sqlite` types
+    // `.all()` as `unknown[]`, so the column list has to be restated as a type.
+    const items = db.prepare('SELECT kind, item FROM concept_item ORDER BY kind, item_ord').all() as Array<{
       kind: string;
       item: string;
     }>;

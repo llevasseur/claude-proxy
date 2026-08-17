@@ -39,6 +39,9 @@ async function invoke(file: string, args: readonly string[]): Promise<{ code: nu
     });
     return { code: 0, stdout };
   } catch (err) {
+    // SAFETY: `execFile` (via `promisify`) rejects with the child_process `ExecException`
+    // shape on a non-zero exit, which is the only way this `try` can throw — `code`,
+    // `stdout` and `stderr` are the fields node attaches to it.
     const e = err as { code?: number; stdout?: string; stderr?: string };
     return { code: e.code ?? 1, stdout: `${e.stdout ?? ''}${e.stderr ?? ''}` };
   }

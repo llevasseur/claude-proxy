@@ -34,7 +34,8 @@ const pr = (over: Partial<PullRequestRow> & { number: number }): PullRequestRow 
   ...over,
 });
 
-const THREADS = ['0123456789abcdef', 'fedcba9876543210', 'abcdefabcdef0123'];
+// A fixed 3-element tuple, so every destructure below reads straight off its length.
+const THREADS = ['0123456789abcdef', 'fedcba9876543210', 'abcdefabcdef0123'] as const;
 
 /** The checkout the scanned links are keyed under. Nothing reads it off disk. */
 const REPO_DIR = '/repo/o-r';
@@ -60,7 +61,7 @@ async function recordPr(logDir: string, threadId: string, url: string): Promise<
 
 describe('readPrSessions', () => {
   it('links a transcript by branch name, by number, and by both at once', async () => {
-    const [built, reviewed, both] = THREADS as [string, string, string];
+    const [built, reviewed, both] = THREADS;
     const dir = await logDirWith({
       [built]: 'working in .claude/worktrees/feat-pr-tree on the page',
       [reviewed]: 'merged PR #14 after review',
@@ -77,7 +78,7 @@ describe('readPrSessions', () => {
   });
 
   it('does not link a branch that is merely the head of a longer one', async () => {
-    const [only] = THREADS as [string, ...string[]];
+    const [only] = THREADS;
     const dir = await logDirWith({ [only]: 'shipped on feat/pr-tree-page today' });
 
     const index = await readPrSessions(dir, [
@@ -90,7 +91,7 @@ describe('readPrSessions', () => {
   });
 
   it('ignores files that are not transcripts, and a missing sessions directory', async () => {
-    const [only] = THREADS as [string, ...string[]];
+    const [only] = THREADS;
     const dir = await logDirWith({ [only]: 'nothing to see' });
     await writeFile(path.join(dir, 'sessions', 'notes.md'), 'merged PR #14', 'utf8');
 
@@ -99,13 +100,13 @@ describe('readPrSessions', () => {
   });
 
   it('is an empty index when there are no pull requests to match', async () => {
-    const [only] = THREADS as [string, ...string[]];
+    const [only] = THREADS;
     const dir = await logDirWith({ [only]: 'merged PR #14' });
     expect(await readPrSessions(dir, [])).toEqual({});
   });
 
   it('scans every transcript again when there is no substrate to store the result in', async () => {
-    const [first, second] = THREADS as [string, string, ...string[]];
+    const [first, second] = THREADS;
     const dir = await logDirWith({ [first]: 'merged PR #14' });
     const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
 
@@ -131,7 +132,7 @@ describe('readPrSessions, on the recorded link', () => {
   });
 
   it('answers from the record, and stops scanning the transcripts entirely', async () => {
-    const [opener, mentions] = THREADS as [string, string, ...string[]];
+    const [opener, mentions] = THREADS;
     dir = await logDirWith({
       [opener]: 'ran my-command-tools pr and it printed the url',
       // Would match by branch *and* number — and must not appear, because the PR is named.
@@ -146,7 +147,7 @@ describe('readPrSessions, on the recorded link', () => {
   });
 
   it('scans only the pull requests no session recorded', async () => {
-    const [opener, other] = THREADS as [string, string, ...string[]];
+    const [opener, other] = THREADS;
     dir = await logDirWith({ [opener]: 'opened it', [other]: 'shipped feat/pr-15 earlier' });
     await recordPr(dir, opener, 'https://github.com/o/r/pull/14');
 
@@ -161,7 +162,7 @@ describe('readPrSessions, on the recorded link', () => {
   });
 
   it('does not read a pull request in another repository as this one', async () => {
-    const [elsewhere] = THREADS as [string, ...string[]];
+    const [elsewhere] = THREADS;
     dir = await logDirWith({ [elsewhere]: 'nothing about this repo' });
     await recordPr(dir, elsewhere, 'https://github.com/other/repo/pull/14');
 
@@ -171,7 +172,7 @@ describe('readPrSessions, on the recorded link', () => {
   });
 
   it('drops a recorded link whose transcript has rotated away', async () => {
-    const [gone] = THREADS as [string, ...string[]];
+    const [gone] = THREADS;
     dir = await mkdtemp(path.join(tmpdir(), 'pr-sessions-'));
     await mkdir(path.join(dir, 'sessions'), { recursive: true });
     await recordPr(dir, gone, 'https://github.com/o/r/pull/14');
@@ -180,7 +181,7 @@ describe('readPrSessions, on the recorded link', () => {
   });
 
   it('answers the same from the substrate as from the sidecars', async () => {
-    const [opener, mentions] = THREADS as [string, string, ...string[]];
+    const [opener, mentions] = THREADS;
     dir = await logDirWith({
       [opener]: 'opened the PR',
       [mentions]: 'reviewed feat/pr-tree, merged PR #14',
@@ -225,6 +226,9 @@ describe('readPrSessions, on the stored scan', () => {
     const db = openDb(root);
     const rows = db.prepare('SELECT number, thread_id, via FROM pr_scan_link WHERE repo_dir = ?').all(REPO_DIR);
     db.close();
+    // SAFETY: `pr_scan_link` is written only by the readPrSessions storage path in
+    // server/src/pr-sessions.ts, whose insert names exactly these three columns —
+    // `.all()` types generically as `unknown[]` because node:sqlite has no column typing.
     return rows as { number: number; thread_id: string; via: string }[];
   }
 
@@ -233,6 +237,8 @@ describe('readPrSessions, on the stored scan', () => {
     const db = openDb(root);
     const rows = db.prepare('SELECT number FROM pr_scan WHERE repo_dir = ? ORDER BY number').all(REPO_DIR);
     db.close();
+    // SAFETY: `pr_scan` is written only by the same storage path with a single `number`
+    // column per scanned pull request — `.all()` has no column typing to carry that through.
     return (rows as { number: number }[]).map((row) => row.number);
   }
 
@@ -242,7 +248,7 @@ describe('readPrSessions, on the stored scan', () => {
   });
 
   it('answers a second read from the stored links, without opening the transcripts again', async () => {
-    const [found] = THREADS as [string, ...string[]];
+    const [found] = THREADS;
     dir = await storedLogDirWith({ [found]: 'merged PR #14' });
     await setMtime(dir, found, '2026-08-10T10:00:00Z');
     const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
@@ -258,7 +264,7 @@ describe('readPrSessions, on the stored scan', () => {
   });
 
   it('remembers a pull request nothing matched, so it is not scanned a second time', async () => {
-    const [quiet] = THREADS as [string, ...string[]];
+    const [quiet] = THREADS;
     dir = await storedLogDirWith({ [quiet]: 'nothing about any pull request' });
     await setMtime(dir, quiet, '2026-08-10T10:00:00Z');
     const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
@@ -276,7 +282,7 @@ describe('readPrSessions, on the stored scan', () => {
   });
 
   it('rescans once a newer transcript arrives, and keeps the links it already had', async () => {
-    const [first, second] = THREADS as [string, string, ...string[]];
+    const [first, second] = THREADS;
     dir = await storedLogDirWith({ [first]: 'merged PR #14' });
     await setMtime(dir, first, '2026-08-10T10:00:00Z');
     const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
@@ -296,7 +302,7 @@ describe('readPrSessions, on the stored scan', () => {
   });
 
   it('survives the process that scanned, so a restart does not rescan', async () => {
-    const [found] = THREADS as [string, ...string[]];
+    const [found] = THREADS;
     dir = await storedLogDirWith({ [found]: 'merged PR #14' });
     await setMtime(dir, found, '2026-08-10T10:00:00Z');
     const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];
@@ -313,7 +319,7 @@ describe('readPrSessions, on the stored scan', () => {
   });
 
   it('never stores a recorded link, only the recovered signals', async () => {
-    const [opener, mentions] = THREADS as [string, string, ...string[]];
+    const [opener, mentions] = THREADS;
     dir = await storedLogDirWith({ [opener]: 'opened it', [mentions]: 'shipped feat/pr-15 earlier' });
     await recordPr(dir, opener, 'https://github.com/o/r/pull/14');
     await setMtime(dir, opener, '2026-08-10T10:00:00Z');
@@ -332,7 +338,7 @@ describe('readPrSessions, on the stored scan', () => {
   });
 
   it('drops a stored link whose transcript has rotated away, and keeps the mark', async () => {
-    const [gone] = THREADS as [string, ...string[]];
+    const [gone] = THREADS;
     dir = await storedLogDirWith({ [gone]: 'merged PR #14' });
     await setMtime(dir, gone, '2026-08-10T10:00:00Z');
     const prs = [pr({ number: 14, headRefName: 'feat/pr-tree' })];

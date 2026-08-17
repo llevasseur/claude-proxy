@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { runKey } from '@claude-proxy/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { JsonObject } from '../../proxy/json.ts';
 import { applySuggestionStatus, buildSessionSuggestions } from '../src/api.js';
 import { commandStorePath, reconcileCommandRuns, resolveCommandsDir } from '../src/command-runs.js';
 import { conceptStorePath } from '../src/concepts.js';
@@ -53,15 +54,22 @@ interface SidecarOpts {
   model?: string;
   tools?: Array<{ name: string; bytes: number; estTokens: number }>;
   session?: Record<string, string | null> | null;
-  skim?: Record<string, unknown> | null;
+  skim?: JsonObject | null;
   rateLimit?: Record<string, string> | null;
   realInput?: number;
   system?: { hash: string; blocks: number; sections: number };
 }
 
-function sidecarBody(iso: string, opts: SidecarOpts = {}): Record<string, unknown> {
+function sidecarBody(iso: string, opts: SidecarOpts = {}): JsonObject {
   const tools = opts.tools ?? [{ name: 'Bash', bytes: 900, estTokens: 225 }];
-  const body: Record<string, unknown> = {
+  const request: JsonObject = {
+    toolCount: tools.length,
+    toolsBytes: 900,
+    systemBytes: 1200,
+    totalBytes: 4000,
+  };
+  if (opts.system) request.system = opts.system;
+  const body: JsonObject = {
     timestamp: iso,
     model: opts.model ?? 'claude-opus-5',
     endpoint: '/v1/messages',
@@ -73,13 +81,7 @@ function sidecarBody(iso: string, opts: SidecarOpts = {}): Record<string, unknow
       cacheCreation: 25,
       realInput: opts.realInput ?? 525,
     },
-    request: {
-      toolCount: tools.length,
-      toolsBytes: 900,
-      systemBytes: 1200,
-      totalBytes: 4000,
-      ...(opts.system ? { system: opts.system } : {}),
-    },
+    request,
     tools,
   };
   if (opts.session !== null) {
@@ -442,18 +444,28 @@ describe('route parity over a synthetic corpus', () => {
   });
 
   it('ingests every sidecar, and files that are not sidecars separately', () => {
+    // SAFETY: `node:sqlite`'s `.get()` has no way to type its own SELECT list, but this
+    // query's only column is `count(*) c`, so the row it hands back is `{ c: number }`.
     expect((db.prepare('SELECT count(*) c FROM request').get() as { c: number }).c).toBe(8);
+    // SAFETY: same single-column `count(*) c` shape, now over `request_skipped`.
     expect((db.prepare('SELECT count(*) c FROM request_skipped').get() as { c: number }).c).toBe(2);
+    // SAFETY: same single-column `count(*) c` shape, filtered to `blob_evicted = 1`.
     expect((db.prepare('SELECT count(*) c FROM request WHERE blob_evicted = 1').get() as { c: number }).c).toBe(1);
     // Every body still on disk was derived at ingest time; the evicted one stays
     // underived rather than recording a null as though it had been read.
+    // SAFETY: same single-column `count(*) c` shape, filtered to `body_derived = 1`.
     expect((db.prepare('SELECT count(*) c FROM request WHERE body_derived = 1').get() as { c: number }).c).toBe(7);
+    // SAFETY: same single-column `count(*) c` shape, filtered to the one row that is
+    // both un-derived and evicted.
     expect(
       (db.prepare('SELECT count(*) c FROM request WHERE body_derived = 0 AND blob_evicted = 1').get() as { c: number })
         .c,
     ).toBe(1);
     // Absent and all-null are stored as different facts.
+    // SAFETY: same single-column `count(*) c` shape, filtered to `session_present = 0`.
     expect((db.prepare('SELECT count(*) c FROM request WHERE session_present = 0').get() as { c: number }).c).toBe(1);
+    // SAFETY: same single-column `count(*) c` shape, filtered to the all-null-but-present
+    // session row.
     expect(
       (
         db.prepare('SELECT count(*) c FROM request WHERE session_present = 1 AND session_id IS NULL').get() as {
@@ -473,19 +485,26 @@ describe('route parity over a synthetic corpus', () => {
   });
 
   it('indexes every transcript, its nodes, and its sparse node texts', () => {
+    // SAFETY: `.get()` on a `count(*) c` query narrows to a `{ c: number }` row — the
+    // sqlite binding does not thread the SELECT list's shape through its own types.
     expect((db.prepare('SELECT count(*) c FROM session').get() as { c: number }).c).toBe(3);
     // Seven appended lines under the parent; the interruption on the legacy
     // transcript is a flag on a node, not a node of its own.
+    // SAFETY: this query's own SELECT list is `count(*) c` for the one thread named by
+    // the bound parameter, so `.get(...)` returns a `{ c: number }` row.
     expect(
       (db.prepare('SELECT count(*) c FROM session_node WHERE thread_id = ?').get('00000000000000a1') as { c: number })
         .c,
     ).toBe(7);
+    // SAFETY: `count(*) c` filtered to `interrupted = 1` — still a single `{ c }` column.
     expect((db.prepare('SELECT count(*) c FROM session_node WHERE interrupted = 1').get() as { c: number }).c).toBe(1);
     // The torn line is dropped, the out-of-range index is kept, and a row
     // carrying both a text and a fingerprint counts once here and once there.
+    // SAFETY: `count(*) c` over the whole `session_node_text` table — still one column.
     expect((db.prepare('SELECT count(*) c FROM session_node_text').get() as { c: number }).c).toBe(3);
     // The subagent has no `state.json` at all, which reads the same as one
     // carrying no `root`: null.
+    // SAFETY: `count(*) c` filtered to a non-null `root_prompt` — still one column.
     expect((db.prepare('SELECT count(*) c FROM session WHERE root_prompt IS NOT NULL').get() as { c: number }).c).toBe(
       2,
     );
@@ -494,7 +513,10 @@ describe('route parity over a synthetic corpus', () => {
   it('indexes every command run, its tree, and the document it round-trips', () => {
     // Both root prompts read as runs: one of an installed command, one of a
     // command the catalogue no longer has.
+    // SAFETY: `count(*) c` over `command_run` — still the one-column row shape.
     expect((db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c).toBe(2);
+    // SAFETY: this query's SELECT list is exactly `command`, so each `.all()` row is
+    // `{ command: string }`.
     expect(
       db
         .prepare('SELECT command FROM command_run ORDER BY command')
@@ -502,6 +524,7 @@ describe('route parity over a synthetic corpus', () => {
         .map((r) => (r as { command: string }).command),
     ).toEqual(['retired-command', 'task']);
     // The envelope's leading flags are indexed as their own rows.
+    // SAFETY: this query's SELECT list is exactly `flag`, so each row is `{ flag: string }`.
     expect(
       db
         .prepare('SELECT flag FROM command_run_flag ORDER BY flag')
@@ -509,6 +532,7 @@ describe('route parity over a synthetic corpus', () => {
         .map((r) => (r as { flag: string }).flag),
     ).toEqual(['here', 'sub']);
     // The `/task` run's family is the parent plus the subagent it spawned.
+    // SAFETY: `count(*) c` for the one run named by the bound `run_id` — one column.
     expect(
       (
         db.prepare('SELECT count(*) c FROM command_run_thread WHERE run_id = ?').get('00000000000000a1') as {
@@ -519,6 +543,8 @@ describe('route parity over a synthetic corpus', () => {
     // Every row's document re-parses into the record the file reader hands back.
     const documents = db.prepare('SELECT document FROM command_run ORDER BY ord').all();
     for (const row of documents) {
+      // SAFETY: this query selects only `document`, so each row `.all()` yields is
+      // `{ document: string }` — the column `command_run` stores the run's JSON under.
       expect(() => JSON.parse((row as { document: string }).document)).not.toThrow();
     }
   });
@@ -567,6 +593,8 @@ describe('route parity over a synthetic corpus', () => {
     await appendFile(extra, '- done: appended\n', 'utf8');
     stats = await ingest(db, ctx.logDir);
     expect(stats.sessionsParsed).toBe(1);
+    // SAFETY: `count(*) c` for the newly appended thread — one column, the row shape
+    // `.get()` returns for it.
     expect(
       (db.prepare('SELECT count(*) c FROM session_node WHERE thread_id = ?').get('00000000000000d4') as { c: number })
         .c,
@@ -578,7 +606,10 @@ describe('route parity over a synthetic corpus', () => {
     await rm(extra);
     stats = await ingest(db, ctx.logDir);
     expect(stats.sessions).toBe(3);
+    // SAFETY: `count(*) c` over `session` after the drop — still a single `{ c }` column.
     expect((db.prepare('SELECT count(*) c FROM session').get() as { c: number }).c).toBe(3);
+    // SAFETY: same `count(*) c` query as above, re-run after the transcript's removal
+    // cascaded its nodes away.
     expect(
       (db.prepare('SELECT count(*) c FROM session_node WHERE thread_id = ?').get('00000000000000d4') as { c: number })
         .c,
@@ -597,6 +628,7 @@ describe('route parity over a synthetic corpus', () => {
     let stats = await ingest(db, ctx.logDir);
     expect(stats.commandRunsParsed).toBe(true);
     expect(stats.commandRuns).toBe(2);
+    // SAFETY: `count(*) c` filtered to the tombstoned run — one column.
     expect((db.prepare('SELECT count(*) c FROM command_run WHERE retired = 1').get() as { c: number }).c).toBe(1);
     expect((await fileSource.readCommandRuns(ctx.logDir)).map((r) => r.command)).toEqual(['task']);
     expect(await mismatches(ctx, db)).toEqual([]);
@@ -606,13 +638,16 @@ describe('route parity over a synthetic corpus', () => {
     await rm(store);
     stats = await ingest(db, ctx.logDir);
     expect(stats.commandRuns).toBe(0);
+    // SAFETY: `count(*) c` over `command_run`, now emptied by the store's removal.
     expect((db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c).toBe(0);
+    // SAFETY: `count(*) c` over `command_run_turn`, cascaded away with its parent rows.
     expect((db.prepare('SELECT count(*) c FROM command_run_turn').get() as { c: number }).c).toBe(0);
     expect(await mismatches(ctx, db)).toEqual([]);
 
     // Put it back, so the rebuild below has a store to rebuild from.
     await reconcileCommandRuns(ctx.logDir, ctx.commandsDir!, new Date('2026-07-18T00:00:00.000Z'));
     await ingest(db, ctx.logDir);
+    // SAFETY: `count(*) c` over `command_run`, now rebuilt from the restored store.
     expect((db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c).toBe(2);
   });
 
@@ -650,6 +685,8 @@ describe('route parity over a synthetic corpus', () => {
 
   // A harness that cannot fail proves nothing, so make it fail on purpose.
   it('detects a substrate that disagrees', async () => {
+    // SAFETY: this query's SELECT list is exactly `id, model`, so the one row `LIMIT 1`
+    // returns is `{ id: string; model: string }`.
     const victim = db.prepare('SELECT id, model FROM request ORDER BY id LIMIT 1').get() as {
       id: string;
       model: string;
@@ -675,6 +712,8 @@ describe('route parity over a synthetic corpus', () => {
 
     // An append since the last ingest leaves the row's `bytes` counting a
     // shorter transcript than `content` holds.
+    // SAFETY: this query's SELECT list is exactly `tasks, bytes`, so the row for the
+    // bound `thread_id` is `{ tasks: number; bytes: number }`.
     const stale = db.prepare('SELECT tasks, bytes FROM session WHERE thread_id = ?').get(id) as {
       tasks: number;
       bytes: number;
@@ -731,6 +770,8 @@ describe('route parity over a synthetic corpus', () => {
     expect(fromDb.find((r) => r.command === 'task')?.ended).toBe(closed.ended);
     // Keyed by the record's own id, which is what the table stores: a nested run
     // shares its host's thread, so the thread id is not a key here.
+    // SAFETY: this query's SELECT list is exactly `ended`, so the row for the bound
+    // `run_id` is `{ ended: string | null }` — the column is nullable in the schema.
     const row = db.prepare('SELECT ended FROM command_run WHERE run_id = ?').get(runKey(victim!)) as {
       ended: string | null;
     };
