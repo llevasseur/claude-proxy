@@ -248,14 +248,6 @@ export interface CommandEnvelope {
   prompt: string;
 }
 
-/**
- * One envelope's own `<command-args>` body, from `from` to the `next` envelope.
- *
- * The block ends at its **closing tag**, not at the next envelope, since criteria quote
- * envelopes all the time. The *opening* tag is what has to fall ahead of the next envelope;
- * past it the block belongs to that envelope and this one carried no args. A block left
- * unclosed by a truncated prompt falls back to that bound.
- */
 /** One envelope's span in a prompt: the command it names, and where its tags start and end. */
 interface EnvelopeSpan {
   command: string;
@@ -288,6 +280,14 @@ function envelopes(text: string): EnvelopeSpan[] {
   return spans;
 }
 
+/**
+ * One envelope's own `<command-args>` body, from `from` to the `next` envelope.
+ *
+ * The block ends at its **closing tag**, not at the next envelope, since criteria quote
+ * envelopes all the time. The *opening* tag is what has to fall ahead of the next envelope;
+ * past it the block belongs to that envelope and this one carried no args. A block left
+ * unclosed by a truncated prompt falls back to that bound.
+ */
 function readArgs(text: string, from: number, next: number): string {
   ARGS_OPEN_RE.lastIndex = from;
   const open = ARGS_OPEN_RE.exec(text);
@@ -340,29 +340,49 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
  */
 const ENVELOPE_BLOCK_RE =
   /<command-message>[\s\S]*?<\/command-message>|<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<local-command-stdout>[\s\S]*?<\/local-command-stdout>/gi;
-/** An envelope tag left standing once those blocks are gone — `<command-args>` and its like. */
-const ENVELOPE_TAG_RE = /<\/?(?:local-)?command-[a-z-]+>/gi;
-/** Horizontal whitespace only: a stripped tag must not fold the paragraphs around it together. */
-const INLINE_SPACE_RE = /[^\S\n]+/g;
+/**
+ * A matched `<command-name>` pair around a name, unwrapped to the name itself.
+ *
+ * The pair is the whole test, so a prompt that merely *writes* `<command-name>` in prose keeps
+ * the word: this text is read verbatim in a drawer, and deleting every tag-shaped token there
+ * turns a sentence about the envelope into one with a hole in it.
+ */
+const NAME_TAG_RE = /<command-name>\s*(\/?[A-Za-z0-9:_-]+)\s*<\/command-name>/gi;
+const ARGS_OPEN = '<command-args>';
+const ARGS_CLOSE = '</command-args>';
 
 /**
  * One prompt with its command envelope taken out, for a human to read — the display
  * counterpart to {@link parseCommandEnvelope}.
  *
- * `<command-args>` is **unwrapped, not dropped**: its body is the criteria a person wrote.
- * Text carrying no envelope comes back unchanged apart from its own trimming.
+ * `<command-args>` is **unwrapped, not dropped**: its body is the criteria a person wrote. Only
+ * the run's *own* block is unwrapped — its first opening tag and the last close after it — so
+ * an envelope quoted inside those criteria survives as the prose it is.
+ *
+ * Whitespace inside what is kept is left exactly as written. The drawer renders `pre-wrap`, so
+ * collapsing runs of spaces would flatten every indented code block and nested list a prompt
+ * carries; only the trailing space a removed tag leaves behind, and the blank-line runs it
+ * opens up, are tidied. Text carrying no envelope comes back unchanged apart from its trim.
  */
 export function stripCommandEnvelope(text: string): string {
-  return (
-    text
-      .replace(ENVELOPE_BLOCK_RE, ' ')
-      // A prompt cut mid-caveat never closes its tag, so that shape comes off by its opening.
-      .replace(/<local-command-caveat>[\s\S]*$/i, ' ')
-      .replace(ENVELOPE_TAG_RE, ' ')
-      .replace(INLINE_SPACE_RE, ' ')
-      .replace(/ ?\n ?/g, '\n')
-      .trim()
-  );
+  let out = text
+    .replace(ENVELOPE_BLOCK_RE, '')
+    // A prompt cut mid-caveat never closes its tag, so that shape comes off by its opening.
+    .replace(/<local-command-caveat>[\s\S]*$/i, '')
+    .replace(NAME_TAG_RE, '$1');
+
+  const open = out.toLowerCase().indexOf(ARGS_OPEN);
+  if (open !== -1) {
+    const close = out.toLowerCase().lastIndexOf(ARGS_CLOSE);
+    const body = out.slice(open + ARGS_OPEN.length, close > open ? close : undefined);
+    const after = close > open ? out.slice(close + ARGS_CLOSE.length) : '';
+    out = out.slice(0, open) + body + after;
+  }
+
+  return out
+    .replace(/[^\S\n]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 // --- Step attribution ------------------------------------------------------

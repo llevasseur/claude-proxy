@@ -291,6 +291,27 @@ describe('stripCommandEnvelope', () => {
   it('leaves text carrying no envelope alone', () => {
     expect(stripCommandEnvelope('Fix the scroll on the artifact panel.')).toBe('Fix the scroll on the artifact panel.');
   });
+
+  // The drawer renders pre-wrap, so collapsing spaces would flatten every code block in it.
+  it('keeps the indentation of what it hands back', () => {
+    const raw =
+      '<command-args>Refactor:\n\n```ts\nfunction f() {\n  return 1;\n}\n```\n\n- item\n  - nested\n</command-args>';
+    expect(stripCommandEnvelope(raw)).toBe(
+      'Refactor:\n\n```ts\nfunction f() {\n  return 1;\n}\n```\n\n- item\n  - nested',
+    );
+  });
+
+  it('keeps an envelope the criteria only talk about', () => {
+    const raw =
+      '<command-message>task</command-message>\n<command-name>/task</command-name>\n' +
+      '<command-args>pull the name out of the <command-message> tag</command-args>';
+    expect(stripCommandEnvelope(raw)).toBe('/task\npull the name out of the <command-message> tag');
+  });
+
+  it('unwraps only the run’s own args block, not one quoted inside it', () => {
+    const raw = '<command-args>a prompt reading <command-args>inner</command-args> verbatim</command-args>';
+    expect(stripCommandEnvelope(raw)).toBe('a prompt reading <command-args>inner</command-args> verbatim');
+  });
 });
 
 describe('attributeSteps', () => {
