@@ -2,9 +2,19 @@ import fs from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { type AuditSidecar, isAuditSidecar } from '@claude-proxy/core';
+import { type AuditSession, type AuditSidecar, type AuditSkim, isAuditSidecar } from '@claude-proxy/core';
 import { commandStorePath } from '../command-runs.js';
 import { deriveFromBody } from '../derive.js';
+import { asError } from '../errors.js';
+import {
+  type JsonInput,
+  type JsonObject,
+  jsonBoolean,
+  jsonNumber,
+  jsonObject,
+  jsonString,
+  stringField,
+} from '../json.js';
 import { resolveSessionsDir } from '../sessions.js';
 import { ingestCommandRuns } from './ingest-commands.js';
 import { ingestConcepts } from './ingest-concepts.js';
@@ -109,16 +119,36 @@ interface Row {
   requestPath: string | null;
 }
 
-function num(v: unknown): number {
-  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+/*
+ * `isAuditSidecar` only checks `timestamp`, `model`, the five token counts, the four
+ * request counts and that `tools` is an array. Every other field of `AuditSidecar` is
+ * declared but unverified, so a field the type calls a `string` may be anything the
+ * file happened to hold. The four readers below decode rather than trust, which is
+ * why they take `JsonInput` and not the declared field type.
+ */
+
+/** A numeric column, or 0 for a field the sidecar did not record as a number. */
+function num(value: JsonInput): number {
+  return jsonNumber(value) ?? 0;
 }
 
-function str(v: unknown): string | null {
-  return typeof v === 'string' ? v : null;
+/** A text column, or null for a field the sidecar did not record as a string. */
+function str(value: JsonInput): string | null {
+  return jsonString(value) ?? null;
 }
 
-function bool(v: unknown): number {
-  return v ? 1 : 0;
+/** What a presence column is written from: the fact itself, or the record whose presence it records. */
+type Presence = AuditSession | AuditSkim | JsonObject | boolean | null | undefined;
+
+/** A presence column: 1 for anything the sidecar carries, 0 for what it does not. */
+function bool(value: Presence): number {
+  return value ? 1 : 0;
+}
+
+/** A nullable boolean column — null keeps "the sidecar recorded nothing" apart from a recorded false. */
+function flag(value: JsonInput): number | null {
+  const recorded = jsonBoolean(value);
+  return recorded === undefined ? null : bool(recorded);
 }
 
 /** Read one sidecar file into the shape the insert statements want. */
@@ -127,7 +157,7 @@ async function readRow(dir: string, sourceDir: string, stem: string, names: Set<
   const mdPath = names.has(`${stem}.md`) ? rel(`${stem}.md`) : null;
   const requestPath = names.has(`${stem}.request.txt`) ? rel(`${stem}.request.txt`) : null;
 
-  let parsed: unknown;
+  let parsed: JsonInput;
   try {
     parsed = JSON.parse(await readFile(path.join(dir, `${stem}${AUDIT_SUFFIX}`), 'utf8'));
   } catch {
@@ -137,11 +167,11 @@ async function readRow(dir: string, sourceDir: string, stem: string, names: Set<
   if (!isAuditSidecar(parsed)) {
     // Parsed, but not a usable audit row. The file-backed reader still places it
     // by its own timestamp when it has one, so keep that here too.
-    const ts =
-      typeof parsed === 'object' && parsed !== null ? str((parsed as { timestamp?: unknown }).timestamp) : null;
+    const ts = stringField(parsed, 'timestamp') ?? null;
     return { stem, sidecar: null, reason: 'not_audit_sidecar', timestamp: ts, mdPath, requestPath };
   }
-  return { stem, sidecar: parsed, reason: null, timestamp: parsed.timestamp, mdPath, requestPath };
+  const sidecar: AuditSidecar = parsed;
+  return { stem, sidecar, reason: null, timestamp: sidecar.timestamp, mdPath, requestPath };
 }
 
 interface Statements {
@@ -245,14 +275,17 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
       const s = row.sidecar;
       const session = s.session;
       const skim = s.skim;
-      const rateLimit = s.rateLimit;
+      // Decoded, not trusted: `rateLimit` is one of the fields `isAuditSidecar` never
+      // looks at, and `rateLimitHeaders` in `usage-limits.ts` — the reader the meters
+      // go through — likewise counts only a non-array object as a header map.
+      const rateLimit = jsonObject(s.rateLimit);
       st.insertRequest.run(
         row.stem,
         sourceDir,
         s.timestamp,
         s.model,
         str(s.endpoint),
-        typeof s.statusCode === 'number' ? s.statusCode : null,
+        jsonNumber(s.statusCode) ?? null,
         bool(session),
         session ? str(session.sessionId) : null,
         // Absent on a sidecar predating the field; null is that absence, and the
@@ -283,10 +316,10 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
         // Null, not 0, for a sidecar written before the injector existed — see the
         // column's note in `open.ts`. Same for the observation beside it, which is
         // the field the retirement trigger actually reads.
-        typeof s.cacheBreakpointInjected === 'boolean' ? bool(s.cacheBreakpointInjected) : null,
-        typeof s.cacheBreakpointObserved === 'boolean' ? bool(s.cacheBreakpointObserved) : null,
-        typeof s.cacheBreakpointDeclinedBy === 'string' ? s.cacheBreakpointDeclinedBy : null,
-        bool(rateLimit && typeof rateLimit === 'object'),
+        flag(s.cacheBreakpointInjected),
+        flag(s.cacheBreakpointObserved),
+        str(s.cacheBreakpointDeclinedBy),
+        bool(rateLimit),
         row.mdPath,
         row.requestPath,
         evicted,
@@ -294,7 +327,7 @@ function writeBatch(db: DatabaseSync, st: Statements, sourceDir: string, rows: R
       s.tools.forEach((tool, ord) => {
         st.insertTool.run(row.stem, ord, String(tool?.name ?? ''), num(tool?.bytes), num(tool?.estTokens));
       });
-      if (rateLimit && typeof rateLimit === 'object') {
+      if (rateLimit) {
         Object.entries(rateLimit).forEach(([name, value], ord) => {
           st.insertRateLimit.run(row.stem, ord, name, String(value));
         });
@@ -336,6 +369,8 @@ async function deriveBodies(
   sourceDir: string,
   stats: IngestStats,
 ): Promise<void> {
+  // SAFETY: `pendingDerive` selects `id, request_path` and nothing else, and its
+  // `request_path IS NOT NULL` clause is why the column is read as non-nullable here.
   const pending = st.pendingDerive.all(sourceDir) as Array<{ id: string; request_path: string }>;
   if (pending.length === 0) return;
 
@@ -412,6 +447,8 @@ async function ingestDir(
   // An archived day is immutable once the summary job has moved it, eviction
   // aside. When its listing still matches what we recorded, there is nothing to
   // reconcile.
+  // SAFETY: this SELECT names exactly `last_stem` and `files_seen`, and `source_dir`
+  // is the table's primary key, so the answer is one row or none.
   const mark = db.prepare('SELECT last_stem, files_seen FROM ingest_watermark WHERE source_dir = ?').get(sourceDir) as
     | { last_stem: string | null; files_seen: number }
     | undefined;
@@ -422,10 +459,12 @@ async function ingestDir(
   stats.dirs += 1;
 
   const known = new Set<string>();
+  // SAFETY: this SELECT names exactly `id`, which is what the row type declares.
   for (const r of db.prepare('SELECT id FROM request WHERE source_dir = ?').all(sourceDir) as Array<{ id: string }>) {
     known.add(r.id);
   }
   const knownSkipped = new Set<string>();
+  // SAFETY: this SELECT names exactly `id`, which is what the row type declares.
   for (const r of db.prepare('SELECT id FROM request_skipped WHERE source_dir = ?').all(sourceDir) as Array<{
     id: string;
   }>) {
@@ -559,8 +598,8 @@ export function watchAndIngest(
     running = true;
     try {
       await ingest(db, logDir);
-    } catch (err) {
-      onError(err as Error);
+    } catch (cause) {
+      onError(asError(cause));
     } finally {
       running = false;
       if (again) {
@@ -586,10 +625,10 @@ export function watchAndIngest(
   for (const dir of [logDir, resolveSessionsDir(logDir), path.dirname(commandStorePath(logDir))]) {
     try {
       const watcher = fs.watch(dir, { persistent: false }, schedule);
-      watcher.on('error', (err) => onError(err as Error));
+      watcher.on('error', (cause) => onError(asError(cause)));
       watchers.push(watcher);
-    } catch (err) {
-      onError(err as Error);
+    } catch (cause) {
+      onError(asError(cause));
     }
   }
 

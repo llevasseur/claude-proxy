@@ -7,6 +7,7 @@ import {
   type ApiRoute,
   type ApiRoutePath,
   apiRoute,
+  type IdeaFilter,
   type IdeaStatus,
   isApiWriteRoute,
   isIdeaArea,
@@ -92,6 +93,7 @@ import {
   contextPageQuery,
   type RebuildScope,
   rebuildScope,
+  type SuggestionJudgeRequest,
 } from './api.js';
 import { resolveArchiveDir } from './archive.js';
 import {
@@ -117,8 +119,10 @@ import {
   substrateSource,
 } from './db/runtime.js';
 import { ALL_DAYS, resolveAllDays, type SidecarSource } from './db/source.js';
+import { errorMessage } from './errors.js';
 import { IdeasStoreUnconfiguredError, RemoteIdeasStoreError } from './ideas-remote.js';
 import { resolveJobsDir } from './jobs.js';
+import { type JsonObject, jsonBoolean, jsonObject, jsonString, parseJson } from './json.js';
 import { countSidecarFiles, resolveLogDir } from './logs.js';
 import { ERR } from './main-history.js';
 import {
@@ -176,18 +180,19 @@ const NOTES_POLL_MS =
  * same shared promise, so the next read answers from rows rather than re-parsing the
  * store this pass just wrote to. See {@link syncCommandRows}.
  */
-let reconciling: Promise<unknown> | null = null;
+let reconciling: Promise<void> | null = null;
 let reconciledAt = 0;
 
 /** The floor between two reconcile passes. See {@link reconcileCommands}. */
 const RECONCILE_MIN_INTERVAL_MS = 15_000;
 
-function reconcileCommands(force = false): Promise<unknown> {
+function reconcileCommands(force = false): Promise<void> {
   if (!force && !reconciling && Date.now() - reconciledAt < RECONCILE_MIN_INTERVAL_MS) return Promise.resolve();
   reconciling ??= reconcileCommandRuns(LOG_DIR, COMMANDS_DIR)
     .then(async (result) => {
       await syncCommandRows(result);
-      if (result.appended) for (const fire of [...commandStoreListeners]) fire();
+      // A copy: a listener is free to unsubscribe itself as it fires.
+      if (result.appended) for (const fire of Array.from(commandStoreListeners)) fire();
     })
     .catch(() => undefined)
     .finally(() => {
@@ -249,7 +254,7 @@ async function afterReconcileIfMissing<T>(build: () => Promise<T>, missing: stri
   try {
     return await build();
   } catch (err) {
-    if (!(err as Error).message.startsWith(missing)) throw err;
+    if (!errorMessage(err).startsWith(missing)) throw err;
     await reconcileCommands(true);
     return build();
   }
@@ -271,6 +276,15 @@ function shadow<T>(label: string, served: T, build: (source: SidecarSource) => P
   const other = shadowSource();
   if (!other) return;
   shadowCheck(label, served, () => build(other), readSource().kind);
+}
+
+/**
+ * A set of response headers, lower-cased name to value — the shape `writeHead` takes
+ * and the one every CORS block here is. Named because it is a contract between these
+ * helpers rather than an incidental dictionary.
+ */
+interface HeaderMap {
+  [name: string]: string;
 }
 
 /** Everything but the chat routes is a read-only view of already-captured logs. */
@@ -298,8 +312,8 @@ const CHAT_ORIGINS = (process.env.CHAT_ALLOWED_ORIGINS ?? 'http://localhost:5173
 
 const originAllowed = (origin: string | undefined): boolean => !origin || CHAT_ORIGINS.includes(origin);
 
-function chatCors(origin: string | undefined): Record<string, string> {
-  const headers: Record<string, string> = {
+function chatCors(origin: string | undefined): HeaderMap {
+  const headers: HeaderMap = {
     'access-control-allow-methods': 'POST, OPTIONS',
     'access-control-allow-headers': 'content-type',
     // The answer depends on the request's origin, so a cache must not reuse it across them.
@@ -355,10 +369,10 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  * `res.req` is the request this response answers, so the negotiation needs no `req`
  * threaded through every call site.
  */
-function send(res: http.ServerResponse, status: number, body: unknown, cors: Record<string, string> = CORS): void {
+function send<T>(res: http.ServerResponse, status: number, body: T, cors: HeaderMap = CORS): void {
   const req = res.req;
   const json = Buffer.from(JSON.stringify(body), 'utf8');
-  const headers: Record<string, string> = {
+  const headers: HeaderMap = {
     'content-type': 'application/json',
     ...cors,
     // Appended rather than overwritten: the chat CORS path already varies on `origin`.
@@ -408,8 +422,13 @@ const SSE_BASE_HEADERS = {
 /** Comment-frame heartbeat interval — keeps proxies/browsers from idling out. */
 const SSE_HEARTBEAT_MS = 25_000;
 
-/** A resource that changes on disk: re-read it when the path does. */
-interface SseWatchSource {
+/**
+ * A resource that changes on disk: re-read it when the path does.
+ *
+ * `T` is whatever payload this stream's `build` produces — the same value the
+ * matching non-streaming route sends, so the two cannot describe different shapes.
+ */
+interface SseWatchSource<T> {
   /** File or directory to `fs.watch`; a change re-runs `build` and pushes an update. */
   watchPath: string;
   /**
@@ -422,7 +441,7 @@ interface SseWatchSource {
    * Resolving `null` means this tick's days cannot have moved the payload:
    * nothing is sent and the client keeps what it has.
    */
-  build: (scope: RebuildScope) => Promise<unknown>;
+  build: (scope: RebuildScope) => Promise<T>;
   /** Coalesce bursts of fs events within this window (ms) before rebuilding. */
   debounceMs: number;
   /**
@@ -439,11 +458,11 @@ interface SseWatchSource {
  * it happens and has nothing to re-read. Frames are sent exactly as produced — never
  * deduped, because two identical pushes are two real events, not a repeat of one.
  */
-interface SsePushSource {
+interface SsePushSource<T> {
   /** The value sent as the opening `snapshot`. */
-  snapshot: () => unknown | Promise<unknown>;
+  snapshot: () => T | Promise<T>;
   /** Register for pushes; each one is sent as an `update`. Returns the unsubscribe. */
-  subscribe: (push: (frame: unknown) => void) => () => void;
+  subscribe: (push: (frame: T) => void) => () => void;
 }
 
 /**
@@ -458,19 +477,19 @@ interface SsePushSource {
  * per interval and sends nothing, and the SSE contract a client sees is
  * identical to the watch source's.
  */
-interface ScheduledPollSource {
-  build: () => Promise<unknown>;
+interface ScheduledPollSource<T> {
+  build: () => Promise<T>;
   /** How often to re-read. Slower than a watch debounce, since each tick is a network call. */
   intervalMs: number;
 }
 
-type SseStream = (SseWatchSource | SsePushSource | ScheduledPollSource) & {
+type SseStream<T> = (SseWatchSource<T> | SsePushSource<T> | ScheduledPollSource<T>) & {
   /**
    * Response CORS. Defaults to the read routes' open `*`, which is only right for a
    * payload every other reader may see — a stream carrying chat content passes the
    * origin-checked headers instead.
    */
-  cors?: Record<string, string>;
+  cors?: HeaderMap;
 };
 
 /**
@@ -480,7 +499,7 @@ type SseStream = (SseWatchSource | SsePushSource | ScheduledPollSource) & {
  * whole corpus every debounce tick, per client, and drop each answer as
  * unchanged. A remote-backed page refreshes on the next load instead.
  */
-function conceptsStream(build: () => Promise<unknown>): SseStream {
+function conceptsStream<T>(build: () => Promise<T>): SseStream<T> {
   // Nothing local to subscribe to: the snapshot and the heartbeat are the whole stream.
   if (remoteConceptStore()) return { snapshot: build, subscribe: () => () => undefined };
   return { watchPath: LOG_DIR, build, debounceMs: 600 };
@@ -499,19 +518,22 @@ function conceptsStream(build: () => Promise<unknown>): SseStream {
  * The initial snapshot is produced *before* the SSE headers, so a failure surfaces as a
  * normal HTTP error (400/404/500) that `EventSource` reports without reconnecting.
  */
-async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, stream: SseStream): Promise<void> {
+async function serveSse<T>(req: http.IncomingMessage, res: http.ServerResponse, stream: SseStream<T>): Promise<void> {
   const cors = stream.cors ?? CORS;
   const watch = 'watchPath' in stream ? stream : null;
   const poll = 'intervalMs' in stream ? stream : null;
+  const push = 'subscribe' in stream ? stream : null;
 
-  let snapshot: unknown;
+  // Assigned by whichever of the three branches below matched, and the union those
+  // three make up is the whole of `SseStream`.
+  let snapshot: T | undefined;
   try {
     // `null`: the opening snapshot has no change to be scoped to, and is always full.
     if (watch) snapshot = await watch.build(null);
     else if (poll) snapshot = await poll.build();
-    else snapshot = await (stream as SsePushSource).snapshot();
+    else if (push) snapshot = await push.snapshot();
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = errorMessage(err);
     // A configured concept store that will not answer is a 502 here too.
     if (err instanceof RemoteConceptStoreError) send(res, 502, { error: msg }, cors);
     else if (err instanceof RemoteIdeasStoreError) send(res, 502, { error: msg }, cors);
@@ -557,7 +579,7 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
       watcher = fs.watch(watch.watchPath, (_event, filename) => {
         // `fs.watch` does not always deliver a name, and gives a Buffer under a
         // non-default encoding; either way the change cannot be placed on a day.
-        touched.push(typeof filename === 'string' ? filename : null);
+        touched.push(Buffer.isBuffer(filename) ? null : (filename ?? null));
         if (debounce) clearTimeout(debounce);
         debounce = setTimeout(pushUpdate, watch.debounceMs);
       });
@@ -594,10 +616,10 @@ async function serveSse(req: http.IncomingMessage, res: http.ServerResponse, str
         });
     }, poll.intervalMs);
     unsubscribe = () => clearInterval(timer);
-  } else {
+  } else if (push) {
     // Subscribed after the snapshot was written, so the opening frame and the pushes
     // cannot interleave and the client never sees an update it has no baseline for.
-    unsubscribe = (stream as SsePushSource).subscribe((frame) => {
+    unsubscribe = push.subscribe((frame) => {
       if (res.writableEnded) return;
       res.write(`event: update\ndata: ${JSON.stringify(frame)}\n\n`);
     });
@@ -658,24 +680,24 @@ function parseDate(raw: string | null): string | undefined {
 
 const MAX_BODY_BYTES = 1_000_000;
 
-async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+async function readJsonBody(req: http.IncomingMessage): Promise<JsonObject> {
   const chunks: Buffer[] = [];
   let bytes = 0;
-  for await (const chunk of req) {
-    bytes += (chunk as Buffer).length;
+  // SAFETY: nothing calls `req.setEncoding()` on this request and the server never puts
+  // it in object mode, so the request stream stays in its default binary mode — where
+  // every chunk a `Readable` yields is a Buffer.
+  for await (const chunk of req as AsyncIterable<Buffer>) {
+    bytes += chunk.length;
     if (bytes > MAX_BODY_BYTES) throw new Error(`request body larger than ${MAX_BODY_BYTES} bytes`);
-    chunks.push(chunk as Buffer);
+    chunks.push(chunk);
   }
   if (bytes === 0) return {};
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  } catch {
-    throw new Error('request body is not valid JSON');
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
-    throw new Error('request body must be a JSON object');
-  return parsed as Record<string, unknown>;
+  const parsed = parseJson(Buffer.concat(chunks).toString('utf8'));
+  if (parsed === undefined) throw new Error('request body is not valid JSON');
+  // `null`, an array and every primitive land here: none of them has fields to read.
+  const body = jsonObject(parsed);
+  if (body === undefined) throw new Error('request body must be a JSON object');
+  return body;
 }
 
 /** Map a chat failure onto a status. */
@@ -722,10 +744,10 @@ function mainHistoryErrorStatus(msg: string): number {
  * have, with the failure→status mapping left to the caller since each write
  * surface fails in its own vocabulary.
  */
-async function servePost(
+async function servePost<T>(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  handler: (body: Record<string, unknown>) => Promise<unknown>,
+  handler: (body: JsonObject) => Promise<T>,
   errorStatus: (msg: string) => number = chatErrorStatus,
 ): Promise<void> {
   const origin = req.headers.origin;
@@ -741,16 +763,16 @@ async function servePost(
   try {
     send(res, 200, await handler(await readJsonBody(req)), cors);
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = errorMessage(err);
     send(res, errorStatus(msg), { error: msg }, cors);
   }
 }
 
-function notesError(res: http.ServerResponse, error: unknown, cors: Record<string, string> = CORS): void {
-  if (error instanceof NotesStoreUnconfiguredError) send(res, 501, { error: error.message }, cors);
-  else if (error instanceof RemoteNotesResponseError) send(res, error.status, error.body, cors);
-  else if (error instanceof RemoteNotesStoreError) send(res, 502, { error: error.message }, cors);
-  else send(res, 400, { error: (error as Error).message }, cors);
+function notesError(res: http.ServerResponse, cause: unknown, cors: HeaderMap = CORS): void {
+  if (cause instanceof NotesStoreUnconfiguredError) send(res, 501, { error: cause.message }, cors);
+  else if (cause instanceof RemoteNotesResponseError) send(res, cause.status, cause.body, cors);
+  else if (cause instanceof RemoteNotesStoreError) send(res, 502, { error: cause.message }, cors);
+  else send(res, 400, { error: errorMessage(cause) }, cors);
 }
 
 function notesListQuery(url: URL): NoteListQuery {
@@ -783,7 +805,7 @@ async function serveNotesList({ req, res, url }: RouteContext, stream: boolean):
 async function serveNoteWrite(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  handler: (body: Record<string, unknown>) => Promise<{ status: number; body: unknown }>,
+  handler: (body: JsonObject) => Promise<{ status: number; body: unknown }>,
 ): Promise<void> {
   const origin = req.headers.origin;
   const cors = chatCors(origin);
@@ -835,7 +857,7 @@ async function serveCommandDetail({ req, res, url }: RouteContext, stream: boole
     send(res, 200, command);
     shadow('/api/commands/command', command, (source) => buildCommand(LOG_DIR, COMMANDS_DIR, name, flags, source));
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = errorMessage(err);
     if (msg.startsWith('command not found')) send(res, 404, { error: msg });
     else throw err;
   }
@@ -858,7 +880,7 @@ async function serveCommandRun({ req, res, url }: RouteContext, stream: boolean)
     send(res, 200, run);
     shadow('/api/commands/run', run, (source) => buildCommandRun(LOG_DIR, id, source));
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = errorMessage(err);
     if (msg.startsWith('command run not found')) send(res, 404, { error: msg });
     else throw err;
   }
@@ -886,7 +908,7 @@ async function serveConcept({ req, res, url }: RouteContext, stream: boolean): P
       shadow('/api/concepts/concept', concept, (source) => buildConcept(LOG_DIR, ord, source));
     }
   } catch (err) {
-    const msg = (err as Error).message;
+    const msg = errorMessage(err);
     if (err instanceof RemoteConceptStoreError) send(res, 502, { error: msg });
     else if (msg.startsWith('concept not found')) send(res, 404, { error: msg });
     else throw err;
@@ -928,14 +950,15 @@ async function serveIdeas({ req, res, url }: RouteContext, stream: boolean): Pro
       throw new Error(`invalid area: ${areaParam} (expected a kebab-case slug)`);
     }
   } catch (err) {
-    send(res, 400, { error: (err as Error).message });
+    send(res, 400, { error: errorMessage(err) });
     return;
   }
-  const filter = {
-    ...(statuses ? { statuses } : {}),
-    ...(repoParam ? { repo: repoParam } : {}),
-    ...(areaParam ? { area: areaParam } : {}),
-  };
+  // Each filter is set only when the query string carried one: an absent key is
+  // "no filter", where a present `undefined` would be a filter matching nothing.
+  const filter: IdeaFilter = {};
+  if (statuses) filter.statuses = statuses;
+  if (repoParam) filter.repo = repoParam;
+  if (areaParam) filter.area = areaParam;
   if (stream) {
     await serveSse(req, res, { build: () => buildIdeas(filter), intervalMs: IDEAS_POLL_MS });
     return;
@@ -960,7 +983,17 @@ async function serveIdeas({ req, res, url }: RouteContext, stream: boolean): Pro
  * than documentation: a handler for a path the manifest does not declare will not
  * compile, and a declared route with no handler will not either. The `switch` this
  * replaced could drift from the route list in both directions without a word.
+ *
+ * **The annotation is pinned by a test and cannot become `satisfies`.**
+ * `server/test/orphan-surface.test.ts` reads this file as *text* and looks for the
+ * literal `const HANDLERS: Record<ApiRoutePath, RouteHandler> = {`, then scrapes the
+ * route keys out of the block up to the next `\n};` — that is how it checks the
+ * dispatch table against the manifest without importing a module that starts a
+ * server. `satisfies` moves the type to the closing line and renames the opening one,
+ * so it defeats both halves of that scrape. Since every entry here is checked against
+ * `ApiRoutePath` either way, the annotation costs nothing the `satisfies` bought.
  */
+// oxlint-disable-next-line anti-slop/no-known-value-widening -- the annotation is the form `server/test/orphan-surface.test.ts` scrapes for; see above.
 const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   '/api/health': async ({ res }) => {
     let sidecarCount: number | null = null;
@@ -1033,7 +1066,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       send(res, 200, await buildPromptSection(LOG_DIR, hash, index, days, new Date(), readSource()));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('prompt outline not found') || msg.startsWith('prompt section index out of range')) {
         send(res, 404, { error: msg });
       } else throw err;
@@ -1110,7 +1143,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       send(res, 200, await buildContextDetail(LOG_DIR, file));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
       else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
         send(res, 404, { error: msg });
@@ -1131,7 +1164,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       send(res, 200, await buildContextMessage(LOG_DIR, file, index));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
       else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
         send(res, 404, { error: msg });
@@ -1153,7 +1186,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       send(res, 200, await buildContextTool(LOG_DIR, file, index));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid request file name')) send(res, 400, { error: msg });
       else if (msg.startsWith('request file not found') || msg.startsWith('request body evicted')) {
         send(res, 404, { error: msg });
@@ -1173,7 +1206,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       send(res, 200, await buildProjectMemories(PROJECTS_DIR, project));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid project name')) send(res, 400, { error: msg });
       else if (msg.startsWith('project not found')) send(res, 404, { error: msg });
       else throw err;
@@ -1189,7 +1222,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       send(res, 200, await buildMemory(PROJECTS_DIR, project, name));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid project name') || msg.startsWith('invalid memory file name')) {
         send(res, 400, { error: msg });
       } else if (msg.startsWith('project not found') || msg.startsWith('memory file not found')) {
@@ -1211,7 +1244,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       send(res, 200, await buildJob(JOBS_DIR, id));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid job id')) send(res, 400, { error: msg });
       else if (msg.startsWith('job not found')) send(res, 404, { error: msg });
       else throw err;
@@ -1227,7 +1260,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       send(res, 200, await buildJobFile(JOBS_DIR, id, file));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (
         msg.startsWith('invalid job id') ||
         msg.startsWith('invalid job file path') ||
@@ -1246,8 +1279,8 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       req,
       res,
       async (body) => {
-        const id = body.id;
-        if (typeof id !== 'string' || id === '') throw new Error('missing id');
+        const id = jsonString(body.id);
+        if (id === undefined || id === '') throw new Error('missing id');
         return buildJobDelete(JOBS_DIR, LOG_DIR, id, new Date(), readSource());
       },
       (msg) => {
@@ -1279,7 +1312,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       file = resolveSessionFile(LOG_DIR, id);
     } catch (err) {
-      send(res, 400, { error: (err as Error).message });
+      send(res, 400, { error: errorMessage(err) });
       return;
     }
     await serveSse(req, res, {
@@ -1314,7 +1347,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       send(res, 200, texts);
       shadow('/api/sessions/node-text', texts, (source) => buildSessionNodeTexts(LOG_DIR, id, source));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
       else throw err;
     }
@@ -1331,7 +1364,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       send(res, 200, nodes);
       shadow('/api/sessions/graph/nodes', nodes, (source) => buildSessionGraphNodes(LOG_DIR, id, now, source));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
       else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
       else throw err;
@@ -1348,7 +1381,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       send(res, 200, session);
       shadow('/api/sessions/session', session, (source) => buildSession(LOG_DIR, id, source));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
       else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
       else throw err;
@@ -1366,7 +1399,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       send(res, 200, breakdown);
       shadow('/api/sessions/breakdown', breakdown, (source) => buildSessionBreakdown(LOG_DIR, id, now, source));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
       else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
       else throw err;
@@ -1549,7 +1582,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
         buildSessionSuggestionBucket(LOG_DIR, index, now, source),
       );
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('suggestion bucket not found')) send(res, 404, { error: msg });
       else throw err;
     }
@@ -1576,25 +1609,25 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
           if (!judging) {
             return applySuggestionStatus(LOG_DIR, parseSuggestionStatusUpdates(body.updates), new Date(), readSource());
           }
-          if (body.amnesty !== undefined && typeof body.amnesty !== 'boolean') {
+          const rawAmnesty = body.amnesty;
+          const amnesty = jsonBoolean(rawAmnesty);
+          if (rawAmnesty !== undefined && amnesty === undefined) {
             throw new Error('amnesty must be a boolean');
           }
           // Refused when present and malformed — silently dropping it would file
           // the verdict unattributed while the caller believed it had signed.
-          if (body.thread !== undefined && !isThreadId(body.thread)) {
+          const rawThread = body.thread;
+          if (rawThread !== undefined && !isThreadId(rawThread)) {
             throw new Error('thread must be a 16-hex-character thread id');
           }
-          return applySuggestionJudge(
-            LOG_DIR,
-            {
-              ...(body.updates === undefined ? {} : { updates: parseSuggestionStatusUpdates(body.updates) }),
-              ...(body.judged === undefined ? {} : { judged: parseSuggestionJudgements(body.judged) }),
-              ...(body.amnesty === undefined ? {} : { amnesty: body.amnesty as boolean }),
-              ...(body.thread === undefined ? {} : { thread: body.thread as string }),
-            },
-            new Date(),
-            readSource(),
-          );
+          // Built key by key: a field the body left out must stay absent, since
+          // `applySuggestionJudge` reads presence, not value.
+          const request: SuggestionJudgeRequest = {};
+          if (body.updates !== undefined) request.updates = parseSuggestionStatusUpdates(body.updates);
+          if (body.judged !== undefined) request.judged = parseSuggestionJudgements(body.judged);
+          if (amnesty !== undefined) request.amnesty = amnesty;
+          if (rawThread !== undefined) request.thread = rawThread;
+          return applySuggestionJudge(LOG_DIR, request, new Date(), readSource());
         },
         () => 400,
       );
@@ -1623,7 +1656,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
         });
       }
     } catch (err) {
-      send(res, 400, { error: (err as Error).message });
+      send(res, 400, { error: errorMessage(err) });
       return;
     }
     const detail = url.searchParams.get('detail');
@@ -1649,7 +1682,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
       send(res, 200, errors);
       shadow('/api/sessions/errors', errors, (source) => buildSessionErrors(LOG_DIR, id, now, source));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('invalid session id')) send(res, 400, { error: msg });
       else if (msg.startsWith('session not found')) send(res, 404, { error: msg });
       else throw err;
@@ -1797,7 +1830,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     try {
       send(res, 200, await buildCliFunction(id));
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
       if (msg.startsWith('cli function not found')) send(res, 404, { error: msg });
       else throw err;
     }
@@ -1854,7 +1887,7 @@ const server = http.createServer(async (req, res) => {
   try {
     await HANDLERS[route.path]({ req, res, url, date: parseDate(url.searchParams.get('date')) });
   } catch (err) {
-    send(res, 500, { error: (err as Error).message });
+    send(res, 500, { error: errorMessage(err) });
   }
 });
 

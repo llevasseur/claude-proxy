@@ -16,6 +16,7 @@
  */
 import { buildSummary } from './api.js';
 import { resolveArchiveDir } from './archive.js';
+import { errorMessage } from './errors.js';
 import { resolveLogDir } from './logs.js';
 import {
   applyRetention,
@@ -125,8 +126,8 @@ async function reconcileRuns(logDir: string): Promise<void> {
     const { reconcileCommandRuns } = await import('./command-runs.js');
     const { written, runs } = await reconcileCommandRuns(logDir);
     if (written > 0) console.log(`[maintain] command runs: ${written} record(s) written, ${runs} stored`);
-  } catch (err) {
-    console.error(`[maintain] command runs skipped: ${(err as Error).message}`);
+  } catch (cause) {
+    console.error(`[maintain] command runs skipped: ${errorMessage(cause)}`);
   }
 }
 
@@ -146,8 +147,8 @@ async function deriveBeforeEvict(logDir: string): Promise<void> {
     const { ingestOnce } = await import('./db/runtime.js');
     const stats = await ingestOnce(logDir);
     if (stats.derived > 0) console.log(`[maintain] derived ${plural(stats.derived, 'body')} before eviction`);
-  } catch (err) {
-    console.error(`[maintain] body derivation skipped: ${(err as Error).message}`);
+  } catch (cause) {
+    console.error(`[maintain] body derivation skipped: ${errorMessage(cause)}`);
   }
 }
 
@@ -168,8 +169,8 @@ async function reingestAfterEvict(logDir: string): Promise<void> {
     if (stats.dirs > 0) {
       console.log(`[maintain] re-ingested ${plural(stats.dirs, 'directory', 'directories')} after eviction`);
     }
-  } catch (err) {
-    console.error(`[maintain] post-eviction ingest skipped: ${(err as Error).message}`);
+  } catch (cause) {
+    console.error(`[maintain] post-eviction ingest skipped: ${errorMessage(cause)}`);
   }
 }
 
@@ -179,7 +180,7 @@ async function reingestAfterEvict(logDir: string): Promise<void> {
  * network, no origin all mean "learned nothing this run", and the ledger is left
  * exactly as it was.
  */
-async function reconcileIdeas(logDir: string): Promise<void> {
+async function reconcileIdeas(): Promise<void> {
   try {
     const { reconcileIdeaPrs, renderIdeaPrTransition } = await import('./ideas-pr.js');
     const result = await reconcileIdeaPrs();
@@ -188,8 +189,8 @@ async function reconcileIdeas(logDir: string): Promise<void> {
       return;
     }
     for (const t of result.transitions) console.log(`[maintain] ideas: ${renderIdeaPrTransition(t)}`);
-  } catch (err) {
-    console.error(`[maintain] ideas skipped: ${(err as Error).message}`);
+  } catch (cause) {
+    console.error(`[maintain] ideas skipped: ${errorMessage(cause)}`);
   }
 }
 
@@ -206,7 +207,7 @@ async function main(): Promise<void> {
     await deriveBeforeEvict(logDir);
     // Last of the three: unlike the two above it consumes nothing a later phase
     // of this run removes, so it has no ordering constraint to honour.
-    await reconcileIdeas(logDir);
+    await reconcileIdeas();
   }
 
   const corpus = await collectRetentionCorpus(logDir);
@@ -234,7 +235,7 @@ async function main(): Promise<void> {
   console.log(renderSummary(await buildSummary(logDir, today, new Date(), resolveArchiveDir())));
 }
 
-main().catch((err: unknown) => {
-  console.error(`[maintain] error: ${(err as Error).message}`);
+main().catch((cause: unknown) => {
+  console.error(`[maintain] error: ${errorMessage(cause)}`);
   process.exitCode = 1;
 });

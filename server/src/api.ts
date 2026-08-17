@@ -25,6 +25,7 @@ import {
   type CommandRunProfile,
   type CommandStep,
   type CommandSummary,
+  type ComputeDigestOptions,
   type ContextAggregates,
   type ContextEntry,
   type ContextThreadGroup,
@@ -187,6 +188,15 @@ import {
   readJobFile,
 } from './jobs.js';
 import {
+  arrayField,
+  type JsonInput,
+  type JsonObject,
+  jsonField,
+  jsonString,
+  objectField,
+  stringField,
+} from './json.js';
+import {
   type LoadResult,
   locateRequestBody,
   type ReadOptions,
@@ -259,7 +269,10 @@ async function daySidecars(
   archiveDir?: string,
   opts: Omit<ReadOptions, 'date' | 'sinceDays'> = {},
 ): Promise<LoadResult> {
-  return readWindow(logDir, { ...opts, date, ...(archiveDir === undefined ? {} : { archiveDir }) }, now, source);
+  // Two calls rather than one conditional spread: a caller that named no
+  // archive wants the key absent, not present and `undefined`.
+  if (archiveDir === undefined) return readWindow(logDir, { ...opts, date }, now, source);
+  return readWindow(logDir, { ...opts, date, archiveDir }, now, source);
 }
 
 /**
@@ -313,13 +326,10 @@ async function baselineDayDigest(
   classifierHashes: ReadonlySet<string>,
   archiveDir?: string,
 ): Promise<UsageDigest> {
-  const key: DayDigestKey = {
-    logDir,
-    date,
-    source,
-    classifierHashes,
-    ...(archiveDir === undefined ? {} : { archiveDir }),
-  };
+  const key: DayDigestKey = { logDir, date, source, classifierHashes };
+  // Assigned only when the caller named an archive, so a key built without one
+  // keeps the shape it has always had: `archiveDir` optional and absent.
+  if (archiveDir !== undefined) key.archiveDir = archiveDir;
   const hit = cachedDayDigest(key);
   if (hit) return hit;
 
@@ -391,8 +401,13 @@ function dedupeByFile(sidecars: readonly unknown[]): unknown[] {
   const seen = new Set<string>();
   const out: unknown[] = [];
   for (const s of sidecars) {
-    const file = (s as { __file?: unknown })?.__file;
-    if (typeof file !== 'string') {
+    // SAFETY: every member of a sidecar stream is a JSON document — the file
+    // reader pushes `JSON.parse` output from an `.audit.json`, the substrate
+    // pushes the object it assembles out of columns — so it is inside
+    // `JsonValue`. `stringField` answers `undefined` for a member carrying no
+    // string `__file`, which is the case the loop already passes through.
+    const file = stringField(s as JsonInput, '__file');
+    if (file === undefined) {
       out.push(s);
       continue;
     }
@@ -437,8 +452,11 @@ export async function buildUsage(
   // too, for a deployment that rotates less eagerly than the default.
   const retainedDays = new Set<string>([today(now), ...archived.retainedDays]);
   for (const s of live.sidecars) {
-    const ts = (s as { timestamp?: unknown })?.timestamp;
-    const day = typeof ts === 'string' ? reportDay(ts) : null;
+    // SAFETY: the live half of the same sidecar stream `dedupeByFile` reads, so
+    // a member is a parsed audit document; a sidecar with no string `timestamp`
+    // names no day and is skipped, as it was before.
+    const ts = stringField(s as JsonInput, 'timestamp');
+    const day = ts === undefined ? null : reportDay(ts);
     if (day) retainedDays.add(day);
   }
 
@@ -617,13 +635,10 @@ async function rawArchivedDigest(
   classifierHashes: ReadonlySet<string>,
   archiveDir?: string,
 ): Promise<UsageDigest | null> {
-  const key: DayDigestKey = {
-    logDir,
-    date,
-    source,
-    classifierHashes,
-    ...(archiveDir === undefined ? {} : { archiveDir }),
-  };
+  const key: DayDigestKey = { logDir, date, source, classifierHashes };
+  // Assigned only when the caller named an archive, so a key built without one
+  // keeps the shape it has always had: `archiveDir` optional and absent.
+  if (archiveDir !== undefined) key.archiveDir = archiveDir;
   return memoisedDayDigest(key, now, async () => {
     const { sidecars, files } = await source.readArchivedDay(logDir, date, { archiveDir });
     if (files === 0) return null;
@@ -756,9 +771,12 @@ export async function buildTrends(
   const digests: UsageDigest[] = [];
   for (const date of dates) {
     const bucket = raw.get(date);
-    const digest: UsageDigest | undefined = bucket
-      ? computeDigest(bucket, { date, priorDigests: digests, classifierHashes, ...(wanted ? { models: wanted } : {}) })
-      : finalized.get(date);
+    const opts: ComputeDigestOptions = { date, priorDigests: digests, classifierHashes };
+    // `models` stays absent when nothing was asked for: `computeDigest` reads an
+    // empty or missing set as "every model", and an explicit `undefined` would
+    // have to mean the same thing by accident rather than by contract.
+    if (wanted) opts.models = wanted;
+    const digest: UsageDigest | undefined = bucket ? computeDigest(bucket, opts) : finalized.get(date);
     if (!digest) continue;
     digests.push(digest);
   }
@@ -985,8 +1003,15 @@ async function filesForPromptHash(
 
   const collect = (sidecars: readonly unknown[]) => {
     for (const s of sidecars) {
-      const record = s as { __file?: string; request?: { system?: { hash?: unknown } } };
-      if (record.__file && record.request?.system?.hash === hash) found.add(record.__file);
+      // SAFETY: a sidecar stream member is a JSON document — parsed from an
+      // `.audit.json` on the file side, assembled from columns on the DB side —
+      // so it is inside `JsonValue`, and each reader below answers `undefined`
+      // for a document missing the step it asks for.
+      const document = s as JsonInput;
+      const file = stringField(document, '__file');
+      if (file && stringField(objectField(jsonField(document, 'request'), 'system'), 'hash') === hash) {
+        found.add(file);
+      }
     }
   };
 
@@ -1039,7 +1064,10 @@ export async function buildPromptSection(
     let texts: string[];
     try {
       const { body } = await readRequestBody(logDir, candidate);
-      texts = wirePromptSectionTexts((body as { system?: unknown }).system);
+      // SAFETY: `readRequestBody` hands back what `JSON.parse` made of the
+      // captured request text, so the body is inside `JsonValue`; a body with no
+      // `system` reads as `undefined`, and the outline check below rejects it.
+      texts = wirePromptSectionTexts(jsonField(body as JsonInput, 'system'));
     } catch {
       continue; // evicted, unreadable, or not the shape we expect
     }
@@ -1144,8 +1172,13 @@ export async function buildToolSchema(
     // Sidecars arrive newest-last, so the last writer wins — the current size.
     bytes = hit.bytes;
     estTokens = hit.estTokens;
-    const file = (s as { __file?: unknown }).__file;
-    if (typeof file === 'string') candidates.add(file);
+    // SAFETY: an `includeFile: true` read hangs the sidecar's own file name off
+    // the document as `__file`, a key `AuditSidecar` does not declare, so the
+    // intersection adds exactly that one and nothing else is claimed about `s`.
+    // A sidecar read without the handle names no body to open and adds no
+    // candidate, which is what the tag check decided.
+    const file = (s as AuditSidecar & { __file?: string }).__file;
+    if (file !== undefined) candidates.add(file);
   }
 
   // Newest first: names lead with their timestamp, and a recent body is the
@@ -1157,9 +1190,12 @@ export async function buildToolSchema(
   for (const candidate of ordered.slice(0, SCHEMA_BODY_TRIES)) {
     try {
       const { body } = await readRequestBody(logDir, candidate);
-      const tools = (body as { tools?: unknown }).tools;
-      if (!Array.isArray(tools)) continue;
-      const found = tools.find((t) => (t as { name?: unknown })?.name === name);
+      // SAFETY: the parsed request body again; `arrayField` answers `undefined`
+      // for a body whose `tools` is absent or not an array, which is the same
+      // candidate-skipped outcome the `Array.isArray` guard produced.
+      const tools = arrayField(body as JsonInput, 'tools');
+      if (tools === undefined) continue;
+      const found = tools.find((t) => stringField(t, 'name') === name);
       if (found === undefined) continue;
       schema = JSON.stringify(found, null, 2);
       file = candidate;
@@ -1324,7 +1360,10 @@ function toThreadRow(group: ContextThreadGroup): ContextThreadRow {
 function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
   const entries: ContextEntry[] = [];
   for (const s of sidecars) {
-    const file = (s as { __file?: string }).__file;
+    // SAFETY: these sidecars come from a `includeFile: true` read of the same
+    // stream, so each is a parsed audit document; one with no string `__file`
+    // has no body to drill into and is dropped, as the doc comment says.
+    const file = stringField(s as JsonInput, '__file');
     const entry = file ? toContextEntry(s, file) : null;
     if (entry) entries.push(entry);
   }
@@ -1834,7 +1873,7 @@ export async function buildSessionsLiveness(
   }));
 
   // Anything still possibly alive floats to the top; within a state, newest write first.
-  const rank: Record<BranchLiveness['state'], number> = { running: 0, quiet: 1, unknown: 2, finished: 3 };
+  const rank = { running: 0, quiet: 1, unknown: 2, finished: 3 } satisfies Record<BranchLiveness['state'], number>;
   threads.sort(
     (a, b) =>
       rank[a.liveness.state] - rank[b.liveness.state] ||
@@ -2097,7 +2136,7 @@ export async function buildSessionSuggestionBucket(
   const sessions = bucket.threadIds
     .map((id) => byThread.get(id))
     .filter((g): g is (typeof graphs)[number] => !!g)
-    .map(({ nodes: _nodes, ...row }) => row as SessionSummary);
+    .map(({ nodes: _nodes, ...row }) => row);
 
   // A session's requests never predate it, so the earliest start bounds the scan.
   const since = (bucket.startedFirst && reportDay(bucket.startedFirst)) || undefined;
@@ -2567,8 +2606,13 @@ export async function applyIdeaStatus(
   now: Date = new Date(),
 ): Promise<IdeasStatusResponse> {
   if (marks.length === 0) throw new Error('no idea marks given');
+  // SAFETY: `BROWSER_IDEA_STATUSES` is a `const` tuple of `IdeaStatus` members,
+  // so widening it to an array of that union forgets only *which* members it
+  // holds — which is exactly what `includes` needs to be asked about a status
+  // from outside the tuple.
+  const settableHere = BROWSER_IDEA_STATUSES as readonly IdeaStatus[];
   for (const mark of marks) {
-    if (!(BROWSER_IDEA_STATUSES as readonly IdeaStatus[]).includes(mark.status)) {
+    if (!settableHere.includes(mark.status)) {
       throw new Error(
         `${mark.status} cannot be set from the dashboard (${BROWSER_IDEA_STATUSES.join(', ')} only): ` +
           'a claim names the run that is building the idea, so it is taken by `ideas claim --by <holder>`; ' +
@@ -2721,7 +2765,9 @@ export async function applyIdeaComment(
 ): Promise<IdeasEditResponse> {
   if (comments.length === 0) throw new Error('no idea comments given');
   for (const comment of comments) {
-    if (typeof comment.text !== 'string') throw new Error(`${comment.slug} needs a comment, as text`);
+    // Typed as `string`, but the value arrives in an HTTP body, so the check is
+    // a real one: `jsonString` answers `undefined` for anything else.
+    if (jsonString(comment.text) === undefined) throw new Error(`${comment.slug} needs a comment, as text`);
   }
   return editResponse(await commentIdeasInStore(comments));
 }
@@ -2818,12 +2864,16 @@ export async function buildSessionGraphNodes(
     }
     requestsRead += 1;
 
-    const threadId = threadIdForBody(entry.sessionId, (body as { messages?: unknown } | null)?.messages);
+    // SAFETY: `readRequestBody` returns `JSON.parse` output for the captured
+    // request, so the body is inside `JsonValue`. `arrayField` answers
+    // `undefined` unless `messages` is an array — and a non-array `messages`
+    // hashed to no thread and counted zero before, which is what `undefined`
+    // does here too.
+    const messages = arrayField(body as JsonInput, 'messages');
+    const threadId = threadIdForBody(entry.sessionId, messages);
     if (!threadId || !family.has(threadId)) continue;
 
-    const messageCount = Array.isArray((body as { messages?: unknown }).messages)
-      ? ((body as { messages: unknown[] }).messages.length ?? 0)
-      : 0;
+    const messageCount = messages?.length ?? 0;
     const prev = best.get(threadId);
     if (prev && prev.messageCount >= messageCount) continue;
     best.set(threadId, { threadId, file: entry.file, messageCount, nodes: deriveSessionNodes(body) });
@@ -2978,15 +3028,15 @@ export function buildPullRequestBody(
  * The whole safety argument lives in `slideMain`: pin what is being left behind, then
  * move with a lease against the sha the page displayed.
  */
-export const buildMainHistorySlide = (body: Record<string, unknown>, repoDir: string = resolveRepoDir()) =>
+export const buildMainHistorySlide = (body: JsonObject, repoDir: string = resolveRepoDir()) =>
   slideMain(repoDir, { expectedMain: body.expectedMain, target: body.target });
 
 /** Point this checkout's `main` back at `origin/main`, which `git pull` will not do. */
-export const buildMainHistorySyncLocal = (body: Record<string, unknown>, repoDir: string = resolveRepoDir()) =>
+export const buildMainHistorySyncLocal = (body: JsonObject, repoDir: string = resolveRepoDir()) =>
   syncLocal(repoDir, { preserve: body.preserve });
 
 /** Hide a line from the page — a marker ref, never a deletion of the pin. */
-export const buildMainHistoryHide = (body: Record<string, unknown>, repoDir: string = resolveRepoDir()) =>
+export const buildMainHistoryHide = (body: JsonObject, repoDir: string = resolveRepoDir()) =>
   setLineHidden(repoDir, { sha: body.sha, hidden: body.hidden });
 
 export interface WithheldResponse {
@@ -3113,8 +3163,8 @@ export interface SystemPromptUpdateResponse extends SystemPromptResponse {
  */
 export async function buildSystemPromptUpdate(
   promptPath: string,
-  text: unknown,
-  expectedModified?: unknown,
+  text: JsonInput,
+  expectedModified?: JsonInput,
 ): Promise<SystemPromptUpdateResponse> {
   const parsedText = parseSystemPromptText(text);
   const expected = parseSystemPromptExpectedModified(expectedModified);
@@ -3613,15 +3663,18 @@ function excerptAround(text: string, token: string): string | null {
   return `${start > 0 ? '…' : ''}${body}${end < text.length ? '…' : ''}`;
 }
 
+/** Where a query's words landed in one record, and the prose to show for it. */
+interface ConceptMatch {
+  matchedIn: ConceptSearchField[];
+  excerpt: string | null;
+}
+
 /**
  * Where a query's words land in one record, and the prose to show for it. A description
  * of a hit, never the ranking — the store's bm25 index tokenizes text this scan does
  * not, so a genuine hit can come back with an empty `matchedIn`.
  */
-function describeMatch(
-  concept: StoredConcept,
-  tokens: string[],
-): { matchedIn: ConceptSearchField[]; excerpt: string | null } {
+function describeMatch(concept: StoredConcept, tokens: string[]): ConceptMatch {
   const matchedIn = SEARCH_FIELDS.filter((field) => {
     const text = conceptFieldText(concept, field).toLowerCase();
     return text !== '' && tokens.some((token) => text.includes(token));

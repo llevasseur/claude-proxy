@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
 import {
   type CommandRun,
   type Concept,
@@ -22,6 +22,7 @@ import {
 } from '../command-runs.js';
 import { conceptStorePath, readConcepts as readConceptsFromFiles } from '../concepts.js';
 import { latestUserText } from '../derive.js';
+import { type JsonInput, type JsonValue, jsonField, stringField } from '../json.js';
 import {
   type ArchivedDayOptions,
   compareByTimestamp,
@@ -362,12 +363,8 @@ export interface ThreadReadResult {
 }
 
 /** The transcript a sidecar is a turn of, or `null` for anything that names none. */
-function sidecarThreadId(sidecar: unknown): string | null {
-  if (typeof sidecar !== 'object' || sidecar === null) return null;
-  const session = (sidecar as { session?: unknown }).session;
-  if (typeof session !== 'object' || session === null) return null;
-  const id = (session as { threadId?: unknown }).threadId;
-  return typeof id === 'string' ? id : null;
+function sidecarThreadId(sidecar: JsonInput): string | null {
+  return stringField(jsonField(sidecar, 'session'), 'threadId') ?? null;
 }
 
 /**
@@ -392,7 +389,12 @@ export async function readThreadWindow(
   if (source.readThread) return source.readThread(logDir, threadId, opts, now);
 
   const { sidecars } = await readWindow(logDir, opts, now, source);
-  const mine = sidecars.filter((sidecar) => sidecarThreadId(sidecar) === threadId);
+  // SAFETY: `LoadResult` types this stream as `unknown[]`, but both producers put a
+  // JSON document in it — the file reader pushes `JSON.parse` output from an
+  // `.audit.json`, and the substrate pushes what `toSidecar` assembles out of
+  // TEXT/INTEGER columns — so every member is inside `JsonValue`. The reader
+  // answers `null` for any other shape, which is what the tag checks used to do.
+  const mine = sidecars.filter((sidecar) => sidecarThreadId(sidecar as JsonInput) === threadId);
   return { sidecars: mine, files: mine.length, parseErrors: 0 };
 }
 
@@ -430,7 +432,27 @@ export async function resolveAllDays(
 /** The live log directory's `source_dir`; archived days are `archive/<YYYY-MM-DD>`. */
 const LIVE = '';
 
-interface RequestRow {
+/**
+ * A value a rebuilt sidecar carries. `undefined` is in the union deliberately: a
+ * file read produced *no key at all* where a column is null, and `JSON.stringify`
+ * drops an explicitly-`undefined` key the same way it drops a missing one, so the
+ * two backings stay byte-identical on the wire.
+ */
+type SidecarValue = JsonValue | SidecarObject | undefined;
+
+/** The object a file read would have parsed, as this module rebuilds it from SQL. */
+interface SidecarObject {
+  [key: string]: SidecarValue;
+}
+
+/**
+ * Every row type below is written as a `type` rather than an `interface` on
+ * purpose. `StatementSync.all()` answers `Record<string, SQLOutputValue>[]`, and
+ * only an object type alias picks up the implicit index signature that makes the
+ * row shape comparable to it — so each `as` below stays a single assertion instead
+ * of a chain through `unknown`.
+ */
+type RequestRow = {
   id: string;
   timestamp: string;
   model: string;
@@ -476,14 +498,20 @@ interface RequestRow {
    * bodies are gone, a stricter question than the one `bodiesEvicted` asks.
    */
   request_path: string | null;
-}
+};
 
-interface SkippedRow {
+type SkippedRow = {
   id: string;
   reason: string;
   timestamp: string | null;
   source_dir: string;
-}
+};
+
+/** One `request_tool` row, joined back to the request it belongs to. */
+type ToolRow = { request_id: string; name: string; bytes: number; est_tokens: number };
+
+/** One `request_rate_limit` header, joined back to the request it belongs to. */
+type RateLimitRow = { request_id: string; header_name: string; header_value: string };
 
 /**
  * Rebuild the sidecar object a file read would have produced. `tools` and
@@ -494,8 +522,26 @@ function toSidecar(
   row: RequestRow,
   tools: Array<{ name: string; bytes: number; est_tokens: number }>,
   rateLimit: Array<{ header_name: string; header_value: string }>,
-): Record<string, unknown> {
-  const sidecar: Record<string, unknown> = {
+): SidecarObject {
+  // Built before the sidecar it sits in, so `system` still lands last among the
+  // request's keys — the position the file read's object literal gave it.
+  const request: SidecarObject = {
+    toolCount: row.req_tool_count,
+    toolsBytes: row.req_tools_bytes,
+    systemBytes: row.req_system_bytes,
+    totalBytes: row.req_total_bytes,
+  };
+  // Absent, not null, when the sidecar predates the capture — a file read
+  // would have produced no key at all.
+  if (row.req_system_hash !== null) {
+    request.system = {
+      hash: row.req_system_hash,
+      blocks: row.req_system_blocks ?? 0,
+      sections: row.req_system_sections ?? 0,
+    };
+  }
+
+  const sidecar: SidecarObject = {
     timestamp: row.timestamp,
     model: row.model,
     endpoint: row.endpoint ?? undefined,
@@ -507,37 +553,22 @@ function toSidecar(
       cacheCreation: row.tokens_cache_creation,
       realInput: row.tokens_real_input,
     },
-    request: {
-      toolCount: row.req_tool_count,
-      toolsBytes: row.req_tools_bytes,
-      systemBytes: row.req_system_bytes,
-      totalBytes: row.req_total_bytes,
-      // Absent, not null, when the sidecar predates the capture — a file read
-      // would have produced no key at all.
-      ...(row.req_system_hash !== null
-        ? {
-            system: {
-              hash: row.req_system_hash,
-              blocks: row.req_system_blocks ?? 0,
-              sections: row.req_system_sections ?? 0,
-            },
-          }
-        : {}),
-    },
+    request,
     tools: tools.map((t) => ({ name: t.name, bytes: t.bytes, estTokens: t.est_tokens })),
   };
   if (row.session_present) {
-    sidecar.session = {
+    const session: SidecarObject = {
       sessionId: row.session_id,
       app: row.app,
       userAgent: row.user_agent,
       account: row.account,
       metadataSessionId: row.metadata_session_id,
       deviceId: row.device_id,
-      // Absent, not null, when the sidecar predates the capture — a file read
-      // would have produced no key at all.
-      ...(row.thread_id !== null ? { threadId: row.thread_id } : {}),
     };
+    // Absent, not null, when the sidecar predates the capture — a file read
+    // would have produced no key at all.
+    if (row.thread_id !== null) session.threadId = row.thread_id;
+    sidecar.session = session;
   }
   if (row.skim_present) {
     sidecar.skim = {
@@ -572,14 +603,14 @@ function toSidecar(
  * `digestsByDay` drops it, the usage meters ignore it. No consumer reads any
  * field beyond the timestamp used to place it in a day.
  */
-function invalidSidecar(stem: string, timestamp: string | null): Record<string, unknown> {
-  const out: Record<string, unknown> = { __invalidSidecar: stem };
+function invalidSidecar(stem: string, timestamp: string | null): SidecarObject {
+  const out: SidecarObject = { __invalidSidecar: stem };
   if (timestamp !== null) out.timestamp = timestamp;
   return out;
 }
 
 /** `{ __parseError }` is what the file reader pushes for a file that would not JSON-parse. */
-function parseErrorSidecar(stem: string): Record<string, unknown> {
+function parseErrorSidecar(stem: string): SidecarObject {
   return { __parseError: `${stem}.audit.json` };
 }
 
@@ -587,11 +618,18 @@ function cutoff(sinceDays: number, now: Date): string {
   return shiftDay(today(now), -(sinceDays - 1));
 }
 
+/**
+ * The day-window predicate a span resolves to, plus the `id` range that
+ * prefilters it. `keepDay` is null for a span with no floor — everything is kept.
+ */
+type DayFilter = {
+  keepDay: ((day: string) => boolean) | null;
+  from: string | null;
+  to: string | null;
+};
+
 /** The day-window predicate, mirroring `readSidecars` exactly. */
-function dayFilter(
-  opts: ReadOptions,
-  now: Date,
-): { keepDay: ((day: string) => boolean) | null; from: string | null; to: string | null } {
+function dayFilter(opts: ReadOptions, now: Date): DayFilter {
   if (opts.date) {
     const next = shiftDay(opts.date, 1);
     return { keepDay: (day) => day === opts.date, from: opts.date, to: shiftDay(next, 1) };
@@ -622,7 +660,7 @@ async function readDir(
   // The stem carries the proxy's UTC date prefix, so a range on the primary key
   // is the same prefilter the file reader does on filenames, as an index seek.
   const where: string[] = ['source_dir = ?'];
-  const args: unknown[] = [sourceDir];
+  const args: SQLInputValue[] = [sourceDir];
   if (from) {
     where.push('id >= ?');
     args.push(from);
@@ -650,7 +688,7 @@ type Entry = {
    */
   timestamp: string;
   sourceDir: string;
-  make: () => Record<string, unknown>;
+  make: () => SidecarObject;
   parseError: boolean;
   day: string;
   /** Whether ingest already read this row's body for its derivatives. */
@@ -675,13 +713,15 @@ type Entry = {
  * one query here whose size is the *window times the tool count*, so a caller
  * reading only `request.toolCount` pays for a join whose result it throws away.
  */
-function entriesFrom(db: DatabaseSync, clause: string, args: unknown[], opts: ReadOptions = {}): Entry[] {
-  const rows = db
-    .prepare(`SELECT * FROM request WHERE ${clause} ORDER BY id`)
-    .all(...(args as never[])) as unknown as RequestRow[];
+function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], opts: ReadOptions = {}): Entry[] {
+  // SAFETY: `SELECT *` over `request` yields exactly the columns `open.ts` declares
+  // for that table, which is the field list `RequestRow` mirrors one-for-one.
+  const rows = db.prepare(`SELECT * FROM request WHERE ${clause} ORDER BY id`).all(...args) as RequestRow[];
+  // SAFETY: the SELECT above names exactly id, reason, timestamp and source_dir, so
+  // every row carries those four columns as `SkippedRow` declares them.
   const skippedRows = db
     .prepare(`SELECT id, reason, timestamp, source_dir FROM request_skipped WHERE ${clause} ORDER BY id`)
-    .all(...(args as never[])) as unknown as SkippedRow[];
+    .all(...args) as SkippedRow[];
 
   const ids = rows.map((r) => r.id);
   const toolsById = new Map<string, Array<{ name: string; bytes: number; est_tokens: number }>>();
@@ -693,30 +733,27 @@ function entriesFrom(db: DatabaseSync, clause: string, args: unknown[], opts: Re
       const chunk = ids.slice(i, i + 400);
       const holes = chunk.map(() => '?').join(',');
       if (!opts.omitTools) {
-        for (const t of db
+        // SAFETY: the SELECT names exactly request_id, name, bytes and est_tokens, so
+        // every row carries those four columns as `ToolRow` declares them.
+        const toolRows = db
           .prepare(
             `SELECT request_id, name, bytes, est_tokens FROM request_tool WHERE request_id IN (${holes}) ORDER BY request_id, ord`,
           )
-          .all(...(chunk as never[])) as unknown as Array<{
-          request_id: string;
-          name: string;
-          bytes: number;
-          est_tokens: number;
-        }>) {
+          .all(...chunk) as ToolRow[];
+        for (const t of toolRows) {
           const list = toolsById.get(t.request_id) ?? [];
           list.push({ name: t.name, bytes: t.bytes, est_tokens: t.est_tokens });
           toolsById.set(t.request_id, list);
         }
       }
-      for (const h of db
+      // SAFETY: the SELECT names exactly request_id, header_name and header_value, so
+      // every row carries those three columns as `RateLimitRow` declares them.
+      const rateRows = db
         .prepare(
           `SELECT request_id, header_name, header_value FROM request_rate_limit WHERE request_id IN (${holes}) ORDER BY request_id, ord`,
         )
-        .all(...(chunk as never[])) as unknown as Array<{
-        request_id: string;
-        header_name: string;
-        header_value: string;
-      }>) {
+        .all(...chunk) as RateLimitRow[];
+      for (const h of rateRows) {
         const list = rateById.get(h.request_id) ?? [];
         list.push({ header_name: h.header_name, header_value: h.header_value });
         rateById.set(h.request_id, list);
@@ -950,6 +987,9 @@ async function threadFromDb(
   return { sidecars, files, parseErrors: 0 };
 }
 
+/** `MIN(...)` over a TEXT column, aliased to `v`; null when no row matched. */
+type MinTextRow = { v: string | null };
+
 /**
  * The oldest day the substrate can answer for. `MIN` over the primary key and
  * over `source_dir` — both indexed, so this is a seek rather than a scan, and
@@ -961,16 +1001,24 @@ async function threadFromDb(
  */
 function oldestDayFromDb(db: DatabaseSync): string | null {
   const marks: string[] = [];
-  const take = (value: unknown, from: number) => {
-    if (typeof value === 'string' && value.length >= from + 10) marks.push(value.slice(from, from + 10));
+  const take = (value: string | null | undefined, from: number) => {
+    if (value !== null && value !== undefined && value.length >= from + 10) marks.push(value.slice(from, from + 10));
   };
-  take((db.prepare('SELECT MIN(id) AS v FROM request').get() as { v: unknown } | undefined)?.v, 0);
-  take((db.prepare('SELECT MIN(id) AS v FROM request_skipped').get() as { v: unknown } | undefined)?.v, 0);
-  take(
-    (db.prepare("SELECT MIN(source_dir) AS v FROM request WHERE source_dir <> ''").get() as { v: unknown } | undefined)
-      ?.v,
-    'archive/'.length,
-  );
+  // SAFETY: `request.id` is a TEXT primary key (see `open.ts`), so `MIN(id)` is
+  // either that TEXT value or SQL NULL over an empty table — which is the
+  // `string | null` in `MinTextRow`, and the `undefined` a missing row gives.
+  const minRequestId = db.prepare('SELECT MIN(id) AS v FROM request').get() as MinTextRow | undefined;
+  // SAFETY: same invariant — `request_skipped.id` is a TEXT primary key, so its
+  // `MIN` is that TEXT value, SQL NULL, or no row at all.
+  const minSkippedId = db.prepare('SELECT MIN(id) AS v FROM request_skipped').get() as MinTextRow | undefined;
+  // SAFETY: same invariant — `request.source_dir` is a TEXT column, so its `MIN`
+  // under this predicate is an `archive/<day>` string, SQL NULL, or no row at all.
+  const minSourceDir = db.prepare("SELECT MIN(source_dir) AS v FROM request WHERE source_dir <> ''").get() as
+    | MinTextRow
+    | undefined;
+  take(minRequestId?.v, 0);
+  take(minSkippedId?.v, 0);
+  take(minSourceDir?.v, 'archive/'.length);
 
   const earliest = marks.sort()[0];
   return earliest === undefined ? null : shiftDay(earliest, -1);
@@ -980,7 +1028,7 @@ function oldestDayFromDb(db: DatabaseSync): string | null {
  * Session transcripts
  * ------------------------------------------------------------------ */
 
-interface SessionRow {
+type SessionRow = {
   thread_id: string;
   model: string | null;
   session_id: string | null;
@@ -998,9 +1046,9 @@ interface SessionRow {
   parent_thread_id: string | null;
   spawn_index: number | null;
   spawn_agent_type: string | null;
-}
+};
 
-interface NodeRow {
+type NodeRow = {
   thread_id: string;
   idx: number;
   type: string;
@@ -1012,7 +1060,25 @@ interface NodeRow {
   message: number | null;
   turn: number | null;
   args_hash: string | null;
-}
+};
+
+/** One `session` row reduced to the opening prompt the caller asked for. */
+type RootPromptRow = { thread_id: string; root_prompt: string };
+
+/** One `session` row reduced to the pull request it recorded. */
+type PrLinkRow = { thread_id: string; pr_url: string };
+
+/** A store row carried as the JSON document ingest read, rather than as columns. */
+type DocumentRow = { document: string };
+
+/** A `concept` row: its line in the file, and the document on that line. */
+type ConceptRow = { ord: number; document: string };
+
+/** One `session_node_text` row: the node's index and its untruncated text. */
+type NodeTextRow = { idx: number; text: string };
+
+/** A `file_watermark` row — the size and mtime a store was last ingested at. */
+type WatermarkRow = { bytes: number; modified: string };
 
 /**
  * Rebuild the listing row a transcript parse would have produced. The key order
@@ -1040,6 +1106,9 @@ function toSummary(row: SessionRow): SessionSummary {
 
 /** One appended step, in `parseSessionNodes`' key order. */
 function toNode(row: NodeRow): SessionNode {
+  // SAFETY: `session_node.type` and `session_node.interruption` are written by
+  // ingest straight off a parsed `SessionNode`, so each column's value space is
+  // exactly the union the node declares — the columns are a copy, not a re-encoding.
   return {
     index: row.idx,
     type: row.type as SessionNode['type'],
@@ -1077,12 +1146,15 @@ function rootPromptsFromDb(db: DatabaseSync, threadIds: readonly string[]): Map<
 
   for (let at = 0; at < wanted.length; at += BIND_LIMIT) {
     const chunk = wanted.slice(at, at + BIND_LIMIT);
+    // SAFETY: the SELECT names exactly thread_id and root_prompt, and its own
+    // predicate rejects the null and empty prompts — so every row carries the two
+    // non-empty strings `RootPromptRow` declares.
     const rows = db
       .prepare(
         `SELECT thread_id, root_prompt FROM session
          WHERE root_prompt IS NOT NULL AND root_prompt != '' AND thread_id IN (${chunk.map(() => '?').join(',')})`,
       )
-      .all(...chunk) as unknown as Array<{ thread_id: string; root_prompt: string }>;
+      .all(...chunk) as RootPromptRow[];
     for (const row of rows) out.set(row.thread_id, row.root_prompt);
   }
   return out;
@@ -1093,9 +1165,12 @@ function rootPromptsFromDb(db: DatabaseSync, threadIds: readonly string[]): Map<
  * tiny: the predicate keeps only the handful of threads that opened something.
  */
 function prLinksFromDb(db: DatabaseSync): Map<string, string> {
+  // SAFETY: the SELECT names exactly thread_id and pr_url, and its own predicate
+  // rejects the null and empty urls — so every row carries the two non-empty
+  // strings `PrLinkRow` declares.
   const rows = db
     .prepare("SELECT thread_id, pr_url FROM session WHERE pr_url IS NOT NULL AND pr_url != ''")
-    .all() as unknown as Array<{ thread_id: string; pr_url: string }>;
+    .all() as PrLinkRow[];
   return new Map(rows.map((row) => [row.thread_id, row.pr_url]));
 }
 
@@ -1111,17 +1186,22 @@ const SESSION_COLUMNS =
   'parent_thread_id, spawn_index, spawn_agent_type';
 
 function sessionRows(db: DatabaseSync): SessionRow[] {
-  return db.prepare(`SELECT ${SESSION_COLUMNS} FROM session`).all() as unknown as SessionRow[];
+  // SAFETY: `SESSION_COLUMNS` is the field list `SessionRow` declares, written out
+  // in the same order — the one place either is edited is beside the other.
+  return db.prepare(`SELECT ${SESSION_COLUMNS} FROM session`).all() as SessionRow[];
 }
 
 /** Every transcript's node stream, keyed by thread id and in transcript order. */
 function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
   const out = new Map<string, SessionNode[]>();
-  for (const row of db
+  // SAFETY: the SELECT names exactly the eleven columns `NodeRow` declares, in that
+  // order, so every row carries all of them.
+  const rows = db
     .prepare(
       'SELECT thread_id, idx, type, text, tool, task, interruption, interrupted, message, turn, args_hash FROM session_node ORDER BY thread_id, idx',
     )
-    .all() as unknown as NodeRow[]) {
+    .all() as NodeRow[];
+  for (const row of rows) {
     const list = out.get(row.thread_id) ?? [];
     list.push(toNode(row));
     out.set(row.thread_id, list);
@@ -1144,9 +1224,11 @@ function nodesByThread(db: DatabaseSync): Map<string, SessionNode[]> {
  * columns beside it — see the schema note in `open.ts`.
  */
 function commandRunsFromDb(db: DatabaseSync): CommandRun[] {
-  const rows = db.prepare('SELECT document FROM command_run ORDER BY ord').all() as unknown as Array<{
-    document: string;
-  }>;
+  // SAFETY: the SELECT names the single column `document`, so every row carries it.
+  const rows = db.prepare('SELECT document FROM command_run ORDER BY ord').all() as DocumentRow[];
+  // SAFETY: `command_run.document` is the verbatim line ingest read out of
+  // `runs.jsonl`, and that store holds one serialized `CommandRun` per line — the
+  // column is a copy of the record, not a re-encoding of it.
   return sortCommandRuns(rows.map((row) => JSON.parse(row.document) as CommandRun)).filter((run) => !run.retired);
 }
 
@@ -1163,12 +1245,14 @@ function commandRunsFromDb(db: DatabaseSync): CommandRun[] {
  * being rebuilt from the columns beside it — see the schema note in `open.ts`.
  */
 function conceptsFromDb(db: DatabaseSync): StoredConcept[] {
-  const rows = db.prepare('SELECT ord, document FROM concept ORDER BY ord').all() as unknown as Array<{
-    ord: number;
-    document: string;
-  }>;
+  // SAFETY: the SELECT names exactly ord and document, so every row carries both.
+  const rows = db.prepare('SELECT ord, document FROM concept ORDER BY ord').all() as ConceptRow[];
   // `ord` comes off the row, not the loop index — it is the line's position in
   // the file, not this result set's.
+  //
+  // SAFETY: `concept.document` is the verbatim line ingest read out of
+  // `concepts.jsonl`, and that store holds one serialized `Concept` per line — the
+  // column is a copy of the record, not a re-encoding of it.
   return sortConcepts(rows.map((row) => ({ ...(JSON.parse(row.document) as Concept), ord: row.ord })));
 }
 
@@ -1211,7 +1295,9 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       const bytes = info.size;
       const modified = info.mtime.toISOString();
 
-      const row = db.prepare(`SELECT ${SESSION_COLUMNS} FROM session WHERE thread_id = ?`).get(id) as unknown as
+      // SAFETY: `SESSION_COLUMNS` is the field list `SessionRow` declares, and
+      // `thread_id` is the table's primary key — so this is that row or no row.
+      const row = db.prepare(`SELECT ${SESSION_COLUMNS} FROM session WHERE thread_id = ?`).get(id) as
         | SessionRow
         | undefined;
       if (row) {
@@ -1232,9 +1318,11 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       // the file reader's contract.
       resolveSessionFile(logDir, id);
       const texts: Record<number, string> = {};
-      for (const row of db
+      // SAFETY: the SELECT names exactly idx and text, so every row carries both.
+      const rows = db
         .prepare('SELECT idx, text FROM session_node_text WHERE thread_id = ? ORDER BY idx')
-        .all(id) as unknown as Array<{ idx: number; text: string }>) {
+        .all(id) as NodeTextRow[];
+      for (const row of rows) {
         texts[row.idx] = row.text;
       }
       return { threadId: id, texts };
@@ -1249,8 +1337,10 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       // `syncCommandRuns` below is what makes the equality reachable here at all:
       // the reconcile's own append moves both halves of it, so without the fold this
       // route always fell through to the parse.
+      // SAFETY: the SELECT names exactly bytes and modified, and `path` is the
+      // watermark table's key — so this is that store's row or no row at all.
       const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(COMMAND_STORE_PATH) as
-        | { bytes: number; modified: string }
+        | WatermarkRow
         | undefined;
       if (mark) {
         try {
@@ -1270,8 +1360,10 @@ export function dbSource(db: DatabaseSync): SidecarSource {
     // `ingestConcepts` uses decides, and anything else re-reads the file, which
     // is what the file reader would have answered.
     readConcepts: async (logDir) => {
+      // SAFETY: the SELECT names exactly bytes and modified, and `path` is the
+      // watermark table's key — so this is that store's row or no row at all.
       const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(CONCEPT_STORE_PATH) as
-        | { bytes: number; modified: string }
+        | WatermarkRow
         | undefined;
       if (mark) {
         try {

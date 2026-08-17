@@ -9,6 +9,7 @@
  */
 import { buildSummary, type SummaryResponse } from './api.js';
 import { resolveArchiveDir } from './archive.js';
+import { errorMessage } from './errors.js';
 import { resolveLogDir } from './logs.js';
 import { renderSummary } from './summary-render.js';
 
@@ -24,8 +25,8 @@ async function reconcileRuns(logDir: string): Promise<void> {
     const { reconcileCommandRuns } = await import('./command-runs.js');
     const { written, runs } = await reconcileCommandRuns(logDir);
     if (written > 0) console.log(`[daily-summary] command runs: ${written} record(s) written, ${runs} stored\n`);
-  } catch (err) {
-    console.error(`[daily-summary] command runs skipped: ${(err as Error).message}`);
+  } catch (cause) {
+    console.error(`[daily-summary] command runs skipped: ${errorMessage(cause)}`);
   }
 }
 
@@ -36,7 +37,7 @@ reconcileRuns(logDir)
   .then((summary: SummaryResponse) => {
     console.log(renderSummary(summary));
   })
-  .catch((err: unknown) => {
-    console.error(`[daily-summary] error: ${(err as Error).message}`);
+  .catch((cause: unknown) => {
+    console.error(`[daily-summary] error: ${errorMessage(cause)}`);
     process.exitCode = 1;
   });

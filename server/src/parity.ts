@@ -35,6 +35,7 @@ import { clearArchiveCache } from './archive.js';
 import { resolveCommandsDir } from './command-runs.js';
 import { remoteConceptStore } from './concepts-remote.js';
 import { fileSource, type SidecarSource } from './db/source.js';
+import { asError } from './errors.js';
 import { resolveSettingsPath } from './settings.js';
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from './usage-history.js';
 
@@ -75,10 +76,31 @@ export interface ParityContext {
   settingsPath?: string;
 }
 
+/**
+ * A value on its way into `JSON.stringify`: what a replayed route answers with,
+ * and every node the comparison walks inside one.
+ *
+ * Deliberately not `JsonValue`. Each `build*` handler answers with its own
+ * response *interface*, and an interface carries no index signature, so it does
+ * not satisfy `JsonObject` however JSON-shaped its fields are. What this harness
+ * actually depends on is narrower than any of those interfaces and is all that is
+ * written here: the value serializes, and its keys are read positionally rather
+ * than by name.
+ */
+export type ParityPayload = ParityPayload[] | ParityResponse | boolean | null | number | string | undefined;
+
+/**
+ * One route's answer, opaque here: the harness names no field of any response,
+ * it only compares two of them key by key. {@link keyedEntries} is the one place
+ * that opens one.
+ */
+// biome-ignore lint/complexity/noBannedTypes: emptiness is the point — an index signature here would be a second copy of each response's contract, and no handler's response interface satisfies one anyway, an interface carrying no implicit index signature.
+export type ParityResponse = {};
+
 /** One replayable request: a label for the failure message, and how to answer it. */
 export interface ParityCase {
   label: string;
-  run(source: SidecarSource): Promise<unknown>;
+  run(source: SidecarSource): Promise<ParityPayload>;
 }
 
 export interface ParityRoute {
@@ -102,20 +124,33 @@ export interface ParityRoute {
 export interface Normalization {
   name: string;
   why: string;
-  apply(value: unknown): unknown;
+  apply(value: ParityPayload): ParityPayload;
 }
 
 export const NORMALIZATIONS: Normalization[] = [];
 
-function normalize(value: unknown): unknown {
-  return NORMALIZATIONS.reduce<unknown>((acc, n) => n.apply(acc), value);
+function normalize(value: ParityPayload): ParityPayload {
+  return NORMALIZATIONS.reduce<ParityPayload>((acc, n) => n.apply(acc), value);
 }
 
 export interface JsonDiff {
   /** Dotted path to the first differing node, e.g. `digest.topTools.3.totalBytes`. */
   path: string;
-  files: unknown;
-  db: unknown;
+  files: ParityPayload;
+  db: ParityPayload;
+}
+
+/**
+ * The own enumerable entries of a payload object, in insertion order, or
+ * `undefined` when the payload is not one.
+ *
+ * The `Map` keeps the key order `JSON.stringify` emits, which is itself part of
+ * what the comparison checks.
+ */
+function keyedEntries(value: ParityPayload): Map<string, ParityPayload> | undefined {
+  if (value === null || value === undefined || Array.isArray(value)) return undefined;
+  if (Object(value) !== value || value instanceof Function) return undefined;
+  return new Map(Object.entries(value));
 }
 
 /**
@@ -123,7 +158,7 @@ export interface JsonDiff {
  * are identical — including key order, which `JSON.stringify` preserves and the
  * dashboard's byte-for-byte responses depend on.
  */
-export function diffJson(a: unknown, b: unknown, at = ''): JsonDiff | null {
+export function diffJson(a: ParityPayload, b: ParityPayload, at = ''): JsonDiff | null {
   if (Object.is(a, b)) return null;
 
   const aIsArr = Array.isArray(a);
@@ -131,28 +166,26 @@ export function diffJson(a: unknown, b: unknown, at = ''): JsonDiff | null {
   if (aIsArr !== bIsArr) return { path: at || '$', files: a, db: b };
 
   if (aIsArr && bIsArr) {
-    const arrA = a as unknown[];
-    const arrB = b as unknown[];
-    if (arrA.length !== arrB.length) return { path: `${at || '$'}.length`, files: arrA.length, db: arrB.length };
-    for (let i = 0; i < arrA.length; i += 1) {
-      const d = diffJson(arrA[i], arrB[i], at ? `${at}.${i}` : String(i));
+    if (a.length !== b.length) return { path: `${at || '$'}.length`, files: a.length, db: b.length };
+    for (let i = 0; i < a.length; i += 1) {
+      const d = diffJson(a[i], b[i], at ? `${at}.${i}` : String(i));
       if (d) return d;
     }
     return null;
   }
 
-  const aIsObj = typeof a === 'object' && a !== null;
-  const bIsObj = typeof b === 'object' && b !== null;
-  if (aIsObj && bIsObj) {
-    const keysA = Object.keys(a as Record<string, unknown>);
-    const keysB = Object.keys(b as Record<string, unknown>);
+  const entriesA = keyedEntries(a);
+  const entriesB = keyedEntries(b);
+  if (entriesA && entriesB) {
+    const keysA = [...entriesA.keys()];
+    const keysB = [...entriesB.keys()];
     // Key order is part of the payload: `JSON.stringify` emits insertion order,
     // and the digest's `models` map inherits it from the read order.
     if (keysA.length !== keysB.length || keysA.some((k, i) => k !== keysB[i])) {
       return { path: `${at || '$'}{}`, files: keysA, db: keysB };
     }
     for (const k of keysA) {
-      const d = diffJson((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], at ? `${at}.${k}` : k);
+      const d = diffJson(entriesA.get(k), entriesB.get(k), at ? `${at}.${k}` : k);
       if (d) return d;
     }
     return null;
@@ -171,7 +204,7 @@ export interface ParityResult {
 }
 
 /** Serialize the way the server does, so "identical" means identical on the wire. */
-function wire(value: unknown): string {
+function wire(value: ParityPayload): string {
   return JSON.stringify(value);
 }
 
@@ -937,22 +970,29 @@ function reportError(label: string, err: Error): void {
  * `servedKind` says which backing produced `served`, so a reported diff names
  * the file answer `files` and the substrate's `db` whichever side served.
  */
-export function shadowCheck(
+export function shadowCheck<Served, Shadowed>(
   label: string,
-  served: unknown,
-  compute: () => Promise<unknown>,
+  served: Served,
+  compute: () => Promise<Shadowed>,
   servedKind: SidecarSource['kind'] = 'files',
 ): void {
   if (!shadowEnabled()) return;
   queueMicrotask(() => {
     void (async () => {
       try {
-        const other = normalize(await compute());
-        const mine = normalize(served);
+        // SAFETY: shadow mode is only ever handed route payloads — `served` is
+        // the object the response was serialized from, and `compute` rebuilds
+        // that same route on the other backing — so both sit inside
+        // `ParityPayload`. They are two independent type parameters because a
+        // disagreement is exactly what this looks for: the two answers are
+        // compared, never assumed to be the same shape.
+        const other = normalize((await compute()) as ParityPayload);
+        // SAFETY: the same argument for the side that was already served.
+        const mine = normalize(served as ParityPayload);
         const diff = servedKind === 'db' ? diffJson(other, mine) : diffJson(mine, other);
         if (diff) reportMismatch(label, diff);
-      } catch (err) {
-        reportError(label, err as Error);
+      } catch (cause) {
+        reportError(label, asError(cause));
       }
     })();
   });

@@ -30,6 +30,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
+import { asError } from './errors.js';
+import {
+  type JsonInput,
+  type JsonObject,
+  jsonField,
+  jsonObject,
+  jsonString,
+  numberField,
+  objectArray,
+  parseJson,
+  stringField,
+} from './json.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // server/src
 
@@ -48,7 +60,7 @@ export interface AgentLaunchFlags {
   /** Sources the alias names via `--setting-sources`; null → the CLI's default set. */
   settingSources: string[] | null;
   /** Static `--settings` JSON the alias injects; null when absent or non-static. */
-  settingsOverrides: Record<string, unknown> | null;
+  settingsOverrides: JsonObject | null;
 }
 
 /** Nothing withheld, nothing overridden — a bare `claude`. */
@@ -141,42 +153,34 @@ export interface CliTurnInput {
   onEvent?: (event: CliLiveEvent) => void;
 }
 
-/** Enough of a `stream-json` line to reassemble a turn. */
-interface CliEvent {
-  type?: string;
-  subtype?: string;
-  session_id?: string;
-  is_error?: boolean;
-  /** On the `system`/`init` event: the mode the child actually started in. */
-  permissionMode?: string;
-  result?: string;
-  usage?: Record<string, unknown>;
-  message?: { content?: unknown; usage?: Record<string, unknown> };
-}
+/** The `content` of a `stream-json` message event, whichever event carried it. */
+const contentOf = (event: JsonInput): JsonInput => jsonField(jsonField(event, 'message'), 'content');
 
-const textOf = (content: unknown): string =>
-  Array.isArray(content)
-    ? content
-        .map((b) =>
-          b && typeof b === 'object' && (b as { type?: string }).type === 'text'
-            ? String((b as { text?: string }).text ?? '')
-            : '',
-        )
-        .filter(Boolean)
-        .join('')
-    : typeof content === 'string'
-      ? content
-      : '';
+/**
+ * The text of a message's content: the `text` blocks joined, or the content itself
+ * when the CLI sent a bare string rather than a block list.
+ */
+const textOf = (content: JsonInput): string => {
+  const bare = jsonString(content);
+  if (bare !== undefined) return bare;
+  let text = '';
+  for (const block of objectArray(content)) {
+    if (stringField(block, 'type') !== 'text') continue;
+    const value = jsonField(block, 'text');
+    if (value !== null && value !== undefined) text += String(value);
+  }
+  return text;
+};
 
-/** The content blocks of a message event, as objects we can inspect. */
-const blocksOf = (content: unknown): Record<string, unknown>[] =>
-  Array.isArray(content) ? content.filter((b): b is Record<string, unknown> => !!b && typeof b === 'object') : [];
-
-function applyUsage(into: CliTurnResult['usage'], u: Record<string, unknown>): void {
-  if (typeof u.input_tokens === 'number') into.input = u.input_tokens;
-  if (typeof u.output_tokens === 'number') into.output = u.output_tokens;
-  if (typeof u.cache_read_input_tokens === 'number') into.cacheRead = u.cache_read_input_tokens;
-  if (typeof u.cache_creation_input_tokens === 'number') into.cacheCreation = u.cache_creation_input_tokens;
+function applyUsage(into: CliTurnResult['usage'], usage: JsonInput): void {
+  const input = numberField(usage, 'input_tokens');
+  const output = numberField(usage, 'output_tokens');
+  const cacheRead = numberField(usage, 'cache_read_input_tokens');
+  const cacheCreation = numberField(usage, 'cache_creation_input_tokens');
+  if (input !== undefined) into.input = input;
+  if (output !== undefined) into.output = output;
+  if (cacheRead !== undefined) into.cacheRead = cacheRead;
+  if (cacheCreation !== undefined) into.cacheCreation = cacheCreation;
 }
 
 const MAX_TOOL_ERROR_CHARS = 400;
@@ -244,45 +248,51 @@ export class CliLiveReader {
 
   private read(raw: string): void {
     if (!raw.trim()) return;
-    let ev: CliEvent;
-    try {
-      ev = JSON.parse(raw) as CliEvent;
-    } catch {
-      return; // a non-JSON line is CLI chatter, not an event
-    }
+    // A non-JSON line is CLI chatter, not an event: it decodes to nothing and every
+    // reader below falls through it.
+    const ev = parseJson(raw);
+    const type = stringField(ev, 'type');
 
-    if (ev.type === 'system' && ev.subtype === 'init') {
-      this.emit({ kind: 'init', permissionMode: typeof ev.permissionMode === 'string' ? ev.permissionMode : null });
+    if (type === 'system' && stringField(ev, 'subtype') === 'init') {
+      this.emit({ kind: 'init', permissionMode: stringField(ev, 'permissionMode') ?? null });
       return;
     }
 
-    if (ev.type === 'assistant') {
-      const text = textOf(ev.message?.content);
+    if (type === 'assistant') {
+      const content = contentOf(ev);
+      const text = textOf(content);
       if (text) this.emit({ kind: 'text', text });
-      for (const b of blocksOf(ev.message?.content)) {
-        if (b.type !== 'tool_use') continue;
+      for (const block of objectArray(content)) {
+        if (stringField(block, 'type') !== 'tool_use') continue;
         const index = this.tools++;
-        if (typeof b.id === 'string') this.byId.set(b.id, index);
-        this.emit({ kind: 'tool', index, name: typeof b.name === 'string' ? b.name : 'unknown' });
+        const id = stringField(block, 'id');
+        if (id !== undefined) this.byId.set(id, index);
+        this.emit({ kind: 'tool', index, name: stringField(block, 'name') ?? 'unknown' });
       }
       return;
     }
 
-    if (ev.type !== 'user') return;
-    for (const b of blocksOf(ev.message?.content)) {
-      if (b.type !== 'tool_result') continue;
-      const index = typeof b.tool_use_id === 'string' ? this.byId.get(b.tool_use_id) : undefined;
+    if (type !== 'user') return;
+    for (const block of objectArray(contentOf(ev))) {
+      if (stringField(block, 'type') !== 'tool_result') continue;
+      const id = stringField(block, 'tool_use_id');
+      const index = id === undefined ? undefined : this.byId.get(id);
       if (index === undefined) continue;
-      const failed = b.is_error === true;
-      const why = failed ? textOf(b.content).trim() : '';
-      this.emit({
-        kind: 'tool-result',
-        index,
-        failed,
-        ...(why ? { error: why.length > MAX_TOOL_ERROR_CHARS ? `${why.slice(0, MAX_TOOL_ERROR_CHARS)}…` : why } : {}),
-      });
+      const failed = jsonField(block, 'is_error') === true;
+      this.emit(toolResultEvent(index, failed, failed ? textOf(jsonField(block, 'content')).trim() : ''));
     }
   }
+}
+
+/** A `tool-result` event, carrying the reason only when the tool gave one. */
+function toolResultEvent(index: number, failed: boolean, why: string): CliLiveEvent {
+  if (!why) return { kind: 'tool-result', index, failed };
+  return { kind: 'tool-result', index, failed, error: trimToolError(why) };
+}
+
+/** A failing `tool_result`'s text, cut to a chip's worth. */
+function trimToolError(why: string): string {
+  return why.length > MAX_TOOL_ERROR_CHARS ? `${why.slice(0, MAX_TOOL_ERROR_CHARS)}…` : why;
 }
 
 /**
@@ -315,39 +325,42 @@ export function decodeCliStream(raw: string, opts: { partial?: boolean } = {}): 
 
   for (const line of raw.split(/\r?\n/)) {
     if (!line.trim()) continue;
-    let ev: CliEvent;
-    try {
-      ev = JSON.parse(line) as CliEvent;
-    } catch {
-      continue; // a non-JSON line is CLI chatter, not an event
-    }
-    if (typeof ev.session_id === 'string' && !out.sessionId) out.sessionId = ev.session_id;
-    if (ev.type === 'system' && ev.subtype === 'init' && typeof ev.permissionMode === 'string') {
-      out.permissionMode = ev.permissionMode;
+    // A non-JSON line is CLI chatter, not an event: it decodes to nothing and every
+    // reader below falls through it.
+    const ev = parseJson(line);
+    const sessionId = stringField(ev, 'session_id');
+    if (sessionId !== undefined && !out.sessionId) out.sessionId = sessionId;
+    const type = stringField(ev, 'type');
+    if (type === 'system' && stringField(ev, 'subtype') === 'init') {
+      out.permissionMode = stringField(ev, 'permissionMode') ?? out.permissionMode;
     }
 
-    if (ev.type === 'assistant') {
-      assistantText += textOf(ev.message?.content);
-      if (ev.message?.usage) applyUsage(out.usage, ev.message.usage);
-      for (const b of blocksOf(ev.message?.content)) {
-        if (b.type !== 'tool_use') continue;
-        const use: CliToolUse = { name: typeof b.name === 'string' ? b.name : 'unknown', failed: false };
+    if (type === 'assistant') {
+      const content = contentOf(ev);
+      assistantText += textOf(content);
+      applyUsage(out.usage, jsonField(jsonField(ev, 'message'), 'usage'));
+      for (const block of objectArray(content)) {
+        if (stringField(block, 'type') !== 'tool_use') continue;
+        const use: CliToolUse = { name: stringField(block, 'name') ?? 'unknown', failed: false };
         out.tools.push(use);
-        if (typeof b.id === 'string') byId.set(b.id, use);
+        const id = stringField(block, 'id');
+        if (id !== undefined) byId.set(id, use);
       }
-    } else if (ev.type === 'user') {
-      for (const b of blocksOf(ev.message?.content)) {
-        if (b.type !== 'tool_result' || b.is_error !== true) continue;
-        const use = typeof b.tool_use_id === 'string' ? byId.get(b.tool_use_id) : undefined;
+    } else if (type === 'user') {
+      for (const block of objectArray(contentOf(ev))) {
+        if (stringField(block, 'type') !== 'tool_result' || jsonField(block, 'is_error') !== true) continue;
+        const id = stringField(block, 'tool_use_id');
+        const use = id === undefined ? undefined : byId.get(id);
         if (!use) continue;
         use.failed = true;
-        const why = textOf(b.content).trim();
-        if (why) use.error = why.length > MAX_TOOL_ERROR_CHARS ? `${why.slice(0, MAX_TOOL_ERROR_CHARS)}…` : why;
+        const why = textOf(jsonField(block, 'content')).trim();
+        if (why) use.error = trimToolError(why);
       }
-    } else if (ev.type === 'result') {
-      if (ev.usage) applyUsage(out.usage, ev.usage);
-      if (ev.is_error) failure = ev.result ?? ev.subtype ?? 'unknown error';
-      else if (typeof ev.result === 'string') resultText = ev.result;
+    } else if (type === 'result') {
+      applyUsage(out.usage, jsonField(ev, 'usage'));
+      const result = stringField(ev, 'result');
+      if (jsonField(ev, 'is_error')) failure = result ?? stringField(ev, 'subtype') ?? 'unknown error';
+      else if (result !== undefined) resultText = result;
     }
   }
 
@@ -366,10 +379,11 @@ export function decodeCliStream(raw: string, opts: { partial?: boolean } = {}): 
  * mode loads that file by design, so the base URL is written last and wins over both
  * it and anything the alias injects.
  */
-export function cliSettings(baseUrl: string, overrides?: Record<string, unknown> | null): Record<string, unknown> {
-  const base = overrides && typeof overrides === 'object' ? { ...overrides } : {};
-  const env = base.env && typeof base.env === 'object' ? { ...(base.env as Record<string, unknown>) } : {};
-  return { ...base, env: { ...env, ANTHROPIC_BASE_URL: baseUrl } };
+export function cliSettings(baseUrl: string, overrides?: JsonObject | null): JsonObject {
+  const base: JsonObject = { ...overrides };
+  const env = jsonObject(base.env) ?? {};
+  base.env = { ...env, ANTHROPIC_BASE_URL: baseUrl };
+  return base;
 }
 
 /**
@@ -481,6 +495,16 @@ export function findOnPath(cmd: string, env: NodeJS.ProcessEnv = process.env): s
 /** How long a SIGTERMed run has to flush and exit before it is SIGKILLed. */
 const STOP_GRACE_MS = 3_000;
 
+/** What a run in flight has decided so far, written from the callbacks that decide it. */
+interface RunState {
+  /** Why the run was cut short, once something has cut it short. */
+  interrupted: CliInterruption | null;
+  /** The pending SIGKILL that follows an unheeded SIGTERM. */
+  sigkill: NodeJS.Timeout | null;
+  /** The silence clock, re-armed by every chunk the child writes. */
+  idle: NodeJS.Timeout | null;
+}
+
 /**
  * Run one headless turn. The prompt goes over stdin so it is never argv-quoted.
  *
@@ -512,11 +536,7 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
 
   // On an object: these are written from callbacks, and a `let` would read back as its
   // initializer across the await below.
-  const state = {
-    interrupted: null as CliInterruption | null,
-    sigkill: null as NodeJS.Timeout | null,
-    idle: null as NodeJS.Timeout | null,
-  };
+  const state: RunState = { interrupted: null, sigkill: null, idle: null };
 
   /** Signal the child's whole group, falling back to the child alone where there isn't one. */
   const signalGroup = (sig: NodeJS.Signals): void => {
@@ -597,9 +617,12 @@ export async function runCliTurn(input: CliTurnInput): Promise<CliTurnResult> {
   let closed: { code: number | null; signal: NodeJS.Signals | null };
   try {
     closed = await exit;
-  } catch (err) {
+  } catch (cause) {
     done();
-    const reason = (err as NodeJS.ErrnoException).code === 'ENOENT' ? 'not found on PATH' : (err as Error).message;
+    // `spawn` reports a missing executable as an `ErrnoException`, so the `code` is read
+    // through an `in` guard rather than assumed — anything else keeps its own message.
+    const error = asError(cause);
+    const reason = 'code' in error && error.code === 'ENOENT' ? 'not found on PATH' : error.message;
     throw new Error(`chat cli could not start (${input.cliPath}: ${reason})`);
   }
   done();

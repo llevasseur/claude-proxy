@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { asError } from '../errors.js';
 import { type IngestStats, ingest, watchAndIngest } from './ingest.js';
 import { openDb } from './open.js';
 import { dbSource, fileSource, type SidecarSource } from './source.js';
@@ -22,8 +23,8 @@ export function startSubstrate(logDir: string, onError: (err: Error) => void = (
     const stop = watchAndIngest(db, logDir, { onError });
     handle = { db, source: dbSource(db), stop };
     return handle.source;
-  } catch (err) {
-    onError(err as Error);
+  } catch (cause) {
+    onError(asError(cause));
     return null;
   }
 }

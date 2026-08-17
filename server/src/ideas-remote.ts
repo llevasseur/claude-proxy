@@ -18,7 +18,17 @@
  * to a file, or put in a response body.
  */
 
-import { type IdeasStore, parseIdeasStore } from '@claude-proxy/core';
+import {
+  type IdeaAdd,
+  type IdeaClaimRequest,
+  type IdeaComment,
+  type IdeaFiling,
+  type IdeaMark,
+  type IdeasStore,
+  parseIdeasStore,
+} from '@claude-proxy/core';
+import { errorMessage } from './errors.js';
+import type { JsonValue } from './json.js';
 
 /** A configured hosted ledger: where it is, and the bearer token to reach it. */
 export interface RemoteIdeasStore {
@@ -95,21 +105,27 @@ export function remoteIdeasStoreLabel(store: RemoteIdeasStore): string {
  * ledger and an unreachable one are indistinguishable to a caller, and the
  * caller here is about to decide whether an idea has been proposed before.
  */
+/** The headers this module sets itself, before `init`'s own are laid over them. */
+interface CallHeaders {
+  authorization: string;
+  'content-type'?: string;
+}
+
 async function call<T>(store: RemoteIdeasStore, path: string, init?: RequestInit): Promise<T> {
   const url = `${store.origin}${path}`;
   const label = safeLabel(url, path);
+  // `content-type` is set only for a request that carries a body, and `init`'s
+  // own headers still win over both, exactly as the spread they replace did.
+  const headers: CallHeaders = { authorization: `Bearer ${store.token}` };
+  if (init?.body) headers['content-type'] = 'application/json';
   let response: Response;
   try {
     response = await fetch(url, {
       ...init,
-      headers: {
-        authorization: `Bearer ${store.token}`,
-        ...(init?.body ? { 'content-type': 'application/json' } : {}),
-        ...init?.headers,
-      },
+      headers: { ...headers, ...init?.headers },
     });
-  } catch (err) {
-    throw new RemoteIdeasStoreError(`${label} (${(err as Error).message})`);
+  } catch (cause) {
+    throw new RemoteIdeasStoreError(`${label} (${errorMessage(cause)})`);
   }
   if (!response.ok) {
     // The Worker's own refusal is the useful half of a 400 — it is core's parse
@@ -118,6 +134,10 @@ async function call<T>(store: RemoteIdeasStore, path: string, init?: RequestInit
     const reason = detail ? `: ${detail.slice(0, 500)}` : '';
     throw new RemoteIdeasStoreError(`${label} answered ${response.status}${reason}`);
   }
+  // SAFETY: `T` is the response shape the caller names for the route it asked
+  // for, and every caller here is one of this file's own wrappers, each paired
+  // with the ledger route that answers it. The body is decoded JSON — the 2xx
+  // check above is what says the Worker answered rather than refused.
   return (await response.json()) as T;
 }
 
@@ -128,7 +148,7 @@ async function call<T>(store: RemoteIdeasStore, path: string, init?: RequestInit
  * version does not understand degrades identically wherever it is read from.
  */
 export async function fetchRemoteIdeas(store: RemoteIdeasStore): Promise<IdeasStore> {
-  return parseIdeasStore(await call<unknown>(store, '/api/ideas/export'));
+  return parseIdeasStore(await call<JsonValue>(store, '/api/ideas/export'));
 }
 
 export interface RemoteAddResult {
@@ -149,7 +169,18 @@ export interface RemoteClaimResult {
   unknown: string[];
 }
 
-function post<T>(store: RemoteIdeasStore, path: string, body: unknown): Promise<T> {
+/**
+ * The five envelopes the ledger accepts, one per write route. The key names are
+ * the wire contract the Worker reads, so they are the type rather than a comment.
+ */
+type IdeasRequestBody =
+  | { ideas: readonly IdeaAdd[] }
+  | { marks: readonly IdeaMark[] }
+  | { filings: readonly IdeaFiling[] }
+  | { comments: readonly IdeaComment[] }
+  | { claims: readonly IdeaClaimRequest[] };
+
+function post<T>(store: RemoteIdeasStore, path: string, body: IdeasRequestBody): Promise<T> {
   return call<T>(store, path, { method: 'POST', body: JSON.stringify(body) });
 }
 
@@ -159,19 +190,22 @@ function post<T>(store: RemoteIdeasStore, path: string, body: unknown): Promise<
  * reason the ledger moved, so it is deliberately not re-done here from a
  * corpus this process happens to hold.
  */
-export function addRemoteIdeas(store: RemoteIdeasStore, ideas: unknown): Promise<RemoteAddResult> {
+export function addRemoteIdeas(store: RemoteIdeasStore, ideas: readonly IdeaAdd[]): Promise<RemoteAddResult> {
   return post<RemoteAddResult>(store, '/api/ideas', { ideas });
 }
 
-export function markRemoteIdeas(store: RemoteIdeasStore, marks: unknown): Promise<RemoteWriteResult> {
+export function markRemoteIdeas(store: RemoteIdeasStore, marks: readonly IdeaMark[]): Promise<RemoteWriteResult> {
   return post<RemoteWriteResult>(store, '/api/ideas/mark', { marks });
 }
 
-export function fileRemoteIdeas(store: RemoteIdeasStore, filings: unknown): Promise<RemoteWriteResult> {
+export function fileRemoteIdeas(store: RemoteIdeasStore, filings: readonly IdeaFiling[]): Promise<RemoteWriteResult> {
   return post<RemoteWriteResult>(store, '/api/ideas/file', { filings });
 }
 
-export function commentRemoteIdeas(store: RemoteIdeasStore, comments: unknown): Promise<RemoteWriteResult> {
+export function commentRemoteIdeas(
+  store: RemoteIdeasStore,
+  comments: readonly IdeaComment[],
+): Promise<RemoteWriteResult> {
   return post<RemoteWriteResult>(store, '/api/ideas/comment', { comments });
 }
 
@@ -179,6 +213,9 @@ export function commentRemoteIdeas(store: RemoteIdeasStore, comments: unknown): 
  * Take ideas. The refusal in the body names whoever holds one — a live holder is
  * an answer, not a failed request, exactly as it was when this was a file.
  */
-export function claimRemoteIdeas(store: RemoteIdeasStore, claims: unknown): Promise<RemoteClaimResult> {
+export function claimRemoteIdeas(
+  store: RemoteIdeasStore,
+  claims: readonly IdeaClaimRequest[],
+): Promise<RemoteClaimResult> {
   return post<RemoteClaimResult>(store, '/api/ideas/claim', { claims });
 }

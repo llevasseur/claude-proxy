@@ -31,8 +31,12 @@ export async function readSystemPromptFile(promptPath: string): Promise<SystemPr
   try {
     const [text, info] = await Promise.all([readFile(promptPath, 'utf8'), stat(promptPath)]);
     return { promptPath, exists: true, text, modified: info.mtime.toISOString() };
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  } catch (cause) {
+    // SAFETY: `readFile` and `stat` reject with a Node `ErrnoException` and nothing else,
+    // so `code` is the field the runtime attached; anything without one is not `ENOENT`
+    // and is rethrown, which is the branch that must never pass for absent.
+    const code = (cause as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') throw cause;
     return { promptPath, exists: false, text: '', modified: null };
   }
 }
@@ -61,10 +65,13 @@ export async function writeSystemPromptFile(promptPath: string, text: string): P
   try {
     await copyFile(promptPath, backupPath);
     backedUp = true;
-  } catch (err) {
+  } catch (cause) {
     // Nothing there yet is the first save; a backup that failed for any other reason
     // is not something to overwrite the original on top of.
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    // SAFETY: `copyFile` rejects with a Node `ErrnoException`, so `code` is the errno the
+    // runtime attached; a value carrying none reads as not-`ENOENT` and is rethrown.
+    const code = (cause as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') throw cause;
   }
 
   const temp = `${promptPath}.${process.pid}.tmp`;
