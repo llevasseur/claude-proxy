@@ -10,10 +10,9 @@
  * Durations are multiples of `--motion-duration`, so reduced motion flattens
  * the fade for free. */
 
-/* Inherited on purpose. `::-webkit-scrollbar-thumb` is a child of the element it
- * scrolls, so it reads this property off that element's inherited value — a
- * non-inherited property resolves to its initial value there and the thumb stays
- * transparent no matter what the scroller says. */
+/* Inherited: `::-webkit-scrollbar-thumb` is a child of the element it scrolls, so
+ * a non-inherited property resolves to its initial value there and the thumb
+ * stays transparent whatever the scroller says. */
 @property --scrollbar-thumb {
   syntax: "<color>";
   inherits: true;
@@ -22,8 +21,8 @@
 
 @layer base {
   * {
-    /* Every element states its own colour rather than taking an ancestor's, so
-     * the page scrolling reveals the page's bar alone and not every panel's. */
+    /* Own colour, not an ancestor's: the page scrolling would otherwise reveal
+     * every panel's bar with it. */
     --scrollbar-thumb: transparent;
     /* Entering is quicker than leaving: fade in at once, linger on the way out. */
     transition: --scrollbar-thumb var(--motion-duration) var(--ease-out);
