@@ -29,6 +29,17 @@
  */
 
 import type { Severity } from './advice.js';
+import {
+  type JsonValue,
+  jsonArray,
+  jsonEntries,
+  jsonNumber,
+  jsonObject,
+  jsonText,
+  jsonValueOf,
+  objectAt,
+  textAt,
+} from './json.js';
 import { isThinPass, parseWriteProvenance, type WriteProvenance } from './provenance.js';
 import { type SessionBucket, SUGGESTION_DEFECT_THRESHOLDS, type SuggestionSource } from './suggestions.js';
 
@@ -47,9 +58,17 @@ export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
 /** What a suggestion is until someone says otherwise. */
 export const DEFAULT_SUGGESTION_STATUS: SuggestionStatus = 'pending';
 
-/** True when `value` names one of the flags. */
-export function isSuggestionStatus(value: unknown): value is SuggestionStatus {
-  return typeof value === 'string' && (SUGGESTION_STATUSES as readonly string[]).includes(value);
+/**
+ * True when `value` names one of the flags.
+ *
+ * The parameter is generic rather than `JsonValue` because the guard runs on CLI
+ * argv and HTTP bodies before either has been given a domain type; `jsonValueOf`
+ * carries the candidate in and `jsonText` re-checks it is a string before the
+ * membership test.
+ */
+export function isSuggestionStatus<Candidate>(value: Candidate): value is Candidate & SuggestionStatus {
+  const found = jsonText(jsonValueOf(value));
+  return found !== null && SUGGESTION_STATUSES.some((status) => status === found);
 }
 
 /** One recorded decision about one suggestion. */
@@ -118,52 +137,46 @@ export function emptySuggestionStatusStore(): SuggestionStatusStore {
  * upgrade needs. Every bucket in such a file therefore reads as unjudged, which
  * is true.
  */
-export function parseSuggestionStatusStore(raw: unknown): SuggestionStatusStore {
+export function parseSuggestionStatusStore(raw: JsonValue): SuggestionStatusStore {
   const store = emptySuggestionStatusStore();
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return store;
-  const buckets = (raw as { buckets?: unknown }).buckets;
-  if (buckets && typeof buckets === 'object' && !Array.isArray(buckets)) {
-    for (const [bucketKey, entries] of Object.entries(buckets as Record<string, unknown>)) {
-      const index = bucketIndexOf(bucketKey);
-      if (index === null) continue;
-      if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue;
-      const kept: Record<string, SuggestionStatusEntry> = {};
-      for (const [id, entry] of Object.entries(entries as Record<string, unknown>)) {
-        if (!id || !entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-        const { status, updated, note } = entry as { status?: unknown; updated?: unknown; note?: unknown };
-        if (!isSuggestionStatus(status) || status === DEFAULT_SUGGESTION_STATUS) continue;
-        kept[id] = {
-          status,
-          updated: typeof updated === 'string' ? updated : '',
-          ...(typeof note === 'string' && note ? { note } : {}),
-        };
-      }
-      if (Object.keys(kept).length > 0) store.buckets[String(index)] = kept;
+  const source = jsonObject(raw);
+  if (source === null) return store;
+
+  for (const [bucketKey, entries] of jsonEntries(objectAt(source, 'buckets'))) {
+    const index = bucketIndexOf(bucketKey);
+    if (index === null) continue;
+    const rows = jsonObject(entries);
+    if (rows === null) continue;
+    const kept: Record<string, SuggestionStatusEntry> = {};
+    for (const [id, entry] of jsonEntries(rows)) {
+      const flag = jsonObject(entry);
+      if (!id || flag === null) continue;
+      const status = flag.status;
+      if (!isSuggestionStatus(status) || status === DEFAULT_SUGGESTION_STATUS) continue;
+      const decided: SuggestionStatusEntry = { status, updated: textAt(flag, 'updated') };
+      const note = textAt(flag, 'note');
+      if (note) decided.note = note;
+      kept[id] = decided;
     }
+    if (Object.keys(kept).length > 0) store.buckets[String(index)] = kept;
   }
 
-  const judged = (raw as { judged?: unknown }).judged;
-  if (judged && typeof judged === 'object' && !Array.isArray(judged)) {
-    for (const [bucketKey, record] of Object.entries(judged as Record<string, unknown>)) {
-      const index = bucketIndexOf(bucketKey);
-      if (index === null) continue;
-      if (!record || typeof record !== 'object' || Array.isArray(record)) continue;
-      const { at, notes, by } = record as { at?: unknown; notes?: unknown; by?: unknown };
-      const kept: Record<string, string> = {};
-      if (notes && typeof notes === 'object' && !Array.isArray(notes)) {
-        for (const [id, text] of Object.entries(notes as Record<string, unknown>)) {
-          if (id && typeof text === 'string' && text) kept[id] = text;
-        }
-      }
-      // A record with no timestamp and no notes still means "judged", which is the
-      // whole claim — `--amnesty` writes exactly that.
-      const provenance = parseWriteProvenance(by);
-      store.judged[String(index)] = {
-        at: typeof at === 'string' ? at : '',
-        notes: kept,
-        ...(provenance ? { by: provenance } : {}),
-      };
+  for (const [bucketKey, verdict] of jsonEntries(objectAt(source, 'judged'))) {
+    const index = bucketIndexOf(bucketKey);
+    if (index === null) continue;
+    const fields = jsonObject(verdict);
+    if (fields === null) continue;
+    const kept: Record<string, string> = {};
+    for (const [id, note] of jsonEntries(objectAt(fields, 'notes'))) {
+      const text = jsonText(note);
+      if (id && text) kept[id] = text;
     }
+    // A record with no timestamp and no notes still means "judged", which is the
+    // whole claim — `--amnesty` writes exactly that.
+    const provenance = parseWriteProvenance(fields.by);
+    const judgement: SuggestionJudgement = { at: textAt(fields, 'at'), notes: kept };
+    if (provenance) judgement.by = provenance;
+    store.judged[String(index)] = judgement;
   }
   return store;
 }
@@ -195,9 +208,13 @@ export const SUGGESTION_RECURRENCES = ['none', 'historical', 'mixed', 'regressed
 
 export type SuggestionRecurrence = (typeof SUGGESTION_RECURRENCES)[number];
 
-/** True when `value` names one of the four recurrence states. */
-export function isSuggestionRecurrence(value: unknown): value is SuggestionRecurrence {
-  return typeof value === 'string' && (SUGGESTION_RECURRENCES as readonly string[]).includes(value);
+/**
+ * True when `value` names one of the four recurrence states. Generic for the same
+ * reason as {@link isSuggestionStatus}: its callers are argv and request bodies.
+ */
+export function isSuggestionRecurrence<Candidate>(value: Candidate): value is Candidate & SuggestionRecurrence {
+  const found = jsonText(jsonValueOf(value));
+  return found !== null && SUGGESTION_RECURRENCES.some((recurrence) => recurrence === found);
 }
 
 /** The claim a rule carries: the latest dated `done` recorded for it, in any bucket. */
@@ -232,7 +249,9 @@ export function ruleResolutions(store: SuggestionStatusStore): Map<string, Sugge
       if (Number.isNaN(at)) continue;
       const held = latest.get(id);
       if (held && Date.parse(held.updated) >= at) continue;
-      latest.set(id, { bucket, updated: entry.updated, ...(entry.note ? { note: entry.note } : {}) });
+      const resolution: SuggestionResolution = { bucket, updated: entry.updated };
+      if (entry.note) resolution.note = entry.note;
+      latest.set(id, resolution);
     }
   }
   return latest;
@@ -296,7 +315,7 @@ export function applySuggestionStatusUpdates(
     // An explicit empty note clears; an absent one keeps whatever was there.
     const note = update.note ?? next.buckets[key]?.[update.id]?.note;
     if (note) entry.note = note;
-    next.buckets[key] = { ...(next.buckets[key] ?? {}), [update.id]: entry };
+    next.buckets[key] = { ...next.buckets[key], [update.id]: entry };
   }
   return next;
 }
@@ -306,20 +325,30 @@ export function applySuggestionStatusUpdates(
  * throw with the first thing wrong. Shared so the API and the command line refuse
  * exactly the same shapes.
  */
-export function parseSuggestionStatusUpdates(raw: unknown): SuggestionStatusUpdate[] {
-  if (!Array.isArray(raw)) throw new Error('updates must be an array');
-  if (raw.length === 0) throw new Error('updates must not be empty');
+export function parseSuggestionStatusUpdates<Candidate>(raw: Candidate): SuggestionStatusUpdate[] {
+  const items = jsonArray(jsonValueOf(raw));
+  if (items === null) throw new Error('updates must be an array');
+  if (items.length === 0) throw new Error('updates must not be empty');
 
-  return raw.map((item, i) => {
+  return items.map((item, i) => {
     const where = `updates[${i}]`;
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { bucket, id, status, note } = item as Record<string, unknown>;
-    if (!Number.isInteger(bucket) || (bucket as number) < 1) throw new Error(`${where}.bucket must be an integer >= 1`);
-    if (typeof id !== 'string' || !id.trim()) throw new Error(`${where}.id must be a non-empty string`);
+    const fields = jsonObject(item);
+    if (fields === null) throw new Error(`${where} must be an object`);
+    const bucket = jsonNumber(fields.bucket);
+    if (bucket === null || !Number.isInteger(bucket) || bucket < 1)
+      throw new Error(`${where}.bucket must be an integer >= 1`);
+    const id = jsonText(fields.id);
+    if (id === null || !id.trim()) throw new Error(`${where}.id must be a non-empty string`);
+    const status = fields.status;
     if (!isSuggestionStatus(status))
       throw new Error(`${where}.status must be one of ${SUGGESTION_STATUSES.join(', ')}`);
-    if (note !== undefined && typeof note !== 'string') throw new Error(`${where}.note must be a string`);
-    return { bucket: bucket as number, id: id.trim(), status, ...(note === undefined ? {} : { note }) };
+    const update: SuggestionStatusUpdate = { bucket, id: id.trim(), status };
+    if (fields.note !== undefined) {
+      const note = jsonText(fields.note);
+      if (note === null) throw new Error(`${where}.note must be a string`);
+      update.note = note;
+    }
+    return update;
   });
 }
 
@@ -362,7 +391,9 @@ export function applySuggestionJudgements(
     for (const [id, text] of Object.entries(write.notes ?? {})) {
       if (id.trim() && text) notes[id.trim()] = text;
     }
-    next.judged[String(write.bucket)] = { at, notes, ...(write.by ? { by: write.by } : {}) };
+    const judgement: SuggestionJudgement = { at, notes };
+    if (write.by) judgement.by = write.by;
+    next.judged[String(write.bucket)] = judgement;
   }
   return next;
 }
@@ -371,28 +402,34 @@ export function applySuggestionJudgements(
  * Read untrusted input as judgement writes, or throw with the first thing wrong.
  * Shared so the API and the command line refuse exactly the same shapes.
  */
-export function parseSuggestionJudgements(raw: unknown): SuggestionJudgementWrite[] {
-  if (!Array.isArray(raw)) throw new Error('judged must be an array');
-  if (raw.length === 0) throw new Error('judged must not be empty');
+export function parseSuggestionJudgements<Candidate>(raw: Candidate): SuggestionJudgementWrite[] {
+  const items = jsonArray(jsonValueOf(raw));
+  if (items === null) throw new Error('judged must be an array');
+  if (items.length === 0) throw new Error('judged must not be empty');
 
-  return raw.map((item, i) => {
+  return items.map((item, i) => {
     const where = `judged[${i}]`;
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { bucket, notes, by } = item as Record<string, unknown>;
-    if (!Number.isInteger(bucket) || (bucket as number) < 1) throw new Error(`${where}.bucket must be an integer >= 1`);
+    const fields = jsonObject(item);
+    if (fields === null) throw new Error(`${where} must be an object`);
+    const bucket = jsonNumber(fields.bucket);
+    if (bucket === null || !Number.isInteger(bucket) || bucket < 1)
+      throw new Error(`${where}.bucket must be an integer >= 1`);
     // An unreadable envelope is dropped rather than thrown on — refusing a verdict
     // over it would make the audit trail a precondition for what it audits.
-    const provenance = parseWriteProvenance(by);
-    const attribution = provenance ? { by: provenance } : {};
-    if (notes === undefined) return { bucket: bucket as number, ...attribution };
-    if (!notes || typeof notes !== 'object' || Array.isArray(notes))
-      throw new Error(`${where}.notes must be an object`);
+    const provenance = parseWriteProvenance(fields.by);
+    const write: SuggestionJudgementWrite = { bucket };
+    if (provenance) write.by = provenance;
+    if (fields.notes === undefined) return write;
+    const notes = jsonObject(fields.notes);
+    if (notes === null) throw new Error(`${where}.notes must be an object`);
     const kept: Record<string, string> = {};
-    for (const [id, text] of Object.entries(notes as Record<string, unknown>)) {
-      if (typeof text !== 'string') throw new Error(`${where}.notes.${id} must be a string`);
+    for (const [id, note] of jsonEntries(notes)) {
+      const text = jsonText(note);
+      if (text === null) throw new Error(`${where}.notes.${id} must be a string`);
       if (id.trim() && text) kept[id.trim()] = text;
     }
-    return { bucket: bucket as number, notes: kept, ...attribution };
+    write.notes = kept;
+    return write;
   });
 }
 
@@ -474,6 +511,10 @@ export function bucketJudgements(
 
 /** How many buckets sit in each judgement state. */
 export function countBucketJudgementStates(rows: readonly BucketJudgementRow[]): Record<BucketJudgementState, number> {
+  // SAFETY: `Object.fromEntries` widens its key type to `string`, because it cannot
+  // see where the keys came from. The `map` above walks `BUCKET_JUDGEMENT_STATES`,
+  // the tuple `BucketJudgementState` is derived from, so every member of that union
+  // is present as a key and no other key is — which is what the assertion states.
   const counts = Object.fromEntries(BUCKET_JUDGEMENT_STATES.map((s) => [s, 0])) as Record<BucketJudgementState, number>;
   for (const row of rows) counts[row.state]++;
   return counts;
@@ -542,7 +583,14 @@ export interface RuleDefect {
   /** Why it was suppressed, ready to print. Absent on a live defect. */
   staleReason?: string;
   /** Each dismissal, oldest bucket first, with the reason recorded for it. */
-  buckets: { bucket: number; reason?: string }[];
+  buckets: RuleDismissal[];
+}
+
+/** One bucket a rule was dismissed in, and the reason the dismissal recorded. */
+export interface RuleDismissal {
+  bucket: number;
+  /** The dismissing entry's note, when it carried one. */
+  reason?: string;
 }
 
 /**
@@ -581,7 +629,7 @@ export function ruleDefects(buckets: readonly SessionBucket[], store: Suggestion
     }
   }
 
-  const dismissals = new Map<string, { bucket: number; reason?: string }[]>();
+  const dismissals = new Map<string, RuleDismissal[]>();
   for (const [bucketKey, entries] of Object.entries(store.buckets)) {
     const bucket = Number(bucketKey);
     if (!complete.has(bucket)) continue;
@@ -593,7 +641,9 @@ export function ruleDefects(buckets: readonly SessionBucket[], store: Suggestion
       if (seen) seen.add(bucket);
       else fired.set(id, new Set([bucket]));
       const list = dismissals.get(id) ?? [];
-      list.push({ bucket, ...(entry.note ? { reason: entry.note } : {}) });
+      const dismissal: RuleDismissal = { bucket };
+      if (entry.note) dismissal.reason = entry.note;
+      list.push(dismissal);
       dismissals.set(id, list);
     }
   }
@@ -613,7 +663,7 @@ export function ruleDefects(buckets: readonly SessionBucket[], store: Suggestion
     const to = ordered[ordered.length - 1]!.bucket;
     const cleanTail = judged.filter((index) => index > to).length;
     const stale = cleanTail >= SUGGESTION_DEFECT_THRESHOLDS.minCleanTailBuckets;
-    out.push({
+    const defect: RuleDefect = {
       id,
       dismissed: hits.length,
       fired: total,
@@ -621,15 +671,14 @@ export function ruleDefects(buckets: readonly SessionBucket[], store: Suggestion
       span: { from, to },
       cleanTail,
       stale,
-      ...(stale
-        ? {
-            staleReason:
-              `every dismissal predates bucket ${to}, and the ${cleanTail} judged bucket${cleanTail === 1 ? '' : 's'} ` +
-              `since ${to} recorded none — the record reads as already fixed rather than still misfiring`,
-          }
-        : {}),
       buckets: ordered,
-    });
+    };
+    if (stale) {
+      defect.staleReason =
+        `every dismissal predates bucket ${to}, and the ${cleanTail} judged bucket${cleanTail === 1 ? '' : 's'} ` +
+        `since ${to} recorded none — the record reads as already fixed rather than still misfiring`;
+    }
+    out.push(defect);
   }
   return out.sort(
     (a, b) =>
@@ -814,6 +863,10 @@ export function suggestionStatusRows(
 /** How many rows carry each flag — the one-line summary a caller prints. */
 export function countSuggestionStatuses(rows: readonly SuggestionStatusRow[]): Record<SuggestionStatus, number> {
   // Built from the enum so a new flag is counted without a second edit here.
+  // SAFETY: the keys are exactly the members of `SUGGESTION_STATUSES`, the tuple
+  // `SuggestionStatus` is derived from, so the object has one entry per member of
+  // that union and none besides — the fact `Object.fromEntries`'s `string` key type
+  // throws away.
   const counts = Object.fromEntries(SUGGESTION_STATUSES.map((s) => [s, 0])) as Record<SuggestionStatus, number>;
   for (const row of rows) counts[row.status]++;
   return counts;
@@ -821,7 +874,12 @@ export function countSuggestionStatuses(rows: readonly SuggestionStatusRow[]): R
 
 /** How many rows sit in each recurrence state. */
 export function countSuggestionRecurrences(rows: readonly SuggestionStatusRow[]): Record<SuggestionRecurrence, number> {
-  const counts: Record<SuggestionRecurrence, number> = { none: 0, historical: 0, mixed: 0, regressed: 0 };
+  // Built from the enum, like {@link countSuggestionStatuses}, so a fifth state is
+  // counted without a second edit here.
+  // SAFETY: the keys are exactly the members of `SUGGESTION_RECURRENCES`, the tuple
+  // `SuggestionRecurrence` is derived from, so every recurrence state indexes the
+  // object and nothing else does.
+  const counts = Object.fromEntries(SUGGESTION_RECURRENCES.map((r) => [r, 0])) as Record<SuggestionRecurrence, number>;
   for (const row of rows) counts[row.recurrence]++;
   return counts;
 }

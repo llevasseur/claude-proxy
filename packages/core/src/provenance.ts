@@ -24,14 +24,23 @@
  * package, which hands the parsed nodes here.
  */
 
+import { type JsonValue, jsonNumber, jsonObject, jsonText, jsonValueOf } from './json.js';
 import type { SessionNode } from './sessions.js';
 
 /** A thread id is the 16-hex-char stem the proxy names a transcript with. */
 const THREAD_ID_RE = /^[0-9a-f]{16}$/;
 
-/** True when `value` is a well-formed thread id. */
-export function isThreadId(value: unknown): value is string {
-  return typeof value === 'string' && THREAD_ID_RE.test(value);
+/**
+ * True when `value` is a well-formed thread id.
+ *
+ * The parameter is generic rather than `JsonValue` because the callers are CLI
+ * flags and HTTP bodies, which reach this guard before anything has given them a
+ * domain type; `jsonValueOf` carries the candidate in and `jsonText` re-checks
+ * that it is a string before the pattern is applied.
+ */
+export function isThreadId<Candidate>(value: Candidate): value is Candidate & string {
+  const found = jsonText(jsonValueOf(value));
+  return found !== null && THREAD_ID_RE.test(found);
 }
 
 /**
@@ -58,17 +67,25 @@ export interface WriteProvenance {
  * thread id. An entry stored before provenance existed has no envelope at all,
  * and reads back as null rather than as a defect.
  */
-export function parseWriteProvenance(raw: unknown): WriteProvenance | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const { thread, window, opened } = raw as Record<string, unknown>;
-  if (!isThreadId(thread)) return null;
+export function parseWriteProvenance(raw: JsonValue | undefined): WriteProvenance | null {
+  const record = jsonObject(raw);
+  if (record === null) return null;
+  const thread = jsonText(record.thread);
+  if (thread === null || !THREAD_ID_RE.test(thread)) return null;
   const out: WriteProvenance = { thread };
-  if (Number.isInteger(window) && (window as number) >= 0) out.window = window as number;
-  if (Number.isInteger(opened) && (opened as number) >= 0) out.opened = opened as number;
+  const window = jsonNumber(record.window);
+  const opened = jsonNumber(record.opened);
   // A count with no denominator measures nothing — keep the pair or neither.
-  if (out.window === undefined || out.opened === undefined) {
-    delete out.window;
-    delete out.opened;
+  if (
+    window !== null &&
+    opened !== null &&
+    Number.isInteger(window) &&
+    Number.isInteger(opened) &&
+    window >= 0 &&
+    opened >= 0
+  ) {
+    out.window = window;
+    out.opened = opened;
   }
   return out;
 }
