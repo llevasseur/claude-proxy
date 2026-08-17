@@ -8,6 +8,7 @@
  *
  * Pure: no I/O — the server reads settings.json and passes the parsed values in.
  */
+import { jsonArray, jsonBoolean, jsonEntries, jsonObject, jsonText, jsonValueOf, textAt } from './json.js';
 import type { LaunchAliasPosture } from './launch-aliases.js';
 
 /** One configured hook command, flattened out of the nested `hooks` object. */
@@ -36,27 +37,34 @@ export interface PluginRow {
  * Flatten the settings `hooks` object — `{ Event: [{ matcher?, hooks: [{ command,
  * statusMessage? }] }] }` — into one row per command, preserving event and group
  * order. Tolerant of malformed shapes: anything not matching is skipped.
+ *
+ * The parameter is generic rather than a `JsonValue`, because the server hands this
+ * whatever its own settings reader parsed and keeps that value's type across the call.
  */
-export function flattenHooks(hooks: unknown): HookRow[] {
+export function flattenHooks<Candidate>(hooks: Candidate): HookRow[] {
   const rows: HookRow[] = [];
-  if (!hooks || typeof hooks !== 'object') return rows;
-  for (const [event, groups] of Object.entries(hooks as Record<string, unknown>)) {
-    if (!Array.isArray(groups)) continue;
-    for (const group of groups) {
-      if (!group || typeof group !== 'object') continue;
-      const g = group as { matcher?: unknown; hooks?: unknown };
-      const matcher = typeof g.matcher === 'string' ? g.matcher : '';
-      if (!Array.isArray(g.hooks)) continue;
-      for (const h of g.hooks) {
-        if (!h || typeof h !== 'object') continue;
-        const hook = h as { command?: unknown; statusMessage?: unknown };
-        if (typeof hook.command !== 'string') continue;
-        rows.push({
-          event,
-          matcher,
-          command: hook.command,
-          ...(typeof hook.statusMessage === 'string' ? { statusMessage: hook.statusMessage } : {}),
-        });
+  const byEvent = jsonObject(jsonValueOf(hooks));
+  if (byEvent === null) return rows;
+  for (const [event, groups] of jsonEntries(byEvent)) {
+    const groupList = jsonArray(groups);
+    if (groupList === null) continue;
+    for (const group of groupList) {
+      const groupRecord = jsonObject(group);
+      if (groupRecord === null) continue;
+      const matcher = textAt(groupRecord, 'matcher');
+      const commands = jsonArray(groupRecord.hooks);
+      if (commands === null) continue;
+      for (const entry of commands) {
+        const hook = jsonObject(entry);
+        if (hook === null) continue;
+        const command = jsonText(hook.command);
+        if (command === null) continue;
+        const row: HookRow = { event, matcher, command };
+        // The key stays absent rather than set to undefined when the hook declares no
+        // status line, which is what the page's `in` check reads.
+        const statusMessage = jsonText(hook.statusMessage);
+        if (statusMessage !== null) row.statusMessage = statusMessage;
+        rows.push(row);
       }
     }
   }
@@ -67,12 +75,17 @@ export function flattenHooks(hooks: unknown): HookRow[] {
  * Normalize the settings `enabledPlugins` map — `{ "name@marketplace": boolean }` —
  * into rows, splitting each key on its last `@`. Non-boolean values are skipped;
  * output follows the map's key order.
+ *
+ * Generic for the same reason as {@link flattenHooks}: the caller's parsed settings
+ * value passes through unchanged.
  */
-export function normalizePlugins(enabledPlugins: unknown): PluginRow[] {
+export function normalizePlugins<Candidate>(enabledPlugins: Candidate): PluginRow[] {
   const rows: PluginRow[] = [];
-  if (!enabledPlugins || typeof enabledPlugins !== 'object') return rows;
-  for (const [key, value] of Object.entries(enabledPlugins as Record<string, unknown>)) {
-    if (typeof value !== 'boolean') continue;
+  const map = jsonObject(jsonValueOf(enabledPlugins));
+  if (map === null) return rows;
+  for (const [key, entry] of jsonEntries(map)) {
+    const value = jsonBoolean(entry);
+    if (value === null) continue;
     const at = key.lastIndexOf('@');
     const name = at >= 0 ? key.slice(0, at) : key;
     const marketplace = at >= 0 ? key.slice(at + 1) : '';

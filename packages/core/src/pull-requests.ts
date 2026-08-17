@@ -6,6 +6,16 @@
  *
  * Pure: no I/O, no clock, no `gh` — the server hands the parsed JSON here.
  */
+import {
+  type JsonObject,
+  type JsonValue,
+  jsonArray,
+  jsonNumber,
+  jsonObject,
+  jsonText,
+  jsonValueOf,
+  textAt,
+} from './json.js';
 
 /** Merged, still open, or closed without merging — the three shapes the tree draws. */
 export type PullRequestState = 'open' | 'merged' | 'closed';
@@ -45,12 +55,15 @@ export interface PullRequestRow {
   changedFiles: number;
 }
 
-const str = (v: unknown): string => (typeof v === 'string' ? v : '');
-const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-const iso = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+const str = (v: JsonValue | undefined): string => jsonText(v) ?? '';
+const num = (v: JsonValue | undefined): number => jsonNumber(v) ?? 0;
+const iso = (v: JsonValue | undefined): string | null => {
+  const text = jsonText(v);
+  return text !== null && text !== '' ? text : null;
+};
 
 /** The merge timestamp wins over `state`, so a row with no `state` still classifies. */
-function readState(raw: Record<string, unknown>): PullRequestState {
+function readState(raw: JsonObject): PullRequestState {
   if (iso(raw.mergedAt) !== null) return 'merged';
   const state = str(raw.state).toUpperCase();
   if (state === 'MERGED') return 'merged';
@@ -59,24 +72,29 @@ function readState(raw: Record<string, unknown>): PullRequestState {
 }
 
 /** `author` is an object on the wire, and null for a deleted account. */
-function readAuthor(raw: unknown): string {
-  if (!raw || typeof raw !== 'object') return '';
-  const { login, name } = raw as Record<string, unknown>;
-  return str(login) || str(name);
+function readAuthor(raw: JsonValue | undefined): string {
+  const author = jsonObject(raw);
+  if (author === null) return '';
+  return textAt(author, 'login') || textAt(author, 'name');
 }
 
 /** `mergeCommit` is `{oid}` on the wire, and null on anything that never landed. */
-function readMergeCommit(raw: unknown): string | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const oid = str((raw as Record<string, unknown>).oid);
+function readMergeCommit(raw: JsonValue | undefined): string | null {
+  const commit = jsonObject(raw);
+  if (commit === null) return null;
+  const oid = textAt(commit, 'oid');
   return /^[0-9a-f]{7,40}$/i.test(oid) ? oid : null;
 }
 
 /** `labels` is a list of objects; only the names reach the page. */
-function readLabels(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((l) => (l && typeof l === 'object' ? str((l as Record<string, unknown>).name) : str(l)))
+function readLabels(raw: JsonValue | undefined): string[] {
+  const list = jsonArray(raw);
+  if (list === null) return [];
+  return list
+    .map((label) => {
+      const record = jsonObject(label);
+      return record === null ? str(label) : textAt(record, 'name');
+    })
     .filter(Boolean);
 }
 
@@ -85,13 +103,18 @@ function readLabels(raw: unknown): string[] {
  *
  * A row with no usable number is dropped; every other field degrades to an empty
  * value rather than emptying the page.
+ *
+ * The parameter is generic rather than a `JsonValue`, so the server and the store —
+ * which hand over whatever their own `JSON.parse` produced — keep their type across
+ * the call without this package's decoders leaking into their signatures.
  */
-export function parsePullRequests(raw: unknown): PullRequestRow[] {
-  if (!Array.isArray(raw)) return [];
+export function parsePullRequests<Candidate>(raw: Candidate): PullRequestRow[] {
+  const items = jsonArray(jsonValueOf(raw));
+  if (items === null) return [];
   const rows: PullRequestRow[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-    const pr = item as Record<string, unknown>;
+  for (const item of items) {
+    const pr = jsonObject(item);
+    if (pr === null) continue;
     const number = num(pr.number);
     if (number <= 0) continue;
     rows.push({
@@ -174,8 +197,20 @@ export function buildPrTree(rows: readonly PullRequestRow[]): PrTree {
   };
 }
 
+/**
+ * One tally per state the toolbar shows. `draft` counts open drafts a second time
+ * rather than replacing their `open` count, which is why it sits beside the three
+ * {@link PullRequestState} words instead of among them.
+ */
+export interface PrStateCounts {
+  open: number;
+  merged: number;
+  closed: number;
+  draft: number;
+}
+
 /** How many PRs of each state the tree holds — the toolbar's counts. */
-export function prCounts(rows: readonly PullRequestRow[]): Record<PullRequestState | 'draft', number> {
+export function prCounts(rows: readonly PullRequestRow[]): PrStateCounts {
   const counts = { open: 0, merged: 0, closed: 0, draft: 0 };
   for (const pr of rows) {
     counts[pr.state] += 1;
