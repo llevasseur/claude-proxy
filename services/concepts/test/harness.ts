@@ -114,13 +114,11 @@ export function testEnv(overrides: Partial<Env> = {}): Env {
 }
 
 /**
- * Reading a JSON body the way a client would, once, instead of asserting it into
- * shape at every call site.
+ * Reads a JSON body once, instead of asserting it into shape at every call site.
  *
- * A handler's response is `JsonValue` and nothing more, so each reader below
- * narrows with the Worker's own guards from `src/json.ts` and **throws** when the
- * shape is wrong. Throwing is the point: a handler that stops returning the field
- * a test names fails that test, where a silent `undefined` would let the
+ * Each reader below narrows with the Worker's own guards from `src/json.ts` and
+ * **throws** when the shape is wrong: a handler that stops returning the field a
+ * test names must fail that test, where a silent `undefined` would let the
  * assertion around it quietly pass.
  */
 export async function bodyRecord(response: Response): Promise<JsonRecord> {

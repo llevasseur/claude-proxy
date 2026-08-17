@@ -461,11 +461,9 @@ interface ConceptListPayload {
 /**
  * What one tool answers with, before it is JSON-encoded into the MCP result.
  *
- * Enumerated rather than left opaque because the transport reads one thing back
- * out of it — whether an `error` key is present, which is what sets `isError` —
- * and a value with no members cannot answer that. Each member is the payload of
- * the tool that produces it; the two intersections are the shapes that carry a
- * refusal *and* the result it refused with.
+ * Enumerated rather than opaque because the transport reads one thing back out of
+ * it — whether an `error` key is present, which sets `isError`. The two
+ * intersections carry a refusal *and* the result it refused with.
  */
 type ToolResult =
   | { error: string }

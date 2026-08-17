@@ -2,20 +2,14 @@
  * The one place the dashboard turns a payload it did not produce into values it
  * may branch on: an API response body, an error envelope, an SSE frame.
  *
- * `JsonValue` replaces `unknown` at those boundaries. `unknown` says "nothing is
- * known", which licenses a `typeof` ladder and an `as` at every use; `JsonValue`
- * says the true thing — this came out of `JSON.parse`, so it is one of six cases
- * — and the guards below are how a caller reaches a domain value from there.
+ * `JsonValue` replaces `unknown` at those boundaries — a parsed payload is one of
+ * six cases, not an open question — and each predicate below is a `value is T`
+ * guard over a primitive that answers about the value rather than its
+ * representation, so it narrows at the call site with no assertion. There is no
+ * `typeof` in this file.
  *
- * There is no `typeof` in this file, and that is the design rather than a
- * concession. Each predicate is a `value is T` guard over a primitive that
- * answers about the value rather than its representation, so it narrows at the
- * call site and the assertions this module replaces do not come back in its
- * callers.
- *
- * The typed `read`/`write` helpers in `./api` are the other half: they name a
- * route's response type from the manifest, so a caller that goes through them
- * needs nothing here. This is for the payloads no manifest describes.
+ * The typed `read`/`write` helpers in `./api` cover the payloads the route
+ * manifest already names; this is for the ones it does not.
  */
 
 /** Exactly what `JSON.parse` can produce, and therefore what any parsed payload is. */

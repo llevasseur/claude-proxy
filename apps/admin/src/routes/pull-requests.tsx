@@ -46,12 +46,7 @@ interface PrStyleVars {
   '--gc'?: string;
 }
 
-/**
- * The five inline styles below all set custom properties, and `CSSProperties` cannot
- * describe one: csstype's property list is closed, so React's `style` prop has no
- * `--*` member for these names to land on. One helper carries the whole page's worth
- * of that gap rather than five assertions repeating it.
- */
+/** Carries the page's five custom-property styles across a `CSSProperties` that cannot name them. */
 function prStyle(vars: PrStyleVars): CSSProperties {
   // SAFETY: `PrStyleVars` admits only keys beginning `--`, none of which is a member of
   // `CSSProperties`, so this widens nothing a caller could read back wrongly. React

@@ -3,20 +3,14 @@
  * may branch on: a JSON-RPC body, a REST body, an MCP tool's `arguments`, a
  * replayed event document, a base64 page cursor.
  *
- * Two things about the shape below are deliberate.
+ * `JsonValue` replaces `unknown` at every one of those boundaries — a parsed
+ * payload is one of six cases, not an open question — which is why the handlers
+ * no longer take `Record<string, unknown>`.
  *
- * `JsonValue` replaces `unknown` at every one of those boundaries. `unknown`
- * says "nothing is known", which then licenses a `typeof` ladder and an `as` at
- * each use; `JsonValue` says the true thing — this came out of `JSON.parse`, so
- * it is one of six cases — and the readers below are how a caller gets from
- * there to a domain value. That is why the handlers no longer take
- * `Record<string, unknown>`.
- *
- * There is no `typeof` here, and its absence is the point rather than a
- * concession to the linter. Every predicate is a `value is T` guard built from a
+ * There is no `typeof` here. Every predicate is a `value is T` guard built from a
  * primitive that answers about the value rather than about its representation —
- * `Array.isArray`, `Number.isFinite`, an identity comparison, or the object tag.
- * A guard narrows at the call site with no assertion, so the assertions this
+ * `Array.isArray`, `Number.isFinite`, an identity comparison, or the object tag —
+ * and a guard narrows at the call site with no assertion, so the assertions this
  * module replaces do not reappear in its callers.
  */
 

@@ -141,18 +141,10 @@ function boxStyle(box: Box, run?: CommandRunSpan): CSSProperties {
   return styleVars({ ...frame, '--gc': family.edge, '--cut': color('cut'), '--cf': family.fill });
 }
 
-/**
- * A `style` object that also names CSS custom properties. Every colour this page draws
- * with reaches the sheet as a `--*` variable, and `CSSProperties` enumerates the standard
- * properties only, so this is the type that says a `--gc` entry belongs here.
- */
+/** A `style` object that may also name CSS custom properties, which `CSSProperties` cannot. */
 type StyleWithVars = CSSProperties & { [key: `--${string}`]: string | number };
 
-/**
- * Pass a variable-carrying style to a `style` prop. React accepts the custom properties at
- * runtime; the prop's type does not name them, and this is the single place that gap is
- * bridged, so no call site needs an assertion of its own.
- */
+/** The single place that gap is bridged, so no call site needs an assertion of its own. */
 function styleVars(style: StyleWithVars): CSSProperties {
   return style;
 }
