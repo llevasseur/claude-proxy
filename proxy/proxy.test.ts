@@ -38,11 +38,11 @@ import {
   sessionsDir,
   threadIdFor,
 } from './session.ts';
-import type { RequestBody, ToolDefinition, WireMessage } from './wire.ts';
+import { asArrayOf, type RequestBody, type ToolDefinition, type WireMessage } from './wire.ts';
 
 /** The strip helpers hand back a `RequestBody`; these read the parts a test asserts on. */
-const toolsOf = (body: RequestBody | null): ToolDefinition[] => (body?.tools as ToolDefinition[] | undefined) ?? [];
-const messagesOf = (body: RequestBody | null): WireMessage[] => (body?.messages as WireMessage[] | undefined) ?? [];
+const toolsOf = (body: RequestBody | null): ToolDefinition[] => asArrayOf<ToolDefinition>(body?.tools);
+const messagesOf = (body: RequestBody | null): WireMessage[] => asArrayOf<WireMessage>(body?.messages);
 
 // Non-streaming response body: a single JSON message object with usage at the top level, no SSE frames.
 const nonStreamingBody = JSON.stringify({

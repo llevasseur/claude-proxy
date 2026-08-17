@@ -12,6 +12,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { asList, asRecord, asText, type JsonValue } from './json.ts';
 
 const HEADING_RE = /^(#{1,6})\s+(.*\S)\s*$/;
 const FENCE_RE = /^\s*(```|~~~)/;
@@ -50,7 +51,7 @@ export interface PromptIdentity {
 }
 
 const textBytes = (text: string): number => Buffer.byteLength(text, 'utf8');
-const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value), 'utf8');
+const jsonBytes = (value: JsonValue | undefined): number => Buffer.byteLength(JSON.stringify(value), 'utf8');
 
 /** Heading spans of one block's text; fenced code is skipped. */
 export function sectionsOfText(text: string, block: number): PromptSection[] {
@@ -86,26 +87,23 @@ export function sectionsOfText(text: string, block: number): PromptSection[] {
   return out;
 }
 
-function blockText(block: unknown): string {
-  if (typeof block === 'string') return block;
-  if (typeof block === 'object' && block !== null && typeof (block as { text?: unknown }).text === 'string') {
-    return (block as { text: string }).text;
-  }
-  return '';
+function blockText(block: JsonValue | undefined): string {
+  const bare = asText(block);
+  if (bare !== null) return bare;
+  return asText(asRecord(block)?.text) ?? '';
 }
 
-function blockCacheTtl(block: unknown): string | null {
-  if (typeof block !== 'object' || block === null) return null;
-  const cc = (block as { cache_control?: unknown }).cache_control;
-  if (typeof cc !== 'object' || cc === null) return null;
-  return typeof (cc as { ttl?: unknown }).ttl === 'string' ? (cc as { ttl: string }).ttl : 'ephemeral';
+function blockCacheTtl(block: JsonValue | undefined): string | null {
+  const cacheControl = asRecord(asRecord(block)?.cache_control);
+  if (cacheControl === null) return null;
+  return asText(cacheControl.ttl) ?? 'ephemeral';
 }
 
 /** Blocks and heading spans of a captured `system` field. */
-export function outlineWirePrompt(system: unknown): PromptOutline {
+export function outlineWirePrompt(system: JsonValue | undefined): PromptOutline {
   if (system === undefined || system === null) return { bytes: 0, blocks: [], sections: [] };
 
-  const raw = Array.isArray(system) ? system : [system];
+  const raw = asList(system) ?? [system];
   const blocks: PromptBlock[] = [];
   const sections: PromptSection[] = [];
 
@@ -119,7 +117,7 @@ export function outlineWirePrompt(system: unknown): PromptOutline {
 }
 
 /** Content hash of a `system` field — the prompt's identity across requests. */
-export function hashPrompt(system: unknown): string {
+export function hashPrompt(system: JsonValue | undefined): string {
   return crypto
     .createHash('sha256')
     .update(JSON.stringify(system ?? null))
@@ -128,7 +126,7 @@ export function hashPrompt(system: unknown): string {
 }
 
 /** Sidecar-sized identity plus the outline the store keeps. */
-export function identifyPrompt(system: unknown): PromptIdentity | null {
+export function identifyPrompt(system: JsonValue | undefined): PromptIdentity | null {
   if (system === undefined || system === null) return null;
   const outline = outlineWirePrompt(system);
   return {
@@ -175,13 +173,13 @@ export function recordPrompt(logDir: string, identity: PromptIdentity | null): b
     );
     seen.add(identity.hash);
     return true;
-  } catch (err) {
-    console.error(`[agent-proxy] could not store system prompt outline: ${errMessage(err)}`);
+  } catch (cause) {
+    console.error(`[agent-proxy] could not store system prompt outline: ${errMessage(cause)}`);
     return false;
   }
 }
 
 /** A caught value is `unknown`; this is the message it would have shown. */
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+function errMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }

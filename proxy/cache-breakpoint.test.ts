@@ -14,7 +14,8 @@ import {
   hasWarmPrefix,
   noteCacheRead,
 } from './cache-breakpoint.ts';
-import type { ContentBlock, RequestBody, WireMessage } from './wire.ts';
+import type { JsonValue } from './json.ts';
+import { asArrayOf, type ContentBlock, type RequestBody, type WireMessage } from './wire.ts';
 
 const SESSION = 'session-under-test';
 
@@ -24,7 +25,7 @@ const FILLER = 'x'.repeat(120_000);
 const EPHEMERAL_1H = { type: 'ephemeral', ttl: '1h' };
 
 /** A system prompt shaped like a healthy turn's: two of its blocks keyed. */
-const systemBlocks = (cacheControl: unknown = EPHEMERAL_1H): ContentBlock[] => [
+const systemBlocks = (cacheControl: JsonValue = EPHEMERAL_1H): ContentBlock[] => [
   { type: 'text', text: 'preamble, unkeyed' },
   { type: 'text', text: 'the big static prefix', cache_control: cacheControl },
   { type: 'text', text: 'tools', cache_control: cacheControl },
@@ -56,8 +57,8 @@ function warmUp(sessionKey = SESSION): void {
 }
 
 const lastBlockOf = (req: RequestBody | null): ContentBlock => {
-  const messages = req?.messages as WireMessage[];
-  const content = messages[messages.length - 1]!.content as ContentBlock[];
+  const messages = asArrayOf<WireMessage>(req?.messages);
+  const content = asArrayOf<ContentBlock>(messages[messages.length - 1]?.content);
   return content[content.length - 1]!;
 };
 
@@ -72,11 +73,11 @@ test('injects on the last content block of the last message', () => {
   assert.deepEqual(lastBlockOf(reqJson).cache_control, EPHEMERAL_1H);
 
   // Only the final block is keyed, and only the final message is rewritten.
-  const messages = reqJson?.messages as WireMessage[];
-  const lastContent = messages[1]!.content as ContentBlock[];
+  const messages = asArrayOf<WireMessage>(reqJson?.messages);
+  const lastContent = asArrayOf<ContentBlock>(messages[1]?.content);
   assert.equal(lastContent[0]!.cache_control, undefined, 'the earlier block stays unkeyed');
   assert.equal(lastContent[0]!.text, 'first block', 'and keeps its text');
-  assert.equal((messages[0]!.content as ContentBlock[])[0]!.text, FILLER, 'earlier messages ride through');
+  assert.equal(asArrayOf<ContentBlock>(messages[0]?.content)[0]!.text, FILLER, 'earlier messages ride through');
   assert.equal(JSON.stringify(before), snapshot, 'the caller’s object is never mutated');
 });
 
@@ -102,8 +103,8 @@ test('carries through a cache_control field the proxy has never seen', () => {
 test('no-op when a message already carries a breakpoint — the self-retirement gate', () => {
   warmUp();
   const healthy = coldRequest();
-  const messages = healthy.messages as WireMessage[];
-  (messages[1]!.content as ContentBlock[])[1]!.cache_control = EPHEMERAL_1H;
+  const messages = asArrayOf<WireMessage>(healthy.messages);
+  asArrayOf<ContentBlock>(messages[1]?.content)[1]!.cache_control = EPHEMERAL_1H;
 
   const { reqJson, injected } = ensureMessageBreakpoint(healthy, { sessionKey: SESSION });
 
@@ -250,7 +251,7 @@ test('injects by default — the kill switch is opt-out', () => {
 
 test('a malformed body passes through untouched', () => {
   warmUp();
-  for (const body of [null, {}, { messages: 'not an array' }, { messages: [] }] as Array<RequestBody | null>) {
+  for (const body of [null, {}, { messages: 'not an array' }, { messages: [] }]) {
     const { reqJson, injected } = ensureMessageBreakpoint(body, { sessionKey: SESSION });
     assert.equal(injected, false);
     assert.equal(reqJson, body, 'the same reference is handed back');
@@ -308,8 +309,8 @@ test('reports the defect as observed when the cold-prefix gate declines it', () 
 test('observes nothing when the client already shipped a message breakpoint', () => {
   warmUp();
   const healthy = coldRequest();
-  const messages = healthy.messages as WireMessage[];
-  (messages[1]!.content as ContentBlock[])[1]!.cache_control = EPHEMERAL_1H;
+  const messages = asArrayOf<WireMessage>(healthy.messages);
+  asArrayOf<ContentBlock>(messages[1]?.content)[1]!.cache_control = EPHEMERAL_1H;
 
   const { observed, declinedBy } = ensureMessageBreakpoint(healthy, { sessionKey: SESSION });
 
