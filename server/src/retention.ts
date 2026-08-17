@@ -12,6 +12,7 @@
 import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { REPORT_TZ } from '@claude-proxy/core';
+import { errorMessage } from './errors.js';
 
 export const DEFAULT_RETENTION_DAYS = 30;
 
@@ -386,9 +387,9 @@ export async function applyRetention(logDir: string, plan: RetentionPlan): Promi
       await mkdir(dest, { recursive: true });
       await rename(path.join(logDir, move.name), path.join(dest, move.name));
       result.archived += 1;
-    } catch (err) {
+    } catch (cause) {
       failedMoves.add(`${move.day}/${move.name}`);
-      result.errors.push(`archive ${move.name}: ${(err as Error).message}`);
+      result.errors.push(`archive ${move.name}: ${errorMessage(cause)}`);
     }
   }
 
@@ -399,8 +400,8 @@ export async function applyRetention(logDir: string, plan: RetentionPlan): Promi
       await unlink(path.join(logDir, 'archive', file.day, file.name));
       result.evicted += 1;
       result.bytesReclaimed += file.bytes;
-    } catch (err) {
-      result.errors.push(`evict ${key}: ${(err as Error).message}`);
+    } catch (cause) {
+      result.errors.push(`evict ${key}: ${errorMessage(cause)}`);
     }
   }
 

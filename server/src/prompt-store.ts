@@ -24,6 +24,12 @@ export const PROMPT_STORE_DIR = 'system-prompts';
  * cohort than a live-captured one. Held there by
  * `server/test/wire-prompt-parity.test.ts`.
  */
+// `system` stays `unknown` because this function's whole contract is that it hashes
+// exactly what `JSON.stringify` is given in `proxy/system-prompt.ts` — the same value
+// `outlineWirePrompt` takes, whose own parameter is `unknown`. Narrowing it to
+// `JsonInput` is a change to a shared signature that three suites outside `src/`
+// (`server/test/per-call-api`, `prompt-mix-api`, `wire-prompt-parity`) hand an `unknown`.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- see the note above.
 export function hashWirePrompt(system: unknown): string {
   return crypto
     .createHash('sha256')

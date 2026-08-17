@@ -11,6 +11,8 @@ import {
   jobStateTone,
   normalizeJobState,
 } from '@claude-proxy/core';
+import { errorMessage } from './errors.js';
+import type { JsonValue } from './json.js';
 
 /** Default location of Claude Code's background jobs: `~/.claude/jobs`. */
 export function defaultJobsDir(): string {
@@ -44,17 +46,17 @@ const MAX_TEXT_BYTES = 512_000;
 /** How large an image may be and still be inlined as a data URL. */
 const MAX_IMAGE_BYTES = 4_000_000;
 
-/** Extension → mime type, for the images the viewer inlines. */
-const IMAGE_MIME: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  avif: 'image/avif',
-  svg: 'image/svg+xml',
-  ico: 'image/x-icon',
-};
+/** Lowercased extension → mime type, for the images the viewer inlines. */
+const IMAGE_MIME = new Map([
+  ['png', 'image/png'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['gif', 'image/gif'],
+  ['webp', 'image/webp'],
+  ['avif', 'image/avif'],
+  ['svg', 'image/svg+xml'],
+  ['ico', 'image/x-icon'],
+]);
 
 /** One job directory: what its `state.json` says, plus what the directory holds. */
 export interface JobSummary extends JobStateFields {
@@ -122,13 +124,28 @@ function resolveJobDir(jobsDir: string, id: string): string {
  * descended into — both so a walk can't wander out of the job or take unbounded
  * time. Unreadable subdirectories are skipped rather than failing the walk.
  */
-async function walkJobDir(jobDir: string): Promise<{ entries: JobFileEntry[]; truncated: boolean }> {
+/** One directory still to be listed by {@link walkJobDir}, and where it sits. */
+interface JobWalkStep {
+  abs: string;
+  rel: string;
+  depth: number;
+}
+
+/** What one walk saw, and whether it saw all of it. */
+interface JobWalkResult {
+  entries: JobFileEntry[];
+  truncated: boolean;
+}
+
+async function walkJobDir(jobDir: string): Promise<JobWalkResult> {
   const entries: JobFileEntry[] = [];
   let truncated = false;
-  const queue: { abs: string; rel: string; depth: number }[] = [{ abs: jobDir, rel: '', depth: 0 }];
+  const queue: JobWalkStep[] = [{ abs: jobDir, rel: '', depth: 0 }];
 
   while (queue.length > 0) {
-    const { abs, rel, depth } = queue.shift() as { abs: string; rel: string; depth: number };
+    // SAFETY: the `while` condition is `queue.length > 0`, and nothing else shifts this
+    // queue, so `shift()` cannot be the `undefined` its signature admits.
+    const { abs, rel, depth } = queue.shift() as JobWalkStep;
     let dirents: import('node:fs').Dirent[];
     try {
       dirents = await readdir(abs, { withFileTypes: true });
@@ -156,15 +173,18 @@ async function walkJobDir(jobDir: string): Promise<{ entries: JobFileEntry[]; tr
       // A symlinked directory is a leaf: following it could leave the job entirely.
       const isDir = info.isDirectory() && !link;
       const noDescend = isDir && (NO_DESCEND.has(dirent.name) || depth + 1 >= MAX_TREE_DEPTH);
-      entries.push({
+      const entry: JobFileEntry = {
         path: childRel,
         dir: isDir,
         bytes: isDir ? 0 : info.size,
         modified: info.mtime.toISOString(),
         kind: isDir ? null : jobFileKind(dirent.name),
-        ...(noDescend ? { skipped: true } : {}),
-        ...(link ? { link: true } : {}),
-      });
+      };
+      // Both flags stay off the entry rather than being written `false`: the tree the
+      // client reads carries them only for the rows they are true of.
+      if (noDescend) entry.skipped = true;
+      if (link) entry.link = true;
+      entries.push(entry);
       if (isDir && !noDescend) queue.push({ abs: childAbs, rel: childRel, depth: depth + 1 });
     }
   }
@@ -176,15 +196,22 @@ async function walkJobDir(jobDir: string): Promise<{ entries: JobFileEntry[]; tr
  * file yields empty fields and `readable: false`. */
 async function readJobState(jobDir: string): Promise<{ state: JobStateFields; readable: boolean }> {
   try {
-    const parsed = JSON.parse(await readFile(path.join(jobDir, 'state.json'), 'utf8')) as unknown;
+    const parsed: JsonValue = JSON.parse(await readFile(path.join(jobDir, 'state.json'), 'utf8'));
     return { state: normalizeJobState(parsed), readable: true };
   } catch {
     return { state: normalizeJobState(null), readable: false };
   }
 }
 
+/** The counts a listing row carries, rolled up from one walk. */
+interface JobTally {
+  files: number;
+  bytes: number;
+  modified: string;
+}
+
 /** Roll a walk up into the counts the listing shows. */
-function tally(entries: readonly JobFileEntry[]): { files: number; bytes: number; modified: string } {
+function tally(entries: readonly JobFileEntry[]): JobTally {
   let files = 0;
   let bytes = 0;
   let modified = '';
@@ -207,8 +234,8 @@ export async function listJobs(jobsDir: string): Promise<JobSummary[]> {
   let dirents: import('node:fs').Dirent[];
   try {
     dirents = await readdir(jobsDir, { withFileTypes: true });
-  } catch (err) {
-    throw new Error(`cannot read jobs directory ${jobsDir}: ${(err as Error).message}`);
+  } catch (cause) {
+    throw new Error(`cannot read jobs directory ${jobsDir}: ${errorMessage(cause)}`);
   }
 
   const jobs: JobSummary[] = [];
@@ -354,6 +381,8 @@ export async function readJobFile(jobsDir: string, id: string, relPath: string):
   });
   if (info.isDirectory()) throw new Error(`job file is a directory: ${relPath}`);
 
+  // SAFETY: `safeSegments` throws on any empty segment, and `String.split` always yields
+  // at least one member, so the last index is populated.
   const name = segments[segments.length - 1] as string;
   const kind = jobFileKind(name);
   const base = {
@@ -374,7 +403,7 @@ export async function readJobFile(jobsDir: string, id: string, relPath: string):
       return { ...base, kind, encoding: 'utf8', content: '', binary: true, note: 'image too large to inline' };
     }
     const buf = await readFile(real);
-    return { ...base, kind, encoding: 'base64', content: buf.toString('base64'), mime: IMAGE_MIME[ext] ?? null };
+    return { ...base, kind, encoding: 'base64', content: buf.toString('base64'), mime: IMAGE_MIME.get(ext) ?? null };
   }
 
   if (kind === 'binary') {

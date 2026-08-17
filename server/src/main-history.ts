@@ -35,6 +35,7 @@ import {
   shortSha,
 } from '@claude-proxy/core';
 import { findOnPath } from './chat-cli.js';
+import { type JsonInput, type JsonValue, jsonString, stringField } from './json.js';
 
 const run = promisify(execFile);
 
@@ -83,8 +84,11 @@ async function gitOr(repoDir: string, args: string[]): Promise<string | null> {
  * `git`'s stderr is the useful half of a failure; the exit code says nothing. Kept short
  * so it can be shown on the page rather than only in a log.
  */
-function gitFailure(err: unknown, fallback: string): string {
-  const { stderr, message } = err as { stderr?: string; message?: string };
+function gitFailure(cause: unknown, fallback: string): string {
+  // SAFETY: everything thrown here comes from `execFile`, which rejects with an `Error`
+  // carrying the child's captured `stderr`. Both reads fall back to `''`, so a value
+  // thrown from anywhere else lands on `fallback` rather than on a wrong detail.
+  const { stderr, message } = cause as { stderr?: string; message?: string };
   const detail = ((stderr ?? '').trim() || (message ?? '').trim()).split('\n').slice(0, 4).join('; ');
   return detail || fallback;
 }
@@ -190,9 +194,10 @@ export async function authorizeSlide(env: NodeJS.ProcessEnv = process.env): Prom
   let login: string;
   try {
     const { stdout } = await run(gh, ['api', 'user'], { timeout: GIT_TIMEOUT_MS });
-    login = String((JSON.parse(stdout) as { login?: unknown }).login ?? '');
-  } catch (err) {
-    throw new Error(`${ERR.notAuthorized} ${gitFailure(err, 'gh api user failed — run `gh auth login`')}`);
+    const user: JsonValue = JSON.parse(stdout);
+    login = stringField(user, 'login') ?? '';
+  } catch (cause) {
+    throw new Error(`${ERR.notAuthorized} ${gitFailure(cause, 'gh api user failed — run `gh auth login`')}`);
   }
 
   const allowed = allowedLogins(env);
@@ -228,6 +233,16 @@ async function push(repoDir: string, args: string[]): Promise<void> {
   });
 }
 
+/**
+ * One field of a request body as trimmed text, or `''` when it is anything but a
+ * string. Every sha the two writers below accept arrives inside a parsed JSON body the
+ * route hands through untouched, so this is where a field stops being an arbitrary
+ * document and becomes something the sha pattern can be applied to.
+ */
+function trimmedString(value: JsonInput): string {
+  return jsonString(value)?.trim() ?? '';
+}
+
 export interface SlideResult {
   from: string;
   to: string;
@@ -249,11 +264,11 @@ export interface SlideResult {
  */
 export async function slideMain(
   repoDir: string,
-  input: { expectedMain: unknown; target: unknown },
+  input: { expectedMain: JsonInput; target: JsonInput },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<SlideResult> {
-  const expectedMain = typeof input.expectedMain === 'string' ? input.expectedMain.trim() : '';
-  const target = typeof input.target === 'string' ? input.target.trim() : '';
+  const expectedMain = trimmedString(input.expectedMain);
+  const target = trimmedString(input.target);
   if (!/^[0-9a-f]{7,40}$/i.test(expectedMain)) throw new Error(`${ERR.bad} expectedMain must be a commit sha`);
   if (!/^[0-9a-f]{7,40}$/i.test(target)) throw new Error(`${ERR.bad} target must be a commit sha`);
 
@@ -314,10 +329,10 @@ export async function slideMain(
  */
 export async function setLineHidden(
   repoDir: string,
-  input: { sha: unknown; hidden?: unknown },
+  input: { sha: JsonInput; hidden?: JsonInput },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ ref: string; sha: string; hidden: boolean }> {
-  const given = typeof input.sha === 'string' ? input.sha.trim() : '';
+  const given = trimmedString(input.sha);
   if (!/^[0-9a-f]{7,40}$/i.test(given)) throw new Error(`${ERR.bad} sha must be a commit sha`);
   const hidden = input.hidden === undefined ? true : input.hidden === true;
   await authorizeSlide(env);

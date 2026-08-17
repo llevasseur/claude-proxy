@@ -111,8 +111,10 @@ export async function readCliCatalogue(bundlePath?: string | null): Promise<CliB
   let info: Awaited<ReturnType<typeof stat>>;
   try {
     info = await stat(resolved);
-  } catch (err) {
-    return empty(`Bundle could not be read: ${(err as NodeJS.ErrnoException).code ?? 'unknown error'}.`);
+  } catch (cause) {
+    // SAFETY: `stat` rejects with a Node `ErrnoException`, so `code` is the errno string
+    // the runtime attached; the `??` covers a rejection that carries none.
+    return empty(`Bundle could not be read: ${(cause as NodeJS.ErrnoException).code ?? 'unknown error'}.`);
   }
   if (!info.isFile()) return empty('Bundle path is not a file.');
   if (info.size > MAX_BUNDLE_BYTES) {
@@ -138,8 +140,10 @@ export async function readCliCatalogue(bundlePath?: string | null): Promise<CliB
     // and the detail view can seek straight to them.
     const text = (await readFile(resolved)).toString('latin1');
     functions = resolveCliCatalogue(text);
-  } catch (err) {
-    return empty(`Bundle could not be read: ${(err as NodeJS.ErrnoException).code ?? 'unknown error'}.`, {
+  } catch (cause) {
+    // SAFETY: `readFile` rejects with a Node `ErrnoException`, so `code` is the errno
+    // string the runtime attached; the `??` covers a rejection that carries none.
+    return empty(`Bundle could not be read: ${(cause as NodeJS.ErrnoException).code ?? 'unknown error'}.`, {
       exists: true,
       bytes: info.size,
       modified: bundle.modified,

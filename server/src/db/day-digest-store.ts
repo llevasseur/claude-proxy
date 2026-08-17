@@ -103,11 +103,16 @@ export function readStoredDayDigest(key: StoredDayDigestKey): UsageDigest | unde
   const db = handleFor(key.logDir);
   if (!db) return undefined;
   try {
+    // SAFETY: `SELECT` names exactly `digest`, and every column of `day_digest`'s
+    // primary key is bound above, so the answer is one row or none.
     const row = db
       .prepare(SELECT)
       .get(key.backing, key.logDir, key.archiveDir, key.date, key.classifierCount, REVISION) as
       | { digest?: string }
       | undefined;
+    // SAFETY: `storeDayDigest` below is the column's only writer and stores
+    // `JSON.stringify(digest)` of a `UsageDigest`; `REVISION` is in the key, so a row
+    // written under an older digest shape is never reached by this read.
     return row?.digest === undefined ? undefined : (JSON.parse(row.digest) as UsageDigest);
   } catch {
     return undefined;

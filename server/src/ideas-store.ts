@@ -141,8 +141,9 @@ export async function claimIdeasInStore(
   return {
     store: await fetchRemoteIdeas(remote),
     claimed: result.claimed,
-    // The Worker answers in the same shape `applyIdeaClaims` returns, so a
-    // refusal renders identically wherever it came from.
+    // SAFETY: the Worker answers in the same shape `applyIdeaClaims` returns — one row
+    // per refused slug, carrying the holder that beat it — so a refusal renders
+    // identically wherever it came from; only the transport's own type is looser.
     refused: result.refused as IdeaClaimResult['refused'],
     unknown: result.unknown,
     file: remoteIdeasStoreLabel(remote),

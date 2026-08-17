@@ -87,16 +87,26 @@ function prepare(db: DatabaseSync): CommandStatements {
   };
 }
 
+/** True when a failed `stat` says the file is not there; any other errno must rethrow. */
+function isMissingFile(cause: unknown): boolean {
+  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
+}
+
 /** Every row the store contributes is replaced together; the children cascade. */
 function clearRuns(db: DatabaseSync): number {
+  // SAFETY: `count(*)` aliased to `c` is the whole select list, and an aggregate with
+  // no GROUP BY always answers exactly one row.
   const before = (db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c;
   db.exec('DELETE FROM command_run');
   return before;
 }
 
-/** A record's tokens, defaulted the way `runTotals` defaults them. */
-function tokensOf(value: unknown): AuditTokens {
-  const t = value as Partial<AuditTokens> | undefined;
+/**
+ * A record's tokens, defaulted the way `runTotals` defaults them. The parameter is
+ * `Partial` rather than `AuditTokens` because `readCommandRuns` keeps records from a
+ * writer this code does not know, so any of the five counts may be missing.
+ */
+function tokensOf(t: Partial<AuditTokens> | undefined): AuditTokens {
   return {
     input: t?.input ?? 0,
     output: t?.output ?? 0,
@@ -188,7 +198,7 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
 
   (run.stepStats ?? []).forEach((step: CommandRunStepStats, i) => {
     const t = tokensOf(step.tokens);
-    const waste = { ...ZERO_WASTE, ...(step.waste ?? {}) };
+    const waste = { ...ZERO_WASTE, ...step.waste };
     st.insertStep.run(
       id,
       i,
@@ -228,6 +238,8 @@ function writeRun(st: CommandStatements, run: CommandRun, ord: number): void {
 
 /** The store's watermark row, or `undefined` when the store was never indexed. */
 function readMark(db: DatabaseSync): { bytes: number; modified: string } | undefined {
+  // SAFETY: this SELECT names exactly `bytes` and `modified`, and `path` is the
+  // table's primary key, so the answer is one row or none.
   return db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(STORE_PATH) as
     | { bytes: number; modified: string }
     | undefined;
@@ -268,9 +280,12 @@ export function applyCommandRunAppend(db: DatabaseSync, append: StoreAppend): bo
   db.exec('BEGIN');
   try {
     // Ords are contiguous from 0, so the next tail position is the row count.
+    // SAFETY: `max(ord)` aliased to `m` is the whole select list, an aggregate with no
+    // GROUP BY answers exactly one row, and that row is null over an empty table.
     let tail = ((db.prepare('SELECT max(ord) m FROM command_run').get() as { m: number | null }).m ?? -1) + 1;
     for (const run of append.records) {
       const id = runKey(run);
+      // SAFETY: `ordOf` selects `ord` alone, keyed on `run_id`, which is unique.
       const prior = ordOf.get(id) as { ord: number } | undefined;
       let ord: number;
       if (prior) {
@@ -309,10 +324,10 @@ export async function ingestCommandRuns(db: DatabaseSync, logDir: string): Promi
     const info = await stat(file);
     bytes = info.size;
     modified = info.mtime.toISOString();
-  } catch (err) {
+  } catch (cause) {
     // Only a *missing* store means the rows are unbacked. Any other error says
     // nothing about what is on disk, so it must not drop the tables.
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    if (!isMissingFile(cause)) throw cause;
     db.exec('BEGIN');
     try {
       stats.deleted = clearRuns(db);
@@ -327,6 +342,8 @@ export async function ingestCommandRuns(db: DatabaseSync, logDir: string): Promi
 
   const mark = readMark(db);
   if (mark && mark.bytes === bytes && mark.modified === modified) {
+    // SAFETY: `count(*)` aliased to `c` is the whole select list, and an aggregate with
+    // no GROUP BY always answers exactly one row.
     stats.runs = (db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c;
     return stats;
   }

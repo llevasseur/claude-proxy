@@ -63,8 +63,10 @@ import {
   buildRuleDefects,
   buildSuggestionBuckets,
   buildSuggestionStatus,
+  type SuggestionJudgeRequest,
   type SuggestionStatusResponse,
 } from './api.js';
+import { errorMessage } from './errors.js';
 import { resolveLogDir } from './logs.js';
 
 const USAGE = `usage:
@@ -272,10 +274,14 @@ async function run(argv: readonly string[]): Promise<void> {
       .filter(Boolean);
     if (ids.length === 0) throw new Error('mark needs at least one id');
 
-    const result = await applySuggestionStatus(
-      logDir,
-      ids.map((id) => ({ bucket, id, status, ...(flags.note === undefined ? {} : { note: flags.note }) })),
-    );
+    // `note` is left off entirely when none was given: a written one replaces the
+    // previous note, so an absent flag must not send the key at all.
+    const updates = ids.map((id) => {
+      const update: SuggestionStatusUpdate = { bucket, id, status };
+      if (flags.note !== undefined) update.note = flags.note;
+      return update;
+    });
+    const result = await applySuggestionStatus(logDir, updates);
     if (json) {
       console.log(JSON.stringify(result, null, 2));
       return;
@@ -333,12 +339,11 @@ async function run(argv: readonly string[]): Promise<void> {
     if (flags.thread !== undefined && !isThreadId(flags.thread)) {
       throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
     }
-    const result = await applySuggestionJudge(logDir, {
-      updates,
-      judged,
-      amnesty,
-      ...(flags.thread === undefined ? {} : { thread: flags.thread }),
-    });
+    // As above: `--thread` absent must stay an absent key, since the request shape
+    // treats a present `thread` as a thread to attribute the verdict to.
+    const request: SuggestionJudgeRequest = { updates, judged, amnesty };
+    if (flags.thread !== undefined) request.thread = flags.thread;
+    const result = await applySuggestionJudge(logDir, request);
     if (json) {
       console.log(JSON.stringify(result, null, 2));
       return;
@@ -380,7 +385,7 @@ async function run(argv: readonly string[]): Promise<void> {
   throw new Error(`unknown command: ${command}\n\n${USAGE}`);
 }
 
-run(process.argv.slice(2)).catch((err: unknown) => {
-  console.error(`[suggestions] ${(err as Error).message}`);
+run(process.argv.slice(2)).catch((cause: unknown) => {
+  console.error(`[suggestions] ${errorMessage(cause)}`);
   process.exitCode = 1;
 });
