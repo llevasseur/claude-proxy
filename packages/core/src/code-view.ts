@@ -8,7 +8,6 @@
 
 /** CSI colour codes, OSC title sequences, and bare two-char escapes. */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ESC and BEL are what an escape sequence is made of — matching them is the whole job of this pattern
-// oxlint-disable-next-line no-control-regex -- same reason: the control characters are the pattern's subject, not a typo in it
 const ANSI_RE = /\u001B(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001B]*(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
 
 /** Strip terminal escape sequences from captured output. */

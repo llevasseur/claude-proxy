@@ -1071,9 +1071,7 @@ export interface CommandRun {
 export function isCommandRun<Candidate>(value: Candidate): value is Candidate & CommandRun {
   const record = jsonObject(jsonValueOf(value));
   if (record === null) return false;
-  return (
-    jsonText(record.threadId) !== null && jsonText(record.command) !== null && jsonNumber(record.schema) !== null
-  );
+  return jsonText(record.threadId) !== null && jsonText(record.command) !== null && jsonNumber(record.schema) !== null;
 }
 
 /**
