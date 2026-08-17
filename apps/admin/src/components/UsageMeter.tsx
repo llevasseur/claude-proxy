@@ -160,6 +160,21 @@ function FuelGauge({
   );
 }
 
+/**
+ * When the tank runs dry, assuming the pace behind `projected` holds — and only
+ * when it runs dry *before* the reset. `projected` is where the burn lands by
+ * the reset, so a value over 1 crosses empty on the way there; interpolating
+ * linearly between now and the reset names the crossing time.
+ */
+function expectedEmpty(w: UsageWindowMeter, now: number = Date.now()): Date | null {
+  if (!w.resetsAt || w.pace.projected == null) return null;
+  if (w.pace.projected <= 1 || w.pace.projected <= w.utilization) return null;
+  const reset = new Date(w.resetsAt).getTime();
+  if (Number.isNaN(reset) || reset <= now) return null;
+  const share = (1 - w.utilization) / (w.pace.projected - w.utilization);
+  return new Date(now + share * (reset - now));
+}
+
 /** One window's allowance as a fuel gauge: how much is left, and the pace read. */
 export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
   const tone = TONE[w.pace.status];
@@ -168,10 +183,11 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
   const left = Math.min(1, Math.max(0, 1 - w.utilization));
   const projectedLeft = w.pace.projected == null ? null : Math.min(1, Math.max(0, 1 - w.pace.projected));
   const low = remaining <= LOW_FUEL_PCT;
-  // The timeline under the dial: how far through the allowance, capped so an
-  // over-budget estimate can't overflow the track.
+  // The timeline riding the card's top edge: how far through the allowance,
+  // capped so an over-budget estimate can't overflow the track.
   const fill = Math.min(100, Math.max(0, utilPct));
   const projected = w.pace.projected == null ? null : Math.min(100, w.pace.projected * 100);
+  const emptiesAt = expectedEmpty(w);
 
   return (
     <div className={`card usage-meter tone-${tone}`}>
@@ -190,6 +206,9 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
       </div>
 
       <div className='gauge-cluster'>
+        {/* Reserved line above the dial: filled only when the tank runs dry
+            before the reset, blank otherwise so the dial never shifts. */}
+        <div className='gauge-empty-eta'>{emptiesAt ? `empty ~${resetClock(emptiesAt.toISOString())}` : null}</div>
         <FuelGauge left={left} projectedLeft={projectedLeft} low={low} label={w.label} />
         <div className='gauge-readout'>
           <span className='usage-meter-value'>
