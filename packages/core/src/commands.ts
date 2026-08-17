@@ -204,10 +204,19 @@ export function contentHash(text: string): string {
 // --- The prompt envelope ---------------------------------------------------
 
 /**
- * Every envelope in a prompt, in order. A prompt carries more than one when a local
- * command opens the turn the real command was typed into, so the first is not the run's.
+ * Either tag the CLI writes a command's name into, anywhere in a prompt.
+ *
+ * The envelope leads with `<command-message>` and repeats the name in `<command-name>`
+ * immediately after, so **both** are read: a prompt that kept only the first — a
+ * transcript gist cut between the two, or a capture that never carried the second —
+ * still names its run instead of falling through as an ordinary session. The pair is
+ * folded back into one envelope by {@link envelopes}, so reading both never doubles a
+ * run or splits its arguments off from it.
+ *
+ * The closing tag is a backreference, so `<command-name>x</command-message>` is not a
+ * name — mismatched tags are damage, not an envelope.
  */
-const COMMAND_NAME_RE = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/gi;
+const COMMAND_TAG_RE = /<command-(name|message)>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-\1>/gi;
 const ARGS_OPEN_RE = /<command-args>/gi;
 const ARGS_CLOSE_RE = /<\/command-args>/gi;
 /**
@@ -253,6 +262,40 @@ export interface CommandEnvelope {
  * past it the block belongs to that envelope and this one carried no args. A block left
  * unclosed by a truncated prompt falls back to that bound.
  */
+/** One envelope's span in a prompt: the command it names, and where its tags start and end. */
+interface EnvelopeSpan {
+  command: string;
+  /** Index of the first tag of the run — what the local-command caveat has to sit against. */
+  start: number;
+  /** One past the last tag of the run — where this envelope's `<command-args>` is looked for. */
+  end: number;
+}
+
+/**
+ * Every envelope in a prompt, in order, with the adjacent tags naming one command folded
+ * into a single span.
+ *
+ * Adjacency is the whole test, exactly as it is for the local-command caveat: the CLI emits
+ * `<command-message>` and `<command-name>` back to back with nothing but whitespace between
+ * them, so a same-named neighbour is the *same* envelope written twice rather than a second
+ * run. Folding them is what keeps the two halves of the pair from being read as two
+ * envelopes, which would make each one bound the other's `<command-args>` block and leave
+ * every run with empty arguments.
+ */
+function envelopes(text: string): EnvelopeSpan[] {
+  const spans: EnvelopeSpan[] = [];
+  for (const tag of text.matchAll(COMMAND_TAG_RE)) {
+    const command = tag[2]!.toLowerCase();
+    const previous = spans[spans.length - 1];
+    if (previous && previous.command === command && text.slice(previous.end, tag.index).trim() === '') {
+      previous.end = tag.index + tag[0].length;
+      continue;
+    }
+    spans.push({ command, start: tag.index, end: tag.index + tag[0].length });
+  }
+  return spans;
+}
+
 function readArgs(text: string, from: number, next: number): string {
   ARGS_OPEN_RE.lastIndex = from;
   const open = ARGS_OPEN_RE.exec(text);
@@ -277,11 +320,11 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
   if (!prompt) return null;
   const text = prompt.replace(REMINDER_RE, '').replace(/<system-reminder>[\s\S]*$/i, '');
 
-  const names = [...text.matchAll(COMMAND_NAME_RE)];
-  for (const [i, name] of names.entries()) {
-    if (LOCAL_ENVELOPE_RE.test(text.slice(0, name.index))) continue;
+  const found = envelopes(text);
+  for (const [i, envelope] of found.entries()) {
+    if (LOCAL_ENVELOPE_RE.test(text.slice(0, envelope.start))) continue;
 
-    const args = readArgs(text, name.index + name[0].length, names[i + 1]?.index ?? text.length);
+    const args = readArgs(text, envelope.end, found[i + 1]?.start ?? text.length);
     const flags: string[] = [];
     for (const token of args.split(/\s+/)) {
       const flag = FLAG_RE.exec(token);
@@ -290,13 +333,51 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
     }
 
     return {
-      command: name[1]!.toLowerCase(),
+      command: envelope.command,
       args,
       flags,
       prompt: args.replace(COMMAND_NOISE_RE, '').replace(/\s+/g, ' ').trim(),
     };
   }
   return null;
+}
+
+/**
+ * A whole block the envelope wraps around text that is not the person's. `<command-message>`
+ * carries nothing but the bare command name the `<command-name>` beside it already states, so
+ * it goes **content and all** rather than being unwrapped into a stray repeated word.
+ */
+const ENVELOPE_BLOCK_RE =
+  /<command-message>[\s\S]*?<\/command-message>|<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<local-command-stdout>[\s\S]*?<\/local-command-stdout>/gi;
+/** An envelope tag left standing once those blocks are gone — `<command-args>` and its like. */
+const ENVELOPE_TAG_RE = /<\/?(?:local-)?command-[a-z-]+>/gi;
+/** Horizontal whitespace only: a stripped tag must not fold the paragraphs around it together. */
+const INLINE_SPACE_RE = /[^\S\n]+/g;
+
+/**
+ * One prompt with its command envelope taken out, for a human to read.
+ *
+ * This is the display counterpart to {@link parseCommandEnvelope}: the parser wants the
+ * envelope, a reader never does. The tags are markup the CLI wrapped around the text rather
+ * than anything typed, and rendered verbatim they are the least legible thing in a drawer —
+ * a run opens on `<command-message>god</command-message><command-name>/god</command-name>`
+ * before a word of the actual request.
+ *
+ * `<command-args>` is **unwrapped, not dropped**: its body is the criteria a person wrote,
+ * which is the one part of the envelope worth reading. Text carrying no envelope comes back
+ * unchanged apart from its own trimming.
+ */
+export function stripCommandEnvelope(text: string): string {
+  return (
+    text
+      .replace(ENVELOPE_BLOCK_RE, ' ')
+      // A prompt cut mid-caveat never closes its tag, so that shape comes off by its opening.
+      .replace(/<local-command-caveat>[\s\S]*$/i, ' ')
+      .replace(ENVELOPE_TAG_RE, ' ')
+      .replace(INLINE_SPACE_RE, ' ')
+      .replace(/ ?\n ?/g, '\n')
+      .trim()
+  );
 }
 
 // --- Step attribution ------------------------------------------------------
