@@ -1308,10 +1308,8 @@ const firstTaskIndex = (nodes: SessionNode[]): number | null => nodes.find((n) =
  * A gist plus the whole text the transcript line cut short, when the sidecar recorded one.
  * The fuller text is what gets rendered; {@link LongText} keeps it from flooding the drawer.
  *
- * The command envelope comes off first. A slash command's opening step is markup for its
- * first several dozen characters — `<command-message>`, `<command-name>`, `<command-args>` —
- * and this drawer is where a person reads a step, so the tags are stripped and the arguments
- * they wrap are kept. Text carrying no envelope is unaffected.
+ * The command envelope comes off first: the tags are stripped and the arguments they wrap
+ * are kept. Text carrying no envelope is unaffected.
  */
 function ExpandableText({ text, full }: { text: string; full?: string }) {
   const whole = full !== undefined && full.trim() !== '' ? full : text;

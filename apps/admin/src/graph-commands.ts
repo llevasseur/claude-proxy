@@ -108,8 +108,8 @@ export const FAMILY_LABEL: Record<CommandFamily, string> = {
 export interface CommandRunSpan {
   /**
    * The command invoked — for the host span, the command the transcript *is*, read off its
-   * own opening envelope. Null only when nothing names it: an ordinary session, or a
-   * command run whose opening prompt was never captured.
+   * own opening envelope. Null when nothing names it: an ordinary session, or a run whose
+   * opening prompt was never captured.
    */
   command: string | null;
   /** True for the host's own steps ahead of the first nested run, named or not. */
@@ -131,13 +131,8 @@ export interface CommandRunSpan {
  * One transcript's command runs, in order. The first span is the host's own steps — every node
  * before the first nested call.
  *
- * The host span **is** named, from the envelope the transcript's own opening prompt carries:
- * `<command-message>god</command-message><command-name>/god</command-name>` says which command
- * the session is, so drawing that span grey and labelling it "unknown" threw away a fact the
- * transcript states outright — and the host run is usually the largest box on the canvas.
- * `parseCommandEnvelope` reads either tag, so a prompt that kept only the first still names it.
- * A session that opened on no command has nothing to read and stays null, which is the honest
- * answer rather than a guess.
+ * The host span is named from the envelope its own opening prompt carries, through
+ * `parseCommandEnvelope`. A session that opened on no command stays null.
  */
 export function commandRuns(entry: SessionGraphEntry, isCommand: (name: string) => boolean): CommandRunSpan[] {
   const nodes = entry.nodes;

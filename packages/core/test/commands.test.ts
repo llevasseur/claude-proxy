@@ -252,7 +252,6 @@ describe('parseCommandEnvelope', () => {
     expect(parsed).toMatchObject({ command: 'god', args: 'ship it' });
   });
 
-  // The pair is one envelope written twice: read as two, each would bound the other's block.
   it('keeps the args when both tags of the pair are present', () => {
     expect(parseCommandEnvelope(envelope('god', '--squash rebuild the graph'))).toMatchObject({
       command: 'god',
@@ -262,7 +261,6 @@ describe('parseCommandEnvelope', () => {
   });
 
   it('is one run, not two, when the pair names the same command', () => {
-    // A second envelope would take the args block, leaving the first with none.
     expect(parseCommandEnvelope(`${envelope('task', 'first')} ${envelope('fb', 'second')}`)?.args).toBe('first');
   });
 

@@ -204,17 +204,11 @@ export function contentHash(text: string): string {
 // --- The prompt envelope ---------------------------------------------------
 
 /**
- * Either tag the CLI writes a command's name into, anywhere in a prompt.
+ * Either tag the CLI writes a command's name into, anywhere in a prompt — a prompt that
+ * kept only `<command-message>` still names its run. {@link envelopes} folds the pair back
+ * into one envelope.
  *
- * The envelope leads with `<command-message>` and repeats the name in `<command-name>`
- * immediately after, so **both** are read: a prompt that kept only the first — a
- * transcript gist cut between the two, or a capture that never carried the second —
- * still names its run instead of falling through as an ordinary session. The pair is
- * folded back into one envelope by {@link envelopes}, so reading both never doubles a
- * run or splits its arguments off from it.
- *
- * The closing tag is a backreference, so `<command-name>x</command-message>` is not a
- * name — mismatched tags are damage, not an envelope.
+ * The closing tag is a backreference, so mismatched tags are damage, not an envelope.
  */
 const COMMAND_TAG_RE = /<command-(name|message)>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-\1>/gi;
 const ARGS_OPEN_RE = /<command-args>/gi;
@@ -275,12 +269,10 @@ interface EnvelopeSpan {
  * Every envelope in a prompt, in order, with the adjacent tags naming one command folded
  * into a single span.
  *
- * Adjacency is the whole test, exactly as it is for the local-command caveat: the CLI emits
- * `<command-message>` and `<command-name>` back to back with nothing but whitespace between
- * them, so a same-named neighbour is the *same* envelope written twice rather than a second
- * run. Folding them is what keeps the two halves of the pair from being read as two
- * envelopes, which would make each one bound the other's `<command-args>` block and leave
- * every run with empty arguments.
+ * Adjacency is the whole test, as it is for the local-command caveat: the CLI emits
+ * `<command-message>` and `<command-name>` back to back with only whitespace between them,
+ * so a same-named neighbour is the same envelope written twice. Read as two, each would
+ * bound the other's `<command-args>` block and leave every run with empty arguments.
  */
 function envelopes(text: string): EnvelopeSpan[] {
   const spans: EnvelopeSpan[] = [];
@@ -343,9 +335,8 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
 }
 
 /**
- * A whole block the envelope wraps around text that is not the person's. `<command-message>`
- * carries nothing but the bare command name the `<command-name>` beside it already states, so
- * it goes **content and all** rather than being unwrapped into a stray repeated word.
+ * A block the envelope wraps around text that is not the person's, dropped content and all.
+ * `<command-message>` carries only the bare name `<command-name>` already states.
  */
 const ENVELOPE_BLOCK_RE =
   /<command-message>[\s\S]*?<\/command-message>|<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<local-command-stdout>[\s\S]*?<\/local-command-stdout>/gi;
@@ -355,17 +346,11 @@ const ENVELOPE_TAG_RE = /<\/?(?:local-)?command-[a-z-]+>/gi;
 const INLINE_SPACE_RE = /[^\S\n]+/g;
 
 /**
- * One prompt with its command envelope taken out, for a human to read.
+ * One prompt with its command envelope taken out, for a human to read — the display
+ * counterpart to {@link parseCommandEnvelope}.
  *
- * This is the display counterpart to {@link parseCommandEnvelope}: the parser wants the
- * envelope, a reader never does. The tags are markup the CLI wrapped around the text rather
- * than anything typed, and rendered verbatim they are the least legible thing in a drawer —
- * a run opens on `<command-message>god</command-message><command-name>/god</command-name>`
- * before a word of the actual request.
- *
- * `<command-args>` is **unwrapped, not dropped**: its body is the criteria a person wrote,
- * which is the one part of the envelope worth reading. Text carrying no envelope comes back
- * unchanged apart from its own trimming.
+ * `<command-args>` is **unwrapped, not dropped**: its body is the criteria a person wrote.
+ * Text carrying no envelope comes back unchanged apart from its own trimming.
  */
 export function stripCommandEnvelope(text: string): string {
   return (
