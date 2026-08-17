@@ -675,6 +675,11 @@ describe('runKey', () => {
 
   it('falls back to the thread id a record written before nested runs was keyed by', () => {
     const { runId: _dropped, ...legacy } = run();
+    // SAFETY: `legacy` is the full `run()` fixture with exactly one key destructured
+    // off it, so every other field of `CommandRun` is present and correctly typed.
+    // `runId` is the field this case exists to remove — it is what a record written
+    // before nested runs looks like, and `runKey` is under test for reading it back
+    // off `threadId` instead.
     expect(runKey(legacy as CommandRun)).toBe('0000000000000001');
   });
 });
@@ -781,7 +786,13 @@ describe('summarizeAgentTypes', () => {
   });
 
   it('contributes nothing for a record written before spawns were stored', () => {
-    const old = { ...run(), spawns: undefined } as unknown as CommandRun;
+    const old = run();
+    // SAFETY: deleted rather than set to `undefined`, because a store line written
+    // before schema 4 has no `spawns` key at all. `old` is the fixture built on the
+    // line above and held by nothing else, and the narrow type names only the key
+    // being removed — `CommandRun` declares `spawns` required, which is precisely
+    // the declaration this case is checking `summarizeAgentTypes` survives.
+    delete (old as { spawns?: CommandRun['spawns'] }).spawns;
     expect(summarizeAgentTypes([old])).toEqual([]);
   });
 });
@@ -800,7 +811,11 @@ describe('schema tolerance', () => {
   });
 
   it('reads totals off a record that predates the block, rather than throwing', () => {
-    const old = { schema: 1, threadId: 'a', command: 'task' } as unknown as CommandRun;
+    // SAFETY: the three fields named are the identity fields `isCommandRun` requires,
+    // and they carry the types `CommandRun` declares for them. Everything else is
+    // deliberately missing: that is what a record predating the totals block is, and
+    // the five calls below are asserting each reader tolerates it rather than throwing.
+    const old = { schema: 1, threadId: 'a', command: 'task' } as CommandRun;
     expect(runTotals(old)).toEqual({
       tokens: ZERO_TOKENS,
       cost: 0,
@@ -825,6 +840,10 @@ describe('commandRunProfiles', () => {
   ];
 
   /** A step row as `summarizeSteps` writes it, trimmed to what the profile reads. */
+  // SAFETY: every field `commandRunProfiles` reads off a step row is spelled out in
+  // the literal below with its declared type; the ones omitted are the presentation
+  // fields no assertion in this describe block touches, so widening them into the
+  // full row type cannot change what the profiles under test compute.
   const stat = (step: string | null, reached: boolean) =>
     ({
       step,
@@ -863,7 +882,10 @@ describe('commandRunProfiles', () => {
 
   it('falls back to the request span for a record written before wallMs, and flags it', () => {
     const old = run();
-    // Deleted rather than `undefined`: an older store line has no such key at all.
+    // SAFETY: deleted rather than set to `undefined`, since an older store line has no
+    // such key at all. `old.totals` is the fixture built one line up, and the narrow
+    // type names only the key being removed — `CommandRunTotals` declares `wallMs`
+    // required, which is exactly the declaration this case checks the fallback for.
     delete (old.totals as { wallMs?: number }).wallMs;
     const profiles = commandRunProfiles([old]);
     expect(profiles[0]).toMatchObject({ endToEndMs: 1000, wallMeasured: false });

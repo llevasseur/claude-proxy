@@ -21,7 +21,7 @@ export const ADVICE_THRESHOLDS = {
   highDailyCostUsd: 20,
 };
 
-const SEVERITY_RANK: Record<Severity, number> = { high: 0, warn: 1, info: 2 };
+const SEVERITY_RANK = { high: 0, warn: 1, info: 2 } satisfies Record<Severity, number>;
 
 /**
  * Deterministic advice from the digest numbers. Same digest in → same advice
@@ -120,14 +120,24 @@ export const ADVICE_STEADY_PCT = 0.1;
  * own `metric`. A rule declaring no metric is not comparable, and its advice
  * always renders in full.
  */
-const METRIC_READERS: Record<string, (d: UsageDigest) => number> = {
+const METRIC_READERS = {
   requestCount: (d) => d.requestCount,
   topTools: (d) => d.topTools[0]?.pctOfToolBytes ?? 0,
   toolOverheadPctOfInput: (d) => d.toolOverheadPctOfInput,
   cacheHitRatio: (d) => d.tokens.cacheHitRatio,
   avgSystemPromptBytes: (d) => d.avgSystemPromptBytes,
   cost: (d) => d.cost.total,
-};
+} satisfies Record<string, (d: UsageDigest) => number>;
+
+/** The reader for a rule's declared `metric`, or `undefined` when none reads it. */
+function metricReader(metric: string): ((d: UsageDigest) => number) | undefined {
+  // SAFETY: the index type is widened back to `string` only to perform the same
+  // property read this did when `METRIC_READERS` carried an open `Record<string, …>`
+  // annotation. The return type re-admits `undefined`, which is what the read
+  // actually yields for a metric no rule above declares, and every caller branches
+  // on that before invoking the reader.
+  return METRIC_READERS[metric as keyof typeof METRIC_READERS];
+}
 
 /** Where one piece of advice stands against the last day that recorded its metric. */
 export interface AdviceMovement {
@@ -163,7 +173,7 @@ export function adviceMovement(
   prior: UsageDigest | null,
 ): AdviceMovement[] {
   return advice.map((a) => {
-    const read = a.metric ? METRIC_READERS[a.metric] : undefined;
+    const read = a.metric ? metricReader(a.metric) : undefined;
     const metric = a.metric ?? null;
     if (!read) return { id: a.id, metric, current: null, prior: null, since: null, change: null, steady: false };
     const current = read(digest);

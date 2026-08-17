@@ -155,10 +155,7 @@ export function mainPositions(rows: readonly PullRequestRow[]): MainPosition[] {
  * markers that hide them. A `hidden/<name>` ref names the pin it hides rather than
  * carrying a line of its own.
  */
-export function classifyMainHistoryRefs(refs: readonly MainHistoryRef[]): {
-  pins: MainHistoryRef[];
-  hidden: Set<string>;
-} {
+export function classifyMainHistoryRefs(refs: readonly MainHistoryRef[]) {
   const pins: MainHistoryRef[] = [];
   const hidden = new Set<string>();
   for (const ref of refs) {

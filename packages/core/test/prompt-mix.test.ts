@@ -1,23 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { attributePromptMix, pairPromptRevisions, promptMixByDay, summarizePromptMix } from '../src/prompt-mix.js';
-import type { AuditSidecar } from '../src/types.js';
+import type { AuditRequestMeta, AuditSidecar } from '../src/types.js';
 import { makeSidecar } from './helpers.js';
 
 /** `n` sidecars of one model at one system-prompt size, optionally hashed. */
 function cohort(n: number, model: string, systemBytes: number, hash?: string, timestamp?: string): AuditSidecar[] {
-  return Array.from({ length: n }, () =>
-    makeSidecar({
-      model,
-      ...(timestamp ? { timestamp } : {}),
-      request: {
-        toolCount: 0,
-        toolsBytes: 0,
-        systemBytes,
-        totalBytes: systemBytes,
-        ...(hash ? { system: { hash, blocks: 1, sections: 3 } } : {}),
-      },
-    }),
-  );
+  return Array.from({ length: n }, () => {
+    // `system` and `timestamp` stay absent unless named: a sidecar written before the
+    // hash capture existed carries no `system` at all, and that is the case the
+    // band fallback is under test for.
+    const request: AuditRequestMeta = { toolCount: 0, toolsBytes: 0, systemBytes, totalBytes: systemBytes };
+    if (hash) request.system = { hash, blocks: 1, sections: 3 };
+    const overrides: Partial<AuditSidecar> = { model, request };
+    if (timestamp) overrides.timestamp = timestamp;
+    return makeSidecar(overrides);
+  });
 }
 
 describe('summarizePromptMix', () => {

@@ -27,6 +27,7 @@
  * the tool from Claude's context entirely") and
  * https://code.claude.com/docs/en/settings.md (the `disable*` keys).
  */
+import { jsonText, jsonValueOf } from './json.js';
 import { isAuditSidecar } from './types.js';
 
 /** A deny rule is *scoped* (and so not schema-stripping) iff it has a `(...)`
@@ -62,9 +63,13 @@ export interface DenyRuleClassification {
 export function classifyDenyRules(deny: readonly string[]): DenyRuleClassification {
   const schemaStripping: string[] = [];
   const scoped: string[] = [];
+  // `deny` is declared over strings, but it arrives as `permissions.deny` out of a
+  // JSON settings file, where an entry can be a number or `null`. Decoding each
+  // element keeps the non-strings out without asking what shape they were.
   for (const rule of deny) {
-    if (typeof rule !== 'string' || rule.length === 0) continue;
-    (isScopedRule(rule) ? scoped : schemaStripping).push(rule);
+    const name = jsonText(jsonValueOf(rule));
+    if (name === null || name.length === 0) continue;
+    (isScopedRule(name) ? scoped : schemaStripping).push(name);
   }
   return { schemaStripping, scoped };
 }
@@ -80,10 +85,10 @@ export function classifyDenyRules(deny: readonly string[]): DenyRuleClassificati
  * See https://code.claude.com/docs/en/settings.md and
  * https://code.claude.com/docs/en/workflows.md ("disableWorkflows").
  */
-export const DISABLE_SCHEMA_TOOLS: Readonly<Record<string, readonly string[]>> = {
+export const DISABLE_SCHEMA_TOOLS = {
   disableWorkflows: ['Workflow'],
   disableArtifact: ['Artifact'],
-};
+} satisfies Readonly<Record<string, readonly string[]>>;
 
 export interface DisableSchemaEntry {
   /** The settings key, e.g. `disableWorkflows`. */
@@ -212,7 +217,7 @@ export function withheldReport(
 
   // Collect observed tools whose name satisfies `predicate`, ranked, plus the
   // derived status. Shared by deny rules and disable-key withholds.
-  const collect = (predicate: (name: string) => boolean): { observed: ObservedToolMatch[]; status: WithheldStatus } => {
+  const collect = (predicate: (name: string) => boolean) => {
     const matches: ObservedToolMatch[] = [...observed.entries()]
       .filter(([name]) => predicate(name))
       .map(([name, v]) => ({ name, ...v, inLatestRequest: latestRequestTs !== null && v.lastSeen === latestRequestTs }))

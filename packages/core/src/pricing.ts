@@ -20,12 +20,12 @@ export interface ModelPrice {
  * `cacheWrite` is 1.25x `input` (5-minute TTL) and `cacheRead` 0.1x; a row
  * breaking that shape is a transcription error.
  */
-export const MODEL_PRICES: Record<string, ModelPrice> = {
+export const MODEL_PRICES = {
   opus: { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   // Sonnet 5 intro pricing ($2/$10) runs to 2026-08-31; list is carried instead.
   sonnet: { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   haiku: { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
-};
+} satisfies Record<string, ModelPrice>;
 
 /** Used when a model name matches no known family (mirrors the sonnet row). */
 export const FALLBACK_PRICE: ModelPrice = { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 };
@@ -34,7 +34,11 @@ export const FALLBACK_PRICE: ModelPrice = { input: 3, output: 15, cacheWrite: 3.
 export function priceFor(model: string): ModelPrice {
   const m = model.toLowerCase();
   for (const family of Object.keys(MODEL_PRICES)) {
-    if (m.includes(family)) return MODEL_PRICES[family]!;
+    if (!m.includes(family)) continue;
+    // SAFETY: `family` is an element of `Object.keys(MODEL_PRICES)`, so it is one of
+    // that object's own keys by construction; `Object.keys` merely types its result
+    // as `string[]`, losing which object the keys were read off.
+    return MODEL_PRICES[family as keyof typeof MODEL_PRICES];
   }
   return FALLBACK_PRICE;
 }

@@ -55,6 +55,10 @@ describe('computeSkimDigest', () => {
   });
 
   it('retains request text for each cache key when the server enriches a sidecar', () => {
+    // SAFETY: `hit` builds a fresh object on the line itself, and the very next line
+    // is the assignment that puts `skimRequestText` on it — the intersection states
+    // the field the server adds when it enriches a sidecar, which no writer of the
+    // base sidecar type declares. Nothing else holds this object.
     const sidecar = hit(100, 'hot') as ReturnType<typeof hit> & { skimRequestText: string };
     sidecar.skimRequestText = 'Show me the cached result';
     const d = computeSkimDigest([sidecar], { date: '2026-07-15' });

@@ -16,12 +16,17 @@
  * for every flag that does take a value.
  */
 
+/** Short letter → long flag name, as `parseCliArgs` resolves one spelling to the other. */
+export interface CliAliasMap {
+  readonly [short: string]: string;
+}
+
 /** The spellings that always mean "print usage", never "consume the next entry". */
 export const HELP_SWITCHES: readonly string[] = ['help', 'h'];
 
 export interface CliArgsSpec {
   /** Short letter → long name, e.g. `{ r: 'range' }`. `h` is pinned to `help`. */
-  aliases?: Readonly<Record<string, string>>;
+  aliases?: CliAliasMap;
   /** Flags that stand alone rather than taking a value. `help` is always one. */
   booleans?: Iterable<string>;
   /** Flags that accumulate, so repeating one escapes a value containing commas. */
@@ -46,7 +51,7 @@ export function parseCliArgs(argv: readonly string[], spec: CliArgsSpec = {}): C
 
   // Built last so a caller cannot alias `h` elsewhere or drop `help` from the
   // standalone set — the two moves that would restore the failure this exists for.
-  const aliases: Record<string, string> = { ...spec.aliases, h: 'help' };
+  const aliases: CliAliasMap = { ...spec.aliases, h: 'help' };
   const booleans = new Set([...(spec.booleans ?? []), 'help']);
   const listFlags = new Set(spec.lists ?? []);
 

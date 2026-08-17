@@ -1089,7 +1089,7 @@ describe('deriveSessionNodes', () => {
 });
 
 describe('mergeSessionNodes', () => {
-  const derivedFor = (body: unknown) => deriveSessionNodes(body);
+  const derivedFor = (body: Parameters<typeof deriveSessionNodes>[0]) => deriveSessionNodes(body);
 
   it('swaps in the untruncated text without moving a single index', () => {
     const transcript = parseSessionNodes(TRANSCRIPT);

@@ -11,6 +11,18 @@ import {
 
 const NOW = new Date('2026-07-30T18:00:00.000Z');
 
+/** The sidecar fields these tests name. `rateLimit` is absent unless a case sets it. */
+interface LimitsSidecar {
+  timestamp: string;
+  model: string;
+  endpoint: string;
+  statusCode: number;
+  tokens: { input: number; output: number; cacheRead: number; cacheCreation: number; realInput: number };
+  request: { toolCount: number; toolsBytes: number; systemBytes: number; totalBytes: number };
+  tools: { name: string; bytes: number; estTokens: number }[];
+  rateLimit?: Record<string, string>;
+}
+
 /** A structurally valid sidecar; only the fields a test cares about need naming. */
 function sidecar(over: {
   at?: string;
@@ -18,8 +30,8 @@ function sidecar(over: {
   tokens?: Partial<{ input: number; output: number; cacheRead: number; cacheCreation: number; realInput: number }>;
   rateLimit?: Record<string, string>;
 }) {
-  const t = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, realInput: 0, ...(over.tokens ?? {}) };
-  const base: Record<string, unknown> = {
+  const t = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, realInput: 0, ...over.tokens };
+  const base: LimitsSidecar = {
     timestamp: over.at ?? NOW.toISOString(),
     model: over.model ?? 'claude-sonnet-5',
     endpoint: 'POST /v1/messages',
@@ -28,6 +40,8 @@ function sidecar(over: {
     request: { toolCount: 0, toolsBytes: 0, systemBytes: 0, totalBytes: 0 },
     tools: [],
   };
+  // Absent, not `undefined`: a sidecar with no captured rate-limit headers has no
+  // such key, which is the case `windowOfHeader` falls back for.
   if (over.rateLimit) base.rateLimit = over.rateLimit;
   return base;
 }

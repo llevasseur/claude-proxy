@@ -5,6 +5,7 @@ import {
   applyIdeaMarks,
   emptyIdeasStore,
   type IdeaAdd,
+  type IdeaClaimRequest,
   type IdeaEvidence,
   type IdeasStore,
   ideaPrLinks,
@@ -31,7 +32,11 @@ function add(slug: string): IdeaAdd {
 function claimed(slug: string, pr: string | null = PR): IdeasStore {
   const added = applyIdeaAdds(emptyIdeasStore(), [add(slug)]).store;
   const accepted = applyIdeaMarks(added, [{ slug, status: 'accepted' }]).store;
-  return applyIdeaClaims(accepted, [{ slug, by: 'feat/x', ...(pr ? { pr } : {}) }]).store;
+  // `pr` stays off the request when the caller passed `null`: the case under test is a
+  // claim taken before a PR exists, which is a missing key, not a `pr: undefined`.
+  const request: IdeaClaimRequest = { slug, by: 'feat/x' };
+  if (pr) request.pr = pr;
+  return applyIdeaClaims(accepted, [request]).store;
 }
 
 describe('the links a PR outcome can settle', () => {

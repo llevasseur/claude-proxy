@@ -135,7 +135,7 @@ export const SUGGESTION_DEFECT_THRESHOLDS = {
   minCleanTailBuckets: 5,
 } as const;
 
-const SEVERITY_RANK: Record<Severity, number> = { high: 0, warn: 1, info: 2 };
+const SEVERITY_RANK = { high: 0, warn: 1, info: 2 } satisfies Record<Severity, number>;
 
 // --- Tool-signature helpers ------------------------------------------------
 //

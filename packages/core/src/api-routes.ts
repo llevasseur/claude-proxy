@@ -235,11 +235,21 @@ export function apiRoute(path: string): ApiRoute | undefined {
  * CORS. Both halves are asked because the chat turn stream shares those headers as a GET.
  */
 export function isApiWriteRoute(route: ApiRoute): boolean {
+  // SAFETY: `methods` is declared per route as an `as const` tuple, so its element
+  // type is that route's own literal union rather than `ApiMethod` — which makes
+  // `.includes('POST')` a type error on a route that never lists POST. Widening to
+  // the declared method union asks the question this predicate exists to ask, and
+  // every literal in every tuple is drawn from `ApiMethod` already.
   return route.cors === 'origin' && (route.methods as readonly ApiMethod[]).includes('POST');
 }
 
 /** Whether a declared route answers this method. */
 export function apiRouteAnswers(route: ApiRoute, method: string | undefined): boolean {
+  // SAFETY: the argument is a method string straight off the wire, so it cannot be
+  // narrowed to the route's literal tuple type before the comparison — the whole
+  // point of the call is to find out whether it belongs. Every element of `methods`
+  // is a string literal, so reading the tuple as `readonly string[]` loses nothing
+  // but the literal identities the comparison is about to test anyway.
   return (route.methods as readonly string[]).includes(method ?? '');
 }
 
@@ -257,6 +267,11 @@ export function apiRouteUrl<P extends ApiRoutePath>(
   // Hand-encoded rather than via `URLSearchParams`: this package's typecheck loads
   // neither the DOM nor node's lib. It also writes `%20` for a space, not `+`.
   const pairs: string[] = [];
+  // SAFETY: `params` is `Partial<Record<ApiRouteParam<P>, ApiQueryValue>>`, whose key
+  // type is a union of string literals the manifest declares for `P`; `Object.entries`
+  // over a mapped type is typed too loosely to keep them, so the value type is what
+  // matters here and it is unchanged. Every value is still `ApiQueryValue`, and the
+  // `undefined` a `Partial` admits is the first thing the loop body drops.
   for (const [key, value] of Object.entries(params as Record<string, ApiQueryValue>)) {
     if (value === undefined || value === '') continue;
     pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
