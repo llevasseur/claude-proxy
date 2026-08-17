@@ -1,3 +1,5 @@
+import { jsonArray, jsonNumber, jsonObject, jsonText, jsonValueOf } from './json.js';
+
 /**
  * The audit sidecar written by the proxy next to each captured request
  * (`<ts>_anthropic.audit.json`). This type mirrors exactly what
@@ -134,22 +136,27 @@ export interface AuditSidecar {
 /**
  * Structural guard for a parsed-but-untrusted sidecar. Malformed files are
  * skipped by the digest rather than aborting the whole run.
+ *
+ * The candidate is generic rather than `unknown` so a caller keeps its own type
+ * through the guard — that is what lets the `readonly unknown[]` a log directory
+ * reader holds filter down to `AuditSidecar[]` at the call sites in `server/`.
+ * Every caller passes a value it got from `JSON.parse`, which is what
+ * {@link jsonValueOf} carries into the JSON domain here.
  */
-export function isAuditSidecar(value: unknown): value is AuditSidecar {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  if (typeof v.timestamp !== 'string') return false;
-  if (typeof v.model !== 'string') return false;
-  const t = v.tokens as Record<string, unknown> | undefined;
-  if (typeof t !== 'object' || t === null) return false;
+export function isAuditSidecar<Candidate>(value: Candidate): value is Candidate & AuditSidecar {
+  const record = jsonObject(jsonValueOf(value));
+  if (record === null) return false;
+  if (jsonText(record.timestamp) === null) return false;
+  if (jsonText(record.model) === null) return false;
+  const tokens = jsonObject(record.tokens);
+  if (tokens === null) return false;
   for (const key of ['input', 'output', 'cacheRead', 'cacheCreation', 'realInput']) {
-    if (typeof t[key] !== 'number') return false;
+    if (jsonNumber(tokens[key]) === null) return false;
   }
-  const r = v.request as Record<string, unknown> | undefined;
-  if (typeof r !== 'object' || r === null) return false;
+  const request = jsonObject(record.request);
+  if (request === null) return false;
   for (const key of ['toolCount', 'toolsBytes', 'systemBytes', 'totalBytes']) {
-    if (typeof r[key] !== 'number') return false;
+    if (jsonNumber(request[key]) === null) return false;
   }
-  if (!Array.isArray(v.tools)) return false;
-  return true;
+  return jsonArray(record.tools) !== null;
 }

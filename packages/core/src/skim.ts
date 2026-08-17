@@ -1,3 +1,4 @@
+import { booleanAt, jsonObject, jsonText, jsonValueOf, numberAt } from './json.js';
 import { priceFor } from './pricing.js';
 import { reportDay } from './time.js';
 import { type AuditSidecar, type AuditSkim, isAuditSidecar } from './types.js';
@@ -47,14 +48,16 @@ const NO_SKIM: AuditSkim = { enabled: false, servedFromCache: false, savedInputT
 
 /** Read legacy or malformed skim blocks with safe defaults. */
 function skimOf(sidecar: AuditSidecar): AuditSkim {
-  const raw = (sidecar as { skim?: unknown }).skim;
-  if (typeof raw !== 'object' || raw === null) return NO_SKIM;
-  const s = raw as Record<string, unknown>;
+  // The field is declared `AuditSkim | undefined`, but a sidecar reaching here only
+  // passed `isAuditSidecar`, which never looks at `skim` — so what is actually there
+  // is whatever the file held, decoded rather than trusted.
+  const raw = jsonObject(jsonValueOf(sidecar.skim));
+  if (raw === null) return NO_SKIM;
   return {
-    enabled: s.enabled === true,
-    servedFromCache: s.servedFromCache === true,
-    savedInputTokens: typeof s.savedInputTokens === 'number' ? s.savedInputTokens : 0,
-    cacheKey: typeof s.cacheKey === 'string' ? s.cacheKey : null,
+    enabled: booleanAt(raw, 'enabled'),
+    servedFromCache: booleanAt(raw, 'servedFromCache'),
+    savedInputTokens: numberAt(raw, 'savedInputTokens'),
+    cacheKey: jsonText(raw.cacheKey),
   };
 }
 
@@ -91,10 +94,10 @@ export function computeSkimDigest(sidecars: readonly unknown[], opts: ComputeSki
     }
 
     if (skim.cacheKey) {
-      const requestText =
-        typeof (s as unknown as { skimRequestText?: unknown }).skimRequestText === 'string'
-          ? (s as unknown as { skimRequestText: string }).skimRequestText
-          : null;
+      // `skimRequestText` is not part of `AuditSidecar`: the server joins it onto the
+      // sidecar it read when the matching `.request.txt` was still on disk, so it is
+      // present on some entries and absent on the rest.
+      const requestText = jsonText(jsonObject(jsonValueOf(s))?.skimRequestText);
       const acc = keyTotals.get(skim.cacheKey) ?? {
         requestText,
         requests: 0,

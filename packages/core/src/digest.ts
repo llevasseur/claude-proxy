@@ -1,4 +1,19 @@
 import { estTokens } from './context.js';
+import {
+  arrayAt,
+  booleanAt,
+  type JsonObject,
+  type JsonValue,
+  jsonArray,
+  jsonEntries,
+  jsonNumber,
+  jsonObject,
+  jsonText,
+  jsonValueOf,
+  numberAt,
+  objectAt,
+  textAt,
+} from './json.js';
 import { addCost, type CostBreakdown, estimateCost, ZERO_COST } from './pricing.js';
 import { reportDay, reportHour } from './time.js';
 import { lastNonZeroComparison } from './trends.js';
@@ -298,8 +313,10 @@ export function computeDigest(sidecars: readonly unknown[], opts: ComputeDigestO
     if (s.cacheBreakpointObserved === true) cacheBreakpointObservations += 1;
     // Counted only against an observed occurrence, so a stray gate name on a sidecar
     // that saw nothing cannot inflate the tally.
-    const declinedBy = s.cacheBreakpointDeclinedBy;
-    if (s.cacheBreakpointObserved === true && typeof declinedBy === 'string' && declinedBy !== '') {
+    // Decoded rather than read straight off the field: `isAuditSidecar` never looked at
+    // it, so a sidecar can carry anything here.
+    const declinedBy = jsonText(jsonValueOf(s.cacheBreakpointDeclinedBy));
+    if (s.cacheBreakpointObserved === true && declinedBy !== null && declinedBy !== '') {
       cacheBreakpointDeclines[declinedBy] = (cacheBreakpointDeclines[declinedBy] ?? 0) + 1;
     }
 
@@ -416,27 +433,32 @@ export function digestsByDay(
   return digests;
 }
 
-function isRec(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null;
-}
-function numOf(v: unknown): number {
-  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+/** Every numeric member of a persisted count map, non-numbers dropped. */
+function numberMap(source: JsonObject | null) {
+  const counts: Record<string, number> = {};
+  for (const [key, value] of jsonEntries(source)) {
+    const count = jsonNumber(value);
+    if (count !== null) counts[key] = count;
+  }
+  return counts;
 }
 
 /** One persisted cohort, with every absent field reading as zero. */
-function normalizePerCallStats(raw: unknown): PerCallStats {
-  if (!isRec(raw)) return { ...EMPTY_PER_CALL_STATS };
-  const requests = numOf(raw.requests);
-  const sessions = numOf(raw.sessions);
+function normalizePerCallStats(raw: JsonValue | undefined): PerCallStats {
+  const record = jsonObject(raw);
+  if (record === null) return { ...EMPTY_PER_CALL_STATS };
+  const requests = numberAt(record, 'requests');
+  const sessions = numberAt(record, 'sessions');
   return {
     requests,
     sessions,
-    costUsd: numOf(raw.costUsd),
-    costTotal: numOf(raw.costTotal),
-    fixedPrefixTokens: numOf(raw.fixedPrefixTokens),
-    freshInputTokens: numOf(raw.freshInputTokens),
+    costUsd: numberAt(record, 'costUsd'),
+    costTotal: numberAt(record, 'costTotal'),
+    fixedPrefixTokens: numberAt(record, 'fixedPrefixTokens'),
+    freshInputTokens: numberAt(record, 'freshInputTokens'),
     // Derived for a digest archived before the field existed but with both parts.
-    callsPerSession: raw.callsPerSession != null ? numOf(raw.callsPerSession) : sessions > 0 ? requests / sessions : 0,
+    callsPerSession:
+      record.callsPerSession != null ? numberAt(record, 'callsPerSession') : sessions > 0 ? requests / sessions : 0,
   };
 }
 
@@ -445,8 +467,9 @@ function normalizePerCallStats(raw: unknown): PerCallStats {
  * and comes back with `identified: false` — no cohort was ever separated, so
  * reporting an empty classifier cohort as a *finding* would be a lie.
  */
-function normalizePerCall(raw: unknown): PerCallSplit {
-  if (!isRec(raw)) {
+function normalizePerCall(raw: JsonValue | undefined): PerCallSplit {
+  const record = jsonObject(raw);
+  if (record === null) {
     return {
       work: { ...EMPTY_PER_CALL_STATS },
       classifier: { ...EMPTY_PER_CALL_STATS },
@@ -455,10 +478,10 @@ function normalizePerCall(raw: unknown): PerCallSplit {
     };
   }
   return {
-    work: normalizePerCallStats(raw.work),
-    classifier: normalizePerCallStats(raw.classifier),
-    all: normalizePerCallStats(raw.all),
-    identified: raw.identified === true,
+    work: normalizePerCallStats(record.work),
+    classifier: normalizePerCallStats(record.classifier),
+    all: normalizePerCallStats(record.all),
+    identified: booleanAt(record, 'identified'),
   };
 }
 
@@ -468,55 +491,86 @@ function normalizePerCall(raw: unknown): PerCallSplit {
  * `{ requestCount, realInput, output, costTotal }`. Unknown fields default to
  * zero. Returns `null` only for non-object input. `fallbackDate` fills in a
  * missing `date` (e.g. the archive folder name).
+ *
+ * The candidate is generic rather than `unknown` so `server/src/archive.ts` can
+ * hand over whatever its own reader produced; the body decodes it either way.
  */
-export function normalizeDigest(raw: unknown, fallbackDate: string): UsageDigest | null {
-  if (!isRec(raw)) return null;
+export function normalizeDigest<Candidate>(raw: Candidate, fallbackDate: string): UsageDigest | null {
+  const record = jsonObject(jsonValueOf(raw));
+  if (record === null) return null;
 
-  const rt = isRec(raw.tokens) ? raw.tokens : {};
-  const realInput = numOf(rt.realInput ?? raw.realInput);
-  const cacheRead = numOf(rt.cacheRead);
+  const rt = objectAt(record, 'tokens');
+  // The legacy flat shape kept these at the top level, so each falls back to it.
+  const realInput = jsonNumber(rt?.realInput ?? record.realInput) ?? 0;
+  const cacheRead = numberAt(rt, 'cacheRead');
   const tokens: DigestTokens = {
-    input: numOf(rt.input),
-    output: numOf(rt.output ?? raw.output),
+    input: numberAt(rt, 'input'),
+    output: jsonNumber(rt?.output ?? record.output) ?? 0,
     cacheRead,
-    cacheCreation: numOf(rt.cacheCreation),
+    cacheCreation: numberAt(rt, 'cacheCreation'),
     realInput,
     // Prefer the stored ratio; derive it for legacy digests that predate it.
-    cacheHitRatio: rt.cacheHitRatio != null ? numOf(rt.cacheHitRatio) : realInput > 0 ? cacheRead / realInput : 0,
+    cacheHitRatio:
+      rt?.cacheHitRatio != null ? numberAt(rt, 'cacheHitRatio') : realInput > 0 ? cacheRead / realInput : 0,
   };
 
-  const rc = isRec(raw.cost) ? raw.cost : {};
+  const rc = objectAt(record, 'cost');
   const cost: CostBreakdown = {
-    input: numOf(rc.input),
-    output: numOf(rc.output),
-    cacheWrite: numOf(rc.cacheWrite),
-    cacheRead: numOf(rc.cacheRead),
-    total: numOf(rc.total ?? raw.costTotal),
+    input: numberAt(rc, 'input'),
+    output: numberAt(rc, 'output'),
+    cacheWrite: numberAt(rc, 'cacheWrite'),
+    cacheRead: numberAt(rc, 'cacheRead'),
+    total: jsonNumber(rc?.total ?? record.costTotal) ?? 0,
   };
 
-  const models = isRec(raw.models) ? (raw.models as Record<string, number>) : {};
-  const topTools = Array.isArray(raw.topTools) ? (raw.topTools as TopTool[]) : [];
-  const busiestHour = isRec(raw.busiestHour)
-    ? { hour: numOf(raw.busiestHour.hour), requestCount: numOf(raw.busiestHour.requestCount) }
-    : null;
+  const topTools: TopTool[] = arrayAt(record, 'topTools').map((entry) => {
+    const tool = jsonObject(entry);
+    return {
+      name: textAt(tool, 'name'),
+      totalBytes: numberAt(tool, 'totalBytes'),
+      estTokens: numberAt(tool, 'estTokens'),
+      pctOfToolBytes: numberAt(tool, 'pctOfToolBytes'),
+    };
+  });
+  const hour = objectAt(record, 'busiestHour');
+  const busiestHour =
+    hour === null ? null : { hour: numberAt(hour, 'hour'), requestCount: numberAt(hour, 'requestCount') };
 
   return {
-    date: typeof raw.date === 'string' ? raw.date : fallbackDate,
-    requestCount: numOf(raw.requestCount),
-    skipped: numOf(raw.skipped),
-    cacheBreakpointInjections: numOf(raw.cacheBreakpointInjections),
-    cacheBreakpointObservations: numOf(raw.cacheBreakpointObservations),
-    cacheBreakpointDeclines: isRec(raw.cacheBreakpointDeclines)
-      ? (raw.cacheBreakpointDeclines as Record<string, number>)
-      : {},
-    models,
+    date: jsonText(record.date) ?? fallbackDate,
+    requestCount: numberAt(record, 'requestCount'),
+    skipped: numberAt(record, 'skipped'),
+    cacheBreakpointInjections: numberAt(record, 'cacheBreakpointInjections'),
+    cacheBreakpointObservations: numberAt(record, 'cacheBreakpointObservations'),
+    cacheBreakpointDeclines: numberMap(objectAt(record, 'cacheBreakpointDeclines')),
+    models: numberMap(objectAt(record, 'models')),
     tokens,
     cost,
     topTools,
-    avgSystemPromptBytes: numOf(raw.avgSystemPromptBytes),
-    toolOverheadPctOfInput: numOf(raw.toolOverheadPctOfInput),
+    avgSystemPromptBytes: numberAt(record, 'avgSystemPromptBytes'),
+    toolOverheadPctOfInput: numberAt(record, 'toolOverheadPctOfInput'),
     busiestHour,
-    perCall: normalizePerCall(raw.perCall),
-    trend: Array.isArray(raw.trend) ? (raw.trend as UsageDigest['trend']) : undefined,
+    perCall: normalizePerCall(record.perCall),
+    trend: normalizeTrend(record.trend),
   };
+}
+
+/** A persisted `trend` block, or `undefined` when the digest carried none. */
+function normalizeTrend(raw: JsonValue | undefined): TrendEntry[] | undefined {
+  const entries = jsonArray(raw);
+  if (entries === null) return undefined;
+  return entries.map((entry) => {
+    const record = jsonObject(entry);
+    const trend: TrendEntry = {
+      field: textAt(record, 'field'),
+      today: numberAt(record, 'today'),
+      prior: numberAt(record, 'prior'),
+      deltaPct: numberAt(record, 'deltaPct'),
+    };
+    // Left absent rather than set to undefined: a chip reads a missing `priorDate`
+    // as "no earlier day recorded this field".
+    const priorDate = jsonText(record?.priorDate);
+    if (priorDate !== null) trend.priorDate = priorDate;
+    return trend;
+  });
 }
