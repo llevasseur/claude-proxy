@@ -1,3 +1,4 @@
+import { arrayAt, type JsonValue, jsonObject, jsonText, jsonValueOf } from './json.js';
 import { userPromptText } from './prompt-text.js';
 import { type AuditSidecar, isAuditSidecar } from './types.js';
 
@@ -102,7 +103,7 @@ export function aggregateContext(entries: readonly ContextEntry[], opts: { topN?
     return { requestCount: 0, avgRealInput: 0, medianRealInput: 0, maxRealInput: 0, max: null, top: [] };
   }
 
-  const tokens: number[] = new Array(requestCount);
+  const tokens: number[] = [];
   const top: ContextEntry[] = [];
   let sum = 0;
   let max: ContextEntry | null = null;
@@ -110,7 +111,7 @@ export function aggregateContext(entries: readonly ContextEntry[], opts: { topN?
   for (let i = 0; i < requestCount; i += 1) {
     const entry = entries[i]!;
     const value = entry.realInput;
-    tokens[i] = value;
+    tokens.push(value);
     sum += value;
     // Strictly greater, so a tie keeps the earlier entry — the stable sort's answer.
     if (max === null || value > max.realInput) max = entry;
@@ -156,8 +157,12 @@ export function summarizeContext(entries: readonly ContextEntry[], opts: Summari
  * Map an audit sidecar to a {@link ContextEntry}. Returns null for a malformed
  * sidecar so callers can skip it. `file` is the sidecar's base name, supplied
  * by the caller (the sidecar itself doesn't carry its filename).
+ *
+ * `sidecar` is generic rather than a named shape because every caller hands over
+ * whatever `JSON.parse` gave it and has not classified it yet; `isAuditSidecar`
+ * is the classification, and nothing below it runs until that returns true.
  */
-export function toContextEntry(sidecar: unknown, file: string): ContextEntry | null {
+export function toContextEntry<Candidate>(sidecar: Candidate, file: string): ContextEntry | null {
   if (!isAuditSidecar(sidecar)) return null;
   const s: AuditSidecar = sidecar;
   return {
@@ -342,7 +347,7 @@ export interface RequestBreakdown {
 
 /** UTF-8 byte length, portable across Node and the browser (matches the proxy's
  * `Buffer.byteLength` for JSON strings). */
-function byteLength(value: unknown): number {
+function byteLength(value: JsonValue | undefined): number {
   if (value === undefined) return 0;
   return new TextEncoder().encode(JSON.stringify(value)).length;
 }
@@ -354,35 +359,36 @@ export const estTokens = (bytes: number): number => Math.round(bytes / 4);
  * Break a captured request body into its size-contributing regions: the system
  * prompt, each tool schema, and each conversation message. Pure and tolerant of
  * malformed shapes — missing/renamed fields yield zeros rather than throwing.
+ *
+ * `body` is generic rather than a named shape because callers hand over a
+ * captured request straight from `JSON.parse`, with no promise about it at all;
+ * the decoders below are where it gets one.
  */
-export function analyzeRequestBody(body: unknown): RequestBreakdown {
-  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+export function analyzeRequestBody<Candidate>(body: Candidate): RequestBreakdown {
+  const value = jsonValueOf(body);
+  const record = jsonObject(value);
+  // A body that is not a member map contributes no fields, but is still weighed
+  // as itself — a bare array measures its own size, everything else measures `{}`.
+  const measured: JsonValue = record ?? (Array.isArray(value) ? value : {});
 
-  const rawTools = Array.isArray(obj.tools) ? obj.tools : [];
-  const tools: BreakdownTool[] = rawTools
+  const tools: BreakdownTool[] = arrayAt(record, 'tools')
     .map((t, index) => {
       const bytes = byteLength(t);
-      const name =
-        typeof t === 'object' && t !== null && typeof (t as { name?: unknown }).name === 'string'
-          ? (t as { name: string }).name
-          : '(unnamed)';
+      const name = jsonText(jsonObject(t)?.name) ?? '(unnamed)';
       return { index, name, bytes, estTokens: estTokens(bytes) };
     })
     .sort((a, b) => b.bytes - a.bytes);
 
-  const rawMessages = Array.isArray(obj.messages) ? obj.messages : [];
+  const rawMessages = arrayAt(record, 'messages');
   const messages: BreakdownMessage[] = rawMessages.map((m, index) => {
     const bytes = byteLength(m);
-    const role =
-      typeof m === 'object' && m !== null && typeof (m as { role?: unknown }).role === 'string'
-        ? (m as { role: string }).role
-        : 'unknown';
+    const role = jsonText(jsonObject(m)?.role) ?? 'unknown';
     return { index, role, bytes, estTokens: estTokens(bytes) };
   });
 
   const toolsBytes = tools.reduce((n, t) => n + t.bytes, 0);
-  const systemBytes = obj.system !== undefined ? byteLength(obj.system) : 0;
-  const totalBytes = byteLength(obj);
+  const systemBytes = byteLength(record?.system);
+  const totalBytes = byteLength(measured);
 
   return {
     totalBytes,
@@ -411,18 +417,17 @@ export interface RequestMessageDetail {
  * its full content (pretty-printed JSON) and the same size facts
  * {@link analyzeRequestBody} reports. Returns null for a missing messages array
  * or out-of-range `index`. Pure and tolerant of malformed shapes.
+ *
+ * `body` is generic for the same reason {@link analyzeRequestBody}'s is: it is a
+ * captured payload the caller has not classified.
  */
-export function extractRequestMessage(body: unknown, index: number): RequestMessageDetail | null {
-  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-  const rawMessages = Array.isArray(obj.messages) ? obj.messages : [];
+export function extractRequestMessage<Candidate>(body: Candidate, index: number): RequestMessageDetail | null {
+  const rawMessages = arrayAt(jsonObject(jsonValueOf(body)), 'messages');
   if (!Number.isInteger(index) || index < 0 || index >= rawMessages.length) return null;
 
   const m = rawMessages[index];
   const bytes = byteLength(m);
-  const role =
-    typeof m === 'object' && m !== null && typeof (m as { role?: unknown }).role === 'string'
-      ? (m as { role: string }).role
-      : 'unknown';
+  const role = jsonText(jsonObject(m)?.role) ?? 'unknown';
   return {
     index,
     role,
@@ -449,18 +454,17 @@ export interface RequestToolDetail {
  * `tools` array, with its full definition (pretty-printed JSON) and the same
  * size facts {@link analyzeRequestBody} reports. Returns null for a missing
  * tools array or out-of-range `index`. Pure and tolerant of malformed shapes.
+ *
+ * `body` is generic for the same reason {@link analyzeRequestBody}'s is: it is a
+ * captured payload the caller has not classified.
  */
-export function extractRequestTool(body: unknown, index: number): RequestToolDetail | null {
-  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-  const rawTools = Array.isArray(obj.tools) ? obj.tools : [];
+export function extractRequestTool<Candidate>(body: Candidate, index: number): RequestToolDetail | null {
+  const rawTools = arrayAt(jsonObject(jsonValueOf(body)), 'tools');
   if (!Number.isInteger(index) || index < 0 || index >= rawTools.length) return null;
 
   const t = rawTools[index];
   const bytes = byteLength(t);
-  const name =
-    typeof t === 'object' && t !== null && typeof (t as { name?: unknown }).name === 'string'
-      ? (t as { name: string }).name
-      : '(unnamed)';
+  const name = jsonText(jsonObject(t)?.name) ?? '(unnamed)';
   return {
     index,
     name,
