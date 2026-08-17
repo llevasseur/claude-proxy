@@ -43,6 +43,17 @@ import {
   runCliTurn,
 } from './chat-cli.js';
 import { closeChatTurn, dropChatStream, emitChatEvent, openChatTurn } from './chat-stream.js';
+import { errorMessage } from './errors.js';
+import {
+  type JsonInput,
+  jsonField,
+  jsonNumber,
+  jsonObject,
+  jsonString,
+  numberField,
+  parseJson,
+  stringField,
+} from './json.js';
 import { listSessions, resolveSessionsDir } from './sessions.js';
 import { readLaunchAliases } from './shell-rc.js';
 
@@ -282,7 +293,10 @@ export async function resolveAgentConfig(): Promise<AgentConfig> {
       ? {
           disallowedTools: match.withheld,
           settingSources: match.settingSources,
-          settingsOverrides: match.settingsOverrides,
+          // The alias's `--settings` value was JSON text in the rc, and it is JSON again
+          // on the child's command line — so it is read back as JSON here rather than
+          // carried as an opaque map `cliSettings` would have to trust.
+          settingsOverrides: jsonObject(parseJson(JSON.stringify(match.settingsOverrides) ?? 'null')) ?? null,
         }
       : DEFAULT_AGENT_FLAGS,
     permissionMode: resolveDefaultPermissionMode(process.env.CHAT_AGENT_PERMISSION_MODE),
@@ -296,7 +310,8 @@ export async function resolveAgentConfig(): Promise<AgentConfig> {
 function resolveDefaultPermissionMode(raw: string | undefined): PermissionMode {
   const value = raw?.trim();
   if (!value) return DEFAULT_PERMISSION_MODE;
-  if ((PERMISSION_MODES as readonly string[]).includes(value)) return value as PermissionMode;
+  const mode = PERMISSION_MODES.find((known) => known === value);
+  if (mode) return mode;
   console.warn(
     `[chat] ignoring CHAT_AGENT_PERMISSION_MODE=${value}: expected one of ${PERMISSION_MODES.join(', ')} — using ${DEFAULT_PERMISSION_MODE}`,
   );
@@ -342,9 +357,10 @@ export async function resolveChatConfig(): Promise<ChatConfig> {
   };
 }
 
-function normalizePrompt(raw: unknown): string {
-  if (typeof raw !== 'string') throw new Error('invalid prompt: expected a string');
-  const prompt = raw.trim();
+function normalizePrompt(raw: JsonInput): string {
+  const text = jsonString(raw);
+  if (text === undefined) throw new Error('invalid prompt: expected a string');
+  const prompt = text.trim();
   if (!prompt) throw new Error('invalid prompt: empty');
   if (prompt.length > MAX_PROMPT_CHARS) {
     throw new Error(`invalid prompt: longer than ${MAX_PROMPT_CHARS} characters`);
@@ -451,37 +467,35 @@ export function recordInterruption(logDir: string, threadId: string, why: CliInt
 
 // --- The `api` transport ----------------------------------------------------
 
-/** The subset of a streamed `/v1/messages` event this path reads. */
-interface StreamEvent {
-  type?: string;
-  delta?: { text?: string };
-  message?: { usage?: Record<string, unknown> };
-  usage?: Record<string, unknown>;
-  error?: { message?: string };
+/** A finished `api` turn: the reply as one string, and what it was billed. */
+export interface ChatStreamReply {
+  text: string;
+  usage: ChatUsage;
+}
+
+/** The JSON a `data:` line carries — `undefined` for any other line, and for `[DONE]`. */
+function eventPayload(line: string): JsonInput {
+  const payload = /^data:\s?(.*)$/.exec(line)?.[1];
+  if (!payload?.trim() || payload === '[DONE]') return undefined;
+  return parseJson(payload);
 }
 
 /**
  * Reassemble a streamed reply: concatenated text deltas plus billed usage. Non-text
  * blocks can't occur here — no tools are sent — so text is the whole reply.
  */
-export function decodeChatStream(raw: string): { text: string; usage: ChatUsage } {
+export function decodeChatStream(raw: string): ChatStreamReply {
   const usage: ChatUsage = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
   let text = '';
   let apiError: string | null = null;
 
   for (const line of raw.split(/\r?\n/)) {
-    const payload = /^data:\s?(.*)$/.exec(line)?.[1];
-    if (!payload?.trim() || payload === '[DONE]') continue;
-    let ev: StreamEvent;
-    try {
-      ev = JSON.parse(payload) as StreamEvent;
-    } catch {
-      continue;
-    }
-    if (ev.type === 'content_block_delta' && typeof ev.delta?.text === 'string') text += ev.delta.text;
-    else if (ev.type === 'message_start' && ev.message?.usage) applyUsage(usage, ev.message.usage);
-    else if (ev.type === 'message_delta' && ev.usage) applyUsage(usage, ev.usage);
-    else if (ev.type === 'error') apiError = ev.error?.message ?? 'unknown streaming error';
+    const ev = eventPayload(line);
+    const type = stringField(ev, 'type');
+    if (type === 'content_block_delta') text += stringField(jsonField(ev, 'delta'), 'text') ?? '';
+    else if (type === 'message_start') applyUsage(usage, jsonField(jsonField(ev, 'message'), 'usage'));
+    else if (type === 'message_delta') applyUsage(usage, jsonField(ev, 'usage'));
+    else if (type === 'error') apiError = stringField(jsonField(ev, 'error'), 'message') ?? 'unknown streaming error';
   }
 
   // A stream can carry an error event after a 200.
@@ -489,16 +503,20 @@ export function decodeChatStream(raw: string): { text: string; usage: ChatUsage 
   return { text, usage };
 }
 
-function applyUsage(into: ChatUsage, u: Record<string, unknown>): void {
-  if (typeof u.input_tokens === 'number') into.input = u.input_tokens;
-  if (typeof u.output_tokens === 'number') into.output = u.output_tokens;
-  if (typeof u.cache_read_input_tokens === 'number') into.cacheRead = u.cache_read_input_tokens;
-  if (typeof u.cache_creation_input_tokens === 'number') into.cacheCreation = u.cache_creation_input_tokens;
+function applyUsage(into: ChatUsage, usage: JsonInput): void {
+  const input = numberField(usage, 'input_tokens');
+  const output = numberField(usage, 'output_tokens');
+  const cacheRead = numberField(usage, 'cache_read_input_tokens');
+  const cacheCreation = numberField(usage, 'cache_creation_input_tokens');
+  if (input !== undefined) into.input = input;
+  if (output !== undefined) into.output = output;
+  if (cacheRead !== undefined) into.cacheRead = cacheRead;
+  if (cacheCreation !== undefined) into.cacheCreation = cacheCreation;
 }
 
 /** Headers a chat request carries — Claude Code's identifying set, minus its auth. */
-function chatHeaders(config: ChatConfig, apiKey: string, sessionId: string): Record<string, string> {
-  const headers: Record<string, string> = {
+function chatHeaders(config: ChatConfig, apiKey: string, sessionId: string) {
+  const headers = {
     accept: 'application/json',
     'content-type': 'application/json',
     'x-api-key': apiKey,
@@ -512,21 +530,15 @@ function chatHeaders(config: ChatConfig, apiKey: string, sessionId: string): Rec
     'x-claude-proxy-chat': '1',
     'user-agent': 'claude-proxy-dashboard/0.1.0',
   };
-  if (config.beta) headers['anthropic-beta'] = config.beta;
-  return headers;
+  const beta = config.beta;
+  return beta ? { ...headers, 'anthropic-beta': beta } : headers;
 }
 
 /** The text a single streamed line carries, or null when it carries something else. */
 function textDeltaOf(line: string): string | null {
-  const payload = /^data:\s?(.*)$/.exec(line)?.[1];
-  if (!payload?.trim() || payload === '[DONE]') return null;
-  let ev: StreamEvent;
-  try {
-    ev = JSON.parse(payload) as StreamEvent;
-  } catch {
-    return null;
-  }
-  return ev.type === 'content_block_delta' && typeof ev.delta?.text === 'string' ? ev.delta.text : null;
+  const ev = eventPayload(line);
+  if (stringField(ev, 'type') !== 'content_block_delta') return null;
+  return stringField(jsonField(ev, 'delta'), 'text') ?? null;
 }
 
 /**
@@ -539,10 +551,13 @@ function textDeltaOf(line: string): string | null {
 async function readStreamedBody(res: Response, onText: (text: string) => void): Promise<string> {
   if (!res.body) return await res.text();
   const decoder = new TextDecoder();
+  const reader = res.body.getReader();
   let raw = '';
   let pending = '';
-  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-    const piece = decoder.decode(chunk, { stream: true });
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const piece = decoder.decode(value, { stream: true });
     raw += piece;
     pending += piece;
     for (let br = pending.indexOf('\n'); br >= 0; br = pending.indexOf('\n')) {
@@ -558,7 +573,7 @@ async function postTurn(
   config: ChatConfig,
   session: ChatSession,
   onText: (text: string) => void,
-): Promise<{ text: string; usage: ChatUsage }> {
+): Promise<ChatStreamReply> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error(`chat is not configured: ${config.readyHint ?? 'missing ANTHROPIC_API_KEY'}`);
 
@@ -581,8 +596,8 @@ async function postTurn(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-  } catch (err) {
-    const reason = (err as Error).message;
+  } catch (cause) {
+    const reason = errorMessage(cause);
     throw new Error(`chat request to ${url} failed (${reason}) — is the proxy running on that port?`);
   }
 
@@ -657,12 +672,9 @@ async function runTurn(config: ChatConfig, session: ChatSession, prompt: string)
         else if (event.kind === 'tool') {
           emitChatEvent(session.id, { type: 'tool', index: event.index, name: event.name });
         } else if (event.kind === 'tool-result') {
-          emitChatEvent(session.id, {
-            type: 'tool-result',
-            index: event.index,
-            failed: event.failed,
-            ...(event.error ? { error: event.error } : {}),
-          });
+          const { index, failed, error } = event;
+          if (error) emitChatEvent(session.id, { type: 'tool-result', index, failed, error });
+          else emitChatEvent(session.id, { type: 'tool-result', index, failed });
         }
       },
     });
@@ -709,19 +721,18 @@ async function send(session: ChatSession, config: ChatConfig, logDir: string, pr
 }
 
 /** A per-request `mode`, falling back to the configured default. */
-function pickMode(raw: unknown, fallback: ChatMode): ChatMode {
+function pickMode(raw: JsonInput, fallback: ChatMode): ChatMode {
   if (raw === undefined || raw === null) return fallback;
   if (raw !== 'chat' && raw !== 'agent') throw new Error(`invalid mode: expected "chat" or "agent"`);
   return raw;
 }
 
 /** A per-session `permissionMode`, falling back to the resolved default. */
-function pickPermissionMode(raw: unknown, fallback: PermissionMode): PermissionMode {
+function pickPermissionMode(raw: JsonInput, fallback: PermissionMode): PermissionMode {
   if (raw === undefined || raw === null) return fallback;
-  if (typeof raw !== 'string' || !(PERMISSION_MODES as readonly string[]).includes(raw)) {
-    throw new Error(`invalid permissionMode: expected one of ${PERMISSION_MODES.join(', ')}`);
-  }
-  return raw as PermissionMode;
+  const mode = PERMISSION_MODES.find((known) => known === raw);
+  if (!mode) throw new Error(`invalid permissionMode: expected one of ${PERMISSION_MODES.join(', ')}`);
+  return mode;
 }
 
 /** The shape of a chat session id, wherever one arrives from outside. */
@@ -732,25 +743,26 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  * the handle `POST /api/chat/stop` needs, so the dashboard names it before the first
  * turn. Must be a UUID and not already live here.
  */
-function pickSessionId(raw: unknown): string {
+function pickSessionId(raw: JsonInput): string {
   if (raw === undefined || raw === null) return crypto.randomUUID();
-  if (typeof raw !== 'string' || !UUID_RE.test(raw)) throw new Error('invalid sessionId: expected a uuid');
-  if (sessions.has(raw)) throw new Error(`invalid sessionId: already in use (${raw})`);
-  return raw;
+  const id = jsonString(raw);
+  if (id === undefined || !UUID_RE.test(id)) throw new Error('invalid sessionId: expected a uuid');
+  if (sessions.has(id)) throw new Error(`invalid sessionId: already in use (${id})`);
+  return id;
 }
 
-export async function startChat(
-  input: {
-    prompt: unknown;
-    model?: unknown;
-    maxTokens?: unknown;
-    system?: unknown;
-    mode?: unknown;
-    sessionId?: unknown;
-    permissionMode?: unknown;
-  },
-  logDir: string,
-): Promise<ChatSendResult> {
+/** A `POST /api/chat/sessions` body, as the route decoded it from JSON. */
+export interface ChatStartInput {
+  prompt: JsonInput;
+  model?: JsonInput;
+  maxTokens?: JsonInput;
+  system?: JsonInput;
+  mode?: JsonInput;
+  sessionId?: JsonInput;
+  permissionMode?: JsonInput;
+}
+
+export async function startChat(input: ChatStartInput, logDir: string): Promise<ChatSendResult> {
   const prompt = normalizePrompt(input.prompt);
   const config = await resolveChatConfig();
   const mode = pickMode(input.mode, config.mode);
@@ -770,21 +782,23 @@ export async function startChat(
     config.agent?.permissionMode ?? DEFAULT_PERMISSION_MODE,
   );
 
+  const model = jsonString(input.model)?.trim();
+  const maxTokens = jsonNumber(input.maxTokens);
+  const system = jsonString(input.system);
+
   const session: ChatSession = {
     id: pickSessionId(input.sessionId),
     threadId: null,
     transport: config.transport,
     mode,
     agent: mode === 'agent' && config.agent ? { ...config.agent, permissionMode } : null,
-    model: typeof input.model === 'string' && input.model.trim() ? input.model.trim() : config.model,
-    maxTokens:
-      typeof input.maxTokens === 'number' && input.maxTokens > 0 ? Math.floor(input.maxTokens) : config.maxTokens,
+    model: model || config.model,
+    maxTokens: maxTokens !== undefined && maxTokens > 0 ? Math.floor(maxTokens) : config.maxTokens,
     // `config.system` is resolved for the *default* mode, so a request that opts into
     // the other one picks its own default directly.
-    system:
-      typeof input.system === 'string' && input.system.trim()
-        ? input.system
-        : (process.env.CHAT_SYSTEM ?? (mode === 'agent' ? DEFAULT_AGENT_SYSTEM : DEFAULT_SYSTEM)),
+    system: system?.trim()
+      ? system
+      : (process.env.CHAT_SYSTEM ?? (mode === 'agent' ? DEFAULT_AGENT_SYSTEM : DEFAULT_SYSTEM)),
     createdAt: new Date().toISOString(),
     messages: [],
     sent: 0,
@@ -806,7 +820,7 @@ export async function startChat(
 
 /** Continues where the transport left off: the CLI resumes, `api` replays the history. */
 export async function continueChat(
-  input: { sessionId: unknown; prompt: unknown },
+  input: { sessionId: JsonInput; prompt: JsonInput },
   logDir: string,
 ): Promise<ChatSendResult> {
   const session = requireSession(input.sessionId);
@@ -814,10 +828,11 @@ export async function continueChat(
   return send(session, await resolveChatConfig(), logDir, prompt);
 }
 
-function requireSession(raw: unknown): ChatSession {
-  if (typeof raw !== 'string' || !raw) throw new Error('missing sessionId');
-  const session = sessions.get(raw);
-  if (!session) throw new Error(`chat session not found: ${raw}`);
+function requireSession(raw: JsonInput): ChatSession {
+  const id = jsonString(raw);
+  if (!id) throw new Error('missing sessionId');
+  const session = sessions.get(id);
+  if (!session) throw new Error(`chat session not found: ${id}`);
   return session;
 }
 
@@ -859,12 +874,18 @@ export function listRunningChats(): RunningChat[] {
   return out;
 }
 
+/** What a Stop or an End answered: the session named, and whether a turn was running. */
+export interface ChatStopResult {
+  sessionId: string;
+  stopped: boolean;
+}
+
 /**
  * End the turn in flight without ending the session: the child's whole process group is
  * signalled and the `send` in progress returns the partial reply rather than an error.
  * `stopped: false` means there was nothing running — a no-op, not a failure.
  */
-export function stopChat(input: { sessionId: unknown }): { sessionId: string; stopped: boolean } {
+export function stopChat(input: { sessionId: JsonInput }): ChatStopResult {
   const session = requireSession(input.sessionId);
   const run = session.run;
   run?.stop();
@@ -876,7 +897,7 @@ export function stopChat(input: { sessionId: unknown }): { sessionId: string; st
  * grows: every session a tab started stays resident for the life of the process. Any
  * turn in flight is stopped first.
  */
-export function endChat(input: { sessionId: unknown }): { sessionId: string; stopped: boolean } {
+export function endChat(input: { sessionId: JsonInput }): ChatStopResult {
   const session = requireSession(input.sessionId);
   const run = session.run;
   run?.stop();
