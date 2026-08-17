@@ -54,15 +54,16 @@ const resetClock = (iso: string, now: Date = new Date()): string => {
 };
 
 /* Fuel-gauge geometry: a half-moon over the top — the arc runs from 150°
- * clockwise to 30° in math angles, so E sits at the left end, F at the right,
- * and the needle crests 12 o'clock at half a tank. The needle pivots on
- * (100, 104) in a 200×136 viewBox, and the low-fuel telltale sits in the middle
- * of the dial face, off by default. In the clockwise-from-12-o'clock frame used
- * below, that is a start of -60° and a sweep of 120°. */
+ * clockwise to 30° in math angles, and empty sits on the right: E is the arc's
+ * right end, F its left, so the needle falls clockwise toward E as the
+ * allowance burns and crests 12 o'clock at half a tank. The needle pivots on
+ * (100, 104) in a 200×136 viewBox, and the low-fuel telltale hangs halfway
+ * between the pivot and the top of the dial, hidden until it fires. In the
+ * clockwise-from-12-o'clock frame used below, E is at 60° and F at -60°. */
 const GAUGE_CX = 100;
 const GAUGE_CY = 104;
 const GAUGE_R = 78;
-const GAUGE_START = -60;
+const GAUGE_EMPTY = 60;
 const GAUGE_SWEEP = 120;
 /** Below this much allowance left, the low-fuel lamp lights. */
 const LOW_FUEL_PCT = 10;
@@ -73,9 +74,9 @@ function polar(deg: number, r: number): { x: number; y: number } {
   return { x: GAUGE_CX + r * Math.sin(rad), y: GAUGE_CY - r * Math.cos(rad) };
 }
 
-/** Needle angle for a fraction of allowance left: 0 → E on the left, 1 → F on the right. */
+/** Needle angle for a fraction of allowance left: 0 → E on the right, 1 → F on the left. */
 function angleAt(left: number): number {
-  return GAUGE_START + GAUGE_SWEEP * left;
+  return GAUGE_EMPTY - GAUGE_SWEEP * left;
 }
 
 function arcPath(fromDeg: number, toDeg: number, r: number): string {
@@ -126,8 +127,8 @@ function FuelGauge({
       aria-valuemax={100}
       aria-valuetext={`${leftPct}% of allowance left`}
       aria-label={`${label} allowance left`}>
-      <path className='gauge-track' d={arcPath(angleAt(0), angleAt(1), GAUGE_R)} />
-      <path className='gauge-zone-low' d={arcPath(angleAt(0), angleAt(LOW_FUEL_PCT / 100), GAUGE_R)} />
+      <path className='gauge-track' d={arcPath(angleAt(1), angleAt(0), GAUGE_R)} />
+      <path className='gauge-zone-low' d={arcPath(angleAt(LOW_FUEL_PCT / 100), angleAt(0), GAUGE_R)} />
       {[0, 0.25, 0.5, 0.75, 1].map((f) => (
         <Tick key={f} left={f} r0={GAUGE_R - 12} r1={GAUGE_R - 4} className='gauge-tick' />
       ))}
@@ -145,10 +146,10 @@ function FuelGauge({
         <polygon points='97,112 100,36 103,112' />
       </g>
       <circle className='gauge-hub' cx={GAUGE_CX} cy={GAUGE_CY} r={6} />
-      {/* The low-fuel telltale, centred in the dial face like a cluster lamp. */}
+      {/* The low-fuel telltale, dead centre between the pivot and the top of the dial. */}
       <Fuel
         x={92}
-        y={114}
+        y={57}
         width={16}
         height={16}
         className={`gauge-lamp${low ? ' is-low' : ''}`}
@@ -167,6 +168,10 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
   const left = Math.min(1, Math.max(0, 1 - w.utilization));
   const projectedLeft = w.pace.projected == null ? null : Math.min(1, Math.max(0, 1 - w.pace.projected));
   const low = remaining <= LOW_FUEL_PCT;
+  // The timeline under the dial: how far through the allowance, capped so an
+  // over-budget estimate can't overflow the track.
+  const fill = Math.min(100, Math.max(0, utilPct));
+  const projected = w.pace.projected == null ? null : Math.min(100, w.pace.projected * 100);
 
   return (
     <div className={`card usage-meter tone-${tone}`}>
@@ -182,6 +187,15 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
             {remaining < 10 ? remaining.toFixed(1) : Math.round(remaining)}
             <span className='usage-meter-unit'>% left</span>
           </span>
+        </div>
+        {/* The rate made visible: the fill is the burn so far, the faint
+            extension where this pace lands by the reset. The dial above already
+            carries the meter semantics. */}
+        <div className='usage-bar' aria-hidden>
+          <div className='usage-bar-fill' style={{ width: `${fill}%` }} />
+          {projected != null && projected > fill && (
+            <div className='usage-bar-projected' style={{ width: `${projected}%` }} title='Projected by reset' />
+          )}
         </div>
       </div>
 

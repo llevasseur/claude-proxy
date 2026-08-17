@@ -102,15 +102,6 @@ function RootLayout() {
     <div className={`app${collapsed ? ' app--rail-collapsed' : ''}${nav.open ? ' app--drawer-open' : ''}`}>
       <aside className='rail' id='rail-nav'>
         <div className='rail-head'>
-          <HealthBadge />
-          <button
-            type='button'
-            className='theme-toggle'
-            onClick={toggleTheme}
-            aria-label={themeLabel}
-            title={themeLabel}>
-            {theme === 'light' ? <Moon size={16} aria-hidden /> : <Sun size={16} aria-hidden />}
-          </button>
           <button
             type='button'
             className='rail-toggle'
@@ -120,6 +111,7 @@ function RootLayout() {
             title={toggleLabel}>
             {collapsed ? <PanelLeftOpen size={16} aria-hidden /> : <PanelLeftClose size={16} aria-hidden />}
           </button>
+          <BrandLink className='brand-link' pathname={pathname} closeDrawer={nav.close} />
         </div>
 
         <nav className='stations' aria-label='Primary' ref={stations}>
@@ -157,7 +149,15 @@ function RootLayout() {
         </nav>
 
         <div className='rail-foot'>
-          <BrandLink className='brand-link' pathname={pathname} closeDrawer={nav.close} />
+          <button
+            type='button'
+            className='theme-toggle'
+            onClick={toggleTheme}
+            aria-label={themeLabel}
+            title={themeLabel}>
+            {theme === 'light' ? <Moon size={16} aria-hidden /> : <Sun size={16} aria-hidden />}
+          </button>
+          <HealthBadge />
         </div>
       </aside>
 

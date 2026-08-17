@@ -149,7 +149,7 @@
   /* Ignition: the needle enters from E and sweeps up to the reading. */
   @starting-style {
     .gauge-needle {
-      transform: rotate(-60deg);
+      transform: rotate(60deg);
     }
   }
   .gauge-hub {
@@ -166,14 +166,13 @@
     /* Tucks into the open lower-left quarter the half-moon leaves free. */
     margin-top: calc(var(--space-10) * -1);
   }
-  /* The telltale is present but unlit until the low zone is reached. */
+  /* The telltale is hidden until the low zone is reached, like a real cluster lamp. */
   .gauge-lamp {
-    color: var(--faint);
-    opacity: 0.55;
+    visibility: hidden;
   }
   .gauge-lamp.is-low {
+    visibility: visible;
     color: var(--coral);
-    opacity: 1;
     filter: drop-shadow(0 0 6px color-mix(in srgb, var(--coral) 60%, transparent));
     animation: gauge-lamp-blink var(--motion-loop-fast) ease-in-out infinite;
   }
@@ -181,6 +180,31 @@
     50% {
       opacity: 0.45;
     }
+  }
+  /* The timeline under the dial: the burn so far, and where the pace lands. */
+  .usage-bar {
+    position: relative;
+    height: 7px;
+    margin-top: var(--space-6);
+    border-radius: var(--radius-2);
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  .usage-bar-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: var(--radius-2);
+    background: var(--tone);
+    transition: width var(--motion-duration-slow) ease;
+  }
+  /* Projection sits behind the actual fill as a faint extension of it. */
+  .usage-bar-projected {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: var(--radius-2);
+    background: var(--tone);
+    opacity: 0.24;
+    transition: width var(--motion-duration-slow) ease;
   }
   .usage-meter-foot {
     display: flex;
