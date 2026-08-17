@@ -8,6 +8,7 @@
 
 import { outlineWirePrompt as coreOutline, sectionsOfText as coreSections } from '@claude-proxy/core';
 import { describe, expect, it } from 'vitest';
+import type { JsonValue } from '../../proxy/json.ts';
 import {
   hashPrompt as proxyHash,
   outlineWirePrompt as proxyOutline,
@@ -15,14 +16,12 @@ import {
 } from '../../proxy/system-prompt.ts';
 import { hashWirePrompt } from '../src/prompt-store.js';
 
-const block = (text: string, ttl?: string) => ({
-  type: 'text',
-  text,
-  ...(ttl ? { cache_control: { type: 'ephemeral', ttl } } : {}),
-});
+/** A wire text block, carrying `cache_control` only when this case is about a ttl. */
+const block = (text: string, ttl?: string) =>
+  ttl === undefined ? { type: 'text', text } : { type: 'text', text, cache_control: { type: 'ephemeral', ttl } };
 
 /** Every shape and edge case either implementation has to agree on. */
-const CASES: { name: string; system: unknown }[] = [
+const CASES: { name: string; system: JsonValue | undefined }[] = [
   { name: 'absent', system: undefined },
   { name: 'null', system: null },
   { name: 'bare string', system: '# Only\nbody text' },
