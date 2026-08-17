@@ -23,6 +23,7 @@ import {
   runKey,
   runTotals,
   stepReach,
+  stripCommandEnvelope,
   summarizeAgentTypes,
   summarizeCommands,
   summarizeSteps,
@@ -244,6 +245,72 @@ describe('parseCommandEnvelope', () => {
   it('does not read a distant caveat as marking the envelope local', () => {
     const summary = `This session is being continued. ${local('clear')}\n\n…summary…\n\n${envelope('task', 'ship it')}`;
     expect(parseCommandEnvelope(summary)?.command).toBe('task');
+  });
+
+  it('names the run off <command-message> when no <command-name> survives', () => {
+    const parsed = parseCommandEnvelope('<command-message>god</command-message><command-args>ship it</command-args>');
+    expect(parsed).toMatchObject({ command: 'god', args: 'ship it' });
+  });
+
+  it('keeps the args when both tags of the pair are present', () => {
+    expect(parseCommandEnvelope(envelope('god', '--squash rebuild the graph'))).toMatchObject({
+      command: 'god',
+      flags: ['squash'],
+      args: '--squash rebuild the graph',
+    });
+  });
+
+  it('is one run, not two, when the pair names the same command', () => {
+    expect(parseCommandEnvelope(`${envelope('task', 'first')} ${envelope('fb', 'second')}`)?.args).toBe('first');
+  });
+
+  it('does not read mismatched tags as an envelope', () => {
+    expect(parseCommandEnvelope('<command-name>task</command-message>')).toBeNull();
+  });
+});
+
+describe('stripCommandEnvelope', () => {
+  it('drops the <command-message> block whole and unwraps the args', () => {
+    const raw =
+      '<command-message>god</command-message>\n<command-name>/god</command-name>\n<command-args>ship it</command-args>';
+    expect(stripCommandEnvelope(raw)).toBe('/god\nship it');
+  });
+
+  it('drops the local-command caveat and its stdout', () => {
+    const raw =
+      '<local-command-caveat>Caveat: ignore this.</local-command-caveat> <command-name>/clear</command-name> ' +
+      '<command-message>clear</command-message> <command-args></command-args> ' +
+      '<local-command-stdout>noise</local-command-stdout>';
+    expect(stripCommandEnvelope(raw)).toBe('/clear');
+  });
+
+  it('takes off a caveat a truncated prompt never closed', () => {
+    expect(stripCommandEnvelope('Ship it <local-command-caveat>cut off here')).toBe('Ship it');
+  });
+
+  it('leaves text carrying no envelope alone', () => {
+    expect(stripCommandEnvelope('Fix the scroll on the artifact panel.')).toBe('Fix the scroll on the artifact panel.');
+  });
+
+  // The drawer renders pre-wrap, so collapsing spaces would flatten every code block in it.
+  it('keeps the indentation of what it hands back', () => {
+    const raw =
+      '<command-args>Refactor:\n\n```ts\nfunction f() {\n  return 1;\n}\n```\n\n- item\n  - nested\n</command-args>';
+    expect(stripCommandEnvelope(raw)).toBe(
+      'Refactor:\n\n```ts\nfunction f() {\n  return 1;\n}\n```\n\n- item\n  - nested',
+    );
+  });
+
+  it('keeps an envelope the criteria only talk about', () => {
+    const raw =
+      '<command-message>task</command-message>\n<command-name>/task</command-name>\n' +
+      '<command-args>pull the name out of the <command-message> tag</command-args>';
+    expect(stripCommandEnvelope(raw)).toBe('/task\npull the name out of the <command-message> tag');
+  });
+
+  it('unwraps only the run’s own args block, not one quoted inside it', () => {
+    const raw = '<command-args>a prompt reading <command-args>inner</command-args> verbatim</command-args>';
+    expect(stripCommandEnvelope(raw)).toBe('a prompt reading <command-args>inner</command-args> verbatim');
   });
 });
 

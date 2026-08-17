@@ -204,10 +204,13 @@ export function contentHash(text: string): string {
 // --- The prompt envelope ---------------------------------------------------
 
 /**
- * Every envelope in a prompt, in order. A prompt carries more than one when a local
- * command opens the turn the real command was typed into, so the first is not the run's.
+ * Either tag the CLI writes a command's name into, anywhere in a prompt — a prompt that
+ * kept only `<command-message>` still names its run. {@link envelopes} folds the pair back
+ * into one envelope.
+ *
+ * The closing tag is a backreference, so mismatched tags are damage, not an envelope.
  */
-const COMMAND_NAME_RE = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/gi;
+const COMMAND_TAG_RE = /<command-(name|message)>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-\1>/gi;
 const ARGS_OPEN_RE = /<command-args>/gi;
 const ARGS_CLOSE_RE = /<\/command-args>/gi;
 /**
@@ -245,6 +248,38 @@ export interface CommandEnvelope {
   prompt: string;
 }
 
+/** One envelope's span in a prompt: the command it names, and where its tags start and end. */
+interface EnvelopeSpan {
+  command: string;
+  /** Index of the first tag of the run — what the local-command caveat has to sit against. */
+  start: number;
+  /** One past the last tag of the run — where this envelope's `<command-args>` is looked for. */
+  end: number;
+}
+
+/**
+ * Every envelope in a prompt, in order, with the adjacent tags naming one command folded
+ * into a single span.
+ *
+ * Adjacency is the whole test, as it is for the local-command caveat: the CLI emits
+ * `<command-message>` and `<command-name>` back to back with only whitespace between them,
+ * so a same-named neighbour is the same envelope written twice. Read as two, each would
+ * bound the other's `<command-args>` block and leave every run with empty arguments.
+ */
+function envelopes(text: string): EnvelopeSpan[] {
+  const spans: EnvelopeSpan[] = [];
+  for (const tag of text.matchAll(COMMAND_TAG_RE)) {
+    const command = tag[2]!.toLowerCase();
+    const previous = spans[spans.length - 1];
+    if (previous && previous.command === command && text.slice(previous.end, tag.index).trim() === '') {
+      previous.end = tag.index + tag[0].length;
+      continue;
+    }
+    spans.push({ command, start: tag.index, end: tag.index + tag[0].length });
+  }
+  return spans;
+}
+
 /**
  * One envelope's own `<command-args>` body, from `from` to the `next` envelope.
  *
@@ -277,11 +312,11 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
   if (!prompt) return null;
   const text = prompt.replace(REMINDER_RE, '').replace(/<system-reminder>[\s\S]*$/i, '');
 
-  const names = [...text.matchAll(COMMAND_NAME_RE)];
-  for (const [i, name] of names.entries()) {
-    if (LOCAL_ENVELOPE_RE.test(text.slice(0, name.index))) continue;
+  const found = envelopes(text);
+  for (const [i, envelope] of found.entries()) {
+    if (LOCAL_ENVELOPE_RE.test(text.slice(0, envelope.start))) continue;
 
-    const args = readArgs(text, name.index + name[0].length, names[i + 1]?.index ?? text.length);
+    const args = readArgs(text, envelope.end, found[i + 1]?.start ?? text.length);
     const flags: string[] = [];
     for (const token of args.split(/\s+/)) {
       const flag = FLAG_RE.exec(token);
@@ -290,13 +325,64 @@ export function parseCommandEnvelope(prompt: string | null | undefined): Command
     }
 
     return {
-      command: name[1]!.toLowerCase(),
+      command: envelope.command,
       args,
       flags,
       prompt: args.replace(COMMAND_NOISE_RE, '').replace(/\s+/g, ' ').trim(),
     };
   }
   return null;
+}
+
+/**
+ * A block the envelope wraps around text that is not the person's, dropped content and all.
+ * `<command-message>` carries only the bare name `<command-name>` already states.
+ */
+const ENVELOPE_BLOCK_RE =
+  /<command-message>[\s\S]*?<\/command-message>|<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<local-command-stdout>[\s\S]*?<\/local-command-stdout>/gi;
+/**
+ * A matched `<command-name>` pair around a name, unwrapped to the name itself.
+ *
+ * The pair is the whole test, so a prompt that merely *writes* `<command-name>` in prose keeps
+ * the word: this text is read verbatim in a drawer, and deleting every tag-shaped token there
+ * turns a sentence about the envelope into one with a hole in it.
+ */
+const NAME_TAG_RE = /<command-name>\s*(\/?[A-Za-z0-9:_-]+)\s*<\/command-name>/gi;
+const ARGS_OPEN = '<command-args>';
+const ARGS_CLOSE = '</command-args>';
+
+/**
+ * One prompt with its command envelope taken out, for a human to read — the display
+ * counterpart to {@link parseCommandEnvelope}.
+ *
+ * `<command-args>` is **unwrapped, not dropped**: its body is the criteria a person wrote. Only
+ * the run's *own* block is unwrapped — its first opening tag and the last close after it — so
+ * an envelope quoted inside those criteria survives as the prose it is.
+ *
+ * Whitespace inside what is kept is left exactly as written. The drawer renders `pre-wrap`, so
+ * collapsing runs of spaces would flatten every indented code block and nested list a prompt
+ * carries; only the trailing space a removed tag leaves behind, and the blank-line runs it
+ * opens up, are tidied. Text carrying no envelope comes back unchanged apart from its trim.
+ */
+export function stripCommandEnvelope(text: string): string {
+  let out = text
+    .replace(ENVELOPE_BLOCK_RE, '')
+    // A prompt cut mid-caveat never closes its tag, so that shape comes off by its opening.
+    .replace(/<local-command-caveat>[\s\S]*$/i, '')
+    .replace(NAME_TAG_RE, '$1');
+
+  const open = out.toLowerCase().indexOf(ARGS_OPEN);
+  if (open !== -1) {
+    const close = out.toLowerCase().lastIndexOf(ARGS_CLOSE);
+    const body = out.slice(open + ARGS_OPEN.length, close > open ? close : undefined);
+    const after = close > open ? out.slice(close + ARGS_CLOSE.length) : '';
+    out = out.slice(0, open) + body + after;
+  }
+
+  return out
+    .replace(/[^\S\n]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 // --- Step attribution ------------------------------------------------------

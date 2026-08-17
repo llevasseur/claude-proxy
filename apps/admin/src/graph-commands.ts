@@ -1,5 +1,5 @@
 import type { SessionNode } from '@claude-proxy/core';
-import { findNestedInvocations } from '@claude-proxy/core';
+import { findNestedInvocations, parseCommandEnvelope } from '@claude-proxy/core';
 import type { SessionGraphEntry } from './api';
 
 /**
@@ -106,8 +106,14 @@ export const FAMILY_LABEL: Record<CommandFamily, string> = {
 
 /** One command run inside a transcript, and what its span of that transcript holds. */
 export interface CommandRunSpan {
-  /** The command invoked, or null for the host's own steps ahead of the first nested run. */
+  /**
+   * The command invoked — for the host span, the command the transcript *is*, read off its
+   * own opening envelope. Null when nothing names it: an ordinary session, or a run whose
+   * opening prompt was never captured.
+   */
   command: string | null;
+  /** True for the host's own steps ahead of the first nested run, named or not. */
+  host: boolean;
   family: CommandFamily;
   /** Index of the node that opened the run, and one past its last. */
   from: number;
@@ -123,8 +129,10 @@ export interface CommandRunSpan {
 
 /**
  * One transcript's command runs, in order. The first span is the host's own steps — every node
- * before the first nested call — and it carries a null `command`, since a transcript records
- * which commands it *invoked* and never which command it *is*.
+ * before the first nested call.
+ *
+ * The host span is named from the envelope its own opening prompt carries, through
+ * `parseCommandEnvelope`. A session that opened on no command stays null.
  */
 export function commandRuns(entry: SessionGraphEntry, isCommand: (name: string) => boolean): CommandRunSpan[] {
   const nodes = entry.nodes;
@@ -132,15 +140,19 @@ export function commandRuns(entry: SessionGraphEntry, isCommand: (name: string) 
 
   const end = nodes[nodes.length - 1]!.index + 1;
   const nested = findNestedInvocations(nodes, isCommand);
-  const bounds: { command: string | null; from: number; to: number }[] = [];
+  const bounds: { command: string | null; host: boolean; from: number; to: number }[] = [];
   const head = nested[0]?.from ?? end;
-  if (head > nodes[0]!.index) bounds.push({ command: null, from: nodes[0]!.index, to: head });
-  for (const run of nested) bounds.push({ command: run.command, from: run.from, to: run.to });
+  if (head > nodes[0]!.index) {
+    const opening = parseCommandEnvelope(entry.subtitle ?? entry.firstTask);
+    bounds.push({ command: opening?.command ?? null, host: true, from: nodes[0]!.index, to: head });
+  }
+  for (const run of nested) bounds.push({ command: run.command, host: false, from: run.from, to: run.to });
 
-  return bounds.map(({ command, from, to }) => {
+  return bounds.map(({ command, host, from, to }) => {
     const inside = nodes.filter((n) => n.index >= from && n.index < to);
     return {
       command,
+      host,
       family: familyOf(command),
       from,
       to,

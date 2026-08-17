@@ -1,5 +1,5 @@
 import type { InterruptionKind, SessionNode } from '@claude-proxy/core';
-import { mergeSessionNodes, sessionName, spawnAgentType } from '@claude-proxy/core';
+import { mergeSessionNodes, sessionName, spawnAgentType, stripCommandEnvelope } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Expand, Maximize2, Minimize2, Network, Shrink } from 'lucide-react';
@@ -809,7 +809,7 @@ const agentHover = (agent: AgentFacts): string =>
 
 /** What a command box says on hover: which command, and the span of the transcript it holds. */
 const commandHover = (run: CommandRunSpan): string =>
-  `${runLabel(run)} — steps #${run.from}–${run.to - 1}${run.command === null ? ' (the host run, before its first nested command)' : ''}`;
+  `${runLabel(run)} — steps #${run.from}–${run.to - 1}${run.host ? ' (the host run, before its first nested command)' : ''}`;
 
 /**
  * The grain switcher: every grain the engine knows about, in order. A grain nobody has
@@ -1307,10 +1307,13 @@ const firstTaskIndex = (nodes: SessionNode[]): number | null => nodes.find((n) =
 /**
  * A gist plus the whole text the transcript line cut short, when the sidecar recorded one.
  * The fuller text is what gets rendered; {@link LongText} keeps it from flooding the drawer.
+ *
+ * The command envelope comes off first: the tags are stripped and the arguments they wrap
+ * are kept. Text carrying no envelope is unaffected.
  */
 function ExpandableText({ text, full }: { text: string; full?: string }) {
   const whole = full !== undefined && full.trim() !== '' ? full : text;
-  return <LongText text={whole} />;
+  return <LongText text={stripCommandEnvelope(whole)} />;
 }
 
 /** Past this much text a value is folded away until asked for. */
