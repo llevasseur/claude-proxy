@@ -49,17 +49,15 @@
   }
   button {
     cursor: pointer;
-    /* Only transform is timed here: a colour that lags the cursor reads as
-     * sluggish, but a press that eases back reads as release. A component that
-     * declares its own `transition` keeps it and the scale simply snaps, which
-     * is still correct — instant feedback on the way down. */
+    /* Only transform is timed: a colour that lags the cursor reads as sluggish.
+     * A component declaring its own `transition` keeps it and the scale simply
+     * snaps — still instant feedback on the way down. */
     transition: transform var(--motion-duration-fast) var(--ease-out);
   }
   button:hover:not(:disabled) {
     border-color: var(--signal-dim);
   }
-  /* The press is acknowledged in the hand: the control gives slightly under
-   * the pointer, confirming the interface heard it before any result lands. */
+  /* The control gives slightly under the pointer — heard before any result lands. */
   button:active:not(:disabled) {
     background: var(--surface-2);
     transform: scale(0.97);

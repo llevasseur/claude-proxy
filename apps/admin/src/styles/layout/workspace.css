@@ -64,10 +64,9 @@
     letter-spacing: -0.02em;
     margin: 0;
   }
-  /* The line under the title is the page's address to the reader — the machine
-   * saying what it has found before any table says how. Sized as a sentence to
-   * be read, not a caption to be skipped, and capped at a measure so it stays
-   * one readable line of prose rather than stretching with the head. */
+  /* The line under the title is the page's address to the reader: sized as a
+   * sentence to be read, not a caption to be skipped, and capped at a measure
+   * so it stays readable prose rather than stretching with the head. */
   .pagehead .muted {
     font-size: var(--text-5);
     line-height: 1.5;
