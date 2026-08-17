@@ -35,6 +35,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { asList, asNumber, asRecord, asText, isScalar, type JsonObject, type JsonValue, parseJson } from './json.ts';
 import {
   asArrayOf,
   type ContentBlock,
@@ -105,7 +106,7 @@ export const sessionsDir = (logDir: string): string => path.join(logDir, 'sessio
 const TURN_MARKER = '▸';
 
 /** Collapse to one line and cap length. */
-const gist = (s: unknown, max = 160): string => {
+const gist = (s: JsonValue | undefined, max = 160): string => {
   const one = String(s ?? '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -113,18 +114,20 @@ const gist = (s: unknown, max = 160): string => {
 };
 
 /** Collapse whitespace to a single line, uncapped (for exact/prefix matching). */
-const collapse = (s: unknown): string =>
+const collapse = (s: JsonValue | undefined): string =>
   String(s ?? '')
     .replace(/\s+/g, ' ')
     .trim();
 
 /** Drop the harness-injected `<system-reminder>…</system-reminder>` context blocks. */
-const stripReminders = (s: unknown): string =>
+const stripReminders = (s: JsonValue | undefined): string =>
   String(s ?? '').replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '');
 
 /** Normalize a message `content` (string | block array) to a block array. */
-const asBlocks = (content: unknown): ContentBlock[] =>
-  typeof content === 'string' ? [{ type: 'text', text: content }] : asArrayOf<ContentBlock>(content);
+const asBlocks = (content: JsonValue | undefined): ContentBlock[] => {
+  const bare = asText(content);
+  return bare === null ? asArrayOf<ContentBlock>(content) : [{ type: 'text', text: bare }];
+};
 
 /**
  * A client declaring itself an interactive chat (the dashboard's `POST /api/chat/*`).
@@ -154,11 +157,18 @@ const isDeclaredChat = (logDir: string, sessionId: string | null): boolean => {
 /** Pull the readable text out of a tool_result block (string or block array). */
 function resultText(b: ContentBlock | undefined): string {
   const c = b?.content;
-  if (typeof c === 'string') return c;
-  if (Array.isArray(c)) {
-    return c.map((x) => (typeof x === 'string' ? x : x?.type === 'text' ? (x.text ?? '') : '')).join(' ');
-  }
-  return '';
+  const bare = asText(c);
+  if (bare !== null) return bare;
+  const blocks = asList(c);
+  if (blocks === null) return '';
+  return blocks
+    .map((x) => {
+      const nested = asText(x);
+      if (nested !== null) return nested;
+      const block = asRecord(x);
+      return block?.type === 'text' ? (asText(block.text) ?? '') : '';
+    })
+    .join(' ');
 }
 
 /** Allowlist of identifying tool inputs; at most one is recorded, truncated. */
@@ -179,26 +189,37 @@ const ARG_KEYS = [
 ];
 
 /** The recorded arg as it goes on the line (`shown`) and in full (`full`). */
-function toolArgs(input: unknown): { shown: string; full: string } {
-  const both = (k: string, v: unknown) => ({ shown: `${k}=${gist(v, 60)}`, full: `${k}=${collapse(v)}` });
-  if (!input || typeof input !== 'object') return { shown: '', full: '' };
-  const record = input as Record<string, unknown>;
+interface ToolArg {
+  shown: string;
+  full: string;
+}
+
+/** The one identifying argument of a tool call, or a pair of empty strings. */
+function toolArgs(input: JsonValue | undefined): ToolArg {
+  const both = (k: string, v: JsonValue | undefined): ToolArg => ({
+    shown: `${k}=${gist(v, 60)}`,
+    full: `${k}=${collapse(v)}`,
+  });
+  const nothing: ToolArg = { shown: '', full: '' };
+  const record = asRecord(input);
+  if (record === null) return nothing;
   for (const k of ARG_KEYS) {
-    const v = record[k];
-    if (typeof v === 'string' && v.trim()) return both(k, v);
+    const v = asText(record[k]);
+    if (v !== null && v.trim()) return both(k, v);
   }
-  const k = Object.keys(record).find((key) => ['string', 'number', 'boolean'].includes(typeof record[key]));
-  return k ? both(k, String(record[k])) : { shown: '', full: '' };
+  const k = Object.keys(record).find((key) => isScalar(record[key]));
+  return k === undefined ? nothing : both(k, String(record[k]));
 }
 
 /**
  * JSON with object keys in sorted order at every depth, so two calls that passed the
  * same arguments hash alike however the client happened to serialize them.
  */
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
+function stableJson(value: JsonValue | undefined): string {
+  const list = asList(value);
+  if (list !== null) return `[${list.map((item) => stableJson(item)).join(',')}]`;
+  const record = asRecord(value);
+  if (record !== null) {
     const body = Object.keys(record)
       .sort()
       .map((k) => `${JSON.stringify(k)}:${stableJson(record[k])}`)
@@ -212,7 +233,7 @@ function stableJson(value: unknown): string {
  * Fingerprint of a tool call — its name plus its whole argument object. Recorded beside
  * the truncated display signature, which cannot tell two similar calls apart.
  */
-export function argsHashFor(name: string, input: unknown): string {
+export function argsHashFor(name: string, input: JsonValue | undefined): string {
   return crypto
     .createHash('sha256')
     .update(`${name}\n${stableJson(input)}`)
@@ -229,21 +250,21 @@ const AGENT_TYPE_KEYS = ['subagent_type', 'skill'];
  * argument rather than the tool's name, so a spawn under a name nobody listed still
  * counts.
  */
-function spawnOf(input: unknown): { prompt: string; agentType: string | null } | null {
-  if (!input || typeof input !== 'object') return null;
-  const record = input as Record<string, unknown>;
-  const raw = record.prompt;
-  if (typeof raw !== 'string') return null;
+function spawnOf(input: JsonValue | undefined): { prompt: string; agentType: string | null } | null {
+  const record = asRecord(input);
+  if (record === null) return null;
+  const raw = asText(record.prompt);
+  if (raw === null) return null;
   const prompt = collapse(stripReminders(raw));
   if (!prompt) return null;
-  const named = AGENT_TYPE_KEYS.map((k) => record[k]).find((v) => typeof v === 'string' && v.trim());
-  return { prompt, agentType: typeof named === 'string' ? named.trim() : null };
+  const named = AGENT_TYPE_KEYS.map((k) => asText(record[k])).find((v) => v !== null && v.trim() !== '');
+  return { prompt, agentType: named?.trim() ?? null };
 }
 
 /** First real user text — the thread's root. Tool-result-only turns don't count. */
-export function firstUserText(messages: unknown): string {
-  if (!Array.isArray(messages)) return '';
-  for (const m of messages as WireMessage[]) {
+export function firstUserText(messages: JsonValue | undefined): string {
+  const turns = asArrayOf<WireMessage>(messages);
+  for (const m of turns) {
     if (m?.role !== 'user') continue;
     const t = asBlocks(m.content)
       .filter((b) => b?.type === 'text')
@@ -252,12 +273,12 @@ export function firstUserText(messages: unknown): string {
       .trim();
     if (t) return t;
   }
-  const first = (messages as WireMessage[])[0];
+  const first = turns[0];
   return first ? gist(JSON.stringify(first.content), 200) : '';
 }
 
 /** Per-agent identity: hash of (session id + conversation root). */
-export function threadIdFor(sessionId: string | null | undefined, messages: unknown): string | null {
+export function threadIdFor(sessionId: string | null | undefined, messages: JsonValue | undefined): string | null {
   const root = firstUserText(messages);
   if (!root) return null;
   return crypto
@@ -271,7 +292,7 @@ export function threadIdFor(sessionId: string | null | undefined, messages: unkn
  * The thread's opening prompt, reminders stripped and whitespace collapsed — the
  * subtitle, and the key that links an out-of-band title back to its thread.
  */
-export function rootPrompt(messages: unknown): string {
+export function rootPrompt(messages: JsonValue | undefined): string {
   return collapse(stripReminders(firstUserText(messages)));
 }
 
@@ -290,19 +311,18 @@ const TITLE_SYSTEM_RE = /generate a concise,?\s+sentence-case title/i;
 
 /** True when this request is the CLI asking the model to title a session. */
 export function isTitleRequest(reqJson: RequestBody | null | undefined): boolean {
-  const sys = reqJson?.system;
+  const system = reqJson?.system;
+  const blocks = asList(system);
   const text =
-    typeof sys === 'string'
-      ? sys
-      : Array.isArray(sys)
-        ? sys.map((b) => (typeof b === 'string' ? b : ((b as ContentBlock)?.text ?? ''))).join(' ')
-        : '';
+    blocks === null
+      ? (asText(system) ?? '')
+      : blocks.map((b) => asText(b) ?? asText(asRecord(b)?.text) ?? '').join(' ');
   return TITLE_SYSTEM_RE.test(text);
 }
 
 /** The `<session>…</session>` payload a titling request summarizes, collapsed. */
-function titledContent(messages: unknown): string {
-  const first = Array.isArray(messages) ? (messages[0] as WireMessage | undefined) : null;
+function titledContent(messages: JsonValue | undefined): string {
+  const first = asArrayOf<WireMessage>(messages)[0];
   if (!first) return '';
   const text = asBlocks(first.content)
     .filter((b) => b?.type === 'text')
@@ -319,6 +339,9 @@ export function extractTitle(responseText: string | null | undefined): string | 
   if (!m) return null;
   const raw = m[1] ?? '';
   try {
+    // SAFETY: the argument is a JSON string literal by construction — a quote, the
+    // regex's own escaped-string body, a quote — so the parse can only yield a string;
+    // a body the regex matched but JSON rejects throws to the fallback.
     return JSON.parse(`"${raw}"`) as string;
   } catch {
     return raw;
@@ -343,7 +366,7 @@ export function distillEntries(msg: WireMessage | undefined | null): TranscriptE
   const entries: TranscriptEntry[] = [];
   const blocks = asBlocks(msg?.content);
   /** `whole` was truncated iff its collapsed form isn't what the line carries. */
-  const push = (line: string, whole: unknown, shown: string) =>
+  const push = (line: string, whole: JsonValue | undefined, shown: string) =>
     entries.push({ line, full: collapse(whole) === shown ? null : String(whole).trim() });
 
   if (msg?.role === 'user') {
@@ -398,12 +421,12 @@ export function distillMessage(msg: WireMessage | undefined | null): string[] {
 }
 
 /** Distill a run of new messages (the delta since we last looked). */
-export function distillMessages(delta: unknown): string[] {
+export function distillMessages(delta: JsonValue | undefined): string[] {
   return distillMessagesEntries(delta).map((e) => e.line);
 }
 
 /** {@link distillMessages}, keeping each line's untruncated text. */
-export function distillMessagesEntries(delta: unknown): TranscriptEntry[] {
+export function distillMessagesEntries(delta: JsonValue | undefined): TranscriptEntry[] {
   return asArrayOf<WireMessage>(delta).flatMap(distillEntries);
 }
 
@@ -437,35 +460,76 @@ function spawnLines(entry: ThreadEntry): string[] {
   return lines;
 }
 
-/** The `.state.json` sidecar as it comes off disk — every field may be missing. */
-type StoredState = Partial<Record<keyof ThreadEntry, unknown>>;
+/** The durable half of a {@link ThreadEntry} — what the `.state.json` sidecar holds. */
+interface StoredState {
+  count?: number;
+  started?: boolean;
+  root?: string | null;
+  title?: string | null;
+  titled?: boolean;
+  subtitled?: boolean;
+  nodes?: number | null;
+  lastSeen?: number;
+  parent?: string | null;
+  spawnIndex?: number | null;
+  agentType?: string | null;
+  linked?: boolean;
+  pr?: string | null;
+}
 
-function readState(statePath: string): ThreadEntry | null {
+/**
+ * Decode one `.state.json` sidecar, or null when it is missing, unreadable, or not
+ * JSON. Every field is decoded rather than trusted, so one holding the wrong type
+ * reads as absent instead of poisoning the thread it describes.
+ */
+function readStoredState(statePath: string): StoredState | null {
+  let raw: string;
   try {
-    const s = JSON.parse(fs.readFileSync(statePath, 'utf8')) as StoredState;
-    return {
-      count: (s.count as number) ?? 0,
-      started: true,
-      pending: null,
-      root: (s.root as string | null) ?? null,
-      title: (s.title as string | null) ?? null,
-      titled: (s.titled as boolean) ?? false,
-      subtitled: (s.subtitled as boolean) ?? false,
-      nodes: typeof s.nodes === 'number' ? s.nodes : null,
-      lastSeen: typeof s.lastSeen === 'number' ? s.lastSeen : 0,
-      // Absent on state written before parentage was recorded; that thread keeps
-      // whatever the reader infers.
-      parent: (s.parent as string | null) ?? null,
-      spawnIndex: typeof s.spawnIndex === 'number' ? s.spawnIndex : null,
-      agentType: (s.agentType as string | null) ?? null,
-      linked: (s.linked as boolean) ?? false,
-      // Absent on state written before the link was recorded; that thread stays one the
-      // transcript scan has to speak for.
-      pr: (s.pr as string | null) ?? null,
-    };
+    raw = fs.readFileSync(statePath, 'utf8');
   } catch {
     return null;
   }
+  const s = asRecord(parseJson(raw));
+  if (s === null) return null;
+  return {
+    count: asNumber(s.count) ?? 0,
+    root: asText(s.root),
+    title: asText(s.title),
+    titled: s.titled === true,
+    subtitled: s.subtitled === true,
+    nodes: asNumber(s.nodes),
+    lastSeen: asNumber(s.lastSeen) ?? 0,
+    // Absent on state written before parentage was recorded; that thread keeps
+    // whatever the reader infers.
+    parent: asText(s.parent),
+    spawnIndex: asNumber(s.spawnIndex),
+    agentType: asText(s.agentType),
+    linked: s.linked === true,
+    // Absent on state written before the link was recorded; that thread stays one the
+    // transcript scan has to speak for.
+    pr: asText(s.pr),
+  };
+}
+
+function readState(statePath: string): ThreadEntry | null {
+  const s = readStoredState(statePath);
+  if (s === null) return null;
+  return {
+    count: s.count ?? 0,
+    started: true,
+    pending: null,
+    root: s.root ?? null,
+    title: s.title ?? null,
+    titled: s.titled ?? false,
+    subtitled: s.subtitled ?? false,
+    nodes: s.nodes ?? null,
+    lastSeen: s.lastSeen ?? 0,
+    parent: s.parent ?? null,
+    spawnIndex: s.spawnIndex ?? null,
+    agentType: s.agentType ?? null,
+    linked: s.linked ?? false,
+    pr: s.pr ?? null,
+  };
 }
 
 function writeState(statePath: string, entry: StoredState): void {
@@ -515,9 +579,9 @@ const nodeTextsPath = (dir: string, threadId: string): string => path.join(dir, 
 const NODE_LINE_RE = /^(?:## Task:|- decided:|- done:|- ✗\s|- (?:▸ )?[A-Za-z]\w*\()/;
 
 /** How many nodes a transcript's text holds. */
-export function countNodeLines(content: unknown): number {
+export function countNodeLines(content: string | null | undefined): number {
   let n = 0;
-  for (const raw of String(content ?? '').split('\n')) {
+  for (const raw of (content ?? '').split('\n')) {
     if (NODE_LINE_RE.test(raw.replace(/\r$/, ''))) n += 1;
   }
   return n;
@@ -551,7 +615,8 @@ function appendNodeTexts(
   const base = entry.nodes;
   const rows: string[] = [];
   entries.forEach((e, i) => {
-    const row: Record<string, unknown> = { i: base + i };
+    const row: JsonObject = {};
+    row.i = base + i;
     if (e.full !== null) row.text = e.full;
     if (e.argsHash) row.argsHash = e.argsHash;
     if (Object.keys(row).length > 1) rows.push(JSON.stringify(row));
@@ -598,10 +663,13 @@ function loadPendingTitles(dir: string): void {
   if (pendingLoadedFrom === dir) return;
   pendingLoadedFrom = dir;
   try {
-    const rows: unknown = JSON.parse(fs.readFileSync(pendingPath(dir), 'utf8'));
-    for (const row of asArrayOf<{ content?: unknown; title?: unknown }>(rows)) {
-      if (typeof row?.content === 'string' && typeof row?.title === 'string' && !pendingTitles.has(row.content)) {
-        pendingTitles.set(row.content, row.title);
+    const rows = asList(parseJson(fs.readFileSync(pendingPath(dir), 'utf8')));
+    for (const row of rows ?? []) {
+      const record = asRecord(row);
+      const content = asText(record?.content);
+      const title = asText(record?.title);
+      if (content !== null && title !== null && !pendingTitles.has(content)) {
+        pendingTitles.set(content, title);
       }
     }
   } catch {
@@ -657,9 +725,9 @@ function titleDiskThread(dir: string, content: string, title: string): boolean {
     const threadId = m?.[1];
     if (!threadId || threads.has(threadId)) continue; // in-memory threads already had their turn
     const statePath = path.join(dir, name);
+    const state = readStoredState(statePath);
+    if (state === null || state.title || !rootMatches(content, state.root)) continue;
     try {
-      const state = JSON.parse(fs.readFileSync(statePath, 'utf8')) as StoredState;
-      if (state.title || !rootMatches(content, state.root as string | null)) continue;
       const at = fs.statSync(statePath).mtimeMs;
       if (!best || at > best.at) best = { threadId, statePath, state, at };
     } catch {
@@ -807,14 +875,13 @@ const PR_COMMAND_RE = /gh\s+pr\s+(?:create|edit)\b|my-command-tools\s+pr\b|gh\s+
  * reaches the wire in the turn *after* it ran, alongside the `tool_result` it produced, so
  * one pass over the delta has both halves in hand. The last url wins.
  */
-export function openedPullRequest(delta: unknown): string | null {
+export function openedPullRequest(delta: JsonValue | undefined): string | null {
   const opening = new Set<string>();
   let url: string | null = null;
   for (const msg of asArrayOf<WireMessage>(delta)) {
     for (const b of asBlocks(msg?.content)) {
       if (b?.type === 'tool_use') {
-        const input = b.input as Record<string, unknown> | null | undefined;
-        const command = typeof input?.command === 'string' ? input.command : '';
+        const command = asText(asRecord(b.input)?.command) ?? '';
         if (b.id && PR_COMMAND_RE.test(command)) opening.add(b.id);
         continue;
       }
@@ -887,7 +954,7 @@ export function appendSession({ logDir, reqPath, reqJson, headers, responseText 
     // Learn the thread's identity from its first sighting: the root prompt (for
     // subtitle + title matching) and the header ingredients.
     if (!entry.root) entry.root = rootPrompt(messages);
-    if (entry.model == null) entry.model = typeof reqJson?.model === 'string' ? reqJson.model : 'unknown';
+    if (entry.model == null) entry.model = asText(reqJson?.model) ?? 'unknown';
     if (!entry.sessionId) entry.sessionId = sessionId ?? 'unknown';
     if (!entry.startedAt) entry.startedAt = new Date().toISOString();
     // Claim a title that arrived before this thread existed, including one the sidecar
