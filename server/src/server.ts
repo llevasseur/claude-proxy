@@ -979,14 +979,22 @@ async function serveIdeas({ req, res, url }: RouteContext, stream: boolean): Pro
 /**
  * The dispatch table, keyed by the manifest's own paths.
  *
- * `satisfies Record<ApiRoutePath, RouteHandler>` is what makes `API_ROUTES` load-bearing
- * rather than documentation: a handler for a path the manifest does not declare will not
+ * `Record<ApiRoutePath, RouteHandler>` is what makes `API_ROUTES` load-bearing rather
+ * than documentation: a handler for a path the manifest does not declare will not
  * compile, and a declared route with no handler will not either. The `switch` this
- * replaced could drift from the route list in both directions without a word. `satisfies`
- * rather than an annotation so each entry keeps its own inferred type while still being
- * checked against the manifest in both directions.
+ * replaced could drift from the route list in both directions without a word.
+ *
+ * **The annotation is pinned by a test and cannot become `satisfies`.**
+ * `server/test/orphan-surface.test.ts` reads this file as *text* and looks for the
+ * literal `const HANDLERS: Record<ApiRoutePath, RouteHandler> = {`, then scrapes the
+ * route keys out of the block up to the next `\n};` — that is how it checks the
+ * dispatch table against the manifest without importing a module that starts a
+ * server. `satisfies` moves the type to the closing line and renames the opening one,
+ * so it defeats both halves of that scrape. Since every entry here is checked against
+ * `ApiRoutePath` either way, the annotation costs nothing the `satisfies` bought.
  */
-const HANDLERS = {
+// oxlint-disable-next-line anti-slop/no-known-value-widening -- the annotation is the form `server/test/orphan-surface.test.ts` scrapes for; see above.
+const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   '/api/health': async ({ res }) => {
     let sidecarCount: number | null = null;
     let logDirReadable = true;
@@ -1845,7 +1853,7 @@ const HANDLERS = {
   '/api/filters': async ({ res }) => {
     send(res, 200, buildFilters());
   },
-} satisfies Record<ApiRoutePath, RouteHandler>;
+};
 
 /** Whether a declared route answers under the narrow, origin-checked CORS. */
 const narrowCors = (route: ApiRoute | undefined): boolean => route?.cors === 'origin';
