@@ -8,6 +8,8 @@ import type { DatabaseSync } from 'node:sqlite';
  * package called `sqlite` and fail. The `import type` above is erased before any
  * bundler sees it.
  */
+// SAFETY: `createRequire` resolves the same builtin the `import type` above names, so
+// the assertion restores the module's own type where `require`'s untyped return lost it.
 const sqlite = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
 
 /**
@@ -816,6 +818,8 @@ export function openDb(logDir: string): DatabaseSync {
 
 /** Apply any schema steps this file is newer than, then record the new version. */
 function migrate(db: DatabaseSync): void {
+  // SAFETY: `PRAGMA user_version` answers a single row whose single column SQLite
+  // names `user_version`, which is what this row type declares.
   const row = db.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined;
   const from = Number(row?.user_version ?? 0);
   if (from >= SCHEMA_VERSION) return;

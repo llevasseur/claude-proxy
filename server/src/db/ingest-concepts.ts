@@ -50,8 +50,19 @@ function prepare(db: DatabaseSync): ConceptStatements {
   };
 }
 
+/**
+ * True when a failed `stat` says the file simply is not there. Anything else the
+ * filesystem raised — a permission error, a broken mount — says nothing about whether
+ * the store exists, so the caller must rethrow it rather than drop its rows.
+ */
+function isMissingFile(cause: unknown): boolean {
+  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
+}
+
 /** Every row the store contributes is replaced together; the skills cascade. */
 function clearConcepts(db: DatabaseSync): number {
+  // SAFETY: `count(*)` aliased to `c` is the whole select list, and an aggregate with
+  // no GROUP BY always answers exactly one row.
   const before = (db.prepare('SELECT count(*) c FROM concept').get() as { c: number }).c;
   db.exec('DELETE FROM concept');
   return before;
@@ -107,10 +118,10 @@ export async function ingestConcepts(db: DatabaseSync, logDir: string): Promise<
     const info = await stat(file);
     bytes = info.size;
     modified = info.mtime.toISOString();
-  } catch (err) {
+  } catch (cause) {
     // Only a *missing* store means the rows are unbacked. Any other error says
     // nothing about what is on disk, so it must not drop the table.
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    if (!isMissingFile(cause)) throw cause;
     db.exec('BEGIN');
     try {
       stats.deleted = clearConcepts(db);
@@ -123,10 +134,14 @@ export async function ingestConcepts(db: DatabaseSync, logDir: string): Promise<
     return stats;
   }
 
+  // SAFETY: this SELECT names exactly `bytes` and `modified`, and `path` is the
+  // table's primary key, so the answer is one row or none.
   const mark = db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(STORE_PATH) as
     | { bytes: number; modified: string }
     | undefined;
   if (mark && mark.bytes === bytes && mark.modified === modified) {
+    // SAFETY: `count(*)` aliased to `c` is the whole select list, and an aggregate with
+    // no GROUP BY always answers exactly one row.
     stats.concepts = (db.prepare('SELECT count(*) c FROM concept').get() as { c: number }).c;
     return stats;
   }

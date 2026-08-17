@@ -114,9 +114,12 @@ export function readScannedPrLinks(logDir: string, repoDir: string): Map<number,
   if (!db) return null;
   try {
     const out = new Map<number, StoredScan>();
+    // SAFETY: `SELECT_SCANS` names exactly number and scanned_through AS scannedThrough.
     const scans = db.prepare(SELECT_SCANS).all(repoDir) as { number: number; scannedThrough: number }[];
     for (const scan of scans) out.set(scan.number, { scannedThrough: scan.scannedThrough, links: [] });
 
+    // SAFETY: `SELECT_LINKS` names exactly number, thread_id AS threadId, title,
+    // modified and via — `via` being the stored comma list `parseVia` reads back.
     const links = db.prepare(SELECT_LINKS).all(repoDir) as {
       number: number;
       threadId: string;

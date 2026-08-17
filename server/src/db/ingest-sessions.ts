@@ -8,6 +8,7 @@ import {
   parseSessionNodeTexts,
   parseSessionTranscript,
 } from '@claude-proxy/core';
+import { parseJson, stringField } from '../json.js';
 import { resolveSessionsDir, SESSION_FILE_RE } from '../sessions.js';
 
 /**
@@ -23,6 +24,15 @@ import { resolveSessionsDir, SESSION_FILE_RE } from '../sessions.js';
 /** `<threadId>.md` relative to `logDir` — the pointer stored on the row. */
 function mdPath(threadId: string): string {
   return `sessions/${threadId}.md`;
+}
+
+/**
+ * True when a failed `readdir` says the directory simply is not there. Anything else
+ * the filesystem raised — a permission error, a broken mount — says nothing about
+ * whether `sessions/` exists, so the caller must rethrow it rather than drop its rows.
+ */
+function isMissingFile(cause: unknown): boolean {
+  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }
 
 export interface SessionIngestStats {
@@ -101,13 +111,13 @@ interface ParsedSession {
  */
 async function readSidecarFacts(dir: string, threadId: string): Promise<{ root: string | null; pr: string | null }> {
   try {
-    const state = JSON.parse(await readFile(path.join(dir, `${threadId}.state.json`), 'utf8')) as {
-      root?: unknown;
-      pr?: unknown;
-    };
+    const state = parseJson(await readFile(path.join(dir, `${threadId}.state.json`), 'utf8'));
+    // A recorded-but-empty `pr` is no pull request: the sidecar writes the field
+    // before the run has one to name.
+    const pr = stringField(state, 'pr');
     return {
-      root: typeof state.root === 'string' ? state.root : null,
-      pr: typeof state.pr === 'string' && state.pr ? state.pr : null,
+      root: stringField(state, 'root') ?? null,
+      pr: pr === undefined || pr === '' ? null : pr,
     };
   } catch {
     return { root: null, pr: null }; // no sidecar, or it went away
@@ -226,13 +236,14 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
   let names: string[];
   try {
     names = await readdir(dir);
-  } catch (err) {
+  } catch (cause) {
     // Only a *missing* `sessions/` means the rows are unbacked. Any other error
     // says nothing about what is on disk, so it must not drop the tables.
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    if (!isMissingFile(cause)) throw cause;
     const st = prepare(db);
     db.exec('BEGIN');
     try {
+      // SAFETY: this SELECT names exactly `thread_id`, which is what the row type declares.
       for (const row of db.prepare('SELECT thread_id FROM session').all() as Array<{ thread_id: string }>) {
         st.deleteSession.run(row.thread_id);
         stats.deleted += 1;
@@ -258,6 +269,7 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
   const present = new Set(threadIds);
   db.exec('BEGIN');
   try {
+    // SAFETY: this SELECT names exactly `thread_id`, which is what the row type declares.
     for (const row of db.prepare('SELECT thread_id FROM session').all() as Array<{ thread_id: string }>) {
       if (present.has(row.thread_id)) continue;
       st.deleteSession.run(row.thread_id);
@@ -270,6 +282,8 @@ export async function ingestSessions(db: DatabaseSync, logDir: string): Promise<
   }
 
   const known = new Map<string, { bytes: number; modified: string }>();
+  // SAFETY: this SELECT names exactly `thread_id`, `bytes` and `modified`, which is
+  // what the row type declares.
   for (const row of db.prepare('SELECT thread_id, bytes, modified FROM session').all() as Array<{
     thread_id: string;
     bytes: number;
