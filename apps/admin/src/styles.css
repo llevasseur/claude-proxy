@@ -15,6 +15,8 @@
 /* Custom properties, and the single reduced-motion block for the whole sheet. */
 @import "./styles/tokens.css";
 @import "./styles/base.css";
+/* The default scrollbar, site-wide: visible only while its container scrolls. */
+@import "./styles/scrollbar.css";
 
 /* The frame: the rail, the workspace it scrolls beside, and the card and grid
  * every page composes from. `narrow-shell` last — it overrides the three above it
