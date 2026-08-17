@@ -83,8 +83,8 @@ export function resolveRepoDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 }
 
-/** `owner/name` and nothing else — the shape `REPO_SLUG` and `gh` both answer in. */
-const SLUG_SHAPE = /^[^/\s]+\/[^/\s]+$/;
+/** `owner/name` and nothing else — the form `REPO_SLUG` and `gh` both answer in. */
+const SLUG_PATTERN = /^[^/\s]+\/[^/\s]+$/;
 
 /** `ssh -G` reads config files only; it never opens a connection. */
 const SSH_TIMEOUT_MS = 5_000;
@@ -138,7 +138,7 @@ async function ghSlug(gh: string, repoDir: string): Promise<string | null> {
       timeout: GH_TIMEOUT_MS,
     });
     const slug = stdout.trim();
-    return SLUG_SHAPE.test(slug) ? slug : null;
+    return SLUG_PATTERN.test(slug) ? slug : null;
   } catch {
     return null;
   }
@@ -163,7 +163,7 @@ export async function resolveSlug(
 ): Promise<SlugLookup> {
   const override = env.REPO_SLUG?.trim();
   if (override) {
-    if (SLUG_SHAPE.test(override)) return { slug: override, detail: 'REPO_SLUG' };
+    if (SLUG_PATTERN.test(override)) return { slug: override, detail: 'REPO_SLUG' };
     return { slug: null, detail: `REPO_SLUG is \`${override}\`, which is not \`owner/name\`` };
   }
 

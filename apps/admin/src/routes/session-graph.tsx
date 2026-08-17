@@ -73,7 +73,7 @@ const LEGEND: { tone: Tone; label: string }[] = [
 ];
 
 /** The command grain's own legend: one swatch per family, most-changing first. */
-const COMMAND_LEGEND: CommandFamily[] = ['build', 'shape', 'review', 'read', 'other'];
+const COMMAND_LEGEND: CommandFamily[] = ['build', 'refine', 'review', 'read', 'other'];
 
 /** The agent grain's legend: the only two kinds of box that projection leaves on the canvas. */
 const AGENT_LEGEND: { tone: Tone; label: string }[] = [

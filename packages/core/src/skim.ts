@@ -2,7 +2,7 @@ import { priceFor } from './pricing.js';
 import { reportDay } from './time.js';
 import { type AuditSidecar, type AuditSkim, isAuditSidecar } from './types.js';
 
-export interface SkimShape {
+export interface SkimKeyTotals {
   cacheKey: string;
   /** Latest user text when its request log is available. */
   requestText: string | null;
@@ -32,14 +32,14 @@ export interface SkimDigest {
   savedInputTokens: number;
   /** Estimated USD saved at each model's input-token rate. */
   estSavedUsd: number;
-  /** Most-repeated request shapes, ranked by request count. */
-  topShapes: SkimShape[];
+  /** Most-repeated cache keys, ranked by request count. */
+  topKeys: SkimKeyTotals[];
 }
 
 export interface ComputeSkimDigestOptions {
   /** Digest date in YYYY-MM-DD format. */
   date: string;
-  /** Maximum `topShapes` entries. Defaults to 12. */
+  /** Maximum `topKeys` entries. Defaults to 12. */
   topN?: number;
 }
 
@@ -75,7 +75,7 @@ export function computeSkimDigest(sidecars: readonly unknown[], opts: ComputeSki
   let misses = 0;
   let savedInputTokens = 0;
   let estSavedUsd = 0;
-  const shapes = new Map<
+  const keyTotals = new Map<
     string,
     { requestText: string | null; requests: number; hits: number; savedInputTokens: number; estSavedUsd: number }
   >();
@@ -95,7 +95,7 @@ export function computeSkimDigest(sidecars: readonly unknown[], opts: ComputeSki
         typeof (s as unknown as { skimRequestText?: unknown }).skimRequestText === 'string'
           ? (s as unknown as { skimRequestText: string }).skimRequestText
           : null;
-      const acc = shapes.get(skim.cacheKey) ?? {
+      const acc = keyTotals.get(skim.cacheKey) ?? {
         requestText,
         requests: 0,
         hits: 0,
@@ -109,12 +109,12 @@ export function computeSkimDigest(sidecars: readonly unknown[], opts: ComputeSki
         acc.savedInputTokens += skim.savedInputTokens;
         acc.estSavedUsd += savedUsd(skim.savedInputTokens, s.model);
       }
-      shapes.set(skim.cacheKey, acc);
+      keyTotals.set(skim.cacheKey, acc);
     }
   }
 
   const enabledRequests = hits + misses;
-  const topShapes: SkimShape[] = [...shapes.entries()]
+  const topKeys: SkimKeyTotals[] = [...keyTotals.entries()]
     .map(([cacheKey, v]) => ({ cacheKey, ...v }))
     .sort((a, b) => b.requests - a.requests || b.hits - a.hits)
     .slice(0, topN);
@@ -128,7 +128,7 @@ export function computeSkimDigest(sidecars: readonly unknown[], opts: ComputeSki
     hitRate: enabledRequests > 0 ? hits / enabledRequests : 0,
     savedInputTokens,
     estSavedUsd,
-    topShapes,
+    topKeys,
   };
 }
 

@@ -15,7 +15,7 @@ import type {
   CommandPatternId,
   CommandRun,
   CommandRunOutcome,
-  CommandRunShape,
+  CommandRunProfile,
   CommandRunTotals,
   CommandStep,
   CommandSummary,
@@ -58,7 +58,7 @@ import type {
   SessionNode,
   SessionSuggestion,
   SkimDigest,
-  SkimShape,
+  SkimKeyTotals,
   StepReach,
   StoredWirePrompt,
   SuggestionRecurrence,
@@ -263,7 +263,7 @@ export interface SkimResponse {
 }
 export interface SkimTrendResponse {
   digests: SkimDigest[];
-  topShapes: SkimShape[];
+  topKeys: SkimKeyTotals[];
   meta: { days: number; files: number; parseErrors: number; bodiesEvicted: number };
 }
 export interface WithheldResponse {
@@ -692,7 +692,7 @@ export interface CommandResponse {
   patterns: PatternFrequency[];
   hashMarkers: CommandHashMarker[];
   /** Per-run work and duration, oldest first — the trend, where `runs` is newest first. */
-  shape: CommandRunShape[];
+  profile: CommandRunProfile[];
   meta: { totalRuns: number; filteredRuns: number; wallMeasuredRuns: number };
 }
 export interface CommandRunResponse {

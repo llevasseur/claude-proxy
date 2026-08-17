@@ -80,8 +80,8 @@ afterEach(() => {
   db?.close();
 });
 
-/** The comparable shape of a window read; `byDay` is a Map, so it is flattened. */
-function shapeOf(result: Awaited<ReturnType<typeof readWindow>>) {
+/** A window read reduced to something comparable; `byDay` is a Map, so it is flattened. */
+function comparableOf(result: Awaited<ReturnType<typeof readWindow>>) {
   return {
     sidecars: result.sidecars,
     files: result.files,
@@ -149,7 +149,7 @@ describe('the two backings agree on the all-time answer', () => {
     const fromFiles = await readWindow(logDir, { all: true }, NOW, fileSource);
     const fromDb = await readWindow(logDir, { all: true }, NOW, dbSource(db));
 
-    expect(shapeOf(fromDb)).toEqual(shapeOf(fromFiles));
+    expect(comparableOf(fromDb)).toEqual(comparableOf(fromFiles));
     expect(fromDb.files).toBe(5);
   });
 

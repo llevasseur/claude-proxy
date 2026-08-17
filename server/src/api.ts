@@ -22,14 +22,14 @@ import {
   type CliFunctionEntry,
   type CommandPattern,
   type CommandRun,
-  type CommandRunShape,
+  type CommandRunProfile,
   type CommandStep,
   type CommandSummary,
   type ContextAggregates,
   type ContextEntry,
   type ContextThreadGroup,
   canShipIdea,
-  commandRunShapes,
+  commandRunProfiles,
   computeAliasPosture,
   computeDigest,
   computeSkimDigest,
@@ -112,7 +112,7 @@ import {
   type SessionNode,
   type SessionSuggestion,
   type SkimDigest,
-  type SkimShape,
+  type SkimKeyTotals,
   type StepReach,
   type StoredConcept,
   type StoredWirePrompt,
@@ -2864,7 +2864,7 @@ export async function buildSkim(
 
 export interface SkimTrendResponse {
   digests: SkimDigest[];
-  topShapes: SkimShape[];
+  topKeys: SkimKeyTotals[];
   /**
    * `bodiesEvicted` as in {@link SkimResponse}, across the whole window. On the
    * substrate it is a sum over the `request_path` column, not a `stat` per row.
@@ -2884,10 +2884,10 @@ export async function buildSkimTrend(
     now,
     source,
   );
-  const topShapes = computeSkimDigest(sidecars, { date: `${days}d`, topN: 50 }).topShapes;
+  const topKeys = computeSkimDigest(sidecars, { date: `${days}d`, topN: 50 }).topKeys;
   return {
     digests: skimDigestsByDay(sidecars),
-    topShapes,
+    topKeys,
     meta: { days, files, parseErrors, bodiesEvicted: bodiesEvicted ?? 0 },
   };
 }
@@ -3290,11 +3290,11 @@ export interface CommandResponse {
   patterns: PatternFrequency[];
   hashMarkers: CommandHashMarker[];
   /** Per-run work and duration, **oldest first** — `runs` is newest-first for the list. */
-  shape: CommandRunShape[];
+  profile: CommandRunProfile[];
   meta: {
     totalRuns: number;
     filteredRuns: number;
-    /** Runs in `shape` whose duration came off the wider bracket rather than the request span. */
+    /** Runs in `profile` whose duration came off the wider bracket rather than the request span. */
     wallMeasuredRuns: number;
   };
 }
@@ -3338,7 +3338,7 @@ export async function buildCommand(
     previous = hash;
   }
 
-  const shape = commandRunShapes(filtered);
+  const profile = commandRunProfiles(filtered);
 
   return {
     command,
@@ -3353,11 +3353,11 @@ export async function buildCommand(
     stepReach: stepReach(steps, filtered),
     patterns: patternFrequency(filtered),
     hashMarkers: markers,
-    shape,
+    profile,
     meta: {
       totalRuns: own.length,
       filteredRuns: filtered.length,
-      wallMeasuredRuns: shape.filter((s) => s.wallMeasured).length,
+      wallMeasuredRuns: profile.filter((s) => s.wallMeasured).length,
     },
   };
 }

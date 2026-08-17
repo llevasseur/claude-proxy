@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { baselineRate, costRatePoints, summarizeCostRate } from '../src/cost-rate.js';
 import { costPerMTok, rateTokens, type UsageDigest } from '../src/digest.js';
 
-interface DayShape {
+interface DayTotals {
   /** Fresh (non-cached) input tokens. */
   input?: number;
   cacheRead?: number;
@@ -11,7 +11,7 @@ interface DayShape {
 }
 
 /** A digest carrying only the fields a rate is computed from; the rest is inert. */
-function digest(date: string, { input = 0, cacheRead = 0, output = 0, cost }: DayShape): UsageDigest {
+function digest(date: string, { input = 0, cacheRead = 0, output = 0, cost }: DayTotals): UsageDigest {
   const realInput = input + cacheRead;
   return {
     date,

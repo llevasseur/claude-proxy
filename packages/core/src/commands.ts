@@ -1316,12 +1316,12 @@ export function stepReach(steps: readonly CommandStep[], runs: readonly CommandR
 }
 
 /**
- * One run's **shape**: how much work it did, and how long it took end to end.
+ * One run's **profile**: how much work it did, and how long it took end to end.
  *
  * Distinct from {@link CommandRunStepStats}, which asks where the *tokens* went. Every
  * field is read off the stored record, so nothing here needs the raw logs.
  */
-export interface CommandRunShape {
+export interface CommandRunProfile {
   /** The record's key, so a point on the trend can link to its run. */
   runId: string;
   started: string | null;
@@ -1350,15 +1350,15 @@ export interface CommandRunShape {
 }
 
 /**
- * The per-run shape series for one command's trend, **oldest first** — a trend reads
+ * The per-run profile series for one command's trend, **oldest first** — a trend reads
  * left to right, unlike the run list.
  *
  * Runs with no start are dropped — they have no place on the x-axis.
  */
-export function commandRunShapes(runs: readonly CommandRun[]): CommandRunShape[] {
+export function commandRunProfiles(runs: readonly CommandRun[]): CommandRunProfile[] {
   return runs
     .filter((run) => !!run.started)
-    .map((run): CommandRunShape => {
+    .map((run): CommandRunProfile => {
       const totals = runTotals(run);
       const declared = run.steps ?? [];
       const stats = run.stepStats ?? [];

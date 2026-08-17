@@ -19,7 +19,7 @@ describe('computeSkimDigest', () => {
     expect(d.hitRate).toBe(0);
     expect(d.savedInputTokens).toBe(0);
     expect(d.estSavedUsd).toBe(0);
-    expect(d.topShapes).toEqual([]);
+    expect(d.topKeys).toEqual([]);
   });
 
   it('counts hits, misses and hit-rate over enabled traffic only', () => {
@@ -44,27 +44,27 @@ describe('computeSkimDigest', () => {
     expect(d.estSavedUsd).toBeCloseTo(priceFor('claude-opus-4-8').input);
   });
 
-  it('ranks top repeated request shapes by request count', () => {
+  it('ranks top repeated cache keys by request count', () => {
     const d = computeSkimDigest([hit(100, 'hot'), hit(100, 'hot'), miss('hot'), hit(100, 'cold')], {
       date: '2026-07-15',
     });
-    expect(d.topShapes[0]!.cacheKey).toBe('hot');
-    expect(d.topShapes[0]!.requests).toBe(3);
-    expect(d.topShapes[0]!.hits).toBe(2);
-    expect(d.topShapes[1]!.cacheKey).toBe('cold');
+    expect(d.topKeys[0]!.cacheKey).toBe('hot');
+    expect(d.topKeys[0]!.requests).toBe(3);
+    expect(d.topKeys[0]!.hits).toBe(2);
+    expect(d.topKeys[1]!.cacheKey).toBe('cold');
   });
 
-  it('retains request text for each shape when the server enriches a sidecar', () => {
+  it('retains request text for each cache key when the server enriches a sidecar', () => {
     const sidecar = hit(100, 'hot') as ReturnType<typeof hit> & { skimRequestText: string };
     sidecar.skimRequestText = 'Show me the cached result';
     const d = computeSkimDigest([sidecar], { date: '2026-07-15' });
-    expect(d.topShapes[0]!.requestText).toBe('Show me the cached result');
+    expect(d.topKeys[0]!.requestText).toBe('Show me the cached result');
   });
 
   it('honours topN', () => {
     const sidecars = ['a', 'b', 'c'].map((k) => hit(100, k));
     const d = computeSkimDigest(sidecars, { date: '2026-07-15', topN: 2 });
-    expect(d.topShapes).toHaveLength(2);
+    expect(d.topKeys).toHaveLength(2);
   });
 
   it('skips malformed sidecars', () => {
