@@ -354,15 +354,17 @@ async function until(check: () => boolean, ms = 5_000): Promise<boolean> {
 describe.skipIf(process.platform === 'win32')('runCliTurn — ending a run early', () => {
   it('stops the whole process group and returns what the run had reached', async () => {
     const { cliPath, childPidFile } = fakeCli('fake-claude-stop');
-    let handle: CliRunHandle | null = null;
-    const turn = runCliTurn({ ...turnInput(cliPath), onStart: (run) => (handle = run) });
+    // `onStart` fires from inside `runCliTurn`, which the checker cannot see into, so
+    // collecting the run rather than assigning a nullable local is what lets the check
+    // below be a real one instead of an assertion talking the type away.
+    const started: CliRunHandle[] = [];
+    const turn = runCliTurn({ ...turnInput(cliPath), onStart: (run) => started.push(run) });
 
     expect(await until(() => fs.existsSync(childPidFile))).toBe(true);
     const childPid = Number(fs.readFileSync(childPidFile, 'utf8'));
-    // SAFETY: `onStart` fires synchronously as soon as `runCliTurn` spawns the
-    // child, and the `until` above already waited for that child's pid file to
-    // exist — `handle` has been assigned by the time this line runs.
-    (handle as CliRunHandle).stop();
+    const handle = started[0];
+    if (!handle) throw new Error('onStart never fired, so the spawned run was never reported');
+    handle.stop();
 
     const result = await turn;
     expect(result.interrupted).toBe('stopped');

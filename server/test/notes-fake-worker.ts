@@ -14,6 +14,26 @@ export interface FakeNotesServer {
 
 const TOKEN = 'fake-notes-token';
 
+/**
+ * Every body this fake worker replies with, across all of its routes. The routes
+ * answer the Notes API's own contract rather than arbitrary JSON, so this names
+ * that contract — which is also what a bare `JsonValue` could not: `NoteDocument`
+ * and `NoteMetadata` are interfaces, and an interface carries no implicit index
+ * signature, so neither is assignable to `JsonObject` however JSON-safe it is.
+ */
+type NotesReply =
+  | NotePage
+  | { note: NoteDocument; changed?: true }
+  | {
+      conflict: true;
+      code: string;
+      noteId: string;
+      expectedVersion: JsonValue | undefined;
+      currentVersion: number;
+      attemptedRevisionId: string;
+    }
+  | { error: string };
+
 function summary(note: NoteDocument): NoteMetadata {
   const { body: _body, ...metadata } = note;
   return { ...metadata, excerpt: note.body.slice(0, 200) };
@@ -47,7 +67,7 @@ export async function startFakeNotesServer(): Promise<FakeNotesServer> {
       // fake server's own callers (notes-remote.ts) send is a JSON object literal
       // (create/update bodies) — never an array or a bare primitive.
       const body = raw ? (JSON.parse(raw) as JsonObject) : {};
-      const send = (status: number, payload: JsonValue) => {
+      const send = (status: number, payload: NotesReply) => {
         res.writeHead(status, { 'content-type': 'application/json' });
         res.end(JSON.stringify(payload));
       };
