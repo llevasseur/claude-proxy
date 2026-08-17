@@ -74,9 +74,8 @@ export function SeriesLineChart({
           />
           <Tooltip
             cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
-            // The card sizes to its content instead of scrolling inside the plot,
-            // so it may leave the plot vertically — and must draw over the
-            // neighbouring cards when it does.
+            // Sized to content rather than scrolled: the card may leave the plot
+            // vertically, and then must draw over the neighbouring cards.
             allowEscapeViewBox={{ x: false, y: true }}
             wrapperStyle={{ zIndex: 10 }}
             content={

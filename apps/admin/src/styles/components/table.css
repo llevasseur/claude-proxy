@@ -123,10 +123,9 @@
     text-transform: none;
     white-space: normal;
     color: var(--text);
-    /* `display: none` rather than `visibility: hidden`: tables sit inside
-     `.table-scroll`, and a hidden-but-laid-out bubble below the header would
-     hold that scroller's vertical overflow open. `allow-discrete` keeps the
-     exit transition; the `@starting-style` block keeps the entrance. */
+    /* `display: none`, not `visibility: hidden` — a laid-out bubble would hold
+     `.table-scroll`'s vertical overflow open. `allow-discrete` keeps the exit
+     transition, `@starting-style` the entrance. */
     display: none;
     opacity: 0;
     /* Grows out of the mark that opened it, near full size, never from nothing. */

@@ -191,9 +191,8 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
 
   return (
     <div className={`card usage-meter tone-${tone}`}>
-      {/* The rate made visible, riding the top edge of the card: the fill is the
-          burn so far, its faint extension where this pace lands by the reset.
-          The dial below carries the meter semantics. */}
+      {/* The burn so far, riding the card's top edge; the faint extension is
+          where this pace lands by the reset. The dial carries the meter semantics. */}
       <div className='usage-bar' aria-hidden>
         <div className='usage-bar-fill' style={{ width: `${fill}%` }} />
         {projected != null && projected > fill && (

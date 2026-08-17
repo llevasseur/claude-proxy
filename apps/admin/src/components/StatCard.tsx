@@ -19,10 +19,8 @@ const POPOVER_GAP = 8;
 const MIN_VALUE_PX = 13;
 
 /**
- * Shrinks the value's font just enough to fit its card on one line. A raw
- * token count at display size can outgrow a grid cell; the ratio of rendered
- * width to available width is exactly the correction, and full size returns
- * whenever full size fits again.
+ * Shrinks the value's font just enough to keep it on one line: the overflow
+ * ratio is the correction, and full size returns whenever it fits again.
  */
 function useFitText(value: string): MutableRefObject<HTMLDivElement | null> {
   const ref = useRef<HTMLDivElement | null>(null);
