@@ -36,6 +36,7 @@
  * file lives in the server package.
  */
 
+import { type JsonValue, jsonArray, jsonObject, jsonText, jsonValueOf, objectAt } from './json.js';
 import { parseWriteProvenance, type WriteProvenance } from './provenance.js';
 
 /**
@@ -75,9 +76,21 @@ const LOCATORLESS_SOURCE: IdeaEvidenceSource = 'command-gap';
  */
 export const IDEA_COMMAND_AREA = 'commands';
 
-/** True when `value` names one of the evidence sources. */
-export function isIdeaEvidenceSource(value: unknown): value is IdeaEvidenceSource {
-  return typeof value === 'string' && (IDEA_EVIDENCE_SOURCES as readonly string[]).includes(value);
+/**
+ * True when `value` names one of the evidence sources.
+ *
+ * The five predicates in this file — this one, {@link isIdeaStatus},
+ * {@link isIdeaSlug}, {@link isIdeaArea}, {@link isIdeaRepo} and
+ * {@link isIdeaPrOutcome} — take a generic `Candidate` rather than a named input
+ * type because they are the *first* thing a caller reaches for: the server calls
+ * them on query-string fragments, this module calls them on freshly decoded
+ * `JsonValue`s, and neither should have to widen its value to a common type to
+ * ask the question. Narrowing to `Candidate & …` means each caller keeps
+ * whatever it already knew alongside the answer.
+ */
+export function isIdeaEvidenceSource<Candidate>(value: Candidate): value is Candidate & IdeaEvidenceSource {
+  const text = jsonText(jsonValueOf(value));
+  return IDEA_EVIDENCE_SOURCES.some((source) => source === text);
 }
 
 /**
@@ -119,9 +132,10 @@ export type IdeaStatus = (typeof IDEA_STATUSES)[number];
 /** What an idea is until a human says otherwise. */
 export const DEFAULT_IDEA_STATUS: IdeaStatus = 'proposed';
 
-/** True when `value` names one of the statuses. */
-export function isIdeaStatus(value: unknown): value is IdeaStatus {
-  return typeof value === 'string' && (IDEA_STATUSES as readonly string[]).includes(value);
+/** True when `value` names one of the statuses. Generic per {@link isIdeaEvidenceSource}. */
+export function isIdeaStatus<Candidate>(value: Candidate): value is Candidate & IdeaStatus {
+  const text = jsonText(jsonValueOf(value));
+  return IDEA_STATUSES.some((status) => status === text);
 }
 
 /**
@@ -146,9 +160,10 @@ export function canShipIdea(status: IdeaStatus): boolean {
  */
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/** True when `value` is a well-formed idea slug. */
-export function isIdeaSlug(value: unknown): value is string {
-  return typeof value === 'string' && SLUG_PATTERN.test(value);
+/** True when `value` is a well-formed idea slug. Generic per {@link isIdeaEvidenceSource}. */
+export function isIdeaSlug<Candidate>(value: Candidate): value is Candidate & string {
+  const text = jsonText(jsonValueOf(value));
+  return text !== null && SLUG_PATTERN.test(text);
 }
 
 /**
@@ -158,8 +173,9 @@ export function isIdeaSlug(value: unknown): value is string {
  * has heard of is still a valid one. What the shape buys is that two runs writing
  * the same area write the same string.
  */
-export function isIdeaArea(value: unknown): value is string {
-  return typeof value === 'string' && SLUG_PATTERN.test(value);
+export function isIdeaArea<Candidate>(value: Candidate): value is Candidate & string {
+  const text = jsonText(jsonValueOf(value));
+  return text !== null && SLUG_PATTERN.test(text);
 }
 
 /**
@@ -202,9 +218,10 @@ export function ideaAreaLabel(area: string | undefined): string {
  */
 const REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
-/** True when `value` is a well-formed `owner/name` remote slug. */
-export function isIdeaRepo(value: unknown): value is string {
-  return typeof value === 'string' && REPO_PATTERN.test(value);
+/** True when `value` is a well-formed `owner/name` remote slug. Generic per {@link isIdeaEvidenceSource}. */
+export function isIdeaRepo<Candidate>(value: Candidate): value is Candidate & string {
+  const text = jsonText(jsonValueOf(value));
+  return text !== null && REPO_PATTERN.test(text);
 }
 
 /**
@@ -321,61 +338,68 @@ export function emptyIdeasStore(): IdeasStore {
  * as a stop rather than as empty — the emptiness this function reports cannot
  * tell "nothing recorded yet" from "the file is broken".
  */
-export function parseIdeasStore(raw: unknown): IdeasStore {
+export function parseIdeasStore<Candidate>(raw: Candidate): IdeasStore {
   const store = emptyIdeasStore();
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return store;
-  const ideas = (raw as { ideas?: unknown }).ideas;
-  if (!ideas || typeof ideas !== 'object' || Array.isArray(ideas)) return store;
+  const ideas = objectAt(jsonObject(jsonValueOf(raw)), 'ideas');
+  if (ideas === null) return store;
 
-  for (const [key, value] of Object.entries(ideas as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(ideas)) {
     if (!isIdeaSlug(key)) continue;
-    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-    const { title, rationale, evidence, repo, area, status, created, updated, note, comment, claim, by } =
-      value as Record<string, unknown>;
+    const record = jsonObject(value);
+    if (record === null) continue;
+    const status = record.status;
     if (!isIdeaStatus(status)) continue;
+    const repo = record.repo;
     if (!isIdeaRepo(repo)) continue;
-    if (typeof title !== 'string' || !title.trim()) continue;
-    const kept = parseEvidenceList(evidence);
+    const title = (jsonText(record.title) ?? '').trim();
+    if (!title) continue;
+    const kept = parseEvidenceList(record.evidence);
     // An entry citing nothing is dropped rather than kept as a weaker one.
     if (kept.length === 0) continue;
-    // A malformed claim is dropped rather than dropping the entry with it. The
-    // entry then reads as unclaimed, which a second run may take.
-    const parsedClaim = parseClaim(claim);
-    // An unreadable envelope loses the actor, never the idea.
-    const actor = parseWriteProvenance(by);
-    store.ideas[key] = {
+
+    const entry: IdeaEntry = {
       slug: key,
-      title: title.trim(),
-      rationale: typeof rationale === 'string' ? rationale.trim() : '',
+      title,
+      rationale: (jsonText(record.rationale) ?? '').trim(),
       evidence: kept,
       repo,
-      // Tolerated absent, and a malformed one is dropped rather than dropping
-      // the entry: an idea filed under `Not An Area` reads as Unfiled, which is
-      // fixable from the dashboard, where a dropped row is not.
-      ...(isIdeaArea(area) ? { area } : {}),
       status,
-      created: typeof created === 'string' ? created : '',
-      updated: typeof updated === 'string' ? updated : '',
-      ...(typeof note === 'string' && note ? { note } : {}),
-      ...(typeof comment === 'string' && comment.trim() ? { comment: comment.trim() } : {}),
-      ...(parsedClaim ? { claim: parsedClaim } : {}),
-      ...(actor ? { by: actor } : {}),
+      created: jsonText(record.created) ?? '',
+      updated: jsonText(record.updated) ?? '',
     };
+    // Area is tolerated absent, and a malformed one is dropped rather than
+    // dropping the entry: an idea filed under `Not An Area` reads as Unfiled,
+    // which is fixable from the dashboard, where a dropped row is not.
+    const area = record.area;
+    if (isIdeaArea(area)) entry.area = area;
+    const note = jsonText(record.note);
+    if (note) entry.note = note;
+    const comment = (jsonText(record.comment) ?? '').trim();
+    if (comment) entry.comment = comment;
+    // A malformed claim is dropped rather than dropping the entry with it. The
+    // entry then reads as unclaimed, which a second run may take.
+    const claim = parseClaim(record.claim);
+    if (claim) entry.claim = claim;
+    // An unreadable envelope loses the actor, never the idea.
+    const actor = parseWriteProvenance(record.by);
+    if (actor) entry.by = actor;
+    store.ideas[key] = entry;
   }
   return store;
 }
 
 /** Read an untrusted value as a claim, or null when it carries no holder or no start time. */
-function parseClaim(raw: unknown): IdeaClaim | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const { by, at, pr } = raw as Record<string, unknown>;
-  if (typeof by !== 'string' || !by.trim()) return null;
-  if (typeof at !== 'string' || !at.trim()) return null;
-  return {
-    by: by.trim(),
-    at: at.trim(),
-    ...(typeof pr === 'string' && pr.trim() ? { pr: pr.trim() } : {}),
-  };
+function parseClaim(raw: JsonValue | undefined): IdeaClaim | null {
+  const record = jsonObject(raw);
+  if (record === null) return null;
+  const by = (jsonText(record.by) ?? '').trim();
+  if (!by) return null;
+  const at = (jsonText(record.at) ?? '').trim();
+  if (!at) return null;
+  const claim: IdeaClaim = { by, at };
+  const pr = (jsonText(record.pr) ?? '').trim();
+  if (pr) claim.pr = pr;
+  return claim;
 }
 
 /**
@@ -384,23 +408,29 @@ function parseClaim(raw: unknown): IdeaClaim | null {
  * and stands alone. Which *areas* may carry that one is a separate rule, checked
  * in {@link parseIdeaAdds} where the area is in hand.
  */
-function parseEvidenceList(raw: unknown): IdeaEvidence[] {
-  if (!Array.isArray(raw)) return [];
+function parseEvidenceList(raw: JsonValue | undefined): IdeaEvidence[] {
+  const items = jsonArray(raw);
+  if (items === null) return [];
   const kept: IdeaEvidence[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-    const { source, path, bucket, id, quote } = item as Record<string, unknown>;
+  for (const item of items) {
+    const record = jsonObject(item);
+    if (record === null) continue;
+    const source = record.source;
     if (!isIdeaEvidenceSource(source)) continue;
-    const hasPath = typeof path === 'string' && path.trim() !== '';
-    const hasRef = Number.isInteger(bucket) && typeof id === 'string' && id.trim() !== '';
-    if (!hasPath && !hasRef && source !== LOCATORLESS_SOURCE) continue;
-    kept.push({
-      source,
-      ...(hasPath ? { path: (path as string).trim() } : {}),
-      ...(Number.isInteger(bucket) ? { bucket: bucket as number } : {}),
-      ...(typeof id === 'string' && id.trim() ? { id: id.trim() } : {}),
-      ...(typeof quote === 'string' && quote.trim() ? { quote: quote.trim() } : {}),
-    });
+    const path = (jsonText(record.path) ?? '').trim();
+    const bucket = record.bucket;
+    const hasBucket = Number.isInteger(bucket);
+    const id = (jsonText(record.id) ?? '').trim();
+    if (path === '' && !(hasBucket && id !== '') && source !== LOCATORLESS_SOURCE) continue;
+
+    const evidence: IdeaEvidence = { source };
+    if (path) evidence.path = path;
+    // Guarded by the same `Number.isInteger`, which is only true of a number.
+    if (hasBucket) evidence.bucket = Number(bucket);
+    if (id) evidence.id = id;
+    const quote = (jsonText(record.quote) ?? '').trim();
+    if (quote) evidence.quote = quote;
+    kept.push(evidence);
   }
   return kept;
 }
@@ -453,18 +483,19 @@ export function applyIdeaAdds(store: IdeasStore, adds: readonly IdeaAdd[], now: 
       refused.push(add.slug);
       continue;
     }
-    next.ideas[add.slug] = {
+    const entry: IdeaEntry = {
       slug: add.slug,
       title: add.title,
       rationale: add.rationale,
       evidence: add.evidence,
       repo: add.repo,
-      ...(add.area ? { area: add.area } : {}),
       status: add.status ?? DEFAULT_IDEA_STATUS,
       created: at,
       updated: at,
-      ...(add.note ? { note: add.note } : {}),
     };
+    if (add.area) entry.area = add.area;
+    if (add.note) entry.note = add.note;
+    next.ideas[add.slug] = entry;
     added.push(add.slug);
   }
   return { store: next, added, refused };
@@ -519,14 +550,11 @@ export function applyIdeaMarks(store: IdeasStore, marks: readonly IdeaMark[], no
     // `...current` spread would carry a stale holder into `accepted`.
     const { claim: _dropped, ...rest } = current;
     const by = mark.by ?? current.by;
-    next.ideas[mark.slug] = {
-      ...rest,
-      status: mark.status,
-      updated: at,
-      ...(note ? { note } : {}),
-      ...(mark.status === 'shipped' && current.claim ? { claim: current.claim } : {}),
-      ...(by ? { by } : {}),
-    };
+    const entry: IdeaEntry = { ...rest, status: mark.status, updated: at };
+    if (note) entry.note = note;
+    if (mark.status === 'shipped' && current.claim) entry.claim = current.claim;
+    if (by) entry.by = by;
+    next.ideas[mark.slug] = entry;
     updated.push(mark.slug);
   }
   return { store: next, updated, unknown };
@@ -596,7 +624,9 @@ export function applyIdeaFilings(
       continue;
     }
     const by = filing.by ?? current.by;
-    next.ideas[filing.slug] = { ...current, area: filing.area, updated: at, ...(by ? { by } : {}) };
+    const entry: IdeaEntry = { ...current, area: filing.area, updated: at };
+    if (by) entry.by = by;
+    next.ideas[filing.slug] = entry;
     updated.push(filing.slug);
   }
   return { store: next, updated, unknown };
@@ -629,46 +659,58 @@ export function applyIdeaComments(
     // Rebuilt rather than spread-over, so an emptied comment is dropped by
     // omission rather than persisted as `""`.
     const { comment: _replaced, ...rest } = current;
-    next.ideas[comment.slug] = { ...rest, updated: at, ...(text ? { comment: text } : {}), ...(by ? { by } : {}) };
+    const entry: IdeaEntry = { ...rest, updated: at };
+    if (text) entry.comment = text;
+    if (by) entry.by = by;
+    next.ideas[comment.slug] = entry;
     updated.push(comment.slug);
   }
   return { store: next, updated, unknown };
 }
 
 /** Read untrusted input as filings, or throw with the first thing wrong. */
-export function parseIdeaFilings(raw: unknown): IdeaFiling[] {
-  if (!Array.isArray(raw)) throw new Error('filings must be an array');
-  if (raw.length === 0) throw new Error('filings must not be empty');
+export function parseIdeaFilings<Candidate>(raw: Candidate): IdeaFiling[] {
+  const items = jsonArray(jsonValueOf(raw));
+  if (items === null) throw new Error('filings must be an array');
+  if (items.length === 0) throw new Error('filings must not be empty');
 
-  return raw.map((item, i) => {
+  return items.map((item, i) => {
     const where = `filings[${i}]`;
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { slug, area, by } = item as Record<string, unknown>;
+    const record = jsonObject(item);
+    if (record === null) throw new Error(`${where} must be an object`);
+    const { slug, area, by } = record;
     if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
     if (!isIdeaArea(area)) throw new Error(`${where}.area must be a kebab-case area (a-z, 0-9, single dashes)`);
     if (by !== undefined && parseWriteProvenance(by) === null)
       throw new Error(`${where}.by must carry a 16-hex-character thread id`);
     const actor = parseWriteProvenance(by);
-    return { slug: slug as string, area, ...(actor ? { by: actor } : {}) };
+    const filing: IdeaFiling = { slug, area };
+    if (actor) filing.by = actor;
+    return filing;
   });
 }
 
 /** Read untrusted input as comments, or throw with the first thing wrong. */
-export function parseIdeaComments(raw: unknown): IdeaComment[] {
-  if (!Array.isArray(raw)) throw new Error('comments must be an array');
-  if (raw.length === 0) throw new Error('comments must not be empty');
+export function parseIdeaComments<Candidate>(raw: Candidate): IdeaComment[] {
+  const items = jsonArray(jsonValueOf(raw));
+  if (items === null) throw new Error('comments must be an array');
+  if (items.length === 0) throw new Error('comments must not be empty');
 
-  return raw.map((item, i) => {
+  return items.map((item, i) => {
     const where = `comments[${i}]`;
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { slug, text, by } = item as Record<string, unknown>;
+    const record = jsonObject(item);
+    if (record === null) throw new Error(`${where} must be an object`);
+    const { slug, by } = record;
     if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
     // An empty string is the clear, so it is accepted where a missing field is not.
-    if (typeof text !== 'string') throw new Error(`${where}.text must be a string ('' clears the comment)`);
+    const text = jsonText(record.text);
+    if (text === null) throw new Error(`${where}.text must be a string ('' clears the comment)`);
     if (by !== undefined && parseWriteProvenance(by) === null)
       throw new Error(`${where}.by must carry a 16-hex-character thread id`);
     const actor = parseWriteProvenance(by);
-    return { slug: slug as string, text, ...(actor ? { by: actor } : {}) };
+    const comment: IdeaComment = { slug, text };
+    if (actor) comment.by = actor;
+    return comment;
   });
 }
 
@@ -754,42 +796,46 @@ export function applyIdeaClaims(
     }
     const held = current.status === 'claimed' ? current.claim : undefined;
     if (!isIdeaTakeable(current, request.by, now)) {
-      refused.push({
-        slug: request.slug,
-        status: current.status,
-        ...(held ? { heldBy: held.by, since: held.at } : {}),
-        ...(held?.pr ? { pr: held.pr } : {}),
-      });
+      const refusal: IdeaClaimRefusal = { slug: request.slug, status: current.status };
+      if (held) {
+        refusal.heldBy = held.by;
+        refusal.since = held.at;
+      }
+      if (held?.pr) refusal.pr = held.pr;
+      refused.push(refusal);
       continue;
     }
     // A re-claim by the same holder keeps a PR it already recorded, so attaching
     // one is a separate call.
     const pr = request.pr ?? (held?.by === request.by ? held.pr : undefined);
-    next.ideas[request.slug] = {
-      ...current,
-      status: 'claimed',
-      updated: at,
-      claim: { by: request.by, at, ...(pr ? { pr } : {}) },
-    };
+    const claim: IdeaClaim = { by: request.by, at };
+    if (pr) claim.pr = pr;
+    next.ideas[request.slug] = { ...current, status: 'claimed', updated: at, claim };
     claimed.push(request.slug);
   }
   return { store: next, claimed, refused, unknown };
 }
 
 /** Read untrusted input as claim requests, or throw with the first thing wrong. */
-export function parseIdeaClaims(raw: unknown): IdeaClaimRequest[] {
-  if (!Array.isArray(raw)) throw new Error('claims must be an array');
-  if (raw.length === 0) throw new Error('claims must not be empty');
+export function parseIdeaClaims<Candidate>(raw: Candidate): IdeaClaimRequest[] {
+  const items = jsonArray(jsonValueOf(raw));
+  if (items === null) throw new Error('claims must be an array');
+  if (items.length === 0) throw new Error('claims must not be empty');
 
-  return raw.map((item, i) => {
+  return items.map((item, i) => {
     const where = `claims[${i}]`;
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { slug, by, pr } = item as Record<string, unknown>;
+    const record = jsonObject(item);
+    if (record === null) throw new Error(`${where} must be an object`);
+    const { slug, pr } = record;
     if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
-    if (typeof by !== 'string' || !by.trim())
+    const holder = jsonText(record.by);
+    if (holder === null || !holder.trim())
       throw new Error(`${where}.by must name the holder — a branch, a run id, a person`);
-    if (pr !== undefined && typeof pr !== 'string') throw new Error(`${where}.pr must be a string`);
-    return { slug: slug as string, by: by.trim(), ...(pr === undefined ? {} : { pr }) };
+    const prText = jsonText(pr);
+    if (pr !== undefined && prText === null) throw new Error(`${where}.pr must be a string`);
+    const request: IdeaClaimRequest = { slug, by: holder.trim() };
+    if (prText !== null) request.pr = prText;
+    return request;
   });
 }
 
@@ -805,9 +851,10 @@ export const IDEA_PR_OUTCOMES = ['open', 'merged', 'closed', 'detached'] as cons
 
 export type IdeaPrOutcome = (typeof IDEA_PR_OUTCOMES)[number];
 
-/** True when `value` names one of the PR outcomes. */
-export function isIdeaPrOutcome(value: unknown): value is IdeaPrOutcome {
-  return typeof value === 'string' && (IDEA_PR_OUTCOMES as readonly string[]).includes(value);
+/** True when `value` names one of the PR outcomes. Generic per {@link isIdeaEvidenceSource}. */
+export function isIdeaPrOutcome<Candidate>(value: Candidate): value is Candidate & IdeaPrOutcome {
+  const text = jsonText(jsonValueOf(value));
+  return IDEA_PR_OUTCOMES.some((outcome) => outcome === text);
 }
 
 /** What was observed about one linked PR. The observing happens elsewhere — this module has no I/O. */
@@ -913,14 +960,14 @@ export function planIdeaPrTransitions(
     transitions.push(move);
   }
 
-  const marks: IdeaMark[] = transitions.map((t) => ({
-    slug: t.slug,
-    status: t.to,
+  const marks: IdeaMark[] = transitions.map((t) => {
+    const mark: IdeaMark = { slug: t.slug, status: t.to };
     // Only `shipped` carries a note. A release writes none, leaving a rejection
     // reason the idea already carried untouched.
-    ...(t.to === 'shipped' ? { note: t.pr } : {}),
-    ...(by ? { by } : {}),
-  }));
+    if (t.to === 'shipped') mark.note = t.pr;
+    if (by) mark.by = by;
+    return mark;
+  });
 
   return { transitions, marks, unchanged, unobserved };
 }
@@ -950,14 +997,17 @@ function transitionFor(link: IdeaPrLink, outcome: IdeaPrOutcome): IdeaPrTransiti
 }
 
 /** Read untrusted input as PR observations, or throw with the first thing wrong. */
-export function parseIdeaPrObservations(raw: unknown): IdeaPrObservation[] {
-  if (!Array.isArray(raw)) throw new Error('observations must be an array');
+export function parseIdeaPrObservations<Candidate>(raw: Candidate): IdeaPrObservation[] {
+  const items = jsonArray(jsonValueOf(raw));
+  if (items === null) throw new Error('observations must be an array');
 
-  return raw.map((item, i) => {
+  return items.map((item, i) => {
     const where = `observations[${i}]`;
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { pr, outcome } = item as Record<string, unknown>;
-    if (typeof pr !== 'string' || !pr.trim()) throw new Error(`${where}.pr must be a non-empty PR url`);
+    const record = jsonObject(item);
+    if (record === null) throw new Error(`${where} must be an object`);
+    const pr = jsonText(record.pr);
+    if (pr === null || !pr.trim()) throw new Error(`${where}.pr must be a non-empty PR url`);
+    const outcome = record.outcome;
     if (!isIdeaPrOutcome(outcome)) throw new Error(`${where}.outcome must be one of ${IDEA_PR_OUTCOMES.join(', ')}`);
     return { pr: pr.trim(), outcome };
   });
@@ -979,22 +1029,25 @@ export function parseIdeaPrObservations(raw: unknown): IdeaPrObservation[] {
  *    `command-gap` is necessarily a `commands` idea — the one place the ledger
  *    accepts a citation with no locator at all.
  */
-export function parseIdeaAdds(raw: unknown): IdeaAdd[] {
-  if (!Array.isArray(raw)) throw new Error('ideas must be an array');
-  if (raw.length === 0) throw new Error('ideas must not be empty');
+export function parseIdeaAdds<Candidate>(raw: Candidate): IdeaAdd[] {
+  const items = jsonArray(jsonValueOf(raw));
+  if (items === null) throw new Error('ideas must be an array');
+  if (items.length === 0) throw new Error('ideas must not be empty');
 
   const seen = new Set<string>();
-  return raw.map((item, i) => {
+  return items.map((item, i) => {
     const where = `ideas[${i}]`;
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { slug, title, rationale, evidence, repo, area, status, note } = item as Record<string, unknown>;
+    const record = jsonObject(item);
+    if (record === null) throw new Error(`${where} must be an object`);
+    const { slug, evidence, repo, area, status, note } = record;
 
     if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
-    if (seen.has(slug as string)) throw new Error(`${where}.slug repeats ${String(slug)} in the same batch`);
-    seen.add(slug as string);
-    if (typeof title !== 'string' || !title.trim()) throw new Error(`${where}.title must be a non-empty string`);
-    if (typeof rationale !== 'string' || !rationale.trim())
-      throw new Error(`${where}.rationale must be a non-empty string`);
+    if (seen.has(slug)) throw new Error(`${where}.slug repeats ${slug} in the same batch`);
+    seen.add(slug);
+    const title = jsonText(record.title);
+    if (title === null || !title.trim()) throw new Error(`${where}.title must be a non-empty string`);
+    const rationale = jsonText(record.rationale);
+    if (rationale === null || !rationale.trim()) throw new Error(`${where}.rationale must be a non-empty string`);
     if (!isIdeaRepo(repo))
       throw new Error(`${where}.repo must be a git remote slug like owner/name, never a checkout path`);
     if (!isIdeaArea(area))
@@ -1003,7 +1056,8 @@ export function parseIdeaAdds(raw: unknown): IdeaAdd[] {
       );
     if (status !== undefined && !isIdeaStatus(status))
       throw new Error(`${where}.status must be one of ${IDEA_STATUSES.join(', ')}`);
-    if (note !== undefined && typeof note !== 'string') throw new Error(`${where}.note must be a string`);
+    const noteText = jsonText(note);
+    if (note !== undefined && noteText === null) throw new Error(`${where}.note must be a string`);
 
     const parsed = parseEvidenceList(evidence);
     if (parsed.length === 0) {
@@ -1013,45 +1067,47 @@ export function parseIdeaAdds(raw: unknown): IdeaAdd[] {
     }
     if (area !== IDEA_COMMAND_AREA && parsed.some((e) => e.source === LOCATORLESS_SOURCE)) {
       throw new Error(
-        `${where}.evidence cites ${LOCATORLESS_SOURCE}, which carries no locator and so is confined to the ${IDEA_COMMAND_AREA} area — this idea is filed under ${String(area)}`,
+        `${where}.evidence cites ${LOCATORLESS_SOURCE}, which carries no locator and so is confined to the ${IDEA_COMMAND_AREA} area — this idea is filed under ${area}`,
       );
     }
-    return {
-      slug: slug as string,
+    const add: IdeaAdd = {
+      slug,
       title: title.trim(),
       rationale: rationale.trim(),
       evidence: parsed,
-      repo: repo as string,
+      repo,
       area,
-      ...(status === undefined ? {} : { status }),
-      ...(note === undefined ? {} : { note }),
     };
+    if (isIdeaStatus(status)) add.status = status;
+    if (noteText !== null) add.note = noteText;
+    return add;
   });
 }
 
 /** Read untrusted input as marks, or throw with the first thing wrong. */
-export function parseIdeaMarks(raw: unknown): IdeaMark[] {
-  if (!Array.isArray(raw)) throw new Error('marks must be an array');
-  if (raw.length === 0) throw new Error('marks must not be empty');
+export function parseIdeaMarks<Candidate>(raw: Candidate): IdeaMark[] {
+  const items = jsonArray(jsonValueOf(raw));
+  if (items === null) throw new Error('marks must be an array');
+  if (items.length === 0) throw new Error('marks must not be empty');
 
-  return raw.map((item, i) => {
+  return items.map((item, i) => {
     const where = `marks[${i}]`;
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(`${where} must be an object`);
-    const { slug, status, note, by } = item as Record<string, unknown>;
+    const record = jsonObject(item);
+    if (record === null) throw new Error(`${where} must be an object`);
+    const { slug, status, note, by } = record;
     if (!isIdeaSlug(slug)) throw new Error(`${where}.slug must be kebab-case (a-z, 0-9, single dashes)`);
     if (!isIdeaStatus(status)) throw new Error(`${where}.status must be one of ${IDEA_STATUSES.join(', ')}`);
-    if (note !== undefined && typeof note !== 'string') throw new Error(`${where}.note must be a string`);
+    const noteText = jsonText(note);
+    if (note !== undefined && noteText === null) throw new Error(`${where}.note must be a string`);
     // Optional, but a malformed one throws here rather than being dropped as at
     // the store's read boundary — this input has an author to tell.
     if (by !== undefined && parseWriteProvenance(by) === null)
       throw new Error(`${where}.by must carry a 16-hex-character thread id`);
     const actor = parseWriteProvenance(by);
-    return {
-      slug: slug as string,
-      status,
-      ...(note === undefined ? {} : { note }),
-      ...(actor ? { by: actor } : {}),
-    };
+    const mark: IdeaMark = { slug, status };
+    if (noteText !== null) mark.note = noteText;
+    if (actor) mark.by = actor;
+    return mark;
   });
 }
 
@@ -1095,6 +1151,10 @@ export function claimableIdeaRows(store: IdeasStore, filter: IdeaFilter = {}, no
 
 /** Totals per status over the rows given. */
 export function countIdeaStatuses(rows: readonly IdeaEntry[]): Record<IdeaStatus, number> {
+  // SAFETY: the entries come from `IDEA_STATUSES` itself, one per member and
+  // nothing else, so every key of `IdeaStatus` is present — which is the part
+  // `Object.fromEntries` cannot express, since it types its result on the tuple's
+  // key type alone and so returns `Record<string, number>`.
   const counts = Object.fromEntries(IDEA_STATUSES.map((s) => [s, 0])) as Record<IdeaStatus, number>;
   for (const row of rows) counts[row.status] += 1;
   return counts;
