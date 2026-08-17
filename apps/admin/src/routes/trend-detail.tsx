@@ -195,48 +195,50 @@ export function TrendDetailPage() {
 
               <div className='card'>
                 <h2>By day</h2>
-                <table className='table'>
-                  <thead>
-                    <tr>
-                      <th>
-                        Date ({REPORT_TZ_ABBR})
-                        <HeaderHint
-                          text={`The report day, bucketed in ${REPORT_TZ_ABBR}. Newest first; the latest day may still be partial.`}
-                        />
-                      </th>
-                      <th className='num'>
-                        {modelSeries.length > 0 ? 'All models' : def.label}
-                        <HeaderHint text={`${def.description} The chart beside this table plots the same values.`} />
-                      </th>
-                      {/* One column per added model, in the chart's own order and colour. */}
-                      {modelSeries.map((s) => (
-                        <th className='num' key={s.id}>
-                          <span className='model-chip-dot' style={{ background: s.color }} />
-                          {shortModelName(s.id)}
+                <div className='table-scroll'>
+                  <table className='table'>
+                    <thead>
+                      <tr>
+                        <th>
+                          Date ({REPORT_TZ_ABBR})
                           <HeaderHint
-                            text={`${def.label} across ${s.id} alone. An em dash is a day it was not used.`}
+                            text={`The report day, bucketed in ${REPORT_TZ_ABBR}. Newest first; the latest day may still be partial.`}
                           />
                         </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...rows].reverse().map((r) => (
-                      <tr key={String(r.label)}>
-                        <td>{r.label}</td>
-                        <td className='num'>{def.format(Number(r.value))}</td>
-                        {modelSeries.map((s) => {
-                          const v = r[s.key];
-                          return (
-                            <td className='num' key={s.id}>
-                              {typeof v === 'number' ? def.format(v) : '—'}
-                            </td>
-                          );
-                        })}
+                        <th className='num'>
+                          {modelSeries.length > 0 ? 'All models' : def.label}
+                          <HeaderHint text={`${def.description} The chart beside this table plots the same values.`} />
+                        </th>
+                        {/* One column per added model, in the chart's own order and colour. */}
+                        {modelSeries.map((s) => (
+                          <th className='num' key={s.id}>
+                            <span className='model-chip-dot' style={{ background: s.color }} />
+                            {shortModelName(s.id)}
+                            <HeaderHint
+                              text={`${def.label} across ${s.id} alone. An em dash is a day it was not used.`}
+                            />
+                          </th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {[...rows].reverse().map((r) => (
+                        <tr key={String(r.label)}>
+                          <td>{r.label}</td>
+                          <td className='num'>{def.format(Number(r.value))}</td>
+                          {modelSeries.map((s) => {
+                            const v = r[s.key];
+                            return (
+                              <td className='num' key={s.id}>
+                                {typeof v === 'number' ? def.format(v) : '—'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
 

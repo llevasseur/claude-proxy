@@ -67,15 +67,11 @@
     font-family: var(--font-mono);
     font-size: var(--text-3);
     font-variant-numeric: tabular-nums;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-    /* Sized to its rows, capped by a `max-height` set from the plot height. */
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  /* The hovered point holds the top of the card; only the pins below it scroll. */
-  .charttip-lead {
-    flex: none;
+    box-shadow: var(--shadow-tip);
+    /* Sized to its rows — never scrolled or clipped. The pin list is capped by
+     count in the component and the card may escape the plot vertically, so the
+     content always fits. */
+    max-width: min(320px, 72vw);
   }
   .charttip-label {
     color: var(--muted);
@@ -105,10 +101,7 @@
     color: var(--text);
     margin-left: auto;
   }
-  /* The only part that scrolls — the pin list is the one that grows unbounded. */
   .charttip-pins {
-    min-height: 0;
-    overflow-y: auto;
     margin-top: var(--space-4);
     padding-top: var(--space-4);
     border-top: 1px solid var(--line);
@@ -124,9 +117,13 @@
     margin-left: var(--space-5);
   }
   .charttip-hint {
-    flex: none;
     margin-top: var(--space-4);
     font-size: var(--text-2);
+    color: var(--faint);
+  }
+  /* Pins past the cap, counted rather than scrolled. */
+  .charttip-more {
+    margin-top: var(--space-3);
     color: var(--faint);
   }
   .chartlegend {

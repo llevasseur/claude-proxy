@@ -124,27 +124,29 @@ function PrettyTool({ content }: { content: string }) {
 
       {params.length > 0 ? (
         <Section label='Parameters'>
-          <table className='table'>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              {params.map((p) => (
-                <tr key={p.name}>
-                  <td>
-                    {p.name}
-                    {p.required && <span className='msg-badge'>required</span>}
-                  </td>
-                  <td className='muted'>{p.type}</td>
-                  <td>{p.description}</td>
+          <div className='table-scroll'>
+            <table className='table'>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Description</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {params.map((p) => (
+                  <tr key={p.name}>
+                    <td>
+                      {p.name}
+                      {p.required && <span className='msg-badge'>required</span>}
+                    </td>
+                    <td className='muted'>{p.type}</td>
+                    <td>{p.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Section>
       ) : (
         schema && (

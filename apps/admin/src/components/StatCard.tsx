@@ -5,6 +5,7 @@ import {
   type ReactNode,
   type SyntheticEvent,
   useCallback,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -13,6 +14,43 @@ import { Sparkline, type SparkPoint } from './Sparkline';
 
 /** Gap between card and popover; mirrors the offset in `.stat-popover`. */
 const POPOVER_GAP = 8;
+
+/** The value never shrinks past this, however narrow the card. */
+const MIN_VALUE_PX = 13;
+
+/**
+ * Shrinks the value's font just enough to fit its card on one line. A raw
+ * token count at display size can outgrow a grid cell; the ratio of rendered
+ * width to available width is exactly the correction, and full size returns
+ * whenever full size fits again.
+ */
+function useFitText(value: string): MutableRefObject<HTMLDivElement | null> {
+  const ref = useRef<HTMLDivElement | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies(value): the effect reads the figure off the DOM, but must re-measure when the rendered value changes — which no resize event reports
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let lastWidth = -1;
+    const fit = () => {
+      el.style.fontSize = '';
+      lastWidth = el.clientWidth;
+      const overflow = el.scrollWidth / lastWidth;
+      if (overflow > 1) {
+        const base = Number.parseFloat(getComputedStyle(el).fontSize);
+        el.style.fontSize = `${Math.max(base / overflow, MIN_VALUE_PX)}px`;
+      }
+    };
+    fit();
+    // Only a width change re-fits: the shrink itself changes the height, and
+    // reacting to that would loop the observer.
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth !== lastWidth) fit();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [value]);
+  return ref;
+}
 
 /** Per-day series and how to render it, for the mini chart and popover. */
 export interface StatSpark {
@@ -68,6 +106,7 @@ export function StatCard({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [above, setAbove] = useState(false);
+  const valueRef = useFitText(value);
 
   // Placement is settled as the cursor arrives: below, or over the card when the
   // viewport would clip it.
@@ -84,7 +123,9 @@ export function StatCard({
   const body = (
     <>
       <div className='stat-label'>{label}</div>
-      <div className='stat-value'>{value}</div>
+      <div className='stat-value' ref={valueRef}>
+        {value}
+      </div>
       <div className='stat-foot'>
         {sub && <span className='muted'>{sub}</span>}
         {deltaPct !== undefined && tone !== 'flat' && <span className={`delta ${good}`}>{deltaLabel(deltaPct)}</span>}

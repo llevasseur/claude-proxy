@@ -1,20 +1,27 @@
 @layer tokens {
+  /* Two themes, one contract. `:root` is the dark theme and the default; the
+   * light theme overrides the same custom properties under
+   * `:root[data-theme='light']`, set before first paint by the inline script in
+   * index.html (stored choice, else the OS preference). Every colour a
+   * component needs is named here — a component sheet never writes a literal
+   * colour, so a theme is complete by construction. */
   :root {
     /* ink & surfaces */
-    --ink: #0b0e14;
-    --surface: #12161c;
-    --surface-2: #1b212a;
-    --line: #262e39;
+    --ink: #0e1117;
+    --surface: #151a22;
+    --surface-2: #1d242e;
+    --line: #2a323e;
     --text: #e9edf3;
-    --muted: #808c9e;
-    --faint: #4e5765;
+    --muted: #8a95a6;
+    --faint: #545e6c;
 
-    /* signal palette */
-    --signal: #46e0c0; /* flow, links, real input */
-    --signal-dim: #2c8c7c;
-    --good: #6fe39a; /* output / positive delta */
-    --amber: #f4b15a; /* cost / cache / caution */
-    --coral: #ff6b81; /* regression / high severity */
+    /* signal palette — desaturated a step from the original neon so the accents
+   * read as instrumentation rather than glow. */
+    --signal: #4cc6b0; /* flow, links, real input */
+    --signal-dim: #2f8577;
+    --good: #71d195; /* output / positive delta */
+    --amber: #e8ab5e; /* cost / cache / caution */
+    --coral: #f0788c; /* regression / high severity */
     --violet: #9d8cff; /* delegated work — subagent branches */
 
     /* command families — the live graph's command grain
@@ -35,7 +42,8 @@
      * asks two *fills* to be distinguishable at 3:1 — past three colours that is
      * unachievable — so every command box carries a border instead, and the 3:1
      * these hold is between a fill and its own border. Lightness is fixed across
-     * the families (0.3 against 0.78) so that ratio does not move with the hue. */
+     * the families (0.3 against 0.78 here, 0.94 against 0.52 in the light theme)
+     * so that ratio does not move with the hue. */
     --cmd-build-fill: oklch(0.3 0.06 262);
     --cmd-build-edge: oklch(0.78 0.16 262);
     --cmd-shape-fill: oklch(0.3 0.045 205);
@@ -54,6 +62,26 @@
     --warn: var(--amber);
     --high: var(--coral);
     --info: var(--signal);
+    --border: var(--line);
+
+    /* depth & veils
+   *
+   * The only translucent colours in the app. A "well" is a panel sunk below its
+   * card (code, raw JSON, frontmatter); the veil is the faintest hover wash; the
+   * stripe hatches delegated work; the scrim sits under the nav drawer. Shadows
+   * are named by the edge they draw, so the light theme can soften all of them
+   * in one place. */
+    --well: rgba(0, 0, 0, 0.18);
+    --well-deep: rgba(0, 0, 0, 0.28);
+    --hover-veil: rgba(255, 255, 255, 0.03);
+    --stripe: rgba(0, 0, 0, 0.35);
+    --scrim: rgba(0, 0, 0, 0.5);
+    --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.5);
+    --shadow-pop-up: 0 -10px 30px rgba(0, 0, 0, 0.5);
+    --shadow-tip: 0 6px 20px rgba(0, 0, 0, 0.45);
+    --shadow-ledge: 0 10px 16px -10px rgba(0, 0, 0, 0.75);
+    --shadow-ledge-up: 0 -10px 16px -10px rgba(0, 0, 0, 0.75);
+    --shadow-drawer: -18px 0 40px -24px rgba(0, 0, 0, 0.8);
 
     /* type
    *
@@ -172,6 +200,55 @@
 
     font-family: var(--font-ui);
     color-scheme: dark;
+  }
+
+  /* The light theme. Same hues, flipped value structure — and deliberately not
+   * a white-out: the paper is a warm, lightly smoked bone, the cards a shade
+   * brighter, and every translucency and shadow is a warm ink rather than a
+   * grey, so the page keeps the depth the dark theme gets from its gradient. */
+  :root[data-theme="light"] {
+    --ink: #e8e4db;
+    --surface: #f4f1e9;
+    --surface-2: #ded9cd;
+    --line: #ccc5b7;
+    --text: #2a2620;
+    --muted: #6b6456;
+    --faint: #a29b8b;
+
+    --signal: #11806c;
+    --signal-dim: #6faa9f;
+    --good: #2f8a52;
+    --amber: #9c651a;
+    --coral: #c34a5e;
+    --violet: #6a58c9;
+
+    /* Same pairs, lightness flipped: pale fill, deep edge, ratio held. */
+    --cmd-build-fill: oklch(0.92 0.03 262);
+    --cmd-build-edge: oklch(0.5 0.16 262);
+    --cmd-shape-fill: oklch(0.92 0.025 205);
+    --cmd-shape-edge: oklch(0.5 0.115 205);
+    --cmd-review-fill: oklch(0.92 0.02 66);
+    --cmd-review-edge: oklch(0.5 0.09 66);
+    --cmd-read-fill: oklch(0.92 0.012 50);
+    --cmd-read-edge: oklch(0.5 0.05 50);
+    --cmd-other-fill: oklch(0.92 0 0);
+    --cmd-other-edge: oklch(0.5 0 0);
+
+    /* Warm umber rather than black or blue-grey: black translucency reads as
+   * dirt on warm paper, while an umber wash reads as smoke and shade. */
+    --well: rgba(62, 52, 34, 0.07);
+    --well-deep: rgba(62, 52, 34, 0.11);
+    --hover-veil: rgba(62, 52, 34, 0.05);
+    --stripe: rgba(62, 52, 34, 0.16);
+    --scrim: rgba(44, 37, 24, 0.4);
+    --shadow-pop: 0 10px 30px rgba(62, 50, 30, 0.2);
+    --shadow-pop-up: 0 -10px 30px rgba(62, 50, 30, 0.2);
+    --shadow-tip: 0 6px 20px rgba(62, 50, 30, 0.16);
+    --shadow-ledge: 0 10px 16px -10px rgba(62, 50, 30, 0.2);
+    --shadow-ledge-up: 0 -10px 16px -10px rgba(62, 50, 30, 0.2);
+    --shadow-drawer: -18px 0 40px -24px rgba(62, 50, 30, 0.3);
+
+    color-scheme: light;
   }
 
   /* The whole sheet's reduced-motion handling, in one place. */

@@ -84,49 +84,52 @@ export function WithheldPage() {
                 </div>
 
                 <div className='card'>
-                  <table className='table'>
-                    <thead>
-                      <tr>
-                        <th>Deny rule</th>
-                        <th>Match</th>
-                        <th>Status (last {data.meta.days}d)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rules.map((r) => (
-                        <tr key={r.rule}>
-                          <td className='rule-name'>{r.rule}</td>
-                          <td>
-                            <span className={`badge ${r.isGlob ? 'sev-info' : 'neutral'}`}>
-                              {r.isGlob ? 'glob' : 'exact'}
-                            </span>
-                          </td>
-                          <td>
-                            {r.status === 'absent' ? (
-                              <span className='badge absent'>absent</span>
-                            ) : (
-                              <>
-                                <span className={`badge ${r.status === 'still-present' ? 'present' : 'was-present'}`}>
-                                  {r.status === 'still-present' ? 'still present' : 'was present'}
-                                </span>{' '}
-                                <span className='leak-note'>
-                                  {r.observed.map((t, i) => (
-                                    <span key={t.name}>
-                                      {i > 0 ? ', ' : ''}
-                                      <span className={r.status === 'still-present' ? 'present-tool' : 'was-tool'}>
-                                        {t.name}
-                                      </span>{' '}
-                                      ×{fmtInt(t.occurrences)} (last seen {fmtLocalTsShort(t.lastSeen)} {LOCAL_TZ_ABBR})
-                                    </span>
-                                  ))}
-                                </span>
-                              </>
-                            )}
-                          </td>
+                  <div className='table-scroll'>
+                    <table className='table'>
+                      <thead>
+                        <tr>
+                          <th>Deny rule</th>
+                          <th>Match</th>
+                          <th>Status (last {data.meta.days}d)</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {rules.map((r) => (
+                          <tr key={r.rule}>
+                            <td className='rule-name'>{r.rule}</td>
+                            <td>
+                              <span className={`badge ${r.isGlob ? 'sev-info' : 'neutral'}`}>
+                                {r.isGlob ? 'glob' : 'exact'}
+                              </span>
+                            </td>
+                            <td>
+                              {r.status === 'absent' ? (
+                                <span className='badge absent'>absent</span>
+                              ) : (
+                                <>
+                                  <span className={`badge ${r.status === 'still-present' ? 'present' : 'was-present'}`}>
+                                    {r.status === 'still-present' ? 'still present' : 'was present'}
+                                  </span>{' '}
+                                  <span className='leak-note'>
+                                    {r.observed.map((t, i) => (
+                                      <span key={t.name}>
+                                        {i > 0 ? ', ' : ''}
+                                        <span className={r.status === 'still-present' ? 'present-tool' : 'was-tool'}>
+                                          {t.name}
+                                        </span>{' '}
+                                        ×{fmtInt(t.occurrences)} (last seen {fmtLocalTsShort(t.lastSeen)}{' '}
+                                        {LOCAL_TZ_ABBR})
+                                      </span>
+                                    ))}
+                                  </span>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </>
             )}
@@ -152,52 +155,54 @@ export function WithheldPage() {
                   the same token savings as a bare deny rule, but with no{' '}
                   <span className='rule-name'>permissions.deny</span> entry. Toggling one off restores the tool.
                 </div>
-                <table className='table' style={{ marginTop: 12 }}>
-                  <thead>
-                    <tr>
-                      <th>Disable setting</th>
-                      <th>Withholds</th>
-                      <th>Status (last {data.meta.days}d)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {disableSchema.map((d) => (
-                      <tr key={d.key}>
-                        <td className='rule-name'>{d.key}</td>
-                        <td>
-                          {d.tools.map((t, i) => (
-                            <span key={t}>
-                              {i > 0 ? ', ' : ''}
-                              <span className='rule-name'>{t}</span>
-                            </span>
-                          ))}
-                        </td>
-                        <td>
-                          {d.status === 'absent' ? (
-                            <span className='badge absent'>absent</span>
-                          ) : (
-                            <>
-                              <span className={`badge ${d.status === 'still-present' ? 'present' : 'was-present'}`}>
-                                {d.status === 'still-present' ? 'still present' : 'was present'}
-                              </span>{' '}
-                              <span className='leak-note'>
-                                {d.observed.map((t, i) => (
-                                  <span key={t.name}>
-                                    {i > 0 ? ', ' : ''}
-                                    <span className={d.status === 'still-present' ? 'present-tool' : 'was-tool'}>
-                                      {t.name}
-                                    </span>{' '}
-                                    ×{fmtInt(t.occurrences)} (last seen {fmtLocalTsShort(t.lastSeen)} {LOCAL_TZ_ABBR})
-                                  </span>
-                                ))}
-                              </span>
-                            </>
-                          )}
-                        </td>
+                <div className='table-scroll' style={{ marginTop: 12 }}>
+                  <table className='table'>
+                    <thead>
+                      <tr>
+                        <th>Disable setting</th>
+                        <th>Withholds</th>
+                        <th>Status (last {data.meta.days}d)</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {disableSchema.map((d) => (
+                        <tr key={d.key}>
+                          <td className='rule-name'>{d.key}</td>
+                          <td>
+                            {d.tools.map((t, i) => (
+                              <span key={t}>
+                                {i > 0 ? ', ' : ''}
+                                <span className='rule-name'>{t}</span>
+                              </span>
+                            ))}
+                          </td>
+                          <td>
+                            {d.status === 'absent' ? (
+                              <span className='badge absent'>absent</span>
+                            ) : (
+                              <>
+                                <span className={`badge ${d.status === 'still-present' ? 'present' : 'was-present'}`}>
+                                  {d.status === 'still-present' ? 'still present' : 'was present'}
+                                </span>{' '}
+                                <span className='leak-note'>
+                                  {d.observed.map((t, i) => (
+                                    <span key={t.name}>
+                                      {i > 0 ? ', ' : ''}
+                                      <span className={d.status === 'still-present' ? 'present-tool' : 'was-tool'}>
+                                        {t.name}
+                                      </span>{' '}
+                                      ×{fmtInt(t.occurrences)} (last seen {fmtLocalTsShort(t.lastSeen)} {LOCAL_TZ_ABBR})
+                                    </span>
+                                  ))}
+                                </span>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -253,94 +258,98 @@ export function WithheldPage() {
                 <span className='rule-name'>{launch.rcPath}</span>.
               </div>
             ) : postureCols.length > 0 ? (
-              <table className='table' style={{ marginTop: 12 }}>
-                <thead>
-                  <tr>
-                    <th>Alias</th>
-                    {postureCols.map((c) => (
-                      <th key={c} className='rule-name'>
-                        {c}
-                      </th>
-                    ))}
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {postureAliases.map((a) => (
-                    <tr key={a.name}>
-                      <td className='rule-name'>{a.name}</td>
+              <div className='table-scroll' style={{ marginTop: 12 }}>
+                <table className='table'>
+                  <thead>
+                    <tr>
+                      <th>Alias</th>
                       {postureCols.map((c) => (
-                        <td key={c}>
+                        <th key={c} className='rule-name'>
+                          {c}
+                        </th>
+                      ))}
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {postureAliases.map((a) => (
+                      <tr key={a.name}>
+                        <td className='rule-name'>{a.name}</td>
+                        {postureCols.map((c) => (
+                          <td key={c}>
+                            {a.indeterminate ? (
+                              <span className='muted' title='settings injected dynamically'>
+                                ?
+                              </span>
+                            ) : a.cells[c] ? (
+                              <span className='badge absent'>off</span>
+                            ) : (
+                              <span className='badge present'>on</span>
+                            )}
+                          </td>
+                        ))}
+                        <td>
                           {a.indeterminate ? (
-                            <span className='muted' title='settings injected dynamically'>
-                              ?
+                            <span className='leak-note'>
+                              <span className='badge sev-info'>indeterminate</span> injects settings via a dynamic{' '}
+                              <span className='rule-name'>--settings</span> value (shell variable, command substitution,
+                              or file path) — the effective posture can't be read from the rc.
                             </span>
-                          ) : a.cells[c] ? (
-                            <span className='badge absent'>off</span>
+                          ) : a.userSettingsLoaded ? (
+                            <span className='muted'>user settings loaded</span>
                           ) : (
-                            <span className='badge present'>on</span>
+                            <>
+                              <span className='badge was-present'>skips user settings</span>
+                              {a.alsoReenabled.length > 0 && (
+                                <span className='leak-note' title={a.alsoReenabled.join(', ')}>
+                                  {' '}
+                                  also re-enables {a.alsoReenabled.slice(0, 3).join(', ')}
+                                  {a.alsoReenabled.length > 3 ? ` +${a.alsoReenabled.length - 3} more` : ''}
+                                </span>
+                              )}
+                            </>
                           )}
                         </td>
-                      ))}
-                      <td>
-                        {a.indeterminate ? (
-                          <span className='leak-note'>
-                            <span className='badge sev-info'>indeterminate</span> injects settings via a dynamic{' '}
-                            <span className='rule-name'>--settings</span> value (shell variable, command substitution,
-                            or file path) — the effective posture can't be read from the rc.
-                          </span>
-                        ) : a.userSettingsLoaded ? (
-                          <span className='muted'>user settings loaded</span>
-                        ) : (
-                          <>
-                            <span className='badge was-present'>skips user settings</span>
-                            {a.alsoReenabled.length > 0 && (
-                              <span className='leak-note' title={a.alsoReenabled.join(', ')}>
-                                {' '}
-                                also re-enables {a.alsoReenabled.slice(0, 3).join(', ')}
-                                {a.alsoReenabled.length > 3 ? ` +${a.alsoReenabled.length - 3} more` : ''}
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
-              <table className='table' style={{ marginTop: 12 }}>
-                <thead>
-                  <tr>
-                    <th>Alias</th>
-                    <th>Withholds (effective)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {postureAliases.map((a) => (
-                    <tr key={a.name}>
-                      <td className='rule-name'>{a.name}</td>
-                      <td>
-                        {a.indeterminate ? (
-                          <span className='leak-note'>
-                            <span className='badge sev-info'>indeterminate</span> settings injected via a dynamic{' '}
-                            <span className='rule-name'>--settings</span> value
-                          </span>
-                        ) : a.withheld.length === 0 ? (
-                          <span className='muted'>nothing</span>
-                        ) : (
-                          a.withheld.map((t, i) => (
-                            <span key={t}>
-                              {i > 0 ? ', ' : ''}
-                              <span className='rule-name'>{t}</span>
-                            </span>
-                          ))
-                        )}
-                      </td>
+              <div className='table-scroll' style={{ marginTop: 12 }}>
+                <table className='table'>
+                  <thead>
+                    <tr>
+                      <th>Alias</th>
+                      <th>Withholds (effective)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {postureAliases.map((a) => (
+                      <tr key={a.name}>
+                        <td className='rule-name'>{a.name}</td>
+                        <td>
+                          {a.indeterminate ? (
+                            <span className='leak-note'>
+                              <span className='badge sev-info'>indeterminate</span> settings injected via a dynamic{' '}
+                              <span className='rule-name'>--settings</span> value
+                            </span>
+                          ) : a.withheld.length === 0 ? (
+                            <span className='muted'>nothing</span>
+                          ) : (
+                            a.withheld.map((t, i) => (
+                              <span key={t}>
+                                {i > 0 ? ', ' : ''}
+                                <span className='rule-name'>{t}</span>
+                              </span>
+                            ))
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}

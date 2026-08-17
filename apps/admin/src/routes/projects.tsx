@@ -108,37 +108,39 @@ function ProjectsTable({ projects }: { projects: ProjectSummary[] }) {
         </h2>
         <span className='muted'>click a column to sort · click a row for its memories</span>
       </div>
-      <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
-        <thead>
-          <tr>
-            <SortHeader label='Project' sortKey='name' sort={sort} onSort={onSort} />
-            <SortHeader label='Memories' sortKey='memoryCount' sort={sort} onSort={onSort} className='num' />
-            <th className='bar-col'>&nbsp;</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((p) => (
-            <tr
-              key={p.name}
-              className='clickable'
-              onClick={() => navigate({ to: '/projects/$project', params: { project: p.name } })}>
-              <td>
-                <Link
-                  to='/projects/$project'
-                  params={{ project: p.name }}
-                  className='link mono-break'
-                  onClick={(e) => e.stopPropagation()}>
-                  {p.name}
-                </Link>
-              </td>
-              <td className='num'>{fmtInt(p.memoryCount)}</td>
-              <td className='bar-col'>
-                <div className='rowbar' style={{ width: `${(p.memoryCount / max) * 100}%` }} />
-              </td>
+      <div className='table-scroll'>
+        <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
+          <thead>
+            <tr>
+              <SortHeader label='Project' sortKey='name' sort={sort} onSort={onSort} />
+              <SortHeader label='Memories' sortKey='memoryCount' sort={sort} onSort={onSort} className='num' />
+              <th className='bar-col'>&nbsp;</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sorted.map((p) => (
+              <tr
+                key={p.name}
+                className='clickable'
+                onClick={() => navigate({ to: '/projects/$project', params: { project: p.name } })}>
+                <td>
+                  <Link
+                    to='/projects/$project'
+                    params={{ project: p.name }}
+                    className='link mono-break'
+                    onClick={(e) => e.stopPropagation()}>
+                    {p.name}
+                  </Link>
+                </td>
+                <td className='num'>{fmtInt(p.memoryCount)}</td>
+                <td className='bar-col'>
+                  <div className='rowbar' style={{ width: `${(p.memoryCount / max) * 100}%` }} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

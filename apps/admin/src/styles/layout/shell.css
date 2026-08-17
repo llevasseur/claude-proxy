@@ -16,7 +16,7 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    padding: var(--space-11) var(--rail-inset);
+    padding: var(--space-9) var(--rail-inset);
     /* The stations scroll, not the rail: the brand and the log count stay put at either end. */
     overflow: hidden;
     background: linear-gradient(180deg, var(--surface), var(--ink));
@@ -24,16 +24,22 @@
   }
 
   /* Owns the gap to the stations, so its bottom edge is the line they scroll under
-   and the shadow falls there. `z-index` clears `.stations`, which is positioned. */
+   and the shadow falls there. `z-index` clears `.stations`, which is positioned.
+   It carries the controls — health, theme, collapse — and stays short: the brand
+   lives in the foot. */
   .rail-head {
     flex: none;
     display: flex;
     align-items: center;
     gap: var(--space-5);
-    padding: var(--space-2) var(--space-3) var(--space-10);
+    padding: var(--space-2) var(--space-3) var(--space-7);
     position: relative;
     z-index: 1;
-    box-shadow: 0 10px 16px -10px rgba(0, 0, 0, 0.75);
+    box-shadow: var(--shadow-ledge);
+  }
+  /* Groups the two toggles against the right edge, clear of the health badge. */
+  .rail-head .theme-toggle {
+    margin-left: auto;
   }
   /* The wordmark is a link home to Overview, and should not read as one. */
   .brand-link {
@@ -46,14 +52,14 @@
     border-radius: var(--radius-4);
   }
   .brand-link:hover .brand-node {
-    box-shadow: 0 0 18px rgba(70, 224, 192, 0.9);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--signal) 60%, transparent);
   }
   .brand-node {
     width: 10px;
     height: 10px;
     border-radius: var(--radius-1);
     background: var(--signal);
-    box-shadow: 0 0 12px rgba(70, 224, 192, 0.65);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--signal) 45%, transparent);
     flex: none;
   }
   .brand {
@@ -141,7 +147,7 @@
   }
   .station.active .station-icon {
     color: var(--signal);
-    filter: drop-shadow(0 0 6px rgba(70, 224, 192, 0.5));
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--signal) 35%, transparent));
   }
   .station.active::before {
     content: "";
@@ -177,14 +183,38 @@
     border-color: var(--muted);
   }
 
-  /* The head's twin at the other end, lit from below. */
+  /* The head's twin at the other end, lit from below — the brand's seat. */
   .rail-foot {
     flex: none;
-    padding-top: var(--space-9);
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    padding-top: var(--space-7);
     border-top: 1px solid var(--line);
     position: relative;
     z-index: 1;
-    box-shadow: 0 -10px 16px -10px rgba(0, 0, 0, 0.75);
+    box-shadow: var(--shadow-ledge-up);
+  }
+  /* Light/dark switch — the rail-toggle's twin at the other end of the rail. */
+  .theme-toggle {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    color: var(--faint);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-4);
+    cursor: pointer;
+    transition:
+      color var(--motion-duration) ease,
+      border-color var(--motion-duration) ease,
+      transform var(--motion-duration-fast) var(--ease-out);
+  }
+  .theme-toggle:hover {
+    color: var(--text);
+    border-color: var(--muted);
   }
 
   /* drawer chrome — narrow breakpoint only */
@@ -227,7 +257,7 @@
     inset: 0;
     z-index: 30;
     padding: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--scrim);
     border: none;
     cursor: default;
   }
@@ -248,8 +278,11 @@
     .app--rail-collapsed .rail-head {
       flex-direction: column;
       align-items: center;
-      gap: var(--space-8);
-      padding: var(--space-2) 0 var(--space-10);
+      gap: var(--space-6);
+      padding: var(--space-2) 0 var(--space-7);
+    }
+    .app--rail-collapsed .rail-head .theme-toggle {
+      margin-left: 0;
     }
     .app--rail-collapsed .brand {
       display: none;
@@ -286,6 +319,10 @@
     }
     .app--rail-collapsed .station-hint {
       display: none;
+    }
+    .app--rail-collapsed .rail-foot {
+      flex-direction: column;
+      gap: var(--space-6);
     }
     .app--rail-collapsed .health {
       justify-content: center;

@@ -17,27 +17,27 @@
     gap: var(--space-3);
   }
   .badge.sev-high {
-    background: rgba(255, 107, 129, 0.16);
+    background: color-mix(in srgb, var(--coral) 16%, transparent);
     color: var(--high);
   }
   .badge.sev-warn {
-    background: rgba(244, 177, 90, 0.16);
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
     color: var(--warn);
   }
   .badge.sev-info {
-    background: rgba(70, 224, 192, 0.16);
+    background: color-mix(in srgb, var(--signal) 16%, transparent);
     color: var(--info);
   }
   .badge.absent {
-    background: rgba(111, 227, 154, 0.16);
+    background: color-mix(in srgb, var(--good) 16%, transparent);
     color: var(--good);
   }
   .badge.present {
-    background: rgba(255, 107, 129, 0.16);
+    background: color-mix(in srgb, var(--coral) 16%, transparent);
     color: var(--coral);
   }
   .badge.was-present {
-    background: rgba(244, 177, 90, 0.16);
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
     color: var(--amber);
   }
   .badge.neutral {
@@ -45,7 +45,7 @@
     color: var(--muted);
   }
   .badge.status-done {
-    background: rgba(111, 227, 154, 0.16);
+    background: color-mix(in srgb, var(--good) 16%, transparent);
     color: var(--good);
   }
   .badge.status-skipped {
@@ -59,11 +59,11 @@
     color: var(--faint);
   }
   .badge.bucket-clean {
-    background: rgba(111, 227, 154, 0.16);
+    background: color-mix(in srgb, var(--good) 16%, transparent);
     color: var(--good);
   }
   .badge.bucket-dirty {
-    background: rgba(244, 177, 90, 0.16);
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
     color: var(--amber);
   }
   .badge.bucket-not-ready {
@@ -73,26 +73,26 @@
   /* A judged bucket whose judge opened almost none of it. Amber like `dirty`, the
    same claim in a weaker form; not coral, since a thin pass is advisory. */
   .badge.judge-thin {
-    background: rgba(244, 177, 90, 0.16);
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
     color: var(--amber);
   }
   /* Ideas: `accepted` takes the affirmative tone as the sign-off /improve acts on,
    `proposed` is waiting on a human, `claimed` is in flight — signed off but not on
    offer — and `rejected` is the quietest of the five. */
   .badge.idea-status-accepted {
-    background: rgba(111, 227, 154, 0.16);
+    background: color-mix(in srgb, var(--good) 16%, transparent);
     color: var(--good);
   }
   .badge.idea-status-claimed {
-    background: rgba(70, 224, 192, 0.16);
+    background: color-mix(in srgb, var(--signal) 16%, transparent);
     color: var(--info);
   }
   .badge.idea-status-proposed {
-    background: rgba(244, 177, 90, 0.16);
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
     color: var(--amber);
   }
   .badge.idea-status-shipped {
-    background: rgba(70, 224, 192, 0.16);
+    background: color-mix(in srgb, var(--signal) 16%, transparent);
     color: var(--info);
   }
   .badge.idea-status-rejected {
@@ -102,15 +102,15 @@
   /* Liveness: `running` active, `quiet` cautioning without asserting death, `finished` the
    settled green, and `unknown` — no transcript to judge by — the faintest of the four. */
   .badge.liveness-running {
-    background: rgba(70, 224, 192, 0.16);
+    background: color-mix(in srgb, var(--signal) 16%, transparent);
     color: var(--info);
   }
   .badge.liveness-quiet {
-    background: rgba(244, 177, 90, 0.16);
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
     color: var(--amber);
   }
   .badge.liveness-finished {
-    background: rgba(111, 227, 154, 0.16);
+    background: color-mix(in srgb, var(--good) 16%, transparent);
     color: var(--good);
   }
   .badge.liveness-unknown {
@@ -118,11 +118,11 @@
     color: var(--faint);
   }
   .badge.recurrence-regressed {
-    background: rgba(255, 107, 129, 0.16);
+    background: color-mix(in srgb, var(--coral) 16%, transparent);
     color: var(--coral);
   }
   .badge.recurrence-mixed {
-    background: rgba(244, 177, 90, 0.16);
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
     color: var(--amber);
   }
   .badge.recurrence-historical {

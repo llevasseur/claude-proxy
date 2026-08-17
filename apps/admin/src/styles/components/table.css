@@ -114,7 +114,7 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-4);
     padding: var(--space-5) var(--space-5);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-pop);
     font-family: var(--font-ui);
     font-size: var(--text-4);
     font-weight: 400;
@@ -123,22 +123,39 @@
     text-transform: none;
     white-space: normal;
     color: var(--text);
+    /* `display: none` rather than `visibility: hidden`: tables sit inside
+     `.table-scroll`, and a hidden-but-laid-out bubble below the header would
+     hold that scroller's vertical overflow open. `allow-discrete` keeps the
+     exit transition; the `@starting-style` block keeps the entrance. */
+    display: none;
     opacity: 0;
-    visibility: hidden;
     /* Grows out of the mark that opened it, near full size, never from nothing. */
     transform: translate(-50%, -4px) scale(0.97);
     transform-origin: top center;
     transition:
       opacity var(--motion-duration) var(--ease-out),
       transform var(--motion-duration) var(--ease-out),
-      visibility var(--motion-duration) var(--ease-out);
+      display var(--motion-duration) var(--ease-out) allow-discrete;
     pointer-events: none;
   }
   .hint-mark:hover + .hint-bubble,
   .hint-mark:focus-visible + .hint-bubble {
+    display: block;
     opacity: 1;
-    visibility: visible;
     transform: translate(-50%, 0) scale(1);
+  }
+  @starting-style {
+    .hint-mark:hover + .hint-bubble,
+    .hint-mark:focus-visible + .hint-bubble {
+      opacity: 0;
+      transform: translate(-50%, -4px) scale(0.97);
+    }
+    .table th.num .hint-mark:hover + .hint-bubble,
+    .table th.num .hint-mark:focus-visible + .hint-bubble,
+    .table th.bar-col .hint-mark:hover + .hint-bubble,
+    .table th.bar-col .hint-mark:focus-visible + .hint-bubble {
+      transform: translate(0, -4px) scale(0.97);
+    }
   }
   /* A right-aligned column opens its note inward, clear of the card's edge —
    and grows from that edge, where its mark is. */
@@ -159,7 +176,7 @@
     cursor: pointer;
   }
   .table tbody tr.clickable:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--hover-veil);
   }
   /* `cqi` measures the card, where a pixel cap only guesses at it — the cell yields
    * its share of a narrow card instead of holding it open at 380px. */
@@ -196,7 +213,6 @@
   .bar-col {
     width: 22%;
   }
-  /* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
   .rowbar {
     height: 10px;
     background: linear-gradient(90deg, var(--signal-dim), var(--signal));

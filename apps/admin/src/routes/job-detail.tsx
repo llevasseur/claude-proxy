@@ -222,39 +222,41 @@ function JobFacts({ job }: { job: JobSummary }) {
             <h2>What it produced</h2>
             <span className='muted'>links the job recorded</span>
           </div>
-          <table className='table' style={{ marginTop: 12 }}>
-            <thead>
-              <tr>
-                <th>
-                  Kind
-                  <HeaderHint text="What the artifact links to, as the job's state file recorded it — pr, issue, branch. Reads “link” when the file named no kind." />
-                </th>
-                <th>
-                  Id
-                  <HeaderHint text="The artifact's identifier from the same record, or — when the file carried none." />
-                </th>
-                <th>
-                  Link
-                  <HeaderHint text='The URL the job wrote down. It opens in a new tab and is not checked from here.' />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {job.children.map((child) => (
-                <tr key={`${child.kind}-${child.id}-${child.href}`}>
-                  <td>
-                    <span className='badge neutral'>{child.kind || 'link'}</span>
-                  </td>
-                  <td className='rule-name'>{child.id || '—'}</td>
-                  <td>
-                    <a className='link mono-break' href={child.href} target='_blank' rel='noreferrer'>
-                      {child.href}
-                    </a>
-                  </td>
+          <div className='table-scroll' style={{ marginTop: 12 }}>
+            <table className='table'>
+              <thead>
+                <tr>
+                  <th>
+                    Kind
+                    <HeaderHint text="What the artifact links to, as the job's state file recorded it — pr, issue, branch. Reads “link” when the file named no kind." />
+                  </th>
+                  <th>
+                    Id
+                    <HeaderHint text="The artifact's identifier from the same record, or — when the file carried none." />
+                  </th>
+                  <th>
+                    Link
+                    <HeaderHint text='The URL the job wrote down. It opens in a new tab and is not checked from here.' />
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {job.children.map((child) => (
+                  <tr key={`${child.kind}-${child.id}-${child.href}`}>
+                    <td>
+                      <span className='badge neutral'>{child.kind || 'link'}</span>
+                    </td>
+                    <td className='rule-name'>{child.id || '—'}</td>
+                    <td>
+                      <a className='link mono-break' href={child.href} target='_blank' rel='noreferrer'>
+                        {child.href}
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -271,37 +273,39 @@ function JobFacts({ job }: { job: JobSummary }) {
           <div className='leak-note' style={{ marginTop: 8 }}>
             A snapshot, not a live list — the state file records what was running when it was last written.
           </div>
-          <table className='table' style={{ marginTop: 12 }}>
-            <thead>
-              <tr>
-                <th>
-                  Kind
-                  <HeaderHint text='Whatever the job called the task — shell, local_bash, an agent name. Reads “task” when the file named no kind.' />
-                </th>
-                <th>
-                  Started
-                  <HeaderHint text='When the task began, in local time, converted from the epoch milliseconds the state file stores. Reads — when it stored none.' />
-                </th>
-                <th>
-                  What
-                  <HeaderHint text="The task's label as the job wrote it, not a description generated here." />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {job.fan.map((task) => (
-                <tr key={task.id || task.label}>
-                  <td>
-                    <span className='badge neutral'>{task.kind || 'task'}</span>
-                  </td>
-                  <td className='num muted'>{task.startedAt ? fmtLocalTs(task.startedAt) : '—'}</td>
-                  <td>
-                    <span className='rule-name job-fan-label'>{task.label}</span>
-                  </td>
+          <div className='table-scroll' style={{ marginTop: 12 }}>
+            <table className='table'>
+              <thead>
+                <tr>
+                  <th>
+                    Kind
+                    <HeaderHint text='Whatever the job called the task — shell, local_bash, an agent name. Reads “task” when the file named no kind.' />
+                  </th>
+                  <th>
+                    Started
+                    <HeaderHint text='When the task began, in local time, converted from the epoch milliseconds the state file stores. Reads — when it stored none.' />
+                  </th>
+                  <th>
+                    What
+                    <HeaderHint text="The task's label as the job wrote it, not a description generated here." />
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {job.fan.map((task) => (
+                  <tr key={task.id || task.label}>
+                    <td>
+                      <span className='badge neutral'>{task.kind || 'task'}</span>
+                    </td>
+                    <td className='num muted'>{task.startedAt ? fmtLocalTs(task.startedAt) : '—'}</td>
+                    <td>
+                      <span className='rule-name job-fan-label'>{task.label}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </>

@@ -212,32 +212,34 @@ function RunBody({ data }: { data: CommandRunResponse }) {
             <h2>Patterns across /{run.command}</h2>
             <span className='muted'>how common this run's findings are</span>
           </div>
-          <table className='table'>
-            <thead>
-              <tr>
-                <th>
-                  Pattern
-                  <HeaderHint text='A deterministic rule from the catalogue that fired somewhere in this command, matched mechanically rather than judged by a model.' />
-                </th>
-                <th className='num'>
-                  Frequency
-                  <HeaderHint text="Runs of this command the rule fired in, out of the runs counted — how common this run's findings are." />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.patterns
-                .filter((p) => p.runs > 0)
-                .map((p) => (
-                  <tr key={p.id}>
-                    <td>{p.title}</td>
-                    <td className='num'>
-                      seen in {p.runs} of {p.ofRuns} runs
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+          <div className='table-scroll'>
+            <table className='table'>
+              <thead>
+                <tr>
+                  <th>
+                    Pattern
+                    <HeaderHint text='A deterministic rule from the catalogue that fired somewhere in this command, matched mechanically rather than judged by a model.' />
+                  </th>
+                  <th className='num'>
+                    Frequency
+                    <HeaderHint text="Runs of this command the rule fired in, out of the runs counted — how common this run's findings are." />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.patterns
+                  .filter((p) => p.runs > 0)
+                  .map((p) => (
+                    <tr key={p.id}>
+                      <td>{p.title}</td>
+                      <td className='num'>
+                        seen in {p.runs} of {p.ofRuns} runs
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -438,48 +440,50 @@ function WasteTable({ steps }: { steps: CommandRunStepStats[] }) {
       {rows.length === 0 ? (
         <div className='empty'>Nothing counted: no errored calls, no repeated reads, no retries.</div>
       ) : (
-        <table className='table'>
-          <thead>
-            <tr>
-              <th>
-                Step
-                <HeaderHint text='The step the counters below were tallied under. Only steps with something to report appear.' />
-              </th>
-              <th className='num'>
-                Errored calls
-                <HeaderHint text='Tool calls that came back an error, counted off the transcript.' />
-              </th>
-              <th className='num'>
-                Duplicate reads
-                <HeaderHint text='Reads of a path already read in this run — every read past the first.' />
-              </th>
-              <th className='num'>
-                Retries after an error
-                <HeaderHint text='A call reissued with the same signature right after that same call errored.' />
-              </th>
-              <th className='num'>
-                No-op turns
-                <HeaderHint text='A narration turn that produced no tool call at all before the next one.' />
-              </th>
-              <th className='num'>
-                Cache-miss tokens
-                <HeaderHint text="Prompt tokens that missed the cache (real input − cache read) over the step's turns." />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s) => (
-              <tr key={s.step ?? 'unattributed'}>
-                <td>{s.step === null ? <em>unattributed</em> : `${s.step} — ${s.title}`}</td>
-                <td className='num'>{fmtInt(s.waste.erroredTools)}</td>
-                <td className='num'>{fmtInt(s.waste.duplicateReads)}</td>
-                <td className='num'>{fmtInt(s.waste.retriedAfterError)}</td>
-                <td className='num'>{fmtInt(s.waste.noOpTurns)}</td>
-                <td className='num'>{fmtInt(s.waste.cacheMissTokens)}</td>
+        <div className='table-scroll'>
+          <table className='table'>
+            <thead>
+              <tr>
+                <th>
+                  Step
+                  <HeaderHint text='The step the counters below were tallied under. Only steps with something to report appear.' />
+                </th>
+                <th className='num'>
+                  Errored calls
+                  <HeaderHint text='Tool calls that came back an error, counted off the transcript.' />
+                </th>
+                <th className='num'>
+                  Duplicate reads
+                  <HeaderHint text='Reads of a path already read in this run — every read past the first.' />
+                </th>
+                <th className='num'>
+                  Retries after an error
+                  <HeaderHint text='A call reissued with the same signature right after that same call errored.' />
+                </th>
+                <th className='num'>
+                  No-op turns
+                  <HeaderHint text='A narration turn that produced no tool call at all before the next one.' />
+                </th>
+                <th className='num'>
+                  Cache-miss tokens
+                  <HeaderHint text="Prompt tokens that missed the cache (real input − cache read) over the step's turns." />
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((s) => (
+                <tr key={s.step ?? 'unattributed'}>
+                  <td>{s.step === null ? <em>unattributed</em> : `${s.step} — ${s.title}`}</td>
+                  <td className='num'>{fmtInt(s.waste.erroredTools)}</td>
+                  <td className='num'>{fmtInt(s.waste.duplicateReads)}</td>
+                  <td className='num'>{fmtInt(s.waste.retriedAfterError)}</td>
+                  <td className='num'>{fmtInt(s.waste.noOpTurns)}</td>
+                  <td className='num'>{fmtInt(s.waste.cacheMissTokens)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -509,44 +513,50 @@ function SpawnTable({ run }: { run: CommandRun }) {
           of this run
         </span>
       </div>
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>
-              Agent type
-              <HeaderHint text="What the spawning call named — its subagent_type, else the skill it invoked. A call that named neither reads 'unnamed', which is a fact about the call rather than missing data." />
-            </th>
-            <th>
-              Step
-              <HeaderHint text='The step that was current in the parent when it spawned this agent, so a whole delegated branch is charged to the step that chose to delegate.' />
-            </th>
-            <th className='num'>Turns</th>
-            <th className='num'>Tokens</th>
-            <th className='num'>Cost</th>
-            <th>Transcript</th>
-          </tr>
-        </thead>
-        <tbody>
-          {spawns.map((s) => (
-            <tr key={s.threadId}>
-              <td style={{ paddingLeft: `calc(var(--space-3) * ${s.depth})` }}>
-                <span className='rule-name'>{s.agentType ?? 'unnamed'}</span>
-              </td>
-              <td>{s.step === null ? <span className='muted'>unplaced</span> : `Step ${s.step}`}</td>
-              <td className='num'>{fmtInt(s.turns)}</td>
-              <td className='num'>
-                {s.turns === 0 ? <span className='muted'>aged out</span> : fmtInt(s.tokens.realInput + s.tokens.output)}
-              </td>
-              <td className='num'>{s.turns === 0 ? <span className='muted'>—</span> : fmtUsd(s.cost)}</td>
-              <td>
-                <Link to='/sessions/$id' params={{ id: s.threadId }} className='link rule-name' title={s.threadId}>
-                  {s.threadId.slice(0, 8)}
-                </Link>
-              </td>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>
+                Agent type
+                <HeaderHint text="What the spawning call named — its subagent_type, else the skill it invoked. A call that named neither reads 'unnamed', which is a fact about the call rather than missing data." />
+              </th>
+              <th>
+                Step
+                <HeaderHint text='The step that was current in the parent when it spawned this agent, so a whole delegated branch is charged to the step that chose to delegate.' />
+              </th>
+              <th className='num'>Turns</th>
+              <th className='num'>Tokens</th>
+              <th className='num'>Cost</th>
+              <th>Transcript</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {spawns.map((s) => (
+              <tr key={s.threadId}>
+                <td style={{ paddingLeft: `calc(var(--space-3) * ${s.depth})` }}>
+                  <span className='rule-name'>{s.agentType ?? 'unnamed'}</span>
+                </td>
+                <td>{s.step === null ? <span className='muted'>unplaced</span> : `Step ${s.step}`}</td>
+                <td className='num'>{fmtInt(s.turns)}</td>
+                <td className='num'>
+                  {s.turns === 0 ? (
+                    <span className='muted'>aged out</span>
+                  ) : (
+                    fmtInt(s.tokens.realInput + s.tokens.output)
+                  )}
+                </td>
+                <td className='num'>{s.turns === 0 ? <span className='muted'>—</span> : fmtUsd(s.cost)}</td>
+                <td>
+                  <Link to='/sessions/$id' params={{ id: s.threadId }} className='link rule-name' title={s.threadId}>
+                    {s.threadId.slice(0, 8)}
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -168,110 +168,114 @@ function SectionTable({ hash, sections }: { hash: string; sections: SectionShare
     );
 
   return (
-    <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
-      <thead>
-        <tr>
-          <SortHeader
-            label='Section'
-            sortKey='heading'
-            sort={sort}
-            onSort={onSort}
-            hint="A heading in this system prompt's stored outline, indented by its depth. Click it to read that section."
-          />
-          <SortHeader
-            label='Depth'
-            sortKey='level'
-            sort={sort}
-            onSort={onSort}
-            className='num'
-            hint='The heading level — H1 to H6. Text sitting before the first heading has no level and reads as —.'
-          />
-          <SortHeader
-            label='Size'
-            sortKey='bytes'
-            sort={sort}
-            onSort={onSort}
-            className='num'
-            hint='Bytes of the section, its heading and body together.'
-          />
-          <SortHeader
-            label='Share'
-            sortKey='share'
-            sort={sort}
-            onSort={onSort}
-            className='num'
-            hint="The section's bytes as a fraction of the whole prompt. The bar is drawn against the largest section."
-          />
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map((s) => (
-          <tr key={s.heading}>
-            <td>
-              <Link
-                to='/trends/avg-system-prompt/$hash/section/$index'
-                params={{ hash, index: String(s.rank) }}
-                className='link section-heading'
-                style={{ paddingLeft: `${Math.max(0, s.level - 1) * 12}px` }}>
-                {s.heading}
-              </Link>
-            </td>
-            <td className='num muted'>{s.level === 0 ? '—' : `H${s.level}`}</td>
-            <td className='num'>{fmtBytes(s.bytes)}</td>
-            <td className='num share-cell'>
-              <div className='rowbar' style={{ width: `${(s.bytes / max) * 100}%` }} />
-              <span>{fmtPct(s.share * 100, 1)}</span>
-            </td>
+    <div className='table-scroll'>
+      <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
+        <thead>
+          <tr>
+            <SortHeader
+              label='Section'
+              sortKey='heading'
+              sort={sort}
+              onSort={onSort}
+              hint="A heading in this system prompt's stored outline, indented by its depth. Click it to read that section."
+            />
+            <SortHeader
+              label='Depth'
+              sortKey='level'
+              sort={sort}
+              onSort={onSort}
+              className='num'
+              hint='The heading level — H1 to H6. Text sitting before the first heading has no level and reads as —.'
+            />
+            <SortHeader
+              label='Size'
+              sortKey='bytes'
+              sort={sort}
+              onSort={onSort}
+              className='num'
+              hint='Bytes of the section, its heading and body together.'
+            />
+            <SortHeader
+              label='Share'
+              sortKey='share'
+              sort={sort}
+              onSort={onSort}
+              className='num'
+              hint="The section's bytes as a fraction of the whole prompt. The bar is drawn against the largest section."
+            />
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {sorted.map((s) => (
+            <tr key={s.heading}>
+              <td>
+                <Link
+                  to='/trends/avg-system-prompt/$hash/section/$index'
+                  params={{ hash, index: String(s.rank) }}
+                  className='link section-heading'
+                  style={{ paddingLeft: `${Math.max(0, s.level - 1) * 12}px` }}>
+                  {s.heading}
+                </Link>
+              </td>
+              <td className='num muted'>{s.level === 0 ? '—' : `H${s.level}`}</td>
+              <td className='num'>{fmtBytes(s.bytes)}</td>
+              <td className='num share-cell'>
+                <div className='rowbar' style={{ width: `${(s.bytes / max) * 100}%` }} />
+                <span>{fmtPct(s.share * 100, 1)}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
 /** Every day of the window this prompt ran, newest first. */
 function UsageTable({ usage }: { usage: PromptDayUsage[] }) {
   return (
-    <table className='table'>
-      <thead>
-        <tr>
-          <th>
-            Date ({REPORT_TZ_ABBR})
-            <HeaderHint text={`The report day, bucketed in ${REPORT_TZ_ABBR}. Newest first.`} />
-          </th>
-          <th className='num'>
-            Requests
-            <HeaderHint text='Captured requests that carried this system prompt that day.' />
-          </th>
-          <th className='num'>
-            Share
-            <HeaderHint text="Those requests as a fraction of every request that day — how much of the day's traffic this prompt accounted for." />
-          </th>
-          <th className='num'>
-            Size
-            <HeaderHint text="This prompt's mean system-prompt bytes over that day's requests." />
-          </th>
-          <th className='num'>
-            Of the mean
-            <HeaderHint text="Share × size: the bytes this prompt contributes to the day's mean system prompt, against that whole mean." />
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {[...usage].reverse().map((u) => (
-          <tr key={u.date}>
-            <td>{u.date}</td>
-            <td className='num'>{fmtInt(u.requests)}</td>
-            <td className='num'>{fmtPct(u.share * 100)}</td>
-            <td className='num'>{fmtBytes(Math.round(u.meanBytes))}</td>
-            <td className='num'>
-              {fmtBytes(Math.round(u.contribution))}{' '}
-              <span className='muted'>of {fmtBytes(Math.round(u.dayMeanBytes))}</span>
-            </td>
+    <div className='table-scroll'>
+      <table className='table'>
+        <thead>
+          <tr>
+            <th>
+              Date ({REPORT_TZ_ABBR})
+              <HeaderHint text={`The report day, bucketed in ${REPORT_TZ_ABBR}. Newest first.`} />
+            </th>
+            <th className='num'>
+              Requests
+              <HeaderHint text='Captured requests that carried this system prompt that day.' />
+            </th>
+            <th className='num'>
+              Share
+              <HeaderHint text="Those requests as a fraction of every request that day — how much of the day's traffic this prompt accounted for." />
+            </th>
+            <th className='num'>
+              Size
+              <HeaderHint text="This prompt's mean system-prompt bytes over that day's requests." />
+            </th>
+            <th className='num'>
+              Of the mean
+              <HeaderHint text="Share × size: the bytes this prompt contributes to the day's mean system prompt, against that whole mean." />
+            </th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {[...usage].reverse().map((u) => (
+            <tr key={u.date}>
+              <td>{u.date}</td>
+              <td className='num'>{fmtInt(u.requests)}</td>
+              <td className='num'>{fmtPct(u.share * 100)}</td>
+              <td className='num'>{fmtBytes(Math.round(u.meanBytes))}</td>
+              <td className='num'>
+                {fmtBytes(Math.round(u.contribution))}{' '}
+                <span className='muted'>of {fmtBytes(Math.round(u.dayMeanBytes))}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

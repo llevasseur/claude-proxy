@@ -16,6 +16,9 @@
     letter-spacing: -0.01em;
     margin: var(--space-6) 0 var(--space-4);
     font-variant-numeric: tabular-nums;
+    /* One line, always: `useFitText` measures the overflow and shrinks the
+     font to fit, which needs the figure to overflow rather than wrap. */
+    white-space: nowrap;
   }
   .stat-foot {
     display: flex;
@@ -80,10 +83,9 @@
   }
   .usage-meter-value {
     font-family: var(--font-mono);
-    font-size: var(--text-10);
+    font-size: var(--text-9);
     font-weight: 600;
     letter-spacing: -0.01em;
-    margin: var(--space-6) 0 var(--space-6);
     font-variant-numeric: tabular-nums;
     color: var(--tone);
   }
@@ -92,28 +94,93 @@
     margin-left: var(--space-2);
     color: var(--muted);
   }
-  .usage-bar {
-    position: relative;
-    height: 7px;
-    border-radius: var(--radius-2);
-    background: var(--surface-2);
-    overflow: hidden;
+  /* Instrument cluster: the dial sits in a shallow well, like a binnacle. */
+  .gauge-cluster {
+    margin: var(--space-6) 0 var(--space-5);
+    padding: var(--space-6) var(--space-8) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-6);
+    background: radial-gradient(120% 90% at 50% 0%, var(--well) 0%, transparent 70%), var(--well);
   }
-  .usage-bar-fill {
-    position: absolute;
-    inset: 0 auto 0 0;
-    border-radius: var(--radius-2);
-    background: var(--tone);
-    transition: width var(--motion-duration-slow) ease;
+  .gauge {
+    display: block;
+    width: min(200px, 100%);
+    margin: 0 auto;
   }
-  /* Projection sits behind the actual fill as a faint extension of it. */
-  .usage-bar-projected {
-    position: absolute;
-    inset: 0 auto 0 0;
-    border-radius: var(--radius-2);
-    background: var(--tone);
-    opacity: 0.24;
-    transition: width var(--motion-duration-slow) ease;
+  .gauge-track {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 6;
+    stroke-linecap: round;
+  }
+  /* The empty end of the dial — the zone the lamp answers to. */
+  .gauge-zone-low {
+    fill: none;
+    stroke: var(--coral);
+    stroke-width: 6;
+    stroke-linecap: round;
+  }
+  .gauge-tick {
+    stroke: var(--muted);
+    stroke-width: 1.5;
+  }
+  .gauge-letter {
+    fill: var(--muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-2);
+    text-anchor: middle;
+    dominant-baseline: middle;
+  }
+  /* Where the current pace lands by the reset — a marker, not a needle. */
+  .gauge-ghost {
+    stroke: var(--tone);
+    stroke-width: 2;
+    stroke-dasharray: 2 2;
+    opacity: 0.7;
+  }
+  .gauge-needle {
+    fill: var(--text);
+    transform: rotate(var(--needle, 0deg));
+    transform-box: view-box;
+    transform-origin: 100px 104px;
+    /* Retargets mid-swing when a live update moves the value. */
+    transition: transform var(--motion-duration-slow) var(--ease-in-out);
+  }
+  /* Ignition: the needle enters from E and sweeps up to the reading. */
+  @starting-style {
+    .gauge-needle {
+      transform: rotate(-60deg);
+    }
+  }
+  .gauge-hub {
+    fill: var(--surface-2);
+    stroke: var(--line);
+    stroke-width: 2;
+  }
+  /* The reading sits in the dial's open mouth, between E and F. */
+  .gauge-readout {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: var(--space-5);
+    /* Tucks into the open lower-left quarter the half-moon leaves free. */
+    margin-top: calc(var(--space-10) * -1);
+  }
+  /* The telltale is present but unlit until the low zone is reached. */
+  .gauge-lamp {
+    color: var(--faint);
+    opacity: 0.55;
+  }
+  .gauge-lamp.is-low {
+    color: var(--coral);
+    opacity: 1;
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--coral) 60%, transparent));
+    animation: gauge-lamp-blink var(--motion-loop-fast) ease-in-out infinite;
+  }
+  @keyframes gauge-lamp-blink {
+    50% {
+      opacity: 0.45;
+    }
   }
   .usage-meter-foot {
     display: flex;
@@ -183,7 +250,7 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-5);
     padding: var(--space-6) var(--space-7);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-pop);
     opacity: 0;
     visibility: hidden;
     /* Grows out of the card it annotates rather than arriving from nowhere:
@@ -203,7 +270,7 @@
     bottom: calc(100% + 8px);
     transform: translateY(4px) scale(0.97);
     transform-origin: bottom center;
-    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-pop-up);
   }
   .stat-link:hover .stat-popover,
   .stat-link:focus-visible .stat-popover {

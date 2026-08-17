@@ -229,73 +229,75 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
         </div>
       )}
       {remove.error && <div className='job-delete-error'>Delete failed — {(remove.error as Error).message}</div>}
-      <table className='table'>
-        <thead>
-          <tr>
-            <SortHeader label='Job' sortKey='name' sort={sort} onSort={onSort} />
-            <SortHeader label='State' sortKey='state' sort={sort} onSort={onSort} />
-            <SortHeader label='Liveness' sortKey='liveness' sort={sort} onSort={onSort} />
-            <SortHeader label='Ran in' sortKey='cwd' sort={sort} onSort={onSort} />
-            <SortHeader label='Files' sortKey='files' sort={sort} onSort={onSort} className='num' />
-            <SortHeader label='Size' sortKey='bytes' sort={sort} onSort={onSort} className='num' />
-            <SortHeader label='Last active' sortKey='activity' sort={sort} onSort={onSort} className='num' />
-            <th className='job-delete-head' aria-label='Delete' />
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((job) => (
-            <tr
-              key={job.id}
-              className='clickable'
-              onClick={() => navigate({ to: '/jobs/$id', params: { id: job.id } })}>
-              <td>
-                <Link
-                  to='/jobs/$id'
-                  params={{ id: job.id }}
-                  className='link job-title'
-                  onClick={(e) => e.stopPropagation()}>
-                  {jobLabel(job)}
-                </Link>
-                {job.name !== '' && <div className='muted mono-break job-id'>{job.id}</div>}
-                {job.detail !== '' && <div className='job-detail'>{job.detail}</div>}
-              </td>
-              <td>
-                <StateBadge state={job.state} />
-                {!job.stateReadable && <div className='leak-note'>husk — no state.json</div>}
-              </td>
-              <td>
-                <LivenessBadge liveness={job.liveness} />
-                {job.threads > 0 && (
-                  <div className='muted job-threads'>
-                    {fmtInt(job.threads)} transcript{job.threads === 1 ? '' : 's'}
-                  </div>
-                )}
-              </td>
-              <td>
-                <span title={job.cwd}>{cwdLabel(job.cwd)}</span>
-              </td>
-              <td className='num'>{fmtInt(job.files)}</td>
-              <td className='num'>{fmtBytes(job.bytes)}</td>
-              <td className='num muted'>{fmtLocalTsShort(job.activity)}</td>
-              {/* biome-ignore lint/a11y/useKeyWithClickEvents: the cell is not clickable — this only keeps a click off the row's own handler */}
-              <td className='job-delete-cell' onClick={(e) => e.stopPropagation()}>
-                <DeleteControl
-                  job={job}
-                  armed={armed === job.id}
-                  pending={remove.isPending && remove.variables === job.id}
-                  onArm={() => {
-                    setDeleted(null);
-                    remove.reset();
-                    setArmed(job.id);
-                  }}
-                  onCancel={() => setArmed(null)}
-                  onConfirm={() => remove.mutate(job.id)}
-                />
-              </td>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <SortHeader label='Job' sortKey='name' sort={sort} onSort={onSort} />
+              <SortHeader label='State' sortKey='state' sort={sort} onSort={onSort} />
+              <SortHeader label='Liveness' sortKey='liveness' sort={sort} onSort={onSort} />
+              <SortHeader label='Ran in' sortKey='cwd' sort={sort} onSort={onSort} />
+              <SortHeader label='Files' sortKey='files' sort={sort} onSort={onSort} className='num' />
+              <SortHeader label='Size' sortKey='bytes' sort={sort} onSort={onSort} className='num' />
+              <SortHeader label='Last active' sortKey='activity' sort={sort} onSort={onSort} className='num' />
+              <th className='job-delete-head' aria-label='Delete' />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sorted.map((job) => (
+              <tr
+                key={job.id}
+                className='clickable'
+                onClick={() => navigate({ to: '/jobs/$id', params: { id: job.id } })}>
+                <td>
+                  <Link
+                    to='/jobs/$id'
+                    params={{ id: job.id }}
+                    className='link job-title'
+                    onClick={(e) => e.stopPropagation()}>
+                    {jobLabel(job)}
+                  </Link>
+                  {job.name !== '' && <div className='muted mono-break job-id'>{job.id}</div>}
+                  {job.detail !== '' && <div className='job-detail'>{job.detail}</div>}
+                </td>
+                <td>
+                  <StateBadge state={job.state} />
+                  {!job.stateReadable && <div className='leak-note'>husk — no state.json</div>}
+                </td>
+                <td>
+                  <LivenessBadge liveness={job.liveness} />
+                  {job.threads > 0 && (
+                    <div className='muted job-threads'>
+                      {fmtInt(job.threads)} transcript{job.threads === 1 ? '' : 's'}
+                    </div>
+                  )}
+                </td>
+                <td>
+                  <span title={job.cwd}>{cwdLabel(job.cwd)}</span>
+                </td>
+                <td className='num'>{fmtInt(job.files)}</td>
+                <td className='num'>{fmtBytes(job.bytes)}</td>
+                <td className='num muted'>{fmtLocalTsShort(job.activity)}</td>
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: the cell is not clickable — this only keeps a click off the row's own handler */}
+                <td className='job-delete-cell' onClick={(e) => e.stopPropagation()}>
+                  <DeleteControl
+                    job={job}
+                    armed={armed === job.id}
+                    pending={remove.isPending && remove.variables === job.id}
+                    onArm={() => {
+                      setDeleted(null);
+                      remove.reset();
+                      setArmed(job.id);
+                    }}
+                    onCancel={() => setArmed(null)}
+                    onConfirm={() => remove.mutate(job.id)}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

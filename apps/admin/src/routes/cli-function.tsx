@@ -56,54 +56,56 @@ export function CliFunctionPage() {
           <>
             <div className='card' style={{ marginBottom: 16 }}>
               <div className='muted'>{fn.description}</div>
-              <table className='table' style={{ marginTop: 12 }}>
-                <tbody>
-                  <tr>
-                    <td style={FIT_COLUMN}>Identifier in this version</td>
-                    <td>
-                      {fn.missing === null ? (
-                        <span className='rule-name'>{fn.signature}</span>
-                      ) : (
-                        <span className='badge was-present'>{MISS_LABEL[fn.missing]}</span>
-                      )}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style={FIT_COLUMN}>Found by</td>
-                    <td>
-                      {fn.signal.kind === 'export' ? (
-                        <>
-                          <span className='badge sev-info'>export name</span>{' '}
-                          <span className='rule-name'>{fn.signal.exportName}</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className='badge neutral'>string literal</span>{' '}
-                          <span className='rule-name'>{fn.signal.literal}</span>
-                          {fn.signal.near && (
-                            <div className='muted' style={{ marginTop: 4 }}>
-                              narrowed to occurrences matching <span className='rule-name'>{fn.signal.near}</span>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                  {fn.offset !== null && fn.length !== null && (
+              <div className='table-scroll' style={{ marginTop: 12 }}>
+                <table className='table'>
+                  <tbody>
                     <tr>
-                      <td style={FIT_COLUMN}>Where in the bundle</td>
-                      <td className='muted'>
-                        byte {fmtInt(fn.offset)}, {fmtInt(fn.length)} bytes long
-                        {data.bundle.bytes > 0 && <> · bundle is {fmtBundleSize(data.bundle.bytes)}</>}
+                      <td style={FIT_COLUMN}>Identifier in this version</td>
+                      <td>
+                        {fn.missing === null ? (
+                          <span className='rule-name'>{fn.signature}</span>
+                        ) : (
+                          <span className='badge was-present'>{MISS_LABEL[fn.missing]}</span>
+                        )}
                       </td>
                     </tr>
-                  )}
-                  <tr>
-                    <td style={FIT_COLUMN}>Catalogue id</td>
-                    <td className='rule-name'>{fn.id}</td>
-                  </tr>
-                </tbody>
-              </table>
+                    <tr>
+                      <td style={FIT_COLUMN}>Found by</td>
+                      <td>
+                        {fn.signal.kind === 'export' ? (
+                          <>
+                            <span className='badge sev-info'>export name</span>{' '}
+                            <span className='rule-name'>{fn.signal.exportName}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className='badge neutral'>string literal</span>{' '}
+                            <span className='rule-name'>{fn.signal.literal}</span>
+                            {fn.signal.near && (
+                              <div className='muted' style={{ marginTop: 4 }}>
+                                narrowed to occurrences matching <span className='rule-name'>{fn.signal.near}</span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                    {fn.offset !== null && fn.length !== null && (
+                      <tr>
+                        <td style={FIT_COLUMN}>Where in the bundle</td>
+                        <td className='muted'>
+                          byte {fmtInt(fn.offset)}, {fmtInt(fn.length)} bytes long
+                          {data.bundle.bytes > 0 && <> · bundle is {fmtBundleSize(data.bundle.bytes)}</>}
+                        </td>
+                      </tr>
+                    )}
+                    <tr>
+                      <td style={FIT_COLUMN}>Catalogue id</td>
+                      <td className='rule-name'>{fn.id}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {fn.missing !== null || data.source === null ? (

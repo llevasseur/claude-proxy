@@ -41,26 +41,28 @@ const FILTER_COLUMNS: readonly SkeletonColumn[] = [{ cell: '48%' }, {}, {}];
 
 function FilterTable({ badge, filters }: { badge: string; filters: ProxyFilterEntry[] }) {
   return (
-    <table className='table' style={{ marginTop: 12 }}>
-      <thead>
-        <tr>
-          <th>What</th>
-          <th>Why it needs the proxy</th>
-          <th>How it's stripped</th>
-        </tr>
-      </thead>
-      <tbody>
-        {filters.map((f) => (
-          <tr key={f.id}>
-            <td>
-              <span className={`badge ${badge}`}>{f.label}</span>
-            </td>
-            <td>{f.reason}</td>
-            <td className='muted'>{f.mechanism}</td>
+    <div className='table-scroll' style={{ marginTop: 12 }}>
+      <table className='table'>
+        <thead>
+          <tr>
+            <th>What</th>
+            <th>Why it needs the proxy</th>
+            <th>How it's stripped</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {filters.map((f) => (
+            <tr key={f.id}>
+              <td>
+                <span className={`badge ${badge}`}>{f.label}</span>
+              </td>
+              <td>{f.reason}</td>
+              <td className='muted'>{f.mechanism}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

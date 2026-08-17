@@ -72,38 +72,40 @@ export function HooksPluginsPage() {
                   No <span className='rule-name'>hooks</span> in <span className='rule-name'>{data.settingsPath}</span>.
                 </div>
               ) : (
-                <table className='table' style={{ marginTop: 12 }}>
-                  <thead>
-                    <tr>
-                      <th>Event</th>
-                      <th>Matcher</th>
-                      <th>Command</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hooks.map((h, i) => (
-                      // biome-ignore lint/suspicious/noArrayIndexKey: hooks are listed in configuration order, and the event alone is not unique
-                      <tr key={`${h.event}-${i}`}>
-                        <td className='rule-name'>{h.event}</td>
-                        <td>
-                          {h.matcher ? (
-                            <span className='rule-name'>{h.matcher}</span>
-                          ) : (
-                            <span className='muted'>*</span>
-                          )}
-                        </td>
-                        <td>
-                          <span className='rule-name'>{h.command}</span>
-                          {h.statusMessage && (
-                            <div className='leak-note' style={{ marginTop: 4 }}>
-                              {h.statusMessage}
-                            </div>
-                          )}
-                        </td>
+                <div className='table-scroll' style={{ marginTop: 12 }}>
+                  <table className='table'>
+                    <thead>
+                      <tr>
+                        <th>Event</th>
+                        <th>Matcher</th>
+                        <th>Command</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {hooks.map((h, i) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: hooks are listed in configuration order, and the event alone is not unique
+                        <tr key={`${h.event}-${i}`}>
+                          <td className='rule-name'>{h.event}</td>
+                          <td>
+                            {h.matcher ? (
+                              <span className='rule-name'>{h.matcher}</span>
+                            ) : (
+                              <span className='muted'>*</span>
+                            )}
+                          </td>
+                          <td>
+                            <span className='rule-name'>{h.command}</span>
+                            {h.statusMessage && (
+                              <div className='leak-note' style={{ marginTop: 4 }}>
+                                {h.statusMessage}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 
@@ -117,34 +119,36 @@ export function HooksPluginsPage() {
                   <span className='rule-name'>{data.settingsPath}</span>.
                 </div>
               ) : (
-                <table className='table' style={{ marginTop: 12 }}>
-                  <thead>
-                    <tr>
-                      <th>Plugin</th>
-                      <th>Marketplace</th>
-                      <th>State</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {plugins.map((p) => (
-                      <tr key={`${p.name}@${p.marketplace}`}>
-                        <td className='rule-name'>{p.name}</td>
-                        <td>
-                          {p.marketplace ? (
-                            <span className='rule-name'>{p.marketplace}</span>
-                          ) : (
-                            <span className='muted'>—</span>
-                          )}
-                        </td>
-                        <td>
-                          <span className={`badge ${p.enabled ? 'absent' : 'neutral'}`}>
-                            {p.enabled ? 'enabled' : 'disabled'}
-                          </span>
-                        </td>
+                <div className='table-scroll' style={{ marginTop: 12 }}>
+                  <table className='table'>
+                    <thead>
+                      <tr>
+                        <th>Plugin</th>
+                        <th>Marketplace</th>
+                        <th>State</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {plugins.map((p) => (
+                        <tr key={`${p.name}@${p.marketplace}`}>
+                          <td className='rule-name'>{p.name}</td>
+                          <td>
+                            {p.marketplace ? (
+                              <span className='rule-name'>{p.marketplace}</span>
+                            ) : (
+                              <span className='muted'>—</span>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`badge ${p.enabled ? 'absent' : 'neutral'}`}>
+                              {p.enabled ? 'enabled' : 'disabled'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 
@@ -169,28 +173,30 @@ export function HooksPluginsPage() {
                     </>
                   )}
                 </div>
-                <table className='table' style={{ marginTop: 12 }}>
-                  <thead>
-                    <tr>
-                      <th>Alias</th>
-                      <th>Hooks</th>
-                      <th>Plugins</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loadExpectations.map((e) => (
-                      <tr key={e.name}>
-                        <td className='rule-name'>{e.name}</td>
-                        <td>
-                          <LoadBadge state={e.hooks} />
-                        </td>
-                        <td>
-                          <LoadBadge state={e.plugins} />
-                        </td>
+                <div className='table-scroll' style={{ marginTop: 12 }}>
+                  <table className='table'>
+                    <thead>
+                      <tr>
+                        <th>Alias</th>
+                        <th>Hooks</th>
+                        <th>Plugins</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {loadExpectations.map((e) => (
+                        <tr key={e.name}>
+                          <td className='rule-name'>{e.name}</td>
+                          <td>
+                            <LoadBadge state={e.hooks} />
+                          </td>
+                          <td>
+                            <LoadBadge state={e.plugins} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </>

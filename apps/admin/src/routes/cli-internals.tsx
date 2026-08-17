@@ -118,36 +118,38 @@ export function CliInternalsPage() {
               )}{' '}
               · click a row for its source
             </div>
-            <table className='table' style={{ marginTop: 12 }}>
-              <thead>
-                <tr>
-                  <th style={FIT_COLUMN}>Function</th>
-                  <th>What it does</th>
-                  <th style={FIT_COLUMN}>Found by</th>
-                </tr>
-              </thead>
-              <tbody>
-                {functions.map((f) => (
-                  <tr
-                    key={f.id}
-                    className='clickable'
-                    onClick={() => navigate({ to: '/cli-internals/$id', params: { id: f.id } })}>
-                    <td style={FIT_COLUMN}>
-                      {f.missing === null ? (
-                        <span className='rule-name'>{f.signature}</span>
-                      ) : (
-                        <span className='badge was-present'>{MISS_LABEL[f.missing]}</span>
-                      )}
-                      <div className='muted'>{f.label}</div>
-                    </td>
-                    <td>{f.description}</td>
-                    <td style={FIT_COLUMN}>
-                      <SignalCell entry={f} />
-                    </td>
+            <div className='table-scroll' style={{ marginTop: 12 }}>
+              <table className='table'>
+                <thead>
+                  <tr>
+                    <th style={FIT_COLUMN}>Function</th>
+                    <th>What it does</th>
+                    <th style={FIT_COLUMN}>Found by</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {functions.map((f) => (
+                    <tr
+                      key={f.id}
+                      className='clickable'
+                      onClick={() => navigate({ to: '/cli-internals/$id', params: { id: f.id } })}>
+                      <td style={FIT_COLUMN}>
+                        {f.missing === null ? (
+                          <span className='rule-name'>{f.signature}</span>
+                        ) : (
+                          <span className='badge was-present'>{MISS_LABEL[f.missing]}</span>
+                        )}
+                        <div className='muted'>{f.label}</div>
+                      </td>
+                      <td>{f.description}</td>
+                      <td style={FIT_COLUMN}>
+                        <SignalCell entry={f} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </QueryState>

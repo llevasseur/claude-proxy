@@ -11,14 +11,14 @@
     display: block;
     text-decoration: none;
     color: inherit;
-    border-color: rgba(255, 107, 129, 0.4);
+    border-color: color-mix(in srgb, var(--coral) 40%, transparent);
     transition:
       border-color var(--motion-duration) ease,
       background var(--motion-duration) ease;
   }
   .stat-error:hover {
     border-color: var(--coral);
-    background: rgba(255, 107, 129, 0.06);
+    background: color-mix(in srgb, var(--coral) 6%, transparent);
   }
   .stat-error .stat-value {
     color: var(--coral);
@@ -33,14 +33,14 @@
     display: block;
     text-decoration: none;
     color: inherit;
-    border-color: rgba(70, 224, 192, 0.4);
+    border-color: color-mix(in srgb, var(--signal) 40%, transparent);
     transition:
       border-color var(--motion-duration) ease,
       background var(--motion-duration) ease;
   }
   .stat-drill:hover {
     border-color: var(--signal);
-    background: rgba(70, 224, 192, 0.06);
+    background: color-mix(in srgb, var(--signal) 6%, transparent);
   }
   .stat-drill .stat-value {
     color: var(--signal);
@@ -52,7 +52,7 @@
 
   /* Session errors page — one coral-accented block per error. */
   .error-entry {
-    border-color: rgba(255, 107, 129, 0.4);
+    border-color: color-mix(in srgb, var(--coral) 40%, transparent);
     border-left: 3px solid var(--coral);
   }
   .error-meta {
