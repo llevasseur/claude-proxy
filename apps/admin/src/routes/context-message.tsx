@@ -8,6 +8,16 @@ import { QueryState } from '../components/QueryState';
 import { PRETTY_RAW, type PrettyRawView, Segmented } from '../components/Segmented';
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
 import { fmtBytes, fmtInt } from '../format';
+import {
+  isJsonArray,
+  isJsonRecord,
+  isJsonText,
+  type JsonRecord,
+  type JsonValue,
+  parseJson,
+  recordField,
+  textField,
+} from '../json';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 
@@ -128,23 +138,18 @@ function MessagePager({ file, index, messageCount }: { file: string; index: numb
   );
 }
 
-/** A single content block, loosely typed since request bodies are untrusted. */
-type Block = Record<string, unknown>;
-
 /**
  * Render the stored message JSON as readable content blocks, dropping transport
  * noise (cache_control, thinking signatures, base64 image bytes). Falls back to
  * raw JSON on an unexpected shape.
+ *
+ * A block is read through the guards in `../json` rather than declared: this is a
+ * captured request body, and its blocks carry whatever the client sent — including
+ * block types this build has never heard of, which the default arm renders as JSON.
  */
 function PrettyMessage({ content }: { content: string }) {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return <pre className='rawjson wrap'>{content}</pre>;
-  }
-
-  const blocks = toBlocks((parsed as { content?: unknown } | null)?.content);
+  const parsed = parseJson(content);
+  const blocks = toBlocks(isJsonRecord(parsed) ? parsed.content : undefined);
   if (blocks.length === 0) return <pre className='rawjson wrap'>{content}</pre>;
 
   return (
@@ -157,35 +162,39 @@ function PrettyMessage({ content }: { content: string }) {
   );
 }
 
-/** Normalise a message's `content` into an array of blocks. */
-function toBlocks(content: unknown): Block[] {
-  if (typeof content === 'string') return [{ type: 'text', text: content }];
-  if (Array.isArray(content))
-    return content.map((b) => (typeof b === 'string' ? { type: 'text', text: b } : (b as Block)));
+/**
+ * Normalise a message's `content` into an array of blocks. A bare string is the
+ * single-text-block shorthand the API accepts; an entry that is neither a string nor an
+ * object has no block shape to read, so it is shown as the JSON it is.
+ */
+function toBlocks(content: JsonValue | undefined): JsonRecord[] {
+  if (isJsonText(content)) return [{ type: 'text', text: content }];
+  if (isJsonArray(content))
+    return content.map((b) => (isJsonRecord(b) ? b : { type: 'text', text: isJsonText(b) ? b : stringify(b) }));
   return [];
 }
 
-function BlockView({ block }: { block: Block }) {
-  const type = typeof block.type === 'string' ? block.type : 'unknown';
+function BlockView({ block }: { block: JsonRecord }) {
+  const type = textField(block, 'type') ?? 'unknown';
 
   switch (type) {
     case 'text':
       return (
         <Section label='Text'>
-          <Prose text={str(block.text)} />
+          <Prose text={textField(block, 'text') ?? ''} />
         </Section>
       );
 
     case 'thinking':
       return (
         <Section label='Thinking'>
-          <Prose text={str(block.thinking)} />
+          <Prose text={textField(block, 'thinking') ?? ''} />
         </Section>
       );
 
     case 'tool_use':
       return (
-        <Section label={`Tool call · ${str(block.name) || 'unknown'}`}>
+        <Section label={`Tool call · ${textField(block, 'name') ?? 'unknown'}`}>
           <pre className='rawjson wrap'>{stringify(block.input)}</pre>
         </Section>
       );
@@ -203,9 +212,12 @@ function BlockView({ block }: { block: Block }) {
     }
 
     case 'image': {
-      const src = (block.source ?? {}) as Block;
-      const media = str(src.media_type) || 'image';
-      const bytes = typeof src.data === 'string' ? Math.floor((src.data.length * 3) / 4) : 0;
+      const src = recordField(block, 'source');
+      const media = (src && textField(src, 'media_type')) ?? 'image';
+      // Base64 is four characters per three bytes, so the decoded size is readable off
+      // the string the block carries — which is the whole point of not rendering it.
+      const data = src?.data;
+      const bytes = isJsonText(data) ? Math.floor((data.length * 3) / 4) : 0;
       return (
         <Section label='Image'>
           <div className='muted'>
@@ -242,11 +254,7 @@ function Prose({ text }: { text: string }) {
   return <div className='msg-text'>{text}</div>;
 }
 
-function str(v: unknown): string {
-  return typeof v === 'string' ? v : '';
-}
-
-function stringify(v: unknown): string {
+function stringify(v: JsonValue | undefined): string {
   try {
     return JSON.stringify(v, null, 2);
   } catch {

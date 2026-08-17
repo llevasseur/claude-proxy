@@ -20,22 +20,22 @@ import { fmtLocalTsShort } from '../format';
 /** Query key prefix every status list shares, so one write can invalidate them all. */
 export const SUGGESTION_STATUS_KEY = 'suggestion-status';
 
-export const STATUS_LABEL: Record<SuggestionStatus, string> = {
+export const STATUS_LABEL = {
   pending: 'Pending',
   done: 'Done',
   skipped: 'Skipped',
   dismissed: 'Dismissed',
-};
+} satisfies Record<SuggestionStatus, string>;
 
 /** Decided either way — half of what a "hide resolved" toggle hides. */
 export const isResolved = (status: SuggestionStatus): boolean => status !== 'pending';
 
 /** How a bucket's judgement state reads on a badge. */
-export const BUCKET_STATE_LABEL: Record<BucketJudgementState, string> = {
+export const BUCKET_STATE_LABEL = {
   'not-ready': 'Not yet full',
   dirty: 'Unjudged',
   clean: 'Judged',
-};
+} satisfies Record<BucketJudgementState, string>;
 
 /**
  * Where a bucket stands with the judge. Every bucket gets one — "unjudged" says
@@ -61,12 +61,12 @@ export function ThinPassBadge({ by }: { by: WriteProvenance | undefined }) {
   );
 }
 
-export const RECURRENCE_LABEL: Record<SuggestionRecurrence, string> = {
+export const RECURRENCE_LABEL = {
   none: '',
   historical: 'Pre-fix window',
   mixed: 'Spans the fix',
   regressed: 'Regressed',
-};
+} satisfies Record<SuggestionRecurrence, string>;
 
 /** Nothing left to do: acted on, or a frozen window the rule's own `done` postdates. */
 export const isSettled = (row: Pick<SuggestionStatusRow, 'status' | 'recurrence'> | undefined): boolean =>
@@ -136,7 +136,7 @@ export function SuggestionStatusControl({
             : `rule marked done in ${row.resolved.bucket} on ${fmtLocalTsShort(row.resolved.updated)}`}
         </span>
       )}
-      {mark.error && <span className='suggestion-mark-error'>{(mark.error as Error).message}</span>}
+      {mark.error && <span className='suggestion-mark-error'>{mark.error.message}</span>}
       {row?.note && <div className='suggestion-note'>{row.note}</div>}
       {/* Bucket-level, so it shows on a still-pending suggestion the judge confirmed. */}
       {row?.enrichment && (

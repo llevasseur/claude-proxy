@@ -8,12 +8,12 @@ import { fmtDuration } from '../format';
  */
 
 /** Badge class per state. `running` takes the active tone, `quiet` the caution one. */
-const LIVENESS_BADGES: Record<LivenessState, string> = {
+const LIVENESS_BADGES = {
   running: 'liveness-running',
   quiet: 'liveness-quiet',
   finished: 'liveness-finished',
   unknown: 'liveness-unknown',
-};
+} satisfies Record<LivenessState, string>;
 
 /** The tooltip: the state's own note, plus how stale the transcript is and the threshold. */
 export function livenessTitle(liveness: BranchLiveness): string {

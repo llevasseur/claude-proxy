@@ -159,26 +159,40 @@ function CohortTable({ day, def, pick }: { day: UsageDigest; def: StatMetric; pi
   );
 }
 
+/** One onward link: an existing view, and what reading it there tells you. */
+interface NextStep {
+  to: '/context' | '/sessions' | '/tools';
+  label: string;
+  why: string;
+}
+
 /**
  * Where to go to act on a per-call number, per metric. Only `fixed-prefix` has a
  * drilldown of its own — nothing else in the app showed a tool's JSON schema;
  * the rest link into the existing raw views.
+ *
+ * A `Map`, because the lookup key is `StatMetric['key']` — an open string — and a metric
+ * this table does not name simply gets no card.
  */
-const NEXT_STEPS: Record<string, { to: '/context' | '/sessions' | '/tools'; label: string; why: string }[]> = {
-  'cost-per-call': [
-    { to: '/sessions', label: 'Sessions', why: 'which threads spent the calls, and what they were doing' },
-    { to: '/context', label: 'Context size', why: 'what a single request was carrying when it cost the most' },
+const NEXT_STEPS = new Map<string, NextStep[]>([
+  [
+    'cost-per-call',
+    [
+      { to: '/sessions', label: 'Sessions', why: 'which threads spent the calls, and what they were doing' },
+      { to: '/context', label: 'Context size', why: 'what a single request was carrying when it cost the most' },
+    ],
   ],
-  'fresh-input': [
-    { to: '/context', label: 'Context size', why: 'the messages and tool results that were new that turn' },
+  [
+    'fresh-input',
+    [{ to: '/context', label: 'Context size', why: 'the messages and tool results that were new that turn' }],
   ],
-  'calls-per-session': [{ to: '/sessions', label: 'Sessions', why: 'the round trips a piece of work actually took' }],
-  'fixed-prefix': [{ to: '/tools', label: 'Tools', why: "every tool's size, beyond the day's biggest" }],
-};
+  ['calls-per-session', [{ to: '/sessions', label: 'Sessions', why: 'the round trips a piece of work actually took' }]],
+  ['fixed-prefix', [{ to: '/tools', label: 'Tools', why: "every tool's size, beyond the day's biggest" }]],
+]);
 
 /** The existing views that open up what a per-call mean only summarises. */
 export function PerCallNextSteps({ def }: { def: StatMetric }) {
-  const steps = NEXT_STEPS[def.key];
+  const steps = NEXT_STEPS.get(def.key);
   if (!steps || steps.length === 0) return null;
   return (
     <div className='card'>

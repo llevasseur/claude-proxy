@@ -126,9 +126,7 @@ export function SuggestionBucketPage() {
                   {regressed} regressed
                 </span>
               )}
-              {statusQuery.error && (
-                <span className='error'>flags unavailable: {(statusQuery.error as Error).message}</span>
-              )}
+              {statusQuery.error && <span className='error'>flags unavailable: {statusQuery.error.message}</span>}
               {resolvedCount > 0 && (
                 <button type='button' className='link toggle-resolved' onClick={() => setHideResolved((v) => !v)}>
                   {hideResolved ? `Show resolved (${resolvedCount})` : 'Hide resolved'}

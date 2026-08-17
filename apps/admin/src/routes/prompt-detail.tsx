@@ -31,7 +31,7 @@ type SortKey = 'heading' | 'level' | 'bytes' | 'share';
 type SortDir = 'asc' | 'desc';
 
 /** Direction applied the first time a column becomes the sort key. */
-const DEFAULT_DIR: Record<SortKey, SortDir> = { heading: 'asc', level: 'asc', bytes: 'desc', share: 'desc' };
+const DEFAULT_DIR = { heading: 'asc', level: 'asc', bytes: 'desc', share: 'desc' } satisfies Record<SortKey, SortDir>;
 
 /**
  * Signed comparison for a column, ascending. `share` and `bytes` order

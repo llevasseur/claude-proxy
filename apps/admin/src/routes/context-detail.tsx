@@ -9,6 +9,7 @@ import { HeaderHint } from '../components/HeaderHint';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
+import { type JsonRecord, textField } from '../json';
 import { rootRoute } from '../route-root';
 import { useRestoredScroll } from '../useRestoredScroll';
 import { useTransitionState } from '../useTransitionState';
@@ -201,12 +202,12 @@ type SortKey = 'index' | 'bytes' | 'estTokens' | 'share';
 type SortDir = 'asc' | 'desc';
 
 /** Direction applied the first time a column becomes the sort key. */
-const DEFAULT_DIR: Record<SortKey, SortDir> = {
+const DEFAULT_DIR = {
   index: 'asc',
   bytes: 'desc',
   estTokens: 'desc',
   share: 'desc',
-};
+} as const satisfies Record<SortKey, SortDir>;
 
 /** Share is drawn from bytes, so it sorts on the same underlying value. */
 function sortValue(m: BreakdownMessage, key: SortKey): number {
@@ -456,9 +457,11 @@ export const route = createRoute({
   path: '/context/$file',
   component: ContextDetailPage,
   staticData: { title: 'Context size' },
-  validateSearch: (search: Record<string, unknown>): ContextDetailSearch => {
-    const thread = search.thread;
-    if (typeof thread !== 'string' || thread === '') return {};
+  validateSearch: (search: JsonRecord): ContextDetailSearch => {
+    // `textField` answers `undefined` for absent, empty and non-string alike, which is
+    // the same three cases this page treats as "not reached through a thread".
+    const thread = textField(search, 'thread');
+    if (thread === undefined) return {};
     return { thread, days: contextDays(search.days) };
   },
 });

@@ -26,23 +26,30 @@ export function useLiveQuery<T>(path: string, queryKey: QueryKey, enabled = true
       setStatus('connecting');
       return;
     }
-    if (typeof EventSource === 'undefined') {
+    // Absence of the global, not a `typeof` on it: without SSE the paired one-shot query
+    // stays in charge, which is what `offline` tells the indicator.
+    if (!('EventSource' in globalThis)) {
       setStatus('offline');
       return;
     }
     setStatus('connecting');
     const es = new EventSource(`${API_BASE}${path}`);
 
-    const apply = (ev: MessageEvent) => {
+    const apply = (ev: Event) => {
+      if (!(ev instanceof MessageEvent)) return;
       try {
+        // SAFETY: `T` is the caller's, and the caller pairs this `path` with the very
+        // `queryKey` whose one-shot query already returns `T` from the same endpoint. The
+        // stream re-emits that endpoint's payload, so agreeing with the cache entry it
+        // overwrites is the whole contract; a body that does not parse is dropped below.
         queryClient.setQueryData<T>(queryKey, JSON.parse(ev.data) as T);
         setStatus('live');
       } catch {
         /* ignore a malformed frame — the next one re-syncs */
       }
     };
-    es.addEventListener('snapshot', apply as EventListener);
-    es.addEventListener('update', apply as EventListener);
+    es.addEventListener('snapshot', apply);
+    es.addEventListener('update', apply);
     es.onopen = () => setStatus('live');
     // EventSource retries on transient errors; a closed stream (bad id, 404) won't.
     es.onerror = () => setStatus(es.readyState === EventSource.CLOSED ? 'offline' : 'connecting');

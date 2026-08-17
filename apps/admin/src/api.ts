@@ -72,8 +72,15 @@ import type {
   WithheldReport,
 } from '@claude-proxy/core';
 import { apiRouteUrl } from '@claude-proxy/core';
+import { errorMessage, type JsonRecord, readJsonBody } from './json';
 
-export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8788';
+// SAFETY: Vite types every key of `import.meta.env` it does not know about through an
+// `any` index signature, so this narrows rather than widens. Vite substitutes the literal
+// text of `VITE_API_BASE` at build time, leaving exactly two outcomes — the string that
+// was in `.env`, or the key absent.
+const configuredApiBase = import.meta.env.VITE_API_BASE as string | undefined;
+
+export const API_BASE = configuredApiBase ?? 'http://localhost:8788';
 
 // HTTP envelopes — mirror the shapes returned by the server package.
 export interface SummaryResponse {
@@ -817,7 +824,8 @@ export interface ChatAgentConfig {
   flags: {
     disallowedTools: string[];
     settingSources: string[] | null;
-    settingsOverrides: Record<string, unknown> | null;
+    /** The `settings` block of the device's rc file, verbatim — keys the server does not interpret. */
+    settingsOverrides: JsonRecord | null;
   };
   permissionMode: string;
 }
@@ -1009,15 +1017,14 @@ interface ApiPostResponses extends Record<ApiWritePath, unknown> {
 /** Unwrap a response, preferring the server's `{ error }` message over the status. */
 async function unwrap<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body?.error) msg = body.error;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new Error(msg);
+    // `readJsonBody` already answers `undefined` for the non-JSON error bodies the
+    // dev server can serve, so the status line stays the fallback message.
+    throw new Error(errorMessage(await readJsonBody(res)) ?? `HTTP ${res.status}`);
   }
+  // SAFETY: `T` is never chosen here. Both callers below fix it from the manifest map —
+  // `ApiGetResponses[P]` / `ApiPostResponses[P]`, keyed by the literal route path the
+  // caller declared — so this assertion restates the response contract the server owns
+  // for that path rather than a guess made at this line.
   return (await res.json()) as T;
 }
 
@@ -1032,8 +1039,13 @@ async function read<P extends ApiJsonGetPath>(
   return unwrap<ApiGetResponses[P]>(await fetch(`${API_BASE}${apiRouteUrl(path, params)}`));
 }
 
-/** Write one declared route — the manifest's `cors: 'origin'` POST paths, and only those. */
-async function write<P extends ApiWritePath>(path: P, body: unknown): Promise<ApiPostResponses[P]> {
+/**
+ * Write one declared route — the manifest's `cors: 'origin'` POST paths, and only those.
+ *
+ * `Body` is inferred from the literal each wrapper below passes, so the payload keeps the
+ * type it was built with all the way to `JSON.stringify` instead of being flattened here.
+ */
+async function write<P extends ApiWritePath, Body>(path: P, body: Body): Promise<ApiPostResponses[P]> {
   return unwrap<ApiPostResponses[P]>(
     await fetch(`${API_BASE}${path}`, {
       method: 'POST',

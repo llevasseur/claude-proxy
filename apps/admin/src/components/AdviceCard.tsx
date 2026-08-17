@@ -1,6 +1,6 @@
 import type { Advice } from '@claude-proxy/core';
 
-const LABEL: Record<Advice['severity'], string> = { high: 'High', warn: 'Warn', info: 'Info' };
+const LABEL = { high: 'High', warn: 'Warn', info: 'Info' } satisfies Record<Advice['severity'], string>;
 
 export function AdviceCard({ advice }: { advice: Advice }) {
   return (

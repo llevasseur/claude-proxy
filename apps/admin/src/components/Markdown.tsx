@@ -26,7 +26,7 @@ export function Markdown({ source }: { source: string }) {
     if (fence) {
       const buf: string[] = [];
       i += 1;
-      while (i < lines.length && !/^```/.test(raw(i))) {
+      while (i < lines.length && !raw(i).startsWith('```')) {
         buf.push(raw(i));
         i += 1;
       }
@@ -61,6 +61,10 @@ export function Markdown({ source }: { source: string }) {
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading) {
       const level = (heading[1] ?? '#').length;
+      // SAFETY: `level` is the length of a `#{1,6}` capture, so it is 1 through 6; the
+      // template therefore reads `h2`…`h7`, and the `Math.min` clamps the last of those
+      // back to `h6`. Headings are demoted one level so a document's `#` sits under the
+      // page's own heading, which is why the union starts at `h2` rather than `h1`.
       const Tag = `h${Math.min(level + 1, 6)}` as 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
       out.push(
         <Tag key={key++} className='md-h'>
@@ -113,7 +117,7 @@ export function Markdown({ source }: { source: string }) {
     }
 
     const buf: string[] = [];
-    while (i < lines.length && at(i).trim() !== '' && !/^```/.test(raw(i))) {
+    while (i < lines.length && at(i).trim() !== '' && !raw(i).startsWith('```')) {
       buf.push(at(i));
       i += 1;
     }

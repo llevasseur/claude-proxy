@@ -219,7 +219,9 @@ function TaskPromptCard({ idea }: { idea: IdeaEntry }) {
       setCopyError('');
       setCopied(true);
     } catch (err) {
-      setCopyError((err as Error).message);
+      // The two throws reachable here — the guard above and a rejected `writeText` —
+      // are both `Error`s; anything else a browser invents still has to be shown.
+      setCopyError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -307,7 +309,7 @@ function AreaPicker({ idea, areas }: { idea: IdeaEntry; areas: string[] }) {
         </button>
       </form>
       {/* The server refuses moving a `command-gap` citation out of Commands. */}
-      {file.error && <div className='suggestion-mark-error'>{(file.error as Error).message}</div>}
+      {file.error && <div className='suggestion-mark-error'>{file.error.message}</div>}
     </div>
   );
 }
@@ -363,7 +365,7 @@ function CommentEditor({ idea }: { idea: IdeaEntry }) {
           )}
         </div>
       </form>
-      {save.error && <div className='suggestion-mark-error'>{(save.error as Error).message}</div>}
+      {save.error && <div className='suggestion-mark-error'>{save.error.message}</div>}
     </div>
   );
 }

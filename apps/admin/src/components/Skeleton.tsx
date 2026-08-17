@@ -1,6 +1,7 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: every list here is a fixed-length run of identical placeholders — the index is the only thing distinguishing them, and they never reorder
 
 import type { CSSProperties, ReactNode } from 'react';
+import { isJsonNumber } from '../json';
 import { SPARKLINE_HEIGHT } from './Sparkline';
 
 /**
@@ -14,7 +15,9 @@ import { SPARKLINE_HEIGHT } from './Sparkline';
 /** A CSS length: a number is px, a string is passed through. */
 type Len = number | string;
 
-const len = (v: Len | undefined): string | undefined => (typeof v === 'number' ? `${v}px` : v);
+// `isJsonNumber` rather than a `typeof` test: it is the app's finite-number guard, and a
+// non-finite length would render as the literal text `NaNpx` rather than being ignored.
+const len = (v: Len | undefined): string | undefined => (isJsonNumber(v) ? `${v}px` : v);
 
 /** Cycled so placeholder prose reads as text rather than ruled lines. */
 const LINE_WIDTHS = ['100%', '92%', '97%', '88%'];
