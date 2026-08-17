@@ -469,20 +469,20 @@ export function resolveCliFunction(text: string, anchor: CliFunctionAnchor): Cli
 
   const { literal, near } = anchor.signal;
   if (literal === '') return miss('signal-missing');
-  const shape = near === undefined ? null : new RegExp(near);
+  const nearPattern = near === undefined ? null : new RegExp(near);
 
-  let sawShape = false;
+  let sawNearMatch = false;
   let at = text.indexOf(literal);
   if (at === -1) return miss('signal-missing');
   for (let tried = 0; at !== -1 && tried < MAX_OCCURRENCES; tried++) {
-    if (shape === null || nearCovers(text, at, shape)) {
-      sawShape = true;
+    if (nearPattern === null || nearCovers(text, at, nearPattern)) {
+      sawNearMatch = true;
       const fn = extractEnclosingFunction(text, at, anchor.outward ?? 0);
       if (fn !== null) return hit(fn);
     }
     at = text.indexOf(literal, at + 1);
   }
-  return miss(sawShape ? 'no-enclosing-function' : 'no-match-nearby');
+  return miss(sawNearMatch ? 'no-enclosing-function' : 'no-match-nearby');
 }
 
 /** Resolve the whole catalogue in one pass over the bundle text. */

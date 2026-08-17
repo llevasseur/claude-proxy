@@ -55,7 +55,7 @@ function stepColor(step: string | null, index: number): string {
 }
 
 /**
- * One command's runs — cost and shape over time, where runs stop, and what goes wrong.
+ * One command's runs — cost and profile over time, where runs stop, and what goes wrong.
  *
  * The scatter is the primary view because the question is distributional: what a run of
  * this command costs is a spread, not one number, and the spread is the finding. Nothing
@@ -230,7 +230,7 @@ function CommandBody({
 
       <CommandFile source={data.source} command={command} />
       <RunScatter data={data} command={command} />
-      <ShapeTrends data={data} />
+      <ProfileTrends data={data} />
       <StepBar steps={data.steps} reach={data.stepReach} run={hoverRun} totalRuns={data.meta.filteredRuns} />
       <AgentTypes data={data} />
       <PatternTable data={data} />
@@ -290,7 +290,7 @@ interface ScatterPoint {
 }
 
 /**
- * Cost and shape over time. x is when the run started, y its total tokens, colour the
+ * Cost and profile over time. x is when the run started, y its total tokens, colour the
  * outcome, size the number of turns. A vertical rule marks each point at which the
  * command file's content changed, so a before/after is readable without any tagging.
  */
@@ -455,19 +455,19 @@ const TREND_HEIGHT = 220;
  * Two charts rather than two axes: step counts in the low tens and a duration in the
  * millions of ms cannot share a y. They share one x, a point per run, oldest left.
  */
-function ShapeTrends({ data }: { data: CommandResponse }) {
-  const shape = data.shape;
+function ProfileTrends({ data }: { data: CommandResponse }) {
+  const profile = data.profile;
 
-  if (shape.length < 2) {
+  if (profile.length < 2) {
     return (
       <div className='card empty'>
-        A trend needs at least two runs with a recorded start; this selection has {shape.length}. The runs are still
+        A trend needs at least two runs with a recorded start; this selection has {profile.length}. The runs are still
         listed below.
       </div>
     );
   }
 
-  const rows = shape.map((s) => ({
+  const rows = profile.map((s) => ({
     at: s.started ? fmtLocalTsShort(s.started) : '—',
     nodes: s.nodes,
     toolCalls: s.toolCalls,
@@ -476,8 +476,8 @@ function ShapeTrends({ data }: { data: CommandResponse }) {
   }));
 
   // The newest run's snapshot, which is the catalogue the recent points are out of.
-  const declared = shape[shape.length - 1]!.stepsDeclared;
-  const fellBack = shape.length - data.meta.wallMeasuredRuns;
+  const declared = profile[profile.length - 1]!.stepsDeclared;
+  const fellBack = profile.length - data.meta.wallMeasuredRuns;
 
   return (
     <>
@@ -525,7 +525,7 @@ function ShapeTrends({ data }: { data: CommandResponse }) {
           {fellBack > 0 && (
             <>
               {' '}
-              {fellBack} of these {shape.length} runs {fellBack === 1 ? 'was' : 'were'} recorded before the wider
+              {fellBack} of these {profile.length} runs {fellBack === 1 ? 'was' : 'were'} recorded before the wider
               measurement existed and {fellBack === 1 ? 'is' : 'are'} plotted on the request span alone; there is no
               backfill.
             </>

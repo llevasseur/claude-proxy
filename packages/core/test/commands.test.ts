@@ -7,7 +7,7 @@ import {
   type CommandRunStepStats,
   type CommandStep,
   classifyOutcome,
-  commandRunShapes,
+  commandRunProfiles,
   contentHash,
   countWaste,
   detectPatterns,
@@ -813,18 +813,18 @@ describe('schema tolerance', () => {
     expect(() => patternFrequency([old])).not.toThrow();
     expect(() => stepReach([{ id: '1', order: 1, title: 'Go' }], [old])).not.toThrow();
     expect(() => filterRunsByFlags([old], ['sub'])).not.toThrow();
-    expect(() => commandRunShapes([old])).not.toThrow();
+    expect(() => commandRunProfiles([old])).not.toThrow();
   });
 });
 
-describe('commandRunShapes', () => {
+describe('commandRunProfiles', () => {
   const steps = [
     { id: '1', order: 1, title: 'One' },
     { id: '2', order: 2, title: 'Two' },
     { id: '3', order: 3, title: 'Three' },
   ];
 
-  /** A step row as `summarizeSteps` writes it, trimmed to what the shape reads. */
+  /** A step row as `summarizeSteps` writes it, trimmed to what the profile reads. */
   const stat = (step: string | null, reached: boolean) =>
     ({
       step,
@@ -840,50 +840,50 @@ describe('commandRunShapes', () => {
     }) as CommandRunStepStats;
 
   it('counts declared steps reached, and never the unattributed bucket', () => {
-    const shapes = commandRunShapes([
+    const profiles = commandRunProfiles([
       run({
         steps,
         // The unattributed row is reached in every real run; it is not a step.
         stepStats: [stat('1', true), stat('2', true), stat('3', false), stat(null, true)],
       }),
     ]);
-    expect(shapes[0]).toMatchObject({ stepsReached: 2, stepsDeclared: 3 });
+    expect(profiles[0]).toMatchObject({ stepsReached: 2, stepsDeclared: 3 });
   });
 
   it('counts against the run’s own snapshot, so a step added later is not a regression', () => {
     // A step the command file grew afterwards was never available to reach.
-    const shapes = commandRunShapes([run({ steps: [steps[0]!], stepStats: [stat('1', true), stat('9', true)] })]);
-    expect(shapes[0]).toMatchObject({ stepsReached: 1, stepsDeclared: 1 });
+    const profiles = commandRunProfiles([run({ steps: [steps[0]!], stepStats: [stat('1', true), stat('9', true)] })]);
+    expect(profiles[0]).toMatchObject({ stepsReached: 1, stepsDeclared: 1 });
   });
 
   it('prefers the end-to-end bracket and says so', () => {
-    const shapes = commandRunShapes([run()]);
-    expect(shapes[0]).toMatchObject({ endToEndMs: 5000, wallMeasured: true });
+    const profiles = commandRunProfiles([run()]);
+    expect(profiles[0]).toMatchObject({ endToEndMs: 5000, wallMeasured: true });
   });
 
   it('falls back to the request span for a record written before wallMs, and flags it', () => {
     const old = run();
     // Deleted rather than `undefined`: an older store line has no such key at all.
     delete (old.totals as { wallMs?: number }).wallMs;
-    const shapes = commandRunShapes([old]);
-    expect(shapes[0]).toMatchObject({ endToEndMs: 1000, wallMeasured: false });
+    const profiles = commandRunProfiles([old]);
+    expect(profiles[0]).toMatchObject({ endToEndMs: 1000, wallMeasured: false });
   });
 
   it('orders oldest first, opposite the run list', () => {
-    const shapes = commandRunShapes([
+    const profiles = commandRunProfiles([
       run({ runId: 'b', started: '2026-08-02T10:00:00.000Z' }),
       run({ runId: 'a', started: '2026-08-01T10:00:00.000Z' }),
     ]);
-    expect(shapes.map((s) => s.runId)).toEqual(['a', 'b']);
+    expect(profiles.map((s) => s.runId)).toEqual(['a', 'b']);
   });
 
   it('drops a run with no start, which has nowhere to sit on the axis', () => {
-    expect(commandRunShapes([run({ started: null })])).toEqual([]);
+    expect(commandRunProfiles([run({ started: null })])).toEqual([]);
   });
 
   it('reads work off the record rather than recomputing it', () => {
-    const shapes = commandRunShapes([run({ meta: { turnsUnmapped: 0, nodes: 42, attributed: 40, anchored: 12 } })]);
-    expect(shapes[0]).toMatchObject({ nodes: 42, toolCalls: 3, turns: 2 });
+    const profiles = commandRunProfiles([run({ meta: { turnsUnmapped: 0, nodes: 42, attributed: 40, anchored: 12 } })]);
+    expect(profiles[0]).toMatchObject({ nodes: 42, toolCalls: 3, turns: 2 });
   });
 });
 
