@@ -9,6 +9,7 @@
  * replacement. Reading and writing the file is the server's job.
  */
 import { estTokens } from './context.js';
+import { jsonText, jsonValueOf } from './json.js';
 
 /** One `#`-heading in the prompt, with the span of text it owns. */
 export interface SystemPromptSection {
@@ -131,10 +132,14 @@ export function normalizeSystemPromptText(text: string): string {
 /**
  * Validate a proposed replacement and return its canonical form. Throws on a
  * non-string or anything past the ceiling — the route maps that to a 400.
+ *
+ * Generic in its input because the caller is a request-body reader handing over
+ * whatever field it found; this function is where that field becomes text.
  */
-export function parseSystemPromptText(value: unknown): string {
-  if (typeof value !== 'string') throw new Error('system prompt text must be a string');
-  const normalized = normalizeSystemPromptText(value);
+export function parseSystemPromptText<Candidate>(value: Candidate): string {
+  const text = jsonText(jsonValueOf(value));
+  if (text === null) throw new Error('system prompt text must be a string');
+  const normalized = normalizeSystemPromptText(text);
   const bytes = utf8Bytes(normalized);
   if (bytes > SYSTEM_PROMPT_MAX_BYTES) {
     throw new Error(`system prompt text larger than ${SYSTEM_PROMPT_MAX_BYTES} bytes: ${bytes}`);
@@ -147,10 +152,13 @@ export function parseSystemPromptText(value: unknown): string {
  * Absent means "write regardless", which is what a caller that never read the file
  * sends; `null` is the legitimate value for "there was no file".
  */
-export function parseSystemPromptExpectedModified(value: unknown): string | null | undefined {
+export function parseSystemPromptExpectedModified<Candidate>(value: Candidate): string | null | undefined {
   if (value === undefined) return undefined;
-  if (value === null || typeof value === 'string') return value;
-  throw new Error('system prompt expectedModified must be a string or null');
+  const parsed = jsonValueOf(value);
+  if (parsed === null) return null;
+  const text = jsonText(parsed);
+  if (text === null) throw new Error('system prompt expectedModified must be a string or null');
+  return text;
 }
 
 /** One rendered line of a save diff. `text` carries its own ` `/`+`/`-` marker. */
@@ -242,7 +250,7 @@ function alignLines(before: string[], after: string[]): DiffOp[] {
   return ops;
 }
 
-const MARKERS: Record<DiffOp['kind'], string> = { equal: ' ', added: '+', removed: '-' };
+const MARKERS = { equal: ' ', added: '+', removed: '-' } satisfies Record<DiffOp['kind'], string>;
 
 /**
  * A unified line diff of `before` against `after`, ready to render as text.

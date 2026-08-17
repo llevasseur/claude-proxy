@@ -25,6 +25,7 @@
  * requests and hands the pieces here.
  */
 
+import { jsonNumber, jsonObject, jsonText, jsonValueOf } from './json.js';
 import { estimateCost } from './pricing.js';
 import type { InterruptionKind, SessionNode } from './sessions.js';
 import type { AuditTokens } from './types.js';
@@ -401,7 +402,7 @@ export function stripCommandEnvelope(text: string): string {
 export type StepConfidence = 'explicit' | 'narrated' | 'boundary' | 'inferred';
 
 /** Rank for picking the better of two competing anchors on one node. */
-const CONFIDENCE_RANK: Record<StepConfidence, number> = { explicit: 3, narrated: 2, boundary: 1, inferred: 0 };
+const CONFIDENCE_RANK = { explicit: 3, narrated: 2, boundary: 1, inferred: 0 } satisfies Record<StepConfidence, number>;
 
 /** One node's placement: the step it belongs to, and how sure that is. */
 export interface StepAttribution {
@@ -719,14 +720,14 @@ export type CommandPatternId =
   | 'step-errors-first';
 
 /** Human names for the rule ids, for a table that lists rules a run didn't trip. */
-export const COMMAND_PATTERN_TITLES: Record<CommandPatternId, string> = {
+export const COMMAND_PATTERN_TITLES = {
   'repeat-read': 'Same file read twice',
   'retry-after-error': 'Tool retried after an error',
   'step-reentered': 'Step re-entered',
   'subagent-fanout': 'Subagent fan-out',
   'context-respike': 'Context re-send spike',
   'step-errors-first': 'Step errors before it does anything',
-};
+} satisfies Record<CommandPatternId, string>;
 
 /** Spawns under one step past which the fan-out is worth badging. */
 const FANOUT_THRESHOLD = 3;
@@ -1063,11 +1064,16 @@ export interface CommandRun {
  * fields, which every schema version has carried: a record written by a newer or
  * older writer is kept and rendered from what it has, rather than crashing the page.
  * Callers read optional fields defensively — see {@link runTotals}.
+ *
+ * Generic in its input so the store reader keeps whatever type its own
+ * `JSON.parse` produced through the narrowing; the three fields are decoded here.
  */
-export function isCommandRun(value: unknown): value is CommandRun {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.threadId === 'string' && typeof v.command === 'string' && typeof v.schema === 'number';
+export function isCommandRun<Candidate>(value: Candidate): value is Candidate & CommandRun {
+  const record = jsonObject(jsonValueOf(value));
+  if (record === null) return false;
+  return (
+    jsonText(record.threadId) !== null && jsonText(record.command) !== null && jsonNumber(record.schema) !== null
+  );
 }
 
 /**
@@ -1081,6 +1087,10 @@ export function runKey(run: CommandRun): string {
 
 /** A record's totals, defaulted — an older record missing the block still lists and sums. */
 export function runTotals(run: CommandRun): CommandRunTotals {
+  // SAFETY: `totals` is declared required, but the store is append-only and records
+  // predating the block have no such key — `isCommandRun` admits them on the three
+  // identity fields alone. Widening to `| undefined` is what makes the reads below
+  // describe the record actually in hand rather than the current writer's schema.
   const t = run.totals as CommandRunTotals | undefined;
   return {
     tokens: t?.tokens ?? ZERO_TOKENS,
@@ -1153,7 +1163,7 @@ export function summarizeSteps(input: {
     const stepNodes = nodes.filter((n) => (byNode.get(n.index) ?? UNATTRIBUTED) === step);
     const stepTurns = turns.filter((t) => t.step === step);
     const tokens = stepTurns.reduce((acc, t) => addTokens(acc, t.tokens), ZERO_TOKENS);
-    const w = { ...ZERO_WASTE, ...(waste.get(step) ?? {}) };
+    const w = { ...ZERO_WASTE, ...waste.get(step) };
     w.cacheMissTokens = stepTurns.reduce((n, t) => n + Math.max(0, t.tokens.realInput - t.tokens.cacheRead), 0);
 
     return {
@@ -1258,6 +1268,9 @@ export interface PatternFrequency {
  * catalogue rather than only a highlight reel.
  */
 export function patternFrequency(runs: readonly CommandRun[]): PatternFrequency[] {
+  // SAFETY: `COMMAND_PATTERN_TITLES` is a literal keyed by every `CommandPatternId`
+  // and nothing else — the `satisfies` on it is what holds that — so its own keys
+  // are exactly the catalogue, which `Object.keys` only ever types as `string[]`.
   const ids = Object.keys(COMMAND_PATTERN_TITLES) as CommandPatternId[];
   return ids
     .map((id) => {

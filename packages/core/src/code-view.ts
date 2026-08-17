@@ -8,6 +8,7 @@
 
 /** CSI colour codes, OSC title sequences, and bare two-char escapes. */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ESC and BEL are what an escape sequence is made of — matching them is the whole job of this pattern
+// oxlint-disable-next-line no-control-regex -- same reason: the control characters are the pattern's subject, not a typo in it
 const ANSI_RE = /\u001B(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001B]*(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
 
 /** Strip terminal escape sequences from captured output. */
@@ -31,11 +32,19 @@ export function prettifyLog(text: string): string {
     .join('\n');
 }
 
+/** A re-indent attempt: the text to render, and whether it is the reformatted form. */
+export interface FormattedJson {
+  /** Re-indented JSON, or the input unchanged when it didn't parse. */
+  text: string;
+  /** True when `text` is the reformatted document rather than the echoed input. */
+  ok: boolean;
+}
+
 /**
  * Re-indent JSON at two spaces. `ok: false` (with the input echoed back) when it
  * doesn't parse — a half-written file being appended to as we read it, most often.
  */
-export function formatJsonText(text: string): { text: string; ok: boolean } {
+export function formatJsonText(text: string): FormattedJson {
   try {
     return { text: JSON.stringify(JSON.parse(text), null, 2), ok: true };
   } catch {
@@ -54,7 +63,12 @@ export function formatJsonText(text: string): { text: string; ok: boolean } {
  */
 export type CodeSyntax = 'c-like' | 'hash' | 'json' | 'plain';
 
-const SYNTAX_BY_EXT: Record<string, CodeSyntax> = {
+/** The extension table: any lowercase extension, mapped to the syntax it reads as. */
+interface SyntaxByExtension {
+  readonly [extension: string]: CodeSyntax;
+}
+
+const SYNTAX_BY_EXT: SyntaxByExtension = {
   js: 'c-like',
   mjs: 'c-like',
   cjs: 'c-like',
@@ -99,7 +113,7 @@ export function codeSyntax(name: string): CodeSyntax {
 }
 
 /** Words each syntax colours as keywords. */
-const KEYWORDS: Record<CodeSyntax, ReadonlySet<string>> = {
+const KEYWORDS = {
   'c-like': new Set([
     'as',
     'async',
@@ -197,7 +211,7 @@ const KEYWORDS: Record<CodeSyntax, ReadonlySet<string>> = {
   ]),
   json: new Set(['true', 'false', 'null']),
   plain: new Set(),
-};
+} satisfies Record<CodeSyntax, ReadonlySet<string>>;
 
 export type CodeTokenKind = 'text' | 'comment' | 'string' | 'number' | 'keyword' | 'key';
 
@@ -236,6 +250,8 @@ export function highlightSource(source: string, syntax: CodeSyntax): CodeToken[]
       if (p > 0) lines.push([]);
       const part = parts[p] ?? '';
       if (part === '') continue;
+      // SAFETY: `lines` is seeded with one run and only ever appended to, so its
+      // last index is always occupied — `noUncheckedIndexedAccess` cannot see that.
       const line = lines[lines.length - 1] as CodeToken[];
       const last = line[line.length - 1];
       if (last && last.kind === kind) last.text += part;
@@ -262,6 +278,8 @@ export function highlightSource(source: string, syntax: CodeSyntax): CodeToken[]
 
   let i = 0;
   while (i < source.length) {
+    // SAFETY: the enclosing `while` has just tested `i < source.length`, and `i`
+    // only ever advances, so this index is inside the string.
     const ch = source[i] as string;
     const next = source[i + 1];
 
@@ -291,7 +309,7 @@ export function highlightSource(source: string, syntax: CodeSyntax): CodeToken[]
       const text = source.slice(i, stop);
       // In JSON a string before a `:` is a key, not a value.
       let after = stop;
-      while (after < source.length && /[ \t]/.test(source[after] as string)) after += 1;
+      while (after < source.length && /[ \t]/.test(source[after] ?? '')) after += 1;
       push(syntax === 'json' && source[after] === ':' ? 'key' : 'string', text);
       i = stop;
       continue;

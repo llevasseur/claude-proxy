@@ -21,6 +21,7 @@
  *
  * Pure: no I/O — the server reads the rc file and passes its text in.
  */
+import { type JsonObject, jsonEntries, jsonObject, parseJsonText } from './json.js';
 import { activeDisableSchemaKeys, classifyDenyRules } from './withheld.js';
 
 export interface LaunchAlias {
@@ -35,7 +36,7 @@ export interface LaunchAlias {
   /** Parsed inline `--settings` JSON object, or `null` when the flag is absent or
    * its value can't be resolved statically (see `settingsDynamic`). Only the
    * `disable*` booleans within it affect tool posture. */
-  settingsOverrides: Record<string, unknown> | null;
+  settingsOverrides: JsonObject | null;
   /** True when a `--settings` flag is present but its value can't be read from the
    * rc text — a shell variable / command substitution (`"$(jq …)"`, `$_cc_on`) or a
    * file path. The injected settings could re-supply anything (denies, disable*,
@@ -95,6 +96,14 @@ function extractSettingSources(body: string): string[] | null {
     .filter((s) => s.length > 0);
 }
 
+/** What the `--settings` flag resolved to — see {@link extractSettings}. */
+interface ExtractedSettings {
+  /** The inline JSON object, or `null` when there is none to read. */
+  overrides: JsonObject | null;
+  /** True when a flag is present but its value can't be resolved from the rc text. */
+  dynamic: boolean;
+}
+
 /**
  * Resolve the `--settings <value>` flag. Three outcomes:
  *   - flag absent → `{ overrides: null, dynamic: false }`
@@ -104,18 +113,14 @@ function extractSettingSources(body: string): string[] | null {
  *     dynamic: true }`. The injected settings could be anything, so the alias's
  *     posture becomes indeterminate.
  */
-function extractSettings(body: string): { overrides: Record<string, unknown> | null; dynamic: boolean } {
+function extractSettings(body: string): ExtractedSettings {
   const raw = extractFlagArg(body, '--settings');
   if (raw === null) return { overrides: null, dynamic: false };
   if (raw.includes('$')) return { overrides: null, dynamic: true };
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return { overrides: parsed as Record<string, unknown>, dynamic: false };
-    }
-  } catch {
-    // Not JSON — a file path or malformed value we can't statically resolve.
-  }
+  // Not JSON at all — a file path or malformed value — parses to null, as does a
+  // JSON scalar or array, none of which is a settings object.
+  const overrides = jsonObject(parseJsonText(raw));
+  if (overrides !== null) return { overrides, dynamic: false };
   return { overrides: null, dynamic: true };
 }
 
@@ -236,11 +241,18 @@ function disallowedSchemaTools(alias: LaunchAlias): string[] {
 /** The `disable*` keys an alias turns into `true` via inline `--settings`, mapped
  * to the tools they strip (unknown/ non-schema disable keys are ignored). */
 function overriddenDisableTools(alias: LaunchAlias, enable: boolean): string[] {
-  const overrides = alias.settingsOverrides ?? {};
-  const keys = Object.entries(overrides)
+  const keys = jsonEntries(alias.settingsOverrides)
     .filter(([k, v]) => k.startsWith('disable') && v === enable)
     .map(([k]) => k);
   return activeDisableSchemaKeys(keys).flatMap((e) => e.tools);
+}
+
+/** One alias's computed posture — what {@link effectiveWithheld} answers. */
+interface EffectiveWithheld {
+  /** Every tool whose schema this alias strips, deduplicated. */
+  withheld: Set<string>;
+  /** Whether `~/.claude/settings.json` still loads for this alias. */
+  userSettingsLoaded: boolean;
 }
 
 /**
@@ -253,7 +265,7 @@ function effectiveWithheld(
   alias: LaunchAlias,
   denyTools: readonly string[],
   enabledDisableKeys: readonly string[],
-): { withheld: Set<string>; userSettingsLoaded: boolean } {
+): EffectiveWithheld {
   const userSettingsLoaded = alias.settingSources === null || alias.settingSources.includes('user');
   const set = new Set<string>();
 
@@ -262,8 +274,7 @@ function effectiveWithheld(
   // disable* keys: the device's enabled keys (only when user settings load),
   // then apply this alias's inline --settings overrides in both directions.
   const disableKeys = new Set<string>(userSettingsLoaded ? enabledDisableKeys : []);
-  const overrides = alias.settingsOverrides ?? {};
-  for (const [k, v] of Object.entries(overrides)) {
+  for (const [k, v] of jsonEntries(alias.settingsOverrides)) {
     if (!k.startsWith('disable')) continue;
     if (v === true) disableKeys.add(k);
     else if (v === false) disableKeys.delete(k);
