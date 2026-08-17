@@ -169,7 +169,8 @@
     cursor: pointer;
     transition:
       color var(--motion-duration) ease,
-      border-color var(--motion-duration) ease;
+      border-color var(--motion-duration) ease,
+      transform var(--motion-duration-fast) var(--ease-out);
   }
   .rail-toggle:hover {
     color: var(--text);
@@ -213,7 +214,8 @@
     cursor: pointer;
     transition:
       color var(--motion-duration) ease,
-      border-color var(--motion-duration) ease;
+      border-color var(--motion-duration) ease,
+      transform var(--motion-duration-fast) var(--ease-out);
   }
   .drawer-toggle:hover {
     color: var(--text);
@@ -233,7 +235,9 @@
   /* collapsed rail — icons only, above the top-bar breakpoint */
   @media (min-width: 861px) {
     .app {
-      transition: grid-template-columns var(--motion-duration) ease;
+      /* The rail is already on screen when it collapses, so it accelerates and
+       settles rather than launching — an in-out move, not an entrance. */
+      transition: grid-template-columns var(--motion-duration) var(--ease-in-out);
     }
     .app--rail-collapsed {
       grid-template-columns: 64px minmax(0, 1fr);

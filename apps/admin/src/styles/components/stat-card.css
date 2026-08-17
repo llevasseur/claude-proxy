@@ -186,26 +186,30 @@
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     opacity: 0;
     visibility: hidden;
-    transform: translateY(-4px);
+    /* Grows out of the card it annotates rather than arriving from nowhere:
+     the origin faces the card, and the scale starts near full size. */
+    transform: translateY(-4px) scale(0.97);
+    transform-origin: top center;
     transition:
-      opacity var(--motion-duration) ease,
-      transform var(--motion-duration) ease,
-      visibility var(--motion-duration) ease;
+      opacity var(--motion-duration) var(--ease-out),
+      transform var(--motion-duration) var(--ease-out),
+      visibility var(--motion-duration) var(--ease-out);
     pointer-events: none;
   }
   /* Flipped over the card, for a panel the viewport would clip. The opening slide
-   reverses with it, so it still travels outward. */
+   and the growth origin reverse with it, so it still travels outward. */
   .stat-popover.is-above {
     top: auto;
     bottom: calc(100% + 8px);
-    transform: translateY(4px);
+    transform: translateY(4px) scale(0.97);
+    transform-origin: bottom center;
     box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
   }
   .stat-link:hover .stat-popover,
   .stat-link:focus-visible .stat-popover {
     opacity: 1;
     visibility: visible;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
     /* Rows need the cursor to mark their node; the popover sits inside the card's
      link, so the card stays open. */
     pointer-events: auto;
