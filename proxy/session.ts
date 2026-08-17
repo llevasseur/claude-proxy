@@ -339,9 +339,9 @@ export function extractTitle(responseText: string | null | undefined): string | 
   if (!m) return null;
   const raw = m[1] ?? '';
   try {
-    // SAFETY: the argument is a `"` , the regex's own escaped-string body, and a `"` —
-    // a JSON string literal by construction — so `JSON.parse` can only answer with a
-    // string here. A body the regex matched but JSON rejects throws to the fallback.
+    // SAFETY: the argument is a JSON string literal by construction — a quote, the
+    // regex's own escaped-string body, a quote — so the parse can only yield a string;
+    // a body the regex matched but JSON rejects throws to the fallback.
     return JSON.parse(`"${raw}"`) as string;
   } catch {
     return raw;
@@ -479,9 +479,8 @@ interface StoredState {
 
 /**
  * Decode one `.state.json` sidecar, or null when it is missing, unreadable, or not
- * JSON. Every field is decoded rather than trusted: a sidecar written by an older
- * proxy simply lacks some of them, and a field that holds the wrong type reads as
- * absent instead of poisoning the thread it describes.
+ * JSON. Every field is decoded rather than trusted, so one holding the wrong type
+ * reads as absent instead of poisoning the thread it describes.
  */
 function readStoredState(statePath: string): StoredState | null {
   let raw: string;

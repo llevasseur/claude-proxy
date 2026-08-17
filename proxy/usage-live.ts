@@ -25,15 +25,11 @@ export type FetchLike = (
   init?: { headers?: Record<string, string>; signal?: AbortSignal },
 ) => Promise<{ ok: boolean; status: number; json: () => Promise<JsonValue> }>;
 
-/**
- * `globalThis.fetch` as a {@link FetchLike}. `Response.json()` is declared `unknown`
- * upstream because a body can be anything at all; here it is the JSON parse of a
- * response this module then only re-serializes, so `JsonValue` is what it can hold.
- */
+/** `globalThis.fetch` as a {@link FetchLike}, whose `json()` promises a `JsonValue`. */
 const nativeFetch: FetchLike = async (url, init) => {
   const res = await globalThis.fetch(url, init);
   // SAFETY: `res.json()` is `JSON.parse` of the response text, so every value it can
-  // settle to is by construction a member of `JsonValue`.
+  // settle to is a `JsonValue`; it is typed `unknown` only because a body may be any.
   return { ok: res.ok, status: res.status, json: () => res.json() as Promise<JsonValue> };
 };
 
@@ -102,9 +98,8 @@ export async function pollOnce(logDir: string, fetchImpl: FetchLike = nativeFetc
 /** A caught value is `unknown`; this is the message it would have shown. */
 function errorMessage(cause: unknown): string {
   if (cause instanceof Error) return cause.message;
-  // SAFETY: nothing has established a type for a non-`Error` throw, so this claims
-  // only that `message` may be there — `?.` still covers a `null` throw, and the
-  // fallback covers a value that carries no message at all.
+  // SAFETY: claims only that `message` may be there — `?.` covers a `null` throw and
+  // the fallback covers a value carrying no message.
   return (cause as { message?: string } | null)?.message ?? 'unknown error';
 }
 

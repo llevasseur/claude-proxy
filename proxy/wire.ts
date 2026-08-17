@@ -4,14 +4,12 @@
  * Everything here is optional and several fields are a bare `JsonValue`,
  * deliberately: the proxy sees whatever the CLI sends, must forward it untouched,
  * and must degrade rather than throw on a body it does not recognise. These describe
- * what the code *looks at*, not a schema it enforces — the narrowing itself lives in
- * `json.ts`, so a field typed `JsonValue` here is read through `asText`/`asRecord`
- * and never trusted on sight.
+ * what the code *looks at*, not a schema it enforces; the narrowing lives in
+ * `json.ts`.
  *
  * Every type below is an object type rather than an interface, so each stays
- * assignable to `JsonObject`: a rewritten `messages` array goes back into a
- * `RequestBody` field, and TypeScript only grants that implicit index signature to
- * an alias.
+ * assignable to `JsonObject` — a rewritten `messages` array goes back into a
+ * `RequestBody` field, and only an alias gets that implicit index signature.
  *
  * Zero runtime dependencies — this module emits only `asArrayOf` and `firstHeader`.
  */
@@ -74,13 +72,12 @@ export type HeaderBag = Record<string, string | string[] | undefined>;
 
 /**
  * Narrow a wire value to an array of `T`, treating anything else as empty. `T` is the
- * caller's claim about which wire field this is; every reader downstream goes through
- * `json.ts` for each member, so a member that turns out to be something else reads as
- * absent rather than being trusted.
+ * caller's claim about which wire field this is; each member is still decoded through
+ * `json.ts` downstream.
  */
 export function asArrayOf<T>(value: JsonValue | undefined): T[] {
-  // SAFETY: `Array.isArray` establishes that this is an array before the element type
-  // is claimed, and no reader dereferences a member without decoding it first.
+  // SAFETY: `Array.isArray` establishes the array before the element type is claimed,
+  // and no reader dereferences a member without decoding it first.
   return Array.isArray(value) ? (value as T[]) : [];
 }
 

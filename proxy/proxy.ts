@@ -290,7 +290,6 @@ function extractSession(headers: HeaderBag | undefined, reqJson: RequestBody | n
     metadataSessionId,
     deviceId: device,
   };
-  // Absent, not null, when the body has no user text to root a thread on.
   const threadId = session.threadIdFor(sessionId, reqJson?.messages);
   if (threadId) info.threadId = threadId;
   return info;
@@ -422,7 +421,6 @@ function writeAuditSidecar({
     cacheBreakpointDeclinedBy: cacheBreakpointDeclinedBy ?? null,
     tools: audit.toolRows.map((r) => ({ name: r.name, bytes: r.bytes, estTokens: r.tokens })),
   };
-  // Omitted when the request carried no system prompt.
   if (audit.systemPrompt) {
     sidecar.request.system = {
       hash: audit.systemPrompt.hash,
@@ -607,10 +605,9 @@ function decodeResponse(raw: string): DecodedResponse {
     const payload = m?.[1];
     if (payload === undefined || payload === '[DONE]' || payload.trim() === '') continue;
     try {
-      // SAFETY: `StreamEvent` declares every field optional, and the reassembly below
-      // branches on `type` before reading any of them — so a frame this proxy has
-      // never seen contributes nothing rather than a wrong type. A frame that is not
-      // JSON throws into the `catch` and is skipped.
+      // SAFETY: every `StreamEvent` field is optional and the reassembly branches on
+      // `type` first, so an unrecognised frame contributes nothing rather than a
+      // wrong type; a frame that is not JSON throws into the `catch`.
       events.push(JSON.parse(payload) as StreamEvent);
     } catch {
       /* skip */
@@ -621,9 +618,9 @@ function decodeResponse(raw: string): DecodedResponse {
   // usage at the top level.
   if (events.length === 0) {
     try {
-      // SAFETY: every field claimed here is optional, and the guard below requires
-      // `usage` or `content` to be present before any of them is read — so a body that
-      // is JSON but not a message object falls through to the raw fence instead.
+      // SAFETY: every field claimed is optional and the guard below requires `usage`
+      // or `content` first, so a body that is JSON but not a message object falls
+      // through to the raw fence.
       const obj = JSON.parse(raw) as {
         usage?: Usage;
         content?: JsonValue;
@@ -758,10 +755,9 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     // Parse the request body once — the skim gate and the logging both need it.
     let reqJson: RequestBody | null = null;
     try {
-      // SAFETY: `RequestBody` declares every field optional over a JSON-value index,
-      // and each one is decoded through `json.ts` before it is used — so a body that
-      // parses but is not a `/v1/messages` request reads as absent fields rather than
-      // as a wrong type. A body that is not JSON at all throws into the `catch` below.
+      // SAFETY: every `RequestBody` field is optional and decoded through `json.ts`
+      // before use, so a body that parses but is not a `/v1/messages` request reads as
+      // absent fields; one that is not JSON throws into the `catch`.
       reqJson = JSON.parse(body.toString('utf8')) as RequestBody;
     } catch {
       /* non-JSON body */

@@ -31,9 +31,8 @@ interface SidecarRequest {
 }
 
 const requestOf = (json: string): SidecarRequest => {
-  // SAFETY: `json` is the string `writeAuditSidecar` returned a line earlier in the
-  // same test, so its `request` object is the one that function built — not input
-  // from anywhere this test does not control.
+  // SAFETY: `json` is what `writeAuditSidecar` returned a line earlier in the same
+  // test, so `request` is the object that call built.
   const sidecar = JSON.parse(json) as { request: SidecarRequest };
   return sidecar.request;
 };
@@ -130,8 +129,8 @@ test('the store writes one file per distinct hash and reuses it after', () => {
   const stored = fs.readdirSync(path.join(dir, PROMPT_STORE_DIR)).sort();
   assert.deepEqual(stored, [`${first.hash}.json`, `${second.hash}.json`].sort());
 
-  // SAFETY: `recordPrompt` wrote this file two lines up, from `first` — so its three
-  // fields are the ones that call serialized.
+  // SAFETY: `recordPrompt` wrote this file from `first`, so its three fields are the
+  // ones that call serialized.
   const record = JSON.parse(fs.readFileSync(path.join(dir, PROMPT_STORE_DIR, `${first.hash}.json`), 'utf8')) as {
     hash: string;
     bytes: number;
@@ -155,9 +154,8 @@ test('a record already on disk is not rewritten by a later process', () => {
   fs.writeFileSync(file, '{"hash":"pre-existing"}');
 
   assert.equal(recordPrompt(dir, identity), false);
-  // SAFETY: this test wrote `{"hash":"pre-existing"}` to `file` itself and is asserting
-  // that `recordPrompt` left it alone, so the parsed value is that literal or the
-  // assertion below fails.
+  // SAFETY: this test wrote `{"hash":"pre-existing"}` to `file` itself, so the parsed
+  // value is that literal or the assertion fails.
   assert.equal((JSON.parse(fs.readFileSync(file, 'utf8')) as { hash: string }).hash, 'pre-existing');
 });
 
