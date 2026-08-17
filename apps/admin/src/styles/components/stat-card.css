@@ -181,11 +181,11 @@
       opacity: 0.45;
     }
   }
-  /* The timeline under the dial: the burn so far, and where the pace lands. */
+  /* The timeline riding the top of the card: the burn so far, and where the pace lands. */
   .usage-bar {
     position: relative;
     height: 7px;
-    margin-top: var(--space-6);
+    margin: 0 0 var(--space-6);
     border-radius: var(--radius-2);
     background: var(--surface-2);
     overflow: hidden;
@@ -344,5 +344,20 @@
   }
   .stat-popover-list li.is-active .stat-popover-date {
     color: var(--text);
+  }
+
+  /* The usage cards borrow the stat cards' hover panel for their pace blurb. */
+  .usage-meter {
+    position: relative;
+  }
+  .usage-meter:hover .stat-popover,
+  .usage-meter:focus-within .stat-popover {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+  .stat-popover .usage-blurb {
+    margin: 0;
   }
 }

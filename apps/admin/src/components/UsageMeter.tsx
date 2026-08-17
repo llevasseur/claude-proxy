@@ -175,6 +175,15 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
 
   return (
     <div className={`card usage-meter tone-${tone}`}>
+      {/* The rate made visible, riding the top edge of the card: the fill is the
+          burn so far, its faint extension where this pace lands by the reset.
+          The dial below carries the meter semantics. */}
+      <div className='usage-bar' aria-hidden>
+        <div className='usage-bar-fill' style={{ width: `${fill}%` }} />
+        {projected != null && projected > fill && (
+          <div className='usage-bar-projected' style={{ width: `${projected}%` }} title='Projected by reset' />
+        )}
+      </div>
       <div className='usage-meter-head'>
         <span className='stat-label'>{w.label}</span>
         <span className={`usage-chip ${tone}`}>{(w.learned ? LEARNED_STATUS_LABEL : STATUS_LABEL)[w.pace.status]}</span>
@@ -187,15 +196,6 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
             {remaining < 10 ? remaining.toFixed(1) : Math.round(remaining)}
             <span className='usage-meter-unit'>% left</span>
           </span>
-        </div>
-        {/* The rate made visible: the fill is the burn so far, the faint
-            extension where this pace lands by the reset. The dial above already
-            carries the meter semantics. */}
-        <div className='usage-bar' aria-hidden>
-          <div className='usage-bar-fill' style={{ width: `${fill}%` }} />
-          {projected != null && projected > fill && (
-            <div className='usage-bar-projected' style={{ width: `${projected}%` }} title='Projected by reset' />
-          )}
         </div>
       </div>
 
@@ -232,7 +232,12 @@ export function UsageMeter({ meter: w }: { meter: UsageWindowMeter }) {
         )}
       </div>
 
-      <p className='usage-blurb'>{w.pace.blurb}</p>
+      {/* The pace read, off the card face and into the same hover panel the
+          stat cards use for their day lists. */}
+      <div className='stat-popover' role='tooltip'>
+        <div className='stat-popover-head'>{w.label} · pace</div>
+        <p className='usage-blurb'>{w.pace.blurb}</p>
+      </div>
     </div>
   );
 }
