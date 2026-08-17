@@ -1,6 +1,5 @@
 import {
   type IdeaFilter,
-  type IdeaStatus,
   isIdeaArea,
   isIdeaRepo,
   isIdeaStatus,
@@ -22,6 +21,7 @@ import {
   listIdeas,
   markIdeas,
 } from './ideas.ts';
+import { readJsonBody, readJsonRecord, textField } from './json.ts';
 import {
   archiveNote,
   createNote,
@@ -35,8 +35,10 @@ import {
 import {
   ConceptError,
   type ConceptFilter,
+  type ConceptSummary,
   conceptFacets,
   exportJsonl,
+  type Facets,
   getConceptById,
   getConceptsByTerm,
   listConcepts,
@@ -44,7 +46,7 @@ import {
   searchConcepts,
 } from './store.ts';
 
-export function json(body: unknown, status = 200): Response {
+export function json<T>(body: T, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json; charset=utf-8' },
@@ -67,6 +69,13 @@ export function filterFromParams(params: URLSearchParams): ConceptFilter {
   return filter;
 }
 
+/** The listing body: the glossary, its size, and the facet counts when they were asked for. */
+interface ConceptListBody {
+  concepts: ConceptSummary[];
+  count: number;
+  facets?: Facets;
+}
+
 /**
  * Handles the REST surface, or returns null when the path is not one of ours so
  * the caller can fall through to MCP.
@@ -76,8 +85,7 @@ export async function handleRest(request: Request, url: URL, db: Db): Promise<Re
   const params = url.searchParams;
 
   if (path === '/api/concepts' && request.method === 'POST') {
-    const body = await request.json().catch(() => null);
-    const result = await saveConcept(db, body);
+    const result = await saveConcept(db, await readJsonBody(request));
     return json(
       { id: result.concept.id, term: result.concept.term, created: result.created },
       result.created ? 201 : 200,
@@ -87,7 +95,9 @@ export async function handleRest(request: Request, url: URL, db: Db): Promise<Re
   if (path === '/api/concepts' && request.method === 'GET') {
     const filter = filterFromParams(params);
     const concepts = await listConcepts(db, filter);
-    const body: Record<string, unknown> = { concepts, count: concepts.length };
+    const body: ConceptListBody = { concepts, count: concepts.length };
+    // Facets are a second query, so they are computed only when asked for — and
+    // the key stays off the body entirely when they were not.
     if (params.get('facets') === 'true') body.facets = await conceptFacets(db, filter);
     return json(body);
   }
@@ -158,20 +168,20 @@ async function handleNotes(request: Request, path: string, params: URLSearchPara
     return json({ note });
   }
   if (path === '/api/notes' && request.method === 'POST') {
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    const body = await readJsonRecord(request);
     if (!body) throw new NoteError(400, 'JSON body is required');
     return json({ note: await createNote(db, body) }, 201);
   }
   if (path === '/api/notes/update' && request.method === 'POST') {
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-    const id = typeof body?.id === 'string' ? body.id : '';
+    const body = await readJsonRecord(request);
+    const id = body && textField(body, 'id');
     if (!id) throw new NoteError(400, '`id` is required');
     const result = await updateNote(db, id, body ?? {});
     return 'conflict' in result ? json(result, 409) : json(result);
   }
   if ((path === '/api/notes/archive' || path === '/api/notes/restore') && request.method === 'POST') {
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-    const id = typeof body?.id === 'string' ? body.id : '';
+    const body = await readJsonRecord(request);
+    const id = body && textField(body, 'id');
     if (!id) throw new NoteError(400, '`id` is required');
     const note = path.endsWith('/archive') ? await archiveNote(db, id) : await restoreNote(db, id);
     return json({ note });
@@ -187,7 +197,7 @@ function ideaFilterFromParams(params: URLSearchParams): IdeaFilter {
     filter.statuses = status.split(',').map((part) => {
       const value = part.trim();
       if (!isIdeaStatus(value)) throw new IdeaError(400, `invalid status: ${value}`);
-      return value as IdeaStatus;
+      return value;
     });
   }
   const repo = params.get('repo');
@@ -211,7 +221,7 @@ function parsed<T>(read: () => T): T {
   try {
     return read();
   } catch (error) {
-    throw new IdeaError(400, (error as Error).message);
+    throw new IdeaError(400, error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -241,7 +251,7 @@ async function handleIdeas(request: Request, path: string, params: URLSearchPara
   }
 
   if (path === '/api/ideas' && request.method === 'POST') {
-    const body = (await request.json().catch(() => null)) as { ideas?: unknown } | null;
+    const body = await readJsonRecord(request);
     return json(
       await addIdeas(
         db,
@@ -251,7 +261,7 @@ async function handleIdeas(request: Request, path: string, params: URLSearchPara
   }
 
   if (path === '/api/ideas/mark' && request.method === 'POST') {
-    const body = (await request.json().catch(() => null)) as { marks?: unknown } | null;
+    const body = await readJsonRecord(request);
     return json(
       await markIdeas(
         db,
@@ -261,7 +271,7 @@ async function handleIdeas(request: Request, path: string, params: URLSearchPara
   }
 
   if (path === '/api/ideas/file' && request.method === 'POST') {
-    const body = (await request.json().catch(() => null)) as { filings?: unknown } | null;
+    const body = await readJsonRecord(request);
     return json(
       await fileIdeas(
         db,
@@ -271,7 +281,7 @@ async function handleIdeas(request: Request, path: string, params: URLSearchPara
   }
 
   if (path === '/api/ideas/comment' && request.method === 'POST') {
-    const body = (await request.json().catch(() => null)) as { comments?: unknown } | null;
+    const body = await readJsonRecord(request);
     return json(
       await commentIdeas(
         db,
@@ -281,7 +291,7 @@ async function handleIdeas(request: Request, path: string, params: URLSearchPara
   }
 
   if (path === '/api/ideas/claim' && request.method === 'POST') {
-    const body = (await request.json().catch(() => null)) as { claims?: unknown } | null;
+    const body = await readJsonRecord(request);
     // A live holder comes back in the body as a refusal rather than as an error
     // status: it is an answer the caller renders, not a failed request.
     return json(

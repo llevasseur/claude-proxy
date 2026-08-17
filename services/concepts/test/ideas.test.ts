@@ -7,7 +7,7 @@
  * write rather than by whoever read last.
  */
 
-import { IDEA_CLAIM_TTL_MS } from '@claude-proxy/core';
+import { IDEA_CLAIM_TTL_MS, type IdeaAdd } from '@claude-proxy/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db.ts';
 import {
@@ -21,7 +21,7 @@ import {
   markIdeas,
   readIdeas,
 } from '../src/ideas.ts';
-import { testDb } from './harness.ts';
+import { numberAt, recordAt, testDb, textRecord } from './harness.ts';
 
 let db: Db;
 
@@ -31,7 +31,7 @@ beforeEach(() => {
 
 const T0 = new Date('2026-08-10T10:00:00.000Z');
 
-function idea(overrides: Record<string, unknown> = {}) {
+function idea(overrides: Partial<IdeaAdd> = {}): IdeaAdd {
   return {
     slug: 'rolling-window',
     title: 'A rolling last-10 window beside the fixed buckets',
@@ -345,8 +345,8 @@ describe('listing and export', () => {
 
   it('exports the ledger in the shape the file held, so the backup is restorable', async () => {
     await addIdeas(db, [idea()], T0);
-    const parsed = JSON.parse(await exportIdeas(db, T0)) as { version: number; ideas: Record<string, unknown> };
-    expect(parsed.version).toBe(1);
-    expect(Object.keys(parsed.ideas)).toEqual(['rolling-window']);
+    const parsed = textRecord(await exportIdeas(db, T0));
+    expect(numberAt(parsed, 'version')).toBe(1);
+    expect(Object.keys(recordAt(parsed, 'ideas'))).toEqual(['rolling-window']);
   });
 });

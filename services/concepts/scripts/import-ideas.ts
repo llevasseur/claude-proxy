@@ -42,6 +42,13 @@ function defaultStorePath(): string {
   return resolve(HERE, '..', '..', '..', 'logs', 'ideas.json');
 }
 
+/** The one `marks` entry a status mark carries. `note` is absent unless the entry had one. */
+interface MarkStep {
+  slug: string;
+  status: IdeaEntry['status'];
+  note?: string;
+}
+
 /** One write the importer will make, in the order it has to be made. */
 interface Step {
   path: string;
@@ -83,11 +90,12 @@ function stepsFor(entry: IdeaEntry): Step[] {
   // which is the status underneath a claim anyway.
   const status = entry.status === 'claimed' ? 'accepted' : entry.status;
   if (status !== 'proposed') {
-    steps.push({
-      path: '/api/ideas/mark',
-      label: `mark ${entry.slug} ${status}`,
-      body: { marks: [{ slug: entry.slug, status, ...(entry.note ? { note: entry.note } : {}) }] },
-    });
+    // A `note` the entry never had is left off the write rather than sent as
+    // empty: `parseIdeaMarks` treats a present note as a replacement, so an empty
+    // one would overwrite whatever a re-run had already imported.
+    const mark: MarkStep = { slug: entry.slug, status };
+    if (entry.note) mark.note = entry.note;
+    steps.push({ path: '/api/ideas/mark', label: `mark ${entry.slug} ${status}`, body: { marks: [mark] } });
   }
 
   if (entry.comment) {
@@ -142,7 +150,7 @@ async function main(): Promise<void> {
   console.log(`sent ${sent} writes for ${entries.length} ideas — re-running imports nothing further`);
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
+main().catch((cause: unknown) => {
+  console.error(cause instanceof Error ? cause.message : cause);
   process.exitCode = 1;
 });
