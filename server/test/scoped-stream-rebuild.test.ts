@@ -63,8 +63,8 @@ function countingSource() {
   const reads: string[] = [];
   return {
     reads,
-    // `satisfies` keeps the object's inferred shape while still giving both overrides'
-    // parameters `SidecarSource`'s own contextual types.
+    // `satisfies` keeps the inferred type while giving both overrides' parameters
+    // `SidecarSource`'s contextual ones.
     source: {
       ...fileSource,
       readArchivedDay: (logDir, date, opts) => {

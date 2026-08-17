@@ -168,9 +168,8 @@ describe('backfillPromptIdentity', () => {
     await capture(dayDir, '2026-07-20T10-00-00-000_anthropic', { system: [block('# Old\nprompt')] });
 
     await backfillPromptIdentity(logDir, { apply: true });
-    // `AuditSidecar.request.system` is optional — an untagged sidecar simply has none —
-    // so the outline's presence is asserted rather than assumed, which is the same thing
-    // the test above states for the malformed case.
+    // `AuditSidecar.request.system` is optional — an untagged sidecar has none — so the
+    // outline's presence is asserted rather than assumed.
     const { system } = (await readSidecar(dayDir, '2026-07-20T10-00-00-000_anthropic')).request;
     expect(system, 'the archived sidecar was tagged, so it carries a system outline').toBeDefined();
     expect(system?.blocks).toBe(1);

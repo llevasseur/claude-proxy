@@ -34,8 +34,7 @@ const pr = (over: Partial<PullRequestRow> & { number: number }): PullRequestRow 
   ...over,
 });
 
-// A fixed 3-element tuple, so every destructure below reads straight off its length —
-// no assertion needed to say "this array has at least N elements".
+// A fixed 3-element tuple, so every destructure below reads straight off its length.
 const THREADS = ['0123456789abcdef', 'fedcba9876543210', 'abcdefabcdef0123'] as const;
 
 /** The checkout the scanned links are keyed under. Nothing reads it off disk. */

@@ -15,10 +15,8 @@ export interface FakeNotesServer {
 const TOKEN = 'fake-notes-token';
 
 /**
- * Every body this fake worker replies with, across all of its routes. The routes
- * answer the Notes API's own contract rather than arbitrary JSON, so this names
- * that contract — which is also what a bare `JsonValue` could not: `NoteDocument`
- * and `NoteMetadata` are interfaces, and an interface carries no implicit index
+ * Every body this fake worker replies with. Not `JsonValue`: `NoteDocument` and
+ * `NoteMetadata` are interfaces, and an interface carries no implicit index
  * signature, so neither is assignable to `JsonObject` however JSON-safe it is.
  */
 type NotesReply =

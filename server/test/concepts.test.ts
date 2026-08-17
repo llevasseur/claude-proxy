@@ -39,7 +39,7 @@ let db: DatabaseSync;
 const countOf = (sql: string): number => {
   // SAFETY: the four `concept`/`concept_skill` tallies below are each a bare
   // `count(*) c` — no GROUP BY, so SQLite answers with exactly one row, and `c` is
-  // the only column it carries. Narrowing here keeps that claim in one place.
+  // the only column it carries.
   return (db.prepare(sql).get() as { c: number }).c;
 };
 

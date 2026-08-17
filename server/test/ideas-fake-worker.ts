@@ -62,9 +62,7 @@ function ledger(): Ledger {
       if (pathname === '/api/ideas/export') return { status: 200, payload: store };
 
       if (pathname === '/api/ideas') {
-        // The wire body is decoded JSON, not yet narrowed to the request shape this
-        // route expects — going through `unknown` first (rather than a chained
-        // assertion) is what lets the cast below jump straight to it.
+        // Decoded JSON, not yet narrowed to this route's request type.
         const rawIdeas: unknown = body.ideas ?? [];
         // SAFETY: every caller reaches this route through addIdeasToStore
         // (server/src/ideas-store.ts), which posts `{ ideas }` as an array of
@@ -149,10 +147,8 @@ export async function startFakeIdeasServer(): Promise<{ url: string; stop: () =>
       const raw = Buffer.concat(chunks).toString('utf8');
       let body: JsonObject = {};
       try {
-        // SAFETY: every real caller in this suite POSTs a JSON object (never an
-        // array or scalar) — see `handle`'s own route bodies above — so a parse
-        // that doesn't throw lands on JsonObject; a non-object payload would only
-        // fail downstream, which is the same failure the try/catch already guards.
+        // SAFETY: every real caller in this suite POSTs a JSON object (never an array
+        // or scalar), so a parse that doesn't throw lands on JsonObject.
         body = raw ? (JSON.parse(raw) as JsonObject) : {};
       } catch {
         body = {};

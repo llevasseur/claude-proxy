@@ -149,9 +149,7 @@ describe('the store', () => {
   });
 
   it('lets a later line supersede an earlier one for the same thread', async () => {
-    // Shared fields for the two lines below. Left uncast here — the cast that opts
-    // out of the rest of `CommandRun` (this test only cares about `threadId` and
-    // `totals.turns`) is applied once per line, after `started`/`totals` are spread in.
+    // Shared fields for the two lines below; each applies its own cast after the spread.
     const base = { schema: COMMAND_RUN_SCHEMA, threadId: 'a'.repeat(16), command: 'task' };
     await appendCommandRuns(logDir, [
       // SAFETY: `appendCommandRuns` wants a full `CommandRun`, but this record is

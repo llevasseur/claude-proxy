@@ -121,8 +121,8 @@ describe('notes remote calls', () => {
 
   it('maps a failed upstream body read to an unreachable-store error without leaking the token', async () => {
     configure();
-    // `vi.stubGlobal` takes the replacement as `unknown`, so this stand-in only
-    // needs the one member `call()` actually reads — no cast to `Response` needed.
+    // `vi.stubGlobal` takes the replacement as `unknown`, so this stand-in needs only
+    // the one member `call()` reads.
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({

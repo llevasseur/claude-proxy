@@ -354,9 +354,8 @@ async function until(check: () => boolean, ms = 5_000): Promise<boolean> {
 describe.skipIf(process.platform === 'win32')('runCliTurn — ending a run early', () => {
   it('stops the whole process group and returns what the run had reached', async () => {
     const { cliPath, childPidFile } = fakeCli('fake-claude-stop');
-    // `onStart` fires from inside `runCliTurn`, which the checker cannot see into, so
-    // collecting the run rather than assigning a nullable local is what lets the check
-    // below be a real one instead of an assertion talking the type away.
+    // `onStart` fires from inside `runCliTurn`, where the checker cannot follow — so the
+    // run is collected rather than assigned to a nullable local.
     const started: CliRunHandle[] = [];
     const turn = runCliTurn({ ...turnInput(cliPath), onStart: (run) => started.push(run) });
 

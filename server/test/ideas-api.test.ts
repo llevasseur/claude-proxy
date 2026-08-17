@@ -308,9 +308,7 @@ describe('applyIdeaComment', () => {
   });
 
   it('refuses a comment that is not text, and an empty batch', async () => {
-    // A wire payload can carry any JSON value here — this is the shape a caller who
-    // skipped validation would send, so it stays untyped up to the one cast below
-    // rather than passing type-checked input the function is meant to reject.
+    // What a caller who skipped validation would send, left untyped up to the cast below.
     const notText: unknown[] = [{ slug: 'rolling-window', text: 42 }];
     // SAFETY: deliberately mistyped to exercise applyIdeaComment's own runtime
     // rejection of a non-string `text` — the assertion opts out of the compile-time

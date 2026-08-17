@@ -196,8 +196,7 @@ describe('read routes', () => {
   });
 
   it('adjudicates an idea through the write route, and maps each refusal to a 400', async () => {
-    // A caller-shaped mark, including the deliberately incomplete ones below that exercise
-    // the route's own 400s — `note` stays optional so those calls can omit it on purpose.
+    // `note` stays optional so the deliberately incomplete calls below can omit it.
     const mark = (marks: JsonValue, origin?: string) => {
       const body = JSON.stringify({ marks });
       return origin
@@ -235,8 +234,7 @@ describe('read routes', () => {
   });
 
   it('files an idea and comments on it through their own write routes', async () => {
-    // A JSON body shaped for whichever of `area`/`comment` route is named — including the
-    // deliberately malformed ones below (a bad area, a comment missing its text).
+    // A JSON body for whichever of `area`/`comment` is named, malformed ones included.
     const post = (route: string, body: JsonValue, origin?: string) => {
       const jsonBody = JSON.stringify(body);
       return origin
@@ -311,8 +309,7 @@ describe('read routes', () => {
   });
 
   it('origin-checks every Notes write and preserves upstream status and structured conflicts', async () => {
-    // A JSON body shaped for whichever Notes write route is named — including the
-    // deliberately incomplete `/update` call below that omits `body` to trigger its 400.
+    // A JSON body for whichever Notes write route is named, incomplete ones included.
     const post = (path: string, body: JsonValue, origin?: string) => {
       const jsonBody = JSON.stringify(body);
       return origin

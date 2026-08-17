@@ -65,8 +65,8 @@ function counting(inner: SidecarSource) {
   const archivedReads: string[] = [];
   return {
     archivedReads,
-    // `satisfies` keeps the object's inferred shape while still giving the
-    // `readArchivedDay` override's parameters `SidecarSource`'s own contextual types.
+    // `satisfies` keeps the inferred type while giving the `readArchivedDay` override's
+    // parameters `SidecarSource`'s contextual ones.
     source: {
       ...inner,
       readArchivedDay: (logDir, date, opts) => {

@@ -85,8 +85,7 @@ describe('deriving a body before eviction removes it', () => {
   /** The single number behind a `count(*) c` query, for the assertions below. */
   const countOf = (sql: string): number => {
     // SAFETY: an aggregate with no GROUP BY returns exactly one row, and every caller
-    // below aliases its one column `c` — so this is the row `.get()` just built, and
-    // saying it here once is why none of those call sites repeats the claim.
+    // below aliases its one column `c`.
     return (db.prepare(sql).get() as { c: number }).c;
   };
 

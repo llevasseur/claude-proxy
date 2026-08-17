@@ -71,7 +71,6 @@ async function fixture(): Promise<Fixture> {
 
   // SAFETY: the loop above pushes one sha per element of the literal `[1, 2, 3, 4]`
   // and nothing else writes to `shas`, so it holds exactly the four `Fixture` promises.
-  // Stating it once here is what lets all fourteen call sites destructure it plainly.
   const four = shas as [string, string, string, string];
 
   return {
