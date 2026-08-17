@@ -44,7 +44,12 @@ import {
   claimableIdeaRows,
   countIdeaStatuses,
   IDEA_STATUSES,
+  type IdeaClaimRequest,
+  type IdeaComment,
   type IdeaEntry,
+  type IdeaFiling,
+  type IdeaFilter,
+  type IdeaMark,
   type IdeaStatus,
   ideaAreaLabel,
   ideaCitation,
@@ -58,7 +63,8 @@ import {
   parseIdeaAdds,
   SEED_IDEA_AREAS,
 } from '@claude-proxy/core';
-import { reconcileIdeaPrs, renderIdeaPrTransition } from './ideas-pr.js';
+import { errorMessage } from './errors.js';
+import { type IdeaPrSyncOptions, reconcileIdeaPrs, renderIdeaPrTransition } from './ideas-pr.js';
 import {
   addIdeasToStore,
   claimIdeasInStore,
@@ -181,7 +187,12 @@ function parseStatuses(raw: string): IdeaStatus[] {
 /** Everything on stdin, for `add --json -`. */
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  for await (const chunk of process.stdin) {
+    // SAFETY: no encoding is set on `process.stdin`, so the stream stays in
+    // binary mode and every chunk it yields is a `Buffer`; the iterator is typed
+    // loosely because a stream with an encoding would yield strings instead.
+    chunks.push(chunk as Buffer);
+  }
   return Buffer.concat(chunks).toString('utf8');
 }
 
@@ -236,11 +247,13 @@ async function run(argv: readonly string[]): Promise<void> {
     const store = await readIdeasStore();
     if (flags.area !== undefined && !isIdeaArea(flags.area))
       throw new Error(`--area ${flags.area} is not a kebab-case area (a-z, 0-9, single dashes)`);
-    const filter = {
-      ...(flags.status ? { statuses: parseStatuses(flags.status) } : {}),
-      ...(flags.repo ? { repo: flags.repo } : {}),
-      ...(flags.area ? { area: flags.area } : {}),
-    };
+    // Each key is set only when its flag was given: an absent filter and one
+    // present but undefined are the same to the row readers, but only the first
+    // is what "no --status was passed" means.
+    const filter: IdeaFilter = {};
+    if (flags.status) filter.statuses = parseStatuses(flags.status);
+    if (flags.repo) filter.repo = flags.repo;
+    if (flags.area) filter.area = flags.area;
     // `--available` is "what may I take"; the default is "what is signed off".
     const rows = switches.has('available') ? claimableIdeaRows(store, filter) : ideaRows(store, filter);
     const counts = countIdeaStatuses(rows);
@@ -261,8 +274,8 @@ async function run(argv: readonly string[]): Promise<void> {
     let raw: unknown;
     try {
       raw = JSON.parse(payload);
-    } catch (err) {
-      throw new Error(`--json is not valid JSON: ${(err as Error).message}`);
+    } catch (cause) {
+      throw new Error(`--json is not valid JSON: ${errorMessage(cause)}`);
     }
     const adds = parseIdeaAdds(raw);
 
@@ -296,9 +309,11 @@ async function run(argv: readonly string[]): Promise<void> {
         'claim needs --by <holder>: a branch, a run id, a person — whatever a second run can read and recognise as not itself',
       );
 
-    const result = await claimIdeasInStore([
-      { slug: flags.slug, by: flags.by, ...(flags.pr === undefined ? {} : { pr: flags.pr }) },
-    ]);
+    // `pr` is left off entirely when no --pr was given: a claim carrying the key
+    // at all is the one that never goes stale, so an absent flag must not write it.
+    const claim: IdeaClaimRequest = { slug: flags.slug, by: flags.by };
+    if (flags.pr !== undefined) claim.pr = flags.pr;
+    const result = await claimIdeasInStore([claim]);
     if (json) {
       console.log(JSON.stringify(result, null, 2));
     }
@@ -344,14 +359,13 @@ async function run(argv: readonly string[]): Promise<void> {
     if (flags.thread !== undefined && !isThreadId(flags.thread)) {
       throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
     }
-    const result = await markIdeasInStore([
-      {
-        slug: flags.slug,
-        status,
-        ...(flags.note === undefined ? {} : { note: flags.note }),
-        ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }),
-      },
-    ]);
+    // Both keys are written only when their flag was given: `note` replaces any
+    // existing note and `by` replaces the attribution, so an absent flag has to
+    // leave the key off rather than send it undefined.
+    const mark: IdeaMark = { slug: flags.slug, status };
+    if (flags.note !== undefined) mark.note = flags.note;
+    if (flags.thread !== undefined) mark.by = { thread: flags.thread };
+    const result = await markIdeasInStore([mark]);
     if (json) {
       console.log(JSON.stringify(result, null, 2));
       return;
@@ -376,9 +390,10 @@ async function run(argv: readonly string[]): Promise<void> {
     if (flags.thread !== undefined && !isThreadId(flags.thread))
       throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
 
-    const result = await fileIdeasInStore([
-      { slug: flags.slug, area: flags.area, ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }) },
-    ]);
+    // `by` only when --thread was given; it replaces the entry's attribution.
+    const filing: IdeaFiling = { slug: flags.slug, area: flags.area };
+    if (flags.thread !== undefined) filing.by = { thread: flags.thread };
+    const result = await fileIdeasInStore([filing]);
     if (json) {
       console.log(JSON.stringify(result, null, 2));
       return;
@@ -400,9 +415,10 @@ async function run(argv: readonly string[]): Promise<void> {
     if (flags.thread !== undefined && !isThreadId(flags.thread))
       throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
 
-    const result = await commentIdeasInStore([
-      { slug: flags.slug, text: flags.text, ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }) },
-    ]);
+    // `by` only when --thread was given; it replaces the entry's attribution.
+    const comment: IdeaComment = { slug: flags.slug, text: flags.text };
+    if (flags.thread !== undefined) comment.by = { thread: flags.thread };
+    const result = await commentIdeasInStore([comment]);
     if (json) {
       console.log(JSON.stringify(result, null, 2));
       return;
@@ -422,10 +438,11 @@ async function run(argv: readonly string[]): Promise<void> {
     if (flags.thread !== undefined && !isThreadId(flags.thread))
       throw new Error(`--thread ${flags.thread} is not a 16-hex-character thread id`);
 
-    const result = await reconcileIdeaPrs({
-      dryRun: Boolean(flags['dry-run']),
-      ...(flags.thread === undefined ? {} : { by: { thread: flags.thread } }),
-    });
+    // `by` only when --thread was given, so a sync run with no thread id leaves
+    // each entry's existing attribution alone.
+    const options: IdeaPrSyncOptions = { dryRun: Boolean(flags['dry-run']) };
+    if (flags.thread !== undefined) options.by = { thread: flags.thread };
+    const result = await reconcileIdeaPrs(options);
     if (json) {
       console.log(JSON.stringify(result, null, 2));
       if (result.error) process.exitCode = 1;
@@ -474,7 +491,7 @@ async function run(argv: readonly string[]): Promise<void> {
   throw new Error(`unknown command: ${command}\n\n${USAGE}`);
 }
 
-run(process.argv.slice(2)).catch((err: unknown) => {
-  console.error(`[ideas] ${(err as Error).message}`);
+run(process.argv.slice(2)).catch((cause: unknown) => {
+  console.error(`[ideas] ${errorMessage(cause)}`);
   process.exitCode = 1;
 });

@@ -10,6 +10,9 @@ import { USAGE_LIMIT_ENV_SUFFIX, type UsageLimitConfig, type UsageWindowKind } f
  *
  * Values are in the weighted units `usageUnits` counts, with `k`/`m` suffixes.
  */
+// SAFETY: `USAGE_LIMIT_ENV_SUFFIX` is keyed by every `UsageWindowKind`, and the map
+// below is one entry in, one entry out — so the result carries exactly those keys.
+// `Object.fromEntries` is what loses that, widening the key type back to `string`.
 const ENV_KEYS = Object.fromEntries(
   Object.entries(USAGE_LIMIT_ENV_SUFFIX).map(([kind, suffix]) => [kind, `USAGE_LIMIT_${suffix}`]),
 ) as Record<UsageWindowKind, string>;
@@ -28,7 +31,10 @@ export function parseLimit(raw: string | undefined): number | null {
 /** Resolve the configured per-window ceilings. Unset windows are simply absent. */
 export function resolveUsageLimits(env: NodeJS.ProcessEnv = process.env): UsageLimitConfig {
   const out: UsageLimitConfig = {};
-  for (const [kind, key] of Object.entries(ENV_KEYS) as [keyof UsageLimitConfig, string][]) {
+  // SAFETY: `ENV_KEYS` is keyed by `UsageWindowKind`, which is the union
+  // `UsageLimitConfig` is itself keyed by — `Object.entries` only widens it to `string`.
+  const windows = Object.entries(ENV_KEYS) as [keyof UsageLimitConfig, string][];
+  for (const [kind, key] of windows) {
     const limit = parseLimit(env[key]);
     if (limit != null) out[kind] = limit;
   }

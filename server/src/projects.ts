@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { errorMessage } from './errors.js';
 
 /** Default location of Claude Code's per-project state: `~/.claude/projects`. */
 export function defaultProjectsDir(): string {
@@ -70,8 +71,8 @@ export async function listProjects(projectsDir: string): Promise<ProjectSummary[
   let entries: import('node:fs').Dirent[];
   try {
     entries = await readdir(projectsDir, { withFileTypes: true });
-  } catch (err) {
-    throw new Error(`cannot read projects directory ${projectsDir}: ${(err as Error).message}`);
+  } catch (cause) {
+    throw new Error(`cannot read projects directory ${projectsDir}: ${errorMessage(cause)}`);
   }
 
   const projects: ProjectSummary[] = [];

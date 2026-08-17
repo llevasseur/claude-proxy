@@ -1,8 +1,9 @@
 import { access } from 'node:fs/promises';
-import { isUsageRecord, type LearnedCeilings, learnCeilings } from '@claude-proxy/core';
+import { isUsageRecord, type LearnedCeilings, learnCeilings, type UsageRecord } from '@claude-proxy/core';
 import { isClosedDay } from './day-digest-memo.js';
 import { fileSource, type SidecarSource } from './db/source.js';
 import { clearStoredUsageDays, readStoredUsageDay, storeUsageDay } from './db/usage-day-store.js';
+import { type JsonInput, stringField } from './json.js';
 import { rawArchiveDayDir, shiftDay, today } from './logs.js';
 
 /**
@@ -63,6 +64,15 @@ interface ArchivedDayRead {
 }
 
 /**
+ * What {@link projectUsage} keeps of one entry: the usage fields the meters read, each
+ * present only when the entry actually carried it.
+ */
+interface UsageProjection extends Partial<UsageRecord> {
+  /** The entry's own file stem, which `buildUsage` dedupes the archive/live seam on. */
+  __file?: string;
+}
+
+/**
  * One entry of an archived day, cut down to what the meters read.
  *
  * `learnCeilings` and `buildUsageLimits` between them consult a request's
@@ -75,9 +85,12 @@ interface ArchivedDayRead {
  * rather than being dropped: `/api/usage` reports `meta.files` as the length of
  * this stream, so dropping one would silently understate it.
  */
-function projectUsage(sidecar: unknown): Record<string, unknown> {
-  const file = (sidecar as { __file?: unknown })?.__file;
-  const out: Record<string, unknown> = typeof file === 'string' ? { __file: file } : {};
+function projectUsage(sidecar: JsonInput): UsageProjection {
+  const out: UsageProjection = {};
+  // Written only when the entry carried one, never as `undefined`: `buildUsage` dedupes
+  // the archive/live seam on the presence of this key.
+  const file = stringField(sidecar, '__file');
+  if (file !== undefined) out.__file = file;
   if (!isUsageRecord(sidecar)) return out;
   out.timestamp = sidecar.timestamp;
   out.model = sidecar.model;
@@ -129,7 +142,12 @@ async function readArchivedDayMemo(
     // `omitTools` because nothing below reads the tool table, and on the
     // substrate it is the one query whose size is the day times its tool count.
     const fresh = await source.readArchivedDay(logDir, day, { includeFile: true, omitTools: true });
-    const entry = { sidecars: fresh.sidecars.map(projectUsage), parseErrors: fresh.parseErrors };
+    // SAFETY: `readArchivedDay` types its stream as opaque, but every member of it is
+    // either a sidecar `JSON.parse` produced or a marker the substrate emitted for a
+    // file it could not read — parsed JSON either way, which is the domain the readers
+    // in `projectUsage` walk.
+    const members = fresh.sidecars as JsonInput[];
+    const entry = { sidecars: members.map(projectUsage), parseErrors: fresh.parseErrors };
     dayCache.set(key, entry);
     // Only a day that can no longer change is kept across the restart.
     if (closed) storeUsageDay(storedKey, { records: entry.sidecars, parseErrors: entry.parseErrors });

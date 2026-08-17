@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type AuditSidecar, isAuditSidecar, reportDay, shiftDay } from '@claude-proxy/core';
 import { latestUserText } from './derive.js';
+import { errorMessage } from './errors.js';
+import { type JsonInput, type JsonObject, type JsonValue, jsonArray, jsonObject, stringField } from './json.js';
 
 export { shiftDay };
 
@@ -162,8 +164,11 @@ export function mergeByTimestamp(a: readonly unknown[], b: readonly unknown[]): 
   let i = 0;
   let j = 0;
   while (i < a.length && j < b.length) {
-    const left = timestampOf(a[i]) ?? '';
-    const right = timestampOf(b[j]) ?? '';
+    // SAFETY: a half of a window is what `readSidecars` pushed — each row is the
+    // output of the `JSON.parse` below, so it is a `JsonValue` by construction.
+    const left = timestampOf(a[i] as JsonInput) ?? '';
+    // SAFETY: `b`'s rows come from the same reader as `a`'s, on the same terms.
+    const right = timestampOf(b[j] as JsonInput) ?? '';
     if (right < left) {
       out.push(b[j]!);
       j += 1;
@@ -178,10 +183,22 @@ export function mergeByTimestamp(a: readonly unknown[], b: readonly unknown[]): 
 }
 
 /** A sidecar's ISO `timestamp`, when it has a usable one. */
-function timestampOf(sidecar: unknown): string | null {
-  if (typeof sidecar !== 'object' || sidecar === null) return null;
-  const ts = (sidecar as { timestamp?: unknown }).timestamp;
-  return typeof ts === 'string' ? ts : null;
+function timestampOf(sidecar: JsonInput): string | null {
+  return stringField(sidecar, 'timestamp') ?? null;
+}
+
+/**
+ * The keys this reader writes onto a parsed sidecar before handing it on.
+ *
+ * They are not part of the captured document, which is why they are named here
+ * rather than found by decoding: `skimRequestText` is written as `undefined`
+ * when the body held no user text — a key present with no value, which is what
+ * `JSON.stringify` and the substrate's own rows already agree means "none".
+ */
+interface ReaderFields {
+  skimRequestText?: string | undefined;
+  tools?: JsonValue[];
+  __file?: string;
 }
 
 /**
@@ -198,8 +215,8 @@ export async function readSidecars(
   let entries: string[];
   try {
     entries = await readdir(logDir);
-  } catch (err) {
-    throw new Error(`cannot read log directory ${logDir}: ${(err as Error).message}`);
+  } catch (cause) {
+    throw new Error(`cannot read log directory ${logDir}: ${errorMessage(cause)}`);
   }
 
   let files = entries.filter((f) => f.endsWith('.audit.json'));
@@ -231,9 +248,12 @@ export async function readSidecars(
   let kept = 0;
   let bodiesEvicted = 0;
   for (const f of files) {
-    let sidecar: unknown;
+    let sidecar: JsonValue;
     try {
-      sidecar = JSON.parse(await readFile(path.join(logDir, f), 'utf8')) as unknown;
+      // SAFETY: `JSON.parse` is declared `any`, but every value it can return is
+      // within `JsonValue` by construction — that is the whole value space of a
+      // parsed document, and the readers below take it one step at a time.
+      sidecar = JSON.parse(await readFile(path.join(logDir, f), 'utf8')) as JsonValue;
     } catch {
       // No timestamp to place it by, so fall back to the filename's UTC day.
       if (keepDay && !keepDay(f.slice(0, 10))) continue;
@@ -251,17 +271,22 @@ export async function readSidecars(
       if (!keepDay((ts && reportDay(ts)) || f.slice(0, 10))) continue;
     }
 
-    if (typeof sidecar === 'object' && sidecar !== null) {
+    const record = jsonObject(sidecar);
+    if (record !== undefined) {
+      // SAFETY: `record` is the object `jsonObject` just narrowed, and this view
+      // adds only the three keys above — none of them a field the proxy writes,
+      // so nothing in the captured document is being retyped.
+      const decorated = record as JsonObject & ReaderFields;
       if (opts.includeSkimRequests) {
         const { text, bodyPresent } = await skimRequestText(logDir, f);
-        (sidecar as { skimRequestText?: string }).skimRequestText = text ?? undefined;
+        decorated.skimRequestText = text ?? undefined;
         if (!bodyPresent) bodiesEvicted += 1;
       }
-      if (opts.omitTools && Array.isArray((sidecar as { tools?: unknown }).tools)) {
-        (sidecar as { tools: unknown[] }).tools = [];
+      if (opts.omitTools && jsonArray(record.tools) !== undefined) {
+        decorated.tools = [];
       }
       if (opts.includeFile) {
-        (sidecar as { __file?: string }).__file = f.replace(/\.audit\.json$/, '');
+        decorated.__file = f.replace(/\.audit\.json$/, '');
       }
     }
     kept += 1;
@@ -362,7 +387,7 @@ const REQUEST_FILE_RE = /^[0-9A-Za-z:_.-]+_anthropic$/;
  * rather than {@link readRequestBody}, whose pretty-printing doubles the cost of a
  * multi-megabyte body; the commands reconcile pass opens bodies in bulk.
  */
-export async function readRequestBodyParsed(logDir: string, file: string): Promise<unknown> {
+export async function readRequestBodyParsed(logDir: string, file: string): Promise<JsonValue> {
   const live = liveRequestPath(logDir, file);
 
   // Fast path: today's bodies are all live. Kept to a single read with no `stat`
@@ -373,11 +398,19 @@ export async function readRequestBodyParsed(logDir: string, file: string): Promi
   } catch {
     text = null;
   }
-  if (text !== null) return JSON.parse(text) as unknown;
+  if (text !== null) {
+    // SAFETY: as in `readSidecars` — `JSON.parse` is declared `any`, and every
+    // value it returns is within `JsonValue`. A body that will not parse throws
+    // out of here, which is the read failure the callers already handle.
+    return JSON.parse(text) as JsonValue;
+  }
 
   // Slow path: archived, evicted, or never captured.
   const location = await locateRequestBody(logDir, file);
-  if (location.status === 'present') return JSON.parse(await readFile(location.path, 'utf8')) as unknown;
+  if (location.status === 'present') {
+    // SAFETY: the archived copy is the same captured body as the live one above.
+    return JSON.parse(await readFile(location.path, 'utf8')) as JsonValue;
+  }
   if (location.status === 'evicted') throw new Error(`request body evicted: ${file}`);
   throw new Error(`request file not found: ${file}`);
 }

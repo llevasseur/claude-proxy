@@ -13,12 +13,18 @@ import {
   type SessionMeta,
   type SessionNode,
 } from '@claude-proxy/core';
+import { parseJson, stringField } from './json.js';
 
 /**
  * The thread id a captured request belongs to: a hash of its session id and its conversation
  * root. Mirrors `threadIdFor` in `proxy/session.ts`, which named the transcript in the first
  * place. Null when the body has no user text to root on.
  */
+// `messages` stays `unknown` because `firstUserText` in `@claude-proxy/core` is the
+// decoder for it and its own parameter is `unknown`; nothing here reads the array.
+// Narrowing it to `JsonInput` is a change to a shared signature that
+// `server/test/session-graph-nodes` hands an `unknown[]`.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- see the note above.
 export function threadIdForBody(sessionId: string | null, messages: unknown): string | null {
   const root = firstUserText(messages);
   if (!root) return null;
@@ -103,8 +109,8 @@ export async function readRootPrompts(logDir: string, threadIds: readonly string
     wanted.map(async (threadId) => {
       try {
         const raw = await readFile(path.join(dir, `${threadId}.state.json`), 'utf8');
-        const state = JSON.parse(raw) as { root?: unknown };
-        if (typeof state.root === 'string' && state.root) out.set(threadId, state.root);
+        const root = stringField(parseJson(raw), 'root');
+        if (root) out.set(threadId, root);
       } catch {
         // no sidecar, or it went away — the thread just has no prompt on record
       }
@@ -141,8 +147,8 @@ export async function readPrLinks(logDir: string): Promise<Map<string, string>> 
       const threadId = STATE_FILE_RE.exec(name)?.[1];
       if (!threadId) return;
       try {
-        const state = JSON.parse(await readFile(path.join(dir, name), 'utf8')) as { pr?: unknown };
-        if (typeof state.pr === 'string' && state.pr) out.set(threadId, state.pr);
+        const pr = stringField(parseJson(await readFile(path.join(dir, name), 'utf8')), 'pr');
+        if (pr) out.set(threadId, pr);
       } catch {
         // unreadable or torn sidecar — the thread just has no link on record
       }
