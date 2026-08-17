@@ -1,6 +1,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { NoteDocument, NoteMetadata, NotePage } from '@claude-proxy/core';
+import type { JsonObject, JsonValue } from '../../proxy/json.ts';
 
 export interface FakeNotesServer {
   url: string;
@@ -42,8 +43,11 @@ export async function startFakeNotesServer(): Promise<FakeNotesServer> {
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8');
-      const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-      const send = (status: number, payload: unknown) => {
+      // SAFETY: every route below is only reached for a POST, and every POST this
+      // fake server's own callers (notes-remote.ts) send is a JSON object literal
+      // (create/update bodies) — never an array or a bare primitive.
+      const body = raw ? (JSON.parse(raw) as JsonObject) : {};
+      const send = (status: number, payload: JsonValue) => {
         res.writeHead(status, { 'content-type': 'application/json' });
         res.end(JSON.stringify(payload));
       };
@@ -76,12 +80,9 @@ export async function startFakeNotesServer(): Promise<FakeNotesServer> {
             attemptedRevisionId: 'attempt-conflict',
           });
         } else {
-          note = {
-            ...note,
-            version: note.version + 1,
-            ...(body.title === undefined ? {} : { title: String(body.title) }),
-            ...(body.body === undefined ? {} : { body: String(body.body) }),
-          };
+          note = { ...note, version: note.version + 1 };
+          if (body.title !== undefined) note.title = String(body.title);
+          if (body.body !== undefined) note.body = String(body.body);
           send(200, { note, changed: true });
         }
       } else if (req.method === 'POST' && url.pathname === '/api/notes/archive') {
@@ -96,6 +97,8 @@ export async function startFakeNotesServer(): Promise<FakeNotesServer> {
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  // SAFETY: `listen(0, ...)` above has already resolved, and a TCP server (not a
+  // unix socket) always answers `address()` with an `AddressInfo`, never a string.
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,

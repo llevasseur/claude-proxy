@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import type { IdeaEntry, IdeaStatus } from '@claude-proxy/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { JsonObject, JsonValue } from '../../proxy/json.ts';
 import { addIdeasToStore } from '../src/ideas-store.js';
 import { startFakeIdeasServer } from './ideas-fake-worker.js';
 import { type FakeNotesServer, startFakeNotesServer } from './notes-fake-worker.js';
@@ -56,9 +57,12 @@ function raw(pathname: string, headers: Record<string, string> = {}, method = 'G
   });
 }
 
-/** `Response.json()` answers `unknown`; these routes always reply with a `prompt` payload. */
-async function promptOf(res: Response): Promise<unknown> {
-  return ((await res.json()) as { prompt: unknown }).prompt;
+/** `Response.json()` answers `any`; these routes always reply with a `prompt` payload. */
+async function promptOf(res: Response): Promise<JsonValue> {
+  // SAFETY: every call site below hits `/api/system-prompt`, whose handlers
+  // (buildSystemPrompt / buildSystemPromptUpdate) always reply `{ prompt: ... }` — the
+  // cast only names the field this helper reads back out.
+  return ((await res.json()) as { prompt: JsonValue }).prompt;
 }
 
 /** Poll `/api/health` until the listener answers, so a slow `tsx` start isn't a failure. */
@@ -176,6 +180,8 @@ describe('read routes', () => {
   it('lists the ideas ledger as a GET, and refuses every non-GET on it', async () => {
     const res = await fetch(`${BASE}/api/ideas`);
     expect(res.status).toBe(200);
+    // SAFETY: `/api/ideas` is buildIdeas' list route, which always replies with a
+    // `{ rows, meta: { counts } }` envelope — the cast only names that shape for this test.
     const body = (await res.json()) as { rows: IdeaEntry[]; meta: { counts: Record<IdeaStatus, number> } };
     expect(body.rows.map((r) => r.slug)).toEqual(['rolling-window']);
     expect(body.meta.counts.proposed).toBe(1);
@@ -190,15 +196,27 @@ describe('read routes', () => {
   });
 
   it('adjudicates an idea through the write route, and maps each refusal to a 400', async () => {
-    const mark = (marks: unknown, origin?: string) =>
-      fetch(`${BASE}/api/ideas/status`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
-        body: JSON.stringify({ marks }),
-      });
+    // A caller-shaped mark, including the deliberately incomplete ones below that exercise
+    // the route's own 400s — `note` stays optional so those calls can omit it on purpose.
+    const mark = (marks: JsonValue, origin?: string) => {
+      const body = JSON.stringify({ marks });
+      return origin
+        ? fetch(`${BASE}/api/ideas/status`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', origin },
+            body,
+          })
+        : fetch(`${BASE}/api/ideas/status`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body,
+          });
+    };
 
     const accepted = await mark([{ slug: 'rolling-window', status: 'accepted' }]);
     expect(accepted.status).toBe(200);
+    // SAFETY: `/api/ideas/status` always replies `{ rows }` on 200, whether it accepted,
+    // rejected, or shipped the mark — the cast only names that envelope.
     expect((await accepted.json()) as { rows: IdeaEntry[] }).toMatchObject({ rows: [{ status: 'accepted' }] });
 
     // Both notes are required: a rejection's reason, and a shipped mark's PR url.
@@ -211,24 +229,37 @@ describe('read routes', () => {
     // Last, because it is terminal — re-shipping is then refused.
     const shipped = await mark([{ slug: 'rolling-window', status: 'shipped', note: 'https://x.test/1' }]);
     expect(shipped.status).toBe(200);
+    // SAFETY: same `{ rows }` envelope as the accepted case above, now for the shipped mark.
     expect((await shipped.json()) as { rows: IdeaEntry[] }).toMatchObject({ rows: [{ status: 'shipped' }] });
     expect((await mark([{ slug: 'rolling-window', status: 'shipped', note: 'https://x.test/2' }])).status).toBe(400);
   });
 
   it('files an idea and comments on it through their own write routes', async () => {
-    const post = (route: string, body: unknown, origin?: string) =>
-      fetch(`${BASE}/api/ideas/${route}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
-        body: JSON.stringify(body),
-      });
+    // A JSON body shaped for whichever of `area`/`comment` route is named — including the
+    // deliberately malformed ones below (a bad area, a comment missing its text).
+    const post = (route: string, body: JsonValue, origin?: string) => {
+      const jsonBody = JSON.stringify(body);
+      return origin
+        ? fetch(`${BASE}/api/ideas/${route}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', origin },
+            body: jsonBody,
+          })
+        : fetch(`${BASE}/api/ideas/${route}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: jsonBody,
+          });
+    };
 
     const filed = await post('area', { filings: [{ slug: 'rolling-window', area: 'services' }] });
     expect(filed.status).toBe(200);
+    // SAFETY: `/api/ideas/area` always replies `{ rows }` on 200, same envelope as `/status`.
     expect((await filed.json()) as { rows: IdeaEntry[] }).toMatchObject({ rows: [{ area: 'services' }] });
 
     const commented = await post('comment', { comments: [{ slug: 'rolling-window', text: 'start small' }] });
     expect(commented.status).toBe(200);
+    // SAFETY: `/api/ideas/comment` replies the same `{ rows }` envelope, for the comment write.
     expect((await commented.json()) as { rows: IdeaEntry[] }).toMatchObject({ rows: [{ comment: 'start small' }] });
 
     // Malformed input is a 400, and both routes are on the write allowlist, so a
@@ -241,6 +272,8 @@ describe('read routes', () => {
   });
 
   it('narrows the list by area, and refuses one that is not an area', async () => {
+    // SAFETY: `/api/ideas` replies the same `{ rows }` list envelope whether or not it is
+    // narrowed by `?area=` — only the query string that reaches it here varies.
     const rows = async (query: string) =>
       ((await (await fetch(`${BASE}/api/ideas${query}`)).json()) as { rows: IdeaEntry[] }).rows.map((r) => r.slug);
 
@@ -278,15 +311,27 @@ describe('read routes', () => {
   });
 
   it('origin-checks every Notes write and preserves upstream status and structured conflicts', async () => {
-    const post = (path: string, body: unknown, origin?: string) =>
-      fetch(`${BASE}${path}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', ...(origin ? { origin } : {}) },
-        body: JSON.stringify(body),
-      });
+    // A JSON body shaped for whichever Notes write route is named — including the
+    // deliberately incomplete `/update` call below that omits `body` to trigger its 400.
+    const post = (path: string, body: JsonValue, origin?: string) => {
+      const jsonBody = JSON.stringify(body);
+      return origin
+        ? fetch(`${BASE}${path}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', origin },
+            body: jsonBody,
+          })
+        : fetch(`${BASE}${path}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: jsonBody,
+          });
+    };
     expect((await post('/api/notes/create', { title: 'x', body: 'y' }, 'http://evil.example')).status).toBe(403);
     const created = await post('/api/notes/create', { title: '', body: '# exact' });
     expect(created.status).toBe(201);
+    // SAFETY: `/api/notes/create` replies 201 with `{ note: { id, ... } }` on success, and
+    // this line only runs after the 201 check above confirmed the create succeeded.
     const id = ((await created.json()) as { note: { id: string } }).note.id;
     expect((await post('/api/notes/update', { id, expectedVersion: 1 })).status).toBe(400);
     const updated = await post('/api/notes/update', { id, expectedVersion: 1, body: 'winner' });
@@ -312,15 +357,19 @@ describe('read routes', () => {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffered = '';
-    const event = async (name: string): Promise<Record<string, unknown>> => {
+    const event = async (name: string): Promise<JsonObject> => {
       const deadline = Date.now() + 5_000;
       while (Date.now() < deadline) {
         const frameEnd = buffered.indexOf('\n\n');
         if (frameEnd >= 0) {
           const frame = buffered.slice(0, frameEnd);
           buffered = buffered.slice(frameEnd + 2);
-          if (frame.startsWith(`event: ${name}\n`))
-            return JSON.parse(frame.split('\ndata: ')[1]!) as Record<string, unknown>;
+          if (frame.startsWith(`event: ${name}\n`)) {
+            // SAFETY: the SSE writer in server/src/api.ts (Notes stream route) always
+            // serializes a JSON object as each frame's `data:` line — the cast only
+            // names that shape for the `notes`/`version` assertions below.
+            return JSON.parse(frame.split('\ndata: ')[1]!) as JsonObject;
+          }
           continue;
         }
         const next = await reader.read();

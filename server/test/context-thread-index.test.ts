@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { JsonObject } from '../../proxy/json.ts';
 import { buildContextThread } from '../src/api.js';
 import { ingest } from '../src/db/ingest.js';
 import { openDb } from '../src/db/open.js';
@@ -46,7 +47,7 @@ function stemFor(iso: string): string {
 
 async function writeSidecar(dir: string, iso: string, realInput: number, threadId: string | null): Promise<void> {
   await mkdir(dir, { recursive: true });
-  const body = {
+  const body: JsonObject = {
     timestamp: iso,
     model: 'claude-opus-5',
     endpoint: 'POST /v1/messages',
@@ -54,8 +55,8 @@ async function writeSidecar(dir: string, iso: string, realInput: number, threadI
     tokens: { input: 100, output: 50, cacheRead: 400, cacheCreation: 25, realInput },
     request: { toolCount: 1, toolsBytes: 900, systemBytes: 1200, totalBytes: 4000 },
     tools: [{ name: 'Bash', bytes: 900, estTokens: 225 }],
-    ...(threadId === null ? {} : { session: { sessionId: `session-of-${threadId}`, threadId } }),
   };
+  if (threadId !== null) body.session = { sessionId: `session-of-${threadId}`, threadId };
   await writeFile(path.join(dir, `${stemFor(iso)}.audit.json`), JSON.stringify(body), 'utf8');
 }
 
@@ -85,7 +86,7 @@ afterEach(() => {
 });
 
 /** Wraps a backing so every window read it is asked for is counted. */
-function counting(source: SidecarSource): { source: SidecarSource; windowReads: () => number } {
+function counting(source: SidecarSource) {
   let reads = 0;
   const wrapped: SidecarSource = {
     ...source,
@@ -97,15 +98,13 @@ function counting(source: SidecarSource): { source: SidecarSource; windowReads: 
       reads += 1;
       return source.readArchivedDay(...args);
     },
-    ...(source.readAllDays
-      ? {
-          readAllDays: (...args: Parameters<NonNullable<SidecarSource['readAllDays']>>) => {
-            reads += 1;
-            return source.readAllDays!(...args);
-          },
-        }
-      : {}),
   };
+  if (source.readAllDays) {
+    wrapped.readAllDays = (...args: Parameters<NonNullable<SidecarSource['readAllDays']>>) => {
+      reads += 1;
+      return source.readAllDays!(...args);
+    };
+  }
   return { source: wrapped, windowReads: () => reads };
 }
 
@@ -159,6 +158,9 @@ describe('the two backings agree on one thread', () => {
     const fromDb = await readThreadWindow(logDir, MINE, { sinceDays: 30, includeFile: true }, NOW, dbSource(db));
 
     expect(fromDb.files).toBe(3);
+    // SAFETY: both reads above pass `includeFile: true`, and `readThreadWindow` in
+    // db/source.ts sets `sidecar.__file = entry.stem` on every entry whenever that
+    // option is set — the field is always present on both sides here.
     expect(fromDb.sidecars.map((s) => (s as { __file: string }).__file)).toEqual(
       fromFiles.sidecars.map((s) => (s as { __file: string }).__file),
     );

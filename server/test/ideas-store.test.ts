@@ -97,6 +97,8 @@ describe('resolving the store', () => {
 describe('an unreachable ledger', () => {
   it('throws rather than reading as empty, since an empty ledger is a different fact', async () => {
     const realFetch = globalThis.fetch;
+    // SAFETY: this stub only needs to satisfy the one call `readIdeasStore` makes
+    // (no arguments read, one `Response` returned), never `fetch`'s full overload set.
     globalThis.fetch = (async () => new Response('nope', { status: 503 })) as typeof fetch;
     try {
       await expect(readIdeasStore()).rejects.toThrow(RemoteIdeasStoreError);
@@ -107,12 +109,18 @@ describe('an unreachable ledger', () => {
 
   it('never puts the token in the error, only the origin and the path', async () => {
     const realFetch = globalThis.fetch;
+    // SAFETY: same narrow stub as above — only the one call `readIdeasStore` makes
+    // needs to be satisfied.
     globalThis.fetch = (async () => new Response('nope', { status: 500 })) as typeof fetch;
     try {
       await readIdeasStore();
       expect.unreachable('the read should have thrown');
     } catch (error) {
+      // SAFETY: `readIdeasStore` only ever rejects with `RemoteIdeasStoreError`
+      // (an `Error` subclass), which the `try` above is asserting against.
       expect((error as Error).message).toContain('/api/ideas/export');
+      // SAFETY: same `RemoteIdeasStoreError` as above — this checks the same
+      // caught value's message for the token that must not appear in it.
       expect((error as Error).message).not.toContain('test-token');
     } finally {
       globalThis.fetch = realFetch;

@@ -138,8 +138,8 @@ describe('listInstalledCommands', () => {
 
 describe('resolveCommandsDir', () => {
   it('honours COMMANDS_DIR over the install default', () => {
-    expect(resolveCommandsDir({ COMMANDS_DIR: '/tmp/x' } as NodeJS.ProcessEnv)).toBe(path.resolve('/tmp/x'));
-    expect(resolveCommandsDir({} as NodeJS.ProcessEnv)).toMatch(/\.claude\/commands$/);
+    expect(resolveCommandsDir({ COMMANDS_DIR: '/tmp/x' })).toBe(path.resolve('/tmp/x'));
+    expect(resolveCommandsDir({})).toMatch(/\.claude\/commands$/);
   });
 });
 
@@ -149,18 +149,26 @@ describe('the store', () => {
   });
 
   it('lets a later line supersede an earlier one for the same thread', async () => {
-    const base = { schema: COMMAND_RUN_SCHEMA, threadId: 'a'.repeat(16), command: 'task' } as never;
+    // Shared fields for the two lines below. Left uncast here — the cast that opts
+    // out of the rest of `CommandRun` (this test only cares about `threadId` and
+    // `totals.turns`) is applied once per line, after `started`/`totals` are spread in.
+    const base = { schema: COMMAND_RUN_SCHEMA, threadId: 'a'.repeat(16), command: 'task' };
     await appendCommandRuns(logDir, [
-      { ...(base as object), started: '2026-07-15T14:00:00.000Z', totals: { turns: 1 } } as never,
-      { ...(base as object), started: '2026-07-15T14:00:00.000Z', totals: { turns: 9 } } as never,
+      // SAFETY: `appendCommandRuns` wants a full `CommandRun`, but this record is
+      // deliberately partial — the cast opts out of the fields the test never reads.
+      { ...base, started: '2026-07-15T14:00:00.000Z', totals: { turns: 1 } } as never,
+      // SAFETY: the second, superseding line for the same thread — same opt-out.
+      { ...base, started: '2026-07-15T14:00:00.000Z', totals: { turns: 9 } } as never,
     ]);
     const runs = await readCommandRuns(logDir);
     expect(runs).toHaveLength(1);
-    expect((runs[0] as unknown as { totals: { turns: number } }).totals.turns).toBe(9);
+    expect(runs[0]!.totals.turns).toBe(9);
   });
 
   it('skips a torn final line rather than losing the file', async () => {
     await appendCommandRuns(logDir, [
+      // SAFETY: this test only checks that the record round-trips at all, so the
+      // written record is deliberately partial rather than a full `CommandRun`.
       { schema: COMMAND_RUN_SCHEMA, threadId: 'b'.repeat(16), command: 'task' } as never,
     ]);
     await writeFile(commandStorePath(logDir), `${await readFile(commandStorePath(logDir), 'utf8')}{"threadId":`, {
@@ -172,6 +180,9 @@ describe('the store', () => {
   // A schema bump must degrade the page's detail, never empty it.
   it('keeps a record written by a future schema version', async () => {
     await appendCommandRuns(logDir, [
+      // SAFETY: `newField` deliberately isn't part of `CommandRun` — it stands in for
+      // a field a future schema version would add, which today's `CommandRun` type
+      // can't express.
       { schema: COMMAND_RUN_SCHEMA + 99, threadId: 'c'.repeat(16), command: 'task', newField: 1 } as never,
     ]);
     expect(await readCommandRuns(logDir)).toHaveLength(1);
@@ -402,6 +413,9 @@ describe('reconcileCommandRuns', () => {
       const threadId = threadIdFor(SESSION_ID, root);
       await writeSession(threadId, SESSION_ID, root, '- done: fixed');
       await appendCommandRuns(logDir, [
+        // SAFETY: this stands in for a stale record from an earlier reconcile pass —
+        // the test only cares that `reconcileCommandRuns` retires it, so the fields it
+        // never reads are left out rather than fabricated.
         {
           schema: COMMAND_RUN_SCHEMA,
           threadId,
@@ -464,6 +478,9 @@ describe('reconcileCommandRuns', () => {
 
     it('leaves a record alone when its transcript has aged out of the log window', async () => {
       await appendCommandRuns(logDir, [
+        // SAFETY: this stands in for a run whose transcript has already aged out —
+        // the test only checks that reconciling leaves it untouched, so the fields
+        // that would come from a live transcript are left out.
         { schema: COMMAND_RUN_SCHEMA, threadId: 'd'.repeat(16), command: 'task' } as never,
       ]);
       await reconcileCommandRuns(logDir, commandsDir, new Date('2026-07-15T18:00:00.000Z'));

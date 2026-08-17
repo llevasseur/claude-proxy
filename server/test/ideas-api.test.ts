@@ -115,7 +115,10 @@ describe('applyIdeaStatus', () => {
   it('refuses a rejection with no reason, writing nothing', async () => {
     // The reason is the ledger's dedupe record — what stops the idea coming back.
     for (const note of [undefined, '', '   ']) {
-      const mark = { slug: 'rolling-window', status: 'rejected' as const, ...(note === undefined ? {} : { note }) };
+      const mark =
+        note === undefined
+          ? { slug: 'rolling-window', status: 'rejected' as const }
+          : { slug: 'rolling-window', status: 'rejected' as const, note };
       await expect(applyIdeaStatus([mark])).rejects.toThrow(/needs a reason/);
     }
     expect((await readIdeasStore()).ideas['rolling-window']?.status).toBe('proposed');
@@ -150,7 +153,10 @@ describe('applyIdeaStatus', () => {
   it('refuses a shipped mark with no PR url, writing nothing', async () => {
     await applyIdeaStatus([{ slug: 'rolling-window', status: 'accepted' }]);
     for (const note of [undefined, '', '   ']) {
-      const mark = { slug: 'rolling-window', status: 'shipped' as const, ...(note === undefined ? {} : { note }) };
+      const mark =
+        note === undefined
+          ? { slug: 'rolling-window', status: 'shipped' as const }
+          : { slug: 'rolling-window', status: 'shipped' as const, note };
       await expect(applyIdeaStatus([mark])).rejects.toThrow(/needs the PR url/);
     }
     expect((await readIdeasStore()).ideas['rolling-window']?.status).toBe('accepted');
@@ -302,7 +308,14 @@ describe('applyIdeaComment', () => {
   });
 
   it('refuses a comment that is not text, and an empty batch', async () => {
-    await expect(applyIdeaComment([{ slug: 'rolling-window', text: 42 as unknown as string }])).rejects.toThrow(
+    // A wire payload can carry any JSON value here — this is the shape a caller who
+    // skipped validation would send, so it stays untyped up to the one cast below
+    // rather than passing type-checked input the function is meant to reject.
+    const notText: unknown[] = [{ slug: 'rolling-window', text: 42 }];
+    // SAFETY: deliberately mistyped to exercise applyIdeaComment's own runtime
+    // rejection of a non-string `text` — the assertion opts out of the compile-time
+    // check that would otherwise catch what this test wants to reach at runtime.
+    await expect(applyIdeaComment(notText as Parameters<typeof applyIdeaComment>[0])).rejects.toThrow(
       /needs a comment/,
     );
     await expect(applyIdeaComment([])).rejects.toThrow(/no idea comments given/);

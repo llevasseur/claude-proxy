@@ -82,7 +82,10 @@ function rejection(read: Promise<unknown>): Promise<Error> {
     () => {
       throw new Error('the read resolved, and this test needs it to reject');
     },
-    (err: unknown) => err as Error,
+    // SAFETY: every caller of `rejection` rejects with the `RemoteConceptStoreError`
+    // that `buildConcepts`/`buildConcept` throw, or the `TypeError` `stubWorker` threw
+    // — both are `Error` instances, never a non-Error rejection value.
+    (cause: unknown) => cause as Error,
   );
 }
 
@@ -99,8 +102,12 @@ describe('the hosted store, when both variables are set', () => {
     expect(meta.total).toBe(2);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    // SAFETY: the call count was just asserted to be 1, and `buildConcepts` always
+    // invokes `fetch` with a URL string and a `RequestInit` carrying the headers.
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(EXPORT_URL);
+    // SAFETY: `init` above is the same `fetch` init `buildConcepts` built, which always
+    // sets `headers` to a plain string-keyed record carrying the bearer token.
     expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${TOKEN}`);
   });
 
@@ -254,6 +261,8 @@ describe('a hosted store that will not answer', () => {
     const fetchMock = stubWorker(ndjson('nope', 503));
 
     const error = await rejection(buildConcepts(logDir));
+    // SAFETY: `buildConcepts` above rejected (via `rejection`), which only happens
+    // after it has already called `fetch` once with the request URL as the first arg.
     const [requested] = fetchMock.mock.calls[0] as [string];
     expect(requested).toBe(`${ORIGIN}/concepts/api/concepts/export`);
     expect(error.message).toContain(requested);

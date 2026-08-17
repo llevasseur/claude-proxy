@@ -28,7 +28,7 @@ interface Fixture {
   origin: string;
   work: string;
   /** The four commits on `main`, oldest first. */
-  shas: string[];
+  shas: [string, string, string, string];
   /** A PATH carrying the stub `gh`, plus an allowlist that stub satisfies. */
   env: NodeJS.ProcessEnv;
 }
@@ -69,10 +69,15 @@ async function fixture(): Promise<Fixture> {
   await writeFile(gh, '#!/bin/sh\nprintf \'{"login":"tester"}\\n\'\n', 'utf8');
   await chmod(gh, 0o755);
 
+  // SAFETY: the loop above pushes one sha per element of the literal `[1, 2, 3, 4]`
+  // and nothing else writes to `shas`, so it holds exactly the four `Fixture` promises.
+  // Stating it once here is what lets all fourteen call sites destructure it plainly.
+  const four = shas as [string, string, string, string];
+
   return {
     origin,
     work,
-    shas,
+    shas: four,
     env: {
       ...process.env,
       PATH: `${bin}${path.delimiter}${process.env.PATH ?? ''}`,
@@ -97,7 +102,7 @@ describe('slideMain', () => {
     'pins the commit main leaves, and the orphans stay fetchable from a fresh clone',
     async () => {
       const { origin, work, shas, env } = await fixture();
-      const [, b, c, d] = shas as [string, string, string, string];
+      const [, b, c, d] = shas;
 
       const result = await slideMain(work, { expectedMain: d, target: b }, env);
       expect(result).toMatchObject({ from: d, to: b, pinned: pinRefFor(d), login: 'tester' });
@@ -121,7 +126,7 @@ describe('slideMain', () => {
     'writes no pin when the new position already reaches the old one',
     async () => {
       const { work, shas, env } = await fixture();
-      const [, b, , d] = shas as [string, string, string, string];
+      const [, b, , d] = shas;
 
       await slideMain(work, { expectedMain: d, target: b }, env);
       const forward = await slideMain(work, { expectedMain: b, target: d }, env);
@@ -134,7 +139,7 @@ describe('slideMain', () => {
     'writes no pin when an existing pin already reaches the old position',
     async () => {
       const { origin, work, shas, env } = await fixture();
-      const [a, b, , d] = shas as [string, string, string, string];
+      const [a, b, , d] = shas;
 
       await slideMain(work, { expectedMain: d, target: b }, env);
       // b is reachable from the pin on d, so stepping back again strands nothing.
@@ -152,7 +157,7 @@ describe('slideMain', () => {
     'decides from the refs origin has, so a local-only ref cannot suppress the pin',
     async () => {
       const { origin, work, shas, env } = await fixture();
-      const [, b, , d] = shas as [string, string, string, string];
+      const [, b, , d] = shas;
       // The shape a sync leaves behind: a ref in this checkout's store that was never
       // pushed. Deciding from it would skip the pin and strand d on origin.
       await git(work, 'update-ref', pinRefFor(d), d);
@@ -168,7 +173,7 @@ describe('slideMain', () => {
     'refuses a stale expectedMain, an unknown target, and a login outside the allowlist',
     async () => {
       const { work, shas, env } = await fixture();
-      const [a, b, , d] = shas as [string, string, string, string];
+      const [a, b, , d] = shas;
 
       await expect(slideMain(work, { expectedMain: a, target: b }, env)).rejects.toThrow(ERR.moved);
       await expect(slideMain(work, { expectedMain: d, target: 'f'.repeat(40) }, env)).rejects.toThrow(ERR.bad);
@@ -184,7 +189,7 @@ describe('slideMain', () => {
     'the --force-with-lease form the slide pushes with is rejected on a stale sha',
     async () => {
       const { work, shas } = await fixture();
-      const [a, b, , d] = shas as [string, string, string, string];
+      const [a, b, , d] = shas;
 
       // Exactly the push slideMain makes, with a lease naming a commit main is not on.
       // Nothing here checks the lease first, so this is git's own rejection.
@@ -208,7 +213,7 @@ describe('setLineHidden', () => {
     'hides a line without touching its pin, and shows it again by deleting only the marker',
     async () => {
       const { origin, work, shas, env } = await fixture();
-      const [, b, , d] = shas as [string, string, string, string];
+      const [, b, , d] = shas;
       await slideMain(work, { expectedMain: d, target: b }, env);
 
       const hide = await setLineHidden(work, { sha: d, hidden: true }, env);
@@ -230,7 +235,7 @@ describe('setLineHidden', () => {
     'names the marker for the line, so a row partway up it hides the same line',
     async () => {
       const { origin, work, shas, env } = await fixture();
-      const [, b, c, d] = shas as [string, string, string, string];
+      const [, b, c, d] = shas;
       // Two positions back, so the line is c and d and only d carries the pin.
       await slideMain(work, { expectedMain: d, target: b }, env);
 
@@ -254,7 +259,7 @@ describe('readMainHistory', () => {
     'draws main where origin has it, with the slid-off commits in their own lane',
     async () => {
       const { work, shas, env } = await fixture();
-      const [a, b, c, d] = shas as [string, string, string, string];
+      const [a, b, c, d] = shas;
       await slideMain(work, { expectedMain: d, target: b }, env);
 
       const positions = [a, b, c, d].map((sha, i) => ({
@@ -280,7 +285,7 @@ describe('readLocalDivergence and syncLocal', () => {
     'moves the branch pointer and leaves the worktree alone when HEAD is elsewhere',
     async () => {
       const { work, shas, env } = await fixture();
-      const [, b, , d] = shas as [string, string, string, string];
+      const [, b, , d] = shas;
       await slideMain(work, { expectedMain: d, target: b }, env);
       await git(work, 'checkout', '--quiet', '-b', 'side');
 
@@ -304,7 +309,7 @@ describe('readLocalDivergence and syncLocal', () => {
     'stashes the work in progress and reports the stash commit when main is checked out',
     async () => {
       const { work, shas, env } = await fixture();
-      const [, b, , d] = shas as [string, string, string, string];
+      const [, b, , d] = shas;
       await slideMain(work, { expectedMain: d, target: b }, env);
       await writeFile(path.join(work, 'file.txt'), 'uncommitted\n', 'utf8');
 
@@ -325,7 +330,7 @@ describe('readLocalDivergence and syncLocal', () => {
     'refuses while an operation is in progress',
     async () => {
       const { work, shas, env } = await fixture();
-      const [, b, , d] = shas as [string, string, string, string];
+      const [, b, , d] = shas;
       await slideMain(work, { expectedMain: d, target: b }, env);
       await writeFile(path.join(work, '.git', 'MERGE_HEAD'), `${d}\n`, 'utf8');
 
@@ -343,7 +348,7 @@ describe('readLocalDivergence and syncLocal', () => {
     'refuses, and names the path, when main is checked out in another worktree',
     async () => {
       const { work, shas, env } = await fixture();
-      const [, b, , d] = shas as [string, string, string, string];
+      const [, b, , d] = shas;
       await slideMain(work, { expectedMain: d, target: b }, env);
 
       const other = path.join(path.dirname(work), 'other');
@@ -365,7 +370,7 @@ describe('readLocalDivergence and syncLocal', () => {
     'refuses unpushed commits nothing else reaches, and preserves them when told to',
     async () => {
       const { origin, work, shas, env } = await fixture();
-      const [, b, , d] = shas as [string, string, string, string];
+      const [, b, , d] = shas;
       await slideMain(work, { expectedMain: d, target: b }, env);
       // A local commit on top of the old main: on no pin, and not on origin.
       await git(work, 'commit', '--allow-empty', '-m', 'local only');

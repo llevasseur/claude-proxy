@@ -59,10 +59,12 @@ async function writeSidecar(dir: string, iso: string): Promise<void> {
 }
 
 /** `fileSource`, counting every read either half of a day goes through. */
-function countingSource(): { source: SidecarSource; reads: string[] } {
+function countingSource() {
   const reads: string[] = [];
   return {
     reads,
+    // `satisfies` keeps the object's inferred shape while still giving both overrides'
+    // parameters `SidecarSource`'s own contextual types.
     source: {
       ...fileSource,
       readArchivedDay: (logDir, date, opts) => {
@@ -73,7 +75,7 @@ function countingSource(): { source: SidecarSource; reads: string[] } {
         reads.push(`live:${opts?.date ?? opts?.since ?? String(opts?.sinceDays)}`);
         return fileSource.readSidecars(logDir, opts, now);
       },
-    },
+    } satisfies SidecarSource,
   };
 }
 

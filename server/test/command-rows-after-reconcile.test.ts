@@ -67,6 +67,9 @@ async function markOf(): Promise<{ bytes: number; modified: string }> {
 
 /** The watermark row the substrate keeps for the store. */
 function watermark(): { bytes: number; modified: string } | undefined {
+  // SAFETY: `file_watermark` keeps one row per store path with `bytes`/`modified`
+  // columns; `.get()` answers `undefined` only when `STORE_PATH` has never been
+  // recorded, which this asserts the shape for rather than presence.
   return db.prepare('SELECT bytes, modified FROM file_watermark WHERE path = ?').get(STORE_PATH) as
     | { bytes: number; modified: string }
     | undefined;
@@ -225,6 +228,8 @@ describe('the watermark still guards an append the server did not make', () => {
     const fromFile = await fileSource.readCommandRuns(logDir);
     expect(fromFile).toHaveLength(2);
     expect(await dbSource(db).readCommandRuns(logDir)).toEqual(fromFile);
+    // SAFETY: `count(*)` with no `GROUP BY` always returns exactly one row with a
+    // numeric `c` column, never `undefined`.
     expect((db.prepare('SELECT count(*) c FROM command_run').get() as { c: number }).c).toBe(1);
   });
 });

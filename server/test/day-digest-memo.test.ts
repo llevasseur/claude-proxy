@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildSummary, buildTrends, clearRawArchiveCache } from '../src/api.js';
-import { fileSource, type SidecarSource } from '../src/db/source.js';
+import { fileSource } from '../src/db/source.js';
 
 /**
  * The archived read for a finished day happens exactly once across repeated
@@ -44,7 +44,7 @@ async function writeSidecar(dir: string, iso: string): Promise<void> {
 }
 
 /** `fileSource`, with a tally of which days its archived reads actually touched. */
-function countingSource(): { source: SidecarSource; archivedReads: string[] } {
+function countingSource() {
   const archivedReads: string[] = [];
   return {
     archivedReads,
@@ -55,7 +55,7 @@ function countingSource(): { source: SidecarSource; archivedReads: string[] } {
         return fileSource.readArchivedDay(logDir, date, opts);
       },
     },
-  };
+  } satisfies { source: typeof fileSource; archivedReads: string[] };
 }
 
 let logDir: string;

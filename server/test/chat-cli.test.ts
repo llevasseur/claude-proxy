@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import type { JsonValue } from '../../proxy/json.ts';
 import {
   type CliLiveEvent,
   CliLiveReader,
@@ -140,7 +141,7 @@ describe('resolveAgentCwd', () => {
 });
 
 describe('decodeCliStream', () => {
-  const line = (o: unknown) => `${JSON.stringify(o)}\n`;
+  const line = (o: JsonValue) => `${JSON.stringify(o)}\n`;
 
   it('prefers the terminal result and reads usage off it', () => {
     const raw =
@@ -267,7 +268,7 @@ const FIXTURES = fs.mkdtempSync(path.join(os.tmpdir(), 'chat-cli-test-'));
 afterAll(() => fs.rmSync(FIXTURES, { recursive: true, force: true }));
 
 /** Prints one stream-json line, starts a child in its own group, then hangs. */
-function fakeCli(name: string): { cliPath: string; childPidFile: string } {
+function fakeCli(name: string) {
   const cliPath = path.join(FIXTURES, name);
   const childPidFile = path.join(FIXTURES, `${name}.child`);
   fs.writeFileSync(
@@ -358,7 +359,10 @@ describe.skipIf(process.platform === 'win32')('runCliTurn — ending a run early
 
     expect(await until(() => fs.existsSync(childPidFile))).toBe(true);
     const childPid = Number(fs.readFileSync(childPidFile, 'utf8'));
-    (handle as unknown as CliRunHandle).stop();
+    // SAFETY: `onStart` fires synchronously as soon as `runCliTurn` spawns the
+    // child, and the `until` above already waited for that child's pid file to
+    // exist — `handle` has been assigned by the time this line runs.
+    (handle as CliRunHandle).stop();
 
     const result = await turn;
     expect(result.interrupted).toBe('stopped');
@@ -424,7 +428,7 @@ describe.skipIf(process.platform === 'win32')('runCliTurn — ending a run early
 });
 
 describe('CliLiveReader', () => {
-  const line = (o: unknown) => `${JSON.stringify(o)}\n`;
+  const line = (o: JsonValue) => `${JSON.stringify(o)}\n`;
 
   /** Feed a whole stream in one chunk and collect what was reported. */
   const readAll = (raw: string, split = raw.length): CliLiveEvent[] => {
