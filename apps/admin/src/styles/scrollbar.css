@@ -1,0 +1,63 @@
+/* The scrollbar, everywhere: a thin pill thumb on a transparent track that
+ * fades in while its container scrolls and back out once it goes idle.
+ *
+ * The fade rides a registered custom property rather than the thumb's own
+ * `transition`: the `::-webkit-scrollbar-*` pseudo-elements do not run
+ * transitions, so `--scrollbar-thumb` is registered as a <color> and the value
+ * interpolates on the scroll container. `[data-scrolling]` is stamped by the
+ * one listener in `scrollbar-activity.ts`.
+ *
+ * Durations are multiples of `--motion-duration`, so reduced motion flattens
+ * the fade for free. */
+
+@property --scrollbar-thumb {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+@layer base {
+  * {
+    /* Entering is quicker than leaving: fade in at once, linger on the way out. */
+    transition: --scrollbar-thumb var(--motion-duration) var(--ease-out);
+  }
+
+  [data-scrolling] {
+    --scrollbar-thumb: var(--faint);
+    transition-duration: var(--motion-duration-fast);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: var(--radius-pill);
+    /* Transparent border + `background-clip` insets the pill from the track's
+     * edges, so the thumb floats rather than filling the gutter. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  /* The thumb still answers the pointer at rest, so reaching for the bar keeps
+   * working. */
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted);
+  }
+  ::-webkit-scrollbar-thumb:active {
+    background-color: var(--text);
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* Firefox has no scrollbar pseudo-elements; the standard properties read the
+   * same animated property. Gated so Chrome keeps the wider WebKit rendering. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+  }
+}

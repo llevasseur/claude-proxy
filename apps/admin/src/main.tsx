@@ -4,7 +4,10 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ChatSessionProvider } from './chat-session';
 import { router } from './router';
+import { installScrollbarActivity } from './scrollbar-activity';
 import './styles.css';
+
+installScrollbarActivity();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } },
