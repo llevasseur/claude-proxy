@@ -26,11 +26,7 @@ function mdPath(threadId: string): string {
   return `sessions/${threadId}.md`;
 }
 
-/**
- * True when a failed `readdir` says the directory simply is not there. Anything else
- * the filesystem raised — a permission error, a broken mount — says nothing about
- * whether `sessions/` exists, so the caller must rethrow it rather than drop its rows.
- */
+/** True when a failed `readdir` says `sessions/` is not there; any other errno must rethrow. */
 function isMissingFile(cause: unknown): boolean {
   return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }

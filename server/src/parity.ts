@@ -144,11 +144,8 @@ export interface JsonDiff {
  * The own enumerable entries of a payload object, in insertion order, or
  * `undefined` when the payload is not one.
  *
- * `Object(v) === v` holds for exactly the values a runtime tag check calls
- * `'object'` (`null` aside) or `'function'`, and functions are excluded, so this
- * admits the same values the comparison walked key by key before — and a `Map`
- * built from `Object.entries` keeps the key order `JSON.stringify` emits, which
- * is itself part of what is being compared.
+ * The `Map` keeps the key order `JSON.stringify` emits, which is itself part of
+ * what the comparison checks.
  */
 function keyedEntries(value: ParityPayload): Map<string, ParityPayload> | undefined {
   if (value === null || value === undefined || Array.isArray(value)) return undefined;

@@ -274,10 +274,8 @@ async function run(argv: readonly string[]): Promise<void> {
       .filter(Boolean);
     if (ids.length === 0) throw new Error('mark needs at least one id');
 
-    // `note` is left off entirely when none was given, rather than set to `undefined`:
-    // the status file is JSON, where an absent key and a `undefined` one are the same
-    // document only by accident of `JSON.stringify` — and a written `note: null` would
-    // read back as a note that erased the previous one.
+    // `note` is left off entirely when none was given: a written one replaces the
+    // previous note, so an absent flag must not send the key at all.
     const updates = ids.map((id) => {
       const update: SuggestionStatusUpdate = { bucket, id, status };
       if (flags.note !== undefined) update.note = flags.note;

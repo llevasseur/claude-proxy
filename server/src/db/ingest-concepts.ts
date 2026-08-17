@@ -50,11 +50,7 @@ function prepare(db: DatabaseSync): ConceptStatements {
   };
 }
 
-/**
- * True when a failed `stat` says the file simply is not there. Anything else the
- * filesystem raised — a permission error, a broken mount — says nothing about whether
- * the store exists, so the caller must rethrow it rather than drop its rows.
- */
+/** True when a failed `stat` says the file is not there; any other errno must rethrow. */
 function isMissingFile(cause: unknown): boolean {
   return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }
