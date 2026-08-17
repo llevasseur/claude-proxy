@@ -32,7 +32,7 @@ export interface SkimDigest {
   savedInputTokens: number;
   /** Estimated USD saved at each model's input-token rate. */
   estSavedUsd: number;
-  /** Most-repeated cache keys, ranked by request count. */
+  /** Ranked by request count. */
   topKeys: SkimKeyTotals[];
 }
 

@@ -170,10 +170,7 @@ export function SkimPage() {
   );
 }
 
-/**
- * Today's four tiles, the two trend charts side by side, then the per-key breakdown.
- * `stats` is false once the day query has failed — those tiles are never coming.
- */
+/** `stats` is false once the day query has failed — those tiles are never coming. */
 function SkimSkeleton({ days, stats = true }: { days: number; stats?: boolean }) {
   return (
     <>
