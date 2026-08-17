@@ -112,56 +112,58 @@ function MemoriesTable({ project, files }: { project: string; files: MemoryFileS
         </h2>
         <span className='muted'>click a column to sort · click a row to read it</span>
       </div>
-      <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
-        <thead>
-          <tr>
-            <SortHeader
-              label='File'
-              sortKey='name'
-              sort={sort}
-              onSort={onSort}
-              hint="The file's name in this project's memory directory. MEMORY.md is the index loaded into context each session; every other file holds one memory."
-            />
-            <SortHeader
-              label='Size'
-              sortKey='bytes'
-              sort={sort}
-              onSort={onSort}
-              className='num'
-              hint='Bytes of the file on disk, frontmatter included.'
-            />
-            <SortHeader
-              label='Modified'
-              sortKey='modified'
-              sort={sort}
-              onSort={onSort}
-              className='num'
-              hint="The file's last-modified time on disk, shown in local time."
-            />
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((f) => (
-            <tr
-              key={f.name}
-              className='clickable'
-              onClick={() => navigate({ to: '/projects/$project/memory/$name', params: { project, name: f.name } })}>
-              <td>
-                <Link
-                  to='/projects/$project/memory/$name'
-                  params={{ project, name: f.name }}
-                  className='link'
-                  onClick={(e) => e.stopPropagation()}>
-                  {f.name}
-                </Link>
-                {f.name === 'MEMORY.md' && <span className='muted'> · index</span>}
-              </td>
-              <td className='num'>{fmtBytes(f.bytes)}</td>
-              <td className='num muted'>{fmtLocalTsShort(f.modified)}</td>
+      <div className='table-scroll'>
+        <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
+          <thead>
+            <tr>
+              <SortHeader
+                label='File'
+                sortKey='name'
+                sort={sort}
+                onSort={onSort}
+                hint="The file's name in this project's memory directory. MEMORY.md is the index loaded into context each session; every other file holds one memory."
+              />
+              <SortHeader
+                label='Size'
+                sortKey='bytes'
+                sort={sort}
+                onSort={onSort}
+                className='num'
+                hint='Bytes of the file on disk, frontmatter included.'
+              />
+              <SortHeader
+                label='Modified'
+                sortKey='modified'
+                sort={sort}
+                onSort={onSort}
+                className='num'
+                hint="The file's last-modified time on disk, shown in local time."
+              />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sorted.map((f) => (
+              <tr
+                key={f.name}
+                className='clickable'
+                onClick={() => navigate({ to: '/projects/$project/memory/$name', params: { project, name: f.name } })}>
+                <td>
+                  <Link
+                    to='/projects/$project/memory/$name'
+                    params={{ project, name: f.name }}
+                    className='link'
+                    onClick={(e) => e.stopPropagation()}>
+                    {f.name}
+                  </Link>
+                  {f.name === 'MEMORY.md' && <span className='muted'> · index</span>}
+                </td>
+                <td className='num'>{fmtBytes(f.bytes)}</td>
+                <td className='num muted'>{fmtLocalTsShort(f.modified)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

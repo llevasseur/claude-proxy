@@ -115,45 +115,47 @@ function CohortTable({ day, def, pick }: { day: UsageDigest; def: StatMetric; pi
   const additive = def.perCallAdditive ?? false;
 
   return (
-    <table className='table'>
-      <thead>
-        <tr>
-          <th>Cohort</th>
-          <th className='num'>Requests</th>
-          <th className='num'>Share</th>
-          <th className='num'>{def.label}</th>
-          {additive && <th className='num'>Of the mean</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {COHORTS.map((c) => {
-          const cohort = day.perCall[c.key];
-          const s = share(cohort, all);
-          return (
-            <tr key={c.key}>
-              <td>
-                {c.label}
-                <div className='muted'>{c.note}</div>
-              </td>
-              <td className='num'>{fmtInt(cohort.requests)}</td>
-              <td className='num'>{fmtPct(s * 100)}</td>
-              <td className='num'>{cohort.requests === 0 ? '—' : def.format(pick(cohort))}</td>
-              {additive && <td className='num'>{cohort.requests === 0 ? '—' : def.format(s * pick(cohort))}</td>}
-            </tr>
-          );
-        })}
-        <tr>
-          <td>
-            <strong>All requests</strong>
-            <div className='muted'>what an unfiltered mean would report</div>
-          </td>
-          <td className='num'>{fmtInt(all.requests)}</td>
-          <td className='num'>{fmtPct(100)}</td>
-          <td className='num'>{all.requests === 0 ? '—' : def.format(pick(all))}</td>
-          {additive && <td className='num'>{all.requests === 0 ? '—' : def.format(pick(all))}</td>}
-        </tr>
-      </tbody>
-    </table>
+    <div className='table-scroll'>
+      <table className='table'>
+        <thead>
+          <tr>
+            <th>Cohort</th>
+            <th className='num'>Requests</th>
+            <th className='num'>Share</th>
+            <th className='num'>{def.label}</th>
+            {additive && <th className='num'>Of the mean</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {COHORTS.map((c) => {
+            const cohort = day.perCall[c.key];
+            const s = share(cohort, all);
+            return (
+              <tr key={c.key}>
+                <td>
+                  {c.label}
+                  <div className='muted'>{c.note}</div>
+                </td>
+                <td className='num'>{fmtInt(cohort.requests)}</td>
+                <td className='num'>{fmtPct(s * 100)}</td>
+                <td className='num'>{cohort.requests === 0 ? '—' : def.format(pick(cohort))}</td>
+                {additive && <td className='num'>{cohort.requests === 0 ? '—' : def.format(s * pick(cohort))}</td>}
+              </tr>
+            );
+          })}
+          <tr>
+            <td>
+              <strong>All requests</strong>
+              <div className='muted'>what an unfiltered mean would report</div>
+            </td>
+            <td className='num'>{fmtInt(all.requests)}</td>
+            <td className='num'>{fmtPct(100)}</td>
+            <td className='num'>{all.requests === 0 ? '—' : def.format(pick(all))}</td>
+            {additive && <td className='num'>{all.requests === 0 ? '—' : def.format(pick(all))}</td>}
+          </tr>
+        </tbody>
+      </table>
+    </div>
   );
 }
 

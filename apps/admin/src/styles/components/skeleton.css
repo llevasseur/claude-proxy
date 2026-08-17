@@ -159,7 +159,7 @@
   }
   /* Work this run delegated to a subagent, so a fan-out is visible in the shape. */
   .steptree-turn.delegated {
-    background-image: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.35) 0 3px, transparent 3px 6px);
+    background-image: repeating-linear-gradient(45deg, var(--stripe) 0 3px, transparent 3px 6px);
   }
 
   /* A run's opening prompt in a list: enough to recognise it, never enough to own the row. */

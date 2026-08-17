@@ -293,23 +293,25 @@ function BreakdownPatterns({ summary, missing }: { summary: BucketBreakdownSumma
         Each session contributes its largest captured request. A region carried by every one of them is a fixed cost on
         every turn these sessions took.
       </p>
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>Region / tool</th>
-            <th className='num'>In requests</th>
-            <th className='num'>Avg bytes</th>
-            <th className='num'>Avg tokens</th>
-            <th className='num'>% of request</th>
-            <th className='bar-col'>Share</th>
-          </tr>
-        </thead>
-        <tbody>
-          {summary.patterns.map((p) => (
-            <PatternRow key={`${p.kind}:${p.name}`} pattern={p} max={max} total={summary.requests} />
-          ))}
-        </tbody>
-      </table>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>Region / tool</th>
+              <th className='num'>In requests</th>
+              <th className='num'>Avg bytes</th>
+              <th className='num'>Avg tokens</th>
+              <th className='num'>% of request</th>
+              <th className='bar-col'>Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summary.patterns.map((p) => (
+              <PatternRow key={`${p.kind}:${p.name}`} pattern={p} max={max} total={summary.requests} />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -337,32 +339,34 @@ function SessionTable({ sessions }: { sessions: SessionSummary[] }) {
   return (
     <div className='card'>
       <h2>Sessions in this window</h2>
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>Session</th>
-            <th>Started</th>
-            <th className='num'>Tasks</th>
-            <th className='num'>Tools</th>
-            <th className='num'>Errors</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sessions.map((s) => (
-            <tr key={s.threadId}>
-              <td>
-                <Link to='/sessions/$id' params={{ id: s.threadId }} className='link'>
-                  {s.title ?? s.subtitle ?? s.threadId}
-                </Link>
-              </td>
-              <td>{fmtLocalTsShort(s.started ?? '')}</td>
-              <td className='num'>{fmtInt(s.tasks)}</td>
-              <td className='num'>{fmtInt(s.tools)}</td>
-              <td className='num'>{fmtInt(s.errors)}</td>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>Session</th>
+              <th>Started</th>
+              <th className='num'>Tasks</th>
+              <th className='num'>Tools</th>
+              <th className='num'>Errors</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sessions.map((s) => (
+              <tr key={s.threadId}>
+                <td>
+                  <Link to='/sessions/$id' params={{ id: s.threadId }} className='link'>
+                    {s.title ?? s.subtitle ?? s.threadId}
+                  </Link>
+                </td>
+                <td>{fmtLocalTsShort(s.started ?? '')}</td>
+                <td className='num'>{fmtInt(s.tasks)}</td>
+                <td className='num'>{fmtInt(s.tools)}</td>
+                <td className='num'>{fmtInt(s.errors)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

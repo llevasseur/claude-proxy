@@ -1,11 +1,12 @@
 import { createRootRoute, Link, Outlet, useRouterState } from '@tanstack/react-router';
-import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
 import { useEffect } from 'react';
 import { HealthBadge } from './components/HealthBadge';
 import { NAV_RAIL } from './routes/registry';
 import { useNavDrawer } from './useNavDrawer';
 import { useRailCollapsed } from './useRailCollapsed';
 import { useStationInView } from './useStationInView';
+import { useTheme } from './useTheme';
 
 /**
  * The root route and the chrome every page renders inside.
@@ -95,11 +96,12 @@ function RootLayout() {
   const toggleLabel = collapsed ? 'Expand navigation' : 'Collapse navigation';
   const nav = useNavDrawer();
   const stations = useStationInView(pathname, nav.open);
+  const [theme, toggleTheme] = useTheme();
+  const themeLabel = theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme';
   return (
     <div className={`app${collapsed ? ' app--rail-collapsed' : ''}${nav.open ? ' app--drawer-open' : ''}`}>
       <aside className='rail' id='rail-nav'>
         <div className='rail-head'>
-          <BrandLink className='brand-link' pathname={pathname} closeDrawer={nav.close} />
           <button
             type='button'
             className='rail-toggle'
@@ -109,6 +111,7 @@ function RootLayout() {
             title={toggleLabel}>
             {collapsed ? <PanelLeftOpen size={16} aria-hidden /> : <PanelLeftClose size={16} aria-hidden />}
           </button>
+          <BrandLink className='brand-link' pathname={pathname} closeDrawer={nav.close} />
         </div>
 
         <nav className='stations' aria-label='Primary' ref={stations}>
@@ -146,6 +149,14 @@ function RootLayout() {
         </nav>
 
         <div className='rail-foot'>
+          <button
+            type='button'
+            className='theme-toggle'
+            onClick={toggleTheme}
+            aria-label={themeLabel}
+            title={themeLabel}>
+            {theme === 'light' ? <Moon size={16} aria-hidden /> : <Sun size={16} aria-hidden />}
+          </button>
           <HealthBadge />
         </div>
       </aside>

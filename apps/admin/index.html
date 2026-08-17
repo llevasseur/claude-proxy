@@ -6,6 +6,18 @@
     <meta name="description" content="Local telemetry console for the claude-proxy — watch tokens, cost, and tool overhead flow through the proxy." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>ClaudeProxy</title>
+    <script>
+      // Theme before first paint: the stored choice, else the OS preference.
+      var theme = 'dark';
+      try {
+        theme = localStorage.getItem('admin:theme');
+        if (theme !== 'light' && theme !== 'dark')
+          theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      } catch {
+        theme = 'dark';
+      }
+      document.documentElement.dataset.theme = theme;
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -100,6 +100,40 @@
   .grid.stats {
     grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
   }
+  /* The day's numbers rise in reading order rather than landing as one block.
+   * `backwards` holds the hidden start through each delay; every time is a
+   * multiple of `--motion-duration`, so reduced motion flattens the cascade.
+   * Keyframes on purpose — a mount fires once and is never retargeted. */
+  @keyframes card-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  .grid.stats > .card,
+  .grid.usage > .card {
+    animation: card-enter calc(var(--motion-duration) * 1.5) var(--ease-out) backwards;
+  }
+  .grid.stats > .card:nth-child(2),
+  .grid.usage > .card:nth-child(2) {
+    animation-delay: calc(var(--motion-duration) * 0.2);
+  }
+  .grid.stats > .card:nth-child(3),
+  .grid.usage > .card:nth-child(3) {
+    animation-delay: calc(var(--motion-duration) * 0.4);
+  }
+  .grid.stats > .card:nth-child(4),
+  .grid.usage > .card:nth-child(4) {
+    animation-delay: calc(var(--motion-duration) * 0.6);
+  }
+  .grid.stats > .card:nth-child(5),
+  .grid.usage > .card:nth-child(5) {
+    animation-delay: calc(var(--motion-duration) * 0.8);
+  }
+  .grid.stats > .card:nth-child(n + 6),
+  .grid.usage > .card:nth-child(n + 6) {
+    animation-delay: var(--motion-duration);
+  }
   /* Two up while two will fit, one when they will not — `auto-fit` works that out
    * from the space the grid was given, so there is no breakpoint to keep in step.
    * `min(…, 100%)` stops the floor overflowing a container narrower than itself. */

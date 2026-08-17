@@ -160,75 +160,77 @@ function CommandsTable({ commands, storePath }: { commands: CommandSummary[]; st
         </div>
       )}
 
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>Command</th>
-            <th className='num'>Steps</th>
-            <th className='num'>Runs</th>
-            <th>Delegates to</th>
-            <th className='num'>Reached the end</th>
-            <th className='num'>Tokens</th>
-            <th className='num'>Cost</th>
-            <th>Cost per run</th>
-            <th className='num'>Last run</th>
-          </tr>
-        </thead>
-        <tbody>
-          {commands.map((c) => (
-            <tr
-              key={c.command}
-              className='clickable'
-              onClick={() => navigate({ to: '/commands/$command', params: { command: c.command } })}>
-              <td>
-                <Link
-                  to='/commands/$command'
-                  params={{ command: c.command }}
-                  className='link job-title'
-                  onClick={(e) => e.stopPropagation()}>
-                  /{c.command}
-                </Link>
-                {!c.installed && (
-                  <div className='muted'>
-                    <span className='badge was-present'>uninstalled</span> history kept
-                  </div>
-                )}
-              </td>
-              <td className='num'>
-                {c.steps.length === 0 ? <span className='muted'>none declared</span> : c.steps.length}
-              </td>
-              <td className='num'>{fmtInt(c.runs)}</td>
-              <td>
-                {(c.agentTypes ?? []).length === 0 ? (
-                  <span className='muted'>—</span>
-                ) : (
-                  <span className='rule-name' title={agentTypesTitle(c.agentTypes)}>
-                    {agentTypesLabel(c.agentTypes)}
-                  </span>
-                )}
-              </td>
-              <td className='num'>
-                {c.runs === 0 ? <span className='muted'>—</span> : fmtPct(c.completionRate * 100)}
-              </td>
-              <td className='num'>{c.runs === 0 ? <span className='muted'>—</span> : fmtInt(c.totalTokens)}</td>
-              <td className='num'>{c.runs === 0 ? <span className='muted'>—</span> : fmtUsd(c.totalCost)}</td>
-              {/* biome-ignore lint/a11y/useKeyWithClickEvents: the cell is not clickable — this only keeps a click off the row's own handler */}
-              <td onClick={(e) => e.stopPropagation()}>
-                {c.costSeries.length > 1 ? (
-                  <Sparkline
-                    points={c.costSeries.map((p) => ({ date: p.date.slice(0, 10), value: p.value }))}
-                    color='var(--accent)'
-                    height={28}
-                  />
-                ) : (
-                  <span className='muted'>needs two runs</span>
-                )}
-              </td>
-              <td className='num muted'>{c.lastRun ? fmtLocalTsShort(c.lastRun) : '—'}</td>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th className='num'>Steps</th>
+              <th className='num'>Runs</th>
+              <th>Delegates to</th>
+              <th className='num'>Reached the end</th>
+              <th className='num'>Tokens</th>
+              <th className='num'>Cost</th>
+              <th>Cost per run</th>
+              <th className='num'>Last run</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {commands.map((c) => (
+              <tr
+                key={c.command}
+                className='clickable'
+                onClick={() => navigate({ to: '/commands/$command', params: { command: c.command } })}>
+                <td>
+                  <Link
+                    to='/commands/$command'
+                    params={{ command: c.command }}
+                    className='link job-title'
+                    onClick={(e) => e.stopPropagation()}>
+                    /{c.command}
+                  </Link>
+                  {!c.installed && (
+                    <div className='muted'>
+                      <span className='badge was-present'>uninstalled</span> history kept
+                    </div>
+                  )}
+                </td>
+                <td className='num'>
+                  {c.steps.length === 0 ? <span className='muted'>none declared</span> : c.steps.length}
+                </td>
+                <td className='num'>{fmtInt(c.runs)}</td>
+                <td>
+                  {(c.agentTypes ?? []).length === 0 ? (
+                    <span className='muted'>—</span>
+                  ) : (
+                    <span className='rule-name' title={agentTypesTitle(c.agentTypes)}>
+                      {agentTypesLabel(c.agentTypes)}
+                    </span>
+                  )}
+                </td>
+                <td className='num'>
+                  {c.runs === 0 ? <span className='muted'>—</span> : fmtPct(c.completionRate * 100)}
+                </td>
+                <td className='num'>{c.runs === 0 ? <span className='muted'>—</span> : fmtInt(c.totalTokens)}</td>
+                <td className='num'>{c.runs === 0 ? <span className='muted'>—</span> : fmtUsd(c.totalCost)}</td>
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: the cell is not clickable — this only keeps a click off the row's own handler */}
+                <td onClick={(e) => e.stopPropagation()}>
+                  {c.costSeries.length > 1 ? (
+                    <Sparkline
+                      points={c.costSeries.map((p) => ({ date: p.date.slice(0, 10), value: p.value }))}
+                      color='var(--accent)'
+                      height={28}
+                    />
+                  ) : (
+                    <span className='muted'>needs two runs</span>
+                  )}
+                </td>
+                <td className='num muted'>{c.lastRun ? fmtLocalTsShort(c.lastRun) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

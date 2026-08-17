@@ -149,40 +149,42 @@ function DetailBody({
 
       <div className='card'>
         <h2>Why it was this large</h2>
-        <table className='table'>
-          <thead>
-            <tr>
-              <th>
-                Region
-                <HeaderHint text='One of the three top-level parts of the request body — the conversation, the tool schemas, and the system prompt. Largest first.' />
-              </th>
-              <th className='num'>
-                Bytes
-                <HeaderHint text='Serialized bytes the region contributes to this request body.' />
-              </th>
-              <th className='num'>
-                % of request
-                <HeaderHint text="The region's bytes over the request's total bytes." />
-              </th>
-              <th className='bar-col'>
-                Share
-                <HeaderHint text='The same bytes as a bar, drawn against the largest region rather than the total.' />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {regions.map((r) => (
-              <tr key={r.label}>
-                <td>{r.label}</td>
-                <td className='num'>{fmtBytes(r.bytes)}</td>
-                <td className='num'>{fmtPct(b.totalBytes > 0 ? (r.bytes / b.totalBytes) * 100 : 0, 1)}</td>
-                <td className='bar-col'>
-                  <div className='rowbar' style={{ width: `${(r.bytes / regionMax) * 100}%` }} />
-                </td>
+        <div className='table-scroll'>
+          <table className='table'>
+            <thead>
+              <tr>
+                <th>
+                  Region
+                  <HeaderHint text='One of the three top-level parts of the request body — the conversation, the tool schemas, and the system prompt. Largest first.' />
+                </th>
+                <th className='num'>
+                  Bytes
+                  <HeaderHint text='Serialized bytes the region contributes to this request body.' />
+                </th>
+                <th className='num'>
+                  % of request
+                  <HeaderHint text="The region's bytes over the request's total bytes." />
+                </th>
+                <th className='bar-col'>
+                  Share
+                  <HeaderHint text='The same bytes as a bar, drawn against the largest region rather than the total.' />
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {regions.map((r) => (
+                <tr key={r.label}>
+                  <td>{r.label}</td>
+                  <td className='num'>{fmtBytes(r.bytes)}</td>
+                  <td className='num'>{fmtPct(b.totalBytes > 0 ? (r.bytes / b.totalBytes) * 100 : 0, 1)}</td>
+                  <td className='bar-col'>
+                    <div className='rowbar' style={{ width: `${(r.bytes / regionMax) * 100}%` }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className='grid two'>
@@ -246,74 +248,76 @@ function MessagesTable({ file, messages }: { file: string; messages: BreakdownMe
       {messages.length === 0 ? (
         <div className='empty'>No messages in this request.</div>
       ) : (
-        <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
-          <thead>
-            <tr>
-              <SortHeader
-                label='#'
-                sortKey='index'
-                sort={sort}
-                onSort={onSort}
-                className='num'
-                hint="The message's position in the conversation as sent, counted from 1. Click it to read the message."
-              />
-              <th>
-                Role
-                <HeaderHint text='Who the message is attributed to in the request — user, assistant, or system.' />
-              </th>
-              <SortHeader
-                label='Bytes'
-                sortKey='bytes'
-                sort={sort}
-                onSort={onSort}
-                className='num'
-                hint='Serialized bytes of the message as it was sent.'
-              />
-              <SortHeader
-                label='~Tokens'
-                sortKey='estTokens'
-                sort={sort}
-                onSort={onSort}
-                className='num'
-                hint='A rough estimate only: bytes ÷ 4, the same approximation the proxy uses. Not a tokenizer count.'
-              />
-              <SortHeader
-                label='Share'
-                sortKey='share'
-                sort={sort}
-                onSort={onSort}
-                className='bar-col'
-                hint='Bytes as a bar against the largest message, so it sorts on the same value as Bytes.'
-              />
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((m) => (
-              <tr
-                key={m.index}
-                className='clickable'
-                onClick={() =>
-                  navigate({ to: '/context/$file/message/$index', params: { file, index: String(m.index) } })
-                }>
-                <td className='num'>
-                  <Link
-                    to='/context/$file/message/$index'
-                    params={{ file, index: String(m.index) }}
-                    className='link'
-                    onClick={(e) => e.stopPropagation()}>
-                    {m.index + 1}
-                  </Link>
-                </td>
-                <td>{m.role}</td>
-                <td className='num'>{fmtBytes(m.bytes)}</td>
-                <td className='num'>{fmtInt(m.estTokens)}</td>
-                <td className='bar-col'>
-                  <div className='rowbar' style={{ width: `${(m.bytes / msgMax) * 100}%` }} />
-                </td>
+        <div className='table-scroll'>
+          <table className={isSorting ? 'table is-stale' : 'table'} aria-busy={isSorting || undefined}>
+            <thead>
+              <tr>
+                <SortHeader
+                  label='#'
+                  sortKey='index'
+                  sort={sort}
+                  onSort={onSort}
+                  className='num'
+                  hint="The message's position in the conversation as sent, counted from 1. Click it to read the message."
+                />
+                <th>
+                  Role
+                  <HeaderHint text='Who the message is attributed to in the request — user, assistant, or system.' />
+                </th>
+                <SortHeader
+                  label='Bytes'
+                  sortKey='bytes'
+                  sort={sort}
+                  onSort={onSort}
+                  className='num'
+                  hint='Serialized bytes of the message as it was sent.'
+                />
+                <SortHeader
+                  label='~Tokens'
+                  sortKey='estTokens'
+                  sort={sort}
+                  onSort={onSort}
+                  className='num'
+                  hint='A rough estimate only: bytes ÷ 4, the same approximation the proxy uses. Not a tokenizer count.'
+                />
+                <SortHeader
+                  label='Share'
+                  sortKey='share'
+                  sort={sort}
+                  onSort={onSort}
+                  className='bar-col'
+                  hint='Bytes as a bar against the largest message, so it sorts on the same value as Bytes.'
+                />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sorted.map((m) => (
+                <tr
+                  key={m.index}
+                  className='clickable'
+                  onClick={() =>
+                    navigate({ to: '/context/$file/message/$index', params: { file, index: String(m.index) } })
+                  }>
+                  <td className='num'>
+                    <Link
+                      to='/context/$file/message/$index'
+                      params={{ file, index: String(m.index) }}
+                      className='link'
+                      onClick={(e) => e.stopPropagation()}>
+                      {m.index + 1}
+                    </Link>
+                  </td>
+                  <td>{m.role}</td>
+                  <td className='num'>{fmtBytes(m.bytes)}</td>
+                  <td className='num'>{fmtInt(m.estTokens)}</td>
+                  <td className='bar-col'>
+                    <div className='rowbar' style={{ width: `${(m.bytes / msgMax) * 100}%` }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -329,53 +333,55 @@ function ToolsTable({ file, tools }: { file: string; tools: BreakdownTool[] }) {
       {tools.length === 0 ? (
         <div className='empty'>No tools in this request.</div>
       ) : (
-        <table className='table'>
-          <thead>
-            <tr>
-              <th>
-                Tool
-                <HeaderHint text='The tool name as declared in the request. Click it to read the schema that was sent.' />
-              </th>
-              <th className='num'>
-                Bytes
-                <HeaderHint text="Serialized bytes of the tool's whole schema — name, description, and input schema." />
-              </th>
-              <th className='num'>
-                ~Tokens
-                <HeaderHint text='A rough estimate only: bytes ÷ 4, the same approximation the proxy uses. Not a tokenizer count.' />
-              </th>
-              <th className='bar-col'>
-                Share
-                <HeaderHint text='The same bytes as a bar, drawn against the largest tool schema.' />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {tools.map((t) => (
-              <tr
-                key={t.index}
-                className='clickable'
-                onClick={() =>
-                  navigate({ to: '/context/$file/tool/$index', params: { file, index: String(t.index) } })
-                }>
-                <td>
-                  <Link
-                    to='/context/$file/tool/$index'
-                    params={{ file, index: String(t.index) }}
-                    className='link'
-                    onClick={(e) => e.stopPropagation()}>
-                    {t.name}
-                  </Link>
-                </td>
-                <td className='num'>{fmtBytes(t.bytes)}</td>
-                <td className='num'>{fmtInt(t.estTokens)}</td>
-                <td className='bar-col'>
-                  <div className='rowbar' style={{ width: `${(t.bytes / toolMax) * 100}%` }} />
-                </td>
+        <div className='table-scroll'>
+          <table className='table'>
+            <thead>
+              <tr>
+                <th>
+                  Tool
+                  <HeaderHint text='The tool name as declared in the request. Click it to read the schema that was sent.' />
+                </th>
+                <th className='num'>
+                  Bytes
+                  <HeaderHint text="Serialized bytes of the tool's whole schema — name, description, and input schema." />
+                </th>
+                <th className='num'>
+                  ~Tokens
+                  <HeaderHint text='A rough estimate only: bytes ÷ 4, the same approximation the proxy uses. Not a tokenizer count.' />
+                </th>
+                <th className='bar-col'>
+                  Share
+                  <HeaderHint text='The same bytes as a bar, drawn against the largest tool schema.' />
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {tools.map((t) => (
+                <tr
+                  key={t.index}
+                  className='clickable'
+                  onClick={() =>
+                    navigate({ to: '/context/$file/tool/$index', params: { file, index: String(t.index) } })
+                  }>
+                  <td>
+                    <Link
+                      to='/context/$file/tool/$index'
+                      params={{ file, index: String(t.index) }}
+                      className='link'
+                      onClick={(e) => e.stopPropagation()}>
+                      {t.name}
+                    </Link>
+                  </td>
+                  <td className='num'>{fmtBytes(t.bytes)}</td>
+                  <td className='num'>{fmtInt(t.estTokens)}</td>
+                  <td className='bar-col'>
+                    <div className='rowbar' style={{ width: `${(t.bytes / toolMax) * 100}%` }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

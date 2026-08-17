@@ -166,7 +166,7 @@
     font-size: var(--text-6);
   }
   .chat-turn.user .chat-bubble {
-    background: rgba(70, 224, 192, 0.08);
+    background: color-mix(in srgb, var(--signal) 8%, transparent);
     border-color: var(--signal-dim);
     border-bottom-right-radius: var(--radius-2);
   }

@@ -132,31 +132,33 @@ function CohortTable({ day }: { day: PromptMixDay }) {
   const restContribution = rest.reduce((a, c) => a + c.contribution, 0);
 
   return (
-    <table className='table'>
-      <thead>
-        <tr>
-          <th>Prompt</th>
-          <th className='num'>Requests</th>
-          <th className='num'>Share</th>
-          <th className='num'>Size</th>
-          <th className='num'>Of the mean</th>
-        </tr>
-      </thead>
-      <tbody>
-        {shown.map((c) => (
-          <CohortRow key={c.key} cohort={c} />
-        ))}
-        {rest.length > 0 && (
+    <div className='table-scroll'>
+      <table className='table'>
+        <thead>
           <tr>
-            <td className='muted'>{rest.length} smaller cohorts</td>
-            <td className='num'>{fmtInt(rest.reduce((a, c) => a + c.requests, 0))}</td>
-            <td className='num'>{fmtPct(rest.reduce((a, c) => a + c.share, 0) * 100)}</td>
-            <td className='num'>—</td>
-            <td className='num'>{fmtBytes(Math.round(restContribution))}</td>
+            <th>Prompt</th>
+            <th className='num'>Requests</th>
+            <th className='num'>Share</th>
+            <th className='num'>Size</th>
+            <th className='num'>Of the mean</th>
           </tr>
-        )}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {shown.map((c) => (
+            <CohortRow key={c.key} cohort={c} />
+          ))}
+          {rest.length > 0 && (
+            <tr>
+              <td className='muted'>{rest.length} smaller cohorts</td>
+              <td className='num'>{fmtInt(rest.reduce((a, c) => a + c.requests, 0))}</td>
+              <td className='num'>{fmtPct(rest.reduce((a, c) => a + c.share, 0) * 100)}</td>
+              <td className='num'>—</td>
+              <td className='num'>{fmtBytes(Math.round(restContribution))}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -212,32 +214,34 @@ function Attribution({ attribution: a }: { attribution: MixAttribution }) {
         <strong>{fmtDelta(a.sizeBytes)}</strong> is prompts changing size — so this is mostly{' '}
         {dominant === 'mix' ? 'a change in what ran, not in what was sent' : 'prompts themselves getting bigger'}.
       </p>
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>Prompt</th>
-            <th className='num'>Share</th>
-            <th className='num'>Mix</th>
-            <th className='num'>Size</th>
-            <th className='num'>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {a.movers.slice(0, TOP_COHORTS).map((m) => (
-            <tr key={m.key}>
-              <td>
-                <CohortLabel label={m.label} hash={hashOfKey(m.key)} />
-              </td>
-              <td className='num'>
-                {fmtPct(m.priorShare * 100)} → {fmtPct(m.share * 100)}
-              </td>
-              <td className='num'>{fmtDelta(m.mixBytes)}</td>
-              <td className='num'>{fmtDelta(m.sizeBytes)}</td>
-              <td className={`num delta ${tone(m.deltaBytes)}`}>{fmtDelta(m.deltaBytes)}</td>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>Prompt</th>
+              <th className='num'>Share</th>
+              <th className='num'>Mix</th>
+              <th className='num'>Size</th>
+              <th className='num'>Total</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {a.movers.slice(0, TOP_COHORTS).map((m) => (
+              <tr key={m.key}>
+                <td>
+                  <CohortLabel label={m.label} hash={hashOfKey(m.key)} />
+                </td>
+                <td className='num'>
+                  {fmtPct(m.priorShare * 100)} → {fmtPct(m.share * 100)}
+                </td>
+                <td className='num'>{fmtDelta(m.mixBytes)}</td>
+                <td className='num'>{fmtDelta(m.sizeBytes)}</td>
+                <td className={`num delta ${tone(m.deltaBytes)}`}>{fmtDelta(m.deltaBytes)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
@@ -263,26 +267,28 @@ function SectionMoves({ revision }: { revision: PromptRevisionDetail }) {
             : 'No stored outline for one of these prompts, so the sections cannot be compared.'}
         </div>
       ) : (
-        <table className='table'>
-          <thead>
-            <tr>
-              <th>Section</th>
-              <th className='num'>Before</th>
-              <th className='num'>After</th>
-              <th className='num'>Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {moves.map((m) => (
-              <tr key={m.heading}>
-                <td>{m.heading}</td>
-                <td className='num'>{m.status === 'added' ? '—' : fmtBytes(m.priorBytes)}</td>
-                <td className='num'>{m.status === 'removed' ? '—' : fmtBytes(m.bytes)}</td>
-                <td className={`num delta ${tone(m.deltaBytes)}`}>{fmtDelta(m.deltaBytes)}</td>
+        <div className='table-scroll'>
+          <table className='table'>
+            <thead>
+              <tr>
+                <th>Section</th>
+                <th className='num'>Before</th>
+                <th className='num'>After</th>
+                <th className='num'>Change</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {moves.map((m) => (
+                <tr key={m.heading}>
+                  <td>{m.heading}</td>
+                  <td className='num'>{m.status === 'added' ? '—' : fmtBytes(m.priorBytes)}</td>
+                  <td className='num'>{m.status === 'removed' ? '—' : fmtBytes(m.bytes)}</td>
+                  <td className={`num delta ${tone(m.deltaBytes)}`}>{fmtDelta(m.deltaBytes)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

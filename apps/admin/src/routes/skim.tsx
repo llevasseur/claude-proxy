@@ -125,39 +125,41 @@ export function SkimPage() {
 
                 <div className='card'>
                   <h2>By shape</h2>
-                  <table className='table'>
-                    <thead>
-                      <tr>
-                        <th>Cache key</th>
-                        <th>Request</th>
-                        <th className='num'>Requests</th>
-                        <th className='num'>Hits</th>
-                        <th className='num'>Saved tokens</th>
-                        <th className='num'>Est. saved</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {topShapes.map((s) => (
-                        <tr key={s.cacheKey}>
-                          <td title={s.cacheKey}>{shortKey(s.cacheKey)}</td>
-                          <td className='skim-request'>
-                            {s.requestText ? (
-                              <details>
-                                <summary>{s.requestText.split('\n', 1)[0]}</summary>
-                                <pre>{s.requestText}</pre>
-                              </details>
-                            ) : (
-                              <span className='muted'>Request log unavailable</span>
-                            )}
-                          </td>
-                          <td className='num'>{fmtInt(s.requests)}</td>
-                          <td className='num'>{fmtInt(s.hits)}</td>
-                          <td className='num'>{fmtInt(s.savedInputTokens)}</td>
-                          <td className='num'>{fmtUsd(s.estSavedUsd)}</td>
+                  <div className='table-scroll'>
+                    <table className='table'>
+                      <thead>
+                        <tr>
+                          <th>Cache key</th>
+                          <th>Request</th>
+                          <th className='num'>Requests</th>
+                          <th className='num'>Hits</th>
+                          <th className='num'>Saved tokens</th>
+                          <th className='num'>Est. saved</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {topShapes.map((s) => (
+                          <tr key={s.cacheKey}>
+                            <td title={s.cacheKey}>{shortKey(s.cacheKey)}</td>
+                            <td className='skim-request'>
+                              {s.requestText ? (
+                                <details>
+                                  <summary>{s.requestText.split('\n', 1)[0]}</summary>
+                                  <pre>{s.requestText}</pre>
+                                </details>
+                              ) : (
+                                <span className='muted'>Request log unavailable</span>
+                              )}
+                            </td>
+                            <td className='num'>{fmtInt(s.requests)}</td>
+                            <td className='num'>{fmtInt(s.hits)}</td>
+                            <td className='num'>{fmtInt(s.savedInputTokens)}</td>
+                            <td className='num'>{fmtUsd(s.estSavedUsd)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </>
             )}

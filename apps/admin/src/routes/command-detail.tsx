@@ -618,49 +618,51 @@ function StepBar({
         </div>
       )}
 
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>
-              Step
-              <HeaderHint text='A ## Step N heading from the command file, as the file stood when the run happened. Turns nothing could be placed against fall in the unattributed row.' />
-            </th>
-            <th className='num'>
-              Runs that got here
-              <HeaderHint text='Runs whose attribution reached this step, out of the runs that declared it. A step declared after a run happened is not counted against that run.' />
-            </th>
-            <th className='num'>
-              Tokens
-              <HeaderHint text='Tokens on the requests attributed to this step, summed across those runs.' />
-            </th>
-            <th className='num'>
-              Cost
-              <HeaderHint text="Dollar cost of the same requests, priced per model at the day's rates." />
-            </th>
-            <th className='num'>
-              Share
-              <HeaderHint text="This step's tokens over every token attributed here — including the unattributed row, so the column sums to 100%." />
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.step ?? 'unattributed'} className={r.step === null ? 'muted-row' : undefined}>
-              <td>
-                <span className='charttip-dot' style={{ background: r.color }} />{' '}
-                {r.step === null ? <em>unattributed</em> : `${r.step} — ${r.title}`}
-              </td>
-              <td className='num'>
-                {r.ofRuns === 0 ? '—' : `${r.reached} / ${r.ofRuns}`}
-                {r.ofRuns > 0 && r.reached === 0 && r.step !== null && <div className='muted'>never reached</div>}
-              </td>
-              <td className='num'>{fmtInt(r.tokens)}</td>
-              <td className='num'>{fmtUsd(r.cost)}</td>
-              <td className='num'>{total === 0 ? '—' : fmtPct((r.tokens / total) * 100)}</td>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>
+                Step
+                <HeaderHint text='A ## Step N heading from the command file, as the file stood when the run happened. Turns nothing could be placed against fall in the unattributed row.' />
+              </th>
+              <th className='num'>
+                Runs that got here
+                <HeaderHint text='Runs whose attribution reached this step, out of the runs that declared it. A step declared after a run happened is not counted against that run.' />
+              </th>
+              <th className='num'>
+                Tokens
+                <HeaderHint text='Tokens on the requests attributed to this step, summed across those runs.' />
+              </th>
+              <th className='num'>
+                Cost
+                <HeaderHint text="Dollar cost of the same requests, priced per model at the day's rates." />
+              </th>
+              <th className='num'>
+                Share
+                <HeaderHint text="This step's tokens over every token attributed here — including the unattributed row, so the column sums to 100%." />
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.step ?? 'unattributed'} className={r.step === null ? 'muted-row' : undefined}>
+                <td>
+                  <span className='charttip-dot' style={{ background: r.color }} />{' '}
+                  {r.step === null ? <em>unattributed</em> : `${r.step} — ${r.title}`}
+                </td>
+                <td className='num'>
+                  {r.ofRuns === 0 ? '—' : `${r.reached} / ${r.ofRuns}`}
+                  {r.ofRuns > 0 && r.reached === 0 && r.step !== null && <div className='muted'>never reached</div>}
+                </td>
+                <td className='num'>{fmtInt(r.tokens)}</td>
+                <td className='num'>{fmtUsd(r.cost)}</td>
+                <td className='num'>{total === 0 ? '—' : fmtPct((r.tokens / total) * 100)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -688,43 +690,45 @@ function AgentTypes({ data }: { data: CommandResponse }) {
           {data.meta.filteredRuns === 1 ? '' : 's'}
         </span>
       </div>
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>
-              Agent type
-              <HeaderHint text="What the spawning call named — its subagent_type, else the skill it invoked. A call that named neither is counted as 'unnamed' rather than dropped." />
-            </th>
-            <th className='num'>Spawns</th>
-            <th className='num'>
-              Runs
-              <HeaderHint text='Runs of this command that spawned at least one agent of this type.' />
-            </th>
-            <th className='num'>Turns</th>
-            <th className='num'>Tokens</th>
-            <th className='num'>Cost</th>
-            <th className='num'>
-              Share
-              <HeaderHint text="This type's cost as a share of everything the counted runs delegated — not of the runs' whole cost, which includes their own turns." />
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {types.map((t) => (
-            <tr key={t.agentType ?? ''}>
-              <td>
-                <span className='rule-name'>{t.agentType ?? 'unnamed'}</span>
-              </td>
-              <td className='num'>{fmtInt(t.spawns)}</td>
-              <td className='num'>{fmtInt(t.runs)}</td>
-              <td className='num'>{fmtInt(t.turns)}</td>
-              <td className='num'>{fmtInt(t.tokens.realInput + t.tokens.output)}</td>
-              <td className='num'>{fmtUsd(t.cost)}</td>
-              <td className='num'>{cost > 0 ? fmtPct((t.cost / cost) * 100) : <span className='muted'>—</span>}</td>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>
+                Agent type
+                <HeaderHint text="What the spawning call named — its subagent_type, else the skill it invoked. A call that named neither is counted as 'unnamed' rather than dropped." />
+              </th>
+              <th className='num'>Spawns</th>
+              <th className='num'>
+                Runs
+                <HeaderHint text='Runs of this command that spawned at least one agent of this type.' />
+              </th>
+              <th className='num'>Turns</th>
+              <th className='num'>Tokens</th>
+              <th className='num'>Cost</th>
+              <th className='num'>
+                Share
+                <HeaderHint text="This type's cost as a share of everything the counted runs delegated — not of the runs' whole cost, which includes their own turns." />
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {types.map((t) => (
+              <tr key={t.agentType ?? ''}>
+                <td>
+                  <span className='rule-name'>{t.agentType ?? 'unnamed'}</span>
+                </td>
+                <td className='num'>{fmtInt(t.spawns)}</td>
+                <td className='num'>{fmtInt(t.runs)}</td>
+                <td className='num'>{fmtInt(t.turns)}</td>
+                <td className='num'>{fmtInt(t.tokens.realInput + t.tokens.output)}</td>
+                <td className='num'>{fmtUsd(t.cost)}</td>
+                <td className='num'>{cost > 0 ? fmtPct((t.cost / cost) * 100) : <span className='muted'>—</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -740,35 +744,37 @@ function PatternTable({ data }: { data: CommandResponse }) {
       {fired.length === 0 ? (
         <div className='empty'>No rule in the catalogue has fired for this command yet.</div>
       ) : (
-        <table className='table'>
-          <thead>
-            <tr>
-              <th>
-                Pattern
-                <HeaderHint text='A deterministic rule from the catalogue — matched mechanically against the run, not judged by a model.' />
-              </th>
-              <th className='num'>
-                Runs
-                <HeaderHint text='Runs the rule fired in at least once, out of the runs counted here.' />
-              </th>
-              <th className='num'>
-                Firings
-                <HeaderHint text='Every time the rule fired, summed across those runs — so one run can contribute several.' />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {fired.map((p) => (
-              <tr key={p.id}>
-                <td>{p.title}</td>
-                <td className='num'>
-                  seen in {p.runs} of {p.ofRuns}
-                </td>
-                <td className='num'>{fmtInt(p.hits)}</td>
+        <div className='table-scroll'>
+          <table className='table'>
+            <thead>
+              <tr>
+                <th>
+                  Pattern
+                  <HeaderHint text='A deterministic rule from the catalogue — matched mechanically against the run, not judged by a model.' />
+                </th>
+                <th className='num'>
+                  Runs
+                  <HeaderHint text='Runs the rule fired in at least once, out of the runs counted here.' />
+                </th>
+                <th className='num'>
+                  Firings
+                  <HeaderHint text='Every time the rule fired, summed across those runs — so one run can contribute several.' />
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {fired.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.title}</td>
+                  <td className='num'>
+                    seen in {p.runs} of {p.ofRuns}
+                  </td>
+                  <td className='num'>{fmtInt(p.hits)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -790,73 +796,75 @@ function RunList({
         <h2>Runs</h2>
         <span className='muted'>newest first · hover a row to break its tokens out above</span>
       </div>
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>
-              Started
-              <HeaderHint text="When the run's first captured request was sent, in local time." />
-            </th>
-            <th>
-              Prompt
-              <HeaderHint text='The text passed to the command. A nested run has no prompt of its own, so it is named by the command that spawned it.' />
-            </th>
-            <th>
-              Flags
-              <HeaderHint text='Flags the run was invoked with. The store keeps the bare name, so -d and --d face together.' />
-            </th>
-            <th>
-              Outcome
-              <HeaderHint text='How the run ended, with the interruption beside it when one was recorded.' />
-            </th>
-            <th className='num'>
-              Reached
-              <HeaderHint text='The last declared step the run was attributed to — how far down the command file it got.' />
-            </th>
-            <th className='num'>
-              Turns
-              <HeaderHint text="Captured requests in the run, its subagents' included. Not chat messages." />
-            </th>
-            <th className='num'>
-              Tokens
-              <HeaderHint text='Real input plus output. Cache reads are excluded here, so this is what the run actually added.' />
-            </th>
-            <th className='num'>
-              Cost
-              <HeaderHint text="The run's whole dollar cost, cache reads included — priced per model." />
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => (
-            <tr
-              key={r.runId}
-              className='clickable'
-              onMouseEnter={() => onHover(r)}
-              onMouseLeave={() => onHover(null)}
-              onClick={() => navigate({ to: '/commands/$command/$runId', params: { command, runId: r.runId } })}>
-              <td className='num muted'>{r.started ? fmtLocalTsShort(r.started) : '—'}</td>
-              {/* A nested run has no prompt of its own, so it is named by its parent. */}
-              <td className='runprompt'>
-                {r.prompt || (
-                  <span className='muted'>
-                    {r.parentCommand ? `nested in /${r.parentCommand}` : 'no prompt recorded'}
-                  </span>
-                )}
-              </td>
-              <td>{r.flags.length === 0 ? <span className='muted'>—</span> : r.flags.map(fmtFlag).join(' ')}</td>
-              <td className='nowrap'>
-                <span className='charttip-dot' style={{ background: OUTCOME_COLOR[r.outcome] }} /> {r.outcome}
-                {r.interruption && <span className='muted'> · {r.interruption}</span>}
-              </td>
-              <td className='num'>{r.lastStep === null ? <span className='muted'>—</span> : r.lastStep}</td>
-              <td className='num'>{fmtInt(r.totals.turns)}</td>
-              <td className='num'>{fmtInt(r.totals.tokens.realInput + r.totals.tokens.output)}</td>
-              <td className='num'>{fmtUsd(r.totals.cost)}</td>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>
+                Started
+                <HeaderHint text="When the run's first captured request was sent, in local time." />
+              </th>
+              <th>
+                Prompt
+                <HeaderHint text='The text passed to the command. A nested run has no prompt of its own, so it is named by the command that spawned it.' />
+              </th>
+              <th>
+                Flags
+                <HeaderHint text='Flags the run was invoked with. The store keeps the bare name, so -d and --d face together.' />
+              </th>
+              <th>
+                Outcome
+                <HeaderHint text='How the run ended, with the interruption beside it when one was recorded.' />
+              </th>
+              <th className='num'>
+                Reached
+                <HeaderHint text='The last declared step the run was attributed to — how far down the command file it got.' />
+              </th>
+              <th className='num'>
+                Turns
+                <HeaderHint text="Captured requests in the run, its subagents' included. Not chat messages." />
+              </th>
+              <th className='num'>
+                Tokens
+                <HeaderHint text='Real input plus output. Cache reads are excluded here, so this is what the run actually added.' />
+              </th>
+              <th className='num'>
+                Cost
+                <HeaderHint text="The run's whole dollar cost, cache reads included — priced per model." />
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {runs.map((r) => (
+              <tr
+                key={r.runId}
+                className='clickable'
+                onMouseEnter={() => onHover(r)}
+                onMouseLeave={() => onHover(null)}
+                onClick={() => navigate({ to: '/commands/$command/$runId', params: { command, runId: r.runId } })}>
+                <td className='num muted'>{r.started ? fmtLocalTsShort(r.started) : '—'}</td>
+                {/* A nested run has no prompt of its own, so it is named by its parent. */}
+                <td className='runprompt'>
+                  {r.prompt || (
+                    <span className='muted'>
+                      {r.parentCommand ? `nested in /${r.parentCommand}` : 'no prompt recorded'}
+                    </span>
+                  )}
+                </td>
+                <td>{r.flags.length === 0 ? <span className='muted'>—</span> : r.flags.map(fmtFlag).join(' ')}</td>
+                <td className='nowrap'>
+                  <span className='charttip-dot' style={{ background: OUTCOME_COLOR[r.outcome] }} /> {r.outcome}
+                  {r.interruption && <span className='muted'> · {r.interruption}</span>}
+                </td>
+                <td className='num'>{r.lastStep === null ? <span className='muted'>—</span> : r.lastStep}</td>
+                <td className='num'>{fmtInt(r.totals.turns)}</td>
+                <td className='num'>{fmtInt(r.totals.tokens.realInput + r.totals.tokens.output)}</td>
+                <td className='num'>{fmtUsd(r.totals.cost)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

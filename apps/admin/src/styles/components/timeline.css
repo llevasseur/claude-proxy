@@ -10,7 +10,7 @@
     padding: var(--space-6) var(--space-7);
     border: 1px solid var(--line);
     border-radius: var(--radius-4);
-    background: rgba(0, 0, 0, 0.18);
+    background: var(--well);
   }
   .joblog-head {
     display: flex;
@@ -47,7 +47,7 @@
     list-style: none;
     border: 1px solid var(--line);
     border-radius: var(--radius-4);
-    background: rgba(0, 0, 0, 0.28);
+    background: var(--well-deep);
     font-family: var(--font-mono);
     font-size: var(--text-4);
     line-height: 1.55;
@@ -77,7 +77,7 @@
     vertical-align: top;
   }
   .codeblock li:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--hover-veil);
   }
   /* Save-confirm diff lines, tinted whole rather than per token. */
   .codeblock li.diff-added {
@@ -88,7 +88,7 @@
   }
   .codeblock li.diff-gap {
     color: var(--faint);
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--hover-veil);
   }
 
   /* Token colours, shared by every pretty code view. */

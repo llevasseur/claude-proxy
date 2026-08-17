@@ -16,7 +16,7 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    padding: var(--space-11) var(--rail-inset);
+    padding: var(--space-9) var(--rail-inset);
     /* The stations scroll, not the rail: the brand and the log count stay put at either end. */
     overflow: hidden;
     background: linear-gradient(180deg, var(--surface), var(--ink));
@@ -24,19 +24,23 @@
   }
 
   /* Owns the gap to the stations, so its bottom edge is the line they scroll under
-   and the shadow falls there. `z-index` clears `.stations`, which is positioned. */
+   and the shadow falls there. `z-index` clears `.stations`, which is positioned.
+   In both bands the CTA leads the row (`order: 1`) and the identity — brand
+   here, the log count in the foot — follows it (`order: 2`). */
   .rail-head {
     flex: none;
     display: flex;
     align-items: center;
     gap: var(--space-5);
-    padding: var(--space-2) var(--space-3) var(--space-10);
+    padding: var(--space-2) var(--space-3) var(--space-7);
     position: relative;
     z-index: 1;
-    box-shadow: 0 10px 16px -10px rgba(0, 0, 0, 0.75);
+    box-shadow: var(--shadow-ledge);
   }
-  /* The wordmark is a link home to Overview, and should not read as one. */
+  /* The wordmark is a link home to Overview, and should not read as one. It
+   follows its band's CTA in the flex row. */
   .brand-link {
+    order: 2;
     display: flex;
     align-items: center;
     gap: var(--space-5);
@@ -46,14 +50,14 @@
     border-radius: var(--radius-4);
   }
   .brand-link:hover .brand-node {
-    box-shadow: 0 0 18px rgba(70, 224, 192, 0.9);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--signal) 60%, transparent);
   }
   .brand-node {
     width: 10px;
     height: 10px;
     border-radius: var(--radius-1);
     background: var(--signal);
-    box-shadow: 0 0 12px rgba(70, 224, 192, 0.65);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--signal) 45%, transparent);
     flex: none;
   }
   .brand {
@@ -141,7 +145,7 @@
   }
   .station.active .station-icon {
     color: var(--signal);
-    filter: drop-shadow(0 0 6px rgba(70, 224, 192, 0.5));
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--signal) 35%, transparent));
   }
   .station.active::before {
     content: "";
@@ -154,9 +158,9 @@
     border-radius: 0 var(--radius-1) var(--radius-1) 0;
   }
 
-  /* collapse toggle */
+  /* collapse toggle — the CTA leads its flex row. */
   .rail-toggle {
-    margin-left: auto;
+    order: 1;
     flex: none;
     display: inline-flex;
     align-items: center;
@@ -169,21 +173,48 @@
     cursor: pointer;
     transition:
       color var(--motion-duration) ease,
-      border-color var(--motion-duration) ease;
+      border-color var(--motion-duration) ease,
+      transform var(--motion-duration-fast) var(--ease-out);
   }
   .rail-toggle:hover {
     color: var(--text);
     border-color: var(--muted);
   }
 
-  /* The head's twin at the other end, lit from below. */
+  /* The head's twin at the other end, lit from below: theme CTA, then the logs. */
   .rail-foot {
     flex: none;
-    padding-top: var(--space-9);
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    padding-top: var(--space-7);
     border-top: 1px solid var(--line);
     position: relative;
     z-index: 1;
-    box-shadow: 0 -10px 16px -10px rgba(0, 0, 0, 0.75);
+    box-shadow: var(--shadow-ledge-up);
+  }
+  /* Light/dark switch — the rail-toggle's twin at the other end of the rail,
+   leading its row the same way. */
+  .theme-toggle {
+    order: 1;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    color: var(--faint);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-4);
+    cursor: pointer;
+    transition:
+      color var(--motion-duration) ease,
+      border-color var(--motion-duration) ease,
+      transform var(--motion-duration-fast) var(--ease-out);
+  }
+  .theme-toggle:hover {
+    color: var(--text);
+    border-color: var(--muted);
   }
 
   /* drawer chrome — narrow breakpoint only */
@@ -213,7 +244,8 @@
     cursor: pointer;
     transition:
       color var(--motion-duration) ease,
-      border-color var(--motion-duration) ease;
+      border-color var(--motion-duration) ease,
+      transform var(--motion-duration-fast) var(--ease-out);
   }
   .drawer-toggle:hover {
     color: var(--text);
@@ -225,7 +257,7 @@
     inset: 0;
     z-index: 30;
     padding: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--scrim);
     border: none;
     cursor: default;
   }
@@ -233,7 +265,9 @@
   /* collapsed rail — icons only, above the top-bar breakpoint */
   @media (min-width: 861px) {
     .app {
-      transition: grid-template-columns var(--motion-duration) ease;
+      /* The rail is already on screen when it collapses, so it accelerates and
+       settles rather than launching — an in-out move, not an entrance. */
+      transition: grid-template-columns var(--motion-duration) var(--ease-in-out);
     }
     .app--rail-collapsed {
       grid-template-columns: 64px minmax(0, 1fr);
@@ -244,8 +278,8 @@
     .app--rail-collapsed .rail-head {
       flex-direction: column;
       align-items: center;
-      gap: var(--space-8);
-      padding: var(--space-2) 0 var(--space-10);
+      gap: var(--space-6);
+      padding: var(--space-2) 0 var(--space-7);
     }
     .app--rail-collapsed .brand {
       display: none;
@@ -283,6 +317,10 @@
     .app--rail-collapsed .station-hint {
       display: none;
     }
+    .app--rail-collapsed .rail-foot {
+      flex-direction: column;
+      gap: var(--space-6);
+    }
     .app--rail-collapsed .health {
       justify-content: center;
     }
@@ -294,6 +332,7 @@
   /* health signal */
   /* biome-ignore lint/style/noDescendingSpecificity: the more specific rule is a scoped variant declared earlier; moving either one to satisfy source order would change what wins */
   .health {
+    order: 2;
     display: flex;
     align-items: center;
     gap: var(--space-5);

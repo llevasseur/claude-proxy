@@ -331,7 +331,7 @@
     margin: 0 auto var(--space-9);
     border-radius: var(--radius-2);
     background: var(--signal);
-    box-shadow: 0 0 18px rgba(70, 224, 192, 0.6);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--signal) 60%, transparent);
   }
   .chat-empty h2 {
     font-size: var(--text-10);

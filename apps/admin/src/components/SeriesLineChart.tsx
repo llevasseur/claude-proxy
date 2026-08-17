@@ -74,17 +74,12 @@ export function SeriesLineChart({
           />
           <Tooltip
             cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
+            // Sized to content rather than scrolled: the card may leave the plot
+            // vertically, and then must draw over the neighbouring cards.
+            allowEscapeViewBox={{ x: false, y: true }}
+            wrapperStyle={{ zIndex: 10 }}
             content={
-              <SeriesTooltip
-                series={series}
-                format={format}
-                data={data}
-                xKey={xKey}
-                pins={pins}
-                pinnable={pinnable}
-                // The plot is the card's ceiling; a longer pin list scrolls inside it.
-                maxHeight={height - 16}
-              />
+              <SeriesTooltip series={series} format={format} data={data} xKey={xKey} pins={pins} pinnable={pinnable} />
             }
           />
           {series.map((s) => (
@@ -183,6 +178,12 @@ interface TooltipPayloadEntry {
   value?: number;
 }
 
+/**
+ * Pins shown in the tooltip before the rest collapse to a count — the card must
+ * fit its content, so the list is capped by number rather than scrolled.
+ */
+const MAX_TIP_PINS = 4;
+
 interface SeriesTooltipProps {
   series: Series[];
   format: (n: number) => string;
@@ -191,25 +192,13 @@ interface SeriesTooltipProps {
   xKey: string;
   pins: PinKey[];
   pinnable: boolean;
-  maxHeight: number;
   active?: boolean;
   label?: string | number;
   payload?: TooltipPayloadEntry[];
 }
 
 /** Card-style tooltip matching the admin's panels rather than recharts' default. */
-function SeriesTooltip({
-  series,
-  format,
-  data,
-  xKey,
-  pins,
-  pinnable,
-  maxHeight,
-  active,
-  label,
-  payload,
-}: SeriesTooltipProps) {
+function SeriesTooltip({ series, format, data, xKey, pins, pinnable, active, label, payload }: SeriesTooltipProps) {
   if (!active || !payload?.length) return null;
   const hovered = label == null ? '' : String(label);
   const valueFor = (key: string) => payload.find((p) => p.dataKey === key)?.value ?? null;
@@ -222,7 +211,7 @@ function SeriesTooltip({
     .filter((row): row is ChartRow => !!row);
 
   return (
-    <div className='charttip' style={{ maxHeight }}>
+    <div className='charttip'>
       <div className='charttip-lead'>
         <div className='charttip-label'>{label}</div>
         {series.map((s) => {
@@ -240,7 +229,7 @@ function SeriesTooltip({
 
       {compared.length > 0 && (
         <div className='charttip-pins'>
-          {compared.map((row) => (
+          {compared.slice(0, MAX_TIP_PINS).map((row) => (
             <PinnedEntry
               key={String(row[xKey])}
               row={row}
@@ -250,6 +239,9 @@ function SeriesTooltip({
               baseline={valueFor}
             />
           ))}
+          {compared.length > MAX_TIP_PINS && (
+            <div className='charttip-more'>+{compared.length - MAX_TIP_PINS} more pinned</div>
+          )}
         </div>
       )}
 

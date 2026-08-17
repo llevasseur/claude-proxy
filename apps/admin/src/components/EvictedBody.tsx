@@ -34,41 +34,45 @@ export function EvictedBody({ data }: { data: EvictedBodyResponse }) {
 
           <div className='card'>
             <h2>Retained metrics</h2>
-            <table className='table'>
-              <tbody>
-                <Row label='Captured' value={r.timestamp} />
-                <Row label='Model' value={r.model} />
-                <Row label='Endpoint' value={r.endpoint} />
-                <Row label='Status' value={String(r.statusCode)} />
-                <Row label='Input tokens' value={fmtInt(r.tokens.input)} />
-                <Row label='Output tokens' value={fmtInt(r.tokens.output)} />
-                <Row label='Cache read' value={fmtInt(r.tokens.cacheRead)} />
-                <Row label='Cache creation' value={fmtInt(r.tokens.cacheCreation)} />
-              </tbody>
-            </table>
+            <div className='table-scroll'>
+              <table className='table'>
+                <tbody>
+                  <Row label='Captured' value={r.timestamp} />
+                  <Row label='Model' value={r.model} />
+                  <Row label='Endpoint' value={r.endpoint} />
+                  <Row label='Status' value={String(r.statusCode)} />
+                  <Row label='Input tokens' value={fmtInt(r.tokens.input)} />
+                  <Row label='Output tokens' value={fmtInt(r.tokens.output)} />
+                  <Row label='Cache read' value={fmtInt(r.tokens.cacheRead)} />
+                  <Row label='Cache creation' value={fmtInt(r.tokens.cacheCreation)} />
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {r.tools.length > 0 && (
             <div className='card'>
               <h2>Tools by size</h2>
-              <table className='table'>
-                <thead>
-                  <tr>
-                    <th>Tool</th>
-                    <th className='num'>Bytes</th>
-                    <th className='num'>~Tokens</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.tools.map((t) => (
-                    <tr key={t.name}>
-                      <td>{t.name}</td>
-                      <td className='num'>{fmtBytes(t.bytes)}</td>
-                      <td className='num'>{fmtInt(t.estTokens)}</td>
+              <div className='table-scroll'>
+                <table className='table'>
+                  <thead>
+                    <tr>
+                      <th>Tool</th>
+                      <th className='num'>Bytes</th>
+                      <th className='num'>~Tokens</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {r.tools.map((t) => (
+                      <tr key={t.name}>
+                        <td>{t.name}</td>
+                        <td className='num'>{fmtBytes(t.bytes)}</td>
+                        <td className='num'>{fmtInt(t.estTokens)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>

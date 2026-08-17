@@ -98,21 +98,23 @@ function BlendedTable({ digests, range, live }: { digests: UsageDigest[]; range:
           {range} ({REPORT_TZ_ABBR}){live ? ', today so far' : ''}
         </span>
       </div>
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>Metric</th>
-            <th className='num'>Blended</th>
-            <th>Per</th>
-            <th className='num'>Days</th>
-          </tr>
-        </thead>
-        <tbody>
-          {METRICS.map((m) => (
-            <BlendedRow key={m.key} def={m} digests={digests} />
-          ))}
-        </tbody>
-      </table>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th className='num'>Blended</th>
+              <th>Per</th>
+              <th className='num'>Days</th>
+            </tr>
+          </thead>
+          <tbody>
+            {METRICS.map((m) => (
+              <BlendedRow key={m.key} def={m} digests={digests} />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

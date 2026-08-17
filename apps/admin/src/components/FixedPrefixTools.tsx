@@ -35,30 +35,32 @@ export function FixedPrefixTools({ digests }: { digests: UsageDigest[] }) {
         <strong>{fmtInt(requests)}</strong> requests — a mean, not a constant, since a subagent ships a narrower tool
         set than the main loop does. Open a row to read the JSON that size is made of.
       </p>
-      <table className='table'>
-        <thead>
-          <tr>
-            <th>Tool</th>
-            <th className='num'>Per call</th>
-            <th className='num'>Share of tool bytes</th>
-            <th className='num'>Day total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tools.map((t) => (
-            <tr key={t.name}>
-              <td>
-                <Link className='link mono' to='/trends/fixed-prefix/tool/$name' params={{ name: t.name }}>
-                  {t.name}
-                </Link>
-              </td>
-              <td className='num'>{requests > 0 ? `${fmtInt(Math.round(t.estTokens / requests))} tok` : '—'}</td>
-              <td className='num'>{fmtPct(t.pctOfToolBytes)}</td>
-              <td className='num'>{fmtInt(t.estTokens)} tok</td>
+      <div className='table-scroll'>
+        <table className='table'>
+          <thead>
+            <tr>
+              <th>Tool</th>
+              <th className='num'>Per call</th>
+              <th className='num'>Share of tool bytes</th>
+              <th className='num'>Day total</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {tools.map((t) => (
+              <tr key={t.name}>
+                <td>
+                  <Link className='link mono' to='/trends/fixed-prefix/tool/$name' params={{ name: t.name }}>
+                    {t.name}
+                  </Link>
+                </td>
+                <td className='num'>{requests > 0 ? `${fmtInt(Math.round(t.estTokens / requests))} tok` : '—'}</td>
+                <td className='num'>{fmtPct(t.pctOfToolBytes)}</td>
+                <td className='num'>{fmtInt(t.estTokens)} tok</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
