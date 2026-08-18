@@ -106,6 +106,14 @@ describe('buildSessionsGraph liveness', () => {
     expect(by.get(OLD)?.liveness.state).toBe('finished');
   });
 
+  it('serves a thin index: step counts in place of node streams', async () => {
+    const { sessions } = await buildSessionsGraph(await corpus(), NOW);
+    const by = new Map(sessions.map((s) => [s.threadId, s]));
+
+    expect(by.get(PARENT)?.steps).toBe(2);
+    expect(by.get(PARENT)).not.toHaveProperty('nodes');
+  });
+
   it('is a pure function of `now`, so two reads of one corpus agree', async () => {
     const dir = await corpus();
     const a = await buildSessionsGraph(dir, NOW);

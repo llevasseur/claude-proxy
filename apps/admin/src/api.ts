@@ -502,14 +502,23 @@ export interface SessionsResponse {
   sessions: SessionSummary[];
   meta: { sessionsDir: string; total: number };
 }
-/** A transcript's steps plus its place in the session's agent tree (parent/subagent links). */
-export interface SessionGraphEntry extends SessionSummary, SessionAgentLink {
-  nodes: SessionNode[];
+/**
+ * A transcript's index row: its listing metadata and its place in the session's agent tree
+ * (parent/subagent links), with the node stream left to `/api/sessions/graph/nodes` — the
+ * 4 s poll carries a `steps` count instead of every step.
+ */
+export interface SessionGraphIndexEntry extends SessionSummary, SessionAgentLink {
+  /** Steps appended so far — the length of the node stream this row omits. */
+  steps: number;
   /** Whether this branch is still being written to — `quiet` is busy-or-stalled, not dead. */
   liveness: BranchLiveness;
 }
+/** An index row with its node stream joined back in — what the graph page lays out. */
+export interface SessionGraphEntry extends SessionGraphIndexEntry {
+  nodes: SessionNode[];
+}
 export interface SessionsGraphResponse {
-  sessions: SessionGraphEntry[];
+  sessions: SessionGraphIndexEntry[];
   meta: { sessionsDir: string; total: number };
 }
 /** One branch's liveness verdict with no node stream attached — cheap enough to poll. */
@@ -548,8 +557,15 @@ export interface SessionThreadNodes {
   messageCount: number;
   nodes: SessionNode[];
 }
+/** One family thread's transcript node stream — the gisted steps the graph index omits. */
+export interface SessionThreadTranscript {
+  threadId: string;
+  nodes: SessionNode[];
+}
 export interface SessionGraphNodesResponse {
   rootThreadId: string;
+  /** Every thread in the canvased family, walk order, each with its transcript nodes. */
+  transcripts: SessionThreadTranscript[];
   threads: SessionThreadNodes[];
   meta: { files: number; parseErrors: number; requestsRead: number; capped: boolean };
 }
