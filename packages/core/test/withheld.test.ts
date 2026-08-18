@@ -26,7 +26,13 @@ describe('rule classification', () => {
   });
 
   it('ignores empty / non-string rules', () => {
-    const c = classifyDenyRules(['Artifact', '', null as unknown as string]);
+    // SAFETY: `classifyDenyRules` is declared over `readonly string[]`, but what it is
+    // handed at runtime is `permissions.deny` straight out of the JSON settings file,
+    // where an entry can be `null`. This fixture is that on-disk shape, and the
+    // assertion is the only place the crossing is stated — the whole point of the
+    // case below is that the function drops the null rather than classifying it.
+    const deny = ['Artifact', '', null] as readonly string[];
+    const c = classifyDenyRules(deny);
     expect(c.schemaStripping).toEqual(['Artifact']);
     expect(c.scoped).toEqual([]);
   });

@@ -1,3 +1,5 @@
+import { type JsonObject, type JsonValue, jsonNumber, jsonObject, jsonText, jsonValueOf } from './json.js';
+
 export interface NoteMetadata {
   id: string;
   version: number;
@@ -50,29 +52,37 @@ export interface NoteWriteResult {
   changed?: boolean;
 }
 
-function record(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value))
-    throw new Error(`${label} must be an object`);
-  return value as Record<string, unknown>;
+/** The member map `value` is, or a refusal naming what was expected. */
+function fields(value: JsonValue, label: string): JsonObject {
+  const found = jsonObject(value);
+  if (found === null) throw new Error(`${label} must be an object`);
+  return found;
 }
 
-function text(value: unknown, label: string): string {
-  if (typeof value !== 'string') throw new Error(`${label} must be a string`);
-  return value;
+/** The string `value` is, or a refusal naming the field that was not one. */
+function text(value: JsonValue | undefined, label: string): string {
+  const found = jsonText(value);
+  if (found === null) throw new Error(`${label} must be a string`);
+  return found;
 }
 
-function positiveVersion(value: unknown): number {
-  if (!Number.isInteger(value) || Number(value) < 1) throw new Error('expectedVersion must be a positive integer');
-  return Number(value);
+/** A version counter: an integer of at least 1, or a refusal. */
+function positiveVersion(value: JsonValue | undefined): number {
+  const version = jsonNumber(value);
+  if (version === null || !Number.isInteger(version) || version < 1)
+    throw new Error('expectedVersion must be a positive integer');
+  return version;
 }
 
-export function parseNoteCreate(value: unknown): NoteCreateInput {
-  const input = record(value, 'request body');
+/** Read a request body as a note creation, or throw with the first thing wrong. */
+export function parseNoteCreate<Candidate>(value: Candidate): NoteCreateInput {
+  const input = fields(jsonValueOf(value), 'request body');
   return { title: text(input.title, 'title'), body: text(input.body, 'body') };
 }
 
-export function parseNoteUpdate(value: unknown): NoteUpdateInput {
-  const input = record(value, 'request body');
+/** Read a request body as a note revision, or throw with the first thing wrong. */
+export function parseNoteUpdate<Candidate>(value: Candidate): NoteUpdateInput {
+  const input = fields(jsonValueOf(value), 'request body');
   const id = text(input.id, 'id');
   if (!id) throw new Error('id must not be blank');
   const result: NoteUpdateInput = { id, expectedVersion: positiveVersion(input.expectedVersion) };
@@ -82,8 +92,9 @@ export function parseNoteUpdate(value: unknown): NoteUpdateInput {
   return result;
 }
 
-export function parseNoteId(value: unknown): string {
-  const input = record(value, 'request body');
+/** Read a request body as the id of one note, or throw with the first thing wrong. */
+export function parseNoteId<Candidate>(value: Candidate): string {
+  const input = fields(jsonValueOf(value), 'request body');
   const id = text(input.id, 'id');
   if (!id) throw new Error('id must not be blank');
   return id;

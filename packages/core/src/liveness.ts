@@ -81,7 +81,7 @@ export function branchLiveness(
   const at = Date.parse(activity.lastActivity ?? '');
   // Clock skew between the writer and this read can put an mtime in the future; that is
   // an idle time of zero, not a negative one.
-  const idleMs = Number.isNaN(at) ? null : Math.max(0, (typeof now === 'number' ? now : now.getTime()) - at);
+  const idleMs = Number.isNaN(at) ? null : Math.max(0, (now instanceof Date ? now.getTime() : now) - at);
 
   let state: LivenessState;
   if (terminal) state = 'finished';
@@ -92,7 +92,7 @@ export function branchLiveness(
 }
 
 /** Strongest-claim-first: one live branch makes the whole family live. */
-const STATE_RANK: Record<LivenessState, number> = { running: 3, quiet: 2, finished: 1, unknown: 0 };
+const STATE_RANK = { running: 3, quiet: 2, finished: 1, unknown: 0 } satisfies Record<LivenessState, number>;
 
 /**
  * Roll a family of branches up into one verdict. `running` if any branch is, `quiet` if
@@ -128,9 +128,9 @@ export function familyLiveness(
 }
 
 /** One line saying what a verdict means, for a reader who is deciding whether to re-dispatch. */
-export const LIVENESS_NOTE: Record<LivenessState, string> = {
+export const LIVENESS_NOTE = {
   running: 'appended to just now — still going',
   quiet: 'no new step for a while — busy or stalled, not known to be dead',
   finished: 'handed back — nothing left to wait for',
   unknown: 'no transcript to judge it by',
-};
+} satisfies Record<LivenessState, string>;

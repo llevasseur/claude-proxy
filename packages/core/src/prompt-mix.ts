@@ -73,7 +73,7 @@ interface Bucket {
   bytes: number[];
 }
 
-function bucketFor(s: AuditSidecar): { key: string; hash: string | null; label: string } {
+function bucketFor(s: AuditSidecar) {
   const hash = s.request.system?.hash ?? null;
   if (hash) return { key: hash, hash, label: `${s.model} · ${hash.slice(0, 8)}` };
   const b = band(s.request.systemBytes);

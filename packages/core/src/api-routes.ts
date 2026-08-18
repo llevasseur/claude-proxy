@@ -235,11 +235,17 @@ export function apiRoute(path: string): ApiRoute | undefined {
  * CORS. Both halves are asked because the chat turn stream shares those headers as a GET.
  */
 export function isApiWriteRoute(route: ApiRoute): boolean {
+  // SAFETY: each route's `methods` is an `as const` tuple, so `.includes('POST')` is a
+  // type error on a route that never lists POST. Every literal in every tuple is drawn
+  // from `ApiMethod`, so widening to it asks the question this predicate exists to ask.
   return route.cors === 'origin' && (route.methods as readonly ApiMethod[]).includes('POST');
 }
 
 /** Whether a declared route answers this method. */
 export function apiRouteAnswers(route: ApiRoute, method: string | undefined): boolean {
+  // SAFETY: the argument is a method string off the wire, so it cannot be narrowed to
+  // the route's literal tuple before the comparison — finding out whether it belongs is
+  // the point. Reading the tuple as `readonly string[]` loses only those literals.
   return (route.methods as readonly string[]).includes(method ?? '');
 }
 
@@ -257,6 +263,9 @@ export function apiRouteUrl<P extends ApiRoutePath>(
   // Hand-encoded rather than via `URLSearchParams`: this package's typecheck loads
   // neither the DOM nor node's lib. It also writes `%20` for a space, not `+`.
   const pairs: string[] = [];
+  // SAFETY: `Object.entries` over a mapped type is typed too loosely to keep the key
+  // literals; only the value type matters here and it is unchanged. Every value is still
+  // `ApiQueryValue`, and the `undefined` a `Partial` admits is dropped on the next line.
   for (const [key, value] of Object.entries(params as Record<string, ApiQueryValue>)) {
     if (value === undefined || value === '') continue;
     pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);

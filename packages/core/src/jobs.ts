@@ -8,6 +8,18 @@
  *
  * Pure: no I/O.
  */
+import {
+  arrayAt,
+  type JsonValue,
+  jsonArray,
+  jsonNumber,
+  jsonObject,
+  jsonText,
+  jsonValueOf,
+  numberAt,
+  parseJsonText,
+  textAt,
+} from './json.js';
 
 /** A linked artifact a job produced — a PR, an issue, a branch. */
 export interface JobChild {
@@ -71,60 +83,58 @@ export interface JobStateFields {
   inFlight: { tasks: number; queued: number; kinds: string[] } | null;
 }
 
-/** A string field, or "" for anything that isn't one. */
-function str(value: unknown): string {
-  return typeof value === 'string' ? value : '';
-}
-
-/** A finite number field, or null. */
-function num(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
 /** Epoch milliseconds as ISO 8601, or "" when the value isn't a usable instant. */
-function isoFromEpoch(value: unknown): string {
-  const ms = num(value);
+function isoFromEpoch(value: JsonValue | undefined): string {
+  const ms = jsonNumber(value);
   if (ms === null) return '';
   const d = new Date(ms);
   return Number.isNaN(d.getTime()) ? '' : d.toISOString();
 }
 
 /** The value following `flag` in a `respawnFlags` array, or "". */
-function flagValue(flags: unknown, flag: string): string {
-  if (!Array.isArray(flags)) return '';
-  const at = flags.indexOf(flag);
-  return at >= 0 ? str(flags[at + 1]) : '';
+function flagValue(flags: JsonValue | undefined, flag: string): string {
+  const list = jsonArray(flags);
+  if (list === null) return '';
+  const at = list.indexOf(flag);
+  return at >= 0 ? (jsonText(list[at + 1]) ?? '') : '';
 }
 
-function normalizeChildren(value: unknown): JobChild[] {
-  if (!Array.isArray(value)) return [];
+function normalizeChildren(value: JsonValue | undefined): JobChild[] {
   const out: JobChild[] = [];
-  for (const entry of value) {
-    if (!entry || typeof entry !== 'object') continue;
-    const c = entry as { id?: unknown; kind?: unknown; href?: unknown };
-    const href = str(c.href);
+  for (const entry of jsonArray(value) ?? []) {
+    const child = jsonObject(entry);
+    if (child === null) continue;
+    const href = textAt(child, 'href');
     if (!href) continue; // a child with nothing to open is not worth a row
-    out.push({ id: str(c.id), kind: str(c.kind), href });
+    out.push({ id: textAt(child, 'id'), kind: textAt(child, 'kind'), href });
   }
   return out;
 }
 
-function normalizeFan(value: unknown): JobFanTask[] {
-  if (!Array.isArray(value)) return [];
+function normalizeFan(value: JsonValue | undefined): JobFanTask[] {
   const out: JobFanTask[] = [];
-  for (const entry of value) {
-    if (!entry || typeof entry !== 'object') continue;
-    const f = entry as { id?: unknown; kind?: unknown; label?: unknown; startedAt?: unknown };
-    out.push({ id: str(f.id), kind: str(f.kind), label: str(f.label), startedAt: isoFromEpoch(f.startedAt) });
+  for (const entry of jsonArray(value) ?? []) {
+    const task = jsonObject(entry);
+    if (task === null) continue;
+    out.push({
+      id: textAt(task, 'id'),
+      kind: textAt(task, 'kind'),
+      label: textAt(task, 'label'),
+      startedAt: isoFromEpoch(task.startedAt),
+    });
   }
   return out;
 }
 
-function normalizeInFlight(value: unknown): JobStateFields['inFlight'] {
-  if (!value || typeof value !== 'object') return null;
-  const f = value as { tasks?: unknown; queued?: unknown; kinds?: unknown };
-  const kinds = Array.isArray(f.kinds) ? f.kinds.filter((k): k is string => typeof k === 'string') : [];
-  return { tasks: num(f.tasks) ?? 0, queued: num(f.queued) ?? 0, kinds };
+function normalizeInFlight(value: JsonValue | undefined): JobStateFields['inFlight'] {
+  const record = jsonObject(value);
+  if (record === null) return null;
+  const kinds: string[] = [];
+  for (const kind of arrayAt(record, 'kinds')) {
+    const name = jsonText(kind);
+    if (name !== null) kinds.push(name);
+  }
+  return { tasks: numberAt(record, 'tasks'), queued: numberAt(record, 'queued'), kinds };
 }
 
 /**
@@ -132,29 +142,29 @@ function normalizeInFlight(value: unknown): JobStateFields['inFlight'] {
  * an unreadable or half-written file yields all-empty fields rather than an error,
  * which is how a job directory left behind with no state renders as a husk.
  */
-export function normalizeJobState(raw: unknown): JobStateFields {
-  const s = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+export function normalizeJobState<Candidate>(raw: Candidate): JobStateFields {
+  const s = jsonObject(jsonValueOf(raw));
   return {
-    state: str(s.state),
-    name: str(s.name),
-    nameSource: str(s.nameSource),
-    detail: str(s.detail),
-    intent: str(s.intent),
-    tempo: str(s.tempo),
-    cwd: str(s.cwd) || str(s.originCwd),
-    sessionId: str(s.sessionId),
-    backend: str(s.backend),
-    template: str(s.template),
-    cliVersion: str(s.cliVersion),
-    model: flagValue(s.respawnFlags, '--model'),
-    agent: flagValue(s.respawnFlags, '--agent'),
-    tokens: num(s.tokens),
-    createdAt: str(s.createdAt),
-    updatedAt: str(s.updatedAt),
-    firstTerminalAt: str(s.firstTerminalAt),
-    children: normalizeChildren(s.children),
-    fan: normalizeFan(s.fan),
-    inFlight: normalizeInFlight(s.inFlight),
+    state: textAt(s, 'state'),
+    name: textAt(s, 'name'),
+    nameSource: textAt(s, 'nameSource'),
+    detail: textAt(s, 'detail'),
+    intent: textAt(s, 'intent'),
+    tempo: textAt(s, 'tempo'),
+    cwd: textAt(s, 'cwd') || textAt(s, 'originCwd'),
+    sessionId: textAt(s, 'sessionId'),
+    backend: textAt(s, 'backend'),
+    template: textAt(s, 'template'),
+    cliVersion: textAt(s, 'cliVersion'),
+    model: flagValue(s?.respawnFlags, '--model'),
+    agent: flagValue(s?.respawnFlags, '--agent'),
+    tokens: jsonNumber(s?.tokens),
+    createdAt: textAt(s, 'createdAt'),
+    updatedAt: textAt(s, 'updatedAt'),
+    firstTerminalAt: textAt(s, 'firstTerminalAt'),
+    children: normalizeChildren(s?.children),
+    fan: normalizeFan(s?.fan),
+    inFlight: normalizeInFlight(s?.inFlight),
   };
 }
 
@@ -165,8 +175,13 @@ export function normalizeJobState(raw: unknown): JobStateFields {
  */
 export type JobTone = 'busy' | 'done' | 'blocked' | 'failed' | 'idle' | 'unknown';
 
+/** The lookup {@link STATE_TONES} is: any folded state word, or nothing. */
+interface StateToneTable {
+  readonly [word: string]: JobTone;
+}
+
 /** Known state words, after lowercasing and folding `_`/spaces to `-`. */
-const STATE_TONES: Record<string, JobTone> = {
+const STATE_TONES: StateToneTable = {
   working: 'busy',
   running: 'busy',
   active: 'busy',
@@ -214,31 +229,37 @@ export interface JobTimelineEntry {
   text: string;
 }
 
+/** A parsed `timeline.jsonl`: the records that read, and how many did not. */
+export interface JobTimeline {
+  entries: JobTimelineEntry[];
+  /** Lines that were not a JSON record — a half-written tail, most often. */
+  skipped: number;
+}
+
 /**
  * Parse a job's `timeline.jsonl` — one JSON record per line, newest last. Lines
  * that don't parse are counted rather than thrown on, since the file is appended
  * to live and its last line can be half-written when it is read.
  */
-export function parseJobTimeline(content: string): { entries: JobTimelineEntry[]; skipped: number } {
+export function parseJobTimeline(content: string): JobTimeline {
   const entries: JobTimelineEntry[] = [];
   let skipped = 0;
   const lines = content.split('\n');
   for (let i = 0; i < lines.length; i += 1) {
     const raw = (lines[i] ?? '').trim();
     if (raw === '') continue;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
+    const record = jsonObject(parseJsonText(raw) ?? undefined);
+    if (record === null) {
       skipped += 1;
       continue;
     }
-    if (!parsed || typeof parsed !== 'object') {
-      skipped += 1;
-      continue;
-    }
-    const r = parsed as { at?: unknown; state?: unknown; detail?: unknown; text?: unknown };
-    entries.push({ line: i + 1, at: str(r.at), state: str(r.state), detail: str(r.detail), text: str(r.text) });
+    entries.push({
+      line: i + 1,
+      at: textAt(record, 'at'),
+      state: textAt(record, 'state'),
+      detail: textAt(record, 'detail'),
+      text: textAt(record, 'text'),
+    });
   }
   return { entries, skipped };
 }
@@ -246,8 +267,13 @@ export function parseJobTimeline(content: string): { entries: JobTimelineEntry[]
 /** How a viewer should render a job file. */
 export type JobFileKind = 'json' | 'jsonl' | 'markdown' | 'log' | 'code' | 'text' | 'image' | 'binary';
 
+/** The lookup {@link FILE_KINDS} is: any lowercased extension, or nothing. */
+interface FileKindTable {
+  readonly [extension: string]: JobFileKind;
+}
+
 /** Extension → kind. Anything unlisted is `binary` until the read proves otherwise. */
-const FILE_KINDS: Record<string, JobFileKind> = {
+const FILE_KINDS: FileKindTable = {
   json: 'json',
   jsonl: 'jsonl',
   ndjson: 'jsonl',

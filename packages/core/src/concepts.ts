@@ -10,6 +10,8 @@
  * field added after the first record is optional.
  */
 
+import { type JsonValue, jsonObject, jsonText, jsonValueOf } from './json.js';
+
 /** One term `/teach` recorded, as stored on a line of `logs/concepts.jsonl`. */
 export interface Concept {
   /** The term that was learned. */
@@ -71,16 +73,15 @@ export function withoutMetaSkills(skills: readonly string[] | undefined): string
  * not know is kept and rendered from what it has, rather than emptying the page.
  * Callers read the rest defensively, which is what {@link normalizeConcept} is for.
  */
-export function isConcept(value: unknown): value is Concept {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.term === 'string' && typeof v.savedAt === 'string';
+export function isConcept<Candidate>(value: Candidate): value is Candidate & Concept {
+  const record = jsonObject(jsonValueOf(value));
+  return record !== null && jsonText(record.term) !== null && jsonText(record.savedAt) !== null;
 }
 
 /** A string array, or `undefined` when the field was never recorded at all. */
-function optionalList(value: unknown): string[] | undefined {
+function optionalList(value: JsonValue | undefined): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  return value.filter((entry): entry is string => typeof entry === 'string');
+  return value.map((entry) => jsonText(entry)).filter((entry): entry is string => entry !== null);
 }
 
 /**
@@ -94,16 +95,17 @@ function optionalList(value: unknown): string[] | undefined {
  * written before those fields existed.
  */
 export function normalizeConcept(concept: Concept): Concept {
-  const skills = Array.isArray(concept.skills) ? concept.skills.filter((s): s is string => typeof s === 'string') : [];
+  const skills = Array.isArray(concept.skills) ? concept.skills.filter((s) => jsonText(s) !== null) : [];
   const out: Concept = {
     term: concept.term,
-    sentence: typeof concept.sentence === 'string' ? concept.sentence : '',
-    field: typeof concept.field === 'string' ? concept.field : '',
+    sentence: jsonText(concept.sentence) ?? '',
+    field: jsonText(concept.field) ?? '',
     skills,
     savedAt: concept.savedAt,
   };
 
-  if (typeof concept.notes === 'string') out.notes = concept.notes;
+  const notes = jsonText(concept.notes);
+  if (notes !== null) out.notes = notes;
   const tips = optionalList(concept.tips);
   if (tips) out.tips = tips;
   const sources = optionalList(concept.sources);

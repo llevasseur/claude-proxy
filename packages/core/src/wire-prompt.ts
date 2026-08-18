@@ -8,8 +8,10 @@
  * outlines. Hashing and file I/O belong to the proxy and the server.
  */
 
+import { type JsonValue, jsonArray, jsonNumber, jsonObject, jsonText, jsonValueOf, textAt } from './json.js';
+
 /** UTF-8 byte length of a value's JSON form — matches the proxy's `Buffer.byteLength`. */
-function jsonBytes(value: unknown): number {
+function jsonBytes(value: JsonValue | undefined): number {
   return new TextEncoder().encode(JSON.stringify(value)).length;
 }
 
@@ -84,6 +86,12 @@ interface WirePromptSpan extends WirePromptSection {
   to: number;
 }
 
+/** One block's lines, and the spans indexing into them — what {@link spansOfText} answers. */
+interface BlockSpans {
+  lines: string[];
+  spans: WirePromptSpan[];
+}
+
 /**
  * The shared parse behind {@link sectionsOfText} and
  * {@link wirePromptSectionTexts}. Byte counts come from offset arithmetic and
@@ -91,7 +99,7 @@ interface WirePromptSpan extends WirePromptSection {
  * Returns ranges rather than text — every outline parse comes through here, and
  * only the section reader needs the strings.
  */
-function spansOfText(text: string, block: number): { lines: string[]; spans: WirePromptSpan[] } {
+function spansOfText(text: string, block: number): BlockSpans {
   const lines = text.split('\n');
   const found: { heading: string; level: number; offset: number; line: number }[] = [];
   let fence: string | null = null;
@@ -132,22 +140,16 @@ function spansOfText(text: string, block: number): { lines: string[]; spans: Wir
   return { lines, spans };
 }
 
-/** Text of one `system` entry, for the shapes the API accepts. */
-function blockText(block: unknown): string {
-  if (typeof block === 'string') return block;
-  if (typeof block === 'object' && block !== null) {
-    const t = (block as { text?: unknown }).text;
-    if (typeof t === 'string') return t;
-  }
-  return '';
+/** Text of one `system` entry, for each form the API accepts: a bare string, or a text block. */
+function blockText(block: JsonValue): string {
+  return jsonText(block) ?? textAt(jsonObject(block), 'text');
 }
 
-function blockCacheTtl(block: unknown): string | null {
-  if (typeof block !== 'object' || block === null) return null;
-  const cc = (block as { cache_control?: unknown }).cache_control;
-  if (typeof cc !== 'object' || cc === null) return null;
-  const ttl = (cc as { ttl?: unknown }).ttl;
-  return typeof ttl === 'string' ? ttl : 'ephemeral';
+/** A block's cache TTL. Any `cache_control` at all means cached, defaulting to `ephemeral`. */
+function blockCacheTtl(block: JsonValue): string | null {
+  const cacheControl = jsonObject(jsonObject(block)?.cache_control);
+  if (cacheControl === null) return null;
+  return jsonText(cacheControl.ttl) ?? 'ephemeral';
 }
 
 /**
@@ -155,10 +157,11 @@ function blockCacheTtl(block: unknown): string | null {
  * — absent, a bare string, or an array of blocks — and of malformed ones, which
  * yield zeros rather than throwing.
  */
-export function outlineWirePrompt(system: unknown): WirePromptOutline {
+export function outlineWirePrompt<Candidate>(system: Candidate): WirePromptOutline {
   if (system === undefined || system === null) return { bytes: 0, blocks: [], sections: [] };
 
-  const raw = Array.isArray(system) ? system : [system];
+  const parsed = jsonValueOf(system);
+  const raw = jsonArray(parsed) ?? [parsed];
   const blocks: WirePromptBlock[] = [];
   const sections: WirePromptSection[] = [];
 
@@ -173,7 +176,7 @@ export function outlineWirePrompt(system: unknown): WirePromptOutline {
     if (text !== '') sections.push(...sectionsOfText(text, index));
   });
 
-  return { bytes: jsonBytes(system), blocks, sections };
+  return { bytes: jsonBytes(parsed), blocks, sections };
 }
 
 /**
@@ -182,11 +185,12 @@ export function outlineWirePrompt(system: unknown): WirePromptOutline {
  * there. A stored outline keeps byte counts only, so reading a section back
  * needs the request body it was derived from.
  */
-export function wirePromptSectionTexts(system: unknown): string[] {
+export function wirePromptSectionTexts<Candidate>(system: Candidate): string[] {
   if (system === undefined || system === null) return [];
 
+  const parsed = jsonValueOf(system);
   const texts: string[] = [];
-  for (const [index, block] of (Array.isArray(system) ? system : [system]).entries()) {
+  for (const [index, block] of (jsonArray(parsed) ?? [parsed]).entries()) {
     const text = blockText(block);
     if (text === '') continue;
     const { lines, spans } = spansOfText(text, index);
@@ -205,12 +209,15 @@ export interface StoredWirePrompt extends WirePromptOutline {
   firstSeen: string;
 }
 
-/** Structural guard for a parsed-but-untrusted store record. */
-export function isStoredWirePrompt(value: unknown): value is StoredWirePrompt {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
+/** Structural guard for a parsed-but-untrusted store record, decoded field by field. */
+export function isStoredWirePrompt<Candidate>(value: Candidate): value is Candidate & StoredWirePrompt {
+  const record = jsonObject(jsonValueOf(value));
+  if (record === null) return false;
   return (
-    typeof v.hash === 'string' && typeof v.bytes === 'number' && Array.isArray(v.blocks) && Array.isArray(v.sections)
+    jsonText(record.hash) !== null &&
+    jsonNumber(record.bytes) !== null &&
+    jsonArray(record.blocks) !== null &&
+    jsonArray(record.sections) !== null
   );
 }
 

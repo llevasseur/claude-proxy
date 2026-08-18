@@ -20,6 +20,19 @@
  *   - done: <outcome>
  */
 
+import {
+  type JsonObject,
+  type JsonValue,
+  jsonArray,
+  jsonBoolean,
+  jsonEntries,
+  jsonNumber,
+  jsonObject,
+  jsonText,
+  jsonValueOf,
+  parseJsonText,
+} from './json.js';
+
 export interface SessionMeta {
   /** The 16-hex-char thread id (also the file name stem and route param). */
   threadId: string;
@@ -306,12 +319,23 @@ export type InterruptionKind = 'user' | 'tool-use' | 'stopped' | 'timeout' | 'li
 /** Claude Code's marker, prepended to the user turn that interrupted the run. */
 const INTERRUPT_MARKER_RE = /^\[Request interrupted by user(?<tool> for tool use)?\]\s*/;
 
-const INTERRUPTION_KINDS = new Set<string>(['user', 'tool-use', 'stopped', 'timeout', 'limit']);
+const INTERRUPTION_KINDS = [
+  'user',
+  'tool-use',
+  'stopped',
+  'timeout',
+  'limit',
+] as const satisfies readonly InterruptionKind[];
+
+/** Whether a transcript's written reason is one this graph knows. */
+function isInterruptionKind(reason: string): reason is InterruptionKind {
+  return INTERRUPTION_KINDS.some((kind) => kind === reason);
+}
 
 /** Read an `- interrupted:` line's reason; anything unrecognized reads as a plain stop. */
 export function interruptionKind(raw: string): InterruptionKind {
   const one = raw.trim().toLowerCase();
-  return (INTERRUPTION_KINDS.has(one) ? one : 'stopped') as InterruptionKind;
+  return isInterruptionKind(one) ? one : 'stopped';
 }
 
 /** The transcript line the dashboard appends when its own Stop (or a ceiling) cut a turn. */
@@ -322,7 +346,14 @@ export const INTERRUPTION_LINE = (kind: InterruptionKind): string => `- interrup
  * words that followed it (the redirection, which is the resumed run's first task). Text
  * with no marker comes back unchanged and `null`.
  */
-export function splitInterruption(text: string): { kind: InterruptionKind | null; text: string } {
+export interface InterruptionSplit {
+  /** The kind the marker names, or `null` when the turn carried no marker. */
+  kind: InterruptionKind | null;
+  /** What followed the marker — the whole text when there was none. */
+  text: string;
+}
+
+export function splitInterruption(text: string): InterruptionSplit {
   const m = INTERRUPT_MARKER_RE.exec(text);
   if (!m) return { kind: null, text };
   return { kind: m.groups?.tool ? 'tool-use' : 'user', text: text.slice(m[0].length) };
@@ -560,23 +591,35 @@ export function parseSessionNodes(content: string, argsHashes: Record<number, st
 }
 
 /**
+ * One `.nodes.jsonl` field read back off every row that carried it, keyed by the
+ * node index the row names. Sparse by construction — a node whose row recorded
+ * nothing for the field simply has no entry.
+ */
+export interface SessionNodeRows {
+  [nodeIndex: number]: string;
+}
+
+/** The node index a sidecar row names, or `null` when it names none usable. */
+function nodeIndexOf(row: JsonObject | null): number | null {
+  const index = jsonNumber(row?.i);
+  return index !== null && Number.isInteger(index) && index >= 0 ? index : null;
+}
+
+/**
  * Untruncated node texts from a transcript's `<threadId>.nodes.jsonl` sidecar,
  * keyed by node index — the whole text behind the gists {@link parseSessionNodes}
  * reads back. Sparse: only nodes whose line dropped something get an entry, and
  * transcripts predating the sidecar have none. Malformed lines are skipped.
  */
-export function parseSessionNodeTexts(content: string): Record<number, string> {
-  const texts: Record<number, string> = {};
+export function parseSessionNodeTexts(content: string): SessionNodeRows {
+  const texts: SessionNodeRows = {};
   for (const line of content.split('\n')) {
     if (!line.trim()) continue;
-    try {
-      const row = JSON.parse(line) as { i?: unknown; text?: unknown };
-      if (typeof row.i === 'number' && Number.isInteger(row.i) && row.i >= 0 && typeof row.text === 'string') {
-        texts[row.i] = row.text;
-      }
-    } catch {
-      /* skip a torn or truncated line */
-    }
+    // A torn or truncated line is not JSON, so it decodes to null and is skipped.
+    const row = jsonObject(parseJsonText(line));
+    const index = nodeIndexOf(row);
+    const text = jsonText(row?.text);
+    if (index !== null && text !== null) texts[index] = text;
   }
   return texts;
 }
@@ -587,18 +630,15 @@ export function parseSessionNodeTexts(content: string): Record<number, string> {
  * rows: a call whose display signature dropped nothing still gets a hash, and a
  * transcript written before the field has none. Malformed lines are skipped.
  */
-export function parseSessionNodeHashes(content: string): Record<number, string> {
-  const hashes: Record<number, string> = {};
+export function parseSessionNodeHashes(content: string): SessionNodeRows {
+  const hashes: SessionNodeRows = {};
   for (const line of content.split('\n')) {
     if (!line.trim()) continue;
-    try {
-      const row = JSON.parse(line) as { i?: unknown; argsHash?: unknown };
-      if (typeof row.i === 'number' && Number.isInteger(row.i) && row.i >= 0 && typeof row.argsHash === 'string') {
-        hashes[row.i] = row.argsHash;
-      }
-    } catch {
-      /* skip a torn or truncated line */
-    }
+    // A torn or truncated line is not JSON, so it decodes to null and is skipped.
+    const row = jsonObject(parseJsonText(line));
+    const index = nodeIndexOf(row);
+    const argsHash = jsonText(row?.argsHash);
+    if (index !== null && argsHash !== null) hashes[index] = argsHash;
   }
   return hashes;
 }
@@ -953,20 +993,27 @@ export function parseSessionErrors(content: string): SessionError[] {
 // order, with the text intact.
 
 /** Normalize a message `content` (string | block array) to a block array. */
-function asBlocks(content: unknown): Record<string, unknown>[] {
-  if (typeof content === 'string') return [{ type: 'text', text: content }];
-  if (!Array.isArray(content)) return [];
-  return content.filter((b): b is Record<string, unknown> => typeof b === 'object' && b !== null);
+function asBlocks(content: JsonValue | undefined): readonly JsonObject[] {
+  const text = jsonText(content);
+  if (text !== null) return [{ type: 'text', text }];
+  const blocks = jsonArray(content);
+  if (blocks === null) return [];
+  const objects: JsonObject[] = [];
+  for (const block of blocks) {
+    const object = jsonObject(block);
+    if (object !== null) objects.push(object);
+  }
+  return objects;
 }
 
-const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+const str = (v: JsonValue | undefined): string => jsonText(v) ?? '';
 
 /** The transcript's own normalization: every line it records is whitespace-collapsed. */
 const collapseWhitespace = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
 /** The proxy's `gist` — collapse to one line and cap, cut marked with an `…`. */
-function gist(s: unknown, max: number): string {
-  const one = collapseWhitespace(String(s ?? ''));
+function gist(s: string | undefined, max: number): string {
+  const one = collapseWhitespace(s ?? '');
   return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 }
 
@@ -974,11 +1021,13 @@ function gist(s: unknown, max: number): string {
 const stripReminderBlocks = (s: string): string => s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '');
 
 /** The readable text of a `tool_result` block (string or nested block array). */
-function resultText(block: Record<string, unknown>): string {
+function resultText(block: JsonObject): string {
   const content = block.content;
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-  return content.map((x) => (typeof x === 'string' ? x : str((x as Record<string, unknown>)?.text))).join(' ');
+  const text = jsonText(content);
+  if (text !== null) return text;
+  const parts = jsonArray(content);
+  if (parts === null) return '';
+  return parts.map((x) => jsonText(x) ?? str(jsonObject(x)?.text)).join(' ');
 }
 
 /** Allowlist of identifying tool inputs, in the proxy's precedence order. */
@@ -1003,15 +1052,29 @@ const ARG_KEYS = [
  * line: a transcript's tool signature is one line by construction, and consumers rely on it —
  * {@link spawnAgentType}'s signature pattern doesn't match across a newline.
  */
-function toolArgs(input: unknown): string {
-  if (typeof input !== 'object' || input === null) return '';
-  const obj = input as Record<string, unknown>;
+function toolArgs(input: JsonValue | undefined): string {
+  const obj = jsonObject(input);
+  if (obj === null) return '';
   for (const k of ARG_KEYS) {
-    const v = obj[k];
-    if (typeof v === 'string' && v.trim()) return `${k}=${collapseWhitespace(v)}`;
+    const v = jsonText(obj[k]);
+    if (v?.trim()) return `${k}=${collapseWhitespace(v)}`;
   }
-  const k = Object.keys(obj).find((key) => ['string', 'number', 'boolean'].includes(typeof obj[key]));
-  return k ? `${k}=${collapseWhitespace(String(obj[k]))}` : '';
+  // Nothing on the allowlist: fall back to the first scalar field, the proxy's own rule.
+  for (const [key, value] of jsonEntries(obj)) {
+    const scalar = scalarText(value);
+    if (scalar !== null) return `${key}=${collapseWhitespace(scalar)}`;
+  }
+  return '';
+}
+
+/** How a JSON scalar reads as text; `null` for objects, arrays and JSON null. */
+function scalarText(value: JsonValue | undefined): string | null {
+  const text = jsonText(value);
+  if (text !== null) return text;
+  const num = jsonNumber(value);
+  if (num !== null) return String(num);
+  const flag = jsonBoolean(value);
+  return flag === null ? null : String(flag);
 }
 
 /**
@@ -1020,19 +1083,21 @@ function toolArgs(input: unknown): string {
  * into a thread id — including its fallback to the first message's serialized content, so
  * a body with no user text hashes to the same id there and here.
  */
-export function firstUserText(messages: unknown): string {
-  if (!Array.isArray(messages)) return '';
-  for (const m of messages) {
-    if ((m as Record<string, unknown>)?.role !== 'user') continue;
-    const text = asBlocks((m as Record<string, unknown>).content)
+export function firstUserText<Candidate>(messages: Candidate): string {
+  const list = jsonArray(jsonValueOf(messages));
+  if (list === null) return '';
+  for (const m of list) {
+    const message = jsonObject(m);
+    if (message === null || message.role !== 'user') continue;
+    const text = asBlocks(message.content)
       .filter((b) => b.type === 'text')
       .map((b) => str(b.text))
       .join(' ')
       .trim();
     if (text) return text;
   }
-  const first = messages[0] as Record<string, unknown> | undefined;
-  return first ? gist(JSON.stringify(first.content), 200) : '';
+  const first = jsonObject(list[0]);
+  return first === null ? '' : gist(JSON.stringify(first.content), 200);
 }
 
 /**
@@ -1044,9 +1109,8 @@ export function firstUserText(messages: unknown): string {
  * before the task they precede; within an assistant turn, the decision comes before
  * the calls it explains.
  */
-export function deriveSessionNodes(body: unknown): SessionNode[] {
-  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-  const messages = Array.isArray(obj.messages) ? obj.messages : [];
+export function deriveSessionNodes<Candidate>(body: Candidate): SessionNode[] {
+  const messages = jsonArray(jsonObject(jsonValueOf(body))?.messages) ?? [];
 
   const nodes: SessionNode[] = [];
   let task: string | null = null;
@@ -1077,11 +1141,10 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
 
   for (let m = 0; m < messages.length; m++) {
     message = m;
-    const raw = messages[m];
-    const msg = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
-    const blocks = asBlocks(msg.content);
+    const msg = jsonObject(messages[m]);
+    const blocks = asBlocks(msg?.content);
 
-    if (msg.role === 'user') {
+    if (msg?.role === 'user') {
       const texts: string[] = [];
       for (const b of blocks) {
         if (b.type === 'text') texts.push(str(b.text));
@@ -1105,7 +1168,7 @@ export function deriveSessionNodes(body: unknown): SessionNode[] {
       continue;
     }
 
-    if (msg.role !== 'assistant') continue;
+    if (msg?.role !== 'assistant') continue;
 
     const texts: string[] = [];
     const calls: string[] = [];
@@ -1244,14 +1307,13 @@ export interface RequestErrorSite {
  * holding it — one entry per block, in the order {@link deriveSessionNodes} emits its
  * `error` nodes. A body with no `messages` array yields none.
  */
-export function deriveRequestErrors(body: unknown): RequestErrorSite[] {
-  const obj = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
-  const messages = Array.isArray(obj.messages) ? obj.messages : [];
+export function deriveRequestErrors<Candidate>(body: Candidate): RequestErrorSite[] {
+  const messages = jsonArray(jsonObject(jsonValueOf(body))?.messages) ?? [];
 
   const sites: RequestErrorSite[] = [];
   messages.forEach((raw, messageIndex) => {
-    const msg = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
-    if (msg.role !== 'user') return;
+    const msg = jsonObject(raw);
+    if (msg?.role !== 'user') return;
     for (const b of asBlocks(msg.content)) {
       if (b.type === 'tool_result' && b.is_error === true) sites.push({ messageIndex, text: resultText(b) });
     }

@@ -692,7 +692,7 @@ describe('commenting', () => {
     const written = applyIdeaComments(store, [{ slug: 'one', text: 'something' }]).store;
     const cleared = applyIdeaComments(written, [{ slug: 'one', text: '   ' }]).store;
     expect(ideaOf(cleared, 'one')?.comment).toBeUndefined();
-    expect('comment' in (ideaOf(cleared, 'one') as object)).toBe(false);
+    expect('comment' in ideaOf(cleared, 'one')!).toBe(false);
   });
 
   it('writes nothing for an unknown slug, and refuses a malformed comment', () => {

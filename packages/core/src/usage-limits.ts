@@ -1,3 +1,15 @@
+import {
+  arrayAt,
+  type JsonObject,
+  jsonArray,
+  jsonEntries,
+  jsonNumber,
+  jsonObject,
+  jsonText,
+  jsonValueOf,
+  objectAt,
+  textAt,
+} from './json.js';
 import { dayStartMs, shiftDay } from './time.js';
 import type { AuditTokens } from './types.js';
 
@@ -15,24 +27,24 @@ export const USAGE_WINDOWS = ['5h', 'week', 'weekFable'] as const;
 export type UsageWindowKind = (typeof USAGE_WINDOWS)[number];
 
 /** Nominal span of each window; every pace calculation divides by it. */
-export const USAGE_WINDOW_MS: Record<UsageWindowKind, number> = {
+export const USAGE_WINDOW_MS = {
   '5h': 5 * 60 * 60 * 1000,
   week: 7 * 24 * 60 * 60 * 1000,
   weekFable: 7 * 24 * 60 * 60 * 1000,
-};
+} satisfies Record<UsageWindowKind, number>;
 
 /** Suffix of each window's override env var; the server builds `USAGE_LIMIT_<suffix>` from this. */
-export const USAGE_LIMIT_ENV_SUFFIX: Record<UsageWindowKind, string> = {
+export const USAGE_LIMIT_ENV_SUFFIX = {
   '5h': '5H',
   week: 'WEEK',
   weekFable: 'WEEK_FABLE',
-};
+} satisfies Record<UsageWindowKind, string>;
 
-const WINDOW_LABELS: Record<UsageWindowKind, string> = {
+const WINDOW_LABELS = {
   '5h': '5-hour window',
   week: 'Weekly window',
   weekFable: 'Weekly Fable',
-};
+} satisfies Record<UsageWindowKind, string>;
 
 /**
  * What a cache read *meters* at against fresh input, for the rate-limit allowances.
@@ -98,15 +110,15 @@ export interface UsageRecord {
  * emits for an unusable file (`__parseError`, `__invalidSidecar`) carry no
  * `model` and no `tokens`, so they still fail here.
  */
-export function isUsageRecord(value: unknown): value is UsageRecord {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  if (typeof v.timestamp !== 'string') return false;
-  if (typeof v.model !== 'string') return false;
-  const t = v.tokens as Record<string, unknown> | undefined;
-  if (typeof t !== 'object' || t === null) return false;
+export function isUsageRecord<Candidate>(value: Candidate): value is Candidate & UsageRecord {
+  const record = jsonObject(jsonValueOf(value));
+  if (record === null) return false;
+  if (jsonText(record.timestamp) === null) return false;
+  if (jsonText(record.model) === null) return false;
+  const tokens = jsonObject(record.tokens);
+  if (tokens === null) return false;
   for (const key of ['input', 'output', 'cacheRead', 'cacheCreation', 'realInput']) {
-    if (typeof t[key] !== 'number') return false;
+    if (jsonNumber(tokens[key]) === null) return false;
   }
   return true;
 }
@@ -131,13 +143,13 @@ export type LiveUsage = Partial<Record<UsageWindowKind, LiveUsageWindow>>;
  * Both the `session`/`weekly_all` spelling the endpoint returns and the
  * `five_hour`/`seven_day` one the client also accepts are matched.
  */
-const LIVE_KINDS: Record<string, UsageWindowKind> = {
-  session: '5h',
-  weekly_all: 'week',
-  five_hour: '5h',
-  seven_day: 'week',
-  seven_day_opus: 'weekFable',
-};
+const LIVE_KINDS = new Map<string, UsageWindowKind>([
+  ['session', '5h'],
+  ['weekly_all', 'week'],
+  ['five_hour', '5h'],
+  ['seven_day', 'week'],
+  ['seven_day_opus', 'weekFable'],
+]);
 
 /**
  * A ceiling inferred from history: the busiest completed window we have logs for.
@@ -265,10 +277,8 @@ function parseReset(raw: string, now: Date): string | null {
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
 /** Is this `weekly_scoped` entry the Fable window? */
-function isFableScope(entry: Record<string, unknown>): boolean {
-  const scope = entry.scope as { model?: { display_name?: unknown } } | undefined;
-  const name = scope?.model?.display_name;
-  return typeof name === 'string' && /fable/i.test(name);
+function isFableScope(entry: JsonObject): boolean {
+  return /fable/i.test(textAt(objectAt(objectAt(entry, 'scope'), 'model'), 'display_name'));
 }
 
 /**
@@ -278,22 +288,24 @@ function isFableScope(entry: Record<string, unknown>): boolean {
  * Unknown kinds are skipped rather than guessed at, so a window Anthropic adds
  * falls through to the estimate instead of landing on the wrong meter. Entries
  * without a usable `percent` are dropped for the same reason.
+ *
+ * The payload may be the entry array itself or an object wrapping it in
+ * `limits`; both readings are taken here.
  */
-export function parseLiveUsage(raw: unknown, now: Date = new Date()): LiveUsage {
-  const entries = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as { limits?: unknown })?.limits)
-      ? (raw as { limits: unknown[] }).limits
-      : [];
+export function parseLiveUsage<Candidate>(raw: Candidate, now: Date = new Date()) {
+  const payload = jsonValueOf(raw);
+  const entries = jsonArray(payload) ?? arrayAt(jsonObject(payload), 'limits');
   const out: LiveUsage = {};
   for (const e of entries) {
-    if (!e || typeof e !== 'object') continue;
-    const entry = e as Record<string, unknown>;
-    const rawKind = entry.kind;
-    if (typeof rawKind !== 'string') continue;
+    const entry = jsonObject(e);
+    if (entry === null) continue;
+    const rawKind = jsonText(entry.kind);
+    if (rawKind === null) continue;
     const kind =
-      rawKind === 'weekly_scoped' ? (isFableScope(entry) ? 'weekFable' : null) : (LIVE_KINDS[rawKind] ?? null);
+      rawKind === 'weekly_scoped' ? (isFableScope(entry) ? 'weekFable' : null) : (LIVE_KINDS.get(rawKind) ?? null);
     if (!kind) continue;
+    // `percent` is coerced rather than decoded: the endpoint has sent it both as
+    // a number and as a numeric string, and both have always been read.
     const percent = Number(entry.percent);
     if (!Number.isFinite(percent)) continue;
     const reset = entry.resets_at;
@@ -331,10 +343,11 @@ function num(raw: string): number | undefined {
 }
 
 /** Group a sidecar's captured rate-limit headers by the window each describes. */
-function groupHeaders(headers: Record<string, string>, now: Date): Map<UsageWindowKind, HeaderFields> {
+function groupHeaders(headers: JsonObject, now: Date): Map<UsageWindowKind, HeaderFields> {
   const out = new Map<UsageWindowKind, HeaderFields>();
-  for (const [rawName, rawValue] of Object.entries(headers)) {
-    if (typeof rawValue !== 'string') continue;
+  for (const [rawName, value] of jsonEntries(headers)) {
+    const rawValue = jsonText(value);
+    if (rawValue === null) continue;
     const kind = windowOfHeader(rawName);
     if (!kind) continue;
     const field = FIELD_RE.exec(rawName.toLowerCase())?.[1];
@@ -557,10 +570,10 @@ function assessPace(args: {
 }
 
 /** A sidecar's captured response rate-limit headers, if the proxy recorded any. */
-function rateLimitHeaders(s: UsageRecord): Record<string, string> | null {
-  const raw: unknown = s.rateLimit;
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
-  return raw as Record<string, string>;
+function rateLimitHeaders(s: UsageRecord): JsonObject | null {
+  // `isUsageRecord` never looks at `rateLimit`, so a record that reached here can
+  // still carry anything under that key — decode it rather than trust the type.
+  return jsonObject(jsonValueOf(s.rateLimit));
 }
 
 const isFable = (model: string): boolean => model.toLowerCase().includes('fable');
@@ -575,7 +588,8 @@ const isFable = (model: string): boolean => model.toLowerCase().includes('fable'
  * A gap *inside* the retained span is indistinguishable from a quiet stretch, but
  * that only costs peak, never invents one — see {@link LearnedCeiling}.
  */
-export function learnCeilings(sidecars: readonly unknown[], now: Date = new Date()): LearnedCeilings {
+export function learnCeilings(sidecars: readonly unknown[], now: Date = new Date()) {
+  const out: LearnedCeilings = {};
   const nowMs = now.getTime();
   const entries: Array<{ at: number; model: string; tokens: AuditTokens }> = [];
   let oldest = Infinity;
@@ -586,9 +600,8 @@ export function learnCeilings(sidecars: readonly unknown[], now: Date = new Date
     entries.push({ at, model: raw.model, tokens: raw.tokens });
     if (at < oldest) oldest = at;
   }
-  if (entries.length === 0) return {};
+  if (entries.length === 0) return out;
 
-  const out: LearnedCeilings = {};
   const observedMs = nowMs - oldest;
 
   for (const kind of USAGE_WINDOWS) {
@@ -598,7 +611,7 @@ export function learnCeilings(sidecars: readonly unknown[], now: Date = new Date
     const complete = Math.floor(observedMs / windowMs) - 1;
     if (complete < 1) continue; // not one whole window of history yet — say nothing
 
-    const totals = new Array<number>(complete + 1).fill(0);
+    const totals = Array.from<number>({ length: complete + 1 }).fill(0);
     for (const e of entries) {
       if (kind === 'weekFable' && !isFable(e.model)) continue;
       const idx = Math.floor((nowMs - e.at) / windowMs);

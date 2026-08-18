@@ -8,11 +8,20 @@ import {
   wirePromptSectionTexts,
 } from '../src/wire-prompt.js';
 
-const block = (text: string, ttl?: string) => ({
-  type: 'text',
-  text,
-  ...(ttl ? { cache_control: { type: 'ephemeral', ttl } } : {}),
-});
+/** A wire system block as the CLI sends it; `cache_control` is absent on an uncached one. */
+interface WireBlock {
+  type: string;
+  text: string;
+  cache_control?: { type: string; ttl: string };
+}
+
+const block = (text: string, ttl?: string): WireBlock => {
+  // The key must stay absent rather than be set to `undefined`: several assertions
+  // below count `JSON.stringify` bytes, which a present key would change.
+  const b: WireBlock = { type: 'text', text };
+  if (ttl) b.cache_control = { type: 'ephemeral', ttl };
+  return b;
+};
 
 describe('outlineWirePrompt', () => {
   it('reports zero for an absent system field', () => {

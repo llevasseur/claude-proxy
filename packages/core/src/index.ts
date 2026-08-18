@@ -13,6 +13,7 @@ export * from './filters.js';
 export * from './hooks-plugins.js';
 export * from './ideas.js';
 export * from './jobs.js';
+export * from './json.js';
 export * from './launch-aliases.js';
 export * from './liveness.js';
 export * from './main-history.js';
