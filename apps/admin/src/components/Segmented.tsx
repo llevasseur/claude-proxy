@@ -33,6 +33,12 @@ export const PRETTY_RAW: readonly SegmentedOption<PrettyRawView>[] = [
 /**
  * The pill switcher in a page head. `busy` marks the control while the view it selects
  * is still settling; the buttons stay live throughout.
+ *
+ * While busy, the *selected* chip swaps its label for a spinner — only that one, since
+ * it is the only chip with an outstanding press. The label stays in flow, hidden rather
+ * than removed, so the group holds its width and the chips beside it do not shift; a
+ * hidden span leaves the accessibility tree, so the button repeats its text as
+ * `aria-label` for that interval to keep its name.
  */
 export function Segmented<T extends string | number>({
   options,
@@ -50,16 +56,23 @@ export function Segmented<T extends string | number>({
   return (
     // biome-ignore lint/a11y/useSemanticElements: a <fieldset> brings its own box and legend layout; this control is styled from scratch
     <div className='segmented' role='group' aria-label={label} aria-busy={busy || undefined}>
-      {options.map((o) => (
-        <button
-          key={String(o.value)}
-          type='button'
-          className={o.value === value ? 'active' : undefined}
-          aria-pressed={o.value === value}
-          onClick={() => onSelect(o.value)}>
-          {o.label}
-        </button>
-      ))}
+      {options.map((o) => {
+        const selected = o.value === value;
+        const spinning = Boolean(busy) && selected;
+        const classes = [selected && 'active', spinning && 'is-busy'].filter(Boolean).join(' ');
+        return (
+          <button
+            key={String(o.value)}
+            type='button'
+            className={classes || undefined}
+            aria-pressed={selected}
+            aria-label={spinning ? o.label : undefined}
+            onClick={() => onSelect(o.value)}>
+            <span className='segmented-label'>{o.label}</span>
+            {spinning && <span className='segmented-spinner' aria-hidden='true' />}
+          </button>
+        );
+      })}
     </div>
   );
 }

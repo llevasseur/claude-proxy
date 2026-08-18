@@ -27,6 +27,8 @@
     overflow: hidden;
   }
   .segmented button {
+    /* Containing block for the centred spinner below. */
+    position: relative;
     background: var(--surface);
     color: var(--muted);
     border: none;
@@ -48,6 +50,37 @@
   .segmented button:disabled {
     opacity: 0.35;
     cursor: default;
+  }
+
+  /* While the view a chip selects is loading, its label gives way to a spinner.
+   * `visibility` rather than `display`: the group is `inline-flex` and sized by its
+   * labels, so removing one would collapse the chip and shuffle the rest mid-load. */
+  .segmented button.is-busy .segmented-label {
+    visibility: hidden;
+  }
+  .segmented-spinner {
+    position: absolute;
+    /* Centred against auto margins, so the hidden label underneath still holds the
+     * chip's width. */
+    inset: 0;
+    margin: auto;
+    width: 0.85em;
+    height: 0.85em;
+    box-sizing: border-box;
+    border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+    /* One lit arc against the faint ring. Both are `currentColor`, so the spinner takes
+     * the chip's own state colour: `--signal` when active, muted text elsewhere. */
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: segmented-spin var(--motion-loop-fast) linear infinite;
+  }
+  /* A multiple of `--motion-duration`, so the reduced-motion block in `tokens.css`
+   * halts it by zeroing that token. Stopped, the arc stays lit and still marks the
+   * chip being waited on. */
+  @keyframes segmented-spin {
+    to {
+      transform: rotate(1turn);
+    }
   }
 
   /* Model series toggle: which models are drawn beside a chart's own line. Not a
