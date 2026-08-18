@@ -215,8 +215,7 @@ const NODES_REFETCH_MS = 20_000;
 export function SessionGraphPage() {
   const { session: requested } = useSearch({ from: '/sessions/graph' });
   const navigate = useNavigate();
-  // The 4 s poll fetches the thin index — listing rows, links and step counts, no node
-  // streams — so it stays cheap however many transcripts the log dir holds.
+  // The 4 s poll fetches the thin index; the canvased family's node streams load below.
   const query = useQuery({ queryKey: ['sessions-graph'], queryFn: getSessionsGraph, refetchInterval: 4000 });
   const transcripts = useMemo(() => query.data?.sessions ?? [], [query.data]);
 
