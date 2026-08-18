@@ -45,7 +45,8 @@
  * Zero runtime dependencies — Node built-ins only.
  */
 
-import type { ContentBlock, RequestBody, WireMessage } from './wire.ts';
+import { asList, asRecord, type JsonObject, type JsonValue } from './json.ts';
+import { asArrayOf, type RequestBody, type WireMessage } from './wire.ts';
 
 /**
  * The kill switch, read per call rather than at module load so a test can flip it.
@@ -146,8 +147,8 @@ export function _resetWarmPrefixes(): void {
 }
 
 /** A block carries a breakpoint when `cache_control` is present and non-null. */
-function hasCacheControl(block: unknown): boolean {
-  return !!block && typeof block === 'object' && (block as ContentBlock).cache_control != null;
+function hasCacheControl(block: JsonValue | undefined): boolean {
+  return asRecord(block)?.cache_control != null;
 }
 
 /**
@@ -156,13 +157,13 @@ function hasCacheControl(block: unknown): boolean {
  * counting it keeps every ambiguous body on the no-op side of gate 1.
  */
 function messageBreakpoints(msg: WireMessage | undefined | null): number {
-  const content = msg?.content;
-  if (!Array.isArray(content)) return 0;
+  const content = asList(msg?.content);
+  if (content === null) return 0;
   let n = 0;
-  for (const block of content as ContentBlock[]) {
+  for (const block of content) {
     if (hasCacheControl(block)) n += 1;
-    const inner = block?.content;
-    if (Array.isArray(inner)) {
+    const inner = asList(asRecord(block)?.content);
+    if (inner !== null) {
       for (const nested of inner) {
         if (hasCacheControl(nested)) n += 1;
       }
@@ -183,15 +184,16 @@ function transcriptBreakpoints(messages: WireMessage[]): number {
  * rather than rebuilt from a hardcoded `{type, ttl}` so a client-side TTL change —
  * or a field this proxy has never seen — carries through untouched.
  */
-function systemCacheControl(system: unknown): { value: Record<string, unknown>; count: number } | null {
-  if (!Array.isArray(system)) return null;
-  let found: Record<string, unknown> | null = null;
+function systemCacheControl(system: JsonValue | undefined): { value: JsonObject; count: number } | null {
+  const blocks = asList(system);
+  if (blocks === null) return null;
+  let found: JsonObject | null = null;
   let count = 0;
-  for (const block of system as ContentBlock[]) {
+  for (const block of blocks) {
     if (!hasCacheControl(block)) continue;
     count += 1;
-    const cc = block.cache_control;
-    if (cc && typeof cc === 'object') found = { ...(cc as Record<string, unknown>) };
+    const cc = asRecord(asRecord(block)?.cache_control);
+    if (cc !== null) found = { ...cc };
   }
   return found ? { value: found, count } : null;
 }
@@ -255,9 +257,8 @@ export function ensureMessageBreakpoint(
   try {
     if (!(opts.enabled ?? !killed())) return miss;
 
-    const messages = reqJson?.messages;
-    if (!Array.isArray(messages) || messages.length === 0) return miss;
-    const turns = messages as WireMessage[];
+    const turns = asArrayOf<WireMessage>(reqJson?.messages);
+    if (turns.length === 0) return miss;
 
     // Gate 1 — the client already asked for a message breakpoint. Nothing to fix,
     // and once the CLI always does this, this module never acts again.
@@ -273,7 +274,7 @@ export function ensureMessageBreakpoint(
     // Past gate 3 the defect is confirmed, so every return below reports it observed.
 
     // Gate 4 — a write bills above fresh input, so only a deep transcript pays.
-    const messageBytes = Buffer.byteLength(JSON.stringify(messages));
+    const messageBytes = Buffer.byteLength(JSON.stringify(turns));
     if (messageBytes < (opts.minBytes ?? MIN_MESSAGE_BYTES) && turns.length < (opts.minMessages ?? MIN_MESSAGES)) {
       return declined('depth');
     }
@@ -286,13 +287,12 @@ export function ensureMessageBreakpoint(
     // message whose content is a bare string has no block to carry one, and
     // rewriting it into a block array would change more than the cache hint.
     const last = turns[turns.length - 1];
-    const content = last?.content;
-    if (!last || !Array.isArray(content) || content.length === 0) return declined('no-content-block');
-    const blocks = content as ContentBlock[];
-    const lastBlock = blocks[blocks.length - 1];
-    if (!lastBlock || typeof lastBlock !== 'object') return declined('no-content-block');
+    const content = asList(last?.content);
+    if (!last || content === null || content.length === 0) return declined('no-content-block');
+    const lastBlock = asRecord(content[content.length - 1]);
+    if (lastBlock === null) return declined('no-content-block');
 
-    const nextBlocks = blocks.slice(0, -1).concat({ ...lastBlock, cache_control: system.value });
+    const nextBlocks = content.slice(0, -1).concat({ ...lastBlock, cache_control: system.value });
     const nextMessages = turns.slice(0, -1).concat({ ...last, content: nextBlocks });
     return { reqJson: { ...reqJson, messages: nextMessages }, injected: true, observed: true, declinedBy: null };
   } catch {

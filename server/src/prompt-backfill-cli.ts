@@ -6,6 +6,7 @@
  * Reaches only as far back as retention has kept `.request.txt` bodies; older
  * sidecars keep their model+size-band cohort.
  */
+import { errorMessage } from './errors.js';
 import { resolveLogDir } from './logs.js';
 import { type BackfillReport, backfillPromptIdentity } from './prompt-backfill.js';
 
@@ -57,7 +58,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  console.error(`[prompt-backfill] error: ${(err as Error).message}`);
+main().catch((cause: unknown) => {
+  console.error(`[prompt-backfill] error: ${errorMessage(cause)}`);
   process.exitCode = 1;
 });

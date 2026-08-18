@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { type JsonInput, type JsonObject, jsonObject, objectField, parseJson, stringArrayField } from './json.js';
 
 /**
  * The device's Claude Code user settings — `~/.claude/settings.json`. This is
@@ -25,15 +26,20 @@ export interface DeviceSettings {
   enabledDisableKeys: string[];
   /** Raw `hooks` object (event → matcher groups), or `{}` when absent/unreadable.
    * Shaped into rows by core's `flattenHooks`. */
-  hooks: Record<string, unknown>;
+  hooks: JsonObject;
   /** Raw `enabledPlugins` map (`"name@marketplace"` → boolean), or `{}` when
    * absent/unreadable. Shaped into rows by core's `normalizePlugins`. */
-  enabledPlugins: Record<string, unknown>;
+  enabledPlugins: JsonObject;
 }
 
-/** A plain record, or `{}` when the value isn't an object. */
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+/** A plain object, or `{}` when the value isn't one. */
+function asObject(value: JsonInput): JsonObject {
+  return jsonObject(value) ?? {};
+}
+
+/** The answer for a file that is missing or does not parse. */
+function unreadable(settingsPath: string): DeviceSettings {
+  return { settingsPath, readable: false, denyRules: [], enabledDisableKeys: [], hooks: {}, enabledPlugins: {} };
 }
 
 /** Read `permissions.deny`, enabled `disable*` keys, and the `hooks` /
@@ -41,25 +47,18 @@ function asRecord(value: unknown): Record<string, unknown> {
  * malformed file yields an empty, `readable: false` result. */
 export async function readDeviceSettings(settingsPath: string = resolveSettingsPath()): Promise<DeviceSettings> {
   try {
-    const parsed = JSON.parse(await readFile(settingsPath, 'utf8')) as {
-      permissions?: { deny?: unknown };
-      [key: string]: unknown;
-    };
-    const deny = parsed?.permissions?.deny;
-    const denyRules = Array.isArray(deny) ? deny.filter((r): r is string => typeof r === 'string') : [];
-    const enabledDisableKeys =
-      parsed && typeof parsed === 'object'
-        ? Object.keys(parsed).filter((k) => k.startsWith('disable') && parsed[k] === true)
-        : [];
+    const parsed = parseJson(await readFile(settingsPath, 'utf8'));
+    if (parsed === undefined) return unreadable(settingsPath);
+    const settings = asObject(parsed);
     return {
       settingsPath,
       readable: true,
-      denyRules,
-      enabledDisableKeys,
-      hooks: asRecord(parsed?.hooks),
-      enabledPlugins: asRecord(parsed?.enabledPlugins),
+      denyRules: stringArrayField(objectField(parsed, 'permissions'), 'deny'),
+      enabledDisableKeys: Object.keys(settings).filter((k) => k.startsWith('disable') && settings[k] === true),
+      hooks: asObject(settings.hooks),
+      enabledPlugins: asObject(settings.enabledPlugins),
     };
   } catch {
-    return { settingsPath, readable: false, denyRules: [], enabledDisableKeys: [], hooks: {}, enabledPlugins: {} };
+    return unreadable(settingsPath);
   }
 }

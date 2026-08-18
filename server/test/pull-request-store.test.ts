@@ -14,6 +14,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { type PullRequestRow, parsePullRequests } from '@claude-proxy/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { JsonObject } from '../../proxy/json.ts';
 import { openDb } from '../src/db/open.js';
 import {
   clearStoredPullRequests,
@@ -27,7 +28,7 @@ import { refreshPullRequests, servePullRequestBody, servePullRequests } from '..
 const run = promisify(execFile);
 
 /** One `gh pr list --json` row, with only the fields a test varies spelled out. */
-function ghRow(number: number, updatedAt: string, title = `PR ${number}`): Record<string, unknown> {
+function ghRow(number: number, updatedAt: string, title = `PR ${number}`) {
   return {
     number,
     title,
@@ -52,6 +53,9 @@ function ghRow(number: number, updatedAt: string, title = `PR ${number}`): Recor
 
 /** The same row, through the parser the fetch uses — what a stored row holds. */
 function prRow(number: number, updatedAt: string, title?: string): PullRequestRow {
+  // SAFETY: `ghRow` always sets `number` to a positive integer, and
+  // `parsePullRequests` only drops a row whose `number` is <= 0 — so parsing this
+  // one-element array always yields exactly one row.
   return parsePullRequests([ghRow(number, updatedAt, title)])[0] as PullRequestRow;
 }
 
@@ -63,7 +67,7 @@ let responsePath: string;
 let realPath: string | undefined;
 
 /** What the next `gh pr list` prints. */
-async function stageGh(rows: Record<string, unknown>[]): Promise<void> {
+async function stageGh(rows: JsonObject[]): Promise<void> {
   await writeFile(responsePath, JSON.stringify(rows), 'utf8');
 }
 
@@ -175,6 +179,9 @@ describe('the pull request store', () => {
     // A second connection is what a restarted server has — the rows are on disk, not in
     // this process's memory.
     const db = openDb(logDir);
+    // SAFETY: `COUNT(*) AS n` always returns exactly one row with a numeric `n`
+    // column, never `undefined` — there is no `WHERE` clause that can make a
+    // `COUNT` query return nothing.
     const row = db.prepare('SELECT COUNT(*) AS n FROM pull_request WHERE repo_dir = ?').get(repoDir) as { n: number };
     db.close();
     expect(row.n).toBe(1);

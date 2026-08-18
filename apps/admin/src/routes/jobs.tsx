@@ -26,14 +26,14 @@ import type { NavEntry } from './nav';
  */
 
 /** Badge class per state tone; the tones themselves come from core. */
-const TONE_BADGES: Record<JobTone, string> = {
+const TONE_BADGES = {
   busy: 'sev-info',
   done: 'absent',
   blocked: 'was-present',
   failed: 'sev-high',
   idle: 'neutral',
   unknown: 'neutral',
-};
+} satisfies Record<JobTone, string>;
 
 export function StateBadge({ state }: { state: string }) {
   const tone = jobStateTone(state);
@@ -139,7 +139,7 @@ type SortKey = 'name' | 'state' | 'liveness' | 'cwd' | 'files' | 'bytes' | 'acti
 type SortDir = 'asc' | 'desc';
 
 /** Direction applied the first time a column becomes the sort key. */
-const DEFAULT_DIR: Record<SortKey, SortDir> = {
+const DEFAULT_DIR = {
   name: 'asc',
   state: 'asc',
   // Ascending puts the branches still going at the top.
@@ -148,7 +148,7 @@ const DEFAULT_DIR: Record<SortKey, SortDir> = {
   files: 'desc',
   bytes: 'desc',
   activity: 'desc',
-};
+} satisfies Record<SortKey, SortDir>;
 
 /** What a job is called: its name if it has one, else its id. */
 function jobLabel(job: JobSummary): string {
@@ -156,7 +156,7 @@ function jobLabel(job: JobSummary): string {
 }
 
 /** Sort order for the liveness column: what is still going, then what might be, then what is over. */
-const LIVENESS_ORDER: Record<LivenessState, number> = { running: 0, quiet: 1, unknown: 2, finished: 3 };
+const LIVENESS_ORDER = { running: 0, quiet: 1, unknown: 2, finished: 3 } satisfies Record<LivenessState, number>;
 
 /** Signed comparison for a column, ascending. */
 function compare(a: JobSummary, b: JobSummary, key: SortKey): number {
@@ -228,7 +228,7 @@ function JobsTable({ jobs }: { jobs: JobSummary[] }) {
           </button>
         </div>
       )}
-      {remove.error && <div className='job-delete-error'>Delete failed — {(remove.error as Error).message}</div>}
+      {remove.error && <div className='job-delete-error'>Delete failed — {remove.error.message}</div>}
       <div className='table-scroll'>
         <table className='table'>
           <thead>

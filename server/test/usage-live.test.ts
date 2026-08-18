@@ -2,6 +2,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { JsonValue } from '../../proxy/json.ts';
 import { buildUsage } from '../src/api.js';
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from '../src/usage-history.js';
 import { loadLiveUsage } from '../src/usage-live.js';
@@ -17,7 +18,7 @@ beforeEach(async () => {
   clearArchivedUsageCache();
 });
 
-async function write(doc: unknown): Promise<void> {
+async function write(doc: JsonValue): Promise<void> {
   await writeFile(path.join(logDir, 'usage-live.json'), JSON.stringify(doc), 'utf8');
 }
 

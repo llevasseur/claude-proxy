@@ -80,19 +80,16 @@ async function jobsFor(sessionId: string | null): Promise<string> {
   const jobsDir = await mkdtemp(path.join(tmpdir(), 'liveness-jobs-'));
   const job = path.join(jobsDir, 'aaaa1111');
   await mkdir(job, { recursive: true });
-  await writeFile(
-    path.join(job, 'state.json'),
-    JSON.stringify({
-      state: 'working',
-      detail: 'still at it',
-      name: 'the run',
-      cwd: '/Users/me/app',
-      ...(sessionId === null ? {} : { sessionId }),
-      createdAt: '2026-08-07T11:00:00.000Z',
-      updatedAt: '2026-08-07T11:59:00.000Z',
-    }),
-    'utf8',
-  );
+  const state = {
+    state: 'working',
+    detail: 'still at it',
+    name: 'the run',
+    cwd: '/Users/me/app',
+    createdAt: '2026-08-07T11:00:00.000Z',
+    updatedAt: '2026-08-07T11:59:00.000Z',
+  };
+  const body = sessionId === null ? state : { ...state, sessionId };
+  await writeFile(path.join(job, 'state.json'), JSON.stringify(body), 'utf8');
   return jobsDir;
 }
 

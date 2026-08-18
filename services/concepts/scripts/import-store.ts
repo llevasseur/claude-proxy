@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Concept, isConcept, normalizeConcept } from '@claude-proxy/core';
+import { flagField, isJsonRecord, parseJson } from '../src/json.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -25,8 +26,14 @@ function defaultStorePath(): string {
   return resolve(HERE, '..', '..', '..', 'logs', 'concepts.jsonl');
 }
 
+/** What one pass over the file yielded, kept together so the skip count is reported rather than lost. */
+interface StoreParse {
+  concepts: Concept[];
+  skipped: number;
+}
+
 /** Tolerant line parse: a corrupt line is reported and skipped, never fatal. */
-function parseStore(text: string): { concepts: Concept[]; skipped: number } {
+function parseStore(text: string): StoreParse {
   const concepts: Concept[] = [];
   let skipped = 0;
   for (const line of text.split('\n')) {
@@ -71,14 +78,14 @@ async function main(): Promise<void> {
       body: JSON.stringify(concept),
     });
     if (!response.ok) throw new Error(`POST ${concept.term} failed: ${response.status} ${await response.text()}`);
-    const body = (await response.json()) as { created: boolean };
-    if (body.created) created += 1;
+    const body = parseJson(await response.text());
+    if (isJsonRecord(body) && flagField(body, 'created')) created += 1;
     else already += 1;
   }
   console.log(`imported ${created} concepts, ${already} already present`);
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
+main().catch((cause: unknown) => {
+  console.error(cause instanceof Error ? cause.message : cause);
   process.exitCode = 1;
 });

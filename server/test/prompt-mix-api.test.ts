@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { outlineWirePrompt } from '@claude-proxy/core';
 import { describe, expect, it } from 'vitest';
+import type { JsonValue } from '../../proxy/json.ts';
 import { buildPromptDetail, buildPromptMix, buildPromptSection } from '../src/api.js';
 import { hashWirePrompt, writeStoredPrompt } from '../src/prompt-store.js';
 
@@ -19,7 +20,7 @@ async function archive(
   day: string,
   n: number,
   model: string,
-  system: unknown,
+  system: JsonValue,
   seq = 0,
 ): Promise<string> {
   const dir = path.join(logDir, 'archive', day);
@@ -49,7 +50,7 @@ async function archive(
 }
 
 /** The request bodies behind a day's sidecars — what section text is read back from. */
-async function bodies(logDir: string, day: string, n: number, system: unknown, seq = 0): Promise<void> {
+async function bodies(logDir: string, day: string, n: number, system: JsonValue, seq = 0): Promise<void> {
   const dir = path.join(logDir, 'archive', day);
   await mkdir(dir, { recursive: true });
   for (let i = 0; i < n; i += 1) {
@@ -202,7 +203,7 @@ describe('buildPromptDetail', () => {
 
 describe('buildPromptSection', () => {
   /** A prompt whose outline is stored and whose bodies are still on disk. */
-  async function seeded(system: unknown = big('Huge', 40_000)): Promise<{ logDir: string; hash: string }> {
+  async function seeded(system: JsonValue = big('Huge', 40_000)): Promise<{ logDir: string; hash: string }> {
     const logDir = await tmpLogDir();
     const hash = await archive(logDir, '2026-08-02', 2, 'security-monitor', system);
     await bodies(logDir, '2026-08-02', 2, system);

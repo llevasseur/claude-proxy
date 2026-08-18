@@ -1,7 +1,7 @@
 import type { LiveStatus } from '../useLiveQuery';
 
-const LABELS: Record<LiveStatus, string> = { live: 'Live', connecting: 'Connecting…', offline: 'Offline' };
-const DOTS: Record<LiveStatus, string> = { live: 'ok', connecting: 'warn', offline: 'bad' };
+const LABELS = { live: 'Live', connecting: 'Connecting…', offline: 'Offline' } satisfies Record<LiveStatus, string>;
+const DOTS = { live: 'ok', connecting: 'warn', offline: 'bad' } satisfies Record<LiveStatus, string>;
 
 /** Small SSE connection badge — reuses the health-badge layout. */
 export function LiveIndicator({ status }: { status: LiveStatus }) {

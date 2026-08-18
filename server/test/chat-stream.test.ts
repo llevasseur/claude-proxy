@@ -13,7 +13,7 @@ import {
 const SESSION = '11111111-2222-3333-4444-555555555555';
 
 /** Subscribe and collect the frames pushed from here on. */
-function watch(sessionId = SESSION): { frames: ChatStreamFrame[]; stop: () => void } {
+function watch(sessionId = SESSION) {
   const frames: ChatStreamFrame[] = [];
   const stop = subscribeChatStream(sessionId, (f) => frames.push(f));
   return { frames, stop };

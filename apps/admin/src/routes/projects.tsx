@@ -63,10 +63,10 @@ type SortKey = 'name' | 'memoryCount';
 type SortDir = 'asc' | 'desc';
 
 /** Direction applied the first time a column becomes the sort key. */
-const DEFAULT_DIR: Record<SortKey, SortDir> = {
+const DEFAULT_DIR = {
   name: 'asc',
   memoryCount: 'desc',
-};
+} satisfies Record<SortKey, SortDir>;
 
 /** Signed comparison for a column, ascending. */
 function compare(a: ProjectSummary, b: ProjectSummary, key: SortKey): number {

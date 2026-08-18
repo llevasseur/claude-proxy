@@ -20,18 +20,18 @@ import type { NavEntry } from './nav';
  */
 
 /** Why a row did not resolve, in the page's words. */
-const MISS_LABEL: Record<CliFunctionMiss, string> = {
+const MISS_LABEL = {
   'signal-missing': 'not found in this version',
   'no-match-nearby': 'not found in this version',
   'no-enclosing-function': 'no function around the signal',
-};
+} satisfies Record<CliFunctionMiss, string>;
 
 /** The longer form, for the row that needs it. */
-const MISS_DETAIL: Record<CliFunctionMiss, string> = {
+const MISS_DETAIL = {
   'signal-missing': 'The signal is not in this bundle at all — the function was renamed past it, changed, or removed.',
   'no-match-nearby': 'The literal is still in the bundle, but never in the shape that identifies this function.',
   'no-enclosing-function': 'The signal is there, but nothing around it parses as a function.',
-};
+} satisfies Record<CliFunctionMiss, string>;
 
 /** How a row was identified. */
 function SignalCell({ entry }: { entry: CliFunctionEntry }) {

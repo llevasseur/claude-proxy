@@ -61,17 +61,19 @@ function restart(): void {
 }
 
 /** Any source, with a tally of which days its archived reads actually touched. */
-function counting(inner: SidecarSource): { source: SidecarSource; archivedReads: string[] } {
+function counting(inner: SidecarSource) {
   const archivedReads: string[] = [];
   return {
     archivedReads,
+    // `satisfies` keeps the inferred type while giving the `readArchivedDay` override's
+    // parameters `SidecarSource`'s contextual ones.
     source: {
       ...inner,
       readArchivedDay: (logDir, date, opts) => {
         archivedReads.push(date);
         return inner.readArchivedDay(logDir, date, opts);
       },
-    },
+    } satisfies SidecarSource,
   };
 }
 

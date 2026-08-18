@@ -100,9 +100,9 @@ export function ChatSessionProvider({ children }: { children: ReactNode }) {
       draft,
       setDraft,
       isSending: sendMutation.isPending,
-      sendError: (sendMutation.error as Error | null) ?? null,
+      sendError: sendMutation.error,
       isStopping: stopMutation.isPending,
-      stopError: (stopMutation.error as Error | null) ?? null,
+      stopError: stopMutation.error,
       permissionMode,
       setPermissionMode,
       send,
@@ -143,11 +143,19 @@ const THREAD_POLL_MS = 2_000;
  */
 const THREAD_POLL_CEILING_MS = 120_000;
 
+/** The transcript behind a chat session, and whether the search has been abandoned. */
+export interface ChatThreadLookup {
+  /** The proxy's thread id once it exists, `null` while the poll is still looking. */
+  threadId: string | null;
+  /** True once the poll gave up, so the caller stops promising a transcript is coming. */
+  gaveUp: boolean;
+}
+
 /**
  * The transcript a chat session id became, asked for until the proxy has written it. Lands within
  * seconds of the first request, so it resolves mid-turn rather than when the turn finishes.
  */
-export function useChatThread(sessionId: string, enabled: boolean): { threadId: string | null; gaveUp: boolean } {
+export function useChatThread(sessionId: string, enabled: boolean): ChatThreadLookup {
   const [gaveUp, setGaveUp] = useState(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new session id must restart the give-up clock, which is why it is listed even though the effect body never reads it

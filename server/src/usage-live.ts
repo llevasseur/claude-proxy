@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type LiveUsage, parseLiveUsage, USAGE_WINDOW_MS, type UsageWindowKind } from '@claude-proxy/core';
+import { jsonField, parseJson, stringField } from './json.js';
 
 /**
  * Anthropic's own usage figures, as the proxy last polled them.
@@ -42,20 +43,19 @@ export async function loadLiveUsage(logDir: string, now: Date = new Date()): Pro
     return EMPTY; // never polled, or the proxy has no token yet
   }
 
-  let doc: { fetchedAt?: unknown; payload?: unknown };
-  try {
-    doc = JSON.parse(raw);
-  } catch {
-    return EMPTY;
-  }
+  const doc = parseJson(raw);
+  if (doc === undefined) return EMPTY;
 
   const nowMs = now.getTime();
-  const fetchedAt = typeof doc.fetchedAt === 'string' ? doc.fetchedAt : null;
+  const fetchedAt = stringField(doc, 'fetchedAt') ?? null;
   const fetchedMs = fetchedAt ? new Date(fetchedAt).getTime() : Number.NaN;
-  const parsed = parseLiveUsage(doc.payload, now);
+  const parsed = parseLiveUsage(jsonField(doc, 'payload'), now);
 
   const anchors: Partial<Record<UsageWindowKind, string>> = {};
-  for (const [kind, win] of Object.entries(parsed) as [UsageWindowKind, LiveUsage[UsageWindowKind]][]) {
+  // SAFETY: `parseLiveUsage` answers with a `LiveUsage`, whose every key is a
+  // `UsageWindowKind` — `Object.entries` is what widens those keys back to `string`.
+  const windows = Object.entries(parsed) as [UsageWindowKind, LiveUsage[UsageWindowKind]][];
+  for (const [kind, win] of windows) {
     if (!win?.resetsAt) continue;
     const rolled = rollForward(win.resetsAt, kind, nowMs);
     if (rolled) anchors[kind] = rolled;

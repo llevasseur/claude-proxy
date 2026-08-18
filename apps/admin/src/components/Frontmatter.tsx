@@ -12,7 +12,7 @@ export interface ParsedFrontmatter {
  * Split a leading YAML-ish `--- … ---` frontmatter block off the body. Reads
  * only a shallow subset: top-level `key: value` plus a nested `metadata.type`.
  */
-export function splitFrontmatter(content: string): { frontmatter: ParsedFrontmatter | null; body: string } {
+export function splitFrontmatter(content: string) {
   const text = content.replace(/^﻿/, '');
   if (!text.startsWith('---\n') && !text.startsWith('---\r\n')) return { frontmatter: null, body: text };
 

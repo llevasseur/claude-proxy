@@ -16,6 +16,7 @@ import { ALL_DAYS, DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtBytes, fmtInt, fmtLocalTs, LOCAL_TZ_ABBR } from '../format';
+import type { JsonValue } from '../json';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 import type { NavEntry } from './nav';
@@ -34,14 +35,14 @@ const THREAD_COLUMNS: readonly SkeletonColumn[] = [
 type Sort = { key: ContextSort; dir: ContextSortDir };
 
 /** Direction applied the first time a column becomes the sort key. */
-const DEFAULT_DIR: Record<ContextSort, ContextSortDir> = {
+const DEFAULT_DIR = {
   when: 'desc',
   model: 'asc',
   realInput: 'desc',
   systemBytes: 'desc',
   toolsBytes: 'desc',
   size: 'desc',
-};
+} as const satisfies Record<ContextSort, ContextSortDir>;
 
 /**
  * A search is typed a letter at a time and answered by the server, so the query
@@ -411,7 +412,7 @@ function SortHeader({
  *
  * Exported because the two drill-downs below this page validate `?days=` the same way.
  */
-export function contextDays(raw: unknown): number {
+export function contextDays(raw: JsonValue | undefined): number {
   const days = Number(raw);
   if (!Number.isFinite(days)) return 14;
   if (days === ALL_DAYS) return ALL_DAYS;

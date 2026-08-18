@@ -59,7 +59,8 @@ export function SessionsSidenav({
   const onResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const rail = body.current;
-      const top = rail?.firstElementChild as HTMLElement | undefined;
+      const first = rail?.firstElementChild;
+      const top = first instanceof HTMLElement ? first : null;
       if (!rail || !top) return;
       const startY = event.clientY;
       const startH = top.offsetHeight;
@@ -77,8 +78,8 @@ export function SessionsSidenav({
 
   const nudge = (by: number) => {
     const rail = body.current;
-    const top = rail?.firstElementChild as HTMLElement | undefined;
-    if (rail && top) setSplit(clamp(top.offsetHeight + by, rail.offsetHeight));
+    const first = rail?.firstElementChild;
+    if (rail && first instanceof HTMLElement) setSplit(clamp(first.offsetHeight + by, rail.offsetHeight));
   };
 
   return (

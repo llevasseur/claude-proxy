@@ -11,6 +11,8 @@
 import { readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { type AuditSidecar, isAuditSidecar, outlineWirePrompt } from '@claude-proxy/core';
+import { errorMessage } from './errors.js';
+import { type JsonValue, jsonField } from './json.js';
 import { hashWirePrompt, readStoredPrompt, writeStoredPrompt } from './prompt-store.js';
 
 const AUDIT_SUFFIX = '.audit.json';
@@ -131,16 +133,20 @@ export async function backfillPromptIdentity(
         continue;
       }
 
-      let body: unknown;
+      let body: JsonValue;
       try {
         body = JSON.parse(await readFile(path.join(target.dir, `${target.base}.request.txt`), 'utf8'));
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') report.bodyMissing += 1;
+      } catch (cause) {
+        // SAFETY: this `try` covers `readFile` and `JSON.parse`. The first rejects with a
+        // Node `ErrnoException`, so `code` is the errno it attached; a `SyntaxError` from
+        // the second carries none and falls to `unparseable`, which is where it belongs.
+        const code = (cause as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT') report.bodyMissing += 1;
         else report.unparseable += 1;
         continue;
       }
 
-      const system = (body as { system?: unknown } | null)?.system;
+      const system = jsonField(body, 'system');
       if (system === undefined || system === null) {
         report.noSystem += 1;
         continue;
@@ -159,8 +165,8 @@ export async function backfillPromptIdentity(
         if (!(await readStoredPrompt(logDir, hash))) report.promptsStored += 1;
       }
       report.tagged += 1;
-    } catch (err) {
-      report.errors.push(`${target.base}: ${(err as Error).message}`);
+    } catch (cause) {
+      report.errors.push(`${target.base}: ${errorMessage(cause)}`);
     }
   }
 

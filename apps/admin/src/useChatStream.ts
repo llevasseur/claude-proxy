@@ -37,12 +37,11 @@ function apply(turn: LiveTurn, event: ChatStreamEvent): LiveTurn {
   const existing = turn.tools[event.index];
   if (!existing) return turn; // a result for a call this reader never saw
   const tools = turn.tools.slice();
-  tools[event.index] = {
-    ...existing,
-    failed: event.failed,
-    done: true,
-    ...(event.error ? { error: event.error } : {}),
-  };
+  const settled: LiveToolUse = { ...existing, failed: event.failed, done: true };
+  // Assigned only when the result carried a reason, so a chip with no message keeps the
+  // key absent rather than present-and-`undefined` — the two render differently.
+  if (event.error) settled.error = event.error;
+  tools[event.index] = settled;
   return { ...turn, tools };
 }
 
@@ -65,7 +64,9 @@ export function useChatStream(sessionId: string, enabled: boolean): LiveTurn {
   const [turn, setTurn] = useState<LiveTurn>(EMPTY);
 
   useEffect(() => {
-    if (!enabled || typeof EventSource === 'undefined') {
+    // `in globalThis` rather than a `typeof` guard: this hook renders under SSR too, and
+    // there the global is genuinely absent rather than declared-and-undefined.
+    if (!enabled || !('EventSource' in globalThis)) {
       setTurn(EMPTY);
       return;
     }
@@ -78,6 +79,10 @@ export function useChatStream(sessionId: string, enabled: boolean): LiveTurn {
     const read = (ev: MessageEvent, replace: boolean) => {
       let frame: ChatStreamFrame;
       try {
+        // SAFETY: the server serializes a `ChatStreamFrame` into every `snapshot` and
+        // `update` on this one channel — nothing else is published to it. A frame that is
+        // not one is a torn or truncated payload, which fails to parse and is dropped by
+        // the `catch`; the next whole frame re-synchronises the turn from scratch.
         frame = JSON.parse(ev.data) as ChatStreamFrame;
       } catch {
         return; // a malformed frame; the next one re-syncs
@@ -95,8 +100,12 @@ export function useChatStream(sessionId: string, enabled: boolean): LiveTurn {
     };
 
     // A snapshot is the whole live turn, so it replaces; an update carries only what is new.
-    const onSnapshot = (ev: Event) => read(ev as MessageEvent, true);
-    const onUpdate = (ev: Event) => read(ev as MessageEvent, false);
+    const onSnapshot = (ev: Event) => {
+      if (ev instanceof MessageEvent) read(ev, true);
+    };
+    const onUpdate = (ev: Event) => {
+      if (ev instanceof MessageEvent) read(ev, false);
+    };
     es.addEventListener('snapshot', onSnapshot);
     es.addEventListener('update', onUpdate);
 

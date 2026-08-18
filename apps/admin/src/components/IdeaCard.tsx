@@ -1,7 +1,9 @@
 import {
   canShipIdea,
+  type IdeaClaimRequest,
   type IdeaEntry,
   type IdeaEvidence,
+  type IdeaMark,
   type IdeaStatus,
   ideaAreaLabel,
   ideaCitation,
@@ -26,13 +28,13 @@ import { fmtLocalTsShort } from '../format';
 /** Query key every ideas list shares, so one write invalidates them all. */
 export const IDEAS_KEY = 'ideas';
 
-export const IDEA_STATUS_LABEL: Record<IdeaStatus, string> = {
+export const IDEA_STATUS_LABEL = {
   proposed: 'Proposed',
   accepted: 'Accepted',
   claimed: 'Claimed',
   rejected: 'Rejected',
   shipped: 'Shipped',
-};
+} satisfies Record<IdeaStatus, string>;
 
 /**
  * The idea's key, as a fingerprint that copies it. The key is the slug — the
@@ -60,7 +62,9 @@ export function IdeaKey({ slug }: { slug: string }) {
       setError('');
       setState('copied');
     } catch (err) {
-      setError((err as Error).message);
+      // The throw above is this function's own `Error`; a rejection from the Clipboard API
+      // is a `DOMException`, which is also an `Error`. Anything else still gets named.
+      setError(err instanceof Error ? err.message : String(err));
       setState('failed');
     }
   };
@@ -183,13 +187,22 @@ export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; chil
   };
 
   const mark = useMutation({
-    mutationFn: (next: { status: IdeaStatus; note?: string }) =>
-      markIdeas([{ slug: idea.slug, status: next.status, ...(next.note === undefined ? {} : { note: next.note }) }]),
+    mutationFn: (next: { status: IdeaStatus; note?: string }) => {
+      const change: IdeaMark = { slug: idea.slug, status: next.status };
+      // Only sent when the form actually carried a reason: the server distinguishes an
+      // absent note from a blank one, and a blank one would overwrite what is on record.
+      if (next.note !== undefined) change.note = next.note;
+      return markIdeas([change]);
+    },
     onSuccess: close,
   });
   const claim = useMutation({
-    mutationFn: (next: { by: string; pr?: string }) =>
-      claimIdeas([{ slug: idea.slug, by: next.by, ...(next.pr ? { pr: next.pr } : {}) }]),
+    mutationFn: (next: { by: string; pr?: string }) => {
+      const request: IdeaClaimRequest = { slug: idea.slug, by: next.by };
+      // Empty is the same as unset here — the PR field is optional on the claim form.
+      if (next.pr) request.pr = next.pr;
+      return claimIdeas([request]);
+    },
     onSuccess: close,
   });
 
@@ -345,7 +358,7 @@ export function IdeaDecisionControls({ idea, children }: { idea: IdeaEntry; chil
         </div>
       )}
       {(mark.error || claim.error) && (
-        <div className='suggestion-mark-error'>{((mark.error ?? claim.error) as Error).message}</div>
+        <div className='suggestion-mark-error'>{(mark.error ?? claim.error)?.message}</div>
       )}
     </>
   );

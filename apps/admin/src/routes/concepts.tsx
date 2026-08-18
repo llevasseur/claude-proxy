@@ -34,7 +34,7 @@ type SortDir = 'asc' | 'desc';
 type Sort = { key: SortKey; dir: SortDir };
 
 /** What a column sorts as when you first click it — dates newest first, names A→Z. */
-const DEFAULT_DIR: Record<SortKey, SortDir> = { term: 'asc', field: 'asc', savedAt: 'desc' };
+const DEFAULT_DIR = { term: 'asc', field: 'asc', savedAt: 'desc' } satisfies Record<SortKey, SortDir>;
 
 /** How long the box waits before asking. Well under the 600ms the SSE routes debounce at. */
 const SEARCH_DEBOUNCE_MS = 200;
@@ -51,7 +51,7 @@ function asMatch(concept: ConceptRow): ConceptMatch {
 const RENDERED_FIELDS: readonly ConceptSearchField[] = ['term', 'sentence', 'field', 'skills'];
 
 /** How a matched field is named to a reader. */
-const FIELD_LABEL: Record<ConceptSearchField, string> = {
+const FIELD_LABEL = {
   term: 'term',
   sentence: 'explanation',
   field: 'field',
@@ -60,7 +60,7 @@ const FIELD_LABEL: Record<ConceptSearchField, string> = {
   tips: 'tips',
   sources: 'sources',
   surfacedSkills: 'surfaced skills',
-};
+} satisfies Record<ConceptSearchField, string>;
 
 /** `value`, but only after it has stopped changing for `ms`. */
 function useDebounced<T>(value: T, ms: number): T {
@@ -95,10 +95,17 @@ const UNSET = '\u0000unset';
 /** The two dimensions the rail offers. */
 type FacetKind = 'field' | 'skill';
 
-/** What is selected, per dimension — lowercased facet keys. */
-type FacetSelection = Record<FacetKind, readonly string[]>;
+/**
+ * What is selected, per dimension — lowercased facet keys. Written out a member at a
+ * time rather than as a `Record` over `FacetKind`: the rail has exactly these two
+ * dimensions, and naming both says so where a mapped type only says "some keys".
+ */
+interface FacetSelection {
+  field: readonly string[];
+  skill: readonly string[];
+}
 
-const NO_SELECTION: FacetSelection = { field: [], skill: [] };
+const NO_SELECTION = { field: [], skill: [] } satisfies FacetSelection;
 
 /**
  * The group a concept's field names: its **leading segment**, not the field itself.
@@ -115,10 +122,10 @@ function fieldSegment(field: string): string {
 }
 
 /** The values of each dimension a concept carries. */
-const FACET_VALUES: Record<FacetKind, (concept: ConceptRow) => readonly string[]> = {
+const FACET_VALUES = {
   field: (concept) => [fieldSegment(concept.field)],
   skill: (concept) => (concept.skills.length > 0 ? concept.skills : [UNSET]),
-};
+} satisfies Record<FacetKind, (concept: ConceptRow) => readonly string[]>;
 
 /** One line of the rail: a value, how it is written, and how many concepts carry it. */
 interface Facet {
@@ -130,7 +137,7 @@ interface Facet {
 }
 
 /** What the empty bucket is called, which reads differently per dimension. */
-const UNSET_LABEL: Record<FacetKind, string> = { field: 'No field', skill: 'No skill' };
+const UNSET_LABEL = { field: 'No field', skill: 'No skill' } satisfies Record<FacetKind, string>;
 
 /**
  * One dimension's facets over `rows`, commonest first.

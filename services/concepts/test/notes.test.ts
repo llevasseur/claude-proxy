@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runBackup } from '../src/backup.ts';
 import type { Db } from '../src/db.ts';
 import worker from '../src/index.ts';
+import type { JsonValue } from '../src/json.ts';
 import {
   archiveNote,
   createNote,
@@ -14,12 +15,12 @@ import {
   updateNote,
 } from '../src/notes.ts';
 import { handleRest } from '../src/rest.ts';
-import { testDb } from './harness.ts';
+import { bodyRecord, recordAt, recordsAt, testDb, testEnv, textAt, textRecord } from './harness.ts';
 
 const T0 = new Date('2026-08-16T10:00:00.000Z');
 const T1 = new Date('2026-08-16T11:00:00.000Z');
 
-function request(path: string, method = 'GET', body?: unknown) {
+function request(path: string, method = 'GET', body?: JsonValue) {
   const url = new URL(`https://operator.example${path}`);
   return {
     url,
@@ -31,7 +32,7 @@ function request(path: string, method = 'GET', body?: unknown) {
   };
 }
 
-async function rest(db: Db, path: string, method = 'GET', body?: unknown) {
+async function rest(db: Db, path: string, method = 'GET', body?: JsonValue) {
   const input = request(path, method, body);
   return (await handleRest(input.request, input.url, db))!;
 }
@@ -92,8 +93,8 @@ describe('notes domain', () => {
     const noOp = await updateNote(db, note.id, { expectedVersion: 1, title: 'same', body: 'same' }, T1);
     expect(noOp).toMatchObject({ changed: false, note: { version: 1, updatedAt: T0.toISOString() } });
     expect(await archiveNote(db, note.id, T1)).toMatchObject({ version: 1, updatedAt: T0.toISOString() });
-    const archivedExport = JSON.parse(await exportNotes(db)) as { notes: { archived_at: string | null }[] };
-    expect(archivedExport.notes[0]?.archived_at).toBe(T1.toISOString());
+    const archivedExport = textRecord(await exportNotes(db));
+    expect(recordsAt(archivedExport, 'notes')[0]?.archived_at).toBe(T1.toISOString());
     expect((await listNotes(db)).notes).toEqual([]);
     expect(await restoreNote(db, note.id)).toMatchObject({ version: 1, updatedAt: T0.toISOString(), archivedAt: null });
   });
@@ -109,11 +110,9 @@ describe('notes domain', () => {
     expect(results.filter((result) => !('conflict' in result))).toHaveLength(1);
     expect((await getNote(db, note.id))?.version).toBe(2);
 
-    const exported = JSON.parse(await exportNotes(db)) as {
-      revisions: { body: string; outcome: string }[];
-    };
-    expect(exported.revisions.map((revision) => revision.body).sort()).toEqual(['base', 'writer A', 'writer B']);
-    expect(exported.revisions.map((revision) => revision.outcome).sort()).toEqual([
+    const revisions = recordsAt(textRecord(await exportNotes(db)), 'revisions');
+    expect(revisions.map((revision) => textAt(revision, 'body')).sort()).toEqual(['base', 'writer A', 'writer B']);
+    expect(revisions.map((revision) => textAt(revision, 'outcome')).sort()).toEqual([
       'committed',
       'committed',
       'conflict',
@@ -126,10 +125,8 @@ describe('notes domain', () => {
     await updateNote(db, note.id, { expectedVersion: 1, title: 'winner title' }, T1);
     await updateNote(db, note.id, { expectedVersion: 1, body: 'loser body' }, T1);
 
-    const exported = JSON.parse(await exportNotes(db)) as {
-      revisions: { title: string; body: string; outcome: string }[];
-    };
-    expect(exported.revisions.find((revision) => revision.outcome === 'conflict')).toMatchObject({
+    const revisions = recordsAt(textRecord(await exportNotes(db)), 'revisions');
+    expect(revisions.find((revision) => textAt(revision, 'outcome') === 'conflict')).toMatchObject({
       title: 'original title',
       body: 'loser body',
     });
@@ -141,7 +138,7 @@ describe('notes REST', () => {
     const db = testDb();
     const created = await rest(db, '/api/notes', 'POST', { title: 'REST', body: 'searchable yak' });
     expect(created.status).toBe(201);
-    const id = ((await created.json()) as { note: { id: string } }).note.id;
+    const id = textAt(recordAt(await bodyRecord(created), 'note'), 'id');
     expect((await rest(db, `/api/notes/note?id=${id}`)).status).toBe(200);
     expect((await rest(db, '/api/notes')).status).toBe(200);
     expect((await rest(db, '/api/notes/search?q=yak')).status).toBe(200);
@@ -184,9 +181,7 @@ describe('notes Worker auth', () => {
       ['/mcp', 'POST'],
     ] as const;
     for (const [path, method] of paths) {
-      const response = await worker.fetch(new Request(`https://operator.example${path}`, { method }), {
-        CONCEPTS_TOKEN: 'secret',
-      } as never);
+      const response = await worker.fetch(new Request(`https://operator.example${path}`, { method }), testEnv());
       expect(response.status, `${method} ${path}`).toBe(401);
     }
   });
@@ -203,28 +198,29 @@ describe('notes backup', () => {
 
     const writes = new Map<string, string>();
     vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const url = input instanceof URL ? input.href : input instanceof Request ? input.url : input;
       if (init?.method !== 'PUT') return new Response('', { status: 404 });
-      const body = JSON.parse(String(init.body)) as { content: string };
-      writes.set(new URL(url).pathname, Buffer.from(body.content, 'base64').toString('utf8'));
+      const body = textRecord(String(init.body));
+      writes.set(new URL(url).pathname, Buffer.from(textAt(body, 'content'), 'base64').toString('utf8'));
       return new Response('{}', { status: 200 });
     });
 
-    const result = await runBackup(db, {
-      operator_db: {} as never,
-      CONCEPTS_TOKEN: 'secret',
-      BACKUP_GITHUB_TOKEN: 'backup-token',
-      BACKUP_REPO: 'owner/private-backup',
-      BACKUP_NOTES_PATH: 'operator-notes.json',
-    });
+    const result = await runBackup(
+      db,
+      testEnv({
+        BACKUP_GITHUB_TOKEN: 'backup-token',
+        BACKUP_REPO: 'owner/private-backup',
+        BACKUP_NOTES_PATH: 'operator-notes.json',
+      }),
+    );
 
     expect(result.notes.status).toBe('committed');
-    const backup = JSON.parse(writes.get('/repos/owner/private-backup/contents/operator-notes.json')!) as {
-      notes: { archived_at: string | null }[];
-      revisions: { body: string; outcome: string }[];
-    };
-    expect(backup.notes).toEqual([expect.objectContaining({ archived_at: T1.toISOString() })]);
-    expect(backup.revisions.map((revision) => revision.body)).toEqual(['version one', 'version two']);
-    expect(backup.revisions.every((revision) => revision.outcome === 'committed')).toBe(true);
+    const committed = writes.get('/repos/owner/private-backup/contents/operator-notes.json');
+    expect(committed).toEqual(expect.any(String));
+    const backup = textRecord(String(committed));
+    expect(recordsAt(backup, 'notes')).toEqual([expect.objectContaining({ archived_at: T1.toISOString() })]);
+    const revisions = recordsAt(backup, 'revisions');
+    expect(revisions.map((revision) => textAt(revision, 'body'))).toEqual(['version one', 'version two']);
+    expect(revisions.every((revision) => textAt(revision, 'outcome') === 'committed')).toBe(true);
   });
 });

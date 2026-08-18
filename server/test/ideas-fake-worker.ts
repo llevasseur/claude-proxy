@@ -26,6 +26,7 @@ import {
   similarAreas,
   similarIdeaSlugs,
 } from '@claude-proxy/core';
+import type { JsonObject, JsonValue } from '../../proxy/json.ts';
 
 export interface FakeIdeasWorker {
   /** The ledger as it currently stands, for a test that wants to assert on it directly. */
@@ -38,7 +39,7 @@ export interface FakeIdeasWorker {
 
 const ORIGIN = 'https://ledger.test';
 
-function json(body: unknown, status = 200): Response {
+function json(body: JsonValue, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
@@ -46,7 +47,7 @@ function json(body: unknown, status = 200): Response {
 interface Ledger {
   get: () => IdeasStore;
   set: (store: IdeasStore) => void;
-  handle: (pathname: string, body: Record<string, unknown>) => { status: number; payload: unknown };
+  handle: (pathname: string, body: JsonObject) => { status: number; payload: unknown };
 }
 
 function ledger(): Ledger {
@@ -61,7 +62,12 @@ function ledger(): Ledger {
       if (pathname === '/api/ideas/export') return { status: 200, payload: store };
 
       if (pathname === '/api/ideas') {
-        const adds = (body.ideas ?? []) as Parameters<typeof applyIdeaAdds>[1];
+        // Decoded JSON, not yet narrowed to this route's request type.
+        const rawIdeas: unknown = body.ideas ?? [];
+        // SAFETY: every caller reaches this route through addIdeasToStore
+        // (server/src/ideas-store.ts), which posts `{ ideas }` as an array of
+        // AddIdeaInput objects — this fixture never receives any other shape here.
+        const adds = rawIdeas as Parameters<typeof applyIdeaAdds>[1];
         const similar: Record<string, string[]> = {};
         const areaHits: Record<string, string[]> = {};
         for (const add of adds) {
@@ -79,33 +85,43 @@ function ledger(): Ledger {
       }
 
       if (pathname === '/api/ideas/mark') {
-        const result = applyIdeaMarks(store, (body.marks ?? []) as Parameters<typeof applyIdeaMarks>[1], now());
+        const rawMarks: unknown = body.marks ?? [];
+        // SAFETY: this route is only reached through markIdeasInStore, which posts
+        // `{ marks }` as an array of IdeaMark objects.
+        const result = applyIdeaMarks(store, rawMarks as Parameters<typeof applyIdeaMarks>[1], now());
         store = result.store;
         return { status: 200, payload: { updated: result.updated, unknown: result.unknown } };
       }
 
       if (pathname === '/api/ideas/file') {
         try {
-          const result = applyIdeaFilings(store, (body.filings ?? []) as Parameters<typeof applyIdeaFilings>[1], now());
+          const rawFilings: unknown = body.filings ?? [];
+          // SAFETY: this route is only reached through fileIdeasInStore, which posts
+          // `{ filings }` as an array of IdeaFiling objects.
+          const result = applyIdeaFilings(store, rawFilings as Parameters<typeof applyIdeaFilings>[1], now());
           store = result.store;
           return { status: 200, payload: { updated: result.updated, unknown: result.unknown } };
         } catch (error) {
+          // SAFETY: applyIdeaFilings only ever throws the Error it constructs itself
+          // (packages/core/src/ideas.ts), so this rejection carries a `.message`.
           return { status: 400, payload: { error: (error as Error).message } };
         }
       }
 
       if (pathname === '/api/ideas/comment') {
-        const result = applyIdeaComments(
-          store,
-          (body.comments ?? []) as Parameters<typeof applyIdeaComments>[1],
-          now(),
-        );
+        const rawComments: unknown = body.comments ?? [];
+        // SAFETY: this route is only reached through commentIdeasInStore, which
+        // posts `{ comments }` as an array of IdeaComment objects.
+        const result = applyIdeaComments(store, rawComments as Parameters<typeof applyIdeaComments>[1], now());
         store = result.store;
         return { status: 200, payload: { updated: result.updated, unknown: result.unknown } };
       }
 
       if (pathname === '/api/ideas/claim') {
-        const result = applyIdeaClaims(store, (body.claims ?? []) as Parameters<typeof applyIdeaClaims>[1], now());
+        const rawClaims: unknown = body.claims ?? [];
+        // SAFETY: this route is only reached through claimIdeasInStore, which posts
+        // `{ claims }` as an array of IdeaClaimRequest objects.
+        const result = applyIdeaClaims(store, rawClaims as Parameters<typeof applyIdeaClaims>[1], now());
         store = result.store;
         return {
           status: 200,
@@ -129,9 +145,11 @@ export async function startFakeIdeasServer(): Promise<{ url: string; stop: () =>
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8');
-      let body: Record<string, unknown> = {};
+      let body: JsonObject = {};
       try {
-        body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+        // SAFETY: every real caller in this suite POSTs a JSON object (never an array
+        // or scalar), so a parse that doesn't throw lands on JsonObject.
+        body = raw ? (JSON.parse(raw) as JsonObject) : {};
       } catch {
         body = {};
       }
@@ -141,6 +159,9 @@ export async function startFakeIdeasServer(): Promise<{ url: string; stop: () =>
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  // SAFETY: `server.listen` was passed a port number (0), not a pipe path, so
+  // `address()` returns an AddressInfo rather than the string form it only takes
+  // for a Unix socket or named pipe.
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,
@@ -162,16 +183,25 @@ export function installFakeIdeasWorker(): FakeIdeasWorker {
   process.env.IDEAS_URL = ORIGIN;
   process.env.IDEAS_TOKEN = 'test-token';
 
+  // SAFETY: the replacement only needs to satisfy the calls this suite makes —
+  // `fetch(string | URL, init)` — never the full `fetch` overload set (multiple
+  // signatures, extra static properties) that `typeof fetch` also carries.
   globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
-    const href = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+    const href = input instanceof URL ? input.href : input instanceof Request ? input.url : input;
     const url = new URL(href);
     // Anything not addressed to the ledger goes to the real `fetch`, so a suite
     // stubbing this one does not also blind everything else in the process.
     if (url.origin !== ORIGIN) return realFetch(input, init);
 
-    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+    // SAFETY: every request this stub answers for is built by ideas-store.ts
+    // (addIdeasToStore, markIdeasInStore, …), each of which JSON.stringifies a
+    // plain object body before calling fetch — never an array or scalar.
+    const body = init?.body ? (JSON.parse(String(init.body)) as JsonObject) : {};
     const { status, payload } = store.handle(url.pathname, body);
-    return json(payload, status);
+    // SAFETY: `payload` is always one of the object literals `Ledger.handle` builds
+    // above (added/refused lists, a store, or an `{ error }` object) — every branch
+    // returns a JSON-safe shape, never a function or other non-JSON value.
+    return json(payload as JsonValue, status);
   }) as typeof fetch;
 
   return {

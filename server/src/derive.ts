@@ -9,7 +9,14 @@
  * Being separate is also what lets a derivative be computed once, at ingest time,
  * into a column beside the row that points at the body — see `deriveBodies` in
  * `server/src/db/ingest.ts` and `skim_text` in `server/src/db/open.ts`.
+ *
+ * A captured body is `JSON.parse` output and nothing else, so it is read here as
+ * a {@link JsonInput} through the shared readers: every step down the document
+ * answers `undefined` for a shape the wire did not have, which is exactly the
+ * "no user turn in it" the function already reported as `null`.
  */
+
+import { arrayField, type JsonInput, jsonArray, jsonField, jsonString, stringField } from './json.js';
 
 /** What one captured body yields. Bounded strings only — never the body itself. */
 export interface BodyDerivatives {
@@ -28,27 +35,25 @@ export interface BodyDerivatives {
  * with text in it — which is a real reading of the body, distinct from the body
  * not being there at all.
  */
-export function latestUserText(request: unknown): string | null {
-  if (typeof request !== 'object' || request === null) return null;
-  const messages = (request as { messages?: unknown }).messages;
-  if (!Array.isArray(messages)) return null;
+export function latestUserText(request: JsonInput): string | null {
+  const messages = arrayField(request, 'messages');
+  if (messages === undefined) return null;
 
   for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i] as { role?: unknown; content?: unknown };
-    if (message?.role !== 'user') continue;
-    if (typeof message.content === 'string' && message.content.trim()) return message.content.trim();
-    if (!Array.isArray(message.content)) continue;
-    const text = message.content
-      .filter(
-        (block): block is { type: 'text'; text: string } =>
-          typeof block === 'object' &&
-          block !== null &&
-          (block as { type?: unknown }).type === 'text' &&
-          typeof (block as { text?: unknown }).text === 'string',
-      )
-      .map((block) => block.text.trim())
-      .filter(Boolean)
-      .join('\n\n');
+    const message = messages[i];
+    if (stringField(message, 'role') !== 'user') continue;
+    const content = jsonField(message, 'content');
+    const whole = jsonString(content)?.trim();
+    if (whole) return whole;
+    const blocks = jsonArray(content);
+    if (blocks === undefined) continue;
+    const parts: string[] = [];
+    for (const block of blocks) {
+      if (stringField(block, 'type') !== 'text') continue;
+      const blockText = stringField(block, 'text')?.trim();
+      if (blockText) parts.push(blockText);
+    }
+    const text = parts.join('\n\n');
     if (text) return text;
   }
   return null;
@@ -59,6 +64,6 @@ export function latestUserText(request: unknown): string | null {
  * call {@link latestUserText} directly on the query-time path they still have
  * for a row that predates the extraction.
  */
-export function deriveFromBody(request: unknown): BodyDerivatives {
+export function deriveFromBody(request: JsonInput): BodyDerivatives {
   return { skimText: latestUserText(request) };
 }

@@ -45,6 +45,7 @@ import {
   similarIdeaSlugs,
 } from '@claude-proxy/core';
 import type { Db, DbStatement } from './db.ts';
+import { isJsonRecord, parseJson } from './json.ts';
 import { seedBytes, ulid } from './ulid.ts';
 
 /** An error carrying the status the REST layer should answer with. */
@@ -66,6 +67,12 @@ export class IdeaError extends Error {
  * conditional write in {@link claimIdeas}.
  */
 export type IdeaEventKind = 'add' | 'mark' | 'file' | 'comment';
+
+/**
+ * The document an event carries: the input the `applyIdea*` matching its kind
+ * takes, stored verbatim so a replay hands core exactly what the write did.
+ */
+export type IdeaEventPayload = IdeaAdd | IdeaMark | IdeaFiling | IdeaComment;
 
 interface EventRow {
   id: string;
@@ -98,7 +105,12 @@ async function eventId(kind: IdeaEventKind, at: string, document: string): Promi
 }
 
 /** One event, ready to insert. `INSERT OR IGNORE`, so a replayed write is a no-op. */
-async function eventStatement(kind: IdeaEventKind, slug: string, at: string, payload: unknown): Promise<DbStatement> {
+async function eventStatement(
+  kind: IdeaEventKind,
+  slug: string,
+  at: string,
+  payload: IdeaEventPayload,
+): Promise<DbStatement> {
   const document = JSON.stringify(payload);
   return {
     sql: 'INSERT OR IGNORE INTO idea_event (id, slug, kind, at, document) VALUES (?, ?, ?, ?, ?)',
@@ -122,6 +134,22 @@ export async function readIdeas(db: Db, now: Date = new Date()): Promise<IdeasSt
 }
 
 /**
+ * One stored document, read back as the payload its kind names. A row this code
+ * cannot read answers `undefined` and is skipped by the caller, rather than
+ * emptying the ledger — which is how the file reader treated a malformed entry.
+ */
+function eventPayload<T>(document: string): T | undefined {
+  const parsed = parseJson(document);
+  if (!isJsonRecord(parsed)) return undefined;
+  // SAFETY: the `document` column is written only by `eventStatement`, which
+  // stringifies a payload the write path had already run through the matching
+  // `parseIdea*`; `kind` records which one, and every caller below picks `T` from
+  // the same `kind` it just branched on. That pairing between two columns of one
+  // row is the invariant, and no column type can hold it.
+  return parsed as T;
+}
+
+/**
  * Fold events into a store, oldest first. Shared by the whole-ledger read and
  * the by-key read, so the two cannot disagree about what an event means — every
  * `applyIdea*` keys on the event's own slug, which is what makes replaying one
@@ -130,24 +158,23 @@ export async function readIdeas(db: Db, now: Date = new Date()): Promise<IdeasSt
 function replay(events: readonly EventRow[]): IdeasStore {
   let store = emptyIdeasStore();
   for (const event of events) {
-    // A row this code cannot read is skipped rather than emptying the ledger,
-    // matching how the file reader treats a malformed entry.
-    let payload: unknown;
-    try {
-      payload = JSON.parse(event.document);
-    } catch {
-      continue;
-    }
     const at = new Date(event.at);
-    if (event.kind === 'add') store = applyIdeaAdds(store, [payload as IdeaAdd], at).store;
-    else if (event.kind === 'mark') store = applyIdeaMarks(store, [payload as IdeaMark], at).store;
-    else if (event.kind === 'comment') store = applyIdeaComments(store, [payload as IdeaComment], at).store;
-    else if (event.kind === 'file') {
+    if (event.kind === 'add') {
+      const add = eventPayload<IdeaAdd>(event.document);
+      if (add) store = applyIdeaAdds(store, [add], at).store;
+    } else if (event.kind === 'mark') {
+      const mark = eventPayload<IdeaMark>(event.document);
+      if (mark) store = applyIdeaMarks(store, [mark], at).store;
+    } else if (event.kind === 'comment') {
+      const comment = eventPayload<IdeaComment>(event.document);
+      if (comment) store = applyIdeaComments(store, [comment], at).store;
+    } else if (event.kind === 'file') {
+      const filing = eventPayload<IdeaFiling>(event.document);
       // `applyIdeaFilings` throws on a `command-gap` idea being filed out of
       // `commands`. The write path already refused that, so a throw here would
       // mean a log the reader cannot get past — skip the one event instead.
       try {
-        store = applyIdeaFilings(store, [payload as IdeaFiling], at).store;
+        if (filing) store = applyIdeaFilings(store, [filing], at).store;
         // biome-ignore lint/suspicious/noEmptyBlockStatements: skipping the one event is the handling — the write path already refused this, and rethrowing would make the whole ledger unreadable over a single bad row
       } catch {}
     }
@@ -174,7 +201,10 @@ function overlayClaims(store: IdeasStore, rows: readonly ClaimRow[], now: Date):
   for (const row of rows) {
     const entry = next.ideas[row.slug];
     if (!entry) continue;
-    const claim: IdeaClaim = { by: row.holder, at: row.at, ...(row.pr ? { pr: row.pr } : {}) };
+    // The lease column is nullable and `IdeaClaim.pr` is optional: a null reads as
+    // "no PR pinning this claim open", which is what `isIdeaClaimStale` asks about.
+    const claim: IdeaClaim = { by: row.holder, at: row.at };
+    if (row.pr) claim.pr = row.pr;
     if (isIdeaClaimStale({ ...entry, claim }, now)) continue;
     if (entry.status === 'accepted') next.ideas[row.slug] = { ...entry, status: 'claimed', claim };
     else if (entry.status === 'shipped') next.ideas[row.slug] = { ...entry, claim };
@@ -327,7 +357,7 @@ export async function fileIdeas(
   try {
     result = applyIdeaFilings(store, filings, now);
   } catch (error) {
-    throw new IdeaError(400, (error as Error).message);
+    throw new IdeaError(400, error instanceof Error ? error.message : String(error));
   }
   const at = now.toISOString();
   const landed = filings.filter((filing) => result.updated.includes(filing.slug));
@@ -434,24 +464,41 @@ export async function claimIdeas(
     // Lost the race: somebody took it between the read above and the write.
     // Re-read the lease so the refusal names whoever actually holds it.
     const [held] = await db.all<ClaimRow>('SELECT slug, holder, at, pr FROM idea_claim WHERE slug = ?', [request.slug]);
-    refused.push({
-      slug: request.slug,
-      status: 'claimed',
-      ...(held ? { heldBy: held.holder, since: held.at } : {}),
-      ...(held?.pr ? { pr: held.pr } : {}),
-    });
+    refused.push(refusal(request.slug, 'claimed', held ? { by: held.holder, at: held.at, pr: held.pr } : undefined));
   }
 
   return { claimed, refused, unknown };
 }
 
+/**
+ * Whoever holds an idea right now, as the two places that can answer that agree
+ * on it: the claim carried by a replayed entry, and the lease row read back after
+ * losing the race. `pr` is nullable in the column and optional on the claim.
+ */
+interface ClaimHolder {
+  by: string;
+  at: string;
+  pr?: string | null;
+}
+
+/**
+ * One refusal, built the same way whichever of those two answered.
+ *
+ * The holder fields go on together or not at all — a `since` without a `heldBy`
+ * would read as a status refusal that somehow knows when — and `pr` only when
+ * there is one, since an absent PR is what makes a claim expire.
+ */
+function refusal(slug: string, status: IdeaStatus, held: ClaimHolder | undefined): IdeaClaimRefusal {
+  const refused: IdeaClaimRefusal = { slug, status };
+  if (held) {
+    refused.heldBy = held.by;
+    refused.since = held.at;
+    if (held.pr) refused.pr = held.pr;
+  }
+  return refused;
+}
+
 /** Why one claim was refused, with enough to say who holds it instead. */
 function refusalFor(entry: IdeaEntry): IdeaClaimRefusal {
-  const held = entry.status === 'claimed' ? entry.claim : undefined;
-  return {
-    slug: entry.slug,
-    status: entry.status,
-    ...(held ? { heldBy: held.by, since: held.at } : {}),
-    ...(held?.pr ? { pr: held.pr } : {}),
-  };
+  return refusal(entry.slug, entry.status, entry.status === 'claimed' ? entry.claim : undefined);
 }

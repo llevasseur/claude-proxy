@@ -51,6 +51,9 @@ describe('readWindow', () => {
     expect(files).toBe(3);
     expect(archivedDays).toBe(2);
     expect(days).toHaveLength(7);
+    // SAFETY: every sidecar in this window came from `writeSidecar` above, whose body
+    // literal always carries a `timestamp` field — the source type is wider only because
+    // it also covers on-disk shapes this test's fixtures never write.
     expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).toEqual([
       morning('2026-08-02'),
       morning('2026-08-03'),

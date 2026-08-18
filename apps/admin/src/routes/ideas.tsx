@@ -7,6 +7,7 @@ import { IDEAS_KEY, IdeaCard } from '../components/IdeaCard';
 import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { SkeletonCardList } from '../components/Skeleton';
+import { type JsonRecord, textField } from '../json';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import type { NavEntry } from './nav';
@@ -71,7 +72,8 @@ export function IdeasPage() {
   const fallback = tabs.find((t) => t.count > 0)?.value ?? tabs[0]?.value ?? '';
   // An area that was deleted, renamed, or never existed degrades to the default
   // rather than erroring.
-  const selected = tabs.some((t) => t.value === search.area) ? (search.area as string) : fallback;
+  const area = search.area;
+  const selected = area !== undefined && tabs.some((t) => t.value === area) ? area : fallback;
 
   const shown = rows
     .filter((r) => (selected === UNFILED_TAB ? !r.area : r.area === selected))
@@ -149,9 +151,9 @@ export const route = createRoute({
   path: '/ideas',
   component: IdeasPage,
   staticData: { title: 'Ideas' },
-  validateSearch: (search: Record<string, unknown>): IdeasSearch => {
-    const area = search.area;
-    return typeof area === 'string' && area !== '' ? { area } : {};
+  validateSearch: (search: JsonRecord): IdeasSearch => {
+    const area = textField(search, 'area');
+    return area ? { area } : {};
   },
 });
 

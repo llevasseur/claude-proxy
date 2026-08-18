@@ -33,6 +33,7 @@ import {
   PAD,
   ROOMY,
 } from '../graph-layout';
+import { type JsonRecord, textField } from '../json';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
 
@@ -107,13 +108,13 @@ function entryLabel(entry: SessionGraphEntry): string {
 }
 
 /** How each interruption reads on a trail's head strip. */
-const INTERRUPTION_LABEL: Record<InterruptionKind, string> = {
+const INTERRUPTION_LABEL = {
   user: 'interrupted by user',
   'tool-use': 'interrupted mid-tool',
   stopped: 'stopped from the dashboard',
   timeout: 'timed out',
   limit: 'hit its ceiling',
-};
+} as const satisfies Record<InterruptionKind, string>;
 
 const interruptionLabel = (kind: InterruptionKind): string => INTERRUPTION_LABEL[kind] ?? 'interrupted';
 
@@ -135,15 +136,17 @@ interface View {
  */
 function boxStyle(box: Box, run?: CommandRunSpan): CSSProperties {
   const family = run ? FAMILY_TOKEN[run.family] : null;
-  return {
-    left: box.x,
-    top: box.y,
-    width: box.w,
-    height: box.h,
-    '--gc': family ? family.edge : color(boxTone(box)),
-    '--cut': color('cut'),
-    ...(family ? { '--cf': family.fill } : {}),
-  } as CSSProperties;
+  const frame = { left: box.x, top: box.y, width: box.w, height: box.h };
+  if (!family) return styleVars({ ...frame, '--gc': color(boxTone(box)), '--cut': color('cut') });
+  return styleVars({ ...frame, '--gc': family.edge, '--cut': color('cut'), '--cf': family.fill });
+}
+
+/** A `style` object that may also name CSS custom properties, which `CSSProperties` cannot. */
+type StyleWithVars = CSSProperties & { [key: `--${string}`]: string | number };
+
+/** The single place that gap is bridged, so no call site needs an assertion of its own. */
+function styleVars(style: StyleWithVars): CSSProperties {
+  return style;
 }
 
 /**
@@ -157,7 +160,7 @@ function GraphSkeleton({ rows = 2, steps = 4 }: { rows?: number; steps?: number 
     <div
       key={key}
       className='gnode'
-      style={{ left: x, top: y, width: w, height: h, '--gc': color('decision') } as CSSProperties}
+      style={styleVars({ left: x, top: y, width: w, height: h, '--gc': color('decision') })}
       aria-hidden>
       <span className='gnode-kind'>
         <Skeleton w='3.5rem' />
@@ -418,7 +421,7 @@ export function SessionGraphPage() {
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       // The overlay panels sit inside the viewport, so their wheels bubble here.
-      if ((e.target as HTMLElement).closest(SCROLLS_ITSELF)) return;
+      if (e.target instanceof HTMLElement && e.target.closest(SCROLLS_ITSELF)) return;
       e.preventDefault();
 
       if (!e.metaKey && !e.ctrlKey) {
@@ -492,13 +495,13 @@ export function SessionGraphPage() {
   }, []);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const t = e.target as HTMLElement;
+    const t = e.target instanceof HTMLElement ? e.target : null;
     if (
-      t.closest('.gnode') ||
-      t.closest('.gband-head') ||
-      t.closest('.graph-toolbar') ||
-      t.closest('.graph-inspector') ||
-      t.closest('.graph-sessions')
+      t?.closest('.gnode') ||
+      t?.closest('.gband-head') ||
+      t?.closest('.graph-toolbar') ||
+      t?.closest('.graph-inspector') ||
+      t?.closest('.graph-sessions')
     )
       return;
     pan.current = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
@@ -705,12 +708,10 @@ export function SessionGraphPage() {
                   <span key={family} className='glegend-item'>
                     <span
                       className='glegend-dot is-cmd'
-                      style={
-                        {
-                          background: FAMILY_TOKEN[family].fill,
-                          '--gc': FAMILY_TOKEN[family].edge,
-                        } as CSSProperties
-                      }
+                      style={styleVars({
+                        background: FAMILY_TOKEN[family].fill,
+                        '--gc': FAMILY_TOKEN[family].edge,
+                      })}
                     />
                     {FAMILY_LABEL[family]}
                   </span>
@@ -724,7 +725,7 @@ export function SessionGraphPage() {
           </div>
         </div>
 
-        {query.error ? <div className='graph-note error'>Failed to load: {(query.error as Error).message}</div> : null}
+        {query.error ? <div className='graph-note error'>Failed to load: {query.error.message}</div> : null}
         {!query.isLoading && all.length === 0 ? (
           <div className='graph-note muted'>No session transcripts yet.</div>
         ) : null}
@@ -1054,7 +1055,7 @@ function InspectorBody({
   return (
     <aside ref={panelRef} className={`graph-inspector${wide ? ' is-wide' : ''}`} aria-label='Node details'>
       <div className='gi-head'>
-        <span className='gi-kind' style={{ '--gc': kindColor } as CSSProperties}>
+        <span className='gi-kind' style={styleVars({ '--gc': kindColor })}>
           {kind}
         </span>
         <div className='gi-actions'>
@@ -1370,9 +1371,11 @@ export const route = createRoute({
   path: '/sessions/graph',
   component: SessionGraphPage,
   staticData: { title: 'Live graph' },
-  validateSearch: (search: Record<string, unknown>): SessionGraphSearch => {
-    const session = search.session;
-    return typeof session === 'string' && session !== '' ? { session } : {};
+  validateSearch: (search: JsonRecord): SessionGraphSearch => {
+    // An empty `?session=` names no session, so it is dropped rather than carried as a
+    // focus id the graph would never match.
+    const session = textField(search, 'session');
+    return session === undefined ? {} : { session };
   },
 });
 

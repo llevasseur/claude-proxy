@@ -35,7 +35,7 @@ async function request(
   const hash = hashWirePrompt(opts.system);
   const stamp = `${DAY}T${String(10 + Math.floor(opts.seq / 60)).padStart(2, '0')}-${String(opts.seq % 60).padStart(2, '0')}-00-000`;
   const toolsBytes = opts.tools.reduce((a, t) => a + t.bytes, 0);
-  const sidecar = {
+  const base = {
     timestamp: `${DAY}T${String(14 + Math.floor(opts.seq / 60)).padStart(2, '0')}:${String(opts.seq % 60).padStart(2, '0')}:00.000Z`,
     model: 'claude-opus-5',
     endpoint: 'POST /v1/messages',
@@ -49,8 +49,10 @@ async function request(
       system: { hash, blocks: outline.blocks.length, sections: outline.sections.length },
     },
     tools: opts.tools,
-    ...(opts.sessionId ? { session: { sessionId: opts.sessionId } } : {}),
   };
+  // `session` is omitted entirely (not written as `undefined`) when no sessionId is
+  // given, since a downstream reader keys off the key's presence.
+  const sidecar = opts.sessionId ? { ...base, session: { sessionId: opts.sessionId } } : base;
   await writeFile(path.join(logDir, `${stamp}_anthropic.audit.json`), JSON.stringify(sidecar), 'utf8');
   if (opts.body !== false) {
     const body = {

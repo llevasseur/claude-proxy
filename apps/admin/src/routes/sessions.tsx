@@ -86,12 +86,21 @@ function SessionsRailSkeleton({ rows = 9 }: { rows?: number }) {
  * SSE, without this page inserting it. The same input then continues the chat.
  */
 /** What each standing answer means for the turn. */
-const PERMISSION_NOTE: Record<PermissionMode, string> = {
+const PERMISSION_NOTE = {
   default: "every gated tool asks — and a headless child can't be asked, so commands are denied",
   acceptEdits: 'edits are accepted, but every Bash command is auto-denied — no git writes',
   bypassPermissions: 'nothing is asked: commands run, including git writes — what /task needs',
   plan: 'read-only — the turn plans and does not act',
-};
+} as const satisfies Record<PermissionMode, string>;
+
+/**
+ * The session and the agent config both report their posture as a plain string, since a
+ * server on older code may name a mode this build has never heard of. This is where such
+ * a mode is turned back into a choice the picker and `PERMISSION_NOTE` can both answer for.
+ */
+function isPermissionMode(value: string): value is PermissionMode {
+  return PERMISSION_MODES.some((mode) => mode === value);
+}
 
 function ChatPane({
   sessionsDir,
@@ -118,10 +127,8 @@ function ChatPane({
 
   const unconfigured = config.data && !config.data.ready;
   const agent = config.data?.agent;
-  const permission = (chat?.session.permissionMode ??
-    pickedPermission ??
-    agent?.permissionMode ??
-    'bypassPermissions') as PermissionMode;
+  const asked = chat?.session.permissionMode ?? pickedPermission ?? agent?.permissionMode;
+  const permission = asked && isPermissionMode(asked) ? asked : 'bypassPermissions';
   // What the child actually started under, when it differs from what was asked for.
   const drifted =
     !!chat?.session.effectivePermissionMode && chat.session.effectivePermissionMode !== chat.session.permissionMode;
@@ -143,7 +150,9 @@ function ChatPane({
               value={permission}
               title={PERMISSION_NOTE[permission]}
               disabled={started || isSending}
-              onChange={(e) => setPickedPermission(e.target.value as PermissionMode)}>
+              onChange={(e) => {
+                if (isPermissionMode(e.target.value)) setPickedPermission(e.target.value);
+              }}>
               {PERMISSION_MODES.map((p) => (
                 <option key={p} value={p}>
                   {p}
@@ -169,7 +178,7 @@ function ChatPane({
                   config.data.transport === 'cli' ? 'headless Claude Code' : 'API key'
                 }`
               : config.error
-                ? (config.error as Error).message
+                ? config.error.message
                 : 'resolving chat config…'}
           </span>
           {sessionsDir && <span className='mono-break'>logs → {sessionsDir}</span>}

@@ -110,7 +110,7 @@ function PrettyJson({ content }: { content: string }) {
  */
 function PrettyJsonl({ content }: { content: string }) {
   const { entries, skipped } = useMemo(() => parseJobTimeline(content), [content]);
-  const isTimeline = entries.length > 0 && entries.some((e) => e.at !== '' || e.state !== '');
+  const isTimeline = entries.some((e) => e.at !== '' || e.state !== '');
 
   if (!isTimeline) {
     const text = content

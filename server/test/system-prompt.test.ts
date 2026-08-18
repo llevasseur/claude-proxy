@@ -15,10 +15,14 @@ beforeEach(async () => {
 
 describe('resolveSystemPromptPath', () => {
   it("defaults to the device's `~/.claude/CLAUDE.md`", () => {
+    // SAFETY: resolveSystemPromptPath only reads `env.CLAUDE_SYSTEM_PROMPT`; this test wants
+    // that key absent, and `{}` has every other `NodeJS.ProcessEnv` key as optional already.
     expect(resolveSystemPromptPath({} as NodeJS.ProcessEnv)).toMatch(/[/\\]\.claude[/\\]CLAUDE\.md$/);
   });
 
   it('takes an override, resolved to absolute', () => {
+    // SAFETY: same as above — only `CLAUDE_SYSTEM_PROMPT` is read, and this test sets exactly
+    // that one key to the temp path created in beforeEach.
     expect(resolveSystemPromptPath({ CLAUDE_SYSTEM_PROMPT: promptPath } as NodeJS.ProcessEnv)).toBe(promptPath);
   });
 });
