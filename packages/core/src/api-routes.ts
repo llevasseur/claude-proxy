@@ -67,6 +67,9 @@ export const API_ROUTES = [
     cors: 'open',
     params: ['days', 'sort', 'dir', 'offset', 'limit', 'q'],
   },
+  // One reporting day of that window, on its own — a caller composes a window from these.
+  // `?date=` omitted means the day in progress.
+  { path: '/api/context/day', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
   { path: '/api/context/thread', methods: ['GET'], kind: 'json', cors: 'open', params: ['thread', 'days'] },
   { path: '/api/context/detail', methods: ['GET'], kind: 'json', cors: 'open', params: ['file'] },
   { path: '/api/context/message', methods: ['GET'], kind: 'json', cors: 'open', params: ['file', 'index'] },

@@ -45,6 +45,7 @@ import {
   buildConceptSearch,
   buildConcepts,
   buildContext,
+  buildContextDay,
   buildContextDetail,
   buildContextMessage,
   buildContextThread,
@@ -359,8 +360,9 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  *
  * A 200 answering a read carries a weak ETag over the serialized body and
  * `cache-control: no-cache`; a matching `If-None-Match` gets a 304 with the validator
- * and the CORS headers, no body and no `content-length`. A body over
- * {@link COMPRESS_MIN_BYTES} the request accepts gzip for goes out compressed.
+ * and the CORS headers, no body and no `content-length`. `immutable` swaps that header
+ * for {@link IMMUTABLE_CACHE_CONTROL}. A body over {@link COMPRESS_MIN_BYTES} the request
+ * accepts gzip for goes out compressed.
  *
  * The bytes hashed are the bytes a route already produced, so parity comparisons keep
  * seeing identical payloads. Server-sent events never come through here — `serveSse`
@@ -369,7 +371,23 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  * `res.req` is the request this response answers, so the negotiation needs no `req`
  * threaded through every call site.
  */
-function send<T>(res: http.ServerResponse, status: number, body: T, cors: HeaderMap = CORS): void {
+/**
+ * A year, and `immutable`: what a response the server vouches will never change again is
+ * answered with, so a browser holding it re-asks for nothing — not even a revalidating
+ * `If-None-Match`.
+ *
+ * **Only a route that already knows the answer has settled may pass it**, and the bar is
+ * higher than "the day is closed". Nothing here is content-addressed, so a browser told
+ * this cannot be reached again by any server-side invalidation — the entry has to be
+ * unreachable *by construction*. Today one route clears that: `/api/context/day`, for a
+ * closed reporting day the corpus actually holds requests for. An empty past day does
+ * not qualify, because it is only empty until an archive restore or an ADR-0004 rebuild
+ * (`rm logs/claude-proxy.db && pnpm --filter server ingest`) gives it content. Everything
+ * else stays `no-cache`, where the ETag already makes a repeat poll nearly free.
+ */
+const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+
+function send<T>(res: http.ServerResponse, status: number, body: T, cors: HeaderMap = CORS, immutable = false): void {
   const req = res.req;
   const json = Buffer.from(JSON.stringify(body), 'utf8');
   const headers: HeaderMap = {
@@ -384,7 +402,7 @@ function send<T>(res: http.ServerResponse, status: number, body: T, cors: Header
   if (status === 200 && (req.method === 'GET' || req.method === 'HEAD')) {
     const etag = `W/"${crypto.createHash('sha1').update(json).digest('base64url')}"`;
     headers.etag = etag;
-    headers['cache-control'] = 'no-cache';
+    headers['cache-control'] = immutable ? IMMUTABLE_CACHE_CONTROL : 'no-cache';
     if (etagMatches(req, etag)) {
       res.writeHead(304, headers);
       res.end();
@@ -1121,6 +1139,16 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     const context = await buildContext(LOG_DIR, days, now, readSource(), page);
     send(res, 200, context);
     shadow('/api/context', context, (source) => buildContext(LOG_DIR, days, now, source, page));
+  },
+  // One day of that window, so a browser composes 7d, 30d and All out of days it mostly
+  // already holds.
+  '/api/context/day': async ({ res, date }) => {
+    const now = new Date();
+    const day = await buildContextDay(LOG_DIR, date, now, readSource(), ARCHIVE_DIR);
+    // Settled *and* non-empty: a closed day the corpus holds nothing for is empty only
+    // until something puts a day there, and an `immutable` entry could never be told.
+    send(res, 200, day, CORS, day.closed && day.meta.files > 0);
+    shadow('/api/context/day', day, (source) => buildContextDay(LOG_DIR, date, now, source, ARCHIVE_DIR));
   },
   '/api/context/thread': async ({ res, url }) => {
     const threadId = url.searchParams.get('thread');
