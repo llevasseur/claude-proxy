@@ -793,8 +793,18 @@ function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], op
   // SAFETY: the SELECT names `REQUEST_COLUMNS`, which is the field list `RequestRow`
   // declares and nothing besides — and `tsc` is what holds that, not this comment,
   // since the list is a `satisfies Record<keyof RequestRow, true>` key set.
+  //
+  // `ORDER BY source_dir, id` is `request_window_covering_idx`'s own order (schema
+  // v21). Asked for `id` alone SQLite cannot use an index keyed `(source_dir, id, …)`
+  // and scans the primary key instead, so this exists for the `source_dir <> ''`
+  // read; the per-day read reaches the index either way, its `source_dir = ?` being
+  // an equality.
+  //
+  // Nothing downstream reads this order — all three callers sort the entries
+  // themselves, so the SQL order is an optimizer hint, not a contract.
+  // `request_skipped` below keeps `ORDER BY id`, having no covering index to reach.
   const rows = db
-    .prepare(`SELECT ${REQUEST_COLUMNS} FROM request WHERE ${clause} ORDER BY id`)
+    .prepare(`SELECT ${REQUEST_COLUMNS} FROM request WHERE ${clause} ORDER BY source_dir, id`)
     .all(...args) as RequestRow[];
   // SAFETY: the SELECT above names exactly id, reason, timestamp and source_dir, so
   // every row carries those four columns as `SkippedRow` declares them.

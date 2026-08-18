@@ -31,14 +31,56 @@ describe('migrating skim_text into the side table', () => {
   beforeAll(async () => {
     logDir = await mkdtemp(path.join(tmpdir(), 'skim-migrate-'));
 
-    // A v19 database, reduced to what the v20 statements touch: the `request`
-    // table with the column still on it, and the version stamp `migrate` reads.
+    // A v19 database: the `request` table with `skim_text` still on it, and the
+    // version stamp `migrate` reads.
+    //
+    // The real v19 column list rather than the three columns v20 touches, because
+    // `migrate` runs the whole tail of the chain from here and v21's `CREATE INDEX`
+    // needs 37 of them. Nullable throughout except the flag the assertions read; a
+    // real v19 file carries the NOT NULLs, which nothing in this chain reads.
     const db = new sqlite.DatabaseSync(resolveDbPath(logDir));
     db.exec(`
       CREATE TABLE request (
-        id           TEXT PRIMARY KEY,
-        skim_text    TEXT,
-        body_derived INTEGER NOT NULL DEFAULT 0
+        id                      TEXT PRIMARY KEY,
+        source_dir              TEXT,
+        timestamp               TEXT,
+        model                   TEXT,
+        endpoint                TEXT,
+        status_code             INTEGER,
+        session_present         INTEGER,
+        session_id              TEXT,
+        thread_id               TEXT,
+        app                     TEXT,
+        user_agent              TEXT,
+        account                 TEXT,
+        metadata_session_id     TEXT,
+        device_id               TEXT,
+        tokens_input            INTEGER,
+        tokens_output           INTEGER,
+        tokens_cache_read       INTEGER,
+        tokens_cache_creation   INTEGER,
+        tokens_real_input       INTEGER,
+        req_tool_count          INTEGER,
+        req_tools_bytes         INTEGER,
+        req_system_bytes        INTEGER,
+        req_total_bytes         INTEGER,
+        req_system_hash         TEXT,
+        req_system_blocks       INTEGER,
+        req_system_sections     INTEGER,
+        skim_present            INTEGER,
+        skim_enabled            INTEGER,
+        skim_served_from_cache  INTEGER,
+        skim_saved_input_tokens INTEGER,
+        skim_cache_key          TEXT,
+        cache_breakpoint_injected    INTEGER,
+        cache_breakpoint_observed    INTEGER,
+        cache_breakpoint_declined_by TEXT,
+        rate_limit_present      INTEGER,
+        md_path                 TEXT,
+        request_path            TEXT,
+        blob_evicted            INTEGER,
+        skim_text               TEXT,
+        body_derived            INTEGER NOT NULL DEFAULT 0
       );
     `);
     const insert = db.prepare('INSERT INTO request (id, skim_text, body_derived) VALUES (?, ?, ?)');
