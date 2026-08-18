@@ -1784,8 +1784,19 @@ export async function buildSessions(logDir: string, source: SidecarSource = file
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
 }
 
-/** One transcript in the graph, plus whether it is still being written to. */
-export interface SessionGraphRow extends SessionGraph {
+/** A transcript with its liveness verdict attached — the builders' working shape. */
+interface LiveSessionGraph extends SessionGraph {
+  liveness: BranchLiveness;
+}
+
+/**
+ * One transcript in the graph index, plus whether it is still being written to. Thin:
+ * the node stream stays behind `/api/sessions/graph/nodes`, which serves the canvased
+ * family, so the 4 s index poll carries a `steps` count instead of every step.
+ */
+export interface SessionGraphRow extends Omit<SessionGraph, 'nodes'> {
+  /** Steps appended so far — the length of the node stream this row omits. */
+  steps: number;
   liveness: BranchLiveness;
 }
 
@@ -1799,7 +1810,7 @@ export interface SessionsGraphResponse {
  * witness to a subagent finishing (see `BranchActivity.reported`), so each branch is
  * judged with its own link, which `listSessionGraphs` has already reconstructed.
  */
-function livenessOf(sessions: readonly SessionGraph[], now: Date): SessionGraphRow[] {
+function livenessOf(sessions: readonly SessionGraph[], now: Date): LiveSessionGraph[] {
   return sessions.map((session) => ({
     ...session,
     liveness: branchLiveness({ lastActivity: session.modified, nodes: session.nodes, reported: session.reported }, now),
@@ -1807,16 +1818,21 @@ function livenessOf(sessions: readonly SessionGraph[], now: Date): SessionGraphR
 }
 
 /**
- * Every session transcript with its structured node stream, newest first — feeds the live
- * graph. `now` is a parameter rather than read inside, so the same corpus answers
- * identically twice; the two backings are compared that way (`parity.ts`).
+ * Every session transcript's index row, newest first — feeds the live graph's 4 s poll.
+ * Deliberately without the node streams, which were 96.7% of the payload while the canvas
+ * draws one family at a time: those load per family from `buildSessionGraphNodes`. `now`
+ * is a parameter rather than read inside, so the same corpus answers identically twice;
+ * the two backings are compared that way (`parity.ts`).
  */
 export async function buildSessionsGraph(
   logDir: string,
   now: Date = new Date(),
   source: SidecarSource = fileSource,
 ): Promise<SessionsGraphResponse> {
-  const sessions = livenessOf(await source.listSessionGraphs(logDir), now);
+  const sessions = livenessOf(await source.listSessionGraphs(logDir), now).map(({ nodes, ...row }) => ({
+    ...row,
+    steps: nodes.length,
+  }));
   return { sessions, meta: { sessionsDir: `${logDir}/sessions`, total: sessions.length } };
 }
 
@@ -1851,8 +1867,8 @@ export interface SessionsLivenessResponse {
 
 /**
  * Every branch's liveness verdict, live branches first — the terminal-readable answer to
- * "is that dispatch still going?", so a stalled parent can ask without a browser. Thin
- * next to `/api/sessions/graph`: no node streams, so it stays cheap to poll from a shell.
+ * "is that dispatch still going?", so a stalled parent can ask without a browser. Flatter
+ * still than `/api/sessions/graph`'s index rows: verdicts alone, sorted live-first.
  */
 export async function buildSessionsLiveness(
   logDir: string,
@@ -2798,8 +2814,16 @@ export interface SessionThreadNodes {
   nodes: SessionNode[];
 }
 
+/** One family thread's transcript node stream — the gisted steps the graph index omits. */
+export interface SessionThreadTranscript {
+  threadId: string;
+  nodes: SessionNode[];
+}
+
 export interface SessionGraphNodesResponse {
   rootThreadId: string;
+  /** Every thread in the canvased family, walk order, each with its transcript nodes. */
+  transcripts: SessionThreadTranscript[];
   /** Only the threads a captured request could be found for; the rest keep their transcript. */
   threads: SessionThreadNodes[];
   meta: { files: number; parseErrors: number; requestsRead: number; capped: boolean };
@@ -2813,10 +2837,12 @@ export interface SessionGraphNodesResponse {
 const MAX_FAMILY_REQUESTS = 60;
 
 /**
- * The untruncated step stream for a canvased session and every subagent under it: scan the
- * sidecars carrying the family's session ids newest-first, hash each body back to the thread
- * that produced it, and keep the richest snapshot per thread. Threads with no captured
- * request left go unlisted, and the caller keeps their transcript nodes.
+ * The step streams for a canvased session and every subagent under it. `transcripts` is the
+ * family's gisted node streams straight off the transcripts — the graph index omits them, so
+ * the canvas reads them from here. `threads` is the untruncated view: scan the sidecars
+ * carrying the family's session ids newest-first, hash each body back to the thread that
+ * produced it, and keep the richest snapshot per thread. Threads with no captured request
+ * left go unlisted there, and the caller keeps their transcript nodes.
  */
 export async function buildSessionGraphNodes(
   logDir: string,
@@ -2837,9 +2863,19 @@ export async function buildSessionGraphNodes(
   };
   walk(id);
 
+  const transcripts: SessionThreadTranscript[] = [...family].map((t) => ({
+    threadId: t,
+    nodes: byId.get(t)?.nodes ?? [],
+  }));
+
   const sessionIds = new Set([...family].map((t) => byId.get(t)?.sessionId).filter((s): s is string => !!s));
   if (sessionIds.size === 0) {
-    return { rootThreadId: id, threads: [], meta: { files: 0, parseErrors: 0, requestsRead: 0, capped: false } };
+    return {
+      rootThreadId: id,
+      transcripts,
+      threads: [],
+      meta: { files: 0, parseErrors: 0, requestsRead: 0, capped: false },
+    };
   }
 
   // A family's requests never predate its earliest transcript, and `readSidecars`
@@ -2881,6 +2917,7 @@ export async function buildSessionGraphNodes(
 
   return {
     rootThreadId: id,
+    transcripts,
     threads: [...best.values()],
     meta: { files, parseErrors, requestsRead, capped: candidates.length === MAX_FAMILY_REQUESTS },
   };

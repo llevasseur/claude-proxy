@@ -1,6 +1,6 @@
 import type { InterruptionKind, SessionNode } from '@claude-proxy/core';
 import { mergeSessionNodes, sessionName, spawnAgentType, stripCommandEnvelope } from '@claude-proxy/core';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Expand, Maximize2, Minimize2, Network, Shrink } from 'lucide-react';
 import type { CSSProperties, ReactNode, Ref } from 'react';
@@ -42,7 +42,9 @@ import type { NavEntry } from './nav';
  * tool / error / done) chained into a snake so a long run folds onto the screen
  * instead of running off the right. Rows-per-fold adapt to the viewport (mobile
  * flows top-to-bottom, desktop uses long rows). A collapsible left rail switches
- * sessions; the toolbar floats above the canvas. Polls so new steps stream in.
+ * sessions; the toolbar floats above the canvas. Polls a thin session index every
+ * 4 s — listing rows, links and step counts, no node streams — and loads the
+ * canvased family's nodes separately, so the poll stays cheap at any log size.
  *
  * `?session=<threadId>` opens the graph on one session rather than the newest; picking in
  * the rail writes it back.
@@ -104,7 +106,8 @@ function entryLabel(entry: SessionGraphEntry): string {
     const text = stripReminders(node.text);
     if (text) return text;
   }
-  return entry.threadId;
+  // Index rows outside the canvased family carry no nodes; their first task still names them.
+  return stripReminders(entry.firstTask ?? '') || entry.threadId;
 }
 
 /** How each interruption reads on a trail's head strip. */
@@ -203,12 +206,17 @@ function hoverLabel(node: SessionNode): string {
   return label.length > 300 ? `${label.slice(0, 299)}…` : label;
 }
 
-/** How often to re-read the family's captured requests — far heavier than the transcript poll. */
+/**
+ * The backstop interval for re-reading the family's node streams — the usual trigger is the
+ * index poll reporting a changed step count, which rides in the query key below.
+ */
 const NODES_REFETCH_MS = 20_000;
 
 export function SessionGraphPage() {
   const { session: requested } = useSearch({ from: '/sessions/graph' });
   const navigate = useNavigate();
+  // The 4 s poll fetches the thin index — listing rows, links and step counts, no node
+  // streams — so it stays cheap however many transcripts the log dir holds.
   const query = useQuery({ queryKey: ['sessions-graph'], queryFn: getSessionsGraph, refetchInterval: 4000 });
   const transcripts = useMemo(() => query.data?.sessions ?? [], [query.data]);
 
@@ -250,13 +258,37 @@ export function SessionGraphPage() {
     setSelectedId((prev) => rootOf(prev && byThread.has(prev) ? prev : transcripts[0]!.threadId));
   }, [transcripts, byThread, rootOf, requested]);
 
-  // The canvased family's steps, re-read from its captured requests so nothing is gisted.
-  // Failure is silent: the transcript still draws the graph, just abbreviated.
+  /**
+   * The canvased family's step counts off the index rows, fingerprinted. Riding in the nodes
+   * query's key, it refetches the streams within one 4 s poll of a step landing, rather than
+   * waiting out the 20 s backstop. The walk mirrors the server's family walk and guards the
+   * same way against a cycle a bad link could draw.
+   */
+  const familySteps = useMemo(() => {
+    if (selectedId === null) return '';
+    const parts: string[] = [];
+    const seen = new Set<string>();
+    const walk = (id: string) => {
+      const row = byThread.get(id);
+      if (!row || seen.has(id)) return;
+      seen.add(id);
+      parts.push(`${id}:${row.steps}`);
+      for (const kid of row.childThreadIds) walk(kid);
+    };
+    walk(selectedId);
+    return parts.join(',');
+  }, [selectedId, byThread]);
+
+  // The canvased family's node streams: the transcripts' gisted steps the index poll omits,
+  // plus the same steps re-read from captured requests so nothing stays gisted. Failure is
+  // silent: the index still draws the rail, just no canvas steps. `placeholderData` keeps
+  // the last streams on screen while a step-count change refetches them.
   const nodesQuery = useQuery({
-    queryKey: ['session-graph-nodes', selectedId],
+    queryKey: ['session-graph-nodes', selectedId, familySteps],
     queryFn: () => getSessionGraphNodes(selectedId!),
     enabled: selectedId !== null,
     refetchInterval: NODES_REFETCH_MS,
+    placeholderData: keepPreviousData,
   });
   const derived = useMemo(
     () => new Map((nodesQuery.data?.threads ?? []).map((t) => [t.threadId, t])),
@@ -264,14 +296,20 @@ export function SessionGraphPage() {
   );
   /** Thread id → the captured request its steps were read from, for the inspector to link. */
   const sources = useMemo(() => new Map([...derived].map(([id, t]) => [id, t.file])), [derived]);
+  /** Thread id → its transcript node stream, for the canvased family only. */
+  const transcriptNodes = useMemo(
+    () => new Map((nodesQuery.data?.transcripts ?? []).map((t) => [t.threadId, t.nodes])),
+    [nodesQuery.data],
+  );
 
   const all = useMemo(
     () =>
       transcripts.map((e) => {
+        const nodes = transcriptNodes.get(e.threadId) ?? [];
         const from = derived.get(e.threadId);
-        return from ? { ...e, nodes: mergeSessionNodes(e.nodes, from.nodes) } : e;
+        return { ...e, nodes: from ? mergeSessionNodes(nodes, from.nodes) : nodes };
       }),
-    [transcripts, derived],
+    [transcripts, transcriptNodes, derived],
   );
 
   const byId = useMemo(() => new Map(all.map((s) => [s.threadId, s])), [all]);
@@ -536,10 +574,13 @@ export function SessionGraphPage() {
   };
   const canvasStyle: CSSProperties = { transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` };
   const flying = bands.filter((b) => b.inFlight).length;
+  // The first canvas needs both fetches: the index to pick a session, then that family's
+  // node streams. A later family switch keeps the previous streams as placeholder instead.
+  const booting = query.isLoading || (selectedId !== null && nodesQuery.isPending);
 
   return (
     <section className='graph-page'>
-      {query.isLoading ? <SkeletonStatus label='Loading the session graph' /> : null}
+      {booting ? <SkeletonStatus label='Loading the session graph' /> : null}
       <div
         ref={viewportRef}
         className={`graph-viewport${isFull ? ' is-full' : ''}${dragging ? ' is-dragging' : ''}`}
@@ -549,7 +590,7 @@ export function SessionGraphPage() {
         onPointerUp={endPan}
         onPointerCancel={endPan}>
         <div className={`graph-canvas${roomy ? ' is-roomy' : ''}`} style={canvasStyle}>
-          {query.isLoading ? <GraphSkeleton /> : null}
+          {booting ? <GraphSkeleton /> : null}
           {/* Branch frames sit behind the edges and boxes they enclose. */}
           {bands.map((band) => (
             <div
@@ -941,7 +982,7 @@ function SessionNav({
                     {entryLabel(entry)}
                   </span>
                   <span className='gs-item-meta mono'>
-                    {fmtLocalTsShort(entry.modified)} · {fmtInt(entry.nodes.length)} steps
+                    {fmtLocalTsShort(entry.modified)} · {fmtInt(entry.steps)} steps
                     {childCount > 0 ? <span className='gs-item-kids'> · {fmtInt(childCount)} agents</span> : null}
                     {entry.errors > 0 ? <span className='gs-item-err'> · {fmtInt(entry.errors)} err</span> : null}
                     {isInFlight(entry) ? <span className='gs-item-flight'> · in flight</span> : null}
