@@ -35,7 +35,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -782,6 +782,47 @@ ALTER TABLE request DROP COLUMN skim_text;
 VACUUM;
 `;
 
+/**
+ * A covering index for the window read, so the per-day scan behind the context
+ * window is answered from the index alone and never touches a `request` row.
+ *
+ * **The leading columns are the predicate `readDir` actually issues**, which is
+ * `source_dir = ?` plus a range over `id` — not `timestamp`, despite the read
+ * being a time window. The stem *is* the clock here: an id is the proxy's UTC
+ * date prefix followed by the capture time, so `id >= '2026-08-01' AND id <
+ * '2026-08-03'` is the same span a timestamp range would name, and it is already
+ * the primary key. An index led by `timestamp` could serve neither half of that
+ * predicate as a seek.
+ *
+ * Everything after those two is the rest of the select list, which is what makes
+ * it *covering* rather than merely well-chosen: with all 37 columns present
+ * SQLite reads the index and stops, where before it seeked `request_source_dir_idx`,
+ * sorted the result in a temp B-tree to satisfy `ORDER BY`, and then paid a rowid
+ * lookup into the table per row.
+ *
+ * **The column list has to stay in step with `REQUEST_COLUMN_SET` in `source.ts`**
+ * — a column added to the select and not to this index silently drops the plan
+ * back to a table lookup, with nothing failing. `server/test/window-covering-index.test.ts`
+ * is what catches that: it asserts the two reads plan as `COVERING INDEX`, which
+ * is false the moment the two lists disagree.
+ *
+ * Measured on a copy of the live 1.69 GB database (49,782 rows): the per-day read
+ * goes from 17.6ms to 11.6ms and loses its temp B-tree, the whole-archive read
+ * from 110.6ms to 106.8ms. It costs 25.1 MB — 1.5% of a file whose bulk is
+ * `request_skim` — and about 0.8µs per row on ingest.
+ */
+const SCHEMA_V21 = `
+CREATE INDEX IF NOT EXISTS request_window_covering_idx ON request(
+  source_dir, id,
+  timestamp, model, endpoint, status_code, session_present, session_id, thread_id, app, user_agent,
+  account, metadata_session_id, device_id, tokens_input, tokens_output, tokens_cache_read,
+  tokens_cache_creation, tokens_real_input, req_tool_count, req_tools_bytes, req_system_bytes,
+  req_total_bytes, req_system_hash, req_system_blocks, req_system_sections, skim_present, skim_enabled,
+  skim_served_from_cache, skim_saved_input_tokens, skim_cache_key, cache_breakpoint_injected,
+  cache_breakpoint_observed, cache_breakpoint_declined_by, rate_limit_present, body_derived, request_path
+);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -910,6 +951,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 18) db.exec(SCHEMA_V18);
   if (from < 19) db.exec(SCHEMA_V19);
   if (from < 20) db.exec(SCHEMA_V20);
+  if (from < 21) db.exec(SCHEMA_V21);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

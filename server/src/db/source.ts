@@ -793,8 +793,23 @@ function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], op
   // SAFETY: the SELECT names `REQUEST_COLUMNS`, which is the field list `RequestRow`
   // declares and nothing besides — and `tsc` is what holds that, not this comment,
   // since the list is a `satisfies Record<keyof RequestRow, true>` key set.
+  //
+  // `ORDER BY source_dir, id` rather than `ORDER BY id` is what lets the whole-archive
+  // read reach `request_window_covering_idx` (schema v21), whose own order that is.
+  // Asked for `id` alone, SQLite falls back to scanning the primary key and pays a
+  // table lookup per row, because an index keyed `(source_dir, id, …)` cannot produce
+  // global `id` order. The per-day read reaches the index under either spelling — its
+  // `source_dir = ?` is an equality, so the leading column is constant and index order
+  // *is* id order within it — so this line exists for the `source_dir <> ''` read.
+  //
+  // **Nothing downstream reads this order.** All three callers sort the entries
+  // themselves before anything observes them: `readDir` by stem or timestamp,
+  // `readWholeArchive` and `threadFromDb` by their own day/rank/stem rules. The
+  // SQL order is an optimizer hint here, not a contract — which is exactly why it
+  // is free to change, and why `request_skipped` below keeps `ORDER BY id`: that
+  // table has no covering index to reach and would only gain a temp B-tree.
   const rows = db
-    .prepare(`SELECT ${REQUEST_COLUMNS} FROM request WHERE ${clause} ORDER BY id`)
+    .prepare(`SELECT ${REQUEST_COLUMNS} FROM request WHERE ${clause} ORDER BY source_dir, id`)
     .all(...args) as RequestRow[];
   // SAFETY: the SELECT above names exactly id, reason, timestamp and source_dir, so
   // every row carries those four columns as `SkippedRow` declares them.
