@@ -34,13 +34,10 @@ describe('migrating skim_text into the side table', () => {
     // A v19 database: the `request` table with `skim_text` still on it, and the
     // version stamp `migrate` reads.
     //
-    // The column list is the real v19 shape rather than the three columns v20's
-    // own statements touch, because `migrate` runs the whole tail of the chain
-    // from here — v21 indexes 37 of these columns, and a fixture reduced to v20's
-    // needs fails at `CREATE INDEX` with `no such column: source_dir`. Nullable
-    // throughout (except the flag the assertions read) so the inserts below can
-    // stay about `skim_text`; a real v19 file carries the NOT NULLs, and nothing
-    // in this chain reads them.
+    // The real v19 column list rather than the three columns v20 touches, because
+    // `migrate` runs the whole tail of the chain from here and v21's `CREATE INDEX`
+    // needs 37 of them. Nullable throughout except the flag the assertions read; a
+    // real v19 file carries the NOT NULLs, which nothing in this chain reads.
     const db = new sqlite.DatabaseSync(resolveDbPath(logDir));
     db.exec(`
       CREATE TABLE request (

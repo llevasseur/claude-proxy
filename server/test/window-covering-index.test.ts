@@ -8,17 +8,10 @@ import { openDb, SCHEMA_VERSION } from '../src/db/open.js';
 import { dbSource } from '../src/db/source.js';
 
 /**
- * Schema v21's `request_window_covering_idx` exists so the window read is answered
- * from the index alone. Nothing about that is observable in a return value — the
- * rows are identical either way — so it is asserted where it is actually decided,
- * in SQLite's query plan, and against **the SQL `entriesFrom` really prepared**
- * rather than a copy of it kept in this file.
- *
- * That last part is the point. The index only covers the read while its column
- * list and `REQUEST_COLUMN_SET` agree, and a column added to one and not the other
- * breaks the cover *silently*: every existing test still passes, the read just
- * quietly goes back to a rowid lookup per row. Planning the recorded SQL is what
- * turns that into a failure.
+ * Schema v21's `request_window_covering_idx` is not observable in a return value, so
+ * it is asserted in SQLite's query plan, against the SQL `entriesFrom` really prepares
+ * rather than a copy kept here. The cover breaks silently when the index's column list
+ * and `REQUEST_COLUMN_SET` drift apart — every other test still passes.
  */
 
 const LIVE_DAY = '2026-07-15';
@@ -49,11 +42,7 @@ async function writeTriple(dir: string, iso: string): Promise<void> {
   );
 }
 
-/**
- * The same database, with every statement it prepares recorded — the technique
- * `window-skim-text-column.test.ts` established, and used here for the same reason:
- * the assertion has to land on the query the code issues, not on a restatement of it.
- */
+/** The same database, with every statement it prepares recorded. */
 function recording(db: DatabaseSync) {
   const sql: string[] = [];
   const handle = new Proxy(db, {
@@ -65,9 +54,8 @@ function recording(db: DatabaseSync) {
         };
       }
       // SAFETY: `prop` came from a property access on this same object, so indexing
-      // `target` with it yields whatever `DatabaseSync` declares at that key. The
-      // bind is not incidental — these are native methods, and they reject the proxy
-      // as a receiver, so forwarding them unbound would throw on the first call.
+      // `target` with it yields whatever `DatabaseSync` declares at that key. These are
+      // native methods and reject the proxy as a receiver, so they are forwarded bound.
       const value = target[prop as keyof DatabaseSync];
       return value instanceof Function ? value.bind(target) : value;
     },
@@ -85,8 +73,7 @@ function windowSelect(sql: string[]): string {
 
 /**
  * The plan SQLite chooses for a statement, as one string. The bind values are
- * placeholders: a plan is chosen from the statement's shape, and none of the
- * predicates here (equality and a range over TEXT) vary with the value.
+ * placeholders — no predicate here plans differently for a different value.
  */
 function planOf(db: DatabaseSync, sql: string): string {
   const holes = (sql.match(/\?/g) ?? []).length;
@@ -152,8 +139,8 @@ describe('the window read is answered from a covering index', () => {
     );
 
     // Order deliberately not compared: the index leads with the two predicate columns
-    // while the select keeps `RequestRow`'s declaration order. Membership is the
-    // property that makes it covering, and it is the one that silently breaks.
+    // while the select keeps `RequestRow`'s declaration order. Membership is what
+    // makes it covering.
     expect([...indexed].sort()).toEqual([...selected].sort());
   });
 
@@ -163,8 +150,8 @@ describe('the window read is answered from a covering index', () => {
 
     const plan = planOf(db, windowSelect(sql));
     expect(plan).toContain('COVERING INDEX request_window_covering_idx');
-    // The sort the index removes: before v21 this read seeked `request_source_dir_idx`
-    // and then sorted the whole day to satisfy `ORDER BY`.
+    // The sort the index removes: before v21 this read sorted the whole day to
+    // satisfy `ORDER BY`.
     expect(plan).not.toContain('TEMP B-TREE');
   });
 
@@ -176,8 +163,8 @@ describe('the window read is answered from a covering index', () => {
     await source.readAllDays?.(logDir, [ARCHIVED_DAY], {});
 
     const plan = planOf(db, windowSelect(sql));
-    // This is the read the `ORDER BY source_dir, id` exists for: asked for `id`
-    // alone SQLite scans the primary key instead and pays a lookup per row.
+    // The read `ORDER BY source_dir, id` exists for: asked for `id` alone SQLite
+    // scans the primary key instead.
     expect(plan).toContain('COVERING INDEX request_window_covering_idx');
     expect(plan).not.toContain('TEMP B-TREE');
   });

@@ -786,30 +786,18 @@ VACUUM;
  * A covering index for the window read, so the per-day scan behind the context
  * window is answered from the index alone and never touches a `request` row.
  *
- * **The leading columns are the predicate `readDir` actually issues**, which is
- * `source_dir = ?` plus a range over `id` — not `timestamp`, despite the read
- * being a time window. The stem *is* the clock here: an id is the proxy's UTC
- * date prefix followed by the capture time, so `id >= '2026-08-01' AND id <
- * '2026-08-03'` is the same span a timestamp range would name, and it is already
- * the primary key. An index led by `timestamp` could serve neither half of that
- * predicate as a seek.
+ * Leads with the predicate `readDir` issues — `source_dir = ?` plus a range over
+ * `id`, not `timestamp`: an id is the proxy's UTC date prefix followed by the
+ * capture time, so the id range already is the time span, and an index led by
+ * `timestamp` could seek neither half. The remaining 35 columns are the rest of
+ * the select list, which is what makes it covering.
  *
- * Everything after those two is the rest of the select list, which is what makes
- * it *covering* rather than merely well-chosen: with all 37 columns present
- * SQLite reads the index and stops, where before it seeked `request_source_dir_idx`,
- * sorted the result in a temp B-tree to satisfy `ORDER BY`, and then paid a rowid
- * lookup into the table per row.
+ * The column list has to stay in step with `REQUEST_COLUMN_SET` in `source.ts` —
+ * a column added to the select and not here silently drops the plan back to a
+ * table lookup. `server/test/window-covering-index.test.ts` catches that.
  *
- * **The column list has to stay in step with `REQUEST_COLUMN_SET` in `source.ts`**
- * — a column added to the select and not to this index silently drops the plan
- * back to a table lookup, with nothing failing. `server/test/window-covering-index.test.ts`
- * is what catches that: it asserts the two reads plan as `COVERING INDEX`, which
- * is false the moment the two lists disagree.
- *
- * Measured on a copy of the live 1.69 GB database (49,782 rows): the per-day read
- * goes from 17.6ms to 11.6ms and loses its temp B-tree, the whole-archive read
- * from 110.6ms to 106.8ms. It costs 25.1 MB — 1.5% of a file whose bulk is
- * `request_skim` — and about 0.8µs per row on ingest.
+ * Costs 25.1 MB and about 0.8µs per row on ingest; the per-day read goes from
+ * 17.6ms to 11.6ms, the whole-archive read from 110.6ms to 106.8ms.
  */
 const SCHEMA_V21 = `
 CREATE INDEX IF NOT EXISTS request_window_covering_idx ON request(
