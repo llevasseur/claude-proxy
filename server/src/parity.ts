@@ -246,8 +246,8 @@ export async function runCase(
       label: testCase.label,
       filesMs,
       dbMs,
-      // Sized after both timers have stopped, so weighing the answer never
-      // lands in a duration this same case is about to be judged on.
+      // Read after both timers stop, so weighing the answer never lands in a
+      // duration this case is about to be judged on.
       bytes: Buffer.byteLength(served, 'utf8'),
     },
   };
@@ -726,16 +726,12 @@ export interface CaseTiming {
   /**
    * The serialized answer's size in bytes.
    *
-   * One number rather than one per backing, because the assertion this harness
-   * exists for is that the two backings serialize to the *same* string — a case
-   * where they disagree is already a parity failure, and how big each side's
-   * disagreement was is not the interesting fact about it.
+   * One number rather than one per backing: the two backings serialize to the
+   * same string, or the case is already a parity failure.
    *
-   * Measured with {@link Buffer.byteLength} rather than `String.length`, over
-   * the string the byte comparison already built. `String.length` counts UTF-16
-   * code units, and this corpus is transcript text: a route whose answer is
-   * mostly prose would be recorded at a size it never puts on the wire, in a
-   * field a reader will read as megabytes. Nothing is serialized twice for it.
+   * Measured with {@link Buffer.byteLength} over the string the byte comparison
+   * already built, not `String.length` — this corpus is transcript prose, and
+   * UTF-16 code units would record a size the route never puts on the wire.
    */
   bytes: number;
 }
@@ -759,11 +755,10 @@ export interface RouteBudget {
   /**
    * The largest answer the route serialized, in bytes.
    *
-   * A duration is not the only way a route regresses, and it is not the way
-   * that hides best: `/api/sessions/graph` built in 152.9 ms and sat well
-   * inside its time budget while handing back 28.2 MB, because a payload that
-   * is merely enormous is still fast to assemble. One number per route rather
-   * than one per backing, for the reason {@link CaseTiming.bytes} gives.
+   * A payload that is merely enormous is still fast to assemble, so a time
+   * budget cannot see it: `/api/sessions/graph` built in 152.9 ms, well inside
+   * its budget, while handing back 28.2 MB. One number per route, for the
+   * reason {@link CaseTiming.bytes} gives.
    */
   bytes: number;
 }
@@ -803,19 +798,15 @@ export interface RouteBudgets {
    * The smallest size allowance any route gets, in bytes, regardless of what it
    * measured.
    *
-   * The same argument {@link RouteBudgets.floorMs} makes, in the other unit —
-   * proportional headroom over a tiny recorded number is a tiny allowance. A
+   * The same argument {@link RouteBudgets.floorMs} makes, in the other unit. A
    * route answering `{"ok":true}` records 11 bytes, and ×3 on that is 33: one
-   * added field breaches it while nothing has grown in any sense a reader would
-   * recognise. 64 KiB is chosen the way 50 ms was, by what the quantity means
-   * rather than by taste — comfortably above every route here that returns a
-   * single object, and far below any response size worth a build failure. It
-   * does not bind on anything large, since ×3 of anything over ~21 KiB already
-   * exceeds it.
+   * added field breaches it while nothing has grown. 64 KiB sits above every
+   * route here that returns a single object and below any response size worth a
+   * build failure, and never binds on anything large, since ×3 of anything over
+   * ~21 KiB already exceeds it.
    *
-   * A separate constant from `floorMs` because the two are not convertible:
-   * milliseconds and bytes share the headroom multiplier, which is a ratio, and
-   * nothing else.
+   * Separate from `floorMs` because the two do not convert: milliseconds and
+   * bytes share the headroom multiplier, which is a ratio, and nothing else.
    */
   floorBytes: number;
   /**
@@ -876,19 +867,16 @@ export function medianMs(values: number[]): number {
 /**
  * The largest value in a set of serialized sizes.
  *
- * Max rather than the median {@link medianMs} takes, because the two quantities
- * are not alike. A duration carries measurement noise the median exists to
- * reject — one case in a replay of several hundred reliably catches a GC pause.
- * A serialized length carries none: the same corpus through the same code
- * produces the same string every time, so there is no outlier to discard and
- * every case is signal. And the case worth gating on is the *biggest* answer a
- * route ever hands back, which a median over many small days would hide.
+ * Max rather than the median {@link medianMs} takes. A duration carries
+ * measurement noise the median exists to reject; a serialized length carries
+ * none, so there is no outlier to discard and the case worth gating on is the
+ * biggest answer a route hands back, which a median over many small days hides.
  */
 export function maxBytes(values: number[]): number {
   return values.reduce((hi, v) => (v > hi ? v : hi), 0);
 }
 
-/** A size in the unit a human would state it in, so a breach line reads at a glance. */
+/** A size in the unit a human would state it in. */
 function statedBytes(n: number): string {
   if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)}MB`;
   if (n >= 1024) return `${(n / 1024).toFixed(1)}KB`;
@@ -944,8 +932,7 @@ export function checkBudgets(timings: CaseTiming[], budgets: RouteBudgets): Budg
       }
     }
 
-    // Size is judged once per route rather than once per backing: the two
-    // backings agreed on the bytes, or the parity assertion already failed.
+    // Once per route, not once per backing: both sides serialized the same string.
     const observedBytes = maxBytes(durations.bytes);
     const allowedBytes = Math.max(budget.bytes * budgets.headroom, budgets.floorBytes);
     const overBytes = observedBytes > allowedBytes;

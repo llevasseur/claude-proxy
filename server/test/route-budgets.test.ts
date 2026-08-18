@@ -160,16 +160,13 @@ describe('per-route time budgets', () => {
 /**
  * The size half of the same gate.
  *
- * A duration is not the only way a route regresses, and it is the more visible
- * one: `/api/sessions/graph` answered in 152.9 ms — comfortably inside its time
- * budget — while handing back 28.2 MB, because assembling an enormous payload
- * is cheap. These run on any machine, over hand-written sizes, for the reason
- * the suite above does.
+ * Assembling an enormous payload is cheap, so a time budget cannot catch one:
+ * `/api/sessions/graph` answered in 152.9 ms and handed back 28.2 MB. Judged
+ * over hand-written sizes here, for the reason the suite above uses
+ * hand-written durations.
  */
 describe('per-route response size budgets', () => {
   it('takes the largest answer, not the middle one', () => {
-    // Where `medianMs` discards an outlier as noise, a size has no noise to
-    // discard: the biggest answer is the one the route actually hands back.
     expect(maxBytes([5, 1, 3])).toBe(5);
     expect(maxBytes([1_000, 1_000, 28 * MB])).toBe(28 * MB);
     expect(maxBytes([])).toBe(0);
