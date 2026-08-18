@@ -140,18 +140,26 @@ parent, and what the parent did while the branch was in flight.
   alone and the boxes simply grow on screen; **Fit** reframes on demand.
 - **Staying live** — the page re-fetches `GET /api/sessions/graph` every 4 s (the dot lights
   while a fetch is in flight) and only refits the view when the session or fold width changes,
-  so arriving steps never yank the viewport. Note this page polls; the SSE streams
-  (`/api/sessions/stream`, `/api/sessions/session/stream`) back the Sessions list and one
-  session's detail, and `/api/sessions/graph` has no SSE counterpart.
+  so arriving steps never yank the viewport. That poll is a **thin index**: listing rows,
+  agent links, liveness and a per-row `steps` count, with the node streams omitted — they were
+  96.7% of a 28 MB payload while the canvas draws one family out of hundreds. The canvased
+  family's streams come from `GET /api/sessions/graph/nodes`, and the index's step counts ride
+  in that query's key, so a step landing anywhere in the family refetches the streams within
+  one 4 s poll. Note this page polls; the SSE streams (`/api/sessions/stream`,
+  `/api/sessions/session/stream`) back the Sessions list and one session's detail, and
+  `/api/sessions/graph` has no SSE counterpart.
 
 The data path is `packages/core/src/sessions.ts` → `server` → `apps/admin`: core parses each
 transcript into `SessionMeta` plus an ordered `SessionNode[]` (`parseSessionNodes`) and
 reconstructs the family tree (`linkAgentSessions`); the server asks its read source for
 `listSessionGraphs` — the SQLite substrate by default, which answers from its tables without
 reading the directory at all, and the original transcript scan when `DB_READS=0` — and either
-way the two are merged into `SessionGraph` rows, which `buildSessionsGraph`
-serves from `GET /api/sessions/graph` as `{ sessions, meta: { sessionsDir, total } }`; the
-admin page lays those rows out and draws them. The browser never parses raw Markdown. The graph
+way the two are merged into `SessionGraph` rows, which `buildSessionsGraph` strips to their
+index shape — each row's `nodes` becomes a `steps` count — and serves from
+`GET /api/sessions/graph` as `{ sessions, meta: { sessionsDir, total } }`; the admin page
+joins the canvased family's node streams back in from `GET /api/sessions/graph/nodes`
+(its `transcripts` field carries the family's gisted streams) and draws them. The browser
+never parses raw Markdown. The graph
 reads only the transcripts the proxy already writes; the drawer's full step text is the one part
 that needed the proxy, which now emits a `<threadId>.nodes.jsonl` sidecar alongside the
 transcript. The one write back from the dashboard is `recordInterruption` appending a dashboard
@@ -171,10 +179,11 @@ excluded every request the family ever made — Eastern runs behind UTC, so an e
 a `started` whose UTC day is already tomorrow, and every session started in that nightly window
 stayed wholly at its transcript gists.
 The richest snapshot found per thread supplies its `deriveSessionNodes` stream, returned as
-`{ rootThreadId, threads: [{ threadId, file, messageCount, nodes }], meta }`. The admin page
-fetches it per canvased session on a 20 s interval — far heavier than the 4 s transcript poll,
-since each candidate is a whole request body — and merges it in. Threads with no captured request
-left are simply absent from `threads`, and keep their transcript text.
+`{ rootThreadId, transcripts: [{ threadId, nodes }], threads: [{ threadId, file, messageCount,
+nodes }], meta }` — `transcripts` being the whole family's gisted streams, which the thin index
+no longer carries. The admin page fetches it per canvased session — refetched when the index's
+step counts change, with a 20 s backstop — and merges the two streams. Threads with no captured
+request left are simply absent from `threads`, and keep their transcript text.
 
 ## Acceptance criteria
 
@@ -186,8 +195,9 @@ left are simply absent from `threads`, and keep their transcript text.
       `subagent_type`; a spawn with no recorded type still counts as a spawn.
 - [x] `linkAgentSessions` reconstructs parent, spawn index, agent type, return index, depth,
       and children per transcript, one-to-one within a session id, including nested subagents.
-- [x] `GET /api/sessions/graph` returns every transcript's listing row, node stream, and link
-      fields in one payload.
+- [x] `GET /api/sessions/graph` returns every transcript's listing row and link fields as a
+      thin index — a `steps` count in place of the node stream, which loads per canvased
+      family from `GET /api/sessions/graph/nodes`.
 - [x] A subagent draws as an indented band beneath the step that spawned it, with a dashed
       spawn edge in and an arrowheaded return edge into the parent step it rejoins.
 - [x] An in-flight subagent (parent hasn't stepped past the spawn) is labelled as such on the
@@ -238,8 +248,9 @@ left are simply absent from `threads`, and keep their transcript text.
 ## Open questions
 
 - Whether to move the page onto SSE. Every other live surface streams, but the graph polls
-  `/api/sessions/graph` every 4 s and rebuilds the whole payload each time — every transcript
-  in the log dir, nodes and all — regardless of what changed.
+  `/api/sessions/graph` every 4 s and rebuilds the index each time — every transcript in the
+  log dir — regardless of what changed. The payload is now thin (the node streams load per
+  canvased family), so what remains of this question is the rebuild cost, not the bytes.
 - ~~Spawn detection is structurally limited~~ and ~~pairing accuracy on a fan-out~~ —
   **resolved for anything captured from now on.** The proxy watched the spawn happen, so it
   writes the pairing down instead of leaving it to be re-derived: a `tool_use` carrying a

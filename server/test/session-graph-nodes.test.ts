@@ -105,7 +105,7 @@ describe('buildSessionGraphNodes', () => {
 
   it('finds the requests of a session whose start falls on the far side of the reporting day', async () => {
     const dir = await afterMidnightUtc();
-    const { threads } = await buildSessionGraphNodes(dir, THREAD, new Date('2026-07-29T03:00:00.000Z'));
+    const { threads, transcripts } = await buildSessionGraphNodes(dir, THREAD, new Date('2026-07-29T03:00:00.000Z'));
 
     expect(threads.map((t) => t.threadId)).toEqual([THREAD]);
     // And the steps come back whole.
@@ -114,6 +114,12 @@ describe('buildSessionGraphNodes', () => {
       'Bash(command=npm test --runInBand --verbose)',
     ]);
     expect(threads[0]?.nodes.map((n) => n.message)).toEqual([0, 1]);
+    // The family's gisted transcript streams ride along, since the graph index omits them.
+    expect(transcripts.map((t) => t.threadId)).toEqual([THREAD]);
+    expect(transcripts[0]?.nodes.map((n) => n.text)).toEqual([
+      'Fix the login bug',
+      'Bash(command=npm test --runInBand…)',
+    ]);
   });
 });
 
