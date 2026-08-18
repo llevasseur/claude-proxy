@@ -58,7 +58,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'digest-legacy-cache-hit-ratio',
     file: 'packages/core/src/digest.ts',
-    line: 485,
+    line: 513,
     match: 'cacheHitRatio:',
     since: null,
     supersededBy: null,
@@ -71,7 +71,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'session-turn-marker-absent',
     file: 'packages/core/src/sessions.ts',
-    line: 290,
+    line: 303,
     match: 'const TOOL_RE',
     since: '2026-08-06',
     supersededBy: '9e47271',
@@ -83,7 +83,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'session-subtitle-absent',
     file: 'packages/core/src/sessions.ts',
-    line: 409,
+    line: 440,
     match: 'meta.subtitle ?? meta.firstTask',
     since: '2026-07-24',
     supersededBy: 'd16c76f',
@@ -94,7 +94,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'agent-spawn-tool-allow-list',
     file: 'packages/core/src/sessions.ts',
-    line: 674,
+    line: 714,
     match: "SPAWN_TOOLS = new Set(['Agent', 'Task'])",
     since: '2026-08-07',
     supersededBy: '0bbaec8',
@@ -106,7 +106,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'agent-link-start-time-inference',
     file: 'packages/core/src/sessions.ts',
-    line: 855,
+    line: 895,
     match: 'for (const family of families.values())',
     since: '2026-08-07',
     supersededBy: '0bbaec8',
@@ -134,7 +134,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'skim-block-absent',
     file: 'packages/core/src/skim.ts',
-    line: 49,
+    line: 50,
     match: 'function skimOf',
     since: '2026-07-18',
     supersededBy: '65caf9e',
@@ -145,7 +145,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'audit-sidecar-session-block-optional',
     file: 'packages/core/src/types.ts',
-    line: 138,
+    line: 143,
     match: 'export function isAuditSidecar',
     since: '2026-08-07',
     supersededBy: '0bbaec8',
@@ -158,7 +158,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'request-filename-legacy-colon',
     file: 'server/src/logs.ts',
-    line: 354,
+    line: 379,
     match: 'REQUEST_FILE_RE',
     since: null,
     supersededBy: null,
