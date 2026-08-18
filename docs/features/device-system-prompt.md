@@ -140,7 +140,7 @@ closing newline — so the file does not accumulate whitespace churn across save
 is written as an empty file rather than deleting it, keeping "no instructions" distinct from "the
 file went missing".
 
-`/api/system-prompt` is deliberately **outside the SQLite parity harness**, alongside
+`/api/system-prompt` is deliberately **outside the SQLite route registry**, alongside
 `/api/projects`, `/api/jobs` and `/api/hooks-plugins`: those routes read `~/.claude/...`, and the
 substrate is a materialized view of `logs/` (see
 [ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md)).

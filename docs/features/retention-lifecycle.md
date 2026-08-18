@@ -126,7 +126,7 @@ archive candidate comes from the filename's own date prefix, so it is one lookup
 
 `/api/skim` and `/api/skim/trend` report `meta.bodiesEvicted` — requests counted from their
 sidecar whose body is gone. Both read backings derive it from the same disk observation, so
-the parity harness stays byte-identical.
+the two answer byte-identically.
 
 ### Deriving before evicting
 
@@ -199,7 +199,9 @@ is the part worth keeping.
   a rebuild from disk does not recover one.
 - The context routes return the evicted marker with retained metrics; a never-captured file
   still 404s.
-- The parity harness stays green.
+- The file and SQLite backings keep answering identically. *(Checked by the parity harness
+  when this shipped; that gate has since been removed, and `SHADOW_DB=1` is what compares
+  the two now.)*
 
 ## Related
 

@@ -143,7 +143,7 @@ for the array facet, and `concept_item` for the detail lists) at schema version 
   columns would stay empty on an existing database.
 
 The read goes through the `SidecarSource` seam, so both backings answer identically and
-`/api/concepts` is registered in the parity harness. The DB side re-checks its watermark against
+`/api/concepts` is registered in `PARITY_ROUTES`. The DB side re-checks its watermark against
 `stat` and falls back to the file whenever a record landed between two ingest passes — the case
 that is normal here, since `/teach` appends from outside the server.
 
