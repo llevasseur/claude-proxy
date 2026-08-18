@@ -529,46 +529,56 @@ type RateLimitRow = { request_id: string; header_name: string; header_value: str
 /** One derived last-user-turn, keyed by the request it was extracted from. */
 type SkimTextRow = { id: string; skim_text: string | null };
 
-/** Every column {@link RequestRow} declares, in the order it declares them. */
-const REQUEST_COLUMNS = [
-  'id',
-  'timestamp',
-  'model',
-  'endpoint',
-  'status_code',
-  'session_present',
-  'session_id',
-  'thread_id',
-  'app',
-  'user_agent',
-  'account',
-  'metadata_session_id',
-  'device_id',
-  'tokens_input',
-  'tokens_output',
-  'tokens_cache_read',
-  'tokens_cache_creation',
-  'tokens_real_input',
-  'req_tool_count',
-  'req_tools_bytes',
-  'req_system_bytes',
-  'req_total_bytes',
-  'req_system_hash',
-  'req_system_blocks',
-  'req_system_sections',
-  'skim_present',
-  'skim_enabled',
-  'skim_served_from_cache',
-  'skim_saved_input_tokens',
-  'skim_cache_key',
-  'cache_breakpoint_injected',
-  'cache_breakpoint_observed',
-  'cache_breakpoint_declined_by',
-  'rate_limit_present',
-  'source_dir',
-  'body_derived',
-  'request_path',
-].join(', ');
+/**
+ * Every column {@link RequestRow} declares, in the order it declares them, written as
+ * a key set so `tsc` checks it in both directions: `satisfies` refuses a name that is
+ * not a field, and the record's keys are all required, so it refuses a field that is
+ * missing a name. That second direction is the one worth the shape. The select's rows
+ * are asserted `as RequestRow[]`, and a column dropped from this list would leave that
+ * assertion claiming a field the query never asked for — `undefined` at runtime, in a
+ * sidecar, with the type still insisting it is a string.
+ */
+const REQUEST_COLUMN_SET = {
+  id: true,
+  timestamp: true,
+  model: true,
+  endpoint: true,
+  status_code: true,
+  session_present: true,
+  session_id: true,
+  thread_id: true,
+  app: true,
+  user_agent: true,
+  account: true,
+  metadata_session_id: true,
+  device_id: true,
+  tokens_input: true,
+  tokens_output: true,
+  tokens_cache_read: true,
+  tokens_cache_creation: true,
+  tokens_real_input: true,
+  req_tool_count: true,
+  req_tools_bytes: true,
+  req_system_bytes: true,
+  req_total_bytes: true,
+  req_system_hash: true,
+  req_system_blocks: true,
+  req_system_sections: true,
+  skim_present: true,
+  skim_enabled: true,
+  skim_served_from_cache: true,
+  skim_saved_input_tokens: true,
+  skim_cache_key: true,
+  cache_breakpoint_injected: true,
+  cache_breakpoint_observed: true,
+  cache_breakpoint_declined_by: true,
+  rate_limit_present: true,
+  source_dir: true,
+  body_derived: true,
+  request_path: true,
+} as const satisfies Record<keyof RequestRow, true>;
+
+const REQUEST_COLUMNS = Object.keys(REQUEST_COLUMN_SET).join(', ');
 
 /**
  * Rebuild the sidecar object a file read would have produced. `tools` and
@@ -780,7 +790,8 @@ type Entry = {
  */
 function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], opts: ReadOptions = {}): Entry[] {
   // SAFETY: the SELECT names `REQUEST_COLUMNS`, which is the field list `RequestRow`
-  // declares and nothing besides.
+  // declares and nothing besides — and `tsc` is what holds that, not this comment,
+  // since the list is a `satisfies Record<keyof RequestRow, true>` key set.
   const rows = db
     .prepare(`SELECT ${REQUEST_COLUMNS} FROM request WHERE ${clause} ORDER BY id`)
     .all(...args) as RequestRow[];

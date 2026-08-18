@@ -56,22 +56,25 @@ async function writeTriple(dir: string, iso: string): Promise<string> {
  * stub would have to reimplement — this intercepts the one method under test and
  * forwards the rest untouched.
  */
-function recording(db: DatabaseSync): { handle: DatabaseSync; sql: string[]; reset: () => void } {
+function recording(db: DatabaseSync) {
   const sql: string[] = [];
   const handle = new Proxy(db, {
     get(target, prop) {
-      const value = Reflect.get(target, prop) as unknown;
-      if (typeof value !== 'function') return value;
       if (prop === 'prepare') {
         return (source: string) => {
           sql.push(source);
-          return (value as DatabaseSync['prepare']).call(target, source);
+          return target.prepare(source);
         };
       }
-      return value.bind(target);
+      // SAFETY: `prop` came from a property access on this same object, so indexing
+      // `target` with it yields whatever `DatabaseSync` declares at that key. The
+      // bind is not incidental — these are native methods, and they reject the proxy
+      // as a receiver, so forwarding them unbound would throw on the first call.
+      const value = target[prop as keyof DatabaseSync];
+      return value instanceof Function ? value.bind(target) : value;
     },
   });
-  return { handle, sql, reset: () => sql.splice(0, sql.length) };
+  return { handle, sql };
 }
 
 describe('the window read leaves skim_text behind', () => {
@@ -146,7 +149,10 @@ describe('the window read leaves skim_text behind', () => {
       includeFile: true,
     });
 
+    // SAFETY: `readThread` returns `sidecars` as parsed JSON records.
     const sidecars = (read?.sidecars ?? []) as Array<JsonObject>;
+    // SAFETY: `includeFile: true` attaches `__file` (the stem) to every sidecar the
+    // read returns, so the field read here is present.
     const byFile = new Map(sidecars.map((s) => [s.__file as string, s.skimRequestText]));
     expect(byFile.get(evictedStem)).toBe(`ask at ${EVICTED}`);
     expect(byFile.get(keptStem)).toBe(`ask at ${KEPT}`);
