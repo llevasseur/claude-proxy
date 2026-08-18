@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
 # Fill in what `git worktree add` leaves out — it materializes only tracked files,
-# so a fresh worktree has no `node_modules/`, no `.env`, and no `logs/`. Symlinks
-# env and logs from the main checkout, then installs. `/task` runs this on the
-# worktrees it creates.
+# so a fresh worktree has no `node_modules/`, no `.env`, no `logs/` and no
+# `.claude/skills/`. Symlinks env and logs from the main checkout, rebuilds the
+# project-skill surface, then installs. `/task` runs this on the worktrees it
+# creates.
 #
 # The main checkout comes from `git rev-parse --git-common-dir` — the shared `.git`
 # whichever worktree asks — so no path is hardcoded and no branch or base is
@@ -59,6 +60,13 @@ link_from_main "proxy/.env"
 # default correct for the server, the daily summary and `/revive`'s store at once.
 echo "logs:"
 link_from_main "logs"
+
+# The skills themselves are tracked under `.agents/skills/` and so arrive with the
+# worktree; `.claude/skills/`, the path Claude Code discovers them at, is gitignored
+# and does not. Rebuild it from this worktree's own `.agents/skills/` rather than
+# linking the main checkout's, so an agent here reads this branch's skills.
+echo "skills:"
+bash "${WORKTREE_ROOT}/scripts/link-project-skills.sh"
 
 # Frozen: the lockfile arrived with the branch, so a failure here is real drift.
 echo "install:"

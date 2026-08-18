@@ -92,6 +92,15 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
   file after a merge if you edited an entry in place. When a release is eventually
   cut and `## [x.y.z]` headings appear, revisit this: the guarantee above rests on
   `## [Unreleased]` being the only release heading.
+- **Project skills are tracked under `.agents/skills/<name>/`, and `.claude/skills/`
+  is gitignored.** That directory is only the path Claude Code discovers skills at,
+  so it holds symlinks rather than content and is rebuilt per checkout by
+  `scripts/link-project-skills.sh` — wired into `postinstall` and into
+  `scripts/bootstrap-worktree.sh`, which is what makes the skills reachable from a
+  worktree. Add or edit a skill under `.agents/skills/`; a new one is surfaced by
+  the next install, or by `pnpm skills:link` now. The link is relative
+  (`../../.agents/skills/<name>`), so each checkout resolves to its own branch's
+  skills rather than back to the main checkout's.
 - `docs/` is an OKF bundle declared in `docs/index.md` frontmatter —
   `docs/features/`, `docs/specs/`, `docs/adrs/`, `docs/wayfinder/`. Go there for
   depth rather than re-deriving it from source.
@@ -196,9 +205,10 @@ them are one of the shapes below. Each has a working form; use it the first time
 
 - **`ERR_MODULE_NOT_FOUND` in a fresh worktree means it was never bootstrapped — not
   that something needs building.** `git worktree add` materializes tracked files
-  only, so there is no `node_modules/`, no `.env`, and no `logs/`. Fix it once with
-  `bash scripts/bootstrap-worktree.sh` (run from inside the worktree; it symlinks
-  `apps/admin/.env`, `proxy/.env`, and `logs/` from the main checkout, then runs
+  only, so there is no `node_modules/`, no `.env`, no `logs/` and no
+  `.claude/skills/`. Fix it once with `bash scripts/bootstrap-worktree.sh` (run from
+  inside the worktree; it symlinks `apps/admin/.env`, `proxy/.env`, and `logs/` from
+  the main checkout, rebuilds `.claude/skills/`, then runs
   `pnpm install --frozen-lockfile`).
 - **Never wait on a `@claude-proxy/core` build — there isn't one.** Its `exports`
   map points at `./src/index.ts`, it has no `build` script, and nothing in the repo
