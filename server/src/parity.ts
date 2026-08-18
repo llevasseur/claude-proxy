@@ -37,19 +37,14 @@ import { resolveSettingsPath } from './settings.js';
 
 /**
  * Shadow mode, and the route registry it shares with the rest of the server.
+ * The file-vs-DB equivalence gate this file was named for, and its recorded time
+ * and size budgets, are gone.
  *
- * The file-vs-DB *equivalence gate* that used to live here — a replay of every
- * wired route through both backings, asserting byte-identical JSON, with
- * recorded per-route time and size budgets — has been removed. The substrate is
- * the trusted read path now, so the gate that was proving it had nothing left to
- * prove and its budgets are no longer recorded or asserted.
- *
- * What remains is the part that still runs. {@link shadowCheck} is a live
- * observer: `SHADOW_DB=1` makes each served response recompute on the *other*
- * backing and logs any disagreement, never disturbing the response that already
- * went out. {@link diffJson} is how it names a disagreement, and
- * {@link PARITY_ROUTES} is the registry of which routes are wired to the
- * substrate and how each one enumerates its cases.
+ * {@link shadowCheck} is a live observer: `SHADOW_DB=1` makes each served
+ * response recompute on the *other* backing and logs any disagreement, never
+ * disturbing the response that already went out. {@link diffJson} is how it
+ * names a disagreement, and {@link PARITY_ROUTES} is the registry of which
+ * routes are wired to the substrate and how each one enumerates its cases.
  */
 
 export interface ParityContext {
