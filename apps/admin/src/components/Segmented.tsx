@@ -33,6 +33,18 @@ export const PRETTY_RAW: readonly SegmentedOption<PrettyRawView>[] = [
 /**
  * The pill switcher in a page head. `busy` marks the control while the view it selects
  * is still settling; the buttons stay live throughout.
+ *
+ * While busy, the *selected* chip swaps its label for a spinner. That is in-place
+ * feedback: the result of pressing `30d` belongs on `30d`, so the control that was
+ * pressed is what reports the wait and the page needs no separate loading message
+ * beside it. Only the selected chip spins, because it is the only one whose press is
+ * outstanding — marking all four would say four windows were loading.
+ *
+ * The label stays in flow underneath, hidden rather than removed, so the group holds
+ * its width and the chips either side of the spinning one do not shift. A hidden span
+ * leaves the accessibility tree along with the layer, so the button carries the same
+ * text as `aria-label` for that interval and keeps its name; the group's `aria-busy`
+ * already announces the wait itself.
  */
 export function Segmented<T extends string | number>({
   options,
@@ -50,16 +62,23 @@ export function Segmented<T extends string | number>({
   return (
     // biome-ignore lint/a11y/useSemanticElements: a <fieldset> brings its own box and legend layout; this control is styled from scratch
     <div className='segmented' role='group' aria-label={label} aria-busy={busy || undefined}>
-      {options.map((o) => (
-        <button
-          key={String(o.value)}
-          type='button'
-          className={o.value === value ? 'active' : undefined}
-          aria-pressed={o.value === value}
-          onClick={() => onSelect(o.value)}>
-          {o.label}
-        </button>
-      ))}
+      {options.map((o) => {
+        const selected = o.value === value;
+        const spinning = Boolean(busy) && selected;
+        const classes = [selected && 'active', spinning && 'is-busy'].filter(Boolean).join(' ');
+        return (
+          <button
+            key={String(o.value)}
+            type='button'
+            className={classes || undefined}
+            aria-pressed={selected}
+            aria-label={spinning ? o.label : undefined}
+            onClick={() => onSelect(o.value)}>
+            <span className='segmented-label'>{o.label}</span>
+            {spinning && <span className='segmented-spinner' aria-hidden='true' />}
+          </button>
+        );
+      })}
     </div>
   );
 }

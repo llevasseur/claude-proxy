@@ -27,6 +27,8 @@
     overflow: hidden;
   }
   .segmented button {
+    /* The containing block for the spinner below, which is centred on the chip. */
+    position: relative;
     background: var(--surface);
     color: var(--muted);
     border: none;
@@ -48,6 +50,41 @@
   .segmented button:disabled {
     opacity: 0.35;
     cursor: default;
+  }
+
+  /* In-place feedback: while the view a chip selects is still loading, the chip's own
+   * label gives way to a spinner, so the answer to the press lands on the control that
+   * was pressed. `visibility` rather than `display`, because the label has to keep its
+   * box — the group is `inline-flex` and sized by its labels, so removing one would
+   * collapse the chip and shuffle every chip beside it mid-load. */
+  .segmented button.is-busy .segmented-label {
+    visibility: hidden;
+  }
+  .segmented-spinner {
+    position: absolute;
+    /* Centred by the four-way inset against auto margins, which is what lets the
+     * hidden label underneath go on holding the chip's width. */
+    inset: 0;
+    margin: auto;
+    width: 0.85em;
+    height: 0.85em;
+    box-sizing: border-box;
+    border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+    /* One lit arc against the faint ring — the part that reads as turning. Both are
+     * `currentColor`, so the spinner takes the chip's own state colour: `--signal`
+     * on the active chip, and the muted text colour anywhere else. */
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: segmented-spin var(--motion-loop-fast) linear infinite;
+  }
+  /* Written as a multiple of `--motion-duration`, so the reduced-motion block at the
+   * foot of `tokens.css` halts it by zeroing that one token — the sheet's whole
+   * contract for motion. Stopped, the ring simply stands still with its arc lit,
+   * which still marks the chip as the one being waited on. */
+  @keyframes segmented-spin {
+    to {
+      transform: rotate(1turn);
+    }
   }
 
   /* Model series toggle: which models are drawn beside a chart's own line. Not a
