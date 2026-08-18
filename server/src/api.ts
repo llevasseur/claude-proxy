@@ -5,7 +5,6 @@ import {
   type AliasLoadExpectation,
   type AuditSidecar,
   adviceMovement,
-  aggregateContext,
   analyzeRequestBody,
   assertJudgeableCorpus,
   attachContextPrompts,
@@ -28,12 +27,13 @@ import {
   type ComputeDigestOptions,
   type ContextAggregates,
   type ContextEntry,
-  type ContextThreadGroup,
+  type ContextThreadRow,
   canShipIdea,
   commandRunProfiles,
   computeAliasPosture,
   computeDigest,
   computeSkimDigest,
+  contextDayAggregate,
   countBucketJudgementStates,
   countIdeaAreas,
   countIdeaStatuses,
@@ -50,7 +50,6 @@ import {
   familyLiveness,
   filterRunsByFlags,
   flattenHooks,
-  groupContextThreads,
   type HookRow,
   heuristicAdvice,
   hookPluginLoadExpectations,
@@ -79,6 +78,7 @@ import {
   type MainHistoryGraph,
   type MixAttribution,
   mainPositions,
+  mergeContextDays,
   normalizePlugins,
   type PatternFrequency,
   type PluginRow,
@@ -161,6 +161,7 @@ import {
   remoteConceptStoreLabel,
   searchRemoteConcepts,
 } from './concepts-remote.js';
+import { type ContextDayKey, cacheContextDay, cachedContextDay } from './context-day-memo.js';
 import {
   cacheDayDigest,
   cachedDayDigest,
@@ -168,7 +169,8 @@ import {
   type DayDigestKey,
   memoisedDayDigest,
 } from './day-digest-memo.js';
-import { fileSource, readThreadWindow, readWindow, type SidecarSource } from './db/source.js';
+import type { StoredContextDay } from './db/context-day-store.js';
+import { fileSource, readThreadWindow, readWindow, type SidecarSource, windowDays } from './db/source.js';
 import { DEFAULT_PR_LIMIT, resolveRepoDir, servePullRequestBody, servePullRequests } from './github.js';
 import {
   claimIdeasInStore,
@@ -199,6 +201,7 @@ import {
 import {
   type LoadResult,
   locateRequestBody,
+  mergeByTimestamp,
   type ReadOptions,
   type RequestBodyLocation,
   readRequestBody,
@@ -1243,24 +1246,11 @@ export interface ContextPageQuery {
 }
 
 /**
- * One thread's row, with the thread's own requests left on the server. Every cell
- * the table draws is the thread's largest request — {@link ContextThreadGroup.peak} —
- * so the request list behind it never had a reader.
+ * One thread's row. Declared in `packages/core` now that a row is a **stored**
+ * value — the per-day thread index the window sums — and re-exported here so the
+ * route's callers keep importing it from where they always have.
  */
-export interface ContextThreadRow {
-  key: string;
-  threadId: string | null;
-  /** The peak request's sidecar: what a thread-less row drills into. */
-  file: string;
-  requestCount: number;
-  prompt: string | null;
-  firstTimestamp: string;
-  lastTimestamp: string;
-  models: string[];
-  realInput: number;
-  systemBytes: number;
-  toolsBytes: number;
-}
+export type { ContextThreadRow };
 
 /** One page of thread rows, echoing back the query that selected it. */
 export interface ContextPage extends ContextPageQuery {
@@ -1335,23 +1325,6 @@ function compareThreads(a: ContextThreadRow, b: ContextThreadRow, sort: ContextS
   }
 }
 
-/** A grouped thread reduced to the cells its row draws. */
-function toThreadRow(group: ContextThreadGroup): ContextThreadRow {
-  return {
-    key: group.key,
-    threadId: group.threadId,
-    file: group.peak.file,
-    requestCount: group.entries.length,
-    prompt: group.prompt,
-    firstTimestamp: group.firstTimestamp,
-    lastTimestamp: group.lastTimestamp,
-    models: group.models,
-    realInput: group.peak.realInput,
-    systemBytes: group.peak.systemBytes,
-    toolsBytes: group.peak.toolsBytes,
-  };
-}
-
 /**
  * Sidecars read with `includeFile: true`, reduced to the context entries that
  * parsed. A sidecar with no `__file` handle has nothing to drill into, so it is
@@ -1371,6 +1344,52 @@ function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
 }
 
 /**
+ * One reporting day, reduced to the `ContextDayAggregate` a window sums —
+ * through the two-level cache, so a day that can no longer change is read from
+ * the corpus once and then never again.
+ *
+ * The read is deliberately the *day's* two halves rather than a window of one
+ * day, because the live half's file count is the stability signal: a reporting
+ * day the live directory still holds part of is mid-rotation, and is recomputed
+ * on every read rather than cached under a key that would have to be invalidated.
+ * `baselineDayDigest` above draws the same line in the same place.
+ *
+ * `orderByTimestamp` because everything downstream wants the day in time order
+ * and the read can seek it — `request.timestamp` is indexed, and the archived and
+ * live halves merge in one linear pass. That order is also what fixes every
+ * tie-break {@link mergeContextDays} then has to reproduce.
+ *
+ * `omitTools` because a `ContextEntry` reads `request.toolCount` and never the
+ * per-tool list: the substrate would otherwise fetch and group every tool schema
+ * of the day to build an array nothing here opens.
+ */
+async function contextDay(logDir: string, date: string, now: Date, source: SidecarSource): Promise<StoredContextDay> {
+  const key: ContextDayKey = { logDir, date, source };
+  const hit = cachedContextDay(key);
+  if (hit) return hit;
+
+  const perFile = { includeFile: true, omitTools: true, orderByTimestamp: true } as const;
+  const [archived, live] = await Promise.all([
+    source.readArchivedDay(logDir, date, perFile),
+    source.readSidecars(logDir, { ...perFile, date }, now),
+  ]);
+  // Archived half first on a tie, which is the order `readWindow` merges them in.
+  const sidecars = mergeByTimestamp(archived.sidecars, live.sidecars);
+
+  const read = toContextEntries(sidecars);
+  const threadIds = read.map((e) => e.threadId).filter((id): id is string => id !== null);
+  const prompts = await source.readRootPrompts(logDir, threadIds);
+  const entries = attachContextPrompts(read, prompts);
+
+  const day: StoredContextDay = {
+    aggregate: contextDayAggregate(entries),
+    files: archived.files + live.files,
+    parseErrors: archived.parseErrors + live.parseErrors,
+  };
+  return cacheContextDay(key, now, day, live.files === 0);
+}
+
+/**
  * Context-size analytics over the last `days` days: average / median / max real
  * input tokens, plus the largest requests (each with a `file` handle for the
  * drill-down). Reads only `.audit.json` sidecars — same cost as the trends view.
@@ -1379,13 +1398,22 @@ function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
  * table can be searched by what was asked for. That costs one extra read per
  * distinct thread in the window.
  *
- * **The window is summarized whole and shipped by the page.** Grouping, the prompt
- * search, the order and the slice all happen here, and the answer carries one page
- * of thread rows — a month of traffic is tens of thousands of requests, and the
- * table only ever drew one screen of threads from them. `summary` is deliberately
- * outside the page: it is the aggregate over every request in the window, so the
- * average, the median, the peak and the ten-row `top` do not move when a reader
- * sorts, searches or pages.
+ * **The window is read as its days, not as a span.** A reporting day that has
+ * closed can no longer gain a request, so its `ContextDayAggregate` is
+ * computed once and kept — in this process and in a `context_day` row every later
+ * process reads instead of recomputing. Only the day in progress, and any day the
+ * live directory still holds part of, is reduced again. What used to be a scan of
+ * every sidecar in the window on **every** request — and the table repeats the
+ * request for a sort click, a page click and a search keystroke — is now a scan of
+ * one day, summed with rows already on disk.
+ *
+ * **The window is summarized whole and shipped by the page.** The prompt search,
+ * the order and the slice happen here over the summed thread index, and the answer
+ * carries one page of thread rows — a month of traffic is tens of thousands of
+ * requests, and the table only ever drew one screen of threads from them.
+ * `summary` is deliberately outside the page: it is the aggregate over every
+ * request in the window, so the average, the median, the peak and the ten-row
+ * `top` do not move when a reader sorts, searches or pages.
  */
 export async function buildContext(
   logDir: string,
@@ -1394,38 +1422,15 @@ export async function buildContext(
   source: SidecarSource = fileSource,
   page: ContextPageQuery = contextPageQuery(),
 ): Promise<ContextResponse> {
-  // `orderByTimestamp` because everything below wants the window in time order
-  // and the read can seek it: `request.timestamp` is indexed, and the one place
-  // the two halves are not already chronological is the archived/live seam,
-  // which the read merges in a linear pass. Sorting it here instead was ~630,000
-  // comparisons over 41,000 rows on every request.
-  //
-  // `omitTools` because a `ContextEntry` reads `request.toolCount` and never the
-  // per-tool list: the substrate would otherwise fetch and group every tool
-  // schema of every request in the window to build an array nothing here opens.
-  const { sidecars, files, parseErrors } = await readWindow(
-    logDir,
-    { sinceDays: days, includeFile: true, omitTools: true, orderByTimestamp: true },
-    now,
-    source,
-  );
-  const read = toContextEntries(sidecars);
-  const threadIds = read.map((e) => e.threadId).filter((id): id is string => id !== null);
-  const prompts = await source.readRootPrompts(logDir, threadIds);
-  const entries = attachContextPrompts(read, prompts);
+  // Exactly the days `readWindow` would have composed for this span, oldest
+  // first — which is the order every tie-break in the merge is fixed against.
+  const span = windowDays({ sinceDays: days }, now);
+  const read = await Promise.all(span.map((date) => contextDay(logDir, date, now, source)));
 
-  // In the read's own order, which is what decides the `top` list's ties — and
-  // that order is now chronological rather than archived-half-first. The set is
-  // the same either way; what changes is which of two equal-sized requests the
-  // `top` list keeps, and it changes from "whichever half happened to hold it"
-  // to "whichever came first", so the answer no longer moves when `maintain`
-  // archives a day.
-  const summary = aggregateContext(entries);
+  const { aggregates, rows } = mergeContextDays(read.map((d) => d.aggregate));
+  const files = read.reduce((n, d) => n + d.files, 0);
+  const parseErrors = read.reduce((n, d) => n + d.parseErrors, 0);
 
-  // The read is already chronological, so a thread's `models` order and its
-  // opening prompt come from its earliest request whatever order the page asks
-  // for — without the whole-window sort this used to do to get there.
-  const rows = groupContextThreads(entries).map(toThreadRow);
   const searchable = rows.filter((r) => r.prompt !== null).length;
   const matched = page.q ? rows.filter((r) => promptMatches(r.prompt, page.q)) : rows;
   const ordered = [...matched].sort((a, b) => {
@@ -1434,7 +1439,7 @@ export async function buildContext(
   });
 
   return {
-    summary,
+    summary: aggregates,
     page: {
       ...page,
       rows: ordered.slice(page.offset, page.offset + page.limit),

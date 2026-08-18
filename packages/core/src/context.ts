@@ -259,6 +259,227 @@ export function groupContextThreads(entries: readonly ContextEntry[]): ContextTh
   return groups;
 }
 
+/**
+ * One thread's row, with the thread's own requests left on the server. Every cell
+ * the table draws is the thread's largest request — {@link ContextThreadGroup.peak} —
+ * so the request list behind it never had a reader.
+ *
+ * It lives here rather than beside the route because a row is now a **stored**
+ * value: {@link contextDayAggregate} writes one per thread per reporting day, and
+ * {@link mergeContextDays} folds a thread's per-day rows back into the one row the
+ * table draws. Both halves have to be pure to be worth caching.
+ */
+export interface ContextThreadRow {
+  key: string;
+  threadId: string | null;
+  /** The peak request's sidecar: what a thread-less row drills into. */
+  file: string;
+  requestCount: number;
+  prompt: string | null;
+  firstTimestamp: string;
+  lastTimestamp: string;
+  models: string[];
+  realInput: number;
+  systemBytes: number;
+  toolsBytes: number;
+}
+
+/** A grouped thread reduced to the cells its row draws. */
+export function toContextThreadRow(group: ContextThreadGroup): ContextThreadRow {
+  return {
+    key: group.key,
+    threadId: group.threadId,
+    file: group.peak.file,
+    requestCount: group.entries.length,
+    prompt: group.prompt,
+    firstTimestamp: group.firstTimestamp,
+    lastTimestamp: group.lastTimestamp,
+    models: group.models,
+    realInput: group.peak.realInput,
+    systemBytes: group.peak.systemBytes,
+    toolsBytes: group.peak.toolsBytes,
+  };
+}
+
+/**
+ * One reporting day of context work, reduced to everything a window read over it
+ * needs and nothing that would make it recomputable only from the sidecars again.
+ *
+ * **This is the unit that gets stored.** A reporting day that has closed can no
+ * longer gain a request, so its aggregate is computed once and then summed into
+ * whatever window covers it; only the day in progress is recomputed per request.
+ * That is what takes `/api/context?days=30` off a 41,000-row scan on every sort
+ * click, page click and search keystroke.
+ *
+ * Every field is chosen so that {@link mergeContextDays} can fold days together
+ * and land on the answer a single pass over the whole window would have given:
+ *
+ * - `realInputSum` with `requestCount` gives the window's mean, which a mean of
+ *   means would not.
+ * - `sortedRealInput` is kept whole because a median is an **order statistic**:
+ *   there is no summary of a day from which the window's median can be recovered.
+ *   It is the day's token counts alone — numbers, not entries — which is the same
+ *   array `aggregateContext` already builds and throws away per request.
+ * - `max` and `top` are chosen with the same strictly-greater rule the one-pass
+ *   aggregate uses, so merging days oldest-first keeps the same tie-winner.
+ * - `rows` is the day's slice of the thread index. A thread spanning two days
+ *   contributes a partial row to each, and the merge combines them.
+ */
+export interface ContextDayAggregate {
+  requestCount: number;
+  /** Σ `realInput` over the day. The window's mean is this summed, over the count summed. */
+  realInputSum: number;
+  /** Every request's `realInput`, ascending — the order statistics a median needs. */
+  sortedRealInput: number[];
+  /** The day's largest-context request, or null when it captured none. */
+  max: ContextEntry | null;
+  /** The day's largest requests, largest first, capped at `topN`. */
+  top: ContextEntry[];
+  /** The day's thread rows, in the order each thread's first request appears. */
+  rows: ContextThreadRow[];
+}
+
+/** The empty day — what a reporting day with nothing captured in it contributes. */
+export function emptyContextDay(): ContextDayAggregate {
+  return { requestCount: 0, realInputSum: 0, sortedRealInput: [], max: null, top: [], rows: [] };
+}
+
+/**
+ * Reduce one reporting day's entries to the {@link ContextDayAggregate} a window
+ * read sums. `entries` must be that day's requests in chronological order, which
+ * is what fixes every tie the merge later has to reproduce. Pure.
+ *
+ * `topN` has to match the one the window will ask for, since a request outside its
+ * own day's top `N` can never be inside the window's.
+ */
+export function contextDayAggregate(
+  entries: readonly ContextEntry[],
+  opts: { topN?: number } = {},
+): ContextDayAggregate {
+  const aggregates = aggregateContext(entries, opts);
+  let realInputSum = 0;
+  const sortedRealInput: number[] = [];
+  for (const entry of entries) {
+    realInputSum += entry.realInput;
+    sortedRealInput.push(entry.realInput);
+  }
+  sortedRealInput.sort((a, b) => a - b);
+  return {
+    requestCount: aggregates.requestCount,
+    realInputSum,
+    sortedRealInput,
+    max: aggregates.max,
+    top: aggregates.top,
+    rows: groupContextThreads(entries).map(toContextThreadRow),
+  };
+}
+
+/**
+ * Insert `entry` into a descending `top` list under the one-pass aggregate's rule:
+ * displace only on **strictly** greater, so an equal value leaves the incumbent —
+ * which, with days merged oldest-first, is the earlier request, exactly as the
+ * stable sort over the whole window would have left it.
+ */
+function insertTop(top: ContextEntry[], entry: ContextEntry, topN: number): void {
+  if (topN <= 0) return;
+  if (top.length === topN && entry.realInput <= top[top.length - 1]!.realInput) return;
+  let at = top.length;
+  while (at > 0 && entry.realInput > top[at - 1]!.realInput) at -= 1;
+  top.splice(at, 0, entry);
+  if (top.length > topN) top.pop();
+}
+
+/** Fold a thread's later-day row into the row already held for it. */
+function mergeThreadRow(held: ContextThreadRow, later: ContextThreadRow): ContextThreadRow {
+  // The four peak cells move as one: they are all read off the same request, so
+  // taking the larger `realInput` without its own `file` would draw a row that
+  // drills into a different request than the one it measures.
+  const peak = later.realInput > held.realInput ? later : held;
+  const models = [...held.models];
+  for (const model of later.models) if (!models.includes(model)) models.push(model);
+  return {
+    key: held.key,
+    threadId: held.threadId,
+    file: peak.file,
+    requestCount: held.requestCount + later.requestCount,
+    prompt: held.prompt ?? later.prompt,
+    firstTimestamp: held.firstTimestamp <= later.firstTimestamp ? held.firstTimestamp : later.firstTimestamp,
+    lastTimestamp: held.lastTimestamp >= later.lastTimestamp ? held.lastTimestamp : later.lastTimestamp,
+    models,
+    realInput: peak.realInput,
+    systemBytes: peak.systemBytes,
+    toolsBytes: peak.toolsBytes,
+  };
+}
+
+/** What a window read gets back once its days are summed. */
+export interface MergedContextDays {
+  /** The tiles and the `top` cap, over every request in the window. */
+  aggregates: ContextAggregates;
+  /** The window's thread index, in the order each thread's first request appears. */
+  rows: ContextThreadRow[];
+}
+
+/**
+ * Sum the days a window covers into the one answer a single pass over all of them
+ * would have produced. `days` must be **oldest first** — that is what makes every
+ * tie-break below the same one the whole-window pass made. Pure.
+ *
+ * The median is the one field that cannot be summed: the days' sorted token arrays
+ * are concatenated and re-sorted, which is the same sort `aggregateContext` does
+ * over a window today, minus reading the sidecars to rebuild the numbers.
+ *
+ * A request that belongs in the window's `top` is necessarily in its own day's, so
+ * merging the per-day lists loses none of it — a day's competitors are a subset of
+ * the window's.
+ */
+export function mergeContextDays(
+  days: readonly ContextDayAggregate[],
+  opts: { topN?: number } = {},
+): MergedContextDays {
+  const topN = opts.topN ?? 10;
+  const tokens: number[] = [];
+  const top: ContextEntry[] = [];
+  const rows: ContextThreadRow[] = [];
+  const byKey = new Map<string, number>();
+  let requestCount = 0;
+  let sum = 0;
+  let max: ContextEntry | null = null;
+
+  for (const day of days) {
+    requestCount += day.requestCount;
+    sum += day.realInputSum;
+    for (const value of day.sortedRealInput) tokens.push(value);
+    // Strictly greater, so the earlier day's peak survives a tie — the same rule
+    // the one-pass aggregate applies within a day.
+    if (day.max !== null && (max === null || day.max.realInput > max.realInput)) max = day.max;
+    for (const entry of day.top) insertTop(top, entry, topN);
+    for (const row of day.rows) {
+      const at = byKey.get(row.key);
+      if (at === undefined) {
+        byKey.set(row.key, rows.length);
+        rows.push(row);
+        continue;
+      }
+      rows[at] = mergeThreadRow(rows[at]!, row);
+    }
+  }
+
+  tokens.sort((a, b) => a - b);
+
+  return {
+    aggregates: {
+      requestCount,
+      avgRealInput: requestCount === 0 ? 0 : Math.round(sum / requestCount),
+      medianRealInput: median(tokens),
+      maxRealInput: max?.realInput ?? 0,
+      max,
+      top,
+    },
+    rows,
+  };
+}
+
 /** One session's captured requests, reduced to the one worth drilling into. */
 export interface SessionContextPeak {
   /** How many captured requests were matched to this thread. */
