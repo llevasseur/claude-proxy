@@ -23,7 +23,9 @@
     "server": "pnpm --filter server dev",
     "admin": "pnpm --filter admin dev",
     "summary": "pnpm --filter server summary",
-    "zellij": "bash scripts/zellij.sh"
+    "zellij": "bash scripts/zellij.sh",
+    "skills:link": "bash scripts/link-project-skills.sh",
+    "postinstall": "pnpm run skills:link"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",

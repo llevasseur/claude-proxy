@@ -16,3 +16,6 @@ coverage/
 .wrangler/
 tmp/*
 !tmp/.gitkeep
+# Project skills are tracked under `.agents/skills/`; `.claude/skills/` only surfaces
+# them for Claude Code, and is rebuilt per checkout by scripts/link-project-skills.sh.
+.claude/skills/
