@@ -20,6 +20,7 @@ import type {
   CommandStep,
   CommandSummary,
   ContextAggregates,
+  ContextDayAggregate,
   ContextEntry,
   HookRow,
   IdeaAreaCounts,
@@ -222,6 +223,24 @@ export interface ContextResponse {
   summary: ContextAggregates;
   page: ContextPage;
   meta: { days: number; files: number; parseErrors: number };
+}
+/**
+ * One reporting day of context work — the term the page sums, rather than the sum. The
+ * window is folded in the browser with `mergeContextDays`.
+ */
+export interface ContextDayResponse {
+  /** The reporting day this answers for, resolved — a call that named none reads it here. */
+  date: string;
+  /** The server's vouch that the day can no longer change; it decides the query's `staleTime`. */
+  closed: boolean;
+  aggregate: ContextDayAggregate;
+  /**
+   * The oldest reporting day on record — the `All` window's floor. Answered on the day in
+   * progress alone, and `null` on a dated response: the floor is corpus-scoped, and a
+   * dated day is one a browser may hold forever.
+   */
+  since: string | null;
+  meta: { files: number; parseErrors: number };
 }
 export interface ContextThreadResponse {
   threadId: string;
@@ -965,6 +984,7 @@ interface ApiGetResponses extends Record<ApiJsonGetPath, unknown> {
   '/api/usage': UsageResponse;
   '/api/tools': ToolsResponse;
   '/api/context': ContextResponse;
+  '/api/context/day': ContextDayResponse;
   '/api/context/thread': ContextThreadResponse;
   '/api/context/detail': ContextDetailResponse;
   '/api/context/message': ContextMessageResponse;
@@ -1100,6 +1120,11 @@ export const getContext = (
     limit: page.limit ?? CONTEXT_PAGE_SIZE,
     q: page.q,
   });
+/**
+ * One reporting day of the window. `date` omitted asks for the day in progress, which is
+ * also how the page learns the server's reporting day and the corpus floor.
+ */
+export const getContextDay = (date?: string) => read('/api/context/day', { date });
 export const getContextThread = (threadId: string, days: number) =>
   read('/api/context/thread', { thread: threadId, days });
 export const getContextDetail = (file: string) => read('/api/context/detail', { file });

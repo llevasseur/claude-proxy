@@ -1,20 +1,22 @@
-import { promptExcerpt } from '@claude-proxy/core';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { mergeContextDays, promptExcerpt } from '@claude-proxy/core';
+import { type Query, useQueries, useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { Gauge, Search } from 'lucide-react';
-import { type CSSProperties, useEffect, useState } from 'react';
+import { type CSSProperties, useEffect, useMemo, useState } from 'react';
 import {
   CONTEXT_PAGE_SIZE,
+  type ContextDayResponse,
   type ContextResponse,
   type ContextSort,
   type ContextSortDir,
   type ContextThreadRow,
-  getContext,
+  getContextDay,
 } from '../api';
 import { QueryState } from '../components/QueryState';
 import { ALL_DAYS, DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
+import { contextRowsPage, contextWindowDates } from '../context-window';
 import { fmtBytes, fmtInt, fmtLocalTs, LOCAL_TZ_ABBR } from '../format';
 import type { JsonValue } from '../json';
 import { rootRoute } from '../route-root';
@@ -45,11 +47,24 @@ const DEFAULT_DIR = {
 } as const satisfies Record<ContextSort, ContextSortDir>;
 
 /**
- * A search is typed a letter at a time and answered by the server, so the query
- * settles before it is asked. Long enough to swallow a word, short enough that the
+ * A search filters rows the page already holds, so the debounce only keeps a long window
+ * from re-filtering per keystroke. Long enough to swallow a word, short enough that the
  * table follows the typing.
  */
 const SEARCH_DEBOUNCE_MS = 250;
+
+/**
+ * How long the day in progress is held before it is asked for again — the client-wide
+ * default, restated here because every *other* day on this page departs from it.
+ *
+ * A closed day gets `Infinity` instead. That vouch is per response, not per date, so a day
+ * still split across the live directory and the archive keeps this window until it settles.
+ */
+const OPEN_DAY_STALE_MS = 30_000;
+
+/** A day's staleness window, decided by the server's own vouch rather than by its date. */
+const dayStaleTime = (query: Query<ContextDayResponse, Error>): number =>
+  query.state.data?.closed ? Number.POSITIVE_INFINITY : OPEN_DAY_STALE_MS;
 
 /**
  * `value`, but only after it has stopped changing for `ms`. Deliberately the same
@@ -66,10 +81,15 @@ function useDebounced(value: string, ms: number): string {
 }
 
 /**
- * The window's tiles, and one page of its threads. **The order, the search and the
- * slice are all the server's**: a month is tens of thousands of requests and the
- * table only ever draws a screenful, so sorting a column asks for that column's
- * first page rather than re-sorting a corpus in the browser.
+ * The window's tiles, and one page of its threads. **The window is held as its days, and
+ * folded here.**
+ *
+ * Each day is one query keyed by its date and held for the session, so widening 7d to 30d
+ * asks only for the days it does not have, and the day in progress is the only query with
+ * a staleness window at all. `mergeContextDays` is the same pure fold `/api/context` sums
+ * with server-side.
+ *
+ * The order, the search and the slice are this page's own, over rows it already holds.
  */
 export function ContextPage() {
   const [days, selectDays, isSwitching] = useTransitionState(14);
@@ -94,14 +114,62 @@ export function ContextPage() {
     setSearch(next);
   };
 
-  const query = useQuery({
-    queryKey: ['context', days, sort.key, sort.dir, offset, q],
-    queryFn: () => getContext(days, { sort: sort.key, dir: sort.dir, offset, limit: CONTEXT_PAGE_SIZE, q }),
-    placeholderData: keepPreviousData,
+  // The day in progress, which every window contains and no window may cache. It also
+  // carries the two facts the span needs: the server's reporting day, and the corpus floor.
+  const anchorQuery = useQuery({
+    queryKey: ['context-day', 'today'],
+    queryFn: () => getContextDay(),
+    staleTime: OPEN_DAY_STALE_MS,
   });
-  const summary = query.data?.summary;
-  const page = query.data?.page;
-  const busy = isSwitching || query.isFetching;
+  const anchor = anchorQuery.data;
+
+  const closedDates = anchor
+    ? contextWindowDates(days, anchor.date, anchor.since).filter((d) => d !== anchor.date)
+    : [];
+  const dayQueries = useQueries({
+    queries: closedDates.map((date) => ({
+      queryKey: ['context-day', date],
+      queryFn: () => getContextDay(date),
+      staleTime: dayStaleTime,
+      // A settled day is a few kB and cannot change; holding it for the session is what
+      // makes widening the window cheap.
+      gcTime: Number.POSITIVE_INFINITY,
+    })),
+  });
+
+  // `closedDates` is oldest-first and the anchor is the window's last day, so this stays
+  // oldest-first — the order every tie-break in `mergeContextDays` is fixed against.
+  const held = [...dayQueries.map((day) => day.data), anchor].filter((day): day is ContextDayResponse => !!day);
+  // Which days are folded **and which version of each**. A date alone is not enough: a
+  // day can be inside the window without being `closed` — yesterday's late sidecars sit
+  // in the live root until the archiver's next rotation — and `dayStaleTime` refetches
+  // exactly those on the open day's schedule, so a fold keyed on dates would hold the
+  // first snapshot of one forever. `dataUpdatedAt` moves whenever a fetch lands.
+  const heldKey = [...dayQueries, anchorQuery].map((day) => `${day.data?.date ?? ''}@${day.dataUpdatedAt}`).join(',');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `held` is rebuilt every render, so depending on it would refold on every render and defeat the memo. `heldKey` names both the days folded and the fetch each was folded from, which is the whole of what the fold reads.
+  const merged = useMemo(() => mergeContextDays(held.map((day) => day.aggregate)), [heldKey]);
+
+  const page = useMemo(
+    () => ({
+      ...contextRowsPage(merged.rows, { sort: sort.key, dir: sort.dir, offset, limit: CONTEXT_PAGE_SIZE, q }),
+      sort: sort.key,
+      dir: sort.dir,
+      offset,
+      limit: CONTEXT_PAGE_SIZE,
+      q,
+    }),
+    [merged, sort.key, sort.dir, offset, q],
+  );
+
+  const summary = merged.aggregates;
+  // Only the anchor gates the skeleton — the days a window is still waiting on do not.
+  // Widening 14d to 30d holds every day of the old window already, so a partial fold
+  // *is* the previous window; dimming it through `busy` keeps it on screen the way
+  // `keepPreviousData` used to, where gating on the slowest of 23 new days would blank
+  // the tiles and the table outright.
+  const isLoading = anchorQuery.isPending;
+  const error = anchorQuery.error ?? dayQueries.find((day) => day.error)?.error ?? null;
+  const busy = isSwitching || anchorQuery.isFetching || dayQueries.some((day) => day.isFetching);
 
   return (
     <section>
@@ -110,8 +178,8 @@ export function ContextPage() {
         <Segmented options={DAY_WINDOWS} value={days} onSelect={chooseDays} label='Context window' busy={busy} />
       </div>
 
-      <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ContextSkeleton />} busy={busy}>
-        {!summary || !page || summary.requestCount === 0 ? (
+      <QueryState isLoading={isLoading} error={error} skeleton={<ContextSkeleton />} busy={busy}>
+        {summary.requestCount === 0 ? (
           <div className='card empty'>No context captured in the last {days} days.</div>
         ) : (
           <>
