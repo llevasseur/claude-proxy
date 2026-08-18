@@ -459,6 +459,14 @@ interface SidecarObject {
  * row shape comparable to it — so each `as` below stays a single assertion instead
  * of a chain through `unknown`.
  */
+
+/**
+ * The columns {@link entriesFrom} selects from `request`.
+ *
+ * `skim_text` is omitted: it holds the last user turn of every request body, tens of
+ * kilobytes across nearly every row, and is fetched separately as {@link SkimTextRow}
+ * by the one read that uses it. `md_path` and `blob_evicted` are never read here.
+ */
 type RequestRow = {
   id: string;
   timestamp: string;
@@ -495,8 +503,6 @@ type RequestRow = {
   cache_breakpoint_declined_by: string | null;
   rate_limit_present: number;
   source_dir: string;
-  /** The last user turn, extracted at ingest time. Null once derived if the body carried none. */
-  skim_text: string | null;
   /** Whether the body was ever read for its derivatives. See `deriveBodies`. */
   body_derived: number;
   /**
@@ -519,6 +525,60 @@ type ToolRow = { request_id: string; name: string; bytes: number; est_tokens: nu
 
 /** One `request_rate_limit` header, joined back to the request it belongs to. */
 type RateLimitRow = { request_id: string; header_name: string; header_value: string };
+
+/** One derived last-user-turn, keyed by the request it was extracted from. */
+type SkimTextRow = { id: string; skim_text: string | null };
+
+/**
+ * Every column {@link RequestRow} declares, in the order it declares them, written as
+ * a key set so `tsc` checks it in both directions: `satisfies` refuses a name that is
+ * not a field, and the record's keys are all required, so it refuses a field that is
+ * missing a name. That second direction is the one worth the shape. The select's rows
+ * are asserted `as RequestRow[]`, and a column dropped from this list would leave that
+ * assertion claiming a field the query never asked for — `undefined` at runtime, in a
+ * sidecar, with the type still insisting it is a string.
+ */
+const REQUEST_COLUMN_SET = {
+  id: true,
+  timestamp: true,
+  model: true,
+  endpoint: true,
+  status_code: true,
+  session_present: true,
+  session_id: true,
+  thread_id: true,
+  app: true,
+  user_agent: true,
+  account: true,
+  metadata_session_id: true,
+  device_id: true,
+  tokens_input: true,
+  tokens_output: true,
+  tokens_cache_read: true,
+  tokens_cache_creation: true,
+  tokens_real_input: true,
+  req_tool_count: true,
+  req_tools_bytes: true,
+  req_system_bytes: true,
+  req_total_bytes: true,
+  req_system_hash: true,
+  req_system_blocks: true,
+  req_system_sections: true,
+  skim_present: true,
+  skim_enabled: true,
+  skim_served_from_cache: true,
+  skim_saved_input_tokens: true,
+  skim_cache_key: true,
+  cache_breakpoint_injected: true,
+  cache_breakpoint_observed: true,
+  cache_breakpoint_declined_by: true,
+  rate_limit_present: true,
+  source_dir: true,
+  body_derived: true,
+  request_path: true,
+} as const satisfies Record<keyof RequestRow, true>;
+
+const REQUEST_COLUMNS = Object.keys(REQUEST_COLUMN_SET).join(', ');
 
 /**
  * Rebuild the sidecar object a file read would have produced. `tools` and
@@ -700,7 +760,11 @@ type Entry = {
   day: string;
   /** Whether ingest already read this row's body for its derivatives. */
   derived: boolean;
-  /** The derivative itself, when `derived`. Null is a real answer, not a gap. */
+  /**
+   * The derivative, for a row that can reach it — `derived`, or `evicted` — and only
+   * when the read asked for the request bodies. Null for any other row, which no
+   * branch reads.
+   */
   skimText: string | null;
   /**
    * Whether this row's `.request.txt` is gone, off the column ingest maintains.
@@ -719,11 +783,18 @@ type Entry = {
  * sidecar's `tools` array empty — see {@link ReadOptions.omitTools}. That is the
  * one query here whose size is the *window times the tool count*, so a caller
  * reading only `request.toolCount` pays for a join whose result it throws away.
+ *
+ * `opts.includeSkimRequests` gates the `skim_text` fetch. It has to agree with the
+ * flag {@link materialize} is handed for the same entries — pass it to one and not
+ * the other and those entries' `skimText` is silently null.
  */
 function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], opts: ReadOptions = {}): Entry[] {
-  // SAFETY: `SELECT *` over `request` yields exactly the columns `open.ts` declares
-  // for that table, which is the field list `RequestRow` mirrors one-for-one.
-  const rows = db.prepare(`SELECT * FROM request WHERE ${clause} ORDER BY id`).all(...args) as RequestRow[];
+  // SAFETY: the SELECT names `REQUEST_COLUMNS`, which is the field list `RequestRow`
+  // declares and nothing besides — and `tsc` is what holds that, not this comment,
+  // since the list is a `satisfies Record<keyof RequestRow, true>` key set.
+  const rows = db
+    .prepare(`SELECT ${REQUEST_COLUMNS} FROM request WHERE ${clause} ORDER BY id`)
+    .all(...args) as RequestRow[];
   // SAFETY: the SELECT above names exactly id, reason, timestamp and source_dir, so
   // every row carries those four columns as `SkippedRow` declares them.
   const skippedRows = db
@@ -768,6 +839,19 @@ function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], op
     }
   }
 
+  // The column the main select leaves out, fetched only when the caller asked for the
+  // request bodies, and only for the rows {@link materialize} can consult it on — a
+  // body already derived, or one eviction has taken.
+  const skimById = new Map<string, string | null>();
+  if (opts.includeSkimRequests) {
+    // SAFETY: the SELECT names exactly id and skim_text, so every row carries those
+    // two columns as `SkimTextRow` declares them.
+    const skimRows = db
+      .prepare(`SELECT id, skim_text FROM request WHERE (${clause}) AND (body_derived = 1 OR request_path IS NULL)`)
+      .all(...args) as SkimTextRow[];
+    for (const s of skimRows) skimById.set(s.id, s.skim_text);
+  }
+
   const entries: Entry[] = [];
   for (const row of rows) {
     entries.push({
@@ -778,7 +862,9 @@ function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], op
       parseError: false,
       day: reportDay(row.timestamp) ?? row.id.slice(0, 10),
       derived: row.body_derived === 1,
-      skimText: row.skim_text,
+      // Absent from the map is a null column for every row that reads this: the
+      // `WHERE` above selected precisely those rows.
+      skimText: skimById.get(row.id) ?? null,
       evicted: row.request_path === null,
     });
   }
@@ -965,7 +1051,12 @@ async function threadFromDb(
   // would not parse names no session. Selecting through the ids `request` holds
   // asks both tables the one question that has an answer, and leaves the skipped
   // half empty rather than erroring on a column that is not there.
-  const entries = entriesFrom(db, 'id IN (SELECT id FROM request WHERE thread_id = ?)', [threadId]);
+  // Only `includeSkimRequests` is forwarded: it decides whether `skim_text` is
+  // fetched, and the `materialize` below is handed the same flag through `perFile`.
+  // `omitTools` is deliberately not passed — this read has always fetched the tools.
+  const entries = entriesFrom(db, 'id IN (SELECT id FROM request WHERE thread_id = ?)', [threadId], {
+    includeSkimRequests: readOpts.includeSkimRequests,
+  });
 
   const archived: Entry[] = [];
   const live: Entry[] = [];
