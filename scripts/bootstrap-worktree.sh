@@ -61,10 +61,8 @@ link_from_main "proxy/.env"
 echo "logs:"
 link_from_main "logs"
 
-# The skills themselves are tracked under `.agents/skills/` and so arrive with the
-# worktree; `.claude/skills/`, the path Claude Code discovers them at, is gitignored
-# and does not. Rebuild it from this worktree's own `.agents/skills/` rather than
-# linking the main checkout's, so an agent here reads this branch's skills.
+# The skills arrive with the worktree under `.agents/skills/`; `.claude/skills/`,
+# where Claude Code finds them, is gitignored and does not.
 echo "skills:"
 bash "${WORKTREE_ROOT}/scripts/link-project-skills.sh"
 

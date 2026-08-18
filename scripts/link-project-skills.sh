@@ -1,24 +1,18 @@
 #!/usr/bin/env bash
 #
-# Surface every project skill tracked under `.agents/skills/` at
-# `.claude/skills/<name>`, which is where Claude Code discovers a project's skills.
+# Link every project skill tracked under `.agents/skills/` to `.claude/skills/<name>`,
+# where Claude Code discovers them. `.claude/skills/` is gitignored, so each checkout
+# — a fresh worktree included — rebuilds it here.
 #
-# `.claude/skills/` is gitignored: those entries are a per-checkout *surface*, not
-# content. The skills themselves stay tracked under `.agents/skills/`, so this
-# rebuilds the surface from whatever the branch already carries — which is what
-# makes the skills reachable in a fresh worktree, where `git worktree add`
-# materializes the tracked `.agents/skills/` tree and nothing else.
-#
-# Idempotent: an entry that already exists is left exactly as it is, so a
-# hand-placed override survives. Runs from anywhere inside a checkout or worktree.
+# Idempotent: an entry that already exists is left exactly as it is.
 #
 # Usage: bash scripts/link-project-skills.sh
 #   also wired into `postinstall` and `scripts/bootstrap-worktree.sh`.
 
 set -euo pipefail
 
-# Derived from this script's own location rather than `git rev-parse`, so it holds
-# in a checkout, in a worktree, and in a `postinstall` that git may not reach.
+# From the script's own location, not `git rev-parse`: `postinstall` may run where
+# git does not reach.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC_DIR="${ROOT}/.agents/skills"
 DST_DIR="${ROOT}/.claude/skills"
@@ -41,8 +35,7 @@ for src in "${SRC_DIR}"/*; do
     continue
   fi
 
-  # Relative, so the link resolves inside whichever checkout it was made in
-  # rather than pinning every worktree back to the one it was created from.
+  # Relative, so each checkout resolves to its own `.agents/skills/`.
   ln -s "../../.agents/skills/${name}" "${dst}"
   echo "  link    .claude/skills/${name} -> ../../.agents/skills/${name}"
 done
