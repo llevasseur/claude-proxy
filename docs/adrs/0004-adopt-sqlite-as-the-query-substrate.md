@@ -71,20 +71,28 @@ is allowed to be authoritative about.
   directly is a plausible endpoint, just not one to attempt before the schema
   has been proven by something that cannot take Claude Code down with it.
 
-Every route flip is gated on a **parity harness**: the file-backed and DB-backed
-readers sit behind one `SidecarSource` interface, and a test replays each wired
-route against the whole archive both ways and asserts byte-identical JSON — the
-full payload, never a row count. Legitimate diffs are allowed only as explicitly
-named normalizations; a diff nobody can name is treated as a bug in the
-substrate. That replay is also **timed**: each case's duration through each
-backing is compared against a recorded per-route median in
-`server/test/route-budgets.json`, with headroom, so a route that keeps answering
-the same bytes far more slowly fails the suite rather than going unnoticed. The
-budgets are measurements and are re-recorded with `ROUTE_BUDGETS=record`; the
-gate is skipped where there is no archive to replay, and `ROUTE_BUDGETS=0` turns
-it off. A **shadow mode** (`SHADOW_DB=1`, off by default) serves from the
-files exactly as today and computes the DB answer alongside, logging any
-mismatch without ever touching the response.
+Every route flip was gated on a **parity harness**: the file-backed and DB-backed
+readers sit behind one `SidecarSource` interface, and a test replayed each wired
+route against the whole archive both ways and asserted byte-identical JSON — the
+full payload, never a row count. Legitimate diffs were allowed only as explicitly
+named normalizations; a diff nobody could name was treated as a bug in the
+substrate. That replay was also **timed**, against recorded per-route medians
+with headroom, so a route that kept answering the same bytes far more slowly
+failed the suite rather than going unnoticed.
+
+> **The parity gate has since been removed.** It did its job: every slice below
+> landed green, the substrate
+> is the trusted read path, and the harness had nothing left to prove. The
+> equivalence test, the recorded time and size budgets, and the
+> `ROUTE_BUDGETS` / `PARITY_DAYS` switches are all gone. **The `SidecarSource`
+> seam and the file-scan backing are not** — `fileSource` is still there, and
+> `DB_READS=0` still puts every route back on the scan.
+
+What remains as a live check is **shadow mode** (`SHADOW_DB=1`, off by default):
+it serves the response as usual and computes the *other* backing's answer
+alongside, logging any mismatch without ever touching the response. The route
+registry the harness declared, `PARITY_ROUTES` in `server/src/parity.ts`, also
+remains — it is how the wired routes and their cases are enumerated.
 
 ## Hard constraint — `/revive` reads the session files directly
 

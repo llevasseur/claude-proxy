@@ -16,7 +16,10 @@ of `logs/` instead of a full `readdir` + `readFile` scan rebuilt per request —
 with the log files still on disk, still the source of truth, and every current
 API response still byte-identical. Reaching the destination means all six slices
 below are checked, and each one landed only because a parity harness proved the
-DB answer matched the file answer exactly, for every archived day.
+DB answer matched the file answer exactly, for every archived day. **That harness
+has since been retired** — every slice is checked, the substrate is trusted, and
+the gate was removed along with its recorded time and size budgets. Shadow mode
+(`SHADOW_DB=1`) is what still compares the two backings at runtime.
 
 The engine decision, the disposable-view invariant, and the `/revive` hard
 constraint are recorded in
@@ -35,11 +38,11 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
   stops working. The server does all ingest.
 - No new dependencies: `node:sqlite`, raw SQL, prepared statements,
   `PRAGMA user_version`.
-- A slice is not done until the parity harness is green for its routes across
-  every archived day, on the **full** JSON. A diff you cannot name is a bug.
-  Since the archive passed 24 days the suite replays only the most recent five by
-  default, so "every archived day" is `PARITY_DAYS=all pnpm --filter server test` —
-  the run to make before a substrate change lands, rather than on every `verify`.
+- ~~A slice is not done until the parity harness is green for its routes across
+  every archived day.~~ **Retired with the harness.** All six slices are checked
+  and the gate is gone; there is no `PARITY_DAYS` run to make. `pnpm --filter
+  server test` plus `pnpm typecheck` are the gates a substrate change answers to
+  now, and `SHADOW_DB=1` is how a suspected divergence gets looked at.
 
 ## The six slices
 
@@ -230,10 +233,9 @@ and the resume procedure above is the whole recovery.
   is actually there.
 - `pnpm --filter server ingest` — rebuilds the view from the logs; it should
   finish clean. If it does not, fix that before adding a schema on top of it.
-- `pnpm --filter server test` — the parity suite must be green *before* you
-  change anything, or you cannot tell your own diffs from inherited ones. It
-  asserts time as well as bytes: per-route medians recorded in
-  `server/test/route-budgets.json`, judged with headroom. A slice that makes a
-  route legitimately slower re-records them with `ROUTE_BUDGETS=record` and ships
-  the new numbers in its own diff; `ROUTE_BUDGETS=0` skips the timing half on a
-  machine that is busy doing something else.
+- `pnpm --filter server test` — must be green *before* you change anything, or
+  you cannot tell your own diffs from inherited ones. It no longer replays the
+  two backings against each other, and it records no time or size budgets: the
+  parity gate and `server/test/route-budgets.json` were removed once the
+  substrate became the trusted read path. A route you suspect of diverging is
+  looked at with `SHADOW_DB=1`, which logs a mismatch without failing anything.
