@@ -9,24 +9,13 @@ import { openDb } from '../src/db/open.js';
 import { dbSource } from '../src/db/source.js';
 
 /**
- * The window read does not carry `skim_text`.
+ * The window read does not carry `skim_text`, and both halves of that have to hold:
  *
- * `request.skim_text` holds the last user turn of every request body — tens of
- * kilobytes a row, on nearly every row there is, which is more bytes than the whole
- * rest of the table put together. The window read selected it on every call because
- * the query was `SELECT *`, so a read that wanted token counts paid to drag the
- * corpus's prose out of SQLite and throw it away.
- *
- * These cases pin the fix from both sides, because only holding both makes it a fix
- * rather than a trade:
- *
- * - **The column stays out of the read that does not want it.** Asserted against the
- *   SQL actually prepared, not against a timing, so it cannot pass by being merely
- *   fast — and `SELECT *` is rejected by name, since reinstating it would restore the
- *   cost while every value assertion below still passed.
- * - **The fallback text still arrives for the read that does.** Including on the
- *   thread read, which reaches {@link entriesFrom} by a different call than the window
- *   does and has to forward the same flag to get the same answer.
+ * - The column stays out of the read that does not want it. Asserted against the SQL
+ *   actually prepared, not a timing, and `SELECT *` is rejected by name — every value
+ *   assertion below still passes under it.
+ * - The text still arrives for the read that does, including the thread read, which
+ *   reaches {@link entriesFrom} by its own call and has to forward the same flag.
  */
 
 const DAY = '2026-07-15';

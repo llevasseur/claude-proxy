@@ -461,15 +461,11 @@ interface SidecarObject {
  */
 
 /**
- * The columns {@link entriesFrom} selects from `request` — deliberately neither the
- * whole table nor an arbitrary subset of it.
+ * The columns {@link entriesFrom} selects from `request`.
  *
- * `skim_text` is the omission that matters. It holds the last user turn of every
- * request body, tens of kilobytes a row across nearly every row there is, and so
- * outweighs every other column here put together; selecting it alongside them made
- * a read that wants token counts drag the corpus's prose through SQLite. It is
- * fetched separately instead, as {@link SkimTextRow}, and only by the read that can
- * use it. `md_path` and `blob_evicted` are simply columns this module never reads.
+ * `skim_text` is omitted: it holds the last user turn of every request body, tens of
+ * kilobytes across nearly every row, and is fetched separately as {@link SkimTextRow}
+ * by the one read that uses it. `md_path` and `blob_evicted` are never read here.
  */
 type RequestRow = {
   id: string;
@@ -533,11 +529,7 @@ type RateLimitRow = { request_id: string; header_name: string; header_value: str
 /** One derived last-user-turn, keyed by the request it was extracted from. */
 type SkimTextRow = { id: string; skim_text: string | null };
 
-/**
- * Every column {@link RequestRow} declares, in the order it declares them, so the
- * list and the type stay checkable against each other by eye. Spelled out because
- * `SELECT *` is what used to pull `skim_text` in — see {@link RequestRow}.
- */
+/** Every column {@link RequestRow} declares, in the order it declares them. */
 const REQUEST_COLUMNS = [
   'id',
   'timestamp',
@@ -759,10 +751,9 @@ type Entry = {
   /** Whether ingest already read this row's body for its derivatives. */
   derived: boolean;
   /**
-   * The derivative itself, for a row that can reach it — `derived`, or `evicted` —
-   * and only when the read asked for the request bodies. Null is a real answer for
-   * such a row, not a gap. For any other row it is the column simply never having
-   * been fetched, which is sound because no branch reads it there.
+   * The derivative, for a row that can reach it — `derived`, or `evicted` — and only
+   * when the read asked for the request bodies. Null for any other row, which no
+   * branch reads.
    */
   skimText: string | null;
   /**
@@ -783,17 +774,13 @@ type Entry = {
  * one query here whose size is the *window times the tool count*, so a caller
  * reading only `request.toolCount` pays for a join whose result it throws away.
  *
- * `opts.includeSkimRequests` is the other one, and it gates the `skim_text` fetch.
- * It has to agree with the flag {@link materialize} is handed for the same entries,
- * because that is the only consumer of what it fetches — a caller that passes the
- * flag to one and not the other gets entries whose `skimText` is silently null.
+ * `opts.includeSkimRequests` gates the `skim_text` fetch. It has to agree with the
+ * flag {@link materialize} is handed for the same entries — pass it to one and not
+ * the other and those entries' `skimText` is silently null.
  */
 function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], opts: ReadOptions = {}): Entry[] {
   // SAFETY: the SELECT names `REQUEST_COLUMNS`, which is the field list `RequestRow`
-  // declares and nothing besides — a stricter guarantee than the `SELECT *` this
-  // replaced, which also yielded `skim_text`, `md_path` and `blob_evicted`, none of
-  // them fields of `RequestRow`. `skim_text` is the one of those three any code here
-  // wants, and it is read by the gated query below rather than by every window read.
+  // declares and nothing besides.
   const rows = db
     .prepare(`SELECT ${REQUEST_COLUMNS} FROM request WHERE ${clause} ORDER BY id`)
     .all(...args) as RequestRow[];
@@ -841,12 +828,9 @@ function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], op
     }
   }
 
-  // The column the main select leaves out, fetched for the one read that consults
-  // it. Two things keep this narrow. The flag is the same one {@link materialize}
-  // gates its own use on, so a read that never asks for the request bodies never
-  // touches the column at all; and the `WHERE` names exactly the rows those two
-  // branches can reach — a body already derived, or one eviction has taken — so a
-  // row that will go back to the disk for its text is not paid for here either.
+  // The column the main select leaves out, fetched only when the caller asked for the
+  // request bodies, and only for the rows {@link materialize} can consult it on — a
+  // body already derived, or one eviction has taken.
   const skimById = new Map<string, string | null>();
   if (opts.includeSkimRequests) {
     // SAFETY: the SELECT names exactly id and skim_text, so every row carries those
@@ -867,8 +851,8 @@ function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], op
       parseError: false,
       day: reportDay(row.timestamp) ?? row.id.slice(0, 10),
       derived: row.body_derived === 1,
-      // Absent from the map is the same answer as a null column for every row that
-      // reads this: the `WHERE` above selected precisely the rows that do.
+      // Absent from the map is a null column for every row that reads this: the
+      // `WHERE` above selected precisely those rows.
       skimText: skimById.get(row.id) ?? null,
       evicted: row.request_path === null,
     });
@@ -1056,10 +1040,9 @@ async function threadFromDb(
   // would not parse names no session. Selecting through the ids `request` holds
   // asks both tables the one question that has an answer, and leaves the skipped
   // half empty rather than erroring on a column that is not there.
-  // Only `includeSkimRequests` is forwarded, and it has to be: it is what decides
-  // whether `skim_text` is fetched, and the `materialize` below is handed the same
-  // flag through `perFile`. The rest of the options are deliberately not passed —
-  // this read has always fetched the tools, and `omitTools` would change that.
+  // Only `includeSkimRequests` is forwarded: it decides whether `skim_text` is
+  // fetched, and the `materialize` below is handed the same flag through `perFile`.
+  // `omitTools` is deliberately not passed — this read has always fetched the tools.
   const entries = entriesFrom(db, 'id IN (SELECT id FROM request WHERE thread_id = ?)', [threadId], {
     includeSkimRequests: readOpts.includeSkimRequests,
   });
