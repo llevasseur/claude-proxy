@@ -35,7 +35,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -748,6 +748,40 @@ CREATE TABLE IF NOT EXISTS context_day (
 );
 `;
 
+/**
+ * `skim_text` moves off `request` into its own side table, keyed by request.
+ *
+ * The column held the last user turn of nearly every captured body — bulky prose
+ * sitting on the hot `request` pages every window read scans, long after the
+ * window read itself stopped selecting it (see `entriesFrom` in `source.ts`).
+ * Moving it aside shrinks what those reads touch on disk, not just what they
+ * name in SQL.
+ *
+ * A row exists only for a **non-null** derivative. `body_derived` stays on
+ * `request` as the "was this body ever read" flag, so the two states V13 kept
+ * apart — derived-to-null versus never derived — survive the move: the first is
+ * `body_derived = 1` with no side row, the second `body_derived = 0`.
+ *
+ * The backfill runs before the drop, so an existing database keeps every
+ * derivative it already extracted — eviction may have taken the bodies they came
+ * from, and re-deriving is forward-only by construction. `VACUUM` then returns
+ * the pages the dropped column occupied; it must not run inside a transaction,
+ * which is fine here because `migrate` execs each slice autocommitted.
+ */
+const SCHEMA_V20 = `
+CREATE TABLE IF NOT EXISTS request_skim (
+  request_id TEXT PRIMARY KEY REFERENCES request(id) ON DELETE CASCADE,
+  skim_text  TEXT NOT NULL
+);
+
+INSERT INTO request_skim (request_id, skim_text)
+  SELECT id, skim_text FROM request WHERE skim_text IS NOT NULL;
+
+ALTER TABLE request DROP COLUMN skim_text;
+
+VACUUM;
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -875,6 +909,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 17) db.exec(SCHEMA_V17);
   if (from < 18) db.exec(SCHEMA_V18);
   if (from < 19) db.exec(SCHEMA_V19);
+  if (from < 20) db.exec(SCHEMA_V20);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

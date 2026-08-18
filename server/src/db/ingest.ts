@@ -181,7 +181,8 @@ interface Statements {
   insertSkipped: ReturnType<DatabaseSync['prepare']>;
   refreshBlobs: ReturnType<DatabaseSync['prepare']>;
   pendingDerive: ReturnType<DatabaseSync['prepare']>;
-  writeDerived: ReturnType<DatabaseSync['prepare']>;
+  markDerived: ReturnType<DatabaseSync['prepare']>;
+  writeSkim: ReturnType<DatabaseSync['prepare']>;
   deleteRequest: ReturnType<DatabaseSync['prepare']>;
   deleteSkipped: ReturnType<DatabaseSync['prepare']>;
   unskip: ReturnType<DatabaseSync['prepare']>;
@@ -238,16 +239,22 @@ function prepare(db: DatabaseSync): Statements {
       ON CONFLICT(id) DO UPDATE SET source_dir = excluded.source_dir
       WHERE request_skipped.source_dir <> excluded.source_dir
     `),
-    // Leaves `skim_text` and `body_derived` alone: a body that has just
-    // disappeared is the case the derivative exists for, so the column outlives
-    // the pointer that used to be beside it.
+    // Leaves `body_derived` and the `request_skim` row alone: a body that has
+    // just disappeared is the case the derivative exists for, so the side row
+    // outlives the pointer that used to sit beside it.
     refreshBlobs: db.prepare('UPDATE request SET md_path = ?, request_path = ?, blob_evicted = ? WHERE id = ?'),
     // Rows whose body is still on disk and unread — new this pass, or picked up
     // by the backfill a migration's watermark clear sends round every day once.
     pendingDerive: db.prepare(
       'SELECT id, request_path FROM request WHERE source_dir = ? AND body_derived = 0 AND request_path IS NOT NULL',
     ),
-    writeDerived: db.prepare('UPDATE request SET skim_text = ?, body_derived = 1 WHERE id = ?'),
+    markDerived: db.prepare('UPDATE request SET body_derived = 1 WHERE id = ?'),
+    // A row only for a non-null derivative — `body_derived` on `request` is the
+    // "was it read" flag, so a null one settles as a flag with no side row.
+    writeSkim: db.prepare(`
+      INSERT INTO request_skim (request_id, skim_text) VALUES (?, ?)
+      ON CONFLICT(request_id) DO UPDATE SET skim_text = excluded.skim_text
+    `),
     // Scoped by `source_dir` as well as id, so a stem already relocated to the
     // archive earlier in this pass is not deleted by the live directory.
     deleteRequest: db.prepare('DELETE FROM request WHERE id = ? AND source_dir = ?'),
@@ -354,7 +361,7 @@ const BATCH = 500;
  * Three outcomes, and they are three states rather than two:
  *
  * - **Body read.** Derivatives stored, `body_derived = 1`. Eviction later clears
- *   `request_path` and sets `blob_evicted`; `skim_text` stays.
+ *   `request_path` and sets `blob_evicted`; the `request_skim` row stays.
  * - **Body present but unparseable.** `body_derived = 1` with a null derivative,
  *   matching what the file backing answers for the same file. Marking it settles
  *   it — otherwise every future pass re-reads the same broken body.
@@ -395,7 +402,8 @@ async function deriveBodies(
     try {
       for (const derived of batch) {
         if (!derived) continue;
-        st.writeDerived.run(derived.skimText, derived.id);
+        st.markDerived.run(derived.id);
+        if (derived.skimText !== null) st.writeSkim.run(derived.id, derived.skimText);
         stats.derived += 1;
       }
       db.exec('COMMIT');
