@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { JsonValue } from './json.ts';
 import type { HeaderBag } from './wire.ts';
 
 /**
@@ -22,7 +23,15 @@ export const LIVE_USAGE_FILE = 'usage-live.json';
 export type FetchLike = (
   url: string,
   init?: { headers?: Record<string, string>; signal?: AbortSignal },
-) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+) => Promise<{ ok: boolean; status: number; json: () => Promise<JsonValue> }>;
+
+/** `globalThis.fetch` as a {@link FetchLike}, whose `json()` promises a `JsonValue`. */
+const nativeFetch: FetchLike = async (url, init) => {
+  const res = await globalThis.fetch(url, init);
+  // SAFETY: `res.json()` is `JSON.parse` of the response text, so every value it can
+  // settle to is a `JsonValue`; it is typed `unknown` only because a body may be any.
+  return { ok: res.ok, status: res.status, json: () => res.json() as Promise<JsonValue> };
+};
 
 /** Newest forwarded credentials, in memory only. */
 let auth: { authorization: string; beta: string | undefined } | null = null;
@@ -34,7 +43,7 @@ let auth: { authorization: string; beta: string | undefined } | null = null;
 export function noteAuth(headers: HeaderBag | undefined | null): void {
   const raw = headers?.authorization ?? headers?.Authorization;
   const value = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof value !== 'string' || !/^Bearer\s+\S/i.test(value)) return;
+  if (value === undefined || !/^Bearer\s+\S/i.test(value)) return;
   const beta = headers?.['anthropic-beta'];
   auth = { authorization: value, beta: Array.isArray(beta) ? beta.join(', ') : beta };
 }
@@ -48,9 +57,11 @@ export function hasAuth(): boolean {
   return auth !== null;
 }
 
-async function fetchUsage(fetchImpl: FetchLike): Promise<unknown> {
+async function fetchUsage(fetchImpl: FetchLike): Promise<JsonValue | null> {
   if (!auth) return null;
-  const headers: Record<string, string> = { authorization: auth.authorization, 'content-type': 'application/json' };
+  const headers: Record<string, string> = {};
+  headers.authorization = auth.authorization;
+  headers['content-type'] = 'application/json';
   if (auth.beta) headers['anthropic-beta'] = auth.beta;
   const res = await fetchImpl(USAGE_URL, { headers, signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -61,13 +72,13 @@ async function fetchUsage(fetchImpl: FetchLike): Promise<unknown> {
  * Poll once and write `<logDir>/usage-live.json` on success. A failed poll leaves
  * the previous file alone — a stale reading still carries a usable reset instant.
  */
-export async function pollOnce(logDir: string, fetchImpl: FetchLike = globalThis.fetch): Promise<boolean> {
-  let payload: unknown;
+export async function pollOnce(logDir: string, fetchImpl: FetchLike = nativeFetch): Promise<boolean> {
+  let payload: JsonValue | null = null;
   try {
     payload = await fetchUsage(fetchImpl);
-  } catch (err) {
+  } catch (cause) {
     // Never interpolate the error's request context — it can carry the token.
-    console.warn(`[agent-proxy] usage poll failed: ${errorMessage(err)}`);
+    console.warn(`[agent-proxy] usage poll failed: ${errorMessage(cause)}`);
     return false;
   }
   if (payload == null) return false;
@@ -78,15 +89,18 @@ export async function pollOnce(logDir: string, fetchImpl: FetchLike = globalThis
     fs.writeFileSync(tmp, JSON.stringify({ fetchedAt: new Date().toISOString(), payload }));
     fs.renameSync(tmp, dest);
     return true;
-  } catch (err) {
-    console.warn(`[agent-proxy] usage write failed: ${errorMessage(err)}`);
+  } catch (cause) {
+    console.warn(`[agent-proxy] usage write failed: ${errorMessage(cause)}`);
     return false;
   }
 }
 
 /** A caught value is `unknown`; this is the message it would have shown. */
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : ((err as { message?: string } | null)?.message ?? 'unknown error');
+function errorMessage(cause: unknown): string {
+  if (cause instanceof Error) return cause.message;
+  // SAFETY: claims only that `message` may be there — `?.` covers a `null` throw and
+  // the fallback covers a value carrying no message.
+  return (cause as { message?: string } | null)?.message ?? 'unknown error';
 }
 
 /** Poll every `intervalMs` for as long as the proxy runs. Unref'd, so it never holds the process open. */
@@ -95,7 +109,7 @@ export function startUsagePolling(
   { intervalMs = 60_000, fetchImpl }: { intervalMs?: number; fetchImpl?: FetchLike } = {},
 ): () => void {
   const tick = () => {
-    void pollOnce(logDir, fetchImpl ?? globalThis.fetch);
+    void pollOnce(logDir, fetchImpl ?? nativeFetch);
   };
   const timer = setInterval(tick, intervalMs);
   timer.unref?.();

@@ -77,7 +77,7 @@ async function writeLocalStore(): Promise<void> {
  */
 function stubWorker(hits: unknown[] | Error): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: string | URL) => {
-    const url = typeof input === 'string' ? input : input.toString();
+    const url = input instanceof URL ? input.toString() : input;
     if (url.startsWith(EXPORT_URL)) {
       return new Response(JSONL, { status: 200, headers: { 'content-type': 'application/x-ndjson' } });
     }
@@ -92,7 +92,7 @@ function stubWorker(hits: unknown[] | Error): ReturnType<typeof vi.fn> {
 }
 
 /** One record as the store's search route sends it back: the whole record, plus a score. */
-function hit(index: number, score: number): Record<string, unknown> {
+function hit(index: number, score: number) {
   return { ...CORPUS[index], id: `row-${index}`, score };
 }
 
@@ -147,7 +147,11 @@ describe('the hosted store answers the search', () => {
     expect(url.searchParams.get('includeSuperseded')).toBe('true');
 
     const call = fetchMock.mock.calls.find(([input]) => String(input).startsWith(SEARCH_URL));
+    // SAFETY: `call` was just found by `.find`, and every request `buildConceptSearch`
+    // issues passes an init object as its second `fetch` argument.
     const init = call?.[1] as RequestInit;
+    // SAFETY: `init` above is the `fetch` init `buildConceptSearch` built, which always
+    // sets `headers` to a plain string-keyed record carrying the bearer token.
     expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${TOKEN}`);
   });
 
@@ -182,7 +186,9 @@ describe('the hosted store answers the search', () => {
       () => {
         throw new Error('the search resolved; it was supposed to fail');
       },
-      (err: unknown) => err as Error,
+      // SAFETY: this rejection handler only ever runs on the `TypeError` `stubWorker`
+      // throws above, via `buildConceptSearch`'s own rejection — never a non-Error value.
+      (cause: unknown) => cause as Error,
     );
     expect(error.message).toContain(SEARCH_URL);
     expect(error.message).not.toContain(TOKEN);

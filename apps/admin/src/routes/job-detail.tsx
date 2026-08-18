@@ -44,6 +44,9 @@ export function JobDetailPage() {
 
   const fileQuery = useQuery({
     queryKey: ['job-file', id, selected],
+    // SAFETY: `enabled` on the next line is the guard — react-query never calls a
+    // disabled query's `queryFn`, so the only runs that reach `getJobFile` are the ones
+    // where a file path has already been picked or defaulted to from the tree.
     queryFn: () => getJobFile(id, selected as string),
     enabled: selected !== null,
   });

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { JsonObject } from '../../proxy/json.ts';
 import { ingest } from '../src/db/ingest.js';
 import { openDb, resolveDbPath } from '../src/db/open.js';
 import { dbSource, fileSource } from '../src/db/source.js';
@@ -33,7 +34,7 @@ function stemFor(iso: string): string {
   return `${iso.replace(/:/g, '-').replace('.', '-').replace('Z', '')}_anthropic`;
 }
 
-function sidecarBody(iso: string): Record<string, unknown> {
+function sidecarBody(iso: string) {
   return {
     timestamp: iso,
     model: 'claude-opus-5',
@@ -81,6 +82,13 @@ describe('deriving a body before eviction removes it', () => {
   let brokenStem: string;
   let goneStem: string;
 
+  /** The single number behind a `count(*) c` query, for the assertions below. */
+  const countOf = (sql: string): number => {
+    // SAFETY: an aggregate with no GROUP BY returns exactly one row, and every caller
+    // below aliases its one column `c`.
+    return (db.prepare(sql).get() as { c: number }).c;
+  };
+
   beforeAll(async () => {
     logDir = await mkdtemp(path.join(tmpdir(), 'derive-'));
     dayDir = path.join(logDir, 'archive', DAY);
@@ -101,6 +109,8 @@ describe('deriving a body before eviction removes it', () => {
   });
 
   it('extracts the text into a column while the body is still on disk', () => {
+    // SAFETY: this is the exact column list of the SELECT immediately above —
+    // `node:sqlite`'s `.all()` returns `unknown[]`, so the row shape is asserted here.
     const rows = db
       .prepare('SELECT id, skim_text, body_derived, blob_evicted FROM request ORDER BY id')
       .all() as Array<{ id: string; skim_text: string | null; body_derived: number; blob_evicted: number }>;
@@ -129,14 +139,16 @@ describe('deriving a body before eviction removes it', () => {
     expect(afterEvict.dirsSkipped).toBe(0);
 
     // The derivative survived the body it came from.
+    // SAFETY: the row for `keptStem` is guaranteed to exist — it was ingested above
+    // and `skim_text` was just asserted non-null via `byFile.get(keptStem)` below.
     expect(
       (db.prepare('SELECT skim_text FROM request WHERE id = ?').get(keptStem) as { skim_text: string }).skim_text,
     ).toBe(`ask at ${KEPT}`);
 
     const fromDb = await dbSource(db).readArchivedDay(logDir, DAY, { includeSkimRequests: true, includeFile: true });
-    const byFile = new Map(
-      (fromDb.sidecars as Array<Record<string, unknown>>).map((s) => [s.__file as string, s.skimRequestText]),
-    );
+    // SAFETY: `readArchivedDay` with `includeFile: true` always attaches `__file` (the
+    // stem) to each sidecar it returns, so both fields read here are present.
+    const byFile = new Map((fromDb.sidecars as Array<JsonObject>).map((s) => [s.__file as string, s.skimRequestText]));
     expect(byFile.get(keptStem)).toBe(`ask at ${KEPT}`);
     expect(byFile.get(brokenStem)).toBeUndefined();
     expect(byFile.get(goneStem)).toBeUndefined();
@@ -146,14 +158,15 @@ describe('deriving a body before eviction removes it', () => {
     // and eviction is invisible in the audit stems alone. All three rows have
     // caught up, and both backings still agree on the number.
     expect(fromDb.bodiesEvicted).toBe(3);
-    expect((db.prepare('SELECT count(*) c FROM request WHERE blob_evicted = 1').get() as { c: number }).c).toBe(3);
-    expect((db.prepare('SELECT count(*) c FROM request WHERE request_path IS NULL').get() as { c: number }).c).toBe(3);
+    expect(countOf('SELECT count(*) c FROM request WHERE blob_evicted = 1')).toBe(3);
+    expect(countOf('SELECT count(*) c FROM request WHERE request_path IS NULL')).toBe(3);
 
     // This is the degradation the change is about: the file scan opens the body at
     // query time, so it has nothing left to answer with.
     const fromFiles = await fileSource.readArchivedDay(logDir, DAY, { includeSkimRequests: true, includeFile: true });
     expect(fromFiles.bodiesEvicted).toBe(3);
-    for (const sidecar of fromFiles.sidecars as Array<Record<string, unknown>>) {
+    // SAFETY: `readArchivedDay` always returns `sidecars` as parsed JSON records.
+    for (const sidecar of fromFiles.sidecars as Array<JsonObject>) {
       expect(sidecar.skimRequestText).toBeUndefined();
     }
   });
@@ -190,11 +203,11 @@ describe('deriving a body before eviction removes it', () => {
 
     // Everything that is on disk came back: three sidecars, their metrics, and
     // their eviction state.
-    expect((db.prepare('SELECT count(*) c FROM request').get() as { c: number }).c).toBe(3);
-    expect((db.prepare('SELECT count(*) c FROM request WHERE blob_evicted = 1').get() as { c: number }).c).toBe(3);
+    expect(countOf('SELECT count(*) c FROM request')).toBe(3);
+    expect(countOf('SELECT count(*) c FROM request WHERE blob_evicted = 1')).toBe(3);
     // And nothing was derived, because there is no longer a body to derive from.
     expect(stats.derived).toBe(0);
-    expect((db.prepare('SELECT count(*) c FROM request WHERE body_derived = 1').get() as { c: number }).c).toBe(0);
-    expect((db.prepare('SELECT count(*) c FROM request WHERE skim_text IS NOT NULL').get() as { c: number }).c).toBe(0);
+    expect(countOf('SELECT count(*) c FROM request WHERE body_derived = 1')).toBe(0);
+    expect(countOf('SELECT count(*) c FROM request WHERE skim_text IS NOT NULL')).toBe(0);
   });
 });

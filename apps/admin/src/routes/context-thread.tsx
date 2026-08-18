@@ -8,6 +8,7 @@ import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtBytes, fmtInt, fmtLocalTs, LOCAL_TZ_ABBR } from '../format';
+import type { JsonRecord } from '../json';
 import { rootRoute } from '../route-root';
 import { useRestoredScroll } from '../useRestoredScroll';
 import { contextDays } from './context';
@@ -213,5 +214,5 @@ export const route = createRoute({
   path: '/context/thread/$threadId',
   component: ContextThreadPage,
   staticData: { title: 'Context thread' },
-  validateSearch: (search: Record<string, unknown>): ContextThreadSearch => ({ days: contextDays(search.days) }),
+  validateSearch: (search: JsonRecord): ContextThreadSearch => ({ days: contextDays(search.days) }),
 });

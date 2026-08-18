@@ -100,8 +100,8 @@ export type CardWindow = 'follow' | number;
 
 const CARD_WINDOWS: readonly SegmentedOption<CardWindow>[] = [{ value: 'follow', label: 'Page' }, ...DAY_WINDOWS];
 
-/** A card's own window over the page's. Starts on `follow`; `Page` puts it back. */
-export function useCardWindow(): {
+/** What a card knows about the window it is plotting, once it may pin one of its own. */
+export interface CardWindowState {
   /** The window to plot: the page's while following, the pinned one after that. */
   days: number;
   choice: CardWindow;
@@ -111,7 +111,10 @@ export function useCardWindow(): {
   today?: UsageDigest;
   /** The page head's model filter. A card pins its own *window*, never its own model. */
   model: string | null;
-} {
+}
+
+/** A card's own window over the page's. Starts on `follow`; `Page` puts it back. */
+export function useCardWindow(): CardWindowState {
   const page = usePageDayWindow();
   const [choice, select, switching] = useTransitionState<CardWindow>('follow');
   return {
@@ -163,10 +166,22 @@ export function withLiveToday(digests: UsageDigest[], today: UsageDigest): Usage
 const keepUnlessModelChanged =
   (model: string | null) =>
   <T,>(previous: T | undefined, previousQuery?: { queryKey: readonly unknown[] }): T | undefined => {
-    // The model half of `trendsKey` — absent on the first read, which has nothing to hold.
+    // SAFETY: the only key this placeholder ever sees is one `trendsKey` built, and that
+    // tuple is `['trends', days, model]` with `model: string | null` third. `undefined`
+    // covers the first read, where there is no previous query and so no key to index.
     const previousModel = previousQuery?.queryKey[2] as string | null | undefined;
     return previousModel === model ? previous : undefined;
   };
+
+/** One window's series, plus the query state a card needs to frame it. */
+export interface WindowDigests {
+  digests: UsageDigest[];
+  isLoading: boolean;
+  isFetching: boolean;
+  error: Error | null;
+  /** Days the filter could not split, straight off the response — zero when unfiltered. */
+  unfilterableDays: number;
+}
 
 /**
  * The digests for one window, narrowed to `model` when one is selected and with
@@ -177,18 +192,7 @@ const keepUnlessModelChanged =
  * the summary stream, which reports the day across every model, so a filtered
  * series is a fetch behind on the day in progress rather than wrong about it.
  */
-export function useWindowDigests(
-  days: number,
-  today?: UsageDigest,
-  model: string | null = null,
-): {
-  digests: UsageDigest[];
-  isLoading: boolean;
-  isFetching: boolean;
-  error: Error | null;
-  /** Days the filter could not split, straight off the response — zero when unfiltered. */
-  unfilterableDays: number;
-} {
+export function useWindowDigests(days: number, today?: UsageDigest, model: string | null = null): WindowDigests {
   const query = useQuery({
     queryKey: trendsKey(days, model),
     queryFn: () => getTrends(days, model ? [model] : undefined),

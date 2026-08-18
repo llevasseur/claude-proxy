@@ -19,6 +19,8 @@ import {
   readStoredPullRequests,
   storePullRequests,
 } from './db/pull-request-store.js';
+import { errorMessage } from './errors.js';
+import { type JsonValue, stringField } from './json.js';
 import { fetchMainHistory } from './main-history.js';
 
 const run = promisify(execFile);
@@ -83,8 +85,8 @@ export function resolveRepoDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 }
 
-/** `owner/name` and nothing else — the shape `REPO_SLUG` and `gh` both answer in. */
-const SLUG_SHAPE = /^[^/\s]+\/[^/\s]+$/;
+/** `owner/name` and nothing else — the form `REPO_SLUG` and `gh` both answer in. */
+const SLUG_PATTERN = /^[^/\s]+\/[^/\s]+$/;
 
 /** `ssh -G` reads config files only; it never opens a connection. */
 const SSH_TIMEOUT_MS = 5_000;
@@ -138,7 +140,7 @@ async function ghSlug(gh: string, repoDir: string): Promise<string | null> {
       timeout: GH_TIMEOUT_MS,
     });
     const slug = stdout.trim();
-    return SLUG_SHAPE.test(slug) ? slug : null;
+    return SLUG_PATTERN.test(slug) ? slug : null;
   } catch {
     return null;
   }
@@ -163,7 +165,7 @@ export async function resolveSlug(
 ): Promise<SlugLookup> {
   const override = env.REPO_SLUG?.trim();
   if (override) {
-    if (SLUG_SHAPE.test(override)) return { slug: override, detail: 'REPO_SLUG' };
+    if (SLUG_PATTERN.test(override)) return { slug: override, detail: 'REPO_SLUG' };
     return { slug: null, detail: `REPO_SLUG is \`${override}\`, which is not \`owner/name\`` };
   }
 
@@ -189,8 +191,11 @@ export async function resolveSlug(
 }
 
 /** `gh`'s own stderr is the useful part of a failure; the exit code is not. */
-function ghFailure(err: unknown): string {
-  const { stderr, message } = err as { stderr?: string; message?: string };
+function ghFailure(cause: unknown): string {
+  // SAFETY: every throw reaching here comes from `execFile`, which rejects with an
+  // `Error` carrying the child's captured `stderr`; both reads fall back to `''`, so a
+  // value thrown from anywhere else degrades to the generic message below.
+  const { stderr, message } = cause as { stderr?: string; message?: string };
   const detail = (stderr ?? '').trim() || (message ?? '').trim();
   if (/gh auth login|not logged|authentication/i.test(detail)) {
     return 'not signed in to GitHub — run `gh auth login` on this device';
@@ -220,8 +225,7 @@ async function fetchPullRequests(repoDir: string, limit: number, since: string |
   // Refs only — never the index, never the worktree — so it is safe in a live checkout.
   const refError = await fetchMainHistory(repoDir).then(
     () => null,
-    (err: unknown) =>
-      ((err as Error).message || 'could not fetch main and its pins').split('\n').slice(0, 2).join('; '),
+    (cause: unknown) => (errorMessage(cause) || 'could not fetch main and its pins').split('\n').slice(0, 2).join('; '),
   );
 
   const fail = (repo: string | null, error: string): PullRequestsResult => ({
@@ -250,8 +254,8 @@ async function fetchPullRequests(repoDir: string, limit: number, since: string |
   let stdout: string;
   try {
     ({ stdout } = await run(gh, args, { timeout: GH_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 }));
-  } catch (err) {
-    return fail(repo, ghFailure(err));
+  } catch (cause) {
+    return fail(repo, ghFailure(cause));
   }
 
   let parsed: unknown;
@@ -300,10 +304,13 @@ export async function servePullRequestBody(
       timeout: GH_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
     });
-    const parsed = JSON.parse(stdout) as { body?: unknown };
-    return { number, body: typeof parsed.body === 'string' ? parsed.body : '', cached: false, error: null };
-  } catch (err) {
-    return { number, body: null, cached: false, error: ghFailure(err) };
+    const parsed: JsonValue = JSON.parse(stdout);
+    // `--json body` always answers with the field, so an absent one is a shape `gh`
+    // does not produce; the empty string keeps that indistinguishable from a PR with
+    // no description, which is what the drawer already renders.
+    return { number, body: stringField(parsed, 'body') ?? '', cached: false, error: null };
+  } catch (cause) {
+    return { number, body: null, cached: false, error: ghFailure(cause) };
   }
 }
 

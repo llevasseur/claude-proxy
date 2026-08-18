@@ -1,5 +1,6 @@
 import { type Concept, isConcept, normalizeConcept, withoutMetaSkills } from '@claude-proxy/core';
 import type { Db, DbStatement, DbValue } from './db.ts';
+import type { JsonValue } from './json.ts';
 import { seedBytes, ulid } from './ulid.ts';
 
 /** A concept as the store returns it: the record itself, plus its row id. */
@@ -116,6 +117,11 @@ interface DocumentRow {
 function hydrate(row: DocumentRow): HostedConcept {
   // `document` is the record verbatim — the only representation that still
   // distinguishes an absent optional field from an empty one.
+  //
+  // SAFETY: nothing but {@link documentOf} ever writes the `document` column, and
+  // it stringifies a value `isConcept` already accepted, so a row that exists
+  // holds a serialized `Concept`. A row corrupt enough to break that throws out
+  // of `JSON.parse` here rather than being served as a half-concept.
   return { ...(JSON.parse(row.document) as Concept), id: row.id };
 }
 
@@ -136,7 +142,7 @@ export interface SaveResult {
   created: boolean;
 }
 
-export async function saveConcept(db: Db, input: unknown): Promise<SaveResult> {
+export async function saveConcept(db: Db, input: JsonValue | undefined): Promise<SaveResult> {
   if (!isConcept(input)) throw new ConceptError(400, 'body must be a concept with string `term` and `savedAt`');
   const concept = normalizeConcept(input);
   const document = documentOf(concept);

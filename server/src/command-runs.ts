@@ -48,6 +48,7 @@ import {
   summarizeSteps,
   ZERO_TOKENS,
 } from '@claude-proxy/core';
+import { type JsonInput, numberField, objectField, parseJson, stringField } from './json.js';
 import { readRequestBodyParsed, readSidecars } from './logs.js';
 import { listSessionGraphs, resolveSessionsDir, type SessionGraph, threadIdForBody } from './sessions.js';
 
@@ -95,15 +96,25 @@ const REQUEST_INDEX_SCHEMA = 1;
 
 /** Read the request index, tolerating absence, corruption and a foreign schema. */
 export async function readRequestIndex(logDir: string): Promise<RequestIndex> {
+  const empty: RequestIndex = { schema: REQUEST_INDEX_SCHEMA, entries: {} };
+  let document: JsonInput;
   try {
-    const parsed = JSON.parse(await readFile(requestIndexPath(logDir), 'utf8')) as RequestIndex;
-    if (parsed?.schema !== REQUEST_INDEX_SCHEMA || typeof parsed.entries !== 'object' || parsed.entries === null) {
-      return { schema: REQUEST_INDEX_SCHEMA, entries: {} }; // rebuilt from scratch, which is safe
-    }
-    return { schema: REQUEST_INDEX_SCHEMA, entries: parsed.entries };
+    document = parseJson(await readFile(requestIndexPath(logDir), 'utf8'));
   } catch {
-    return { schema: REQUEST_INDEX_SCHEMA, entries: {} };
+    return empty; // never written, or it went away
   }
+  // A foreign schema, a torn file, or a member missing either count is rebuilt from
+  // scratch, which costs one pass over the bodies still on disk and is always safe.
+  if (numberField(document, 'schema') !== REQUEST_INDEX_SCHEMA) return empty;
+
+  const entries: Record<string, RequestFacts> = {};
+  for (const [file, member] of Object.entries(objectField(document, 'entries') ?? {})) {
+    const nodeCount = numberField(member, 'nodeCount');
+    const messageCount = numberField(member, 'messageCount');
+    if (nodeCount === undefined || messageCount === undefined) continue;
+    entries[file] = { threadId: stringField(member, 'threadId') ?? null, nodeCount, messageCount };
+  }
+  return { schema: REQUEST_INDEX_SCHEMA, entries };
 }
 
 /** Write the request index, creating `logs/commands/` on first write. */
@@ -286,8 +297,8 @@ type RootPrompt = { read: true; prompt: string } | { read: false };
 async function readRootPrompt(logDir: string, threadId: string): Promise<RootPrompt> {
   try {
     const raw = await readFile(path.join(resolveSessionsDir(logDir), `${threadId}.state.json`), 'utf8');
-    const state = JSON.parse(raw) as { root?: unknown };
-    return typeof state.root === 'string' ? { read: true, prompt: state.root } : { read: false };
+    const root = stringField(parseJson(raw), 'root');
+    return root === undefined ? { read: false } : { read: true, prompt: root };
   } catch {
     return { read: false }; // no sidecar, or it went away
   }
@@ -295,8 +306,11 @@ async function readRootPrompt(logDir: string, threadId: string): Promise<RootPro
 
 /** The sidecar's own file stem, attached by `readSidecars({ includeFile: true })`. */
 function sidecarFile(sidecar: AuditSidecar): string | null {
-  const file = (sidecar as { __file?: unknown }).__file;
-  return typeof file === 'string' ? file : null;
+  // SAFETY: `readSidecars({ includeFile: true })` is the only producer of these, and it
+  // attaches `__file` as the sidecar's own file stem — a string, always. A sidecar read
+  // without that option carries no such property, which is the `null` below.
+  const carrier = sidecar as AuditSidecar & { __file?: string };
+  return carrier.__file ?? null;
 }
 
 export interface ReconcileResult {
@@ -469,6 +483,10 @@ export async function reconcileCommandRuns(
       continue; // rotated away before we got to it — its tokens stay unplaced
     }
     requestsRead += 1;
+    // SAFETY: `readRequestBodyParsed` answers with the captured Anthropic request body,
+    // whose `messages` array is what a thread id is rooted on. A body that parsed to
+    // something without the field reads as `undefined`, which `threadIdForBody` already
+    // answers `null` for — the request's tokens then stay unplaced, as they must.
     const messages = (body as { messages?: unknown } | null)?.messages;
     index.entries[file] = {
       threadId: threadIdForBody(sidecar.session?.sessionId ?? null, messages),

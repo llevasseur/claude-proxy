@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { Archive, ArchiveRestore, FilePlus2, NotebookPen, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type JsonRecord, textField } from '../json';
 import {
   archiveNote,
   createNote,
@@ -242,7 +243,7 @@ export function NotesPage() {
               state: conflict ? 'conflict' : navigator.onLine ? 'error' : 'offline',
               conflict: conflict ?? undefined,
               remoteVersion: conflict?.currentVersion ?? current.remoteVersion,
-              message: conflict ? undefined : (error as Error).message,
+              message: conflict ? undefined : error.message,
             }
           : current,
       );
@@ -293,7 +294,7 @@ export function NotesPage() {
       refreshLists();
       void navigate({ search: { note: note.id }, replace: false });
     },
-    onError: (error) => setNewDraft((current) => ({ ...current, state: 'error', message: (error as Error).message })),
+    onError: (error) => setNewDraft((current) => ({ ...current, state: 'error', message: error.message })),
   });
 
   useEffect(() => {
@@ -355,7 +356,9 @@ export function NotesPage() {
       setMore((current) => [...current, ...next.notes]);
       setNextCursor(next.nextCursor);
     } catch (error) {
-      setMoreError((error as Error).message);
+      // `listNotes`/`searchNotes` reject with an `Error` carrying the server's message;
+      // a network teardown mid-fetch can still surface something else to show verbatim.
+      setMoreError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoadingMore(false);
     }
@@ -615,14 +618,14 @@ function NoteEditor({
   onRetryLatest: () => void;
   onRetrySave: () => void;
 }) {
-  const stateLabel: Record<Draft['state'], string> = {
+  const stateLabel = {
     idle: draft.dirty ? 'Waiting to save' : 'All changes saved',
     saving: 'Saving…',
     saved: 'Saved',
     error: draft.message ? `Save failed: ${draft.message}` : 'Save failed',
     offline: 'Offline — draft kept on this page',
     conflict: 'Conflict — draft kept on this page',
-  };
+  } satisfies Record<Draft['state'], string>;
   return (
     <article className='notes-editor'>
       {(draft.state === 'conflict' || draft.remoteVersion) && (
@@ -693,8 +696,8 @@ export const route = createRoute({
   path: '/notes',
   component: NotesPage,
   staticData: { title: 'Notes' },
-  validateSearch: (value: Record<string, unknown>): NotesSearch => ({
-    note: typeof value.note === 'string' && value.note ? value.note : undefined,
+  validateSearch: (value: JsonRecord): NotesSearch => ({
+    note: textField(value, 'note'),
     archived: value.archived === true || value.archived === 'true' ? true : undefined,
   }),
 });

@@ -29,7 +29,10 @@ export function QueryState({ isLoading, error, skeleton, busy, children }: Query
       </>
     );
   }
-  if (error) return <p className='error state'>Failed to load: {(error as Error).message}</p>;
+  // React Query hands back an `Error`; anything else reaching here is a thrown non-Error,
+  // and naming it is still better than the blank the old assertion produced.
+  if (error)
+    return <p className='error state'>Failed to load: {error instanceof Error ? error.message : String(error)}</p>;
   if (busy === undefined) return <>{children}</>;
   return (
     <div className={busy ? 'is-stale' : undefined} aria-busy={busy || undefined}>

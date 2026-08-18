@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import type { UsageRecord } from '@claude-proxy/core';
+import type { JsonArray } from '../json.js';
 import { openDb, resolveDbPath, SCHEMA_VERSION } from './open.js';
 
 /**
@@ -115,11 +115,16 @@ export function readStoredUsageDay(key: StoredUsageDayKey): StoredUsageDay | und
   const db = handleFor(key.logDir);
   if (!db) return undefined;
   try {
+    // SAFETY: `SELECT` names exactly `records` and `parse_errors`, and every column of
+    // `usage_day`'s primary key is bound above, so the answer is one row or none.
     const row = db.prepare(SELECT).get(key.backing, key.logDir, key.date, REVISION) as
       | { records?: string; parse_errors?: number }
       | undefined;
     if (row?.records === undefined) return undefined;
-    return { records: JSON.parse(row.records) as unknown[], parseErrors: row.parse_errors ?? 0 };
+    // `storeUsageDay` below is the column's only writer and stores
+    // `JSON.stringify(day.records)`, so what comes back is the array it put in.
+    const records: JsonArray = JSON.parse(row.records);
+    return { records, parseErrors: row.parse_errors ?? 0 };
   } catch {
     return undefined;
   }

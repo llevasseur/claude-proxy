@@ -22,6 +22,8 @@
 
 import { type StoredConcept, sortConcepts } from '@claude-proxy/core';
 import { parseConceptStore } from './concepts.js';
+import { errorMessage } from './errors.js';
+import { type JsonInput, jsonArray, jsonField, numberField, stringField } from './json.js';
 
 /** The whole corpus, oldest first, in `logs/concepts.jsonl`'s own format. */
 const EXPORT_PATH = '/api/concepts/export';
@@ -107,8 +109,8 @@ export async function readRemoteConcepts(store: RemoteConceptStore): Promise<Sto
     response = await fetch(exportUrl(store), {
       headers: { authorization: `Bearer ${store.token}` },
     });
-  } catch (err) {
-    throw new RemoteConceptStoreError(`${label} (${(err as Error).message})`);
+  } catch (cause) {
+    throw new RemoteConceptStoreError(`${label} (${errorMessage(cause)})`);
   }
   if (!response.ok) throw new RemoteConceptStoreError(`${label} answered ${response.status}`);
 
@@ -135,11 +137,11 @@ export interface RemoteConceptHit {
 }
 
 /** A hit as the store sends it, before it is narrowed to the fields above. */
-function toHit(value: unknown): RemoteConceptHit | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const row = value as Record<string, unknown>;
-  if (typeof row.term !== 'string' || typeof row.savedAt !== 'string') return null;
-  return { term: row.term, savedAt: row.savedAt, score: typeof row.score === 'number' ? row.score : 0 };
+function toHit(value: JsonInput): RemoteConceptHit | null {
+  const term = stringField(value, 'term');
+  const savedAt = stringField(value, 'savedAt');
+  if (term === undefined || savedAt === undefined) return null;
+  return { term, savedAt, score: numberField(value, 'score') ?? 0 };
 }
 
 /**
@@ -164,13 +166,17 @@ export async function searchRemoteConcepts(store: RemoteConceptStore, query: str
   let response: Response;
   try {
     response = await fetch(url, { headers: { authorization: `Bearer ${store.token}` } });
-  } catch (err) {
-    throw new RemoteConceptStoreError(`${label} (${(err as Error).message})`);
+  } catch (cause) {
+    throw new RemoteConceptStoreError(`${label} (${errorMessage(cause)})`);
   }
   if (!response.ok) throw new RemoteConceptStoreError(`${label} answered ${response.status}`);
 
-  const body = (await response.json().catch(() => null)) as { results?: unknown } | null;
-  const results = Array.isArray(body?.results) ? body.results : [];
+  const decoded = await response.json().catch(() => undefined);
+  // SAFETY: `Response.json` is declared `unknown` here, but what it resolves to
+  // is a parsed JSON document — the whole of `JsonValue` — and a body that would
+  // not parse was turned into `undefined` by the `catch` above.
+  const body = decoded as JsonInput;
+  const results = jsonArray(jsonField(body, 'results')) ?? [];
   // Read defensively, like the corpus parse: a row this code does not recognise
   // is dropped from the ranking rather than emptying it.
   return results.map(toHit).filter((hit): hit is RemoteConceptHit => hit !== null);

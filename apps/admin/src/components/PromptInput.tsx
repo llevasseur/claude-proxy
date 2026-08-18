@@ -2,11 +2,11 @@ import { type ReactNode, useCallback, useEffect, useRef } from 'react';
 
 export type PromptStatus = 'ready' | 'submitted' | 'error';
 
-const SUBMIT_TITLE: Record<PromptStatus, string> = {
+const SUBMIT_TITLE = {
   ready: 'Send (Enter)',
   submitted: 'Sending…',
   error: 'Send again (Enter)',
-};
+} satisfies Record<PromptStatus, string>;
 
 export interface PromptInputProps {
   value: string;

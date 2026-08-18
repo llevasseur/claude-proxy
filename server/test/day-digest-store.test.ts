@@ -53,7 +53,7 @@ async function writeSidecar(dir: string, iso: string): Promise<void> {
 }
 
 /** Any source, with a tally of which days its archived reads actually touched. */
-function counting(inner: SidecarSource): { source: SidecarSource; archivedReads: string[] } {
+function counting(inner: SidecarSource) {
   const archivedReads: string[] = [];
   return {
     archivedReads,
@@ -64,7 +64,7 @@ function counting(inner: SidecarSource): { source: SidecarSource; archivedReads:
         return inner.readArchivedDay(logDir, date, opts);
       },
     },
-  };
+  } satisfies { source: SidecarSource; archivedReads: string[] };
 }
 
 let logDir: string;

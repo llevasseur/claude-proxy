@@ -1,70 +1,83 @@
 /**
  * The Anthropic wire shapes this proxy reads, as types.
  *
- * Everything here is optional and several fields are `unknown`, deliberately: the
- * proxy sees whatever the CLI sends, must forward it untouched, and must degrade
- * rather than throw on a body it does not recognise. These describe what the code
- * *looks at*, not a schema it enforces.
+ * Everything here is optional and several fields are a bare `JsonValue`,
+ * deliberately: the proxy sees whatever the CLI sends, must forward it untouched,
+ * and must degrade rather than throw on a body it does not recognise. These describe
+ * what the code *looks at*, not a schema it enforces; the narrowing lives in
+ * `json.ts`.
  *
- * Zero runtime dependencies — this module emits nothing at all.
+ * Every type below is an object type rather than an interface, so each stays
+ * assignable to `JsonObject` — a rewritten `messages` array goes back into a
+ * `RequestBody` field, and only an alias gets that implicit index signature.
+ *
+ * Zero runtime dependencies — this module emits only `asArrayOf` and `firstHeader`.
  */
 
+import type { JsonObject, JsonValue } from './json.ts';
+
 /** One block of a message's `content` array. */
-export interface ContentBlock {
+export type ContentBlock = {
   type?: string;
   text?: string;
   thinking?: string;
   name?: string;
   id?: string;
-  input?: unknown;
+  input?: JsonValue;
   tool_use_id?: string;
   is_error?: boolean;
-  content?: unknown;
-  source?: { data?: unknown; media_type?: unknown };
-  cache_control?: unknown;
-  [key: string]: unknown;
-}
+  content?: JsonValue;
+  source?: JsonObject;
+  cache_control?: JsonValue;
+  [key: string]: JsonValue | undefined;
+};
 
 /** One turn. `content` is a bare string or a block array, depending on the client. */
-export interface WireMessage {
+export type WireMessage = {
   role?: string;
-  content?: unknown;
-  [key: string]: unknown;
-}
+  content?: JsonValue;
+  [key: string]: JsonValue | undefined;
+};
 
 /** A tool definition as it ships in every request — the proxy's main cut list. */
-export interface ToolDefinition {
+export type ToolDefinition = {
   name?: string;
   description?: string;
-  input_schema?: unknown;
-  [key: string]: unknown;
-}
+  input_schema?: JsonValue;
+  [key: string]: JsonValue | undefined;
+};
 
 /** The billed token counts, as reported by the response. */
-export interface Usage {
+export type Usage = {
   input_tokens?: number;
   output_tokens?: number;
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
-  [key: string]: unknown;
-}
+  [key: string]: JsonValue | undefined;
+};
 
 /** A parsed `/v1/messages` request body. */
-export interface RequestBody {
-  model?: unknown;
-  system?: unknown;
-  tools?: unknown;
-  messages?: unknown;
-  metadata?: { user_id?: unknown } | null;
-  stream?: unknown;
-  [key: string]: unknown;
-}
+export type RequestBody = {
+  model?: JsonValue;
+  system?: JsonValue;
+  tools?: JsonValue;
+  messages?: JsonValue;
+  metadata?: JsonObject | null;
+  stream?: JsonValue;
+  [key: string]: JsonValue | undefined;
+};
 
 /** Node hands back a string, a string array for repeated names, or nothing. */
 export type HeaderBag = Record<string, string | string[] | undefined>;
 
-/** Narrow an `unknown` to an array of `T`, treating anything else as empty. */
-export function asArrayOf<T>(value: unknown): T[] {
+/**
+ * Narrow a wire value to an array of `T`, treating anything else as empty. `T` is the
+ * caller's claim about which wire field this is; each member is still decoded through
+ * `json.ts` downstream.
+ */
+export function asArrayOf<T>(value: JsonValue | undefined): T[] {
+  // SAFETY: `Array.isArray` establishes the array before the element type is claimed,
+  // and no reader dereferences a member without decoding it first.
   return Array.isArray(value) ? (value as T[]) : [];
 }
 

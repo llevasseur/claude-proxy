@@ -26,13 +26,13 @@ import type { SessionGraphEntry } from './api';
  * What a command mostly does, and — through {@link FAMILY_TOKEN} — the hue it draws in.
  *
  * The families are ordered by how much a run of one changes: `build` writes code and ships it,
- * `shape` reworks what is already there, `review` judges without changing, `read` only looks
+ * `refine` reworks what is already there, `review` judges without changing, `read` only looks
  * things up. `other` is any command this table does not name, which draws grey.
  */
-export type CommandFamily = 'build' | 'shape' | 'review' | 'read' | 'other';
+export type CommandFamily = 'build' | 'refine' | 'review' | 'read' | 'other';
 
 /** Which family each installed command belongs to. Anything absent is `other`. */
-const FAMILY_OF: Record<string, CommandFamily> = {
+const FAMILY_OF = {
   task: 'build',
   work: 'build',
   god: 'build',
@@ -45,18 +45,18 @@ const FAMILY_OF: Record<string, CommandFamily> = {
   prototype: 'build',
   'task-bootstrap': 'build',
 
-  clean: 'shape',
-  trim: 'shape',
-  truncate: 'shape',
-  docs: 'shape',
-  changelog: 'shape',
-  'req-table': 'shape',
-  'create-spec': 'shape',
-  sync: 'shape',
-  'merge-deps': 'shape',
-  mc: 'shape',
-  pr: 'shape',
-  diagram: 'shape',
+  clean: 'refine',
+  trim: 'refine',
+  truncate: 'refine',
+  docs: 'refine',
+  changelog: 'refine',
+  'req-table': 'refine',
+  'create-spec': 'refine',
+  sync: 'refine',
+  'merge-deps': 'refine',
+  mc: 'refine',
+  pr: 'refine',
+  diagram: 'refine',
 
   review: 'review',
   judge: 'review',
@@ -74,10 +74,17 @@ const FAMILY_OF: Record<string, CommandFamily> = {
   'web-perf': 'read',
   cp: 'read',
   stay: 'read',
-};
+} satisfies Record<string, CommandFamily>;
+
+/**
+ * The same table as a `Map`. The lookup key is a command name off the graph, lowercased —
+ * not one of the literals above — so it has to be indexable by an arbitrary string in
+ * order for an unrecognised command to fall through to `other`.
+ */
+const FAMILY_BY_COMMAND = new Map<string, CommandFamily>(Object.entries(FAMILY_OF));
 
 export const familyOf = (command: string | null): CommandFamily =>
-  command === null ? 'other' : (FAMILY_OF[command.toLowerCase()] ?? 'other');
+  command === null ? 'other' : (FAMILY_BY_COMMAND.get(command.toLowerCase()) ?? 'other');
 
 /**
  * Family → the pair of CSS custom properties it draws in: a dark fill and the border that
@@ -87,22 +94,22 @@ export const familyOf = (command: string | null): CommandFamily =>
  * hue: hue names the family, chroma says how much a command changes, and an unnamed command
  * has zero chroma because grey claims nothing about its power.
  */
-export const FAMILY_TOKEN: Record<CommandFamily, { fill: string; edge: string }> = {
+export const FAMILY_TOKEN = {
   build: { fill: 'var(--cmd-build-fill)', edge: 'var(--cmd-build-edge)' },
-  shape: { fill: 'var(--cmd-shape-fill)', edge: 'var(--cmd-shape-edge)' },
+  refine: { fill: 'var(--cmd-refine-fill)', edge: 'var(--cmd-refine-edge)' },
   review: { fill: 'var(--cmd-review-fill)', edge: 'var(--cmd-review-edge)' },
   read: { fill: 'var(--cmd-read-fill)', edge: 'var(--cmd-read-edge)' },
   other: { fill: 'var(--cmd-other-fill)', edge: 'var(--cmd-other-edge)' },
-};
+} satisfies Record<CommandFamily, { fill: string; edge: string }>;
 
 /** How each family reads on a box and in the legend. */
-export const FAMILY_LABEL: Record<CommandFamily, string> = {
+export const FAMILY_LABEL = {
   build: 'builds',
-  shape: 'reshapes',
+  refine: 'refines',
   review: 'reviews',
   read: 'reads',
   other: 'unknown',
-};
+} satisfies Record<CommandFamily, string>;
 
 /** One command run inside a transcript, and what its span of that transcript holds. */
 export interface CommandRunSpan {

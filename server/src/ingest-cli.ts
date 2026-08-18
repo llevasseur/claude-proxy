@@ -1,5 +1,6 @@
 import { resolveDbPath } from './db/open.js';
 import { ingestOnce } from './db/runtime.js';
+import { errorMessage } from './errors.js';
 import { resolveLogDir } from './logs.js';
 
 /**
@@ -34,7 +35,7 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((err: unknown) => {
-  console.error(`[ingest] failed: ${(err as Error).message}`);
+main().catch((cause: unknown) => {
+  console.error(`[ingest] failed: ${errorMessage(cause)}`);
   process.exitCode = 1;
 });

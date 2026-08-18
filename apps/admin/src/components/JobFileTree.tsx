@@ -14,7 +14,7 @@ import { useMemo, useState } from 'react';
 import { fmtBytes } from '../format';
 
 /** Icon per file kind — the tree's only visual cue about what a row opens into. */
-const KIND_ICONS: Record<JobFileKind, typeof File> = {
+const KIND_ICONS = {
   json: FileJson,
   jsonl: FileJson,
   markdown: FileText,
@@ -23,7 +23,7 @@ const KIND_ICONS: Record<JobFileKind, typeof File> = {
   text: FileText,
   image: ImageIcon,
   binary: File,
-};
+} satisfies Record<JobFileKind, typeof File>;
 
 export interface JobFileTreeProps {
   nodes: JobTreeNode[];

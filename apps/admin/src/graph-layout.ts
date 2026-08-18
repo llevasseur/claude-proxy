@@ -61,7 +61,7 @@ const TRAIL_GAP = 52;
 export type Tone = SessionNode['type'] | 'root' | 'agent' | 'cut';
 
 /** Tone → CSS color token. */
-const NODE_COLOR: Record<Tone, string> = {
+const NODE_COLOR = {
   task: 'var(--signal)',
   decision: 'var(--muted)',
   tool: 'var(--amber)',
@@ -70,7 +70,7 @@ const NODE_COLOR: Record<Tone, string> = {
   root: 'var(--signal-dim)',
   agent: 'var(--violet)',
   cut: 'var(--coral)',
-};
+} satisfies Record<Tone, string>;
 
 /** Total color lookup (indexing is `string | undefined` under noUncheckedIndexedAccess). */
 export const color = (tone: Tone): string => NODE_COLOR[tone] ?? 'var(--signal)';

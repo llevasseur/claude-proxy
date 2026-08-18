@@ -189,7 +189,7 @@ function SessionSuggestions() {
             {regressed} regressed
           </span>
         )}
-        {statusQuery.error && <span className='error'>flags unavailable: {(statusQuery.error as Error).message}</span>}
+        {statusQuery.error && <span className='error'>flags unavailable: {statusQuery.error.message}</span>}
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<BucketListSkeleton />}>

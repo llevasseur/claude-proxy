@@ -73,6 +73,9 @@ describe('the context window read skipping the tool join', () => {
 
       expect(sidecars.length, kind).toBeGreaterThan(0);
       for (const s of sidecars) {
+        // SAFETY: `readWindow`'s `sidecars` is `unknown[]` because a parse-error entry
+        // could share the array, but this corpus's `beforeAll` wrote only well-formed
+        // `sidecar(...)` bodies, each carrying a `tools` array.
         expect((s as { tools: unknown[] }).tools, kind).toEqual([]);
       }
     }
@@ -85,6 +88,9 @@ describe('the context window read skipping the tool join', () => {
       const { sidecars } = await readWindow(logDir, { sinceDays: 7, omitTools: true }, NOW, source);
 
       for (const s of sidecars) {
+        // SAFETY: only the guard on the next line needs `s` to be narrowed at all — this
+        // widens `unknown` to `object` purely to ask whether the key survived, which is
+        // true of any non-primitive.
         expect('tools' in (s as object), kind).toBe(true);
         expect(isAuditSidecar(s), kind).toBe(true);
       }
@@ -94,10 +100,14 @@ describe('the context window read skipping the tool join', () => {
   it('is opt-in — an ordinary read still carries every tool schema', async () => {
     for (const [kind, source] of sources()) {
       const { sidecars } = await readWindow(logDir, { sinceDays: 7 }, NOW, source);
+      // SAFETY: this window has no `omitTools` flag, so every element is still one of the
+      // five well-formed `sidecar(...)` bodies `beforeAll` wrote, each carrying `tools`.
       const counts = sidecars.map((s) => (s as { tools: unknown[] }).tools.length).sort();
 
       // Four live requests plus the archived one, which carries three tools.
       expect(counts, kind).toEqual([1, 2, 3, 3, 4]);
+      // SAFETY: `sidecars[0]` is the four-minute-window fixture's first live sidecar,
+      // written by `sidecar('00', ..., 1)` with one tool named `tool_0`.
       expect((sidecars[0] as { tools: Array<{ name: string }> }).tools[0]?.name, kind).toBe('tool_0');
     }
   });
@@ -109,10 +119,14 @@ describe('the context window read skipping the tool join', () => {
 
       expect(withTools.files, kind).toBe(5);
       expect(without.files, kind).toBe(5);
+      // SAFETY: `withTools` read without `omitTools`, so every element is still one of the
+      // well-formed fixture sidecars — the archived one was written with three tools.
       expect(
         withTools.sidecars.some((s) => (s as { tools: unknown[] }).tools.length === 3),
         kind,
       ).toBe(true);
+      // SAFETY: `without` read the same fixture with `omitTools: true`, which the route
+      // under test empties the `tools` array for rather than dropping the key.
       expect(
         without.sidecars.every((s) => (s as { tools: unknown[] }).tools.length === 0),
         kind,

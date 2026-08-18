@@ -19,7 +19,7 @@ const HIT_RATE_SERIES: Series[] = [{ dataKey: 'hitRate', name: 'Hit rate', color
 const SAVED_SERIES: Series[] = [{ dataKey: 'cumUsd', name: 'Cumulative saved', color: 'var(--accent-2)' }];
 
 /** Cache key, the request, then four numeric columns. */
-const SHAPE_COLUMNS: readonly SkeletonColumn[] = [
+const KEY_COLUMNS: readonly SkeletonColumn[] = [
   { cell: '72%' },
   {},
   { className: 'num' },
@@ -52,7 +52,7 @@ export function SkimPage() {
   const dayQuery = useQuery({ queryKey: ['skim-day'], queryFn: () => getSkim() });
 
   const digests = trendQuery.data?.digests ?? [];
-  const topShapes = trendQuery.data?.topShapes ?? [];
+  const topKeys = trendQuery.data?.topKeys ?? [];
   const today = dayQuery.data?.skim;
   const hitRateRows = useMemo(() => digests.map(toHitRateRow), [digests]);
   const cumulativeRows = useMemo(() => toCumulativeRows(digests), [digests]);
@@ -112,19 +112,19 @@ export function SkimPage() {
               </div>
             </div>
 
-            {topShapes.length > 0 && (
+            {topKeys.length > 0 && (
               <>
                 <div className='card'>
-                  <h2>Top repeated request shapes ({days}d)</h2>
+                  <h2>Top repeated cache keys ({days}d)</h2>
                   <BarChart
-                    data={topShapes.slice(0, 12).map((s) => ({ label: shortKey(s.cacheKey), value: s.requests }))}
+                    data={topKeys.slice(0, 12).map((s) => ({ label: shortKey(s.cacheKey), value: s.requests }))}
                     format={fmtInt}
                     color='var(--accent)'
                   />
                 </div>
 
                 <div className='card'>
-                  <h2>By shape</h2>
+                  <h2>By cache key</h2>
                   <div className='table-scroll'>
                     <table className='table'>
                       <thead>
@@ -138,7 +138,7 @@ export function SkimPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {topShapes.map((s) => (
+                        {topKeys.map((s) => (
                           <tr key={s.cacheKey}>
                             <td title={s.cacheKey}>{shortKey(s.cacheKey)}</td>
                             <td className='skim-request'>
@@ -170,10 +170,7 @@ export function SkimPage() {
   );
 }
 
-/**
- * Today's four tiles, the two trend charts side by side, then the shape breakdown.
- * `stats` is false once the day query has failed — those tiles are never coming.
- */
+/** `stats` is false once the day query has failed — those tiles are never coming. */
 function SkimSkeleton({ days, stats = true }: { days: number; stats?: boolean }) {
   return (
     <>
@@ -182,8 +179,8 @@ function SkimSkeleton({ days, stats = true }: { days: number; stats?: boolean })
         <SkeletonChartCard title='Hit-rate over time' bars={days} />
         <SkeletonChartCard title='Cumulative $ saved' bars={days} />
       </div>
-      <SkeletonChartCard title={`Top repeated request shapes (${days}d)`} height={BAR_CHART_HEIGHT} bars={12} />
-      <SkeletonTableCard title='By shape' columns={SHAPE_COLUMNS} rows={8} />
+      <SkeletonChartCard title={`Top repeated cache keys (${days}d)`} height={BAR_CHART_HEIGHT} bars={12} />
+      <SkeletonTableCard title='By cache key' columns={KEY_COLUMNS} rows={8} />
     </>
   );
 }

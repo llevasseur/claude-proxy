@@ -30,7 +30,7 @@
      * inversion the palette research asks for: hue is a weak predictor of how a
      * colour reads, while chroma and lightness are strong, so a family owns a hue
      * and the *amount* of colour carries the claim. `build` writes code and ships
-     * it, `shape` reworks what is there, `review` judges without changing, `read`
+     * it, `refine` reworks what is there, `review` judges without changing, `read`
      * only looks things up — and their chroma falls in that order. A command the
      * table does not name is grey: zero chroma is zero claim about its power.
      *
@@ -46,8 +46,8 @@
      * so that ratio does not move with the hue. */
     --cmd-build-fill: oklch(0.3 0.06 262);
     --cmd-build-edge: oklch(0.78 0.16 262);
-    --cmd-shape-fill: oklch(0.3 0.045 205);
-    --cmd-shape-edge: oklch(0.78 0.115 205);
+    --cmd-refine-fill: oklch(0.3 0.045 205);
+    --cmd-refine-edge: oklch(0.78 0.115 205);
     --cmd-review-fill: oklch(0.3 0.035 66);
     --cmd-review-edge: oklch(0.78 0.09 66);
     --cmd-read-fill: oklch(0.3 0.02 50);
@@ -225,8 +225,8 @@
     /* Same pairs, lightness flipped: pale fill, deep edge, ratio held. */
     --cmd-build-fill: oklch(0.92 0.03 262);
     --cmd-build-edge: oklch(0.5 0.16 262);
-    --cmd-shape-fill: oklch(0.92 0.025 205);
-    --cmd-shape-edge: oklch(0.5 0.115 205);
+    --cmd-refine-fill: oklch(0.92 0.025 205);
+    --cmd-refine-edge: oklch(0.5 0.115 205);
     --cmd-review-fill: oklch(0.92 0.02 66);
     --cmd-review-edge: oklch(0.5 0.09 66);
     --cmd-read-fill: oklch(0.92 0.012 50);

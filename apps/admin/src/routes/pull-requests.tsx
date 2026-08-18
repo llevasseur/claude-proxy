@@ -29,12 +29,31 @@ const REFETCH_MS = 30_000;
 
 const PULL_REQUESTS_KEY = ['pull-requests'];
 
-const STATE_COLOR: Record<PullRequestState | 'draft', string> = {
+const STATE_COLOR = {
   open: 'var(--good)',
   merged: 'var(--violet)',
   closed: 'var(--coral)',
   draft: 'var(--muted)',
-};
+} satisfies Record<PullRequestState | 'draft', string>;
+
+/** The three custom properties this page's layout and colouring are driven by. */
+interface PrStyleVars {
+  /** How many lanes the tree is wide, so the rail can reserve room for all of them. */
+  '--pr-lanes'?: number;
+  /** Which lane one row sits in, counted from the rail outwards. */
+  '--pr-lane'?: number;
+  /** The node's own colour, picked from `STATE_COLOR` by the PR's tone. */
+  '--gc'?: string;
+}
+
+/** Carries the page's five custom-property styles across a `CSSProperties` that cannot name them. */
+function prStyle(vars: PrStyleVars): CSSProperties {
+  // SAFETY: `PrStyleVars` admits only keys beginning `--`, none of which is a member of
+  // `CSSProperties`, so this widens nothing a caller could read back wrongly. React
+  // forwards an unrecognised dashed key to `style.setProperty`, which is precisely how
+  // a custom property is set — the type is the only thing missing, not the behaviour.
+  return vars as CSSProperties;
+}
 
 /** Draft is a shade of open, not a fourth state — it only changes how a PR is drawn. */
 const toneOf = (pr: PullRequestListRow): PullRequestState | 'draft' => (pr.isDraft ? 'draft' : pr.state);
@@ -183,7 +202,7 @@ export function PullRequestsPage() {
         ) : rows.length === 0 && !query.data?.error ? (
           <p className='muted pr-empty'>No pull requests yet.</p>
         ) : (
-          <ol className='pr-tree' style={{ '--pr-lanes': history?.width ?? 1 } as CSSProperties}>
+          <ol className='pr-tree' style={prStyle({ '--pr-lanes': history?.width ?? 1 })}>
             {/* Newest merge first, each followed by whatever was cut from it. */}
             {trunkRows.map(({ pr, i, extra }, k) => {
               const row = rowByPr.get(pr.number) ?? null;
@@ -198,7 +217,7 @@ export function PullRequestsPage() {
                   className={`pr-row${lane > 0 ? ' pr-row--off-main' : ''}${forks ? ' is-lane-base' : ''}${
                     row?.isMain ? ' is-main' : ''
                   }${row?.hidden ? ' is-hidden-line' : ''}`}
-                  style={{ '--pr-lane': Math.max(lane, 0) } as CSSProperties}>
+                  style={prStyle({ '--pr-lane': Math.max(lane, 0) })}>
                   {node(pr, 'pr-node pr-node--trunk')}
                   {[...extra, ...hanging(i)].map((b) => node(b.pr, 'pr-node pr-node--branch'))}
                 </li>
@@ -246,7 +265,7 @@ export function PullRequestsPage() {
 
 function Count({ label, value, tone }: { label: string; value: number; tone: PullRequestState | 'draft' }) {
   return (
-    <span className='pr-count' style={{ '--gc': STATE_COLOR[tone] } as CSSProperties}>
+    <span className='pr-count' style={prStyle({ '--gc': STATE_COLOR[tone] })}>
       <b>{fmtInt(value)}</b> {label}
     </span>
   );
@@ -274,7 +293,7 @@ function PrNode({
     <button
       type='button'
       className={`${className}${selected ? ' is-selected' : ''}${row?.isMain ? ' is-main' : ''}`}
-      style={{ '--gc': STATE_COLOR[tone] } as CSSProperties}
+      style={prStyle({ '--gc': STATE_COLOR[tone] })}
       onClick={onSelect}>
       {row?.isMain ? <span className='pr-main-marker'>main →</span> : null}
       <span className='pr-node-kind'>{tone}</span>
@@ -497,7 +516,7 @@ function PrInspector({
   return (
     <aside className={`graph-inspector${wide ? ' is-wide' : ''}`} aria-label='Pull request details'>
       <div className='gi-head'>
-        <span className='gi-kind' style={{ '--gc': STATE_COLOR[tone] } as CSSProperties}>
+        <span className='gi-kind' style={prStyle({ '--gc': STATE_COLOR[tone] })}>
           {tone}
         </span>
         <div className='gi-actions'>

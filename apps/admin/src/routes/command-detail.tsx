@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   Scatter,
   ScatterChart,
+  type ScatterPointItem,
   Tooltip,
   XAxis,
   YAxis,
@@ -36,12 +37,12 @@ import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 
 /** One colour per outcome, shared by the scatter, its legend and the run list. */
-const OUTCOME_COLOR: Record<CommandRunOutcome, string> = {
+const OUTCOME_COLOR = {
   completed: 'var(--good)',
   interrupted: 'var(--amber)',
   errored: 'var(--coral)',
   running: 'var(--signal)',
-};
+} satisfies Record<CommandRunOutcome, string>;
 
 const OUTCOME_ORDER: CommandRunOutcome[] = ['completed', 'interrupted', 'errored', 'running'];
 
@@ -55,7 +56,7 @@ function stepColor(step: string | null, index: number): string {
 }
 
 /**
- * One command's runs — cost and shape over time, where runs stop, and what goes wrong.
+ * One command's runs — cost and profile over time, where runs stop, and what goes wrong.
  *
  * The scatter is the primary view because the question is distributional: what a run of
  * this command costs is a spread, not one number, and the spread is the finding. Nothing
@@ -230,7 +231,7 @@ function CommandBody({
 
       <CommandFile source={data.source} command={command} />
       <RunScatter data={data} command={command} />
-      <ShapeTrends data={data} />
+      <ProfileTrends data={data} />
       <StepBar steps={data.steps} reach={data.stepReach} run={hoverRun} totalRuns={data.meta.filteredRuns} />
       <AgentTypes data={data} />
       <PatternTable data={data} />
@@ -290,25 +291,32 @@ interface ScatterPoint {
 }
 
 /**
- * Cost and shape over time. x is when the run started, y its total tokens, colour the
+ * Cost and profile over time. x is when the run started, y its total tokens, colour the
  * outcome, size the number of turns. A vertical rule marks each point at which the
  * command file's content changed, so a before/after is readable without any tagging.
  */
 function RunScatter({ data, command }: { data: CommandResponse; command: string }) {
   const navigate = useNavigate();
-  const points: ScatterPoint[] = data.runs
-    .filter((r) => r.started !== null)
-    .map((r) => ({
-      x: new Date(r.started as string).getTime(),
-      y: r.totals.tokens.realInput + r.totals.tokens.output,
-      z: Math.max(1, r.totals.turns),
-      runId: r.runId,
-      started: r.started,
-      cost: r.totals.cost,
-      turns: r.totals.turns,
-      outcome: r.outcome,
-      flags: r.flags,
-    }));
+  // A run with no start has no x, so it is dropped rather than plotted at the epoch.
+  // `flatMap` rather than `filter` then `map`, so the drop is what narrows `started`
+  // to a string for `new Date` instead of an assertion restating the filter.
+  const points: ScatterPoint[] = data.runs.flatMap((r) =>
+    r.started === null
+      ? []
+      : [
+          {
+            x: new Date(r.started).getTime(),
+            y: r.totals.tokens.realInput + r.totals.tokens.output,
+            z: Math.max(1, r.totals.turns),
+            runId: r.runId,
+            started: r.started,
+            cost: r.totals.cost,
+            turns: r.totals.turns,
+            outcome: r.outcome,
+            flags: r.flags,
+          },
+        ],
+  );
 
   if (points.length === 0) {
     return (
@@ -375,12 +383,16 @@ function RunScatter({ data, command }: { data: CommandResponse; command: string 
                 fill={OUTCOME_COLOR[g.outcome]}
                 fillOpacity={0.7}
                 isAnimationActive={false}
-                onClick={(p: unknown) =>
-                  navigate({
+                // `payload` is the very object handed to `data` above — recharts types
+                // it `any`, so naming the local's type is enough to get back what this
+                // component already knows it put in, with no assertion.
+                onClick={({ payload }: ScatterPointItem) => {
+                  const point: ScatterPoint = payload;
+                  void navigate({
                     to: '/commands/$command/$runId',
-                    params: { command, runId: (p as ScatterPoint).runId },
-                  })
-                }
+                    params: { command, runId: point.runId },
+                  });
+                }}
                 style={{ cursor: 'pointer' }}
               />
             ))}
@@ -455,19 +467,19 @@ const TREND_HEIGHT = 220;
  * Two charts rather than two axes: step counts in the low tens and a duration in the
  * millions of ms cannot share a y. They share one x, a point per run, oldest left.
  */
-function ShapeTrends({ data }: { data: CommandResponse }) {
-  const shape = data.shape;
+function ProfileTrends({ data }: { data: CommandResponse }) {
+  const profile = data.profile;
 
-  if (shape.length < 2) {
+  if (profile.length < 2) {
     return (
       <div className='card empty'>
-        A trend needs at least two runs with a recorded start; this selection has {shape.length}. The runs are still
+        A trend needs at least two runs with a recorded start; this selection has {profile.length}. The runs are still
         listed below.
       </div>
     );
   }
 
-  const rows = shape.map((s) => ({
+  const rows = profile.map((s) => ({
     at: s.started ? fmtLocalTsShort(s.started) : '—',
     nodes: s.nodes,
     toolCalls: s.toolCalls,
@@ -476,8 +488,8 @@ function ShapeTrends({ data }: { data: CommandResponse }) {
   }));
 
   // The newest run's snapshot, which is the catalogue the recent points are out of.
-  const declared = shape[shape.length - 1]!.stepsDeclared;
-  const fellBack = shape.length - data.meta.wallMeasuredRuns;
+  const declared = profile[profile.length - 1]!.stepsDeclared;
+  const fellBack = profile.length - data.meta.wallMeasuredRuns;
 
   return (
     <>
@@ -525,7 +537,7 @@ function ShapeTrends({ data }: { data: CommandResponse }) {
           {fellBack > 0 && (
             <>
               {' '}
-              {fellBack} of these {shape.length} runs {fellBack === 1 ? 'was' : 'were'} recorded before the wider
+              {fellBack} of these {profile.length} runs {fellBack === 1 ? 'was' : 'were'} recorded before the wider
               measurement existed and {fellBack === 1 ? 'is' : 'are'} plotted on the request span alone; there is no
               backfill.
             </>

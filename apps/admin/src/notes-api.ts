@@ -8,11 +8,13 @@ import type {
 } from '@claude-proxy/core';
 import { apiRouteUrl } from '@claude-proxy/core';
 import { API_BASE } from './api';
+import { errorMessage, isJsonRecord, type JsonValue, numberField, readJsonBody, textField } from './json';
 
 export class NotesApiError extends Error {
   constructor(
     readonly status: number,
-    readonly body: unknown,
+    /** The parsed failing body, kept whole so `noteConflict` can read the 409 payload out of it. */
+    readonly body: JsonValue | undefined,
     message: string,
   ) {
     super(message);
@@ -21,18 +23,22 @@ export class NotesApiError extends Error {
 }
 
 async function responseJson<T>(response: Response): Promise<T> {
-  const body = (await response.json().catch(() => null)) as unknown;
+  const body = await readJsonBody(response);
   if (!response.ok) {
-    const message =
-      typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string'
-        ? body.error
-        : `HTTP ${response.status}`;
-    throw new NotesApiError(response.status, body, message);
+    throw new NotesApiError(response.status, body, errorMessage(body) ?? `HTTP ${response.status}`);
   }
+  // SAFETY: `T` comes from the four call sites below, each of which names the return type
+  // of the one `/api/notes/*` route it fetches — `NotePage`, `NoteDocument`, `NoteWriteResult`.
+  // The server builds those bodies from the same `@claude-proxy/core` types imported above,
+  // so the assertion is the shared declaration rather than a claim made about this response.
   return body as T;
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+/**
+ * `Body` is inferred from the caller's input type — `NoteCreateInput`, `NoteUpdateInput`, or
+ * the small id literals below — so the payload is checked at the call site, not erased here.
+ */
+async function post<T, Body>(path: string, body: Body): Promise<T> {
   return responseJson<T>(
     await fetch(`${API_BASE}${path}`, {
       method: 'POST',
@@ -65,9 +71,21 @@ export const updateNote = (input: NoteUpdateInput): Promise<NoteWriteResult> => 
 export const archiveNote = (id: string): Promise<NoteWriteResult> => post('/api/notes/archive', { id });
 export const restoreNote = (id: string): Promise<NoteWriteResult> => post('/api/notes/restore', { id });
 
-export function noteConflict(error: unknown): NoteVersionConflict | null {
+/**
+ * The stale-version report behind a failed save, or `null` when the failure was anything
+ * else. Read field by field rather than handed through: only `409` bodies flagged
+ * `conflict` reach the caller, and the versions it renders arrive as real numbers.
+ */
+export function noteConflict(error: Error | null): NoteVersionConflict | null {
   if (!(error instanceof NotesApiError) || error.status !== 409) return null;
   const body = error.body;
-  if (typeof body !== 'object' || body === null || !('conflict' in body)) return null;
-  return body as NoteVersionConflict;
+  if (!isJsonRecord(body) || body.conflict !== true) return null;
+  return {
+    conflict: true,
+    code: 'stale_version',
+    noteId: textField(body, 'noteId') ?? '',
+    expectedVersion: numberField(body, 'expectedVersion') ?? 0,
+    currentVersion: numberField(body, 'currentVersion') ?? 0,
+    attemptedRevisionId: textField(body, 'attemptedRevisionId') ?? '',
+  };
 }

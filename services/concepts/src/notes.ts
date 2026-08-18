@@ -1,4 +1,5 @@
 import type { Db } from './db.ts';
+import { isJsonInteger, isJsonRecord, isJsonText, type JsonRecord, type JsonValue, parseJson } from './json.ts';
 import { toMatchQuery } from './store.ts';
 
 const DEFAULT_LIMIT = 50;
@@ -81,16 +82,14 @@ function asNote(row: CurrentRow): Note {
   };
 }
 
-function asText(value: unknown, field: string): string {
-  if (typeof value !== 'string') throw new NoteError(400, `\`${field}\` must be a string`);
+function asText(value: JsonValue | undefined, field: string): string {
+  if (!isJsonText(value)) throw new NoteError(400, `\`${field}\` must be a string`);
   return value;
 }
 
-function asVersion(value: unknown): number {
-  if (!Number.isInteger(value) || Number(value) < 1) {
-    throw new NoteError(400, '`expectedVersion` must be a positive integer');
-  }
-  return Number(value);
+function asVersion(value: JsonValue | undefined): number {
+  if (!isJsonInteger(value, 1)) throw new NoteError(400, '`expectedVersion` must be a positive integer');
+  return value;
 }
 
 function limitOf(value: number | undefined): number {
@@ -105,13 +104,19 @@ function encodeCursor(row: CurrentRow): string {
 
 function decodeCursor(value: string | undefined): { updatedAt: string; id: string } | null {
   if (!value) return null;
+  // `atob` throws on anything that is not base64, which `parseJson` cannot absorb
+  // for it — the two failures are one refusal to the caller, so they share a catch.
+  let decoded: JsonValue | undefined;
   try {
-    const parsed = JSON.parse(atob(value)) as Record<string, unknown>;
-    if (typeof parsed.updatedAt !== 'string' || typeof parsed.id !== 'string') throw new Error('shape');
-    return { updatedAt: parsed.updatedAt, id: parsed.id };
+    decoded = parseJson(atob(value));
   } catch {
-    throw new NoteError(400, 'invalid notes cursor');
+    decoded = undefined;
   }
+  const parsed = isJsonRecord(decoded) ? decoded : undefined;
+  const updatedAt = parsed?.updatedAt;
+  const id = parsed?.id;
+  if (!isJsonText(updatedAt) || !isJsonText(id)) throw new NoteError(400, 'invalid notes cursor');
+  return { updatedAt, id };
 }
 
 export function noteExcerpt(markdown: string): string {
@@ -191,7 +196,7 @@ export async function searchNotes(
   return { notes: page.map(summary), nextCursor: more ? encodeCursor(page[page.length - 1]!) : null };
 }
 
-export async function createNote(db: Db, input: { title?: unknown; body?: unknown }, now = new Date()): Promise<Note> {
+export async function createNote(db: Db, input: JsonRecord, now = new Date()): Promise<Note> {
   const title = asText(input.title, 'title');
   const body = asText(input.body, 'body');
   const id = crypto.randomUUID();
@@ -218,7 +223,7 @@ export async function createNote(db: Db, input: { title?: unknown; body?: unknow
 export async function updateNote(
   db: Db,
   id: string,
-  input: { expectedVersion?: unknown; title?: unknown; body?: unknown },
+  input: JsonRecord,
   now = new Date(),
 ): Promise<{ note: Note; changed: boolean } | NoteConflict> {
   const expectedVersion = asVersion(input.expectedVersion);
@@ -260,7 +265,7 @@ export async function updateNote(
 async function retainConflict(
   db: Db,
   current: Note,
-  input: { title?: unknown; body?: unknown },
+  input: JsonRecord,
   expectedVersion: number,
   now: Date,
 ): Promise<string> {

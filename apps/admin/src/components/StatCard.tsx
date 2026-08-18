@@ -198,7 +198,10 @@ function StatPopover({
 }): ReactNode {
   // Keep each point's index through the reverse so it still addresses the chart.
   const rows = spark.points.map((p, index) => ({ ...p, index })).reverse();
-  // CSS reads `--spark-color` for the row highlight.
+  // SAFETY: React passes a custom property straight through to the inline `style`
+  // attribute, but `CSSProperties` enumerates only the known properties and has no index
+  // signature for `--*`, so there is no annotation that admits `--spark-color`. The value
+  // is the series colour this card already renders its line with, not caller input.
   const tint = { '--spark-color': spark.color } as CSSProperties;
 
   return (

@@ -7,30 +7,30 @@ import { fmtInt } from '../format';
  * Tone tracks the pace, not the fill level: a nearly-full bar is fine late in a
  * window, while a modest one early on can already be a problem.
  */
-const TONE: Record<UsagePaceStatus, string> = {
+const TONE = {
   safe: 'good',
   'on-pace': 'signal',
   aggressive: 'warn',
   exhausted: 'bad',
-};
+} satisfies Record<UsagePaceStatus, string>;
 
-const STATUS_LABEL: Record<UsagePaceStatus, string> = {
+const STATUS_LABEL = {
   safe: 'Within limits',
   'on-pace': 'Near limit',
   aggressive: 'Too aggressive',
   exhausted: 'Limit reached',
-};
+} satisfies Record<UsagePaceStatus, string>;
 
 /**
  * An inferred ceiling can speak only to the busiest window on record, not the limit.
  * `aggressive` projects *past* that record by reset; `on-pace` does not.
  */
-const LEARNED_STATUS_LABEL: Record<UsagePaceStatus, string> = {
+const LEARNED_STATUS_LABEL = {
   safe: 'Below record',
   'on-pace': 'Near record',
   aggressive: 'Passing record',
   exhausted: 'New record',
-};
+} satisfies Record<UsagePaceStatus, string>;
 
 /** Beyond this the weekday is needed to say which day's reset is meant. */
 const DAY_QUALIFIER_MS = 12 * 60 * 60 * 1000;
@@ -69,7 +69,7 @@ const GAUGE_SWEEP = 120;
 const LOW_FUEL_PCT = 10;
 
 /** A point on the dial, `deg` measured clockwise from 12 o'clock. */
-function polar(deg: number, r: number): { x: number; y: number } {
+function polar(deg: number, r: number) {
   const rad = (deg * Math.PI) / 180;
   return { x: GAUGE_CX + r * Math.sin(rad), y: GAUGE_CY - r * Math.cos(rad) };
 }
@@ -112,6 +112,9 @@ function FuelGauge({
   label: string;
 }) {
   const leftPct = Math.round(left * 100);
+  // SAFETY: `--needle` is a custom property, which `CSSProperties` cannot name — it lists
+  // the standard properties only. `angleAt` returns a number inside the gauge's sweep, so
+  // the string is always a well-formed `<angle>` for the `rotate()` in the stylesheet.
   const needle = { '--needle': `${angleAt(left)}deg` } as CSSProperties;
   const eLabel = polar(angleAt(0), GAUGE_R - 22);
   const fLabel = polar(angleAt(1), GAUGE_R - 22);

@@ -8,6 +8,16 @@ import { QueryState } from '../components/QueryState';
 import { PRETTY_RAW, type PrettyRawView, Segmented } from '../components/Segmented';
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
 import { fmtBytes, fmtInt } from '../format';
+import {
+  isJsonArray,
+  isJsonRecord,
+  isJsonText,
+  type JsonRecord,
+  type JsonValue,
+  parseJson,
+  recordField,
+  textField,
+} from '../json';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 
@@ -87,33 +97,28 @@ function ToolBody({ tool: t }: { tool: RequestToolDetail }) {
   );
 }
 
-/** A loosely-typed tool schema, since request bodies are untrusted. */
-type Schema = Record<string, unknown>;
-
 /**
  * Render the stored tool JSON as readable sections — name, description, and a
  * parameter list drawn from its input schema. Falls back to raw JSON on an
  * unexpected shape.
+ *
+ * The tool definition is whatever the captured request carried, so it is read through
+ * the guards in `../json` rather than a declared shape: an array, a bare string and a
+ * JSON-schema object are all things a request has been seen to hold here.
  */
 function PrettyTool({ content }: { content: string }) {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return <pre className='rawjson wrap'>{content}</pre>;
-  }
-  if (typeof parsed !== 'object' || parsed === null) return <pre className='rawjson wrap'>{content}</pre>;
+  const tool = parseJson(content);
+  if (!isJsonRecord(tool)) return <pre className='rawjson wrap'>{content}</pre>;
 
-  const tool = parsed as Schema;
-  const description = str(tool.description);
+  const description = textField(tool, 'description') ?? '';
   // Anthropic tools carry `input_schema`; be tolerant of a plain `parameters` too.
-  const schema = (tool.input_schema ?? tool.parameters) as Schema | undefined;
+  const schema = recordField(tool, 'input_schema') ?? recordField(tool, 'parameters');
   const params = paramRows(schema);
 
   return (
     <div className='msg-blocks'>
       <Section label='Name'>
-        <Prose text={str(tool.name) || '(unnamed)'} />
+        <Prose text={textField(tool, 'name') ?? '(unnamed)'} />
       </Section>
 
       {description && (
@@ -167,37 +172,37 @@ interface ParamRow {
 }
 
 /** Flatten a JSON-schema `properties` map into displayable parameter rows. */
-function paramRows(schema: Schema | undefined): ParamRow[] {
-  if (!schema || typeof schema !== 'object') return [];
-  const props = schema.properties;
-  if (typeof props !== 'object' || props === null) return [];
-  const required = new Set(
-    Array.isArray(schema.required) ? schema.required.filter((r): r is string => typeof r === 'string') : [],
-  );
+function paramRows(schema: JsonRecord | undefined): ParamRow[] {
+  const props = schema ? recordField(schema, 'properties') : undefined;
+  if (!props) return [];
+  const listed = schema?.required;
+  const required = new Set(isJsonArray(listed) ? listed.filter(isJsonText) : []);
 
-  return Object.entries(props as Record<string, unknown>).map(([name, raw]) => {
-    const spec = (typeof raw === 'object' && raw !== null ? raw : {}) as Schema;
+  return Object.entries(props).map(([name, raw]) => {
+    const spec = isJsonRecord(raw) ? raw : undefined;
     return {
       name,
       type: schemaType(spec),
       required: required.has(name),
-      description: str(spec.description),
+      description: (spec && textField(spec, 'description')) ?? '',
     };
   });
 }
 
 /** Best-effort human type label for a schema property. */
-function schemaType(spec: Schema): string {
-  if (typeof spec.type === 'string') {
-    if (spec.type === 'array') {
-      const items = (typeof spec.items === 'object' && spec.items !== null ? spec.items : {}) as Schema;
-      const itemType = typeof items.type === 'string' ? items.type : '';
+function schemaType(spec: JsonRecord | undefined): string {
+  if (!spec) return '—';
+  const type = textField(spec, 'type');
+  if (type) {
+    if (type === 'array') {
+      const items = recordField(spec, 'items');
+      const itemType = items && textField(items, 'type');
       return itemType ? `array<${itemType}>` : 'array';
     }
-    return spec.type;
+    return type;
   }
-  if (Array.isArray(spec.enum)) return 'enum';
-  if (Array.isArray(spec.anyOf) || Array.isArray(spec.oneOf)) return 'union';
+  if (isJsonArray(spec.enum)) return 'enum';
+  if (isJsonArray(spec.anyOf) || isJsonArray(spec.oneOf)) return 'union';
   return '—';
 }
 
@@ -217,11 +222,7 @@ function Prose({ text }: { text: string }) {
   return <div className='msg-text'>{text}</div>;
 }
 
-function str(v: unknown): string {
-  return typeof v === 'string' ? v : '';
-}
-
-function stringify(v: unknown): string {
+function stringify(v: JsonValue | undefined): string {
   try {
     return JSON.stringify(v, null, 2);
   } catch {

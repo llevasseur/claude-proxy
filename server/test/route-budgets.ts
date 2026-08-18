@@ -15,6 +15,9 @@ import type { RouteBudgets } from '../src/parity.js';
 export const BUDGET_FILE = fileURLToPath(new URL('./route-budgets.json', import.meta.url));
 
 export function readRouteBudgets(): RouteBudgets {
+  // SAFETY: this file is only ever written by `writeRouteBudgets` below (a
+  // `ROUTE_BUDGETS=record` run) or hand-edited to match `RouteBudgets`'s shape,
+  // so a successful parse of the fixture is always that shape.
   return JSON.parse(readFileSync(BUDGET_FILE, 'utf8')) as RouteBudgets;
 }
 

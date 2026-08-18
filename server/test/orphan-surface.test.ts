@@ -196,9 +196,12 @@ describe('the exemptions stay true', () => {
   it('still finds every exempted export in the file that claims it', async () => {
     const sources = new Map(
       await Promise.all(
-        [...new Set(UNROUTED_BY_DESIGN.map((e) => e.file))].map(
-          async (file) => [file, await read(file)] as [string, string],
-        ),
+        [...new Set(UNROUTED_BY_DESIGN.map((e) => e.file))].map(async (file) => {
+          // SAFETY: `file` is a repo-relative path already narrowed to `string` by the
+          // `.file` field on UnroutedExport, and `read` above resolves to `string` via
+          // `readFile(..., 'utf8')` — the tuple cast only names the pair for the Map below.
+          return [file, await read(file)] as [string, string];
+        }),
       ),
     );
 
@@ -225,7 +228,12 @@ describe('the exemptions stay true', () => {
     const named = UNROUTED_BY_DESIGN.filter((e): e is UnroutedExport & { reachedBy: string } => e.reachedBy !== null);
     const sources = new Map(
       await Promise.all(
-        [...new Set(named.map((e) => e.reachedBy))].map(async (file) => [file, await read(file)] as [string, string]),
+        [...new Set(named.map((e) => e.reachedBy))].map(async (file) => {
+          // SAFETY: `file` comes from the filtered `named` entries' `reachedBy` field,
+          // typed `string` by the `e is UnroutedExport & { reachedBy: string }` guard two
+          // lines up, and `read` resolves to `string` — the cast just pairs them for the Map.
+          return [file, await read(file)] as [string, string];
+        }),
       ),
     );
 

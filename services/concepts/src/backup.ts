@@ -10,6 +10,7 @@
 import type { Db } from './db.ts';
 import type { Env } from './env.ts';
 import { exportIdeas } from './ideas.ts';
+import { arrayField, isJsonRecord, parseJson, recordField, textField } from './json.ts';
 import { exportNotes } from './notes.ts';
 import { exportJsonl } from './store.ts';
 
@@ -70,21 +71,27 @@ export async function runBackup(db: Db, env: Env): Promise<BackupSummary> {
   // entries rather than lines.
   const ideasContent = await exportIdeas(db);
   const ideas = await commitFile(env, env.BACKUP_IDEAS_PATH || 'ideas.json', ideasContent, 'ideas', (text) => {
-    try {
-      return Object.keys((JSON.parse(text) as { ideas?: Record<string, unknown> }).ideas ?? {}).length;
-    } catch {
-      return 0;
-    }
+    const store = parseJson(text);
+    const entries = isJsonRecord(store) ? recordField(store, 'ideas') : undefined;
+    return entries === undefined ? 0 : Object.keys(entries).length;
   });
   const notesContent = await exportNotes(db);
   const notes = await commitFile(env, env.BACKUP_NOTES_PATH || 'notes.json', notesContent, 'notes', (text) => {
-    try {
-      return (JSON.parse(text) as { revisions?: unknown[] }).revisions?.length ?? 0;
-    } catch {
-      return 0;
-    }
+    const store = parseJson(text);
+    const revisions = isJsonRecord(store) ? arrayField(store, 'revisions') : undefined;
+    return revisions?.length ?? 0;
   });
   return { concepts, ideas, notes };
+}
+
+/** The body GitHub's contents API takes for a create-or-update of one file. */
+interface ContentsWrite {
+  message: string;
+  /** The whole file, base64-encoded — this API has no partial write. */
+  content: string;
+  branch: string;
+  /** The blob sha being replaced. Omitted entirely when the file does not exist yet. */
+  sha?: string;
 }
 
 async function commitFile(
@@ -112,24 +119,24 @@ async function commitFile(
   const current = await fetch(`${endpoint}?ref=${encodeURIComponent(branch)}`, { headers });
   let sha: string | undefined;
   if (current.ok) {
-    const existing = (await current.json()) as { sha?: string };
-    sha = existing.sha;
+    const existing = parseJson(await current.text());
+    sha = isJsonRecord(existing) ? textField(existing, 'sha') : undefined;
     if (sha && sha === (await gitBlobSha(content))) return { status: 'unchanged', bytes: content.length };
   } else if (current.status !== 404) {
     throw new Error(`backup: reading ${repo}/${path} returned ${current.status}`);
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const put = await fetch(endpoint, {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify({
-      message: `chore(${label}): backup ${today} (${lines} records)`,
-      content: toBase64(content),
-      branch,
-      ...(sha ? { sha } : {}),
-    }),
-  });
+  // `sha` is present only when the file is already there: GitHub reads its absence
+  // as "create", and a `sha: undefined` key would serialize away to the same thing
+  // but read as though a sha had been looked up and lost.
+  const commit: ContentsWrite = {
+    message: `chore(${label}): backup ${today} (${lines} records)`,
+    content: toBase64(content),
+    branch,
+  };
+  if (sha) commit.sha = sha;
+  const put = await fetch(endpoint, { method: 'PUT', headers, body: JSON.stringify(commit) });
   if (!put.ok) throw new Error(`backup: writing ${repo}/${path} returned ${put.status}`);
 
   return { status: 'committed', bytes: content.length, detail: `${lines} records` };

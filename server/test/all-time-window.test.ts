@@ -80,8 +80,8 @@ afterEach(() => {
   db?.close();
 });
 
-/** The comparable shape of a window read; `byDay` is a Map, so it is flattened. */
-function shapeOf(result: Awaited<ReturnType<typeof readWindow>>) {
+/** A window read reduced to something comparable; `byDay` is a Map, so it is flattened. */
+function comparableOf(result: Awaited<ReturnType<typeof readWindow>>) {
   return {
     sidecars: result.sidecars,
     files: result.files,
@@ -103,6 +103,9 @@ describe('an all-time window', () => {
     // UTC day its files are named for.
     expect(days[0]).toBe('2026-05-03');
     expect(days.at(-1)).toBe(TODAY);
+    // SAFETY: `readWindow`'s `sidecars` is `unknown[]` in general, but this corpus's
+    // `beforeEach` wrote only well-formed `writeSidecar(...)` bodies, each carrying the
+    // `timestamp` it was written with.
     expect(sidecars.map((s) => (s as { timestamp: string }).timestamp)).toEqual([
       morning(OLDEST_DAY),
       morning(MIDDLE_DAY),
@@ -149,7 +152,7 @@ describe('the two backings agree on the all-time answer', () => {
     const fromFiles = await readWindow(logDir, { all: true }, NOW, fileSource);
     const fromDb = await readWindow(logDir, { all: true }, NOW, dbSource(db));
 
-    expect(shapeOf(fromDb)).toEqual(shapeOf(fromFiles));
+    expect(comparableOf(fromDb)).toEqual(comparableOf(fromFiles));
     expect(fromDb.files).toBe(5);
   });
 

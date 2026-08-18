@@ -7,11 +7,11 @@ import { Markdown } from './Markdown';
 import { PromptInput } from './PromptInput';
 
 /** Why a turn ended early, in the terms that tell you what to do about it. */
-const INTERRUPTION_NOTE: Record<ChatInterruption, string> = {
+const INTERRUPTION_NOTE = {
   stopped: 'Turn stopped',
   timeout: 'Turn went quiet and was ended',
   limit: 'Turn hit the time limit for one turn',
-};
+} satisfies Record<ChatInterruption, string>;
 
 /**
  * The live chat: what was asked, what came back, what the turn ran, and the input to keep going.

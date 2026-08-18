@@ -16,6 +16,7 @@ import { DAY_WINDOWS, Segmented } from '../components/Segmented';
 import { type ChartRow, SeriesLineChart } from '../components/SeriesLineChart';
 import { Skeleton, SkeletonChartCard, type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { deltaLabel, deltaTone } from '../format';
+import { isJsonNumber } from '../json';
 import { findMetric, REPORT_TZ_ABBR, type StatMetric } from '../metrics';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
@@ -230,7 +231,7 @@ export function TrendDetailPage() {
                             const v = r[s.key];
                             return (
                               <td className='num' key={s.id}>
-                                {typeof v === 'number' ? def.format(v) : '—'}
+                                {isJsonNumber(v) ? def.format(v) : '—'}
                               </td>
                             );
                           })}

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { type PullRequestRow, parsePullRequests } from '@claude-proxy/core';
+import { type JsonValue, stringField } from '../json.js';
 import { openDb, resolveDbPath } from './open.js';
 
 /**
@@ -99,10 +100,13 @@ export function readStoredPullRequests(logDir: string, repoDir: string, limit: n
   const db = handleFor(logDir);
   if (!db) return null;
   try {
+    // SAFETY: `SELECT_META` names exactly repo, error, ref_error AS refError and
+    // fetched_at AS fetchedAt, keyed on `repo_dir`, which is that table's primary key.
     const meta = db.prepare(SELECT_META).get(repoDir) as
       | { repo?: string | null; error?: string | null; refError?: string | null; fetchedAt?: string }
       | undefined;
     if (!meta?.fetchedAt) return null;
+    // SAFETY: `SELECT_ROWS` names exactly `document`, which is what the row type declares.
     const rows = db.prepare(SELECT_ROWS).all(repoDir, limit) as { document: string }[];
     return {
       repo: meta.repo ?? null,
@@ -127,10 +131,12 @@ export function readStoredPullRequestBody(logDir: string, repoDir: string, numbe
   const db = handleFor(logDir);
   if (!db) return null;
   try {
+    // SAFETY: `SELECT_ROW` names exactly `document`, keyed on (repo_dir, number),
+    // which is that table's primary key.
     const row = db.prepare(SELECT_ROW).get(repoDir, number) as { document?: string } | undefined;
     if (!row?.document) return null;
-    const body = (JSON.parse(row.document) as { body?: unknown }).body;
-    return typeof body === 'string' ? body : '';
+    const document: JsonValue = JSON.parse(row.document);
+    return stringField(document, 'body') ?? '';
   } catch {
     return null;
   }
@@ -145,6 +151,8 @@ export function newestPullRequestUpdate(logDir: string, repoDir: string): string
   const db = handleFor(logDir);
   if (!db) return null;
   try {
+    // SAFETY: `SELECT_WATERMARK` names exactly `MAX(updated_at) AS newest`, and an
+    // aggregate with no GROUP BY always answers exactly one row.
     const row = db.prepare(SELECT_WATERMARK).get(repoDir) as { newest?: string | null } | undefined;
     return row?.newest ?? null;
   } catch {
