@@ -4,6 +4,7 @@ import {
   budgetsRecording,
   type CaseTiming,
   checkBudgets,
+  maxBytes,
   medianMs,
   PARITY_ROUTES,
   type RouteBudgets,
@@ -21,16 +22,24 @@ import { readRouteBudgets } from './route-budgets.js';
  * executes on the machine that would notice it failing is not a gate.
  */
 
-function timing(route: string, filesMs: number, dbMs: number, label = route): CaseTiming {
-  return { route, label, filesMs, dbMs };
+function timing(route: string, filesMs: number, dbMs: number, bytes = 0, label = route): CaseTiming {
+  return { route, label, filesMs, dbMs, bytes };
 }
+
+/** A case that is only interesting for its size, so the durations stay out of the way. */
+function sized(route: string, bytes: number): CaseTiming {
+  return timing(route, 1, 1, bytes);
+}
+
+const MB = 1024 * 1024;
 
 const BUDGETS: RouteBudgets = {
   recordedAt: '2026-08-16T00:00:00.000Z',
   corpus: { archivedDays: 24, note: 'fixture under test' },
   headroom: 3,
   floorMs: 50,
-  routes: { '/api/usage': { files: 1000, db: 1000 } },
+  floorBytes: 65_536,
+  routes: { '/api/usage': { files: 1000, db: 1000, bytes: 4 * MB } },
 };
 
 describe('per-route time budgets', () => {
@@ -77,7 +86,7 @@ describe('per-route time budgets', () => {
    * crosses while nothing has regressed.
    */
   it('gives a sub-millisecond route an absolute floor rather than three times nothing', () => {
-    const tiny: RouteBudgets = { ...BUDGETS, routes: { '/api/usage': { files: 0.1, db: 0.1 } } };
+    const tiny: RouteBudgets = { ...BUDGETS, routes: { '/api/usage': { files: 0.1, db: 0.1, bytes: 4 * MB } } };
     // 40ms for something recorded at 0.1ms is a 400x ratio and still not a
     // finding: at this scale the timer's own noise is the whole measurement.
     expect(checkBudgets([timing('/api/usage', 40, 40)], tiny).breaches).toEqual([]);
@@ -93,12 +102,16 @@ describe('per-route time budgets', () => {
     expect(report.breaches).toEqual([]);
     expect(report.unbudgeted).toEqual(['/api/trends']);
     expect(report.checks).toEqual([]);
+    expect(report.sizes, 'an unbudgeted route is not judged on size either').toEqual([]);
   });
 
   it('names a budget whose route no longer exists', () => {
     expect(unknownBudgetRoutes(BUDGETS)).toEqual([]);
     expect(
-      unknownBudgetRoutes({ ...BUDGETS, routes: { ...BUDGETS.routes, '/api/renamed-away': { files: 1, db: 1 } } }),
+      unknownBudgetRoutes({
+        ...BUDGETS,
+        routes: { ...BUDGETS.routes, '/api/renamed-away': { files: 1, db: 1, bytes: 1 } },
+      }),
     ).toEqual(['/api/renamed-away']);
   });
 
@@ -109,7 +122,10 @@ describe('per-route time budgets', () => {
       24,
       new Date('2026-08-16T12:00:00.000Z'),
     );
-    expect(next.routes).toEqual({ '/api/summary': { files: 15, db: 35 }, '/api/usage': { files: 5, db: 5 } });
+    expect(next.routes).toEqual({
+      '/api/summary': { files: 15, db: 35, bytes: 0 },
+      '/api/usage': { files: 5, db: 5, bytes: 0 },
+    });
     expect(next.recordedAt).toBe('2026-08-16T12:00:00.000Z');
     expect(next.corpus).toEqual({ archivedDays: 24, note: 'fixture under test' });
     expect(next.headroom).toBe(3);
@@ -129,12 +145,87 @@ describe('per-route time budgets', () => {
     expect(unknownBudgetRoutes(budgets)).toEqual([]);
     expect(budgets.headroom).toBeGreaterThan(1);
     expect(budgets.floorMs).toBeGreaterThan(0);
+    expect(budgets.floorBytes).toBeGreaterThan(0);
     expect(Object.keys(budgets.routes).length, 'the fixture records no budget, so it gates nothing').toBeGreaterThan(0);
     for (const [route, budget] of Object.entries(budgets.routes)) {
       expect(budget.files, `${route} files`).toBeGreaterThan(0);
       expect(budget.db, `${route} db`).toBeGreaterThan(0);
+      expect(budget.bytes, `${route} bytes`).toBeGreaterThan(0);
     }
     // Every registered route is replayed, so the fixture may not name more than exist.
     expect(Object.keys(budgets.routes).length).toBeLessThanOrEqual(PARITY_ROUTES.length);
+  });
+});
+
+/**
+ * The size half of the same gate.
+ *
+ * Assembling an enormous payload is cheap, so a time budget cannot catch one:
+ * `/api/sessions/graph` answered in 152.9 ms and handed back 28.2 MB. Judged
+ * over hand-written sizes here, for the reason the suite above uses
+ * hand-written durations.
+ */
+describe('per-route response size budgets', () => {
+  it('takes the largest answer, not the middle one', () => {
+    expect(maxBytes([5, 1, 3])).toBe(5);
+    expect(maxBytes([1_000, 1_000, 28 * MB])).toBe(28 * MB);
+    expect(maxBytes([])).toBe(0);
+  });
+
+  it('passes a route inside its budget, and inside the headroom above it', () => {
+    expect(checkBudgets([sized('/api/usage', 3 * MB), sized('/api/usage', 4 * MB)], BUDGETS).breaches).toEqual([]);
+    // The same ×3 the durations get: a corpus that grew is not a regression.
+    expect(checkBudgets([sized('/api/usage', 12 * MB)], BUDGETS).breaches).toEqual([]);
+  });
+
+  /**
+   * The failure this half exists for: fast and enormous. The time budget saw
+   * nothing wrong with it, and nothing else was watching.
+   */
+  it('fails a route that answers quickly with a payload that grew', () => {
+    const report = checkBudgets([timing('/api/usage', 152.9, 152.9, 28.2 * MB)], BUDGETS);
+    expect(report.breaches).toHaveLength(1);
+    expect(report.breaches[0]).toContain('/api/usage (size)');
+    expect(report.breaches[0]).toContain('28.2MB');
+    expect(report.breaches[0]).toContain('12.0MB');
+    // The durations were never in question, so they are not accused.
+    expect(report.checks.every((c) => c.over)).toBe(false);
+    expect(report.sizes[0]?.over).toBe(true);
+  });
+
+  /**
+   * The byte counterpart of the millisecond floor, and there for the same
+   * reason: several routes here answer with one small object, and ×3 of a
+   * two-figure payload is an allowance a single added field crosses.
+   */
+  it('gives a tiny payload an absolute floor rather than three times nothing', () => {
+    const tiny: RouteBudgets = { ...BUDGETS, routes: { '/api/usage': { files: 1, db: 1, bytes: 11 } } };
+    expect(checkBudgets([sized('/api/usage', 40_000)], tiny).breaches).toEqual([]);
+    expect(checkBudgets([sized('/api/usage', 40_000)], tiny).sizes[0]?.allowedBytes).toBe(65_536);
+    // Past the floor it fails, so the floor is a floor and not an exemption.
+    expect(checkBudgets([sized('/api/usage', 65_537)], tiny).breaches).toHaveLength(1);
+    // And it never binds where the ratio means something: 4MB ×3 wins.
+    expect(checkBudgets([sized('/api/usage', 100)], BUDGETS).sizes[0]?.allowedBytes).toBe(12 * MB);
+  });
+
+  it('judges size once per route, not once per backing', () => {
+    const report = checkBudgets([sized('/api/usage', 1_000), sized('/api/usage', 2_000)], BUDGETS);
+    expect(report.sizes).toHaveLength(1);
+    expect(report.sizes[0]).toMatchObject({ route: '/api/usage', cases: 2, bytes: 2_000, budgetBytes: 4 * MB });
+    // Two backings were still timed, so the halves are not confused for each other.
+    expect(report.checks).toHaveLength(2);
+  });
+
+  it('records the largest size per route, keeping the fixture prose and both floors', () => {
+    const next = recordBudgets(
+      [sized('/api/summary', 900), sized('/api/summary', 1_500), sized('/api/usage', 20)],
+      BUDGETS,
+      24,
+      new Date('2026-08-16T12:00:00.000Z'),
+    );
+    expect(next.routes['/api/summary']?.bytes).toBe(1_500);
+    expect(next.routes['/api/usage']?.bytes).toBe(20);
+    expect(next.floorBytes).toBe(65_536);
+    expect(next.floorMs).toBe(50);
   });
 });

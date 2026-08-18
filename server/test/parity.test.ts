@@ -1180,13 +1180,14 @@ describe('route parity over the real logs/archive', () => {
   }
 
   /**
-   * The time half of the harness, judged on the durations every test above
-   * already collected — so it costs one comparison rather than a second replay.
+   * The budget half of the harness, judged on the durations *and the serialized
+   * sizes* every test above already collected — so it costs one comparison
+   * rather than a second replay.
    *
    * It is declared last on purpose: vitest runs a file's tests in declaration
    * order, so by the time this one runs `timings` holds every case.
    */
-  it('answers every budgeted route inside its recorded time budget', async () => {
+  it('answers every budgeted route inside its recorded time and size budgets', async () => {
     if (!db) return;
     const budgets = readRouteBudgets();
 
@@ -1207,6 +1208,7 @@ describe('route parity over the real logs/archive', () => {
       console.info(`[budgets] no budget recorded yet for: ${report.unbudgeted.join(', ')}`);
     }
     expect(report.checks.length, 'no budgeted route was replayed, so the gate judged nothing').toBeGreaterThan(0);
+    expect(report.sizes.length, 'durations were judged but no response size was').toBeGreaterThan(0);
     expect(report.breaches).toEqual([]);
   });
 });
