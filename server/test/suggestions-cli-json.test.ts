@@ -1,10 +1,8 @@
-// `--help` tells the caller to parse `--json`'s top-level keys, so a caller pipes the
-// documented invocation into a parser — and that crashed, twice in one session, on
-// `SyntaxError: Unexpected token 'S', "Scope: all"…`. pnpm's script runner wraps the
-// script's output in a `$ tsx …` echo and a `Scope: … workspace projects` banner, and
-// which stream those land on is pnpm's choice rather than the CLI's: current pnpm uses
-// stderr, older pnpm used stdout. `--silent` empties both, which is why the docs now
-// name it — and this drives that exact invocation through pnpm so they stay true.
+// `--help` tells the caller to parse `--json`'s top-level keys, and doing that crashed
+// twice in one session on `SyntaxError: Unexpected token 'S', "Scope: all"…` — pnpm's
+// script runner wraps the output in a `$ tsx …` echo and a `Scope: …` banner, on
+// whichever stream that pnpm version favours. `--silent` empties both, so the docs name
+// it and this drives that exact invocation through pnpm to keep them true.
 import { execFile } from 'node:child_process';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -41,20 +39,18 @@ describe('suggestions --json is parseable as emitted', () => {
         maxBuffer: 64 * 1024 * 1024,
       });
 
-      // The failure this pins is a parse of stdout, so parse it rather than matching it.
-      const payload = JSON.parse(stdout) as Record<string, unknown>;
+      const payload = JSON.parse(stdout);
       expect(payload).toHaveProperty('meta');
       expect(payload).toHaveProperty(key);
 
-      // `--silent` has to empty stderr too: `<cmd> 2>&1 | <parser>` is how a caller
-      // pipes a command it also wants the errors from, and that shape is what broke.
+      // stderr has to be empty too — `<cmd> 2>&1 | <parser>` is the shape that broke.
       expect(stderr).toBe('');
     }, 120_000);
   }
 
   it("emits nothing but the payload on the CLI's own stdout", async () => {
-    // No pnpm in the way, so this pins what is ours to keep true: one JSON document,
-    // no progress line, no trailing note. A stray console.log would fail here first.
+    // No pnpm in the way: one JSON document and nothing else. A stray console.log
+    // fails here first.
     const { stdout } = await run('npx', ['tsx', path.join(SRC, 'suggestions-cli.ts'), 'list', '--json'], {
       env: { ...process.env, LOG_DIR: logDir },
       maxBuffer: 64 * 1024 * 1024,

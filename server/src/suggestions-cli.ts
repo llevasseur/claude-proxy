@@ -29,19 +29,14 @@
  * — one of them four consecutive times before inspecting the keys.
  *
  * **The `--json` examples above pass pnpm's `--silent`, and that is the invocation to
- * copy.** pnpm's script runner prints its own lines around this CLI's output — a
- * dimmed `$ tsx src/suggestions-cli.ts …` echo, and a `Scope: … workspace projects`
- * banner when the filter matches more than one package — and *which stream they land
- * on is pnpm's business, not ours*: current pnpm writes them to stderr, older ones
- * wrote them to stdout. So the documented invocation, piped into a parser, is a
- * recorded failure too — `SyntaxError: Unexpected token 'S', "Scope: all"…` and then
- * `Unexpected end of JSON input` in one session, which settled on `sed -n '/^{/,$p'`
- * for every later call. `--silent` empties **both** streams of pnpm's own output, so
- * `… --json | jq` and `… --json 2>&1 | node -e …` both parse, on any pnpm version.
- * It suppresses nothing of this CLI's: stdout, stderr and the exit code are untouched,
- * so `[suggestions] missing value for --range` and its exit 1 still reach the caller.
- * `server/test/suggestions-cli-json.test.ts` drives that invocation through pnpm and
- * parses its stdout, so this stops being a thing each session rediscovers.
+ * copy.** pnpm's script runner wraps this CLI's output in its own lines — a dimmed
+ * `$ tsx src/suggestions-cli.ts …` echo, and a `Scope: … workspace projects` banner
+ * when the filter matches more than one package — and *which stream those land on is
+ * pnpm's business, not ours*: current pnpm uses stderr, older pnpm used stdout. So the
+ * documented invocation piped into a parser is a recorded failure too, twice in one
+ * session. `--silent` empties **both** streams of pnpm's output while suppressing
+ * nothing of this CLI's, so `[suggestions] missing value for --range` and its exit 1
+ * still reach the caller. Pinned by `server/test/suggestions-cli-json.test.ts`.
  *
  * **`list` hides `historical` rows by default** — windows a rule's `done` postdates,
  * with nothing left to act on. They are counted in the header and reachable with
