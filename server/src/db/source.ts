@@ -463,9 +463,10 @@ interface SidecarObject {
 /**
  * The columns {@link entriesFrom} selects from `request`.
  *
- * `skim_text` is omitted: it holds the last user turn of every request body, tens of
- * kilobytes across nearly every row, and is fetched separately as {@link SkimTextRow}
- * by the one read that uses it. `md_path` and `blob_evicted` are never read here.
+ * `skim_text` is not here to omit: it holds the last user turn of every request body,
+ * tens of kilobytes across nearly every row, and lives in the `request_skim` side
+ * table — fetched as {@link SkimTextRow} by the one read that uses it. `md_path` and
+ * `blob_evicted` are never read here.
  */
 type RequestRow = {
   id: string;
@@ -839,15 +840,20 @@ function entriesFrom(db: DatabaseSync, clause: string, args: SQLInputValue[], op
     }
   }
 
-  // The column the main select leaves out, fetched only when the caller asked for the
-  // request bodies, and only for the rows {@link materialize} can consult it on — a
-  // body already derived, or one eviction has taken.
+  // The prose the main select never touches, fetched only when the caller asked for
+  // the request bodies, and only for the rows {@link materialize} can consult it on —
+  // a body already derived, or one eviction has taken. A LEFT JOIN, because a body
+  // that derived to null has no `request_skim` row and still belongs in the map.
   const skimById = new Map<string, string | null>();
   if (opts.includeSkimRequests) {
     // SAFETY: the SELECT names exactly id and skim_text, so every row carries those
     // two columns as `SkimTextRow` declares them.
     const skimRows = db
-      .prepare(`SELECT id, skim_text FROM request WHERE (${clause}) AND (body_derived = 1 OR request_path IS NULL)`)
+      .prepare(
+        `SELECT request.id AS id, request_skim.skim_text AS skim_text FROM request
+         LEFT JOIN request_skim ON request_skim.request_id = request.id
+         WHERE (${clause}) AND (body_derived = 1 OR request_path IS NULL)`,
+      )
       .all(...args) as SkimTextRow[];
     for (const s of skimRows) skimById.set(s.id, s.skim_text);
   }

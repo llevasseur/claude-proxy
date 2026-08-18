@@ -112,7 +112,10 @@ describe('deriving a body before eviction removes it', () => {
     // SAFETY: this is the exact column list of the SELECT immediately above —
     // `node:sqlite`'s `.all()` returns `unknown[]`, so the row shape is asserted here.
     const rows = db
-      .prepare('SELECT id, skim_text, body_derived, blob_evicted FROM request ORDER BY id')
+      .prepare(
+        `SELECT request.id AS id, request_skim.skim_text AS skim_text, body_derived, blob_evicted FROM request
+         LEFT JOIN request_skim ON request_skim.request_id = request.id ORDER BY request.id`,
+      )
       .all() as Array<{ id: string; skim_text: string | null; body_derived: number; blob_evicted: number }>;
     expect(rows.map((r) => [r.id, r.skim_text, r.body_derived, r.blob_evicted])).toEqual([
       [keptStem, `ask at ${KEPT}`, 1, 0],
@@ -139,10 +142,11 @@ describe('deriving a body before eviction removes it', () => {
     expect(afterEvict.dirsSkipped).toBe(0);
 
     // The derivative survived the body it came from.
-    // SAFETY: the row for `keptStem` is guaranteed to exist — it was ingested above
+    // SAFETY: the row for `keptStem` is guaranteed to exist — it was derived above
     // and `skim_text` was just asserted non-null via `byFile.get(keptStem)` below.
     expect(
-      (db.prepare('SELECT skim_text FROM request WHERE id = ?').get(keptStem) as { skim_text: string }).skim_text,
+      (db.prepare('SELECT skim_text FROM request_skim WHERE request_id = ?').get(keptStem) as { skim_text: string })
+        .skim_text,
     ).toBe(`ask at ${KEPT}`);
 
     const fromDb = await dbSource(db).readArchivedDay(logDir, DAY, { includeSkimRequests: true, includeFile: true });
@@ -208,6 +212,6 @@ describe('deriving a body before eviction removes it', () => {
     // And nothing was derived, because there is no longer a body to derive from.
     expect(stats.derived).toBe(0);
     expect(countOf('SELECT count(*) c FROM request WHERE body_derived = 1')).toBe(0);
-    expect(countOf('SELECT count(*) c FROM request WHERE skim_text IS NOT NULL')).toBe(0);
+    expect(countOf('SELECT count(*) c FROM request_skim')).toBe(0);
   });
 });
