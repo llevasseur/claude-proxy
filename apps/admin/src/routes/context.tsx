@@ -47,21 +47,18 @@ const DEFAULT_DIR = {
 } as const satisfies Record<ContextSort, ContextSortDir>;
 
 /**
- * A search now filters rows the page already holds, so it costs no request — the
- * debounce is only there to keep a long window from re-filtering per keystroke.
- * Long enough to swallow a word, short enough that the table follows the typing.
+ * A search filters rows the page already holds, so the debounce only keeps a long window
+ * from re-filtering per keystroke. Long enough to swallow a word, short enough that the
+ * table follows the typing.
  */
 const SEARCH_DEBOUNCE_MS = 250;
 
 /**
  * How long the day in progress is held before it is asked for again — the client-wide
- * default, restated here rather than relied on, because every *other* day on this page
- * deliberately departs from it.
+ * default, restated here because every *other* day on this page departs from it.
  *
- * A closed day gets `Infinity` instead: the server vouches that it can no longer gain a
- * request, so there is nothing a refetch could return. That vouch is per response, not
- * per date, so a day still split across the live directory and the archive keeps this
- * window until it settles. The global default in `main.tsx` is untouched.
+ * A closed day gets `Infinity` instead. That vouch is per response, not per date, so a day
+ * still split across the live directory and the archive keeps this window until it settles.
  */
 const OPEN_DAY_STALE_MS = 30_000;
 
@@ -84,19 +81,15 @@ function useDebounced(value: string, ms: number): string {
 }
 
 /**
- * The window's tiles, and one page of its threads. **The window is held as its days,
- * and folded here.**
+ * The window's tiles, and one page of its threads. **The window is held as its days, and
+ * folded here.**
  *
- * A reporting day that has closed can no longer gain a request, which is the fact both
- * halves of this page rest on. Each day is one query keyed by its date and held for the
- * session, so widening 7d to 30d asks for the 23 days it does not have and re-asks for
- * nothing else — and the day in progress is the only query with a staleness window at
- * all. `mergeContextDays` is the same pure fold `/api/context` sums with server-side,
- * so the tiles are the same numbers by construction rather than by agreement.
+ * Each day is one query keyed by its date and held for the session, so widening 7d to 30d
+ * asks only for the days it does not have, and the day in progress is the only query with
+ * a staleness window at all. `mergeContextDays` is the same pure fold `/api/context` sums
+ * with server-side.
  *
- * The order, the search and the slice are then this page's own, over rows it already
- * holds: a column click and a search keystroke re-sort an array instead of re-asking
- * for the window, which is what `keepPreviousData` used to be hiding.
+ * The order, the search and the slice are this page's own, over rows it already holds.
  */
 export function ContextPage() {
   const [days, selectDays, isSwitching] = useTransitionState(14);
@@ -122,8 +115,7 @@ export function ContextPage() {
   };
 
   // The day in progress, which every window contains and no window may cache. It also
-  // carries the two facts the span needs — the server's own reporting day, and the
-  // corpus floor `All` resolves against — so no calendar is guessed at here.
+  // carries the two facts the span needs: the server's reporting day, and the corpus floor.
   const anchorQuery = useQuery({
     queryKey: ['context-day', 'today'],
     queryFn: () => getContextDay(),
@@ -139,15 +131,14 @@ export function ContextPage() {
       queryKey: ['context-day', date],
       queryFn: () => getContextDay(date),
       staleTime: dayStaleTime,
-      // A settled day is worth keeping for the session: it is a few kB, it cannot
-      // change, and holding it is what makes widening the window cheap.
+      // A settled day is a few kB and cannot change; holding it for the session is what
+      // makes widening the window cheap.
       gcTime: Number.POSITIVE_INFINITY,
     })),
   });
 
-  // `closedDates` is oldest-first and the anchor is the window's last day, so this
-  // stays oldest-first — the order every tie-break in `mergeContextDays` is fixed
-  // against. A day still in flight is simply absent; the gate below hides that.
+  // `closedDates` is oldest-first and the anchor is the window's last day, so this stays
+  // oldest-first — the order every tie-break in `mergeContextDays` is fixed against.
   const held = [...dayQueries.map((day) => day.data), anchor].filter((day): day is ContextDayResponse => !!day);
   const heldKey = held.map((day) => day.date).join(',');
   // biome-ignore lint/correctness/useExhaustiveDependencies: `held` is rebuilt every render, so depending on it would refold on every render and defeat the memo. `heldKey` names the days folded, and a closed day's aggregate is immutable under its date — leaving today's, which changes exactly when `anchor`'s own identity does.
@@ -166,8 +157,8 @@ export function ContextPage() {
   );
 
   const summary = merged.aggregates;
-  // Every day has to be in before the fold means anything, so a window is loading
-  // until its last day lands rather than counting up in front of the reader.
+  // A window is loading until its last day lands, rather than counting up in front of
+  // the reader.
   const isLoading = anchorQuery.isPending || dayQueries.some((day) => day.isPending);
   const error = anchorQuery.error ?? dayQueries.find((day) => day.error)?.error ?? null;
   const busy = isSwitching || anchorQuery.isFetching || dayQueries.some((day) => day.isFetching);

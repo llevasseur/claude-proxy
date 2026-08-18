@@ -14,14 +14,9 @@ import { dbSource, fileSource, type SidecarSource } from '../src/db/source.js';
 /**
  * `/api/context/day` is one term of the sum `/api/context` ships whole.
  *
- * Three things have to hold for a browser to compose a window out of these instead
- * of asking for the window, and each is pinned below. Summing the days must land on
- * exactly what the window route answers, or the tiles would move when the page
- * folded them itself. The `closed` flag must be the server's *own* vouch, since it
- * is what licenses both a `staleTime` of `Infinity` in the client and an `immutable`
- * cache-control on the wire — so it must be false for the day still in progress.
- * And `since` must name the corpus floor, because that floor is resolved from the
- * backing and a browser composing the `All` window cannot compute it.
+ * Three things are pinned below: summing the days lands on exactly what the window route
+ * answers; `closed` is the server's own vouch, and so is false for the day in progress;
+ * and `since` names the corpus floor a browser cannot compute.
  */
 
 /** 22:00 EDT on the newest reporting day, so that day is open and still live. */
@@ -67,10 +62,9 @@ let logDir: string;
 let db: DatabaseSync;
 
 /**
- * Two archived days that have closed, plus the day in progress — half of it archived
- * and half of it still live, which is the seam a reporting day near the present
- * genuinely sits across. The same corpus `context-day-cache.test.ts` uses, so the two
- * files pin the cache and the route against one shape.
+ * Two archived days that have closed, plus the day in progress — half archived and half
+ * still live, the seam a reporting day near the present sits across. The same corpus
+ * `context-day-cache.test.ts` uses.
  */
 beforeEach(async () => {
   logDir = await mkdtemp(path.join(tmpdir(), 'context-day-route-'));
@@ -126,8 +120,8 @@ describe.each(backings)('/api/context/day over the %s backing', (_name, sourceOf
 
     expect(anchor.date).toBe(TODAY);
     expect(anchor.closed).toBe(false);
-    // The floor is what the `All` window is composed from; it cannot be computed in a
-    // browser, and it must not move between the days of one window.
+    // The floor the `All` window is composed from, which must not move between the days
+    // of one window.
     expect(anchor.since).not.toBeNull();
     expect(anchor.since! <= OLDER_DAY).toBe(true);
     expect((await buildContextDay(logDir, OLDER_DAY, NOW, source)).since).toBe(anchor.since);

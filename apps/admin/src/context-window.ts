@@ -3,25 +3,22 @@ import type { ContextSort, ContextSortDir } from './api';
 import { ALL_DAYS } from './components/Segmented';
 
 /**
- * The window arithmetic the context page used to leave to the server, now that the
- * page holds its days one at a time.
+ * The window arithmetic the context page used to leave to the server, now that the page
+ * holds its days one at a time.
  *
- * Everything here is pure and mirrors `buildContext` in `server/src/api.ts` field for
- * field — the span it walks, the comparison it sorts by, the search it filters with.
- * Only the *fold* is shared code (`mergeContextDays` in `packages/core`); these three
- * are small enough that a second copy reads better than a third export, and each
- * carries the rule it mirrors so a drift is visible rather than silent.
+ * Pure, and mirrors `buildContext` in `server/src/api.ts` field for field — the span it
+ * walks, the comparison it sorts by, the search it filters with. Only the fold is shared
+ * code (`mergeContextDays` in `packages/core`).
  */
 
 /**
  * The reporting days a window covers, oldest first — the same span `windowDays` composes
- * server-side, so the days the page sums are the days the route would have.
+ * server-side.
  *
- * `anchor` is the server's own reporting day, read off a response rather than computed
- * here: the reporting calendar is the server's (`REPORT_TZ`), and a browser guessing at
- * it would ask for the wrong days near midnight. `since` is the corpus floor, which is
- * what `ALL_DAYS` resolves against and what every window is clamped to — asking for days
- * older than the oldest one on record only buys empty aggregates.
+ * `anchor` is the server's own reporting day (`REPORT_TZ`), read off a response rather
+ * than computed here: a browser guessing at it asks for the wrong days near midnight.
+ * `since` is the corpus floor, which `ALL_DAYS` resolves against and every window is
+ * clamped to.
  */
 export function contextWindowDates(days: number, anchor: string, since: string | null): string[] {
   const asked = days === ALL_DAYS ? since : shiftDay(anchor, -(days - 1));
@@ -65,8 +62,7 @@ export interface ContextRowsPage {
 }
 
 /**
- * Search, order and slice the window's thread rows — the work `/api/context` used to
- * do per keystroke and per column click, over rows the page already holds.
+ * Search, order and slice the window's thread rows, over rows the page already holds.
  *
  * The sort is over a copy: the merged rows are React Query's cached day objects folded
  * together, and re-ordering them in place would reorder what the next fold reads.

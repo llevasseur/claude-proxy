@@ -225,24 +225,16 @@ export interface ContextResponse {
   meta: { days: number; files: number; parseErrors: number };
 }
 /**
- * One reporting day of context work — the term the page sums, rather than the sum.
- *
- * The window is folded in the browser with `mergeContextDays`, so widening 7d to 30d
- * asks for the 23 days not already held and re-asks for nothing else.
+ * One reporting day of context work — the term the page sums, rather than the sum. The
+ * window is folded in the browser with `mergeContextDays`.
  */
 export interface ContextDayResponse {
   /** The reporting day this answers for, resolved — a call that named none reads it here. */
   date: string;
-  /**
-   * The server's vouch that the day can no longer change. It is what decides the
-   * query's `staleTime`, so a day still mid-rotation is never held as settled.
-   */
+  /** The server's vouch that the day can no longer change; it decides the query's `staleTime`. */
   closed: boolean;
   aggregate: ContextDayAggregate;
-  /**
-   * The oldest reporting day on record, or null when there is none — the `All`
-   * window's floor, which is resolved from the backing and cannot be computed here.
-   */
+  /** The oldest reporting day on record, or null when there is none — the `All` window's floor. */
   since: string | null;
   meta: { files: number; parseErrors: number };
 }
@@ -1125,9 +1117,8 @@ export const getContext = (
     q: page.q,
   });
 /**
- * One reporting day of the window. `date` omitted asks for the day in progress, which
- * is also how the page learns today's reporting day and the corpus floor without
- * assuming the server's calendar.
+ * One reporting day of the window. `date` omitted asks for the day in progress, which is
+ * also how the page learns the server's reporting day and the corpus floor.
  */
 export const getContextDay = (date?: string) => read('/api/context/day', { date });
 export const getContextThread = (threadId: string, days: number) =>

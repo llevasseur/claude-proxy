@@ -360,10 +360,9 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  *
  * A 200 answering a read carries a weak ETag over the serialized body and
  * `cache-control: no-cache`; a matching `If-None-Match` gets a 304 with the validator
- * and the CORS headers, no body and no `content-length`. `immutable` swaps that one
- * header for {@link IMMUTABLE_CACHE_CONTROL} and is the caller's own vouch — see
- * there. A body over
- * {@link COMPRESS_MIN_BYTES} the request accepts gzip for goes out compressed.
+ * and the CORS headers, no body and no `content-length`. `immutable` swaps that header
+ * for {@link IMMUTABLE_CACHE_CONTROL}. A body over {@link COMPRESS_MIN_BYTES} the request
+ * accepts gzip for goes out compressed.
  *
  * The bytes hashed are the bytes a route already produced, so parity comparisons keep
  * seeing identical payloads. Server-sent events never come through here — `serveSse`
@@ -373,15 +372,12 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  * threaded through every call site.
  */
 /**
- * A year, and `immutable`: what a response the server vouches will never change again
- * is answered with, so a browser holding it re-asks for nothing — not even a
- * revalidating `If-None-Match`.
+ * A year, and `immutable`: what a response the server vouches will never change again is
+ * answered with, so a browser holding it re-asks for nothing — not even a revalidating
+ * `If-None-Match`.
  *
- * **Only a route that already knows the answer has settled may pass it.** Today that
- * is `/api/context/day` for a closed reporting day, whose vouch is `cacheContextDay`'s
- * own condition — a day earlier than the one `now` falls in, with none of it left in
- * the live directory. Everything else stays `no-cache`, where the ETag makes a repeat
- * poll cheap without ever making it wrong.
+ * **Only a route that already knows the answer has settled may pass it.** Today that is
+ * `/api/context/day` for a closed reporting day. Everything else stays `no-cache`.
  */
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
@@ -1138,10 +1134,8 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     send(res, 200, context);
     shadow('/api/context', context, (source) => buildContext(LOG_DIR, days, now, source, page));
   },
-  // One day of that window, so a browser composes 7d, 30d and All out of days it
-  // mostly already holds. A day the server vouches for as settled is answered
-  // `immutable`: it can no longer gain a request, so re-asking could only ever
-  // return the same bytes.
+  // One day of that window, so a browser composes 7d, 30d and All out of days it mostly
+  // already holds. A day the server vouches for as settled is answered `immutable`.
   '/api/context/day': async ({ res, date }) => {
     const now = new Date();
     const day = await buildContextDay(LOG_DIR, date, now, readSource(), ARCHIVE_DIR);
