@@ -45,6 +45,7 @@ import {
   buildConceptSearch,
   buildConcepts,
   buildContext,
+  buildContextDay,
   buildContextDetail,
   buildContextMessage,
   buildContextThread,
@@ -359,7 +360,9 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  *
  * A 200 answering a read carries a weak ETag over the serialized body and
  * `cache-control: no-cache`; a matching `If-None-Match` gets a 304 with the validator
- * and the CORS headers, no body and no `content-length`. A body over
+ * and the CORS headers, no body and no `content-length`. `immutable` swaps that one
+ * header for {@link IMMUTABLE_CACHE_CONTROL} and is the caller's own vouch — see
+ * there. A body over
  * {@link COMPRESS_MIN_BYTES} the request accepts gzip for goes out compressed.
  *
  * The bytes hashed are the bytes a route already produced, so parity comparisons keep
@@ -369,7 +372,20 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  * `res.req` is the request this response answers, so the negotiation needs no `req`
  * threaded through every call site.
  */
-function send<T>(res: http.ServerResponse, status: number, body: T, cors: HeaderMap = CORS): void {
+/**
+ * A year, and `immutable`: what a response the server vouches will never change again
+ * is answered with, so a browser holding it re-asks for nothing — not even a
+ * revalidating `If-None-Match`.
+ *
+ * **Only a route that already knows the answer has settled may pass it.** Today that
+ * is `/api/context/day` for a closed reporting day, whose vouch is `cacheContextDay`'s
+ * own condition — a day earlier than the one `now` falls in, with none of it left in
+ * the live directory. Everything else stays `no-cache`, where the ETag makes a repeat
+ * poll cheap without ever making it wrong.
+ */
+const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+
+function send<T>(res: http.ServerResponse, status: number, body: T, cors: HeaderMap = CORS, immutable = false): void {
   const req = res.req;
   const json = Buffer.from(JSON.stringify(body), 'utf8');
   const headers: HeaderMap = {
@@ -384,7 +400,7 @@ function send<T>(res: http.ServerResponse, status: number, body: T, cors: Header
   if (status === 200 && (req.method === 'GET' || req.method === 'HEAD')) {
     const etag = `W/"${crypto.createHash('sha1').update(json).digest('base64url')}"`;
     headers.etag = etag;
-    headers['cache-control'] = 'no-cache';
+    headers['cache-control'] = immutable ? IMMUTABLE_CACHE_CONTROL : 'no-cache';
     if (etagMatches(req, etag)) {
       res.writeHead(304, headers);
       res.end();
@@ -1121,6 +1137,16 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     const context = await buildContext(LOG_DIR, days, now, readSource(), page);
     send(res, 200, context);
     shadow('/api/context', context, (source) => buildContext(LOG_DIR, days, now, source, page));
+  },
+  // One day of that window, so a browser composes 7d, 30d and All out of days it
+  // mostly already holds. A day the server vouches for as settled is answered
+  // `immutable`: it can no longer gain a request, so re-asking could only ever
+  // return the same bytes.
+  '/api/context/day': async ({ res, date }) => {
+    const now = new Date();
+    const day = await buildContextDay(LOG_DIR, date, now, readSource(), ARCHIVE_DIR);
+    send(res, 200, day, CORS, day.closed);
+    shadow('/api/context/day', day, (source) => buildContextDay(LOG_DIR, date, now, source, ARCHIVE_DIR));
   },
   '/api/context/thread': async ({ res, url }) => {
     const threadId = url.searchParams.get('thread');

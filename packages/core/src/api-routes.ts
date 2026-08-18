@@ -67,6 +67,10 @@ export const API_ROUTES = [
     cors: 'open',
     params: ['days', 'sort', 'dir', 'offset', 'limit', 'q'],
   },
+  // One reporting day of that window, on its own. A day that has closed can no longer
+  // gain a request, so a caller composes a window from these and re-asks for nothing it
+  // already holds. `?date=` omitted means the day in progress.
+  { path: '/api/context/day', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
   { path: '/api/context/thread', methods: ['GET'], kind: 'json', cors: 'open', params: ['thread', 'days'] },
   { path: '/api/context/detail', methods: ['GET'], kind: 'json', cors: 'open', params: ['file'] },
   { path: '/api/context/message', methods: ['GET'], kind: 'json', cors: 'open', params: ['file', 'index'] },

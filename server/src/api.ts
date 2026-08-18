@@ -26,6 +26,7 @@ import {
   type CommandSummary,
   type ComputeDigestOptions,
   type ContextAggregates,
+  type ContextDayAggregate,
   type ContextEntry,
   type ContextThreadRow,
   canShipIdea,
@@ -1446,6 +1447,67 @@ export async function buildContext(
       searchable,
     },
     meta: { days, files, parseErrors },
+  };
+}
+
+/**
+ * One reporting day of context work, answered on its own.
+ *
+ * {@link buildContext} sums the days a window covers and ships the total; this ships
+ * one term of that sum, so a caller holding the closed days of a 7-day window can
+ * widen it to 30 by asking for the 23 it does not have. The fold is
+ * `mergeContextDays` in `packages/core`, which is pure and runs equally well in a
+ * browser — the same function the window route already sums with.
+ */
+export interface ContextDayResponse {
+  /** The reporting day this answers for, resolved — a caller that named none reads it here. */
+  date: string;
+  /**
+   * The server's own vouch that the day can no longer change: earlier than the day
+   * `now` falls in, *and* with none of it left in the live directory. It is exactly
+   * the condition {@link cacheContextDay} keeps a day under, so a `true` here and a
+   * cached row are the same statement. Only a vouched day may be held forever.
+   */
+  closed: boolean;
+  aggregate: ContextDayAggregate;
+  /**
+   * The oldest reporting day the corpus holds, or null when it holds none.
+   *
+   * Carried on every day because the all-time window's floor is resolved from the
+   * backing (`resolveAllDays`) and a browser cannot compute it. With this and
+   * {@link ContextDayResponse.date}, a caller composes the span of *any* window —
+   * including `All` — from the one day it was always going to ask for first.
+   */
+  since: string | null;
+  meta: { files: number; parseErrors: number };
+}
+
+/**
+ * One reporting day's aggregate, through the same two-level cache the window route
+ * reads. `date` omitted means the day in progress, which is the one day that is never
+ * cached at either level and the one a caller has to re-ask for.
+ */
+export async function buildContextDay(
+  logDir: string,
+  date: string | undefined,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+  archiveDir?: string,
+): Promise<ContextDayResponse> {
+  const day = date ?? today(now);
+  const [stored, since] = await Promise.all([
+    contextDay(logDir, day, now, source),
+    source.oldestDay(logDir, { archiveDir }),
+  ]);
+  return {
+    date: day,
+    // The cache entry *is* the vouch — `cacheContextDay` writes only for a closed day
+    // the live directory holds none of — so this asks the memo rather than restating
+    // the condition beside it, where the two could drift.
+    closed: cachedContextDay({ logDir, date: day, source }) !== undefined,
+    aggregate: stored.aggregate,
+    since,
+    meta: { files: stored.files, parseErrors: stored.parseErrors },
   };
 }
 

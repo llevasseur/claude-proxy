@@ -416,6 +416,23 @@ describe('conditional and compressed reads', () => {
     expect(res.headers['content-length']).toBe(String(res.body.length));
   });
 
+  /**
+   * The one departure from the blanket `no-cache`, and the whole reason the day route
+   * exists in the shape it does: a reporting day that has closed can no longer gain a
+   * request, so a browser holding it is told never to ask again. The day in progress
+   * gets the ordinary validator, because it is still moving.
+   */
+  it('answers a settled reporting day as immutable, and the day in progress as no-cache', async () => {
+    const settled = await raw('/api/context/day?date=2020-01-01');
+    expect(settled.status).toBe(200);
+    expect(settled.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+    expect(settled.headers.etag).toMatch(/^W\/"[\w-]+"$/);
+
+    const open = await raw('/api/context/day');
+    expect(open.status).toBe(200);
+    expect(open.headers['cache-control']).toBe('no-cache');
+  });
+
   it('answers an unchanged poll with a bodyless 304 that still validates', async () => {
     const first = await raw('/api/health');
     const etag = first.headers.etag!;
