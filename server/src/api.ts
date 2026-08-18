@@ -1354,10 +1354,9 @@ function toContextEntries(sidecars: readonly unknown[]): ContextEntry[] {
  * on every read rather than cached under a key that would have to be invalidated.
  * `baselineDayDigest` above draws the same line in the same place.
  *
- * `orderByTimestamp` because everything downstream wants the day in time order
- * and the read can seek it — `request.timestamp` is indexed, and the archived and
- * live halves merge in one linear pass. That order is also what fixes every
- * tie-break {@link mergeContextDays} then has to reproduce.
+ * `orderByTimestamp` because the day's order fixes every tie-break
+ * {@link mergeContextDays} then has to reproduce — and the read can seek it, since
+ * `request.timestamp` is indexed and the two halves merge in one linear pass.
  *
  * `omitTools` because a `ContextEntry` reads `request.toolCount` and never the
  * per-tool list: the substrate would otherwise fetch and group every tool schema
@@ -1399,21 +1398,20 @@ async function contextDay(logDir: string, date: string, now: Date, source: Sidec
  * distinct thread in the window.
  *
  * **The window is read as its days, not as a span.** A reporting day that has
- * closed can no longer gain a request, so its `ContextDayAggregate` is
- * computed once and kept — in this process and in a `context_day` row every later
- * process reads instead of recomputing. Only the day in progress, and any day the
- * live directory still holds part of, is reduced again. What used to be a scan of
- * every sidecar in the window on **every** request — and the table repeats the
- * request for a sort click, a page click and a search keystroke — is now a scan of
- * one day, summed with rows already on disk.
+ * closed can no longer gain a request, so its `ContextDayAggregate` is computed
+ * once and kept — in this process and in a `context_day` row every later process
+ * reads instead of recomputing. Only the day in progress, and any day the live
+ * directory still holds part of, is reduced again. What used to be a scan of every
+ * sidecar in the window on **every** request — and the table repeats the request
+ * for a sort click, a page click and a search keystroke — is now a scan of one
+ * day, summed with rows already on disk.
  *
  * **The window is summarized whole and shipped by the page.** The prompt search,
  * the order and the slice happen here over the summed thread index, and the answer
- * carries one page of thread rows — a month of traffic is tens of thousands of
- * requests, and the table only ever drew one screen of threads from them.
- * `summary` is deliberately outside the page: it is the aggregate over every
- * request in the window, so the average, the median, the peak and the ten-row
- * `top` do not move when a reader sorts, searches or pages.
+ * carries one page of thread rows. `summary` is deliberately outside the page: it
+ * is the aggregate over every request in the window, so the average, the median,
+ * the peak and the ten-row `top` do not move when a reader sorts, searches or
+ * pages.
  */
 export async function buildContext(
   logDir: string,

@@ -264,10 +264,10 @@ export function groupContextThreads(entries: readonly ContextEntry[]): ContextTh
  * the table draws is the thread's largest request — {@link ContextThreadGroup.peak} —
  * so the request list behind it never had a reader.
  *
- * It lives here rather than beside the route because a row is now a **stored**
- * value: {@link contextDayAggregate} writes one per thread per reporting day, and
+ * It lives here rather than beside the route because a row is a **stored** value:
+ * {@link contextDayAggregate} writes one per thread per reporting day, and
  * {@link mergeContextDays} folds a thread's per-day rows back into the one row the
- * table draws. Both halves have to be pure to be worth caching.
+ * table draws.
  */
 export interface ContextThreadRow {
   key: string;
@@ -302,26 +302,18 @@ export function toContextThreadRow(group: ContextThreadGroup): ContextThreadRow 
 }
 
 /**
- * One reporting day of context work, reduced to everything a window read over it
- * needs and nothing that would make it recomputable only from the sidecars again.
+ * One reporting day of context work, reduced to what a window read over it needs.
+ * **This is the unit the server stores** for a day that has closed.
  *
- * **This is the unit that gets stored.** A reporting day that has closed can no
- * longer gain a request, so its aggregate is computed once and then summed into
- * whatever window covers it; only the day in progress is recomputed per request.
- * That is what takes `/api/context?days=30` off a 41,000-row scan on every sort
- * click, page click and search keystroke.
- *
- * Every field is chosen so that {@link mergeContextDays} can fold days together
- * and land on the answer a single pass over the whole window would have given:
+ * Every field is chosen so {@link mergeContextDays} can fold days together and land
+ * on the answer a single pass over the whole window would have given:
  *
  * - `realInputSum` with `requestCount` gives the window's mean, which a mean of
  *   means would not.
  * - `sortedRealInput` is kept whole because a median is an **order statistic**:
  *   there is no summary of a day from which the window's median can be recovered.
- *   It is the day's token counts alone — numbers, not entries — which is the same
- *   array `aggregateContext` already builds and throws away per request.
- * - `max` and `top` are chosen with the same strictly-greater rule the one-pass
- *   aggregate uses, so merging days oldest-first keeps the same tie-winner.
+ * - `max` and `top` use the same strictly-greater rule the one-pass aggregate
+ *   uses, so merging days oldest-first keeps the same tie-winner.
  * - `rows` is the day's slice of the thread index. A thread spanning two days
  *   contributes a partial row to each, and the merge combines them.
  */
@@ -339,7 +331,7 @@ export interface ContextDayAggregate {
   rows: ContextThreadRow[];
 }
 
-/** The empty day — what a reporting day with nothing captured in it contributes. */
+/** What a reporting day with nothing captured in it contributes. */
 export function emptyContextDay(): ContextDayAggregate {
   return { requestCount: 0, realInputSum: 0, sortedRealInput: [], max: null, top: [], rows: [] };
 }
@@ -426,8 +418,7 @@ export interface MergedContextDays {
  * tie-break below the same one the whole-window pass made. Pure.
  *
  * The median is the one field that cannot be summed: the days' sorted token arrays
- * are concatenated and re-sorted, which is the same sort `aggregateContext` does
- * over a window today, minus reading the sidecars to rebuild the numbers.
+ * are concatenated and re-sorted.
  *
  * A request that belongs in the window's `top` is necessarily in its own day's, so
  * merging the per-day lists loses none of it — a day's competitors are a subset of

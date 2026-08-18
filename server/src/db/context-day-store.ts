@@ -15,9 +15,7 @@ import { openDb, resolveDbPath, SCHEMA_VERSION } from './open.js';
  * `day-digest-store.ts` beside it is the same shape for `/api/summary` and could
  * not be reused: it stores a `UsageDigest`, which carries none of the context
  * facts — no `realInput` order statistics, no per-thread peak, no drill-down
- * handle. So a row here is the day's own {@link ContextDayAggregate}: the sums,
- * the sorted token counts a median needs, the day's largest requests, and the
- * day's slice of the thread index.
+ * handle. So a row here is the day's own {@link ContextDayAggregate}.
  *
  * A row is a **derived** value for a day that can no longer change, never a
  * source of truth: `logs/` still holds every sidecar, and

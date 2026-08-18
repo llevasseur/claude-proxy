@@ -16,8 +16,7 @@ import type { SidecarSource } from './db/source.js';
  * It is `day-digest-memo.ts` in the same shape, for a different question. The
  * second level is what makes a *cold* read cheap: a map only helps the second read
  * and later, so a restarted server used to pay the whole window scan again for the
- * first load of `/api/context`. Both levels are caches — a miss at each still
- * computes from the same path as before.
+ * first load of `/api/context`.
  *
  * Today is never stored at either level: an aggregate is only kept for a reporting
  * day strictly earlier than the one `now` falls in, and any day still split across
