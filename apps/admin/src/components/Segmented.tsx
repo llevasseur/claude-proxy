@@ -34,17 +34,11 @@ export const PRETTY_RAW: readonly SegmentedOption<PrettyRawView>[] = [
  * The pill switcher in a page head. `busy` marks the control while the view it selects
  * is still settling; the buttons stay live throughout.
  *
- * While busy, the *selected* chip swaps its label for a spinner. That is in-place
- * feedback: the result of pressing `30d` belongs on `30d`, so the control that was
- * pressed is what reports the wait and the page needs no separate loading message
- * beside it. Only the selected chip spins, because it is the only one whose press is
- * outstanding — marking all four would say four windows were loading.
- *
- * The label stays in flow underneath, hidden rather than removed, so the group holds
- * its width and the chips either side of the spinning one do not shift. A hidden span
- * leaves the accessibility tree along with the layer, so the button carries the same
- * text as `aria-label` for that interval and keeps its name; the group's `aria-busy`
- * already announces the wait itself.
+ * While busy, the *selected* chip swaps its label for a spinner — only that one, since
+ * it is the only chip with an outstanding press. The label stays in flow, hidden rather
+ * than removed, so the group holds its width and the chips beside it do not shift; a
+ * hidden span leaves the accessibility tree, so the button repeats its text as
+ * `aria-label` for that interval to keep its name.
  */
 export function Segmented<T extends string | number>({
   options,

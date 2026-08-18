@@ -27,7 +27,7 @@
     overflow: hidden;
   }
   .segmented button {
-    /* The containing block for the spinner below, which is centred on the chip. */
+    /* Containing block for the centred spinner below. */
     position: relative;
     background: var(--surface);
     color: var(--muted);
@@ -52,35 +52,31 @@
     cursor: default;
   }
 
-  /* In-place feedback: while the view a chip selects is still loading, the chip's own
-   * label gives way to a spinner, so the answer to the press lands on the control that
-   * was pressed. `visibility` rather than `display`, because the label has to keep its
-   * box — the group is `inline-flex` and sized by its labels, so removing one would
-   * collapse the chip and shuffle every chip beside it mid-load. */
+  /* While the view a chip selects is loading, its label gives way to a spinner.
+   * `visibility` rather than `display`: the group is `inline-flex` and sized by its
+   * labels, so removing one would collapse the chip and shuffle the rest mid-load. */
   .segmented button.is-busy .segmented-label {
     visibility: hidden;
   }
   .segmented-spinner {
     position: absolute;
-    /* Centred by the four-way inset against auto margins, which is what lets the
-     * hidden label underneath go on holding the chip's width. */
+    /* Centred against auto margins, so the hidden label underneath still holds the
+     * chip's width. */
     inset: 0;
     margin: auto;
     width: 0.85em;
     height: 0.85em;
     box-sizing: border-box;
     border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
-    /* One lit arc against the faint ring — the part that reads as turning. Both are
-     * `currentColor`, so the spinner takes the chip's own state colour: `--signal`
-     * on the active chip, and the muted text colour anywhere else. */
+    /* One lit arc against the faint ring. Both are `currentColor`, so the spinner takes
+     * the chip's own state colour: `--signal` when active, muted text elsewhere. */
     border-top-color: currentColor;
     border-radius: 50%;
     animation: segmented-spin var(--motion-loop-fast) linear infinite;
   }
-  /* Written as a multiple of `--motion-duration`, so the reduced-motion block at the
-   * foot of `tokens.css` halts it by zeroing that one token — the sheet's whole
-   * contract for motion. Stopped, the ring simply stands still with its arc lit,
-   * which still marks the chip as the one being waited on. */
+  /* A multiple of `--motion-duration`, so the reduced-motion block in `tokens.css`
+   * halts it by zeroing that token. Stopped, the arc stays lit and still marks the
+   * chip being waited on. */
   @keyframes segmented-spin {
     to {
       transform: rotate(1turn);
