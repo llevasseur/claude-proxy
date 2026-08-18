@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   Scatter,
   ScatterChart,
+  type ScatterPointItem,
   Tooltip,
   XAxis,
   YAxis,
@@ -36,12 +37,12 @@ import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 
 /** One colour per outcome, shared by the scatter, its legend and the run list. */
-const OUTCOME_COLOR: Record<CommandRunOutcome, string> = {
+const OUTCOME_COLOR = {
   completed: 'var(--good)',
   interrupted: 'var(--amber)',
   errored: 'var(--coral)',
   running: 'var(--signal)',
-};
+} satisfies Record<CommandRunOutcome, string>;
 
 const OUTCOME_ORDER: CommandRunOutcome[] = ['completed', 'interrupted', 'errored', 'running'];
 
@@ -296,19 +297,26 @@ interface ScatterPoint {
  */
 function RunScatter({ data, command }: { data: CommandResponse; command: string }) {
   const navigate = useNavigate();
-  const points: ScatterPoint[] = data.runs
-    .filter((r) => r.started !== null)
-    .map((r) => ({
-      x: new Date(r.started as string).getTime(),
-      y: r.totals.tokens.realInput + r.totals.tokens.output,
-      z: Math.max(1, r.totals.turns),
-      runId: r.runId,
-      started: r.started,
-      cost: r.totals.cost,
-      turns: r.totals.turns,
-      outcome: r.outcome,
-      flags: r.flags,
-    }));
+  // A run with no start has no x, so it is dropped rather than plotted at the epoch.
+  // `flatMap` rather than `filter` then `map`, so the drop is what narrows `started`
+  // to a string for `new Date` instead of an assertion restating the filter.
+  const points: ScatterPoint[] = data.runs.flatMap((r) =>
+    r.started === null
+      ? []
+      : [
+          {
+            x: new Date(r.started).getTime(),
+            y: r.totals.tokens.realInput + r.totals.tokens.output,
+            z: Math.max(1, r.totals.turns),
+            runId: r.runId,
+            started: r.started,
+            cost: r.totals.cost,
+            turns: r.totals.turns,
+            outcome: r.outcome,
+            flags: r.flags,
+          },
+        ],
+  );
 
   if (points.length === 0) {
     return (
@@ -375,12 +383,16 @@ function RunScatter({ data, command }: { data: CommandResponse; command: string 
                 fill={OUTCOME_COLOR[g.outcome]}
                 fillOpacity={0.7}
                 isAnimationActive={false}
-                onClick={(p: unknown) =>
-                  navigate({
+                // `payload` is the very object handed to `data` above — recharts types
+                // it `any`, so naming the local's type is enough to get back what this
+                // component already knows it put in, with no assertion.
+                onClick={({ payload }: ScatterPointItem) => {
+                  const point: ScatterPoint = payload;
+                  void navigate({
                     to: '/commands/$command/$runId',
-                    params: { command, runId: (p as ScatterPoint).runId },
-                  })
-                }
+                    params: { command, runId: point.runId },
+                  });
+                }}
                 style={{ cursor: 'pointer' }}
               />
             ))}

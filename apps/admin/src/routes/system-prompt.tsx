@@ -154,7 +154,7 @@ export function SystemPromptPage() {
               <SaveConfirmCard
                 confirm={confirm}
                 pending={save.isPending}
-                error={save.error as Error | null}
+                error={save.error}
                 rereading={review.isPending}
                 onReread={() => review.mutate()}
                 onCancel={cancelConfirm}
@@ -248,9 +248,7 @@ export function SystemPromptPage() {
                 </div>
 
                 {review.error && (
-                  <div className='sysprompt-error'>
-                    Could not read the file to compare — {(review.error as Error).message}
-                  </div>
+                  <div className='sysprompt-error'>Could not read the file to compare — {review.error.message}</div>
                 )}
               </div>
             )}

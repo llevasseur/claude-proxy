@@ -233,7 +233,7 @@ function RunningChatBar({ sessionId }: { sessionId: string }) {
       <button type='button' className='chat-stop' onClick={() => stop.mutate()} disabled={stop.isPending}>
         {stop.isPending ? 'Stopping…' : 'Stop'}
       </button>
-      {stop.error && <span className='session-running-warn'>{(stop.error as Error).message}</span>}
+      {stop.error && <span className='session-running-warn'>{stop.error.message}</span>}
     </div>
   );
 }

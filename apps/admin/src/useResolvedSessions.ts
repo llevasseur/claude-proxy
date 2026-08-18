@@ -17,6 +17,10 @@ function read(): Marks {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return EMPTY;
+    // SAFETY: this key is written only by `save` below, which stringifies a `Marks`, so
+    // the text is this module's own output round-tripped. `Partial` is the concession to
+    // the one case that is not — a `Marks` persisted before a field existed — and the two
+    // `?? {}` defaults below are what makes that case whole again.
     const parsed = JSON.parse(raw) as Partial<Marks>;
     return { resolved: parsed.resolved ?? {}, restored: parsed.restored ?? {} };
   } catch {

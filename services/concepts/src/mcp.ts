@@ -6,6 +6,7 @@
  */
 
 import {
+  type IdeaEntry,
   type IdeaFilter,
   type IdeaStatus,
   isIdeaStatus,
@@ -14,9 +15,51 @@ import {
   parseIdeaMarks,
 } from '@claude-proxy/core';
 import type { Db } from './db.ts';
-import { addIdeas, claimIdeas, getIdea, IdeaError, listIdeas, markIdeas } from './ideas.ts';
-import { archiveNote, createNote, getNote, listNotes, restoreNote, searchNotes, updateNote } from './notes.ts';
-import { conceptFacets, getConceptById, getConceptsByTerm, listConcepts, searchConcepts } from './store.ts';
+import {
+  addIdeas,
+  claimIdeas,
+  getIdea,
+  type IdeaAddOutcome,
+  type IdeaClaimOutcome,
+  IdeaError,
+  type IdeasListResult,
+  type IdeaWriteOutcome,
+  listIdeas,
+  markIdeas,
+} from './ideas.ts';
+import {
+  flagField,
+  isJsonNumber,
+  isJsonText,
+  type JsonRecord,
+  numberField,
+  readJsonRecord,
+  recordField,
+  textField,
+} from './json.ts';
+import {
+  archiveNote,
+  createNote,
+  getNote,
+  listNotes,
+  type Note,
+  type NoteConflict,
+  type NotePage,
+  restoreNote,
+  searchNotes,
+  updateNote,
+} from './notes.ts';
+import {
+  type ConceptSummary,
+  conceptFacets,
+  type Facets,
+  getConceptById,
+  getConceptsByTerm,
+  type HostedConcept,
+  listConcepts,
+  type SearchHit,
+  searchConcepts,
+} from './store.ts';
 
 /**
  * The revisions this server speaks. Modern-era only: a legacy client that
@@ -34,22 +77,33 @@ const HEADER_MISMATCH = -32020;
 const UNSUPPORTED_PROTOCOL_VERSION = -32022;
 
 /**
- * `extensions` is a map of extension identifier to that extension's settings
- * object; this server advertises none, so it is empty rather than absent.
+ * What `server/discover` advertises. `extensions` is a map of extension
+ * identifier to that extension's settings object, and each of those is an
+ * arbitrary JSON object the extension owns rather than a shape this server can
+ * name — which is why the value type is the parsed-JSON one.
  */
-const CAPABILITIES = {
-  tools: { listChanged: false },
-  extensions: {} as Record<string, Record<string, unknown>>,
-};
-
-interface JsonRpcRequest {
-  jsonrpc?: string;
-  id?: string | number | null;
-  method?: string;
-  params?: Record<string, unknown>;
+interface Capabilities {
+  tools: { listChanged: boolean };
+  extensions: Record<string, JsonRecord>;
 }
 
+/** This server advertises no extensions, so the map is empty rather than absent. */
+const CAPABILITIES: Capabilities = {
+  tools: { listChanged: false },
+  extensions: {},
+};
+
 type RequestId = string | number | null | undefined;
+
+/**
+ * The `id` to echo. JSON-RPC allows a string, a number or null, and everything
+ * else — an absent id, or a client that sent an object — answers as null, which
+ * is what the spec asks a server to do when it cannot mirror the id it was given.
+ */
+function requestId(body: JsonRecord): RequestId {
+  const id = body.id;
+  return isJsonText(id) || isJsonNumber(id) ? id : null;
+}
 
 /** Filter parameters shared by `concepts_list` and `concepts_search`. */
 const FILTER_PROPERTIES = {
@@ -348,58 +402,100 @@ const TOOLS = [
 ] as const;
 
 /** Reads the ledger filter arguments the way the REST route reads its query string. */
-function ideaFilterFromArgs(args: Record<string, unknown>): IdeaFilter {
+function ideaFilterFromArgs(args: JsonRecord): IdeaFilter {
   const filter: IdeaFilter = {};
-  const status = str(args, 'status');
+  const status = textField(args, 'status');
   if (status) {
-    const statuses = status.split(',').map((part) => part.trim());
-    const bad = statuses.find((value) => !isIdeaStatus(value));
-    if (bad !== undefined) throw new Error(`invalid status: ${bad}`);
-    filter.statuses = statuses as IdeaStatus[];
+    // Collected one at a time rather than mapped then checked: the guard narrows
+    // each part as it lands, so the list is `IdeaStatus[]` by construction and
+    // the first bad value still names itself in the refusal.
+    const statuses: IdeaStatus[] = [];
+    for (const part of status.split(',')) {
+      const value = part.trim();
+      if (!isIdeaStatus(value)) throw new Error(`invalid status: ${value}`);
+      statuses.push(value);
+    }
+    filter.statuses = statuses;
   }
-  const repo = str(args, 'repo');
+  const repo = textField(args, 'repo');
   if (repo) filter.repo = repo;
-  const area = str(args, 'area');
+  const area = textField(args, 'area');
   if (area) filter.area = area;
   return filter;
 }
 
-function str(args: Record<string, unknown>, key: string): string | undefined {
-  const value = args[key];
-  return typeof value === 'string' && value ? value : undefined;
-}
-
-function bool(args: Record<string, unknown>, key: string): boolean | undefined {
-  return args[key] === true ? true : undefined;
-}
-
-function filterFromArgs(args: Record<string, unknown>) {
+function filterFromArgs(args: JsonRecord) {
   return {
-    field: str(args, 'field'),
-    skill: str(args, 'skill'),
-    since: str(args, 'since'),
-    hasNotes: bool(args, 'hasNotes'),
-    includeSuperseded: bool(args, 'includeSuperseded'),
-    limit: typeof args.limit === 'number' ? args.limit : undefined,
+    field: textField(args, 'field'),
+    skill: textField(args, 'skill'),
+    since: textField(args, 'since'),
+    hasNotes: flagField(args, 'hasNotes'),
+    includeSuperseded: flagField(args, 'includeSuperseded'),
+    limit: numberField(args, 'limit'),
   };
 }
 
-async function callTool(db: Db, name: string, args: Record<string, unknown>): Promise<unknown> {
+/**
+ * The named arguments, copied across for the `parseIdea*` that will read them.
+ *
+ * An argument the caller left out stays left out rather than becoming a present
+ * `undefined`, which is the difference between "not sent" and "sent as nothing"
+ * to a parser that reports on the keys it was given.
+ */
+function pickArgs(args: JsonRecord, keys: readonly string[]): JsonRecord {
+  const picked: JsonRecord = {};
+  for (const key of keys) {
+    const value = args[key];
+    if (value !== undefined) picked[key] = value;
+  }
+  return picked;
+}
+
+/** The glossary listing, with facet counts only when they were asked for. */
+interface ConceptListPayload {
+  count: number;
+  concepts: ConceptSummary[];
+  facets?: Facets;
+}
+
+/**
+ * What one tool answers with, before it is JSON-encoded into the MCP result.
+ *
+ * Enumerated rather than opaque because the transport reads one thing back out of
+ * it — whether an `error` key is present, which sets `isError`. The two
+ * intersections carry a refusal *and* the result it refused with.
+ */
+type ToolResult =
+  | { error: string }
+  | ConceptListPayload
+  | { concept: HostedConcept; versions?: HostedConcept[] }
+  | { count: number; results: SearchHit[] }
+  | { idea: IdeaEntry }
+  | IdeasListResult
+  | IdeaAddOutcome
+  | (IdeaClaimOutcome & { error?: string })
+  | IdeaWriteOutcome
+  | NotePage
+  | { note: Note }
+  | { note: Note; changed: boolean }
+  | (NoteConflict & { error?: string });
+
+async function callTool(db: Db, name: string, args: JsonRecord): Promise<ToolResult> {
   if (name === 'concepts_list') {
     const filter = filterFromArgs(args);
     const concepts = await listConcepts(db, filter);
-    const payload: Record<string, unknown> = { count: concepts.length, concepts };
+    const payload: ConceptListPayload = { count: concepts.length, concepts };
     if (args.facets === true) payload.facets = await conceptFacets(db, filter);
     return payload;
   }
 
   if (name === 'concepts_get') {
-    const id = str(args, 'id');
+    const id = textField(args, 'id');
     if (id) {
       const concept = await getConceptById(db, id);
       return concept ? { concept } : { error: `no concept with id ${id}` };
     }
-    const term = str(args, 'term');
+    const term = textField(args, 'term');
     if (!term) return { error: 'pass either `term` or `id`' };
     const versions = await getConceptsByTerm(db, term);
     if (versions.length === 0) return { error: `no concept for term "${term}"` };
@@ -407,7 +503,7 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
   }
 
   if (name === 'concepts_search') {
-    const query = str(args, 'query');
+    const query = textField(args, 'query');
     if (!query) return { error: '`query` is required' };
     const results = await searchConcepts(db, query, filterFromArgs(args));
     return { count: results.length, results };
@@ -418,7 +514,7 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
   }
 
   if (name === 'ideas_get') {
-    const slug = str(args, 'slug');
+    const slug = textField(args, 'slug');
     if (!slug) return { error: '`slug` is required' };
     try {
       const idea = await getIdea(db, slug);
@@ -440,9 +536,10 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
   }
 
   if (name === 'ideas_claim') {
-    const [claim] = parseIdeaClaims([
-      { slug: args.slug, by: args.by, ...(args.pr === undefined ? {} : { pr: args.pr }) },
-    ]);
+    // Forwarded key by key rather than as a whole-object spread: only what the
+    // caller actually sent is handed to the parser, so an argument it omitted
+    // reads as omitted there too, and its refusal is the one the CLI would get.
+    const [claim] = parseIdeaClaims([pickArgs(args, ['slug', 'by', 'pr'])]);
     const result = await claimIdeas(db, [claim!]);
     // A refusal is reported as a tool error so the model cannot read a plain
     // result as permission to start building what somebody else already is.
@@ -450,9 +547,7 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
   }
 
   if (name === 'ideas_mark') {
-    const [mark] = parseIdeaMarks([
-      { slug: args.slug, status: args.status, ...(args.note === undefined ? {} : { note: args.note }) },
-    ]);
+    const [mark] = parseIdeaMarks([pickArgs(args, ['slug', 'status', 'note'])]);
     if ((mark!.status === 'rejected' || mark!.status === 'shipped') && !mark!.note?.trim()) {
       return {
         error:
@@ -469,34 +564,34 @@ async function callTool(db: Db, name: string, args: Record<string, unknown>): Pr
 
   if (name === 'notes_list') {
     return await listNotes(db, {
-      cursor: str(args, 'cursor'),
-      limit: typeof args.limit === 'number' ? args.limit : undefined,
+      cursor: textField(args, 'cursor'),
+      limit: numberField(args, 'limit'),
       archived: args.archived === true,
     });
   }
   if (name === 'notes_search') {
-    const query = str(args, 'query');
+    const query = textField(args, 'query');
     if (!query) return { error: '`query` is required' };
     return await searchNotes(db, query, {
-      cursor: str(args, 'cursor'),
-      limit: typeof args.limit === 'number' ? args.limit : undefined,
+      cursor: textField(args, 'cursor'),
+      limit: numberField(args, 'limit'),
     });
   }
   if (name === 'notes_get') {
-    const id = str(args, 'id');
+    const id = textField(args, 'id');
     if (!id) return { error: '`id` is required' };
     const note = await getNote(db, id);
     return note ? { note } : { error: `no note with id ${id}` };
   }
   if (name === 'notes_create') return { note: await createNote(db, args) };
   if (name === 'notes_update') {
-    const id = str(args, 'id');
+    const id = textField(args, 'id');
     if (!id) return { error: '`id` is required' };
     const updated = await updateNote(db, id, args);
     return 'conflict' in updated ? { error: 'stale note version', ...updated } : updated;
   }
   if (name === 'notes_archive' || name === 'notes_restore') {
-    const id = str(args, 'id');
+    const id = textField(args, 'id');
     if (!id) return { error: '`id` is required' };
     return { note: name === 'notes_archive' ? await archiveNote(db, id) : await restoreNote(db, id) };
   }
@@ -517,14 +612,14 @@ function refusalMessage(result: {
     : `${refusal.slug} is ${refusal.status}, and only an accepted idea may be claimed`;
 }
 
-function jsonBody(payload: unknown, status: number): Response {
+function jsonBody<T>(payload: T, status: number): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { 'content-type': 'application/json; charset=utf-8' },
   });
 }
 
-function result(id: RequestId, value: unknown): Response {
+function result<T>(id: RequestId, value: T): Response {
   return jsonBody({ jsonrpc: '2.0', id: id ?? null, result: value }, 200);
 }
 
@@ -553,18 +648,16 @@ function decodeHeaderValue(value: string): string {
   }
 }
 
-function metaProtocolVersion(params: Record<string, unknown>): string | undefined {
-  const meta = params._meta;
-  if (typeof meta !== 'object' || meta === null) return undefined;
-  const value = (meta as Record<string, unknown>)[META_PROTOCOL_VERSION];
-  return typeof value === 'string' ? value : undefined;
+function metaProtocolVersion(params: JsonRecord): string | undefined {
+  const meta = recordField(params, '_meta');
+  return meta ? textField(meta, META_PROTOCOL_VERSION) : undefined;
 }
 
 /**
  * The headers the transport mirrors from the body. Required, and a value that
  * disagrees with the body is rejected rather than reconciled.
  */
-function mirroredHeaderMismatch(request: Request, method: string, params: Record<string, unknown>): string | null {
+function mirroredHeaderMismatch(request: Request, method: string, params: JsonRecord): string | null {
   const headerMethod = request.headers.get('mcp-method');
   if (!headerMethod) return 'missing required header Mcp-Method';
   if (headerMethod !== method) return `Mcp-Method header "${headerMethod}" does not match body method "${method}"`;
@@ -573,7 +666,7 @@ function mirroredHeaderMismatch(request: Request, method: string, params: Record
   if (method === 'tools/call') {
     const headerName = request.headers.get('mcp-name');
     if (!headerName) return 'missing required header Mcp-Name';
-    const bodyName = typeof params.name === 'string' ? params.name : '';
+    const bodyName = isJsonText(params.name) ? params.name : '';
     const decoded = decodeHeaderValue(headerName);
     if (decoded !== bodyName) return `Mcp-Name header "${decoded}" does not match body name "${bodyName}"`;
   }
@@ -585,15 +678,16 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
   // No GET stream and no session to DELETE: this server never initiates a message.
   if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
 
-  const body = (await request.json().catch(() => null)) as JsonRpcRequest | null;
-  if (!body || typeof body.method !== 'string') return rpcError(null, -32700, 'parse error', 400);
-  const { id, method } = body;
-  const params = body.params ?? {};
+  const body = await readJsonRecord(request);
+  const method = body && textField(body, 'method');
+  if (!body || !method) return rpcError(null, -32700, 'parse error', 400);
+  const id = requestId(body);
+  const params = recordField(body, 'params') ?? {};
 
   // A legacy client has no fall-forward mechanism, so name the versions it
   // would need rather than answering with a bare "method not found".
   if (method === 'initialize') {
-    const requested = typeof params.protocolVersion === 'string' ? params.protocolVersion : null;
+    const requested = isJsonText(params.protocolVersion) ? params.protocolVersion : null;
     return unsupportedVersion(
       id,
       requested,
@@ -642,11 +736,13 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
   if (method === 'tools/list') return result(id, { tools: TOOLS });
 
   if (method === 'tools/call') {
-    const name = typeof params.name === 'string' ? params.name : '';
-    const args = (params.arguments ?? {}) as Record<string, unknown>;
+    const name = isJsonText(params.name) ? params.name : '';
+    const args = recordField(params, 'arguments') ?? {};
     try {
       const payload = await callTool(db, name, args);
-      const isError = typeof payload === 'object' && payload !== null && 'error' in payload;
+      // Every tool answers with an object, so the presence of `error` is the whole
+      // test — it is how a refusal reaches the model as one rather than as a result.
+      const isError = 'error' in payload;
       return result(id, {
         content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
         structuredContent: payload,
@@ -656,7 +752,9 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
       // A tool failure is reported inside the result, not as a transport error,
       // so the model can see it and correct its arguments.
       return result(id, {
-        content: [{ type: 'text', text: `tool ${name} failed: ${(error as Error).message}` }],
+        content: [
+          { type: 'text', text: `tool ${name} failed: ${error instanceof Error ? error.message : String(error)}` },
+        ],
         isError: true,
       });
     }

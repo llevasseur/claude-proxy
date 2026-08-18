@@ -1,6 +1,7 @@
 import { type ReactElement, useCallback, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { deltaLabel, deltaTone } from '../format';
+import { isJsonNumber } from '../json';
 
 export interface Series {
   /** Key into each data row. */
@@ -70,7 +71,7 @@ export function SeriesLineChart({
             tick={{ fontSize: 11, fill: 'var(--muted)' }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v) => (typeof v === 'number' ? formatTick(v) : String(v))}
+            tickFormatter={(v) => (isJsonNumber(v) ? formatTick(v) : String(v))}
           />
           <Tooltip
             cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
@@ -92,7 +93,7 @@ export function SeriesLineChart({
               strokeWidth={1.5}
               dot={
                 pinnable
-                  ? (props: unknown) => renderDot(props, s.color, pinSet, xKey, togglePin)
+                  ? (props: DotRenderProps) => renderDot(props, s.color, pinSet, xKey, togglePin)
                   : { r: 2, fill: s.color }
               }
               // The hover marker draws over the point, so without this it swallows
@@ -119,17 +120,17 @@ interface DotRenderProps {
  * state has to read off the line, since the tooltip only exists while hovering.
  */
 function renderDot(
-  props: unknown,
+  props: DotRenderProps,
   color: string,
   pinSet: Set<PinKey>,
   xKey: string,
   onToggle: (key: PinKey) => void,
 ): ReactElement {
-  const { cx, cy, index, payload } = props as DotRenderProps;
+  const { cx, cy, index, payload } = props;
   const x = payload?.[xKey];
   const key = x == null ? null : String(x);
   const isPinned = key !== null && pinSet.has(key);
-  const placed = typeof cx === 'number' && typeof cy === 'number';
+  const placed = isJsonNumber(cx) && isJsonNumber(cy);
 
   return (
     <g key={`dot-${index}`}>
@@ -322,5 +323,5 @@ function Delta({ base, value }: { base: number | null; value: number }) {
 
 function numberAt(row: ChartRow, key: string): number | null {
   const value = row[key];
-  return typeof value === 'number' ? value : null;
+  return isJsonNumber(value) ? value : null;
 }
