@@ -140,9 +140,14 @@ export function ContextPage() {
   // `closedDates` is oldest-first and the anchor is the window's last day, so this stays
   // oldest-first — the order every tie-break in `mergeContextDays` is fixed against.
   const held = [...dayQueries.map((day) => day.data), anchor].filter((day): day is ContextDayResponse => !!day);
-  const heldKey = held.map((day) => day.date).join(',');
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `held` is rebuilt every render, so depending on it would refold on every render and defeat the memo. `heldKey` names the days folded, and a closed day's aggregate is immutable under its date — leaving today's, which changes exactly when `anchor`'s own identity does.
-  const merged = useMemo(() => mergeContextDays(held.map((day) => day.aggregate)), [heldKey, anchor]);
+  // Which days are folded **and which version of each**. A date alone is not enough: a
+  // day can be inside the window without being `closed` — yesterday's late sidecars sit
+  // in the live root until the archiver's next rotation — and `dayStaleTime` refetches
+  // exactly those on the open day's schedule, so a fold keyed on dates would hold the
+  // first snapshot of one forever. `dataUpdatedAt` moves whenever a fetch lands.
+  const heldKey = [...dayQueries, anchorQuery].map((day) => `${day.data?.date ?? ''}@${day.dataUpdatedAt}`).join(',');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `held` is rebuilt every render, so depending on it would refold on every render and defeat the memo. `heldKey` names both the days folded and the fetch each was folded from, which is the whole of what the fold reads.
+  const merged = useMemo(() => mergeContextDays(held.map((day) => day.aggregate)), [heldKey]);
 
   const page = useMemo(
     () => ({
@@ -157,9 +162,12 @@ export function ContextPage() {
   );
 
   const summary = merged.aggregates;
-  // A window is loading until its last day lands, rather than counting up in front of
-  // the reader.
-  const isLoading = anchorQuery.isPending || dayQueries.some((day) => day.isPending);
+  // Only the anchor gates the skeleton — the days a window is still waiting on do not.
+  // Widening 14d to 30d holds every day of the old window already, so a partial fold
+  // *is* the previous window; dimming it through `busy` keeps it on screen the way
+  // `keepPreviousData` used to, where gating on the slowest of 23 new days would blank
+  // the tiles and the table outright.
+  const isLoading = anchorQuery.isPending;
   const error = anchorQuery.error ?? dayQueries.find((day) => day.error)?.error ?? null;
   const busy = isSwitching || anchorQuery.isFetching || dayQueries.some((day) => day.isFetching);
 

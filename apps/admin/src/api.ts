@@ -234,7 +234,11 @@ export interface ContextDayResponse {
   /** The server's vouch that the day can no longer change; it decides the query's `staleTime`. */
   closed: boolean;
   aggregate: ContextDayAggregate;
-  /** The oldest reporting day on record, or null when there is none — the `All` window's floor. */
+  /**
+   * The oldest reporting day on record — the `All` window's floor. Answered on the day in
+   * progress alone, and `null` on a dated response: the floor is corpus-scoped, and a
+   * dated day is one a browser may hold forever.
+   */
   since: string | null;
   meta: { files: number; parseErrors: number };
 }

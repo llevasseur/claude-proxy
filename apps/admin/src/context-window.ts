@@ -19,6 +19,15 @@ import { ALL_DAYS } from './components/Segmented';
  * than computed here: a browser guessing at it asks for the wrong days near midnight.
  * `since` is the corpus floor, which `ALL_DAYS` resolves against and every window is
  * clamped to.
+ *
+ * **Every day in the returned span is one request, so `ALL_DAYS` is unbounded by
+ * design** — it grows by a day per day of corpus. That is affordable at the tens of days
+ * `logs/archive` holds today, because a settled day is fetched once ever and then held
+ * by the query cache and the browser's own `immutable` entry. It stops being affordable
+ * somewhere past a hundred: the browser's ~6-connection cap serializes the tail, and
+ * `gcTime: Infinity` retains every day for the session. The fix when it lands is a
+ * batched `?dates=` form on `/api/context/day` rather than a cap here — silently
+ * truncating `All` would draw tiles that are not all-time while still saying they are.
  */
 export function contextWindowDates(days: number, anchor: string, since: string | null): string[] {
   const asked = days === ALL_DAYS ? since : shiftDay(anchor, -(days - 1));

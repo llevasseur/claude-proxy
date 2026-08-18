@@ -376,8 +376,14 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  * answered with, so a browser holding it re-asks for nothing — not even a revalidating
  * `If-None-Match`.
  *
- * **Only a route that already knows the answer has settled may pass it.** Today that is
- * `/api/context/day` for a closed reporting day. Everything else stays `no-cache`.
+ * **Only a route that already knows the answer has settled may pass it**, and the bar is
+ * higher than "the day is closed". Nothing here is content-addressed, so a browser told
+ * this cannot be reached again by any server-side invalidation — the entry has to be
+ * unreachable *by construction*. Today one route clears that: `/api/context/day`, for a
+ * closed reporting day the corpus actually holds requests for. An empty past day does
+ * not qualify, because it is only empty until an archive restore or an ADR-0004 rebuild
+ * (`rm logs/claude-proxy.db && pnpm --filter server ingest`) gives it content. Everything
+ * else stays `no-cache`, where the ETag already makes a repeat poll nearly free.
  */
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
@@ -1135,11 +1141,13 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     shadow('/api/context', context, (source) => buildContext(LOG_DIR, days, now, source, page));
   },
   // One day of that window, so a browser composes 7d, 30d and All out of days it mostly
-  // already holds. A day the server vouches for as settled is answered `immutable`.
+  // already holds.
   '/api/context/day': async ({ res, date }) => {
     const now = new Date();
     const day = await buildContextDay(LOG_DIR, date, now, readSource(), ARCHIVE_DIR);
-    send(res, 200, day, CORS, day.closed);
+    // Settled *and* non-empty: a closed day the corpus holds nothing for is empty only
+    // until something puts a day there, and an `immutable` entry could never be told.
+    send(res, 200, day, CORS, day.closed && day.meta.files > 0);
     shadow('/api/context/day', day, (source) => buildContextDay(LOG_DIR, date, now, source, ARCHIVE_DIR));
   },
   '/api/context/thread': async ({ res, url }) => {

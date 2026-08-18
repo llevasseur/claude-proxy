@@ -16,7 +16,7 @@ import { dbSource, fileSource, type SidecarSource } from '../src/db/source.js';
  *
  * Three things are pinned below: summing the days lands on exactly what the window route
  * answers; `closed` is the server's own vouch, and so is false for the day in progress;
- * and `since` names the corpus floor a browser cannot compute.
+ * and `since` names the corpus floor a browser cannot compute, on the open day alone.
  */
 
 /** 22:00 EDT on the newest reporting day, so that day is open and still live. */
@@ -114,17 +114,18 @@ describe.each(backings)('/api/context/day over the %s backing', (_name, sourceOf
     expect((await buildContextDay(logDir, TODAY, NOW, source)).closed).toBe(false);
   });
 
-  it('answers the day in progress when no date is named, and reports the corpus floor', async () => {
+  it('answers the day in progress when no date is named, and only it reports the floor', async () => {
     const source = sourceOf();
     const anchor = await buildContextDay(logDir, undefined, NOW, source);
 
     expect(anchor.date).toBe(TODAY);
     expect(anchor.closed).toBe(false);
-    // The floor the `All` window is composed from, which must not move between the days
-    // of one window.
+    // The floor the `All` window is composed from. It is corpus-scoped rather than
+    // day-scoped, so it rides only on the one response nothing may cache — a dated day
+    // may be held forever, and a floor pinned there would outlive retention moving it.
     expect(anchor.since).not.toBeNull();
     expect(anchor.since! <= OLDER_DAY).toBe(true);
-    expect((await buildContextDay(logDir, OLDER_DAY, NOW, source)).since).toBe(anchor.since);
+    expect((await buildContextDay(logDir, OLDER_DAY, NOW, source)).since).toBeNull();
   });
 });
 

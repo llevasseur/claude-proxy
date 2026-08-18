@@ -2,7 +2,7 @@
 // reads. The gate lives in the request dispatch, so these drive the real server over a
 // socket rather than a handler stub.
 import { type ChildProcess, spawn } from 'node:child_process';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -21,6 +21,8 @@ const PORT = 8801 + Math.floor(Math.random() * 100);
 const BASE = `http://127.0.0.1:${PORT}`;
 
 let child: ChildProcess;
+/** A long-closed reporting day the corpus is seeded with, for the cache-control gate. */
+const SETTLED_DAY = '2020-01-01';
 /** The device system prompt this server edits — a temp file, never the real one. */
 let promptPath: string;
 /**
@@ -82,6 +84,23 @@ async function waitForListening(deadlineMs = 30_000): Promise<void> {
 
 beforeAll(async () => {
   const logDir = await mkdtemp(path.join(tmpdir(), 'route-methods-'));
+  // One archived request on a long-closed day, written **before** the server starts so
+  // its ingest picks it up: the cache-control assertions below need a settled day the
+  // corpus actually holds something for, which is the only kind vouched `immutable`.
+  await mkdir(path.join(logDir, 'archive', SETTLED_DAY), { recursive: true });
+  await writeFile(
+    path.join(logDir, 'archive', SETTLED_DAY, `${SETTLED_DAY}T12-00-00-000_anthropic.audit.json`),
+    JSON.stringify({
+      timestamp: `${SETTLED_DAY}T12:00:00.000Z`,
+      model: 'claude-opus-5',
+      endpoint: 'POST /v1/messages',
+      statusCode: 200,
+      tokens: { input: 100, output: 50, cacheRead: 400, cacheCreation: 25, realInput: 500 },
+      request: { toolCount: 0, toolsBytes: 0, systemBytes: 1200, totalBytes: 4000 },
+      session: { sessionId: 'session-of-immutable', threadId: 'immutable' },
+    }),
+    'utf8',
+  );
   promptPath = path.join(logDir, 'CLAUDE.md');
   ledger = await startFakeIdeasServer();
   notes = await startFakeNotesServer();
@@ -417,15 +436,22 @@ describe('conditional and compressed reads', () => {
   });
 
   /**
-   * The one departure from the blanket `no-cache`: a reporting day that has closed can no
-   * longer gain a request, so a browser holding it is told never to ask again. The day in
-   * progress gets the ordinary validator.
+   * The one departure from the blanket `no-cache`, and both edges of it. A closed
+   * reporting day the corpus holds requests for can never change again, so a browser is
+   * told never to ask; the day in progress still can, and an *empty* past day only looks
+   * settled — an archive restore or a rebuild can give it content, and nothing on the
+   * server could then reach an `immutable` entry to correct it.
    */
-  it('answers a settled reporting day as immutable, and the day in progress as no-cache', async () => {
-    const settled = await raw('/api/context/day?date=2020-01-01');
+  it('answers a settled non-empty day as immutable, and an empty or open day as no-cache', async () => {
+    const settled = await raw(`/api/context/day?date=${SETTLED_DAY}`);
     expect(settled.status).toBe(200);
     expect(settled.headers['cache-control']).toBe('public, max-age=31536000, immutable');
     expect(settled.headers.etag).toMatch(/^W\/"[\w-]+"$/);
+
+    // Closed by date, but the corpus holds nothing for it — so it is not vouched for.
+    const empty = await raw('/api/context/day?date=2019-01-01');
+    expect(empty.status).toBe(200);
+    expect(empty.headers['cache-control']).toBe('no-cache');
 
     const open = await raw('/api/context/day');
     expect(open.status).toBe(200);
