@@ -52,13 +52,6 @@ export interface ParityContext {
   archiveDir?: string;
   limits: UsageLimitConfig;
   /**
-   * The archived days a {@link ParityRoute.perDay} route enumerates over. Unset
-   * means every day in `logDir/archive`. Scoping lets a suite put each day in
-   * its own test; it never narrows what is compared, since each day is still
-   * replayed whole.
-   */
-  days?: string[];
-  /**
    * The installed command catalogue (`~/.claude/commands` by default). Pinned on
    * the context rather than resolved per call, so both replays read the same
    * directory even though it sits outside `logs/`.
@@ -102,12 +95,6 @@ export interface ParityCase {
 export interface ParityRoute {
   /** The API path, e.g. `/api/usage`. */
   name: string;
-  /**
-   * Whether this route enumerates one case per archived day, and so honours
-   * {@link ParityContext.days}. A route taking no date, or replaying as of the
-   * newest day only, leaves it unset.
-   */
-  perDay?: boolean;
   cases(ctx: ParityContext): Promise<ParityCase[]>;
 }
 
@@ -204,9 +191,9 @@ export async function archivedDays(logDir: string): Promise<string[]> {
   }
 }
 
-/** The days a {@link ParityRoute.perDay} route enumerates over: the scoped subset, else all of them. */
+/** The archived days a route that enumerates one case per day runs over. */
 async function daysOf(ctx: ParityContext): Promise<string[]> {
-  return ctx.days ?? (await archivedDays(ctx.logDir));
+  return archivedDays(ctx.logDir);
 }
 
 /**
@@ -222,7 +209,6 @@ function endOf(day: string): Date {
 export const PARITY_ROUTES: ParityRoute[] = [
   {
     name: '/api/summary',
-    perDay: true,
     cases: async (ctx) =>
       (await daysOf(ctx)).map((day) => ({
         label: `/api/summary?date=${day}`,
@@ -231,7 +217,6 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/tools',
-    perDay: true,
     cases: async (ctx) =>
       (await daysOf(ctx)).map((day) => ({
         label: `/api/tools?date=${day}`,
@@ -240,7 +225,6 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/trends',
-    perDay: true,
     cases: async (ctx) => {
       const days = await daysOf(ctx);
       const cases: ParityCase[] = [];
@@ -257,7 +241,6 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/prompt-mix',
-    perDay: true,
     cases: async (ctx) =>
       (await daysOf(ctx)).map((day) => ({
         label: `/api/prompt-mix?days=7 as of ${day}`,
@@ -285,7 +268,6 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/usage',
-    perDay: true,
     cases: async (ctx) =>
       (await daysOf(ctx)).map((day) => ({
         label: `/api/usage as of ${day}`,
@@ -469,7 +451,6 @@ export const PARITY_ROUTES: ParityRoute[] = [
    */
   {
     name: '/api/skim',
-    perDay: true,
     cases: async (ctx) =>
       (await daysOf(ctx)).map((day) => ({
         label: `/api/skim?date=${day}`,
@@ -527,7 +508,6 @@ export const PARITY_ROUTES: ParityRoute[] = [
   },
   {
     name: '/api/context',
-    perDay: true,
     cases: async (ctx) => {
       const cases: ParityCase[] = [];
       for (const day of await daysOf(ctx)) {

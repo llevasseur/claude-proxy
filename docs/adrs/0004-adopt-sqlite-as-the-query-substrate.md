@@ -80,8 +80,8 @@ substrate. That replay was also **timed**, against recorded per-route medians
 with headroom, so a route that kept answering the same bytes far more slowly
 failed the suite rather than going unnoticed.
 
-> **The parity gate has since been removed** (see the changelog entry for this
-> ADR's follow-up). It did its job: every slice below landed green, the substrate
+> **The parity gate has since been removed.** It did its job: every slice below
+> landed green, the substrate
 > is the trusted read path, and the harness had nothing left to prove. The
 > equivalence test, the recorded time and size budgets, and the
 > `ROUTE_BUDGETS` / `PARITY_DAYS` switches are all gone. **The `SidecarSource`
