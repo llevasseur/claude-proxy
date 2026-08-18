@@ -54,6 +54,22 @@ captured data, without touching the passive-observer proxy.
   and a new order, a new search or a new window is a new first page. A thread that recorded no
   opening prompt is never a match — the caption says how many prompts are searchable, and how
   many of the window's threads the search matched.
+- **The window is read as its reporting days, and a closed day is read once.** A reporting day
+  that has ended can no longer gain a request, so `buildContext` reduces each day to a
+  `ContextDayAggregate` — the request count, the `realInput` sum, that day's `realInput` values
+  sorted, its peak and largest requests, and its slice of the thread index — and keeps the closed
+  ones in two levels: a map for the process, over a `context_day` row that outlives it. A window
+  is the sum of the days it covers. Only the day in progress, and any day the live directory
+  still holds part of, is reduced again per request. This is what makes the sort click, the page
+  click and the search keystroke above cheap: each of them re-asks the route, and each used to
+  re-read every sidecar in the span. The sum is exact rather than approximate — the mean comes
+  from summed totals rather than a mean of means, and the median from the days' sorted values
+  concatenated, since a median has no per-day summary it can be recovered from. Ties in `top`,
+  in the peak and in a thread's row are broken by the earlier request exactly as before, because
+  days are merged oldest-first under the same strictly-greater rule the single pass used. The
+  rows are **derived and disposable**, like `day_digest` and `usage_day` beside them: `logs/`
+  stays the source of truth and `rm logs/claude-proxy.db && pnpm --filter server ingest` rebuilds
+  everything. See [ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md).
 - **Thread page** (`/context/thread/$threadId?days=<n>`) — the shared drill-down a thread's
   single row opens: its opening prompt and full thread id, stat tiles for **requests**,
   **peak** and **average** context and the **span**, then a **"Requests"** table of every
@@ -160,8 +176,12 @@ day), so no path traversal is possible.
   `readWindow` in `server/src/db/source.ts`, which composes `logs/archive/<date>/` with the live
   root, so an archived day stays in the tiles and the "Requests" table rather than the 30-day
   window collapsing to roughly today on a maintained install.
-- Whether to add a historical chart of average/peak context per day (currently avg/median/max
-  over a window only — see the design's out-of-scope note).
+- Whether to add a historical chart of average/peak context per day. Still open as a *view* —
+  the page shows avg/median/max over a window and nothing per day. But the data it would need
+  now exists: `buildContext` reads its window one reporting day at a time and keeps each closed
+  day's aggregate in `context_day` (count, `realInput` sum, the day's sorted token counts, its
+  peak, its largest requests, and its slice of the thread index). A chart would read those rows
+  rather than re-derive them, so what is left is the chart, not the history behind it.
 - ~~Whether to group the largest requests by session id (session id is captured but not
   aggregated here).~~ **Resolved as thread id, not session id.** The table groups by
   `threadId`, which names exactly one transcript; a session id spans an agent together with

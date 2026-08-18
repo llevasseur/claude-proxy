@@ -242,8 +242,15 @@ export interface WindowResult extends LoadResult {
   days: string[];
 }
 
-/** The days a window covers, oldest→newest; empty when the span has no floor. */
-function windowDays(opts: WindowOptions, now: Date): string[] {
+/**
+ * The days a window covers, oldest→newest; empty when the span has no floor.
+ *
+ * Exported because a caller that reads the window **a day at a time** — see
+ * `buildContext`, which caches each closed day's aggregate — has to walk exactly
+ * the days this function would have composed, or its span and the window read's
+ * would drift apart.
+ */
+export function windowDays(opts: WindowOptions, now: Date): string[] {
   const end = today(now);
   if (opts.date) return [opts.date];
   const from = opts.since ?? (opts.sinceDays == null ? null : shiftDay(end, -(opts.sinceDays - 1)));

@@ -181,7 +181,16 @@ wire; the message and tool endpoints slice the *parsed* body, so they resolve ev
 
 ## Out of scope (YAGNI)
 
-- No proxy schema changes (no persisted message count — derived on demand in the drill-down).
+- ~~No proxy schema changes (no persisted message count — derived on demand in the drill-down).~~
+  **Superseded for the window read, and only there.** The clause still holds where it was aimed:
+  the *proxy* writes no new field, and the drill-down still derives its message count on demand.
+  What changed is that deriving the whole window on demand did not scale — `/api/context?days=30`
+  read every sidecar in the span on every request, and the table repeats that request for a sort
+  click, a page click and each search keystroke. So a **derived** per-day aggregate is now
+  persisted, in the SQLite substrate rather than in the log format: `context_day` holds one row
+  per closed reporting day, beside the `day_digest` and `usage_day` rows that already work this
+  way. Per ADR 0004 that is not a schema change in the sense this clause was defending —
+  `logs/` stays the sole source of truth, and the table is disposable.
 - No per-session grouping page — and as shipped this feature drops session identity entirely
   (`ContextEntry` has no `session`), so nothing here shows a session id. Sessions are browsed
   through [Session transcripts](../features/session-transcripts.md) instead.

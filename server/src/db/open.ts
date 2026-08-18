@@ -35,7 +35,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -716,6 +716,38 @@ CREATE TABLE IF NOT EXISTS usage_day (
 );
 `;
 
+/**
+ * One closed reporting day of context work, reduced to what a window read sums.
+ * See `server/src/db/context-day-store.ts`.
+ *
+ * `day_digest` and `usage_day` beside it hold the same day for two other routes
+ * and neither answers this one: a digest carries no `realInput` order statistics
+ * and no per-thread peak, and a `UsageRecord` carries no drill-down handle. So
+ * this row keeps the day's own `ContextDayAggregate` — the sums, the sorted token
+ * counts a median needs, the day's largest requests, and the day's slice of the
+ * thread index. That is what takes `/api/context?days=30` off a scan of every
+ * sidecar in the window on every sort, page and search.
+ *
+ * Derived and disposable, exactly like the two beside it: no watermark is cleared
+ * and nothing is backfilled, rows appear as closed days are read, and the table
+ * can be emptied at any time for the price of recomputing them.
+ */
+const SCHEMA_V19 = `
+CREATE TABLE IF NOT EXISTS context_day (
+  backing     TEXT    NOT NULL,
+  log_dir     TEXT    NOT NULL,
+  date        TEXT    NOT NULL,
+  revision    TEXT    NOT NULL,
+  -- The day's \`ContextDayAggregate\` as JSON.
+  aggregate   TEXT    NOT NULL,
+  -- Files the day matched, carried so the route's \`meta\` stays a sum over days.
+  files       INTEGER NOT NULL,
+  parse_errors INTEGER NOT NULL,
+  computed_at TEXT    NOT NULL,
+  PRIMARY KEY (backing, log_dir, date, revision)
+);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -842,6 +874,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 16) db.exec(SCHEMA_V16);
   if (from < 17) db.exec(SCHEMA_V17);
   if (from < 18) db.exec(SCHEMA_V18);
+  if (from < 19) db.exec(SCHEMA_V19);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
