@@ -235,12 +235,21 @@ export async function runCase(
 
   const a = normalize(fromFiles);
   const b = normalize(fromDb);
-  const diff = wire(a) === wire(b) ? null : (diffJson(a, b) ?? { path: '$', files: a, db: b });
+  const served = wire(a);
+  const diff = served === wire(b) ? null : (diffJson(a, b) ?? { path: '$', files: a, db: b });
   return {
     route: route.name,
     label: testCase.label,
     diff,
-    timing: { route: route.name, label: testCase.label, filesMs, dbMs },
+    timing: {
+      route: route.name,
+      label: testCase.label,
+      filesMs,
+      dbMs,
+      // Sized after both timers have stopped, so weighing the answer never
+      // lands in a duration this same case is about to be judged on.
+      bytes: Buffer.byteLength(served, 'utf8'),
+    },
   };
 }
 
@@ -708,12 +717,27 @@ async function threadIds(ctx: ParityContext): Promise<string[]> {
  * something a test can hold still enough to gate on.
  */
 
-/** How long one replayed case took through each backing. */
+/** How long one replayed case took through each backing, and how large its answer was. */
 export interface CaseTiming {
   route: string;
   label: string;
   filesMs: number;
   dbMs: number;
+  /**
+   * The serialized answer's size in bytes.
+   *
+   * One number rather than one per backing, because the assertion this harness
+   * exists for is that the two backings serialize to the *same* string — a case
+   * where they disagree is already a parity failure, and how big each side's
+   * disagreement was is not the interesting fact about it.
+   *
+   * Measured with {@link Buffer.byteLength} rather than `String.length`, over
+   * the string the byte comparison already built. `String.length` counts UTF-16
+   * code units, and this corpus is transcript text: a route whose answer is
+   * mostly prose would be recorded at a size it never puts on the wire, in a
+   * field a reader will read as megabytes. Nothing is serialized twice for it.
+   */
+  bytes: number;
 }
 
 /** Which reader a duration belongs to. Both are budgeted; see {@link RouteBudget}. */
@@ -732,6 +756,16 @@ export type Backing = 'files' | 'db';
 export interface RouteBudget {
   files: number;
   db: number;
+  /**
+   * The largest answer the route serialized, in bytes.
+   *
+   * A duration is not the only way a route regresses, and it is not the way
+   * that hides best: `/api/sessions/graph` built in 152.9 ms and sat well
+   * inside its time budget while handing back 28.2 MB, because a payload that
+   * is merely enormous is still fast to assemble. One number per route rather
+   * than one per backing, for the reason {@link CaseTiming.bytes} gives.
+   */
+  bytes: number;
 }
 
 /** The recorded fixture: what was measured, against what, and with how much slack. */
@@ -766,6 +800,25 @@ export interface RouteBudgets {
    */
   floorMs: number;
   /**
+   * The smallest size allowance any route gets, in bytes, regardless of what it
+   * measured.
+   *
+   * The same argument {@link RouteBudgets.floorMs} makes, in the other unit —
+   * proportional headroom over a tiny recorded number is a tiny allowance. A
+   * route answering `{"ok":true}` records 11 bytes, and ×3 on that is 33: one
+   * added field breaches it while nothing has grown in any sense a reader would
+   * recognise. 64 KiB is chosen the way 50 ms was, by what the quantity means
+   * rather than by taste — comfortably above every route here that returns a
+   * single object, and far below any response size worth a build failure. It
+   * does not bind on anything large, since ×3 of anything over ~21 KiB already
+   * exceeds it.
+   *
+   * A separate constant from `floorMs` because the two are not convertible:
+   * milliseconds and bytes share the headroom multiplier, which is a ratio, and
+   * nothing else.
+   */
+  floorBytes: number;
+  /**
    * Per-route medians. A route absent from this map is *unbudgeted*, which is
    * reported and never failed: a newly registered route has nothing recorded yet,
    * and failing the build for that would make adding a route to
@@ -785,8 +838,20 @@ export interface BudgetCheck {
   over: boolean;
 }
 
+/** One route's largest answer judged against its size budget. */
+export interface SizeCheck {
+  route: string;
+  cases: number;
+  bytes: number;
+  budgetBytes: number;
+  allowedBytes: number;
+  over: boolean;
+}
+
 export interface BudgetReport {
   checks: BudgetCheck[];
+  /** One entry per budgeted route replayed, judging size rather than duration. */
+  sizes: SizeCheck[];
   /** Human-readable breach lines, empty when every budgeted route was inside its allowance. */
   breaches: string[];
   /** Routes that were replayed but carry no recorded budget. Reported, never failed. */
@@ -808,21 +873,45 @@ export function medianMs(values: number[]): number {
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-/** Per-route durations, split by backing, in the order the cases were replayed. */
-function byRoute(timings: CaseTiming[]): Map<string, { files: number[]; db: number[] }> {
-  const out = new Map<string, { files: number[]; db: number[] }>();
+/**
+ * The largest value in a set of serialized sizes.
+ *
+ * Max rather than the median {@link medianMs} takes, because the two quantities
+ * are not alike. A duration carries measurement noise the median exists to
+ * reject — one case in a replay of several hundred reliably catches a GC pause.
+ * A serialized length carries none: the same corpus through the same code
+ * produces the same string every time, so there is no outlier to discard and
+ * every case is signal. And the case worth gating on is the *biggest* answer a
+ * route ever hands back, which a median over many small days would hide.
+ */
+export function maxBytes(values: number[]): number {
+  return values.reduce((hi, v) => (v > hi ? v : hi), 0);
+}
+
+/** A size in the unit a human would state it in, so a breach line reads at a glance. */
+function statedBytes(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${n}B`;
+}
+
+/** Per-route durations split by backing, and per-route sizes, in replay order. */
+function byRoute(timings: CaseTiming[]): Map<string, { files: number[]; db: number[]; bytes: number[] }> {
+  const out = new Map<string, { files: number[]; db: number[]; bytes: number[] }>();
   for (const t of timings) {
-    const entry = out.get(t.route) ?? { files: [], db: [] };
+    const entry = out.get(t.route) ?? { files: [], db: [], bytes: [] };
     entry.files.push(t.filesMs);
     entry.db.push(t.dbMs);
+    entry.bytes.push(t.bytes);
     out.set(t.route, entry);
   }
   return out;
 }
 
-/** Judge a replay's timings against the recorded fixture. */
+/** Judge a replay's timings and response sizes against the recorded fixture. */
 export function checkBudgets(timings: CaseTiming[], budgets: RouteBudgets): BudgetReport {
   const checks: BudgetCheck[] = [];
+  const sizes: SizeCheck[] = [];
   const breaches: string[] = [];
   const unbudgeted: string[] = [];
 
@@ -854,8 +943,29 @@ export function checkBudgets(timings: CaseTiming[], budgets: RouteBudgets): Budg
         );
       }
     }
+
+    // Size is judged once per route rather than once per backing: the two
+    // backings agreed on the bytes, or the parity assertion already failed.
+    const observedBytes = maxBytes(durations.bytes);
+    const allowedBytes = Math.max(budget.bytes * budgets.headroom, budgets.floorBytes);
+    const overBytes = observedBytes > allowedBytes;
+    sizes.push({
+      route,
+      cases: durations.bytes.length,
+      bytes: observedBytes,
+      budgetBytes: budget.bytes,
+      allowedBytes,
+      over: overBytes,
+    });
+    if (overBytes) {
+      breaches.push(
+        `${route} (size) largest answer ${statedBytes(observedBytes)} over ${durations.bytes.length} cases ` +
+          `exceeds its allowance of ${statedBytes(allowedBytes)} ` +
+          `(recorded ${statedBytes(budget.bytes)} ×${budgets.headroom}, floor ${statedBytes(budgets.floorBytes)})`,
+      );
+    }
   }
-  return { checks, breaches: breaches.sort(), unbudgeted: unbudgeted.sort() };
+  return { checks, sizes, breaches: breaches.sort(), unbudgeted: unbudgeted.sort() };
 }
 
 /**
@@ -904,6 +1014,7 @@ export function recordBudgets(
     routes[route] = {
       files: Number(medianMs(durations.files).toFixed(1)),
       db: Number(medianMs(durations.db).toFixed(1)),
+      bytes: maxBytes(durations.bytes),
     };
   }
   return {
@@ -911,6 +1022,7 @@ export function recordBudgets(
     corpus: { archivedDays, note: previous.corpus.note },
     headroom: previous.headroom,
     floorMs: previous.floorMs,
+    floorBytes: previous.floorBytes,
     routes,
   };
 }
