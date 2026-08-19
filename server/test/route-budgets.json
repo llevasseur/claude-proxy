@@ -1,0 +1,212 @@
+{
+  "recordedAt": "2026-08-19T15:28:29.002Z",
+  "corpus": {
+    "observations": 490,
+    "note": "One device, five passes over every GET route the dashboard drives, against a 1.7 GB substrate holding 24 archived days. Durations are the served answer end to end, so a route measured while the ingest watcher held the write lock reads slower than an idle one - which is what the x3 headroom is for. Re-record with ROUTE_BUDGETS=record."
+  },
+  "headroom": 3,
+  "floorMs": 50,
+  "floorBytes": 65536,
+  "routes": {
+    "/api/chat/config": {
+      "ms": 2,
+      "bytes": 811
+    },
+    "/api/chat/running": {
+      "ms": 0,
+      "bytes": 14
+    },
+    "/api/cli-internals": {
+      "ms": 1,
+      "bytes": 4715
+    },
+    "/api/cli-internals/function": {
+      "ms": 1.5,
+      "bytes": 1187
+    },
+    "/api/commands": {
+      "ms": 130,
+      "bytes": 65742
+    },
+    "/api/commands/command": {
+      "ms": 162,
+      "bytes": 521054
+    },
+    "/api/concepts": {
+      "ms": 49,
+      "bytes": 41321
+    },
+    "/api/concepts/concept": {
+      "ms": 48.5,
+      "bytes": 2046
+    },
+    "/api/concepts/search": {
+      "ms": 108.5,
+      "bytes": 6933
+    },
+    "/api/context": {
+      "ms": 582.5,
+      "bytes": 42628
+    },
+    "/api/context/day": {
+      "ms": 21.5,
+      "bytes": 48260
+    },
+    "/api/context/detail": {
+      "ms": 3,
+      "bytes": 22933
+    },
+    "/api/context/message": {
+      "ms": 2,
+      "bytes": 2455
+    },
+    "/api/context/thread": {
+      "ms": 1,
+      "bytes": 390
+    },
+    "/api/filters": {
+      "ms": 0,
+      "bytes": 1020
+    },
+    "/api/health": {
+      "ms": 86.5,
+      "bytes": 183
+    },
+    "/api/hooks-plugins": {
+      "ms": 1.5,
+      "bytes": 1995
+    },
+    "/api/ideas": {
+      "ms": 103.5,
+      "bytes": 131638
+    },
+    "/api/jobs": {
+      "ms": 251,
+      "bytes": 9343
+    },
+    "/api/jobs/job": {
+      "ms": 2,
+      "bytes": 5021
+    },
+    "/api/notes": {
+      "ms": 38.5,
+      "bytes": 406
+    },
+    "/api/notes/note": {
+      "ms": 41.5,
+      "bytes": 193
+    },
+    "/api/notes/search": {
+      "ms": 38.5,
+      "bytes": 30
+    },
+    "/api/projects": {
+      "ms": 5.5,
+      "bytes": 669
+    },
+    "/api/projects/memories": {
+      "ms": 1.5,
+      "bytes": 2433
+    },
+    "/api/prompt": {
+      "ms": 1299,
+      "bytes": 869
+    },
+    "/api/prompt-mix": {
+      "ms": 1066,
+      "bytes": 135439
+    },
+    "/api/prompt/section": {
+      "ms": 1562,
+      "bytes": 4187
+    },
+    "/api/pull-requests": {
+      "ms": 981,
+      "bytes": 110571
+    },
+    "/api/pull-requests/body": {
+      "ms": 1,
+      "bytes": 3067
+    },
+    "/api/sessions": {
+      "ms": 12.5,
+      "bytes": 388781
+    },
+    "/api/sessions/breakdown": {
+      "ms": 50.5,
+      "bytes": 439
+    },
+    "/api/sessions/errors": {
+      "ms": 55.5,
+      "bytes": 1714
+    },
+    "/api/sessions/graph": {
+      "ms": 173,
+      "bytes": 559537
+    },
+    "/api/sessions/graph/nodes": {
+      "ms": 695,
+      "bytes": 3607276
+    },
+    "/api/sessions/liveness": {
+      "ms": 150,
+      "bytes": 205371
+    },
+    "/api/sessions/node-text": {
+      "ms": 4,
+      "bytes": 78792
+    },
+    "/api/sessions/session": {
+      "ms": 1,
+      "bytes": 12296
+    },
+    "/api/sessions/suggestions": {
+      "ms": 271.5,
+      "bytes": 450187
+    },
+    "/api/sessions/suggestions/bucket": {
+      "ms": 345,
+      "bytes": 78890
+    },
+    "/api/sessions/suggestions/status": {
+      "ms": 243,
+      "bytes": 379992
+    },
+    "/api/skim": {
+      "ms": 161.5,
+      "bytes": 226
+    },
+    "/api/skim/trend": {
+      "ms": 3207,
+      "bytes": 1530
+    },
+    "/api/summary": {
+      "ms": 396.5,
+      "bytes": 4885
+    },
+    "/api/system-prompt": {
+      "ms": 1,
+      "bytes": 436
+    },
+    "/api/tool-schema": {
+      "ms": 1288,
+      "bytes": 8575
+    },
+    "/api/tools": {
+      "ms": 67,
+      "bytes": 10760
+    },
+    "/api/trends": {
+      "ms": 1534.5,
+      "bytes": 39081
+    },
+    "/api/usage": {
+      "ms": 647,
+      "bytes": 1301
+    },
+    "/api/withheld": {
+      "ms": 1428.5,
+      "bytes": 4850
+    }
+  }
+}
