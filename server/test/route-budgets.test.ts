@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RouteObservation } from '../src/db/route-observation-store.js';
 import {
   budgetsRecording,
+  carriedRoutes,
   checkBudgets,
   maxBytes,
   medianMs,
@@ -131,6 +132,29 @@ describe('per-route time budgets', () => {
     expect(next.headroom).toBe(3);
     expect(next.floorMs).toBe(50);
     expect(next.floorBytes).toBe(65_536);
+  });
+
+  it('keeps a budget for a route this pass saw no traffic for, rather than dropping it', () => {
+    // The un-budgeting `unknownBudgetRoutes` guards against, arriving through the other
+    // door: record on a device that only exercised the usage pages and every other route
+    // would vanish from the fixture, then read as merely unbudgeted — reported, never
+    // failed. `/api/sessions/graph/nodes` is the 3.6MB route the size half exists for.
+    const previous: RouteBudgets = {
+      ...BUDGETS,
+      routes: { ...BUDGETS.routes, '/api/sessions/graph/nodes': { ms: 120, bytes: 3.6 * MB } },
+    };
+
+    const next = recordBudgets([seen('/api/usage', 20)], previous, new Date('2026-08-19T12:00:00.000Z'));
+
+    expect(next.routes['/api/usage']).toEqual({ ms: 20, bytes: 0 });
+    expect(next.routes['/api/sessions/graph/nodes']).toEqual({ ms: 120, bytes: 3.6 * MB });
+    expect(carriedRoutes([seen('/api/usage', 20)], previous)).toEqual(['/api/sessions/graph/nodes']);
+  });
+
+  it('names nothing as carried when the pass measured every budgeted route', () => {
+    expect(carriedRoutes([seen('/api/usage', 20)], BUDGETS)).toEqual([]);
+    // A route measured for the first time is new, not carried.
+    expect(carriedRoutes([seen('/api/usage', 20), seen('/api/summary', 5)], BUDGETS)).toEqual([]);
   });
 
   it('records only when asked, and carries no other environment switch', () => {

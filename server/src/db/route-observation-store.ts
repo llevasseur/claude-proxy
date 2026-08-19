@@ -89,10 +89,17 @@ const sincePrune = new Map<string, number>();
  * none. A negative answer is not remembered, so a server whose substrate opens
  * after the first response starts recording from the second.
  *
- * `busy_timeout` is the one pragma this handle adds. The ingest watcher writes to
- * the same file, and WAL admits one writer at a time — without a timeout a
- * response that lands mid-ingest loses its observation to `SQLITE_BUSY`. The wait
- * happens after the response is already served, so it costs the reader nothing.
+ * `busy_timeout` is the one pragma this handle adds, and it is deliberately
+ * short. The ingest watcher writes to the same file and WAL admits one writer at
+ * a time, so without any timeout a response landing mid-ingest loses its
+ * observation to `SQLITE_BUSY`. But `DatabaseSync` blocks, and this runs from the
+ * server's `finish` handler on the main thread — the wait costs the response
+ * being measured nothing, since it has already gone out, and costs every *other*
+ * in-flight request the whole time it lasts. A long timeout would trade a stalled
+ * event loop for a sample the gate does not need: it judges a median over
+ * hundreds, and losing the handful that collide with an ingest pass changes no
+ * verdict. {@link OBSERVATIONS_PER_ROUTE} is what the numbers rest on, not any
+ * single insert.
  */
 function handleFor(logDir: string): DatabaseSync | null {
   const held = handles.get(logDir);
@@ -100,7 +107,7 @@ function handleFor(logDir: string): DatabaseSync | null {
   if (!existsSync(resolveDbPath(logDir))) return null;
   try {
     const db = openDb(logDir);
-    db.exec('PRAGMA busy_timeout = 2000');
+    db.exec('PRAGMA busy_timeout = 25');
     handles.set(logDir, db);
     return db;
   } catch {

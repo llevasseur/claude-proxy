@@ -11,6 +11,8 @@ import { gunzipSync } from 'node:zlib';
 import type { IdeaEntry, IdeaStatus } from '@claude-proxy/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { JsonObject, JsonValue } from '../../proxy/json.ts';
+import { openDb } from '../src/db/open.js';
+import { closeRouteObservations, readRouteObservations } from '../src/db/route-observation-store.js';
 import { addIdeasToStore } from '../src/ideas-store.js';
 import { startFakeIdeasServer } from './ideas-fake-worker.js';
 import { type FakeNotesServer, startFakeNotesServer } from './notes-fake-worker.js';
@@ -25,6 +27,8 @@ let child: ChildProcess;
 const SETTLED_DAY = '2020-01-01';
 /** The device system prompt this server edits — a temp file, never the real one. */
 let promptPath: string;
+/** This server's log directory, read back for the observations it records into. */
+let logDir: string;
 /**
  * The hosted ideas ledger, stood up on a real socket for the duration.
  *
@@ -83,7 +87,10 @@ async function waitForListening(deadlineMs = 30_000): Promise<void> {
 }
 
 beforeAll(async () => {
-  const logDir = await mkdtemp(path.join(tmpdir(), 'route-methods-'));
+  logDir = await mkdtemp(path.join(tmpdir(), 'route-methods-'));
+  // Created here rather than left to the server's ingest, because the observation store
+  // deliberately never creates a substrate — it only writes to one that already exists.
+  openDb(logDir).close();
   // One archived request on a long-closed day, written **before** the server starts so
   // its ingest picks it up: the cache-control assertions below need a settled day the
   // corpus actually holds something for, which is the only kind vouched `immutable`.
@@ -135,6 +142,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   child?.kill();
+  closeRouteObservations();
   await ledger?.stop();
   await notes?.stop();
 });
@@ -527,5 +535,75 @@ describe('conditional and compressed reads', () => {
 
     expect(res.status).toBe(403);
     expect(res.headers.vary).toBe('origin, accept-encoding');
+  });
+});
+
+/**
+ * The measurement half of the route budgets, driven over the socket.
+ *
+ * `observeServedRoute` and the `servedBytes` map are private to `server.ts`, and what is
+ * worth asserting is not their arithmetic but their wiring: that a served 200 leaves a row,
+ * and that the paths which never reach `send` leave none. Those exclusions hold *by
+ * construction* rather than by a list of status codes, and construction is exactly what a
+ * later refactor of `send` can quietly break with the suite still green.
+ */
+describe('what a served response records', () => {
+  /** Rows the substrate holds for one route, read through the store's read-only handle. */
+  const rows = (route: string): number => readRouteObservations(logDir).filter((o) => o.route === route).length;
+
+  /**
+   * The insert happens on `finish`, so an observation can trail the response that caused it.
+   * Bounded well inside the test timeout: a row that has not landed in two seconds is a
+   * failed assertion worth reading, not a test that ran out of time with nothing to say.
+   */
+  async function settle(route: string, atLeast: number): Promise<number> {
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      if (rows(route) >= atLeast) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return rows(route);
+  }
+
+  it('records one observation for a 200 that wrote a body', async () => {
+    const before = rows('/api/health');
+
+    expect((await raw('/api/health')).status).toBe(200);
+
+    expect(await settle('/api/health', before + 1)).toBe(before + 1);
+  });
+
+  it('records nothing for a 304, which measures the ETag comparison rather than the work', async () => {
+    // Counted before the request that earns the validator, since that request records too.
+    const priming = rows('/api/health');
+    const etag = (await raw('/api/health')).headers.etag!;
+    const before = await settle('/api/health', priming + 1);
+
+    expect((await raw('/api/health', { 'if-none-match': etag })).status).toBe(304);
+
+    // Long enough that a recorded 304 would have landed: the insert is synchronous inside
+    // the `finish` handler the response before it already demonstrated.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(rows('/api/health')).toBe(before);
+  });
+
+  it('records nothing for a 405, which is refused before the observation is even wired', async () => {
+    const before = rows('/api/filters');
+
+    expect((await raw('/api/filters', {}, 'POST')).status).toBe(405);
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(rows('/api/filters')).toBe(before);
+  });
+
+  it('records nothing for an SSE subscription, which writes its frames and never reaches send', async () => {
+    const controller = new AbortController();
+    const response = await fetch(`${BASE}/api/notes/stream`, { signal: controller.signal });
+    expect(response.status).toBe(200);
+    controller.abort();
+
+    // A stream carries no single answer to size, so there is nothing a budget could judge.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(rows('/api/notes/stream')).toBe(0);
   });
 });

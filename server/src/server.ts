@@ -410,6 +410,14 @@ const servedBytes = new WeakMap<http.ServerResponse, number>();
  * Only a **200 that wrote a body** is recorded. A 304 measures the ETag comparison rather
  * than the work, and a 404, 405 or 500 measures a rejection; folding either into a route's
  * median would make the gate looser exactly where the route got slower.
+ *
+ * What `finish` includes, and the fixture's one standing assumption: the event fires once
+ * the last chunk has been flushed to the socket, so a multi-megabyte answer's duration
+ * carries however long the client took to accept it. On the loopback the dashboard records
+ * against, that is nothing; served to a slow consumer, a large route's median can cross its
+ * allowance with nothing having regressed. Stopping the clock earlier is not the fix — it
+ * would have to stop before the size is known — so a breach on one of the megabyte routes
+ * is read against the link it was recorded over before it is read as a regression.
  */
 function observeServedRoute(route: string, res: http.ServerResponse, startedAt: number): void {
   const bytes = servedBytes.get(res);

@@ -243,16 +243,43 @@ export function budgetsRecording(env: NodeJS.ProcessEnv = process.env): boolean 
 }
 
 /**
+ * Budgeted routes this record pass saw no traffic for, and so cannot re-measure.
+ *
+ * Their recorded numbers are carried through unchanged by {@link recordBudgets}, and named
+ * here so the pass can say which of its numbers are new and which are inherited.
+ */
+export function carriedRoutes(observations: RouteObservation[], previous: RouteBudgets): string[] {
+  const measured = byRoute(observations);
+  return Object.keys(previous.routes)
+    .filter((route) => !measured.has(route))
+    .sort();
+}
+
+/**
  * Build the fixture a record pass writes out.
  *
  * Budgets are measurements, not targets: a legitimate slowdown ships its new numbers as a
  * reviewable diff rather than being argued about. The prose and both floors carry over from
  * the previous fixture — a record pass re-measures, it does not re-decide.
+ *
+ * **A route the pass saw no traffic for keeps the numbers it already had.** Rebuilding the
+ * map from the observations alone would drop it, and a dropped route reads as *unbudgeted*,
+ * which is reported and never failed — so recording on a device that happened to exercise
+ * only the usage pages would quietly un-budget everything else, which is precisely what
+ * {@link unknownBudgetRoutes} exists to stop a rename doing. Dropping a route is a decision,
+ * and this pass only re-measures; use {@link carriedRoutes} to report which ones it carried.
  */
 export function recordBudgets(observations: RouteObservation[], previous: RouteBudgets, at: Date): RouteBudgets {
   const routes: Record<string, RouteBudget> = {};
-  for (const [route, seen] of [...byRoute(observations)].sort(([a], [b]) => a.localeCompare(b))) {
-    routes[route] = { ms: Number(medianMs(seen.ms).toFixed(1)), bytes: maxBytes(seen.bytes) };
+  const measured = byRoute(observations);
+  const names = [...new Set([...Object.keys(previous.routes), ...measured.keys()])].sort((a, b) => a.localeCompare(b));
+  for (const route of names) {
+    const seen = measured.get(route);
+    // SAFETY: `names` is drawn from the two maps below, so a route absent from `measured`
+    // came from `previous.routes` and is a key of it.
+    routes[route] = seen
+      ? { ms: Number(medianMs(seen.ms).toFixed(1)), bytes: maxBytes(seen.bytes) }
+      : previous.routes[route]!;
   }
   return {
     recordedAt: at.toISOString(),

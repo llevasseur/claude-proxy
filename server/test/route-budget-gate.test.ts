@@ -4,6 +4,7 @@ import { resolveLogDir } from '../src/logs.js';
 import {
   BUDGET_FILE,
   budgetsRecording,
+  carriedRoutes,
   checkBudgets,
   readRouteBudgets,
   recordBudgets,
@@ -49,12 +50,19 @@ if (budgetsRecording()) {
         observations.length,
         `no served observations in ${LOG_DIR} — start the server, exercise the routes, then record`,
       ).toBeGreaterThan(0);
+      const carried = carriedRoutes(observations, budgets);
       const next = recordBudgets(observations, budgets, new Date());
       await writeRouteBudgets(next);
       console.log(
-        `[route-budgets] recorded ${Object.keys(next.routes).length} routes ` +
+        `[route-budgets] recorded ${Object.keys(next.routes).length - carried.length} routes ` +
           `from ${observations.length} observations into ${BUDGET_FILE}`,
       );
+      // Named rather than dropped: this pass saw no traffic for them, so they keep the
+      // numbers they had. A device that exercised only part of the dashboard should not
+      // silently un-budget the rest.
+      if (carried.length) {
+        console.log(`[route-budgets] carried ${carried.length} unexercised routes unchanged: ${carried.join(', ')}`);
+      }
     });
   });
 } else {
