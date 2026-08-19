@@ -235,7 +235,13 @@ and the resume procedure above is the whole recovery.
   finish clean. If it does not, fix that before adding a schema on top of it.
 - `pnpm --filter server test` — must be green *before* you change anything, or
   you cannot tell your own diffs from inherited ones. It no longer replays the
-  two backings against each other, and it records no time or size budgets: the
-  parity gate and `server/test/route-budgets.json` were removed once the
-  substrate became the trusted read path. A route you suspect of diverging is
-  looked at with `SHADOW_DB=1`, which logs a mismatch without failing anything.
+  two backings against each other: the parity gate was removed once the substrate
+  became the trusted read path. A route you suspect of diverging is looked at with
+  `SHADOW_DB=1`, which logs a mismatch without failing anything. It *does* still
+  judge per-route time and size budgets, against `server/test/route-budgets.json`
+  — but by reading `route_observation`, the one table added after this campaign
+  closed (schema v22, written from the served request path), rather than by
+  replaying anything, so the
+  gate costs milliseconds and fails nothing it has no observations for. Re-record
+  with `ROUTE_BUDGETS=record`; a route the pass saw no traffic for keeps the
+  numbers it already had.
