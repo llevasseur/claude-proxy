@@ -264,10 +264,10 @@ export function carriedRoutes(observations: RouteObservation[], previous: RouteB
  *
  * **A route the pass saw no traffic for keeps the numbers it already had.** Rebuilding the
  * map from the observations alone would drop it, and a dropped route reads as *unbudgeted*,
- * which is reported and never failed — so recording on a device that happened to exercise
- * only the usage pages would quietly un-budget everything else, which is precisely what
- * {@link unknownBudgetRoutes} exists to stop a rename doing. Dropping a route is a decision,
- * and this pass only re-measures; use {@link carriedRoutes} to report which ones it carried.
+ * which is reported and never failed — so recording on a device that exercised only the
+ * usage pages would quietly un-budget everything else, which is what
+ * {@link unknownBudgetRoutes} exists to stop a rename doing. {@link carriedRoutes} names
+ * the ones carried.
  */
 export function recordBudgets(observations: RouteObservation[], previous: RouteBudgets, at: Date): RouteBudgets {
   const routes: Record<string, RouteBudget> = {};
@@ -275,8 +275,8 @@ export function recordBudgets(observations: RouteObservation[], previous: RouteB
   const names = [...new Set([...Object.keys(previous.routes), ...measured.keys()])].sort((a, b) => a.localeCompare(b));
   for (const route of names) {
     const seen = measured.get(route);
-    // SAFETY: `names` is drawn from the two maps below, so a route absent from `measured`
-    // came from `previous.routes` and is a key of it.
+    // SAFETY: `names` is the union of both maps' keys, so a route absent from `measured` is
+    // a key of `previous.routes`.
     routes[route] = seen
       ? { ms: Number(medianMs(seen.ms).toFixed(1)), bytes: maxBytes(seen.bytes) }
       : previous.routes[route]!;

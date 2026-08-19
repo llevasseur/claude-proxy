@@ -58,8 +58,7 @@ if (budgetsRecording()) {
           `from ${observations.length} observations into ${BUDGET_FILE}`,
       );
       // Named rather than dropped: this pass saw no traffic for them, so they keep the
-      // numbers they had. A device that exercised only part of the dashboard should not
-      // silently un-budget the rest.
+      // numbers they had.
       if (carried.length) {
         console.log(`[route-budgets] carried ${carried.length} unexercised routes unchanged: ${carried.join(', ')}`);
       }

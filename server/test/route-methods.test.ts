@@ -88,8 +88,8 @@ async function waitForListening(deadlineMs = 30_000): Promise<void> {
 
 beforeAll(async () => {
   logDir = await mkdtemp(path.join(tmpdir(), 'route-methods-'));
-  // Created here rather than left to the server's ingest, because the observation store
-  // deliberately never creates a substrate — it only writes to one that already exists.
+  // Created here rather than left to the server's ingest: the observation store never
+  // creates a substrate, it only writes to one that already exists.
   openDb(logDir).close();
   // One archived request on a long-closed day, written **before** the server starts so
   // its ingest picks it up: the cache-control assertions below need a settled day the
@@ -581,8 +581,8 @@ describe('what a served response records', () => {
 
     expect((await raw('/api/health', { 'if-none-match': etag })).status).toBe(304);
 
-    // Long enough that a recorded 304 would have landed: the insert is synchronous inside
-    // the `finish` handler the response before it already demonstrated.
+    // Long enough that a recorded 304 would have landed — the response before it settled
+    // well inside this.
     await new Promise((r) => setTimeout(r, 300));
     expect(rows('/api/health')).toBe(before);
   });

@@ -135,10 +135,9 @@ describe('per-route time budgets', () => {
   });
 
   it('keeps a budget for a route this pass saw no traffic for, rather than dropping it', () => {
-    // The un-budgeting `unknownBudgetRoutes` guards against, arriving through the other
-    // door: record on a device that only exercised the usage pages and every other route
-    // would vanish from the fixture, then read as merely unbudgeted — reported, never
-    // failed. `/api/sessions/graph/nodes` is the 3.6MB route the size half exists for.
+    // The un-budgeting `unknownBudgetRoutes` guards against, through the other door: drop
+    // an unexercised route and it reads as merely unbudgeted — reported, never failed.
+    // `/api/sessions/graph/nodes` is the 3.6MB route the size half exists for.
     const previous: RouteBudgets = {
       ...BUDGETS,
       routes: { ...BUDGETS.routes, '/api/sessions/graph/nodes': { ms: 120, bytes: 3.6 * MB } },

@@ -98,8 +98,7 @@ const sincePrune = new Map<string, number>();
  * in-flight request the whole time it lasts. A long timeout would trade a stalled
  * event loop for a sample the gate does not need: it judges a median over
  * hundreds, and losing the handful that collide with an ingest pass changes no
- * verdict. {@link OBSERVATIONS_PER_ROUTE} is what the numbers rest on, not any
- * single insert.
+ * verdict.
  */
 function handleFor(logDir: string): DatabaseSync | null {
   const held = handles.get(logDir);
