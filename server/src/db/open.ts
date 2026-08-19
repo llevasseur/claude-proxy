@@ -35,7 +35,7 @@ export function resolveDbPath(logDir: string): string {
  * Schema version, tracked in `PRAGMA user_version`. Bump it and add a migration
  * step below when the shape changes, so an existing file survives a `git pull`.
  */
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 /**
  * Slice 1 — audit rows only. The `.md` and `.request.txt` bodies stay on disk;
@@ -811,6 +811,43 @@ CREATE INDEX IF NOT EXISTS request_window_covering_idx ON request(
 );
 `;
 
+/**
+ * What each served response cost, so a per-route budget can be judged against
+ * real traffic rather than a replay.
+ *
+ * `server/test/parity.test.ts` used to answer this by replaying every wired
+ * route through both backings, which cost twenty minutes and needed a real
+ * `logs/archive` to replay against. This table is the same question asked of the
+ * traffic that already happened: `server/src/server.ts` appends one row per 200
+ * response, and the budget gate reads the rows back in milliseconds.
+ *
+ * `duration_ms` is an integer because it is judged against a recorded median
+ * with x3 headroom and a 50ms floor — a fractional millisecond cannot move that
+ * verdict, and rounding keeps a row four small integers wide. `bytes` is
+ * `Buffer.byteLength` of the body the handler already serialized, never
+ * `String.length`: this corpus is transcript prose, and UTF-16 code units are
+ * not bytes.
+ *
+ * Rows are **disposable**, like everything else here — losing them costs the
+ * next gate run its observations, which it reports rather than fails. Retention
+ * is a per-route cap applied by `route-observation-store.ts`, so a long-lived
+ * server cannot grow this table without bound.
+ *
+ * The index leads with `route` and carries `id` descending, because the only
+ * read is "the newest rows for each route" — the cap's own prune and the gate.
+ */
+const SCHEMA_V22 = `
+CREATE TABLE IF NOT EXISTS route_observation (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  route       TEXT NOT NULL,
+  observed_at TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL,
+  bytes       INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS route_observation_route_idx ON route_observation(route, id DESC);
+`;
+
 const SCHEMA_V4 = `
 DROP TABLE IF EXISTS command_run_pattern;
 DROP TABLE IF EXISTS command_run_step;
@@ -911,6 +948,19 @@ export function openDb(logDir: string): DatabaseSync {
   return db;
 }
 
+/**
+ * Open the substrate for `logDir` **read-only**, applying no migration.
+ *
+ * For a reader that must not change what it is looking at — the route budget gate reads the
+ * observation table from the real log directory, and a test has no business migrating a
+ * developer's database or creating one where there was none. A table the reader's schema
+ * step has not reached yet simply does not exist, which every caller here already treats as
+ * "nothing recorded".
+ */
+export function openDbReadOnly(logDir: string): DatabaseSync {
+  return new sqlite.DatabaseSync(resolveDbPath(logDir), { readOnly: true });
+}
+
 /** Apply any schema steps this file is newer than, then record the new version. */
 function migrate(db: DatabaseSync): void {
   // SAFETY: `PRAGMA user_version` answers a single row whose single column SQLite
@@ -940,6 +990,7 @@ function migrate(db: DatabaseSync): void {
   if (from < 19) db.exec(SCHEMA_V19);
   if (from < 20) db.exec(SCHEMA_V20);
   if (from < 21) db.exec(SCHEMA_V21);
+  if (from < 22) db.exec(SCHEMA_V22);
 
   // `PRAGMA user_version` takes no bind parameters, hence the interpolation.
   db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);

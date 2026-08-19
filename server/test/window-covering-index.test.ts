@@ -105,8 +105,11 @@ describe('the window read is answered from a covering index', () => {
     await rm(logDir, { recursive: true, force: true });
   });
 
-  it('stamps v21 and creates the index', () => {
-    expect(SCHEMA_VERSION).toBe(21);
+  it('stamps the current schema version and creates the index', () => {
+    // The index arrived in v21 and every version since carries it, so the bar is
+    // "at least v21" rather than "exactly v21" — pinning the literal made every
+    // later bump fail here for no reason. v22 added `route_observation`.
+    expect(SCHEMA_VERSION).toBeGreaterThanOrEqual(21);
     // SAFETY: `PRAGMA user_version` answers one row whose one column is named
     // `user_version`.
     expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(SCHEMA_VERSION);

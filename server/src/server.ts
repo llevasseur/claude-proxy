@@ -111,6 +111,7 @@ import { snapshotChatStream, subscribeChatStream } from './chat-stream.js';
 import { type ReconcileResult, reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
 import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.js';
 import { resolveDbPath } from './db/open.js';
+import { recordRouteObservation } from './db/route-observation-store.js';
 import {
   dbReadsEnabled,
   readSource,
@@ -387,6 +388,42 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  */
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
+/**
+ * The uncompressed body size each response wrote, for the observation taken once it has
+ * been served.
+ *
+ * A `WeakMap` rather than a field on the response: it needs no type surgery on
+ * `http.ServerResponse` and it cannot keep a finished response alive. Set only where a
+ * body is actually written, which is why a 304 — the ETag path, no body at all — records
+ * nothing, and why an SSE subscription records nothing either: those write their frames
+ * directly and never reach {@link send}.
+ */
+const servedBytes = new WeakMap<http.ServerResponse, number>();
+
+/**
+ * Record what one served response cost: the route it answered, how long it took, and how
+ * large the answer was.
+ *
+ * This is the whole measurement side of the route budgets, and it replaces a replay
+ * harness rather than reviving one. `server/test/parity.test.ts` used to reconstruct these
+ * numbers by re-running every wired route against the whole archive, which is why it took
+ * twenty minutes; the server has both numbers in hand for free every time it answers.
+ *
+ * **Both readings are taken after the response is served**, from the `finish` event. The
+ * duration would otherwise have to stop before the size was known, or include the weighing
+ * of the very answer it is judging — and `send` already had the byte length in hand, so
+ * nothing here serializes, diffs, or re-reads anything.
+ *
+ * Only a **200 that wrote a body** is recorded. A 304 measures the ETag comparison rather
+ * than the work, and a 404, 405 or 500 measures a rejection; folding either into a route's
+ * median would make the gate looser exactly where the route got slower.
+ */
+function observeServedRoute(route: string, res: http.ServerResponse, startedAt: number): void {
+  const bytes = servedBytes.get(res);
+  if (bytes === undefined || res.statusCode !== 200) return;
+  recordRouteObservation(LOG_DIR, { route, durationMs: performance.now() - startedAt, bytes });
+}
+
 function send<T>(res: http.ServerResponse, status: number, body: T, cors: HeaderMap = CORS, immutable = false): void {
   const req = res.req;
   const json = Buffer.from(JSON.stringify(body), 'utf8');
@@ -411,6 +448,10 @@ function send<T>(res: http.ServerResponse, status: number, body: T, cors: Header
   }
 
   const write = (payload: Buffer, encoding?: string): void => {
+    // The observation's byte reading, taken from the buffer `send` already built rather
+    // than by serializing anything a second time. Stashed rather than recorded, so the
+    // whole measurement is read after the response is served — see `observeServedRoute`.
+    servedBytes.set(res, json.length);
     if (encoding) headers['content-encoding'] = encoding;
     headers['content-length'] = String(payload.length);
     res.writeHead(status, headers);
@@ -1887,6 +1928,8 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
 const narrowCors = (route: ApiRoute | undefined): boolean => route?.cors === 'origin';
 
 const server = http.createServer(async (req, res) => {
+  // Before anything else this request does, so a route's duration covers the whole answer.
+  const startedAt = performance.now();
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   // One lookup answers all three gates below — CORS, methods, and which handler runs.
   const route = apiRoute(url.pathname);
@@ -1911,6 +1954,10 @@ const server = http.createServer(async (req, res) => {
     send(res, 404, { error: `not found: ${url.pathname}` });
     return;
   }
+
+  // Armed only for a declared route, and only once every earlier gate has passed: an
+  // OPTIONS preflight, a 405 and a 404 all answered above and none of them is route work.
+  res.on('finish', () => observeServedRoute(route.path, res, startedAt));
 
   try {
     await HANDLERS[route.path]({ req, res, url, date: parseDate(url.searchParams.get('date')) });
