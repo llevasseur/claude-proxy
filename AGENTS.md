@@ -190,6 +190,20 @@ them are one of the shapes below. Each has a working form; use it the first time
   on the first call for installs, full test runs, and `my-command-tools verify`.
   Never run a dev server or watcher in the foreground; start it in background mode
   with a log file and wait on the log.
+- **Piping a workspace script's `--json` into a parser needs `pnpm --silent`.** The
+  form that parses is `pnpm --silent --filter server suggestions list -r 9 --json`,
+  with `--silent` **before** `--filter`. pnpm's script runner wraps the script's own
+  output in lines of its own — a dimmed `$ tsx src/suggestions-cli.ts …` echo, and a
+  `Scope: … workspace projects` banner when the filter matches more than one package
+  — and which stream they land on is pnpm's choice, not the script's: current pnpm
+  puts them on stderr, older ones put them on stdout. So `… --json | jq` and
+  `… --json 2>&1 | node -e …` both fail with `SyntaxError: Unexpected token 'S',
+  "Scope: all"…`, which is a recorded failure rather than a hypothetical one. Do
+  **not** work around it by stripping the banner (`sed -n '/^{/,$p'`) — `--silent`
+  empties both streams of pnpm's own output and suppresses nothing of the script's:
+  its stdout, its stderr and its exit code are untouched, so a usage error still
+  reaches you with its exit 1. The same applies to every `pnpm --filter … --json`
+  invocation here, `ideas` included.
 - **`my-command-tools pr` requires both `--title` and `--body`.** Omitting either
   exits 2 with `{"error": "--title is required"}` — a usage error, not a transient
   failure, so re-running the same command fails identically. The form is

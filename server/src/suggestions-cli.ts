@@ -6,7 +6,7 @@
  *   pnpm --filter server suggestions list                       # every bucket
  *   pnpm --filter server suggestions list -r 2-9                # buckets 2 through 9
  *   pnpm --filter server suggestions list -r 2,3,9 -s pending   # only what's pending
- *   pnpm --filter server suggestions list -r 9 --json           # machine-readable
+ *   pnpm --silent --filter server suggestions list -r 9 --json  # machine-readable
  *   pnpm --filter server suggestions list -r 9 -s pending -d    # with evidence + sources
  *   pnpm --filter server suggestions list --recurrence historical  # the windows a fix predates
  *   pnpm --filter server suggestions mark -r 9 -i serial-discovery -s done -n "PR #71"
@@ -27,6 +27,16 @@
  * hypothetical one: the payload's array is `rows`, and four separate windows recorded
  * sessions crashing hand-written `jq`/`python` parsers against a guessed `.suggestions`
  * — one of them four consecutive times before inspecting the keys.
+ *
+ * **The `--json` examples above pass pnpm's `--silent`, and that is the invocation to
+ * copy.** pnpm's script runner wraps this CLI's output in its own lines — a dimmed
+ * `$ tsx src/suggestions-cli.ts …` echo, and a `Scope: … workspace projects` banner
+ * when the filter matches more than one package — and *which stream those land on is
+ * pnpm's business, not ours*: current pnpm uses stderr, older pnpm used stdout. So the
+ * documented invocation piped into a parser is a recorded failure too, twice in one
+ * session. `--silent` empties **both** streams of pnpm's output while suppressing
+ * nothing of this CLI's, so `[suggestions] missing value for --range` and its exit 1
+ * still reach the caller. Pinned by `server/test/suggestions-cli-json.test.ts`.
  *
  * **`list` hides `historical` rows by default** — windows a rule's `done` postdates,
  * with nothing left to act on. They are counted in the header and reachable with
@@ -83,6 +93,14 @@ const USAGE = `usage:
     judge        { meta, rows, buckets }
     buckets      { meta, buckets }
     defects      { meta, defects, stale }   defects = live, stale = already fixed
+
+  Run it through pnpm's --silent when you are going to parse it:
+    pnpm --silent --filter server suggestions list -r 9 -s pending -d --json
+  Without --silent pnpm wraps this output in its own lines — a '$ tsx …' echo, and
+  a 'Scope: … workspace projects' banner — and which stream those land on varies by
+  pnpm version, so piping into jq/python fails on "Unexpected token 'S'". --silent
+  empties both streams of pnpm's output and leaves this CLI's stdout, stderr and
+  exit code exactly as they are.
 
   <spec>   one bucket (9), a list (2,3,9), a span (2-9), or a mix (2-4,9)
   <flags>  comma-separated: pending, done, skipped, dismissed

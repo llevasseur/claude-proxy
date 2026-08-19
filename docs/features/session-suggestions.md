@@ -144,8 +144,13 @@ or not anyone acted on it. A flag per suggestion records that someone did.
   they are computed per request rather than per bucket, so the store has no row for them.
 - **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>]
   [--recurrence <states>] [-d]` and `pnpm --filter server suggestions mark -r <bucket> -i <ids>
-  -s <flag> [-n <note>]`, both with `--json` for the API's own shape. The CLI reads the log
-  directory directly, so it needs no running server. **`list` hides `historical` rows by default**,
+  -s <flag> [-n <note>]`, both with `--json` for the API's own shape. **Add pnpm's `--silent`
+  before `--filter` whenever that JSON is going into a parser** — pnpm's script runner otherwise
+  wraps the output in a `$ tsx …` echo and a `Scope: …` banner, on whichever stream that version
+  of pnpm favours, and a pipe into `jq` fails on `Unexpected token 'S'`. `--silent` empties both
+  streams of pnpm's own output and leaves the CLI's stdout, stderr and exit code untouched;
+  `server/test/suggestions-cli-json.test.ts` drives that invocation and parses its stdout. The CLI
+  reads the log directory directly, so it needs no running server. **`list` hides `historical` rows by default**,
   since a window that predates its rule's `done` can no longer be acted on — the count of what was
   hidden is printed, and `--recurrence historical` brings them back. Regressed rows are marked
   `⚠ REGRESSED since <date>` and totalled above the table.
