@@ -69,8 +69,7 @@ if (budgetsRecording()) {
     it('answers every budgeted route inside its recorded time and size allowance', () => {
       const report = checkBudgets(observations, budgets);
 
-      // Reported, never failed — see the module comment for why each of these is a
-      // legitimate state rather than a regression.
+      // Reported, never failed — see the module comment.
       if (report.unobserved.length) {
         console.log(`[route-budgets] no observations for ${report.unobserved.length}: ${report.unobserved.join(', ')}`);
       }

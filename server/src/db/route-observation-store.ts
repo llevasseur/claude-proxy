@@ -11,11 +11,10 @@ import { openDb, openDbReadOnly, resolveDbPath } from './open.js';
  * the server already builds each answer and already knows how long it took, so
  * the measurement is a by-product of traffic that happened anyway.
  *
- * Two consequences shape everything below. The write sits on the request path,
- * so it must cost an insert of four small integers and nothing else — no
- * serialization, no comparison, no second pass. And the rows are disposable: a
- * missing database, a locked one, or a failed insert all read as "no
- * observation", which the gate reports rather than fails.
+ * Two consequences shape everything below. The write sits on the request path, so
+ * it costs an insert of four small integers and nothing else. And the rows are
+ * disposable: a missing database, a locked one, or a failed insert all read as
+ * "no observation", which the gate reports rather than fails.
  */
 
 /** One served response, as the budget gate judges it. */

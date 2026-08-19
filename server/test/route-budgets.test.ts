@@ -99,12 +99,10 @@ describe('per-route time budgets', () => {
   });
 
   it('reports a budgeted route with no observations rather than failing it', () => {
-    // The clean-clone and empty-database case: nothing was served, so nothing is judged.
     const empty = checkBudgets([], BUDGETS);
     expect(empty.breaches).toEqual([]);
     expect(empty.checks).toEqual([]);
     expect(empty.unobserved).toEqual(['/api/usage']);
-    // A route with traffic is not reported as unobserved.
     expect(checkBudgets([seen('/api/usage', 10)], BUDGETS).unobserved).toEqual([]);
   });
 

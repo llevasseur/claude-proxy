@@ -392,22 +392,15 @@ const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
  * The uncompressed body size each response wrote, for the observation taken once it has
  * been served.
  *
- * A `WeakMap` rather than a field on the response: it needs no type surgery on
- * `http.ServerResponse` and it cannot keep a finished response alive. Set only where a
- * body is actually written, which is why a 304 — the ETag path, no body at all — records
- * nothing, and why an SSE subscription records nothing either: those write their frames
- * directly and never reach {@link send}.
+ * Set only where a body is actually written, so a 304 — the ETag path, no body at all —
+ * records nothing, and neither does an SSE subscription: those write their frames directly
+ * and never reach {@link send}.
  */
 const servedBytes = new WeakMap<http.ServerResponse, number>();
 
 /**
  * Record what one served response cost: the route it answered, how long it took, and how
  * large the answer was.
- *
- * This is the whole measurement side of the route budgets, and it replaces a replay
- * harness rather than reviving one. `server/test/parity.test.ts` used to reconstruct these
- * numbers by re-running every wired route against the whole archive, which is why it took
- * twenty minutes; the server has both numbers in hand for free every time it answers.
  *
  * **Both readings are taken after the response is served**, from the `finish` event. The
  * duration would otherwise have to stop before the size was known, or include the weighing
@@ -448,9 +441,8 @@ function send<T>(res: http.ServerResponse, status: number, body: T, cors: Header
   }
 
   const write = (payload: Buffer, encoding?: string): void => {
-    // The observation's byte reading, taken from the buffer `send` already built rather
-    // than by serializing anything a second time. Stashed rather than recorded, so the
-    // whole measurement is read after the response is served — see `observeServedRoute`.
+    // The observation's byte reading, off the buffer already built — never a second
+    // serialization. Read back in `observeServedRoute` once the response has gone out.
     servedBytes.set(res, json.length);
     if (encoding) headers['content-encoding'] = encoding;
     headers['content-length'] = String(payload.length);
@@ -1928,7 +1920,7 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
 const narrowCors = (route: ApiRoute | undefined): boolean => route?.cors === 'origin';
 
 const server = http.createServer(async (req, res) => {
-  // Before anything else this request does, so a route's duration covers the whole answer.
+  // Before anything else, so a route's duration covers the whole answer.
   const startedAt = performance.now();
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   // One lookup answers all three gates below — CORS, methods, and which handler runs.
@@ -1955,8 +1947,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Armed only for a declared route, and only once every earlier gate has passed: an
-  // OPTIONS preflight, a 405 and a 404 all answered above and none of them is route work.
+  // Declared routes only, and past every earlier gate: the OPTIONS preflight, the 405 and
+  // the 404 all answered above, and none of them is route work.
   res.on('finish', () => observeServedRoute(route.path, res, startedAt));
 
   try {

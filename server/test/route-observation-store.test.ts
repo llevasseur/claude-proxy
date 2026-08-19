@@ -94,7 +94,6 @@ describe('the route observation store', () => {
     pruneRouteObservations(dir);
 
     const kept = readRouteObservations(dir);
-    // A quiet route's single observation is not evicted by a busy one's traffic.
     expect(kept.filter((o) => o.route === '/api/health')).toHaveLength(1);
     expect(kept.filter((o) => o.route === '/api/usage')).toHaveLength(OBSERVATIONS_PER_ROUTE);
   });
