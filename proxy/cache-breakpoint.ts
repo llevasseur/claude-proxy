@@ -73,26 +73,38 @@ const WARM_LIMIT = 500;
  * Bytes per token across a request's system+tools prefix, measured rather than
  * assumed.
  *
- * Measured across 29 cold-start requests in the log window — `cacheRead` 0 and
- * `input` under 50, so `totalBytes / cacheCreation` is the ratio outright — a whole
- * request runs 2.75 bytes per token (p10 2.68, p90 2.81). Dense JSON tool schemas
- * tokenize worse still, so the prefix's own ratio sits below that; the one directly
- * observed prefix-only read came in at 2.52. The `bytes / 4` display estimate
- * understated the prefix by ~45% and marked a session warm on a read of nothing but
- * its own system blocks, turning gate 5 into "has this session ever had a cache hit".
+ * Measured across 530 cold-start requests in the log window — `cacheRead` 0 and
+ * `input` under 50, so `totalBytes / cacheCreation` is the ratio outright — out of
+ * 50,122 logged requests: median 2.78 bytes per token, p10 2.71, p90 2.87, densest
+ * 2.544. The ratio is flat across the model line (opus-4-8 2.69, sonnet-5 2.80,
+ * fable-5 2.83, opus-5 2.85). The `bytes / 4` display estimate that preceded this
+ * constant understated the prefix by ~44% and marked a session warm on a read of
+ * nothing but its own system blocks, turning gate 5 into "has this session ever had
+ * a cache hit".
  *
- * The denominator is the densest figure observed rather than the mean, because the
- * directions are not symmetric: understating the prefix marks a cold session warm
- * and buys a 2x cache write with no read to recover it, while overstating it only
- * declines an injection that might have paid. Gate 5 rounds toward declining.
+ * **The prefix is not measurably denser than the request it opens.** An earlier
+ * reading of 29 requests inferred that dense JSON tool schemas must tokenize worse,
+ * resting on one directly observed prefix-only read at 2.52. The corpus holds no
+ * cold start whose messages are under 5% of the body, so the closest available
+ * sample is the 92 whose messages are under 20%: those run a mean of 2.77 and a
+ * densest of 2.635 — the corpus figure, not below it. This denominator is therefore
+ * justified by the margin it keeps, not by a prefix ratio of its own.
+ *
+ * The denominator sits below the densest figure observed rather than at the mean,
+ * because the directions are not symmetric: understating the prefix marks a cold
+ * session warm and buys a 2x cache write with no read to recover it, while
+ * overstating it only declines an injection that might have paid. Gate 5 rounds
+ * toward declining. 2.5 clears the densest prefix-dominated request by 5.4% and the
+ * densest request of any shape by 1.8% — thin, but on the declining side of both,
+ * which is why the figure is unchanged.
  */
 const PREFIX_BYTES_PER_TOKEN = 2.5;
 
 /**
  * The system+tools prefix in tokens — the figure `noteCacheRead` compares a cache
- * read against. Separate from the proxy's `estTokens`, which stays at `bytes / 4`
- * for the audit report it also feeds; a threshold in a cost decision needs the
- * measured ratio, a display estimate does not.
+ * read against. Separate from the proxy's `estTokens`, which reads the same corpus
+ * but takes its median (2.78) where this takes a floor; a threshold inside a cost
+ * decision rounds toward declining, a display estimate aims at the middle.
  */
 export function estPrefixTokens(bytes: number): number {
   return Math.round(bytes / PREFIX_BYTES_PER_TOKEN);
