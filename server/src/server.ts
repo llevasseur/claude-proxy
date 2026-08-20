@@ -50,6 +50,7 @@ import {
   buildContextDetail,
   buildContextMessage,
   buildContextThread,
+  buildContextThreadScoped,
   buildContextTool,
   buildFilters,
   buildHooksPlugins,
@@ -1236,6 +1237,23 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     const thread = await buildContextThread(LOG_DIR, threadId, days, now, readSource());
     send(res, 200, thread);
     shadow('/api/context/thread', thread, (source) => buildContextThread(LOG_DIR, threadId, days, now, source));
+  },
+  // The same thread, pushed while it is still adding requests. A missing `?thread=` is a
+  // plain 400 rather than an SSE frame — `serveSse` builds its opening snapshot before it
+  // writes the stream's headers. `new Date()` inside the closure rather than resolved
+  // ahead of it, so a subscription held past midnight follows the window forward.
+  '/api/context/thread/stream': async ({ req, res, url }) => {
+    const threadId = url.searchParams.get('thread');
+    if (!threadId) {
+      send(res, 400, { error: 'missing ?thread=' });
+      return;
+    }
+    const days = await parseDays(url.searchParams.get('days'));
+    await serveSse(
+      req,
+      res,
+      captureStream((scope) => buildContextThreadScoped(scope, LOG_DIR, threadId, days, new Date(), readSource())),
+    );
   },
   '/api/context/detail': async ({ res, url }) => {
     const file = url.searchParams.get('file');

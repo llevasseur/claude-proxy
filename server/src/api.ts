@@ -1596,6 +1596,41 @@ export async function buildContextThread(
 }
 
 /**
+ * The reporting days a {@link buildContextThread} response reads: its whole `?days=`
+ * window, since a thread's requests are spread across it rather than pinned to one day.
+ *
+ * Never the empty set that would rule every tick out — `parseDays` resolves an all-time
+ * window to a concrete count before a route sees it.
+ */
+export function contextThreadDays(days: number, now: Date): ReadonlySet<string> {
+  return new Set(windowDays({ sinceDays: days }, now));
+}
+
+/**
+ * {@link buildContextThread} under a rebuild scope — the same skip
+ * {@link buildContextDayScoped} makes, over {@link contextThreadDays}.
+ *
+ * **The day scope is the cheap half, not the whole of the scoping.** A capture for an
+ * unrelated thread lands on the same reporting day as this thread's, and no test over days
+ * separates them: a file name carries the proxy's UTC timestamp, while the thread id lives
+ * inside the sidecar. The exact test is therefore the read — {@link readThreadWindow} asks
+ * the backing for *this thread's* rows off `request_thread_idx`, one indexed read, so an
+ * unrelated capture rebuilds byte-identically and the SSE writer's dedupe drops the frame.
+ * What the scope buys is the tick ruled out with no read at all: one outside the window.
+ */
+export async function buildContextThreadScoped(
+  scope: RebuildScope,
+  logDir: string,
+  threadId: string,
+  days: number,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+): Promise<ContextThreadResponse | null> {
+  if (!rebuildNeeded(scope, contextThreadDays(days, now))) return null;
+  return buildContextThread(logDir, threadId, days, now, source);
+}
+
+/**
  * What every body-reading drill-down answers when retention has evicted the body
  * it would have parsed. A normal terminal state, not an error: the sidecar is
  * kept, so only the verbatim text is gone.

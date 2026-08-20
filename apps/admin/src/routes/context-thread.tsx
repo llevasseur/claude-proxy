@@ -1,15 +1,17 @@
-import type { ContextEntry } from '@claude-proxy/core';
+import { apiRouteUrl, type ContextEntry } from '@claude-proxy/core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams, useSearch } from '@tanstack/react-router';
 import { type CSSProperties, useMemo } from 'react';
-import { getContextThread } from '../api';
+import { type ContextThreadResponse, getContextThread, getSessionsLiveness } from '../api';
 import { Breadcrumbs } from '../components/Breadcrumbs';
+import { LiveIndicator } from '../components/LiveIndicator';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components/Skeleton';
 import { StatCard } from '../components/StatCard';
 import { fmtBytes, fmtInt, fmtLocalTs, LOCAL_TZ_ABBR } from '../format';
 import type { JsonRecord } from '../json';
 import { rootRoute } from '../route-root';
+import { useLiveQuery } from '../useLiveQuery';
 import { useRestoredScroll } from '../useRestoredScroll';
 import { contextDays } from './context';
 
@@ -34,13 +36,57 @@ const COLUMN = {
   bar: { minWidth: 90 },
 } as const satisfies Record<string, CSSProperties>;
 
+/** How long a subscription outlives the thread it follows: the verdicts' refetch window. */
+const LIVENESS_POLL_MS = 15_000;
+
+/**
+ * Whether this thread can still add requests, from `/api/sessions/liveness`.
+ *
+ * `undefined` until the verdicts land, so neither branch is taken on a guess. **Absent
+ * from the list counts as finished**, not as unknown: the list is built from the
+ * transcripts under `logs/sessions/`, which holds roughly today, so every older thread is
+ * absent. `quiet` and `unknown` both subscribe — neither says the conversation ended.
+ *
+ * Polling stops on `false`, which is terminal: a finished transcript does not resume.
+ */
+function useThreadRuns(threadId: string): boolean | undefined {
+  const query = useQuery({
+    queryKey: ['sessions-liveness'],
+    queryFn: getSessionsLiveness,
+    refetchInterval: (q) => {
+      const state = q.state.data?.threads.find((t) => t.threadId === threadId)?.liveness.state;
+      return state === undefined || state === 'finished' ? false : LIVENESS_POLL_MS;
+    },
+  });
+  if (!query.data) return undefined;
+  const state = query.data.threads.find((t) => t.threadId === threadId)?.liveness.state;
+  return state !== undefined && state !== 'finished';
+}
+
 /** Every request one thread sent; its rows drill into each request's own breakdown. */
 export function ContextThreadPage() {
   const { threadId } = useParams({ from: '/context/thread/$threadId' });
   const { days } = useSearch({ from: '/context/thread/$threadId' });
+
+  // **A running thread is subscribed; a finished one is not**, so a settled transcript
+  // costs no connection. When a thread finishes under a reader this flips and
+  // `useLiveQuery`'s cleanup closes the `EventSource` — the client unsubscribing is what
+  // ends the stream, never the server, which keeps no per-connection state and whose
+  // orderly close `EventSource` could not tell from a drop.
+  const runs = useThreadRuns(threadId);
+  const live = useLiveQuery<ContextThreadResponse>(
+    apiRouteUrl('/api/context/thread/stream', { thread: threadId, days }),
+    ['context-thread', threadId, days],
+    runs === true,
+  );
+
   const query = useQuery({
     queryKey: ['context-thread', threadId, days],
     queryFn: () => getContextThread(threadId, days),
+    // Held for the session while the stream is in charge, and once nothing more can arrive
+    // — a finished thread's requests are an immutable answer. Otherwise the client-wide
+    // window stands, the fallback `useLiveQuery` documents for a stream that never opened.
+    staleTime: runs === false || live === 'live' ? Number.POSITIVE_INFINITY : undefined,
   });
   const data = query.data;
   useRestoredScroll(!!data);
@@ -55,6 +101,9 @@ export function ContextThreadPage() {
       </Breadcrumbs>
       <div className='pagehead'>
         <h1>Thread</h1>
+        {/* Only while there is a subscription to report on: with none, the badge would
+            read "Connecting…" for good. */}
+        {runs === true && <LiveIndicator status={live} />}
       </div>
 
       <QueryState isLoading={query.isLoading} error={query.error} skeleton={<ThreadSkeleton />}>

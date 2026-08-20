@@ -84,6 +84,19 @@ export const API_ROUTES = [
     streamOf: '/api/context/day',
   },
   { path: '/api/context/thread', methods: ['GET'], kind: 'json', cors: 'open', params: ['thread', 'days'] },
+  // One thread's requests, pushed as its captures land. **`thread` is required and `days`
+  // mirrors the JSON route**: the frame replaces that route's answer in the reader's
+  // cache, so it has to be the answer for the same thread over the same window. Whether a
+  // thread is worth subscribing to is not asked here — `/api/sessions/liveness` says that
+  // — and a caller that subscribes to a finished one gets a stream that never pushes.
+  {
+    path: '/api/context/thread/stream',
+    methods: ['GET'],
+    kind: 'sse',
+    cors: 'open',
+    params: ['thread', 'days'],
+    streamOf: '/api/context/thread',
+  },
   { path: '/api/context/detail', methods: ['GET'], kind: 'json', cors: 'open', params: ['file'] },
   { path: '/api/context/message', methods: ['GET'], kind: 'json', cors: 'open', params: ['file', 'index'] },
   { path: '/api/context/tool', methods: ['GET'], kind: 'json', cors: 'open', params: ['file', 'index'] },

@@ -55,6 +55,19 @@ describe('API_ROUTES', () => {
     expect(apiRouteUrl('/api/context/day/stream')).toBe('/api/context/day/stream');
   });
 
+  it('makes the context thread stream name the same thread and window as the route it streams', () => {
+    const stream: ApiRouteDeclaration | undefined = apiRoute('/api/context/thread/stream');
+    expect(stream?.kind).toBe('sse');
+    expect(stream?.streamOf).toBe('/api/context/thread');
+    // Both parameters, in the JSON route's order: a stream that could not name the thread
+    // would have no scope, and one that could not name the window would push a different
+    // answer into the cache entry the frame replaces.
+    expect(stream?.params).toEqual(apiRoute('/api/context/thread')?.params);
+    expect(apiRouteUrl('/api/context/thread/stream', { thread: 'a1b2c3d4e5f60718', days: 14 })).toBe(
+      '/api/context/thread/stream?thread=a1b2c3d4e5f60718&days=14',
+    );
+  });
+
   it('answers a path lookup, and nothing for one it does not declare', () => {
     expect(apiRoute('/api/health')?.kind).toBe('json');
     expect(apiRoute('/api/nope')).toBeUndefined();
