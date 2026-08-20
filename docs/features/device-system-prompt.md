@@ -37,8 +37,8 @@ Two things follow from that:
   risk from the dashboard's other write ([deleting a job](background-jobs-browser.md), which
   removes machine-generated scratch). The write path is built accordingly.
 
-The token estimate is the point of the size tiles: at the repo's `bytes / 4` estimate a 12 KB
-instruction file is roughly 3000 tokens on every request of every session.
+The token estimate is the point of the size tiles: at the repo's measured 2.78 bytes per token a
+12 KB instruction file is roughly 4400 tokens on every request of every session.
 
 ## Behavior
 
@@ -201,10 +201,11 @@ There is nothing for the DB to hold, so there is nothing to compare.
   per-project memory the [project memory browser](project-memory-browser.md) shows are the other
   two layers that reach the system prompt, and neither is editable here. The device file was taken
   first because it is the one that costs every session everywhere.
-- **The token estimate is `bytes / 4`,** the repo-wide approximation from
-  `packages/core/src/context.ts`. It is right to within a fifth or so for prose and wrong for
-  dense punctuation; a real tokenizer would be exact but is a dependency this package does not
-  have.
+- **The token estimate is `bytes / 2.78`,** the repo-wide approximation from
+  `packages/core/src/context.ts`, where 2.78 is the median bytes-per-token of 530 cold-start
+  requests in the log window rather than a guess. It still blends prose against dense
+  punctuation, so a single file can sit either side of it; a real tokenizer would be exact but is
+  a dependency this package does not have.
 ## Related
 
 - [Admin dashboard for claude-proxy usage](admin-dashboard-for-claude-proxy-usage.md) — the
