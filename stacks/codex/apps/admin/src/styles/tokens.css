@@ -19,6 +19,7 @@
    * read as instrumentation rather than glow. */
     --signal: #4cc6b0; /* flow, links, real input */
     --signal-dim: #2f8577;
+    --brand: #f4c542; /* codex proxy mark */
     --good: #71d195; /* output / positive delta */
     --amber: #e8ab5e; /* cost / cache / caution */
     --coral: #f0788c; /* regression / high severity */
@@ -217,6 +218,7 @@
 
     --signal: #11806c;
     --signal-dim: #6faa9f;
+    --brand: #b8860b;
     --good: #2f8a52;
     --amber: #9c651a;
     --coral: #c34a5e;

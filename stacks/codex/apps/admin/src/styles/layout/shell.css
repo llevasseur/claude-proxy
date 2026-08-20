@@ -53,12 +53,12 @@
     width: 10px;
     height: 10px;
     border-radius: var(--radius-1);
-    background: var(--signal);
-    box-shadow: 0 0 12px color-mix(in srgb, var(--signal) 45%, transparent);
+    background: var(--brand);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--brand) 45%, transparent);
     flex: none;
   }
   .brand-link:hover .brand-node {
-    box-shadow: 0 0 18px color-mix(in srgb, var(--signal) 60%, transparent);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--brand) 60%, transparent);
   }
   .brand {
     font-weight: 700;
@@ -66,7 +66,7 @@
     letter-spacing: -0.01em;
   }
   .brand-sep {
-    color: var(--signal);
+    color: var(--brand);
   }
 
   /* stations */
