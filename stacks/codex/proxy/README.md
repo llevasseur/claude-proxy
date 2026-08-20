@@ -1,7 +1,7 @@
 # codex-proxy proxy
 
 The Bike proxy forwards arbitrary HTTP traffic to an OpenAI-compatible upstream and records sanitized usage only
-for recognized `POST /v1/responses` exchanges. It runs directly from TypeScript source on Node 22.18 or newer and
+for recognized `POST /v1/responses` and `POST /backend-api/codex/responses` exchanges. It runs directly from TypeScript source on Node 22.18 or newer and
 has no runtime dependencies.
 
 ## Configuration

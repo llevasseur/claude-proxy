@@ -30,6 +30,8 @@ const consoleLogger: ProxyLogger = {
   },
 };
 
+const responsesEndpoints: ReadonlySet<string> = new Set(['/v1/responses', '/backend-api/codex/responses']);
+
 function pathname(requestUrl: string): string {
   return new URL(requestUrl, 'http://proxy.local').pathname;
 }
@@ -72,11 +74,13 @@ function proxyRequest(
   const endpoint = pathname(requestUrl);
   const observesResponses =
     clientRequest.method === 'POST' &&
-    endpoint === '/v1/responses' &&
+    responsesEndpoints.has(endpoint) &&
     contentType(clientRequest).toLowerCase().includes('application/json');
   const requestChunks: Buffer[] = [];
   let requestModel: string | null = null;
   let exchangeComplete = false;
+  let published = false;
+  let publishObservation: (() => void) | null = null;
   const transport = config.upstream.protocol === 'https:' ? httpsRequest : httpRequest;
   const upstreamRequest = transport(
     {
@@ -91,19 +95,23 @@ function proxyRequest(
     (upstreamResponse) => {
       void status.write('ready').catch((error) => safeError(logger, 'status-write-failed', error));
       const responseChunks: Buffer[] = [];
-      const isSse = observesResponses && contentType(upstreamResponse).toLowerCase().includes('text/event-stream');
-      const isJson = observesResponses && contentType(upstreamResponse).toLowerCase().includes('application/json');
+      const upstreamContentType = contentType(upstreamResponse).toLowerCase();
+      const isJson = observesResponses && upstreamContentType.includes('application/json');
+      const isSse =
+        observesResponses &&
+        !isJson &&
+        (upstreamContentType.includes('text/event-stream') || upstreamContentType.length === 0);
       const sseObserver = isSse ? new SseResponseObserver() : null;
 
       upstreamResponse.on('data', (chunk: Buffer) => {
         if (sseObserver) sseObserver.push(chunk);
         if (isJson) responseChunks.push(chunk);
       });
-      upstreamResponse.on('end', () => {
-        exchangeComplete = true;
-        if (!requestModel) return;
+      publishObservation = (): void => {
+        if (published || !requestModel) return;
         const identity = sseObserver?.finish() ?? (isJson ? jsonResponseIdentity(Buffer.concat(responseChunks)) : null);
         if (!identity) return;
+        published = true;
         const sidecar = makeSidecar({
           endpoint,
           responseStatus: upstreamResponse.statusCode ?? 502,
@@ -112,11 +120,15 @@ function proxyRequest(
           recordId: randomUUID(),
           timestamp: new Date().toISOString(),
         });
-        clientResponse.once('finish', () => {
-          void writeSanitizedSidecarAtomically(config.auditDirectory, sidecar)
-            .then((file) => logger.info('audit-written', { file }))
-            .catch((error) => safeError(logger, 'audit-write-failed', error));
-        });
+        void writeSanitizedSidecarAtomically(config.auditDirectory, sidecar)
+          .then((file) => logger.info('audit-written', { file }))
+          .catch((error) => safeError(logger, 'audit-write-failed', error));
+      };
+      upstreamResponse.on('end', () => {
+        exchangeComplete = true;
+        const publish = publishObservation;
+        if (clientResponse.writableFinished) publish?.();
+        else clientResponse.once('finish', () => publish?.());
       });
       upstreamResponse.on('aborted', () => {
         void status.write('upstream-error').catch((error) => safeError(logger, 'status-write-failed', error));
@@ -159,7 +171,9 @@ function proxyRequest(
   });
   clientRequest.on('aborted', () => upstreamRequest.destroy());
   clientResponse.on('close', () => {
-    if (!exchangeComplete && !clientResponse.writableFinished) upstreamRequest.destroy();
+    if (exchangeComplete || clientResponse.writableFinished) return;
+    publishObservation?.();
+    upstreamRequest.destroy();
   });
   clientRequest.pipe(upstreamRequest);
 }

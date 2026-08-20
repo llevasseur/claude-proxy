@@ -35,7 +35,12 @@ afterEach(async () => {
         }),
     ),
   );
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+  // A proxy still draining status or audit writes can recreate the directory mid-removal.
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 })),
+  );
 });
 
 async function temporaryDirectory(): Promise<string> {
@@ -318,6 +323,111 @@ test('records normalized token and cost data for JSON Responses without retainin
     for (const marker of [secret, prompt, output, tool, 'private-query'])
       assert.equal(artifact.includes(marker), false);
   }
+});
+
+test('records the ChatGPT Codex backend responses endpoint', async () => {
+  const directory = await temporaryDirectory();
+  const upstream = createServer((_incoming, response) => {
+    response.sendDate = false;
+    response.writeHead(200, { 'content-type': 'application/json', connection: 'close' });
+    response.end(
+      JSON.stringify({
+        id: 'resp_codex_1',
+        object: 'response',
+        model: 'gpt-5',
+        usage: { input_tokens: 12, output_tokens: 4, total_tokens: 16 },
+      }),
+    );
+  });
+  const upstreamPort = await listen(upstream);
+  const proxy = await fixtureProxy(upstreamPort, directory);
+  const body = Buffer.from(JSON.stringify({ model: 'gpt-5', input: 'private prompt' }));
+  await clientRequest({
+    port: proxy.port,
+    method: 'POST',
+    path: '/backend-api/codex/responses',
+    headers: { 'content-type': 'application/json', 'content-length': String(body.length) },
+    body,
+  });
+  const sidecar = parseSanitizedAuditSidecar(
+    JSON.parse(await readFile(await waitForAudit(join(directory, 'audit')), 'utf8')),
+  );
+  assert.equal(sidecar.endpoint, '/backend-api/codex/responses');
+  assert.equal(sidecar.usage.totalTokens, 16);
+});
+
+test('records an SSE response that arrives without a content type', async () => {
+  const directory = await temporaryDirectory();
+  const upstream = createServer((_incoming, response) => {
+    response.sendDate = false;
+    response.writeHead(200, { connection: 'close' });
+    response.write('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"x"}\n\n');
+    response.end(
+      `event: response.completed\ndata: ${JSON.stringify({
+        type: 'response.completed',
+        response: {
+          object: 'response',
+          model: 'gpt-5',
+          usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 },
+        },
+      })}\n\ndata: [DONE]\n\n`,
+    );
+  });
+  const upstreamPort = await listen(upstream);
+  const proxy = await fixtureProxy(upstreamPort, directory);
+  const body = Buffer.from(JSON.stringify({ model: 'gpt-5', input: 'private prompt' }));
+  await clientRequest({
+    port: proxy.port,
+    method: 'POST',
+    path: '/backend-api/codex/responses',
+    headers: { 'content-type': 'application/json', 'content-length': String(body.length) },
+    body,
+  });
+  const sidecar = parseSanitizedAuditSidecar(
+    JSON.parse(await readFile(await waitForAudit(join(directory, 'audit')), 'utf8')),
+  );
+  assert.equal(sidecar.endpoint, '/backend-api/codex/responses');
+  assert.equal(sidecar.usage.totalTokens, 25);
+});
+
+test('records usage when the client hangs up before the upstream stream ends', async () => {
+  const directory = await temporaryDirectory();
+  const upstream = createServer((_incoming, response) => {
+    response.sendDate = false;
+    response.writeHead(200, {});
+    response.write(
+      `event: response.completed\ndata: ${JSON.stringify({
+        type: 'response.completed',
+        response: {
+          object: 'response',
+          model: 'gpt-5',
+          usage: { input_tokens: 30, output_tokens: 2, total_tokens: 32 },
+        },
+      })}\n\n`,
+    );
+  });
+  const upstreamPort = await listen(upstream);
+  const proxy = await fixtureProxy(upstreamPort, directory);
+  const body = Buffer.from(JSON.stringify({ model: 'gpt-5', input: 'private prompt' }));
+  const client = request({
+    host: '127.0.0.1',
+    port: proxy.port,
+    method: 'POST',
+    path: '/backend-api/codex/responses',
+    headers: { 'content-type': 'application/json', 'content-length': String(body.length) },
+  });
+  client.on('error', () => {});
+  client.on('response', (incoming) => {
+    incoming.on('data', (chunk: Buffer) => {
+      if (chunk.toString().includes('response.completed')) client.destroy();
+    });
+  });
+  client.end(body);
+  const sidecar = parseSanitizedAuditSidecar(
+    JSON.parse(await readFile(await waitForAudit(join(directory, 'audit')), 'utf8')),
+  );
+  assert.equal(sidecar.endpoint, '/backend-api/codex/responses');
+  assert.equal(sidecar.usage.totalTokens, 32);
 });
 
 test('extracts final SSE usage across wire chunks and makes unknown-model cost unavailable', async () => {
