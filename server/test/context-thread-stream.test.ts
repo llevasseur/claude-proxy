@@ -9,12 +9,10 @@ import { fileSource, type SidecarSource } from '../src/db/source.js';
 /**
  * What `/api/context/thread/stream` pushes, and what it declines to.
  *
- * The stream follows one thread over one `?days=` window, and the two questions that
- * matter are the two the thread page turns on: a capture *of this thread* moves the
- * payload, and a capture that is not this thread's does not move it. The second one is
- * answered in two different places on purpose — a capture outside the window is ruled out
- * without reading anything, while a capture inside the window for another thread is read
- * and comes back byte-identical, which is what the SSE writer's dedupe drops.
+ * Two edges: a capture *of this thread* moves the payload, and one that is not this
+ * thread's does not. The second is answered in two places — a capture outside the window
+ * is ruled out unread, while another thread's capture inside the window is read and comes
+ * back byte-identical, which is what the SSE writer's dedupe drops.
  */
 
 /** 22:00 EDT on 2026-08-02, so that is the reporting day and it is still open. */
@@ -124,7 +122,7 @@ describe('the scoped rebuild behind the stream', () => {
     );
     expect(before?.entries).toHaveLength(2);
 
-    // The request a running conversation just sent — the reader had to reload for this.
+    // The request a running conversation just sent — a reload was the only way to see it.
     const landed = evening(TODAY);
     await writeSidecar(logDir, landed, 66_000, MINE);
     const after = await buildContextThreadScoped(rebuildScope([tickFor(landed)]), logDir, MINE, DAYS, NOW, fileSource);
@@ -144,15 +142,14 @@ describe('the scoped rebuild behind the stream', () => {
     const scope = rebuildScope([tickFor(morning(TODAY))]);
     const before = await buildContextThreadScoped(scope, logDir, MINE, DAYS, NOW, fileSource);
 
-    // A capture of a thread this page is not about. The day is in the window, so the scope
-    // cannot rule it out — a file name carries a UTC timestamp and never a thread id.
+    // The day is in the window, so the scope cannot rule this out — a file name carries a
+    // UTC timestamp and never a thread id.
     const landed = evening(TODAY);
     await writeSidecar(logDir, landed, 120_000, THEIRS);
     const after = await buildContextThreadScoped(rebuildScope([tickFor(landed)]), logDir, MINE, DAYS, NOW, fileSource);
 
     // Byte-identical, which is exactly the comparison `serveSse` makes before it writes.
     expect(JSON.stringify(after)).toBe(JSON.stringify(before));
-    // And the read that established that saw only this thread's requests.
     expect(after?.entries.every((entry) => entry.threadId === MINE)).toBe(true);
   });
 

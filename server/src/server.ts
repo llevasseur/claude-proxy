@@ -1238,14 +1238,10 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     send(res, 200, thread);
     shadow('/api/context/thread', thread, (source) => buildContextThread(LOG_DIR, threadId, days, now, source));
   },
-  // The same thread, pushed while it is still adding requests. `?thread=` is refused when
-  // absent for the same reason the JSON route refuses it — there is no default thread —
-  // and the refusal lands as a plain 400 rather than an SSE frame, since `serveSse`
-  // produces its opening snapshot before it writes the stream's headers.
-  //
-  // `new Date()` inside the closure rather than one resolved before it, so every rebuild
-  // re-reads the clock and a subscription held past midnight follows the window forward
-  // instead of pinning the days it was opened on.
+  // The same thread, pushed while it is still adding requests. A missing `?thread=` is a
+  // plain 400 rather than an SSE frame — `serveSse` builds its opening snapshot before it
+  // writes the stream's headers. `new Date()` inside the closure rather than resolved
+  // ahead of it, so a subscription held past midnight follows the window forward.
   '/api/context/thread/stream': async ({ req, res, url }) => {
     const threadId = url.searchParams.get('thread');
     if (!threadId) {

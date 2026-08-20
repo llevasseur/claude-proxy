@@ -1599,8 +1599,8 @@ export async function buildContextThread(
  * The reporting days a {@link buildContextThread} response reads: its whole `?days=`
  * window, since a thread's requests are spread across it rather than pinned to one day.
  *
- * `days` is a concrete count here — `parseDays` resolves an all-time window to one before
- * a route ever sees it — so this is never the empty set that would rule every tick out.
+ * Never the empty set that would rule every tick out — `parseDays` resolves an all-time
+ * window to a concrete count before a route sees it.
  */
 export function contextThreadDays(days: number, now: Date): ReadonlySet<string> {
   return new Set(windowDays({ sinceDays: days }, now));
@@ -1610,15 +1610,13 @@ export function contextThreadDays(days: number, now: Date): ReadonlySet<string> 
  * {@link buildContextThread} under a rebuild scope — the same skip
  * {@link buildContextDayScoped} makes, over {@link contextThreadDays}.
  *
- * **The day scope is the cheap half, and it is not the whole of the scoping.** A capture
- * for an unrelated thread lands on the same reporting day as this thread's, so no test
- * over days can tell the two apart: a file name carries the proxy's UTC timestamp and
- * says nothing about which thread wrote it, and the thread id lives inside the sidecar.
- * So the exact test is the read itself — {@link readThreadWindow} asks the backing for
- * *this thread's* rows off `request_thread_idx`, which is one indexed read, and an
- * unrelated capture therefore rebuilds to a byte-identical payload that the SSE writer's
- * existing dedupe drops. What the scope buys is the tick it can rule out without reading
- * anything at all: one landing outside the window this page asked for.
+ * **The day scope is the cheap half, not the whole of the scoping.** A capture for an
+ * unrelated thread lands on the same reporting day as this thread's, and no test over days
+ * separates them: a file name carries the proxy's UTC timestamp, while the thread id lives
+ * inside the sidecar. The exact test is therefore the read — {@link readThreadWindow} asks
+ * the backing for *this thread's* rows off `request_thread_idx`, one indexed read, so an
+ * unrelated capture rebuilds byte-identically and the SSE writer's dedupe drops the frame.
+ * What the scope buys is the tick ruled out with no read at all: one outside the window.
  */
 export async function buildContextThreadScoped(
   scope: RebuildScope,

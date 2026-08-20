@@ -59,9 +59,9 @@ describe('API_ROUTES', () => {
     const stream: ApiRouteDeclaration | undefined = apiRoute('/api/context/thread/stream');
     expect(stream?.kind).toBe('sse');
     expect(stream?.streamOf).toBe('/api/context/thread');
-    // Both parameters, and in the JSON route's order: a frame replaces that route's answer
-    // in the reader's cache, so a stream that could not name the thread would have no
-    // scope, and one that could not name the window would push a different answer.
+    // Both parameters, in the JSON route's order: a stream that could not name the thread
+    // would have no scope, and one that could not name the window would push a different
+    // answer into the cache entry the frame replaces.
     expect(stream?.params).toEqual(apiRoute('/api/context/thread')?.params);
     expect(apiRouteUrl('/api/context/thread/stream', { thread: 'a1b2c3d4e5f60718', days: 14 })).toBe(
       '/api/context/thread/stream?thread=a1b2c3d4e5f60718&days=14',
