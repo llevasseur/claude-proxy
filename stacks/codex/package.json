@@ -1,0 +1,26 @@
+{
+  "name": "codex-proxy-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A transparent Codex proxy with local, sanitized token and cost visibility.",
+  "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "check": "biome check . && pnpm check:docs",
+    "check:docs": "node scripts/check-docs.mjs",
+    "format": "biome check --write .",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm check",
+    "proxy": "pnpm --filter proxy start",
+    "server": "pnpm --filter server start",
+    "admin": "pnpm --filter admin dev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6"
+  }
+}
