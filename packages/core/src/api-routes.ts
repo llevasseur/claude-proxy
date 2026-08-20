@@ -70,12 +70,11 @@ export const API_ROUTES = [
   // One reporting day of that window, on its own — a caller composes a window from these.
   // `?date=` omitted means the day in progress.
   { path: '/api/context/day', methods: ['GET'], kind: 'json', cors: 'open', params: ['date'] },
-  // The one day of that window that can still change, pushed as captures land.
-  // **No `date`, deliberately**: a closed day is answered `immutable` and cannot move
-  // again, so there is nothing to subscribe it to — and leaving the parameter off means a
-  // closed day has no way to name itself here, rather than being refused at subscribe
-  // time. The day in progress is re-resolved from the clock on every rebuild, so a
-  // subscription held past midnight follows the rollover onto the new open day.
+  // The one day of that window that can still change, pushed as captures land. **No
+  // `date`**: a closed day is answered `immutable` and cannot move, so leaving the
+  // parameter off makes a closed day unsayable here rather than refused at subscribe time.
+  // The open day is re-resolved from the clock per rebuild, so a subscription held past
+  // midnight follows the rollover.
   {
     path: '/api/context/day/stream',
     methods: ['GET'],

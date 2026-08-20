@@ -57,18 +57,14 @@ const SEARCH_DEBOUNCE_MS = 250;
 
 /**
  * How long the day in progress is held before it is asked for again — **only while the
- * stream is not in charge.**
- *
- * The open day is pushed over `/api/context/day/stream`, so the timer is not what keeps
- * this page current: a `live` subscription holds the anchor forever and every number on
- * the page moves when a capture lands, rather than up to 30s later. This is the fallback
- * `useLiveQuery` documents — no `EventSource`, a stream that closed, a server too old to
- * answer the route — and it is the client-wide default, restated here because every
- * *other* day on this page departs from it.
+ * stream is not in charge.** The open day is pushed over `/api/context/day/stream`, so
+ * this is the fallback `useLiveQuery` documents: no `EventSource`, or a stream that
+ * closed. It is the client-wide default, restated here because every *other* day on this
+ * page departs from it.
  *
  * A closed day gets `Infinity` regardless. That vouch is per response, not per date, so a
  * day still split across the live directory and the archive keeps this window until it
- * settles — and those are the days a stream would not cover, since it follows the open day
+ * settles — and those are the days no stream covers, since the stream follows the open day
  * alone.
  */
 const OPEN_DAY_STALE_MS = 30_000;
@@ -127,15 +123,13 @@ export function ContextPage() {
 
   // **One subscription makes the whole page live.** Every tile, every row and the search
   // are folded from the day queries, and the open day is the only one of them that can
-  // change — so pushing that one cache entry is the whole of it. A closed day streams
-  // nothing, because a closed day cannot change.
+  // change. A closed day streams nothing.
   const live = useLiveQuery<ContextDayResponse>('/api/context/day/stream', ['context-day', 'today']);
 
   // The day in progress, which every window contains and no window may cache. It also
   // carries the two facts the span needs: the server's reporting day, and the corpus floor.
-  //
-  // Held forever while the stream is in charge: a poll would only re-fetch what the last
-  // frame already wrote. Off the stream it falls back to the timer — see OPEN_DAY_STALE_MS.
+  // Held forever while the stream is in charge — a poll would only re-fetch what the last
+  // frame already wrote.
   const anchorQuery = useQuery({
     queryKey: ['context-day', 'today'],
     queryFn: () => getContextDay(),

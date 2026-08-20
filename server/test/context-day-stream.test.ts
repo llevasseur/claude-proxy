@@ -10,10 +10,9 @@ import { fileSource, type SidecarSource } from '../src/db/source.js';
 /**
  * What `/api/context/day/stream` pushes, and what it declines to.
  *
- * The stream is the day in progress and nothing else, which is the narrowest scope any
- * stream here covers — so the interesting assertions are the two edges: a capture on the
- * open day moves the payload, and a capture on any other day is not merely deduped but
- * never read at all.
+ * The stream covers one reporting day, the narrowest scope any stream here has — so the
+ * two edges are what matter: a capture on the open day moves the payload, and a capture on
+ * any other day is not merely deduped but never read at all.
  */
 
 /** 22:00 EDT on 2026-08-02, so that is the reporting day and it is still open. */
@@ -60,10 +59,12 @@ async function writeSidecar(dir: string, iso: string, realInput: number, threadI
 }
 
 /** `fileSource`, recording every read either half of a day — or the corpus floor — goes through. */
-function countingSource(): { reads: string[]; source: SidecarSource } {
+function countingSource() {
   const reads: string[] = [];
   return {
     reads,
+    // `satisfies` keeps the inferred type while giving both overrides' parameters
+    // `SidecarSource`'s contextual ones.
     source: {
       ...fileSource,
       readArchivedDay: (logDir, date, opts) => {
@@ -141,8 +142,6 @@ describe('the scoped rebuild behind the stream', () => {
 
   it('sends nothing for a capture on the open day when the response is pinned elsewhere', async () => {
     const { source, reads } = countingSource();
-    // The neighbour case the thread stream will meet too: this tick cannot move a day
-    // the response is not about.
     expect(await buildContextDayScoped(rebuildScope([tickFor(evening(TODAY))]), logDir, CLOSED_DAY, NOW, source)).toBe(
       null,
     );

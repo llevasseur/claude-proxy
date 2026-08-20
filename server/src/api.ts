@@ -1512,13 +1512,12 @@ export async function buildContextDay(
 }
 
 /**
- * The reporting days a {@link buildContextDay} response reads: the one day it answers
- * for, and nothing else — this is one term of the window's sum, not the window.
+ * The reporting days a {@link buildContextDay} response reads: the one day it answers for,
+ * and nothing else — this is one term of the window's sum, not the window. An unpinned
+ * response carries the day in progress, which keeps it recomputing on every capture.
  *
- * An unpinned response carries the day in progress, which is what keeps it recomputing on
- * every capture. The corpus floor `since` rides on that same response and is not covered
- * here, because a capture can never move it: a request that just landed is not older than
- * the oldest reporting day on record.
+ * The corpus floor `since` rides on that same response and is deliberately not covered: a
+ * request that just landed is never older than the oldest day on record.
  */
 export function contextDayDays(date: string | undefined, now: Date): ReadonlySet<string> {
   return new Set([date ?? today(now)]);

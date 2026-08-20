@@ -553,9 +553,8 @@ type SseStream<T> = (SseWatchSource<T> | SsePushSource<T> | ScheduledPollSource<
 };
 
 /**
- * How long a burst of capture writes is coalesced before a {@link captureStream} rebuilds.
- * The proxy writes three files per request and a busy session writes them back to back,
- * so the numbers barely move between two of them.
+ * Coalescing window for a burst of capture writes. The proxy writes three files per
+ * request, back to back, and the numbers barely move between two of them.
  */
 const CAPTURE_DEBOUNCE_MS = 600;
 
@@ -563,18 +562,16 @@ const CAPTURE_DEBOUNCE_MS = 600;
  * **The seam every stream that follows captures subscribes to: a capture landing in
  * `logs/`.**
  *
- * There is no new notification mechanism here, deliberately. The proxy writes its
- * per-request triple straight into the log directory, so `fs.watch(LOG_DIR)` already
- * witnesses every capture as it lands — which is exactly why `/api/summary/stream` and
- * `/api/usage/stream` have always watched that path. What was missing was a *name* for it,
- * so a route that follows captures does not re-decide the watch path and the debounce for
- * itself and then drift from its neighbours. A background pass writing under a
- * *subdirectory* is the case this does not cover, and that is what `notify` and
- * `onCommandStoreChange` exist for.
+ * No new notification mechanism, deliberately — the proxy writes its per-request triple
+ * straight into the log directory, so `fs.watch(LOG_DIR)` already witnesses every capture,
+ * which is why `/api/summary/stream` and `/api/usage/stream` have always watched that path.
+ * What this adds is the *name*, so a route following captures does not re-decide the watch
+ * path and the debounce and drift from its neighbours. A background pass writing under a
+ * *subdirectory* is what it does not cover; `notify` and {@link onCommandStoreChange} are
+ * for that.
  *
- * `build` receives the tick's {@link RebuildScope} — the reporting days those files
- * touched — and answers `null` for a tick that cannot have moved its payload, so a
- * subscriber watching one day pays nothing for a capture on another.
+ * `build` takes the tick's {@link RebuildScope} — the reporting days those files touched —
+ * and answers `null` for a tick that cannot have moved its payload.
  */
 function captureStream<T>(build: (scope: RebuildScope) => Promise<T | null>): SseStream<T | null> {
   return { watchPath: LOG_DIR, build, debounceMs: CAPTURE_DEBOUNCE_MS };
@@ -1218,12 +1215,9 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     send(res, 200, day, CORS, day.closed && day.meta.files > 0);
     shadow('/api/context/day', day, (source) => buildContextDay(LOG_DIR, date, now, source, ARCHIVE_DIR));
   },
-  // The same day, pushed. It takes no `?date=`: the only day worth a subscription is the
-  // one that can still change, and the route above already answers a closed day
-  // `immutable` — so "which day is this" is settled by the route the client chose rather
-  // than by a parameter the server has to check. `undefined` here rather than a resolved
-  // date, so every rebuild re-reads the clock and a subscription held past midnight
-  // follows the rollover instead of pinning a day that has since closed.
+  // The same day, pushed. `undefined` rather than a resolved date, so every rebuild
+  // re-reads the clock and a subscription held past midnight follows the rollover instead
+  // of pinning a day that has since closed.
   '/api/context/day/stream': async ({ req, res }) => {
     await serveSse(
       req,
