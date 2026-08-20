@@ -16,12 +16,15 @@
     --faint: #545e6c;
 
     /* signal palette — desaturated a step from the original neon so the accents
-   * read as instrumentation rather than glow. */
-    --signal: #4cc6b0; /* flow, links, real input */
-    --signal-dim: #2f8577;
+   * read as instrumentation rather than glow. `--signal` and `--brand` carry
+   * one value here, the mark's yellow; cost took orange in exchange. That
+   * leaves 18° between them, so value carries the split: 10.7:1 against 7.1:1
+   * on `--surface`. */
+    --signal: #f4c542; /* flow, links, real input */
+    --signal-dim: #8a6f24;
     --brand: #f4c542; /* codex proxy mark */
     --good: #71d195; /* output / positive delta */
-    --amber: #e8ab5e; /* cost / cache / caution */
+    --amber: #ea8f4a; /* cost / cache / caution */
     --coral: #f0788c; /* regression / high severity */
     --violet: #9d8cff; /* delegated work — subagent branches */
 
@@ -36,8 +39,10 @@
      * table does not name is grey: zero chroma is zero claim about its power.
      *
      * There are 38 commands and no room for 38 hues — the signal palette above
-     * already spends teal 175, green 145, amber 35, coral 350 and violet 265, so
-     * these sit in the two windows left free, blue 205-262 and yellow 50-66.
+     * already spends yellow 88, orange 55, green 145, coral 350 and violet 265,
+     * so these sit in the blue window 205-262 and the band 50-66 beside cost.
+     * No component reads a `--cmd-*` token yet, so the retheme left these hues
+     * alone.
      *
      * Each family is a pair: a dark fill and the border that frames it. Nothing
      * asks two *fills* to be distinguishable at 3:1 — past three colours that is
@@ -216,11 +221,15 @@
     --muted: #6b6456;
     --faint: #a29b8b;
 
-    --signal: #11806c;
-    --signal-dim: #6faa9f;
+    /* Not the mark's yellow on paper: #f4c542 holds 1.4:1 against `--surface`,
+   * and this token draws links and the focus ring. Same hue, driven down to a
+   * deep gold past 4.5:1. `--brand` keeps the lighter goldenrod — it only
+   * fills a dot and a separator. */
+    --signal: #7f5a00;
+    --signal-dim: #b08f3c;
     --brand: #b8860b;
     --good: #2f8a52;
-    --amber: #9c651a;
+    --amber: #a8551a;
     --coral: #c34a5e;
     --violet: #6a58c9;
 
