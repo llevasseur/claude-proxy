@@ -62,7 +62,8 @@ describe('summarizeSystemPrompt', () => {
     });
 
     expect(doc.bytes).toBe(19);
-    expect(doc.estTokens).toBe(5);
+    // 19 bytes at the estimator's measured 2.78 bytes per token (`context.ts`).
+    expect(doc.estTokens).toBe(7);
     expect(doc.lines).toBe(3);
     expect(doc.sections.map((s) => s.heading)).toEqual(['Rules']);
   });

@@ -56,9 +56,28 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // this file. Override with LOG_DIR to point elsewhere.
 const LOG_DIR = process.env.LOG_DIR ?? path.join(HERE, '..', 'logs');
 
-/** Rough token estimate for display. Real input tokens come from the response
- * usage; this is only for ranking the request before the reply arrives. */
-const estTokens = (bytes: number): number => Math.round(bytes / 4);
+/**
+ * Bytes per token for the audit report's display estimates, measured rather than
+ * assumed. Real input tokens come from the response usage; this only ranks a
+ * request before the reply arrives.
+ *
+ * Measured across 530 cold-start requests in the log window — `cacheRead` 0 and
+ * `input` under 50, so `totalBytes / cacheCreation` is the ratio outright — out of
+ * 50,122 logged requests: median 2.78 bytes per token, p10 2.71, p90 2.87. The
+ * ratio is flat across the model line (opus-4-8 2.69, sonnet-5 2.80, fable-5 2.83,
+ * opus-5 2.85), so one constant covers every model the proxy sees.
+ *
+ * The median rather than the bytes-weighted 2.876: a handful of requests run as
+ * sparse as 9.67 bytes per token and pull a pooled figure away from the typical
+ * request these estimates are shown against.
+ *
+ * Not the same number as `PREFIX_BYTES_PER_TOKEN` in `cache-breakpoint.ts`, which
+ * takes a floor of the same corpus: a threshold inside a cost decision rounds
+ * toward declining, a display estimate aims at the middle. The `bytes / 4` this
+ * replaced understated every figure it fed by ~44%.
+ */
+const BYTES_PER_TOKEN = 2.78;
+const estTokens = (bytes: number): number => Math.round(bytes / BYTES_PER_TOKEN);
 
 /** count_tokens calls send content but get back only a number, never a reply.
  * A single turn fires many as housekeeping — pure noise here, so skip them. */
@@ -909,9 +928,10 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
             // A read past this request's own system+tools prefix is the only proof
             // that the *message* prefix is cached upstream — the evidence gate 5 of
             // `ensureMessageBreakpoint` needs before a write can pay for itself.
-            // `estPrefixTokens`, not the display `estTokens`: `bytes / 4` understates
-            // a schema-heavy prefix by ~45%, which marked sessions warm off a read of
-            // nothing but their own system blocks.
+            // `estPrefixTokens`, not the display `estTokens`: the threshold takes a
+            // floor of the same corpus where the display estimate takes its median,
+            // so this rounds toward declining. The `bytes / 4` both once shared
+            // marked sessions warm off a read of nothing but their own system blocks.
             noteCacheRead(
               sessionKey,
               usage?.cache_read_input_tokens ?? 0,

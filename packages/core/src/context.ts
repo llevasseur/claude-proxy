@@ -560,8 +560,13 @@ function byteLength(value: JsonValue | undefined): number {
   return new TextEncoder().encode(JSON.stringify(value)).length;
 }
 
-/** Rough token estimate for display — matches the proxy's `estTokens`. */
-export const estTokens = (bytes: number): number => Math.round(bytes / 4);
+/**
+ * Rough token estimate for display — matches the proxy's `estTokens`, divisor
+ * included. 2.78 is the median bytes-per-token of 530 cold-start requests;
+ * `proxy/proxy.ts` carries the measurement.
+ */
+const BYTES_PER_TOKEN = 2.78;
+export const estTokens = (bytes: number): number => Math.round(bytes / BYTES_PER_TOKEN);
 
 /**
  * Break a captured request body into its size-contributing regions: the system

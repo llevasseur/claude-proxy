@@ -4,6 +4,7 @@ import {
   analyzeRequestBody,
   attachContextPrompts,
   type ContextEntry,
+  estTokens,
   extractRequestMessage,
   extractRequestTool,
   groupContextThreads,
@@ -233,7 +234,9 @@ describe('analyzeRequestBody', () => {
     expect(b.tools[0]!.bytes).toBeGreaterThanOrEqual(b.tools[1]!.bytes);
     expect(b.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
     expect(b.messages[0]!.index).toBe(0);
-    expect(b.tools.every((t) => t.estTokens === Math.round(t.bytes / 4))).toBe(true);
+    // Through `estTokens`, so what is pinned is that the field comes from the repo's
+    // estimator rather than a constant that expires when it is re-measured.
+    expect(b.tools.every((t) => t.estTokens === estTokens(t.bytes))).toBe(true);
   });
 
   it('handles string content and missing names', () => {
@@ -269,7 +272,7 @@ describe('extractRequestMessage', () => {
     expect(m!.role).toBe('assistant');
     expect(m!.messageCount).toBe(2);
     expect(m!.bytes).toBeGreaterThan(0);
-    expect(m!.estTokens).toBe(Math.round(m!.bytes / 4));
+    expect(m!.estTokens).toBe(estTokens(m!.bytes));
     expect(JSON.parse(m!.content)).toEqual(body.messages[1]);
   });
 
@@ -301,7 +304,7 @@ describe('extractRequestTool', () => {
     expect(t!.name).toBe('Read');
     expect(t!.toolCount).toBe(2);
     expect(t!.bytes).toBeGreaterThan(0);
-    expect(t!.estTokens).toBe(Math.round(t!.bytes / 4));
+    expect(t!.estTokens).toBe(estTokens(t!.bytes));
     expect(JSON.parse(t!.content)).toEqual(body.tools[1]);
   });
 

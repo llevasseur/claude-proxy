@@ -352,19 +352,22 @@ test('observes nothing while the kill switch is set', () => {
   }
 });
 
-test('estPrefixTokens sizes a schema-heavy prefix well above the bytes/4 estimate', () => {
+test('estPrefixTokens sizes a prefix above the display estimate it must not be confused with', () => {
   const bytes = 121_670;
   assert.equal(estPrefixTokens(bytes), 48_668);
+  // 2.78 is the display divisor in `proxy.ts` and `context.ts`. This threshold takes
+  // a floor of the same corpus, so it must stay the larger of the two.
   assert.ok(
-    estPrefixTokens(bytes) > Math.round(bytes / 4),
-    'the display estimate understates a prefix of dense JSON tool schemas',
+    estPrefixTokens(bytes) > Math.round(bytes / 2.78),
+    'the cost threshold must size a prefix above the display estimate, never below it',
   );
 });
 
 test('a read of nothing but the system prefix no longer marks a session warm', () => {
   // The observed miss: 48,299 tokens read against a 121,670-byte system+tools
-  // prefix. Against `bytes / 4` (32,619 tokens) that read looked like proof the
-  // message history was cached; it was the prefix and nothing else.
+  // prefix. Against the `bytes / 4` estimate of the day (30,418 tokens) that read
+  // looked like proof the message history was cached; it was the prefix and nothing
+  // else.
   _resetWarmPrefixes();
   noteCacheRead(SESSION, 48_299, estPrefixTokens(121_670));
   assert.equal(hasWarmPrefix(SESSION), false, 'gate 5 must not certify a cold message prefix as warm');
