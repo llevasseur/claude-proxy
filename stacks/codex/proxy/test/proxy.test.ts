@@ -119,7 +119,18 @@ async function waitForAudit(directory: string): Promise<string> {
   throw new Error('timed out waiting for audit sidecar');
 }
 
-test('preserves GET and POST exchanges, paths, queries, headers, bodies, errors, and binary bytes', async () => {
+function withoutHost(headers: readonly string[]): string[] {
+  const result: string[] = [];
+  for (let index = 0; index < headers.length; index += 2) {
+    if (headers[index]?.toLowerCase() === 'host') continue;
+    if (headers[index] !== undefined && headers[index + 1] !== undefined) {
+      result.push(headers[index]!, headers[index + 1]!);
+    }
+  }
+  return result;
+}
+
+test('preserves exchanges while addressing requests to the configured upstream host', async () => {
   const directory = await temporaryDirectory();
   const received: Array<{ method: string; url: string; rawHeaders: readonly string[]; body: Buffer }> = [];
   const upstream = createServer((incoming, response) => {
@@ -171,7 +182,12 @@ test('preserves GET and POST exchanges, paths, queries, headers, bodies, errors,
     assert.deepEqual(proxied, direct);
     const directRequest = received.at(-2)!;
     const proxiedRequest = received.at(-1)!;
-    assert.deepEqual(proxiedRequest, directRequest);
+    assert.equal(proxiedRequest.method, directRequest.method);
+    assert.equal(proxiedRequest.url, directRequest.url);
+    assert.deepEqual(proxiedRequest.body, directRequest.body);
+    assert.deepEqual(withoutHost(proxiedRequest.rawHeaders), withoutHost(directRequest.rawHeaders));
+    const hostIndex = proxiedRequest.rawHeaders.findIndex((value) => value.toLowerCase() === 'host');
+    assert.deepEqual(proxiedRequest.rawHeaders.slice(hostIndex, hostIndex + 2), ['Host', `127.0.0.1:${upstreamPort}`]);
   }
 });
 

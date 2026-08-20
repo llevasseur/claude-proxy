@@ -44,6 +44,19 @@ function header(message: IncomingMessage, name: string): string | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
 }
 
+function upstreamHeaders(clientRequest: IncomingMessage, upstream: URL): string[] {
+  const headers: string[] = [];
+  for (let index = 0; index < clientRequest.rawHeaders.length; index += 2) {
+    const name = clientRequest.rawHeaders[index];
+    if (name?.toLowerCase() === 'host') continue;
+    if (name !== undefined && clientRequest.rawHeaders[index + 1] !== undefined) {
+      headers.push(name, clientRequest.rawHeaders[index + 1]!);
+    }
+  }
+  headers.push('Host', upstream.host);
+  return headers;
+}
+
 function safeError(logger: ProxyLogger, event: string, error: unknown): void {
   logger.error(event, { errorType: error instanceof Error ? error.name : 'unknown' });
 }
@@ -72,7 +85,7 @@ function proxyRequest(
       port: config.upstream.port,
       method: clientRequest.method,
       path: requestUrl,
-      headers: clientRequest.rawHeaders,
+      headers: upstreamHeaders(clientRequest, config.upstream),
       setHost: false,
     },
     (upstreamResponse) => {

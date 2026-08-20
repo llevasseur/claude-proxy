@@ -20,9 +20,10 @@ Run it from the repository root:
 pnpm --filter proxy start
 ```
 
-Point Codex's OpenAI base URL at `http://<PROXY_HOST>:<PROXY_PORT>`. The proxy preserves methods, URLs, headers,
-request bodies, response status, response headers, and response stream bytes. Observation failures are reported as
-structured event names and never alter an exchange already in flight.
+Point Codex's OpenAI base URL at `http://<PROXY_HOST>:<PROXY_PORT>`. The proxy preserves methods, URLs, request
+headers, request bodies, response status, response headers, and response stream bytes, except that it rewrites the
+request `Host` header to the configured upstream host. Observation failures are reported as structured event names
+and never alter an exchange already in flight.
 
 ## Filesystem contracts
 
