@@ -87,8 +87,7 @@ const WARM_LIMIT = 500;
  * resting on one directly observed prefix-only read at 2.52. The corpus holds no
  * cold start whose messages are under 5% of the body, so the closest available
  * sample is the 92 whose messages are under 20%: those run a mean of 2.77 and a
- * densest of 2.635 — the corpus figure, not below it. This denominator is therefore
- * justified by the margin it keeps, not by a prefix ratio of its own.
+ * densest of 2.635 — the corpus figure, not below it.
  *
  * The denominator sits below the densest figure observed rather than at the mean,
  * because the directions are not symmetric: understating the prefix marks a cold

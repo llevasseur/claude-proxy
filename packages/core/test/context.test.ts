@@ -234,9 +234,8 @@ describe('analyzeRequestBody', () => {
     expect(b.tools[0]!.bytes).toBeGreaterThanOrEqual(b.tools[1]!.bytes);
     expect(b.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
     expect(b.messages[0]!.index).toBe(0);
-    // Through `estTokens` rather than a divisor spelled out here: the invariant is
-    // that the field comes from the repo's estimator, and re-deriving the constant
-    // stops testing that the moment the constant is re-measured.
+    // Through `estTokens`, so what is pinned is that the field comes from the repo's
+    // estimator rather than a constant that expires when it is re-measured.
     expect(b.tools.every((t) => t.estTokens === estTokens(t.bytes))).toBe(true);
   });
 

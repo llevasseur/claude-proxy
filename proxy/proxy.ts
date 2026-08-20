@@ -71,11 +71,10 @@ const LOG_DIR = process.env.LOG_DIR ?? path.join(HERE, '..', 'logs');
  * sparse as 9.67 bytes per token and pull a pooled figure away from the typical
  * request these estimates are shown against.
  *
- * The `bytes / 4` this replaced understated every figure it fed — the audit
- * report's tool and system lines, and the dashboard's fixed-prefix table — by
- * ~44%. It is deliberately not the same number as `PREFIX_BYTES_PER_TOKEN` in
- * `cache-breakpoint.ts`, which reads the same corpus but takes a floor rather than
- * the middle, because a threshold inside a cost decision rounds toward declining.
+ * Not the same number as `PREFIX_BYTES_PER_TOKEN` in `cache-breakpoint.ts`, which
+ * takes a floor of the same corpus: a threshold inside a cost decision rounds
+ * toward declining, a display estimate aims at the middle. The `bytes / 4` this
+ * replaced understated every figure it fed by ~44%.
  */
 const BYTES_PER_TOKEN = 2.78;
 const estTokens = (bytes: number): number => Math.round(bytes / BYTES_PER_TOKEN);
@@ -930,10 +929,9 @@ function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
             // that the *message* prefix is cached upstream — the evidence gate 5 of
             // `ensureMessageBreakpoint` needs before a write can pay for itself.
             // `estPrefixTokens`, not the display `estTokens`: the threshold takes a
-            // floor of the measured corpus where the display estimate takes its
-            // median, so this rounds toward declining. The `bytes / 4` estimate both
-            // once shared understated a schema-heavy prefix by ~44%, which marked
-            // sessions warm off a read of nothing but their own system blocks.
+            // floor of the same corpus where the display estimate takes its median,
+            // so this rounds toward declining. The `bytes / 4` both once shared
+            // marked sessions warm off a read of nothing but their own system blocks.
             noteCacheRead(
               sessionKey,
               usage?.cache_read_input_tokens ?? 0,

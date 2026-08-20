@@ -562,9 +562,8 @@ function byteLength(value: JsonValue | undefined): number {
 
 /**
  * Rough token estimate for display — matches the proxy's `estTokens`, divisor
- * included. 2.78 is the median bytes-per-token of 530 cold-start requests in the
- * log window; `proxy/proxy.ts` carries the measurement and the reason it is the
- * median rather than the pooled figure.
+ * included. 2.78 is the median bytes-per-token of 530 cold-start requests;
+ * `proxy/proxy.ts` carries the measurement.
  */
 const BYTES_PER_TOKEN = 2.78;
 export const estTokens = (bytes: number): number => Math.round(bytes / BYTES_PER_TOKEN);
