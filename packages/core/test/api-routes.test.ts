@@ -41,6 +41,20 @@ describe('API_ROUTES', () => {
     }
   });
 
+  it('leaves the context day stream unable to name a day, so it can only be the open one', () => {
+    // Widened for the same reason `ROUTES` above is: under `as const` a member with no
+    // `streamOf` has no such property to read.
+    const stream: ApiRouteDeclaration | undefined = apiRoute('/api/context/day/stream');
+    expect(stream?.kind).toBe('sse');
+    expect(stream?.streamOf).toBe('/api/context/day');
+    // The JSON route takes `?date=`; the stream deliberately does not. A closed day is
+    // answered `immutable` and cannot change, so it has nothing to subscribe to — and
+    // leaving the parameter off is what makes that unsayable rather than merely refused.
+    expect(apiRoute('/api/context/day')?.params).toContain('date');
+    expect(stream?.params).toEqual([]);
+    expect(apiRouteUrl('/api/context/day/stream')).toBe('/api/context/day/stream');
+  });
+
   it('answers a path lookup, and nothing for one it does not declare', () => {
     expect(apiRoute('/api/health')?.kind).toBe('json');
     expect(apiRoute('/api/nope')).toBeUndefined();
