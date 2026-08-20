@@ -46,6 +46,7 @@ import {
   buildConcepts,
   buildContext,
   buildContextDay,
+  buildContextDayScoped,
   buildContextDetail,
   buildContextMessage,
   buildContextThread,
@@ -550,6 +551,31 @@ type SseStream<T> = (SseWatchSource<T> | SsePushSource<T> | ScheduledPollSource<
    */
   cors?: HeaderMap;
 };
+
+/**
+ * Coalescing window for a burst of capture writes. The proxy writes three files per
+ * request, back to back, and the numbers barely move between two of them.
+ */
+const CAPTURE_DEBOUNCE_MS = 600;
+
+/**
+ * **The seam every stream that follows captures subscribes to: a capture landing in
+ * `logs/`.**
+ *
+ * No new notification mechanism, deliberately — the proxy writes its per-request triple
+ * straight into the log directory, so `fs.watch(LOG_DIR)` already witnesses every capture,
+ * which is why `/api/summary/stream` and `/api/usage/stream` have always watched that path.
+ * What this adds is the *name*, so a route following captures does not re-decide the watch
+ * path and the debounce and drift from its neighbours. A background pass writing under a
+ * *subdirectory* is what it does not cover; `notify` and {@link onCommandStoreChange} are
+ * for that.
+ *
+ * `build` takes the tick's {@link RebuildScope} — the reporting days those files touched —
+ * and answers `null` for a tick that cannot have moved its payload.
+ */
+function captureStream<T>(build: (scope: RebuildScope) => Promise<T | null>): SseStream<T | null> {
+  return { watchPath: LOG_DIR, build, debounceMs: CAPTURE_DEBOUNCE_MS };
+}
 
 /**
  * A concepts stream, watching the log directory only when the local file is the
@@ -1075,11 +1101,11 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
   // the day in progress still recomputes; the scope only skips a tick touching no
   // day this summary reads — outside the baseline walk, or beside a `?date=` pin.
   '/api/summary/stream': async ({ req, res, date }) => {
-    await serveSse(req, res, {
-      watchPath: LOG_DIR,
-      build: (scope) => buildSummaryScoped(scope, LOG_DIR, date, new Date(), ARCHIVE_DIR, readSource()),
-      debounceMs: 600,
-    });
+    await serveSse(
+      req,
+      res,
+      captureStream((scope) => buildSummaryScoped(scope, LOG_DIR, date, new Date(), ARCHIVE_DIR, readSource())),
+    );
   },
   '/api/trends': async ({ res, url }) => {
     const days = await parseDays(url.searchParams.get('days'));
@@ -1150,14 +1176,12 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     send(res, 200, usage);
     shadow('/api/usage', usage, (source) => buildUsage(LOG_DIR, USAGE_LIMITS, now, source));
   },
-  // Debounced generously: a busy session writes three files per request and
-  // the numbers barely move between them.
   '/api/usage/stream': async ({ req, res }) => {
-    await serveSse(req, res, {
-      watchPath: LOG_DIR,
-      build: (scope) => buildUsageScoped(scope, LOG_DIR, USAGE_LIMITS, new Date(), readSource()),
-      debounceMs: 600,
-    });
+    await serveSse(
+      req,
+      res,
+      captureStream((scope) => buildUsageScoped(scope, LOG_DIR, USAGE_LIMITS, new Date(), readSource())),
+    );
   },
   '/api/tools': async ({ res, date }) => {
     const now = new Date();
@@ -1190,6 +1214,16 @@ const HANDLERS: Record<ApiRoutePath, RouteHandler> = {
     // until something puts a day there, and an `immutable` entry could never be told.
     send(res, 200, day, CORS, day.closed && day.meta.files > 0);
     shadow('/api/context/day', day, (source) => buildContextDay(LOG_DIR, date, now, source, ARCHIVE_DIR));
+  },
+  // The same day, pushed. `undefined` rather than a resolved date, so every rebuild
+  // re-reads the clock and a subscription held past midnight follows the rollover instead
+  // of pinning a day that has since closed.
+  '/api/context/day/stream': async ({ req, res }) => {
+    await serveSse(
+      req,
+      res,
+      captureStream((scope) => buildContextDayScoped(scope, LOG_DIR, undefined, new Date(), readSource(), ARCHIVE_DIR)),
+    );
   },
   '/api/context/thread': async ({ res, url }) => {
     const threadId = url.searchParams.get('thread');

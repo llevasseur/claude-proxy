@@ -1511,6 +1511,35 @@ export async function buildContextDay(
   };
 }
 
+/**
+ * The reporting days a {@link buildContextDay} response reads: the one day it answers for,
+ * and nothing else — this is one term of the window's sum, not the window. An unpinned
+ * response carries the day in progress, which keeps it recomputing on every capture.
+ *
+ * The corpus floor `since` rides on that same response and is deliberately not covered: a
+ * request that just landed is never older than the oldest day on record.
+ */
+export function contextDayDays(date: string | undefined, now: Date): ReadonlySet<string> {
+  return new Set([date ?? today(now)]);
+}
+
+/**
+ * {@link buildContextDay} under a rebuild scope — the same skip {@link buildSummaryScoped}
+ * makes, over {@link contextDayDays}. A single day covers less than any other stream here,
+ * so a tick on a neighbouring day costs a subscriber nothing.
+ */
+export async function buildContextDayScoped(
+  scope: RebuildScope,
+  logDir: string,
+  date: string | undefined,
+  now: Date = new Date(),
+  source: SidecarSource = fileSource,
+  archiveDir?: string,
+): Promise<ContextDayResponse | null> {
+  if (!rebuildNeeded(scope, contextDayDays(date, now))) return null;
+  return buildContextDay(logDir, date, now, source, archiveDir);
+}
+
 export interface ContextThreadResponse {
   threadId: string;
   /** Every captured request of the thread in the window, oldest first. */
