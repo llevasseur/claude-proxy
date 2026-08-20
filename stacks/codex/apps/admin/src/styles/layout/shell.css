@@ -49,9 +49,6 @@
     text-decoration: none;
     border-radius: var(--radius-4);
   }
-  .brand-link:hover .brand-node {
-    box-shadow: 0 0 18px color-mix(in srgb, var(--signal) 60%, transparent);
-  }
   .brand-node {
     width: 10px;
     height: 10px;
@@ -59,6 +56,9 @@
     background: var(--signal);
     box-shadow: 0 0 12px color-mix(in srgb, var(--signal) 45%, transparent);
     flex: none;
+  }
+  .brand-link:hover .brand-node {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--signal) 60%, transparent);
   }
   .brand {
     font-weight: 700;
