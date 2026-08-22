@@ -21,7 +21,7 @@ timestamp: 2026-08-22
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 01 | core-range-trends | [car-release-01-core-range-trends](car-release-01-core-range-trends.md) | `task/car-release-01-core-range-trends` | todo |
+| 01 | core-range-trends | [car-release-01-core-range-trends](car-release-01-core-range-trends.md) | `task/car-release-01-core-range-trends` | in progress |
 | 02 | server-history-api | [car-release-02-server-history-api](car-release-02-server-history-api.md) | `task/car-release-02-server-history-api` | todo |
 | 03 | admin-history-trends | [car-release-03-admin-history-trends](car-release-03-admin-history-trends.md) | `task/car-release-03-admin-history-trends` | todo |
 | 04 | car-docs-verification | [car-release-04-car-docs-verification](car-release-04-car-docs-verification.md) | `task/car-release-04-car-docs-verification` | todo |
