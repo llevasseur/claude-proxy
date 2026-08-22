@@ -28,7 +28,6 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 06 | core-history-trends | [ox-alpha-proxy-06-core-history-trends](ox-alpha-proxy-06-core-history-trends.md) | `task/ox-alpha-proxy-06-core-history-trends` | todo |
 | 07 | server-history-trends | [ox-alpha-proxy-07-server-history-trends](ox-alpha-proxy-07-server-history-trends.md) | `task/ox-alpha-proxy-07-server-history-trends` | todo |
 | 08 | admin-car-routes | [ox-alpha-proxy-08-admin-car-routes](ox-alpha-proxy-08-admin-car-routes.md) | `task/ox-alpha-proxy-08-admin-car-routes` | todo |
 | 09 | boat-capture-retention | [ox-alpha-proxy-09-boat-capture-retention](ox-alpha-proxy-09-boat-capture-retention.md) | `task/ox-alpha-proxy-09-boat-capture-retention` | todo |
@@ -40,6 +39,8 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **06 core-history-trends** — PR #7. Core history domain: resolveCalendarRange (inclusive `to`, half-open UTC instants, DST-aware), aggregateDailyBuckets/aggregateRangeFromBuckets through one shared path with ADR 0003 propagation at both levels, exact multi-select modelFilter, history record projection plus offset pagination. 24 new vitest cases. Verify green; CI pass.
 
 - **05 admin-overview** — PR #6. TanStack Query Overview bootstrapping from health/summary, SSE subscription with 10s refetch backstop, pure connection state machine (bootstrapping/live/reconnecting/stale/degraded/unavailable) retaining shell and last summary, cost rendered complete-or-unavailable never $0. 17 vitest cases. BIKE PHASE BOUNDARY: "Live validation outstanding" recorded in the PR body per ADR 0011. Verify green; CI pass.
 
