@@ -1,8 +1,7 @@
 import { resolve } from 'node:path';
 
-// Relative `AUDIT_DIR` and `PROXY_STATUS_FILE` values resolve from here rather than
-// `process.cwd()`, so `pnpm --filter proxy start` (cwd `proxy/`) and a root-level
-// `node proxy/src/proxy.ts` land on the same files. Absolute values still win.
+// Relative `AUDIT_DIR` and `PROXY_STATUS_FILE` resolve from here rather than
+// `process.cwd()`; absolute values still win.
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
 
 export interface ProxyConfig {

@@ -1,9 +1,8 @@
 import { resolve } from 'node:path';
 import { DEFAULT_REPORT_TIMEZONE } from '@codex-proxy/core';
 
-// Relative `AUDIT_DIR`, `DATABASE_PATH` and `PROXY_STATUS_PATH` values resolve from here
-// rather than `process.cwd()`, so `pnpm --filter server start` (cwd `server/`) and a
-// root-level run open the same database. Absolute values still win.
+// Relative `AUDIT_DIR`, `DATABASE_PATH` and `PROXY_STATUS_PATH` resolve from here
+// rather than `process.cwd()`; absolute values still win.
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
 
 export interface ServerConfig {

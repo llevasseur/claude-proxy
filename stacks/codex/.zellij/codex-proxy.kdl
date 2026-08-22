@@ -14,9 +14,8 @@ layout {
     tab name="dev" {
         pane split_direction="vertical" {
             // No port is pinned here. `proxy` and `server` run under `pnpm
-            // --filter`, so their cwd is the package directory and both pass
-            // `--env-file-if-exists=../.env` to reach the repository-root
-            // `.env`. `admin` is Vite and loads `apps/admin/.env`.
+            // --filter`, so `../.env` from their package directory is the
+            // repository-root file. `admin` is Vite and loads `apps/admin/.env`.
             pane name="proxy" {
                 command "pnpm"
                 args "proxy"
