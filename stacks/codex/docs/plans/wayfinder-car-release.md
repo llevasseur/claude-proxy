@@ -21,7 +21,6 @@ timestamp: 2026-08-22
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 01 | core-range-trends | [car-release-01-core-range-trends](car-release-01-core-range-trends.md) | `task/car-release-01-core-range-trends` | in progress |
 | 02 | server-history-api | [car-release-02-server-history-api](car-release-02-server-history-api.md) | `task/car-release-02-server-history-api` | todo |
 | 03 | admin-history-trends | [car-release-03-admin-history-trends](car-release-03-admin-history-trends.md) | `task/car-release-03-admin-history-trends` | todo |
 | 04 | car-docs-verification | [car-release-04-car-docs-verification](car-release-04-car-docs-verification.md) | `task/car-release-04-car-docs-verification` | todo |
@@ -29,6 +28,8 @@ timestamp: 2026-08-22
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **01 core-range-trends** — PR #14. Added `packages/core/src/history.ts`: `resolveCalendarRange` (optional inclusive `from`/`to` → half-open UTC instants against an explicit timezone, DST-aware), `aggregateDailyBuckets` (complete per-day aggregates with independent ADR 0003 cost semantics and window boundaries), `aggregateRangeFromBuckets` (bucket sums equal range totals through one shared path), and `modelFilter`/`selectByModels` (exact multi-select, empty selection matches all). Exported day-boundary helpers from `today.ts`. 21 new core tests including DST spring/autumn days, single-day windows, unpriced propagation at both levels, and a seeded 50-fixture property test. No deviations from the plan.
 
 ## Agent kickoff prompt
 
