@@ -1,0 +1,89 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.page {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.banner {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.banner-muted {
+  background: color-mix(in srgb, CanvasText 10%, transparent);
+}
+
+.banner-live {
+  background: color-mix(in srgb, limegreen 18%, transparent);
+}
+
+.banner-warn {
+  background: color-mix(in srgb, orange 22%, transparent);
+}
+
+.banner-error {
+  background: color-mix(in srgb, crimson 20%, transparent);
+}
+
+.card {
+  margin-top: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+  border-radius: 0.6rem;
+}
+
+.card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.timezone {
+  font-weight: normal;
+  color: color-mix(in srgb, CanvasText 65%, transparent);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.metrics dt {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, CanvasText 60%, transparent);
+}
+
+.metrics dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-unavailable {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid orange;
+  background: color-mix(in srgb, orange 12%, transparent);
+}
