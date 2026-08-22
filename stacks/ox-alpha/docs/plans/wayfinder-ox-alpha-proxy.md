@@ -28,7 +28,6 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 01 | foundation-workspace | [ox-alpha-proxy-01-foundation-workspace](ox-alpha-proxy-01-foundation-workspace.md) | `task/ox-alpha-proxy-01-foundation-workspace` | todo |
 | 02 | core-usage-pricing | [ox-alpha-proxy-02-core-usage-pricing](ox-alpha-proxy-02-core-usage-pricing.md) | `task/ox-alpha-proxy-02-core-usage-pricing` | todo |
 | 03 | proxy-forwarding | [ox-alpha-proxy-03-proxy-forwarding](ox-alpha-proxy-03-proxy-forwarding.md) | `task/ox-alpha-proxy-03-proxy-forwarding` | todo |
 | 04 | server-ingest-api | [ox-alpha-proxy-04-server-ingest-api](ox-alpha-proxy-04-server-ingest-api.md) | `task/ox-alpha-proxy-04-server-ingest-api` | todo |
@@ -45,6 +44,8 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **01 foundation-workspace** — PR #2. Stood up the pnpm workspace with all four packages, five-gate verify (typecheck, test, build, check, anti:slop), CI running gates as individual steps, bootstrap-worktree script, env examples with `REPORT_TZ=America/New_York`, lockfile committed. Deviations: the claude-proxy anti-slop plugin is not publicly installable, so `.oxlintrc.json` uses stock oxlint warn categories; docs lint is an internal zero-dep link checker. Verify green; CI pass.
 
 ## Agent kickoff prompt
 
