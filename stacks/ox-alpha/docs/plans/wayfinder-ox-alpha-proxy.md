@@ -28,7 +28,6 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 02 | core-usage-pricing | [ox-alpha-proxy-02-core-usage-pricing](ox-alpha-proxy-02-core-usage-pricing.md) | `task/ox-alpha-proxy-02-core-usage-pricing` | todo |
 | 03 | proxy-forwarding | [ox-alpha-proxy-03-proxy-forwarding](ox-alpha-proxy-03-proxy-forwarding.md) | `task/ox-alpha-proxy-03-proxy-forwarding` | todo |
 | 04 | server-ingest-api | [ox-alpha-proxy-04-server-ingest-api](ox-alpha-proxy-04-server-ingest-api.md) | `task/ox-alpha-proxy-04-server-ingest-api` | todo |
 | 05 | admin-overview | [ox-alpha-proxy-05-admin-overview](ox-alpha-proxy-05-admin-overview.md) | `task/ox-alpha-proxy-05-admin-overview` | todo |
@@ -44,6 +43,8 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **02 core-usage-pricing** — PR #3. Core domain: normalized usage with subset-checked details; streaming/non-streaming Responses adapters selecting the authoritative final usage; pico-dollar pricing engine with rates ported verbatim from the codex-proxy catalogue and typed unavailability reasons (ADR 0003); strict sidecar v1 validator per the spec field table; DST-aware Today aggregation with explicit clock/timezone. Deterministic and dependency-free. recordId generation stays a proxy concern. Verify green; CI pass.
 
 - **01 foundation-workspace** — PR #2. Stood up the pnpm workspace with all four packages, five-gate verify (typecheck, test, build, check, anti:slop), CI running gates as individual steps, bootstrap-worktree script, env examples with `REPORT_TZ=America/New_York`, lockfile committed. Deviations: the claude-proxy anti-slop plugin is not publicly installable, so `.oxlintrc.json` uses stock oxlint warn categories; docs lint is an internal zero-dep link checker. Verify green; CI pass.
 
