@@ -1,4 +1,5 @@
 export * from "./adapters.ts";
+export * from "./history.ts";
 export * from "./pricing.ts";
 export * from "./sidecar.ts";
 export * from "./today.ts";
