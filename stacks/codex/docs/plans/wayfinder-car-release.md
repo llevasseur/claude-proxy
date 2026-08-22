@@ -21,7 +21,7 @@ timestamp: 2026-08-22
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 02 | server-history-api | [car-release-02-server-history-api](car-release-02-server-history-api.md) | `task/car-release-02-server-history-api` | todo |
+| 02 | server-history-api | [car-release-02-server-history-api](car-release-02-server-history-api.md) | `task/car-release-02-server-history-api` | in progress |
 | 03 | admin-history-trends | [car-release-03-admin-history-trends](car-release-03-admin-history-trends.md) | `task/car-release-03-admin-history-trends` | todo |
 | 04 | car-docs-verification | [car-release-04-car-docs-verification](car-release-04-car-docs-verification.md) | `task/car-release-04-car-docs-verification` | todo |
 
