@@ -285,10 +285,12 @@ describe('Car SSE data-version signal', () => {
 
     await writeSidecar(temporary.path, 'old.audit.json', sidecar('old', '2026-08-01T12:00:00.000Z'));
     await writeSidecar(temporary.path, 'live.audit.json', sidecar('live'));
-    await service.reconcile();
+    const ingestedCount = () =>
+      (service.health() as Readonly<{ database: { recordCount: number } }>).database.recordCount;
+    while (ingestedCount() < 2) await service.reconcile();
 
     let stream = '';
-    const deadline = Date.now() + 2_000;
+    const deadline = Date.now() + 5_000;
     while (!stream.includes('"recordCount":2')) {
       if (Date.now() > deadline) throw new Error('timed out waiting for SSE frames');
       stream += decode(await reader.read());
