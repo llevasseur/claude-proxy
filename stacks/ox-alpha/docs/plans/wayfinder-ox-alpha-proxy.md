@@ -28,8 +28,6 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 03 | proxy-forwarding | [ox-alpha-proxy-03-proxy-forwarding](ox-alpha-proxy-03-proxy-forwarding.md) | `task/ox-alpha-proxy-03-proxy-forwarding` | todo |
-| 04 | server-ingest-api | [ox-alpha-proxy-04-server-ingest-api](ox-alpha-proxy-04-server-ingest-api.md) | `task/ox-alpha-proxy-04-server-ingest-api` | todo |
 | 05 | admin-overview | [ox-alpha-proxy-05-admin-overview](ox-alpha-proxy-05-admin-overview.md) | `task/ox-alpha-proxy-05-admin-overview` | todo |
 | 06 | core-history-trends | [ox-alpha-proxy-06-core-history-trends](ox-alpha-proxy-06-core-history-trends.md) | `task/ox-alpha-proxy-06-core-history-trends` | todo |
 | 07 | server-history-trends | [ox-alpha-proxy-07-server-history-trends](ox-alpha-proxy-07-server-history-trends.md) | `task/ox-alpha-proxy-07-server-history-trends` | todo |
@@ -43,6 +41,9 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **04 server-ingest-api** — PR #4. SQLite usage database (WAL, user_version migration gate, insert+watermark in one immediate transaction, quarantine table), startup backfill + reconciliation with watcher as acceleration only, delete-and-reingest rebuild equivalence proven by test; /api/health, /api/summary, /api/events (monotonic event ids, retry guidance, keepalives, disconnect cleanup). 12 vitest cases. Verify green; CI pass.
+- **03 proxy-forwarding** — PR #5. Transparent forwarding of the full HTTP surface with observation taps on POST /v1/responses that extract final Responses usage without ever gating bytes; atomic sanitized sidecar v1 writes through core pricing with crypto.randomUUID recordIds; body-free live status file signal; zero runtime deps. 13 node --test cases including forwarding fidelity vs fixture upstream and failure isolation. Verify green; CI pass.
 
 - **02 core-usage-pricing** — PR #3. Core domain: normalized usage with subset-checked details; streaming/non-streaming Responses adapters selecting the authoritative final usage; pico-dollar pricing engine with rates ported verbatim from the codex-proxy catalogue and typed unavailability reasons (ADR 0003); strict sidecar v1 validator per the spec field table; DST-aware Today aggregation with explicit clock/timezone. Deterministic and dependency-free. recordId generation stays a proxy concern. Verify green; CI pass.
 
