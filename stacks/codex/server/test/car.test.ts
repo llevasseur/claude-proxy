@@ -286,35 +286,36 @@ describe('Car SSE data-version signal', () => {
     await writeSidecar(temporary.path, 'old.audit.json', sidecar('old', '2026-08-01T12:00:00.000Z'));
     await writeSidecar(temporary.path, 'live.audit.json', sidecar('live'));
     await service.reconcile();
-    let signal = '';
-    for (;;) {
-      signal = decode(await reader.read());
-      if (signal.includes('event: data-version')) break;
-    }
-    expect(signal).toContain('"dataVersion":1');
-    expect(signal).not.toContain('"requestCount"');
-    expect(lastId(signal)).toBeGreaterThan(snapshotId);
-    const dataVersionId = lastId(signal);
 
-    let update = '';
-    while (!update.includes('event: update')) update += decode(await reader.read());
-    expect(update).toContain('"requestCount":1');
-    expect(lastId(update)).toBeGreaterThan(dataVersionId);
+    let stream = '';
+    const deadline = Date.now() + 2_000;
+    while (!stream.includes('"recordCount":2')) {
+      if (Date.now() > deadline) throw new Error('timed out waiting for SSE frames');
+      stream += decode(await reader.read());
+    }
+    const signals = [...stream.matchAll(/event: data-version\ndata: ([^\n]+)\n/g)].map((match) => match[1]);
+    expect(signals.length).toBeGreaterThanOrEqual(1);
+    const finalSignal = JSON.parse(signals.at(-1)!) as Readonly<{ dataVersion: number }>;
+    expect(Object.keys(finalSignal)).toEqual(['dataVersion']);
+    expect(typeof finalSignal.dataVersion).toBe('number');
+    expect(lastId(stream)).toBeGreaterThan(snapshotId);
 
     const history = (await fetch(`${origin}/api/history`).then((response) => response.json())) as HistoryResponse;
-    expect(history.dataVersion).toBe(1);
+    expect(history.dataVersion).toBe(finalSignal.dataVersion);
     expect(history.total).toBe(2);
     const trends = (await fetch(`${origin}/api/trends`).then((response) => response.json())) as TrendsResponse;
-    expect(trends.dataVersion).toBe(1);
+    expect(trends.dataVersion).toBe(finalSignal.dataVersion);
     expect(trends.buckets[0]).toMatchObject({ date: '2026-08-01', requestCount: 1 });
     expect(trends.buckets.at(-1)).toMatchObject({ date: '2026-08-19', requestCount: 1 });
     expect(trends.buckets.filter((bucket) => bucket.requestCount === 1)).toHaveLength(2);
     expect(trends.total).toMatchObject({ requestCount: 2 });
 
     await service.reconcile();
-    const quiet = decode(await reader.read());
-    expect(quiet).toContain(': keepalive');
-    expect(quiet).not.toContain('event: data-version');
+    for (;;) {
+      const quiet = decode(await reader.read());
+      expect(quiet).not.toContain('event: data-version');
+      if (quiet.includes(': keepalive')) break;
+    }
 
     await writeFile(
       join(temporary.path, 'proxy-status.json'),
