@@ -31,9 +31,10 @@ needs-human decision record instead of picking silently.
 Install once with `pnpm install --frozen-lockfile`, then run `pnpm verify`,
 which chains five gates: typecheck (`tsc --noEmit` per package), test
 (vitest for core and server, `node --test` for proxy), build (the admin bundle),
-check (`biome check .` plus docs lint), and anti-slop (the anti-slop oxlint
-plugin). Anti-slop rules start at `warn`; ratchet a rule to `error` once its
-findings reach zero.
+check (`biome check .` plus the docs link lint), and anti-slop (oxlint with
+warn-level rules; the claude-proxy anti-slop plugin is not yet installed, so
+equivalent categories stand in until it can be ported). Anti-slop rules start at
+`warn`; ratchet a rule to `error` once its findings reach zero.
 
 ## Worktrees
 

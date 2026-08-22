@@ -1,0 +1,8 @@
+packages:
+  - proxy
+  - server
+  - packages/core
+  - apps/admin
+
+allowBuilds:
+  esbuild: true
