@@ -7,7 +7,19 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/node_modules", "!.claude/worktrees", "!**/pnpm-lock.yaml", "!logs"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!.claude/worktrees",
+      "!**/pnpm-lock.yaml",
+      "!logs",
+      "!tools/oxlint/anti-slop",
+      "!**/coverage/*",
+      "!**/build/*",
+      "!**/dist/*",
+      "!**/public/*",
+      "!**/*.gen.*"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -23,16 +35,58 @@
       "style": {
         "noNonNullAssertion": "off"
       }
-    }
+    },
+    "includes": ["**", "!**/node_modules/**/*", "!**/dist/**/*", "!**/build/**/*", "!**/public/**/*"]
   },
   "javascript": {
     "formatter": {
       "quoteStyle": "single",
       "trailingCommas": "all",
       "semicolons": "always"
-    }
+    },
+    "globals": ["test", "describe", "it", "expect", "beforeEach", "afterEach", "beforeAll", "afterAll"]
   },
   "overrides": [
+    {
+      "includes": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noConstAssign": "off",
+            "noGlobalObjectCalls": "off",
+            "noInvalidBuiltinInstantiation": "off",
+            "noInvalidConstructorSuper": "off",
+            "noSetterReturn": "off",
+            "noUnreachable": "off",
+            "noUnreachableSuper": "off"
+          },
+          "style": { "useConst": "off" },
+          "suspicious": {
+            "noClassAssign": "off",
+            "noDuplicateClassMembers": "off",
+            "noDuplicateObjectKeys": "off",
+            "noDuplicateParameters": "off",
+            "noFunctionAssign": "off",
+            "noImportAssign": "off",
+            "noRedeclare": "off",
+            "noUnsafeNegation": "off",
+            "noVar": "off",
+            "noWith": "off",
+            "useGetterReturn": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/__tests__/**/*.ts", "**/*.test.ts", "**/*.spec.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    },
     {
       "includes": ["packages/core/src/index.ts"],
       "linter": {
@@ -43,5 +97,13 @@
         }
       }
     }
-  ]
+  ],
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
 }

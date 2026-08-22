@@ -12,15 +12,21 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "build": "pnpm -r --if-present build",
+    "lint": "biome lint .",
+    "lint:anti-slop": "oxlint",
+    "anti:slop": "oxlint",
     "check": "biome check . && pnpm check:docs",
     "check:docs": "node scripts/check-docs.mjs",
     "format": "biome check --write .",
-    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm check",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm check && pnpm anti:slop",
     "proxy": "pnpm --filter proxy start",
     "server": "pnpm --filter server start",
-    "admin": "pnpm --filter admin dev"
+    "admin": "pnpm --filter admin dev",
+    "zellij": "bash scripts/zellij.sh"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.6"
+    "@biomejs/biome": "^2.5.6",
+    "@oxlint/plugins": "1.78.0",
+    "oxlint": "1.78.0"
   }
 }

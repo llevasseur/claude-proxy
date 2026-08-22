@@ -19,6 +19,21 @@ pnpm verify
 Copy `.env.example` to `.env` when running the processes locally. Runtime logs, sidecars, status files, databases,
 and environment files are ignored by Git.
 
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `pnpm zellij` | opens `proxy`, `server` and `admin` together in one zellij session |
+| `pnpm proxy` / `pnpm server` / `pnpm admin` | one process at a time |
+| `pnpm verify` | every gate below, in order |
+| `pnpm typecheck` / `pnpm test` / `pnpm build` | the per-package gates |
+| `pnpm check` | Biome (lint, format, import order) plus the docs link check |
+| `pnpm lint` / `pnpm format` | Biome's linter alone / Biome's fixer |
+| `pnpm anti:slop` | the anti-slop oxlint rules |
+
+CI runs the same five gates on every pull request. Working in a git worktree? Run
+`bash scripts/bootstrap-worktree.sh` inside it first — see [AGENTS.md](AGENTS.md).
+
 ## Bike processes
 
 Bike keeps three failure domains separate:

@@ -21,6 +21,60 @@ Files under `docs/plans/` are temporary Wayfinder scaffolding.
 - Treat final sanitized audit sidecars as the source of truth and SQLite as rebuildable state.
 - Do not persist request bodies, response bodies, prompts, tool data, credentials, cookies, or arbitrary headers in Bike.
 
+## Worktree Setup
+
+`git worktree add` materializes tracked files only, so a fresh worktree has no
+`node_modules/`, no `.env` and no `logs/`. Run `bash scripts/bootstrap-worktree.sh` from
+inside it: the script symlinks every `.env` the main checkout actually has (`.env`,
+`proxy/.env`, `server/.env`, `apps/admin/.env` — missing ones are skipped) plus `logs/`,
+then runs `pnpm install --frozen-lockfile`. It resolves the main checkout from
+`git rev-parse --git-common-dir`, so no path is hardcoded and no base branch is assumed.
+
+Nothing is generated. `@codex-proxy/core` exports TypeScript source and `proxy` runs from
+source, so install is the whole build — `ERR_MODULE_NOT_FOUND` in a fresh worktree means
+it was never bootstrapped, not that something needs compiling. A missing `logs/` is the
+same symptom, not data loss.
+
+`.gitignore` lists `logs` **without** a trailing slash, and that is load-bearing rather
+than sloppy: in a worktree `logs` is a symlink, which `logs/` would not match.
+
 ## Verification
 
-Install once with `pnpm install --frozen-lockfile`, then run `pnpm verify`.
+Install once with `pnpm install --frozen-lockfile`, then run `pnpm verify` — which chains
+the same five gates CI runs as separate steps:
+
+| Script | What it runs |
+| --- | --- |
+| `pnpm typecheck` | `tsc --noEmit` per package |
+| `pnpm test` | vitest (core, server) and `node --test` (proxy) |
+| `pnpm build` | the admin bundle; every other package has no build |
+| `pnpm check` | `biome check .` (lint + format + import sorting, read-only) plus `pnpm check:docs` |
+| `pnpm anti:slop` | the anti-slop oxlint plugin |
+
+`pnpm format` (`biome check --write .`) is the fixer and `pnpm lint` (`biome lint .`)
+narrows to the linter alone. `.github/workflows/verify.yml` runs the five gates as
+individual steps so a failure names the gate rather than one opaque script.
+
+**The anti-slop rules are set to `warn` here, not `error`.** The plugin, its config and
+its script names are copied from `claude-proxy` unchanged, but this codebase predates the
+rules and starts at 94 findings — most of them `no-unknown-parameters`,
+`no-unsafe-dictionary-type` and `no-runtime-typeof` in the sidecar-validation boundary,
+where satisfying them means designing a parser layer inside a package that is required to
+stay dependency-free. `warn` keeps every file linted and the backlog visible on each run
+while CI stays green. Ratchet a rule to `error` once its findings reach zero; that is the
+path to full parity with `claude-proxy`, where these are all `error`.
+
+## Running everything
+
+`pnpm zellij` opens all three Bike processes in one zellij session using
+`.zellij/codex-proxy.kdl` — `proxy`, `server` and `admin` in a `dev` tab, plus a spare
+shell tab. No port is pinned in the layout, but the three panes do not read the same
+file. `server` runs `tsx --env-file-if-exists=.env` with its cwd in `server/`, so
+`SERVER_PORT` comes from `server/.env`; `admin` is Vite, which loads `apps/admin/.env`.
+`proxy` runs as `node src/proxy.ts` with no `--env-file` and `proxy/src/config.ts` reads
+`process.env` alone, so `PROXY_PORT` and `OPENAI_UPSTREAM` have to be exported into the
+shell that launches `pnpm zellij` — a root `.env` reaches no process on its own. The
+script warns and waits if it finds none of those files. Plane's processes belong as
+further panes in that same layout rather than in a second one.
+
+Individually: `pnpm proxy`, `pnpm server`, `pnpm admin`.
