@@ -53,6 +53,10 @@ importers:
         version: 22.18.13
 
   server:
+    dependencies:
+      '@ox-alpha-proxy/core':
+        specifier: workspace:*
+        version: link:../packages/core
     devDependencies:
       '@types/node':
         specifier: ~22.18.0

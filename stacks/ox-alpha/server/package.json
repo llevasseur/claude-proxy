@@ -10,11 +10,13 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "start": "tsx --env-file-if-exists=.env src/index.ts",
+    "start": "tsx --env-file-if-exists=.env src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@ox-alpha-proxy/core": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "~22.18.0",
     "tsx": "~4.20.0",
