@@ -1,5 +1,10 @@
 import { resolve } from 'node:path';
 
+// Relative `AUDIT_DIR` and `PROXY_STATUS_FILE` values resolve from here rather than
+// `process.cwd()`, so `pnpm --filter proxy start` (cwd `proxy/`) and a root-level
+// `node proxy/src/proxy.ts` land on the same files. Absolute values still win.
+const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
+
 export interface ProxyConfig {
   readonly host: string;
   readonly port: number;
@@ -25,12 +30,12 @@ function upstream(value: string | undefined): URL {
 }
 
 export function loadProxyConfig(environment: NodeJS.ProcessEnv = process.env): ProxyConfig {
-  const auditDirectory = resolve(environment.AUDIT_DIR ?? 'logs/audit');
+  const auditDirectory = resolve(REPOSITORY_ROOT, environment.AUDIT_DIR ?? 'logs/audit');
   return Object.freeze({
     host: environment.PROXY_HOST ?? '127.0.0.1',
     port: port(environment.PROXY_PORT),
     upstream: upstream(environment.OPENAI_UPSTREAM),
     auditDirectory,
-    statusFile: resolve(environment.PROXY_STATUS_FILE ?? `${auditDirectory}/proxy-status.json`),
+    statusFile: resolve(REPOSITORY_ROOT, environment.PROXY_STATUS_FILE ?? `${auditDirectory}/proxy-status.json`),
   });
 }
