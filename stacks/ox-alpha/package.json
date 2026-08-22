@@ -1,0 +1,18 @@
+{
+  "name": "ox-alpha-proxy",
+  "private": true,
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "check": "biome check .",
+    "lint": "biome lint .",
+    "format": "biome check --write .",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm check && pnpm anti:slop",
+    "anti:slop": "oxlint --config .oxlintrc.json ."
+  }
+}
