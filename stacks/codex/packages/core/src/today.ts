@@ -48,12 +48,38 @@ function localMidnightUtc(year: number, month: number, day: number, timeZone: st
   return candidate;
 }
 
-export function getTodayWindow(now: Date, timeZone = DEFAULT_REPORT_TIMEZONE): Readonly<{ start: Date; end: Date }> {
-  if (Number.isNaN(now.getTime())) throw new RangeError('now must be a valid Date');
-  const current = partsAt(now.getTime(), timeZone);
-  const nextCalendarDay = new Date(Date.UTC(current.year, current.month - 1, current.day + 1));
+export function parseCalendarDate(calendarDate: string): Readonly<{ year: number; month: number; day: number }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(calendarDate)) throw new RangeError(`invalid calendar date: ${calendarDate}`);
+  const [yearText, monthText, dayText] = calendarDate.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    throw new RangeError(`invalid calendar date: ${calendarDate}`);
+  }
+  const canonical = new Date(Date.UTC(year, month - 1, day));
+  if (canonical.getUTCFullYear() !== year || canonical.getUTCMonth() !== month - 1 || canonical.getUTCDate() !== day) {
+    throw new RangeError(`invalid calendar date: ${calendarDate}`);
+  }
+  return Object.freeze({ year, month, day });
+}
+
+export function formatReportDate(timestamp: number, timeZone = DEFAULT_REPORT_TIMEZONE): string {
+  const parts = partsAt(timestamp, timeZone);
+  return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(
+    2,
+    '0',
+  )}`;
+}
+
+export function getCalendarDayWindow(
+  calendarDate: string,
+  timeZone = DEFAULT_REPORT_TIMEZONE,
+): Readonly<{ start: Date; end: Date }> {
+  const { year, month, day } = parseCalendarDate(calendarDate);
+  const nextCalendarDay = new Date(Date.UTC(year, month - 1, day + 1));
   return Object.freeze({
-    start: new Date(localMidnightUtc(current.year, current.month, current.day, timeZone)),
+    start: new Date(localMidnightUtc(year, month, day, timeZone)),
     end: new Date(
       localMidnightUtc(
         nextCalendarDay.getUTCFullYear(),
@@ -63,6 +89,11 @@ export function getTodayWindow(now: Date, timeZone = DEFAULT_REPORT_TIMEZONE): R
       ),
     ),
   });
+}
+
+export function getTodayWindow(now: Date, timeZone = DEFAULT_REPORT_TIMEZONE): Readonly<{ start: Date; end: Date }> {
+  if (Number.isNaN(now.getTime())) throw new RangeError('now must be a valid Date');
+  return getCalendarDayWindow(formatReportDate(now.getTime(), timeZone), timeZone);
 }
 
 export function aggregateToday(
