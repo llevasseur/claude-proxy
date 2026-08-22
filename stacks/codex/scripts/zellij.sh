@@ -26,9 +26,8 @@ done
 
 if [ -z "${env_found}" ]; then
   echo "no .env found (looked for .env, proxy/.env, server/.env, apps/admin/.env)." >&2
-  echo "the panes will use their built-in defaults. server reads server/.env and admin" >&2
-  echo "reads apps/admin/.env; the proxy loads no file at all, so OPENAI_UPSTREAM and" >&2
-  echo "PROXY_PORT have to be exported into this shell." >&2
+  echo "the panes will use their built-in defaults. proxy and server both load the" >&2
+  echo "repository-root .env; admin reads apps/admin/.env." >&2
   if [ -t 0 ]; then
     printf 'Press Enter to launch anyway, or Ctrl-C to fix it first: ' >&2
     read -r _ || true

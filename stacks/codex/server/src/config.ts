@@ -1,6 +1,10 @@
 import { resolve } from 'node:path';
 import { DEFAULT_REPORT_TIMEZONE } from '@codex-proxy/core';
 
+// Relative `AUDIT_DIR`, `DATABASE_PATH` and `PROXY_STATUS_PATH` resolve from here
+// rather than `process.cwd()`; absolute values still win.
+const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
+
 export interface ServerConfig {
   readonly host: string;
   readonly port: number;
@@ -29,7 +33,7 @@ function timezone(value: string | undefined): string {
   return candidate;
 }
 
-export function readConfig(environment: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): ServerConfig {
+export function readConfig(environment: NodeJS.ProcessEnv = process.env, cwd = REPOSITORY_ROOT): ServerConfig {
   const host = environment.HOST?.trim() || '127.0.0.1';
   const port = integer(environment.PORT, 4319, 'PORT', 0);
   if (port > 65_535) throw new Error('PORT must be <= 65535');

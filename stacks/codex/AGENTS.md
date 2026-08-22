@@ -68,13 +68,17 @@ path to full parity with `claude-proxy`, where these are all `error`.
 
 `pnpm zellij` opens all three Bike processes in one zellij session using
 `.zellij/codex-proxy.kdl` — `proxy`, `server` and `admin` in a `dev` tab, plus a spare
-shell tab. No port is pinned in the layout, but the three panes do not read the same
-file. `server` runs `tsx --env-file-if-exists=.env` with its cwd in `server/`, so
-`SERVER_PORT` comes from `server/.env`; `admin` is Vite, which loads `apps/admin/.env`.
-`proxy` runs as `node src/proxy.ts` with no `--env-file` and `proxy/src/config.ts` reads
-`process.env` alone, so `PROXY_PORT` and `OPENAI_UPSTREAM` have to be exported into the
-shell that launches `pnpm zellij` — a root `.env` reaches no process on its own. The
-script warns and waits if it finds none of those files. Plane's processes belong as
-further panes in that same layout rather than in a second one.
+shell tab. No port is pinned in the layout. `proxy` and `server` run under
+`pnpm --filter`, so their cwd is the package directory, and both pass
+`--env-file-if-exists=../.env` to reach the repository-root `.env` from there —
+`PROXY_PORT` and `OPENAI_UPSTREAM` no longer have to be exported into the shell that
+launches `pnpm zellij`. `admin` is Vite, which loads `apps/admin/.env`. The script warns
+and waits if it finds none of those files.
+
+Relative paths in that root `.env` — `AUDIT_DIR`, `DATABASE_PATH`, `PROXY_STATUS_FILE`,
+`PROXY_STATUS_PATH` — resolve against the repository root rather than the launching cwd,
+so a pane started under `pnpm --filter` and a root-level `node proxy/src/proxy.ts` write
+to the same `logs/`. Absolute values still win. Plane's processes belong as further panes
+in that same layout rather than in a second one.
 
 Individually: `pnpm proxy`, `pnpm server`, `pnpm admin`.
