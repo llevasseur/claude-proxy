@@ -125,7 +125,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 16 | scope-the-gate-and-land-ci | [monorepo-fusion-16-scope-the-gate-and-land-ci](monorepo-fusion-16-scope-the-gate-and-land-ci.md) | `task/monorepo-fusion-16-scope-the-gate-and-land-ci` | paused | PR [#268](https://github.com/llevasseur/claude-proxy/pull/268) open on this base, work complete, unmerged: the `verify` workflow it lands is red because `pnpm test` hangs in `stacks/claude/proxy` (finishes its tests, never exits), which is outside this ticket's lane. Resume by fixing that hang, then merge. Runs BEFORE 05 so the absorptions land under a live gate. |
-| 17 | fix-the-proxy-test-hang | [monorepo-fusion-17-fix-the-proxy-test-hang](monorepo-fusion-17-fix-the-proxy-test-hang.md) | `task/monorepo-fusion-17-fix-the-proxy-test-hang` | todo | Unblocks ticket 16. Found by the first execution of the first PR gate this repo has ever had. Runs BEFORE 05. |
+| 17 | fix-the-proxy-test-hang | [monorepo-fusion-17-fix-the-proxy-test-hang](monorepo-fusion-17-fix-the-proxy-test-hang.md) | `task/monorepo-fusion-17-fix-the-proxy-test-hang` | in-progress | Unblocks ticket 16. Found by the first execution of the first PR gate this repo has ever had. Runs BEFORE 05. |
 | 05 | absorb-codex | [monorepo-fusion-05-absorb-codex](monorepo-fusion-05-absorb-codex.md) | `task/monorepo-fusion-05-absorb-codex` | todo | |
 | 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | todo | |
 | 07 | reformat-ox | [monorepo-fusion-07-reformat-ox](monorepo-fusion-07-reformat-ox.md) | `task/monorepo-fusion-07-reformat-ox` | todo | |
