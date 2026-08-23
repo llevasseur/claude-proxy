@@ -31,4 +31,11 @@ Add one with `okq new adr "<title>"`.
 | Order notes strictly by recent edit | [0015-order-notes-strictly-by-recent-edit.md](0015-order-notes-strictly-by-recent-edit.md) |
 | Return note excerpts from discovery operations | [0016-return-note-excerpts-from-discovery-operations.md](0016-return-note-excerpts-from-discovery-operations.md) |
 | Allow blank note titles | [0017-allow-blank-note-titles.md](0017-allow-blank-note-titles.md) |
+| Keep port defaults verbatim and scope environment variable names per stack | [0050-stack-scoped-environment-variables.md](0050-stack-scoped-environment-variables.md) |
+| Absorb ox into the shared lint gate at a warn tier, and split its delta by fixability | [0051-absorb-ox-into-the-shared-lint-gate.md](0051-absorb-ox-into-the-shared-lint-gate.md) |
+| Inherited ratification flags survive the merge unchanged | [0052-inherited-ratification-flags-survive-the-merge.md](0052-inherited-ratification-flags-survive-the-merge.md) |
+| The merged ADR record replaces both sources rather than joining them | [0053-the-merged-corpus-replaces-its-sources.md](0053-the-merged-corpus-replaces-its-sources.md) |
+| Each stack keeps its own corpus at its own stack root | [0054-each-stack-keeps-its-own-corpus-root.md](0054-each-stack-keeps-its-own-corpus-root.md) |
+| The package rename covers every non-import reference, gated by a grep | [0055-the-rename-covers-every-non-import-reference.md](0055-the-rename-covers-every-non-import-reference.md) |
+| The docs gate asserts section indexes by file, and permits links out to source | [0056-the-docs-gate-asserts-indexes-by-file.md](0056-the-docs-gate-asserts-indexes-by-file.md) |
 <!-- okq:index:end -->
