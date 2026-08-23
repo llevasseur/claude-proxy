@@ -125,3 +125,51 @@ describe("Bike API", () => {
     expect(await missing.json()).toEqual({ error: "not_found" });
   });
 });
+
+describe("Usage limits API", () => {
+  test("meters configured rolling windows and omits unconfigured ones", async () => {
+    const now = new Date("2026-08-19T18:00:00.000Z");
+    const temporary = await temporaryDirectory();
+    cleanups.push(temporary.cleanup);
+    const service = new LiveUsageService(
+      config(temporary.path, { usageLimitCeilings: { "5h": 1000 } }),
+      () => now,
+    );
+    services.push(service);
+    await writeSidecar(
+      temporary.path,
+      "metered.audit.json",
+      sidecar("metered", "2026-08-19T17:00:00.000Z"),
+    );
+    await writeSidecar(
+      temporary.path,
+      "old.audit.json",
+      sidecar("old", "2026-08-19T10:00:00.000Z"),
+    );
+    const address = await service.start();
+    const origin = `http://${address.host}:${address.port}`;
+
+    const payload = (await fetch(`${origin}/api/limits`).then((r) => r.json())) as {
+      reportTimezone: string;
+      windows: Array<Record<string, unknown>>;
+    };
+    expect(payload.reportTimezone).toBe("America/New_York");
+    expect(payload.windows).toHaveLength(1);
+    // input 10 + output 4 = 14 metering units inside the trailing five hours.
+    expect(payload.windows[0]).toMatchObject({
+      kind: "5h",
+      requests: 1,
+      usedUnits: "14.0",
+      ceilingUnits: "1000.0",
+      utilization: 0.014,
+    });
+
+    const unconfigured = new LiveUsageService(config(temporary.path), () => now);
+    services.push(unconfigured);
+    const other = await unconfigured.start();
+    const empty = (await fetch(`http://${other.host}:${other.port}/api/limits`).then((r) =>
+      r.json(),
+    )) as { windows: unknown[] };
+    expect(empty.windows).toEqual([]);
+  });
+});

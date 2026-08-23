@@ -2,6 +2,7 @@ export * from "./adapters.ts";
 export * from "./capture.ts";
 export * from "./history.ts";
 export * from "./inspection.ts";
+export * from "./limits.ts";
 export * from "./pricing.ts";
 export * from "./redact.ts";
 export * from "./sidecar.ts";

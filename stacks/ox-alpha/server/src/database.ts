@@ -225,6 +225,15 @@ export class UsageDatabase {
     );
   }
 
+  // Every stored sidecar in chronological order; windowed meters filter by
+  // their own spans.
+  allSidecars(): readonly SanitizedAuditSidecarV1[] {
+    const rows = this.database
+      .prepare("SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id")
+      .all() as unknown as JsonRow[];
+    return rows.map((row) => parseSanitizedAuditSidecar(JSON.parse(row.sidecar_json)));
+  }
+
   summary(now: Date, reportTimezone: string): TodaySummary {
     const rows = this.database
       .prepare("SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id")

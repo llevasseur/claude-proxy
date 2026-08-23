@@ -69,6 +69,7 @@ export function config(directory: string, overrides: Partial<ServerConfig> = {})
     captureDirectory: join(directory, "captures"),
     captureRetentionMs: 604_800_000,
     captureMaxBytes: 268_435_456,
+    usageLimitCeilings: {},
     ...overrides,
   });
 }

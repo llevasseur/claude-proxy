@@ -68,6 +68,24 @@ test("capture off keeps forwarding byte-identical and never writes body bytes to
     // asynchronous proxy write has settled before scanning and cleaning up.
     const sidecarFiles = await waitForFiles(proxy.auditDirectory, 1);
     assert.equal(sidecarFiles.length, 1);
+    // The rolling-usage status rewrite rides the same observation path; wait
+    // for it too so no status write races directory cleanup.
+    const deadline = Date.now() + 2000;
+    for (;;) {
+      let rolling: unknown;
+      try {
+        const status = JSON.parse(await readFile(proxy.statusFile, "utf8")) as Record<
+          string,
+          unknown
+        >;
+        rolling = (status.rollingUsage as Record<string, unknown> | null)?.requests;
+      } catch {
+        // Status file may not exist yet.
+      }
+      if (rolling === 1) break;
+      assert.ok(Date.now() < deadline, "rolling usage never settled");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
 
     // No capture file anywhere under the proxy's scratch base, and no disk
     // file at all contains the secret bodies.

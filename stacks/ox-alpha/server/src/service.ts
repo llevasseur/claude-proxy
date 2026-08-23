@@ -5,6 +5,7 @@ import {
   aggregateDailyBuckets,
   aggregateRangeFromBuckets,
   type CaptureEnvelopeV1,
+  computeUsageWindows,
   formatReportDate,
   resolveCalendarRange,
 } from "@ox-alpha-proxy/core";
@@ -478,6 +479,10 @@ export class LiveUsageService {
       this.handleTrends(url.searchParams, response);
       return;
     }
+    if (url.pathname === "/api/limits") {
+      this.handleLimits(response);
+      return;
+    }
     if (url.pathname === "/api/events") {
       this.events.subscribe(response, this.snapshot());
       return;
@@ -541,6 +546,22 @@ export class LiveUsageService {
       }
       throw error;
     }
+  }
+
+  // Rolling usage meters against operator-supplied ceilings (USAGE_LIMIT_*).
+  // Windows without a configured ceiling are omitted entirely; nothing is shown
+  // against an invented denominator.
+  private handleLimits(response: ServerResponse): void {
+    const kinds = Object.keys(this.config.usageLimitCeilings) as Array<
+      keyof typeof this.config.usageLimitCeilings
+    >;
+    if (kinds.length === 0) {
+      json(response, 200, { reportTimezone: this.config.reportTimezone, windows: [] });
+      return;
+    }
+    const rows = this.database.allSidecars();
+    const windows = computeUsageWindows(rows, this.config.usageLimitCeilings, this.clock());
+    json(response, 200, { reportTimezone: this.config.reportTimezone, windows });
   }
 
   async start(): Promise<Readonly<{ host: string; port: number }>> {
