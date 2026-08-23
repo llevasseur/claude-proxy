@@ -26,6 +26,11 @@ Bike excludes history, trends, filters, body capture, inspection, and operator a
 Car adds durable history, trend views, date ranges, and model/range filters. It retains the live Overview and remains
 fully useful without any Boat inspection data or body capture.
 
+Car shipped through the `car-release` campaign (PRs #14–#19): core range and aggregation domain, server history API
+on view schema v2, `/history` and `/trends` dashboard routes, and durable feature/spec documentation verified against
+the running server. See [docs/features/car.md](../features/car.md) and
+[docs/specs/car-architecture.md](../specs/car-architecture.md).
+
 ```text
 $dev --slug car-release build Car in codex-proxy: add durable usage history, trend views, date ranges, and model/range filters while preserving Bike's transparent forwarding, sanitized-only storage, nullable complete cost, live Overview, process separation, and rebuildable SQLite view. Exclude request/response body capture, prompt/tool/session inspection, and operator automation. Update durable feature, architecture, roadmap, and decision docs; verify fresh install, aggregate gates, historical accuracy, filters, timezone boundaries, SSE continuity, and Bike regression coverage; ship through the repository's campaign workflow.
 ```
