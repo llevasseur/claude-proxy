@@ -84,9 +84,21 @@ that follows the original brief instead of the correction will do the wrong work
 
 Noted, not yet ticketed into their own units; each is folded into the ticket named.
 
-1. **ox has no `tsconfig.base.json`**, so blocker (g) does not reach it — four standalone
-   configs with no `extends` to repoint, and no severity tier available since tsconfig
-   has none. *(ticket 06)*
+1. **~~ox has no `tsconfig.base.json`~~ — settled by ticket 06: it adopted the shared
+   base, error count 0.** And adopting it fixed a **real fusion-caused break** rather than
+   a naming inconsistency: ox's core set no `skipLibCheck`, so under shared `node_modules`
+   `tsc` began checking vite's `.d.ts` and failed with `TS2304: Cannot find name 'Worker'`.
+   *(closed)*
+15. **ox's anti-slop rules were never running — not merely at the wrong severity.** Its
+    nested `.oxlintrc.json` did not extend the root, so the plugin was unregistered for
+    ox's whole subtree and reported **0 findings**. Extending the root reports **358 at
+    `warn`**. That is the ratchet's real starting count, and it is the second confirmation
+    that ADR 0051 settles Biome and not oxlint. *(ticket 08)*
+16. **A codex proxy test is flaky under parallel load.** `stacks/codex/proxy`'s
+    `proxy.test.ts:596` failed once in five local full-suite runs (`null !== 0`,
+    spawned-CLI exit timing), passed 3/3 in isolation before and after, and **24/24 on
+    CI**. ox's absorption adds parallel load that plausibly surfaces it. Same class as
+    ticket 19. *(candidate ticket; left alone as out-of-lane by ticket 06)*
 13. **A sibling ticket must be merged with `--merge`, never `--squash`.** Ticket 05's branch
     carried 50 otherwise-unreachable commits, 44 of them named in the commit map. `/god`
     defaults to squash, which would orphan them and falsify the history bridge

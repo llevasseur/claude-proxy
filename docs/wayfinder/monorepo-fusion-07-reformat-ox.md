@@ -2,6 +2,13 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-07-reformat-ox`
+**Cut from and merged into:** `task/monorepo-fusion-06-absorb-ox` — **not** the campaign
+base. Second in a stack: 08 → 07 → 06 → base. Ticket 06 is complete and reviewed but red
+**by design** (ox formatting and `noEmptyBlockStatements`), and merging it red would break
+the campaign's own rule that a gate commit on the base has a green verify. Stacking keeps
+that rule true and merges nothing red, the same shape the 16 ← 17 ← 18 CI stack used.
+**When ticket 06's PR #272 finally merges it MUST use `--merge`, never `--squash`** — all
+64 mapped ox SHAs are reachable only via that branch.
 **Status:** active
 
 ## Goal

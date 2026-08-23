@@ -2,7 +2,23 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-08-ox-lint-warn-tier`
+**Cut from and merged into:** `task/monorepo-fusion-07-reformat-ox` — **not** the campaign
+base. Third in a stack: 08 → 07 → 06 → base. This ticket is what returns the tree to green,
+after which 07 merges into 06, 06 merges into the base with `--merge`, and the base's
+green-verify invariant is preserved throughout.
 **Status:** active
+
+## What ticket 06 measured, which changes this ticket's premise
+
+**ox's anti-slop rules were never running at all** — this is worse than the "wrong
+severity" the plan below assumes. ox's nested `.oxlintrc.json` did not extend the root, so
+the plugin was **unregistered for ox's whole subtree** and reported **0 findings**. With
+the config extending the root it reports **358 at `warn`**.
+
+So the starting count for the ratchet is 358, not zero, and ADR 0051's reasoning — which
+covered Biome — does not settle oxlint. Ticket 05 found the same shape in codex, where the
+rules ran at `warn` against the root's `error`, and where two configs registering a plugin
+named `anti-slop` abort the run outright.
 
 ## Goal
 
