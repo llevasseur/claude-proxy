@@ -1,6 +1,6 @@
-import type { UsageTotals } from '@codex-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import type { HistoryRecord } from './api.ts';
 import { getHistory, HISTORY_PAGE_SIZES, type HistoryQuery } from './api.ts';
 import { FilterBar, type FilterBarFilters } from './filter-bar.tsx';
 import { costCell, formatTimestamp, formatTokens, unavailableReasonText } from './format.ts';
@@ -16,12 +16,12 @@ interface HistoryPageProps {
   onSearchChange: (search: HistorySearch) => void;
 }
 
-function tokensDetail(usage: UsageTotals): string {
+function tokensDetail(record: HistoryRecord): string {
   return [
-    `in ${formatTokens(usage.inputTokens)}`,
-    `cached ${formatTokens(usage.cachedInputTokens)}`,
-    `out ${formatTokens(usage.outputTokens)}`,
-    `reasoning ${formatTokens(usage.reasoningOutputTokens)}`,
+    `in ${formatTokens(record.inputTokens)}`,
+    `cached ${formatTokens(record.cachedInputTokens)}`,
+    `out ${formatTokens(record.outputTokens)}`,
+    `reasoning ${formatTokens(record.reasoningOutputTokens)}`,
   ].join(' · ');
 }
 
@@ -53,8 +53,9 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
     recordObservedModels(result.data.records.map((record) => record.model));
   }, [result.data]);
 
-  const totalRecords = result.data?.totalRecords;
+  const totalRecords = result.data?.total;
   const totalPages = totalRecords === undefined ? undefined : Math.max(1, Math.ceil(totalRecords / pageSize));
+  const offset = (page - 1) * pageSize;
 
   const changePage = (next: number) => onSearchChange({ page: next });
 
@@ -122,8 +123,8 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
                       </span>
                     </td>
                     <td>
-                      <span className="car-token-total">{formatTokens(record.usage.totalTokens)}</span>
-                      <span className="car-token-detail muted">{tokensDetail(record.usage)}</span>
+                      <span className="car-token-total">{formatTokens(record.totalTokens)}</span>
+                      <span className="car-token-detail muted">{tokensDetail(record)}</span>
                     </td>
                     <td>
                       <span
@@ -157,7 +158,7 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
               {totalPages !== undefined && ` of ${formatTokens(totalPages)}`}
               {totalRecords !== undefined &&
                 totalRecords > 0 &&
-                ` · showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, totalRecords)} of ${formatTokens(totalRecords)}`}
+                ` · showing ${offset + 1}–${Math.min(offset + pageSize, totalRecords)} of ${formatTokens(totalRecords)}`}
             </span>
             <button
               type="button"

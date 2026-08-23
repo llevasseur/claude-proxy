@@ -1,5 +1,5 @@
-import type { UsageTotals } from '@codex-proxy/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import type { DailyTrendBucket, TrendRangeTotal } from './api.ts';
 import { type CarFilters, getTrends } from './api.ts';
 import { FilterBar } from './filter-bar.tsx';
 import { costCell, formatDay, formatTimestamp, formatTokens, unavailableReasonText } from './format.ts';
@@ -13,12 +13,21 @@ interface TrendsPageProps {
   onSearchChange: (filters: CarSearchFilters) => void;
 }
 
-function tokensDetail(usage: UsageTotals): string {
+function tokensDetail(bucket: DailyTrendBucket): string {
   return [
-    `in ${formatTokens(usage.inputTokens)}`,
-    `cached ${formatTokens(usage.cachedInputTokens)}`,
-    `out ${formatTokens(usage.outputTokens)}`,
-    `reasoning ${formatTokens(usage.reasoningOutputTokens)}`,
+    `in ${formatTokens(bucket.inputTokens)}`,
+    `cached ${formatTokens(bucket.cachedInputTokens)}`,
+    `out ${formatTokens(bucket.outputTokens)}`,
+    `reasoning ${formatTokens(bucket.reasoningOutputTokens)}`,
+  ].join(' · ');
+}
+
+function tokensDetailTotal(total: TrendRangeTotal): string {
+  return [
+    `in ${formatTokens(total.inputTokens)}`,
+    `cached ${formatTokens(total.cachedInputTokens)}`,
+    `out ${formatTokens(total.outputTokens)}`,
+    `reasoning ${formatTokens(total.reasoningOutputTokens)}`,
   ].join(' · ');
 }
 
@@ -32,7 +41,7 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
   });
   const { result, signal } = useVersionedQuery(trends);
   const buckets = result.data?.buckets;
-  const rangeTotal = result.data?.rangeTotal;
+  const rangeTotal = result.data?.total;
 
   return (
     <section className="car-page" aria-labelledby="trends-title">
@@ -87,8 +96,8 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
                       <td>{formatDay(bucket.startInclusive, result.data?.reportTimezone)}</td>
                       <td>{formatTokens(bucket.requestCount)}</td>
                       <td>
-                        <span className="car-token-total">{formatTokens(bucket.usage.totalTokens)}</span>
-                        <span className="car-token-detail muted">{tokensDetail(bucket.usage)}</span>
+                        <span className="car-token-total">{formatTokens(bucket.totalTokens)}</span>
+                        <span className="car-token-detail muted">{tokensDetail(bucket)}</span>
                       </td>
                       <td>{bucket.latestEventTimestamp ? formatTimestamp(bucket.latestEventTimestamp) : '—'}</td>
                       <td>
@@ -121,8 +130,8 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
                         <th scope="row">Range total</th>
                         <td>{formatTokens(rangeTotal.requestCount)}</td>
                         <td>
-                          <span className="car-token-total">{formatTokens(rangeTotal.usage.totalTokens)}</span>
-                          <span className="car-token-detail muted">{tokensDetail(rangeTotal.usage)}</span>
+                          <span className="car-token-total">{formatTokens(rangeTotal.totalTokens)}</span>
+                          <span className="car-token-detail muted">{tokensDetailTotal(rangeTotal)}</span>
                         </td>
                         <td>—</td>
                         <td>
