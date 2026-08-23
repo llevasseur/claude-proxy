@@ -14,9 +14,20 @@ export const PRICING_SOURCE = "https://openai.com/api/pricing/";
 const FABLE_STANDIN_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing";
 const FABLE_STANDIN_VERSION = "2026-08-22";
 
-interface RateProvenance {
+export interface RateProvenance {
   readonly effectiveDate: string;
   readonly source: string;
+}
+
+// Provenance is per entry, so reading it needs the entry rather than the
+// catalogue-wide constants. Callers that display or audit a rate use this.
+export function pricingProvenance(
+  model: string,
+  catalogue: Readonly<Record<string, ModelPricing>> = PRICING_CATALOGUE,
+): RateProvenance | null {
+  const entry = catalogue[model];
+  if (!entry) return null;
+  return Object.freeze({ effectiveDate: entry.effectiveDate, source: entry.source });
 }
 
 export const PRICING_CATALOGUE: Readonly<Record<string, ModelPricing>> = Object.freeze({
@@ -98,7 +109,7 @@ export function estimateUsageCost(
     cost: Object.freeze({
       currency: "USD",
       amountUsd: picoUsdToDecimal(picoUsd),
-      catalogueVersion: PRICING_CATALOGUE_VERSION,
+      catalogueVersion: modelPricing.effectiveDate,
     }),
     unavailableReason: null,
   });

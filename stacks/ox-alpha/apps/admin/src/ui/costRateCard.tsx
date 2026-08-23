@@ -1,7 +1,10 @@
 import {
   estimateUsageCost,
   type ModelPricing,
+  PRICING_CATALOGUE,
   type PriceCategory,
+  pricingProvenance,
+  type RateProvenance,
   type UsageTotals,
 } from "@ox-alpha-proxy/core";
 import { useEffect, useState } from "react";
@@ -31,6 +34,14 @@ const FIELDS: ReadonlyArray<readonly [keyof RateOverrides, string, PriceCategory
 // browsers); overrides then live in a process-wide memory store so they still
 // survive remounts within the session.
 const MEMORY_STORE = new Map<string, string>();
+
+// Rates are provenanced per entry (ADR 0013), so the card names each entry's
+// own date and rate card rather than one catalogue-wide footnote.
+const CATALOGUE_PROVENANCE: ReadonlyArray<readonly [string, RateProvenance]> = Object.freeze(
+  Object.keys(PRICING_CATALOGUE)
+    .map((model) => [model, pricingProvenance(model)] as const)
+    .filter((entry): entry is readonly [string, RateProvenance] => entry[1] !== null),
+);
 
 function readStorage(): string | null {
   try {
@@ -144,6 +155,16 @@ export function CostRateCard({ usage }: { readonly usage: UsageTotals | null }) 
             ? `Estimated cost at your rates: $${result.amountUsd}`
             : "Enter rates to recompute the listed usage."}
       </output>
+      <ul className="cost-rate-provenance muted" data-testid="cost-rate-provenance">
+        {CATALOGUE_PROVENANCE.map(([model, provenance]) => (
+          <li key={model}>
+            <code>{model}</code> — effective {provenance.effectiveDate},{" "}
+            <a href={provenance.source} rel="noreferrer noopener" target="_blank">
+              rate card
+            </a>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

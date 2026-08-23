@@ -4,6 +4,7 @@ import {
   PRICING_CATALOGUE,
   PRICING_CATALOGUE_VERSION,
   PRICING_SOURCE,
+  pricingProvenance,
 } from "../src/pricing.ts";
 import type { UsageTotals } from "../src/types.ts";
 
@@ -123,6 +124,10 @@ describe("estimateUsageCost", () => {
     });
     expect(result.cost?.amountUsd).toBe("31.400000");
     expect(result.unavailableReason).toBeNull();
+    // The stamped version is the entry's own, not the OpenAI catalogue's —
+    // stamping the latter would attribute borrowed rates to the wrong source.
+    expect(result.cost?.catalogueVersion).toBe("2026-08-22");
+    expect(result.cost?.catalogueVersion).not.toBe(PRICING_CATALOGUE_VERSION);
   });
 });
 
@@ -146,5 +151,17 @@ describe("PRICING_CATALOGUE provenance", () => {
       output: "50.00",
       reasoningOutput: "50.00",
     });
+  });
+
+  it("reads each entry's provenance back out, and nothing for an unknown model", () => {
+    expect(pricingProvenance("gpt-5")).toEqual({
+      effectiveDate: PRICING_CATALOGUE_VERSION,
+      source: PRICING_SOURCE,
+    });
+    expect(pricingProvenance("x-preview-f-free")).toEqual({
+      effectiveDate: "2026-08-22",
+      source: "https://platform.claude.com/docs/en/about-claude/pricing",
+    });
+    expect(pricingProvenance("gpt-9-future")).toBeNull();
   });
 });
