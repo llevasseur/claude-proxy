@@ -4,6 +4,8 @@ import type { AddressInfo } from "node:net";
 import {
   aggregateDailyBuckets,
   aggregateRangeFromBuckets,
+  type CaptureEnvelopeV1,
+  formatReportDate,
   resolveCalendarRange,
 } from "@ox-alpha-proxy/core";
 import { CaptureStore } from "./capture.ts";
@@ -11,6 +13,14 @@ import type { ServerConfig } from "./config.ts";
 import { UsageDatabase } from "./database.ts";
 import { EventHub } from "./events.ts";
 import { SidecarIngestor } from "./ingest.ts";
+import {
+  assembleDay,
+  collectMessages,
+  collectSessions,
+  collectToolCalls,
+  collectToolSchemas,
+  type DayInspection,
+} from "./inspection.ts";
 
 const HISTORY_DEFAULT_LIMIT = 50;
 const HISTORY_MAX_LIMIT = 200;
@@ -58,6 +68,27 @@ function invalidQuery(error: unknown): boolean {
   return error instanceof BadRequestError || error instanceof RangeError;
 }
 
+// Offset pagination shared by every Boat inspection listing.
+function page<T>(
+  records: readonly T[],
+  limit: number,
+  offset: number,
+): Readonly<{
+  total: number;
+  offset: number;
+  limit: number;
+  nextOffset: number | null;
+  records: readonly T[];
+}> {
+  return Object.freeze({
+    total: records.length,
+    offset,
+    limit,
+    nextOffset: offset + limit < records.length ? offset + limit : null,
+    records: Object.freeze(records.slice(offset, offset + limit)),
+  });
+}
+
 function validProxyStatus(value: unknown): value is ProxyStatusFile {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const status = value as Record<string, unknown>;
@@ -77,6 +108,18 @@ export class LiveUsageService {
   // ADR 0012: monotonic version advanced whenever ingest changes the view,
   // including backfill of records outside today.
   private dataVersion = 0;
+  // Inspection memoization (inherited codex-proxy `context-day-memo`
+  // pattern): parsed captures and per-day assemblies are memoized against a
+  // key combining the directory signature and a retention-deletion epoch, so
+  // either a capture write/change or a retention deletion invalidates.
+  private inspectionEpoch = 0;
+  private captureMemo: Readonly<{
+    key: string;
+    value: Readonly<{ envelopes: readonly CaptureEnvelopeV1[]; unreadable: number }>;
+  }> | null = null;
+  private readonly dayMemos = new Map<string, { key: string; assembly: DayInspection }>();
+  private inspectionAssemblyCount = 0;
+  private inspectionCacheHitCount = 0;
   private ready = false;
   private startedAt: string | null = null;
   private proxy: Readonly<{
@@ -179,7 +222,194 @@ export class LiveUsageService {
   // @ox-alpha-proxy/server maintain`; this periodic pass keeps a running
   // server within its window and size cap without operator action.
   async maintainCaptures(): Promise<void> {
-    await this.captures.maintain();
+    const result = await this.captures.maintain();
+    if (result.deletedExpired + result.deletedOverCap > 0) this.inspectionEpoch += 1;
+  }
+
+  // Test-visible memoization counters; deliberately not an HTTP surface.
+  inspectionStats(): Readonly<{ assemblies: number; cacheHits: number }> {
+    return Object.freeze({
+      assemblies: this.inspectionAssemblyCount,
+      cacheHits: this.inspectionCacheHitCount,
+    });
+  }
+
+  private async captureKey(): Promise<string> {
+    const signature = this.config.captureEnabled ? await this.captures.signature() : "disabled";
+    return `${this.inspectionEpoch}:${signature}`;
+  }
+
+  private async envelopes(): Promise<
+    Readonly<{ envelopes: readonly CaptureEnvelopeV1[]; unreadable: number }>
+  > {
+    // A disabled server never reads the capture directory (typed empties).
+    if (!this.config.captureEnabled) {
+      return Object.freeze({ envelopes: Object.freeze([]), unreadable: 0 });
+    }
+    const key = await this.captureKey();
+    if (this.captureMemo?.key === key) return this.captureMemo.value;
+    const value = await this.captures.list();
+    this.captureMemo = { key, value };
+    return value;
+  }
+
+  private async dayAssembly(date: string): Promise<DayInspection> {
+    // A disabled server assembles nothing and counts nothing.
+    if (!this.config.captureEnabled) {
+      return Object.freeze({
+        date,
+        captureCount: 0,
+        unreadableCaptures: 0,
+        totalMessages: 0,
+        totalToolCalls: 0,
+        captures: Object.freeze([]),
+      });
+    }
+    const key = await this.captureKey();
+    const memo = this.dayMemos.get(date);
+    if (memo !== undefined && memo.key === key) {
+      this.inspectionCacheHitCount += 1;
+      return memo.assembly;
+    }
+    this.inspectionAssemblyCount += 1;
+    const { envelopes, unreadable } = await this.envelopes();
+    const assembly = assembleDay(date, envelopes, unreadable);
+    this.dayMemos.set(date, { key, assembly });
+    return assembly;
+  }
+
+  private findEnvelope(recordId: string): CaptureEnvelopeV1 | null {
+    // Synchronous lookup is safe here because every handler awaits
+    // `envelopes()` (which populates the memo) before resolving a recordId.
+    return (
+      this.captureMemo?.value.envelopes.find((envelope) => envelope.recordId === recordId) ?? null
+    );
+  }
+
+  private requireRecordId(searchParams: URLSearchParams): string {
+    const recordId = searchParams.get("recordId");
+    if (recordId === null || recordId.length === 0) {
+      throw new BadRequestError("recordId is required");
+    }
+    return recordId;
+  }
+
+  private inspectionPage<T>(
+    response: ServerResponse,
+    captureEnabled: boolean,
+    listing: readonly T[],
+    limit: number,
+    offset: number,
+  ): void {
+    json(response, 200, {
+      captureEnabled,
+      ...page(listing, limit, offset),
+    });
+  }
+
+  private async handleInspection(
+    pathname: string,
+    searchParams: URLSearchParams,
+    response: ServerResponse,
+  ): Promise<void> {
+    try {
+      const enabled = this.config.captureEnabled;
+      switch (pathname) {
+        case "/api/inspection/day": {
+          const rawDate = calendarParameter(searchParams, "date");
+          const date =
+            rawDate ?? formatReportDate(this.clock().getTime(), this.config.reportTimezone);
+          const { limit, offset } = pagination(searchParams);
+          const assembly = await this.dayAssembly(date);
+          this.inspectionPage(response, enabled, assembly.captures, limit, offset);
+          return;
+        }
+        case "/api/inspection/messages": {
+          const recordId = this.requireRecordId(searchParams);
+          await this.envelopes();
+          const envelope = this.findEnvelope(recordId);
+          if (envelope === null) {
+            // Degrade gracefully when capture is off; a real miss with
+            // capture on is a 404.
+            if (!enabled) {
+              this.inspectionPage(response, enabled, [], 1, 0);
+              return;
+            }
+            json(response, 404, { error: "not_found" });
+            return;
+          }
+          const { request, response: responseEntries } = collectMessages(envelope);
+          const merged = [...request, ...responseEntries];
+          const { limit, offset } = pagination(searchParams);
+          this.inspectionPage(response, enabled, merged, limit, offset);
+          return;
+        }
+        case "/api/inspection/prompt": {
+          const recordId = this.requireRecordId(searchParams);
+          await this.envelopes();
+          const envelope = this.findEnvelope(recordId);
+          if (envelope === null) {
+            if (!enabled) {
+              json(response, 200, {
+                captureEnabled: false,
+                parsed: false,
+                model: null,
+                instructionsPresent: false,
+                instructionsChars: 0,
+                inputMessageCount: 0,
+                inputChars: 0,
+                toolCount: 0,
+                estimatedInputTokens: 0,
+              });
+              return;
+            }
+            json(response, 404, { error: "not_found" });
+            return;
+          }
+          json(response, 200, { captureEnabled: true, ...collectMessages(envelope).analysis });
+          return;
+        }
+        case "/api/inspection/tools":
+        case "/api/inspection/tool-calls": {
+          await this.envelopes();
+          const { limit, offset } = pagination(searchParams);
+          const filterRecordId = searchParams.get("recordId");
+          if (pathname === "/api/inspection/tools") {
+            let schemas = collectToolSchemas(this.captureMemo?.value.envelopes ?? []);
+            if (filterRecordId !== null)
+              schemas = schemas.filter((entry) => entry.recordId === filterRecordId);
+            this.inspectionPage(response, enabled, schemas, limit, offset);
+            return;
+          }
+          let calls = collectToolCalls(this.captureMemo?.value.envelopes ?? []);
+          if (filterRecordId !== null)
+            calls = calls.filter((entry) => entry.recordId === filterRecordId);
+          this.inspectionPage(response, enabled, calls, limit, offset);
+          return;
+        }
+        case "/api/inspection/sessions": {
+          await this.envelopes();
+          const { limit, offset } = pagination(searchParams);
+          this.inspectionPage(
+            response,
+            enabled,
+            collectSessions(this.captureMemo?.value.envelopes ?? []),
+            limit,
+            offset,
+          );
+          return;
+        }
+        default:
+          json(response, 404, { error: "not_found" });
+          return;
+      }
+    } catch (error) {
+      if (invalidQuery(error)) {
+        json(response, 400, { error: "invalid_query" });
+        return;
+      }
+      throw error;
+    }
   }
 
   private async route(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -206,6 +436,10 @@ export class LiveUsageService {
     }
     if (url.pathname === "/api/events") {
       this.events.subscribe(response, this.snapshot());
+      return;
+    }
+    if (url.pathname.startsWith("/api/inspection/")) {
+      await this.handleInspection(url.pathname, url.searchParams, response);
       return;
     }
     json(response, 404, { error: "not_found" });

@@ -13,7 +13,8 @@ Provenance: new Boat rung record, named deliberately in the four-rung ladder fix
 
 Boat adds inspection data without weakening Bike's privacy boundary: bodies are captured only when an operator
 explicitly opts in, redacted before a single byte reaches disk, stored away from sanitized sidecars, and deleted on a
-configurable schedule. This record covers capture and retention; task 10 will extend Boat with its inspection surfaces.
+configurable schedule. This record covers capture, retention, and the inspection surfaces built on that data
+(task 10).
 
 ## Product promise
 
@@ -57,3 +58,44 @@ The command prints one JSON result line (`examined`, `deletedExpired`, `deletedO
 
 Bike and Car remain fully useful with zero inspection data present; nothing in this rung feeds the Overview,
 history, or trends surfaces.
+
+## Inspection surfaces
+
+The server reads only its own capture directory (never the audit directory) and serves six inspection endpoints
+under `/api/inspection/`. Every endpoint is read-only, GET-only, and degrades to a **typed empty result** — never an
+error — on a server where capture was never enabled or has no captures. Each payload carries `captureEnabled` so a
+client can distinguish "off" from "empty".
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/inspection/day` | Per-day context assembly: one summary row per capture (`date`, `limit`, `offset`; `date` defaults to today in the report timezone). |
+| `GET /api/inspection/messages?recordId=` | Request and response turns of one capture, merged in order and paginated. Unknown `recordId` is 404 when capture is on, typed empty when off. |
+| `GET /api/inspection/prompt?recordId=` | Prompt shape analysis (model, instructions presence, message count, tool count, ~4 chars/token estimate) without returning body text. |
+| `GET /api/inspection/tools` | Tool schemas declared across captures, paginated, optional `recordId` filter. |
+| `GET /api/inspection/tool-calls` | Function calls extracted from captured responses (JSON or SSE frames), paginated, optional `recordId` filter. |
+| `GET /api/inspection/sessions` | Captures grouped by session identity, paginated, newest activity first. |
+
+Listing responses share the Bike history page contract (`total`, `offset`, `limit`, `nextOffset`, `records`) so the
+dashboard reuses one pagination interaction. Malformed queries are rejected as `400 invalid_query`; sanitized
+metrics endpoints (`/api/health`, `/api/summary`, `/api/history`, `/api/trends`, `/api/events`) are untouched.
+
+Session grouping derives identity from explicit request attributes only — `session_id`, then
+`metadata.session_id`, then `user`; the envelope v1 schema carries no session field by design. A capture with no
+derivable identifier groups under its own `recordId`, so every capture stays attributable rather than collapsing
+into one anonymous bucket. This derivation rule lives in core (`deriveSessionId`) next to the tolerant request,
+response, and prompt parsers, all of which return typed unparsed results for bodies that fail to parse.
+
+Per-day context assembly is memoized (the codex-proxy `context-day-memo` pattern): parsed captures are memoized
+against a name/mtime/size directory signature, and each day's assembly against that signature plus a
+retention-deletion epoch, so both new or changed capture files and retention deletions invalidate immediately.
+Repeated requests between changes hit the cache instead of re-parsing bodies.
+
+Dashboard routes under `#/boat`: Context (`#/boat`), Messages (`#/boat/messages?recordId=`),
+Prompt analysis (`#/boat/prompt?recordId=`), Tool schemas (`#/boat/tools`), Tool calls (`#/boat/tool-calls`), and
+Sessions (`#/boat/sessions`). Each route renders loading, empty, and no-capture states; when the server reports
+`capture.enabled === false` the page explains that Boat capture is off instead of showing a bare empty table.
+
+Verification at this surface runs in both modes: integration tests cover every endpoint on a repository where
+capture was never enabled (typed empties, no capture directory ever created, disabled servers ignoring stray
+capture files) and against fixture captures (assembly, pagination across pages, memoization hits, invalidation on
+write and retention deletion, 404 versus degraded-empty behavior).

@@ -160,6 +160,7 @@ export function healthPayload(): unknown {
       recordCount: 0,
     },
     ingest: { lastSuccessfulAt: null, rejectedSidecars: 0 },
+    capture: { enabled: true },
     sse: { subscribers: 1 },
   };
 }
