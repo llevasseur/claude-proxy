@@ -98,12 +98,23 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 6. **`~/Library/LaunchAgents/com.llevasseur.claude-proxy.plist` is already broken** — it runs
    `proxy/proxy.mjs`, a file that does not exist — and is not tracked in git, so no ticket
    reaches it. The human's to fix. *(recorded in ADR 0055)*
+7. **This repository has no PR gate, so every ticket so far merged unchecked.**
+   Confirmed on PR #266: `gh pr checks` reports *no checks* on the branch, and
+   `deploy-concepts.yml` — itself paths-filtered — is the only workflow. Each runner's own
+   `pnpm verify` is real, but nothing mechanical would stop a red merge, so ticket 03's
+   deliberately-red intermediate state was **unenforced rather than approved**.
+   **Pull ticket 10's `verify.yml` half forward to immediately after ticket 04**, which is
+   the first point the tree is green again — landing it earlier would block ticket 04's
+   own merge on the redness ticket 04 exists to clear. *(ticket 10)*
+8. **The route-budget gate is intermittent, not stale.** Ticket 01 measured it red at
+   433ms; ticket 03 measured the same gate green at `12ee731`. It reads recorded
+   observations from the shared `logs/` store, so its verdict depends on data outside the
+   commit. *(ticket 15, rewritten around this)*
 
 ## Active tasks
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 03 | scope-claude-packages | [monorepo-fusion-03-scope-claude-packages](monorepo-fusion-03-scope-claude-packages.md) | `task/monorepo-fusion-03-scope-claude-packages` | in-progress | |
 | 04 | sweep-non-import-references | [monorepo-fusion-04-sweep-non-import-references](monorepo-fusion-04-sweep-non-import-references.md) | `task/monorepo-fusion-04-sweep-non-import-references` | todo | |
 | 05 | absorb-codex | [monorepo-fusion-05-absorb-codex](monorepo-fusion-05-absorb-codex.md) | `task/monorepo-fusion-05-absorb-codex` | todo | |
 | 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | todo | |
@@ -188,6 +199,48 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 03 — scope-claude-packages · 2026-08-23 · PR #266
+
+Every package scoped to `@agent-proxy/*`, with the lockfile regenerated **inside** the
+rename commit `28cb914` rather than after it. Bins were never touched — the rename
+anchored on the top-level `"name"` key, so `claude-proxy`'s `bin` entry never matched.
+Merged to `wayfinder/monorepo-fusion` at `ce758ee`; `main` and `the-great-merge`
+untouched.
+
+The gate is real: `scripts/check-package-filters.mjs` scans `.ts .tsx .js .mjs .cjs .md
+.json .yaml .yml .sh .plist` and is **red at 152 findings across 44 files** — `server`
+114, `concepts` 33, `admin` 3, `proxy` 2 — including both sites ADR 0055 named as
+invisible to every other gate, `scripts/com.llevasseur.claude-proxy.maintain.plist` and
+`.github/workflows/deploy-concepts.yml`. **That redness is ticket 04's to clear and the
+gate was not weakened to pass**, which is the outcome this ticket wanted.
+
+One wiring detail worth knowing: root `verify` chains a **fixed** six scripts rather than
+discovering by prefix, so a standalone `check:names` would never have been picked up. The
+gate hangs off `check` — that is what puts it in the chain — and is additionally exposed
+as `check:names` so ticket 04 can iterate on it.
+
+**ADR 0055's fail-open thesis was demonstrated rather than argued.** The branch failure
+set is `{check, test}`. `check` is the gate, intended. **`test` is a real regression**:
+three tests in `stacks/claude/server/test/suggestions-cli-json.test.ts` fail with
+`SyntaxError: Unexpected token 'N', "No project"…` because they spawn the CLI through a
+filter naming `server`, which after the rename matches nothing — so pnpm prints "No
+projects matched the filters" and **exits 0**, and the test parses that sentence as JSON.
+Left unfixed here deliberately: the correct fix is ADR 0055 item 3, in ticket 04's files,
+and clearing those references turns all three green.
+
+**Two findings that correct the campaign's record.**
+
+The base verify failure set was **empty**, not `{route-budget-gate}`. Measured in the
+worktree at `12ee731` before any edit, all six gates passed. Ticket 15 was planned around
+a failure that does not reliably fire, and has been rewritten around the real defect —
+a gate whose verdict depends on the shared `logs/` store rather than on the commit.
+
+**This repository has no PR gate.** `gh pr checks` reported none on PR #266, the only
+workflow being the paths-filtered `deploy-concepts.yml`. Each runner's own `verify` is
+real, but nothing mechanical would have stopped a red merge, so this ticket's sanctioned
+intermediate redness was **unenforced rather than approved**. Recorded as residual risk 7,
+with ticket 10's `verify.yml` half pulled forward to immediately after ticket 04.
 
 ### 02 — relocate-claude-stack · 2026-08-23 · PR #265
 
