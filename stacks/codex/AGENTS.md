@@ -75,6 +75,11 @@ shell tab. No port is pinned in the layout. `proxy` and `server` run under
 launches `pnpm zellij`. `admin` is Vite, which loads `apps/admin/.env`. The script warns
 and waits if it finds none of those files.
 
+The proxy's built-in `PROXY_PORT` default is `8026` — the port the `chadex` shell
+function calls — so even a start that reaches no `.env` at all binds where `chadex`
+looks. It is deliberately not the `8787` the other proxies checked out beside this one
+default to; sharing that number means whichever process starts second loses the bind.
+
 Relative paths in that root `.env` — `AUDIT_DIR`, `DATABASE_PATH`, `PROXY_STATUS_FILE`,
 `PROXY_STATUS_PATH` — resolve against the repository root rather than the launching cwd,
 so a pane started under `pnpm --filter` and a root-level `node proxy/src/proxy.ts` write

@@ -8,9 +8,9 @@ has no runtime dependencies.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENAI_UPSTREAM` | `https://api.openai.com` | HTTP or HTTPS upstream origin. |
+| `OPENAI_UPSTREAM` | `https://chatgpt.com` | HTTP or HTTPS upstream origin. The ChatGPT OAuth flow only serves `/backend-api/codex/responses`; `https://api.openai.com` 404s it and suits an API key instead. |
 | `PROXY_HOST` | `127.0.0.1` | Local listen address. |
-| `PROXY_PORT` | `8787` | Local listen port. Use `0` to select a free port. |
+| `PROXY_PORT` | `8026` | Local listen port, matching the port the `chadex` shell function calls. Use `0` to select a free port. |
 | `AUDIT_DIR` | `logs/audit` | Directory for immutable `*.audit.json` sidecars. |
 | `PROXY_STATUS_FILE` | `logs/proxy-status.json` | Body-free process status signal. |
 
