@@ -6,9 +6,14 @@
 //
 // Scope is by file rather than by layer. The rule is meant to hold inside
 // `@layer components`, but a `within \`@layer components { $_ }\`` clause
-// compiles and then matches nothing. Here the two are the same statement: the
-// dashboard sheet is the only CSS in the repo, and `tokens.css` holds only
-// custom properties, which this pattern does not match.
+// compiles and then matches nothing. `tokens.css` holds only custom properties,
+// which this pattern does not match.
+//
+// This plugin runs against every CSS file in the repo, not just this stack's:
+// `plugins` in `biome.json` is a top-level array, and the path to this file says
+// where it lives, not what it inspects. Biome 2.5.6 has no `overrides[].plugins`
+// and no plugin suppression comment, so a sibling stack's bare px is rewritten
+// against a named token in its own sheet rather than exempted here.
 //
 // The `[1-9]` guard is what lets a zero through, including the `0px` clamp
 // floors in chat.css; a value with no px at all never matches.
