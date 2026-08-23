@@ -16,6 +16,11 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # This workflow's first run hung in `pnpm test`, a gate that takes 27 seconds
+    # locally. Without a timeout a hang reports as `pending` for GitHub's 6-hour
+    # default, which is indistinguishable from a queue backlog and defeats the
+    # one-step-per-gate design below — a gate that never finishes never names itself.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -27,10 +32,16 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
 
       # One step per gate, so a failure names the gate in the checks list.
       - run: pnpm typecheck
+        timeout-minutes: 10
       - run: pnpm test
+        timeout-minutes: 10
       - run: pnpm build
+        timeout-minutes: 10
       - run: pnpm check
+        timeout-minutes: 5
       - run: pnpm anti:slop
+        timeout-minutes: 5
