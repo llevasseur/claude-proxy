@@ -51,8 +51,7 @@ describe('suggestions --json is parseable as emitted', () => {
       expect(payload).toHaveProperty(key);
 
       // stderr has to be empty too — `<cmd> 2>&1 | <parser>` is the shape that broke.
-      // Exactly empty, not merely free of errors: `cliEnv` keeps the runtime's own
-      // warnings off this stream, so whatever lands here was written by the CLI.
+      // `cliEnv` keeps Node's own warnings off this stream, so anything here came from the CLI.
       expect(stderr).toBe('');
     }, 120_000);
   }
