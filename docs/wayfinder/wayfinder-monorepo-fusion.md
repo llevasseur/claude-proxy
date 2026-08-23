@@ -111,12 +111,21 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
    433ms; ticket 03 measured the same gate green at `12ee731`. It reads recorded
    observations from the shared `logs/` store, so its verdict depends on data outside the
    commit. *(ticket 15, rewritten around this)*
+9. **The filter gate reads `git ls-files`, so an untracked file is unchecked until it is
+   staged.** Ticket 16 found this while planting a test filter — the plant was invisible
+   until staged. Design rather than defect (the gate checks the tree that would ship), but
+   worth knowing before trusting it against a working directory. *(no ticket; recorded)*
+10. **`pnpm test` hangs in CI while passing locally in 27s.** `stacks/claude/proxy` runs
+    to `ok 77`, never prints a TAP summary, and never exits — an open handle rather than a
+    failing assertion. Pre-existing in the code but never observable before, because no CI
+    gate existed to run the suite non-interactively. *(ticket 17)*
 
 ## Active tasks
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 16 | scope-the-gate-and-land-ci | [monorepo-fusion-16-scope-the-gate-and-land-ci](monorepo-fusion-16-scope-the-gate-and-land-ci.md) | `task/monorepo-fusion-16-scope-the-gate-and-land-ci` | paused | PR [#268](https://github.com/llevasseur/claude-proxy/pull/268) open on this base, work complete, unmerged: the `verify` workflow it lands is red because `pnpm test` hangs in `stacks/claude/proxy` (finishes its tests, never exits), which is outside this ticket's lane. Resume by fixing that hang, then merge. Runs BEFORE 05 so the absorptions land under a live gate. |
+| 17 | fix-the-proxy-test-hang | [monorepo-fusion-17-fix-the-proxy-test-hang](monorepo-fusion-17-fix-the-proxy-test-hang.md) | `task/monorepo-fusion-17-fix-the-proxy-test-hang` | todo | Unblocks ticket 16. Found by the first execution of the first PR gate this repo has ever had. Runs BEFORE 05. |
 | 05 | absorb-codex | [monorepo-fusion-05-absorb-codex](monorepo-fusion-05-absorb-codex.md) | `task/monorepo-fusion-05-absorb-codex` | todo | |
 | 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | todo | |
 | 07 | reformat-ox | [monorepo-fusion-07-reformat-ox](monorepo-fusion-07-reformat-ox.md) | `task/monorepo-fusion-07-reformat-ox` | todo | |
