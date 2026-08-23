@@ -123,7 +123,7 @@ rebuild it from.
 
 **A network dependency enters the ideas CLI, and it is fatal by design.** Every
 other network dependency in this system degrades quietly on purpose; this one
-does not, per the first decision above. `pnpm --filter server ideas list` on an
+does not, per the first decision above. `pnpm --filter @agent-proxy/claude-server ideas list` on an
 unconfigured device fails with a message naming `IDEAS_URL` and `IDEAS_TOKEN`,
 rather than printing an empty ledger.
 

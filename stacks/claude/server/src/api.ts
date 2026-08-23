@@ -2673,7 +2673,7 @@ export interface IdeasResponse {
 }
 
 /**
- * The ideas ledger over HTTP — the read half of what `pnpm --filter server ideas
+ * The ideas ledger over HTTP — the read half of what `pnpm --filter @agent-proxy/claude-server ideas
  * list` prints.
  *
  * Takes no `SidecarSource` and is not shadowed, unlike

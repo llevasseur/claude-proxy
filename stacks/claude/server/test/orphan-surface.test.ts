@@ -50,7 +50,7 @@ const UNROUTED_BY_DESIGN: readonly UnroutedExport[] = [
     file: SERVER_API,
     reachedBy: 'server/src/suggestions-cli.ts',
     reason:
-      'a headless entry point, not an HTTP route: `pnpm --filter server suggestions` builds the windows on the command line.',
+      'a headless entry point, not an HTTP route: `pnpm --filter @agent-proxy/claude-server suggestions` builds the windows on the command line.',
   },
   {
     name: 'buildRuleDefects',

@@ -30,7 +30,7 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
 
 - `logs/` is the sole source of truth. The DB is a **disposable materialized
   view** — every table reconstructible by re-ingesting, total recovery is
-  `rm logs/claude-proxy.db && pnpm --filter server ingest`.
+  `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest`.
 - **Authored state never goes in.** `logs/suggestion-status.json` and device
   settings stay JSON files. Slice 6 was the one slice allowed to overturn this,
   and it explicitly declined to — see its entry.
@@ -51,7 +51,7 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
       `PRAGMA user_version`; engines floor raised to `>=22`. Tables `request`,
       `request_tool`, `request_rate_limit`, `request_skipped`,
       `ingest_watermark`. Idempotent watermarked ingest on server start plus an
-      `fs.watch`, and an explicit `pnpm --filter server ingest`. The
+      `fs.watch`, and an explicit `pnpm --filter @agent-proxy/claude-server ingest`. The
       `SidecarSource` seam with file- and DB-backed implementations. **The
       parity harness itself**, wired to `/api/usage`, `/api/tools`,
       `/api/summary`, `/api/trends`, generalized so later slices register
@@ -162,7 +162,7 @@ picking up a slice; this map is the ledger, the ADR is the reasoning.
 
 - [x] **Slice 6 — Retention and lifecycle ownership.**
       This repo takes over its own log lifecycle. A new
-      `pnpm --filter server maintain` (dry run by default, `--apply` to act)
+      `pnpm --filter @agent-proxy/claude-server maintain` (dry run by default, `--apply` to act)
       archives past-day logs into `logs/archive/<date>/`, evicts `.md` and
       `.request.txt` past `RETENTION_DAYS` (default 30) **per file inside an
       archived day**, and prints the digest through `buildSummary` — no model
@@ -231,9 +231,9 @@ and the resume procedure above is the whole recovery.
 
 - `git log --oneline -5` on `main` — confirm the previous slice's squash merge
   is actually there.
-- `pnpm --filter server ingest` — rebuilds the view from the logs; it should
+- `pnpm --filter @agent-proxy/claude-server ingest` — rebuilds the view from the logs; it should
   finish clean. If it does not, fix that before adding a schema on top of it.
-- `pnpm --filter server test` — must be green *before* you change anything, or
+- `pnpm --filter @agent-proxy/claude-server test` — must be green *before* you change anything, or
   you cannot tell your own diffs from inherited ones. It no longer replays the
   two backings against each other: the parity gate was removed once the substrate
   became the trusted read path. A route you suspect of diverging is looked at with

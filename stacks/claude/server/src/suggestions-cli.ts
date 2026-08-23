@@ -3,20 +3,20 @@
  * find what is still worth doing and to record that it did it. Reads the log
  * directory directly, so it works with no server running.
  *
- *   pnpm --filter server suggestions list                       # every bucket
- *   pnpm --filter server suggestions list -r 2-9                # buckets 2 through 9
- *   pnpm --filter server suggestions list -r 2,3,9 -s pending   # only what's pending
- *   pnpm --silent --filter server suggestions list -r 9 --json  # machine-readable
- *   pnpm --filter server suggestions list -r 9 -s pending -d    # with evidence + sources
- *   pnpm --filter server suggestions list --recurrence historical  # the windows a fix predates
- *   pnpm --filter server suggestions mark -r 9 -i serial-discovery -s done -n "PR #71"
- *   pnpm --filter server suggestions mark -r 9 -i redundant-reads,high-tool-churn -s done
- *   pnpm --filter server suggestions buckets --dirty            # complete, unjudged
- *   pnpm --filter server suggestions judge -r 38 \
+ *   pnpm --filter @agent-proxy/claude-server suggestions list                       # every bucket
+ *   pnpm --filter @agent-proxy/claude-server suggestions list -r 2-9                # buckets 2 through 9
+ *   pnpm --filter @agent-proxy/claude-server suggestions list -r 2,3,9 -s pending   # only what's pending
+ *   pnpm --silent --filter @agent-proxy/claude-server suggestions list -r 9 --json  # machine-readable
+ *   pnpm --filter @agent-proxy/claude-server suggestions list -r 9 -s pending -d    # with evidence + sources
+ *   pnpm --filter @agent-proxy/claude-server suggestions list --recurrence historical  # the windows a fix predates
+ *   pnpm --filter @agent-proxy/claude-server suggestions mark -r 9 -i serial-discovery -s done -n "PR #71"
+ *   pnpm --filter @agent-proxy/claude-server suggestions mark -r 9 -i redundant-reads,high-tool-churn -s done
+ *   pnpm --filter @agent-proxy/claude-server suggestions buckets --dirty            # complete, unjudged
+ *   pnpm --filter @agent-proxy/claude-server suggestions judge -r 38 \
  *     --confirm "redundant-reads:re-read api.ts 4× while hunting one symbol" \
  *     --dismiss "serial-discovery:each read gated the next path"
- *   pnpm --filter server suggestions judge --amnesty            # draw a line under the backlog
- *   pnpm --filter server suggestions defects                    # rules dismissed too often
+ *   pnpm --filter @agent-proxy/claude-server suggestions judge --amnesty            # draw a line under the backlog
+ *   pnpm --filter @agent-proxy/claude-server suggestions defects                    # rules dismissed too often
  *
  * `list` prints one row per suggestion: bucket, flag, severity, id, title, plus the
  * detail/evidence/sources under `--detail`. `mark` writes flags for one or more ids
@@ -51,6 +51,7 @@
  */
 import {
   type BucketJudgementRow,
+  CLAUDE_SERVER_PACKAGE,
   countSuggestionRecurrences,
   countSuggestionStatuses,
   isSuggestionRecurrence,
@@ -95,7 +96,7 @@ const USAGE = `usage:
     defects      { meta, defects, stale }   defects = live, stale = already fixed
 
   Run it through pnpm's --silent when you are going to parse it:
-    pnpm --silent --filter server suggestions list -r 9 -s pending -d --json
+    pnpm --silent --filter ${CLAUDE_SERVER_PACKAGE} suggestions list -r 9 -s pending -d --json
   Without --silent pnpm wraps this output in its own lines — a '$ tsx …' echo, and
   a 'Scope: … workspace projects' banner — and which stream those land on varies by
   pnpm version, so piping into jq/python fails on "Unexpected token 'S'". --silent

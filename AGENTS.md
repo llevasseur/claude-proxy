@@ -9,7 +9,7 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
 
 - `server/src/server.ts` dispatches on pathname; the `build*` handlers behind those
   routes live in `server/src/api.ts`. CLI entry points are
-  `server/src/suggestions-cli.ts` (`pnpm --filter server suggestions`),
+  `server/src/suggestions-cli.ts` (`pnpm --filter @agent-proxy/claude-server suggestions`),
   `daily-summary.ts`, `chat-cli.ts`, `maintain-cli.ts`, and `ingest-cli.ts`; the
   SQLite substrate lives under `server/src/db/`.
 - **Each page in `apps/admin/src/routes/<name>.tsx` declares its own route.** The file
@@ -172,7 +172,9 @@ them are one of the shapes below. Each has a working form; use it the first time
   `cd packages/core` fail with `(eval):cd:1: no such file or directory: server`
   whenever the shell is not already at the repo root — which is the normal case in a
   worktree. Run package scripts from wherever you are with
-  `pnpm --filter <server|admin|proxy> <script>`, point the helper at a root with
+  `pnpm --filter @agent-proxy/claude-<server|admin|proxy|core> <script>` — the filter
+  argument is the package's **scoped** name, and pnpm answers an unscoped one with a
+  warning and exit 0 rather than an error. Point the helper at a root with
   `my-command-tools <verb> --cwd <absolute path>` (the flag goes **after** the verb;
   before it the helper just prints usage), and use `git -C <absolute path>` for git. If a directory genuinely must be entered, enter it by absolute path.
 - **Every path argument is absolute.** `cat components/SeriesLineChart.tsx` fails
@@ -191,7 +193,7 @@ them are one of the shapes below. Each has a working form; use it the first time
   Never run a dev server or watcher in the foreground; start it in background mode
   with a log file and wait on the log.
 - **Piping a workspace script's `--json` into a parser needs `pnpm --silent`.** The
-  form that parses is `pnpm --silent --filter server suggestions list -r 9 --json`,
+  form that parses is `pnpm --silent --filter @agent-proxy/claude-server suggestions list -r 9 --json`,
   with `--silent` **before** `--filter`. pnpm's script runner wraps the script's own
   output in lines of its own — a dimmed `$ tsx src/suggestions-cli.ts …` echo, and a
   `Scope: … workspace projects` banner when the filter matches more than one package
@@ -307,7 +309,7 @@ Three shapes account for all of them; recognize them before sending, not after.
   generalizes the branch-lifecycle bullet below — never let a probe ride along with
   the mutation it was checking for.
 - **A long process launched with a trailing `&` plus `sleep` in a foreground call.**
-  `pnpm --filter server start > srv.log 2>&1 & sleep 12; grep -iE "listening|error"
+  `pnpm --filter @agent-proxy/claude-server start > srv.log 2>&1 & sleep 12; grep -iE "listening|error"
   srv.log` is refused, and re-sending it fails again since a foreground `sleep` is
   independently blocked. The supported form is the Bash tool's own
   `run_in_background` with a log file, then a bounded wait on that log (`Monitor`, or

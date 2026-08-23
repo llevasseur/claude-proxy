@@ -50,7 +50,7 @@ D1 *is* SQLite, so `test/harness.ts` runs the production SQL — the same
 `migrations/0001_init.sql`, the same FTS5 virtual table, the same `bm25()`
 ranking — through `node:sqlite` in memory. Nothing is mocked and there is no
 second implementation of the schema: a query the suite accepts is a query D1
-accepts. `pnpm --filter concepts test` needs no Cloudflare account and no
+accepts. `pnpm --filter @agent-proxy/concepts test` needs no Cloudflare account and no
 network.
 
 ## The data model in one paragraph
@@ -184,20 +184,20 @@ To point this at a different database instead, create one and copy the printed
 `database_id` over the one in `wrangler.jsonc`:
 
 ```sh
-pnpm --filter concepts exec wrangler d1 create <name>
+pnpm --filter @agent-proxy/concepts exec wrangler d1 create <name>
 ```
 
 ### 2. Apply the schema
 
 ```sh
-pnpm --filter concepts schema:apply
+pnpm --filter @agent-proxy/concepts schema:apply
 ```
 
 ### 3. Set the secrets
 
 ```sh
-pnpm --filter concepts exec wrangler secret put CONCEPTS_TOKEN
-pnpm --filter concepts exec wrangler secret put BACKUP_GITHUB_TOKEN
+pnpm --filter @agent-proxy/concepts exec wrangler secret put CONCEPTS_TOKEN
+pnpm --filter @agent-proxy/concepts exec wrangler secret put BACKUP_GITHUB_TOKEN
 ```
 
 Generate the token with something like `openssl rand -base64 32`. It is the
@@ -213,7 +213,7 @@ rather than failing the deploy.
 ### 4. Deploy
 
 ```sh
-pnpm --filter concepts deploy
+pnpm --filter @agent-proxy/concepts deploy
 ```
 
 Thereafter GitHub Actions deploys on every merge to `main` that touches this
@@ -227,27 +227,27 @@ repository *variable* to the deployed URL to enable the post-deploy smoke check.
 Dry-run first, which needs no credentials:
 
 ```sh
-pnpm --filter concepts seed --dry-run
+pnpm --filter @agent-proxy/concepts seed --dry-run
 ```
 
 Then:
 
 ```sh
-CONCEPTS_URL=https://… CONCEPTS_TOKEN=… pnpm --filter concepts seed
+CONCEPTS_URL=https://… CONCEPTS_TOKEN=… pnpm --filter @agent-proxy/concepts seed
 ```
 
 It posts through the real write path, so it is safe to re-run — row ids are
 derived from record content, so a replay updates nothing.
 
 The script is named `seed` rather than `import` on purpose: `import` is a
-built-in pnpm subcommand, so `pnpm --filter concepts import` is intercepted by
+built-in pnpm subcommand, so `pnpm --filter @agent-proxy/concepts import` is intercepted by
 pnpm and never reaches the script.
 
 The ideas ledger has its own importer, and it is run differently:
 
 ```sh
-pnpm --filter concepts seed:ideas --dry-run
-pnpm --filter concepts seed:ideas
+pnpm --filter @agent-proxy/concepts seed:ideas --dry-run
+pnpm --filter @agent-proxy/concepts seed:ideas
 ```
 
 **Run it on every machine that has a `logs/ideas.json`, not just one.** Each
@@ -273,7 +273,7 @@ CONCEPTS_TOKEN=…
 ```
 
 ```sh
-pnpm --filter concepts seed
+pnpm --filter @agent-proxy/concepts seed
 ```
 
 `.env` and `.env.*` are gitignored, so the token cannot be committed from here.
@@ -291,10 +291,10 @@ CONCEPTS_TOKEN=op://<vault>/<item>/credential
 ```
 
 ```sh
-op run --env-file=services/concepts/.env -- pnpm --filter concepts seed
+op run --env-file=services/concepts/.env -- pnpm --filter @agent-proxy/concepts seed
 ```
 
-Running `pnpm --filter concepts seed` directly with a reference in `.env` sends
+Running `pnpm --filter @agent-proxy/concepts seed` directly with a reference in `.env` sends
 the literal `op://…` string as the bearer token and fails with `401
 {"error":"unauthorized"}` — the reference is only resolved under `op run`.
 
@@ -318,7 +318,7 @@ git blob sha against what is already there, so an unchanged day produces no
 commit and a day on which only one dataset moved touches only that file. This is
 the escape hatch that keeps the "database is truth" decision reversible for all
 hosted datasets: the worst case is losing one day. Concepts and ideas can be
-restored with `pnpm --filter concepts seed` or `seed:ideas` pointed at the
+restored with `pnpm --filter @agent-proxy/concepts seed` or `seed:ideas` pointed at the
 backed-up file; `notes.json` retains both tables needed to reconstruct the notes
 projection, immutable revisions, archive state, and FTS index.
 

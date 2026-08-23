@@ -14,7 +14,7 @@ import { openDb, resolveDbPath, SCHEMA_VERSION } from './open.js';
  *
  * A row is a **derived** value for a day that can no longer change, never a
  * source of truth. `logs/` still holds every sidecar, and
- * `rm logs/claude-proxy.db && pnpm --filter server ingest` still reconstructs
+ * `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` still reconstructs
  * everything. See `docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md`.
  */
 

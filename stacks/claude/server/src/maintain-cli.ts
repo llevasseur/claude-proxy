@@ -1,5 +1,5 @@
 /**
- * Headless log maintenance — `pnpm --filter server maintain`, the scheduled job
+ * Headless log maintenance — `pnpm --filter @agent-proxy/claude-server maintain`, the scheduled job
  * that owns `logs/`' lifecycle. Three steps, in order:
  *
  *   1. **Archive** every past day out of the live directory into `archive/<date>/`.
@@ -137,7 +137,7 @@ async function reconcileRuns(logDir: string): Promise<void> {
  * same reason `reconcileRuns` must run before archiving: the step consumes
  * something a later step in this very run removes.
  *
- * An ordinary ingest pass — the watcher and `pnpm --filter server ingest` run the
+ * An ordinary ingest pass — the watcher and `pnpm --filter @agent-proxy/claude-server ingest` run the
  * same one, so this is usually a no-op that finds nothing pending, and having it
  * here is what makes the ordering a guarantee. Skipped on a dry run, and never
  * fatal: the substrate is a disposable view.
