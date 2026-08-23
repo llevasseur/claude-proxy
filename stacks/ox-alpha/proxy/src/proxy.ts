@@ -9,7 +9,10 @@ import {
 import { request as httpsRequest } from "node:https";
 import type { AddressInfo } from "node:net";
 import { pathToFileURL } from "node:url";
+import type { CaptureEnvelopeV1 } from "../../packages/core/src/index.ts";
+import { redactCapturedText } from "../../packages/core/src/index.ts";
 import { writeSanitizedSidecarAtomically } from "./audit.ts";
+import { writeCaptureEnvelopeAtomically } from "./capture.ts";
 import { loadProxyConfig, type ProxyConfig } from "./config.ts";
 import {
   jsonResponseIdentity,
@@ -91,6 +94,23 @@ function proxyRequest(
   let exchangeComplete = false;
   let published = false;
   let publishObservation: (() => void) | null = null;
+  let publishAftermath: (() => void) | null = null;
+  // Boat body capture is strictly opt-in; with it off nothing below buffers,
+  // writes, or even allocates for capture, keeping forwarding byte-identical.
+  const captureRequested = config.captureEnabled && observesResponses;
+  const captureResponseChunks: Buffer[] = [];
+  let capturePublished = false;
+  // One shared identity stamps both the sidecar and its joined capture file.
+  let exchangeIdentity: Readonly<{ recordId: string; timestamp: string }> | null = null;
+  const exchangeStamp = (): Readonly<{ recordId: string; timestamp: string }> => {
+    if (!exchangeIdentity) {
+      exchangeIdentity = Object.freeze({
+        recordId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      });
+    }
+    return exchangeIdentity;
+  };
   const transport = config.upstream.protocol === "https:" ? httpsRequest : httpRequest;
   const upstreamRequest = transport(
     {
@@ -116,7 +136,35 @@ function proxyRequest(
       upstreamResponse.on("data", (chunk: Buffer) => {
         if (sseObserver) sseObserver.push(chunk);
         if (isJson) responseChunks.push(chunk);
+        if (captureRequested) captureResponseChunks.push(chunk);
       });
+      const publishCapture = (): void => {
+        if (!captureRequested || capturePublished) return;
+        capturePublished = true;
+        try {
+          const stamp = exchangeStamp();
+          const envelope: CaptureEnvelopeV1 = Object.freeze({
+            schemaVersion: 1,
+            recordId: stamp.recordId,
+            capturedAt: stamp.timestamp,
+            endpoint,
+            requestText: redactCapturedText(
+              Buffer.concat(requestChunks).toString("utf8"),
+              config.captureRedactionPatterns,
+            ),
+            responseText: redactCapturedText(
+              Buffer.concat(captureResponseChunks).toString("utf8"),
+              config.captureRedactionPatterns,
+            ),
+          });
+          void writeCaptureEnvelopeAtomically(config.captureDirectory, envelope)
+            .then((file) => logger.info("capture-written", { file }))
+            .catch((error) => safeError(logger, "capture-write-failed", error));
+        } catch (error) {
+          // A capture failure must never alter bytes already sent.
+          safeError(logger, "capture-failed", error);
+        }
+      };
       publishObservation = (): void => {
         if (published || !requestModel) return;
         try {
@@ -125,13 +173,14 @@ function proxyRequest(
             (isJson ? jsonResponseIdentity(Buffer.concat(responseChunks)) : null);
           if (!identity) return;
           published = true;
+          const stamp = exchangeStamp();
           const sidecar = makeSidecar({
             endpoint,
             responseStatus: upstreamResponse.statusCode ?? 502,
             requestId: header(upstreamResponse, "x-request-id"),
             identity,
-            recordId: randomUUID(),
-            timestamp: new Date().toISOString(),
+            recordId: stamp.recordId,
+            timestamp: stamp.timestamp,
           });
           void writeSanitizedSidecarAtomically(config.auditDirectory, sidecar)
             .then((file) => logger.info("audit-written", { file }))
@@ -141,11 +190,14 @@ function proxyRequest(
           safeError(logger, "observation-failed", error);
         }
       };
+      publishAftermath = (): void => {
+        publishObservation?.();
+        publishCapture();
+      };
       upstreamResponse.on("end", () => {
         exchangeComplete = true;
-        const publish = publishObservation;
-        if (clientResponse.writableFinished) publish?.();
-        else clientResponse.once("finish", () => publish?.());
+        if (clientResponse.writableFinished) publishAftermath?.();
+        else clientResponse.once("finish", () => publishAftermath?.());
       });
       upstreamResponse.on("aborted", () => {
         void status
@@ -193,7 +245,7 @@ function proxyRequest(
   clientRequest.on("aborted", () => upstreamRequest.destroy());
   clientResponse.on("close", () => {
     if (exchangeComplete || clientResponse.writableFinished) return;
-    publishObservation?.();
+    publishAftermath?.();
     upstreamRequest.destroy();
   });
   clientRequest.pipe(upstreamRequest);

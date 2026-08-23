@@ -47,7 +47,15 @@ export function startFixtureUpstream(
 
 export async function startProxyOnEphemeralPort(
   upstreamUrl: string,
-): Promise<{ server: Server; url: string; auditDirectory: string; statusFile: string }> {
+  environment: Readonly<Record<string, string>> = {},
+): Promise<{
+  server: Server;
+  url: string;
+  baseDirectory: string;
+  auditDirectory: string;
+  captureDirectory: string;
+  statusFile: string;
+}> {
   const base = await mkdtemp(join(tmpdir(), "ox-alpha-proxy-test-"));
   const config = loadProxyConfig({
     OPENAI_UPSTREAM: upstreamUrl,
@@ -55,6 +63,7 @@ export async function startProxyOnEphemeralPort(
     PROXY_STATUS_FILE: join(base, "proxy-status.json"),
     PROXY_PORT: "0",
     PROXY_HOST: "127.0.0.1",
+    ...environment,
   });
   const server = await startProxy(config, {
     info: () => {},
@@ -64,7 +73,9 @@ export async function startProxyOnEphemeralPort(
   return {
     server,
     url: `http://127.0.0.1:${address.port}`,
+    baseDirectory: base,
     auditDirectory: config.auditDirectory,
+    captureDirectory: config.captureDirectory,
     statusFile: config.statusFile,
   };
 }
@@ -74,17 +85,54 @@ export async function waitForFiles(
   count: number,
   timeoutMs = 3000,
 ): Promise<string[]> {
-  const { readdir } = await import("node:fs/promises");
+  const { readdirSync } = await import("node:fs");
+  return waitFor(
+    () => {
+      try {
+        return readdirSync(directory).filter((name) => name.endsWith(".audit.json"));
+      } catch {
+        // Directory may not exist yet.
+        return [];
+      }
+    },
+    count,
+    timeoutMs,
+    "files",
+  );
+}
+
+export async function waitForCaptureFiles(
+  directory: string,
+  count: number,
+  timeoutMs = 3000,
+): Promise<string[]> {
+  const { readdirSync } = await import("node:fs");
+  return waitFor(
+    () => {
+      try {
+        return readdirSync(directory).filter((name) => name.endsWith(".capture.json"));
+      } catch {
+        // Directory may not exist yet.
+        return [];
+      }
+    },
+    count,
+    timeoutMs,
+    "capture files",
+  );
+}
+
+export async function waitFor(
+  scan: () => string[],
+  count: number,
+  timeoutMs: number,
+  noun = "files",
+): Promise<string[]> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    let files: string[] = [];
-    try {
-      files = (await readdir(directory)).filter((name) => name.endsWith(".audit.json"));
-    } catch {
-      // Directory may not exist yet.
-    }
-    if (files.length >= count) return files.sort();
-    if (Date.now() > deadline) throw new Error(`expected ${count} sidecars, found ${files.length}`);
+    const found = scan();
+    if (found.length >= count) return found.sort();
+    if (Date.now() > deadline) throw new Error(`expected ${count} ${noun}, found ${found.length}`);
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
