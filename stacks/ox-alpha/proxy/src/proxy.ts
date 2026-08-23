@@ -15,9 +15,11 @@ import { writeSanitizedSidecarAtomically } from "./audit.ts";
 import { writeCaptureEnvelopeAtomically } from "./capture.ts";
 import { loadProxyConfig, type ProxyConfig } from "./config.ts";
 import {
+  ChatCompletionSseObserver,
+  jsonChatCompletionIdentity,
   jsonResponseIdentity,
   makeSidecar,
-  responsesRequestModel,
+  parseRequestModel,
   SseResponseObserver,
 } from "./observe.ts";
 import { ProxyStatusWriter } from "./proxy-status.ts";
@@ -44,6 +46,17 @@ const responsesEndpoints: ReadonlySet<string> = new Set([
   "/v1/responses",
   "/backend-api/codex/responses",
 ]);
+
+type ObservedContract = "responses" | "chat-completions";
+
+// Chat/completions is matched by suffix (ADR 0012) because a deployment may
+// mount it under a prefix — opencode zen serves `/zen/v1/chat/completions` —
+// and that prefix is configuration rather than part of the contract.
+function observedContract(endpoint: string): ObservedContract | null {
+  if (responsesEndpoints.has(endpoint)) return "responses";
+  if (endpoint.endsWith("/chat/completions")) return "chat-completions";
+  return null;
+}
 
 function pathname(requestUrl: string): string {
   return new URL(requestUrl, "http://proxy.local").pathname;
@@ -85,10 +98,12 @@ function proxyRequest(
 ): void {
   const requestUrl = clientRequest.url ?? "/";
   const endpoint = pathname(requestUrl);
-  const observesResponses =
+  const contract =
     clientRequest.method === "POST" &&
-    responsesEndpoints.has(endpoint) &&
-    contentType(clientRequest).toLowerCase().includes("application/json");
+    contentType(clientRequest).toLowerCase().includes("application/json")
+      ? observedContract(endpoint)
+      : null;
+  const observesExchange = contract !== null;
   const requestChunks: Buffer[] = [];
   let requestModel: string | null = null;
   let exchangeComplete = false;
@@ -97,7 +112,7 @@ function proxyRequest(
   let publishAftermath: (() => void) | null = null;
   // Boat body capture is strictly opt-in; with it off nothing below buffers,
   // writes, or even allocates for capture, keeping forwarding byte-identical.
-  const captureRequested = config.captureEnabled && observesResponses;
+  const captureRequested = config.captureEnabled && observesExchange;
   const captureResponseChunks: Buffer[] = [];
   let capturePublished = false;
   // One shared identity stamps both the sidecar and its joined capture file.
@@ -126,12 +141,16 @@ function proxyRequest(
       void status.write("ready").catch((error) => safeError(logger, "status-write-failed", error));
       const responseChunks: Buffer[] = [];
       const upstreamContentType = contentType(upstreamResponse).toLowerCase();
-      const isJson = observesResponses && upstreamContentType.includes("application/json");
+      const isJson = observesExchange && upstreamContentType.includes("application/json");
       const isSse =
-        observesResponses &&
+        observesExchange &&
         !isJson &&
         (upstreamContentType.includes("text/event-stream") || upstreamContentType.length === 0);
-      const sseObserver = isSse ? new SseResponseObserver() : null;
+      const sseObserver = isSse
+        ? contract === "chat-completions"
+          ? new ChatCompletionSseObserver()
+          : new SseResponseObserver()
+        : null;
 
       upstreamResponse.on("data", (chunk: Buffer) => {
         if (sseObserver) sseObserver.push(chunk);
@@ -168,9 +187,11 @@ function proxyRequest(
       publishObservation = (): void => {
         if (published || !requestModel) return;
         try {
+          const parseJsonIdentity =
+            contract === "chat-completions" ? jsonChatCompletionIdentity : jsonResponseIdentity;
           const identity =
             sseObserver?.finish() ??
-            (isJson ? jsonResponseIdentity(Buffer.concat(responseChunks)) : null);
+            (isJson ? parseJsonIdentity(Buffer.concat(responseChunks)) : null);
           if (!identity) return;
           published = true;
           const stamp = exchangeStamp();
@@ -237,10 +258,10 @@ function proxyRequest(
     clientResponse.end(body);
   });
   clientRequest.on("data", (chunk: Buffer) => {
-    if (observesResponses) requestChunks.push(chunk);
+    if (observesExchange) requestChunks.push(chunk);
   });
   clientRequest.on("end", () => {
-    if (observesResponses) requestModel = responsesRequestModel(Buffer.concat(requestChunks));
+    if (observesExchange) requestModel = parseRequestModel(Buffer.concat(requestChunks));
   });
   clientRequest.on("aborted", () => upstreamRequest.destroy());
   clientResponse.on("close", () => {

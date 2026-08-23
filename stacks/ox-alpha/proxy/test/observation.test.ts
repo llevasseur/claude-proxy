@@ -200,3 +200,124 @@ test("a malformed final SSE event never breaks the already-streamed response", a
     upstream.server.close();
   }
 });
+
+// ADR 0012. The usage block below is the one opencode zen actually returns.
+const CHAT_USAGE = {
+  prompt_tokens: 89,
+  completion_tokens: 23,
+  total_tokens: 112,
+  prompt_tokens_details: { cached_tokens: 64 },
+  completion_tokens_details: { reasoning_tokens: 9 },
+};
+
+const CHAT_TOTALS = {
+  inputTokens: 89,
+  cachedInputTokens: 64,
+  outputTokens: 23,
+  reasoningOutputTokens: 9,
+  totalTokens: 112,
+};
+
+test("meters a chat/completions exchange served under a mounted prefix", async () => {
+  const body = JSON.stringify({
+    id: "20260823094447d415402244454114",
+    object: "chat.completion",
+    model: "x-preview-f-free",
+    choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "OK" } }],
+    usage: CHAT_USAGE,
+    cost: "0",
+  });
+  const upstream = await startFixtureUpstream((_req, _body, res) => {
+    res.writeHead(200, { "content-type": "application/json", "x-request-id": "req-chat" });
+    res.end(body);
+  });
+  const proxy = await startProxyOnEphemeralPort(upstream.url);
+  try {
+    const response = await fetch(new URL("/zen/v1/chat/completions", proxy.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "x-preview-f-free",
+        messages: [{ role: "user", content: "say OK" }],
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), body, "metering cannot alter forwarded bytes");
+
+    const sidecar = await readSidecar(proxy.auditDirectory);
+    assert.equal(sidecar.model, "x-preview-f-free");
+    assert.equal(sidecar.endpoint, "/zen/v1/chat/completions");
+    assert.equal(sidecar.requestId, "req-chat");
+    assert.deepEqual(sidecar.usage, CHAT_TOTALS);
+    // 25 uncached x $10 + 64 cached x $1 + 14 output x $50 + 9 reasoning x $50, per million.
+    assert.equal(sidecar.cost?.amountUsd, "0.001464");
+  } finally {
+    proxy.server.close();
+    upstream.server.close();
+  }
+});
+
+test("meters a streamed chat/completions response from its late usage chunk", async () => {
+  const chunks = [
+    `data: ${JSON.stringify({ object: "chat.completion.chunk", model: "x-preview-f-free", choices: [{ delta: { content: "OK" } }] })}\n\n`,
+    `data: ${JSON.stringify({ object: "chat.completion.chunk", model: "x-preview-f-free", choices: [], usage: CHAT_USAGE })}\n\n`,
+    "data: [DONE]\n\n",
+  ];
+  const wire = chunks.join("");
+  const upstream = await startFixtureUpstream((_req, _body, res) => {
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.end(wire);
+  });
+  const proxy = await startProxyOnEphemeralPort(upstream.url);
+  try {
+    const response = await fetch(new URL("/v1/chat/completions", proxy.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "x-preview-f-free",
+        messages: [{ role: "user", content: "say OK" }],
+        stream: true,
+        stream_options: { include_usage: true },
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), wire);
+
+    const sidecar = await readSidecar(proxy.auditDirectory);
+    assert.equal(sidecar.model, "x-preview-f-free");
+    assert.equal(sidecar.endpoint, "/v1/chat/completions");
+    assert.deepEqual(sidecar.usage, CHAT_TOTALS);
+  } finally {
+    proxy.server.close();
+    upstream.server.close();
+  }
+});
+
+test("leaves an unobserved path unmetered while still forwarding it", async () => {
+  const body = JSON.stringify({ object: "chat.completion", model: "x-preview-f-free" });
+  const upstream = await startFixtureUpstream((_req, _b, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(body);
+  });
+  const proxy = await startProxyOnEphemeralPort(upstream.url);
+  try {
+    const response = await fetch(new URL("/v1/embeddings", proxy.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "x-preview-f-free", input: "hi" }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), body);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const files = await readdir(proxy.auditDirectory).catch(() => [] as string[]);
+    assert.equal(
+      files.filter((name) => name.endsWith(".audit.json")).length,
+      0,
+      "a path outside the observed contracts writes no sidecar",
+    );
+  } finally {
+    proxy.server.close();
+    upstream.server.close();
+  }
+});
