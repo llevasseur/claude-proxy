@@ -1,12 +1,6 @@
-# Biome's formatter reads this file — `formatter.useEditorconfig` is `true` in
-# biome.json, and until now it pointed at a file that did not exist in any of the
-# three fused repositories. Every value below restates the setting biome.json
-# already carries, so adding the file changes no formatting: it makes the editor
-# and the gate agree instead of leaving the editor to guess.
-#
-# Keep the two in step. A value here that disagrees with biome.json wins for
-# Biome as well as for the editor, so a stray edit reformats the whole tree and
-# `pnpm check` goes red across files nobody touched.
+# Biome reads this file (`formatter.useEditorconfig` is `true` in biome.json)
+# and every value here restates a biome.json setting, so it changes no formatting.
+# Keep the two in sync — a mismatch wins for Biome too and reformats the tree.
 root = true
 
 [*]
