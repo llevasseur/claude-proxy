@@ -28,7 +28,6 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 08 | admin-car-routes | [ox-alpha-proxy-08-admin-car-routes](ox-alpha-proxy-08-admin-car-routes.md) | `task/ox-alpha-proxy-08-admin-car-routes` | todo |
 | 09 | boat-capture-retention | [ox-alpha-proxy-09-boat-capture-retention](ox-alpha-proxy-09-boat-capture-retention.md) | `task/ox-alpha-proxy-09-boat-capture-retention` | todo |
 | 10 | boat-inspection-surfaces | [ox-alpha-proxy-10-boat-inspection-surfaces](ox-alpha-proxy-10-boat-inspection-surfaces.md) | `task/ox-alpha-proxy-10-boat-inspection-surfaces` | todo |
 | 11 | plane-matrix-expansion | [ox-alpha-proxy-11-plane-matrix-expansion](ox-alpha-proxy-11-plane-matrix-expansion.md) | `task/ox-alpha-proxy-11-plane-matrix-expansion` | todo |
@@ -38,6 +37,8 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **08 admin-car-routes** — PR #9. Hash router with Overview/History/Trends; paginated History listing with loading/empty/error states; Trends daily buckets with DST-correct labels and explicit unavailable cost; exact-match model multi-select (empty = all); SSE data-version refetch. Also fixed a real filter-dropping bug in api.ts found during verification. CAR PHASE BOUNDARY: ADR-0011 live-validation note in the PR body. Verify green; CI pass.
 
 - **07 server-history-trends** — PR #8. GET /api/history (newest-first with recordId tiebreak, offset pagination through core, range + exact multi-select model filters), GET /api/trends (report-timezone daily buckets via core's shared path), typed invalid_query rejections, monotonic SSE data-version signal echoed in responses. Bike endpoints untouched; view stays rebuildable. 6 new vitest cases incl. DST bucket and rebuild equivalence. Verify green; CI pass.
 
