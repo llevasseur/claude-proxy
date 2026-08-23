@@ -103,7 +103,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 02 | relocate-claude-stack | [monorepo-fusion-02-relocate-claude-stack](monorepo-fusion-02-relocate-claude-stack.md) | `task/monorepo-fusion-02-relocate-claude-stack` | in-progress | |
 | 03 | scope-claude-packages | [monorepo-fusion-03-scope-claude-packages](monorepo-fusion-03-scope-claude-packages.md) | `task/monorepo-fusion-03-scope-claude-packages` | todo | |
 | 04 | sweep-non-import-references | [monorepo-fusion-04-sweep-non-import-references](monorepo-fusion-04-sweep-non-import-references.md) | `task/monorepo-fusion-04-sweep-non-import-references` | todo | |
 | 05 | absorb-codex | [monorepo-fusion-05-absorb-codex](monorepo-fusion-05-absorb-codex.md) | `task/monorepo-fusion-05-absorb-codex` | todo | |
@@ -189,6 +188,53 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 02 — relocate-claude-stack · 2026-08-23 · PR #265
+
+All four packages moved under `stacks/claude/`. The relocation commit `af700c7` is a
+**pure rename — 367 files, every one `R100`, zero insertions and zero deletions** — with
+every config repair in following commits, so `git log --follow` and later `main` merges
+survive the move. Merged to `wayfinder/monorepo-fusion` at `bb600c0`; `main` and
+`the-great-merge` were untouched throughout.
+
+All four root-anchored `biome.json` paths repaired: both `logs` exclusions to `!**/logs`,
+the GritQL plugin to `./stacks/claude/admin/lint/no-bare-size.grit`, and the
+`noBarrelFile` exemption to `stacks/claude/core/src/index.ts`.
+
+**Two criteria needed no edit and were reported rather than manufactured** —
+`tsconfig.base.json` holds no root-anchored path of its own (only the four packages'
+`extends` moved), and every root script filter names a package rather than a path. A
+ticket that "fixes" both anyway is a ticket that did not look.
+
+**The traversal proof, and a finding that contradicts `AGENTS.md`.** A
+`stacks/claude/logs/` was built with invalid UTF-8 at top level and three levels deep,
+plus a mode-`000` directory as a binary traversal signal. With no exclusion, biome
+emitted both UTF-8 errors and `Permission denied (os error 13)` — traversal directly
+observable. With `!**/logs` it emitted neither, checking 364 files in 51ms.
+
+But the honest finding is that **on Biome 2.5.6 the weak `!logs/**` form also prunes**, so
+the distinction `AGENTS.md` records as load-bearing **no longer discriminates on this
+version**. The strong form was kept as documented-to-prune and measurably faster.
+`AGENTS.md` needs correcting rather than copying forward — **folded into ticket 14**.
+
+**Comparing the verify failure set rather than checking for non-emptiness caught two real
+regressions** that a "still red, as expected" check would have shipped: a `core` test
+importing `../../../proxy/session.ts`, which after the move resolved to `stacks/proxy/`,
+and two server tests anchoring two levels up from `server/test/`, which is now the stack
+root. Base `{route-budget-gate}` → branch `{}`, a strict subset.
+
+**Lane extensions, disclosed rather than absorbed:** `pnpm-lock.yaml` (inseparable from
+the workspace-glob change), `CHANGELOG.md` (repo convention; `merge=union` exists so
+parallel tickets cannot collide there), and the four regression fixes above — of which
+`core/src/fallbacks.ts` is arguably ticket 04's. `scripts/bootstrap-worktree.sh` still
+links `apps/admin/.env` and `proxy/.env` and was deliberately left alone, since ADR 0054
+assigns it to ticket 09.
+
+**Two things left for the human**, neither blocking the remaining tickets:
+`server/.env` is stranded at the old path and needs to become `stacks/claude/server/.env`
+(never read, moved, or deleted by any run here), and the main checkout wants a
+`pnpm install` to clear stale `node_modules` under the old `apps/`, `packages/`, `proxy/`
+and `server/` directories.
 
 ### 01 — rewrite-sibling-histories · 2026-08-23 · PR #264
 
