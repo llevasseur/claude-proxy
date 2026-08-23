@@ -76,8 +76,8 @@ describe('sidecar ingestion', () => {
 
   test('waits for asynchronous reconciliation work before closing', async () => {
     const { directory, database } = await setup();
-    let releaseCallback: () => void = () => {};
-    let signalCallbackStarted: () => void = () => {};
+    let releaseCallback!: () => void;
+    let signalCallbackStarted!: () => void;
     const callbackStarted = new Promise<void>((resolve) => {
       signalCallbackStarted = resolve;
     });
@@ -100,6 +100,48 @@ describe('sidecar ingestion', () => {
 
     releaseCallback();
     await Promise.all([reconciling, closing]);
+    database.close();
+  });
+
+  test('reconcile() sees a file written while an earlier scan was still running', async () => {
+    const { directory, database } = await setup();
+    const now = new Date('2026-08-19T18:00:00.000Z');
+    let releaseFirstScan!: () => void;
+    let signalFirstScanListed!: () => void;
+    const firstScanListed = new Promise<void>((resolve) => {
+      signalFirstScanListed = resolve;
+    });
+    const firstScanReleased = new Promise<void>((resolve) => {
+      releaseFirstScan = resolve;
+    });
+    let scans = 0;
+    // Holding the first scan open here stands in for the directory watcher's
+    // own scan being in flight, which is what CI load produces.
+    const ingestor = new SidecarIngestor(
+      directory,
+      database,
+      () => now,
+      async () => {
+        scans += 1;
+        if (scans > 1) return;
+        signalFirstScanListed();
+        await firstScanReleased;
+      },
+    );
+
+    const firstScan = ingestor.reconcile();
+    await firstScanListed;
+
+    // The first scan has already listed the directory, so it cannot report
+    // this file. Asking for a reconcile now must still observe it.
+    await writeSidecar(directory, 'late.audit.json', sidecar('late'));
+    const trailing = ingestor.reconcile();
+    releaseFirstScan();
+
+    expect(await firstScan).toMatchObject({ changed: false, accepted: 0 });
+    expect(await trailing).toMatchObject({ changed: true, accepted: 1, rejected: 0 });
+    expect(database.hasRecord('late')).toBe(true);
+    await ingestor.close();
     database.close();
   });
 

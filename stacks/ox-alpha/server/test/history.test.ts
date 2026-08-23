@@ -48,6 +48,9 @@ interface TrendsResponse {
   readonly total: Readonly<{ requestCount: number; inputTokens: number; outputTokens: number }>;
 }
 
+// SAFETY: each call site names the response interface declared above, and the
+// endpoint that serves it is asserted field by field in the tests below, so an
+// answer that did not match the named shape fails a later expectation.
 const fetchJson = async <T>(url: string): Promise<T> => (await fetch(url).then((response) => response.json())) as T;
 
 describe('history and trends API', () => {
@@ -78,16 +81,12 @@ describe('history and trends API', () => {
     expect(after.total).toBe(4);
     expect(after.records.map((record) => record.recordId)).toEqual(['new', 'mid']);
 
-    // recordId breaks timestamp ties deterministically. The directory watcher
-    // may already hold an in-flight scan, so poll until both ties land.
+    // recordId breaks timestamp ties deterministically. reconcile() scans the
+    // directory as it finds it when the call is made, so one pass sees both.
     await writeSidecar(directory, 'tie-a.audit.json', sidecar('tie-a', '2026-08-19T15:00:00.000Z'));
     await writeSidecar(directory, 'tie-b.audit.json', sidecar('tie-b', '2026-08-19T15:00:00.000Z'));
-    let ties = await fetchJson<HistoryResponse>(`${origin}/api/history`);
-    for (let attempt = 0; attempt < 50 && ties.total !== 6; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      await service.reconcile();
-      ties = await fetchJson<HistoryResponse>(`${origin}/api/history`);
-    }
+    await service.reconcile();
+    const ties = await fetchJson<HistoryResponse>(`${origin}/api/history`);
     expect(ties.total).toBe(6);
     expect(ties.records.slice(1, 3).map((record) => record.recordId)).toEqual(['tie-a', 'tie-b']);
   });
