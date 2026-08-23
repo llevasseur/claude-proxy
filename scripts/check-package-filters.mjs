@@ -14,6 +14,11 @@
 // It reads tracked files only, via `git ls-files`, which is also what keeps
 // node_modules and the log store out of the walk without an ignore list.
 //
+// It covers executable surfaces — source, scripts, package.json, workflows,
+// .plist files, and AGENTS.md — and not records of what was measured. See
+// UNSCANNED_DIRECTORIES below and
+// docs/adrs/0057-the-filter-gate-covers-invocations-not-records.md.
+//
 // Usage: node scripts/check-package-filters.mjs
 // Exit 0 when every filter argument is scoped, 1 otherwise.
 
@@ -33,6 +38,21 @@ const SCANNED = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.md', '.json', '
 // Generated, and rewritten wholesale by pnpm — nothing here is a filter argument
 // anyone typed.
 const SKIPPED_FILES = new Set(['pnpm-lock.yaml']);
+
+// The gate covers invocations, not records of what was measured. An ADR records
+// what was true when it was written and a wayfinder plan records what was asked,
+// so in both a broken command spelled out verbatim is the *evidence* — it is the
+// defect being described, not a defect. Pointing the gate at those two
+// directories does not protect them; it rewards rewriting a recorded measurement
+// into a false claim about the present, silently, because each rewrite makes the
+// text more conformant. That already happened once, to five sentences of ADR
+// 0055. See docs/adrs/0057-the-filter-gate-covers-invocations-not-records.md.
+//
+// This narrows *where* the gate looks. It does not weaken what it catches: a bare
+// unscoped name still fails anywhere else, including every other directory under
+// docs/, and AGENTS.md stays in scope deliberately — that file is not
+// documentation here but the instruction every future agent reads.
+const UNSCANNED_DIRECTORIES = ['docs/adrs/', 'docs/wayfinder/'];
 
 const repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
   encoding: 'utf8',
@@ -75,6 +95,7 @@ const findings = [];
 
 for (const relative of tracked) {
   if (SKIPPED_FILES.has(relative)) continue;
+  if (UNSCANNED_DIRECTORIES.some((directory) => relative.startsWith(directory))) continue;
   if (!SCANNED.has(path.extname(relative))) continue;
 
   let contents;
