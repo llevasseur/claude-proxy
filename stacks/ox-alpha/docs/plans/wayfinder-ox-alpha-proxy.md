@@ -28,7 +28,6 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 10 | boat-inspection-surfaces | [ox-alpha-proxy-10-boat-inspection-surfaces](ox-alpha-proxy-10-boat-inspection-surfaces.md) | `task/ox-alpha-proxy-10-boat-inspection-surfaces` | todo |
 | 11 | plane-matrix-expansion | [ox-alpha-proxy-11-plane-matrix-expansion](ox-alpha-proxy-11-plane-matrix-expansion.md) | `task/ox-alpha-proxy-11-plane-matrix-expansion` | todo |
 | 12 | plane-parity-implementation | [ox-alpha-proxy-12-plane-parity-implementation](ox-alpha-proxy-12-plane-parity-implementation.md) | `task/ox-alpha-proxy-12-plane-parity-implementation` | todo |
 | 13 | plane-verification-docs | [ox-alpha-proxy-13-plane-verification-docs](ox-alpha-proxy-13-plane-verification-docs.md) | `task/ox-alpha-proxy-13-plane-verification-docs` | todo |
@@ -36,6 +35,8 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **10 boat-inspection-surfaces** — PR #11. Six paginated inspection endpoints over capture data only with typed-empty degradation and memoized day assembly invalidated by capture writes/retention deletions; deterministic tolerant parsers in core (never returning body text); #/boat dashboard routes with no-capture states; boat.md completed. BOAT PHASE BOUNDARY: ADR-0011 live-validation note in the PR body. Verify green; CI pass.
 
 - **09 boat-capture-retention** — PR #10. Capture defaults off with proven byte-identity and secret non-retention; redaction before persistence (authorization/cookies/keys plus configurable patterns); separate captures dir with strict envelope v1 sharing the sidecar recordId; server flag-matching gate and stray-file ingest immunity; retention window + size cap with headless `maintain` command; docs/features/boat.md and docs/specs/capture-retention.md added. Verify green; CI pass.
 
