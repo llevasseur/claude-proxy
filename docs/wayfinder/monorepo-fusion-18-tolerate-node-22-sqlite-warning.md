@@ -7,7 +7,7 @@ campaign base. Third in a stack: 18 → 17 → 16 → campaign base. Each level 
 branch carrying the interface it consumes, and CI only exists from ticket 16's branch
 upward. Merging this turns PR #269 green, which turns PR #268 green, which lands all three
 on the campaign base together. **No red PR is merged anywhere in that chain.**
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## Why this ticket exists
 

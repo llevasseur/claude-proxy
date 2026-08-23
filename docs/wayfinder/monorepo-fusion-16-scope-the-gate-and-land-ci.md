@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-16-scope-the-gate-and-land-ci`
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## Why this ticket exists, and why it runs now
 

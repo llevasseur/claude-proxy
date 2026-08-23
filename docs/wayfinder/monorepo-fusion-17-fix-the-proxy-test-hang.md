@@ -10,7 +10,7 @@ green — the precise failure criterion 3 exists to prevent. This is the ordinar
 rule (a stacked unit is cut from the branch carrying the interface it consumes; here the
 interface is CI), and merging this ticket into ticket 16's branch is what turns PR #268
 green.
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## Why this ticket exists
 

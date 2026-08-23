@@ -104,9 +104,9 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
    `deploy-concepts.yml` — itself paths-filtered — is the only workflow. Each runner's own
    `pnpm verify` is real, but nothing mechanical would stop a red merge, so ticket 03's
    deliberately-red intermediate state was **unenforced rather than approved**.
-   **Pull ticket 10's `verify.yml` half forward to immediately after ticket 04**, which is
-   the first point the tree is green again — landing it earlier would block ticket 04's
-   own merge on the redness ticket 04 exists to clear. *(ticket 10)*
+   **Closed by ticket 16**: `.github/workflows/verify.yml` is on the campaign base as of
+   `1513df6`, so every ticket from 05 onward is gated. Tickets 01–04 remain the four that
+   merged unchecked. *(closed)*
 8. **The route-budget gate is intermittent, not stale.** Ticket 01 measured it red at
    433ms; ticket 03 measured the same gate green at `12ee731`. It reads recorded
    observations from the shared `logs/` store, so its verdict depends on data outside the
@@ -135,9 +135,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 16 | scope-the-gate-and-land-ci | [monorepo-fusion-16-scope-the-gate-and-land-ci](monorepo-fusion-16-scope-the-gate-and-land-ci.md) | `task/monorepo-fusion-16-scope-the-gate-and-land-ci` | paused | PR [#268](https://github.com/llevasseur/claude-proxy/pull/268) open on this base, work complete, unmerged: the `verify` workflow it lands is red because `pnpm test` hangs in `stacks/claude/proxy` (finishes its tests, never exits), which is outside this ticket's lane. Resume by fixing that hang, then merge. Runs BEFORE 05 so the absorptions land under a live gate. |
-| 17 | fix-the-proxy-test-hang | [monorepo-fusion-17-fix-the-proxy-test-hang](monorepo-fusion-17-fix-the-proxy-test-hang.md) | `task/monorepo-fusion-17-fix-the-proxy-test-hang` | paused | Blocked on a base-branch decision, not on the code. Diagnosed: the two children that never exit are `system-prompt.test.ts` (10 tests) and `usage-live.test.ts` (4) — 91 local tests less CI's 77, and `node --test` reports per file, so `ok 77` is simply the other three files completing. Does not reproduce on macOS/Node 26 non-interactively, by file redirect or by pipe: 91 pass, exit 0. Naming the handle needs CI (Linux, Node 22), but `verify.yml` lives only on ticket 16's branch, so a branch cut from this base gets no checks at all and criterion 3 cannot be met. **Decision taken:** cut from and merge into `task/monorepo-fusion-16-scope-the-gate-and-land-ci`. That is the ordinary stacking rule — a stacked unit is cut from the branch carrying the interface it consumes, and here the interface is CI — so no lane widening is needed. **Fixed and proven in CI** (run `32663051306`, 91/91 pass, 716ms) — PR [#269](https://github.com/llevasseur/claude-proxy/pull/269) open on ticket 16's branch, not merged. Root cause: the test passed `/proc/nonexistent-root` as an unwritable directory, and on Linux `mkdirSync(recursive)` against procfs never returns; macOS has no `/proc` so it failed instantly and the suite passed 91/91 locally every time. **Only one file ever hung** — `usage-live.test.ts` finished cleanly and its results were withheld because `node --test` will not finalize while a sibling is stuck. #269 is still red on three `stacks/claude/server` tests, which is ticket 18's. Runs BEFORE 05. |
-| 18 | tolerate-node-22-sqlite-warning | [monorepo-fusion-18-tolerate-node-22-sqlite-warning](monorepo-fusion-18-tolerate-node-22-sqlite-warning.md) | `task/monorepo-fusion-18-tolerate-node-22-sqlite-warning` | todo | Third in the stack 18 → 17 → 16 → base. Fixing the proxy hang revealed that `stacks/claude/server`'s tests had **never run in CI** — pnpm's topological batching never got past the hanging proxy's batch. Three of them fail on Node 22's `ExperimentalWarning: SQLite`, which Node 26 does not emit. Unblocks #269, then #268. Runs BEFORE 05. |
+| 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
 | 05 | absorb-codex | [monorepo-fusion-05-absorb-codex](monorepo-fusion-05-absorb-codex.md) | `task/monorepo-fusion-05-absorb-codex` | todo | |
 | 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | todo | |
 | 07 | reformat-ox | [monorepo-fusion-07-reformat-ox](monorepo-fusion-07-reformat-ox.md) | `task/monorepo-fusion-07-reformat-ox` | todo | |
@@ -221,6 +219,71 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 16, 17, 18 — the CI gate and the two defects it immediately found · 2026-08-23 · PRs #268, #269, #270
+
+Landed as one stack — 18 → 17 → 16 → base — because `verify.yml` existed only from ticket
+16's branch upward, so each level had to be cut from the branch carrying the interface it
+consumed. **No red pull request was merged anywhere in the chain.** `main` and
+`the-great-merge` untouched throughout; the campaign base is at `1513df6` and
+`.github/workflows/verify.yml` is now on it, so every later ticket inherits CI.
+
+**16 — the gate.** `scripts/check-package-filters.mjs` gained
+`UNSCANNED_DIRECTORIES = ['docs/adrs/', 'docs/wayfinder/']` per ADR 0057, with the reason
+and citation at the exclusion. Narrower in **where** it looks and identical in **what** it
+catches, proven both ways: green over 541 tracked files with **no citation edited**, and
+two deliberately planted unscoped filters — in `verify.yml` and `package.json`, two
+different in-scope categories — each still failing it at exit 1. `gh pr checks` went from
+`no checks reported` to a real verdict.
+
+**17 — the hang, and it was one line of test setup.** `system-prompt.test.ts` passed
+`/proc/nonexistent-root` as its stand-in for an unwritable directory. On Linux
+`mkdirSync(recursive)` against procfs **never returns** — Node retries a component the
+kernel will not create — so the child spun on CPU and `node --test` waited on it forever.
+macOS has no `/proc`, so the same call fails instantly and the suite passed **91/91 locally
+every time**. Fixed by pointing at a path whose parent is a regular file (`ENOTDIR`
+everywhere). CI: 91/91 in 716ms. No forced exit, no `--test-force-exit`, production code
+untouched.
+
+Three readings were wrong before the right one, each killed by an experiment rather than
+an argument — a 5-for-5 console-output correlation that turned out not to be causal, an
+unref'd watchdog that never fired (proving the child never turned its event loop), and
+`/proc` showing `state=R, wchan=0` — spinning, not blocked. Only an `fs.appendFileSync`
+trace survived the frozen process to name the test.
+
+**Correction to the record:** only **one** file ever hung. `usage-live.test.ts` ran all
+four of its tests and exited; `node --test` simply will not finalize while a sibling is
+stuck, which is what made it look like two.
+
+**18 — the suite the hang was hiding.** Fixing the proxy revealed that
+**`stacks/claude/server`'s tests had never once run in CI**: pnpm's topological batching
+never got past the batch the proxy sat in, so an entire suite was skipped while the job
+merely looked slow. Three tests failed the first time they ever executed, asserting the CLI
+writes nothing to stderr and seeing Node 22's `ExperimentalWarning: SQLite` (Node 26 does
+not emit it, so no local run could ever reproduce it).
+
+Fixed with the preferred approach rather than a relaxed assertion: a shared
+`cliEnv(overrides)` helper spreading `process.env` with `NODE_NO_WARNINGS: '1'`, inherited
+down the whole `pnpm` → `tsx` → CLI chain, so the assertion stays literally
+`expect(stderr).toBe('')`. Applied to **all five** spawns, not the three that failed. The
+sibling check found a better bug than the one it was looking for: `cli-help.test.ts` folds
+`e.stderr` into the string it runs 31 `toContain` assertions against, so a warning would
+have been **silently concatenated** into every one of them. Proven still to bite by
+planting a stray `console.error` and getting three failures before reverting.
+
+**Deviations and findings, recorded rather than absorbed:**
+
+- **A wrong ADR citation, which originated in this campaign's own ticket text.** ticket
+  18's plan said "ADR 0055's whole subject is output that lies" — a loose analogy stated as
+  a governing reference. The runner copied it into a `cli-env.ts` comment; `/review` caught
+  that 0055 is about the package rename. Dropped rather than replaced, since no ADR covers
+  the topic. **This is the second time ADR 0055 has been damaged by a well-meaning edit**,
+  after ticket 04's bulk pass rewrote five of its sentences.
+- The filter gate reads `git ls-files`, so an untracked file is unchecked until staged.
+- `chat-cli.test.ts`'s idle-window case is **ticket 19**, not a flake: under load the idle
+  clock fires instead of the ceiling the test is about, so it silently stops testing what
+  it names.
+- Five pre-existing anti-slop findings were left standing and named rather than silenced.
 
 ### 04 — sweep-non-import-references · 2026-08-23 · PR #267
 
