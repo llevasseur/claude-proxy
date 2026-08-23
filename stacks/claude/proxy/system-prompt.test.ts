@@ -160,15 +160,11 @@ test('a record already on disk is not rewritten by a later process', () => {
 });
 
 test('storing never throws when the log directory is unwritable', () => {
-  // A regular file standing where the log directory should be. `mkdir` fails on it
-  // with ENOTDIR at once, on every platform.
-  //
-  // This used to say `/proc/nonexistent-root`, which cost this suite a CI outage: on
-  // Linux `fs.mkdirSync(..., { recursive: true })` under procfs never returns, so the
-  // test child spun on CPU forever and `node --test` waited on it until the job's
-  // 10-minute cap. It could not reproduce on macOS, where there is no `/proc` and the
-  // call fails immediately. Any replacement must be a path `mkdir` *rejects*, never
-  // one it retries.
+  // A regular file where the log directory should be: `mkdir` rejects it with
+  // ENOTDIR at once, on every platform. Do not swap this for `/proc/nonexistent-root`
+  // — on Linux, recursive `mkdir` under procfs never returns, spinning the test
+  // child forever until CI's 10-minute cap (macOS has no `/proc`, so it looked fine
+  // locally).
   const notADirectory = path.join(tmpdir(), 'occupied-by-a-file');
   fs.writeFileSync(notADirectory, 'x');
 
