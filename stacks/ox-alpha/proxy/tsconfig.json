@@ -1,18 +1,10 @@
 {
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2023",
-    "lib": ["ES2023"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
     "noEmit": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "noUncheckedIndexedAccess": true,
+    "types": ["node"],
     "allowImportingTsExtensions": true,
-    "rewriteRelativeImportExtensions": false,
-    "erasableSyntaxOnly": true,
-    "types": ["node"]
+    "erasableSyntaxOnly": true
   },
   "include": ["src", "test"]
 }
