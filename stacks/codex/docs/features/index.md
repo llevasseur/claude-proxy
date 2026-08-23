@@ -9,3 +9,4 @@ timestamp: 2026-08-19
 # Feature documentation
 
 - [Bike — live sanitized usage overview](bike.md)
+- [Car — durable history, trends, ranges, and model filters](car.md)

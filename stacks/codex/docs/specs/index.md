@@ -9,3 +9,4 @@ timestamp: 2026-08-19
 # Specifications
 
 - [Bike architecture](bike-architecture.md)
+- [Car architecture](car-architecture.md)
