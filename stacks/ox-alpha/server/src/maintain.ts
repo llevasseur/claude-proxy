@@ -9,14 +9,14 @@ import { auditConsistency, isConsistent } from "./consistency.ts";
 import { UsageDatabase } from "./database.ts";
 
 const config = readConfig();
-const retention = config.captureEnabled
-  ? await new CaptureStore(
-      config.captureDirectory,
-      true,
-      config.captureRetentionMs,
-      config.captureMaxBytes,
-    ).maintain()
-  : { captureEnabled: false, deletedExpired: 0, deletedOverCap: 0 };
+// The store idles itself when capture is off, so both modes print the one
+// documented shape rather than a second, capture-off-only result.
+const retention = await new CaptureStore(
+  config.captureDirectory,
+  config.captureEnabled,
+  config.captureRetentionMs,
+  config.captureMaxBytes,
+).maintain();
 
 const database = new UsageDatabase(config.databasePath);
 try {

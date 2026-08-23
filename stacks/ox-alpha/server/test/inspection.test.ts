@@ -141,6 +141,41 @@ describe("Boat inspection — capture never enabled", () => {
         expect(payload.records).toEqual([]);
       }
     }
+    // The drill-down endpoints degrade the same way — a 404 here would
+    // contradict the "never an error" contract the surface documents.
+    const schemaResponse = await getPage(origin, "/api/inspection/tool-schema?name=anything");
+    expect(schemaResponse.status).toBe(200);
+    expect(await schemaResponse.json()).toMatchObject({
+      captureEnabled: false,
+      occurrences: 0,
+      variants: [],
+      recordIds: [],
+    });
+
+    const detailResponse = await getPage(origin, "/api/inspection/sessions/detail?id=anything");
+    expect(detailResponse.status).toBe(200);
+    const detail = await jsonOf(detailResponse);
+    expect(detail.captureEnabled).toBe(false);
+    expect(detail.total).toBe(0);
+    expect(detail.records).toEqual([]);
+
+    const breakdownResponse = await getPage(
+      origin,
+      "/api/inspection/sessions/breakdown?id=anything",
+    );
+    expect(breakdownResponse.status).toBe(200);
+    expect(await breakdownResponse.json()).toMatchObject({
+      captureEnabled: false,
+      captures: 0,
+      models: [],
+      hours: [],
+    });
+
+    // A malformed page is a 400 whether or not the record exists.
+    expect(
+      (await getPage(origin, "/api/inspection/messages?recordId=missing&limit=0")).status,
+    ).toBe(400);
+
     // Inspection reads never created a capture directory on a disabled server.
     const { stat } = await import("node:fs/promises");
     await expect(stat(join(directory, "captures"))).rejects.toMatchObject({ code: "ENOENT" });

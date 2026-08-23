@@ -377,6 +377,9 @@ export class LiveUsageService {
           return;
         }
         case "/api/inspection/messages": {
+          // Query validity does not depend on whether the record exists, so
+          // pagination is parsed before the lookup that can 404.
+          const { limit, offset } = pagination(searchParams);
           const recordId = this.requireRecordId(searchParams);
           await this.envelopes();
           const envelope = this.findEnvelope(recordId);
@@ -384,7 +387,7 @@ export class LiveUsageService {
             // Degrade gracefully when capture is off; a real miss with
             // capture on is a 404.
             if (!enabled) {
-              this.inspectionPage(response, enabled, [], 1, 0);
+              this.inspectionPage(response, enabled, [], limit, offset);
               return;
             }
             json(response, 404, { error: "not_found" });
@@ -392,7 +395,6 @@ export class LiveUsageService {
           }
           const { request, response: responseEntries } = collectMessages(envelope);
           const merged = [...request, ...responseEntries];
-          const { limit, offset } = pagination(searchParams);
           this.inspectionPage(response, enabled, merged, limit, offset);
           return;
         }
@@ -536,6 +538,21 @@ export class LiveUsageService {
             (entry) => entry.name === name,
           );
           if (schemas.length === 0) {
+            // Capture off is "nothing was ever recorded", not a miss.
+            if (!enabled) {
+              json(response, 200, {
+                captureEnabled: false,
+                name,
+                type: "unknown",
+                description: null,
+                occurrences: 0,
+                variants: [],
+                firstSeenAt: null,
+                lastSeenAt: null,
+                recordIds: [],
+              });
+              return;
+            }
             json(response, 404, { error: "not_found" });
             return;
           }
@@ -566,15 +583,17 @@ export class LiveUsageService {
           if (id === null || id.length === 0) {
             throw new BadRequestError("id is required");
           }
+          // Parsed before the lookup so a malformed page stays a 400 whether
+          // or not the session exists.
+          const { limit, offset } = pagination(searchParams);
           await this.envelopes();
           const envelopes = this.captureMemo?.value.envelopes ?? [];
           if (pathname.endsWith("/detail")) {
             const captures = collectSessionDetail(id, envelopes);
-            if (captures.length === 0) {
+            if (captures.length === 0 && enabled) {
               json(response, 404, { error: "not_found" });
               return;
             }
-            const { limit, offset } = pagination(searchParams);
             json(response, 200, {
               captureEnabled: enabled,
               sessionId: id,
@@ -583,11 +602,11 @@ export class LiveUsageService {
             return;
           }
           const breakdown = collectSessionBreakdown(id, envelopes);
-          if (breakdown.captures === 0) {
+          if (breakdown.captures === 0 && enabled) {
             json(response, 404, { error: "not_found" });
             return;
           }
-          json(response, 200, { captureEnabled: true, sessionId: id, ...breakdown });
+          json(response, 200, { captureEnabled: enabled, sessionId: id, ...breakdown });
           return;
         }
         case "/api/inspection/errors": {
