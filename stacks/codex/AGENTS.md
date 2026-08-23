@@ -70,7 +70,7 @@ path to full parity with `claude-proxy`, where these are all `error`.
 `.zellij/codex-proxy.kdl` — `proxy`, `server` and `admin` in a `dev` tab, plus a spare
 shell tab. No port is pinned in the layout. `proxy` and `server` run under
 `pnpm --filter`, so their cwd is the package directory, and both pass
-`--env-file-if-exists=../.env` to reach the repository-root `.env` from there —
+`--env-file-if-exists=../../../.env` to reach the monorepo-root `.env` from there —
 `PROXY_PORT` and `OPENAI_UPSTREAM` no longer have to be exported into the shell that
 launches `pnpm zellij`. `admin` is Vite, which loads `apps/admin/.env`. The script warns
 and waits if it finds none of those files.
@@ -81,9 +81,9 @@ looks. It is deliberately not the `8787` the other proxies checked out beside th
 default to; sharing that number means whichever process starts second loses the bind.
 
 Relative paths in that root `.env` — `AUDIT_DIR`, `DATABASE_PATH`, `PROXY_STATUS_FILE`,
-`PROXY_STATUS_PATH` — resolve against the repository root rather than the launching cwd,
-so a pane started under `pnpm --filter` and a root-level `node proxy/src/proxy.ts` write
-to the same `logs/`. Absolute values still win. Plane's processes belong as further panes
+`PROXY_STATUS_PATH` — resolve against this stack's root, `stacks/codex/`, rather than
+against the launching cwd or the monorepo root, so every pane writes to the same
+`stacks/codex/logs/` however it was started. Absolute values still win. See ADR 0054. Plane's processes belong as further panes
 in that same layout rather than in a second one.
 
 Individually: `pnpm proxy`, `pnpm server`, `pnpm admin`.
