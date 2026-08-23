@@ -7,7 +7,7 @@ on:
     branches: [main]
     paths:
       - 'services/concepts/**'
-      - 'packages/core/**'
+      - 'stacks/claude/core/**'
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
       - '.github/workflows/deploy-concepts.yml'

@@ -1,8 +1,6 @@
 packages:
-  - proxy
-  - server
+  - stacks/*/*
   - packages/*
-  - apps/*
   - services/*
 allowBuilds:
   esbuild: true

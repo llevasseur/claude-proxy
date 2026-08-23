@@ -1,5 +1,5 @@
 {
-  "extends": "../tsconfig.base.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     // No `rootDir`: two tests reach out of the package into `proxy/`.
     "noEmit": true,

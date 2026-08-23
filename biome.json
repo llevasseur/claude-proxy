@@ -12,7 +12,7 @@
       "!**/node_modules",
       "!.claude/worktrees",
       "!**/pnpm-lock.yaml",
-      "!logs",
+      "!**/logs",
       "!tools/oxlint/anti-slop",
       "!**/coverage/*",
       "!**/build/*",
@@ -35,7 +35,7 @@
     "includes": [
       "**",
       "!**/pnpm-lock.yaml",
-      "!logs/**",
+      "!**/logs",
       "!**/coverage/*",
       "!**/build/*",
       "!**/dist/*",
@@ -43,7 +43,7 @@
       "!**/*.gen.*"
     ]
   },
-  "plugins": ["./apps/admin/lint/no-bare-size.grit"],
+  "plugins": ["./stacks/claude/admin/lint/no-bare-size.grit"],
   "linter": {
     "enabled": true,
     "rules": {
@@ -170,7 +170,7 @@
       }
     },
     {
-      "includes": ["packages/core/src/index.ts"],
+      "includes": ["stacks/claude/core/src/index.ts"],
       "linter": {
         "rules": {
           "performance": {
