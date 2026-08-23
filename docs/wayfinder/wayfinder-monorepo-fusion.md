@@ -169,7 +169,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 |---|------|------|--------|--------|------|
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
 | 20 | ox-history-test-flake | [monorepo-fusion-20-ox-history-test-flake](monorepo-fusion-20-ox-history-test-flake.md) | `task/monorepo-fusion-20-ox-history-test-flake` | in-progress | |
-| 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | todo | |
+| 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | in-progress | |
 | 10 | unify-toolchain-and-ci | [monorepo-fusion-10-unify-toolchain-and-ci](monorepo-fusion-10-unify-toolchain-and-ci.md) | `task/monorepo-fusion-10-unify-toolchain-and-ci` | in-progress | |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 12 | merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus](monorepo-fusion-12-merge-adr-corpus.md) | `task/monorepo-fusion-12-merge-adr-corpus` | todo | |
