@@ -159,7 +159,40 @@ test('a record already on disk is not rewritten by a later process', () => {
   assert.equal((JSON.parse(fs.readFileSync(file, 'utf8')) as { hash: string }).hash, 'pre-existing');
 });
 
+/**
+ * Run `fn` with the console captured, returning its result and what it wrote.
+ *
+ * An unwritable log directory is reported to the console, and the test below drives
+ * that path on purpose. Under `node --test` each file runs in a child process whose
+ * stdout and stderr are pipes back to the runner, and writing to that pipe is what
+ * left this file's child alive forever in CI while the same run passed on macOS.
+ * Capturing the write turns the report into an assertion and leaves nothing writing
+ * to the pipe.
+ */
+function captureConsole<T>(fn: () => T) {
+  const lines: string[] = [];
+  const record = (...args: unknown[]): void => {
+    lines.push(args.map(String).join(' '));
+  };
+  const warn = console.warn;
+  const error = console.error;
+  console.warn = record;
+  console.error = record;
+  try {
+    return { result: fn(), output: lines.join('\n') };
+  } finally {
+    console.warn = warn;
+    console.error = error;
+  }
+}
+
 test('storing never throws when the log directory is unwritable', () => {
-  assert.equal(recordPrompt('/proc/nonexistent-root', identifyPrompt([block('# A\nx')])), false);
-  assert.equal(recordPrompt('/tmp', null), false);
+  const unwritable = captureConsole(() => recordPrompt('/proc/nonexistent-root', identifyPrompt([block('# A\nx')])));
+  assert.equal(unwritable.result, false);
+  assert.match(unwritable.output, /could not store system prompt outline/);
+
+  // A null identity is not an error, so it reports nothing.
+  const absent = captureConsole(() => recordPrompt('/tmp', null));
+  assert.equal(absent.result, false);
+  assert.equal(absent.output, '');
 });
