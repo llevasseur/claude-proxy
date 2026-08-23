@@ -12,7 +12,13 @@ export async function temporaryDirectory(): Promise<Readonly<{ path: string; cle
 export function sidecar(
   recordId: string,
   timestamp = '2026-08-19T16:00:00.000Z',
-  options: Readonly<{ unavailable?: boolean; inputTokens?: number; outputTokens?: number }> = {},
+  options: Readonly<{
+    unavailable?: boolean;
+    inputTokens?: number;
+    outputTokens?: number;
+    model?: string;
+    amountUsd?: string;
+  }> = {},
 ): SanitizedAuditSidecarV1 {
   const inputTokens = options.inputTokens ?? 10;
   const outputTokens = options.outputTokens ?? 4;
@@ -20,7 +26,7 @@ export function sidecar(
     schemaVersion: 1,
     recordId,
     timestamp,
-    model: 'gpt-5',
+    model: options.model ?? 'gpt-5',
     endpoint: '/v1/responses',
     responseStatus: 200,
     requestId: `request-${recordId}`,
@@ -33,7 +39,11 @@ export function sidecar(
     }),
     cost: options.unavailable
       ? null
-      : Object.freeze({ currency: 'USD', amountUsd: '0.000053', catalogueVersion: 'test' }),
+      : Object.freeze({
+          currency: 'USD',
+          amountUsd: options.amountUsd ?? '0.000053',
+          catalogueVersion: 'test',
+        }),
     costUnavailableReason: options.unavailable ? Object.freeze({ code: 'unknown-model', model: 'future' }) : null,
   });
 }

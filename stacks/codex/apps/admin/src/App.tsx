@@ -1,6 +1,6 @@
 import type { CostUnavailableReason, TodaySummary } from '@codex-proxy/core';
 import { Link, Outlet } from '@tanstack/react-router';
-import { Gauge, Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
+import { Gauge, History, Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { HealthResponse } from './api.ts';
 import { type StreamState, useLiveOverview } from './use-live-overview.ts';
@@ -109,6 +109,26 @@ export function AppShell() {
               <Gauge className="station-icon" size={17} strokeWidth={1.75} aria-hidden />
               <span className="station-label">Overview</span>
               <span className="station-hint">today</span>
+            </Link>
+            <Link
+              to="/history"
+              className="station"
+              activeProps={{ className: 'station active' }}
+              onClick={() => setDrawerOpen(false)}
+            >
+              <History className="station-icon" size={17} strokeWidth={1.75} aria-hidden />
+              <span className="station-label">History</span>
+              <span className="station-hint">records</span>
+            </Link>
+            <Link
+              to="/trends"
+              className="station"
+              activeProps={{ className: 'station active' }}
+              onClick={() => setDrawerOpen(false)}
+            >
+              <TrendingUp className="station-icon" size={17} strokeWidth={1.75} aria-hidden />
+              <span className="station-label">Trends</span>
+              <span className="station-hint">daily</span>
             </Link>
           </div>
         </nav>

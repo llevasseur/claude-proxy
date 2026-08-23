@@ -35,6 +35,11 @@ export class EventHub {
     return true;
   }
 
+  publishDataVersion(dataVersion: number): void {
+    const id = ++this.eventId;
+    for (const client of this.clients) client.write(frame(id, 'data-version', { dataVersion }));
+  }
+
   subscribe(response: ServerResponse, snapshot: LiveSnapshot): () => void {
     response.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
