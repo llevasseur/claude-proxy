@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 // The proxy is zero-dependency and mirrors this package's transcript grammar rather
 // than importing it; reaching across here pins the two together. Node strips the
 // proxy's types to run it, so the specifier keeps its `.ts` extension.
-import { countNodeLines, distillMessagesEntries } from '../../../proxy/session.ts';
+import { countNodeLines, distillMessagesEntries } from '../../proxy/session.ts';
 import { parseSessionNodes, parseSessionNodeTexts } from '../src/sessions.js';
 
 /** One distilled transcript line and the whole text behind it. */
