@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { cliEnv } from './cli-env.js';
 
 const run = promisify(execFile);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -35,7 +36,7 @@ beforeAll(async () => {
 async function invoke(file: string, args: readonly string[]): Promise<{ code: number; stdout: string }> {
   try {
     const { stdout } = await run('npx', ['tsx', path.join(SRC, file), ...args], {
-      env: { ...process.env, LOG_DIR: logDir },
+      env: cliEnv({ LOG_DIR: logDir }),
     });
     return { code: 0, stdout };
   } catch (err) {

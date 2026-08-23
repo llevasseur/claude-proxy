@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { CLAUDE_SERVER_PACKAGE } from '@agent-proxy/claude-core';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { cliEnv } from './cli-env.js';
 
 const run = promisify(execFile);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -40,7 +41,7 @@ describe('suggestions --json is parseable as emitted', () => {
         ['--silent', '--filter', CLAUDE_SERVER_PACKAGE, 'suggestions', ...args],
         {
           cwd: REPO_ROOT,
-          env: { ...process.env, LOG_DIR: logDir },
+          env: cliEnv({ LOG_DIR: logDir }),
           maxBuffer: 64 * 1024 * 1024,
         },
       );
@@ -50,6 +51,7 @@ describe('suggestions --json is parseable as emitted', () => {
       expect(payload).toHaveProperty(key);
 
       // stderr has to be empty too — `<cmd> 2>&1 | <parser>` is the shape that broke.
+      // `cliEnv` keeps Node's own warnings off this stream, so anything here came from the CLI.
       expect(stderr).toBe('');
     }, 120_000);
   }
@@ -58,7 +60,7 @@ describe('suggestions --json is parseable as emitted', () => {
     // No pnpm in the way: one JSON document and nothing else. A stray console.log
     // fails here first.
     const { stdout } = await run('npx', ['tsx', path.join(SRC, 'suggestions-cli.ts'), 'list', '--json'], {
-      env: { ...process.env, LOG_DIR: logDir },
+      env: cliEnv({ LOG_DIR: logDir }),
       maxBuffer: 64 * 1024 * 1024,
     });
 
@@ -67,7 +69,7 @@ describe('suggestions --json is parseable as emitted', () => {
 
   it('still names --silent in the usage text a caller reads first', async () => {
     const { stdout } = await run('npx', ['tsx', path.join(SRC, 'suggestions-cli.ts'), '--help'], {
-      env: { ...process.env, LOG_DIR: logDir },
+      env: cliEnv({ LOG_DIR: logDir }),
     });
 
     expect(stdout).toContain(`pnpm --silent --filter ${CLAUDE_SERVER_PACKAGE} suggestions`);
