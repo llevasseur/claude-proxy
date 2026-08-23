@@ -1,4 +1,4 @@
-import type { CostUnavailableReason, PricedCost } from '@codex-proxy/core';
+import type { CostUnavailableReason, PricedCost } from '@agent-proxy/codex-core';
 
 const TOKEN_FORMAT = new Intl.NumberFormat();
 const TIMESTAMP_FORMAT = new Intl.DateTimeFormat(undefined, {

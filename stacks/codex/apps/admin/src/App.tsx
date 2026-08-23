@@ -1,4 +1,4 @@
-import type { CostUnavailableReason, TodaySummary } from '@codex-proxy/core';
+import type { CostUnavailableReason, TodaySummary } from '@agent-proxy/codex-core';
 import { Link, Outlet } from '@tanstack/react-router';
 import { Gauge, History, Menu, Moon, PanelLeftClose, PanelLeftOpen, Sun, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -52,10 +52,10 @@ function useTheme(): readonly [Theme, () => void] {
 
 function Brand({ className = 'brand-link', onNavigate }: { className?: string; onNavigate?: () => void }) {
   return (
-    <Link to="/" className={className} aria-label="codex proxy — Overview" onClick={onNavigate}>
-      <span className="brand-node" aria-hidden />
-      <span className="brand">
-        codex<span className="brand-sep"> / </span>proxy
+    <Link to='/' className={className} aria-label='codex proxy — Overview' onClick={onNavigate}>
+      <span className='brand-node' aria-hidden />
+      <span className='brand'>
+        codex<span className='brand-sep'> / </span>proxy
       </span>
     </Link>
   );
@@ -79,100 +79,94 @@ export function AppShell() {
 
   return (
     <div className={`app${railCollapsed ? ' app--rail-collapsed' : ''}${drawerOpen ? ' app--drawer-open' : ''}`}>
-      <aside className="rail" id="rail-nav">
-        <div className="rail-head">
+      <aside className='rail' id='rail-nav'>
+        <div className='rail-head'>
           <button
-            type="button"
-            className="rail-toggle"
+            type='button'
+            className='rail-toggle'
             onClick={() => setRailCollapsed((value) => !value)}
             aria-pressed={railCollapsed}
             aria-label={railLabel}
-            title={railLabel}
-          >
+            title={railLabel}>
             {railCollapsed ? <PanelLeftOpen size={16} aria-hidden /> : <PanelLeftClose size={16} aria-hidden />}
           </button>
-          <Brand className="brand-link topbar-brand" onNavigate={() => setDrawerOpen(false)} />
+          <Brand className='brand-link topbar-brand' onNavigate={() => setDrawerOpen(false)} />
         </div>
 
-        <nav className="stations" aria-label="Primary">
-          <div className="nav-group">
-            <h2 className="nav-group-label" id="nav-group-dashboard">
+        <nav className='stations' aria-label='Primary'>
+          <div className='nav-group'>
+            <h2 className='nav-group-label' id='nav-group-dashboard'>
               Dashboard
             </h2>
             <Link
-              to="/"
-              className="station"
+              to='/'
+              className='station'
               activeProps={{ className: 'station active' }}
               activeOptions={{ exact: true }}
-              onClick={() => setDrawerOpen(false)}
-            >
-              <Gauge className="station-icon" size={17} strokeWidth={1.75} aria-hidden />
-              <span className="station-label">Overview</span>
-              <span className="station-hint">today</span>
+              onClick={() => setDrawerOpen(false)}>
+              <Gauge className='station-icon' size={17} strokeWidth={1.75} aria-hidden />
+              <span className='station-label'>Overview</span>
+              <span className='station-hint'>today</span>
             </Link>
             <Link
-              to="/history"
-              className="station"
+              to='/history'
+              className='station'
               activeProps={{ className: 'station active' }}
-              onClick={() => setDrawerOpen(false)}
-            >
-              <History className="station-icon" size={17} strokeWidth={1.75} aria-hidden />
-              <span className="station-label">History</span>
-              <span className="station-hint">records</span>
+              onClick={() => setDrawerOpen(false)}>
+              <History className='station-icon' size={17} strokeWidth={1.75} aria-hidden />
+              <span className='station-label'>History</span>
+              <span className='station-hint'>records</span>
             </Link>
             <Link
-              to="/trends"
-              className="station"
+              to='/trends'
+              className='station'
               activeProps={{ className: 'station active' }}
-              onClick={() => setDrawerOpen(false)}
-            >
-              <TrendingUp className="station-icon" size={17} strokeWidth={1.75} aria-hidden />
-              <span className="station-label">Trends</span>
-              <span className="station-hint">daily</span>
+              onClick={() => setDrawerOpen(false)}>
+              <TrendingUp className='station-icon' size={17} strokeWidth={1.75} aria-hidden />
+              <span className='station-label'>Trends</span>
+              <span className='station-hint'>daily</span>
             </Link>
           </div>
         </nav>
 
-        <div className="rail-foot">
+        <div className='rail-foot'>
           <button
-            type="button"
-            className="theme-toggle"
+            type='button'
+            className='theme-toggle'
             onClick={toggleTheme}
             aria-label={themeLabel}
-            title={themeLabel}
-          >
+            title={themeLabel}>
             {theme === 'light' ? <Moon size={16} aria-hidden /> : <Sun size={16} aria-hidden />}
           </button>
-          <span className="rail-foot-label">local only</span>
+          <span className='rail-foot-label'>local only</span>
         </div>
       </aside>
 
       {drawerOpen && (
         <button
-          type="button"
-          className="rail-scrim"
+          type='button'
+          className='rail-scrim'
           tabIndex={-1}
-          aria-label="Close navigation"
+          aria-label='Close navigation'
           onClick={() => setDrawerOpen(false)}
         />
       )}
 
-      <div className="workspace">
-        <div className="topbar">
+      <div className='workspace'>
+        <div className='topbar'>
           <button
-            type="button"
-            className="drawer-toggle"
+            type='button'
+            className='drawer-toggle'
             onClick={() => setDrawerOpen((value) => !value)}
             aria-expanded={drawerOpen}
-            aria-controls="rail-nav"
+            aria-controls='rail-nav'
             aria-label={drawerOpen ? 'Close navigation' : 'Open navigation'}
-            title={drawerOpen ? 'Close navigation' : 'Open navigation'}
-          >
+            title={drawerOpen ? 'Close navigation' : 'Open navigation'}>
             <Menu size={20} aria-hidden />
           </button>
           <Brand onNavigate={() => setDrawerOpen(false)} />
         </div>
-        <main className="content">
+        <main className='content'>
           <Outlet />
         </main>
       </div>
@@ -230,11 +224,11 @@ function StatCard({
   unavailable?: boolean;
 }) {
   return (
-    <article className="card stat">
-      <div className="stat-label">{label}</div>
+    <article className='card stat'>
+      <div className='stat-label'>{label}</div>
       <div className={`stat-value${unavailable ? ' stat-value--unavailable' : ''}`}>{value}</div>
-      <div className="stat-foot">
-        <span className="muted">{detail}</span>
+      <div className='stat-foot'>
+        <span className='muted'>{detail}</span>
       </div>
     </article>
   );
@@ -252,40 +246,40 @@ export function OverviewPage() {
   const costMissing = data !== undefined && data.cost === null;
 
   return (
-    <section className="overview-page" aria-labelledby="overview-title">
-      <header className="pagehead">
-        <div className="pagehead-title">
-          <h1 id="overview-title">Overview</h1>
-          <div className="muted">Today · {data?.reportTimezone ?? 'report timezone loading'}</div>
+    <section className='overview-page' aria-labelledby='overview-title'>
+      <header className='pagehead'>
+        <div className='pagehead-title'>
+          <h1 id='overview-title'>Overview</h1>
+          <div className='muted'>Today · {data?.reportTimezone ?? 'report timezone loading'}</div>
         </div>
-        <div className={`health live-status live-status--${state}`} role="status" aria-live="polite">
+        <div className={`health live-status live-status--${state}`} role='status' aria-live='polite'>
           <span className={`dot ${status.tone}`} aria-hidden />
           <span>
             <strong>{status.label}</strong>
-            <span className="health-text"> · {status.detail}</span>
+            <span className='health-text'> · {status.detail}</span>
           </span>
         </div>
       </header>
 
       {(health.isError || summary.isError) && data === undefined && (
-        <div className="card notice notice--error" role="alert">
+        <div className='card notice notice--error' role='alert'>
           The local API could not be reached. The page shell will stay available while it retries.
         </div>
       )}
 
-      <div className="grid stats" aria-busy={data === undefined}>
+      <div className='grid stats' aria-busy={data === undefined}>
         <StatCard
-          label="Input tokens"
+          label='Input tokens'
           value={formatCount(data?.inputTokens)}
           detail={data ? latest : 'Loading today’s total'}
         />
         <StatCard
-          label="Output tokens"
+          label='Output tokens'
           value={formatCount(data?.outputTokens)}
           detail={data ? latest : 'Loading today’s total'}
         />
         <StatCard
-          label="Cost"
+          label='Cost'
           value={formatCost(data)}
           unavailable={costMissing}
           detail={
@@ -299,13 +293,13 @@ export function OverviewPage() {
       </div>
 
       {isEmpty && (
-        <div className="card empty overview-empty">
+        <div className='card empty overview-empty'>
           <strong>No traffic yet.</strong>
           <span>Send a request through codex-proxy and these cards will update live.</span>
         </div>
       )}
 
-      <footer className="overview-meta muted">
+      <footer className='overview-meta muted'>
         <span>
           Database: {health.data ? `${health.data.database.recordCount.toLocaleString()} records` : 'loading'}
         </span>

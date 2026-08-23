@@ -1,4 +1,4 @@
-import type { TodaySummary } from '@codex-proxy/core';
+import type { TodaySummary } from '@agent-proxy/codex-core';
 
 export interface HealthResponse {
   readonly ready: boolean;

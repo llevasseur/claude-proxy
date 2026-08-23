@@ -1,4 +1,4 @@
-import type { CostUnavailableReason, PricedCost } from '@codex-proxy/core';
+import type { CostUnavailableReason, PricedCost } from '@agent-proxy/codex-core';
 
 export interface CarFilters {
   readonly from?: string;

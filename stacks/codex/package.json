@@ -19,9 +19,9 @@
     "check:docs": "node scripts/check-docs.mjs",
     "format": "biome check --write .",
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm check && pnpm anti:slop",
-    "proxy": "pnpm --filter proxy start",
-    "server": "pnpm --filter server start",
-    "admin": "pnpm --filter admin dev",
+    "proxy": "pnpm --filter @agent-proxy/codex-proxy start",
+    "server": "pnpm --filter @agent-proxy/codex-server start",
+    "admin": "pnpm --filter @agent-proxy/codex-admin dev",
     "zellij": "bash scripts/zellij.sh"
   },
   "devDependencies": {

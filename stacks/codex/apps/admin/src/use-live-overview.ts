@@ -1,4 +1,4 @@
-import type { TodaySummary } from '@codex-proxy/core';
+import type { TodaySummary } from '@agent-proxy/codex-core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { getHealth, getSummary, healthKey, isLiveSnapshot, type LiveSnapshot, summaryKey } from './api.ts';

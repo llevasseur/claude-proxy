@@ -17,7 +17,7 @@ has no runtime dependencies.
 Run it from the repository root:
 
 ```sh
-pnpm --filter proxy start
+pnpm --filter @agent-proxy/codex-proxy start
 ```
 
 Point Codex's OpenAI base URL at `http://<PROXY_HOST>:<PROXY_PORT>`. The proxy preserves methods, URLs, request

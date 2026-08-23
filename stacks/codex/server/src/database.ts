@@ -7,14 +7,14 @@ import type {
   ResolvedCalendarRange,
   SanitizedAuditSidecarV1,
   TodaySummary,
-} from '@codex-proxy/core';
+} from '@agent-proxy/codex-core';
 import {
   aggregateToday,
   estimateUsageCost,
   formatReportDate,
   parseSanitizedAuditSidecar,
   selectByModels,
-} from '@codex-proxy/core';
+} from '@agent-proxy/codex-core';
 
 const runtimeRequire = createRequire(import.meta.url);
 const { DatabaseSync } = runtimeRequire('node:sqlite') as typeof import('node:sqlite');

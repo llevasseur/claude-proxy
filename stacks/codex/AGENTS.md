@@ -15,7 +15,7 @@ Files under `docs/plans/` are temporary Wayfinder scaffolding.
 ## Constraints
 
 - Require Node 22.18 or newer and pnpm 11.5.2.
-- Keep `proxy` and `@codex-proxy/core` free of runtime dependencies.
+- Keep `proxy` and `@agent-proxy/codex-core` free of runtime dependencies.
 - Keep core deterministic: do not import Node modules or read the environment, clock, filesystem, database, or network.
 - Run TypeScript source directly in the proxy and export TypeScript source directly from core. Do not add `dist/` to either package.
 - Treat final sanitized audit sidecars as the source of truth and SQLite as rebuildable state.
@@ -30,7 +30,7 @@ inside it: the script symlinks every `.env` the main checkout actually has (`.en
 then runs `pnpm install --frozen-lockfile`. It resolves the main checkout from
 `git rev-parse --git-common-dir`, so no path is hardcoded and no base branch is assumed.
 
-Nothing is generated. `@codex-proxy/core` exports TypeScript source and `proxy` runs from
+Nothing is generated. `@agent-proxy/codex-core` exports TypeScript source and `proxy` runs from
 source, so install is the whole build — `ERR_MODULE_NOT_FOUND` in a fresh worktree means
 it was never bootstrapped, not that something needs compiling. A missing `logs/` is the
 same symptom, not data loss.

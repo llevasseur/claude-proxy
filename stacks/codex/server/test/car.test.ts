@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { PRICING_CATALOGUE_VERSION } from '@codex-proxy/core';
+import { PRICING_CATALOGUE_VERSION } from '@agent-proxy/codex-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { UsageDatabase } from '../src/database.ts';
 import { LiveUsageService } from '../src/service.ts';

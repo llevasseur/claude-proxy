@@ -1,5 +1,5 @@
 {
-  "name": "proxy",
+  "name": "@agent-proxy/codex-proxy",
   "version": "0.1.0",
   "private": true,
   "description": "Zero-runtime-dependency transparent proxy for OpenAI/Codex traffic.",
@@ -11,7 +11,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "start": "node --env-file-if-exists=../.env src/proxy.ts",
+    "start": "node --env-file-if-exists=../../../.env src/proxy.ts",
     "typecheck": "node ../scripts/run-if-present.mjs src tsc --noEmit",
     "test": "node ../scripts/run-if-present.mjs test node --test --experimental-strip-types test/*.test.ts"
   },

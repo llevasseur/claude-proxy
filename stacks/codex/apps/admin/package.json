@@ -1,5 +1,5 @@
 {
-  "name": "admin",
+  "name": "@agent-proxy/codex-admin",
   "version": "0.1.0",
   "private": true,
   "description": "Single-page live Overview for codex-proxy.",
@@ -11,7 +11,7 @@
     "typecheck": "node ../../scripts/run-if-present.mjs src tsc --noEmit"
   },
   "dependencies": {
-    "@codex-proxy/core": "workspace:*",
+    "@agent-proxy/codex-core": "workspace:*",
     "@tanstack/react-query": "^5.62.7",
     "@tanstack/react-router": "^1.87.0",
     "lucide-react": "^0.468.0",

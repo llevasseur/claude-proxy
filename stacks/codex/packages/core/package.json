@@ -1,5 +1,5 @@
 {
-  "name": "@codex-proxy/core",
+  "name": "@agent-proxy/codex-core",
   "version": "0.1.0",
   "private": true,
   "description": "Pure usage, pricing, sidecar, and reporting contracts for codex-proxy.",

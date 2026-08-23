@@ -1,5 +1,10 @@
 packages:
   - stacks/*/*
+  # codex keeps its own internal layout under its stack root — its core and admin sit a
+  # level deeper than claude's, which ticket 02 flattened. Nesting is what keeps codex's
+  # `../scripts/run-if-present.mjs` and `import.meta.dirname/../..` anchors true.
+  - stacks/*/packages/*
+  - stacks/*/apps/*
   - packages/*
   - services/*
 allowBuilds:

@@ -19,7 +19,7 @@ final sanitized sidecars
   -> /history and /trends dashboard routes beside the unchanged Overview
 ```
 
-The proxy is untouched by Car. Everything below happens in `@codex-proxy/core`'s pure history functions, the server,
+The proxy is untouched by Car. Everything below happens in `@agent-proxy/codex-core`'s pure history functions, the server,
 and the dashboard.
 
 ## Core range and aggregation functions
