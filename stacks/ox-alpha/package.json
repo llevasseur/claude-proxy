@@ -6,13 +6,23 @@
     "node": ">=22.18"
   },
   "scripts": {
+    "proxy": "node --env-file-if-exists=proxy/.env proxy/src/proxy.ts",
+    "server": "pnpm --filter @ox-alpha-proxy/server start",
+    "admin": "pnpm --filter @ox-alpha-proxy/admin dev",
+    "zellij": "bash scripts/zellij.sh",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "build": "pnpm -r build",
-    "check": "biome check .",
+    "check": "pnpm check:docs && biome check .",
+    "check:docs": "node scripts/check-docs.mjs",
     "lint": "biome lint .",
     "format": "biome check --write .",
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm check && pnpm anti:slop",
     "anti:slop": "oxlint --config .oxlintrc.json ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "~2.2.0",
+    "oxlint": "~1.12.0",
+    "typescript": "~5.9.0"
   }
 }
