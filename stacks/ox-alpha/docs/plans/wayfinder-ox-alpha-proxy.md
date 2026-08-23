@@ -28,13 +28,14 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 11 | plane-matrix-expansion | [ox-alpha-proxy-11-plane-matrix-expansion](ox-alpha-proxy-11-plane-matrix-expansion.md) | `task/ox-alpha-proxy-11-plane-matrix-expansion` | todo |
 | 12 | plane-parity-implementation | [ox-alpha-proxy-12-plane-parity-implementation](ox-alpha-proxy-12-plane-parity-implementation.md) | `task/ox-alpha-proxy-12-plane-parity-implementation` | todo |
 | 13 | plane-verification-docs | [ox-alpha-proxy-13-plane-verification-docs](ox-alpha-proxy-13-plane-verification-docs.md) | `task/ox-alpha-proxy-13-plane-verification-docs` | todo |
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **11 plane-matrix-expansion** — PR #12. Expanded 19 grouped rows into 74 individual checkable rows verified against pinned claude-proxy commit cc25696 via ls-tree/show without checkout: 32 implemented with in-repo evidence, 10 N/A citing ADR 0004 (Train surfaces), 32 unresolved each with a concrete closing artifact. Verify green; CI pass.
 
 - **10 boat-inspection-surfaces** — PR #11. Six paginated inspection endpoints over capture data only with typed-empty degradation and memoized day assembly invalidated by capture writes/retention deletions; deterministic tolerant parsers in core (never returning body text); #/boat dashboard routes with no-capture states; boat.md completed. BOAT PHASE BOUNDARY: ADR-0011 live-validation note in the PR body. Verify green; CI pass.
 
