@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { normalizeChatCompletionsUsage, normalizeResponsesUsage } from "../src/usage.ts";
+import { describe, expect, it } from 'vitest';
+import { normalizeChatCompletionsUsage, normalizeResponsesUsage } from '../src/usage.ts';
 
-describe("normalizeResponsesUsage", () => {
-  it("normalizes a full Responses usage object", () => {
+describe('normalizeResponsesUsage', () => {
+  it('normalizes a full Responses usage object', () => {
     expect(
       normalizeResponsesUsage({
         input_tokens: 100,
@@ -20,10 +20,8 @@ describe("normalizeResponsesUsage", () => {
     });
   });
 
-  it("defaults missing details to zero", () => {
-    expect(
-      normalizeResponsesUsage({ input_tokens: 10, output_tokens: 5, total_tokens: 15 }),
-    ).toEqual({
+  it('defaults missing details to zero', () => {
+    expect(normalizeResponsesUsage({ input_tokens: 10, output_tokens: 5, total_tokens: 15 })).toEqual({
       inputTokens: 10,
       cachedInputTokens: 0,
       outputTokens: 5,
@@ -32,15 +30,13 @@ describe("normalizeResponsesUsage", () => {
     });
   });
 
-  it("rejects non-integer or negative counts", () => {
-    for (const bad of [-1, 1.5, "10", null]) {
-      expect(() =>
-        normalizeResponsesUsage({ input_tokens: bad, output_tokens: 1, total_tokens: 11 }),
-      ).toThrow();
+  it('rejects non-integer or negative counts', () => {
+    for (const bad of [-1, 1.5, '10', null]) {
+      expect(() => normalizeResponsesUsage({ input_tokens: bad, output_tokens: 1, total_tokens: 11 })).toThrow();
     }
   });
 
-  it("rejects detail exceeding its headline category", () => {
+  it('rejects detail exceeding its headline category', () => {
     expect(() =>
       normalizeResponsesUsage({
         input_tokens: 10,
@@ -59,7 +55,7 @@ describe("normalizeResponsesUsage", () => {
     ).toThrow(/reasoning output tokens cannot exceed output tokens/);
   });
 
-  it("keeps a detail exactly equal to its headline valid", () => {
+  it('keeps a detail exactly equal to its headline valid', () => {
     expect(
       normalizeResponsesUsage({
         input_tokens: 10,
@@ -71,20 +67,20 @@ describe("normalizeResponsesUsage", () => {
     ).toMatchObject({ cachedInputTokens: 10, reasoningOutputTokens: 5 });
   });
 
-  it("rejects totals that disagree with input plus output", () => {
-    expect(() =>
-      normalizeResponsesUsage({ input_tokens: 10, output_tokens: 5, total_tokens: 16 }),
-    ).toThrow(/total tokens/);
+  it('rejects totals that disagree with input plus output', () => {
+    expect(() => normalizeResponsesUsage({ input_tokens: 10, output_tokens: 5, total_tokens: 16 })).toThrow(
+      /total tokens/,
+    );
   });
 
-  it("returns a frozen value", () => {
+  it('returns a frozen value', () => {
     const usage = normalizeResponsesUsage({ input_tokens: 1, output_tokens: 1, total_tokens: 2 });
     expect(Object.isFrozen(usage)).toBe(true);
   });
 });
 
-describe("normalizeChatCompletionsUsage", () => {
-  it("normalizes a usage block as returned by opencode zen", () => {
+describe('normalizeChatCompletionsUsage', () => {
+  it('normalizes a usage block as returned by opencode zen', () => {
     expect(
       normalizeChatCompletionsUsage({
         prompt_tokens: 89,
@@ -102,7 +98,7 @@ describe("normalizeChatCompletionsUsage", () => {
     });
   });
 
-  it("defaults missing details to zero", () => {
+  it('defaults missing details to zero', () => {
     expect(
       normalizeChatCompletionsUsage({
         prompt_tokens: 10,
@@ -118,8 +114,8 @@ describe("normalizeChatCompletionsUsage", () => {
     });
   });
 
-  it("rejects non-integer or negative counts", () => {
-    for (const bad of [-1, 1.5, "10", null]) {
+  it('rejects non-integer or negative counts', () => {
+    for (const bad of [-1, 1.5, '10', null]) {
       expect(() =>
         normalizeChatCompletionsUsage({
           prompt_tokens: bad,
@@ -130,7 +126,7 @@ describe("normalizeChatCompletionsUsage", () => {
     }
   });
 
-  it("applies the same invariants as the Responses normalizer", () => {
+  it('applies the same invariants as the Responses normalizer', () => {
     expect(() =>
       normalizeChatCompletionsUsage({
         prompt_tokens: 10,
@@ -148,7 +144,7 @@ describe("normalizeChatCompletionsUsage", () => {
     ).toThrow(/total tokens/);
   });
 
-  it("rejects a non-object usage value", () => {
+  it('rejects a non-object usage value', () => {
     expect(() => normalizeChatCompletionsUsage(undefined)).toThrow(/usage must be an object/);
   });
 });

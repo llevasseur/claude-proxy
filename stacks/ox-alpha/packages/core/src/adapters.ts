@@ -1,5 +1,5 @@
-import type { UsageTotals } from "./types.ts";
-import { normalizeChatCompletionsUsage, normalizeResponsesUsage } from "./usage.ts";
+import type { UsageTotals } from './types.ts';
+import { normalizeChatCompletionsUsage, normalizeResponsesUsage } from './usage.ts';
 
 // Selection mechanics ported from codex-proxy `proxy/src/observe.ts`: the
 // authoritative usage is the one carried by the final `response.completed`
@@ -11,19 +11,14 @@ export interface ResponseIdentity {
 }
 
 function object(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
 
 function responseIdentity(value: unknown): ResponseIdentity | null {
   const response = object(value);
-  if (
-    response?.object !== "response" ||
-    typeof response.model !== "string" ||
-    response.model.length === 0
-  )
-    return null;
+  if (response?.object !== 'response' || typeof response.model !== 'string' || response.model.length === 0) return null;
   try {
     return Object.freeze({ model: response.model, usage: normalizeResponsesUsage(response.usage) });
   } catch {
@@ -44,8 +39,8 @@ export function jsonResponseIdentity(body: string): ResponseIdentity | null {
 function chatCompletionIdentity(value: unknown): ResponseIdentity | null {
   const response = object(value);
   if (
-    (response?.object !== "chat.completion" && response?.object !== "chat.completion.chunk") ||
-    typeof response.model !== "string" ||
+    (response?.object !== 'chat.completion' && response?.object !== 'chat.completion.chunk') ||
+    typeof response.model !== 'string' ||
     response.model.length === 0
   )
     return null;
@@ -70,14 +65,14 @@ export function jsonChatCompletionIdentity(body: string): ResponseIdentity | nul
 // Frames an SSE byte stream into events. Shared so the two observers below
 // differ only in which event they consider authoritative.
 class SseFramer {
-  #pending = "";
+  #pending = '';
 
   push(chunk: Uint8Array, onEvent: (event: string) => void): void {
     this.#pending += new TextDecoder().decode(chunk);
     for (;;) {
       const boundary = this.#pending.search(/\r?\n\r?\n/);
       if (boundary < 0) return;
-      const separator = this.#pending.slice(boundary).match(/^\r?\n\r?\n/)?.[0] ?? "\n\n";
+      const separator = this.#pending.slice(boundary).match(/^\r?\n\r?\n/)?.[0] ?? '\n\n';
       const event = this.#pending.slice(0, boundary);
       this.#pending = this.#pending.slice(boundary + separator.length);
       onEvent(event);
@@ -86,19 +81,19 @@ class SseFramer {
 
   finish(onEvent: (event: string) => void): void {
     if (this.#pending.length > 0) onEvent(this.#pending);
-    this.#pending = "";
+    this.#pending = '';
   }
 }
 
 function sseEventPayload(event: string): { readonly name: string; readonly data: string } | null {
-  let name = "";
+  let name = '';
   const data: string[] = [];
   for (const line of event.split(/\r?\n/)) {
-    if (line.startsWith("event:")) name = line.slice(6).trimStart();
-    if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+    if (line.startsWith('event:')) name = line.slice(6).trimStart();
+    if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
   }
-  if (data.length === 0 || data[0] === "[DONE]") return null;
-  return { name, data: data.join("\n") };
+  if (data.length === 0 || data[0] === '[DONE]') return null;
+  return { name, data: data.join('\n') };
 }
 
 export class SseResponseObserver {
@@ -119,7 +114,7 @@ export class SseResponseObserver {
     if (!parsed) return;
     try {
       const payload = object(JSON.parse(parsed.data));
-      if (parsed.name !== "response.completed" && payload?.type !== "response.completed") return;
+      if (parsed.name !== 'response.completed' && payload?.type !== 'response.completed') return;
       const identity = responseIdentity(payload?.response);
       if (identity) this.#identity = identity;
     } catch {

@@ -1,19 +1,17 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { SanitizedAuditSidecarV1 } from "@agent-proxy/ox-core";
-import type { ServerConfig } from "../src/config.ts";
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { SanitizedAuditSidecarV1 } from '@agent-proxy/ox-core';
+import type { ServerConfig } from '../src/config.ts';
 
-export async function temporaryDirectory(): Promise<
-  Readonly<{ path: string; cleanup: () => Promise<void> }>
-> {
-  const path = await mkdtemp(join(tmpdir(), "ox-alpha-proxy-server-"));
+export async function temporaryDirectory(): Promise<Readonly<{ path: string; cleanup: () => Promise<void> }>> {
+  const path = await mkdtemp(join(tmpdir(), 'ox-alpha-proxy-server-'));
   return Object.freeze({ path, cleanup: () => rm(path, { recursive: true, force: true }) });
 }
 
 export function sidecar(
   recordId: string,
-  timestamp = "2026-08-19T16:00:00.000Z",
+  timestamp = '2026-08-19T16:00:00.000Z',
   options: Readonly<{
     unavailable?: boolean;
     inputTokens?: number;
@@ -27,8 +25,8 @@ export function sidecar(
     schemaVersion: 1,
     recordId,
     timestamp,
-    model: options.model ?? "gpt-5",
-    endpoint: "/v1/responses",
+    model: options.model ?? 'gpt-5',
+    endpoint: '/v1/responses',
     responseStatus: 200,
     requestId: `request-${recordId}`,
     usage: Object.freeze({
@@ -40,33 +38,27 @@ export function sidecar(
     }),
     cost: options.unavailable
       ? null
-      : Object.freeze({ currency: "USD", amountUsd: "0.000053", catalogueVersion: "test" }),
-    costUnavailableReason: options.unavailable
-      ? Object.freeze({ code: "unknown-model", model: "future" })
-      : null,
+      : Object.freeze({ currency: 'USD', amountUsd: '0.000053', catalogueVersion: 'test' }),
+    costUnavailableReason: options.unavailable ? Object.freeze({ code: 'unknown-model', model: 'future' }) : null,
   });
 }
 
-export async function writeSidecar(
-  directory: string,
-  filename: string,
-  value: unknown,
-): Promise<void> {
+export async function writeSidecar(directory: string, filename: string, value: unknown): Promise<void> {
   await writeFile(join(directory, filename), JSON.stringify(value));
 }
 
 export function config(directory: string, overrides: Partial<ServerConfig> = {}): ServerConfig {
   return Object.freeze({
-    host: "127.0.0.1",
+    host: '127.0.0.1',
     port: 0,
     auditDirectory: directory,
-    databasePath: join(directory, "usage.db"),
-    proxyStatusPath: join(directory, "proxy-status.json"),
-    reportTimezone: "America/New_York",
+    databasePath: join(directory, 'usage.db'),
+    proxyStatusPath: join(directory, 'proxy-status.json'),
+    reportTimezone: 'America/New_York',
     reconcileIntervalMs: 60_000,
     keepaliveIntervalMs: 25,
     captureEnabled: false,
-    captureDirectory: join(directory, "captures"),
+    captureDirectory: join(directory, 'captures'),
     captureRetentionMs: 604_800_000,
     captureMaxBytes: 268_435_456,
     usageLimitCeilings: {},

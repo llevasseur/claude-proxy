@@ -1,14 +1,12 @@
-import { readdir, readFile, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
-import { type CaptureEnvelopeV1, parseCaptureEnvelope } from "@agent-proxy/ox-core";
+import { readdir, readFile, rm, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { type CaptureEnvelopeV1, parseCaptureEnvelope } from '@agent-proxy/ox-core';
 
 // Capture files live in their own directory, separate from sanitized sidecars
 // (ADR 0002). The sidecar ingestor only matches `.audit.json`, so capture
 // files can never corrupt ingest or the Bike/Car summaries it feeds.
 export function isFinalCaptureFilename(filename: string): boolean {
-  return (
-    filename.endsWith(".capture.json") && !filename.startsWith(".") && !filename.endsWith(".tmp")
-  );
+  return filename.endsWith('.capture.json') && !filename.startsWith('.') && !filename.endsWith('.tmp');
 }
 
 export interface CaptureMaintenanceResult {
@@ -85,8 +83,8 @@ export class CaptureStore {
   // Acceptance gate for inspection surfaces (task 10): a capture file parses
   // as strict envelope v1; callers must check the opt-in flag before reading.
   async load(path: string): Promise<CaptureEnvelopeV1> {
-    if (!this.enabled) throw new Error("capture is disabled on this server");
-    return parseCaptureEnvelope(JSON.parse(await readFile(path, "utf8")));
+    if (!this.enabled) throw new Error('capture is disabled on this server');
+    return parseCaptureEnvelope(JSON.parse(await readFile(path, 'utf8')));
   }
 
   private async finalNames(): Promise<string[]> {
@@ -106,9 +104,7 @@ export class CaptureStore {
     let unreadable = 0;
     for (const name of names) {
       try {
-        envelopes.push(
-          parseCaptureEnvelope(JSON.parse(await readFile(join(this.directory, name), "utf8"))),
-        );
+        envelopes.push(parseCaptureEnvelope(JSON.parse(await readFile(join(this.directory, name), 'utf8'))));
       } catch {
         unreadable += 1;
       }
@@ -121,7 +117,7 @@ export class CaptureStore {
   // new writes both move it, which is all the invalidation contract needs.
   async signature(): Promise<string> {
     const names = await this.finalNames();
-    if (names.length === 0) return "0";
+    if (names.length === 0) return '0';
     const parts: string[] = [];
     for (const name of names) {
       try {
@@ -131,6 +127,6 @@ export class CaptureStore {
         parts.push(`${name}:gone`);
       }
     }
-    return parts.join("|");
+    return parts.join('|');
   }
 }

@@ -51,27 +51,27 @@ export interface PromptAnalysis {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function optionalString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 // Content parts carry their text under `text` regardless of part type; a bare
 // string content field is the whole text.
 function contentText(content: unknown): string {
-  if (typeof content === "string") return content;
+  if (typeof content === 'string') return content;
   if (!Array.isArray(content)) {
     if (isRecord(content)) return contentText(content.text);
-    return "";
+    return '';
   }
-  const parts = content.map((part) => (isRecord(part) ? contentText(part.text) : ""));
-  return parts.filter((text) => text.length > 0).join("\n");
+  const parts = content.map((part) => (isRecord(part) ? contentText(part.text) : ''));
+  return parts.filter((text) => text.length > 0).join('\n');
 }
 
 function itemToMessage(item: unknown): InspectionMessage | null {
-  if (typeof item === "string") return { role: "user", itemType: null, text: item };
+  if (typeof item === 'string') return { role: 'user', itemType: null, text: item };
   if (!isRecord(item)) return null;
   const text = item.content !== undefined ? contentText(item.content) : contentText(item.text);
   return Object.freeze({
@@ -83,7 +83,7 @@ function itemToMessage(item: unknown): InspectionMessage | null {
 
 function collectInputItems(body: Record<string, unknown>): unknown[] {
   const input = body.input;
-  if (typeof input === "string") return [input];
+  if (typeof input === 'string') return [input];
   return Array.isArray(input) ? input : [];
 }
 
@@ -106,11 +106,11 @@ export function deriveSessionId(body: Record<string, unknown>): string | null {
 // fallback so captures of either shape read correctly.
 function toolSummary(tool: unknown): ToolSchemaSummary | null {
   if (!isRecord(tool)) return null;
-  const type = optionalString(tool.type) ?? "unknown";
-  if (type === "function") {
+  const type = optionalString(tool.type) ?? 'unknown';
+  if (type === 'function') {
     const fn = { ...tool, ...(isRecord(tool.function) ? tool.function : {}) };
     return Object.freeze({
-      name: optionalString(fn.name) ?? "(unnamed function)",
+      name: optionalString(fn.name) ?? '(unnamed function)',
       type,
       description: optionalString(fn.description),
       schemaJson: JSON.stringify(fn.parameters ?? {}),
@@ -120,7 +120,7 @@ function toolSummary(tool: unknown): ToolSchemaSummary | null {
     name: optionalString(tool.name) ?? `(built-in ${type})`,
     type,
     description: optionalString(tool.description),
-    schemaJson: "{}",
+    schemaJson: '{}',
   });
 }
 
@@ -167,19 +167,19 @@ function outputItems(value: unknown): unknown[] {
 
 function toolCallFromItem(item: unknown): InspectionToolCall | null {
   if (!isRecord(item)) return null;
-  if (item.type !== "function_call") return null;
+  if (item.type !== 'function_call') return null;
   return Object.freeze({
     callId: optionalString(item.call_id),
-    name: optionalString(item.name) ?? "(unknown)",
-    argumentsText: typeof item.arguments === "string" ? item.arguments : "",
+    name: optionalString(item.name) ?? '(unknown)',
+    argumentsText: typeof item.arguments === 'string' ? item.arguments : '',
   });
 }
 
 function isToolCallItem(item: unknown): boolean {
   return (
     isRecord(item) &&
-    typeof item.type === "string" &&
-    (item.type === "function_call" || item.type.endsWith("tool_call"))
+    typeof item.type === 'string' &&
+    (item.type === 'function_call' || item.type.endsWith('tool_call'))
   );
 }
 
@@ -190,11 +190,11 @@ export function inspectCaptureResponse(responseText: string): CaptureResponseIns
   try {
     documents.push(JSON.parse(responseText));
   } catch {
-    for (const line of responseText.split("\n")) {
+    for (const line of responseText.split('\n')) {
       const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
+      if (!trimmed.startsWith('data:')) continue;
       const payload = trimmed.slice(5).trim();
-      if (payload.length === 0 || payload === "[DONE]") continue;
+      if (payload.length === 0 || payload === '[DONE]') continue;
       try {
         documents.push(JSON.parse(payload));
       } catch {
@@ -211,9 +211,7 @@ export function inspectCaptureResponse(responseText: string): CaptureResponseIns
         .map(itemToMessage)
         .filter((message): message is InspectionMessage => message !== null),
     ),
-    toolCalls: Object.freeze(
-      items.map(toolCallFromItem).filter((call): call is InspectionToolCall => call !== null),
-    ),
+    toolCalls: Object.freeze(items.map(toolCallFromItem).filter((call): call is InspectionToolCall => call !== null)),
   });
 }
 

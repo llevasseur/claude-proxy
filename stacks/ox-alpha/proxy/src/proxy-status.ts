@@ -1,10 +1,10 @@
-import { mkdir, open, rename } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, open, rename } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 // Status-file mechanics ported from codex-proxy `proxy/src/status.ts`: the
 // body-free live status signal crosses the process boundary as a file and
 // carries no request or response data.
-export type ProxyLifecycleState = "startup" | "ready" | "upstream-error" | "shutdown";
+export type ProxyLifecycleState = 'startup' | 'ready' | 'upstream-error' | 'shutdown';
 
 // Rolling per-process usage observed on the Responses wire (adaptation of the
 // pinned `proxy/usage-live.ts` outcome — live usage published beside the
@@ -35,7 +35,7 @@ export class ProxyStatusWriter {
   readonly #pid: number;
   #port: number;
   #upstreamErrorCount = 0;
-  #state: ProxyLifecycleState = "startup";
+  #state: ProxyLifecycleState = 'startup';
   #rolling: ProxyRollingUsage | null = null;
   #queue: Promise<void> = Promise.resolve();
 
@@ -87,7 +87,7 @@ export class ProxyStatusWriter {
   }
 
   write(state: ProxyLifecycleState): Promise<void> {
-    if (state === "upstream-error") this.#upstreamErrorCount += 1;
+    if (state === 'upstream-error') this.#upstreamErrorCount += 1;
     this.#state = state;
     const value: ProxyStatus = Object.freeze({
       schemaVersion: 1,
@@ -105,9 +105,9 @@ export class ProxyStatusWriter {
   async #write(value: ProxyStatus): Promise<void> {
     await mkdir(dirname(this.#path), { recursive: true });
     const temporaryPath = `${this.#path}.${this.#pid}.tmp`;
-    const handle = await open(temporaryPath, "w", 0o600);
+    const handle = await open(temporaryPath, 'w', 0o600);
     try {
-      await handle.writeFile(`${JSON.stringify(value)}\n`, "utf8");
+      await handle.writeFile(`${JSON.stringify(value)}\n`, 'utf8');
       await handle.sync();
     } finally {
       await handle.close();

@@ -5,7 +5,7 @@
 // are when the session was last captured, and whether its newest response
 // carries a terminal Responses event. Pure, with `now` passed in.
 
-export type LivenessState = "running" | "quiet" | "finished" | "unknown";
+export type LivenessState = 'running' | 'quiet' | 'finished' | 'unknown';
 
 /**
  * How long a session may go without a new capture before it reads `quiet`
@@ -40,7 +40,7 @@ export function classifyLiveness(
   const at = lastActivity === null ? Number.NaN : Date.parse(lastActivity);
   if (Number.isNaN(at)) {
     return Object.freeze({
-      state: "unknown",
+      state: 'unknown',
       lastActivity,
       idleMs: null,
       quietAfterMs,
@@ -48,7 +48,7 @@ export function classifyLiveness(
     });
   }
   const idleMs = Math.max(0, now.getTime() - at);
-  const state: LivenessState = terminal ? "finished" : idleMs <= quietAfterMs ? "running" : "quiet";
+  const state: LivenessState = terminal ? 'finished' : idleMs <= quietAfterMs ? 'running' : 'quiet';
   return Object.freeze({
     state,
     lastActivity,

@@ -1,12 +1,12 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useId } from "react";
-import { fetchHistory, type UsageTotals } from "../api";
-import { CostRateCard } from "../ui/costRateCard";
-import { FilterBar, type FilterBarFilters } from "./filterBar";
-import { costCell, formatTimestamp, formatTokens, unavailableReasonText } from "./format";
-import { recordObservedModels, useObservedModels } from "./observedModels";
-import { streamStatusText } from "./stream";
-import { useVersionedQuery } from "./useVersionedQuery";
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useEffect, useId } from 'react';
+import { fetchHistory, type UsageTotals } from '../api';
+import { CostRateCard } from '../ui/costRateCard';
+import { FilterBar, type FilterBarFilters } from './filterBar';
+import { costCell, formatTimestamp, formatTokens, unavailableReasonText } from './format';
+import { recordObservedModels, useObservedModels } from './observedModels';
+import { streamStatusText } from './stream';
+import { useVersionedQuery } from './useVersionedQuery';
 
 // History page ported from codex-proxy
 // `apps/admin/src/car/history-page.tsx`, adapted to this server's offset
@@ -20,9 +20,7 @@ interface HistoryPageProps {
   filters: FilterBarFilters;
   page: number;
   pageSize: number;
-  onSearchChange: (
-    search: Partial<FilterBarFilters & { page?: number; pageSize?: number }>,
-  ) => void;
+  onSearchChange: (search: Partial<FilterBarFilters & { page?: number; pageSize?: number }>) => void;
 }
 
 function tokensDetail(usage: UsageTotals): string {
@@ -31,7 +29,7 @@ function tokensDetail(usage: UsageTotals): string {
     `cached ${formatTokens(usage.cachedInputTokens)}`,
     `out ${formatTokens(usage.outputTokens)}`,
     `reasoning ${formatTokens(usage.reasoningOutputTokens)}`,
-  ].join(" · ");
+  ].join(' · ');
 }
 
 export function HistoryPage({ filters, page, pageSize, onSearchChange }: HistoryPageProps) {
@@ -40,7 +38,7 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
   const offset = (page - 1) * pageSize;
   const history = useQuery({
     queryKey: [
-      "history",
+      'history',
       filters.from ?? null,
       filters.to ?? null,
       [...(filters.model ?? [])].sort(),
@@ -61,26 +59,23 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
   }, [data]);
 
   const totalPages =
-    data === undefined || data.limit === null
-      ? undefined
-      : Math.max(1, Math.ceil(data.total / data.limit));
+    data === undefined || data.limit === null ? undefined : Math.max(1, Math.ceil(data.total / data.limit));
 
   return (
-    <section className="car-page" aria-labelledby={titleId}>
-      <header className="pagehead">
-        <div className="pagehead-title">
+    <section className='car-page' aria-labelledby={titleId}>
+      <header className='pagehead'>
+        <div className='pagehead-title'>
           <h1 id={titleId}>History</h1>
-          <div className="muted">Per-request records · newest first</div>
+          <div className='muted'>Per-request records · newest first</div>
         </div>
-        <output className="muted" aria-live="polite">
+        <output className='muted' aria-live='polite'>
           {streamStatusText(signal.stream, data !== undefined)}
-          {data !== undefined &&
-            ` · data v${data.dataVersion} · ${formatTokens(data.total)} records`}
+          {data !== undefined && ` · data v${data.dataVersion} · ${formatTokens(data.total)} records`}
         </output>
       </header>
 
       {result.isError && data === undefined && (
-        <div className="card notice notice--error" role="alert" data-testid="history-error">
+        <div className='card notice notice--error' role='alert' data-testid='history-error'>
           The local API could not be reached. The page will retry automatically.
         </div>
       )}
@@ -92,31 +87,28 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
       />
 
       {result.isLoading && (
-        <p className="card muted" aria-live="polite" data-testid="history-loading">
+        <p className='card muted' aria-live='polite' data-testid='history-loading'>
           Loading history…
         </p>
       )}
 
       {data !== undefined && data.records.length === 0 ? (
-        <div className="card empty car-empty" data-testid="history-empty">
+        <div className='card empty car-empty' data-testid='history-empty'>
           <strong>No matching requests.</strong>
-          <span>
-            No recorded requests match this range and model filter. Adjust the filters to see
-            results.
-          </span>
+          <span>No recorded requests match this range and model filter. Adjust the filters to see results.</span>
         </div>
       ) : data !== undefined ? (
-        <div className="card car-table-card" aria-busy={result.isFetching}>
-          <table className="car-table" data-testid="history-table">
-            <caption className="sr-only">Durable request history</caption>
+        <div className='card car-table-card' aria-busy={result.isFetching}>
+          <table className='car-table' data-testid='history-table'>
+            <caption className='sr-only'>Durable request history</caption>
             <thead>
               <tr>
-                <th scope="col">Timestamp</th>
-                <th scope="col">Model</th>
-                <th scope="col">Endpoint</th>
-                <th scope="col">Status</th>
-                <th scope="col">Total tokens</th>
-                <th scope="col">Cost</th>
+                <th scope='col'>Timestamp</th>
+                <th scope='col'>Model</th>
+                <th scope='col'>Endpoint</th>
+                <th scope='col'>Status</th>
+                <th scope='col'>Total tokens</th>
+                <th scope='col'>Cost</th>
               </tr>
             </thead>
             <tbody>
@@ -125,29 +117,22 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
                 return (
                   <tr key={record.recordId}>
                     <td>{formatTimestamp(record.timestamp)}</td>
-                    <td className="car-cell-mono">{record.model}</td>
-                    <td className="car-cell-mono">{record.endpoint}</td>
+                    <td className='car-cell-mono'>{record.model}</td>
+                    <td className='car-cell-mono'>{record.endpoint}</td>
                     <td>{record.responseStatus}</td>
                     <td>
-                      <span className="car-token-total">
-                        {formatTokens(record.usage.totalTokens)}
-                      </span>
-                      <span className="car-token-detail muted">{tokensDetail(record.usage)}</span>
+                      <span className='car-token-total'>{formatTokens(record.usage.totalTokens)}</span>
+                      <span className='car-token-detail muted'>{tokensDetail(record.usage)}</span>
                     </td>
                     <td>
                       <span
-                        className={cost.unavailable ? "cost-unavailable-text" : "car-cost"}
-                        title={
-                          cost.unavailable
-                            ? unavailableReasonText(record.costUnavailableReason)
-                            : undefined
-                        }
-                        data-testid={`cost-${record.recordId}`}
-                      >
+                        className={cost.unavailable ? 'cost-unavailable-text' : 'car-cost'}
+                        title={cost.unavailable ? unavailableReasonText(record.costUnavailableReason) : undefined}
+                        data-testid={`cost-${record.recordId}`}>
                         {cost.text}
                       </span>
                       {cost.unavailable && (
-                        <span className="car-token-detail muted">
+                        <span className='car-token-detail muted'>
                           {unavailableReasonText(record.costUnavailableReason)}
                         </span>
                       )}
@@ -158,19 +143,14 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
             </tbody>
           </table>
 
-          <nav
-            className="car-pagination"
-            aria-label="History pages"
-            data-testid="history-pagination"
-          >
+          <nav className='car-pagination' aria-label='History pages' data-testid='history-pagination'>
             <button
-              type="button"
+              type='button'
               onClick={() => onSearchChange({ page: page - 1 })}
-              disabled={offset === 0 || result.isFetching}
-            >
+              disabled={offset === 0 || result.isFetching}>
               Previous
             </button>
-            <span className="muted">
+            <span className='muted'>
               Page {page}
               {totalPages !== undefined && ` of ${formatTokens(totalPages)}`}
               {data.limit !== null &&
@@ -178,20 +158,16 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
                 ` · showing ${offset + 1}–${Math.min(offset + (data.limit ?? 0), data.total)} of ${formatTokens(data.total)}`}
             </span>
             <button
-              type="button"
+              type='button'
               onClick={() => onSearchChange({ page: page + 1 })}
-              disabled={data.nextOffset === null || result.isFetching}
-            >
+              disabled={data.nextOffset === null || result.isFetching}>
               Next
             </button>
-            <label className="car-page-size">
+            <label className='car-page-size'>
               <span>Per page</span>
               <select
                 value={pageSize}
-                onChange={(event) =>
-                  onSearchChange({ page: undefined, pageSize: Number(event.target.value) })
-                }
-              >
+                onChange={(event) => onSearchChange({ page: undefined, pageSize: Number(event.target.value) })}>
                 {HISTORY_PAGE_SIZES.map((size) => (
                   <option key={size} value={size}>
                     {size}
@@ -210,8 +186,7 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
               inputTokens: total.inputTokens + record.usage.inputTokens,
               cachedInputTokens: total.cachedInputTokens + record.usage.cachedInputTokens,
               outputTokens: total.outputTokens + record.usage.outputTokens,
-              reasoningOutputTokens:
-                total.reasoningOutputTokens + record.usage.reasoningOutputTokens,
+              reasoningOutputTokens: total.reasoningOutputTokens + record.usage.reasoningOutputTokens,
               totalTokens: total.totalTokens + record.usage.totalTokens,
             }),
             {

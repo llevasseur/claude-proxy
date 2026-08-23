@@ -1,4 +1,4 @@
-import type { ServerResponse } from "node:http";
+import type { ServerResponse } from 'node:http';
 
 export interface LiveSnapshot {
   readonly health: unknown;
@@ -21,7 +21,7 @@ export class EventHub {
 
   startKeepalives(intervalMs: number): void {
     this.keepalive = setInterval(() => {
-      for (const client of this.clients) client.write(": keepalive\n\n");
+      for (const client of this.clients) client.write(': keepalive\n\n');
     }, intervalMs);
     this.keepalive.unref();
   }
@@ -31,7 +31,7 @@ export class EventHub {
     if (serialized === this.currentJson) return false;
     this.currentJson = serialized;
     const id = ++this.eventId;
-    for (const client of this.clients) client.write(frame(id, "update", snapshot));
+    for (const client of this.clients) client.write(frame(id, 'update', snapshot));
     return true;
   }
 
@@ -39,26 +39,26 @@ export class EventHub {
   // it never carries history or trend payloads.
   publishDataVersion(dataVersion: number): void {
     const id = ++this.eventId;
-    for (const client of this.clients) client.write(frame(id, "data-version", { dataVersion }));
+    for (const client of this.clients) client.write(frame(id, 'data-version', { dataVersion }));
   }
 
   subscribe(response: ServerResponse, snapshot: LiveSnapshot): () => void {
     response.writeHead(200, {
-      "content-type": "text/event-stream; charset=utf-8",
-      "cache-control": "no-cache, no-transform",
-      connection: "keep-alive",
-      "x-accel-buffering": "no",
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
     });
-    response.write("retry: 2000\n");
+    response.write('retry: 2000\n');
     this.clients.add(response);
-    response.write(frame(++this.eventId, "snapshot", snapshot));
+    response.write(frame(++this.eventId, 'snapshot', snapshot));
     let closed = false;
     const cleanup = () => {
       if (closed) return;
       closed = true;
       this.clients.delete(response);
     };
-    response.once("close", cleanup);
+    response.once('close', cleanup);
     return cleanup;
   }
 

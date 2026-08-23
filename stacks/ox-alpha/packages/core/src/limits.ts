@@ -1,4 +1,4 @@
-import type { SanitizedAuditSidecarV1 } from "./types.ts";
+import type { SanitizedAuditSidecarV1 } from './types.ts';
 
 // Usage meters for rolling allowances an operator meters separately
 // (`packages/core/src/usage-limits.ts` at the pinned commit). Adapted to the
@@ -8,18 +8,18 @@ import type { SanitizedAuditSidecarV1 } from "./types.ts";
 // ceiling a window is omitted rather than shown against an invented denominator.
 
 /** The separately-metered rolling allowances, in display order. */
-export const USAGE_WINDOWS = ["5h", "week"] as const;
+export const USAGE_WINDOWS = ['5h', 'week'] as const;
 export type UsageWindowKind = (typeof USAGE_WINDOWS)[number];
 
 /** Nominal span of each window in milliseconds; every pace calculation divides by it. */
 export const USAGE_WINDOW_MS: Readonly<Record<UsageWindowKind, number>> = Object.freeze({
-  "5h": 5 * 60 * 60 * 1000,
+  '5h': 5 * 60 * 60 * 1000,
   week: 7 * 24 * 60 * 60 * 1000,
 });
 
 export const USAGE_WINDOW_LABELS: Readonly<Record<UsageWindowKind, string>> = Object.freeze({
-  "5h": "5-hour window",
-  week: "Weekly window",
+  '5h': '5-hour window',
+  week: 'Weekly window',
 });
 
 /**
@@ -38,16 +38,12 @@ export const CACHED_INPUT_METERING_WEIGHT = 0.1;
  * Cached input is already inside `inputTokens`, so it is reweighted rather than
  * added again; reasoning output is already inside `outputTokens`.
  */
-function usageDeciUnits(
-  inputTokens: number,
-  cachedInputTokens: number,
-  outputTokens: number,
-): number {
+function usageDeciUnits(inputTokens: number, cachedInputTokens: number, outputTokens: number): number {
   return 10 * (inputTokens - cachedInputTokens) + cachedInputTokens + 10 * outputTokens;
 }
 
 function formatUnits(deciUnits: number): string {
-  const sign = deciUnits < 0 ? "-" : "";
+  const sign = deciUnits < 0 ? '-' : '';
   const absolute = Math.abs(deciUnits);
   const whole = Math.trunc(absolute / 10);
   const tenth = absolute % 10;
@@ -73,7 +69,7 @@ export interface UsageWindowMeter {
  * configured ceiling are omitted entirely, mirroring the pinned behaviour.
  */
 export function computeUsageWindows(
-  records: readonly Pick<SanitizedAuditSidecarV1, "timestamp" | "usage">[],
+  records: readonly Pick<SanitizedAuditSidecarV1, 'timestamp' | 'usage'>[],
   ceilings: Readonly<Partial<Record<UsageWindowKind, number>>>,
   now: Date,
 ): readonly UsageWindowMeter[] {
@@ -81,7 +77,7 @@ export function computeUsageWindows(
   const meters: UsageWindowMeter[] = [];
   for (const kind of USAGE_WINDOWS) {
     const ceiling = ceilings[kind];
-    if (typeof ceiling !== "number") continue;
+    if (typeof ceiling !== 'number') continue;
     const span = USAGE_WINDOW_MS[kind];
     const start = timestamp - span;
     let requests = 0;
@@ -90,11 +86,7 @@ export function computeUsageWindows(
       const at = Date.parse(record.timestamp);
       if (Number.isNaN(at) || at < start || at >= timestamp) continue;
       requests += 1;
-      deciUnits += usageDeciUnits(
-        record.usage.inputTokens,
-        record.usage.cachedInputTokens,
-        record.usage.outputTokens,
-      );
+      deciUnits += usageDeciUnits(record.usage.inputTokens, record.usage.cachedInputTokens, record.usage.outputTokens);
     }
     meters.push(
       Object.freeze({

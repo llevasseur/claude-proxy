@@ -2,11 +2,11 @@
 // pinned commit): detect drift between the disposable SQLite view and the
 // final sidecar directory that is its source of truth (ADR 0002). Read-only —
 // this never mutates either side; a drifted store is rebuilt by re-ingest.
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { parseSanitizedAuditSidecar } from "@agent-proxy/ox-core";
-import type { UsageDatabase } from "./database.ts";
-import { isFinalSidecarFilename } from "./ingest.ts";
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { parseSanitizedAuditSidecar } from '@agent-proxy/ox-core';
+import type { UsageDatabase } from './database.ts';
+import { isFinalSidecarFilename } from './ingest.ts';
 
 export interface ConsistencyReport {
   /** Final sidecar filenames present in the audit directory. */
@@ -22,13 +22,8 @@ export interface ConsistencyReport {
   readonly orphanWatermarks: readonly string[];
 }
 
-export async function auditConsistency(
-  database: UsageDatabase,
-  auditDirectory: string,
-): Promise<ConsistencyReport> {
-  const entries = await readdir(auditDirectory, { withFileTypes: true }).catch(
-    () => [] as Array<{ name: string }>,
-  );
+export async function auditConsistency(database: UsageDatabase, auditDirectory: string): Promise<ConsistencyReport> {
+  const entries = await readdir(auditDirectory, { withFileTypes: true }).catch(() => [] as Array<{ name: string }>);
   const files = entries
     .map((entry) => entry.name)
     .filter(isFinalSidecarFilename)
@@ -38,7 +33,7 @@ export async function auditConsistency(
   const missingWatermarks: string[] = [];
   for (const filename of files) {
     try {
-      const raw = await readFile(join(auditDirectory, filename), "utf8");
+      const raw = await readFile(join(auditDirectory, filename), 'utf8');
       const sidecar = parseSanitizedAuditSidecar(JSON.parse(raw));
       if (!database.hasRecord(sidecar.recordId)) missingRecords.push(filename);
       if (!database.hasWatermark(filename)) missingWatermarks.push(filename);

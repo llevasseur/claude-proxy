@@ -3,10 +3,10 @@
 // an operator terminal.
 // Usage: pnpm --filter @agent-proxy/ox-server maintain
 
-import { CaptureStore } from "./capture.ts";
-import { readConfig } from "./config.ts";
-import { auditConsistency, isConsistent } from "./consistency.ts";
-import { UsageDatabase } from "./database.ts";
+import { CaptureStore } from './capture.ts';
+import { readConfig } from './config.ts';
+import { auditConsistency, isConsistent } from './consistency.ts';
+import { UsageDatabase } from './database.ts';
 
 const config = readConfig();
 // The store idles itself when capture is off, so both modes print the one

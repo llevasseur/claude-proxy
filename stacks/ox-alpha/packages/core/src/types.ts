@@ -6,31 +6,31 @@ export interface UsageTotals {
   readonly totalTokens: number;
 }
 
-export type PriceCategory = "input" | "cachedInput" | "output" | "reasoningOutput";
+export type PriceCategory = 'input' | 'cachedInput' | 'output' | 'reasoningOutput';
 
 export interface ModelPricing {
   readonly model: string;
-  readonly currency: "USD";
-  readonly unit: "one-million-tokens";
+  readonly currency: 'USD';
+  readonly unit: 'one-million-tokens';
   readonly effectiveDate: string;
   readonly source: string;
   readonly usdPerMillionTokens: Readonly<Partial<Record<PriceCategory, string>>>;
 }
 
 export interface PricedCost {
-  readonly currency: "USD";
+  readonly currency: 'USD';
   readonly amountUsd: string;
   readonly catalogueVersion: string;
 }
 
 export type CostUnavailableReason =
-  | { readonly code: "unknown-model"; readonly model: string }
+  | { readonly code: 'unknown-model'; readonly model: string }
   | {
-      readonly code: "missing-category-price";
+      readonly code: 'missing-category-price';
       readonly model: string;
       readonly category: PriceCategory;
     }
-  | { readonly code: "aggregate-incomplete"; readonly detail: string };
+  | { readonly code: 'aggregate-incomplete'; readonly detail: string };
 
 export type CostResult =
   | { readonly cost: PricedCost; readonly unavailableReason: null }

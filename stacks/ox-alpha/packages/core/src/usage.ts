@@ -1,12 +1,12 @@
-import type { UsageTotals } from "./types.ts";
+import type { UsageTotals } from './types.ts';
 
 // Normalizer mechanics ported from codex-proxy `packages/core/src/usage.ts`.
 export class UsageValidationError extends Error {
-  override readonly name = "UsageValidationError";
+  override readonly name = 'UsageValidationError';
 }
 
 function record(value: unknown, path: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new UsageValidationError(`${path} must be an object`);
   }
   return value as Record<string, unknown>;
@@ -34,37 +34,27 @@ interface TokenFieldNames {
 }
 
 function normalizeUsage(value: unknown, fields: TokenFieldNames): UsageTotals {
-  const usage = record(value, "usage");
+  const usage = record(value, 'usage');
   const inputTokens = tokenCount(usage[fields.input], `usage.${fields.input}`);
   const outputTokens = tokenCount(usage[fields.output], `usage.${fields.output}`);
-  const totalTokens = tokenCount(usage.total_tokens, "usage.total_tokens");
+  const totalTokens = tokenCount(usage.total_tokens, 'usage.total_tokens');
   const inputDetails =
-    usage[fields.inputDetails] === undefined
-      ? {}
-      : record(usage[fields.inputDetails], `usage.${fields.inputDetails}`);
+    usage[fields.inputDetails] === undefined ? {} : record(usage[fields.inputDetails], `usage.${fields.inputDetails}`);
   const outputDetails =
     usage[fields.outputDetails] === undefined
       ? {}
       : record(usage[fields.outputDetails], `usage.${fields.outputDetails}`);
-  const cachedInputTokens = optionalTokenCount(
-    inputDetails,
-    "cached_tokens",
-    `usage.${fields.inputDetails}`,
-  );
-  const reasoningOutputTokens = optionalTokenCount(
-    outputDetails,
-    "reasoning_tokens",
-    `usage.${fields.outputDetails}`,
-  );
+  const cachedInputTokens = optionalTokenCount(inputDetails, 'cached_tokens', `usage.${fields.inputDetails}`);
+  const reasoningOutputTokens = optionalTokenCount(outputDetails, 'reasoning_tokens', `usage.${fields.outputDetails}`);
 
   if (cachedInputTokens > inputTokens) {
-    throw new UsageValidationError("cached input tokens cannot exceed input tokens");
+    throw new UsageValidationError('cached input tokens cannot exceed input tokens');
   }
   if (reasoningOutputTokens > outputTokens) {
-    throw new UsageValidationError("reasoning output tokens cannot exceed output tokens");
+    throw new UsageValidationError('reasoning output tokens cannot exceed output tokens');
   }
   if (totalTokens !== inputTokens + outputTokens) {
-    throw new UsageValidationError("total tokens must equal input tokens plus output tokens");
+    throw new UsageValidationError('total tokens must equal input tokens plus output tokens');
   }
 
   return Object.freeze({
@@ -78,10 +68,10 @@ function normalizeUsage(value: unknown, fields: TokenFieldNames): UsageTotals {
 
 export function normalizeResponsesUsage(value: unknown): UsageTotals {
   return normalizeUsage(value, {
-    input: "input_tokens",
-    output: "output_tokens",
-    inputDetails: "input_tokens_details",
-    outputDetails: "output_tokens_details",
+    input: 'input_tokens',
+    output: 'output_tokens',
+    inputDetails: 'input_tokens_details',
+    outputDetails: 'output_tokens_details',
   });
 }
 
@@ -89,9 +79,9 @@ export function normalizeResponsesUsage(value: unknown): UsageTotals {
 // the older prompt/completion names.
 export function normalizeChatCompletionsUsage(value: unknown): UsageTotals {
   return normalizeUsage(value, {
-    input: "prompt_tokens",
-    output: "completion_tokens",
-    inputDetails: "prompt_tokens_details",
-    outputDetails: "completion_tokens_details",
+    input: 'prompt_tokens',
+    output: 'completion_tokens',
+    inputDetails: 'prompt_tokens_details',
+    outputDetails: 'completion_tokens_details',
   });
 }

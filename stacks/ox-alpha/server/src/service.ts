@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import { readFile } from 'node:fs/promises';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import {
   aggregateDailyBuckets,
   aggregateRangeFromBuckets,
@@ -8,12 +8,12 @@ import {
   computeUsageWindows,
   formatReportDate,
   resolveCalendarRange,
-} from "@agent-proxy/ox-core";
-import { CaptureStore } from "./capture.ts";
-import type { ServerConfig } from "./config.ts";
-import { UsageDatabase } from "./database.ts";
-import { EventHub } from "./events.ts";
-import { SidecarIngestor } from "./ingest.ts";
+} from '@agent-proxy/ox-core';
+import { CaptureStore } from './capture.ts';
+import type { ServerConfig } from './config.ts';
+import { UsageDatabase } from './database.ts';
+import { EventHub } from './events.ts';
+import { SidecarIngestor } from './ingest.ts';
 import {
   assembleDay,
   collectContextSummaries,
@@ -28,12 +28,12 @@ import {
   collectToolCalls,
   collectToolSchemas,
   type DayInspection,
-} from "./inspection.ts";
+} from './inspection.ts';
 
 const HISTORY_DEFAULT_LIMIT = 50;
 const HISTORY_MAX_LIMIT = 200;
 
-type ProxyState = "startup" | "starting" | "ready" | "upstream-error" | "shutdown";
+type ProxyState = 'startup' | 'starting' | 'ready' | 'upstream-error' | 'shutdown';
 
 interface ProxyStatusFile {
   readonly state: ProxyState;
@@ -46,7 +46,7 @@ interface ProxyStatusFile {
 class BadRequestError extends Error {}
 
 function json(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   response.end(`${JSON.stringify(body)}\n`);
 }
 
@@ -60,15 +60,15 @@ function calendarParameter(searchParams: URLSearchParams, name: string): string 
 }
 
 function pagination(searchParams: URLSearchParams): Readonly<{ limit: number; offset: number }> {
-  const rawLimit = searchParams.get("limit");
-  const rawOffset = searchParams.get("offset");
+  const rawLimit = searchParams.get('limit');
+  const rawOffset = searchParams.get('offset');
   const limit = rawLimit === null ? HISTORY_DEFAULT_LIMIT : Number(rawLimit);
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > HISTORY_MAX_LIMIT) {
     throw new BadRequestError(`limit must be an integer between 1 and ${HISTORY_MAX_LIMIT}`);
   }
   const offset = rawOffset === null ? 0 : Number(rawOffset);
   if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new BadRequestError("offset must be a non-negative integer");
+    throw new BadRequestError('offset must be a non-negative integer');
   }
   return Object.freeze({ limit, offset });
 }
@@ -109,7 +109,7 @@ interface ProxyRollingUsage {
 }
 
 function validRollingUsage(value: unknown): value is ProxyRollingUsage {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const rolling = value as Record<string, unknown>;
   const counters = [
     rolling.requests,
@@ -120,18 +120,18 @@ function validRollingUsage(value: unknown): value is ProxyRollingUsage {
     rolling.totalTokens,
   ];
   return (
-    typeof rolling.windowStartedAt === "string" &&
+    typeof rolling.windowStartedAt === 'string' &&
     !Number.isNaN(Date.parse(rolling.windowStartedAt)) &&
-    counters.every((counter) => typeof counter === "number" && Number.isSafeInteger(counter))
+    counters.every((counter) => typeof counter === 'number' && Number.isSafeInteger(counter))
   );
 }
 
 function validProxyStatus(value: unknown): value is ProxyStatusFile {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const status = value as Record<string, unknown>;
   return (
-    ["startup", "starting", "ready", "upstream-error", "shutdown"].includes(String(status.state)) &&
-    typeof status.updatedAt === "string" &&
+    ['startup', 'starting', 'ready', 'upstream-error', 'shutdown'].includes(String(status.state)) &&
+    typeof status.updatedAt === 'string' &&
     !Number.isNaN(Date.parse(status.updatedAt)) &&
     (status.rollingUsage === undefined || validRollingUsage(status.rollingUsage))
   );
@@ -161,12 +161,12 @@ export class LiveUsageService {
   private ready = false;
   private startedAt: string | null = null;
   private proxy: Readonly<{
-    status: "healthy" | "degraded" | "unavailable";
+    status: 'healthy' | 'degraded' | 'unavailable';
     state: ProxyState | null;
     updatedAt: string | null;
     rollingUsage: ProxyRollingUsage | null;
   }> = Object.freeze({
-    status: "unavailable",
+    status: 'unavailable',
     state: null,
     updatedAt: null,
     rollingUsage: null,
@@ -175,7 +175,7 @@ export class LiveUsageService {
     try {
       await this.route(request, response);
     } catch {
-      if (!response.headersSent) json(response, 500, { error: "internal_error" });
+      if (!response.headersSent) json(response, 500, { error: 'internal_error' });
       else response.end();
     }
   });
@@ -192,35 +192,28 @@ export class LiveUsageService {
       config.captureMaxBytes,
       clock,
     );
-    this.ingestor = new SidecarIngestor(
-      config.auditDirectory,
-      this.database,
-      clock,
-      async (result) => {
-        if (result.changed) {
-          this.dataVersion += 1;
-          this.events.publishDataVersion(this.dataVersion);
-        }
-        await this.refresh();
-      },
-    );
+    this.ingestor = new SidecarIngestor(config.auditDirectory, this.database, clock, async (result) => {
+      if (result.changed) {
+        this.dataVersion += 1;
+        this.events.publishDataVersion(this.dataVersion);
+      }
+      await this.refresh();
+    });
   }
 
   private async readProxyStatus(): Promise<void> {
     try {
-      const parsed: unknown = JSON.parse(await readFile(this.config.proxyStatusPath, "utf8"));
-      if (!validProxyStatus(parsed)) throw new Error("invalid proxy status");
+      const parsed: unknown = JSON.parse(await readFile(this.config.proxyStatusPath, 'utf8'));
+      if (!validProxyStatus(parsed)) throw new Error('invalid proxy status');
       this.proxy = Object.freeze({
-        status: parsed.state === "ready" ? "healthy" : "degraded",
+        status: parsed.state === 'ready' ? 'healthy' : 'degraded',
         state: parsed.state,
         updatedAt: parsed.updatedAt,
-        rollingUsage: validRollingUsage(parsed.rollingUsage)
-          ? Object.freeze({ ...parsed.rollingUsage })
-          : null,
+        rollingUsage: validRollingUsage(parsed.rollingUsage) ? Object.freeze({ ...parsed.rollingUsage }) : null,
       });
     } catch {
       this.proxy = Object.freeze({
-        status: "unavailable",
+        status: 'unavailable',
         state: null,
         updatedAt: null,
         rollingUsage: null,
@@ -233,12 +226,12 @@ export class LiveUsageService {
     return Object.freeze({
       ready: this.ready,
       server: Object.freeze({
-        status: this.ready ? "ready" : "starting",
+        status: this.ready ? 'ready' : 'starting',
         startedAt: this.startedAt,
       }),
       proxy: this.proxy,
       database: Object.freeze({
-        status: "ready",
+        status: 'ready',
         path: this.database.path,
         schemaVersion: this.database.schemaVersion,
         journalMode: this.database.journalMode,
@@ -287,13 +280,11 @@ export class LiveUsageService {
   }
 
   private async captureKey(): Promise<string> {
-    const signature = this.config.captureEnabled ? await this.captures.signature() : "disabled";
+    const signature = this.config.captureEnabled ? await this.captures.signature() : 'disabled';
     return `${this.inspectionEpoch}:${signature}`;
   }
 
-  private async envelopes(): Promise<
-    Readonly<{ envelopes: readonly CaptureEnvelopeV1[]; unreadable: number }>
-  > {
+  private async envelopes(): Promise<Readonly<{ envelopes: readonly CaptureEnvelopeV1[]; unreadable: number }>> {
     // A disabled server never reads the capture directory (typed empties).
     if (!this.config.captureEnabled) {
       return Object.freeze({ envelopes: Object.freeze([]), unreadable: 0 });
@@ -333,15 +324,13 @@ export class LiveUsageService {
   private findEnvelope(recordId: string): CaptureEnvelopeV1 | null {
     // Synchronous lookup is safe here because every handler awaits
     // `envelopes()` (which populates the memo) before resolving a recordId.
-    return (
-      this.captureMemo?.value.envelopes.find((envelope) => envelope.recordId === recordId) ?? null
-    );
+    return this.captureMemo?.value.envelopes.find((envelope) => envelope.recordId === recordId) ?? null;
   }
 
   private requireRecordId(searchParams: URLSearchParams): string {
-    const recordId = searchParams.get("recordId");
+    const recordId = searchParams.get('recordId');
     if (recordId === null || recordId.length === 0) {
-      throw new BadRequestError("recordId is required");
+      throw new BadRequestError('recordId is required');
     }
     return recordId;
   }
@@ -367,16 +356,15 @@ export class LiveUsageService {
     try {
       const enabled = this.config.captureEnabled;
       switch (pathname) {
-        case "/api/inspection/day": {
-          const rawDate = calendarParameter(searchParams, "date");
-          const date =
-            rawDate ?? formatReportDate(this.clock().getTime(), this.config.reportTimezone);
+        case '/api/inspection/day': {
+          const rawDate = calendarParameter(searchParams, 'date');
+          const date = rawDate ?? formatReportDate(this.clock().getTime(), this.config.reportTimezone);
           const { limit, offset } = pagination(searchParams);
           const assembly = await this.dayAssembly(date);
           this.inspectionPage(response, enabled, assembly.captures, limit, offset);
           return;
         }
-        case "/api/inspection/messages": {
+        case '/api/inspection/messages': {
           // Query validity does not depend on whether the record exists, so
           // pagination is parsed before the lookup that can 404.
           const { limit, offset } = pagination(searchParams);
@@ -390,7 +378,7 @@ export class LiveUsageService {
               this.inspectionPage(response, enabled, [], limit, offset);
               return;
             }
-            json(response, 404, { error: "not_found" });
+            json(response, 404, { error: 'not_found' });
             return;
           }
           const { request, response: responseEntries } = collectMessages(envelope);
@@ -398,7 +386,7 @@ export class LiveUsageService {
           this.inspectionPage(response, enabled, merged, limit, offset);
           return;
         }
-        case "/api/inspection/prompt": {
+        case '/api/inspection/prompt': {
           const recordId = this.requireRecordId(searchParams);
           await this.envelopes();
           const envelope = this.findEnvelope(recordId);
@@ -417,16 +405,15 @@ export class LiveUsageService {
               });
               return;
             }
-            json(response, 404, { error: "not_found" });
+            json(response, 404, { error: 'not_found' });
             return;
           }
           json(response, 200, { captureEnabled: true, ...collectMessages(envelope).analysis });
           return;
         }
-        case "/api/inspection/prompt-mix": {
-          const rawDate = calendarParameter(searchParams, "date");
-          const date =
-            rawDate ?? formatReportDate(this.clock().getTime(), this.config.reportTimezone);
+        case '/api/inspection/prompt-mix': {
+          const rawDate = calendarParameter(searchParams, 'date');
+          const date = rawDate ?? formatReportDate(this.clock().getTime(), this.config.reportTimezone);
           await this.envelopes();
           json(response, 200, {
             captureEnabled: enabled,
@@ -434,19 +421,18 @@ export class LiveUsageService {
           });
           return;
         }
-        case "/api/inspection/prompts": {
-          const rawDate = calendarParameter(searchParams, "date");
-          const date =
-            rawDate ?? formatReportDate(this.clock().getTime(), this.config.reportTimezone);
+        case '/api/inspection/prompts': {
+          const rawDate = calendarParameter(searchParams, 'date');
+          const date = rawDate ?? formatReportDate(this.clock().getTime(), this.config.reportTimezone);
           await this.envelopes();
           let listings = collectPromptListings(date, this.captureMemo?.value.envelopes ?? []);
-          const hash = searchParams.get("hash");
+          const hash = searchParams.get('hash');
           if (hash !== null) listings = listings.filter((entry) => entry.instructionsHash === hash);
           const { limit, offset } = pagination(searchParams);
           this.inspectionPage(response, enabled, listings, limit, offset);
           return;
         }
-        case "/api/inspection/prompt-sections": {
+        case '/api/inspection/prompt-sections': {
           const recordId = this.requireRecordId(searchParams);
           await this.envelopes();
           const envelope = this.findEnvelope(recordId);
@@ -459,39 +445,33 @@ export class LiveUsageService {
               });
               return;
             }
-            json(response, 404, { error: "not_found" });
+            json(response, 404, { error: 'not_found' });
             return;
           }
           const { instructionsHash, sections } = collectPromptSections(envelope);
           json(response, 200, { captureEnabled: true, instructionsHash, sections });
           return;
         }
-        case "/api/inspection/tools":
-        case "/api/inspection/tool-calls": {
+        case '/api/inspection/tools':
+        case '/api/inspection/tool-calls': {
           await this.envelopes();
           const { limit, offset } = pagination(searchParams);
-          const filterRecordId = searchParams.get("recordId");
-          if (pathname === "/api/inspection/tools") {
+          const filterRecordId = searchParams.get('recordId');
+          if (pathname === '/api/inspection/tools') {
             let schemas = collectToolSchemas(this.captureMemo?.value.envelopes ?? []);
-            if (filterRecordId !== null)
-              schemas = schemas.filter((entry) => entry.recordId === filterRecordId);
+            if (filterRecordId !== null) schemas = schemas.filter((entry) => entry.recordId === filterRecordId);
             this.inspectionPage(response, enabled, schemas, limit, offset);
             return;
           }
           let calls = collectToolCalls(this.captureMemo?.value.envelopes ?? []);
-          if (filterRecordId !== null)
-            calls = calls.filter((entry) => entry.recordId === filterRecordId);
+          if (filterRecordId !== null) calls = calls.filter((entry) => entry.recordId === filterRecordId);
           this.inspectionPage(response, enabled, calls, limit, offset);
           return;
         }
-        case "/api/inspection/sessions": {
+        case '/api/inspection/sessions': {
           await this.envelopes();
           const groups = collectSessions(this.captureMemo?.value.envelopes ?? []);
-          const liveness = collectLiveness(
-            groups,
-            this.captureMemo?.value.envelopes ?? [],
-            this.clock(),
-          );
+          const liveness = collectLiveness(groups, this.captureMemo?.value.envelopes ?? [], this.clock());
           const { limit, offset } = pagination(searchParams);
           this.inspectionPage(
             response,
@@ -502,25 +482,25 @@ export class LiveUsageService {
           );
           return;
         }
-        case "/api/inspection/context": {
+        case '/api/inspection/context': {
           await this.envelopes();
           let summaries = collectContextSummaries(this.captureMemo?.value.envelopes ?? []);
-          const search = searchParams.get("search");
+          const search = searchParams.get('search');
           if (search !== null && search.length > 0) {
             const needle = search.toLowerCase();
             summaries = summaries.filter((entry) =>
-              [entry.recordId, entry.model ?? "", entry.sessionId, entry.endpoint].some((field) =>
+              [entry.recordId, entry.model ?? '', entry.sessionId, entry.endpoint].some((field) =>
                 field.toLowerCase().includes(needle),
               ),
             );
           }
-          const sort = searchParams.get("sort");
+          const sort = searchParams.get('sort');
           if (sort !== null) {
-            if (sort !== "asc" && sort !== "desc") {
+            if (sort !== 'asc' && sort !== 'desc') {
               throw new BadRequestError('sort must be "asc" or "desc"');
             }
             summaries =
-              sort === "asc"
+              sort === 'asc'
                 ? [...summaries].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt))
                 : [...summaries].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));
           }
@@ -528,10 +508,10 @@ export class LiveUsageService {
           this.inspectionPage(response, enabled, summaries, limit, offset);
           return;
         }
-        case "/api/inspection/tool-schema": {
-          const name = searchParams.get("name");
+        case '/api/inspection/tool-schema': {
+          const name = searchParams.get('name');
           if (name === null || name.length === 0) {
-            throw new BadRequestError("name is required");
+            throw new BadRequestError('name is required');
           }
           await this.envelopes();
           const schemas = collectToolSchemas(this.captureMemo?.value.envelopes ?? []).filter(
@@ -543,7 +523,7 @@ export class LiveUsageService {
               json(response, 200, {
                 captureEnabled: false,
                 name,
-                type: "unknown",
+                type: 'unknown',
                 description: null,
                 occurrences: 0,
                 variants: [],
@@ -553,20 +533,19 @@ export class LiveUsageService {
               });
               return;
             }
-            json(response, 404, { error: "not_found" });
+            json(response, 404, { error: 'not_found' });
             return;
           }
           const variants = [...new Set(schemas.map((entry) => entry.schemaJson))];
           json(response, 200, {
             captureEnabled: enabled,
             name,
-            type: schemas[0]?.type ?? "unknown",
+            type: schemas[0]?.type ?? 'unknown',
             description: schemas.find((entry) => entry.description !== null)?.description ?? null,
             occurrences: schemas.length,
             variants,
             firstSeenAt: schemas.reduce<string | null>(
-              (first, entry) =>
-                first === null || entry.capturedAt < first ? entry.capturedAt : first,
+              (first, entry) => (first === null || entry.capturedAt < first ? entry.capturedAt : first),
               null,
             ),
             lastSeenAt: schemas.reduce<string | null>(
@@ -577,21 +556,21 @@ export class LiveUsageService {
           });
           return;
         }
-        case "/api/inspection/sessions/detail":
-        case "/api/inspection/sessions/breakdown": {
-          const id = searchParams.get("id");
+        case '/api/inspection/sessions/detail':
+        case '/api/inspection/sessions/breakdown': {
+          const id = searchParams.get('id');
           if (id === null || id.length === 0) {
-            throw new BadRequestError("id is required");
+            throw new BadRequestError('id is required');
           }
           // Parsed before the lookup so a malformed page stays a 400 whether
           // or not the session exists.
           const { limit, offset } = pagination(searchParams);
           await this.envelopes();
           const envelopes = this.captureMemo?.value.envelopes ?? [];
-          if (pathname.endsWith("/detail")) {
+          if (pathname.endsWith('/detail')) {
             const captures = collectSessionDetail(id, envelopes);
             if (captures.length === 0 && enabled) {
-              json(response, 404, { error: "not_found" });
+              json(response, 404, { error: 'not_found' });
               return;
             }
             json(response, 200, {
@@ -603,13 +582,13 @@ export class LiveUsageService {
           }
           const breakdown = collectSessionBreakdown(id, envelopes);
           if (breakdown.captures === 0 && enabled) {
-            json(response, 404, { error: "not_found" });
+            json(response, 404, { error: 'not_found' });
             return;
           }
           json(response, 200, { captureEnabled: enabled, sessionId: id, ...breakdown });
           return;
         }
-        case "/api/inspection/errors": {
+        case '/api/inspection/errors': {
           const rejected = this.database.listRejected();
           const { unreadable } = await this.envelopes();
           json(response, 200, {
@@ -619,12 +598,12 @@ export class LiveUsageService {
           return;
         }
         default:
-          json(response, 404, { error: "not_found" });
+          json(response, 404, { error: 'not_found' });
           return;
       }
     } catch (error) {
       if (invalidQuery(error)) {
-        json(response, 400, { error: "invalid_query" });
+        json(response, 400, { error: 'invalid_query' });
         return;
       }
       throw error;
@@ -632,40 +611,40 @@ export class LiveUsageService {
   }
 
   private async route(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const url = new URL(request.url ?? "/", "http://localhost");
-    if (request.method !== "GET") {
-      json(response, 405, { error: "method_not_allowed" });
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    if (request.method !== 'GET') {
+      json(response, 405, { error: 'method_not_allowed' });
       return;
     }
-    if (url.pathname === "/api/health") {
+    if (url.pathname === '/api/health') {
       json(response, 200, this.health());
       return;
     }
-    if (url.pathname === "/api/summary") {
+    if (url.pathname === '/api/summary') {
       json(response, 200, this.summary());
       return;
     }
-    if (url.pathname === "/api/history") {
+    if (url.pathname === '/api/history') {
       this.handleHistory(url.searchParams, response);
       return;
     }
-    if (url.pathname === "/api/trends") {
+    if (url.pathname === '/api/trends') {
       this.handleTrends(url.searchParams, response);
       return;
     }
-    if (url.pathname === "/api/limits") {
+    if (url.pathname === '/api/limits') {
       this.handleLimits(response);
       return;
     }
-    if (url.pathname === "/api/events") {
+    if (url.pathname === '/api/events') {
       this.events.subscribe(response, this.snapshot());
       return;
     }
-    if (url.pathname.startsWith("/api/inspection/")) {
+    if (url.pathname.startsWith('/api/inspection/')) {
       await this.handleInspection(url.pathname, url.searchParams, response);
       return;
     }
-    json(response, 404, { error: "not_found" });
+    json(response, 404, { error: 'not_found' });
   }
 
   // ADR 0011: from/to are optional report-timezone calendar dates; invalid
@@ -673,13 +652,13 @@ export class LiveUsageService {
   private handleHistory(searchParams: URLSearchParams, response: ServerResponse): void {
     try {
       const range = resolveCalendarRange(
-        calendarParameter(searchParams, "from"),
-        calendarParameter(searchParams, "to"),
+        calendarParameter(searchParams, 'from'),
+        calendarParameter(searchParams, 'to'),
         this.clock(),
         this.config.reportTimezone,
       );
       const { limit, offset } = pagination(searchParams);
-      const page = this.database.history(range, searchParams.getAll("model"), limit, offset);
+      const page = this.database.history(range, searchParams.getAll('model'), limit, offset);
       json(response, 200, {
         dataVersion: this.dataVersion,
         total: page.total,
@@ -690,7 +669,7 @@ export class LiveUsageService {
       });
     } catch (error) {
       if (invalidQuery(error)) {
-        json(response, 400, { error: "invalid_query" });
+        json(response, 400, { error: 'invalid_query' });
         return;
       }
       throw error;
@@ -699,11 +678,11 @@ export class LiveUsageService {
 
   private handleTrends(searchParams: URLSearchParams, response: ServerResponse): void {
     try {
-      const from = calendarParameter(searchParams, "from");
-      const to = calendarParameter(searchParams, "to");
+      const from = calendarParameter(searchParams, 'from');
+      const to = calendarParameter(searchParams, 'to');
       const now = this.clock();
       const range = resolveCalendarRange(from, to, now, this.config.reportTimezone);
-      const events = this.database.sidecarsInRange(range, searchParams.getAll("model"));
+      const events = this.database.sidecarsInRange(range, searchParams.getAll('model'));
       const buckets = aggregateDailyBuckets(events, from, to, now, this.config.reportTimezone);
       json(response, 200, {
         dataVersion: this.dataVersion,
@@ -715,7 +694,7 @@ export class LiveUsageService {
       });
     } catch (error) {
       if (invalidQuery(error)) {
-        json(response, 400, { error: "invalid_query" });
+        json(response, 400, { error: 'invalid_query' });
         return;
       }
       throw error;
@@ -726,9 +705,7 @@ export class LiveUsageService {
   // Windows without a configured ceiling are omitted entirely; nothing is shown
   // against an invented denominator.
   private handleLimits(response: ServerResponse): void {
-    const kinds = Object.keys(this.config.usageLimitCeilings) as Array<
-      keyof typeof this.config.usageLimitCeilings
-    >;
+    const kinds = Object.keys(this.config.usageLimitCeilings) as Array<keyof typeof this.config.usageLimitCeilings>;
     if (kinds.length === 0) {
       json(response, 200, { reportTimezone: this.config.reportTimezone, windows: [] });
       return;
@@ -742,9 +719,9 @@ export class LiveUsageService {
     await this.ingestor.reconcile();
     await this.readProxyStatus();
     await new Promise<void>((resolve, reject) => {
-      this.server.once("error", reject);
+      this.server.once('error', reject);
       this.server.listen(this.config.port, this.config.host, () => {
-        this.server.off("error", reject);
+        this.server.off('error', reject);
         resolve();
       });
     });
@@ -772,9 +749,7 @@ export class LiveUsageService {
     await this.ingestor.close();
     this.events.close();
     if (this.server.listening) {
-      await new Promise<void>((resolve, reject) =>
-        this.server.close((error) => (error ? reject(error) : resolve())),
-      );
+      await new Promise<void>((resolve, reject) => this.server.close((error) => (error ? reject(error) : resolve())));
     }
     this.database.close();
   }

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore } from 'react';
 
 // Observed-model registry ported from codex-proxy
 // `apps/admin/src/car/observed-models.ts`: models seen in fetched history

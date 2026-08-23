@@ -1,16 +1,16 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore } from 'react';
 
 // Data-version SSE signal ported from codex-proxy
 // `apps/admin/src/car/stream.ts`; frames carry { dataVersion } per ADR 0012.
 
-export type StreamState = "connecting" | "live" | "reconnecting";
+export type StreamState = 'connecting' | 'live' | 'reconnecting';
 
 export interface DataVersionSnapshot {
   readonly version: number | null;
   readonly stream: StreamState;
 }
 
-let snapshot: DataVersionSnapshot = { version: null, stream: "connecting" };
+let snapshot: DataVersionSnapshot = { version: null, stream: 'connecting' };
 let source: EventSource | null = null;
 let refCount = 0;
 const listeners = new Set<() => void>();
@@ -27,9 +27,9 @@ function patch(next: Partial<DataVersionSnapshot>): void {
 function parseVersion(raw: string): number | null {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed === "object" && parsed !== null && "dataVersion" in parsed) {
+    if (typeof parsed === 'object' && parsed !== null && 'dataVersion' in parsed) {
       const version = (parsed as { dataVersion: unknown }).dataVersion;
-      return typeof version === "number" && Number.isFinite(version) ? version : null;
+      return typeof version === 'number' && Number.isFinite(version) ? version : null;
     }
     return null;
   } catch {
@@ -39,13 +39,13 @@ function parseVersion(raw: string): number | null {
 
 function ensureSource(): void {
   if (source) return;
-  source = new EventSource("/api/events");
-  source.addEventListener("open", () => patch({ stream: "live" }));
-  source.addEventListener("data-version", (event) => {
+  source = new EventSource('/api/events');
+  source.addEventListener('open', () => patch({ stream: 'live' }));
+  source.addEventListener('data-version', (event) => {
     const version = parseVersion((event as MessageEvent<string>).data);
     if (version !== null) patch({ version });
   });
-  source.addEventListener("error", () => patch({ stream: "reconnecting" }));
+  source.addEventListener('error', () => patch({ stream: 'reconnecting' }));
 }
 
 function releaseSource(): void {
@@ -53,7 +53,7 @@ function releaseSource(): void {
   source = null;
   // A remounted route builds a fresh EventSource; leaving the last state here
   // would render "Live" until its `open` fires.
-  patch({ version: null, stream: "connecting" });
+  patch({ version: null, stream: 'connecting' });
 }
 
 function subscribe(listener: () => void): () => void {
@@ -76,7 +76,7 @@ export function useDataVersionSignal(): DataVersionSnapshot {
 }
 
 export function streamStatusText(state: StreamState, hasData: boolean): string {
-  if (state === "live") return "Live";
-  if (state === "connecting") return "Connecting…";
-  return hasData ? "Reconnecting · showing last known data" : "Reconnecting…";
+  if (state === 'live') return 'Live';
+  if (state === 'connecting') return 'Connecting…';
+  return hasData ? 'Reconnecting · showing last known data' : 'Reconnecting…';
 }
