@@ -103,7 +103,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 03 | scope-claude-packages | [monorepo-fusion-03-scope-claude-packages](monorepo-fusion-03-scope-claude-packages.md) | `task/monorepo-fusion-03-scope-claude-packages` | todo | |
+| 03 | scope-claude-packages | [monorepo-fusion-03-scope-claude-packages](monorepo-fusion-03-scope-claude-packages.md) | `task/monorepo-fusion-03-scope-claude-packages` | in-progress | |
 | 04 | sweep-non-import-references | [monorepo-fusion-04-sweep-non-import-references](monorepo-fusion-04-sweep-non-import-references.md) | `task/monorepo-fusion-04-sweep-non-import-references` | todo | |
 | 05 | absorb-codex | [monorepo-fusion-05-absorb-codex](monorepo-fusion-05-absorb-codex.md) | `task/monorepo-fusion-05-absorb-codex` | todo | |
 | 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | todo | |
