@@ -33,7 +33,16 @@ async function listFilesRecursively(directory: string): Promise<string[]> {
 test("capture off keeps forwarding byte-identical and never writes body bytes to disk", async () => {
   const upstream = await startFixtureUpstream((req, body, res) => {
     res.writeHead(200, { "content-type": "application/json", "x-request-id": "req-1" });
-    res.end(JSON.stringify({ echoed: body, authorization: req.headers.authorization }));
+    res.end(
+      JSON.stringify({
+        echoed: body,
+        authorization: req.headers.authorization,
+        // Valid final Responses shape so Bike's sanitized sidecar still lands.
+        object: "response",
+        model: "gpt-5",
+        usage: { input_tokens: 2, output_tokens: 1, total_tokens: 3 },
+      }),
+    );
   });
   const proxy = await startProxyOnEphemeralPort(upstream.url);
   const requestBody = JSON.stringify({ model: "gpt-5", input: SECRET_PROMPT });
