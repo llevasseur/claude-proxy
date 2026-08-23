@@ -51,6 +51,9 @@ function ensureSource(): void {
 function releaseSource(): void {
   source?.close();
   source = null;
+  // A remounted route builds a fresh EventSource; leaving the last state here
+  // would render "Live" until its `open` fires.
+  patch({ version: null, stream: "connecting" });
 }
 
 function subscribe(listener: () => void): () => void {
