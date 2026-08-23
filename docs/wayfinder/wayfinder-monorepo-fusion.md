@@ -168,8 +168,8 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
-| 20 | ox-history-test-flake | [monorepo-fusion-20-ox-history-test-flake](monorepo-fusion-20-ox-history-test-flake.md) | `task/monorepo-fusion-20-ox-history-test-flake` | in-progress | |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
+| 21 | codex-proxy-test-flake | [monorepo-fusion-21-codex-proxy-test-flake](monorepo-fusion-21-codex-proxy-test-flake.md) | `task/monorepo-fusion-21-codex-proxy-test-flake` | todo | Promoted from residual risk 16, now measured twice: 1 of 5 local full-suite runs (ticket 06) and 2 of 9 whole-repo runs (ticket 20). Same class as ticket 20, which turned out to be a real shared-state defect rather than timing. |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 12 | merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus](monorepo-fusion-12-merge-adr-corpus.md) | `task/monorepo-fusion-12-merge-adr-corpus` | todo | |
 | 13 | write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs](monorepo-fusion-13-write-campaign-adrs.md) | `task/monorepo-fusion-13-write-campaign-adrs` | todo | |
@@ -247,6 +247,41 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 20 — ox-history-test-flake · 2026-08-23 · PR #276
+
+**A real shared-state defect, not timing.** `SidecarIngestor.reconcile()` in
+`stacks/ox-alpha/server/src/ingest.ts` coalesced every call onto one `activeReconcile`
+promise — and a scan already in flight took its directory listing **when it started**. So a
+caller that wrote a sidecar and then awaited `reconcile()` could be handed a listing
+predating its own write, and see `changed: false` for a change it had just made. The
+watcher starts those scans itself, so no caller could tell a covering scan from a preceding
+one, and load decided which assertion lost. **One cause, two symptoms** — the SSE test's
+`data-version` frame never arrived; the pagination test saw `total: 3` instead of `4`.
+
+`reconcile()` now queues one trailing scan rather than aliasing the running one, and
+`close()` drains both. **No retry, sleep, or raised timeout was added — one was removed:**
+`history.test.ts`'s 50-attempt poll loop, whose own comment named this race, is now a single
+`await service.reconcile()`.
+
+**Both rates, as the plan demanded.** Probe against the real ingestor: **50/50 raced → 0/50**.
+CI, same denominator as the original report: **2/5 before → 0/5 after**, re-run four times on
+the identical commit. A new regression test in `ingest.test.ts` fails deterministically
+against the old ingestor and passes against the new one; suite 49 → 50.
+
+**It reported a shortfall rather than hiding it.** Criterion 1 wanted local reproduction
+under load, and this machine cannot reproduce it — macOS FSEvents against CI's Linux
+inotify. Two loops (ox alone ×29, whole-repo ×9) produced **zero** failures *before* the fix,
+so it stopped the inconclusive loop rather than letting it run to a meaningless `0/25`, and
+moved the measurement to the mechanism and to CI. That limitation is stated in the PR body.
+
+It also **reverted** a `no-array-sort` fix on finding `toSorted()` needs `lib: es2023` while
+ox targets `es2022`, and left eight `no-await-in-loop` warnings standing because those awaits
+are sequential on purpose. All three touched files pass at `error` under both Biome and
+anti-slop — the ratchet's first payment.
+
+**New finding:** codex has its own flake, unrelated — 2 of 9 local whole-repo runs. With
+ticket 06's earlier 1-in-5, that is 3 in 10 across two tickets. **Promoted to ticket 21.**
 
 ### 10 — unify-toolchain-and-ci · 2026-08-23 · PR #275
 

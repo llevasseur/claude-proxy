@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-20-ox-history-test-flake`
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## Why this ticket exists
 
