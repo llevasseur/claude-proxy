@@ -3,7 +3,7 @@
  *
  * `NODE_NO_WARNINGS` silences Node's own diagnostics — e.g. the `node:sqlite`
  * experimental warning Node 22 prints on stderr but Node 26 doesn't — so
- * `expect(stderr).toBe('')` only fails on output the CLI itself wrote (ADR 0055).
+ * `expect(stderr).toBe('')` only fails on output the CLI itself wrote.
  * Filtering the warning text instead was rejected: it would tie the assertion to
  * Node's wording rather than the CLI's contract. The variable is inherited down
  * the whole `pnpm` → `tsx` → CLI chain, not just the directly spawned process.
