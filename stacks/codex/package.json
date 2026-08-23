@@ -1,0 +1,32 @@
+{
+  "name": "codex-proxy-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A transparent Codex proxy with local, sanitized token and cost visibility.",
+  "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build",
+    "lint": "biome lint .",
+    "lint:anti-slop": "oxlint",
+    "anti:slop": "oxlint",
+    "check": "biome check . && pnpm check:docs",
+    "check:docs": "node scripts/check-docs.mjs",
+    "format": "biome check --write .",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm check && pnpm anti:slop",
+    "proxy": "pnpm --filter @agent-proxy/codex-proxy start",
+    "server": "pnpm --filter @agent-proxy/codex-server start",
+    "admin": "pnpm --filter @agent-proxy/codex-admin dev",
+    "zellij": "bash scripts/zellij.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.6",
+    "@oxlint/plugins": "1.78.0",
+    "oxlint": "1.78.0"
+  }
+}

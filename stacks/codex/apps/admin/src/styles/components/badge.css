@@ -1,0 +1,155 @@
+@layer components {
+  /* badges */
+  .badge {
+    font-size: var(--text-3);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-5);
+    border-radius: var(--radius-pill);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    white-space: nowrap;
+  }
+  /* Adjacent badges in JSX carry no whitespace between them, so an inline run of
+   them has no break opportunity and overflows its card. Wrapping is the row's job. */
+  .badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+  .badge.sev-high {
+    background: color-mix(in srgb, var(--coral) 16%, transparent);
+    color: var(--high);
+  }
+  .badge.sev-warn {
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
+    color: var(--warn);
+  }
+  .badge.sev-info {
+    background: color-mix(in srgb, var(--signal) 16%, transparent);
+    color: var(--info);
+  }
+  .badge.absent {
+    background: color-mix(in srgb, var(--good) 16%, transparent);
+    color: var(--good);
+  }
+  .badge.present {
+    background: color-mix(in srgb, var(--coral) 16%, transparent);
+    color: var(--coral);
+  }
+  .badge.was-present {
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
+    color: var(--amber);
+  }
+  .badge.neutral {
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  .badge.status-done {
+    background: color-mix(in srgb, var(--good) 16%, transparent);
+    color: var(--good);
+  }
+  .badge.status-skipped {
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  /* The quietest flag: the rule was wrong, so the row is a record rather than a
+   finding. Fainter than skipped, which is still a real finding. */
+  .badge.status-dismissed {
+    background: var(--surface-2);
+    color: var(--faint);
+  }
+  .badge.bucket-clean {
+    background: color-mix(in srgb, var(--good) 16%, transparent);
+    color: var(--good);
+  }
+  .badge.bucket-dirty {
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
+    color: var(--amber);
+  }
+  .badge.bucket-not-ready {
+    background: var(--surface-2);
+    color: var(--faint);
+  }
+  /* A judged bucket whose judge opened almost none of it. Amber like `dirty`, the
+   same claim in a weaker form; not coral, since a thin pass is advisory. */
+  .badge.judge-thin {
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
+    color: var(--amber);
+  }
+  /* Ideas: `accepted` takes the affirmative tone as the sign-off /improve acts on,
+   `proposed` is waiting on a human, `claimed` is in flight — signed off but not on
+   offer — and `rejected` is the quietest of the five. */
+  .badge.idea-status-accepted {
+    background: color-mix(in srgb, var(--good) 16%, transparent);
+    color: var(--good);
+  }
+  .badge.idea-status-claimed {
+    background: color-mix(in srgb, var(--signal) 16%, transparent);
+    color: var(--info);
+  }
+  .badge.idea-status-proposed {
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
+    color: var(--amber);
+  }
+  .badge.idea-status-shipped {
+    background: color-mix(in srgb, var(--signal) 16%, transparent);
+    color: var(--info);
+  }
+  .badge.idea-status-rejected {
+    background: var(--surface-2);
+    color: var(--faint);
+  }
+  /* Liveness: `running` active, `quiet` cautioning without asserting death, `finished` the
+   settled green, and `unknown` — no transcript to judge by — the faintest of the four. */
+  .badge.liveness-running {
+    background: color-mix(in srgb, var(--signal) 16%, transparent);
+    color: var(--info);
+  }
+  .badge.liveness-quiet {
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
+    color: var(--amber);
+  }
+  .badge.liveness-finished {
+    background: color-mix(in srgb, var(--good) 16%, transparent);
+    color: var(--good);
+  }
+  .badge.liveness-unknown {
+    background: var(--surface-2);
+    color: var(--faint);
+  }
+  .badge.recurrence-regressed {
+    background: color-mix(in srgb, var(--coral) 16%, transparent);
+    color: var(--coral);
+  }
+  .badge.recurrence-mixed {
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
+    color: var(--amber);
+  }
+  .badge.recurrence-historical {
+    background: var(--surface-2);
+    color: var(--faint);
+  }
+  /* Undims regressed rows: sits after the .is-resolved dimming and shares its specificity.
+   Neither selector is emitted for a dismissed row — dismissed keeps its dimming. */
+  .advice.is-regressed {
+    opacity: 1;
+    border-color: var(--coral);
+  }
+  .bucket-suggestions li.is-regressed {
+    color: var(--coral);
+  }
+  .rule-name {
+    font-family: var(--font-mono);
+    font-size: var(--text-5);
+  }
+  .leak-note {
+    color: var(--muted);
+    font-size: var(--text-4);
+  }
+  .leak-note .present-tool {
+    color: var(--coral);
+  }
+  .leak-note .was-tool {
+    color: var(--amber);
+  }
+}

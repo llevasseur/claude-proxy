@@ -1,0 +1,47 @@
+@layer layout {
+  /* responsive: rail becomes a drawer behind a hamburger */
+  @media (max-width: 860px) {
+    .app {
+      grid-template-columns: 1fr;
+    }
+    /* Out of the grid — the workspace keeps full width, open or closed. */
+    .rail {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 40;
+      width: min(272px, 82vw);
+      height: 100dvh;
+      overflow: hidden;
+      padding: var(--space-10) var(--rail-inset);
+      transform: translateX(-100%);
+      /* Closed, the drawer keeps its stations out of the tab order. */
+      visibility: hidden;
+      transition:
+        transform var(--motion-duration) ease,
+        visibility var(--motion-duration);
+    }
+    .app--drawer-open .rail {
+      transform: none;
+      visibility: visible;
+    }
+    /* Navigation alone — the brand and collapse toggle stay on wide viewports. */
+    .rail-head {
+      display: none;
+    }
+    .station.active {
+      background: var(--surface-2);
+    }
+    .topbar {
+      display: flex;
+    }
+    .content {
+      padding: var(--space-11) var(--space-9) var(--space-page-lg);
+    }
+    .pagehead {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-4);
+    }
+  }
+}
