@@ -3,10 +3,8 @@ name: Verify
 # The gates `pnpm verify` chains locally, in the same order.
 on:
   push:
-    # `main` is codex's trigger. `the-great-merge` and `wayfinder/monorepo-fusion`
-    # are added so campaign commits are gated too — until this workflow landed,
-    # every ticket in the monorepo-fusion campaign merged with nothing mechanical
-    # checking it.
+    # `main` is codex's trigger; `the-great-merge` and `wayfinder/monorepo-fusion`
+    # are added so campaign commits are gated too.
     branches: [main, the-great-merge, wayfinder/monorepo-fusion]
   pull_request:
   workflow_dispatch:

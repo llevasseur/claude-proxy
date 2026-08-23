@@ -39,19 +39,16 @@ const SCANNED = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.md', '.json', '
 // anyone typed.
 const SKIPPED_FILES = new Set(['pnpm-lock.yaml']);
 
-// The gate covers invocations, not records of what was measured. An ADR records
-// what was true when it was written and a wayfinder plan records what was asked,
-// so in both a broken command spelled out verbatim is the *evidence* — it is the
-// defect being described, not a defect. Pointing the gate at those two
-// directories does not protect them; it rewards rewriting a recorded measurement
-// into a false claim about the present, silently, because each rewrite makes the
-// text more conformant. That already happened once, to five sentences of ADR
-// 0055. See docs/adrs/0057-the-filter-gate-covers-invocations-not-records.md.
+// The gate covers invocations, not records of what was measured: an ADR or a
+// wayfinder plan quoting a broken command verbatim is the evidence, not a
+// defect, and rewriting it to pass silently corrupts the record — it already
+// happened once, to five sentences of ADR 0055. See
+// docs/adrs/0057-the-filter-gate-covers-invocations-not-records.md.
 //
-// This narrows *where* the gate looks. It does not weaken what it catches: a bare
-// unscoped name still fails anywhere else, including every other directory under
-// docs/, and AGENTS.md stays in scope deliberately — that file is not
-// documentation here but the instruction every future agent reads.
+// This narrows *where* the gate looks, not what it catches: a bare unscoped
+// name still fails anywhere else, including every other directory under docs/,
+// and AGENTS.md stays in scope deliberately — that file is not documentation
+// here but the instruction every future agent reads.
 const UNSCANNED_DIRECTORIES = ['docs/adrs/', 'docs/wayfinder/'];
 
 const repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
