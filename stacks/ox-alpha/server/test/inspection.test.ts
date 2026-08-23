@@ -326,4 +326,69 @@ describe("Boat inspection — enabled with fixtures", () => {
     }
     expect((await getPage(origin, "/api/inspection/nope")).status).toBe(404);
   });
+
+  test("prompt mix decomposes a report day into cohorts without body text", async () => {
+    const { origin } = await startWithFixtures();
+    const payload = (await (
+      await getPage(origin, "/api/inspection/prompt-mix?date=2026-08-20")
+    ).json()) as Record<string, unknown>;
+    expect(payload.captureEnabled).toBe(true);
+    expect(payload.date).toBe("2026-08-20");
+    // Every fixture shares one instructions cohort ("Be terse.").
+    expect(payload.requests).toBe(3);
+    expect(payload.identifiedShare).toBe(1);
+    const cohorts = payload.cohorts as Array<Record<string, unknown>>;
+    expect(cohorts).toHaveLength(1);
+    expect(cohorts[0]).toMatchObject({ identified: true, requests: 3 });
+    const serialized = JSON.stringify(payload);
+    expect(serialized.includes("Be terse.")).toBe(false);
+  });
+
+  test("prompt listings support hash drill-down and section lookups", async () => {
+    const { origin, directory } = await startWithFixtures();
+    // One capture with distinct instructions so a hash filter can discriminate.
+    const distinct: CaptureEnvelopeV1 = {
+      ...envelope("z", "2026-08-20T13:00:00.000Z"),
+      requestText: JSON.stringify({
+        model: "gpt-5-mini",
+        instructions: "Answer exhaustively.",
+        input: [{ role: "user", type: "message", content: "why" }],
+      }),
+    };
+    await writeCapture(directory, distinct);
+    await getPage(origin, "/api/inspection/prompts?date=2026-08-20"); // populate memo
+    const list = (await (
+      await getPage(origin, "/api/inspection/prompts?date=2026-08-20")
+    ).json()) as {
+      total: number;
+      records?: Array<Record<string, unknown>>;
+    };
+    expect(list.total).toBe(4);
+    const terseHash = list.records?.find((entry) => entry.recordId === "b")?.instructionsHash as
+      | string
+      | null;
+    expect(terseHash).toMatch(/^[0-9a-f]{16}$/);
+
+    const filtered = (await (
+      await getPage(origin, `/api/inspection/prompts?date=2026-08-20&hash=${terseHash}`)
+    ).json()) as { total: number; records?: Array<Record<string, unknown>> };
+    expect(filtered.total).toBe(3); // b, c, plain share the terse instructions
+    expect(filtered.records?.every((entry) => entry.instructionsHash === terseHash)).toBe(true);
+
+    const sections = (await (
+      await getPage(origin, "/api/inspection/prompt-sections?recordId=b")
+    ).json()) as Record<string, unknown>;
+    expect(sections.instructionsHash).toBe(terseHash);
+    expect(sections.sections).toEqual([
+      { kind: "instructions", index: null, role: null, itemType: null, chars: 9 },
+      { kind: "message", index: 0, role: "user", itemType: "message", chars: 11 },
+      { kind: "message", index: 1, role: "assistant", itemType: null, chars: 12 },
+    ]);
+    expect(JSON.stringify(sections)).not.toContain("hello there");
+
+    expect((await getPage(origin, "/api/inspection/prompt-sections")).status).toBe(400);
+    expect((await getPage(origin, "/api/inspection/prompt-sections?recordId=absent")).status).toBe(
+      404,
+    );
+  });
 });

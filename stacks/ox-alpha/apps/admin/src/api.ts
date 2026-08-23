@@ -626,4 +626,81 @@ export async function fetchPromptAnalysis(recordId: string): Promise<PromptAnaly
   return parsePromptAnalysis(await fetchJson(inspectionPath("prompt", { recordId })));
 }
 
+export interface PromptCohortRecord {
+  readonly key: string;
+  readonly label: string;
+  readonly identified: boolean;
+  readonly hash: string | null;
+  readonly models: readonly string[];
+  readonly requests: number;
+  readonly share: number;
+  readonly meanChars: number;
+  readonly totalChars: number;
+  readonly contribution: number;
+}
+
+export interface PromptMixPayload {
+  readonly captureEnabled: boolean;
+  readonly date: string;
+  readonly requests: number;
+  readonly meanChars: number;
+  readonly medianChars: number;
+  readonly identifiedShare: number;
+  readonly cohorts: readonly PromptCohortRecord[];
+}
+
+export function fetchPromptMix(date?: string): Promise<PromptMixPayload> {
+  return fetchJson(inspectionPath("prompt-mix", { date })) as Promise<PromptMixPayload>;
+}
+
+export interface PromptListingRecord {
+  readonly recordId: string;
+  readonly capturedAt: string;
+  readonly model: string | null;
+  readonly instructionsHash: string | null;
+  readonly sectionCount: number;
+}
+
+export function fetchPromptListings(
+  date?: string,
+  hash?: string,
+): Promise<InspectionPage<PromptListingRecord>> {
+  return fetchInspectionPage(
+    inspectionPath("prompts", { date, hash }),
+    (record: unknown): PromptListingRecord => {
+      if (!isRecord(record) || !string(record.recordId)) {
+        throw new Error("malformed prompt listing record");
+      }
+      const value = record as Record<string, unknown>;
+      return {
+        recordId: value.recordId as string,
+        capturedAt: string(value.capturedAt) ? (value.capturedAt as string) : "",
+        model: string(value.model) ? (value.model as string) : null,
+        instructionsHash: string(value.instructionsHash)
+          ? (value.instructionsHash as string)
+          : null,
+        sectionCount: number(value.sectionCount) ? (value.sectionCount as number) : 0,
+      };
+    },
+  );
+}
+
+export interface PromptSectionsPayload {
+  readonly captureEnabled: boolean;
+  readonly instructionsHash: string | null;
+  readonly sections: ReadonlyArray<{
+    readonly kind: "instructions" | "message";
+    readonly index: number | null;
+    readonly role: string | null;
+    readonly itemType: string | null;
+    readonly chars: number;
+  }>;
+}
+
+export function fetchPromptSections(recordId: string): Promise<PromptSectionsPayload> {
+  return fetchJson(
+    inspectionPath("prompt-sections", { recordId }),
+  ) as Promise<PromptSectionsPayload>;
+}
+
 export { DEFAULT_INSPECTION_LIMIT };

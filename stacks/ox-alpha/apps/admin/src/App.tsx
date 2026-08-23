@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   BoatContextPage,
   BoatMessagesPage,
+  BoatPromptMixPage,
   BoatPromptPage,
+  BoatPromptsPage,
   BoatSessionsPage,
   BoatToolCallsPage,
   BoatToolsPage,
@@ -33,6 +35,7 @@ const NAV: ReadonlyArray<{
   { name: "boat-tools", href: "#/boat/tools", label: "Tool schemas" },
   { name: "boat-tool-calls", href: "#/boat/tool-calls", label: "Tool calls" },
   { name: "boat-sessions", href: "#/boat/sessions", label: "Sessions" },
+  { name: "boat-prompt-mix", href: "#/boat/prompt-mix", label: "Prompt mix" },
 ]);
 
 function boatSearch(search: URLSearchParams): {
@@ -78,6 +81,15 @@ export function DashboardShell() {
         <BoatMessagesPage recordId={boatSearch(route.search).recordId} />
       ) : route.name === "boat-prompt" ? (
         <BoatPromptPage recordId={boatSearch(route.search).recordId} />
+      ) : route.name === "boat-prompt-mix" ? (
+        <BoatPromptMixPage />
+      ) : route.name === "boat-prompts" ? (
+        <BoatPromptsPage
+          hash={(() => {
+            const hash = route.search.get("hash") ?? undefined;
+            return hash === "" ? undefined : hash;
+          })()}
+        />
       ) : route.name === "boat-tools" ? (
         <BoatToolsPage />
       ) : route.name === "boat-tool-calls" ? (

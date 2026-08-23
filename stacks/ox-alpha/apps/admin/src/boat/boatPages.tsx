@@ -9,8 +9,12 @@ import {
   fetchInspectionToolCalls,
   fetchInspectionTools,
   fetchPromptAnalysis,
+  fetchPromptListings,
+  fetchPromptMix,
+  fetchPromptSections,
   type InspectionPage,
   type MessageRecord,
+  type PromptListingRecord,
 } from "../api";
 import { formatTimestamp } from "../car/format";
 
@@ -283,6 +287,12 @@ export function BoatPromptPage({ recordId }: { readonly recordId?: string }) {
     enabled: recordId !== undefined,
     retry: false,
   });
+  const sections = useQuery({
+    queryKey: ["inspection-prompt-sections", recordId ?? ""],
+    queryFn: () => fetchPromptSections(recordId ?? ""),
+    enabled: recordId !== undefined,
+    retry: false,
+  });
   const capture = useCaptureEnabled();
   const titleId = useId();
   return (
@@ -316,6 +326,35 @@ export function BoatPromptPage({ recordId }: { readonly recordId?: string }) {
           <dt>Estimated input tokens (~4 chars/token)</dt>
           <dd>{analysis.data.estimatedInputTokens}</dd>
         </dl>
+      )}
+      {sections.data && sections.data.sections.length > 0 && (
+        <div className="card car-table-card" data-testid="boat-prompt-sections">
+          <table className="car-table">
+            <caption className="sr-only">Prompt sections by size</caption>
+            <thead>
+              <tr>
+                <th scope="col">Section</th>
+                <th scope="col">Role</th>
+                <th scope="col">Chars</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sections.data.sections.map((section) => (
+                <tr
+                  key={
+                    section.kind === "instructions" ? "instructions" : `message-${section.index}`
+                  }
+                >
+                  <td>
+                    {section.kind === "instructions" ? "instructions" : `input #${section.index}`}
+                  </td>
+                  <td>{section.role ?? "—"}</td>
+                  <td>{section.chars}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -444,6 +483,135 @@ export function BoatSessionsPage() {
                   <td>{group.captureCount}</td>
                   <td>{formatTimestamp(group.firstCapturedAt)}</td>
                   <td>{formatTimestamp(group.lastCapturedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </BoatListPage>
+  );
+}
+
+export function BoatPromptMixPage() {
+  const mix = useQuery({
+    queryKey: ["inspection-prompt-mix"],
+    queryFn: () => fetchPromptMix(),
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  const capture = useCaptureEnabled();
+  const titleId = useId();
+  const data = mix.data;
+  return (
+    <section className="car-page" aria-labelledby={titleId}>
+      <header className="pagehead">
+        <div className="pagehead-title">
+          <h1 id={titleId}>Prompt mix</h1>
+          <div className="muted">
+            {data ? `Prompt traffic on ${data.date}, decomposed into cohorts` : "Prompt traffic"}
+          </div>
+        </div>
+      </header>
+      {!capture.loading && capture.enabled === false && (
+        <output className="card notice" data-testid="boat-prompt-mix-no-capture">
+          {BOAT_OFF_TEXT}
+        </output>
+      )}
+      {mix.isError && (
+        <div className="card notice notice--error" role="alert" data-testid="boat-prompt-mix-error">
+          The prompt mix could not be read. The page will retry automatically.
+        </div>
+      )}
+      {mix.isLoading && (
+        <p className="card muted" aria-live="polite" data-testid="boat-prompt-mix-loading">
+          Loading…
+        </p>
+      )}
+      {data && data.cohorts.length > 0 && (
+        <div className="card car-table-card" data-testid="boat-prompt-mix">
+          <table className="car-table">
+            <thead>
+              <tr>
+                <th scope="col">Cohort</th>
+                <th scope="col">Requests</th>
+                <th scope="col">Share</th>
+                <th scope="col">Mean chars</th>
+                <th scope="col">Models</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.cohorts.map((cohort) => (
+                <tr key={cohort.key}>
+                  <td className="car-cell-mono">
+                    {cohort.identified && cohort.hash ? (
+                      <a href={`#/boat/prompts?hash=${encodeURIComponent(cohort.hash)}`}>
+                        {cohort.label}
+                      </a>
+                    ) : (
+                      cohort.label
+                    )}
+                  </td>
+                  <td>{cohort.requests}</td>
+                  <td>{Math.round(cohort.share * 100)}%</td>
+                  <td>{Math.round(cohort.meanChars)}</td>
+                  <td>{cohort.models.join(", ") || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {data && data.cohorts.length === 0 && !capture.loading && capture.enabled !== false && (
+        <div className="card empty car-empty" data-testid="boat-prompt-mix-empty">
+          <strong>No prompt traffic.</strong>
+          <span>No captures exist for the latest report day.</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export function BoatPromptsPage({ hash }: { readonly hash?: string }) {
+  const query = useQuery({
+    queryKey: ["inspection-prompts", hash ?? null],
+    queryFn: () => fetchPromptListings(undefined, hash),
+    placeholderData: keepPreviousData,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  return (
+    <BoatListPage
+      title={hash ? `Prompts · ${hash.slice(0, 12)}` : "Prompts"}
+      subtitle="Captured requests grouped by their instructions hash"
+      testIdPrefix="boat-prompts"
+      query={query}
+      emptyText="No captured prompts match this view yet."
+    >
+      {(records: readonly PromptListingRecord[]) => (
+        <div className="card car-table-card">
+          <table className="car-table" data-testid="boat-prompts-table">
+            <thead>
+              <tr>
+                <th scope="col">Captured</th>
+                <th scope="col">Record</th>
+                <th scope="col">Model</th>
+                <th scope="col">Instructions hash</th>
+                <th scope="col">Sections</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((entry) => (
+                <tr key={entry.recordId}>
+                  <td>{formatTimestamp(entry.capturedAt)}</td>
+                  <td className="car-cell-mono">
+                    <a href={`#/boat/prompt?recordId=${encodeURIComponent(entry.recordId)}`}>
+                      {entry.recordId}
+                    </a>
+                  </td>
+                  <td>{entry.model ?? "—"}</td>
+                  <td className="car-cell-mono">{entry.instructionsHash ?? "—"}</td>
+                  <td>{entry.sectionCount}</td>
                 </tr>
               ))}
             </tbody>

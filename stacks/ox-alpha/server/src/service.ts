@@ -17,6 +17,9 @@ import { SidecarIngestor } from "./ingest.ts";
 import {
   assembleDay,
   collectMessages,
+  collectPromptListings,
+  collectPromptMix,
+  collectPromptSections,
   collectSessions,
   collectToolCalls,
   collectToolSchemas,
@@ -412,6 +415,49 @@ export class LiveUsageService {
             return;
           }
           json(response, 200, { captureEnabled: true, ...collectMessages(envelope).analysis });
+          return;
+        }
+        case "/api/inspection/prompt-mix": {
+          const rawDate = calendarParameter(searchParams, "date");
+          const date =
+            rawDate ?? formatReportDate(this.clock().getTime(), this.config.reportTimezone);
+          await this.envelopes();
+          json(response, 200, {
+            captureEnabled: enabled,
+            ...collectPromptMix(date, this.captureMemo?.value.envelopes ?? []),
+          });
+          return;
+        }
+        case "/api/inspection/prompts": {
+          const rawDate = calendarParameter(searchParams, "date");
+          const date =
+            rawDate ?? formatReportDate(this.clock().getTime(), this.config.reportTimezone);
+          await this.envelopes();
+          let listings = collectPromptListings(date, this.captureMemo?.value.envelopes ?? []);
+          const hash = searchParams.get("hash");
+          if (hash !== null) listings = listings.filter((entry) => entry.instructionsHash === hash);
+          const { limit, offset } = pagination(searchParams);
+          this.inspectionPage(response, enabled, listings, limit, offset);
+          return;
+        }
+        case "/api/inspection/prompt-sections": {
+          const recordId = this.requireRecordId(searchParams);
+          await this.envelopes();
+          const envelope = this.findEnvelope(recordId);
+          if (envelope === null) {
+            if (!enabled) {
+              json(response, 200, {
+                captureEnabled: false,
+                instructionsHash: null,
+                sections: [],
+              });
+              return;
+            }
+            json(response, 404, { error: "not_found" });
+            return;
+          }
+          const { instructionsHash, sections } = collectPromptSections(envelope);
+          json(response, 200, { captureEnabled: true, instructionsHash, sections });
           return;
         }
         case "/api/inspection/tools":

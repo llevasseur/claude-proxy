@@ -12,6 +12,8 @@ export type RouteName =
   | "boat"
   | "boat-messages"
   | "boat-prompt"
+  | "boat-prompt-mix"
+  | "boat-prompts"
   | "boat-tools"
   | "boat-tool-calls"
   | "boat-sessions";
@@ -24,6 +26,8 @@ export interface RouteState {
 const BOAT_PATHS: ReadonlyArray<readonly [string, RouteName]> = Object.freeze([
   ["/boat/messages", "boat-messages"],
   ["/boat/prompt", "boat-prompt"],
+  ["/boat/prompt-mix", "boat-prompt-mix"],
+  ["/boat/prompts", "boat-prompts"],
   ["/boat/tools", "boat-tools"],
   ["/boat/tool-calls", "boat-tool-calls"],
   ["/boat/sessions", "boat-sessions"],

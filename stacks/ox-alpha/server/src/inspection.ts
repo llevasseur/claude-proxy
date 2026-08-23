@@ -1,10 +1,15 @@
 import {
   analyzePrompt,
+  buildPromptMix,
   type CaptureEnvelopeV1,
   type InspectionMessage,
   inspectCaptureRequest,
   inspectCaptureResponse,
   type PromptAnalysis,
+  type PromptMixDay,
+  type PromptSection,
+  promptHash,
+  promptSections,
   type ToolSchemaSummary,
 } from "@ox-alpha-proxy/core";
 
@@ -193,5 +198,74 @@ export function collectMessages(envelope: CaptureEnvelopeV1): Readonly<{
     request: asEntries(request.messages),
     response: asEntries(response.outputMessages),
     analysis: analyzePrompt(request),
+  });
+}
+
+export interface PromptListingEntry {
+  readonly recordId: string;
+  readonly capturedAt: string;
+  readonly model: string | null;
+  /** Instructions hash, or null when the request carried none. */
+  readonly instructionsHash: string | null;
+  readonly sectionCount: number;
+}
+
+/** Per-day prompt listing with stable instruction hashes for drill-down. */
+export function collectPromptListings(
+  date: string,
+  envelopes: readonly CaptureEnvelopeV1[],
+): readonly PromptListingEntry[] {
+  return Object.freeze(
+    envelopes
+      .filter((envelope) => envelope.capturedAt.startsWith(date))
+      .map((envelope) => {
+        const request = inspectCaptureRequest(envelope.requestText);
+        const hash =
+          request.instructions !== null && request.instructions.length > 0
+            ? promptHash(request.instructions)
+            : null;
+        return Object.freeze({
+          recordId: envelope.recordId,
+          capturedAt: envelope.capturedAt,
+          model: request.model,
+          instructionsHash: hash,
+          sectionCount: promptSections(request).length,
+        });
+      }),
+  );
+}
+
+/** The day's prompt mix over the same inputs the listing uses. */
+export function collectPromptMix(
+  date: string,
+  envelopes: readonly CaptureEnvelopeV1[],
+): PromptMixDay {
+  return buildPromptMix(
+    date,
+    envelopes
+      .filter((envelope) => envelope.capturedAt.startsWith(date))
+      .map((envelope) => {
+        const request = inspectCaptureRequest(envelope.requestText);
+        return {
+          model: request.model,
+          instructions: request.instructions,
+          promptChars:
+            (request.instructions?.length ?? 0) +
+            request.messages.reduce((total, message) => total + message.text.length, 0),
+        };
+      }),
+  );
+}
+
+export function collectPromptSections(
+  envelope: CaptureEnvelopeV1,
+): Readonly<{ instructionsHash: string | null; sections: readonly PromptSection[] }> {
+  const request = inspectCaptureRequest(envelope.requestText);
+  return Object.freeze({
+    instructionsHash:
+      request.instructions !== null && request.instructions.length > 0
+        ? promptHash(request.instructions)
+        : null,
+    sections: promptSections(request),
   });
 }
