@@ -18,6 +18,8 @@ importers:
         specifier: 1.78.0
         version: 1.78.0
 
+  packages/shared: {}
+
   services/concepts:
     dependencies:
       '@agent-proxy/claude-core':
