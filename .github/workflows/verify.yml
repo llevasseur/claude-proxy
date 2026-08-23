@@ -1,0 +1,47 @@
+name: Verify
+
+# The gates `pnpm verify` chains locally, in the same order.
+on:
+  push:
+    # `main` is codex's trigger; `the-great-merge` and `wayfinder/monorepo-fusion`
+    # are added so campaign commits are gated too.
+    branches: [main, the-great-merge, wayfinder/monorepo-fusion]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    # This workflow's first run hung in `pnpm test`, a gate that takes 27 seconds
+    # locally. Without a timeout a hang reports as `pending` for GitHub's 6-hour
+    # default, which is indistinguishable from a queue backlog and defeats the
+    # one-step-per-gate design below — a gate that never finishes never names itself.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+        timeout-minutes: 10
+
+      # One step per gate, so a failure names the gate in the checks list.
+      - run: pnpm typecheck
+        timeout-minutes: 10
+      - run: pnpm test
+        timeout-minutes: 10
+      - run: pnpm build
+        timeout-minutes: 10
+      - run: pnpm check
+        timeout-minutes: 5
+      - run: pnpm anti:slop
+        timeout-minutes: 5

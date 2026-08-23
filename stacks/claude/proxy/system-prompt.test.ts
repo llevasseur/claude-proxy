@@ -160,6 +160,14 @@ test('a record already on disk is not rewritten by a later process', () => {
 });
 
 test('storing never throws when the log directory is unwritable', () => {
-  assert.equal(recordPrompt('/proc/nonexistent-root', identifyPrompt([block('# A\nx')])), false);
+  // A regular file where the log directory should be: `mkdir` rejects it with
+  // ENOTDIR at once, on every platform. Do not swap this for `/proc/nonexistent-root`
+  // — on Linux, recursive `mkdir` under procfs never returns, spinning the test
+  // child forever until CI's 10-minute cap (macOS has no `/proc`, so it looked fine
+  // locally).
+  const notADirectory = path.join(tmpdir(), 'occupied-by-a-file');
+  fs.writeFileSync(notADirectory, 'x');
+
+  assert.equal(recordPrompt(notADirectory, identifyPrompt([block('# A\nx')])), false);
   assert.equal(recordPrompt('/tmp', null), false);
 });

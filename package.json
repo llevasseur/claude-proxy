@@ -20,6 +20,7 @@
     "format": "biome check --write .",
     "check": "biome check . && node scripts/check-package-filters.mjs",
     "check:names": "node scripts/check-package-filters.mjs",
+    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm check && pnpm anti:slop",
     "proxy": "pnpm --filter @agent-proxy/claude-proxy start",
     "server": "pnpm --filter @agent-proxy/claude-server dev",
     "admin": "pnpm --filter @agent-proxy/claude-admin dev",
