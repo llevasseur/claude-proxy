@@ -55,6 +55,11 @@ test("capture off keeps forwarding byte-identical and never writes body bytes to
     assert.equal(proxied.headers.get("content-type"), direct.headers.get("content-type"));
     assert.equal(await proxied.text(), directText, "forwarded bytes must be identical");
 
+    // Observation still runs with capture off; wait for its sidecar so every
+    // asynchronous proxy write has settled before scanning and cleaning up.
+    const sidecarFiles = await waitForFiles(proxy.auditDirectory, 1);
+    assert.equal(sidecarFiles.length, 1);
+
     // No capture file anywhere under the proxy's scratch base, and no disk
     // file at all contains the secret bodies.
     const files = await listFilesRecursively(proxy.baseDirectory);
