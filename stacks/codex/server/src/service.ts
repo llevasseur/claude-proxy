@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { ResolvedCalendarRange } from '@codex-proxy/core';
-import { aggregateDailyBuckets, aggregateRangeFromBuckets, resolveCalendarRange } from '@codex-proxy/core';
+import type { ResolvedCalendarRange } from '@agent-proxy/codex-core';
+import { aggregateDailyBuckets, aggregateRangeFromBuckets, resolveCalendarRange } from '@agent-proxy/codex-core';
 import type { ServerConfig } from './config.ts';
 import { UsageDatabase } from './database.ts';
 import { EventHub } from './events.ts';

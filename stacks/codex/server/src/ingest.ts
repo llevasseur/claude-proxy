@@ -1,7 +1,7 @@
 import type { FSWatcher } from 'node:fs';
 import { watch } from 'node:fs';
 import { mkdir, readdir, readFile } from 'node:fs/promises';
-import { parseSanitizedAuditSidecar } from '@codex-proxy/core';
+import { parseSanitizedAuditSidecar } from '@agent-proxy/codex-core';
 import type { UsageDatabase } from './database.ts';
 
 export interface ReconcileResult {
@@ -30,7 +30,9 @@ export class SidecarIngestor {
     private readonly directory: string,
     private readonly database: UsageDatabase,
     private readonly clock: () => Date = () => new Date(),
-    private readonly onReconciled: (result: ReconcileResult) => void | Promise<void> = () => {},
+    private readonly onReconciled: (result: ReconcileResult) => void | Promise<void> = () => {
+      /* no observer */
+    },
   ) {}
 
   async reconcile(): Promise<ReconcileResult> {

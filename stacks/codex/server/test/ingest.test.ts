@@ -72,8 +72,12 @@ describe('sidecar ingestion', () => {
 
   test('waits for asynchronous reconciliation work before closing', async () => {
     const { directory, database } = await setup();
-    let releaseCallback: () => void = () => {};
-    let signalCallbackStarted: () => void = () => {};
+    let releaseCallback: () => void = () => {
+      /* reassigned by the executor below */
+    };
+    let signalCallbackStarted: () => void = () => {
+      /* reassigned by the executor below */
+    };
     const callbackStarted = new Promise<void>((resolve) => {
       signalCallbackStarted = resolve;
     });

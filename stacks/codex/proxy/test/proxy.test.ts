@@ -23,7 +23,14 @@ const testDirectory = dirname(fileURLToPath(import.meta.url));
 const proxyDirectory = dirname(testDirectory);
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];
-const silentLogger: ProxyLogger = { info() {}, error() {} };
+const silentLogger: ProxyLogger = {
+  info() {
+    /* silent */
+  },
+  error() {
+    /* silent */
+  },
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -416,7 +423,9 @@ test('records usage when the client hangs up before the upstream stream ends', a
     path: '/backend-api/codex/responses',
     headers: { 'content-type': 'application/json', 'content-length': String(body.length) },
   });
-  client.on('error', () => {});
+  client.on('error', () => {
+    /* this test destroys the socket deliberately */
+  });
   client.on('response', (incoming) => {
     incoming.on('data', (chunk: Buffer) => {
       if (chunk.toString().includes('response.completed')) client.destroy();
@@ -523,7 +532,9 @@ test('propagates a client upload disconnect to the upstream request', async () =
     path: '/v1/responses',
     headers: { 'content-type': 'application/json', 'content-length': '1000000' },
   });
-  client.on('error', () => {});
+  client.on('error', () => {
+    /* this test destroys the socket deliberately */
+  });
   client.write('{"model":"gpt-5","input":"partial');
   await upstreamReceivedData;
   client.destroy();

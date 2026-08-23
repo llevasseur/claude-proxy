@@ -44,22 +44,22 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
   const rangeTotal = result.data?.total;
 
   return (
-    <section className="car-page" aria-labelledby="trends-title">
-      <header className="pagehead">
-        <div className="pagehead-title">
-          <h1 id="trends-title">Trends</h1>
-          <div className="muted">
+    <section className='car-page' aria-labelledby='trends-title'>
+      <header className='pagehead'>
+        <div className='pagehead-title'>
+          <h1 id='trends-title'>Trends</h1>
+          <div className='muted'>
             Daily total usage{result.data?.reportTimezone ? ` · ${result.data.reportTimezone}` : ''}
           </div>
         </div>
-        <div className="muted" role="status" aria-live="polite">
+        <div className='muted' role='status' aria-live='polite'>
           {streamStatusText(signal.stream, result.data !== undefined)}
           {result.data !== undefined && ` · data v${result.data.dataVersion}`}
         </div>
       </header>
 
       {result.isError && result.data === undefined && (
-        <div className="card notice notice--error" role="alert">
+        <div className='card notice notice--error' role='alert'>
           The local API could not be reached. The page will retry automatically.
         </div>
       )}
@@ -67,7 +67,7 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
       <FilterBar filters={filters} modelOptions={modelOptions} onChange={(next) => onSearchChange(next)} />
 
       {buckets !== undefined && buckets.length === 0 ? (
-        <div className="card empty car-empty">
+        <div className='card empty car-empty'>
           <strong>No matching days.</strong>
           <span>
             No recorded usage falls inside this range and model filter. Adjust the filters to see results — unmatched
@@ -76,16 +76,16 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
         </div>
       ) : (
         <>
-          <div className="card car-table-card" aria-busy={result.isLoading}>
-            <table className="car-table">
-              <caption className="sr-only">Daily total usage trend</caption>
+          <div className='card car-table-card' aria-busy={result.isLoading}>
+            <table className='car-table'>
+              <caption className='sr-only'>Daily total usage trend</caption>
               <thead>
                 <tr>
-                  <th scope="col">Day</th>
-                  <th scope="col">Requests</th>
-                  <th scope="col">Total tokens</th>
-                  <th scope="col">Latest request</th>
-                  <th scope="col">Cost</th>
+                  <th scope='col'>Day</th>
+                  <th scope='col'>Requests</th>
+                  <th scope='col'>Total tokens</th>
+                  <th scope='col'>Latest request</th>
+                  <th scope='col'>Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -96,8 +96,8 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
                       <td>{formatDay(bucket.startInclusive, result.data?.reportTimezone)}</td>
                       <td>{formatTokens(bucket.requestCount)}</td>
                       <td>
-                        <span className="car-token-total">{formatTokens(bucket.totalTokens)}</span>
-                        <span className="car-token-detail muted">{tokensDetail(bucket)}</span>
+                        <span className='car-token-total'>{formatTokens(bucket.totalTokens)}</span>
+                        <span className='car-token-detail muted'>{tokensDetail(bucket)}</span>
                       </td>
                       <td>{bucket.latestEventTimestamp ? formatTimestamp(bucket.latestEventTimestamp) : '—'}</td>
                       <td>
@@ -107,12 +107,11 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
                             cost.unavailable && bucket.costUnavailableReason
                               ? unavailableReasonText(bucket.costUnavailableReason)
                               : undefined
-                          }
-                        >
+                          }>
                           {cost.text}
                         </span>
                         {cost.unavailable && bucket.costUnavailableReason && (
-                          <span className="car-token-detail muted">
+                          <span className='car-token-detail muted'>
                             {unavailableReasonText(bucket.costUnavailableReason)}
                           </span>
                         )}
@@ -127,11 +126,11 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
                   return (
                     <tfoot>
                       <tr>
-                        <th scope="row">Range total</th>
+                        <th scope='row'>Range total</th>
                         <td>{formatTokens(rangeTotal.requestCount)}</td>
                         <td>
-                          <span className="car-token-total">{formatTokens(rangeTotal.totalTokens)}</span>
-                          <span className="car-token-detail muted">{tokensDetailTotal(rangeTotal)}</span>
+                          <span className='car-token-total'>{formatTokens(rangeTotal.totalTokens)}</span>
+                          <span className='car-token-detail muted'>{tokensDetailTotal(rangeTotal)}</span>
                         </td>
                         <td>—</td>
                         <td>
@@ -141,12 +140,11 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
                               totalCost.unavailable && rangeTotal.costUnavailableReason
                                 ? unavailableReasonText(rangeTotal.costUnavailableReason)
                                 : undefined
-                            }
-                          >
+                            }>
                             {totalCost.text}
                           </span>
                           {totalCost.unavailable && rangeTotal.costUnavailableReason && (
-                            <span className="car-token-detail muted">
+                            <span className='car-token-detail muted'>
                               {unavailableReasonText(rangeTotal.costUnavailableReason)}
                             </span>
                           )}
@@ -157,7 +155,7 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
                 })()}
             </table>
           </div>
-          <p className="muted car-trends-note">
+          <p className='muted car-trends-note'>
             Days with any unpriced request report their token counts with an explicit unavailable state instead of an
             amount; fully-priced days show computed amounts.
           </p>

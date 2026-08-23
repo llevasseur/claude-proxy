@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SanitizedAuditSidecarV1 } from '@codex-proxy/core';
+import type { SanitizedAuditSidecarV1 } from '@agent-proxy/codex-core';
 import type { ServerConfig } from '../src/config.ts';
 
 export async function temporaryDirectory(): Promise<Readonly<{ path: string; cleanup: () => Promise<void> }>> {

@@ -41,7 +41,11 @@ export class ProxyStatusWriter {
       listen: Object.freeze({ host: this.#host, port: this.#port }),
       upstreamErrorCount: this.#upstreamErrorCount,
     });
-    this.#queue = this.#queue.catch(() => {}).then(() => this.#write(value));
+    this.#queue = this.#queue
+      .catch(() => {
+        /* a failed write must not poison the next one */
+      })
+      .then(() => this.#write(value));
     return this.#queue;
   }
 

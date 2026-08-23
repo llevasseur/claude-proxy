@@ -13,7 +13,7 @@
       "!.claude/worktrees",
       "!**/pnpm-lock.yaml",
       "!**/logs",
-      "!tools/oxlint/anti-slop",
+      "!**/tools/oxlint/anti-slop",
       "!**/coverage/*",
       "!**/build/*",
       "!**/dist/*",
@@ -170,7 +170,7 @@
       }
     },
     {
-      "includes": ["stacks/claude/core/src/index.ts"],
+      "includes": ["stacks/claude/core/src/index.ts", "stacks/codex/packages/core/src/index.ts"],
       "linter": {
         "rules": {
           "performance": {

@@ -64,13 +64,13 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
   };
 
   return (
-    <section className="car-page" aria-labelledby="history-title">
-      <header className="pagehead">
-        <div className="pagehead-title">
-          <h1 id="history-title">History</h1>
-          <div className="muted">Per-request records · newest first</div>
+    <section className='car-page' aria-labelledby='history-title'>
+      <header className='pagehead'>
+        <div className='pagehead-title'>
+          <h1 id='history-title'>History</h1>
+          <div className='muted'>Per-request records · newest first</div>
         </div>
-        <div className="muted" role="status" aria-live="polite">
+        <div className='muted' role='status' aria-live='polite'>
           {streamStatusText(signal.stream, result.data !== undefined)}
           {result.data !== undefined && ` · data v${result.data.dataVersion}`}
           {totalRecords !== undefined && ` · ${formatTokens(totalRecords)} records`}
@@ -78,7 +78,7 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
       </header>
 
       {result.isError && result.data === undefined && (
-        <div className="card notice notice--error" role="alert">
+        <div className='card notice notice--error' role='alert'>
           The local API could not be reached. The page will retry automatically.
         </div>
       )}
@@ -86,7 +86,7 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
       <FilterBar filters={filters} modelOptions={modelOptions} onChange={applyFilters} />
 
       {records !== undefined && records.length === 0 ? (
-        <div className="card empty car-empty">
+        <div className='card empty car-empty'>
           <strong>No matching requests.</strong>
           <span>
             No recorded requests match this range and model filter. Adjust the filters to see results — unmatched values
@@ -94,17 +94,17 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
           </span>
         </div>
       ) : (
-        <div className="card car-table-card" aria-busy={result.isLoading}>
-          <table className="car-table">
-            <caption className="sr-only">Durable request history</caption>
+        <div className='card car-table-card' aria-busy={result.isLoading}>
+          <table className='car-table'>
+            <caption className='sr-only'>Durable request history</caption>
             <thead>
               <tr>
-                <th scope="col">Timestamp</th>
-                <th scope="col">Model</th>
-                <th scope="col">Endpoint</th>
-                <th scope="col">Status</th>
-                <th scope="col">Tokens</th>
-                <th scope="col">Cost</th>
+                <th scope='col'>Timestamp</th>
+                <th scope='col'>Model</th>
+                <th scope='col'>Endpoint</th>
+                <th scope='col'>Status</th>
+                <th scope='col'>Tokens</th>
+                <th scope='col'>Cost</th>
               </tr>
             </thead>
             <tbody>
@@ -113,18 +113,17 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
                 return (
                   <tr key={record.recordId}>
                     <td>{formatTimestamp(record.timestamp)}</td>
-                    <td className="car-cell-mono">{record.model}</td>
-                    <td className="car-cell-mono">{record.endpoint}</td>
+                    <td className='car-cell-mono'>{record.model}</td>
+                    <td className='car-cell-mono'>{record.endpoint}</td>
                     <td>
                       <span
-                        className={`badge ${record.responseStatus >= 200 && record.responseStatus < 400 ? 'status-done' : 'sev-warn'}`}
-                      >
+                        className={`badge ${record.responseStatus >= 200 && record.responseStatus < 400 ? 'status-done' : 'sev-warn'}`}>
                         {record.responseStatus}
                       </span>
                     </td>
                     <td>
-                      <span className="car-token-total">{formatTokens(record.totalTokens)}</span>
-                      <span className="car-token-detail muted">{tokensDetail(record)}</span>
+                      <span className='car-token-total'>{formatTokens(record.totalTokens)}</span>
+                      <span className='car-token-detail muted'>{tokensDetail(record)}</span>
                     </td>
                     <td>
                       <span
@@ -133,12 +132,11 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
                           cost.unavailable && record.costUnavailableReason
                             ? unavailableReasonText(record.costUnavailableReason)
                             : undefined
-                        }
-                      >
+                        }>
                         {cost.text}
                       </span>
                       {cost.unavailable && record.costUnavailableReason && (
-                        <span className="car-token-detail muted">
+                        <span className='car-token-detail muted'>
                           {unavailableReasonText(record.costUnavailableReason)}
                         </span>
                       )}
@@ -149,11 +147,11 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
             </tbody>
           </table>
 
-          <nav className="car-pagination" aria-label="History pages">
-            <button type="button" onClick={() => changePage(page - 1)} disabled={page <= 1 || result.isFetching}>
+          <nav className='car-pagination' aria-label='History pages'>
+            <button type='button' onClick={() => changePage(page - 1)} disabled={page <= 1 || result.isFetching}>
               Previous
             </button>
-            <span className="muted">
+            <span className='muted'>
               Page {page}
               {totalPages !== undefined && ` of ${formatTokens(totalPages)}`}
               {totalRecords !== undefined &&
@@ -161,18 +159,16 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
                 ` · showing ${offset + 1}–${Math.min(offset + pageSize, totalRecords)} of ${formatTokens(totalRecords)}`}
             </span>
             <button
-              type="button"
+              type='button'
               onClick={() => changePage(page + 1)}
-              disabled={(totalPages !== undefined && page >= totalPages) || result.isFetching}
-            >
+              disabled={(totalPages !== undefined && page >= totalPages) || result.isFetching}>
               Next
             </button>
-            <label className="car-page-size">
+            <label className='car-page-size'>
               <span>Per page</span>
               <select
                 value={pageSize}
-                onChange={(event) => onSearchChange({ page: undefined, pageSize: Number(event.target.value) })}
-              >
+                onChange={(event) => onSearchChange({ page: undefined, pageSize: Number(event.target.value) })}>
                 {HISTORY_PAGE_SIZES.map((size) => (
                   <option key={size} value={size}>
                     {size}

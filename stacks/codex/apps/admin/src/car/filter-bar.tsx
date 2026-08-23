@@ -46,27 +46,27 @@ export function FilterBar({ filters, modelOptions, onChange }: FilterBarProps) {
   };
 
   return (
-    <section className="card car-filters" aria-label="Range and model filters">
-      <label className="car-filter-field">
-        <span className="car-filter-label">From</span>
-        <input type="date" value={from ?? ''} onChange={(event) => apply({ from: event.target.value || null })} />
+    <section className='card car-filters' aria-label='Range and model filters'>
+      <label className='car-filter-field'>
+        <span className='car-filter-label'>From</span>
+        <input type='date' value={from ?? ''} onChange={(event) => apply({ from: event.target.value || null })} />
       </label>
-      <label className="car-filter-field">
-        <span className="car-filter-label">To</span>
-        <input type="date" value={to ?? ''} onChange={(event) => apply({ to: event.target.value || null })} />
+      <label className='car-filter-field'>
+        <span className='car-filter-label'>To</span>
+        <input type='date' value={to ?? ''} onChange={(event) => apply({ to: event.target.value || null })} />
       </label>
 
-      <details className="car-multiselect">
+      <details className='car-multiselect'>
         <summary>{models.length > 0 ? `Models (${models.length})` : 'All models'}</summary>
-        <div className="car-multiselect-list">
+        <div className='car-multiselect-list'>
           {options.length === 0 && (
-            <p className="muted car-multiselect-empty">
+            <p className='muted car-multiselect-empty'>
               No models observed yet. They appear here as requests are recorded.
             </p>
           )}
           {options.map((model) => (
-            <label key={model} className="car-multiselect-option">
-              <input type="checkbox" checked={models.includes(model)} onChange={() => toggleModel(model)} />
+            <label key={model} className='car-multiselect-option'>
+              <input type='checkbox' checked={models.includes(model)} onChange={() => toggleModel(model)} />
               <span>{model}</span>
             </label>
           ))}
@@ -74,7 +74,7 @@ export function FilterBar({ filters, modelOptions, onChange }: FilterBarProps) {
       </details>
 
       {hasFilters && (
-        <button type="button" className="car-filters-clear" onClick={() => onChange({})}>
+        <button type='button' className='car-filters-clear' onClick={() => onChange({})}>
           Clear filters
         </button>
       )}
