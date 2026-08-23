@@ -12,7 +12,7 @@ has no runtime dependencies.
 | `PROXY_HOST` | `127.0.0.1` | Local listen address. |
 | `PROXY_PORT` | `8787` | Local listen port. Use `0` to select a free port. |
 | `AUDIT_DIR` | `logs/audit` | Directory for immutable `*.audit.json` sidecars. |
-| `PROXY_STATUS_FILE` | `<AUDIT_DIR>/proxy-status.json` | Body-free process status signal. |
+| `PROXY_STATUS_FILE` | `logs/proxy-status.json` | Body-free process status signal. |
 
 Run it from the repository root:
 

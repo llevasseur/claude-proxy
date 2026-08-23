@@ -35,6 +35,6 @@ export function loadProxyConfig(environment: NodeJS.ProcessEnv = process.env): P
     port: port(environment.PROXY_PORT),
     upstream: upstream(environment.OPENAI_UPSTREAM),
     auditDirectory,
-    statusFile: resolve(REPOSITORY_ROOT, environment.PROXY_STATUS_FILE ?? `${auditDirectory}/proxy-status.json`),
+    statusFile: resolve(REPOSITORY_ROOT, environment.PROXY_STATUS_FILE ?? 'logs/proxy-status.json'),
   });
 }

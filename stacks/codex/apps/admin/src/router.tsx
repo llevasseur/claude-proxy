@@ -28,7 +28,16 @@ function stringifyRepeatedSearch(search: Record<string, unknown>): string {
   return query ? `?${query}` : '';
 }
 
-const rootRoute = createRootRoute({ component: AppShell });
+const rootRoute = createRootRoute({
+  component: function RootView() {
+    return (
+      <>
+        <TitleSync />
+        <AppShell />
+      </>
+    );
+  },
+});
 
 const overviewRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -93,10 +102,4 @@ export const router = createRouter({
   context: undefined,
   defaultPreload: 'intent',
   stringifySearch: stringifyRepeatedSearch,
-  Wrap: ({ children }) => (
-    <>
-      <TitleSync />
-      {children}
-    </>
-  ),
 });

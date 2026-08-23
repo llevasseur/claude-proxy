@@ -9,3 +9,5 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+# Git's storage for /task worktrees, not project configuration.
+.claude/
