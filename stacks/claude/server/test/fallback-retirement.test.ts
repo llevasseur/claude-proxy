@@ -18,7 +18,9 @@ import { resolveLogDir } from '../src/logs.js';
  * `logs/archive` reads the corpus and takes minutes.
  */
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+// Two levels up from `test/` is the stack root, `stacks/claude/` — not the repository
+// root, which is two levels above that. `FallbackEntry.file` is relative to this.
+const STACK_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
  * The entries carrying no `since`. Adding one to the registry without adding it here
@@ -46,7 +48,7 @@ describe('the fallback registry describes real code', () => {
     }
 
     for (const [file, entries] of byFile) {
-      const lines = (await readFile(path.join(REPO_ROOT, file), 'utf8')).split('\n');
+      const lines = (await readFile(path.join(STACK_ROOT, file), 'utf8')).split('\n');
       for (const entry of entries) {
         const line = lines[entry.line - 1];
         if (line === undefined || !line.includes(entry.match)) {

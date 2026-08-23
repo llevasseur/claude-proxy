@@ -32,7 +32,12 @@
 export interface FallbackEntry {
   /** Stable id, kebab-case. Referenced by the docs page that used to ask about it. */
   id: string;
-  /** Repo-relative path of the file holding the branch. */
+  /**
+   * Path of the file holding the branch, relative to the **stack root** — the parent
+   * of these packages, `stacks/claude/`. Not the repository root: the stack does not
+   * know where in the monorepo it sits, and hard-coding that here would be a second
+   * place to update the next time it moves.
+   */
   file: string;
   /** 1-based line the branch sits on. */
   line: number;
@@ -57,7 +62,7 @@ export interface FallbackEntry {
 export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   {
     id: 'digest-legacy-cache-hit-ratio',
-    file: 'packages/core/src/digest.ts',
+    file: 'core/src/digest.ts',
     line: 513,
     match: 'cacheHitRatio:',
     since: null,
@@ -70,7 +75,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   },
   {
     id: 'session-turn-marker-absent',
-    file: 'packages/core/src/sessions.ts',
+    file: 'core/src/sessions.ts',
     line: 303,
     match: 'const TOOL_RE',
     since: '2026-08-06',
@@ -82,7 +87,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   },
   {
     id: 'session-subtitle-absent',
-    file: 'packages/core/src/sessions.ts',
+    file: 'core/src/sessions.ts',
     line: 440,
     match: 'meta.subtitle ?? meta.firstTask',
     since: '2026-07-24',
@@ -93,7 +98,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   },
   {
     id: 'agent-spawn-tool-allow-list',
-    file: 'packages/core/src/sessions.ts',
+    file: 'core/src/sessions.ts',
     line: 714,
     match: "SPAWN_TOOLS = new Set(['Agent', 'Task'])",
     since: '2026-08-07',
@@ -105,7 +110,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   },
   {
     id: 'agent-link-start-time-inference',
-    file: 'packages/core/src/sessions.ts',
+    file: 'core/src/sessions.ts',
     line: 895,
     match: 'for (const family of families.values())',
     since: '2026-08-07',
@@ -119,7 +124,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   },
   {
     id: 'suggestions-args-hash-key',
-    file: 'packages/core/src/suggestions.ts',
+    file: 'core/src/suggestions.ts',
     line: 696,
     match: 'node.argsHash ?? node.tool',
     since: '2026-08-07',
@@ -133,7 +138,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   },
   {
     id: 'skim-block-absent',
-    file: 'packages/core/src/skim.ts',
+    file: 'core/src/skim.ts',
     line: 50,
     match: 'function skimOf',
     since: '2026-07-18',
@@ -144,7 +149,7 @@ export const FALLBACK_REGISTRY: readonly FallbackEntry[] = [
   },
   {
     id: 'audit-sidecar-session-block-optional',
-    file: 'packages/core/src/types.ts',
+    file: 'core/src/types.ts',
     line: 143,
     match: 'export function isAuditSidecar',
     since: '2026-08-07',

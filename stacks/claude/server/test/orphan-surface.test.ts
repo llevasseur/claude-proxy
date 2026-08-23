@@ -25,10 +25,12 @@ import { describe, expect, it } from 'vitest';
  * re-checked below.
  */
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+// Two levels up from `test/` is the stack root, `stacks/claude/` — not the repository
+// root, which is two levels above that. The three paths below are relative to it.
+const STACK_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SERVER_API = 'server/src/api.ts';
 const SERVER_DISPATCH = 'server/src/server.ts';
-const ADMIN_API = 'apps/admin/src/api.ts';
+const ADMIN_API = 'admin/src/api.ts';
 
 /** An export that reaches no route on purpose. Nothing is skipped without an entry here. */
 interface UnroutedExport {
@@ -86,7 +88,7 @@ const UNROUTED_BY_DESIGN: readonly UnroutedExport[] = [
   },
 ];
 
-const read = (file: string) => readFile(path.join(REPO_ROOT, file), 'utf8');
+const read = (file: string) => readFile(path.join(STACK_ROOT, file), 'utf8');
 
 /** Names of the exempted exports declared for one file. */
 const exemptedIn = (file: string) => new Set(UNROUTED_BY_DESIGN.filter((e) => e.file === file).map((e) => e.name));
