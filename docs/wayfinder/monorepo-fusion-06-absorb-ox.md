@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-06-absorb-ox`
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## Goal
 

@@ -9,7 +9,7 @@ the campaign's own rule that a gate commit on the base has a green verify. Stack
 that rule true and merges nothing red, the same shape the 16 ← 17 ← 18 CI stack used.
 **When ticket 06's PR #272 finally merges it MUST use `--merge`, never `--squash`** — all
 64 mapped ox SHAs are reachable only via that branch.
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## Goal
 

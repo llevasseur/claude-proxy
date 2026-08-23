@@ -6,7 +6,7 @@
 base. Third in a stack: 08 → 07 → 06 → base. This ticket is what returns the tree to green,
 after which 07 merges into 06, 06 merges into the base with `--merge`, and the base's
 green-verify invariant is preserved throughout.
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## What ticket 06 measured, which changes this ticket's premise
 

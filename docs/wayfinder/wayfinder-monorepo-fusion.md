@@ -168,9 +168,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
-| 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | paused | Work complete on PR #272, base `wayfinder/monorepo-fusion`, 64 ox commits intact. **Merge with `--merge`, never `--squash`** — all 64 mapped SHAs are reachable only via that branch. Not merged: CI `pnpm check` is red on ox formatting, which is this ticket's designed exit state and ticket 07/08's work, and the runner may not merge red. Needs a campaign decision — stack 07 and 08 onto it, or merge the three together. |
-| 07 | reformat-ox | [monorepo-fusion-07-reformat-ox](monorepo-fusion-07-reformat-ox.md) | `task/monorepo-fusion-07-reformat-ox` | todo | |
-| 08 | ox-lint-warn-tier | [monorepo-fusion-08-ox-lint-warn-tier](monorepo-fusion-08-ox-lint-warn-tier.md) | `task/monorepo-fusion-08-ox-lint-warn-tier` | todo | |
+| 20 | ox-history-test-flake | [monorepo-fusion-20-ox-history-test-flake](monorepo-fusion-20-ox-history-test-flake.md) | `task/monorepo-fusion-20-ox-history-test-flake` | todo | Found by ticket 08: `stacks/ox-alpha/server/test/history.test.ts` failed 2 of 5 CI runs, a **different test each time**, and passes locally. Costs a re-run on every PR touching ox until fixed. |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | todo | |
 | 10 | unify-toolchain-and-ci | [monorepo-fusion-10-unify-toolchain-and-ci](monorepo-fusion-10-unify-toolchain-and-ci.md) | `task/monorepo-fusion-10-unify-toolchain-and-ci` | todo | |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
@@ -250,6 +248,57 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 06, 07, 08 — ox absorbed, reformatted, and under the gate · 2026-08-23 · PRs #272, #273, #274
+
+Landed as a stack, 08 → 07 → 06 → base, for the same reason the CI stack did: ticket 06
+was complete but red **by design**, and merging it red would have broken the campaign's
+own rule that a base commit has a green verify. **Every merge in the chain used `--merge`**
+— verified afterwards: **64/64 mapped ox SHAs reachable from the base**, and ticket 07's
+reformat commit `dfff442` still reachable, so `.git-blame-ignore-revs` names something
+real. **All three stacks are now fused**; `main` untouched at `9b86a61` throughout.
+
+**06 — absorbed.** Four packages scoped to `@agent-proxy/ox-*` across 28 files, ports
+unchanged at 8807/8788, `REPOSITORY_ROOT` → `STACK_ROOT`, pins yielded to root, nothing
+promoted to `packages/shared/`. **Adopting the shared tsconfig base fixed a real
+fusion-caused break rather than a naming inconsistency**: ox's core set no `skipLibCheck`,
+so under shared `node_modules` `tsc` began checking vite's `.d.ts` and failed on a missing
+`Worker`. Error count after adoption: 0. Unlike codex's, ox's commit map covers exactly
+`main`, so all 64 resolve — no superset problem.
+
+**07 — one isolated reformat commit.** 96 files (75 `.ts`, 20 `.tsx`, and one `.mjs` the
+plan's "94" did not anticipate), 112 findings down to 16 errors + 4 warnings, zero
+formatting and zero assist findings left. **It caught a criterion violation before
+committing it**: `biome check --write` also applies safe *lint* fixes, and
+`noUnusedImports` has one that **deletes imports** — judgement changes inside a commit
+whose whole value is being mechanical. Running with the linter disabled produced exactly
+96 fixes for 96 formatter/assist errors, one for one.
+
+**08 — the gate.** ox now reports **0 errors / 18 warnings** and `biome check .` exits 0
+repo-wide. One `overrides` block scoped to `stacks/ox-alpha/**` at `warn`, never `off`:
+`noEmptyBlockStatements` 9, `noArrayIndexKey` 4, `noUnusedVariables` 1. Ratchet policy
+written into `AGENTS.md` rather than a config comment, since `biome.json` is strict JSON —
+the same precedent that file already sets for `noNonNullAssertion`. **2190 tests across
+eleven packages, zero failures.**
+
+**Findings that corrected the campaign's own records:**
+
+- **ox's anti-slop rules were never running** — its nested config did not extend the root,
+  so the plugin was unregistered for ox's whole subtree and reported **0**. Extending it
+  reports **358**. Second confirmation that ADR 0051 settles Biome and not oxlint.
+- **ADR 0051 asserted something the pinned Biome cannot do.** It said the GritQL plugin was
+  "rescoped to `stacks/claude/admin/**`"; `plugins` is a **top-level repo-wide array** and
+  the path only says where the plugin file lives. The ADR is corrected, and the three
+  sibling bare-px sites were rewritten instead — both ox sites were `border-radius: 999px`
+  against an existing `--radius-pill: 999px`, so identical computed values.
+- **`blame.ignoreRevsFile` is per-clone while the file is per-branch, and git treats a
+  missing ignore list as fatal** — so documenting the config without a caveat breaks
+  `git blame` on every branch cut before the file existed. Found by testing; documented in
+  both places; left unset here.
+- **Two judgement calls worth keeping.** `useExhaustiveDependencies` fires **zero** times
+  on ox, so it stayed at `error` — a rule at zero must, under the ratchet. And
+  `noUnusedImports`/`noBarrelFile` stayed out of the block because they are already `warn`
+  repo-wide; listing them would have faked a ratchet that could never tighten.
 
 ### 05 — absorb-codex · 2026-08-23 · PR #271
 
