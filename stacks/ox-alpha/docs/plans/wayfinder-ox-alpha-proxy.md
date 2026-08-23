@@ -28,12 +28,13 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 12 | plane-parity-implementation | [ox-alpha-proxy-12-plane-parity-implementation](ox-alpha-proxy-12-plane-parity-implementation.md) | `task/ox-alpha-proxy-12-plane-parity-implementation` | todo |
 | 13 | plane-verification-docs | [ox-alpha-proxy-13-plane-verification-docs](ox-alpha-proxy-13-plane-verification-docs.md) | `task/ox-alpha-proxy-13-plane-verification-docs` | todo |
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **12 plane-parity-implementation** — PR #15. Closed every remaining parity-matrix row: rolling usage counters in the proxy status signal; core limits, liveness, and prompt-mix domains; server usage-limit meters behind operator ceilings plus inspection and consistency-audit endpoints; admin trend drill-down route and shared UI components (BarChart, Breadcrumbs, Markdown, QueryState) with operator cost-rate overrides; headless operation guide and a one-command zellij all-up session. Matrix has zero unresolved rows. Verify green; CI pass.
 
 - **11 plane-matrix-expansion** — PR #12. Expanded 19 grouped rows into 74 individual checkable rows verified against pinned claude-proxy commit cc25696 via ls-tree/show without checkout: 32 implemented with in-repo evidence, 10 N/A citing ADR 0004 (Train surfaces), 32 unresolved each with a concrete closing artifact. Verify green; CI pass.
 
