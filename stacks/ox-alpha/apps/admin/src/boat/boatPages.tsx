@@ -1,0 +1,455 @@
+import { keepPreviousData, type UseQueryResult, useQuery } from "@tanstack/react-query";
+import { type ReactNode, useId } from "react";
+import {
+  DEFAULT_INSPECTION_LIMIT,
+  fetchHealth,
+  fetchInspectionDay,
+  fetchInspectionMessages,
+  fetchInspectionSessions,
+  fetchInspectionToolCalls,
+  fetchInspectionTools,
+  fetchPromptAnalysis,
+  type InspectionPage,
+  type MessageRecord,
+} from "../api";
+import { formatTimestamp } from "../car/format";
+
+// Boat inspection pages. Every surface degrades visibly: when the server has
+// capture disabled the page explains that Boat capture is off instead of
+// rendering a bare empty table.
+
+export const BOAT_OFF_TEXT =
+  "Boat capture is off. Set CAPTURE_BODIES=true on the proxy and server to record redacted request and response bodies for inspection.";
+
+function useCaptureEnabled(): Readonly<{
+  loading: boolean;
+  enabled: boolean | null;
+}> {
+  const health = useQuery({
+    queryKey: ["health"],
+    queryFn: fetchHealth,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  if (health.isLoading) return { loading: true, enabled: null };
+  return { loading: false, enabled: health.data?.capture.enabled ?? null };
+}
+
+interface PageShellProps {
+  readonly title: string;
+  readonly subtitle: string;
+  readonly testIdPrefix: string;
+  readonly captureEnabled: boolean;
+  readonly loading: boolean;
+  readonly error: boolean;
+  readonly empty: boolean;
+  readonly emptyText: string;
+  readonly children: ReactNode;
+}
+
+function PageShell({
+  title,
+  subtitle,
+  testIdPrefix,
+  captureEnabled,
+  loading,
+  error,
+  empty,
+  emptyText,
+  children,
+}: PageShellProps) {
+  const titleId = useId();
+  return (
+    <section className="car-page" aria-labelledby={titleId}>
+      <header className="pagehead">
+        <div className="pagehead-title">
+          <h1 id={titleId}>{title}</h1>
+          <div className="muted">{subtitle}</div>
+        </div>
+      </header>
+      {!captureEnabled && (
+        <output className="card notice" data-testid={`${testIdPrefix}-no-capture`}>
+          {BOAT_OFF_TEXT}
+        </output>
+      )}
+      {error && (
+        <div
+          className="card notice notice--error"
+          role="alert"
+          data-testid={`${testIdPrefix}-error`}
+        >
+          The local API could not be reached. The page will retry automatically.
+        </div>
+      )}
+      {loading && (
+        <p className="card muted" aria-live="polite" data-testid={`${testIdPrefix}-loading`}>
+          Loading…
+        </p>
+      )}
+      {empty && (
+        <div className="card empty car-empty" data-testid={`${testIdPrefix}-empty`}>
+          <strong>No captured data.</strong>
+          <span>{emptyText}</span>
+        </div>
+      )}
+      {!loading && !empty && children}
+    </section>
+  );
+}
+
+function PaginatedTable<T>({
+  page,
+  onPageChange,
+}: {
+  readonly page: InspectionPage<T>;
+  readonly onPageChange: (offset: number) => void;
+}) {
+  const limit = page.limit ?? DEFAULT_INSPECTION_LIMIT;
+  return (
+    <nav className="car-pagination" aria-label="Inspection pages">
+      <button
+        type="button"
+        onClick={() => onPageChange(Math.max(0, page.offset - limit))}
+        disabled={page.offset === 0}
+      >
+        Previous
+      </button>
+      <span className="muted">
+        Showing {page.total === 0 ? 0 : page.offset + 1}–{page.offset + page.records.length} of{" "}
+        {page.total}
+      </span>
+      <button
+        type="button"
+        onClick={() => onPageChange(page.nextOffset ?? page.offset)}
+        disabled={page.nextOffset === null}
+      >
+        Next
+      </button>
+    </nav>
+  );
+}
+
+interface BoatPageProps<T> {
+  readonly title: string;
+  readonly subtitle: string;
+  readonly testIdPrefix: string;
+  readonly emptyText: string;
+  readonly query: UseQueryResult<InspectionPage<T>>;
+  readonly children: (records: readonly T[]) => ReactNode;
+}
+
+function BoatListPage<T>({
+  title,
+  subtitle,
+  testIdPrefix,
+  emptyText,
+  query,
+  children,
+}: BoatPageProps<T>) {
+  const capture = useCaptureEnabled();
+  return (
+    <PageShell
+      title={title}
+      subtitle={subtitle}
+      testIdPrefix={testIdPrefix}
+      captureEnabled={capture.enabled !== false}
+      loading={query.isPending || capture.loading}
+      error={query.isError}
+      empty={
+        !query.isPending &&
+        !query.isError &&
+        query.data !== undefined &&
+        query.data.records.length === 0
+      }
+      emptyText={emptyText}
+    >
+      {children(query.data?.records ?? [])}
+    </PageShell>
+  );
+}
+
+export function BoatContextPage({
+  date,
+  offset = 0,
+  onSearchChange,
+}: {
+  readonly date?: string;
+  readonly offset?: number;
+  readonly onSearchChange: (patch: Record<string, unknown>) => void;
+}) {
+  const query = useQuery({
+    queryKey: ["inspection-day", date ?? null, offset],
+    queryFn: () => fetchInspectionDay(date, DEFAULT_INSPECTION_LIMIT, offset),
+    placeholderData: keepPreviousData,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  return (
+    <BoatListPage
+      title="Context"
+      subtitle={`Captured exchanges on ${date ?? "the latest report day"}`}
+      query={query}
+      testIdPrefix="boat-context"
+      emptyText="No captures exist for this report day. Captures appear here once opted-in traffic flows through the proxy."
+    >
+      {(records) => (
+        <div className="card car-table-card">
+          <table className="car-table" data-testid="boat-context-table">
+            <thead>
+              <tr>
+                <th scope="col">Captured</th>
+                <th scope="col">Record</th>
+                <th scope="col">Session</th>
+                <th scope="col">Model</th>
+                <th scope="col">Messages</th>
+                <th scope="col">Tools</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((record) => (
+                <tr key={record.recordId}>
+                  <td>{formatTimestamp(record.capturedAt)}</td>
+                  <td className="car-cell-mono">
+                    <a href={`#/boat/messages?recordId=${encodeURIComponent(record.recordId)}`}>
+                      {record.recordId}
+                    </a>
+                    {" · "}
+                    <a href={`#/boat/prompt?recordId=${encodeURIComponent(record.recordId)}`}>
+                      prompt
+                    </a>
+                  </td>
+                  <td className="car-cell-mono">{record.sessionId}</td>
+                  <td>{record.model ?? "—"}</td>
+                  <td>{record.messageCount}</td>
+                  <td>
+                    {record.toolCount} / {record.toolCallCount}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {query.data && (
+            <PaginatedTable
+              page={query.data}
+              onPageChange={(next) => onSearchChange({ offset: next })}
+            />
+          )}
+        </div>
+      )}
+    </BoatListPage>
+  );
+}
+
+export function BoatMessagesPage({ recordId }: { readonly recordId?: string }) {
+  const query = useQuery({
+    queryKey: ["inspection-messages", recordId ?? ""],
+    queryFn: () => fetchInspectionMessages(recordId ?? "", DEFAULT_INSPECTION_LIMIT, 0),
+    enabled: recordId !== undefined,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  return (
+    <BoatListPage
+      title="Messages"
+      subtitle={`Request and response turns of capture ${recordId ?? "—"}`}
+      query={query}
+      testIdPrefix="boat-messages"
+      emptyText="Pick a captured exchange from the context page to inspect its messages."
+    >
+      {(records) => <MessageList records={records} />}
+    </BoatListPage>
+  );
+}
+
+function MessageList({ records }: { readonly records: readonly MessageRecord[] }) {
+  return (
+    <ol className="card" data-testid="boat-message-list">
+      {records.map((message, index) => (
+        <li key={`${message.recordId}-${index}`}>
+          <span className="muted">
+            {message.role ?? message.itemType ?? "item"} · {message.recordId}
+          </span>
+          <pre className="car-cell-mono">{message.text}</pre>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function BoatPromptPage({ recordId }: { readonly recordId?: string }) {
+  const analysis = useQuery({
+    queryKey: ["inspection-prompt", recordId ?? ""],
+    queryFn: () => fetchPromptAnalysis(recordId ?? ""),
+    enabled: recordId !== undefined,
+    retry: false,
+  });
+  const capture = useCaptureEnabled();
+  const titleId = useId();
+  return (
+    <section className="car-page" aria-labelledby={titleId}>
+      <header className="pagehead">
+        <div className="pagehead-title">
+          <h1 id={titleId}>Prompt analysis</h1>
+          <div className="muted">Shape of one captured request — never its body text</div>
+        </div>
+      </header>
+      {!capture.loading && capture.enabled === false && (
+        <output className="card notice" data-testid="boat-prompt-no-capture">
+          {BOAT_OFF_TEXT}
+        </output>
+      )}
+      {analysis.isError && (
+        <div className="card notice notice--error" role="alert" data-testid="boat-prompt-error">
+          That capture could not be read. It may have been deleted by retention.
+        </div>
+      )}
+      {analysis.data && (
+        <dl className="card" data-testid="boat-prompt-analysis">
+          <dt>Model</dt>
+          <dd>{analysis.data.model ?? "—"}</dd>
+          <dt>Instructions present</dt>
+          <dd>{analysis.data.instructionsPresent ? "yes" : "no"}</dd>
+          <dt>Input messages</dt>
+          <dd>{analysis.data.inputMessageCount}</dd>
+          <dt>Tools declared</dt>
+          <dd>{analysis.data.toolCount}</dd>
+          <dt>Estimated input tokens (~4 chars/token)</dt>
+          <dd>{analysis.data.estimatedInputTokens}</dd>
+        </dl>
+      )}
+    </section>
+  );
+}
+
+export function BoatToolsPage() {
+  const query = useQuery({
+    queryKey: ["inspection-tools"],
+    queryFn: () => fetchInspectionTools(DEFAULT_INSPECTION_LIMIT, 0),
+    placeholderData: keepPreviousData,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  return (
+    <BoatListPage
+      title="Tool schemas"
+      subtitle="Function tools declared across captured requests"
+      testIdPrefix="boat-tools"
+      query={query}
+      emptyText="No tool schemas in captures yet. Tools appear once capturing requests declare them."
+    >
+      {(records) => (
+        <div className="card car-table-card">
+          <table className="car-table" data-testid="boat-tools-table">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Type</th>
+                <th scope="col">Description</th>
+                <th scope="col">Schema</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((tool, index) => (
+                <tr key={`${tool.recordId}-${tool.name}-${index}`}>
+                  <td className="car-cell-mono">{tool.name}</td>
+                  <td>{tool.type}</td>
+                  <td>{tool.description ?? "—"}</td>
+                  <td className="car-cell-mono">{tool.schemaJson}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </BoatListPage>
+  );
+}
+
+export function BoatToolCallsPage() {
+  const query = useQuery({
+    queryKey: ["inspection-tool-calls"],
+    queryFn: () => fetchInspectionToolCalls(DEFAULT_INSPECTION_LIMIT, 0),
+    placeholderData: keepPreviousData,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  return (
+    <BoatListPage
+      title="Tool calls"
+      subtitle="Function calls extracted from captured responses"
+      testIdPrefix="boat-tool-calls"
+      query={query}
+      emptyText="No tool calls in captured responses yet."
+    >
+      {(records) => (
+        <div className="card car-table-card">
+          <table className="car-table" data-testid="boat-tool-calls-table">
+            <thead>
+              <tr>
+                <th scope="col">Captured</th>
+                <th scope="col">Call</th>
+                <th scope="col">Arguments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((call, index) => (
+                <tr key={`${call.recordId}-${call.callId ?? index}`}>
+                  <td>{formatTimestamp(call.capturedAt)}</td>
+                  <td className="car-cell-mono">
+                    {call.name}
+                    {call.callId && ` (${call.callId})`}
+                  </td>
+                  <td className="car-cell-mono">{call.argumentsText}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </BoatListPage>
+  );
+}
+
+export function BoatSessionsPage() {
+  const query = useQuery({
+    queryKey: ["inspection-sessions"],
+    queryFn: () => fetchInspectionSessions(DEFAULT_INSPECTION_LIMIT, 0),
+    placeholderData: keepPreviousData,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  return (
+    <BoatListPage
+      title="Sessions"
+      subtitle="Captures grouped by derived session identifier"
+      testIdPrefix="boat-sessions"
+      query={query}
+      emptyText="No session groups derivable from captures yet."
+    >
+      {(records) => (
+        <div className="card car-table-card">
+          <table className="car-table" data-testid="boat-sessions-table">
+            <thead>
+              <tr>
+                <th scope="col">Session</th>
+                <th scope="col">Captures</th>
+                <th scope="col">First seen</th>
+                <th scope="col">Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((group) => (
+                <tr key={group.sessionId}>
+                  <td className="car-cell-mono">{group.sessionId}</td>
+                  <td>{group.captureCount}</td>
+                  <td>{formatTimestamp(group.firstCapturedAt)}</td>
+                  <td>{formatTimestamp(group.lastCapturedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </BoatListPage>
+  );
+}

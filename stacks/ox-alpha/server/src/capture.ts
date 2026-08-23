@@ -88,4 +88,49 @@ export class CaptureStore {
     if (!this.enabled) throw new Error("capture is disabled on this server");
     return parseCaptureEnvelope(JSON.parse(await readFile(path, "utf8")));
   }
+
+  private async finalNames(): Promise<string[]> {
+    if (!this.enabled) return [];
+    try {
+      return (await readdir(this.directory)).filter(isFinalCaptureFilename).sort();
+    } catch {
+      return [];
+    }
+  }
+
+  // Every valid capture envelope, oldest filename first. Files failing strict
+  // validation are skipped (and counted) rather than surfaced to inspection.
+  async list(): Promise<Readonly<{ envelopes: readonly CaptureEnvelopeV1[]; unreadable: number }>> {
+    const names = await this.finalNames();
+    const envelopes: CaptureEnvelopeV1[] = [];
+    let unreadable = 0;
+    for (const name of names) {
+      try {
+        envelopes.push(
+          parseCaptureEnvelope(JSON.parse(await readFile(join(this.directory, name), "utf8"))),
+        );
+      } catch {
+        unreadable += 1;
+      }
+    }
+    return Object.freeze({ envelopes: Object.freeze(envelopes), unreadable });
+  }
+
+  // Cheap change detector for inspection memoization: name/mtime/size of
+  // every final capture file. Not a content hash — retention deletions and
+  // new writes both move it, which is all the invalidation contract needs.
+  async signature(): Promise<string> {
+    const names = await this.finalNames();
+    if (names.length === 0) return "0";
+    const parts: string[] = [];
+    for (const name of names) {
+      try {
+        const info = await stat(join(this.directory, name));
+        parts.push(`${name}:${info.mtimeMs}:${info.size}`);
+      } catch {
+        parts.push(`${name}:gone`);
+      }
+    }
+    return parts.join("|");
+  }
 }

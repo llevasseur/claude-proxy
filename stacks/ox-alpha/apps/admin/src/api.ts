@@ -23,6 +23,7 @@ export interface HealthPayload {
     readonly lastSuccessfulAt: string | null;
     readonly rejectedSidecars: number;
   };
+  readonly capture: { readonly enabled: boolean };
   readonly sse: { readonly subscribers: number };
 }
 
@@ -98,6 +99,7 @@ export function parseHealth(value: unknown): HealthPayload {
     !isRecord(value.proxy) ||
     !isRecord(value.database) ||
     !isRecord(value.ingest) ||
+    !isRecord(value.capture) ||
     !isRecord(value.sse)
   ) {
     throw new Error("malformed health payload");
@@ -141,6 +143,7 @@ export function parseHealth(value: unknown): HealthPayload {
       lastSuccessfulAt: string(ingest.lastSuccessfulAt) ? ingest.lastSuccessfulAt : null,
       rejectedSidecars: ingest.rejectedSidecars,
     },
+    capture: { enabled: value.capture.enabled === true },
     sse: { subscribers: sse.subscribers },
   };
 }
@@ -395,3 +398,232 @@ export async function fetchHistory(
 export async function fetchTrends(filters: CarFilters): Promise<TrendsPayload> {
   return parseTrends(await fetchJson(trendsPath(filters)));
 }
+
+// --- Boat inspection surfaces (shapes mirrored from server/src/service.ts) ---
+
+export interface InspectionPage<T> {
+  readonly captureEnabled: boolean;
+  readonly total: number;
+  readonly offset: number;
+  readonly limit: number | null;
+  readonly nextOffset: number | null;
+  readonly records: readonly T[];
+}
+
+export interface ContextSummaryRecord {
+  readonly recordId: string;
+  readonly capturedAt: string;
+  readonly endpoint: string;
+  readonly model: string | null;
+  readonly messageCount: number;
+  readonly instructionsPresent: boolean;
+  readonly toolCount: number;
+  readonly toolCallCount: number;
+  readonly sessionId: string;
+}
+
+export interface MessageRecord {
+  readonly recordId: string;
+  readonly role: string | null;
+  readonly itemType: string | null;
+  readonly text: string;
+}
+
+export interface ToolSchemaRecord {
+  readonly recordId: string;
+  readonly capturedAt: string;
+  readonly name: string;
+  readonly type: string;
+  readonly description: string | null;
+  readonly schemaJson: string;
+}
+
+export interface ToolCallRecord {
+  readonly recordId: string;
+  readonly capturedAt: string;
+  readonly callId: string | null;
+  readonly name: string;
+  readonly argumentsText: string;
+}
+
+export interface SessionGroupRecord {
+  readonly sessionId: string;
+  readonly captureCount: number;
+  readonly firstCapturedAt: string;
+  readonly lastCapturedAt: string;
+  readonly recordIds: readonly string[];
+}
+
+export interface PromptAnalysisPayload {
+  readonly captureEnabled: boolean;
+  readonly parsed: boolean;
+  readonly model: string | null;
+  readonly instructionsPresent: boolean;
+  readonly instructionsChars: number;
+  readonly inputMessageCount: number;
+  readonly inputChars: number;
+  readonly toolCount: number;
+  readonly estimatedInputTokens: number;
+}
+
+function parseInspectionPage<T>(
+  value: unknown,
+  parseRecord: (record: unknown) => T,
+): InspectionPage<T> {
+  if (
+    !isRecord(value) ||
+    typeof value.captureEnabled !== "boolean" ||
+    !number(value.total) ||
+    !number(value.offset) ||
+    !Array.isArray(value.records)
+  ) {
+    throw new Error("malformed inspection payload");
+  }
+  return {
+    captureEnabled: value.captureEnabled,
+    total: value.total,
+    offset: value.offset,
+    limit: number(value.limit) ? value.limit : null,
+    nextOffset: number(value.nextOffset) ? value.nextOffset : null,
+    records: value.records.map(parseRecord),
+  };
+}
+
+export function parseContextSummary(value: unknown): ContextSummaryRecord {
+  if (
+    !isRecord(value) ||
+    !string(value.recordId) ||
+    !string(value.capturedAt) ||
+    !string(value.endpoint) ||
+    !number(value.messageCount)
+  ) {
+    throw new Error("malformed context summary");
+  }
+  return {
+    recordId: value.recordId,
+    capturedAt: value.capturedAt,
+    endpoint: value.endpoint,
+    model: string(value.model) ? value.model : null,
+    messageCount: value.messageCount,
+    instructionsPresent: value.instructionsPresent === true,
+    toolCount: typeof value.toolCount === "number" ? value.toolCount : 0,
+    toolCallCount: typeof value.toolCallCount === "number" ? value.toolCallCount : 0,
+    sessionId: string(value.sessionId) ? value.sessionId : "",
+  };
+}
+
+function requiredStringPair(value: unknown, firstKey: string, secondKey: string): void {
+  if (!isRecord(value) || !string(value[firstKey]) || !string(value[secondKey])) {
+    throw new Error("malformed inspection record");
+  }
+}
+
+export function parseMessageRecord(value: unknown): MessageRecord {
+  requiredStringPair(value, "recordId", "text");
+  const record = value as Record<string, unknown>;
+  return {
+    recordId: record.recordId as string,
+    role: string(record.role) ? record.role : null,
+    itemType: string(record.itemType) ? record.itemType : null,
+    text: record.text as string,
+  };
+}
+
+export function parseToolSchemaRecord(value: unknown): ToolSchemaRecord {
+  requiredStringPair(value, "recordId", "name");
+  const record = value as Record<string, unknown>;
+  return {
+    recordId: record.recordId as string,
+    capturedAt: string(record.capturedAt) ? record.capturedAt : "",
+    name: record.name as string,
+    type: string(record.type) ? record.type : "unknown",
+    description: string(record.description) ? record.description : null,
+    schemaJson: string(record.schemaJson) ? record.schemaJson : "{}",
+  };
+}
+
+export function parseToolCallRecord(value: unknown): ToolCallRecord {
+  requiredStringPair(value, "recordId", "name");
+  const record = value as Record<string, unknown>;
+  return {
+    recordId: record.recordId as string,
+    capturedAt: string(record.capturedAt) ? record.capturedAt : "",
+    callId: string(record.callId) ? record.callId : null,
+    name: record.name as string,
+    argumentsText: string(record.argumentsText) ? record.argumentsText : "",
+  };
+}
+
+export function parseSessionGroup(value: unknown): SessionGroupRecord {
+  requiredStringPair(value, "sessionId", "firstCapturedAt");
+  const record = value as Record<string, unknown>;
+  if (!Array.isArray(record.recordIds)) throw new Error("malformed session group");
+  return {
+    sessionId: record.sessionId as string,
+    captureCount: number(record.captureCount) ? record.captureCount : 0,
+    firstCapturedAt: record.firstCapturedAt as string,
+    lastCapturedAt: string(record.lastCapturedAt) ? record.lastCapturedAt : "",
+    recordIds: record.recordIds.filter(string),
+  };
+}
+
+export function parsePromptAnalysis(value: unknown): PromptAnalysisPayload {
+  if (!isRecord(value) || typeof value.captureEnabled !== "boolean") {
+    throw new Error("malformed prompt analysis payload");
+  }
+  return {
+    captureEnabled: value.captureEnabled,
+    parsed: value.parsed === true,
+    model: string(value.model) ? value.model : null,
+    instructionsPresent: value.instructionsPresent === true,
+    instructionsChars: number(value.instructionsChars) ? value.instructionsChars : 0,
+    inputMessageCount: number(value.inputMessageCount) ? value.inputMessageCount : 0,
+    inputChars: number(value.inputChars) ? value.inputChars : 0,
+    toolCount: number(value.toolCount) ? value.toolCount : 0,
+    estimatedInputTokens: number(value.estimatedInputTokens) ? value.estimatedInputTokens : 0,
+  };
+}
+
+function inspectionPath(base: string, params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const query = search.toString();
+  return `/api/inspection/${base}${query ? `?${query}` : ""}`;
+}
+
+async function fetchInspectionPage<T>(url: string, parseRecord: (record: unknown) => T) {
+  return parseInspectionPage(await fetchJson(url), parseRecord);
+}
+
+const DEFAULT_INSPECTION_LIMIT = 25;
+
+export function fetchInspectionDay(date: string | undefined, limit: number, offset: number) {
+  return fetchInspectionPage(inspectionPath("day", { date, limit, offset }), parseContextSummary);
+}
+
+export function fetchInspectionMessages(recordId: string, limit: number, offset: number) {
+  return fetchInspectionPage(
+    inspectionPath("messages", { recordId, limit, offset }),
+    parseMessageRecord,
+  );
+}
+
+export function fetchInspectionTools(limit: number, offset: number) {
+  return fetchInspectionPage(inspectionPath("tools", { limit, offset }), parseToolSchemaRecord);
+}
+
+export function fetchInspectionToolCalls(limit: number, offset: number) {
+  return fetchInspectionPage(inspectionPath("tool-calls", { limit, offset }), parseToolCallRecord);
+}
+
+export function fetchInspectionSessions(limit: number, offset: number) {
+  return fetchInspectionPage(inspectionPath("sessions", { limit, offset }), parseSessionGroup);
+}
+
+export async function fetchPromptAnalysis(recordId: string): Promise<PromptAnalysisPayload> {
+  return parsePromptAnalysis(await fetchJson(inspectionPath("prompt", { recordId })));
+}
+
+export { DEFAULT_INSPECTION_LIMIT };
