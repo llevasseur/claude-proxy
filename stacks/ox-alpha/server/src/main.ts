@@ -1,5 +1,5 @@
-import { readConfig } from "./config.ts";
-import { LiveUsageService } from "./service.ts";
+import { readConfig } from './config.ts';
+import { LiveUsageService } from './service.ts';
 
 const config = readConfig();
 const service = new LiveUsageService(config);
@@ -12,5 +12,5 @@ function shutdown(): void {
   });
 }
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

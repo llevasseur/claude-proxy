@@ -13,7 +13,7 @@ import {
   promptSections,
   type SessionLiveness,
   type ToolSchemaSummary,
-} from "@agent-proxy/ox-core";
+} from '@agent-proxy/ox-core';
 
 // Assembly of Boat inspection views from parsed capture envelopes. Pure with
 // respect to its inputs; the server layers memoization and pagination on top.
@@ -78,9 +78,7 @@ function sessionKeyFor(envelope: CaptureEnvelopeV1, derived: string | null): str
 }
 
 /** Flat summaries of every capture, in list order. */
-export function collectContextSummaries(
-  envelopes: readonly CaptureEnvelopeV1[],
-): readonly ContextSummary[] {
+export function collectContextSummaries(envelopes: readonly CaptureEnvelopeV1[]): readonly ContextSummary[] {
   return Object.freeze(envelopes.map(summarize));
 }
 
@@ -150,9 +148,7 @@ export function collectSessions(envelopes: readonly CaptureEnvelopeV1[]): readon
   );
 }
 
-export function collectToolSchemas(
-  envelopes: readonly CaptureEnvelopeV1[],
-): readonly ToolSchemaEntry[] {
+export function collectToolSchemas(envelopes: readonly CaptureEnvelopeV1[]): readonly ToolSchemaEntry[] {
   return Object.freeze(
     envelopes.flatMap((envelope) =>
       inspectCaptureRequest(envelope.requestText).tools.map((tool: ToolSchemaSummary) =>
@@ -169,9 +165,7 @@ export function collectToolSchemas(
   );
 }
 
-export function collectToolCalls(
-  envelopes: readonly CaptureEnvelopeV1[],
-): readonly ToolCallEntry[] {
+export function collectToolCalls(envelopes: readonly CaptureEnvelopeV1[]): readonly ToolCallEntry[] {
   return Object.freeze(
     envelopes.flatMap((envelope) =>
       inspectCaptureResponse(envelope.responseText).toolCalls.map((call) =>
@@ -230,9 +224,7 @@ export function collectPromptListings(
       .map((envelope) => {
         const request = inspectCaptureRequest(envelope.requestText);
         const hash =
-          request.instructions !== null && request.instructions.length > 0
-            ? promptHash(request.instructions)
-            : null;
+          request.instructions !== null && request.instructions.length > 0 ? promptHash(request.instructions) : null;
         return Object.freeze({
           recordId: envelope.recordId,
           capturedAt: envelope.capturedAt,
@@ -245,10 +237,7 @@ export function collectPromptListings(
 }
 
 /** The day's prompt mix over the same inputs the listing uses. */
-export function collectPromptMix(
-  date: string,
-  envelopes: readonly CaptureEnvelopeV1[],
-): PromptMixDay {
+export function collectPromptMix(date: string, envelopes: readonly CaptureEnvelopeV1[]): PromptMixDay {
   return buildPromptMix(
     date,
     envelopes
@@ -272,9 +261,7 @@ export function collectPromptSections(
   const request = inspectCaptureRequest(envelope.requestText);
   return Object.freeze({
     instructionsHash:
-      request.instructions !== null && request.instructions.length > 0
-        ? promptHash(request.instructions)
-        : null,
+      request.instructions !== null && request.instructions.length > 0 ? promptHash(request.instructions) : null,
     sections: promptSections(request),
   });
 }
@@ -285,11 +272,7 @@ export function isTerminalResponseText(responseText: string): boolean {
   if (responseText.includes('"response.completed"')) return true;
   try {
     const parsed: unknown = JSON.parse(responseText);
-    return (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      (parsed as Record<string, unknown>).status === "completed"
-    );
+    return typeof parsed === 'object' && parsed !== null && (parsed as Record<string, unknown>).status === 'completed';
   } catch {
     return false;
   }
@@ -329,7 +312,7 @@ export function collectLiveness(
 export function collectSessionDetail(
   sessionId: string,
   envelopes: readonly CaptureEnvelopeV1[],
-): DayInspection["captures"] {
+): DayInspection['captures'] {
   return Object.freeze(
     envelopes
       .filter((envelope) => {

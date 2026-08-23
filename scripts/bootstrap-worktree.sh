@@ -66,6 +66,14 @@ link_from_main "logs"
 echo "skills:"
 bash "${WORKTREE_ROOT}/scripts/link-project-skills.sh"
 
+# `.git-blame-ignore-revs` is committed but inert — `blame.ignoreRevsFile` is a
+# config key, so `git blame` still lands on the reformat commit until this runs.
+# Path stays relative: linked worktrees share one config with the main checkout,
+# so setting it here configures that too.
+echo "blame:"
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+echo "  set     blame.ignoreRevsFile -> .git-blame-ignore-revs"
+
 # Frozen: the lockfile arrived with the branch, so a failure here is real drift.
 echo "install:"
 pnpm install --frozen-lockfile

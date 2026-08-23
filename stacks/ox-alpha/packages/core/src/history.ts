@@ -1,17 +1,12 @@
-import { addUsdAmounts } from "./pricing.ts";
+import { addUsdAmounts } from './pricing.ts';
 import {
   DEFAULT_REPORT_TIMEZONE,
   formatReportDate,
   getCalendarDayWindow,
   getTodayWindow,
   parseCalendarDate,
-} from "./today.ts";
-import type {
-  CostUnavailableReason,
-  PricedCost,
-  SanitizedAuditSidecarV1,
-  UsageTotals,
-} from "./types.ts";
+} from './today.ts';
+import type { CostUnavailableReason, PricedCost, SanitizedAuditSidecarV1, UsageTotals } from './types.ts';
 
 // History, trend and filter mechanics ported from codex-proxy
 // `packages/core/src/history.ts`; model-filter semantics inherited from
@@ -90,17 +85,14 @@ function summarize(items: readonly SummableUsage[]): UsageSummary {
     outputTokens += item.usage.outputTokens;
     reasoningOutputTokens += item.usage.reasoningOutputTokens;
     totalTokens += item.usage.totalTokens;
-    if (
-      item.timestamp !== null &&
-      (latestEventTimestamp === null || item.timestamp > latestEventTimestamp)
-    ) {
+    if (item.timestamp !== null && (latestEventTimestamp === null || item.timestamp > latestEventTimestamp)) {
       latestEventTimestamp = item.timestamp;
     }
     if (item.cost === null) {
       if (costUnavailableReason === null) {
         costUnavailableReason = Object.freeze({
-          code: "aggregate-incomplete",
-          detail: item.costUnavailableReason?.code ?? "unknown cost",
+          code: 'aggregate-incomplete',
+          detail: item.costUnavailableReason?.code ?? 'unknown cost',
         });
       }
     } else {
@@ -118,9 +110,9 @@ function summarize(items: readonly SummableUsage[]): UsageSummary {
     cost:
       costUnavailableReason === null
         ? Object.freeze({
-            currency: "USD",
+            currency: 'USD',
             amountUsd: addUsdAmounts(amounts),
-            catalogueVersion: "aggregate",
+            catalogueVersion: 'aggregate',
           })
         : null,
     costUnavailableReason,
@@ -133,13 +125,12 @@ export function resolveCalendarRange(
   now: Date,
   timeZone: string = DEFAULT_REPORT_TIMEZONE,
 ): ResolvedCalendarRange {
-  if (Number.isNaN(now.getTime())) throw new RangeError("now must be a valid Date");
+  if (Number.isNaN(now.getTime())) throw new RangeError('now must be a valid Date');
   if (to !== null) parseCalendarDate(to);
-  const endExclusive =
-    to === null ? getTodayWindow(now, timeZone).end : getCalendarDayWindow(to, timeZone).end;
+  const endExclusive = to === null ? getTodayWindow(now, timeZone).end : getCalendarDayWindow(to, timeZone).end;
   const startInclusive = from === null ? null : getCalendarDayWindow(from, timeZone).start;
   if (startInclusive !== null && startInclusive.getTime() >= endExclusive.getTime()) {
-    throw new RangeError("calendar range start must precede its end");
+    throw new RangeError('calendar range start must precede its end');
   }
   return Object.freeze({ reportTimezone: timeZone, startInclusive, endExclusive });
 }
@@ -239,9 +230,7 @@ export function selectByModels<T extends { readonly model: string }>(
   return records.filter((record) => matches(record.model));
 }
 
-export function projectHistoryRecords(
-  events: readonly SanitizedAuditSidecarV1[],
-): readonly HistoryRecord[] {
+export function projectHistoryRecords(events: readonly SanitizedAuditSidecarV1[]): readonly HistoryRecord[] {
   return Object.freeze(
     events.map((event) =>
       Object.freeze({
@@ -264,10 +253,10 @@ export function paginateHistoryRecords(
   offset = 0,
 ): PaginatedHistoryRecords {
   if (!Number.isSafeInteger(offset) || offset < 0) {
-    throw new RangeError("offset must be a non-negative safe integer");
+    throw new RangeError('offset must be a non-negative safe integer');
   }
   if (limit !== null && (!Number.isSafeInteger(limit) || limit <= 0)) {
-    throw new RangeError("limit must be a positive safe integer or null");
+    throw new RangeError('limit must be a positive safe integer or null');
   }
   const sliced = limit === null ? records.slice(offset) : records.slice(offset, offset + limit);
   const nextOffset = limit === null || offset + limit >= records.length ? null : offset + limit;
@@ -283,7 +272,7 @@ export function paginateHistoryRecords(
 function nextCalendarDate(date: string): string {
   const { year, month, day } = parseCalendarDate(date);
   const next = new Date(Date.UTC(year, month - 1, day + 1));
-  return `${String(next.getUTCFullYear()).padStart(4, "0")}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(
+  return `${String(next.getUTCFullYear()).padStart(4, '0')}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(
     next.getUTCDate(),
-  ).padStart(2, "0")}`;
+  ).padStart(2, '0')}`;
 }

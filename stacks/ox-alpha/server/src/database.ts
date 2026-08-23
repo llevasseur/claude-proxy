@@ -1,6 +1,6 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type {
   CostUnavailableReason,
   PaginatedHistoryRecords,
@@ -9,13 +9,13 @@ import type {
   SanitizedAuditSidecarV1,
   TodaySummary,
   UsageTotals,
-} from "@agent-proxy/ox-core";
+} from '@agent-proxy/ox-core';
 import {
   aggregateToday,
   paginateHistoryRecords,
   parseSanitizedAuditSidecar,
   selectByModels,
-} from "@agent-proxy/ox-core";
+} from '@agent-proxy/ox-core';
 
 const SCHEMA_VERSION = 1;
 const MIGRATION = `
@@ -97,43 +97,31 @@ export class UsageDatabase {
 
   constructor(path: string) {
     this.path = path;
-    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.database = new DatabaseSync(path);
-    this.database.exec("PRAGMA foreign_keys = ON");
-    this.journalMode = String(
-      this.database.prepare("PRAGMA journal_mode = WAL").get()?.journal_mode ?? "unknown",
-    );
-    const version = (this.database.prepare("PRAGMA user_version").get() as unknown as VersionRow)
-      .user_version;
+    this.database.exec('PRAGMA foreign_keys = ON');
+    this.journalMode = String(this.database.prepare('PRAGMA journal_mode = WAL').get()?.journal_mode ?? 'unknown');
+    const version = (this.database.prepare('PRAGMA user_version').get() as unknown as VersionRow).user_version;
     if (version === 0) this.database.exec(MIGRATION);
-    this.schemaVersion = (
-      this.database.prepare("PRAGMA user_version").get() as unknown as VersionRow
-    ).user_version;
+    this.schemaVersion = (this.database.prepare('PRAGMA user_version').get() as unknown as VersionRow).user_version;
     if (this.schemaVersion !== SCHEMA_VERSION) {
       this.database.close();
       throw new Error(`unsupported database schema version ${this.schemaVersion}`);
     }
   }
 
-  ingest(
-    filename: string,
-    sidecar: SanitizedAuditSidecarV1,
-    now: Date,
-    hooks: IngestHooks = {},
-  ): boolean {
+  ingest(filename: string, sidecar: SanitizedAuditSidecarV1, now: Date, hooks: IngestHooks = {}): boolean {
     const serialized = JSON.stringify(sidecar);
-    this.database.exec("BEGIN IMMEDIATE");
+    this.database.exec('BEGIN IMMEDIATE');
     try {
-      const watermarked = this.database
-        .prepare("SELECT 1 FROM ingest_watermarks WHERE filename = ?")
-        .get(filename);
+      const watermarked = this.database.prepare('SELECT 1 FROM ingest_watermarks WHERE filename = ?').get(filename);
       if (watermarked) {
-        this.database.exec("COMMIT");
+        this.database.exec('COMMIT');
         return false;
       }
 
       const existing = this.database
-        .prepare("SELECT filename, sidecar_json FROM usage_records WHERE record_id = ?")
+        .prepare('SELECT filename, sidecar_json FROM usage_records WHERE record_id = ?')
         .get(sidecar.recordId) as unknown as ExistingRecordRow | undefined;
       let changed = false;
       if (existing) {
@@ -142,24 +130,20 @@ export class UsageDatabase {
         }
       } else {
         this.database
-          .prepare(
-            "INSERT INTO usage_records (record_id, filename, event_timestamp, sidecar_json) VALUES (?, ?, ?, ?)",
-          )
+          .prepare('INSERT INTO usage_records (record_id, filename, event_timestamp, sidecar_json) VALUES (?, ?, ?, ?)')
           .run(sidecar.recordId, filename, sidecar.timestamp, serialized);
         changed = true;
       }
 
       hooks.beforeWatermark?.();
       this.database
-        .prepare(
-          "INSERT INTO ingest_watermarks (filename, record_id, ingested_at) VALUES (?, ?, ?)",
-        )
+        .prepare('INSERT INTO ingest_watermarks (filename, record_id, ingested_at) VALUES (?, ?, ?)')
         .run(filename, sidecar.recordId, now.toISOString());
-      this.database.prepare("DELETE FROM rejected_sidecars WHERE filename = ?").run(filename);
-      this.database.exec("COMMIT");
+      this.database.prepare('DELETE FROM rejected_sidecars WHERE filename = ?').run(filename);
+      this.database.exec('COMMIT');
       return changed;
     } catch (error) {
-      this.database.exec("ROLLBACK");
+      this.database.exec('ROLLBACK');
       throw error;
     }
   }
@@ -183,9 +167,7 @@ export class UsageDatabase {
     offset: number,
   ): PaginatedHistoryRecords {
     const rows = this.database
-      .prepare(
-        "SELECT sidecar_json FROM usage_records ORDER BY event_timestamp DESC, record_id ASC",
-      )
+      .prepare('SELECT sidecar_json FROM usage_records ORDER BY event_timestamp DESC, record_id ASC')
       .all() as unknown as JsonRow[];
     const matching = rows
       .map((row) => parseSanitizedAuditSidecar(JSON.parse(row.sidecar_json)))
@@ -210,12 +192,9 @@ export class UsageDatabase {
     );
   }
 
-  sidecarsInRange(
-    range: ResolvedCalendarRange,
-    models: readonly string[],
-  ): readonly SanitizedAuditSidecarV1[] {
+  sidecarsInRange(range: ResolvedCalendarRange, models: readonly string[]): readonly SanitizedAuditSidecarV1[] {
     const rows = this.database
-      .prepare("SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id")
+      .prepare('SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id')
       .all() as unknown as JsonRow[];
     return selectByModels(
       rows
@@ -229,14 +208,14 @@ export class UsageDatabase {
   // their own spans.
   allSidecars(): readonly SanitizedAuditSidecarV1[] {
     const rows = this.database
-      .prepare("SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id")
+      .prepare('SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id')
       .all() as unknown as JsonRow[];
     return rows.map((row) => parseSanitizedAuditSidecar(JSON.parse(row.sidecar_json)));
   }
 
   summary(now: Date, reportTimezone: string): TodaySummary {
     const rows = this.database
-      .prepare("SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id")
+      .prepare('SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id')
       .all() as unknown as JsonRow[];
     return aggregateToday(
       rows.map((row) => parseSanitizedAuditSidecar(JSON.parse(row.sidecar_json))),
@@ -251,14 +230,12 @@ export class UsageDatabase {
     recordCount: number;
   }> {
     const last = this.database
-      .prepare("SELECT ingested_at FROM ingest_watermarks ORDER BY ingested_at DESC LIMIT 1")
+      .prepare('SELECT ingested_at FROM ingest_watermarks ORDER BY ingested_at DESC LIMIT 1')
       .get() as unknown as TimeRow | undefined;
     const rejected = this.database
-      .prepare("SELECT COUNT(*) AS count FROM rejected_sidecars")
+      .prepare('SELECT COUNT(*) AS count FROM rejected_sidecars')
       .get() as unknown as CountRow;
-    const records = this.database
-      .prepare("SELECT COUNT(*) AS count FROM usage_records")
-      .get() as unknown as CountRow;
+    const records = this.database.prepare('SELECT COUNT(*) AS count FROM usage_records').get() as unknown as CountRow;
     return Object.freeze({
       lastSuccessfulIngest: last?.ingested_at ?? null,
       rejectedSidecars: rejected.count,
@@ -266,40 +243,28 @@ export class UsageDatabase {
     });
   }
 
-  listRejected(): ReadonlyArray<
-    Readonly<{ filename: string; reason: string; rejectedAt: string }>
-  > {
+  listRejected(): ReadonlyArray<Readonly<{ filename: string; reason: string; rejectedAt: string }>> {
     const rows = this.database
-      .prepare(
-        "SELECT filename, reason, rejected_at FROM rejected_sidecars ORDER BY rejected_at DESC, filename",
-      )
+      .prepare('SELECT filename, reason, rejected_at FROM rejected_sidecars ORDER BY rejected_at DESC, filename')
       .all() as unknown as Array<{ filename: string; reason: string; rejected_at: string }>;
     return Object.freeze(
-      rows.map((row) =>
-        Object.freeze({ filename: row.filename, reason: row.reason, rejectedAt: row.rejected_at }),
-      ),
+      rows.map((row) => Object.freeze({ filename: row.filename, reason: row.reason, rejectedAt: row.rejected_at })),
     );
   }
 
   allWatermarks(): ReadonlyArray<Readonly<{ filename: string; recordId: string }>> {
     const rows = this.database
-      .prepare("SELECT filename, record_id FROM ingest_watermarks ORDER BY filename")
+      .prepare('SELECT filename, record_id FROM ingest_watermarks ORDER BY filename')
       .all() as unknown as Array<{ filename: string; record_id: string }>;
     return rows.map((row) => Object.freeze({ filename: row.filename, recordId: row.record_id }));
   }
 
   hasRecord(recordId: string): boolean {
-    return (
-      this.database.prepare("SELECT 1 FROM usage_records WHERE record_id = ?").get(recordId) !==
-      undefined
-    );
+    return this.database.prepare('SELECT 1 FROM usage_records WHERE record_id = ?').get(recordId) !== undefined;
   }
 
   hasWatermark(filename: string): boolean {
-    return (
-      this.database.prepare("SELECT 1 FROM ingest_watermarks WHERE filename = ?").get(filename) !==
-      undefined
-    );
+    return this.database.prepare('SELECT 1 FROM ingest_watermarks WHERE filename = ?').get(filename) !== undefined;
   }
 
   close(): void {

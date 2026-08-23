@@ -1,9 +1,9 @@
-import { addUsdAmounts } from "./pricing.ts";
-import type { CostUnavailableReason, SanitizedAuditSidecarV1, TodaySummary } from "./types.ts";
+import { addUsdAmounts } from './pricing.ts';
+import type { CostUnavailableReason, SanitizedAuditSidecarV1, TodaySummary } from './types.ts';
 
 // Day-boundary and aggregation mechanics ported from codex-proxy
 // `packages/core/src/today.ts`.
-export const DEFAULT_REPORT_TIMEZONE = "America/New_York";
+export const DEFAULT_REPORT_TIMEZONE = 'America/New_York';
 
 interface DateParts {
   year: number;
@@ -15,15 +15,15 @@ interface DateParts {
 }
 
 function partsAt(timestamp: number, timeZone: string): DateParts {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
   });
   const parts = Object.fromEntries(
     formatter.formatToParts(new Date(timestamp)).map(({ type, value }) => [type, value]),
@@ -40,26 +40,19 @@ function partsAt(timestamp: number, timeZone: string): DateParts {
 
 function offsetAt(timestamp: number, timeZone: string): number {
   const parts = partsAt(timestamp, timeZone);
-  return (
-    Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) -
-    timestamp
-  );
+  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - timestamp;
 }
 
 function localMidnightUtc(year: number, month: number, day: number, timeZone: string): number {
   const desired = Date.UTC(year, month - 1, day);
   let candidate = desired;
-  for (let attempt = 0; attempt < 4; attempt += 1)
-    candidate = desired - offsetAt(candidate, timeZone);
+  for (let attempt = 0; attempt < 4; attempt += 1) candidate = desired - offsetAt(candidate, timeZone);
   return candidate;
 }
 
-export function parseCalendarDate(
-  calendarDate: string,
-): Readonly<{ year: number; month: number; day: number }> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(calendarDate))
-    throw new RangeError(`invalid calendar date: ${calendarDate}`);
-  const [yearText, monthText, dayText] = calendarDate.split("-");
+export function parseCalendarDate(calendarDate: string): Readonly<{ year: number; month: number; day: number }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(calendarDate)) throw new RangeError(`invalid calendar date: ${calendarDate}`);
+  const [yearText, monthText, dayText] = calendarDate.split('-');
   const year = Number(yearText);
   const month = Number(monthText);
   const day = Number(dayText);
@@ -67,11 +60,7 @@ export function parseCalendarDate(
     throw new RangeError(`invalid calendar date: ${calendarDate}`);
   }
   const canonical = new Date(Date.UTC(year, month - 1, day));
-  if (
-    canonical.getUTCFullYear() !== year ||
-    canonical.getUTCMonth() !== month - 1 ||
-    canonical.getUTCDate() !== day
-  ) {
+  if (canonical.getUTCFullYear() !== year || canonical.getUTCMonth() !== month - 1 || canonical.getUTCDate() !== day) {
     throw new RangeError(`invalid calendar date: ${calendarDate}`);
   }
   return Object.freeze({ year, month, day });
@@ -79,7 +68,7 @@ export function parseCalendarDate(
 
 export function formatReportDate(timestamp: number, timeZone = DEFAULT_REPORT_TIMEZONE): string {
   const parts = partsAt(timestamp, timeZone);
-  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+  return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
 }
 
 export function getCalendarDayWindow(
@@ -101,11 +90,8 @@ export function getCalendarDayWindow(
   });
 }
 
-export function getTodayWindow(
-  now: Date,
-  timeZone = DEFAULT_REPORT_TIMEZONE,
-): Readonly<{ start: Date; end: Date }> {
-  if (Number.isNaN(now.getTime())) throw new RangeError("now must be a valid Date");
+export function getTodayWindow(now: Date, timeZone = DEFAULT_REPORT_TIMEZONE): Readonly<{ start: Date; end: Date }> {
+  if (Number.isNaN(now.getTime())) throw new RangeError('now must be a valid Date');
   return getCalendarDayWindow(formatReportDate(now.getTime(), timeZone), timeZone);
 }
 
@@ -125,8 +111,8 @@ export function aggregateToday(
   const amounts = today.flatMap((event) => (event.cost ? [event.cost.amountUsd] : []));
   const costUnavailableReason: CostUnavailableReason | null = unavailable
     ? Object.freeze({
-        code: "aggregate-incomplete",
-        detail: unavailable.costUnavailableReason?.code ?? "unknown cost",
+        code: 'aggregate-incomplete',
+        detail: unavailable.costUnavailableReason?.code ?? 'unknown cost',
       })
     : null;
   const latestEventTimestamp = today.reduce<string | null>(
@@ -145,9 +131,9 @@ export function aggregateToday(
     cost:
       costUnavailableReason === null
         ? Object.freeze({
-            currency: "USD",
+            currency: 'USD',
             amountUsd: addUsdAmounts(amounts),
-            catalogueVersion: "aggregate",
+            catalogueVersion: 'aggregate',
           })
         : null,
     costUnavailableReason,

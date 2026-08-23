@@ -2,7 +2,7 @@
 // and the Today domain in `packages/core/src/types.ts`. The dashboard talks
 // only to the local server, so it depends on the wire shape alone.
 
-export type ProxyStatus = "healthy" | "degraded" | "unavailable";
+export type ProxyStatus = 'healthy' | 'degraded' | 'unavailable';
 
 export interface HealthPayload {
   readonly ready: boolean;
@@ -34,9 +34,9 @@ export interface PricedCost {
 }
 
 export type CostUnavailableReason =
-  | { readonly code: "unknown-model"; readonly model: string }
-  | { readonly code: "missing-category-price"; readonly model: string; readonly category: string }
-  | { readonly code: "aggregate-incomplete"; readonly detail: string };
+  | { readonly code: 'unknown-model'; readonly model: string }
+  | { readonly code: 'missing-category-price'; readonly model: string; readonly category: string }
+  | { readonly code: 'aggregate-incomplete'; readonly detail: string };
 
 export interface SummaryPayload {
   readonly reportTimezone: string;
@@ -52,21 +52,21 @@ export interface SummaryPayload {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function string(value: unknown): value is string {
-  return typeof value === "string";
+  return typeof value === 'string';
 }
 
 function number(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 function parseCost(value: unknown): PricedCost | null {
   if (value === null) return null;
   if (!isRecord(value) || !string(value.currency) || !string(value.amountUsd)) return null;
-  if (typeof value.catalogueVersion !== "string") return null;
+  if (typeof value.catalogueVersion !== 'string') return null;
   return {
     currency: value.currency,
     amountUsd: value.amountUsd,
@@ -78,14 +78,14 @@ function parseCostUnavailableReason(value: unknown): CostUnavailableReason | nul
   if (value === null) return null;
   if (!isRecord(value)) return null;
   switch (value.code) {
-    case "unknown-model":
-      return string(value.model) ? { code: "unknown-model", model: value.model } : null;
-    case "missing-category-price":
+    case 'unknown-model':
+      return string(value.model) ? { code: 'unknown-model', model: value.model } : null;
+    case 'missing-category-price':
       return string(value.model) && string(value.category)
-        ? { code: "missing-category-price", model: value.model, category: value.category }
+        ? { code: 'missing-category-price', model: value.model, category: value.category }
         : null;
-    case "aggregate-incomplete":
-      return string(value.detail) ? { code: "aggregate-incomplete", detail: value.detail } : null;
+    case 'aggregate-incomplete':
+      return string(value.detail) ? { code: 'aggregate-incomplete', detail: value.detail } : null;
     default:
       return null;
   }
@@ -94,7 +94,7 @@ function parseCostUnavailableReason(value: unknown): CostUnavailableReason | nul
 export function parseHealth(value: unknown): HealthPayload {
   if (
     !isRecord(value) ||
-    typeof value.ready !== "boolean" ||
+    typeof value.ready !== 'boolean' ||
     !isRecord(value.server) ||
     !isRecord(value.proxy) ||
     !isRecord(value.database) ||
@@ -102,7 +102,7 @@ export function parseHealth(value: unknown): HealthPayload {
     !isRecord(value.capture) ||
     !isRecord(value.sse)
   ) {
-    throw new Error("malformed health payload");
+    throw new Error('malformed health payload');
   }
   const proxy = value.proxy;
   const database = value.database;
@@ -110,16 +110,12 @@ export function parseHealth(value: unknown): HealthPayload {
   const sse = value.sse;
   if (
     !string(value.server.status) ||
-    !(
-      proxy.status === "healthy" ||
-      proxy.status === "degraded" ||
-      proxy.status === "unavailable"
-    ) ||
+    !(proxy.status === 'healthy' || proxy.status === 'degraded' || proxy.status === 'unavailable') ||
     !number(database.recordCount) ||
     !number(ingest.rejectedSidecars) ||
     !number(sse.subscribers)
   ) {
-    throw new Error("malformed health payload");
+    throw new Error('malformed health payload');
   }
   return {
     ready: value.ready,
@@ -133,10 +129,10 @@ export function parseHealth(value: unknown): HealthPayload {
       updatedAt: string(proxy.updatedAt) ? proxy.updatedAt : null,
     },
     database: {
-      status: string(database.status) ? database.status : "unknown",
-      path: string(database.path) ? database.path : "",
+      status: string(database.status) ? database.status : 'unknown',
+      path: string(database.path) ? database.path : '',
       schemaVersion: number(database.schemaVersion) ? database.schemaVersion : 0,
-      journalMode: string(database.journalMode) ? database.journalMode : "",
+      journalMode: string(database.journalMode) ? database.journalMode : '',
       recordCount: database.recordCount,
     },
     ingest: {
@@ -149,7 +145,7 @@ export function parseHealth(value: unknown): HealthPayload {
 }
 
 export function parseSummary(value: unknown): SummaryPayload {
-  if (!isRecord(value)) throw new Error("malformed summary payload");
+  if (!isRecord(value)) throw new Error('malformed summary payload');
   const numeric = [value.inputTokens, value.outputTokens, value.totalTokens, value.requestCount];
   if (
     !string(value.reportTimezone) ||
@@ -158,7 +154,7 @@ export function parseSummary(value: unknown): SummaryPayload {
     numeric.some((entry) => !number(entry)) ||
     !(value.latestEventTimestamp === null || string(value.latestEventTimestamp))
   ) {
-    throw new Error("malformed summary payload");
+    throw new Error('malformed summary payload');
   }
   return {
     reportTimezone: value.reportTimezone,
@@ -238,7 +234,7 @@ export interface CarFilters {
 }
 
 function parseUsageTotals(value: unknown): UsageTotals {
-  if (!isRecord(value)) throw new Error("malformed usage totals");
+  if (!isRecord(value)) throw new Error('malformed usage totals');
   const numeric = [
     value.inputTokens,
     value.cachedInputTokens,
@@ -246,7 +242,7 @@ function parseUsageTotals(value: unknown): UsageTotals {
     value.reasoningOutputTokens,
     value.totalTokens,
   ];
-  if (numeric.some((entry) => !number(entry))) throw new Error("malformed usage totals");
+  if (numeric.some((entry) => !number(entry))) throw new Error('malformed usage totals');
   return {
     inputTokens: value.inputTokens as number,
     cachedInputTokens: value.cachedInputTokens as number,
@@ -257,9 +253,9 @@ function parseUsageTotals(value: unknown): UsageTotals {
 }
 
 function parseAggregate(value: unknown): UsageAggregate {
-  if (!isRecord(value)) throw new Error("malformed aggregate");
+  if (!isRecord(value)) throw new Error('malformed aggregate');
   const usage = parseUsageTotals(value);
-  if (!number(value.requestCount)) throw new Error("malformed aggregate");
+  if (!number(value.requestCount)) throw new Error('malformed aggregate');
   return {
     requestCount: value.requestCount,
     ...usage,
@@ -278,7 +274,7 @@ function parseHistoryRecord(value: unknown): HistoryRecord {
     !string(value.endpoint) ||
     !number(value.responseStatus)
   ) {
-    throw new Error("malformed history record");
+    throw new Error('malformed history record');
   }
   return {
     recordId: value.recordId,
@@ -294,15 +290,10 @@ function parseHistoryRecord(value: unknown): HistoryRecord {
 }
 
 export function parseHistory(value: unknown): HistoryPayload {
-  if (
-    !isRecord(value) ||
-    !number(value.dataVersion) ||
-    !number(value.total) ||
-    !number(value.offset)
-  ) {
-    throw new Error("malformed history payload");
+  if (!isRecord(value) || !number(value.dataVersion) || !number(value.total) || !number(value.offset)) {
+    throw new Error('malformed history payload');
   }
-  if (!Array.isArray(value.records)) throw new Error("malformed history payload");
+  if (!Array.isArray(value.records)) throw new Error('malformed history payload');
   return {
     dataVersion: value.dataVersion,
     total: value.total,
@@ -321,7 +312,7 @@ function parseBucket(value: unknown): DailyUsageBucket {
     !string(value.startInclusive) ||
     !string(value.endExclusive)
   ) {
-    throw new Error("malformed trend bucket");
+    throw new Error('malformed trend bucket');
   }
   return {
     reportTimezone: value.reportTimezone,
@@ -340,7 +331,7 @@ export function parseTrends(value: unknown): TrendsPayload {
     !string(value.endExclusive) ||
     !Array.isArray(value.buckets)
   ) {
-    throw new Error("malformed trends payload");
+    throw new Error('malformed trends payload');
   }
   return {
     dataVersion: value.dataVersion,
@@ -354,44 +345,40 @@ export function parseTrends(value: unknown): TrendsPayload {
 
 function carParams(filters: CarFilters): URLSearchParams {
   const params = new URLSearchParams();
-  if (filters.from) params.set("from", filters.from);
-  if (filters.to) params.set("to", filters.to);
-  for (const model of filters.model ?? []) params.append("model", model);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  for (const model of filters.model ?? []) params.append('model', model);
   return params;
 }
 
 export function historyPath(filters: CarFilters, limit: number, offset: number): string {
   const params = carParams(filters);
-  params.set("limit", String(limit));
-  params.set("offset", String(offset));
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
   return `/api/history?${params.toString()}`;
 }
 
 export function trendsPath(filters: CarFilters): string {
   const params = carParams(filters);
   const query = params.toString();
-  return `/api/trends${query ? `?${query}` : ""}`;
+  return `/api/trends${query ? `?${query}` : ''}`;
 }
 
 async function fetchJson(url: string): Promise<unknown> {
-  const response = await fetch(url, { headers: { accept: "application/json" } });
+  const response = await fetch(url, { headers: { accept: 'application/json' } });
   if (!response.ok) throw new Error(`${url} responded ${response.status}`);
   return response.json();
 }
 
 export async function fetchHealth(): Promise<HealthPayload> {
-  return parseHealth(await fetchJson("/api/health"));
+  return parseHealth(await fetchJson('/api/health'));
 }
 
 export async function fetchSummary(): Promise<SummaryPayload> {
-  return parseSummary(await fetchJson("/api/summary"));
+  return parseSummary(await fetchJson('/api/summary'));
 }
 
-export async function fetchHistory(
-  filters: CarFilters,
-  limit: number,
-  offset: number,
-): Promise<HistoryPayload> {
+export async function fetchHistory(filters: CarFilters, limit: number, offset: number): Promise<HistoryPayload> {
   return parseHistory(await fetchJson(historyPath(filters, limit, offset)));
 }
 
@@ -466,18 +453,15 @@ export interface PromptAnalysisPayload {
   readonly estimatedInputTokens: number;
 }
 
-function parseInspectionPage<T>(
-  value: unknown,
-  parseRecord: (record: unknown) => T,
-): InspectionPage<T> {
+function parseInspectionPage<T>(value: unknown, parseRecord: (record: unknown) => T): InspectionPage<T> {
   if (
     !isRecord(value) ||
-    typeof value.captureEnabled !== "boolean" ||
+    typeof value.captureEnabled !== 'boolean' ||
     !number(value.total) ||
     !number(value.offset) ||
     !Array.isArray(value.records)
   ) {
-    throw new Error("malformed inspection payload");
+    throw new Error('malformed inspection payload');
   }
   return {
     captureEnabled: value.captureEnabled,
@@ -497,7 +481,7 @@ export function parseContextSummary(value: unknown): ContextSummaryRecord {
     !string(value.endpoint) ||
     !number(value.messageCount)
   ) {
-    throw new Error("malformed context summary");
+    throw new Error('malformed context summary');
   }
   return {
     recordId: value.recordId,
@@ -506,20 +490,20 @@ export function parseContextSummary(value: unknown): ContextSummaryRecord {
     model: string(value.model) ? value.model : null,
     messageCount: value.messageCount,
     instructionsPresent: value.instructionsPresent === true,
-    toolCount: typeof value.toolCount === "number" ? value.toolCount : 0,
-    toolCallCount: typeof value.toolCallCount === "number" ? value.toolCallCount : 0,
-    sessionId: string(value.sessionId) ? value.sessionId : "",
+    toolCount: typeof value.toolCount === 'number' ? value.toolCount : 0,
+    toolCallCount: typeof value.toolCallCount === 'number' ? value.toolCallCount : 0,
+    sessionId: string(value.sessionId) ? value.sessionId : '',
   };
 }
 
 function requiredStringPair(value: unknown, firstKey: string, secondKey: string): void {
   if (!isRecord(value) || !string(value[firstKey]) || !string(value[secondKey])) {
-    throw new Error("malformed inspection record");
+    throw new Error('malformed inspection record');
   }
 }
 
 export function parseMessageRecord(value: unknown): MessageRecord {
-  requiredStringPair(value, "recordId", "text");
+  requiredStringPair(value, 'recordId', 'text');
   const record = value as Record<string, unknown>;
   return {
     recordId: record.recordId as string,
@@ -530,46 +514,46 @@ export function parseMessageRecord(value: unknown): MessageRecord {
 }
 
 export function parseToolSchemaRecord(value: unknown): ToolSchemaRecord {
-  requiredStringPair(value, "recordId", "name");
+  requiredStringPair(value, 'recordId', 'name');
   const record = value as Record<string, unknown>;
   return {
     recordId: record.recordId as string,
-    capturedAt: string(record.capturedAt) ? record.capturedAt : "",
+    capturedAt: string(record.capturedAt) ? record.capturedAt : '',
     name: record.name as string,
-    type: string(record.type) ? record.type : "unknown",
+    type: string(record.type) ? record.type : 'unknown',
     description: string(record.description) ? record.description : null,
-    schemaJson: string(record.schemaJson) ? record.schemaJson : "{}",
+    schemaJson: string(record.schemaJson) ? record.schemaJson : '{}',
   };
 }
 
 export function parseToolCallRecord(value: unknown): ToolCallRecord {
-  requiredStringPair(value, "recordId", "name");
+  requiredStringPair(value, 'recordId', 'name');
   const record = value as Record<string, unknown>;
   return {
     recordId: record.recordId as string,
-    capturedAt: string(record.capturedAt) ? record.capturedAt : "",
+    capturedAt: string(record.capturedAt) ? record.capturedAt : '',
     callId: string(record.callId) ? record.callId : null,
     name: record.name as string,
-    argumentsText: string(record.argumentsText) ? record.argumentsText : "",
+    argumentsText: string(record.argumentsText) ? record.argumentsText : '',
   };
 }
 
 export function parseSessionGroup(value: unknown): SessionGroupRecord {
-  requiredStringPair(value, "sessionId", "firstCapturedAt");
+  requiredStringPair(value, 'sessionId', 'firstCapturedAt');
   const record = value as Record<string, unknown>;
-  if (!Array.isArray(record.recordIds)) throw new Error("malformed session group");
+  if (!Array.isArray(record.recordIds)) throw new Error('malformed session group');
   return {
     sessionId: record.sessionId as string,
     captureCount: number(record.captureCount) ? record.captureCount : 0,
     firstCapturedAt: record.firstCapturedAt as string,
-    lastCapturedAt: string(record.lastCapturedAt) ? record.lastCapturedAt : "",
+    lastCapturedAt: string(record.lastCapturedAt) ? record.lastCapturedAt : '',
     recordIds: record.recordIds.filter(string),
   };
 }
 
 export function parsePromptAnalysis(value: unknown): PromptAnalysisPayload {
-  if (!isRecord(value) || typeof value.captureEnabled !== "boolean") {
-    throw new Error("malformed prompt analysis payload");
+  if (!isRecord(value) || typeof value.captureEnabled !== 'boolean') {
+    throw new Error('malformed prompt analysis payload');
   }
   return {
     captureEnabled: value.captureEnabled,
@@ -590,7 +574,7 @@ function inspectionPath(base: string, params: Record<string, string | number | u
     if (value !== undefined) search.set(key, String(value));
   }
   const query = search.toString();
-  return `/api/inspection/${base}${query ? `?${query}` : ""}`;
+  return `/api/inspection/${base}${query ? `?${query}` : ''}`;
 }
 
 async function fetchInspectionPage<T>(url: string, parseRecord: (record: unknown) => T) {
@@ -600,30 +584,27 @@ async function fetchInspectionPage<T>(url: string, parseRecord: (record: unknown
 const DEFAULT_INSPECTION_LIMIT = 25;
 
 export function fetchInspectionDay(date: string | undefined, limit: number, offset: number) {
-  return fetchInspectionPage(inspectionPath("day", { date, limit, offset }), parseContextSummary);
+  return fetchInspectionPage(inspectionPath('day', { date, limit, offset }), parseContextSummary);
 }
 
 export function fetchInspectionMessages(recordId: string, limit: number, offset: number) {
-  return fetchInspectionPage(
-    inspectionPath("messages", { recordId, limit, offset }),
-    parseMessageRecord,
-  );
+  return fetchInspectionPage(inspectionPath('messages', { recordId, limit, offset }), parseMessageRecord);
 }
 
 export function fetchInspectionTools(limit: number, offset: number) {
-  return fetchInspectionPage(inspectionPath("tools", { limit, offset }), parseToolSchemaRecord);
+  return fetchInspectionPage(inspectionPath('tools', { limit, offset }), parseToolSchemaRecord);
 }
 
 export function fetchInspectionToolCalls(limit: number, offset: number) {
-  return fetchInspectionPage(inspectionPath("tool-calls", { limit, offset }), parseToolCallRecord);
+  return fetchInspectionPage(inspectionPath('tool-calls', { limit, offset }), parseToolCallRecord);
 }
 
 export function fetchInspectionSessions(limit: number, offset: number) {
-  return fetchInspectionPage(inspectionPath("sessions", { limit, offset }), parseSessionGroup);
+  return fetchInspectionPage(inspectionPath('sessions', { limit, offset }), parseSessionGroup);
 }
 
 export interface SessionLivenessRecord {
-  readonly state: "running" | "quiet" | "finished" | "unknown";
+  readonly state: 'running' | 'quiet' | 'finished' | 'unknown';
   readonly lastActivity: string | null;
   readonly idleMs: number | null;
   readonly quietAfterMs: number;
@@ -633,7 +614,7 @@ export interface SessionLivenessRecord {
 function parseLiveness(value: unknown): SessionLivenessRecord | null {
   if (!isRecord(value) || !string(value.state)) return null;
   return {
-    state: value.state as SessionLivenessRecord["state"],
+    state: value.state as SessionLivenessRecord['state'],
     lastActivity: string(value.lastActivity) ? (value.lastActivity as string) : null,
     idleMs: number(value.idleMs) ? (value.idleMs as number) : null,
     quietAfterMs: number(value.quietAfterMs) ? (value.quietAfterMs as number) : 0,
@@ -647,7 +628,7 @@ export interface SessionDetailPayload extends InspectionPage<ContextSummaryRecor
 
 export function fetchSessionDetail(id: string): Promise<SessionDetailPayload> {
   return fetchInspectionPage(
-    inspectionPath("sessions/detail", { id }),
+    inspectionPath('sessions/detail', { id }),
     parseContextSummary,
   ) as Promise<SessionDetailPayload>;
 }
@@ -661,17 +642,17 @@ export interface SessionBreakdownPayload {
 }
 
 export async function fetchSessionBreakdown(id: string): Promise<SessionBreakdownPayload> {
-  const value = await fetchJson(inspectionPath("sessions/breakdown", { id }));
+  const value = await fetchJson(inspectionPath('sessions/breakdown', { id }));
   if (!isRecord(value) || !number(value.captures) || !Array.isArray(value.models)) {
-    throw new Error("malformed session breakdown");
+    throw new Error('malformed session breakdown');
   }
   const record = value as Record<string, unknown>;
   return {
     captureEnabled: record.captureEnabled === true,
-    sessionId: string(record.sessionId) ? (record.sessionId as string) : "",
+    sessionId: string(record.sessionId) ? (record.sessionId as string) : '',
     captures: record.captures as number,
     models: (record.models as unknown[]).map((entry) => {
-      if (!isRecord(entry) || !string(entry.model)) throw new Error("malformed model count");
+      if (!isRecord(entry) || !string(entry.model)) throw new Error('malformed model count');
       return {
         model: entry.model as string,
         requests: number(entry.requests) ? (entry.requests as number) : 0,
@@ -679,7 +660,7 @@ export async function fetchSessionBreakdown(id: string): Promise<SessionBreakdow
     }),
     hours: Array.isArray(record.hours)
       ? (record.hours as unknown[]).map((entry) => {
-          if (!isRecord(entry) || !string(entry.hour)) throw new Error("malformed hour count");
+          if (!isRecord(entry) || !string(entry.hour)) throw new Error('malformed hour count');
           return {
             hour: entry.hour as string,
             captures: number(entry.captures) ? (entry.captures as number) : 0,
@@ -699,23 +680,19 @@ export interface ErrorsPayload {
 }
 
 export async function fetchErrors(): Promise<ErrorsPayload> {
-  const value = await fetchJson("/api/inspection/errors");
-  if (
-    !isRecord(value) ||
-    !Array.isArray(value.rejectedSidecars) ||
-    !number(value.unreadableCaptures)
-  ) {
-    throw new Error("malformed errors payload");
+  const value = await fetchJson('/api/inspection/errors');
+  if (!isRecord(value) || !Array.isArray(value.rejectedSidecars) || !number(value.unreadableCaptures)) {
+    throw new Error('malformed errors payload');
   }
   return {
     rejectedSidecars: (value.rejectedSidecars as unknown[]).map((entry) => {
       if (!isRecord(entry) || !string(entry.filename) || !string(entry.reason)) {
-        throw new Error("malformed rejected sidecar");
+        throw new Error('malformed rejected sidecar');
       }
       return {
         filename: entry.filename as string,
         reason: entry.reason as string,
-        rejectedAt: string(entry.rejectedAt) ? (entry.rejectedAt as string) : "",
+        rejectedAt: string(entry.rejectedAt) ? (entry.rejectedAt as string) : '',
       };
     }),
     unreadableCaptures: value.unreadableCaptures as number,
@@ -723,7 +700,7 @@ export async function fetchErrors(): Promise<ErrorsPayload> {
 }
 
 export async function fetchPromptAnalysis(recordId: string): Promise<PromptAnalysisPayload> {
-  return parsePromptAnalysis(await fetchJson(inspectionPath("prompt", { recordId })));
+  return parsePromptAnalysis(await fetchJson(inspectionPath('prompt', { recordId })));
 }
 
 export interface PromptCohortRecord {
@@ -750,7 +727,7 @@ export interface PromptMixPayload {
 }
 
 export function fetchPromptMix(date?: string): Promise<PromptMixPayload> {
-  return fetchJson(inspectionPath("prompt-mix", { date })) as Promise<PromptMixPayload>;
+  return fetchJson(inspectionPath('prompt-mix', { date })) as Promise<PromptMixPayload>;
 }
 
 export interface PromptListingRecord {
@@ -761,35 +738,27 @@ export interface PromptListingRecord {
   readonly sectionCount: number;
 }
 
-export function fetchPromptListings(
-  date?: string,
-  hash?: string,
-): Promise<InspectionPage<PromptListingRecord>> {
-  return fetchInspectionPage(
-    inspectionPath("prompts", { date, hash }),
-    (record: unknown): PromptListingRecord => {
-      if (!isRecord(record) || !string(record.recordId)) {
-        throw new Error("malformed prompt listing record");
-      }
-      const value = record as Record<string, unknown>;
-      return {
-        recordId: value.recordId as string,
-        capturedAt: string(value.capturedAt) ? (value.capturedAt as string) : "",
-        model: string(value.model) ? (value.model as string) : null,
-        instructionsHash: string(value.instructionsHash)
-          ? (value.instructionsHash as string)
-          : null,
-        sectionCount: number(value.sectionCount) ? (value.sectionCount as number) : 0,
-      };
-    },
-  );
+export function fetchPromptListings(date?: string, hash?: string): Promise<InspectionPage<PromptListingRecord>> {
+  return fetchInspectionPage(inspectionPath('prompts', { date, hash }), (record: unknown): PromptListingRecord => {
+    if (!isRecord(record) || !string(record.recordId)) {
+      throw new Error('malformed prompt listing record');
+    }
+    const value = record as Record<string, unknown>;
+    return {
+      recordId: value.recordId as string,
+      capturedAt: string(value.capturedAt) ? (value.capturedAt as string) : '',
+      model: string(value.model) ? (value.model as string) : null,
+      instructionsHash: string(value.instructionsHash) ? (value.instructionsHash as string) : null,
+      sectionCount: number(value.sectionCount) ? (value.sectionCount as number) : 0,
+    };
+  });
 }
 
 export interface PromptSectionsPayload {
   readonly captureEnabled: boolean;
   readonly instructionsHash: string | null;
   readonly sections: ReadonlyArray<{
-    readonly kind: "instructions" | "message";
+    readonly kind: 'instructions' | 'message';
     readonly index: number | null;
     readonly role: string | null;
     readonly itemType: string | null;
@@ -798,9 +767,7 @@ export interface PromptSectionsPayload {
 }
 
 export function fetchPromptSections(recordId: string): Promise<PromptSectionsPayload> {
-  return fetchJson(
-    inspectionPath("prompt-sections", { recordId }),
-  ) as Promise<PromptSectionsPayload>;
+  return fetchJson(inspectionPath('prompt-sections', { recordId })) as Promise<PromptSectionsPayload>;
 }
 
 export { DEFAULT_INSPECTION_LIMIT };

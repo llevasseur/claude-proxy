@@ -1,9 +1,9 @@
-import type { FSWatcher } from "node:fs";
-import { watch } from "node:fs";
-import { mkdir, readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { parseSanitizedAuditSidecar } from "@agent-proxy/ox-core";
-import type { UsageDatabase } from "./database.ts";
+import type { FSWatcher } from 'node:fs';
+import { watch } from 'node:fs';
+import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { parseSanitizedAuditSidecar } from '@agent-proxy/ox-core';
+import type { UsageDatabase } from './database.ts';
 
 export interface ReconcileResult {
   readonly changed: boolean;
@@ -12,15 +12,13 @@ export interface ReconcileResult {
 }
 
 export function isFinalSidecarFilename(filename: string): boolean {
-  return (
-    filename.endsWith(".audit.json") && !filename.startsWith(".") && !filename.endsWith(".tmp")
-  );
+  return filename.endsWith('.audit.json') && !filename.startsWith('.') && !filename.endsWith('.tmp');
 }
 
 function safeReason(error: unknown): string {
-  if (error instanceof SyntaxError) return "invalid JSON";
+  if (error instanceof SyntaxError) return 'invalid JSON';
   if (error instanceof Error) return error.message.slice(0, 240);
-  return "sidecar validation failed";
+  return 'sidecar validation failed';
 }
 
 export class SidecarIngestor {
@@ -55,7 +53,7 @@ export class SidecarIngestor {
     let rejected = 0;
     for (const filename of entries) {
       try {
-        const raw = await readFile(join(this.directory, filename), "utf8");
+        const raw = await readFile(join(this.directory, filename), 'utf8');
         const sidecar = parseSanitizedAuditSidecar(JSON.parse(raw));
         if (this.database.ingest(filename, sidecar, this.clock())) changed = true;
         accepted += 1;

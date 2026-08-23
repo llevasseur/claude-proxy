@@ -6,8 +6,8 @@ import {
   pricingProvenance,
   type RateProvenance,
   type UsageTotals,
-} from "@agent-proxy/ox-core";
-import { useEffect, useState } from "react";
+} from '@agent-proxy/ox-core';
+import { useEffect, useState } from 'react';
 
 // Operator cost-rate overrides (`components/CostRateCard.tsx` at the pinned
 // commit): editable USD-per-million-token rates that recompute cost estimates
@@ -20,14 +20,14 @@ export interface RateOverrides {
   readonly output: string;
 }
 
-const STORAGE_KEY = "ox-alpha.cost-rate-overrides";
+const STORAGE_KEY = 'ox-alpha.cost-rate-overrides';
 
-const EMPTY_OVERRIDES: RateOverrides = { input: "", cachedInput: "", output: "" };
+const EMPTY_OVERRIDES: RateOverrides = { input: '', cachedInput: '', output: '' };
 
 const FIELDS: ReadonlyArray<readonly [keyof RateOverrides, string, PriceCategory]> = Object.freeze([
-  ["input", "Fresh input $/MTok", "input"],
-  ["cachedInput", "Cached input $/MTok", "cachedInput"],
-  ["output", "Output $/MTok", "output"],
+  ['input', 'Fresh input $/MTok', 'input'],
+  ['cachedInput', 'Cached input $/MTok', 'cachedInput'],
+  ['output', 'Output $/MTok', 'output'],
 ]);
 
 // localStorage is unavailable in some environments (tests, hardened
@@ -64,10 +64,10 @@ function loadOverrides(): RateOverrides {
   if (raw === null) return EMPTY_OVERRIDES;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return EMPTY_OVERRIDES;
+    if (typeof parsed !== 'object' || parsed === null) return EMPTY_OVERRIDES;
     const record = parsed as Record<string, unknown>;
-    const text = (key: string) => (typeof record[key] === "string" ? (record[key] as string) : "");
-    return { input: text("input"), cachedInput: text("cachedInput"), output: text("output") };
+    const text = (key: string) => (typeof record[key] === 'string' ? (record[key] as string) : '');
+    return { input: text('input'), cachedInput: text('cachedInput'), output: text('output') };
   } catch {
     return EMPTY_OVERRIDES;
   }
@@ -78,7 +78,7 @@ export function recomputeCost(
   overrides: RateOverrides,
   usage: UsageTotals,
 ): Readonly<{ amountUsd: string | null; invalid: boolean }> {
-  const entered = Object.values(overrides).filter((rate) => rate.trim() !== "");
+  const entered = Object.values(overrides).filter((rate) => rate.trim() !== '');
   if (entered.length === 0) {
     return { amountUsd: null, invalid: false };
   }
@@ -93,15 +93,15 @@ export function recomputeCost(
   }
   const catalogue: Record<string, ModelPricing> = {
     override: {
-      model: "override",
-      currency: "USD",
-      unit: "one-million-tokens",
-      effectiveDate: "operator-override",
-      source: "operator",
+      model: 'override',
+      currency: 'USD',
+      unit: 'one-million-tokens',
+      effectiveDate: 'operator-override',
+      source: 'operator',
       usdPerMillionTokens: rates,
     },
   };
-  const result = estimateUsageCost("override", usage, catalogue);
+  const result = estimateUsageCost('override', usage, catalogue);
   return { amountUsd: result.cost?.amountUsd ?? null, invalid: false };
 }
 
@@ -119,47 +119,41 @@ export function CostRateCard({ usage }: { readonly usage: UsageTotals | null }) 
     writeStorage(JSON.stringify(overrides));
   }, [loaded, overrides]);
 
-  const result =
-    usage !== null && loaded
-      ? recomputeCost(overrides, usage)
-      : { amountUsd: null, invalid: false };
+  const result = usage !== null && loaded ? recomputeCost(overrides, usage) : { amountUsd: null, invalid: false };
 
   return (
-    <section className="card cost-rate-card" data-testid="cost-rate-card">
+    <section className='card cost-rate-card' data-testid='cost-rate-card'>
       <h2>Cost-rate overrides</h2>
-      <p className="muted">
-        Estimates recomputed from the tokens currently listed, using your rates. Recorded sidecar
-        costs stay untouched.
+      <p className='muted'>
+        Estimates recomputed from the tokens currently listed, using your rates. Recorded sidecar costs stay untouched.
       </p>
-      <div className="cost-rate-fields">
+      <div className='cost-rate-fields'>
         {FIELDS.map(([key, label]) => (
-          <label key={key} className="car-filter-field">
-            <span className="car-filter-label">{label}</span>
+          <label key={key} className='car-filter-field'>
+            <span className='car-filter-label'>{label}</span>
             <input
-              type="text"
-              inputMode="decimal"
+              type='text'
+              inputMode='decimal'
               value={overrides[key]}
-              placeholder="catalogue"
-              onChange={(event) =>
-                setOverrides((current) => ({ ...current, [key]: event.target.value }))
-              }
+              placeholder='catalogue'
+              onChange={(event) => setOverrides((current) => ({ ...current, [key]: event.target.value }))}
               data-testid={`cost-rate-${key}`}
             />
           </label>
         ))}
       </div>
-      <output className="cost-rate-result" data-testid="cost-rate-result">
+      <output className='cost-rate-result' data-testid='cost-rate-result'>
         {result.invalid
-          ? "Rates must be decimal numbers."
+          ? 'Rates must be decimal numbers.'
           : result.amountUsd !== null
             ? `Estimated cost at your rates: $${result.amountUsd}`
-            : "Enter rates to recompute the listed usage."}
+            : 'Enter rates to recompute the listed usage.'}
       </output>
-      <ul className="cost-rate-provenance muted" data-testid="cost-rate-provenance">
+      <ul className='cost-rate-provenance muted' data-testid='cost-rate-provenance'>
         {CATALOGUE_PROVENANCE.map(([model, provenance]) => (
           <li key={model}>
-            <code>{model}</code> — effective {provenance.effectiveDate},{" "}
-            <a href={provenance.source} rel="noreferrer noopener" target="_blank">
+            <code>{model}</code> — effective {provenance.effectiveDate},{' '}
+            <a href={provenance.source} rel='noreferrer noopener' target='_blank'>
               rate card
             </a>
           </li>

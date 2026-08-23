@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment } from 'react';
 
 // Drill-down navigation between related views (`components/Breadcrumbs.tsx`
 // at the pinned commit). Rendered as an ordered list so the hierarchy reads
@@ -11,12 +11,12 @@ export interface Breadcrumb {
 
 export function Breadcrumbs({ crumbs }: { readonly crumbs: readonly Breadcrumb[] }) {
   return (
-    <nav className="breadcrumbs" aria-label="Breadcrumb" data-testid="breadcrumbs">
+    <nav className='breadcrumbs' aria-label='Breadcrumb' data-testid='breadcrumbs'>
       <ol>
         {crumbs.map((crumb, index) => (
           <Fragment key={`${crumb.label}-${index}`}>
             {index > 0 && (
-              <li aria-hidden="true" className="breadcrumb-sep">
+              <li aria-hidden='true' className='breadcrumb-sep'>
                 /
               </li>
             )}
@@ -24,7 +24,7 @@ export function Breadcrumbs({ crumbs }: { readonly crumbs: readonly Breadcrumb[]
               {crumb.href && index < crumbs.length - 1 ? (
                 <a href={crumb.href}>{crumb.label}</a>
               ) : (
-                <span aria-current="page">{crumb.label}</span>
+                <span aria-current='page'>{crumb.label}</span>
               )}
             </li>
           </Fragment>

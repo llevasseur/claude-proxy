@@ -1,14 +1,7 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
-import {
-  fetchHealth,
-  fetchSummary,
-  type HealthPayload,
-  parseHealth,
-  parseSummary,
-  type SummaryPayload,
-} from "../api";
-import { type ConnectionStatus, computeConnectionStatus } from "./machine";
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useState } from 'react';
+import { fetchHealth, fetchSummary, type HealthPayload, parseHealth, parseSummary, type SummaryPayload } from '../api';
+import { type ConnectionStatus, computeConnectionStatus } from './machine';
 
 const REFETCH_BACKSTOP_MS = 10_000;
 const TICK_MS = 1_000;
@@ -43,7 +36,7 @@ export function useLiveOverview(): LiveOverview {
   }, []);
 
   const healthQuery = useQuery({
-    queryKey: ["health"],
+    queryKey: ['health'],
     queryFn: async () => {
       try {
         const health = await fetchHealth();
@@ -59,7 +52,7 @@ export function useLiveOverview(): LiveOverview {
   });
 
   const summaryQuery = useQuery({
-    queryKey: ["summary"],
+    queryKey: ['summary'],
     queryFn: async () => {
       try {
         const summary = await fetchSummary();
@@ -74,15 +67,15 @@ export function useLiveOverview(): LiveOverview {
   });
 
   useEffect(() => {
-    const source = new EventSource("/api/events");
+    const source = new EventSource('/api/events');
     const applySnapshot = (event: MessageEvent<string>) => {
       try {
         const parsed: unknown = JSON.parse(event.data);
-        if (typeof parsed !== "object" || parsed === null) return;
+        if (typeof parsed !== 'object' || parsed === null) return;
         const { health, summary } = parsed as Record<string, unknown>;
-        if (health !== undefined) queryClient.setQueryData(["health"], parseHealth(health));
+        if (health !== undefined) queryClient.setQueryData(['health'], parseHealth(health));
         if (summary !== undefined) {
-          queryClient.setQueryData(["summary"], parseSummary(summary));
+          queryClient.setQueryData(['summary'], parseSummary(summary));
         }
         markReachable();
         setSseOpen(true);
@@ -90,10 +83,10 @@ export function useLiveOverview(): LiveOverview {
         // A malformed frame is dropped; the next keepalive or refetch recovers.
       }
     };
-    source.addEventListener("snapshot", applySnapshot as EventListener);
-    source.addEventListener("update", applySnapshot as EventListener);
-    source.addEventListener("open", () => setSseOpen(true));
-    source.addEventListener("error", () => {
+    source.addEventListener('snapshot', applySnapshot as EventListener);
+    source.addEventListener('update', applySnapshot as EventListener);
+    source.addEventListener('open', () => setSseOpen(true));
+    source.addEventListener('error', () => {
       // The browser retries automatically; while it does, we are reconnecting.
       setSseOpen(source.readyState === EventSource.OPEN);
     });

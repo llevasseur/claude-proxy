@@ -1,13 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  FakeEventSource,
-  healthPayload,
-  installTestGlobals,
-  renderShell,
-  stubFetch,
-} from "../car/testSupport";
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FakeEventSource, healthPayload, installTestGlobals, renderShell, stubFetch } from '../car/testSupport';
 
 beforeEach(() => {
   FakeEventSource.instances = [];
@@ -17,7 +11,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  window.location.hash = "";
+  window.location.hash = '';
 });
 
 function inspectionPage(records: unknown[], overrides: Record<string, unknown> = {}) {
@@ -33,38 +27,34 @@ function inspectionPage(records: unknown[], overrides: Record<string, unknown> =
 }
 
 const contextRecord = {
-  recordId: "rec-1",
-  capturedAt: "2026-08-20T10:00:00.000Z",
-  endpoint: "/v1/responses",
-  model: "gpt-5",
+  recordId: 'rec-1',
+  capturedAt: '2026-08-20T10:00:00.000Z',
+  endpoint: '/v1/responses',
+  model: 'gpt-5',
   messageCount: 2,
   instructionsPresent: true,
   toolCount: 1,
   toolCallCount: 1,
-  sessionId: "sess-rec-1",
+  sessionId: 'sess-rec-1',
 };
 
-function stubBoatFetch(
-  options: Readonly<{ captureEnabled?: boolean; cleanErrors?: boolean }> = {},
-) {
+function stubBoatFetch(options: Readonly<{ captureEnabled?: boolean; cleanErrors?: boolean }> = {}) {
   return stubFetch((url) => {
-    if (url.includes("/api/health")) {
+    if (url.includes('/api/health')) {
       const health = healthPayload() as Record<string, unknown>;
       return { ...health, capture: { enabled: options.captureEnabled ?? true } };
     }
     // A disabled server serves typed empty inspection payloads.
     if (options.captureEnabled === false) return inspectionPage([], { captureEnabled: false });
-    if (url.includes("/api/inspection/day")) return inspectionPage([contextRecord]);
-    if (url.includes("/api/inspection/messages")) {
-      return inspectionPage([
-        { recordId: "rec-1", role: "user", itemType: "message", text: "hello" },
-      ]);
+    if (url.includes('/api/inspection/day')) return inspectionPage([contextRecord]);
+    if (url.includes('/api/inspection/messages')) {
+      return inspectionPage([{ recordId: 'rec-1', role: 'user', itemType: 'message', text: 'hello' }]);
     }
-    if (url.includes("/api/inspection/prompt?")) {
+    if (url.includes('/api/inspection/prompt?')) {
       return {
         captureEnabled: true,
         parsed: true,
-        model: "gpt-5",
+        model: 'gpt-5',
         instructionsPresent: true,
         instructionsChars: 9,
         inputMessageCount: 2,
@@ -73,31 +63,31 @@ function stubBoatFetch(
         estimatedInputTokens: 9,
       };
     }
-    if (url.includes("/api/inspection/prompt-sections")) {
+    if (url.includes('/api/inspection/prompt-sections')) {
       return {
         captureEnabled: true,
-        instructionsHash: "abc123def4567890",
+        instructionsHash: 'abc123def4567890',
         sections: [
-          { kind: "instructions", index: null, role: null, itemType: null, chars: 9 },
-          { kind: "message", index: 0, role: "user", itemType: "message", chars: 5 },
+          { kind: 'instructions', index: null, role: null, itemType: null, chars: 9 },
+          { kind: 'message', index: 0, role: 'user', itemType: 'message', chars: 5 },
         ],
       };
     }
-    if (url.includes("/api/inspection/prompt-mix")) {
+    if (url.includes('/api/inspection/prompt-mix')) {
       return {
         captureEnabled: true,
-        date: "2026-08-20",
+        date: '2026-08-20',
         requests: 2,
         meanChars: 12,
         medianChars: 12,
         identifiedShare: 1,
         cohorts: [
           {
-            key: "abc123def4567890",
-            label: "prompt:abc123def456",
+            key: 'abc123def4567890',
+            label: 'prompt:abc123def456',
             identified: true,
-            hash: "abc123def4567890",
-            models: ["gpt-5"],
+            hash: 'abc123def4567890',
+            models: ['gpt-5'],
             requests: 2,
             share: 1,
             meanChars: 12,
@@ -107,63 +97,63 @@ function stubBoatFetch(
         ],
       };
     }
-    if (url.includes("/api/inspection/prompts")) {
+    if (url.includes('/api/inspection/prompts')) {
       return inspectionPage([
         {
-          recordId: "rec-1",
+          recordId: 'rec-1',
           capturedAt: contextRecord.capturedAt,
-          model: "gpt-5",
-          instructionsHash: "abc123def4567890",
+          model: 'gpt-5',
+          instructionsHash: 'abc123def4567890',
           sectionCount: 3,
         },
       ]);
     }
-    if (url.includes("/api/inspection/tools")) {
+    if (url.includes('/api/inspection/tools')) {
       return inspectionPage([
         {
-          recordId: "rec-1",
+          recordId: 'rec-1',
           capturedAt: contextRecord.capturedAt,
-          name: "get_weather",
-          type: "function",
+          name: 'get_weather',
+          type: 'function',
           description: null,
-          schemaJson: "{}",
+          schemaJson: '{}',
         },
       ]);
     }
-    if (url.includes("/api/inspection/sessions/detail")) {
+    if (url.includes('/api/inspection/sessions/detail')) {
       return inspectionPage([contextRecord], {});
     }
-    if (url.includes("/api/inspection/sessions/breakdown")) {
+    if (url.includes('/api/inspection/sessions/breakdown')) {
       return {
         captureEnabled: true,
-        sessionId: "sess-rec-1",
+        sessionId: 'sess-rec-1',
         captures: 1,
-        models: [{ model: "gpt-5", requests: 1 }],
-        hours: [{ hour: "2026-08-20T10:00", captures: 1 }],
+        models: [{ model: 'gpt-5', requests: 1 }],
+        hours: [{ hour: '2026-08-20T10:00', captures: 1 }],
       };
     }
-    if (url.includes("/api/inspection/errors")) {
+    if (url.includes('/api/inspection/errors')) {
       return options.cleanErrors
         ? { rejectedSidecars: [], unreadableCaptures: 0 }
         : {
             rejectedSidecars: [
               {
-                filename: "bad.audit.json",
-                reason: "invalid JSON",
+                filename: 'bad.audit.json',
+                reason: 'invalid JSON',
                 rejectedAt: contextRecord.capturedAt,
               },
             ],
             unreadableCaptures: 0,
           };
     }
-    if (url.includes("/api/inspection/sessions")) {
+    if (url.includes('/api/inspection/sessions')) {
       return inspectionPage([
         {
-          sessionId: "sess-rec-1",
+          sessionId: 'sess-rec-1',
           captureCount: 1,
           firstCapturedAt: contextRecord.capturedAt,
           lastCapturedAt: contextRecord.capturedAt,
-          recordIds: ["rec-1"],
+          recordIds: ['rec-1'],
         },
       ]);
     }
@@ -171,122 +161,114 @@ function stubBoatFetch(
   });
 }
 
-describe("Boat inspection routes", () => {
-  it("explains that Boat capture is off instead of showing an empty table", async () => {
+describe('Boat inspection routes', () => {
+  it('explains that Boat capture is off instead of showing an empty table', async () => {
     stubBoatFetch({ captureEnabled: false });
-    window.location.hash = "#/boat";
+    window.location.hash = '#/boat';
     renderShell();
     await waitFor(() =>
-      expect(screen.getByTestId("boat-context-no-capture").textContent).toContain(
-        "Boat capture is off",
-      ),
+      expect(screen.getByTestId('boat-context-no-capture').textContent).toContain('Boat capture is off'),
     );
-    expect(screen.queryByTestId("boat-context-table")).toBeNull();
+    expect(screen.queryByTestId('boat-context-table')).toBeNull();
   });
 
-  it("shows a loading state before data arrives", async () => {
+  it('shows a loading state before data arrives', async () => {
     stubFetch(() => new Promise(() => {}));
-    window.location.hash = "#/boat";
+    window.location.hash = '#/boat';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-context-loading")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('boat-context-loading')).toBeTruthy());
   });
 
-  it("lists captured exchanges and links to messages and prompt surfaces", async () => {
+  it('lists captured exchanges and links to messages and prompt surfaces', async () => {
     const fetchMock = stubBoatFetch({});
-    window.location.hash = "#/boat";
+    window.location.hash = '#/boat';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-context-table")).toBeTruthy());
-    expect(screen.getByText("rec-1").tagName).toBe("A");
-    expect((screen.getByText("prompt") as HTMLAnchorElement).href).toContain(
-      "#/boat/prompt?recordId=rec-1",
-    );
+    await waitFor(() => expect(screen.getByTestId('boat-context-table')).toBeTruthy());
+    expect(screen.getByText('rec-1').tagName).toBe('A');
+    expect((screen.getByText('prompt') as HTMLAnchorElement).href).toContain('#/boat/prompt?recordId=rec-1');
 
-    fireEvent.click(screen.getByText("rec-1"));
-    await waitFor(() => expect(screen.getByTestId("boat-message-list")).toBeTruthy());
-    expect(screen.getByText("hello")).toBeTruthy();
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("recordId=rec-1"))).toBe(true);
+    fireEvent.click(screen.getByText('rec-1'));
+    await waitFor(() => expect(screen.getByTestId('boat-message-list')).toBeTruthy());
+    expect(screen.getByText('hello')).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('recordId=rec-1'))).toBe(true);
   });
 
-  it("renders the prompt analysis surface without body text", async () => {
+  it('renders the prompt analysis surface without body text', async () => {
     stubBoatFetch({});
-    window.location.hash = "#/boat/prompt?recordId=rec-1";
+    window.location.hash = '#/boat/prompt?recordId=rec-1';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-prompt-analysis")).toBeTruthy());
-    expect(screen.getByTestId("boat-prompt-analysis").textContent).toContain("Estimated");
+    await waitFor(() => expect(screen.getByTestId('boat-prompt-analysis')).toBeTruthy());
+    expect(screen.getByTestId('boat-prompt-analysis').textContent).toContain('Estimated');
   });
 
-  it("renders tool schemas, sessions, and keeps capture-off notices per route", async () => {
+  it('renders tool schemas, sessions, and keeps capture-off notices per route', async () => {
     stubBoatFetch({ captureEnabled: true });
-    window.location.hash = "#/boat/tools";
+    window.location.hash = '#/boat/tools';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-tools-table")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('boat-tools-table')).toBeTruthy());
 
     cleanup();
-    window.location.hash = "#/boat/sessions";
+    window.location.hash = '#/boat/sessions';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-sessions-table")).toBeTruthy());
-    expect(screen.getByText("sess-rec-1")).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('boat-sessions-table')).toBeTruthy());
+    expect(screen.getByText('sess-rec-1')).toBeTruthy();
   });
 
-  it("renders the prompt mix and drills down by cohort hash to prompts", async () => {
+  it('renders the prompt mix and drills down by cohort hash to prompts', async () => {
     const fetchMock = stubBoatFetch({});
-    window.location.hash = "#/boat/prompt-mix";
+    window.location.hash = '#/boat/prompt-mix';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-prompt-mix")).toBeTruthy());
-    const drill = screen.getByText("prompt:abc123def456") as HTMLAnchorElement;
-    expect(drill.href).toContain("#/boat/prompts?hash=abc123def4567890");
+    await waitFor(() => expect(screen.getByTestId('boat-prompt-mix')).toBeTruthy());
+    const drill = screen.getByText('prompt:abc123def456') as HTMLAnchorElement;
+    expect(drill.href).toContain('#/boat/prompts?hash=abc123def4567890');
 
     fireEvent.click(drill);
-    await waitFor(() => expect(screen.getByTestId("boat-prompts-table")).toBeTruthy());
-    expect(
-      fetchMock.mock.calls.some(([url]) => String(url).includes("hash=abc123def4567890")),
-    ).toBe(true);
+    await waitFor(() => expect(screen.getByTestId('boat-prompts-table')).toBeTruthy());
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('hash=abc123def4567890'))).toBe(true);
   });
 
-  it("shows prompt sections with sizes but no body text on the prompt page", async () => {
+  it('shows prompt sections with sizes but no body text on the prompt page', async () => {
     stubBoatFetch({});
-    window.location.hash = "#/boat/prompt?recordId=rec-1";
+    window.location.hash = '#/boat/prompt?recordId=rec-1';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-prompt-sections")).toBeTruthy());
-    const text = screen.getByTestId("boat-prompt-sections").textContent ?? "";
-    expect(text).toContain("instructions");
-    expect(text).toContain("input #0");
-    expect(text).not.toContain("hello");
+    await waitFor(() => expect(screen.getByTestId('boat-prompt-sections')).toBeTruthy());
+    const text = screen.getByTestId('boat-prompt-sections').textContent ?? '';
+    expect(text).toContain('instructions');
+    expect(text).toContain('input #0');
+    expect(text).not.toContain('hello');
   });
 
-  it("renders session detail with breakdown from the sessions listing", async () => {
+  it('renders session detail with breakdown from the sessions listing', async () => {
     const fetchMock = stubBoatFetch({});
-    window.location.hash = "#/boat/sessions";
+    window.location.hash = '#/boat/sessions';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-sessions-table")).toBeTruthy());
-    fireEvent.click(screen.getByText("sess-rec-1"));
-    await waitFor(() => expect(screen.getByTestId("boat-session-detail-table")).toBeTruthy());
-    expect(screen.getByTestId("boat-session-breakdown").textContent).toContain("gpt-5 × 1");
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sessions/detail"))).toBe(
-      true,
-    );
+    await waitFor(() => expect(screen.getByTestId('boat-sessions-table')).toBeTruthy());
+    fireEvent.click(screen.getByText('sess-rec-1'));
+    await waitFor(() => expect(screen.getByTestId('boat-session-detail-table')).toBeTruthy());
+    expect(screen.getByTestId('boat-session-breakdown').textContent).toContain('gpt-5 × 1');
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('sessions/detail'))).toBe(true);
   });
 
-  it("lists ingest errors and renders the all-clear state", async () => {
+  it('lists ingest errors and renders the all-clear state', async () => {
     stubBoatFetch({});
-    window.location.hash = "#/boat/sessions/errors";
+    window.location.hash = '#/boat/sessions/errors';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-errors-table")).toBeTruthy());
-    expect(screen.getByText("bad.audit.json")).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('boat-errors-table')).toBeTruthy());
+    expect(screen.getByText('bad.audit.json')).toBeTruthy();
 
     cleanup();
     stubBoatFetch({ cleanErrors: true });
-    window.location.hash = "#/boat/sessions/errors";
+    window.location.hash = '#/boat/sessions/errors';
     renderShell();
-    await waitFor(() => expect(screen.getByTestId("boat-errors-empty")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('boat-errors-empty')).toBeTruthy());
   });
 
-  it("keeps the Bike nav intact when Boat capture is disabled", async () => {
+  it('keeps the Bike nav intact when Boat capture is disabled', async () => {
     stubBoatFetch({ captureEnabled: false });
-    window.location.hash = "#/history";
+    window.location.hash = '#/history';
     renderShell();
-    await waitFor(() => expect(screen.getByRole("link", { name: "Context" })).toBeTruthy());
-    expect(screen.getByRole("link", { name: "History" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Overview" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Context' })).toBeTruthy());
+    expect(screen.getByRole('link', { name: 'History' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Overview' })).toBeTruthy();
   });
 });

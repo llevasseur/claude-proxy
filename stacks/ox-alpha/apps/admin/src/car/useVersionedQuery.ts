@@ -1,6 +1,6 @@
-import type { UseQueryResult } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { type DataVersionSnapshot, useDataVersionSignal } from "./stream";
+import type { UseQueryResult } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { type DataVersionSnapshot, useDataVersionSignal } from './stream';
 
 interface Versioned {
   readonly dataVersion: number;

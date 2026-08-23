@@ -2,7 +2,7 @@
 // string transforms so Boat can prove by test that credentials, cookies, and
 // authorization material never survive capture (ADR 0002 keeps the sidecar
 // itself body-free; this guards the separately stored capture envelopes).
-export const CAPTURE_REDACTION_SENTINEL = "[redacted]";
+export const CAPTURE_REDACTION_SENTINEL = '[redacted]';
 
 // Every pattern compiles with the "gi" flags. Field names stay readable for
 // inspection; only their values are replaced with the sentinel.
@@ -20,16 +20,14 @@ const DEFAULT_REDACTION_PATTERNS: readonly string[] = [
 ];
 
 export function compileRedactionPatterns(extraPatterns: readonly string[] = []): RegExp[] {
-  return [...DEFAULT_REDACTION_PATTERNS, ...extraPatterns].map(
-    (source) => new RegExp(source, "gi"),
-  );
+  return [...DEFAULT_REDACTION_PATTERNS, ...extraPatterns].map((source) => new RegExp(source, 'gi'));
 }
 
 export function redactCapturedText(text: string, extraPatterns: readonly string[] = []): string {
   let output = text;
   for (const pattern of compileRedactionPatterns(extraPatterns)) {
     output = output.replace(pattern, (...args: unknown[]) => {
-      const kept = typeof args[1] === "string" ? args[1] : null;
+      const kept = typeof args[1] === 'string' ? args[1] : null;
       return kept === null ? CAPTURE_REDACTION_SENTINEL : `${kept}${CAPTURE_REDACTION_SENTINEL}`;
     });
     pattern.lastIndex = 0;

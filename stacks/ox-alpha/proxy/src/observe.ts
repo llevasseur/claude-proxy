@@ -6,7 +6,7 @@ import {
   type SanitizedAuditSidecarV1,
   SseResponseObserver,
   type UsageTotals,
-} from "../../packages/core/src/index.ts";
+} from '../../packages/core/src/index.ts';
 
 export { ChatCompletionSseObserver, SseResponseObserver };
 
@@ -20,26 +20,26 @@ interface ResponseIdentity {
 }
 
 function object(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
 
 export function parseRequestModel(body: Uint8Array): string | null {
   try {
-    const request = object(JSON.parse(Buffer.from(body).toString("utf8")));
-    return typeof request?.model === "string" && request.model.length > 0 ? request.model : null;
+    const request = object(JSON.parse(Buffer.from(body).toString('utf8')));
+    return typeof request?.model === 'string' && request.model.length > 0 ? request.model : null;
   } catch {
     return null;
   }
 }
 
 export function jsonResponseIdentity(body: Uint8Array): ResponseIdentity | null {
-  return coreJsonResponseIdentity(Buffer.from(body).toString("utf8"));
+  return coreJsonResponseIdentity(Buffer.from(body).toString('utf8'));
 }
 
 export function jsonChatCompletionIdentity(body: Uint8Array): ResponseIdentity | null {
-  return coreJsonChatCompletionIdentity(Buffer.from(body).toString("utf8"));
+  return coreJsonChatCompletionIdentity(Buffer.from(body).toString('utf8'));
 }
 
 export function makeSidecar(input: {
