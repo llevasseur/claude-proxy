@@ -87,6 +87,16 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 1. **ox has no `tsconfig.base.json`**, so blocker (g) does not reach it — four standalone
    configs with no `extends` to repoint, and no severity tier available since tsconfig
    has none. *(ticket 06)*
+13. **A sibling ticket must be merged with `--merge`, never `--squash`.** Ticket 05's branch
+    carried 50 otherwise-unreachable commits, 44 of them named in the commit map. `/god`
+    defaults to squash, which would orphan them and falsify the history bridge
+    irreversibly. **Ticket 06 is identical.** *(ticket 06)*
+14. **The commit maps are a superset of what was absorbed.** `filter-repo` mapped every ref
+    in each fresh clone, but only `main` was absorbed — so 17 of codex's 61 entries name
+    commits from abandoned branches that reach nothing in this repository. A reader
+    resolving one of those permalinks gets a `new` SHA that exists nowhere.
+    `docs/history/index.md` should say which column is authoritative and that non-`main`
+    refs were mapped but not absorbed. *(ticket 14)*
 2. **The ADR timestamp sort is 29/38 tied** — codex's 16 are all `2026-08-19`, ox's 13 all
    `2026-08-22`. Ties break on the source repo's existing number. *(ticket 12, ADR 0053)*
 3. **`.gitattributes` `CHANGELOG.md merge=union` silently widens** to `stacks/*/CHANGELOG.md`,
@@ -136,7 +146,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
-| 05 | absorb-codex | [monorepo-fusion-05-absorb-codex](monorepo-fusion-05-absorb-codex.md) | `task/monorepo-fusion-05-absorb-codex` | paused | Implemented, reviewed, and green on CI as PR #271 (base `wayfinder/monorepo-fusion`, `verify` pass, MERGEABLE/CLEAN). Not merged — the merge authorisation was refused by a tool-policy classifier, so the merge is owed a human. **Merge it with `gh pr merge 271 --merge`, never `--squash`:** the PR carries 50 codex commits that exist on no other branch, and a squash leaves the `new` column of `docs/history/codex-proxy-commit-map.txt` pointing at unreachable objects, falsifying criterion 1. Ticket 06 hits this identically. Once merged, run the complete operation for 05. |
 | 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | todo | |
 | 07 | reformat-ox | [monorepo-fusion-07-reformat-ox](monorepo-fusion-07-reformat-ox.md) | `task/monorepo-fusion-07-reformat-ox` | todo | |
 | 08 | ox-lint-warn-tier | [monorepo-fusion-08-ox-lint-warn-tier](monorepo-fusion-08-ox-lint-warn-tier.md) | `task/monorepo-fusion-08-ox-lint-warn-tier` | todo | |
@@ -219,6 +228,44 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 05 — absorb-codex · 2026-08-23 · PR #271
+
+codex-proxy absorbed under `stacks/codex/` via `--allow-unrelated-histories --no-ff` from
+the existing rewrite, never regenerated. Four packages scoped to `@agent-proxy/codex-*`
+across 18 files, bins unchanged, ports unchanged at 8026/4319, no `logs/` data touched.
+**First ticket in this campaign to merge under a live CI gate** — `verify pass` in 1m47s.
+
+**It was nearly merged in a way that would have destroyed the history it exists to
+preserve.** `/god` defaults to squash, and the runner refused to take that silently: the
+branch carried **50 commits reachable from nowhere else**, including codex's `Initial
+commit`. Verified independently before merging — **44 of the 61 mapped `new` SHAs were
+reachable only via that branch**, so a squash would have orphaned all 44 and left
+`docs/history/codex-proxy-commit-map.txt` pointing at objects no branch reaches,
+falsifying criterion 1 irreversibly once the branch was deleted. Merged with `--merge`;
+those 44 are now reachable from the campaign base. **Ticket 06 hits this identically.**
+
+**Verification.** Failure set empty on both base (`df94587`) and branch — identical, no
+regression. Per-package CI test counts checked rather than assumed, after the earlier
+truncation: `claude/core` 918, `claude/server` 751, `claude/proxy` 91, `concepts` 100,
+`codex/core` 41, `codex/server` 25, `codex/proxy` 24 — **1950 total across all seven
+test-bearing packages**, matching local, so nothing was skipped. A fresh-clone smoke test
+showed the server ingesting a proxy-written sidecar (`recordCount: 1`) with a negative
+control under the old `AUDIT_DIR=logs` giving `recordCount: 0` — blocker (d) fixed in both
+halves, anchor and default.
+
+**Two findings that contradict the plan:**
+
+1. **"codex needs no warn tier" is true for Biome and false for oxlint.** codex ran all 15
+   anti-slop rules at `warn` where the root sets `error`, and two configs registering a
+   plugin named `anti-slop` abort the run outright. codex's config now extends the root and
+   restates its severities. ADR 0051 reasoned about Biome alone and should not be read as
+   covering oxlint.
+2. **The GritQL plugin's justifying premise is now false.** Its comment scopes itself with
+   "the dashboard sheet is the only CSS in the repo"; this merge breaks that and ox breaks
+   it again. One `margin: -1px` in codex's `.sr-only` had to be rewritten because Biome
+   2.5.6 supports neither `overrides[].plugins` nor plugin suppression comments. Folded
+   into ticket 14 alongside the other `AGENTS.md` corrections.
 
 ### 16, 17, 18 — the CI gate and the two defects it immediately found · 2026-08-23 · PRs #268, #269, #270
 
