@@ -146,7 +146,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
-| 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | in-progress | |
+| 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | paused | Work complete on PR #272, base `wayfinder/monorepo-fusion`, 64 ox commits intact. **Merge with `--merge`, never `--squash`** — all 64 mapped SHAs are reachable only via that branch. Not merged: CI `pnpm check` is red on ox formatting, which is this ticket's designed exit state and ticket 07/08's work, and the runner may not merge red. Needs a campaign decision — stack 07 and 08 onto it, or merge the three together. |
 | 07 | reformat-ox | [monorepo-fusion-07-reformat-ox](monorepo-fusion-07-reformat-ox.md) | `task/monorepo-fusion-07-reformat-ox` | todo | |
 | 08 | ox-lint-warn-tier | [monorepo-fusion-08-ox-lint-warn-tier](monorepo-fusion-08-ox-lint-warn-tier.md) | `task/monorepo-fusion-08-ox-lint-warn-tier` | todo | |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | todo | |
