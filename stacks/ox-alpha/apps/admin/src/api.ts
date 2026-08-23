@@ -622,6 +622,106 @@ export function fetchInspectionSessions(limit: number, offset: number) {
   return fetchInspectionPage(inspectionPath("sessions", { limit, offset }), parseSessionGroup);
 }
 
+export interface SessionLivenessRecord {
+  readonly state: "running" | "quiet" | "finished" | "unknown";
+  readonly lastActivity: string | null;
+  readonly idleMs: number | null;
+  readonly quietAfterMs: number;
+  readonly terminal: boolean;
+}
+
+function parseLiveness(value: unknown): SessionLivenessRecord | null {
+  if (!isRecord(value) || !string(value.state)) return null;
+  return {
+    state: value.state as SessionLivenessRecord["state"],
+    lastActivity: string(value.lastActivity) ? (value.lastActivity as string) : null,
+    idleMs: number(value.idleMs) ? (value.idleMs as number) : null,
+    quietAfterMs: number(value.quietAfterMs) ? (value.quietAfterMs as number) : 0,
+    terminal: value.terminal === true,
+  };
+}
+
+export interface SessionDetailPayload extends InspectionPage<ContextSummaryRecord> {
+  readonly sessionId: string;
+}
+
+export function fetchSessionDetail(id: string): Promise<SessionDetailPayload> {
+  return fetchInspectionPage(
+    inspectionPath("sessions/detail", { id }),
+    parseContextSummary,
+  ) as Promise<SessionDetailPayload>;
+}
+
+export interface SessionBreakdownPayload {
+  readonly captureEnabled: boolean;
+  readonly sessionId: string;
+  readonly captures: number;
+  readonly models: ReadonlyArray<{ readonly model: string; readonly requests: number }>;
+  readonly hours: ReadonlyArray<{ readonly hour: string; readonly captures: number }>;
+}
+
+export async function fetchSessionBreakdown(id: string): Promise<SessionBreakdownPayload> {
+  const value = await fetchJson(inspectionPath("sessions/breakdown", { id }));
+  if (!isRecord(value) || !number(value.captures) || !Array.isArray(value.models)) {
+    throw new Error("malformed session breakdown");
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    captureEnabled: record.captureEnabled === true,
+    sessionId: string(record.sessionId) ? (record.sessionId as string) : "",
+    captures: record.captures as number,
+    models: (record.models as unknown[]).map((entry) => {
+      if (!isRecord(entry) || !string(entry.model)) throw new Error("malformed model count");
+      return {
+        model: entry.model as string,
+        requests: number(entry.requests) ? (entry.requests as number) : 0,
+      };
+    }),
+    hours: Array.isArray(record.hours)
+      ? (record.hours as unknown[]).map((entry) => {
+          if (!isRecord(entry) || !string(entry.hour)) throw new Error("malformed hour count");
+          return {
+            hour: entry.hour as string,
+            captures: number(entry.captures) ? (entry.captures as number) : 0,
+          };
+        })
+      : [],
+  };
+}
+
+export interface ErrorsPayload {
+  readonly rejectedSidecars: ReadonlyArray<{
+    readonly filename: string;
+    readonly reason: string;
+    readonly rejectedAt: string;
+  }>;
+  readonly unreadableCaptures: number;
+}
+
+export async function fetchErrors(): Promise<ErrorsPayload> {
+  const value = await fetchJson("/api/inspection/errors");
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.rejectedSidecars) ||
+    !number(value.unreadableCaptures)
+  ) {
+    throw new Error("malformed errors payload");
+  }
+  return {
+    rejectedSidecars: (value.rejectedSidecars as unknown[]).map((entry) => {
+      if (!isRecord(entry) || !string(entry.filename) || !string(entry.reason)) {
+        throw new Error("malformed rejected sidecar");
+      }
+      return {
+        filename: entry.filename as string,
+        reason: entry.reason as string,
+        rejectedAt: string(entry.rejectedAt) ? (entry.rejectedAt as string) : "",
+      };
+    }),
+    unreadableCaptures: value.unreadableCaptures as number,
+  };
+}
+
 export async function fetchPromptAnalysis(recordId: string): Promise<PromptAnalysisPayload> {
   return parsePromptAnalysis(await fetchJson(inspectionPath("prompt", { recordId })));
 }

@@ -232,3 +232,163 @@ body {
   align-items: center;
   margin-left: auto;
 }
+
+/* Design token contract — names and values preserved from the pinned
+   styles/tokens.css; components consume tokens rather than literals. */
+:root {
+  --ink: #0e1117;
+  --surface: #151a22;
+  --surface-2: #1d242e;
+  --line: #2a323e;
+  --text: #e9edf3;
+  --muted: #8a95a6;
+  --faint: #545e6c;
+  --signal: #4cc6b0;
+  --good: #71d195;
+  --amber: #e8ab5e;
+  --coral: #f0788c;
+  --violet: #9d8cff;
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --tracking-label: 0.08em;
+  --space-3: 4px;
+  --space-5: 8px;
+  --space-6: 10px;
+  --space-8: 14px;
+  --space-11: 24px;
+  --radius-2: 4px;
+  --radius-4: 8px;
+  --radius-pill: 999px;
+  --motion-duration: 0.18s;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color-scheme: light dark;
+}
+
+/* The whole sheet's reduced-motion handling, in one place. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration: 0s;
+  }
+}
+
+/* Responsive breakpoints and focus visibility. */
+@media (max-width: 40rem) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+:where(a, button, input, select, summary):focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* Charts. */
+.car-chart svg rect {
+  fill: var(--signal);
+  transition: fill var(--motion-duration) var(--ease-out);
+}
+
+.car-chart svg rect:hover {
+  fill: var(--good);
+}
+
+/* Skeleton loading state. */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface) 8%, var(--line) 38%, var(--surface) 68%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep calc(var(--motion-duration) * 9) linear infinite;
+  border-radius: var(--radius-4);
+  min-height: 3rem;
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--surface);
+  }
+}
+
+/* Markdown and code rendering. */
+.markdown-text p.message-paragraph {
+  margin: 0 0 var(--space-5);
+  white-space: pre-wrap;
+}
+
+.inline-code,
+.code-block code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.inline-code {
+  background: color-mix(in srgb, CanvasText 8%, transparent);
+  border-radius: var(--radius-2);
+  padding: 0 var(--space-3);
+}
+
+.code-block {
+  background: color-mix(in srgb, CanvasText 6%, transparent);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-2);
+  overflow-x: auto;
+  margin: 0 0 var(--space-5);
+}
+
+/* Breadcrumbs. */
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  font-size: 0.85rem;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.breadcrumbs .breadcrumb-sep {
+  color: var(--muted, CanvasText);
+}
+
+.breadcrumbs a {
+  color: inherit;
+}
+
+.breadcrumbs [aria-current="page"] {
+  font-weight: 600;
+}
+
+/* Cost-rate override card. */
+.cost-rate-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.cost-rate-card input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-mono);
+}
+
+.cost-rate-result {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}

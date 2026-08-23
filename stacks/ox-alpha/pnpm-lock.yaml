@@ -20,6 +20,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@ox-alpha-proxy/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@tanstack/react-query':
         specifier: ^5.101.4
         version: 5.101.4(react@19.1.9)

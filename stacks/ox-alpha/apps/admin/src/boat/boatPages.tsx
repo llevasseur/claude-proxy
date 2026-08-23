@@ -2,6 +2,7 @@ import { keepPreviousData, type UseQueryResult, useQuery } from "@tanstack/react
 import { type ReactNode, useId } from "react";
 import {
   DEFAULT_INSPECTION_LIMIT,
+  fetchErrors,
   fetchHealth,
   fetchInspectionDay,
   fetchInspectionMessages,
@@ -12,11 +13,15 @@ import {
   fetchPromptListings,
   fetchPromptMix,
   fetchPromptSections,
+  fetchSessionBreakdown,
+  fetchSessionDetail,
   type InspectionPage,
   type MessageRecord,
   type PromptListingRecord,
 } from "../api";
 import { formatTimestamp } from "../car/format";
+import { Breadcrumbs } from "../ui/Breadcrumbs";
+import { MarkdownText } from "../ui/Markdown";
 
 // Boat inspection pages. Every surface degrades visibly: when the server has
 // capture disabled the page explains that Boat capture is off instead of
@@ -273,7 +278,7 @@ function MessageList({ records }: { readonly records: readonly MessageRecord[] }
           <span className="muted">
             {message.role ?? message.itemType ?? "item"} · {message.recordId}
           </span>
-          <pre className="car-cell-mono">{message.text}</pre>
+          <MarkdownText text={message.text} />
         </li>
       ))}
     </ol>
@@ -479,7 +484,11 @@ export function BoatSessionsPage() {
             <tbody>
               {records.map((group) => (
                 <tr key={group.sessionId}>
-                  <td className="car-cell-mono">{group.sessionId}</td>
+                  <td className="car-cell-mono">
+                    <a href={`#/boat/sessions/detail?id=${encodeURIComponent(group.sessionId)}`}>
+                      {group.sessionId}
+                    </a>
+                  </td>
                   <td>{group.captureCount}</td>
                   <td>{formatTimestamp(group.firstCapturedAt)}</td>
                   <td>{formatTimestamp(group.lastCapturedAt)}</td>
@@ -619,5 +628,175 @@ export function BoatPromptsPage({ hash }: { readonly hash?: string }) {
         </div>
       )}
     </BoatListPage>
+  );
+}
+
+export function BoatSessionDetailPage({ id }: { readonly id?: string }) {
+  const detail = useQuery({
+    queryKey: ["session-detail", id ?? ""],
+    queryFn: () => fetchSessionDetail(id ?? ""),
+    enabled: id !== undefined,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  const breakdown = useQuery({
+    queryKey: ["session-breakdown", id ?? ""],
+    queryFn: () => fetchSessionBreakdown(id ?? ""),
+    enabled: id !== undefined,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  const capture = useCaptureEnabled();
+  const titleId = useId();
+  const data = detail.data;
+  return (
+    <section className="car-page" aria-labelledby={titleId}>
+      <Breadcrumbs
+        crumbs={[
+          { label: "Context", href: "#/boat" },
+          { label: "Sessions", href: "#/boat/sessions" },
+          { label: id ?? "Session" },
+        ]}
+      />
+      <header className="pagehead">
+        <div className="pagehead-title">
+          <h1 id={titleId}>Session {id ?? "—"}</h1>
+          <div className="muted">Captures and per-model activity of one session</div>
+        </div>
+      </header>
+      {!capture.loading && capture.enabled === false && (
+        <output className="card notice" data-testid="boat-session-detail-no-capture">
+          {BOAT_OFF_TEXT}
+        </output>
+      )}
+      {detail.isError && (
+        <div
+          className="card notice notice--error"
+          role="alert"
+          data-testid="boat-session-detail-error"
+        >
+          That session could not be read. It may have been deleted by retention.
+        </div>
+      )}
+      {detail.isLoading && (
+        <p className="card muted" aria-live="polite" data-testid="boat-session-detail-loading">
+          Loading…
+        </p>
+      )}
+      {breakdown.data && breakdown.data.captures > 0 && (
+        <dl className="card" data-testid="boat-session-breakdown">
+          <dt>Captures</dt>
+          <dd>{breakdown.data.captures}</dd>
+          <dt>Models</dt>
+          <dd>
+            {breakdown.data.models
+              .map((entry) => `${entry.model} × ${entry.requests}`)
+              .join(", ") || "—"}
+          </dd>
+          <dt>Hours</dt>
+          <dd>
+            {breakdown.data.hours.map((entry) => `${entry.hour} × ${entry.captures}`).join(", ") ||
+              "—"}
+          </dd>
+        </dl>
+      )}
+      {data && data.records.length > 0 && (
+        <div className="card car-table-card" data-testid="boat-session-detail-table">
+          <table className="car-table">
+            <thead>
+              <tr>
+                <th scope="col">Captured</th>
+                <th scope="col">Record</th>
+                <th scope="col">Model</th>
+                <th scope="col">Messages</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.records.map((record) => (
+                <tr key={record.recordId}>
+                  <td>{formatTimestamp(record.capturedAt)}</td>
+                  <td className="car-cell-mono">
+                    <a href={`#/boat/messages?recordId=${encodeURIComponent(record.recordId)}`}>
+                      {record.recordId}
+                    </a>
+                  </td>
+                  <td>{record.model ?? "—"}</td>
+                  <td>{record.messageCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {detail.data &&
+        detail.data.records.length === 0 &&
+        !capture.loading &&
+        capture.enabled !== false && (
+          <div className="card empty car-empty" data-testid="boat-session-detail-empty">
+            <strong>No captures in this session.</strong>
+            <span>Its captures may have expired under the retention policy.</span>
+          </div>
+        )}
+    </section>
+  );
+}
+
+export function BoatErrorsPage() {
+  const errors = useQuery({
+    queryKey: ["inspection-errors"],
+    queryFn: fetchErrors,
+    retry: false,
+    refetchInterval: 30_000,
+  });
+  const titleId = useId();
+  const data = errors.data;
+  return (
+    <section className="car-page" aria-labelledby={titleId}>
+      <Breadcrumbs crumbs={[{ label: "Context", href: "#/boat" }, { label: "Errors" }]} />
+      <header className="pagehead">
+        <div className="pagehead-title">
+          <h1 id={titleId}>Errors</h1>
+          <div className="muted">Rejected sidecars and unreadable captures</div>
+        </div>
+      </header>
+      {errors.isError && (
+        <div className="card notice notice--error" role="alert" data-testid="boat-errors-error">
+          The error listing could not be read. The page will retry automatically.
+        </div>
+      )}
+      {errors.isLoading && !errors.isError && (
+        <p className="card muted" aria-live="polite" data-testid="boat-errors-loading">
+          Loading…
+        </p>
+      )}
+      {data !== undefined &&
+        (data.rejectedSidecars.length === 0 && data.unreadableCaptures === 0 ? (
+          <div className="card empty car-empty" data-testid="boat-errors-empty">
+            <strong>No ingest errors.</strong>
+            <span>Every final sidecar ingested cleanly; every capture parsed.</span>
+          </div>
+        ) : (
+          <div className="card car-table-card" data-testid="boat-errors-table">
+            <table className="car-table">
+              <thead>
+                <tr>
+                  <th scope="col">File</th>
+                  <th scope="col">Reason</th>
+                  <th scope="col">Detected</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rejectedSidecars.map((entry) => (
+                  <tr key={entry.filename}>
+                    <td className="car-cell-mono">{entry.filename}</td>
+                    <td>{entry.reason}</td>
+                    <td>{formatTimestamp(entry.rejectedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+    </section>
   );
 }

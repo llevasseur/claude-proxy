@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useId } from "react";
 import { fetchHistory, type UsageTotals } from "../api";
+import { CostRateCard } from "../ui/costRateCard";
 import { FilterBar, type FilterBarFilters } from "./filterBar";
 import { costCell, formatTimestamp, formatTokens, unavailableReasonText } from "./format";
 import { recordObservedModels, useObservedModels } from "./observedModels";
@@ -200,6 +201,28 @@ export function HistoryPage({ filters, page, pageSize, onSearchChange }: History
             </label>
           </nav>
         </div>
+      ) : null}
+
+      {data !== undefined && data.records.length > 0 ? (
+        <CostRateCard
+          usage={data.records.reduce<UsageTotals>(
+            (total, record) => ({
+              inputTokens: total.inputTokens + record.usage.inputTokens,
+              cachedInputTokens: total.cachedInputTokens + record.usage.cachedInputTokens,
+              outputTokens: total.outputTokens + record.usage.outputTokens,
+              reasoningOutputTokens:
+                total.reasoningOutputTokens + record.usage.reasoningOutputTokens,
+              totalTokens: total.totalTokens + record.usage.totalTokens,
+            }),
+            {
+              inputTokens: 0,
+              cachedInputTokens: 0,
+              outputTokens: 0,
+              reasoningOutputTokens: 0,
+              totalTokens: 0,
+            },
+          )}
+        />
       ) : null}
     </section>
   );

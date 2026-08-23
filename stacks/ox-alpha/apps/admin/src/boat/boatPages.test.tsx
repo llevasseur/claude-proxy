@@ -44,7 +44,9 @@ const contextRecord = {
   sessionId: "sess-rec-1",
 };
 
-function stubBoatFetch(options: Readonly<{ captureEnabled?: boolean }>) {
+function stubBoatFetch(
+  options: Readonly<{ captureEnabled?: boolean; cleanErrors?: boolean }> = {},
+) {
   return stubFetch((url) => {
     if (url.includes("/api/health")) {
       const health = healthPayload() as Record<string, unknown>;
@@ -127,6 +129,32 @@ function stubBoatFetch(options: Readonly<{ captureEnabled?: boolean }>) {
           schemaJson: "{}",
         },
       ]);
+    }
+    if (url.includes("/api/inspection/sessions/detail")) {
+      return inspectionPage([contextRecord], {});
+    }
+    if (url.includes("/api/inspection/sessions/breakdown")) {
+      return {
+        captureEnabled: true,
+        sessionId: "sess-rec-1",
+        captures: 1,
+        models: [{ model: "gpt-5", requests: 1 }],
+        hours: [{ hour: "2026-08-20T10:00", captures: 1 }],
+      };
+    }
+    if (url.includes("/api/inspection/errors")) {
+      return options.cleanErrors
+        ? { rejectedSidecars: [], unreadableCaptures: 0 }
+        : {
+            rejectedSidecars: [
+              {
+                filename: "bad.audit.json",
+                reason: "invalid JSON",
+                rejectedAt: contextRecord.capturedAt,
+              },
+            ],
+            unreadableCaptures: 0,
+          };
     }
     if (url.includes("/api/inspection/sessions")) {
       return inspectionPage([
@@ -224,6 +252,33 @@ describe("Boat inspection routes", () => {
     expect(text).toContain("instructions");
     expect(text).toContain("input #0");
     expect(text).not.toContain("hello");
+  });
+
+  it("renders session detail with breakdown from the sessions listing", async () => {
+    const fetchMock = stubBoatFetch({});
+    window.location.hash = "#/boat/sessions";
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("boat-sessions-table")).toBeTruthy());
+    fireEvent.click(screen.getByText("sess-rec-1"));
+    await waitFor(() => expect(screen.getByTestId("boat-session-detail-table")).toBeTruthy());
+    expect(screen.getByTestId("boat-session-breakdown").textContent).toContain("gpt-5 × 1");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sessions/detail"))).toBe(
+      true,
+    );
+  });
+
+  it("lists ingest errors and renders the all-clear state", async () => {
+    stubBoatFetch({});
+    window.location.hash = "#/boat/sessions/errors";
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("boat-errors-table")).toBeTruthy());
+    expect(screen.getByText("bad.audit.json")).toBeTruthy();
+
+    cleanup();
+    stubBoatFetch({ cleanErrors: true });
+    window.location.hash = "#/boat/sessions/errors";
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("boat-errors-empty")).toBeTruthy());
   });
 
   it("keeps the Bike nav intact when Boat capture is disabled", async () => {
