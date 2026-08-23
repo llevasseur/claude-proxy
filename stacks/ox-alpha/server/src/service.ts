@@ -6,6 +6,7 @@ import {
   aggregateRangeFromBuckets,
   resolveCalendarRange,
 } from "@ox-alpha-proxy/core";
+import { CaptureStore } from "./capture.ts";
 import type { ServerConfig } from "./config.ts";
 import { UsageDatabase } from "./database.ts";
 import { EventHub } from "./events.ts";
@@ -71,6 +72,8 @@ export class LiveUsageService {
   private readonly database: UsageDatabase;
   private readonly events = new EventHub();
   private readonly ingestor: SidecarIngestor;
+  private readonly captures: CaptureStore;
+  private captureMaintenance: NodeJS.Timeout | null = null;
   // ADR 0012: monotonic version advanced whenever ingest changes the view,
   // including backfill of records outside today.
   private dataVersion = 0;
@@ -95,6 +98,13 @@ export class LiveUsageService {
     private readonly clock: () => Date = () => new Date(),
   ) {
     this.database = new UsageDatabase(config.databasePath);
+    this.captures = new CaptureStore(
+      config.captureDirectory,
+      config.captureEnabled,
+      config.captureRetentionMs,
+      config.captureMaxBytes,
+      clock,
+    );
     this.ingestor = new SidecarIngestor(
       config.auditDirectory,
       this.database,
@@ -143,6 +153,7 @@ export class LiveUsageService {
         lastSuccessfulAt: diagnostics.lastSuccessfulIngest,
         rejectedSidecars: diagnostics.rejectedSidecars,
       }),
+      capture: Object.freeze({ enabled: this.config.captureEnabled }),
       sse: Object.freeze({ subscribers: this.events.subscriberCount }),
     });
   }
@@ -162,6 +173,13 @@ export class LiveUsageService {
 
   async reconcile(): Promise<void> {
     await this.ingestor.reconcile();
+  }
+
+  // Retention maintenance is also headless-invocable via `pnpm --filter
+  // @ox-alpha-proxy/server maintain`; this periodic pass keeps a running
+  // server within its window and size cap without operator action.
+  async maintainCaptures(): Promise<void> {
+    await this.captures.maintain();
   }
 
   private async route(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -261,6 +279,13 @@ export class LiveUsageService {
     this.startedAt = this.clock().toISOString();
     this.events.startKeepalives(this.config.keepaliveIntervalMs);
     await this.ingestor.start(this.config.reconcileIntervalMs);
+    await this.maintainCaptures();
+    if (this.config.captureEnabled) {
+      this.captureMaintenance = setInterval(() => {
+        void this.maintainCaptures().catch(() => {});
+      }, this.config.reconcileIntervalMs);
+      this.captureMaintenance.unref();
+    }
     this.events.publish(this.snapshot());
     const address = this.server.address() as AddressInfo;
     return Object.freeze({ host: address.address, port: address.port });
@@ -269,6 +294,8 @@ export class LiveUsageService {
   async close(): Promise<void> {
     this.ready = false;
     this.events.publish(this.snapshot());
+    if (this.captureMaintenance) clearInterval(this.captureMaintenance);
+    this.captureMaintenance = null;
     await this.ingestor.close();
     this.events.close();
     if (this.server.listening) {

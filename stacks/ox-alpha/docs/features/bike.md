@@ -46,7 +46,7 @@ a disposable materialized view, so recovery removes the database and re-ingests 
 record IDs prevent restarts, watcher duplicates, and reconciliation scans from double-counting usage.
 
 Body capture is not a hidden Bike option. It begins only in Boat with explicit opt-in, redaction, and retention
-controls. Car must remain useful without it.
+controls (see [Boat](boat.md)); Car must remain useful without it, and stays useful with zero inspection data present.
 
 ## Publication boundary
 

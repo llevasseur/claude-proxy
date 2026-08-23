@@ -1,13 +1,38 @@
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 // Config mechanics ported from codex-proxy `proxy/src/config.ts`: the process
-// environment is the sole configuration surface.
+// environment is the sole configuration surface. Boat body capture is OFF
+// unless explicitly enabled with CAPTURE_BODIES (ADR 0002/0004).
 export interface ProxyConfig {
   readonly host: string;
   readonly port: number;
   readonly upstream: URL;
   readonly auditDirectory: string;
   readonly statusFile: string;
+  readonly captureEnabled: boolean;
+  readonly captureDirectory: string;
+  readonly captureRedactionPatterns: readonly string[];
+}
+
+const TRUE_FLAG_VALUES = new Set(["1", "true", "on", "yes"]);
+const FALSE_FLAG_VALUES = new Set(["0", "false", "off", "no", ""]);
+
+function captureFlag(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const normalized = value.trim().toLowerCase();
+  if (TRUE_FLAG_VALUES.has(normalized)) return true;
+  if (FALSE_FLAG_VALUES.has(normalized)) return false;
+  throw new Error("CAPTURE_BODIES must be a boolean (true/false/1/0/on/off/yes/no)");
+}
+
+function redactionPatterns(value: string | undefined): readonly string[] {
+  if (value === undefined || value.trim() === "") return [];
+  const sources = value
+    .split(",")
+    .map((source) => source.trim())
+    .filter((source) => source.length > 0);
+  for (const source of sources) new RegExp(source); // Fail fast on invalid patterns.
+  return Object.freeze(sources);
 }
 
 function port(value: string | undefined): number {
@@ -34,5 +59,8 @@ export function loadProxyConfig(environment: NodeJS.ProcessEnv = process.env): P
     upstream: upstream(environment.OPENAI_UPSTREAM),
     auditDirectory,
     statusFile: resolve(environment.PROXY_STATUS_FILE ?? `${auditDirectory}/proxy-status.json`),
+    captureEnabled: captureFlag(environment.CAPTURE_BODIES),
+    captureDirectory: resolve(environment.CAPTURE_DIR ?? join(dirname(auditDirectory), "captures")),
+    captureRedactionPatterns: redactionPatterns(environment.CAPTURE_REDACT_PATTERNS),
   });
 }

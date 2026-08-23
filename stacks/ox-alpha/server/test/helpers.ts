@@ -65,6 +65,10 @@ export function config(directory: string, overrides: Partial<ServerConfig> = {})
     reportTimezone: "America/New_York",
     reconcileIntervalMs: 60_000,
     keepaliveIntervalMs: 25,
+    captureEnabled: false,
+    captureDirectory: join(directory, "captures"),
+    captureRetentionMs: 604_800_000,
+    captureMaxBytes: 268_435_456,
     ...overrides,
   });
 }

@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { DEFAULT_REPORT_TIMEZONE } from "@ox-alpha-proxy/core";
 
 export interface ServerConfig {
@@ -10,6 +10,10 @@ export interface ServerConfig {
   readonly reportTimezone: string;
   readonly reconcileIntervalMs: number;
   readonly keepaliveIntervalMs: number;
+  readonly captureEnabled: boolean;
+  readonly captureDirectory: string;
+  readonly captureRetentionMs: number;
+  readonly captureMaxBytes: number;
 }
 
 function integer(
@@ -36,6 +40,20 @@ function timezone(value: string | undefined): string {
   return candidate;
 }
 
+// Boat capture is OFF unless explicitly enabled. Proxy and server share the
+// CAPTURE_BODIES flag so a proxy capturing while the server is disabled is a
+// visible, deliberate mismatch rather than an accident.
+const TRUE_FLAG_VALUES = new Set(["1", "true", "on", "yes"]);
+const FALSE_FLAG_VALUES = new Set(["0", "false", "off", "no", ""]);
+
+function captureFlag(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const normalized = value.trim().toLowerCase();
+  if (TRUE_FLAG_VALUES.has(normalized)) return true;
+  if (FALSE_FLAG_VALUES.has(normalized)) return false;
+  throw new Error("CAPTURE_BODIES must be a boolean (true/false/1/0/on/off/yes/no)");
+}
+
 export function readConfig(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   cwd = process.cwd(),
@@ -44,7 +62,7 @@ export function readConfig(
   const port = integer(environment.SERVER_PORT, 8788, "SERVER_PORT", 0);
   if (port > 65535) throw new Error("SERVER_PORT must be <= 65535");
   const auditDirectory = resolve(cwd, environment.AUDIT_DIR ?? "logs/audit");
-  return Object.freeze({
+  const base = Object.freeze({
     host,
     port,
     auditDirectory,
@@ -58,5 +76,22 @@ export function readConfig(
       100,
     ),
     keepaliveIntervalMs: integer(environment.SSE_KEEPALIVE_MS, 15000, "SSE_KEEPALIVE_MS", 100),
+  });
+  const captureDirectory = resolve(
+    cwd,
+    environment.CAPTURE_DIR ?? join(dirname(auditDirectory), "captures"),
+  );
+  return Object.freeze({
+    ...base,
+    captureEnabled: captureFlag(environment.CAPTURE_BODIES),
+    captureDirectory,
+    // Default retention: 7 days; default cap: 256 MiB of redacted capture text.
+    captureRetentionMs: integer(
+      environment.CAPTURE_RETENTION_MS,
+      604_800_000,
+      "CAPTURE_RETENTION_MS",
+      1,
+    ),
+    captureMaxBytes: integer(environment.CAPTURE_MAX_BYTES, 268_435_456, "CAPTURE_MAX_BYTES", 1),
   });
 }
