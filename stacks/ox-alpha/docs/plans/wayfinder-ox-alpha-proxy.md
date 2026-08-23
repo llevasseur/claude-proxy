@@ -28,11 +28,12 @@ branch and `pnpm verify` passes there. Each boundary merge records a "live valid
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 13 | plane-verification-docs | [ox-alpha-proxy-13-plane-verification-docs](ox-alpha-proxy-13-plane-verification-docs.md) | `task/ox-alpha-proxy-13-plane-verification-docs` | in-progress |
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- **13 plane-verification-docs** — PR #18. Full-matrix audit confirmed 74 rows with zero `unresolved`, every evidence path and test claim located in-repo (one stale zellij path corrected); added the missing cross-phase regression (Car summaries exact with capture enabled) alongside the two already covered; README/`.env.example`/headless/recovery docs verified against actual config parsers; ADR-0011 boundary notes consolidated into one "Live validation outstanding" roadmap section (notes found in PRs #6, #9, #11 — not #5 as the plan claimed). The proxy-forwarding-with-populated-store case is documented as an outstanding live-validation item rather than a brittle multi-process test. Verify green incl. fresh-worktree bootstrap; CI pass.
 
 - **12 plane-parity-implementation** — PR #15. Closed every remaining parity-matrix row: rolling usage counters in the proxy status signal; core limits, liveness, and prompt-mix domains; server usage-limit meters behind operator ceilings plus inspection and consistency-audit endpoints; admin trend drill-down route and shared UI components (BarChart, Breadcrumbs, Markdown, QueryState) with operator cost-rate overrides; headless operation guide and a one-command zellij all-up session. Matrix has zero unresolved rows. Verify green; CI pass.
 
