@@ -103,7 +103,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 01 | rewrite-sibling-histories | [monorepo-fusion-01-rewrite-sibling-histories](monorepo-fusion-01-rewrite-sibling-histories.md) | `task/monorepo-fusion-01-rewrite-sibling-histories` | in-progress | |
 | 02 | relocate-claude-stack | [monorepo-fusion-02-relocate-claude-stack](monorepo-fusion-02-relocate-claude-stack.md) | `task/monorepo-fusion-02-relocate-claude-stack` | todo | |
 | 03 | scope-claude-packages | [monorepo-fusion-03-scope-claude-packages](monorepo-fusion-03-scope-claude-packages.md) | `task/monorepo-fusion-03-scope-claude-packages` | todo | |
 | 04 | sweep-non-import-references | [monorepo-fusion-04-sweep-non-import-references](monorepo-fusion-04-sweep-non-import-references.md) | `task/monorepo-fusion-04-sweep-non-import-references` | todo | |
@@ -117,6 +116,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | 12 | merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus](monorepo-fusion-12-merge-adr-corpus.md) | `task/monorepo-fusion-12-merge-adr-corpus` | todo | |
 | 13 | write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs](monorepo-fusion-13-write-campaign-adrs.md) | `task/monorepo-fusion-13-write-campaign-adrs` | todo | |
 | 14 | ports-zellij-and-agents-md | [monorepo-fusion-14-ports-zellij-and-agents-md](monorepo-fusion-14-ports-zellij-and-agents-md.md) | `task/monorepo-fusion-14-ports-zellij-and-agents-md` | todo | |
+| 15 | re-record-route-budget | [monorepo-fusion-15-re-record-route-budget](monorepo-fusion-15-re-record-route-budget.md) | `task/monorepo-fusion-15-re-record-route-budget` | todo | Added after ticket 01 found `verify` already red on the untouched base. Must run after ticket 09. |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -189,3 +189,40 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 01 — rewrite-sibling-histories · 2026-08-23 · PR #264
+
+Installed `git-filter-repo` 2.47.0 via Homebrew (it was not on the device), cloned both
+siblings fresh outside this repository, and rewrote each with
+`--to-subdirectory-filter` alone — no `--force`, no `--refs`. **61 codex-proxy and 64
+ox-alpha-proxy commits mapped, none dropped.** The working checkouts were never touched.
+
+Added `docs/history/{codex-proxy,ox-alpha-proxy}-commit-map.txt` and
+`docs/history/index.md`. After the sibling repositories are archived these maps are the
+only way to resolve an existing permalink.
+
+**The rewritten clones are left in place and must not be deleted or regenerated** —
+tickets 05 and 06 absorb these exact clones, and a re-run would produce different SHAs
+and invalidate the committed maps:
+
+- `~/Documents/ghub/monorepo-fusion-rewrites/codex-proxy` → `stacks/codex`
+- `~/Documents/ghub/monorepo-fusion-rewrites/ox-alpha-proxy` → `stacks/ox-alpha`
+
+**Deviations from the plan, all three disclosed rather than absorbed:**
+
+1. **`pnpm verify` was not fully green, and the cause is pre-existing.**
+   `server/test/route-budget-gate.test.ts` fails on `/api/commands` at a 433ms median
+   against a 390ms allowance, reading recorded observations out of the shared `logs/`
+   store. It fails identically on the untouched base, and this ticket added only
+   documentation. Re-recording the budget means editing `server/`, outside this ticket's
+   lane. **This is now ticket 15** — every other ticket's done-condition asks for a green
+   `verify`, so left unfixed it would have been inherited by all of them and the
+   campaign could never report green.
+2. **`AGENTS.md` enumerates the docs bundle's folders and now omits `history/`.** Outside
+   this ticket's lane; folded into ticket 14, which already merges `AGENTS.md`.
+3. **A precondition judgement call, since verified.** codex-proxy showed five local-only
+   commits, which the plan says to stop on. Checked independently: `main` is
+   byte-identical to `origin/main` at `ca20e0e` with **zero** local-only commits
+   reachable from it. The five sit on six abandoned branches whose upstreams are `gone`
+   — squash-merged PRs, so their content is already in `main` — plus two stash entries.
+   A fresh clone never sees them. **The call was right and the maps stand.**

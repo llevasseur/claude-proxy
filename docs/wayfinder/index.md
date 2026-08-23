@@ -27,6 +27,7 @@
 | monorepo-fusion-12-merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus.md](monorepo-fusion-12-merge-adr-corpus.md) |
 | monorepo-fusion-13-write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs.md](monorepo-fusion-13-write-campaign-adrs.md) |
 | monorepo-fusion-14-ports-zellij-and-agents-md | [monorepo-fusion-14-ports-zellij-and-agents-md.md](monorepo-fusion-14-ports-zellij-and-agents-md.md) |
+| monorepo-fusion-15-re-record-route-budget | [monorepo-fusion-15-re-record-route-budget.md](monorepo-fusion-15-re-record-route-budget.md) |
 | monorepo-fusion-zz-retire-done-plans | [monorepo-fusion-zz-retire-done-plans.md](monorepo-fusion-zz-retire-done-plans.md) |
 | Research 002 — Which requests are safe to serve (cacheability gate) | [research-002-cacheability.md](research-002-cacheability.md) |
 | Wayfinder — Monorepo Fusion | [wayfinder-monorepo-fusion.md](wayfinder-monorepo-fusion.md) |
