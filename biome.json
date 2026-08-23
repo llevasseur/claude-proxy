@@ -178,6 +178,20 @@
           }
         }
       }
+    },
+    {
+      "includes": ["stacks/ox-alpha/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "warn"
+          },
+          "suspicious": {
+            "noArrayIndexKey": "warn",
+            "noEmptyBlockStatements": "warn"
+          }
+        }
+      }
     }
   ],
   "assist": {
