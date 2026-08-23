@@ -4,9 +4,8 @@
     width: 1px;
     height: 1px;
     padding: 0;
-    /* The visually-hidden recipe pulls its 1px box back by exactly that 1px. Written
-     * against the scale so it cannot drift from `width`/`height` above, and because a
-     * bare negative px trips the shared no-bare-size rule with no step to offer. */
+    /* Pulls the 1px box back by exactly that 1px; written against the scale because a
+     * bare negative px trips the shared no-bare-size rule. */
     margin: calc(-1 * var(--space-1));
     overflow: hidden;
     clip-path: inset(50%);

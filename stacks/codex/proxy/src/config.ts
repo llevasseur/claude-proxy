@@ -1,10 +1,7 @@
 import { resolve } from 'node:path';
 
-// Relative `AUDIT_DIR` and `PROXY_STATUS_FILE` resolve from the stack root — this
-// package's parent, `stacks/codex/` — rather than from `process.cwd()` or from the
-// repository root; absolute values still win. `import.meta.dirname/../..` has always
-// meant "my stack's root"; before relocation that happened to coincide with the
-// repository root, which is what the old name asserted. See ADR 0054.
+// Relative `AUDIT_DIR` and `PROXY_STATUS_FILE` resolve from the stack root — this package's
+// parent, `stacks/codex/` — not from `process.cwd()`; absolute values still win. See ADR 0054.
 const STACK_ROOT = resolve(import.meta.dirname, '..', '..');
 
 export interface ProxyConfig {

@@ -6,9 +6,8 @@ import { readConfig } from '../src/config.ts';
 const STACK_ROOT = resolve(import.meta.dirname, '..', '..');
 
 describe('the listener port', () => {
-  // ADR 0050: fusion puts every stack under one root and one `.env`, so a bare `PORT`
-  // would bind this server and claude's proxy together. The scoped name is the fix; the
-  // legacy name keeps working for this package alone so nothing launched today breaks.
+  // ADR 0050: one root `.env` would bind a bare `PORT` to claude's proxy too. The legacy name
+  // keeps working for this package alone.
   test('the scoped name wins over the legacy bare name', () => {
     expect(readConfig({ CODEX_SERVER_PORT: '5001', PORT: '5002' }).port).toBe(5001);
   });
@@ -28,9 +27,8 @@ describe('the listener port', () => {
 });
 
 describe('audit directory resolution', () => {
-  // Blocker (d): this defaulted to `logs` while `proxy/src/config.ts` writes sanitized
-  // sidecars to `logs/audit`, one level below — so a clone with no `.env` ingested
-  // nothing at all. Keep this literal in step with the proxy's default.
+  // This defaulted to `logs` while the proxy writes sidecars to `logs/audit`, one level below.
+  // Keep this literal in step with the proxy's default.
   test('the default names the directory the proxy writes to', () => {
     expect(readConfig({}).auditDirectory).toBe(resolve(STACK_ROOT, 'logs/audit'));
   });
