@@ -65,16 +65,43 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
     which is why it says so here.
   Everything else is suppressed per site with a stated reason rather than turned
   off; prefer that when a new rule fires on deliberate code.
-- `biome.json` loads one GritQL plugin, `apps/admin/lint/no-bare-size.grit`. It
-  refuses a bare px in a `padding`, `margin`, `gap`, `font-size` or
-  `border-radius` declaration, because those now name a step of the space, type
-  and radius scale in `apps/admin/src/styles/tokens.css`. If it fires, pick a
+- `biome.json` loads one GritQL plugin, `stacks/claude/admin/lint/no-bare-size.grit`.
+  It refuses a bare px in a `padding`, `margin`, `gap`, `font-size` or
+  `border-radius` declaration, because those name a step of the space, type and
+  radius scale in `stacks/claude/admin/src/styles/tokens.css`. If it fires, pick a
   step (`var(--space-N)`, `var(--text-N)`, `var(--radius-N)`) rather than
   suppressing — and if no step fits, add a *named* token beside `--space-page`,
-  since a size one rule reaches for still wants a name. The rule is meant to
-  scope to `@layer components`; Biome's GritQL has no working `within` for an
-  at-rule, so it scopes by file instead, which is the same statement here — the
-  dashboard sheet is the only CSS in the repo.
+  since a size one rule reaches for still wants a name.
+  **It cannot be scoped to one stack, and two tickets established that separately.**
+  `plugins` is a top-level array applying repo-wide, and the path in it says only
+  where the plugin *file* lives, not what it inspects; Biome 2.5.6 supports neither
+  `overrides[].plugins` nor plugin suppression comments. So the header's premise —
+  the dashboard sheet is the only CSS in the repo — stopped being true at fusion and
+  stays false. The sibling stacks' sheets are checked too, and their few bare-px
+  sites are rewritten against a named token that sheet already declares rather than
+  exempted: codex's `margin: -1px` became `calc(-1 * var(--space-1))`, and ox's two
+  `border-radius: 999px` became `var(--radius-pill)`. That is the remedy for a new
+  one; do not reach for a scoping mechanism, because none exists in the pinned
+  version.
+- **ox is at a `warn` tier under both linters, and the tier is a countdown rather
+  than an exemption.** The `stacks/ox-alpha/**` block in `biome.json` `overrides`
+  holds the three rules that fired on ox source when it was absorbed —
+  `noEmptyBlockStatements` (9), `noArrayIndexKey` (4) and `noUnusedVariables` (1) —
+  at `warn` instead of `error`, because the campaign that absorbed ox forbids
+  changing its runtime behaviour and each of those fixes would.
+  `stacks/ox-alpha/.oxlintrc.json` does the same for the anti-slop rules, which start
+  at 358. Two further findings, `noUnusedImports` (3) and `noBarrelFile` (1), are
+  already `warn` repo-wide and are deliberately **not** in the block — putting them
+  there would fake a ratchet, since removing them from it could never tighten
+  anything. `useExhaustiveDependencies` was expected among them and fires zero times
+  on ox, so it stays at `error`.
+  **The ratchet, which is the whole point of the tier: a rule moves from `warn` back
+  to `error` once its count reaches zero, and every file a ticket touches must pass at
+  `error` before that ticket is done.** That is what makes the backlog shrink
+  monotonically instead of drifting. `off` is never the answer here — `off` is
+  invisible, `warn` is a countdown. The block is expected to be empty by the end of
+  campaign 3; `biome.json` is strict JSON and cannot carry a comment saying so, which
+  is why it says so here.
 - `.gitattributes` exists for exactly one line, `CHANGELOG.md merge=union`, and it
   is load-bearing rather than tidy-up. Nearly every commit here touches
   `CHANGELOG.md`, and every one of them **prepends** — so two branches in flight
