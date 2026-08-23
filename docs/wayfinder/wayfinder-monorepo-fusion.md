@@ -115,17 +115,29 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
    staged.** Ticket 16 found this while planting a test filter — the plant was invisible
    until staged. Design rather than defect (the gate checks the tree that would ship), but
    worth knowing before trusting it against a working directory. *(no ticket; recorded)*
-10. **`pnpm test` hangs in CI while passing locally in 27s.** `stacks/claude/proxy` runs
-    to `ok 77`, never prints a TAP summary, and never exits — an open handle rather than a
-    failing assertion. Pre-existing in the code but never observable before, because no CI
-    gate existed to run the suite non-interactively. *(ticket 17)*
+10. **~~`pnpm test` hangs in CI~~ — solved by ticket 17.** `system-prompt.test.ts` passed
+    `/proc/nonexistent-root` as an unwritable directory; on Linux `mkdirSync(recursive)`
+    against procfs never returns, and macOS has no `/proc`. *(closed)*
+11. **A hang in one package silently skips every package batched after it.**
+    `stacks/claude/server`'s tests had **never once run in CI** — pnpm's topological
+    batching never got past the batch the hanging proxy sat in, so an entire suite was
+    skipped while the job merely looked slow. This is the campaign's second instance of a
+    gate reporting something other than what it appeared to: the first was pnpm's
+    filter-matching-nothing exiting 0. **Treat a slow CI job as a possibly-truncated one**
+    until the per-package test counts are checked. *(ticket 18 owns the resulting
+    failures)*
+12. **`chat-cli.test.ts` has a wall-clock-sensitive assertion** (`expected 602 to be
+    greater than 1000`) that failed once under a loaded local full-suite run and passed 4/4
+    in isolation. Flaky under load rather than wrong. *(ticket 18 if the fix is cheap,
+    otherwise its own ticket)*
 
 ## Active tasks
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 16 | scope-the-gate-and-land-ci | [monorepo-fusion-16-scope-the-gate-and-land-ci](monorepo-fusion-16-scope-the-gate-and-land-ci.md) | `task/monorepo-fusion-16-scope-the-gate-and-land-ci` | paused | PR [#268](https://github.com/llevasseur/claude-proxy/pull/268) open on this base, work complete, unmerged: the `verify` workflow it lands is red because `pnpm test` hangs in `stacks/claude/proxy` (finishes its tests, never exits), which is outside this ticket's lane. Resume by fixing that hang, then merge. Runs BEFORE 05 so the absorptions land under a live gate. |
-| 17 | fix-the-proxy-test-hang | [monorepo-fusion-17-fix-the-proxy-test-hang](monorepo-fusion-17-fix-the-proxy-test-hang.md) | `task/monorepo-fusion-17-fix-the-proxy-test-hang` | paused | Blocked on a base-branch decision, not on the code. Diagnosed: the two children that never exit are `system-prompt.test.ts` (10 tests) and `usage-live.test.ts` (4) — 91 local tests less CI's 77, and `node --test` reports per file, so `ok 77` is simply the other three files completing. Does not reproduce on macOS/Node 26 non-interactively, by file redirect or by pipe: 91 pass, exit 0. Naming the handle needs CI (Linux, Node 22), but `verify.yml` lives only on ticket 16's branch, so a branch cut from this base gets no checks at all and criterion 3 cannot be met. **Decision taken:** cut from and merge into `task/monorepo-fusion-16-scope-the-gate-and-land-ci`. That is the ordinary stacking rule — a stacked unit is cut from the branch carrying the interface it consumes, and here the interface is CI — so no lane widening is needed. Merging 17 into 16's branch turns PR #268 green, after which #268 carries both to this base and every later ticket gets CI from the base. Unblocks ticket 16. Runs BEFORE 05. |
+| 17 | fix-the-proxy-test-hang | [monorepo-fusion-17-fix-the-proxy-test-hang](monorepo-fusion-17-fix-the-proxy-test-hang.md) | `task/monorepo-fusion-17-fix-the-proxy-test-hang` | paused | Blocked on a base-branch decision, not on the code. Diagnosed: the two children that never exit are `system-prompt.test.ts` (10 tests) and `usage-live.test.ts` (4) — 91 local tests less CI's 77, and `node --test` reports per file, so `ok 77` is simply the other three files completing. Does not reproduce on macOS/Node 26 non-interactively, by file redirect or by pipe: 91 pass, exit 0. Naming the handle needs CI (Linux, Node 22), but `verify.yml` lives only on ticket 16's branch, so a branch cut from this base gets no checks at all and criterion 3 cannot be met. **Decision taken:** cut from and merge into `task/monorepo-fusion-16-scope-the-gate-and-land-ci`. That is the ordinary stacking rule — a stacked unit is cut from the branch carrying the interface it consumes, and here the interface is CI — so no lane widening is needed. **Fixed and proven in CI** (run `32663051306`, 91/91 pass, 716ms) — PR [#269](https://github.com/llevasseur/claude-proxy/pull/269) open on ticket 16's branch, not merged. Root cause: the test passed `/proc/nonexistent-root` as an unwritable directory, and on Linux `mkdirSync(recursive)` against procfs never returns; macOS has no `/proc` so it failed instantly and the suite passed 91/91 locally every time. **Only one file ever hung** — `usage-live.test.ts` finished cleanly and its results were withheld because `node --test` will not finalize while a sibling is stuck. #269 is still red on three `stacks/claude/server` tests, which is ticket 18's. Runs BEFORE 05. |
+| 18 | tolerate-node-22-sqlite-warning | [monorepo-fusion-18-tolerate-node-22-sqlite-warning](monorepo-fusion-18-tolerate-node-22-sqlite-warning.md) | `task/monorepo-fusion-18-tolerate-node-22-sqlite-warning` | todo | Third in the stack 18 → 17 → 16 → base. Fixing the proxy hang revealed that `stacks/claude/server`'s tests had **never run in CI** — pnpm's topological batching never got past the hanging proxy's batch. Three of them fail on Node 22's `ExperimentalWarning: SQLite`, which Node 26 does not emit. Unblocks #269, then #268. Runs BEFORE 05. |
 | 05 | absorb-codex | [monorepo-fusion-05-absorb-codex](monorepo-fusion-05-absorb-codex.md) | `task/monorepo-fusion-05-absorb-codex` | todo | |
 | 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | todo | |
 | 07 | reformat-ox | [monorepo-fusion-07-reformat-ox](monorepo-fusion-07-reformat-ox.md) | `task/monorepo-fusion-07-reformat-ox` | todo | |
