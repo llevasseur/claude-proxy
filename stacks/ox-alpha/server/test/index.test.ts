@@ -8,6 +8,6 @@ describe("serverInfo", () => {
 
   it("names the server package", () => {
     expect(serverInfo().name).toBe(SERVER_PACKAGE);
-    expect(SERVER_PACKAGE).toBe("@ox-alpha-proxy/server");
+    expect(SERVER_PACKAGE).toBe("@agent-proxy/ox-server");
   });
 });

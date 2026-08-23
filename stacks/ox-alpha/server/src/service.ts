@@ -8,7 +8,7 @@ import {
   computeUsageWindows,
   formatReportDate,
   resolveCalendarRange,
-} from "@ox-alpha-proxy/core";
+} from "@agent-proxy/ox-core";
 import { CaptureStore } from "./capture.ts";
 import type { ServerConfig } from "./config.ts";
 import { UsageDatabase } from "./database.ts";
@@ -271,7 +271,7 @@ export class LiveUsageService {
   }
 
   // Retention maintenance is also headless-invocable via `pnpm --filter
-  // @ox-alpha-proxy/server maintain`; this periodic pass keeps a running
+  // @agent-proxy/ox-server maintain`; this periodic pass keeps a running
   // server within its window and size cap without operator action.
   async maintainCaptures(): Promise<void> {
     const result = await this.captures.maintain();

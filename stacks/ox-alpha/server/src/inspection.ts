@@ -13,7 +13,7 @@ import {
   promptSections,
   type SessionLiveness,
   type ToolSchemaSummary,
-} from "@ox-alpha-proxy/core";
+} from "@agent-proxy/ox-core";
 
 // Assembly of Boat inspection views from parsed capture envelopes. Pure with
 // respect to its inputs; the server layers memoization and pagination on top.

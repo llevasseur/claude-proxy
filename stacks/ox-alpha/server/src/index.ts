@@ -1,4 +1,4 @@
-export const SERVER_PACKAGE = "@ox-alpha-proxy/server";
+export const SERVER_PACKAGE = "@agent-proxy/ox-server";
 
 export interface ServerInfo {
   name: string;

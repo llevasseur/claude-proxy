@@ -1,6 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { CaptureEnvelopeV1 } from "@ox-alpha-proxy/core";
+import type { CaptureEnvelopeV1 } from "@agent-proxy/ox-core";
 import { afterEach, describe, expect, test } from "vitest";
 import type { ServerConfig } from "../src/config.ts";
 import { LiveUsageService } from "../src/service.ts";

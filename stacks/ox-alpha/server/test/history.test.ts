@@ -1,6 +1,6 @@
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { PaginatedHistoryRecords } from "@ox-alpha-proxy/core";
+import type { PaginatedHistoryRecords } from "@agent-proxy/ox-core";
 import { afterEach, describe, expect, test } from "vitest";
 import { LiveUsageService } from "../src/service.ts";
 import { config, sidecar, temporaryDirectory, writeSidecar } from "./helpers.ts";

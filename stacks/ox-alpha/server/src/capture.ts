@@ -1,6 +1,6 @@
 import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { type CaptureEnvelopeV1, parseCaptureEnvelope } from "@ox-alpha-proxy/core";
+import { type CaptureEnvelopeV1, parseCaptureEnvelope } from "@agent-proxy/ox-core";
 
 // Capture files live in their own directory, separate from sanitized sidecars
 // (ADR 0002). The sidecar ingestor only matches `.audit.json`, so capture

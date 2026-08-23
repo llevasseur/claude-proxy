@@ -2,7 +2,7 @@ import type { FSWatcher } from "node:fs";
 import { watch } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { parseSanitizedAuditSidecar } from "@ox-alpha-proxy/core";
+import { parseSanitizedAuditSidecar } from "@agent-proxy/ox-core";
 import type { UsageDatabase } from "./database.ts";
 
 export interface ReconcileResult {

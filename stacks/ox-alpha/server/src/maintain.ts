@@ -1,7 +1,7 @@
 // Headless maintenance: one retention pass over the configured capture
 // directory plus a store/source consistency audit, safe to run from cron or
 // an operator terminal.
-// Usage: pnpm --filter @ox-alpha-proxy/server maintain
+// Usage: pnpm --filter @agent-proxy/ox-server maintain
 
 import { CaptureStore } from "./capture.ts";
 import { readConfig } from "./config.ts";

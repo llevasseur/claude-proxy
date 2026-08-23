@@ -4,7 +4,7 @@
 // this never mutates either side; a drifted store is rebuilt by re-ingest.
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { parseSanitizedAuditSidecar } from "@ox-alpha-proxy/core";
+import { parseSanitizedAuditSidecar } from "@agent-proxy/ox-core";
 import type { UsageDatabase } from "./database.ts";
 import { isFinalSidecarFilename } from "./ingest.ts";
 

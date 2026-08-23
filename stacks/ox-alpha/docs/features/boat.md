@@ -50,7 +50,7 @@ configurable schedule. This record covers capture, retention, and the inspection
 Retention runs periodically inside a started server and headlessly through a documented command:
 
 ```sh
-pnpm --filter @ox-alpha-proxy/server maintain
+pnpm --filter @agent-proxy/ox-server maintain
 ```
 
 The command prints one JSON result line (`examined`, `deletedExpired`, `deletedOverCap`, `remainingFiles`,

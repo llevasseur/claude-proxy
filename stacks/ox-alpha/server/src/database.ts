@@ -9,13 +9,13 @@ import type {
   SanitizedAuditSidecarV1,
   TodaySummary,
   UsageTotals,
-} from "@ox-alpha-proxy/core";
+} from "@agent-proxy/ox-core";
 import {
   aggregateToday,
   paginateHistoryRecords,
   parseSanitizedAuditSidecar,
   selectByModels,
-} from "@ox-alpha-proxy/core";
+} from "@agent-proxy/ox-core";
 
 const SCHEMA_VERSION = 1;
 const MIGRATION = `

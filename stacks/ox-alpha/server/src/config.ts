@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from "node:path";
-import { DEFAULT_REPORT_TIMEZONE, USAGE_WINDOWS, type UsageWindowKind } from "@ox-alpha-proxy/core";
+import { DEFAULT_REPORT_TIMEZONE, USAGE_WINDOWS, type UsageWindowKind } from "@agent-proxy/ox-core";
 
 export interface ServerConfig {
   readonly host: string;

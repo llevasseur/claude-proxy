@@ -11,7 +11,7 @@ decisions. It is a pnpm workspace with four packages:
 ## Constraints
 
 - Require Node 22.18 or newer and pnpm 11.5.2.
-- Keep `proxy` and `@ox-alpha-proxy/core` free of runtime dependencies.
+- Keep `proxy` and `@agent-proxy/ox-core` free of runtime dependencies.
 - Keep core deterministic: do not import Node modules or read the environment, clock, filesystem, database, or network.
 - Run TypeScript source directly in the proxy and export TypeScript source directly from core. Do not add `dist/` to either package.
 - Treat final sanitized audit sidecars as the source of truth and SQLite as rebuildable state.

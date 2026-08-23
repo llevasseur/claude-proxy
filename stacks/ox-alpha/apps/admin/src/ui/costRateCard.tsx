@@ -6,7 +6,7 @@ import {
   pricingProvenance,
   type RateProvenance,
   type UsageTotals,
-} from "@ox-alpha-proxy/core";
+} from "@agent-proxy/ox-core";
 import { useEffect, useState } from "react";
 
 // Operator cost-rate overrides (`components/CostRateCard.tsx` at the pinned

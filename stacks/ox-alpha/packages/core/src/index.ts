@@ -12,4 +12,4 @@ export * from "./today.ts";
 export * from "./types.ts";
 export * from "./usage.ts";
 
-export const CORE_PACKAGE = "@ox-alpha-proxy/core";
+export const CORE_PACKAGE = "@agent-proxy/ox-core";

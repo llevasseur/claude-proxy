@@ -53,7 +53,7 @@ reconcile backfill:
 
 ```sh
 rm "$DATABASE_PATH" "$DATABASE_PATH"-wal "$DATABASE_PATH"-shm
-pnpm --filter @ox-alpha-proxy/server start   # or just wait for reconcile
+pnpm --filter @agent-proxy/ox-server start   # or just wait for reconcile
 ```
 
 Ingest is watermarked per filename and idempotent; re-running never double
@@ -67,7 +67,7 @@ audits store/source consistency (sidecar files versus records, watermarks, and
 orphaned watermarks):
 
 ```sh
-pnpm --filter @ox-alpha-proxy/server maintain
+pnpm --filter @agent-proxy/ox-server maintain
 ```
 
 Output is one JSON line combining the retention result with the consistency

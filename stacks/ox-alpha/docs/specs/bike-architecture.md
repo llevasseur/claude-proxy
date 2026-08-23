@@ -31,7 +31,7 @@ source directly on Node 22+, writes files only, and never opens SQLite or calls 
 
 ## Shared domain contract
 
-`@ox-alpha-proxy/core` exports TypeScript source and has no runtime dependencies or build output. Its functions import
+`@agent-proxy/ox-core` exports TypeScript source and has no runtime dependencies or build output. Its functions import
 no Node modules and receive every external input explicitly.
 
 The normalized immutable usage value contains required input, output, and total headline tokens plus cached-input

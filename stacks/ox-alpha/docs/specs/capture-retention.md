@@ -56,7 +56,7 @@ The strict validator accepts exactly these fields; unknown fields fail like the 
 
 Retention applies to final `.capture.json` files only; dot-prefixed temporary files are ignored. A running enabled
 server maintains captures every reconcile interval, and a headless pass is available through
-`pnpm --filter @ox-alpha-proxy/server maintain`:
+`pnpm --filter @agent-proxy/ox-server maintain`:
 
 1. **Window:** a file whose age (`now − mtime`) is at least `CAPTURE_RETENTION_MS` is deleted.
 2. **Size cap:** survivors sorted oldest-first are deleted until the total size is at most `CAPTURE_MAX_BYTES`.
