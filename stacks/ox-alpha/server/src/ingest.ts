@@ -41,12 +41,10 @@ export class SidecarIngestor {
     },
   ) {}
 
-  // A scan in flight listed the directory when it started, so handing it to a
-  // caller that has written since would answer with a listing older than that
-  // write. The watcher starts scans on its own, so an awaited reconcile() had
-  // no way to tell a scan that covers its write from one that predates it.
-  // Queue a trailing scan instead: callers arriving during a scan share one
-  // follow-up, which starts only once the current scan is done.
+  // A scan in flight listed the directory before this call, so returning it
+  // could report changed: false for a write this caller just made. Queue a
+  // trailing scan instead: callers arriving mid-scan share one follow-up,
+  // which starts only once the current scan is done.
   async reconcile(): Promise<ReconcileResult> {
     if (this.activeReconcile) {
       this.queuedReconcile ??= this.activeReconcile
@@ -110,12 +108,9 @@ export class SidecarIngestor {
     this.interval = null;
     this.watcher?.close();
     this.watcher = null;
-    // The watcher and the interval are both stopped above, so these two are
-    // all the work there can be: the scan in flight, and the follow-up it may
-    // already have queued. Both are captured before either is awaited, since a
-    // queued scan clears the field as it starts, and awaiting the queued chain
-    // waits for that trailing scan to finish. Draining both is what keeps a
-    // queued scan from reaching the database after it closes.
+    // Capture both before awaiting: queuedReconcile clears itself once it
+    // starts, so awaiting in place would lose track of it. Draining both stops
+    // a queued scan from writing after close.
     const active = this.activeReconcile;
     const queued = this.queuedReconcile;
     await active?.catch(() => undefined);
