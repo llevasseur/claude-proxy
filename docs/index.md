@@ -12,7 +12,8 @@ An [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-cata
     okq stats
 
 Folders: `adrs/` (decisions), `specs/` (design specs), `features/` (one per capability),
-`wayfinder/` (a campaign's map, tickets, research, and decisions).
+`wayfinder/` (a campaign's map, tickets, research, and decisions), `history/` (commit maps
+from absorbed repositories — data files rather than concepts, so okq does not index them).
 
 <!-- okq:index:begin -->
 ### Folders
