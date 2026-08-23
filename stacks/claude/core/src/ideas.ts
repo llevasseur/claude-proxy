@@ -38,6 +38,7 @@
 
 import { type JsonValue, jsonArray, jsonObject, jsonText, jsonValueOf, objectAt } from './json.js';
 import { parseWriteProvenance, type WriteProvenance } from './provenance.js';
+import { CLAUDE_SERVER_PACKAGE } from './workspace-packages.js';
 
 /**
  * Where an idea's evidence came from. The first four are each a statement a
@@ -1304,8 +1305,8 @@ export function ideaTaskPrompt(entry: IdeaEntry): string {
   lines.push(
     '',
     'Claim it on the ledger before you write anything, so a second run does not build it too, and attach the PR once it opens:',
-    `  pnpm --filter server ideas claim --slug ${entry.slug} --by <your branch>`,
-    `  pnpm --filter server ideas claim --slug ${entry.slug} --by <your branch> --pr <PR url>`,
+    `  pnpm --filter ${CLAUDE_SERVER_PACKAGE} ideas claim --slug ${entry.slug} --by <your branch>`,
+    `  pnpm --filter ${CLAUDE_SERVER_PACKAGE} ideas claim --slug ${entry.slug} --by <your branch> --pr <PR url>`,
   );
 
   return lines.join('\n');

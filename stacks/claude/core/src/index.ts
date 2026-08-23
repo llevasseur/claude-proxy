@@ -34,3 +34,4 @@ export * from './types.js';
 export * from './usage-limits.js';
 export * from './wire-prompt.js';
 export * from './withheld.js';
+export * from './workspace-packages.js';

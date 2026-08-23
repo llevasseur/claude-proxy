@@ -3,12 +3,14 @@
 // script runner wraps the output in a `$ tsx …` echo and a `Scope: …` banner, on
 // whichever stream that pnpm version favours. `--silent` empties both, so the docs name
 // it and this drives that exact invocation through pnpm to keep them true.
+
 import { execFile } from 'node:child_process';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { CLAUDE_SERVER_PACKAGE } from '@agent-proxy/claude-core';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 const run = promisify(execFile);
@@ -32,12 +34,16 @@ const SUBCOMMANDS = [
 
 describe('suggestions --json is parseable as emitted', () => {
   for (const { args, key } of SUBCOMMANDS) {
-    it(`pnpm --silent --filter server suggestions ${args.join(' ')} parses`, async () => {
-      const { stdout, stderr } = await run('pnpm', ['--silent', '--filter', 'server', 'suggestions', ...args], {
-        cwd: REPO_ROOT,
-        env: { ...process.env, LOG_DIR: logDir },
-        maxBuffer: 64 * 1024 * 1024,
-      });
+    it(`pnpm --silent --filter ${CLAUDE_SERVER_PACKAGE} suggestions ${args.join(' ')} parses`, async () => {
+      const { stdout, stderr } = await run(
+        'pnpm',
+        ['--silent', '--filter', CLAUDE_SERVER_PACKAGE, 'suggestions', ...args],
+        {
+          cwd: REPO_ROOT,
+          env: { ...process.env, LOG_DIR: logDir },
+          maxBuffer: 64 * 1024 * 1024,
+        },
+      );
 
       const payload = JSON.parse(stdout);
       expect(payload).toHaveProperty('meta');
@@ -64,6 +70,6 @@ describe('suggestions --json is parseable as emitted', () => {
       env: { ...process.env, LOG_DIR: logDir },
     });
 
-    expect(stdout).toContain('pnpm --silent --filter server suggestions');
+    expect(stdout).toContain(`pnpm --silent --filter ${CLAUDE_SERVER_PACKAGE} suggestions`);
   }, 120_000);
 });
