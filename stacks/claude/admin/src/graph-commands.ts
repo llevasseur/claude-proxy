@@ -1,5 +1,5 @@
-import type { SessionNode } from '@claude-proxy/core';
-import { findNestedInvocations, parseCommandEnvelope } from '@claude-proxy/core';
+import type { SessionNode } from '@agent-proxy/claude-core';
+import { findNestedInvocations, parseCommandEnvelope } from '@agent-proxy/claude-core';
 import type { SessionGraphEntry } from './api';
 
 /**

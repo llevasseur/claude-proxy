@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
-import type { IdeaEntry, IdeaStatus } from '@claude-proxy/core';
+import type { IdeaEntry, IdeaStatus } from '@agent-proxy/claude-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { JsonObject, JsonValue } from '../../proxy/json.ts';
 import { openDb } from '../src/db/open.js';

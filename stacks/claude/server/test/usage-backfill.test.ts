@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { UsageWindowMeter } from '@claude-proxy/core';
+import type { UsageWindowMeter } from '@agent-proxy/claude-core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildUsage } from '../src/api.js';
 import { clearArchivedUsageCache, clearLearnedCeilingsCache } from '../src/usage-history.js';

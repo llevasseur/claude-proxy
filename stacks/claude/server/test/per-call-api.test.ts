@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { outlineWirePrompt } from '@claude-proxy/core';
+import { outlineWirePrompt } from '@agent-proxy/claude-core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildSummary, buildToolSchema } from '../src/api.js';
 import {

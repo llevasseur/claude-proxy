@@ -1,5 +1,5 @@
-import type { InterruptionKind, SessionNode } from '@claude-proxy/core';
-import { mergeSessionNodes, sessionName, spawnAgentType, stripCommandEnvelope } from '@claude-proxy/core';
+import type { InterruptionKind, SessionNode } from '@agent-proxy/claude-core';
+import { mergeSessionNodes, sessionName, spawnAgentType, stripCommandEnvelope } from '@agent-proxy/claude-core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Expand, Maximize2, Minimize2, Network, Shrink } from 'lucide-react';

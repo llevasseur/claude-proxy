@@ -1,4 +1,4 @@
-import type { SessionNode } from '@claude-proxy/core';
+import type { SessionNode } from '@agent-proxy/claude-core';
 import type { SessionGraphEntry } from './api';
 import { projectAgents } from './graph-agents';
 import { projectCommandRuns } from './graph-commands';

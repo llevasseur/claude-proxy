@@ -1,4 +1,4 @@
-import type { PerCallStats, UsageDigest } from '@claude-proxy/core';
+import type { PerCallStats, UsageDigest } from '@agent-proxy/claude-core';
 import { Link } from '@tanstack/react-router';
 import { fmtInt, fmtPct } from '../format';
 import type { StatMetric } from '../metrics';

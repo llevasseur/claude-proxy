@@ -10,7 +10,7 @@
  */
 import { readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { type AuditSidecar, isAuditSidecar, outlineWirePrompt } from '@claude-proxy/core';
+import { type AuditSidecar, isAuditSidecar, outlineWirePrompt } from '@agent-proxy/claude-core';
 import { errorMessage } from './errors.js';
 import { type JsonValue, jsonField } from './json.js';
 import { hashWirePrompt, readStoredPrompt, writeStoredPrompt } from './prompt-store.js';

@@ -1,4 +1,4 @@
-import type { ProxyFilterEntry, ProxyFilterKind } from '@claude-proxy/core';
+import type { ProxyFilterEntry, ProxyFilterKind } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute } from '@tanstack/react-router';
 import { ListFilter } from 'lucide-react';

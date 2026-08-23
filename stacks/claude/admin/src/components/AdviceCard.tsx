@@ -1,4 +1,4 @@
-import type { Advice } from '@claude-proxy/core';
+import type { Advice } from '@agent-proxy/claude-core';
 
 const LABEL = { high: 'High', warn: 'Warn', info: 'Info' } satisfies Record<Advice['severity'], string>;
 

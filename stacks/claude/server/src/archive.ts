@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { normalizeDigest, type UsageDigest } from '@claude-proxy/core';
+import { normalizeDigest, type UsageDigest } from '@agent-proxy/claude-core';
 
 /**
  * Where finalized per-day digests live, laid out as

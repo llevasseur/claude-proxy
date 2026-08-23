@@ -1,4 +1,4 @@
-import type { AliasLoadExpectation } from '@claude-proxy/core';
+import type { AliasLoadExpectation } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute } from '@tanstack/react-router';
 import { Puzzle } from 'lucide-react';

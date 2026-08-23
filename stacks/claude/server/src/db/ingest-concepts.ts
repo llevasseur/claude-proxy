@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import type { DatabaseSync } from 'node:sqlite';
-import type { Concept } from '@claude-proxy/core';
+import type { Concept } from '@agent-proxy/claude-core';
 import { conceptStorePath, parseConceptStore } from '../concepts.js';
 
 /**

@@ -1,4 +1,4 @@
-import { type JobTone, jobStateTone, type LivenessState } from '@claude-proxy/core';
+import { type JobTone, jobStateTone, type LivenessState } from '@agent-proxy/claude-core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { HardDrive } from 'lucide-react';

@@ -28,7 +28,7 @@ import {
   parseSuggestionStatusUpdates,
   type SuggestionRecurrence,
   type SuggestionStatus,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import {
   applyIdeaArea,
   applyIdeaClaim,
@@ -2021,7 +2021,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, async () => {
   console.log(`[claude-proxy-server] listening on http://${HOST}:${PORT}`);
   console.log(`[claude-proxy-server] reading audit logs from ${LOG_DIR}`);
-  console.log(`[claude-proxy-server] serving ${API_ROUTES.length} routes declared in @claude-proxy/core`);
+  console.log(`[claude-proxy-server] serving ${API_ROUTES.length} routes declared in @agent-proxy/claude-core`);
   // The SQLite view of those logs, kept current by a watcher, and what the
   // routes read. Report which side is serving — a substrate that failed to open
   // falls back silently otherwise.

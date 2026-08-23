@@ -47,7 +47,7 @@ import {
   type SessionNode,
   summarizeSteps,
   ZERO_TOKENS,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { type JsonInput, numberField, objectField, parseJson, stringField } from './json.js';
 import { readRequestBodyParsed, readSidecars } from './logs.js';
 import { listSessionGraphs, resolveSessionsDir, type SessionGraph, threadIdForBody } from './sessions.js';

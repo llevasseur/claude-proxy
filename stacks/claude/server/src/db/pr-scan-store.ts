@@ -18,7 +18,7 @@
 
 import { existsSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import type { PrSessionVia } from '@claude-proxy/core';
+import type { PrSessionVia } from '@agent-proxy/claude-core';
 import { openDb, resolveDbPath } from './open.js';
 
 /** The two signals a scan can produce. `recorded` is deliberately not among them. */

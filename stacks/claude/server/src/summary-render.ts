@@ -3,7 +3,7 @@
  * It lives apart from both because each is a script with top-level side effects —
  * importing one to reuse its renderer would run its job.
  */
-import { reportTzAbbr, type UsageDigest } from '@claude-proxy/core';
+import { reportTzAbbr, type UsageDigest } from '@agent-proxy/claude-core';
 import type { SummaryResponse } from './api.js';
 
 function usd(n: number): string {

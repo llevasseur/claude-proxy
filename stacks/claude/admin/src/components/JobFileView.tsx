@@ -1,4 +1,4 @@
-import { codeSyntax, formatJsonText, parseJobTimeline, prettifyLog } from '@claude-proxy/core';
+import { codeSyntax, formatJsonText, parseJobTimeline, prettifyLog } from '@agent-proxy/claude-core';
 import { useMemo, useState } from 'react';
 import type { JobFileDetail } from '../api';
 import { fmtBytes, fmtLocalTsShort } from '../format';

@@ -1,4 +1,4 @@
-import type { UsageDigest } from '@claude-proxy/core';
+import type { UsageDigest } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { Monitor } from 'lucide-react';

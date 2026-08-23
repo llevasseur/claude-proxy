@@ -9,7 +9,7 @@ import type {
   IdeaMark,
   IdeaMarkResult,
   IdeasStore,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import {
   addRemoteIdeas,
   claimRemoteIdeas,

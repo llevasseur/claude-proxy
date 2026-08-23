@@ -1,4 +1,4 @@
-import type { AgentTypeUsage, CommandSummary } from '@claude-proxy/core';
+import type { AgentTypeUsage, CommandSummary } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate } from '@tanstack/react-router';
 import { TerminalSquare } from 'lucide-react';

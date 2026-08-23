@@ -7,7 +7,7 @@
  * write rather than by whoever read last.
  */
 
-import { IDEA_CLAIM_TTL_MS, type IdeaAdd } from '@claude-proxy/core';
+import { IDEA_CLAIM_TTL_MS, type IdeaAdd } from '@agent-proxy/claude-core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db.ts';
 import {

@@ -1,7 +1,7 @@
 import { open, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { type CliFunctionEntry, resolveCliCatalogue } from '@claude-proxy/core';
+import { type CliFunctionEntry, resolveCliCatalogue } from '@agent-proxy/claude-core';
 
 /**
  * The installed Claude Code bundle, as read-only input.

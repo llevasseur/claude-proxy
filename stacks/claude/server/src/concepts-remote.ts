@@ -20,7 +20,7 @@
  * same concept. It stays stable because the store is append-only.
  */
 
-import { type StoredConcept, sortConcepts } from '@claude-proxy/core';
+import { type StoredConcept, sortConcepts } from '@agent-proxy/claude-core';
 import { parseConceptStore } from './concepts.js';
 import { errorMessage } from './errors.js';
 import { type JsonInput, jsonArray, jsonField, numberField, stringField } from './json.js';

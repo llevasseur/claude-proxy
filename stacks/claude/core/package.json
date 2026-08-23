@@ -1,5 +1,5 @@
 {
-  "name": "@claude-proxy/core",
+  "name": "@agent-proxy/claude-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",

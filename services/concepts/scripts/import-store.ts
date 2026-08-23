@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type Concept, isConcept, normalizeConcept } from '@claude-proxy/core';
+import { type Concept, isConcept, normalizeConcept } from '@agent-proxy/claude-core';
 import { flagField, isJsonRecord, parseJson } from '../src/json.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));

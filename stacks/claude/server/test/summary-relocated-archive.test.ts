@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { TrendEntry } from '@claude-proxy/core';
+import type { TrendEntry } from '@agent-proxy/claude-core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildSummary } from '../src/api.js';
 import { readArchivedDay } from '../src/logs.js';

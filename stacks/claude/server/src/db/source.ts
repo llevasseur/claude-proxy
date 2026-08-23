@@ -13,7 +13,7 @@ import {
   type SessionNode,
   type StoredConcept,
   sortConcepts,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import {
   commandStorePath,
   readCommandRuns as readCommandRunsFromFiles,

@@ -1,4 +1,4 @@
-import type { RequestMessageDetail } from '@claude-proxy/core';
+import type { RequestMessageDetail } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getContextMessage } from '../api';

@@ -1,4 +1,4 @@
-import { sessionName } from '@claude-proxy/core';
+import { sessionName } from '@agent-proxy/claude-core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect } from 'react';

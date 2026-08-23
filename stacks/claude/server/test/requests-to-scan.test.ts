@@ -1,7 +1,7 @@
 // Which request bodies the errors page opens. The biggest bodies cluster at the end of
 // a run, so a size-ordered scan reads only what a compacted session already dropped its
 // early failures from.
-import type { ContextEntry } from '@claude-proxy/core';
+import type { ContextEntry } from '@agent-proxy/claude-core';
 import { describe, expect, it } from 'vitest';
 import { requestsToScan } from '../src/api.js';
 

@@ -4,7 +4,7 @@ import type {
   SessionBucketStats,
   SessionSuggestion,
   SuggestionStatusRow,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getSessionSuggestionBucket, getSuggestionStatus, type SessionSummary } from '../api';

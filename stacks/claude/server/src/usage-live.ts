@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { type LiveUsage, parseLiveUsage, USAGE_WINDOW_MS, type UsageWindowKind } from '@claude-proxy/core';
+import { type LiveUsage, parseLiveUsage, USAGE_WINDOW_MS, type UsageWindowKind } from '@agent-proxy/claude-core';
 import { jsonField, parseJson, stringField } from './json.js';
 
 /**

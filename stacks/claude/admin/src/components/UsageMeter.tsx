@@ -1,4 +1,4 @@
-import type { UsagePaceStatus, UsageWindowMeter } from '@claude-proxy/core';
+import type { UsagePaceStatus, UsageWindowMeter } from '@agent-proxy/claude-core';
 import { Fuel } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { fmtInt } from '../format';

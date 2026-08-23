@@ -6,7 +6,7 @@
  * disagrees with the one the dashboard recomputes.
  */
 
-import { outlineWirePrompt as coreOutline, sectionsOfText as coreSections } from '@claude-proxy/core';
+import { outlineWirePrompt as coreOutline, sectionsOfText as coreSections } from '@agent-proxy/claude-core';
 import { describe, expect, it } from 'vitest';
 import type { JsonValue } from '../../proxy/json.ts';
 import {

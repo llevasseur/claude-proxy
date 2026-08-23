@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { API_ROUTES } from '@claude-proxy/core';
+import { API_ROUTES } from '@agent-proxy/claude-core';
 import type { RouteObservation } from '../src/db/route-observation-store.js';
 
 /**

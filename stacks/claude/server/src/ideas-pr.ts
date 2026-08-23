@@ -10,7 +10,7 @@ import {
   planIdeaPrTransitions,
   sameIdeaPr,
   type WriteProvenance,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { readPullRequests, resolveRepoDir } from './github.js';
 import { markIdeasInStore, readIdeasStore } from './ideas-store.js';
 
@@ -18,7 +18,7 @@ import { markIdeasInStore, readIdeasStore } from './ideas-store.js';
  * Turn observed pull-request state into ideas-ledger status changes, so a merged
  * PR ships the idea it was claimed against without anyone saying so.
  *
- * The decision is pure and lives in `@claude-proxy/core` (`planIdeaPrTransitions`).
+ * The decision is pure and lives in `@agent-proxy/claude-core` (`planIdeaPrTransitions`).
  * This module does the two impure halves: read what GitHub says, and write the
  * plan. Called from `ideas sync` and, unattended, from `maintain --apply`.
  */

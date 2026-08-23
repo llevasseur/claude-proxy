@@ -13,7 +13,7 @@
  * been, whereas a ref is the same fact everywhere.
  *
  * Everything here shells out to `git` and `gh`. The pure layout lives in
- * `@claude-proxy/core`'s `main-history.ts`.
+ * `@agent-proxy/claude-core`'s `main-history.ts`.
  */
 
 import { execFile } from 'node:child_process';
@@ -33,7 +33,7 @@ import {
   needsPin,
   pinRefFor,
   shortSha,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { findOnPath } from './chat-cli.js';
 import { type JsonInput, type JsonValue, jsonString, stringField } from './json.js';
 

@@ -1,4 +1,4 @@
-import type { SectionShare } from '@claude-proxy/core';
+import type { SectionShare } from '@agent-proxy/claude-core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { useMemo } from 'react';

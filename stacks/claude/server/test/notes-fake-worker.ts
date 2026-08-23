@@ -1,6 +1,6 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { NoteDocument, NoteMetadata, NotePage } from '@claude-proxy/core';
+import type { NoteDocument, NoteMetadata, NotePage } from '@agent-proxy/claude-core';
 import type { JsonObject, JsonValue } from '../../proxy/json.ts';
 
 export interface FakeNotesServer {

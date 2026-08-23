@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { auditFallbacks, FALLBACK_REGISTRY, formatFallbackVerdicts } from '@claude-proxy/core';
+import { auditFallbacks, FALLBACK_REGISTRY, formatFallbackVerdicts } from '@agent-proxy/claude-core';
 import { describe, expect, it } from 'vitest';
 import { fileSource } from '../src/db/source.js';
 import { resolveLogDir } from '../src/logs.js';

@@ -1,4 +1,4 @@
-import { type IdeaEntry, ideaAreaLabel, SEED_IDEA_AREAS, UNFILED_IDEA_AREA_LABEL } from '@claude-proxy/core';
+import { type IdeaEntry, ideaAreaLabel, SEED_IDEA_AREAS, UNFILED_IDEA_AREA_LABEL } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { Sparkles } from 'lucide-react';

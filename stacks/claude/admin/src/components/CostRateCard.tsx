@@ -1,4 +1,4 @@
-import { type CostRatePoint, costRatePoints, isPartialDay, summarizeCostRate } from '@claude-proxy/core';
+import { type CostRatePoint, costRatePoints, isPartialDay, summarizeCostRate } from '@agent-proxy/claude-core';
 import {
   CartesianGrid,
   ReferenceLine,

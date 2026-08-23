@@ -10,7 +10,7 @@ import {
   jobFileKind,
   jobStateTone,
   normalizeJobState,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { errorMessage } from './errors.js';
 import type { JsonValue } from './json.js';
 

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { mergeContextDays } from '@claude-proxy/core';
+import { mergeContextDays } from '@agent-proxy/claude-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { JsonObject } from '../../proxy/json.ts';
 import { buildContext, buildContextDay, contextPageQuery } from '../src/api.js';

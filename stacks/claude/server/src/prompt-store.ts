@@ -14,7 +14,7 @@ import {
   isStoredWirePrompt,
   type StoredWirePrompt,
   type WirePromptOutline,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 
 export const PROMPT_STORE_DIR = 'system-prompts';
 

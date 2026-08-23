@@ -8,7 +8,7 @@ import {
   type SuggestionJudgementWrite,
   type SuggestionStatusStore,
   type SuggestionStatusUpdate,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 
 /**
  * Where the suggestion flags live, and the only code that writes them.

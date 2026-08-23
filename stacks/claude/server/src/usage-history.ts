@@ -1,5 +1,5 @@
 import { access } from 'node:fs/promises';
-import { isUsageRecord, type LearnedCeilings, learnCeilings, type UsageRecord } from '@claude-proxy/core';
+import { isUsageRecord, type LearnedCeilings, learnCeilings, type UsageRecord } from '@agent-proxy/claude-core';
 import { isClosedDay } from './day-digest-memo.js';
 import { fileSource, type SidecarSource } from './db/source.js';
 import { clearStoredUsageDays, readStoredUsageDay, storeUsageDay } from './db/usage-day-store.js';

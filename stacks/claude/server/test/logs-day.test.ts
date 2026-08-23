@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { reportDay } from '@claude-proxy/core';
+import { reportDay } from '@agent-proxy/claude-core';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readArchivedDay, readSidecars, today } from '../src/logs.js';
 

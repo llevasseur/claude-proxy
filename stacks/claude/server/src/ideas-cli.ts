@@ -62,7 +62,7 @@ import {
   parseCliArgs,
   parseIdeaAdds,
   SEED_IDEA_AREAS,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { errorMessage } from './errors.js';
 import { type IdeaPrSyncOptions, reconcileIdeaPrs, renderIdeaPrTransition } from './ideas-pr.js';
 import {

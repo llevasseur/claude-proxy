@@ -6,7 +6,7 @@ import {
   outlineSystemPrompt,
   type SystemPromptDoc,
   utf8Bytes,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute } from '@tanstack/react-router';
 import { ScrollText } from 'lucide-react';

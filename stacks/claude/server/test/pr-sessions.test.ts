@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import type { PullRequestRow } from '@claude-proxy/core';
+import type { PullRequestRow } from '@agent-proxy/claude-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ingestSessions } from '../src/db/ingest-sessions.js';
 import { openDb } from '../src/db/open.js';

@@ -1,4 +1,4 @@
-import type { SkimDigest } from '@claude-proxy/core';
+import type { SkimDigest } from '@agent-proxy/claude-core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { createRoute } from '@tanstack/react-router';
 import { Zap } from 'lucide-react';

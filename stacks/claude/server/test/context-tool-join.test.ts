@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { isAuditSidecar } from '@claude-proxy/core';
+import { isAuditSidecar } from '@agent-proxy/claude-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildContext } from '../src/api.js';
 import { ingest } from '../src/db/ingest.js';

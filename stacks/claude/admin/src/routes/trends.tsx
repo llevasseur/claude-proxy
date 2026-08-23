@@ -1,4 +1,4 @@
-import { blendRate, isPartialDay, type UsageDigest } from '@claude-proxy/core';
+import { blendRate, isPartialDay, type UsageDigest } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { TrendingUp } from 'lucide-react';

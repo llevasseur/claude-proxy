@@ -1,4 +1,4 @@
-import type { CliFunctionEntry, CliFunctionMiss } from '@claude-proxy/core';
+import type { CliFunctionEntry, CliFunctionMiss } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { Binary } from 'lucide-react';

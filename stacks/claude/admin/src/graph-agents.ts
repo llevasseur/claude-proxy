@@ -1,5 +1,5 @@
-import type { SessionNode } from '@claude-proxy/core';
-import { isAgentSpawn, spawnAgentType } from '@claude-proxy/core';
+import type { SessionNode } from '@agent-proxy/claude-core';
+import { isAgentSpawn, spawnAgentType } from '@agent-proxy/claude-core';
 import type { SessionGraphEntry } from './api';
 import type { CommandRunSpan } from './graph-commands';
 import { commandRuns } from './graph-commands';

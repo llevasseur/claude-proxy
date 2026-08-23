@@ -1,5 +1,5 @@
 {
-  "name": "server",
+  "name": "@agent-proxy/claude-server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@claude-proxy/core": "workspace:*"
+    "@agent-proxy/claude-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
