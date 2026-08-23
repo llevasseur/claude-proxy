@@ -1,8 +1,21 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { SanitizedAuditSidecarV1, TodaySummary } from "@ox-alpha-proxy/core";
-import { aggregateToday, parseSanitizedAuditSidecar } from "@ox-alpha-proxy/core";
+import type {
+  CostUnavailableReason,
+  PaginatedHistoryRecords,
+  PricedCost,
+  ResolvedCalendarRange,
+  SanitizedAuditSidecarV1,
+  TodaySummary,
+  UsageTotals,
+} from "@ox-alpha-proxy/core";
+import {
+  aggregateToday,
+  paginateHistoryRecords,
+  parseSanitizedAuditSidecar,
+  selectByModels,
+} from "@ox-alpha-proxy/core";
 
 const SCHEMA_VERSION = 1;
 const MIGRATION = `
@@ -54,6 +67,26 @@ interface ExistingRecordRow {
 
 export interface IngestHooks {
   readonly beforeWatermark?: () => void;
+}
+
+// ADR 0015: the listing re-renders exactly the sanitized sidecar fields already
+// stored, plus requestId; no new data crosses the privacy boundary.
+export interface HistoryRecordView {
+  readonly recordId: string;
+  readonly timestamp: string;
+  readonly model: string;
+  readonly endpoint: string;
+  readonly responseStatus: number;
+  readonly requestId: string | null;
+  readonly usage: UsageTotals;
+  readonly cost: PricedCost | null;
+  readonly costUnavailableReason: CostUnavailableReason | null;
+}
+
+function inRange(timestamp: string, range: ResolvedCalendarRange): boolean {
+  const ms = Date.parse(timestamp);
+  if (Number.isNaN(ms)) return false;
+  return ms >= (range.startInclusive?.getTime() ?? 0) && ms < range.endExclusive.getTime();
 }
 
 export class UsageDatabase {
@@ -139,6 +172,57 @@ export class UsageDatabase {
          ON CONFLICT(filename) DO UPDATE SET reason = excluded.reason, rejected_at = excluded.rejected_at`,
       )
       .run(filename, reason, now.toISOString());
+  }
+
+  // Newest first with recordId as the deterministic tiebreaker (ADR 0015);
+  // pagination rides on core's paginateHistoryRecords so page shapes match.
+  history(
+    range: ResolvedCalendarRange,
+    models: readonly string[],
+    limit: number | null,
+    offset: number,
+  ): PaginatedHistoryRecords {
+    const rows = this.database
+      .prepare(
+        "SELECT sidecar_json FROM usage_records ORDER BY event_timestamp DESC, record_id ASC",
+      )
+      .all() as unknown as JsonRow[];
+    const matching = rows
+      .map((row) => parseSanitizedAuditSidecar(JSON.parse(row.sidecar_json)))
+      .filter((sidecar) => inRange(sidecar.timestamp, range));
+    const selected = selectByModels(matching, models);
+    return paginateHistoryRecords(
+      selected.map(
+        (sidecar): HistoryRecordView => ({
+          recordId: sidecar.recordId,
+          timestamp: sidecar.timestamp,
+          model: sidecar.model,
+          endpoint: sidecar.endpoint,
+          responseStatus: sidecar.responseStatus,
+          requestId: sidecar.requestId,
+          usage: Object.freeze({ ...sidecar.usage }),
+          cost: sidecar.cost,
+          costUnavailableReason: sidecar.costUnavailableReason,
+        }),
+      ),
+      limit,
+      offset,
+    );
+  }
+
+  sidecarsInRange(
+    range: ResolvedCalendarRange,
+    models: readonly string[],
+  ): readonly SanitizedAuditSidecarV1[] {
+    const rows = this.database
+      .prepare("SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id")
+      .all() as unknown as JsonRow[];
+    return selectByModels(
+      rows
+        .map((row) => parseSanitizedAuditSidecar(JSON.parse(row.sidecar_json)))
+        .filter((sidecar) => inRange(sidecar.timestamp, range)),
+      models,
+    );
   }
 
   summary(now: Date, reportTimezone: string): TodaySummary {
