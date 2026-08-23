@@ -1,6 +1,6 @@
 /**
  * Backfill system-prompt identity onto historical sidecars —
- * `pnpm --filter server prompt-backfill [--apply]`.
+ * `pnpm --filter @agent-proxy/claude-server prompt-backfill [--apply]`.
  *
  * Dry run is the default and prints the same counts `--apply` would produce.
  * Reaches only as far back as retention has kept `.request.txt` bodies; older

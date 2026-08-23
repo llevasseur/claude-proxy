@@ -33,8 +33,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm --filter concepts typecheck
-      - run: pnpm --filter concepts test
+      - run: pnpm --filter @agent-proxy/concepts typecheck
+      - run: pnpm --filter @agent-proxy/concepts test
 
       # Migrations first: the schema a deploy assumes must already be there.
       - name: Apply D1 migrations

@@ -108,7 +108,7 @@ floor; instrumentation determines whether a smarter key is worthwhile.
 - **Labels do not survive body eviction; the numbers do** — every count, token, and dollar
   on this page comes from the `.audit.json` sidecar, which
   [retention](retention-lifecycle.md) keeps forever, so nothing here changes when
-  `pnpm --filter server maintain` evicts a day's `.md` and `.request.txt` bodies past
+  `pnpm --filter @agent-proxy/claude-server maintain` evicts a day's `.md` and `.request.txt` bodies past
   `RETENTION_DAYS` (default 30). Only the verbatim `requestText` label is lost. A missing body
   is indistinguishable from a body that was never captured, so the readers count it:
   `skimRequestText` reports `bodyPresent: false` and both endpoints surface the total as

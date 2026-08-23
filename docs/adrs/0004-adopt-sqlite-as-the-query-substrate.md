@@ -48,7 +48,7 @@ is allowed to be authoritative about.
   about as SQL than as a fluent API.
 - **The DB is a disposable view first.** `logs/` remains the sole source of
   truth; every table is fully reconstructible by re-ingesting, so the supported
-  total-recovery path is `rm logs/claude-proxy.db && pnpm --filter server ingest`
+  total-recovery path is `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest`
   and nothing is lost. Ingest is idempotent and watermarked, so "ran twice" and
   "died halfway" are both harmless. The watermark is keyed on the sidecar
   filename stem for the audit sidecars, which are written once and never
@@ -152,7 +152,7 @@ four skim fields, all 15 distinct rate-limit headers — maps to a column.
 
 That combination is what kills the cutover. Simply **evicting the bodies past a
 retention window buys 98.6% of the disk win at zero irreversibility**: the
-sidecars stay, so `rm logs/claude-proxy.db && pnpm --filter server ingest` still
+sidecars stay, so `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` still
 reconstructs the whole database from files, and no data lives only inside SQLite.
 Content-addressed blobs would buy the remaining 1.4% by making the DB the sole
 home of data that cannot be re-derived — trading the recovery path for a rounding

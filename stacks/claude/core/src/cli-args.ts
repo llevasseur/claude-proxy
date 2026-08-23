@@ -1,5 +1,5 @@
 /**
- * The one argv reader behind every `pnpm --filter server <cli>` entry point.
+ * The one argv reader behind every `pnpm --filter @agent-proxy/claude-server <cli>` entry point.
  *
  * The shape is `--flag value` / `-f value`, with anything else a positional. The
  * hazard the shape carries is that an unrecognised `--name` is *assumed* to take

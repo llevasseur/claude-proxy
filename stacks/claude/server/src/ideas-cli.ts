@@ -12,21 +12,21 @@
  * from its own copy would keep a second ledger that looks complete and would
  * re-propose ideas the shared one already rejected.
  *
- *   pnpm --filter server ideas list                                  # the whole ledger
- *   pnpm --filter server ideas list -s accepted                      # only what was signed off
- *   pnpm --filter server ideas list -s accepted --repo owner/name    # ... for one repo
- *   pnpm --filter server ideas list --area commands                  # ... for one area
- *   pnpm --filter server ideas list --json                           # machine-readable
- *   pnpm --filter server ideas add --json '[{"slug":"…", …}]'        # record proposals
- *   pnpm --filter server ideas add --json -                          # ... from stdin
- *   pnpm --filter server ideas list --available                        # what may be taken right now
- *   pnpm --filter server ideas claim --slug rolling-window --by feat/rolling-window
- *   pnpm --filter server ideas mark --slug rolling-window -s accepted
- *   pnpm --filter server ideas mark --slug rolling-window -s rejected -n "covered by /trends"
- *   pnpm --filter server ideas mark --slug rolling-window -s shipped -n "<PR url>"
- *   pnpm --filter server ideas file --slug rolling-window --area ui-ux
- *   pnpm --filter server ideas note --slug rolling-window --text "start with the reader"
- *   pnpm --filter server ideas prompt --slug rolling-window            # the /task prompt to build it
+ *   pnpm --filter @agent-proxy/claude-server ideas list                                  # the whole ledger
+ *   pnpm --filter @agent-proxy/claude-server ideas list -s accepted                      # only what was signed off
+ *   pnpm --filter @agent-proxy/claude-server ideas list -s accepted --repo owner/name    # ... for one repo
+ *   pnpm --filter @agent-proxy/claude-server ideas list --area commands                  # ... for one area
+ *   pnpm --filter @agent-proxy/claude-server ideas list --json                           # machine-readable
+ *   pnpm --filter @agent-proxy/claude-server ideas add --json '[{"slug":"…", …}]'        # record proposals
+ *   pnpm --filter @agent-proxy/claude-server ideas add --json -                          # ... from stdin
+ *   pnpm --filter @agent-proxy/claude-server ideas list --available                        # what may be taken right now
+ *   pnpm --filter @agent-proxy/claude-server ideas claim --slug rolling-window --by feat/rolling-window
+ *   pnpm --filter @agent-proxy/claude-server ideas mark --slug rolling-window -s accepted
+ *   pnpm --filter @agent-proxy/claude-server ideas mark --slug rolling-window -s rejected -n "covered by /trends"
+ *   pnpm --filter @agent-proxy/claude-server ideas mark --slug rolling-window -s shipped -n "<PR url>"
+ *   pnpm --filter @agent-proxy/claude-server ideas file --slug rolling-window --area ui-ux
+ *   pnpm --filter @agent-proxy/claude-server ideas note --slug rolling-window --text "start with the reader"
+ *   pnpm --filter @agent-proxy/claude-server ideas prompt --slug rolling-window            # the /task prompt to build it
  *
  * **This is not the suggestions CLI and shares no store with it.** A suggestion is
  * counted from transcripts and traces back to source sessions; an idea is

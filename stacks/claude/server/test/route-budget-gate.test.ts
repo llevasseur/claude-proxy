@@ -30,7 +30,7 @@ import {
  * naming a route that no longer exists — otherwise a rename silently un-budgets the route
  * someone was just editing.
  *
- * Budgets are measurements, not targets. `ROUTE_BUDGETS=record pnpm --filter server test`
+ * Budgets are measurements, not targets. `ROUTE_BUDGETS=record pnpm --filter @agent-proxy/claude-server test`
  * rewrites the fixture from whatever traffic the substrate holds, so a legitimate slowdown
  * ships its new numbers as a reviewable diff.
  */

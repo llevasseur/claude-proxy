@@ -385,7 +385,7 @@ function etagMatches(req: http.IncomingMessage, etag: string): boolean {
  * unreachable *by construction*. Today one route clears that: `/api/context/day`, for a
  * closed reporting day the corpus actually holds requests for. An empty past day does
  * not qualify, because it is only empty until an archive restore or an ADR-0004 rebuild
- * (`rm logs/claude-proxy.db && pnpm --filter server ingest`) gives it content. Everything
+ * (`rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest`) gives it content. Everything
  * else stays `no-cache`, where the ETag already makes a repeat poll nearly free.
  */
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';

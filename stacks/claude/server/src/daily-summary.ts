@@ -4,8 +4,8 @@
  * readable text block. This is the hook point for a scheduled job (e.g. launchd
  * from the 2026-07-13 spec).
  *
- *   pnpm --filter server summary            # today
- *   pnpm --filter server summary 2026-07-14 # a specific day
+ *   pnpm --filter @agent-proxy/claude-server summary            # today
+ *   pnpm --filter @agent-proxy/claude-server summary 2026-07-14 # a specific day
  */
 import { buildSummary, type SummaryResponse } from './api.js';
 import { resolveArchiveDir } from './archive.js';

@@ -68,7 +68,7 @@ captured data, without touching the passive-observer proxy.
   in the peak and in a thread's row are broken by the earlier request exactly as before, because
   days are merged oldest-first under the same strictly-greater rule the single pass used. The
   rows are **derived and disposable**, like `day_digest` and `usage_day` beside them: `logs/`
-  stays the source of truth and `rm logs/claude-proxy.db && pnpm --filter server ingest` rebuilds
+  stays the source of truth and `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` rebuilds
   everything. See [ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md).
 - **Thread page** (`/context/thread/$threadId?days=<n>`) — the shared drill-down a thread's
   single row opens: its opening prompt and full thread id, stat tiles for **requests**,

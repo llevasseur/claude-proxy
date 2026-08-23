@@ -159,7 +159,7 @@ Three things about the recording are deliberate:
   a command that opens one. A failed open records nothing.
 - **It goes to the sidecar, not the transcript.** The record is a derived *pointer* — ADR
   0004's rule that `logs/` is the source of truth is untouched, and
-  `rm logs/claude-proxy.db && pnpm --filter server ingest` refills the column from the
+  `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` refills the column from the
   sidecars.
 - **A recorded url is compared by `owner/name#number`**, so a run that opened
   `other/repo#14` is not read as this checkout's #14. Host is excluded from that key,

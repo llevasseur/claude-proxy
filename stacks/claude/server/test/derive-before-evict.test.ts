@@ -25,7 +25,7 @@ import { dbSource, fileSource } from '../src/db/source.js';
  *   column the moment eviction changes the directory listing.
  * - **Backward, and it does not hold.** A body evicted before anything derived it
  *   is gone, and re-ingesting cannot invent the derivative. Total recovery
- *   (`rm logs/claude-proxy.db && pnpm --filter server ingest`) still reconstructs
+ *   (`rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest`) still reconstructs
  *   everything that is *on disk*, which is the property ADR 0004 requires and the
  *   reason this is columns of bounded strings rather than a blob store.
  */

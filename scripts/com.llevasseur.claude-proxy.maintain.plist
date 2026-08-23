@@ -11,7 +11,7 @@
       launchctl unload ~/Library/LaunchAgents/com.llevasseur.claude-proxy.maintain.plist 2>/dev/null
       launchctl load  ~/Library/LaunchAgents/com.llevasseur.claude-proxy.maintain.plist
 
-  Dry-run it by hand any time with `pnpm --filter server maintain` (no --apply).
+  Dry-run it by hand any time with `pnpm --filter @agent-proxy/claude-server maintain` (no --apply).
 -->
 <plist version="1.0">
 <dict>
@@ -22,7 +22,7 @@
     <array>
         <string>/Users/llevasseur/Library/pnpm/bin/pnpm</string>
         <string>--filter</string>
-        <string>server</string>
+        <string>@agent-proxy/claude-server</string>
         <string>maintain</string>
         <string>--apply</string>
     </array>

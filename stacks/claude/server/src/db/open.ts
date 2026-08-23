@@ -17,7 +17,7 @@ const sqlite = createRequire(import.meta.url)('node:sqlite') as typeof import('n
  *
  * `logs/` stays the sole source of truth. Every table here is reconstructible by
  * re-ingesting the sidecars, so total recovery is
- * `rm logs/claude-proxy.db && pnpm --filter server ingest`.
+ * `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest`.
  *
  * Nothing authored lives here. `logs/suggestion-status.json` and the device
  * settings file stay JSON on disk because they are not derivable from the logs,
@@ -521,7 +521,7 @@ UPDATE session SET bytes = -1;
  *
  * Bounded derived strings, deliberately **not** the content-addressed blob store
  * ADR 0004 rejected: `logs/` stays the sole source of truth and
- * `rm logs/claude-proxy.db && pnpm --filter server ingest` still reconstructs
+ * `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` still reconstructs
  * everything on disk. It cannot reconstruct a derivative for a day whose body is
  * already gone — the guarantee is forward-only by construction.
  *

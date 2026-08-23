@@ -341,7 +341,7 @@ Prefer the terminal? The same digest + advice as a one-shot text report:
 
 ```bash
 pnpm summary                  # today
-pnpm --filter server summary 2026-07-14   # a specific day
+pnpm --filter @agent-proxy/claude-server summary 2026-07-14   # a specific day
 ```
 
 ### The query substrate (SQLite)
@@ -362,8 +362,8 @@ settings stay JSON files. So every table is reconstructible, and the supported
 total-recovery path is simply to throw it away:
 
 ```bash
-rm logs/claude-proxy.db && pnpm --filter server ingest   # rebuild from logs/
-pnpm --filter server ingest                              # or just top it up
+rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest   # rebuild from logs/
+pnpm --filter @agent-proxy/claude-server ingest                              # or just top it up
 ```
 
 Reads are served from the database, and the way back is one flag: **`DB_READS=0`
@@ -407,7 +407,7 @@ Both the proxy and server read the bare `PORT` var, so set it **per process**
 ```bash
 pnpm -r typecheck      # tsc across core, server, admin
 pnpm -r test           # vitest (packages/core)
-pnpm --filter admin build
+pnpm --filter @agent-proxy/claude-admin build
 ```
 
 ### Worktree Setup

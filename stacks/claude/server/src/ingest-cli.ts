@@ -4,11 +4,11 @@ import { errorMessage } from './errors.js';
 import { resolveLogDir } from './logs.js';
 
 /**
- * `pnpm --filter server ingest` — rebuild the SQLite view from `logs/`.
+ * `pnpm --filter @agent-proxy/claude-server ingest` — rebuild the SQLite view from `logs/`.
  *
  * The server ingests on start and on every log change, so this is for running it
  * explicitly: after pulling a schema change, or as the second half of
- * `rm logs/claude-proxy.db && pnpm --filter server ingest`.
+ * `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest`.
  */
 async function main(): Promise<void> {
   const logDir = resolveLogDir();
