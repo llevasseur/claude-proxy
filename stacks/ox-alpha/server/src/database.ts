@@ -266,6 +266,42 @@ export class UsageDatabase {
     });
   }
 
+  listRejected(): ReadonlyArray<
+    Readonly<{ filename: string; reason: string; rejectedAt: string }>
+  > {
+    const rows = this.database
+      .prepare(
+        "SELECT filename, reason, rejected_at FROM rejected_sidecars ORDER BY rejected_at DESC, filename",
+      )
+      .all() as unknown as Array<{ filename: string; reason: string; rejected_at: string }>;
+    return Object.freeze(
+      rows.map((row) =>
+        Object.freeze({ filename: row.filename, reason: row.reason, rejectedAt: row.rejected_at }),
+      ),
+    );
+  }
+
+  allWatermarks(): ReadonlyArray<Readonly<{ filename: string; recordId: string }>> {
+    const rows = this.database
+      .prepare("SELECT filename, record_id FROM ingest_watermarks ORDER BY filename")
+      .all() as unknown as Array<{ filename: string; record_id: string }>;
+    return rows.map((row) => Object.freeze({ filename: row.filename, recordId: row.record_id }));
+  }
+
+  hasRecord(recordId: string): boolean {
+    return (
+      this.database.prepare("SELECT 1 FROM usage_records WHERE record_id = ?").get(recordId) !==
+      undefined
+    );
+  }
+
+  hasWatermark(filename: string): boolean {
+    return (
+      this.database.prepare("SELECT 1 FROM ingest_watermarks WHERE filename = ?").get(filename) !==
+      undefined
+    );
+  }
+
   close(): void {
     this.database.close();
   }

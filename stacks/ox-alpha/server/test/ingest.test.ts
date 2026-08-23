@@ -1,6 +1,7 @@
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { auditConsistency, isConsistent } from "../src/consistency.ts";
 import { UsageDatabase } from "../src/database.ts";
 import { SidecarIngestor } from "../src/ingest.ts";
 import { sidecar, temporaryDirectory, writeSidecar } from "./helpers.ts";
@@ -121,6 +122,40 @@ describe("sidecar ingestion", () => {
     const rebuilt = new UsageDatabase(databasePath);
     await new SidecarIngestor(directory, rebuilt, () => now).reconcile();
     expect(JSON.stringify(rebuilt.summary(now, "America/New_York"))).toBe(before);
+
+    // The rebuild output is consistent with its source on every axis.
+    const report = await auditConsistency(rebuilt, directory);
+    expect(report).toMatchObject({
+      sidecarFiles: 2,
+      recordRows: 2,
+      watermarkRows: 2,
+      missingRecords: [],
+      missingWatermarks: [],
+      orphanWatermarks: [],
+    });
+    expect(isConsistent(report)).toBe(true);
     rebuilt.close();
+  });
+
+  test("consistency audit detects records, watermarks, and orphans drifting apart", async () => {
+    const { directory, database } = await setup();
+    const now = new Date("2026-08-19T18:00:00.000Z");
+    await writeSidecar(directory, "one.audit.json", sidecar("one"));
+    await writeSidecar(directory, "two.audit.json", sidecar("two", "2026-08-19T17:00:00.000Z"));
+    await new SidecarIngestor(directory, database, () => now).reconcile();
+
+    // A source file deleted behind the store's back becomes an orphan watermark.
+    await rm(join(directory, "two.audit.json"), { force: true });
+    // A new source file not yet ingested shows as missing record + watermark.
+    await writeSidecar(directory, "three.audit.json", sidecar("three", "2026-08-19T16:00:00.000Z"));
+
+    const report = await auditConsistency(database, directory);
+    expect(report.sidecarFiles).toBe(2);
+    expect(report.watermarkRows).toBe(2);
+    expect(report.missingRecords).toEqual(["three.audit.json"]);
+    expect(report.missingWatermarks).toEqual(["three.audit.json"]);
+    expect(report.orphanWatermarks).toEqual(["two.audit.json"]);
+    expect(isConsistent(report)).toBe(false);
+    database.close();
   });
 });

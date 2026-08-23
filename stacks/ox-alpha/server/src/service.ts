@@ -16,10 +16,14 @@ import { EventHub } from "./events.ts";
 import { SidecarIngestor } from "./ingest.ts";
 import {
   assembleDay,
+  collectContextSummaries,
+  collectLiveness,
   collectMessages,
   collectPromptListings,
   collectPromptMix,
   collectPromptSections,
+  collectSessionBreakdown,
+  collectSessionDetail,
   collectSessions,
   collectToolCalls,
   collectToolSchemas,
@@ -480,14 +484,119 @@ export class LiveUsageService {
         }
         case "/api/inspection/sessions": {
           await this.envelopes();
+          const groups = collectSessions(this.captureMemo?.value.envelopes ?? []);
+          const liveness = collectLiveness(
+            groups,
+            this.captureMemo?.value.envelopes ?? [],
+            this.clock(),
+          );
           const { limit, offset } = pagination(searchParams);
           this.inspectionPage(
             response,
             enabled,
-            collectSessions(this.captureMemo?.value.envelopes ?? []),
+            groups.map((group) => ({ ...group, liveness: liveness.get(group.sessionId) ?? null })),
             limit,
             offset,
           );
+          return;
+        }
+        case "/api/inspection/context": {
+          await this.envelopes();
+          let summaries = collectContextSummaries(this.captureMemo?.value.envelopes ?? []);
+          const search = searchParams.get("search");
+          if (search !== null && search.length > 0) {
+            const needle = search.toLowerCase();
+            summaries = summaries.filter((entry) =>
+              [entry.recordId, entry.model ?? "", entry.sessionId, entry.endpoint].some((field) =>
+                field.toLowerCase().includes(needle),
+              ),
+            );
+          }
+          const sort = searchParams.get("sort");
+          if (sort !== null) {
+            if (sort !== "asc" && sort !== "desc") {
+              throw new BadRequestError('sort must be "asc" or "desc"');
+            }
+            summaries =
+              sort === "asc"
+                ? [...summaries].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt))
+                : [...summaries].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));
+          }
+          const { limit, offset } = pagination(searchParams);
+          this.inspectionPage(response, enabled, summaries, limit, offset);
+          return;
+        }
+        case "/api/inspection/tool-schema": {
+          const name = searchParams.get("name");
+          if (name === null || name.length === 0) {
+            throw new BadRequestError("name is required");
+          }
+          await this.envelopes();
+          const schemas = collectToolSchemas(this.captureMemo?.value.envelopes ?? []).filter(
+            (entry) => entry.name === name,
+          );
+          if (schemas.length === 0) {
+            json(response, 404, { error: "not_found" });
+            return;
+          }
+          const variants = [...new Set(schemas.map((entry) => entry.schemaJson))];
+          json(response, 200, {
+            captureEnabled: enabled,
+            name,
+            type: schemas[0]?.type ?? "unknown",
+            description: schemas.find((entry) => entry.description !== null)?.description ?? null,
+            occurrences: schemas.length,
+            variants,
+            firstSeenAt: schemas.reduce<string | null>(
+              (first, entry) =>
+                first === null || entry.capturedAt < first ? entry.capturedAt : first,
+              null,
+            ),
+            lastSeenAt: schemas.reduce<string | null>(
+              (last, entry) => (last === null || entry.capturedAt > last ? entry.capturedAt : last),
+              null,
+            ),
+            recordIds: [...new Set(schemas.map((entry) => entry.recordId))],
+          });
+          return;
+        }
+        case "/api/inspection/sessions/detail":
+        case "/api/inspection/sessions/breakdown": {
+          const id = searchParams.get("id");
+          if (id === null || id.length === 0) {
+            throw new BadRequestError("id is required");
+          }
+          await this.envelopes();
+          const envelopes = this.captureMemo?.value.envelopes ?? [];
+          if (pathname.endsWith("/detail")) {
+            const captures = collectSessionDetail(id, envelopes);
+            if (captures.length === 0) {
+              json(response, 404, { error: "not_found" });
+              return;
+            }
+            const { limit, offset } = pagination(searchParams);
+            json(response, 200, {
+              captureEnabled: enabled,
+              sessionId: id,
+              ...page(captures, limit, offset),
+            });
+            return;
+          }
+          const breakdown = collectSessionBreakdown(id, envelopes);
+          if (breakdown.captures === 0) {
+            json(response, 404, { error: "not_found" });
+            return;
+          }
+          json(response, 200, { captureEnabled: true, sessionId: id, ...breakdown });
+          return;
+        }
+        case "/api/inspection/errors": {
+          const rejected = this.database.listRejected();
+          const { unreadable } = await this.envelopes();
+          json(response, 200, {
+            rejectedSidecars: rejected,
+            unreadableCaptures: unreadable,
+          });
           return;
         }
         default:

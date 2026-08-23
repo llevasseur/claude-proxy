@@ -2,6 +2,7 @@ import {
   analyzePrompt,
   buildPromptMix,
   type CaptureEnvelopeV1,
+  classifyLiveness,
   type InspectionMessage,
   inspectCaptureRequest,
   inspectCaptureResponse,
@@ -10,6 +11,7 @@ import {
   type PromptSection,
   promptHash,
   promptSections,
+  type SessionLiveness,
   type ToolSchemaSummary,
 } from "@ox-alpha-proxy/core";
 
@@ -73,6 +75,13 @@ export interface MessageEntry {
 // grouping under their own recordId rather than vanishing into one bucket.
 function sessionKeyFor(envelope: CaptureEnvelopeV1, derived: string | null): string {
   return derived ?? envelope.recordId;
+}
+
+/** Flat summaries of every capture, in list order. */
+export function collectContextSummaries(
+  envelopes: readonly CaptureEnvelopeV1[],
+): readonly ContextSummary[] {
+  return Object.freeze(envelopes.map(summarize));
 }
 
 function summarize(envelope: CaptureEnvelopeV1): ContextSummary {
@@ -267,5 +276,103 @@ export function collectPromptSections(
         ? promptHash(request.instructions)
         : null,
     sections: promptSections(request),
+  });
+}
+
+// A capture's exchange ended when the response carried a terminal Responses
+// event (`response.completed`) or a final JSON document marked completed.
+export function isTerminalResponseText(responseText: string): boolean {
+  if (responseText.includes('"response.completed"')) return true;
+  try {
+    const parsed: unknown = JSON.parse(responseText);
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (parsed as Record<string, unknown>).status === "completed"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Liveness verdicts for each session group, derived from capture activity and
+ * terminal-response evidence. Sessions without a datable newest capture read
+ * unknown rather than guessing.
+ */
+export function collectLiveness(
+  groups: readonly SessionGroup[],
+  envelopes: readonly CaptureEnvelopeV1[],
+  now: Date,
+): ReadonlyMap<string, SessionLiveness> {
+  const byId = new Map(envelopes.map((envelope) => [envelope.recordId, envelope]));
+  const verdicts = new Map<string, SessionLiveness>();
+  for (const group of groups) {
+    const newest = [...group.recordIds]
+      .map((recordId) => byId.get(recordId))
+      .filter((envelope): envelope is CaptureEnvelopeV1 => envelope !== undefined)
+      .filter((envelope) => envelope.capturedAt === group.lastCapturedAt)
+      .at(-1);
+    verdicts.set(
+      group.sessionId,
+      classifyLiveness(
+        group.lastCapturedAt,
+        newest !== undefined ? isTerminalResponseText(newest.responseText) : false,
+        now,
+      ),
+    );
+  }
+  return verdicts;
+}
+
+/** Id-scoped detail: one session's captures summarized. */
+export function collectSessionDetail(
+  sessionId: string,
+  envelopes: readonly CaptureEnvelopeV1[],
+): DayInspection["captures"] {
+  return Object.freeze(
+    envelopes
+      .filter((envelope) => {
+        const request = inspectCaptureRequest(envelope.requestText);
+        return (request.sessionId ?? envelope.recordId) === sessionId;
+      })
+      .map(summarize),
+  );
+}
+
+/** Per-session breakdown: counts by model and by report hour. */
+export function collectSessionBreakdown(
+  sessionId: string,
+  envelopes: readonly CaptureEnvelopeV1[],
+): Readonly<{
+  captures: number;
+  models: ReadonlyArray<Readonly<{ model: string; requests: number }>>;
+  hours: ReadonlyArray<Readonly<{ hour: string; captures: number }>>;
+}> {
+  const models = new Map<string, number>();
+  const hours = new Map<string, number>();
+  let captures = 0;
+  for (const envelope of envelopes) {
+    const request = inspectCaptureRequest(envelope.requestText);
+    if ((request.sessionId ?? envelope.recordId) !== sessionId) continue;
+    captures += 1;
+    if (request.model !== null) {
+      models.set(request.model, (models.get(request.model) ?? 0) + 1);
+    }
+    const hour = `${envelope.capturedAt.slice(0, 13)}:00`;
+    hours.set(hour, (hours.get(hour) ?? 0) + 1);
+  }
+  return Object.freeze({
+    captures,
+    models: Object.freeze(
+      [...models.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([model, requests]) => Object.freeze({ model, requests })),
+    ),
+    hours: Object.freeze(
+      [...hours.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([hour, count]) => Object.freeze({ hour, captures: count })),
+    ),
   });
 }

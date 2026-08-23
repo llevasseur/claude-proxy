@@ -391,4 +391,117 @@ describe("Boat inspection — enabled with fixtures", () => {
       404,
     );
   });
+
+  test("context listing searches and sorts across all captures", async () => {
+    const { origin } = await startWithFixtures();
+    const page = (await (
+      await getPage(origin, "/api/inspection/context?limit=2&sort=asc")
+    ).json()) as { total: number; records?: Array<Record<string, unknown>> };
+    expect(page.total).toBe(4);
+    expect((page.records ?? []).map((entry) => entry.recordId)).toEqual(["a", "b"]);
+
+    const searched = await jsonOf(await getPage(origin, "/api/inspection/context?search=sess-a"));
+    expect(searched.total).toBe(1);
+    expect(searched.records?.[0]).toMatchObject({ recordId: "a" });
+
+    const modelSearch = await jsonOf(await getPage(origin, "/api/inspection/context?search=gpt"));
+    expect(modelSearch.total).toBe(4);
+
+    const newestFirst = await jsonOf(await getPage(origin, "/api/inspection/context?sort=desc"));
+    expect((newestFirst.records ?? [])[0]?.recordId).toBe("plain");
+    expect((await getPage(origin, "/api/inspection/context?sort=up")).status).toBe(400);
+  });
+
+  test("tool schema detail aggregates one tool name across captures", async () => {
+    const { origin } = await startWithFixtures();
+    const detail = (await (
+      await getPage(origin, "/api/inspection/tool-schema?name=get_weather")
+    ).json()) as Record<string, unknown>;
+    expect(detail).toMatchObject({
+      captureEnabled: true,
+      name: "get_weather",
+      type: "function",
+      description: "Weather lookup",
+      occurrences: 4,
+      variants: ['{"type":"object"}'],
+    });
+    expect(detail.recordIds).toHaveLength(4);
+
+    expect((await getPage(origin, "/api/inspection/tool-schema")).status).toBe(400);
+    expect((await getPage(origin, "/api/inspection/tool-schema?name=absent")).status).toBe(404);
+  });
+
+  test("session detail and breakdown are id-scoped", async () => {
+    const { origin } = await startWithFixtures();
+    const detail = await jsonOf(await getPage(origin, "/api/inspection/sessions/detail?id=sess-a"));
+    expect(detail.total).toBe(1);
+    expect(detail.records?.[0]).toMatchObject({ recordId: "a", sessionId: "sess-a" });
+
+    const breakdown = (await (
+      await getPage(origin, "/api/inspection/sessions/breakdown?id=sess-a")
+    ).json()) as Record<string, unknown>;
+    expect(breakdown).toMatchObject({
+      sessionId: "sess-a",
+      captures: 1,
+      models: [{ model: "gpt-5", requests: 1 }],
+      hours: [{ hour: "2026-08-19T12:00", captures: 1 }],
+    });
+
+    expect((await getPage(origin, "/api/inspection/sessions/detail")).status).toBe(400);
+    expect((await getPage(origin, "/api/inspection/sessions/detail?id=absent")).status).toBe(404);
+    expect((await getPage(origin, "/api/inspection/sessions/breakdown?id=absent")).status).toBe(
+      404,
+    );
+  });
+
+  test("session listings carry derived liveness verdicts", async () => {
+    const handle = await start(
+      new Date("2026-08-19T12:05:00.000Z"),
+      async (directory) => {
+        // sess-a's only capture is five minutes old and non-terminal: running.
+        await writeCapture(directory, envelope("a", "2026-08-19T12:00:00.000Z"));
+        // A terminal completed event finishes its session outright.
+        await writeCapture(directory, {
+          ...envelope("done", "2026-08-19T09:00:00.000Z", { sessionId: "sess-done" }),
+          responseText: JSON.stringify({
+            type: "response.completed",
+            response: { object: "response", model: "gpt-5" },
+          }),
+        });
+      },
+      { captureEnabled: true },
+    );
+    const sessions = await jsonOf(
+      await getPage(handle.origin, "/api/inspection/sessions?limit=10"),
+    );
+    const records = sessions.records ?? [];
+    expect(records.find((group) => group.sessionId === "sess-a")?.liveness).toMatchObject({
+      state: "running",
+      terminal: false,
+    });
+    expect(records.find((group) => group.sessionId === "sess-done")?.liveness).toMatchObject({
+      state: "finished",
+      terminal: true,
+    });
+  });
+
+  test("error inspection lists rejected sidecars and unreadable captures", async () => {
+    const handle = await start(
+      NOW,
+      async (directory) => {
+        await writeFile(join(directory, "bad.audit.json"), "{not json}");
+        await writeCapture(directory, envelope("a", "2026-08-19T12:00:00.000Z"));
+      },
+      { captureEnabled: true },
+    );
+    await handle.service.reconcile();
+    const payload = (await (await getPage(handle.origin, "/api/inspection/errors")).json()) as {
+      rejectedSidecars?: Array<Record<string, unknown>>;
+      unreadableCaptures?: number;
+    };
+    expect(payload.rejectedSidecars).toEqual([
+      { filename: "bad.audit.json", reason: "invalid JSON", rejectedAt: NOW.toISOString() },
+    ]);
+    expect(payload.unreadableCaptures).toBe(0);
+  });
 });
