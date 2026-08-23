@@ -94,6 +94,16 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
     ox's whole subtree and reported **0 findings**. Extending the root reports **358 at
     `warn`**. That is the ratchet's real starting count, and it is the second confirmation
     that ADR 0051 settles Biome and not oxlint. *(ticket 08)*
+17. **Every branch in the ox stack must merge with `--merge`, not just ticket 06's.**
+    Ticket 07's reformat commit `dfff442` is recorded inside `.git-blame-ignore-revs` and is
+    reachable only from its own branch — a squash makes the ignore file name a commit that
+    exists nowhere, and it then silently does nothing. **Third instance of the squash
+    hazard** in this campaign. *(tickets 06, 07, 08)*
+18. **`blame.ignoreRevsFile` is per-clone while the file it names is per-branch, and git
+    treats a missing ignore list as fatal.** So documenting "set this config" without a
+    caveat breaks `git blame` on every branch cut before the file existed. Ticket 07 found
+    this by testing rather than assuming, documented it in both `AGENTS.md` and the
+    bootstrap script, and deliberately left the config unset in this clone. *(recorded)*
 16. **A codex proxy test is flaky under parallel load.** `stacks/codex/proxy`'s
     `proxy.test.ts:596` failed once in five local full-suite runs (`null !== 0`,
     spawned-CLI exit timing), passed 3/3 in isolation before and after, and **24/24 on

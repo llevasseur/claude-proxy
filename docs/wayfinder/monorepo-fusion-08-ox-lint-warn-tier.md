@@ -27,10 +27,29 @@ override block that shrinks monotonically. Read ADR 0051 first.
 
 ## Criteria
 
-1. **Measure the residual first, then write the override list from the measurement.**
-   After ticket 07 the auto-fixable findings are gone, so what remains is judgement
-   findings only. Do **not** size the backlog before ticket 07 — the number would be
-   mostly formatting and would misdirect this ticket.
+1. **The residual is already measured — ticket 07 did it after its reformat.** Biome on ox
+   is **16 errors + 4 warnings**, down from 112 + 4, with **zero formatting and zero assist
+   findings**:
+
+   | rule | count | severity |
+   |---|---|---|
+   | `noEmptyBlockStatements` | 9 | error |
+   | `noArrayIndexKey` | 4 | error |
+   | GritQL `no-bare-size` | 2 | error |
+   | `noUnusedVariables` | 1 | error |
+   | `noUnusedImports` | 3 | warning |
+   | `noBarrelFile` | 1 | warning |
+
+   Anti-slop on ox is **358**, unchanged by the reformat.
+
+2. **The 2 GritQL findings are not warn-tier material — fix them at the source.** ADR 0051
+   originally said the plugin was "rescoped to `stacks/claude/admin/**`". It cannot be:
+   `plugins` is a top-level repo-wide array, and Biome 2.5.6 supports neither
+   `overrides[].plugins` nor suppression comments. The ADR is corrected. **Rewrite the two
+   bare-px sites in `stacks/ox-alpha/apps/admin/src/styles.css`**, exactly as ticket 05
+   already did for codex's one `margin: -1px` in `.sr-only`. A token-level CSS edit with no
+   behavioural effect is not the design work the campaign forbids, and this is bounded at
+   two sites.
 2. **One `overrides` block in the root `biome.json`, scoped to
    `stacks/ox-alpha/**`**, listing the residual rules at **`warn`**.
    - **`warn`, never `off`.** `off` is invisible; `warn` is a countdown.

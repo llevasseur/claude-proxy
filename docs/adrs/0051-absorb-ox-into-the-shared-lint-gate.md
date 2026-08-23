@@ -64,12 +64,21 @@ incoherent.
    is invisible and `warn` is a countdown. **Every file a ticket touches must pass at
    `error` before that ticket is done.**
 
-**The GritQL `no-bare-size` plugin is rescoped to `stacks/claude/admin/**`.** Its own
-header says its file-scoping is sound "because the dashboard sheet is the only CSS in
-the repo"; after fusion there are three. Rescoping restores exactly the scope the
-header already assumes and makes the assumption explicit rather than ambient. Firing
-it on the sibling admins would demand edits the campaign forbids, to files it says
-land untouched, against a token scale those stacks do not have.
+**The GritQL `no-bare-size` plugin cannot be scoped in Biome 2.5.6, and this record was
+wrong to say it could.** As first written, this section said the plugin is "rescoped to
+`stacks/claude/admin/**`". Two tickets established that no such scoping exists in the
+pinned version: `plugins` is a **top-level array applying repo-wide**, and the path in it
+says only where the plugin *file* lives, not what it inspects (ticket 07); and 2.5.6
+supports neither `overrides[].plugins` nor plugin suppression comments (ticket 05).
+
+So the plugin stays repo-wide and the sibling stacks' few bare-px sites are **rewritten
+mechanically instead** — which is what ticket 05 already did for codex's one
+`margin: -1px` in `.sr-only`. A token-level CSS edit with no behavioural effect is not the
+design work this campaign forbids, and the exposure is bounded: two sites in ox, one in
+codex.
+
+The plugin header's premise — "the dashboard sheet is the only CSS in the repo" — is now
+false and stays false. It is corrected in `AGENTS.md` rather than defended.
 
 **Root version pins win**: biome `^2.5.6`, oxlint exactly `1.78.0`, one TypeScript.
 The single lockfile forces this regardless.
