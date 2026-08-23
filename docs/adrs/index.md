@@ -38,4 +38,5 @@ Add one with `okq new adr "<title>"`.
 | Each stack keeps its own corpus at its own stack root | [0054-each-stack-keeps-its-own-corpus-root.md](0054-each-stack-keeps-its-own-corpus-root.md) |
 | The package rename covers every non-import reference, gated by a grep | [0055-the-rename-covers-every-non-import-reference.md](0055-the-rename-covers-every-non-import-reference.md) |
 | The docs gate asserts section indexes by file, and permits links out to source | [0056-the-docs-gate-asserts-indexes-by-file.md](0056-the-docs-gate-asserts-indexes-by-file.md) |
+| The filter gate covers invocations, not records | [0057-the-filter-gate-covers-invocations-not-records.md](0057-the-filter-gate-covers-invocations-not-records.md) |
 <!-- okq:index:end -->

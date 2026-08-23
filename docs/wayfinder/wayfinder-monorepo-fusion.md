@@ -50,6 +50,7 @@ correct errors in the original brief.
 | [0054](../adrs/0054-each-stack-keeps-its-own-corpus-root.md) | Each stack keeps its corpus at its own stack root; resolvers untouched; migration carries its own evidence | **yes** |
 | [0055](../adrs/0055-the-rename-covers-every-non-import-reference.md) | The rename covers every non-import reference, gated by a grep, because pnpm fails open | no |
 | [0056](../adrs/0056-the-docs-gate-asserts-indexes-by-file.md) | The docs gate asserts section indexes by file and permits links out to source | no |
+| [0057](../adrs/0057-the-filter-gate-covers-invocations-not-records.md) | The filter gate covers executable surfaces, not `docs/adrs/` or `docs/wayfinder/` — a record quoting a broken command is evidence | no |
 
 ## Corrections to the brief, established by measurement
 
@@ -115,7 +116,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 04 | sweep-non-import-references | [monorepo-fusion-04-sweep-non-import-references](monorepo-fusion-04-sweep-non-import-references.md) | `task/monorepo-fusion-04-sweep-non-import-references` | in-progress | |
+| 16 | scope-the-gate-and-land-ci | [monorepo-fusion-16-scope-the-gate-and-land-ci](monorepo-fusion-16-scope-the-gate-and-land-ci.md) | `task/monorepo-fusion-16-scope-the-gate-and-land-ci` | todo | Ticket 10's `verify.yml` half, pulled forward. Runs BEFORE 05 so the absorptions land under a live gate. |
 | 05 | absorb-codex | [monorepo-fusion-05-absorb-codex](monorepo-fusion-05-absorb-codex.md) | `task/monorepo-fusion-05-absorb-codex` | todo | |
 | 06 | absorb-ox | [monorepo-fusion-06-absorb-ox](monorepo-fusion-06-absorb-ox.md) | `task/monorepo-fusion-06-absorb-ox` | todo | |
 | 07 | reformat-ox | [monorepo-fusion-07-reformat-ox](monorepo-fusion-07-reformat-ox.md) | `task/monorepo-fusion-07-reformat-ox` | todo | |
@@ -199,6 +200,50 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 04 — sweep-non-import-references · 2026-08-23 · PR #267
+
+The filter gate went from **152 findings across 44 files to 13**, by migrating references
+rather than weakening the gate. Merged at `a382e2b`; `main` and `the-great-merge`
+untouched. Failure set base `{check, check:names, test}` → branch `{check, check:names}`,
+a strict subset, and **the three `suggestions-cli-json.test.ts` tests are green** exactly
+as predicted.
+
+**The launchd requirement caught the job broken live, which is this campaign's strongest
+single result.** Triggered as installed, it printed
+`No projects matched the filters in "/Users/llevasseur/Documents/ghub/claude-proxy"` while
+`launchctl list` reported **exit 0** — ADR 0055's fail-open thesis observed rather than
+argued. After unload/edit/reload/start the log grew 40329 → 43878 bytes and recorded
+`8 record(s) written, 543 stored`, `archived 2925 files (450 MB)`, and
+`re-ingested 2 directories after eviction`. **Work performed, not an exit code** — and the
+retention job that bounds the corpus is running again after being silently dead.
+
+Printed operator commands now derive from a `CLAUDE_SERVER_PACKAGE` constant in
+`stacks/claude/core/src/workspace-packages.ts`, consumed by `ideas.ts` and
+`suggestions-cli.ts`, with the test driving the same constant — so they cannot drift
+again. `deploy-concepts.yml` had **both** its `typecheck` and `test` filter arguments
+fixed, closing the half ticket 02 left open.
+
+**Two deviations, both disclosed by the runner rather than hidden.**
+
+1. **The 13 residual findings are a lane conflict, not an oversight.** All 13 live in the
+   campaign's own scaffolding — plans `04` (7), `03` (4), `02` (1), and this map (1) —
+   and each quotes an unscoped filter *as the defect being described*. A plan cannot state
+   the problem without spelling it. The runner refused both to edit other tickets' plans
+   and to narrow the gate, which was right on both counts. **Settled by ADR 0057**: the
+   gate covers executable surfaces and not records. Implemented by **ticket 16**.
+2. **The bulk pass regressed ADR 0055, and the runner disclosed it.** Five sentences
+   recording *pre-rename measurements* were rewritten as if they described live
+   invocations — most damagingly "**104** occurrences of
+   `--filter @agent-proxy/claude-server`", when those 104 were the **unscoped** name and
+   that count *is* the finding. Neither the gate nor `/review` could see it, because every
+   rewrite made the text more conformant. **All five restored to quote the pre-rename
+   name**, and ADR 0057 records why a grep must never be pointed at a record: it does not
+   protect it, it corrupts it in the direction the gate rewards.
+
+`~/Library/LaunchAgents/com.llevasseur.claude-proxy.plist` is still broken and still
+yours — it runs `proxy/proxy.mjs`, which does not exist. Untracked device configuration,
+deliberately not fixed.
 
 ### 03 — scope-claude-packages · 2026-08-23 · PR #266
 
