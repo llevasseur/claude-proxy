@@ -49,6 +49,39 @@ Plane reaches capability parity with `claude-proxy` commit
 Plane is complete only when every applicable matrix row below is implemented and verified with evidence, and every
 non-applicable row carries an explicit rationale. A category summary or visual resemblance is not parity.
 
+## Live validation outstanding
+
+[ADR 0011](../adrs/0011-automated-boundary-evidence.md) certifies every phase
+boundary with automated evidence and defers live end-to-end validation through a
+real upstream to the human. Each boundary merge recorded its note in the merged
+pull request body; this section consolidates those notes into the single
+outstanding list for human post-review. Nothing below has been exercised against
+a real upstream yet.
+
+- [ ] Bike boundary (PR #6): forward real OpenAI Responses traffic through the
+  proxy with the server attached and confirm sidecars land in `AUDIT_DIR` and
+  the Overview updates live.
+- [ ] Car boundary (PR #9): confirm live upstream validation through a real
+  upstream — history, trends, and filters reflecting real traffic across
+  report-timezone days.
+- [ ] Boat boundary (PR #11): run proxy + server with `CAPTURE_BODIES=true`
+  against real OpenAI Responses traffic and confirm captures appear in each
+  dashboard inspection surface.
+- [ ] Boat boundary (PR #11): confirm redacted bodies parse correctly through
+  the message, tool, prompt, and session views with production-shaped payloads.
+- [ ] Boat boundary (PR #11): confirm retention deletion reflects immediately in
+  the memoized day view during live operation.
+
+Cross-phase regression coverage in the automated suite: inspection endpoints
+serve typed empties and Bike/Car stay exact with zero capture data
+(`server/test/capture.test.ts`, `server/test/inspection.test.ts`); summaries
+stay exact with capture enabled and a valid capture present
+(`server/test/capture.test.ts`); proxy forwarding fidelity is proven per-request
+against a fixture upstream (`proxy/test/forwarding.test.ts`). Known structural
+gap: forwarding fidelity is never asserted while a populated Car history store
+exists in the same running system, because the proxy and server are separate
+processes sharing no state — the isolation is architectural, not tested.
+
 ## Pinned Plane parity matrix
 
 `Pinned evidence` names the stable source surface at pinned commit
@@ -202,7 +235,7 @@ Every row below has no producing phase; see [ADR 0004](../adrs/0004-four-rung-ou
 | Headless operation and recovery documentation | `README.md`, `docs/features/retention-lifecycle.md` | Documented ingest, rebuild, retention, consistency, and limits operation. | implemented — "Headless operation and recovery" section in the root `README.md` covering idempotent watermarked ingest, the delete-and-reconcile rebuild path, `pnpm --filter @ox-alpha-proxy/server maintain`, `/api/inspection/errors`, and `GET /api/limits`; retention semantics stay in `docs/specs/capture-retention.md` |
 | Verification gates and CI | root `package.json`, `biome.json`, `.oxlintrc.json`, CI workflow | Install, lint, format, test, build, and anti-slop guarantees. | implemented — `pnpm verify` chains the five gates mirrored by `.github/workflows/verify.yml`; `biome.json`, `.oxlintrc.json` |
 | Worktree bootstrap | `scripts/bootstrap-worktree.sh` | Reproducible worktrees: env symlinks and frozen install. | implemented — `scripts/bootstrap-worktree.sh` resolving the main checkout from `git rev-parse --git-common-dir` |
-| All-up dev session layout | `.zellij/claude-proxy.kdl`, `scripts/zellij.sh` | One session launching every process. | implemented — `.zellij/codex-proxy.kdl` opens proxy, server, and admin panes plus a spare shell tab; launched via `pnpm zellij`. Evidence: layout parses under zellij 0.44 (`setup --check`). |
+| All-up dev session layout | `.zellij/claude-proxy.kdl`, `scripts/zellij.sh` | One session launching every process. | implemented — `.zellij/ox-alpha-proxy.kdl` opens proxy, server, and admin panes plus a spare shell tab; launched via `pnpm zellij`. Evidence: layout parses under zellij 0.44 (`setup --check`). |
 
 The immutable comparison point stays the pinned commit; a later `claude-proxy` default branch does not add scope
 silently. Moving the pin requires superseding [ADR 0008](../adrs/0008-pin-plane-parity.md).

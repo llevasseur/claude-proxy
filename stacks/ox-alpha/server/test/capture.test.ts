@@ -161,4 +161,34 @@ describe("capture isolation from Bike/Car", () => {
     await service.start();
     expect((service.health() as Record<string, any>).capture.enabled).toBe(true);
   });
+
+  test("summaries stay exact with capture enabled and a valid capture present", async () => {
+    const now = new Date("2026-08-19T18:00:00.000Z");
+    const temporary = await temporaryDirectory();
+    cleanups.push(temporary.cleanup);
+    await writeSidecar(temporary.path, "one.audit.json", sidecar("one"));
+    const captures = join(temporary.path, "captures");
+    await mkdir(captures, { recursive: true });
+    await writeFile(
+      join(captures, "2026-08-19T16:00:00.000Z_one.capture.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        recordId: "one",
+        capturedAt: "2026-08-19T16:00:00.000Z",
+        endpoint: "/v1/responses",
+        requestText: JSON.stringify({ model: "gpt-5", instructions: "be brief", input: [] }),
+        responseText: "ok",
+      }),
+    );
+    const service = new LiveUsageService(
+      config(temporary.path, { captureEnabled: true }),
+      () => now,
+    );
+    services.push(service);
+    await service.reconcile();
+
+    const summary = service.summary() as Record<string, unknown>;
+    expect(summary.requestCount).toBe(1);
+    expect(summary.totalTokens).toBe(14);
+  });
 });
