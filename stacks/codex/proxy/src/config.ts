@@ -1,8 +1,11 @@
 import { resolve } from 'node:path';
 
-// Relative `AUDIT_DIR` and `PROXY_STATUS_FILE` resolve from here rather than
-// `process.cwd()`; absolute values still win.
-const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..');
+// Relative `AUDIT_DIR` and `PROXY_STATUS_FILE` resolve from the stack root — this
+// package's parent, `stacks/codex/` — rather than from `process.cwd()` or from the
+// repository root; absolute values still win. `import.meta.dirname/../..` has always
+// meant "my stack's root"; before relocation that happened to coincide with the
+// repository root, which is what the old name asserted. See ADR 0054.
+const STACK_ROOT = resolve(import.meta.dirname, '..', '..');
 
 export interface ProxyConfig {
   readonly host: string;
@@ -37,12 +40,12 @@ function upstream(value: string | undefined): URL {
 }
 
 export function loadProxyConfig(environment: NodeJS.ProcessEnv = process.env): ProxyConfig {
-  const auditDirectory = resolve(REPOSITORY_ROOT, environment.AUDIT_DIR ?? 'logs/audit');
+  const auditDirectory = resolve(STACK_ROOT, environment.AUDIT_DIR ?? 'logs/audit');
   return Object.freeze({
     host: environment.PROXY_HOST ?? '127.0.0.1',
     port: port(environment.PROXY_PORT),
     upstream: upstream(environment.OPENAI_UPSTREAM),
     auditDirectory,
-    statusFile: resolve(REPOSITORY_ROOT, environment.PROXY_STATUS_FILE ?? 'logs/proxy-status.json'),
+    statusFile: resolve(STACK_ROOT, environment.PROXY_STATUS_FILE ?? 'logs/proxy-status.json'),
   });
 }
