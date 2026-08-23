@@ -15,6 +15,10 @@ export function isFinalSidecarFilename(filename: string): boolean {
   return filename.endsWith('.audit.json') && !filename.startsWith('.') && !filename.endsWith('.tmp');
 }
 
+// This takes a caught value, which TypeScript types as `unknown` at the catch
+// binding itself. Narrowing it is what the body does, so there is no earlier
+// boundary at which a named type could have been parsed.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 function safeReason(error: unknown): string {
   if (error instanceof SyntaxError) return 'invalid JSON';
   if (error instanceof Error) return error.message.slice(0, 240);
@@ -25,17 +29,36 @@ export class SidecarIngestor {
   private watcher: FSWatcher | null = null;
   private interval: NodeJS.Timeout | null = null;
   private activeReconcile: Promise<ReconcileResult> | null = null;
+  private queuedReconcile: Promise<ReconcileResult> | null = null;
   private stopped = false;
 
   constructor(
     private readonly directory: string,
     private readonly database: UsageDatabase,
     private readonly clock: () => Date = () => new Date(),
-    private readonly onReconciled: (result: ReconcileResult) => void | Promise<void> = () => {},
+    private readonly onReconciled: (result: ReconcileResult) => void | Promise<void> = () => {
+      // No subscriber: reconciling without anyone listening is a valid setup.
+    },
   ) {}
 
+  // A scan in flight listed the directory before this call, so returning it
+  // could report changed: false for a write this caller just made. Queue a
+  // trailing scan instead: callers arriving mid-scan share one follow-up,
+  // which starts only once the current scan is done.
   async reconcile(): Promise<ReconcileResult> {
-    if (this.activeReconcile) return this.activeReconcile;
+    if (this.activeReconcile) {
+      this.queuedReconcile ??= this.activeReconcile
+        .catch(() => undefined)
+        .then(() => {
+          this.queuedReconcile = null;
+          return this.startReconcile();
+        });
+      return this.queuedReconcile;
+    }
+    return this.startReconcile();
+  }
+
+  private startReconcile(): Promise<ReconcileResult> {
     this.activeReconcile = this.reconcileFiles().finally(() => {
       this.activeReconcile = null;
     });
@@ -85,6 +108,12 @@ export class SidecarIngestor {
     this.interval = null;
     this.watcher?.close();
     this.watcher = null;
-    await this.activeReconcile;
+    // Capture both before awaiting: queuedReconcile clears itself once it
+    // starts, so awaiting in place would lose track of it. Draining both stops
+    // a queued scan from writing after close.
+    const active = this.activeReconcile;
+    const queued = this.queuedReconcile;
+    await active?.catch(() => undefined);
+    await queued?.catch(() => undefined);
   }
 }
