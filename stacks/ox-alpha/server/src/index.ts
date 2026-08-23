@@ -13,7 +13,7 @@ export function serverInfo(
   return {
     name: SERVER_PACKAGE,
     host: env.SERVER_HOST ?? "127.0.0.1",
-    port: Number(env.SERVER_PORT ?? 8788),
+    port: Number(env.OX_SERVER_PORT ?? env.SERVER_PORT ?? 8788),
     defaultPort: 8788,
   };
 }

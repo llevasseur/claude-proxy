@@ -83,8 +83,13 @@ export function readConfig(
   cwd = process.cwd(),
 ): ServerConfig {
   const host = environment.SERVER_HOST?.trim() || "127.0.0.1";
-  const port = integer(environment.SERVER_PORT, 8788, "SERVER_PORT", 0);
-  if (port > 65535) throw new Error("SERVER_PORT must be <= 65535");
+  // The listener port comes from `OX_SERVER_PORT`; the bare `SERVER_PORT` this package has
+  // always read stays a fallback scoped to this package alone. See ADR 0050. The 8788 default
+  // is unchanged and still collides with claude's server — pre-existing rather than
+  // fusion-caused, and the scoped name is what makes it overridable.
+  const portName = environment.OX_SERVER_PORT === undefined ? "SERVER_PORT" : "OX_SERVER_PORT";
+  const port = integer(environment.OX_SERVER_PORT ?? environment.SERVER_PORT, 8788, portName, 0);
+  if (port > 65535) throw new Error(`${portName} must be <= 65535`);
   const auditDirectory = resolve(cwd, environment.AUDIT_DIR ?? "logs/audit");
   const base = Object.freeze({
     host,
