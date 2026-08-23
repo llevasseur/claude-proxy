@@ -30,6 +30,7 @@ type ProxyState = "startup" | "starting" | "ready" | "upstream-error" | "shutdow
 interface ProxyStatusFile {
   readonly state: ProxyState;
   readonly updatedAt: string;
+  readonly rollingUsage?: unknown;
 }
 
 // Typed rejection for malformed query strings on the new endpoints; Bike
@@ -89,13 +90,42 @@ function page<T>(
   });
 }
 
+interface ProxyRollingUsage {
+  readonly windowStartedAt: string;
+  readonly requests: number;
+  readonly inputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly outputTokens: number;
+  readonly reasoningOutputTokens: number;
+  readonly totalTokens: number;
+}
+
+function validRollingUsage(value: unknown): value is ProxyRollingUsage {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const rolling = value as Record<string, unknown>;
+  const counters = [
+    rolling.requests,
+    rolling.inputTokens,
+    rolling.cachedInputTokens,
+    rolling.outputTokens,
+    rolling.reasoningOutputTokens,
+    rolling.totalTokens,
+  ];
+  return (
+    typeof rolling.windowStartedAt === "string" &&
+    !Number.isNaN(Date.parse(rolling.windowStartedAt)) &&
+    counters.every((counter) => typeof counter === "number" && Number.isSafeInteger(counter))
+  );
+}
+
 function validProxyStatus(value: unknown): value is ProxyStatusFile {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const status = value as Record<string, unknown>;
   return (
     ["startup", "starting", "ready", "upstream-error", "shutdown"].includes(String(status.state)) &&
     typeof status.updatedAt === "string" &&
-    !Number.isNaN(Date.parse(status.updatedAt))
+    !Number.isNaN(Date.parse(status.updatedAt)) &&
+    (status.rollingUsage === undefined || validRollingUsage(status.rollingUsage))
   );
 }
 
@@ -126,7 +156,13 @@ export class LiveUsageService {
     status: "healthy" | "degraded" | "unavailable";
     state: ProxyState | null;
     updatedAt: string | null;
-  }> = Object.freeze({ status: "unavailable", state: null, updatedAt: null });
+    rollingUsage: ProxyRollingUsage | null;
+  }> = Object.freeze({
+    status: "unavailable",
+    state: null,
+    updatedAt: null,
+    rollingUsage: null,
+  });
   private readonly server = createServer(async (request, response) => {
     try {
       await this.route(request, response);
@@ -170,9 +206,17 @@ export class LiveUsageService {
         status: parsed.state === "ready" ? "healthy" : "degraded",
         state: parsed.state,
         updatedAt: parsed.updatedAt,
+        rollingUsage: validRollingUsage(parsed.rollingUsage)
+          ? Object.freeze({ ...parsed.rollingUsage })
+          : null,
       });
     } catch {
-      this.proxy = Object.freeze({ status: "unavailable", state: null, updatedAt: null });
+      this.proxy = Object.freeze({
+        status: "unavailable",
+        state: null,
+        updatedAt: null,
+        rollingUsage: null,
+      });
     }
   }
 

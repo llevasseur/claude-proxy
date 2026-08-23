@@ -173,6 +173,10 @@ function proxyRequest(
             (isJson ? jsonResponseIdentity(Buffer.concat(responseChunks)) : null);
           if (!identity) return;
           published = true;
+          // Rolling usage rides the status signal; sanitized counters only.
+          void status
+            .noteUsage(identity.usage)
+            .catch((error) => safeError(logger, "status-write-failed", error));
           const stamp = exchangeStamp();
           const sidecar = makeSidecar({
             endpoint,

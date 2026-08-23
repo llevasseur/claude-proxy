@@ -98,3 +98,61 @@ test("SSE sends snapshots, updates, keepalives, monotonic reconnect IDs, and cle
   )) as { sse: { subscribers: number } };
   expect(disconnectedHealth.sse.subscribers).toBe(0);
 });
+
+test("proxy rolling usage from the status file rides the snapshot and updates", async () => {
+  const temporary = await temporaryDirectory();
+  cleanups.push(temporary.cleanup);
+  const now = new Date("2026-08-19T18:00:00.000Z");
+  const service = new LiveUsageService(config(temporary.path), () => now);
+  services.push(service);
+  const address = await service.start();
+  const origin = `http://${address.host}:${address.port}`;
+
+  const response = await fetch(`${origin}/api/events`);
+  const body = response.body;
+  if (!body) throw new Error("missing SSE body");
+  const reader = body.getReader();
+  let initial = "";
+  while (!initial.includes("event: snapshot")) initial += await nextChunk(reader);
+  expect(initial).toContain('"rollingUsage":null');
+
+  const rollingUsage = {
+    windowStartedAt: "2026-08-19T17:00:00.000Z",
+    requests: 2,
+    inputTokens: 130,
+    cachedInputTokens: 20,
+    outputTokens: 62,
+    reasoningOutputTokens: 10,
+    totalTokens: 192,
+  };
+  await writeFile(
+    join(temporary.path, "proxy-status.json"),
+    JSON.stringify({ state: "ready", updatedAt: now.toISOString(), rollingUsage }),
+  );
+  await service.refresh();
+  let update = "";
+  while (!update.includes("event: update")) update += await nextChunk(reader);
+  expect(update).toContain('"rollingUsage":{"windowStartedAt":"2026-08-19T17:00:00.000Z"');
+  expect(update).toContain('"totalTokens":192');
+
+  const health = (await fetch(`${origin}/api/health`).then((r) => r.json())) as {
+    proxy: { rollingUsage?: { requests?: number } | null };
+  };
+  expect(health.proxy.rollingUsage?.requests).toBe(2);
+
+  // A malformed rolling payload degrades to null rather than poisoning health.
+  await writeFile(
+    join(temporary.path, "proxy-status.json"),
+    JSON.stringify({
+      state: "ready",
+      updatedAt: now.toISOString(),
+      rollingUsage: { requests: "x" },
+    }),
+  );
+  await service.refresh();
+  let degraded = "";
+  while (!degraded.includes('"rollingUsage":null')) degraded += await nextChunk(reader);
+  expect(degraded).toContain("event: update");
+
+  await reader.cancel();
+});
