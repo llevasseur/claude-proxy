@@ -61,19 +61,28 @@ history, or trends surfaces.
 
 ## Inspection surfaces
 
-The server reads only its own capture directory (never the audit directory) and serves six inspection endpoints
-under `/api/inspection/`. Every endpoint is read-only, GET-only, and degrades to a **typed empty result** — never an
-error — on a server where capture was never enabled or has no captures. Each payload carries `captureEnabled` so a
-client can distinguish "off" from "empty".
+The server reads only its own capture directory (never the audit directory) and serves fourteen inspection
+endpoints under `/api/inspection/`. Every endpoint is read-only, GET-only, and degrades to a **typed empty result**
+— never an error — on a server where capture was never enabled or has no captures. Each payload carries
+`captureEnabled` so a client can distinguish "off" from "empty"; `/errors` is the one exception, since it reports
+ingest and capture-read faults rather than capture content.
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/inspection/day` | Per-day context assembly: one summary row per capture (`date`, `limit`, `offset`; `date` defaults to today in the report timezone). |
 | `GET /api/inspection/messages?recordId=` | Request and response turns of one capture, merged in order and paginated. Unknown `recordId` is 404 when capture is on, typed empty when off. |
 | `GET /api/inspection/prompt?recordId=` | Prompt shape analysis (model, instructions presence, message count, tool count, ~4 chars/token estimate) without returning body text. |
+| `GET /api/inspection/prompt-mix` | Prompt cohorts for a day, grouped by instructions hash (`date`, defaulting to today in the report timezone). |
+| `GET /api/inspection/prompts` | Per-capture prompt listings for a day, paginated, optional `hash` filter to drill into one cohort. |
+| `GET /api/inspection/prompt-sections?recordId=` | One capture's instructions split into sections, with the instructions hash. |
 | `GET /api/inspection/tools` | Tool schemas declared across captures, paginated, optional `recordId` filter. |
 | `GET /api/inspection/tool-calls` | Function calls extracted from captured responses (JSON or SSE frames), paginated, optional `recordId` filter. |
-| `GET /api/inspection/sessions` | Captures grouped by session identity, paginated, newest activity first. |
+| `GET /api/inspection/tool-schema?name=` | One tool name across every capture: occurrence count, distinct schema variants, first/last seen, contributing `recordId`s. |
+| `GET /api/inspection/sessions` | Captures grouped by session identity, paginated, newest activity first, each with its liveness. |
+| `GET /api/inspection/sessions/detail?id=` | The captures belonging to one session, paginated. |
+| `GET /api/inspection/sessions/breakdown?id=` | One session's counts by model and by report hour. |
+| `GET /api/inspection/context?search=&sort=` | Context summaries across captures, optional substring search and `asc`/`desc` ordering by capture time, paginated. |
+| `GET /api/inspection/errors` | Sidecars rejected at ingest and capture files that could not be read. |
 
 Listing responses share the Bike history page contract (`total`, `offset`, `limit`, `nextOffset`, `records`) so the
 dashboard reuses one pagination interaction. Malformed queries are rejected as `400 invalid_query`; sanitized
