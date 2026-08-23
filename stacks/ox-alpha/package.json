@@ -14,7 +14,11 @@
     "lint": "biome lint .",
     "format": "biome check --write .",
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm check && pnpm anti:slop",
-    "anti:slop": "oxlint --config .oxlintrc.json ."
+    "anti:slop": "oxlint --config .oxlintrc.json .",
+    "proxy": "pnpm --filter @ox-alpha-proxy/proxy start",
+    "server": "pnpm --filter @ox-alpha-proxy/server start",
+    "admin": "pnpm --filter @ox-alpha-proxy/admin dev",
+    "zellij": "zellij --layout .zellij/codex-proxy.kdl"
   },
   "devDependencies": {
     "@biomejs/biome": "~2.2.0",

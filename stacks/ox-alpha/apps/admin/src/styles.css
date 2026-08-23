@@ -271,6 +271,24 @@ body {
   }
 }
 
+/* Auto light theme: the pinned light values applied without a toggle. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --ink: #e8e4db;
+    --surface: #f4f1e9;
+    --surface-2: #ded9cd;
+    --line: #ccc5b7;
+    --text: #2a2620;
+    --muted: #6b6456;
+    --faint: #a29b8b;
+    --signal: #11806c;
+    --good: #2f8a52;
+    --amber: #9c651a;
+    --coral: #c34a5e;
+    --violet: #6a58c9;
+  }
+}
+
 /* Responsive breakpoints and focus visibility. */
 @media (max-width: 40rem) {
   .metrics {
