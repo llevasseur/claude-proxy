@@ -23,7 +23,8 @@ usage becomes a daily trend over any calendar range, narrowed by the models the 
 - Model filters are repeated exact-match parameters. A well-formed value matching nothing returns an ordinary empty
   result set with valid envelope metadata — never an error. No normalization or aliasing layer exists.
 - Cost keeps its Bike semantics everywhere: an amount only when the whole aggregate is priced, otherwise an explicit
-  typed unavailable reason — never zero, never a partial estimate labeled as total.
+  typed unavailable reason — never zero, never a partial estimate labeled as total. Models that join the pricing
+  catalogue are priced retroactively in the view ([ADR 0016](../adrs/0016-retroactive-catalogue-pricing.md)).
 - Every Bike boundary holds: transparent forwarding, sanitized-only persistence, nullable complete cost, live Overview,
   process separation, and final sidecars as durable truth.
 

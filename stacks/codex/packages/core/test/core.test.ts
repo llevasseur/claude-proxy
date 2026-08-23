@@ -66,7 +66,19 @@ describe('Responses usage normalization', () => {
 describe('decimal-safe pricing', () => {
   it('prices known-model input and output exactly', () => {
     expect(estimateUsageCost('gpt-5', baseUsage)).toEqual({
-      cost: { currency: 'USD', amountUsd: '2.250000', catalogueVersion: '2025-08-07' },
+      cost: { currency: 'USD', amountUsd: '2.250000', catalogueVersion: '2026-08-22' },
+      unavailableReason: null,
+    });
+  });
+
+  it.each([
+    ['gpt-5.6-luna', '0.320000'],
+    ['gpt-5.6-terra', '3.200000'],
+    ['gpt-5.6-sol', '6.000000'],
+    ['gpt-5.3-codex', '3.150000'],
+  ])('prices %s at its catalogue rates', (model, expected) => {
+    expect(estimateUsageCost(model, baseUsage)).toEqual({
+      cost: { currency: 'USD', amountUsd: expected, catalogueVersion: '2026-08-22' },
       unavailableReason: null,
     });
   });
@@ -81,7 +93,7 @@ describe('decimal-safe pricing', () => {
         totalTokens: 1_100_000,
       }),
     ).toEqual({
-      cost: { currency: 'USD', amountUsd: '1.687500', catalogueVersion: '2025-08-07' },
+      cost: { currency: 'USD', amountUsd: '1.687500', catalogueVersion: '2026-08-22' },
       unavailableReason: null,
     });
   });

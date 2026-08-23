@@ -148,10 +148,12 @@ History exposes exactly the sanitized sidecar fields already stored — no new f
 paginated so no response grows unbounded with history length. The dashboard renders cost as an amount or an explicit
 unavailable-with-reason cell, never `$0`.
 
-## Known divergence
+## Cost resolution
 
-The merged dashboard client (`apps/admin/src/car/api.ts`) sends `page`/`pageSize` and expects a
-`{page, pageSize, totalRecords}` envelope with nested `usage` objects, while the server contract above speaks
-`limit`/`offset` and `total` with flat token fields. This documentation records the server implementation as
-authoritative for the API surface; reconciling the client is recorded as a follow-up rather than silently described
-as working.
+Per [ADR 0016](../adrs/0016-retroactive-catalogue-pricing.md), the view resolves cost against the current catalogue
+whenever it materializes a record whose only obstacle is `unknown-model`: at ingest into per-record columns, and when
+stored sidecars feed Today and trend aggregates. Sidecar files stay untouched; derived cost is view state, so adding
+models to `PRICING_CATALOGUE` reprices affected history through the version-bump rebuild path (ADR 0010). A model still
+absent from the catalogue remains explicitly unavailable.
+
+The view schema is at user_version 3 (`server/migrations/003-car-reprice.sql`).

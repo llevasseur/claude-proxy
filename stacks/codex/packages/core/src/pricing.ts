@@ -1,9 +1,13 @@
 import type { CostResult, ModelPricing, PriceCategory, UsageTotals } from './types.ts';
 
-export const PRICING_CATALOGUE_VERSION = '2025-08-07';
-export const PRICING_SOURCE = 'https://openai.com/api/pricing/';
+export const PRICING_CATALOGUE_VERSION = '2026-08-22';
+export const PRICING_SOURCE = 'https://developers.openai.com/api/docs/pricing';
 
 export const PRICING_CATALOGUE: Readonly<Record<string, ModelPricing>> = Object.freeze({
+  'gpt-5.6-luna': pricing('gpt-5.6-luna', '0.20', '0.02', '1.20'),
+  'gpt-5.6-terra': pricing('gpt-5.6-terra', '2.00', '0.20', '12.00'),
+  'gpt-5.6-sol': pricing('gpt-5.6-sol', '4.00', '0.40', '20.00'),
+  'gpt-5.3-codex': pricing('gpt-5.3-codex', '1.75', '0.175', '14.00'),
   'gpt-5': pricing('gpt-5', '1.25', '0.125', '10.00'),
   'gpt-5-2025-08-07': pricing('gpt-5-2025-08-07', '1.25', '0.125', '10.00'),
   'gpt-5-mini': pricing('gpt-5-mini', '0.25', '0.025', '2.00'),

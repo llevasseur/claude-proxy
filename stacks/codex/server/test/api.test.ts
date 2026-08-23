@@ -40,7 +40,7 @@ describe('Bike API', () => {
       ready: true,
       server: { status: 'ready' },
       proxy: { status: 'healthy', state: 'ready' },
-      database: { status: 'ready', schemaVersion: 2 },
+      database: { status: 'ready', schemaVersion: 3 },
       ingest: { rejectedSidecars: 0 },
       sse: { subscribers: 0 },
     });
@@ -71,7 +71,11 @@ describe('Bike API', () => {
     });
 
     const unavailable = await start(now, async (directory) => {
-      await writeSidecar(directory, 'unknown.audit.json', sidecar('unknown', undefined, { unavailable: true }));
+      await writeSidecar(
+        directory,
+        'unknown.audit.json',
+        sidecar('unknown', undefined, { unavailable: true, model: 'model-from-the-future' }),
+      );
     });
     expect(await fetch(`${unavailable.origin}/api/summary`).then((response) => response.json())).toMatchObject({
       requestCount: 1,
