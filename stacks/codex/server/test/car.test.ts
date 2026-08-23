@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { PRICING_CATALOGUE_VERSION } from '@codex-proxy/core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { UsageDatabase } from '../src/database.ts';
 import { LiveUsageService } from '../src/service.ts';
@@ -82,11 +83,11 @@ describe('Car view schema v2', () => {
     first.close();
 
     const corruptor = new DatabaseSync(path);
-    corruptor.exec('PRAGMA user_version = 3');
+    corruptor.exec('PRAGMA user_version = 4');
     corruptor.close();
 
     const second = new UsageDatabase(path);
-    expect(second.schemaVersion).toBe(2);
+    expect(second.schemaVersion).toBe(3);
     expect(second.diagnostics().recordCount).toBe(0);
     second.ingest('a.audit.json', sidecar('a'), new Date());
     second.ingest('b.audit.json', sidecar('b'), new Date());
@@ -124,7 +125,7 @@ describe('Car view schema v2', () => {
     const health = (await fetch(`${origin}/api/health`).then((response) => response.json())) as {
       database: { schemaVersion: number; journalMode: string; recordCount: number };
     };
-    expect(health.database).toMatchObject({ schemaVersion: 2, journalMode: 'wal', recordCount: 2 });
+    expect(health.database).toMatchObject({ schemaVersion: 3, journalMode: 'wal', recordCount: 2 });
 
     const history = (await fetch(`${origin}/api/history`).then((response) => response.json())) as HistoryResponse;
     expect(history.total).toBe(2);
@@ -172,7 +173,11 @@ describe('Car history API', () => {
 
     const unavailableOrigin = (
       await start(new Date('2026-08-19T18:00:00.000Z'), async (directory) => {
-        await writeSidecar(directory, 'u.audit.json', sidecar('u', undefined, { unavailable: true }));
+        await writeSidecar(
+          directory,
+          'u.audit.json',
+          sidecar('u', undefined, { unavailable: true, model: 'model-from-the-future' }),
+        );
       })
     ).origin;
     const unavailablePage = (await fetch(`${unavailableOrigin}/api/history`).then((response) =>
@@ -181,6 +186,19 @@ describe('Car history API', () => {
     expect(unavailablePage.records[0]).toMatchObject({
       cost: null,
       costUnavailableReason: { code: 'unknown-model' },
+    });
+
+    const repricedOrigin = (
+      await start(new Date('2026-08-19T18:00:00.000Z'), async (directory) => {
+        await writeSidecar(directory, 'r.audit.json', sidecar('r', undefined, { unavailable: true }));
+      })
+    ).origin;
+    const repricedPage = (await fetch(`${repricedOrigin}/api/history`).then((response) =>
+      response.json(),
+    )) as HistoryResponse;
+    expect(repricedPage.records[0]).toMatchObject({
+      cost: { currency: 'USD', amountUsd: '0.0000525', catalogueVersion: PRICING_CATALOGUE_VERSION },
+      costUnavailableReason: null,
     });
   });
 

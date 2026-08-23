@@ -313,7 +313,7 @@ test('records normalized token and cost data for JSON Responses without retainin
   assert.deepEqual(sidecar.cost, {
     currency: 'USD',
     amountUsd: '1.687500',
-    catalogueVersion: '2025-08-07',
+    catalogueVersion: '2026-08-22',
   });
 
   const artifacts = await Promise.all(

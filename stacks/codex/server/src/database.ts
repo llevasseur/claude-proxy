@@ -8,13 +8,19 @@ import type {
   SanitizedAuditSidecarV1,
   TodaySummary,
 } from '@codex-proxy/core';
-import { aggregateToday, formatReportDate, parseSanitizedAuditSidecar, selectByModels } from '@codex-proxy/core';
+import {
+  aggregateToday,
+  estimateUsageCost,
+  formatReportDate,
+  parseSanitizedAuditSidecar,
+  selectByModels,
+} from '@codex-proxy/core';
 
 const runtimeRequire = createRequire(import.meta.url);
 const { DatabaseSync } = runtimeRequire('node:sqlite') as typeof import('node:sqlite');
 
-const SCHEMA_VERSION = 2;
-const MIGRATION = readFileSync(new URL('../migrations/002-car-view.sql', import.meta.url), 'utf8');
+const SCHEMA_VERSION = 3;
+const MIGRATION = readFileSync(new URL('../migrations/003-car-reprice.sql', import.meta.url), 'utf8');
 
 interface VersionRow {
   readonly user_version: number;
@@ -104,6 +110,16 @@ function inRange(timestamp: string, bounds: Readonly<{ startMs: number; endMs: n
   return ms >= bounds.startMs && ms < bounds.endMs;
 }
 
+// A sidecar written before a model joined the pricing catalogue records `unknown-model`.
+// The catalogue is retroactive: price the record from the model and usage it already
+// carries. Sidecars stay untouched; the view is derived state.
+function effectiveSidecar(sidecar: SanitizedAuditSidecarV1): SanitizedAuditSidecarV1 {
+  if (sidecar.cost !== null || sidecar.costUnavailableReason?.code !== 'unknown-model') return sidecar;
+  const priced = estimateUsageCost(sidecar.model, sidecar.usage);
+  if (priced.cost === null) return sidecar;
+  return Object.freeze({ ...sidecar, cost: priced.cost, costUnavailableReason: null });
+}
+
 export interface IngestHooks {
   readonly beforeWatermark?: () => void;
 }
@@ -135,6 +151,7 @@ export class UsageDatabase {
   }
 
   ingest(filename: string, sidecar: SanitizedAuditSidecarV1, now: Date, hooks: IngestHooks = {}): boolean {
+    const effective = effectiveSidecar(sidecar);
     const serialized = JSON.stringify(sidecar);
     this.database.exec('BEGIN IMMEDIATE');
     try {
@@ -175,9 +192,9 @@ export class UsageDatabase {
             sidecar.usage.outputTokens,
             sidecar.usage.reasoningOutputTokens,
             sidecar.usage.totalTokens,
-            sidecar.cost?.amountUsd ?? null,
-            sidecar.cost?.catalogueVersion ?? null,
-            sidecar.costUnavailableReason === null ? null : JSON.stringify(sidecar.costUnavailableReason),
+            effective.cost?.amountUsd ?? null,
+            effective.cost?.catalogueVersion ?? null,
+            effective.costUnavailableReason === null ? null : JSON.stringify(effective.costUnavailableReason),
             serialized,
           );
         changed = true;
@@ -234,6 +251,7 @@ export class UsageDatabase {
         .all() as unknown as Readonly<{ sidecar_json: string }>[]
     )
       .map((row) => JSON.parse(row.sidecar_json) as SanitizedAuditSidecarV1)
+      .map(effectiveSidecar)
       .filter((sidecar) => inRange(sidecar.timestamp, bounds));
     return selectByModels(rows, models);
   }
@@ -243,7 +261,7 @@ export class UsageDatabase {
       .prepare('SELECT sidecar_json FROM usage_records ORDER BY event_timestamp, record_id')
       .all() as unknown as Readonly<{ sidecar_json: string }>[];
     return aggregateToday(
-      rows.map((row) => parseSanitizedAuditSidecar(JSON.parse(row.sidecar_json))),
+      rows.map((row) => parseSanitizedAuditSidecar(effectiveSidecar(JSON.parse(row.sidecar_json)))),
       now,
       reportTimezone,
     );

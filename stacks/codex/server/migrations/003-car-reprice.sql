@@ -39,4 +39,4 @@ CREATE TABLE rejected_sidecars (
   rejected_at TEXT NOT NULL
 );
 
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;

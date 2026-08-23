@@ -1,4 +1,4 @@
-import type { CostUnavailableReason, PricedCost, UsageTotals } from '@codex-proxy/core';
+import type { CostUnavailableReason, PricedCost } from '@codex-proxy/core';
 
 export interface CarFilters {
   readonly from?: string;
@@ -14,14 +14,6 @@ export interface HistoryQuery extends CarFilters {
 export const HISTORY_PAGE_SIZES = [25, 50, 100] as const;
 export const DEFAULT_HISTORY_PAGE_SIZE = 25;
 
-export interface UsageAggregate {
-  readonly requestCount: number;
-  readonly usage: UsageTotals;
-  readonly latestEventTimestamp: string | null;
-  readonly cost: PricedCost | null;
-  readonly costUnavailableReason: CostUnavailableReason | null;
-}
-
 export interface HistoryRecord {
   readonly recordId: string;
   readonly timestamp: string;
@@ -29,29 +21,58 @@ export interface HistoryRecord {
   readonly endpoint: string;
   readonly responseStatus: number;
   readonly requestId: string | null;
-  readonly usage: UsageTotals;
+  readonly inputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly outputTokens: number;
+  readonly reasoningOutputTokens: number;
+  readonly totalTokens: number;
   readonly cost: PricedCost | null;
   readonly costUnavailableReason: CostUnavailableReason | null;
 }
 
 export interface HistoryResponse {
   readonly dataVersion: number;
-  readonly page: number;
-  readonly pageSize: number;
-  readonly totalRecords: number;
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
   readonly records: readonly HistoryRecord[];
 }
 
-export interface DailyTrendBucket extends UsageAggregate {
+export interface DailyTrendBucket {
+  readonly reportTimezone: string;
+  readonly date: string;
   readonly startInclusive: string;
   readonly endExclusive: string;
+  readonly requestCount: number;
+  readonly inputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly outputTokens: number;
+  readonly reasoningOutputTokens: number;
+  readonly totalTokens: number;
+  readonly latestEventTimestamp: string | null;
+  readonly cost: PricedCost | null;
+  readonly costUnavailableReason: CostUnavailableReason | null;
+}
+
+export interface TrendRangeTotal {
+  readonly requestCount: number;
+  readonly inputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly outputTokens: number;
+  readonly reasoningOutputTokens: number;
+  readonly totalTokens: number;
+  readonly latestEventTimestamp: string | null;
+  readonly cost: PricedCost | null;
+  readonly costUnavailableReason: CostUnavailableReason | null;
 }
 
 export interface TrendsResponse {
   readonly dataVersion: number;
-  readonly reportTimezone?: string;
+  readonly reportTimezone: string;
+  readonly startInclusive: string | null;
+  readonly endExclusive: string;
   readonly buckets: readonly DailyTrendBucket[];
-  readonly rangeTotal: UsageAggregate;
+  readonly total: TrendRangeTotal;
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -70,8 +91,8 @@ function carParams(filters: CarFilters): URLSearchParams {
 
 export function historyPath(query: HistoryQuery): string {
   const params = carParams(query);
-  params.set('page', String(query.page));
-  params.set('pageSize', String(query.pageSize));
+  params.set('limit', String(query.pageSize));
+  params.set('offset', String((query.page - 1) * query.pageSize));
   return `/api/history?${params.toString()}`;
 }
 

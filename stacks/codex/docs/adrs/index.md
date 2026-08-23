@@ -23,3 +23,4 @@ timestamp: 2026-08-19
 - [0013 — Give history and trends their own routes](0013-car-dashboard-routes.md)
 - [0014 — Filter by exact multi-select model identifiers](0014-model-filter-semantics.md)
 - [0015 — Make durable history a paginated record listing](0015-history-record-listing.md)
+- [0016 — Price historical records against the current catalogue](0016-retroactive-catalogue-pricing.md)
