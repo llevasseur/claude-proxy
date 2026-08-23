@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { type LaunchAlias, parseLaunchAliases } from '@claude-proxy/core';
+import { type LaunchAlias, parseLaunchAliases } from '@agent-proxy/claude-core';
 
 /**
  * The device's shell rc — `~/.zshrc` by default, where the user's `claude*`

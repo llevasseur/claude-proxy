@@ -1,4 +1,4 @@
-import { type BranchLiveness, LIVENESS_NOTE, type LivenessState } from '@claude-proxy/core';
+import { type BranchLiveness, LIVENESS_NOTE, type LivenessState } from '@agent-proxy/claude-core';
 import { fmtDuration } from '../format';
 
 /**

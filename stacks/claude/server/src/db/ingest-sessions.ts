@@ -7,7 +7,7 @@ import {
   parseSessionNodes,
   parseSessionNodeTexts,
   parseSessionTranscript,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { parseJson, stringField } from '../json.js';
 import { resolveSessionsDir, SESSION_FILE_RE } from '../sessions.js';
 

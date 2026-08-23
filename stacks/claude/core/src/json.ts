@@ -1,7 +1,7 @@
 /**
  * The one place this package turns parsed JSON into domain values.
  *
- * Everything `@claude-proxy/core` reads from disk or from an API — audit
+ * Everything `@agent-proxy/claude-core` reads from disk or from an API — audit
  * sidecars, `.nodes.jsonl` records, the suggestion-status store, GitHub
  * payloads, hook and plugin settings — arrives as text. Each of those readers
  * used to re-derive the same primitive facts inline, so a single malformed

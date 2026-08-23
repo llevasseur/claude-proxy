@@ -1,4 +1,4 @@
-import { costPerMTok, type PerCallStats, rateTokens, reportTzAbbr, type UsageDigest } from '@claude-proxy/core';
+import { costPerMTok, type PerCallStats, rateTokens, reportTzAbbr, type UsageDigest } from '@agent-proxy/claude-core';
 import { fmtBytes, fmtCompact, fmtInt, fmtPct, fmtUsd, fmtUsdCompact, fmtUsdPerMTok } from './format';
 
 /**

@@ -7,7 +7,7 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:f
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { hiddenRefFor, pinRefFor } from '@claude-proxy/core';
+import { hiddenRefFor, pinRefFor } from '@agent-proxy/claude-core';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ERR, readLocalDivergence, readMainHistory, setLineHidden, slideMain, syncLocal } from '../src/main-history.js';
 

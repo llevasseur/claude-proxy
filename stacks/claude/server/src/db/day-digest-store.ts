@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import type { UsageDigest } from '@claude-proxy/core';
+import type { UsageDigest } from '@agent-proxy/claude-core';
 import { openDb, resolveDbPath, SCHEMA_VERSION } from './open.js';
 
 /**

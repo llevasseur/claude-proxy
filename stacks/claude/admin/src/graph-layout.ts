@@ -1,5 +1,5 @@
-import type { InterruptionKind, SessionNode } from '@claude-proxy/core';
-import { spawnAgentType } from '@claude-proxy/core';
+import type { InterruptionKind, SessionNode } from '@agent-proxy/claude-core';
+import { spawnAgentType } from '@agent-proxy/claude-core';
 import type { SessionGraphEntry } from './api';
 import type { BuiltGrain } from './graph-grains';
 

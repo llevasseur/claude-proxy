@@ -51,7 +51,7 @@ export type ChatMode = 'chat' | 'agent';
 /**
  * The device's own `claude` launch flags, replayed onto an agent turn so it matches
  * the sessions the user actually runs. Parsed from the shell rc by
- * `@claude-proxy/core`'s `parseLaunchAliases`. All fields empty/null means the CLI's
+ * `@agent-proxy/claude-core`'s `parseLaunchAliases`. All fields empty/null means the CLI's
  * own defaults, which is still parity: that is what a bare `claude` does.
  */
 export interface AgentLaunchFlags {

@@ -7,7 +7,7 @@ import {
   applyIdeaMarks,
   emptyIdeasStore,
   type PullRequestRow,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { describe, expect, it } from 'vitest';
 import { observePullRequest, reconcileIdeaPrs, renderIdeaPrTransition } from '../src/ideas-pr.js';
 import { installFakeIdeasWorker } from './ideas-fake-worker.js';

@@ -1,4 +1,4 @@
-import type { UsageDigest } from '@claude-proxy/core';
+import type { UsageDigest } from '@agent-proxy/claude-core';
 import { fmtCompact, fmtInt } from '../format';
 import { CardWindowPicker, useCardWindow, useWindowDigests } from './DayWindow';
 import { type Series, SeriesLineChart } from './SeriesLineChart';

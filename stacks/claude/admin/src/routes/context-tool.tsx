@@ -1,4 +1,4 @@
-import type { RequestToolDetail } from '@claude-proxy/core';
+import type { RequestToolDetail } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getContextTool } from '../api';

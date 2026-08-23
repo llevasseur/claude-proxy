@@ -5,8 +5,8 @@ import type {
   NoteUpdateInput,
   NoteVersionConflict,
   NoteWriteResult,
-} from '@claude-proxy/core';
-import { apiRouteUrl } from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
+import { apiRouteUrl } from '@agent-proxy/claude-core';
 import { API_BASE } from './api';
 import { errorMessage, isJsonRecord, type JsonValue, numberField, readJsonBody, textField } from './json';
 
@@ -29,7 +29,7 @@ async function responseJson<T>(response: Response): Promise<T> {
   }
   // SAFETY: `T` comes from the four call sites below, each of which names the return type
   // of the one `/api/notes/*` route it fetches — `NotePage`, `NoteDocument`, `NoteWriteResult`.
-  // The server builds those bodies from the same `@claude-proxy/core` types imported above,
+  // The server builds those bodies from the same `@agent-proxy/claude-core` types imported above,
   // so the assertion is the shared declaration rather than a claim made about this response.
   return body as T;
 }

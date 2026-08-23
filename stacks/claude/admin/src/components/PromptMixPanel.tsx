@@ -1,4 +1,4 @@
-import type { MixAttribution, PromptCohort, PromptMixDay } from '@claude-proxy/core';
+import type { MixAttribution, PromptCohort, PromptMixDay } from '@agent-proxy/claude-core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { getPromptMix, type PromptRevisionDetail } from '../api';

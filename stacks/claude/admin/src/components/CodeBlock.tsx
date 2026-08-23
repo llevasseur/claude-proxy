@@ -1,4 +1,4 @@
-import { type CodeSyntax, highlightSource } from '@claude-proxy/core';
+import { type CodeSyntax, highlightSource } from '@agent-proxy/claude-core';
 import { useMemo } from 'react';
 
 /** Lines rendered before the block gives up and points at the Raw view instead. A

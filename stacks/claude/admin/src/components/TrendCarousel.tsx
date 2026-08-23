@@ -1,4 +1,4 @@
-import { blendRate, lastNonZeroComparison, type UsageDigest } from '@claude-proxy/core';
+import { blendRate, lastNonZeroComparison, type UsageDigest } from '@agent-proxy/claude-core';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { deltaLabel, deltaTone } from '../format';

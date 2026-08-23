@@ -1,4 +1,4 @@
-import { isPartialDay, lastNonZeroComparison, type UsageDigest } from '@claude-proxy/core';
+import { isPartialDay, lastNonZeroComparison, type UsageDigest } from '@agent-proxy/claude-core';
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';

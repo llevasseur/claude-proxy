@@ -1,5 +1,5 @@
-import type { MainHistoryRow, PrBranch, PrSessionLink, PullRequestState } from '@claude-proxy/core';
-import { buildPrTree, prCounts, shortSha } from '@claude-proxy/core';
+import type { MainHistoryRow, PrBranch, PrSessionLink, PullRequestState } from '@agent-proxy/claude-core';
+import { buildPrTree, prCounts, shortSha } from '@agent-proxy/claude-core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { GitPullRequest } from 'lucide-react';

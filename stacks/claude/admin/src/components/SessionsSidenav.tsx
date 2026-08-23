@@ -1,4 +1,4 @@
-import { sessionName, sessionPreview } from '@claude-proxy/core';
+import { sessionName, sessionPreview } from '@agent-proxy/claude-core';
 import { Link } from '@tanstack/react-router';
 import { AlertTriangle, ArrowUp, Check, Plus, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

@@ -1,4 +1,4 @@
-import { type Concept, isConcept, normalizeConcept, withoutMetaSkills } from '@claude-proxy/core';
+import { type Concept, isConcept, normalizeConcept, withoutMetaSkills } from '@agent-proxy/claude-core';
 import type { Db, DbStatement, DbValue } from './db.ts';
 import type { JsonValue } from './json.ts';
 import { seedBytes, ulid } from './ulid.ts';

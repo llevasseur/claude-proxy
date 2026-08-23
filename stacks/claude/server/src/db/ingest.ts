@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { type AuditSession, type AuditSidecar, type AuditSkim, isAuditSidecar } from '@claude-proxy/core';
+import { type AuditSession, type AuditSidecar, type AuditSkim, isAuditSidecar } from '@agent-proxy/claude-core';
 import { commandStorePath } from '../command-runs.js';
 import { deriveFromBody } from '../derive.js';
 import { asError } from '../errors.js';

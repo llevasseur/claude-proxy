@@ -1,7 +1,7 @@
 import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type AuditSidecar, isAuditSidecar, reportDay, shiftDay } from '@claude-proxy/core';
+import { type AuditSidecar, isAuditSidecar, reportDay, shiftDay } from '@agent-proxy/claude-core';
 import { latestUserText } from './derive.js';
 import { errorMessage } from './errors.js';
 import { type JsonInput, type JsonObject, type JsonValue, jsonArray, jsonObject, stringField } from './json.js';

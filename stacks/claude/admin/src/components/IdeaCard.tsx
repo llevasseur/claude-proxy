@@ -8,7 +8,7 @@ import {
   ideaAreaLabel,
   ideaCitation,
   ideaRationaleBullets,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Check, Fingerprint } from 'lucide-react';

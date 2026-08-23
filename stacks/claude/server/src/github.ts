@@ -11,7 +11,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { isGitHubHost, type PullRequestRow, parsePullRequests, parseRemoteUrl } from '@claude-proxy/core';
+import { isGitHubHost, type PullRequestRow, parsePullRequests, parseRemoteUrl } from '@agent-proxy/claude-core';
 import { findOnPath } from './chat-cli.js';
 import {
   newestPullRequestUpdate,

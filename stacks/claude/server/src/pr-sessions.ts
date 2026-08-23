@@ -33,7 +33,7 @@ import {
   prMatcher,
   prUrlKey,
   sessionDisplayName,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { forgetScannedPrLinks, readScannedPrLinks, type ScanToStore, storeScannedPrLinks } from './db/pr-scan-store.js';
 import { fileSource, type SidecarSource } from './db/source.js';
 import { resolveSessionsDir, SESSION_FILE_RE } from './sessions.js';

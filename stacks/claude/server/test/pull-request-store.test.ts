@@ -12,7 +12,7 @@ import { chmod, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { type PullRequestRow, parsePullRequests } from '@claude-proxy/core';
+import { type PullRequestRow, parsePullRequests } from '@agent-proxy/claude-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { JsonObject } from '../../proxy/json.ts';
 import { openDb } from '../src/db/open.js';

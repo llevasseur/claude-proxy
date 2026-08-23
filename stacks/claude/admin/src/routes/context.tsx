@@ -1,4 +1,4 @@
-import { mergeContextDays, promptExcerpt } from '@claude-proxy/core';
+import { mergeContextDays, promptExcerpt } from '@agent-proxy/claude-core';
 import { type Query, useQueries, useQuery } from '@tanstack/react-query';
 import { createRoute, Link } from '@tanstack/react-router';
 import { Gauge, Search } from 'lucide-react';

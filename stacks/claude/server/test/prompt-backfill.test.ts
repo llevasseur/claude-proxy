@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { type AuditSidecar, isAuditSidecar, outlineWirePrompt } from '@claude-proxy/core';
+import { type AuditSidecar, isAuditSidecar, outlineWirePrompt } from '@agent-proxy/claude-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { JsonObject, JsonValue } from '../../proxy/json.ts';
 import { backfillPromptIdentity, collectBackfillTargets } from '../src/prompt-backfill.js';

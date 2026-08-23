@@ -71,8 +71,8 @@ import type {
   UsageDigest,
   UsageLimitsSnapshot,
   WithheldReport,
-} from '@claude-proxy/core';
-import { apiRouteUrl } from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
+import { apiRouteUrl } from '@agent-proxy/claude-core';
 import { errorMessage, type JsonRecord, readJsonBody } from './json';
 
 // SAFETY: Vite types every key of `import.meta.env` it does not know about through an

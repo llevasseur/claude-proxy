@@ -1,4 +1,4 @@
-import type { LinkedSessionError } from '@claude-proxy/core';
+import type { LinkedSessionError } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { getSessionErrors } from '../api';

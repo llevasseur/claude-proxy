@@ -1,4 +1,4 @@
-import type { JobTreeNode } from '@claude-proxy/core';
+import type { JobTreeNode } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { Fragment, useMemo, useState } from 'react';

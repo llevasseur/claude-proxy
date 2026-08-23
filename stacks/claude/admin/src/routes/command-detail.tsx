@@ -1,4 +1,4 @@
-import type { CommandRunOutcome, CommandStep, StepReach } from '@claude-proxy/core';
+import type { CommandRunOutcome, CommandStep, StepReach } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useState } from 'react';

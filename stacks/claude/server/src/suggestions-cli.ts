@@ -66,7 +66,7 @@ import {
   type SuggestionStatus,
   type SuggestionStatusRow,
   type SuggestionStatusUpdate,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import {
   applySuggestionJudge,
   applySuggestionStatus,

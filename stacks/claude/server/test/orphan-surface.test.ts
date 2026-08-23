@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { API_ROUTES } from '@claude-proxy/core';
+import { API_ROUTES } from '@agent-proxy/claude-core';
 import { describe, expect, it } from 'vitest';
 
 /**

@@ -1,4 +1,4 @@
-import type { NoteMetadata, NotePage, NoteVersionConflict } from '@claude-proxy/core';
+import type { NoteMetadata, NotePage, NoteVersionConflict } from '@agent-proxy/claude-core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { Archive, ArchiveRestore, FilePlus2, NotebookPen, Search } from 'lucide-react';

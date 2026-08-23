@@ -1,4 +1,4 @@
-import type { JobFileKind, JobTreeNode } from '@claude-proxy/core';
+import type { JobFileKind, JobTreeNode } from '@agent-proxy/claude-core';
 import {
   ChevronDown,
   ChevronRight,

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import { type PullRequestRow, parsePullRequests } from '@claude-proxy/core';
+import { type PullRequestRow, parsePullRequests } from '@agent-proxy/claude-core';
 import { type JsonValue, stringField } from '../json.js';
 import { openDb, resolveDbPath } from './open.js';
 

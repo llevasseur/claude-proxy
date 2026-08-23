@@ -1,4 +1,4 @@
-import { type IdeaEntry, ideaAreaLabel, ideaTaskPrompt, SEED_IDEA_AREAS } from '@claude-proxy/core';
+import { type IdeaEntry, ideaAreaLabel, ideaTaskPrompt, SEED_IDEA_AREAS } from '@agent-proxy/claude-core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createRoute, Link, useParams } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';

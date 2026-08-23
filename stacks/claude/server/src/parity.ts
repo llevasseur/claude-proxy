@@ -1,6 +1,6 @@
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { runKey, type UsageLimitConfig } from '@claude-proxy/core';
+import { runKey, type UsageLimitConfig } from '@agent-proxy/claude-core';
 import {
   buildCommand,
   buildCommandRun,

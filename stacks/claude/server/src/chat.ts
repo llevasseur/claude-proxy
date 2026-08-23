@@ -29,7 +29,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { INTERRUPTION_LINE } from '@claude-proxy/core';
+import { INTERRUPTION_LINE } from '@agent-proxy/claude-core';
 import {
   type AgentLaunchFlags,
   type ChatMode,

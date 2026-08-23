@@ -1,4 +1,4 @@
-import type { UsageDigest } from '@claude-proxy/core';
+import type { UsageDigest } from '@agent-proxy/claude-core';
 
 /** One model the window captured, and how many requests went to it. */
 export interface ModelOption {

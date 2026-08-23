@@ -1,4 +1,4 @@
-import { USAGE_LIMIT_ENV_SUFFIX, type UsageLimitConfig, type UsageWindowKind } from '@claude-proxy/core';
+import { USAGE_LIMIT_ENV_SUFFIX, type UsageLimitConfig, type UsageWindowKind } from '@agent-proxy/claude-core';
 
 /**
  * Ceilings for the usage meters' estimated fallback, consulted only for windows

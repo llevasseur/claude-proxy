@@ -1,4 +1,4 @@
-import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from '@claude-proxy/core';
+import type { BreakdownMessage, BreakdownTool, RequestBreakdown } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';

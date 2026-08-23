@@ -6,7 +6,7 @@ import {
   type SuggestionStatus,
   type SuggestionStatusRow,
   type WriteProvenance,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { markSuggestionStatus } from '../api';
 import { fmtLocalTsShort } from '../format';

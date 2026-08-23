@@ -12,7 +12,7 @@ import {
   type SessionAgentLink,
   type SessionMeta,
   type SessionNode,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { parseJson, stringField } from './json.js';
 
 /**
@@ -20,7 +20,7 @@ import { parseJson, stringField } from './json.js';
  * root. Mirrors `threadIdFor` in `proxy/session.ts`, which named the transcript in the first
  * place. Null when the body has no user text to root on.
  */
-// `messages` stays `unknown` because `firstUserText` in `@claude-proxy/core` is the
+// `messages` stays `unknown` because `firstUserText` in `@agent-proxy/claude-core` is the
 // decoder for it and its own parameter is `unknown`; nothing here reads the array.
 // Narrowing it to `JsonInput` is a change to a shared signature that
 // `server/test/session-graph-nodes` hands an `unknown[]`.

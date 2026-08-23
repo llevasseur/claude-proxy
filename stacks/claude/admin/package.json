@@ -1,5 +1,5 @@
 {
-  "name": "admin",
+  "name": "@agent-proxy/claude-admin",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@claude-proxy/core": "workspace:*",
+    "@agent-proxy/claude-core": "workspace:*",
     "@tanstack/react-query": "^5.62.7",
     "@tanstack/react-router": "^1.87.0",
     "lucide-react": "^1.26.0",

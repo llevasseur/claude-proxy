@@ -8,7 +8,7 @@ import {
   type CommandRunTurn,
   runKey,
   ZERO_WASTE,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { commandStorePath, parseCommandRunStore, type StoreAppend } from '../command-runs.js';
 
 /**

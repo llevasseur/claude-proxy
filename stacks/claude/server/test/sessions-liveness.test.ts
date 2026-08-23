@@ -4,7 +4,7 @@
 import { mkdir, mkdtemp, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { QUIET_AFTER_MS } from '@claude-proxy/core';
+import { QUIET_AFTER_MS } from '@agent-proxy/claude-core';
 import { describe, expect, it } from 'vitest';
 import { buildJobs, buildSessionsGraph, buildSessionsLiveness } from '../src/api.js';
 

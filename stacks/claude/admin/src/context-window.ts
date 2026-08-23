@@ -1,4 +1,4 @@
-import { type ContextThreadRow, promptMatches, shiftDay } from '@claude-proxy/core';
+import { type ContextThreadRow, promptMatches, shiftDay } from '@agent-proxy/claude-core';
 import type { ContextSort, ContextSortDir } from './api';
 import { ALL_DAYS } from './components/Segmented';
 

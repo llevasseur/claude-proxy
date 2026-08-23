@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import type { ContextDayAggregate } from '@claude-proxy/core';
+import type { ContextDayAggregate } from '@agent-proxy/claude-core';
 import { openDb, resolveDbPath, SCHEMA_VERSION } from './open.js';
 
 /**

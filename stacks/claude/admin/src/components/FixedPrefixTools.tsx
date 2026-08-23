@@ -1,4 +1,4 @@
-import type { UsageDigest } from '@claude-proxy/core';
+import type { UsageDigest } from '@agent-proxy/claude-core';
 import { Link } from '@tanstack/react-router';
 import { fmtInt, fmtPct } from '../format';
 

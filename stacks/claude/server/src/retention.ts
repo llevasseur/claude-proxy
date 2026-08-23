@@ -11,7 +11,7 @@
  */
 import { mkdir, readdir, rename, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { REPORT_TZ } from '@claude-proxy/core';
+import { REPORT_TZ } from '@agent-proxy/claude-core';
 import { errorMessage } from './errors.js';
 
 export const DEFAULT_RETENTION_DAYS = 30;

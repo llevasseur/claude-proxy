@@ -151,7 +151,7 @@ import {
   wirePromptSectionTexts,
   withheldReport,
   withoutMetaSkills,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import { loadArchivedDigest } from './archive.js';
 import { type CliBundleInfo, readCliCatalogue, readCliFunctionSource } from './cli-bundle.js';
 import { listInstalledCommands } from './command-runs.js';

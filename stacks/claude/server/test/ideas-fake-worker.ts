@@ -25,7 +25,7 @@ import {
   type IdeasStore,
   similarAreas,
   similarIdeaSlugs,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import type { JsonObject, JsonValue } from '../../proxy/json.ts';
 
 export interface FakeIdeasWorker {

@@ -1,4 +1,4 @@
-import { apiRouteUrl, type ContextEntry } from '@claude-proxy/core';
+import { apiRouteUrl, type ContextEntry } from '@agent-proxy/claude-core';
 import { useQuery } from '@tanstack/react-query';
 import { createRoute, Link, useParams, useSearch } from '@tanstack/react-router';
 import { type CSSProperties, useMemo } from 'react';
