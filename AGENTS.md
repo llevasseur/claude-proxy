@@ -92,6 +92,35 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
   file after a merge if you edited an entry in place. When a release is eventually
   cut and `## [x.y.z]` headings appear, revisit this: the guarantee above rests on
   `## [Unreleased]` being the only release heading.
+- **`.git-blame-ignore-revs` lists the commits `git blame` should look through, and
+  it does nothing until this clone is told to read it:**
+
+  ```
+  git config blame.ignoreRevsFile .git-blame-ignore-revs
+  ```
+
+  Run that once per clone. `blame.ignoreRevsFile` is a config key, and git config
+  is per-clone rather than per-tree, so unlike `.gitattributes` above the file
+  cannot carry its own activation — committing it is only half the mechanism, and
+  the half that is committed is the inert one. `scripts/bootstrap-worktree.sh` runs
+  the command, which covers this clone's worktrees **and its main checkout too**,
+  since linked worktrees write to the shared config rather than to one of their
+  own. A clone that has never bootstrapped a worktree still needs the line above by
+  hand, and the symptom of skipping it is silent: blame works, it just reports the
+  wrong commit.
+  The file currently holds one SHA, the commit that reformatted all 96 of ox's
+  source files to this repository's Biome settings. Nothing about that commit is
+  worth blaming, and without the config every one of those files blames to it.
+  Only ever add a commit that changed no behaviour — a commit mixing a reformat
+  with a real edit makes the real edit unblameable.
+  **One sharp edge, until this file reaches `main`.** The config is per-clone but
+  the file is per-branch, and git treats a missing ignore list as fatal rather than
+  as nothing to ignore — so on a branch cut before this file existed, every
+  `git blame` in the clone dies with `fatal: could not open object name list:
+  .git-blame-ignore-revs`. That is the config finding no file, not damage: either
+  `git config --unset blame.ignoreRevsFile` until you are back on a branch that has
+  it, or merge forward. The window closes on its own once the file is on `main` and
+  every branch is cut from it.
 - **Project skills are tracked under `.agents/skills/<name>/`, and `.claude/skills/`
   is gitignored.** That directory is only the path Claude Code discovers skills at,
   so it holds symlinks rather than content and is rebuilt per checkout by

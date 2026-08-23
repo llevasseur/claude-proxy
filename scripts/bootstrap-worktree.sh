@@ -66,6 +66,16 @@ link_from_main "logs"
 echo "skills:"
 bash "${WORKTREE_ROOT}/scripts/link-project-skills.sh"
 
+# `.git-blame-ignore-revs` is committed but inert: `blame.ignoreRevsFile` is a
+# config key, and git config cannot be committed. Without this line `git blame`
+# still lands on the commit that reformatted all 96 of ox's files, for every one
+# of them. The path stays relative because linked worktrees share one config with
+# the main checkout, so each tree resolves the file in its own root — and setting
+# it from here configures that main checkout as well.
+echo "blame:"
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+echo "  set     blame.ignoreRevsFile -> .git-blame-ignore-revs"
+
 # Frozen: the lockfile arrived with the branch, so a failure here is real drift.
 echo "install:"
 pnpm install --frozen-lockfile
