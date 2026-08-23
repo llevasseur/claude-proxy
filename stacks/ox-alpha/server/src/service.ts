@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { ResolvedCalendarRange } from "@ox-alpha-proxy/core";
 import {
   aggregateDailyBuckets,
   aggregateRangeFromBuckets,
