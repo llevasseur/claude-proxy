@@ -19,11 +19,13 @@ import fs from 'node:fs';
 const DEADLINE_MS = 90_000;
 const args = process.argv.slice(2);
 
-const child = spawn(
-  process.execPath,
-  ['--test', '--test-reporter=./_diag-reporter.mjs', '--test-reporter-destination=stdout', ...args],
-  { stdio: 'inherit' },
-);
+const TRACE = `${process.cwd()}/_diag-trace.txt`;
+fs.rmSync(TRACE, { force: true });
+
+const child = spawn(process.execPath, ['--test', '--import', './_diag-trace.mjs', ...args], {
+  stdio: 'inherit',
+  env: { ...process.env, DIAG_TRACE: TRACE },
+});
 
 const read = (p) => {
   try {
@@ -78,6 +80,8 @@ const timer = setTimeout(() => {
     console.log(`[DIAG]   fd/1:    ${linkOf(`/proc/${pid}/fd/1`)}`);
     console.log(`[DIAG]   fd/2:    ${linkOf(`/proc/${pid}/fd/2`)}`);
   }
+  console.log('[DIAG] --- synchronous trace (survives a frozen loop) ---');
+  for (const line of read(TRACE).split('\n')) console.log(`[DIAG]   ${line}`);
   console.log('[DIAG] inspection done — killing the run');
   child.kill('SIGKILL');
   process.exitCode = 98;
