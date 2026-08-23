@@ -1,0 +1,12 @@
+{
+  "name": "@agent-proxy/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Landing site for code the three stacks converge on. Empty on purpose — see README.md.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "exit 0",
+    "test": "exit 0",
+    "build": "exit 0"
+  }
+}
