@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-10-unify-toolchain-and-ci`
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## Goal
 
@@ -40,7 +40,12 @@ whichever repository has the better version, as the brief specifies.
 
 **Both.**
 
-10. **Drop `scripts/run-if-present.mjs`** (codex only).
+10. **~~Drop `scripts/run-if-present.mjs`~~ — corrected: the root copy is already absent,
+    and `stacks/codex/scripts/run-if-present.mjs` must STAY.** Three codex manifests
+    reference it through `../scripts/` (`apps/admin` build and typecheck, `server` typecheck
+    and test, `proxy` typecheck and test), and `pnpm-workspace.yaml` records that codex was
+    deliberately left unflattened so those paths keep resolving. Deleting it breaks three
+    codex packages.
 11. **Keep exactly one copy of `tools/oxlint/anti-slop`** — claude's and codex's are
     byte-identical, verified at charting time.
 12. **Add an empty `packages/shared/`** as the landing site for later convergence, with
@@ -54,5 +59,5 @@ whichever repository has the better version, as the brief specifies.
 ## Done when
 
 `pnpm install` from a fresh clone succeeds, `pnpm verify` runs all five gates green,
-`verify.yml` fires on a PR into `the-great-merge`, and `run-if-present.mjs` and the
+`verify.yml` fires on a PR into `the-great-merge`, and the root `run-if-present.mjs` and the
 duplicate anti-slop copy are gone.

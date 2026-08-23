@@ -170,7 +170,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
 | 20 | ox-history-test-flake | [monorepo-fusion-20-ox-history-test-flake](monorepo-fusion-20-ox-history-test-flake.md) | `task/monorepo-fusion-20-ox-history-test-flake` | in-progress | |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
-| 10 | unify-toolchain-and-ci | [monorepo-fusion-10-unify-toolchain-and-ci](monorepo-fusion-10-unify-toolchain-and-ci.md) | `task/monorepo-fusion-10-unify-toolchain-and-ci` | in-progress | |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 12 | merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus](monorepo-fusion-12-merge-adr-corpus.md) | `task/monorepo-fusion-12-merge-adr-corpus` | todo | |
 | 13 | write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs](monorepo-fusion-13-write-campaign-adrs.md) | `task/monorepo-fusion-13-write-campaign-adrs` | todo | |
@@ -248,6 +247,46 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 10 — unify-toolchain-and-ci · 2026-08-23 · PR #275
+
+Merged at `ed2e9d4`. **Nine of twelve criteria were already true when the ticket opened,
+and each was inspected and left alone rather than rewritten to manufacture a diff** —
+including the whole of tickets 16's and 08's work. That restraint is the result worth
+recording.
+
+**Implemented:** `.editorconfig` — `biome.json` had set `useEditorconfig: true` all along
+against a file that existed in **none of the three fused repositories**; `files.ignoreUnknown:
+true`, since the merged tree now holds `.kdl`, `.sql`, `.grit` and `.plist`; and
+`packages/shared/` with a README saying what it is for and that this campaign promotes
+nothing into it.
+
+**Criterion 10 is a correction, not a completion.** The plan said to drop
+`scripts/run-if-present.mjs`. The root copy is already gone — but
+**`stacks/codex/scripts/run-if-present.mjs` must stay**: three codex manifests reference it
+through `../scripts/`, and `pnpm-workspace.yaml` records that codex was deliberately left
+unflattened so those paths resolve. Deleting it breaks three codex packages. The plan's
+"Done when" said the file would be gone; it is not, for a good reason, and both are
+corrected.
+
+**Residual risk 4 was real but not where the plan predicted.** The root scripts already
+pass `--if-present`, so `pnpm verify` was never exposed. What was exposed is
+`stacks/ox-alpha/package.json`'s bare `pnpm -r typecheck`, inherited from ox's own
+repository — and `pnpm -r` resolves against the **root** workspace, so it reaches the new
+package. An empty `packages/shared/` would have broken a command that worked before the
+merge, which is a fusion-caused regression. Fixed **in lane** with three `exit 0` scripts on
+`packages/shared/` rather than editing `stacks/ox-alpha/`.
+
+**Evidence.** A genuine fresh clone at `/tmp/t10-freshclone` — no `node_modules`, no `.env`,
+no `logs/` — with `pnpm install --frozen-lockfile` exit 0 and `pnpm verify` exit 0 across all
+five gates. Failure sets compared rather than counted: empty on base and branch, identical.
+**2190 tests across eleven packages**, matching on base, branch, fresh clone and CI —
+claude 91/918/751, codex 24/41/25, ox 28/113/49/50, concepts 100. The ox `history.test.ts`
+flake did not fire in any of three local runs or on CI.
+
+**Deferred, correctly:** `check:docs` stays unwired and `check` untouched, gated on ticket
+11 — wiring it now would put claude's 62 never-link-checked docs in front of a gate that has
+never seen them.
 
 ### 06, 07, 08 — ox absorbed, reformatted, and under the gate · 2026-08-23 · PRs #272, #273, #274
 
