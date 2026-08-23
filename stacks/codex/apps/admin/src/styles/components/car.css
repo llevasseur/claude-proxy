@@ -1,0 +1,164 @@
+@layer components {
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .car-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .car-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .car-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .car-filter-label {
+    font-size: var(--text-5);
+    color: var(--muted);
+  }
+
+  .car-multiselect {
+    position: relative;
+  }
+
+  .car-multiselect summary {
+    cursor: pointer;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-4);
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  .car-multiselect-list {
+    position: absolute;
+    z-index: 10;
+    margin-top: var(--space-2);
+    min-width: 16rem;
+    max-height: 18rem;
+    overflow-y: auto;
+    padding: var(--space-2);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-4);
+    box-shadow: var(--shadow-pop);
+  }
+
+  .car-multiselect-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border-radius: inherit;
+    font-family: var(--font-mono);
+    font-size: var(--text-5);
+  }
+
+  .car-multiselect-empty {
+    margin: 0;
+    padding: var(--space-2);
+  }
+
+  .car-filters-clear {
+    margin-left: auto;
+  }
+
+  .car-table-card {
+    overflow-x: auto;
+  }
+
+  .car-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-4);
+  }
+
+  .car-table th,
+  .car-table td {
+    text-align: left;
+    vertical-align: top;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--surface-2);
+    white-space: nowrap;
+  }
+
+  .car-table thead th {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: var(--text-5);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+  }
+
+  .car-table tfoot th,
+  .car-table tfoot td {
+    font-weight: 600;
+    border-bottom: none;
+  }
+
+  .car-cell-mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-5);
+  }
+
+  .car-token-total {
+    display: block;
+  }
+
+  .car-token-detail {
+    display: block;
+    font-size: var(--text-5);
+  }
+
+  .car-cost {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .car-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-4);
+    padding-top: var(--space-3);
+  }
+
+  .car-page-size {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .car-page-size span {
+    color: var(--muted);
+    font-size: var(--text-5);
+  }
+
+  .car-empty {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .car-trends-note {
+    margin: 0;
+    font-size: var(--text-5);
+  }
+}

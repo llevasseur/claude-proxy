@@ -1,0 +1,39 @@
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    // One pane per Bike process. Plane's processes join this tab rather than a
+    // second layout.
+    tab name="dev" {
+        pane split_direction="vertical" {
+            // No port is pinned here. `proxy` and `server` run under `pnpm
+            // --filter`, so `../.env` from their package directory is the
+            // repository-root file. `admin` is Vite and loads `apps/admin/.env`.
+            pane name="proxy" {
+                command "pnpm"
+                args "proxy"
+            }
+            pane split_direction="horizontal" {
+                pane name="server" {
+                    command "pnpm"
+                    args "server"
+                }
+                pane name="admin" {
+                    command "pnpm"
+                    args "admin"
+                }
+            }
+        }
+    }
+
+    tab name="shell" {
+        pane
+    }
+}
