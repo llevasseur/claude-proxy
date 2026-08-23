@@ -136,3 +136,17 @@ export async function waitFor(
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
+
+// Remove the scratch tree even when a just-queued status write is still
+// settling; retries beat the rmdir/ENOENT race without sleeping arbitrarily.
+export async function removeDirectory(directory: string): Promise<void> {
+  const { rm } = await import("node:fs/promises");
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await rm(directory, { recursive: true, force: true });
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+}

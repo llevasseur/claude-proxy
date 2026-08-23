@@ -44,7 +44,9 @@ const contextRecord = {
   sessionId: "sess-rec-1",
 };
 
-function stubBoatFetch(options: Readonly<{ captureEnabled?: boolean }>) {
+function stubBoatFetch(
+  options: Readonly<{ captureEnabled?: boolean; cleanErrors?: boolean }> = {},
+) {
   return stubFetch((url) => {
     if (url.includes("/api/health")) {
       const health = healthPayload() as Record<string, unknown>;
@@ -58,7 +60,7 @@ function stubBoatFetch(options: Readonly<{ captureEnabled?: boolean }>) {
         { recordId: "rec-1", role: "user", itemType: "message", text: "hello" },
       ]);
     }
-    if (url.includes("/api/inspection/prompt")) {
+    if (url.includes("/api/inspection/prompt?")) {
       return {
         captureEnabled: true,
         parsed: true,
@@ -71,6 +73,51 @@ function stubBoatFetch(options: Readonly<{ captureEnabled?: boolean }>) {
         estimatedInputTokens: 9,
       };
     }
+    if (url.includes("/api/inspection/prompt-sections")) {
+      return {
+        captureEnabled: true,
+        instructionsHash: "abc123def4567890",
+        sections: [
+          { kind: "instructions", index: null, role: null, itemType: null, chars: 9 },
+          { kind: "message", index: 0, role: "user", itemType: "message", chars: 5 },
+        ],
+      };
+    }
+    if (url.includes("/api/inspection/prompt-mix")) {
+      return {
+        captureEnabled: true,
+        date: "2026-08-20",
+        requests: 2,
+        meanChars: 12,
+        medianChars: 12,
+        identifiedShare: 1,
+        cohorts: [
+          {
+            key: "abc123def4567890",
+            label: "prompt:abc123def456",
+            identified: true,
+            hash: "abc123def4567890",
+            models: ["gpt-5"],
+            requests: 2,
+            share: 1,
+            meanChars: 12,
+            totalChars: 24,
+            contribution: 12,
+          },
+        ],
+      };
+    }
+    if (url.includes("/api/inspection/prompts")) {
+      return inspectionPage([
+        {
+          recordId: "rec-1",
+          capturedAt: contextRecord.capturedAt,
+          model: "gpt-5",
+          instructionsHash: "abc123def4567890",
+          sectionCount: 3,
+        },
+      ]);
+    }
     if (url.includes("/api/inspection/tools")) {
       return inspectionPage([
         {
@@ -82,6 +129,32 @@ function stubBoatFetch(options: Readonly<{ captureEnabled?: boolean }>) {
           schemaJson: "{}",
         },
       ]);
+    }
+    if (url.includes("/api/inspection/sessions/detail")) {
+      return inspectionPage([contextRecord], {});
+    }
+    if (url.includes("/api/inspection/sessions/breakdown")) {
+      return {
+        captureEnabled: true,
+        sessionId: "sess-rec-1",
+        captures: 1,
+        models: [{ model: "gpt-5", requests: 1 }],
+        hours: [{ hour: "2026-08-20T10:00", captures: 1 }],
+      };
+    }
+    if (url.includes("/api/inspection/errors")) {
+      return options.cleanErrors
+        ? { rejectedSidecars: [], unreadableCaptures: 0 }
+        : {
+            rejectedSidecars: [
+              {
+                filename: "bad.audit.json",
+                reason: "invalid JSON",
+                rejectedAt: contextRecord.capturedAt,
+              },
+            ],
+            unreadableCaptures: 0,
+          };
     }
     if (url.includes("/api/inspection/sessions")) {
       return inspectionPage([
@@ -153,6 +226,59 @@ describe("Boat inspection routes", () => {
     renderShell();
     await waitFor(() => expect(screen.getByTestId("boat-sessions-table")).toBeTruthy());
     expect(screen.getByText("sess-rec-1")).toBeTruthy();
+  });
+
+  it("renders the prompt mix and drills down by cohort hash to prompts", async () => {
+    const fetchMock = stubBoatFetch({});
+    window.location.hash = "#/boat/prompt-mix";
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("boat-prompt-mix")).toBeTruthy());
+    const drill = screen.getByText("prompt:abc123def456") as HTMLAnchorElement;
+    expect(drill.href).toContain("#/boat/prompts?hash=abc123def4567890");
+
+    fireEvent.click(drill);
+    await waitFor(() => expect(screen.getByTestId("boat-prompts-table")).toBeTruthy());
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).includes("hash=abc123def4567890")),
+    ).toBe(true);
+  });
+
+  it("shows prompt sections with sizes but no body text on the prompt page", async () => {
+    stubBoatFetch({});
+    window.location.hash = "#/boat/prompt?recordId=rec-1";
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("boat-prompt-sections")).toBeTruthy());
+    const text = screen.getByTestId("boat-prompt-sections").textContent ?? "";
+    expect(text).toContain("instructions");
+    expect(text).toContain("input #0");
+    expect(text).not.toContain("hello");
+  });
+
+  it("renders session detail with breakdown from the sessions listing", async () => {
+    const fetchMock = stubBoatFetch({});
+    window.location.hash = "#/boat/sessions";
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("boat-sessions-table")).toBeTruthy());
+    fireEvent.click(screen.getByText("sess-rec-1"));
+    await waitFor(() => expect(screen.getByTestId("boat-session-detail-table")).toBeTruthy());
+    expect(screen.getByTestId("boat-session-breakdown").textContent).toContain("gpt-5 × 1");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("sessions/detail"))).toBe(
+      true,
+    );
+  });
+
+  it("lists ingest errors and renders the all-clear state", async () => {
+    stubBoatFetch({});
+    window.location.hash = "#/boat/sessions/errors";
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("boat-errors-table")).toBeTruthy());
+    expect(screen.getByText("bad.audit.json")).toBeTruthy();
+
+    cleanup();
+    stubBoatFetch({ cleanErrors: true });
+    window.location.hash = "#/boat/sessions/errors";
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("boat-errors-empty")).toBeTruthy());
   });
 
   it("keeps the Bike nav intact when Boat capture is disabled", async () => {

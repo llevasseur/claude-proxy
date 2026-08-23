@@ -5,6 +5,7 @@ import test from "node:test";
 import { parseSanitizedAuditSidecar } from "../../packages/core/src/index.ts";
 import { loadProxyConfig } from "../src/config.ts";
 import {
+  removeDirectory,
   startFixtureUpstream,
   startProxyOnEphemeralPort,
   waitForCaptureFiles,
@@ -85,7 +86,7 @@ test("capture off keeps forwarding byte-identical and never writes body bytes to
   } finally {
     proxy.server.close();
     upstream.server.close();
-    await rm(proxy.baseDirectory, { recursive: true, force: true });
+    await removeDirectory(proxy.baseDirectory);
   }
 });
 
@@ -156,7 +157,7 @@ test("capture on redacts secrets before persistence and leaves sidecar v1 untouc
   } finally {
     proxy.server.close();
     upstream.server.close();
-    await rm(proxy.baseDirectory, { recursive: true, force: true });
+    await removeDirectory(proxy.baseDirectory);
   }
 });
 

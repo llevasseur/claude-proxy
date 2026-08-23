@@ -9,12 +9,17 @@ export type RouteName =
   | "overview"
   | "history"
   | "trends"
+  | "trends-detail"
   | "boat"
   | "boat-messages"
   | "boat-prompt"
+  | "boat-prompt-mix"
+  | "boat-prompts"
   | "boat-tools"
   | "boat-tool-calls"
-  | "boat-sessions";
+  | "boat-sessions"
+  | "boat-session-detail"
+  | "boat-errors";
 
 export interface RouteState {
   readonly name: RouteName;
@@ -24,8 +29,12 @@ export interface RouteState {
 const BOAT_PATHS: ReadonlyArray<readonly [string, RouteName]> = Object.freeze([
   ["/boat/messages", "boat-messages"],
   ["/boat/prompt", "boat-prompt"],
+  ["/boat/prompt-mix", "boat-prompt-mix"],
+  ["/boat/prompts", "boat-prompts"],
   ["/boat/tools", "boat-tools"],
   ["/boat/tool-calls", "boat-tool-calls"],
+  ["/boat/sessions/detail", "boat-session-detail"],
+  ["/boat/sessions/errors", "boat-errors"],
   ["/boat/sessions", "boat-sessions"],
   ["/boat", "boat"],
 ]);
@@ -34,6 +43,8 @@ function parseHash(hash: string): RouteState {
   const raw = hash.replace(/^#/, "");
   const [path, query = ""] = raw.split("?");
   if (path === "/history") return { name: "history", search: new URLSearchParams(query) };
+  if (path === "/trends/detail")
+    return { name: "trends-detail", search: new URLSearchParams(query) };
   if (path === "/trends") return { name: "trends", search: new URLSearchParams(query) };
   for (const [prefix, name] of BOAT_PATHS) {
     if (path === prefix) return { name, search: new URLSearchParams(query) };

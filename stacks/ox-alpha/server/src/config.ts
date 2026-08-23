@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from "node:path";
-import { DEFAULT_REPORT_TIMEZONE } from "@ox-alpha-proxy/core";
+import { DEFAULT_REPORT_TIMEZONE, USAGE_WINDOWS, type UsageWindowKind } from "@ox-alpha-proxy/core";
 
 export interface ServerConfig {
   readonly host: string;
@@ -14,6 +14,9 @@ export interface ServerConfig {
   readonly captureDirectory: string;
   readonly captureRetentionMs: number;
   readonly captureMaxBytes: number;
+  // Operator-supplied metering ceilings per usage window; a missing value
+  // omits that window from /api/limits rather than inventing a denominator.
+  readonly usageLimitCeilings: Readonly<Partial<Record<UsageWindowKind, number>>>;
 }
 
 function integer(
@@ -38,6 +41,27 @@ function timezone(value: string | undefined): string {
     throw new Error("REPORT_TZ must be a valid IANA timezone");
   }
   return candidate;
+}
+
+const USAGE_LIMIT_ENV_SUFFIX: Readonly<Record<UsageWindowKind, string>> = Object.freeze({
+  "5h": "5H",
+  week: "WEEK",
+});
+
+function usageLimitCeilings(
+  environment: Readonly<Record<string, string | undefined>>,
+): Readonly<Partial<Record<UsageWindowKind, number>>> {
+  const ceilings: Partial<Record<UsageWindowKind, number>> = {};
+  for (const kind of USAGE_WINDOWS) {
+    const raw = environment[`USAGE_LIMIT_${USAGE_LIMIT_ENV_SUFFIX[kind]}`];
+    if (raw === undefined) continue;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error(`USAGE_LIMIT_${USAGE_LIMIT_ENV_SUFFIX[kind]} must be a number >= 0`);
+    }
+    ceilings[kind] = parsed;
+  }
+  return Object.freeze(ceilings);
 }
 
 // Boat capture is OFF unless explicitly enabled. Proxy and server share the
@@ -93,5 +117,6 @@ export function readConfig(
       1,
     ),
     captureMaxBytes: integer(environment.CAPTURE_MAX_BYTES, 268_435_456, "CAPTURE_MAX_BYTES", 1),
+    usageLimitCeilings: usageLimitCeilings(environment),
   });
 }

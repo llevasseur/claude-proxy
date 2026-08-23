@@ -1,14 +1,19 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   BoatContextPage,
+  BoatErrorsPage,
   BoatMessagesPage,
+  BoatPromptMixPage,
   BoatPromptPage,
+  BoatPromptsPage,
+  BoatSessionDetailPage,
   BoatSessionsPage,
   BoatToolCallsPage,
   BoatToolsPage,
 } from "./boat/boatPages";
 import { DEFAULT_HISTORY_PAGE_SIZE, HistoryPage } from "./car/historyPage";
 import { validateCarSearch, validateHistorySearch } from "./car/searchParams";
+import { TrendDetailPage } from "./car/trendDetailPage";
 import { TrendsPage } from "./car/trendsPage";
 import { OverviewPage } from "./OverviewPage";
 import { useLiveOverview } from "./overview/useLiveOverview";
@@ -33,6 +38,7 @@ const NAV: ReadonlyArray<{
   { name: "boat-tools", href: "#/boat/tools", label: "Tool schemas" },
   { name: "boat-tool-calls", href: "#/boat/tool-calls", label: "Tool calls" },
   { name: "boat-sessions", href: "#/boat/sessions", label: "Sessions" },
+  { name: "boat-prompt-mix", href: "#/boat/prompt-mix", label: "Prompt mix" },
 ]);
 
 function boatSearch(search: URLSearchParams): {
@@ -66,6 +72,11 @@ export function DashboardShell() {
         <HistoryRouteView search={validateHistorySearch(route.search)} />
       ) : route.name === "trends" ? (
         <TrendsRouteView search={validateCarSearch(route.search)} />
+      ) : route.name === "trends-detail" ? (
+        <TrendDetailPage
+          date={route.search.get("date") ?? undefined}
+          filters={validateCarSearch(route.search)}
+        />
       ) : route.name === "boat" ? (
         <BoatContextPage
           date={boatSearch(route.search).date}
@@ -78,12 +89,25 @@ export function DashboardShell() {
         <BoatMessagesPage recordId={boatSearch(route.search).recordId} />
       ) : route.name === "boat-prompt" ? (
         <BoatPromptPage recordId={boatSearch(route.search).recordId} />
+      ) : route.name === "boat-prompt-mix" ? (
+        <BoatPromptMixPage />
+      ) : route.name === "boat-prompts" ? (
+        <BoatPromptsPage
+          hash={(() => {
+            const hash = route.search.get("hash") ?? undefined;
+            return hash === "" ? undefined : hash;
+          })()}
+        />
       ) : route.name === "boat-tools" ? (
         <BoatToolsPage />
       ) : route.name === "boat-tool-calls" ? (
         <BoatToolCallsPage />
       ) : route.name === "boat-sessions" ? (
         <BoatSessionsPage />
+      ) : route.name === "boat-session-detail" ? (
+        <BoatSessionDetailPage id={route.search.get("id") ?? undefined} />
+      ) : route.name === "boat-errors" ? (
+        <BoatErrorsPage />
       ) : (
         <Overview />
       )}

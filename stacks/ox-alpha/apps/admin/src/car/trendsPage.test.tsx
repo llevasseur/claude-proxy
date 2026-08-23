@@ -102,6 +102,30 @@ describe("Trends route", () => {
       ),
     ).toBe(true);
   });
+
+  it("links each day to its drill-down and renders that day's records", async () => {
+    const { historyRecord, historyPageResponse } = await import("./testSupport");
+    const fetchMock = stubFetch((url) => {
+      if (url.includes("/api/trends"))
+        return trendsResponse([bucket("2026-03-09", "2026-03-09T05:00:00.000Z")]);
+      if (url.includes("/api/history")) return historyPageResponse([historyRecord()]);
+      throw new Error(`unexpected url ${url}`);
+    });
+    window.location.hash = "#/trends";
+    renderShell();
+    await waitFor(() => expect(screen.getByTestId("trends-table")).toBeTruthy());
+    expect(screen.getByTestId("trends-chart")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("day-link-2026-03-09"));
+    await waitFor(() => expect(screen.getByTestId("trend-detail-table")).toBeTruthy());
+    expect(window.location.hash).toContain("#/trends/detail?date=2026-03-09");
+    expect(
+      urls(fetchMock).some(
+        (url) => url.includes("/api/history") && url.includes("from=2026-03-09"),
+      ),
+    ).toBe(true);
+    expect(screen.getByTestId("trend-detail-table").querySelectorAll("tbody tr")).toHaveLength(1);
+  });
 });
 
 function urls(fetchMock: ReturnType<typeof stubFetch>): string[] {

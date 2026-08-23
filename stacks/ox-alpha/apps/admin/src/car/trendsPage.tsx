@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useId } from "react";
 import { type CostUnavailableReason, fetchTrends, type PricedCost, type UsageTotals } from "../api";
+import { BarChart } from "../ui/BarChart";
 import { FilterBar, type FilterBarFilters } from "./filterBar";
 import {
   costCell,
@@ -109,60 +110,80 @@ export function TrendsPage({ filters, onSearchChange }: TrendsPageProps) {
           </span>
         </div>
       ) : data !== undefined ? (
-        <div className="card car-table-card" aria-busy={result.isFetching}>
-          <table className="car-table" data-testid="trends-table">
-            <caption className="sr-only">Daily total usage trend</caption>
-            <thead>
-              <tr>
-                <th scope="col">Day</th>
-                <th scope="col">Requests</th>
-                <th scope="col">Total tokens</th>
-                <th scope="col">Latest request</th>
-                <th scope="col">Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.buckets.map((bucket) => (
-                <tr key={bucket.startInclusive}>
-                  <td data-testid={`day-${bucket.date}`}>
-                    {formatDay(bucket.startInclusive, bucket.reportTimezone)}
-                  </td>
-                  <td>{formatTokens(bucket.requestCount)}</td>
+        <>
+          <div className="card">
+            <BarChart
+              testId="trends-chart"
+              data={data.buckets.map((bucket) => ({
+                label: bucket.date,
+                value: bucket.totalTokens,
+              }))}
+            />
+          </div>
+          <div className="card car-table-card" aria-busy={result.isFetching}>
+            <table className="car-table" data-testid="trends-table">
+              <caption className="sr-only">Daily total usage trend</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Day</th>
+                  <th scope="col">Requests</th>
+                  <th scope="col">Total tokens</th>
+                  <th scope="col">Latest request</th>
+                  <th scope="col">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.buckets.map((bucket) => (
+                  <tr key={bucket.startInclusive}>
+                    <td data-testid={`day-${bucket.date}`}>
+                      {filters.model && filters.model.length > 0 ? (
+                        formatDay(bucket.startInclusive, bucket.reportTimezone)
+                      ) : (
+                        <a
+                          href={`#/trends/detail?date=${encodeURIComponent(bucket.date)}`}
+                          data-testid={`day-link-${bucket.date}`}
+                        >
+                          {formatDay(bucket.startInclusive, bucket.reportTimezone)}
+                        </a>
+                      )}
+                    </td>
+                    <td>{formatTokens(bucket.requestCount)}</td>
+                    <td>
+                      <span className="car-token-total">{formatTokens(bucket.totalTokens)}</span>
+                      <span className="car-token-detail muted">{tokensDetail(bucket)}</span>
+                    </td>
+                    <td>
+                      {bucket.latestEventTimestamp
+                        ? formatTimestamp(bucket.latestEventTimestamp)
+                        : "—"}
+                    </td>
+                    <td>
+                      <CostCellView value={bucket} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th scope="row">Range total</th>
+                  <td>{formatTokens(data.total.requestCount)}</td>
                   <td>
-                    <span className="car-token-total">{formatTokens(bucket.totalTokens)}</span>
-                    <span className="car-token-detail muted">{tokensDetail(bucket)}</span>
+                    <span className="car-token-total">{formatTokens(data.total.totalTokens)}</span>
+                    <span className="car-token-detail muted">{tokensDetail(data.total)}</span>
                   </td>
+                  <td>—</td>
                   <td>
-                    {bucket.latestEventTimestamp
-                      ? formatTimestamp(bucket.latestEventTimestamp)
-                      : "—"}
-                  </td>
-                  <td>
-                    <CostCellView value={bucket} />
+                    <CostCellView value={data.total} />
                   </td>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row">Range total</th>
-                <td>{formatTokens(data.total.requestCount)}</td>
-                <td>
-                  <span className="car-token-total">{formatTokens(data.total.totalTokens)}</span>
-                  <span className="car-token-detail muted">{tokensDetail(data.total)}</span>
-                </td>
-                <td>—</td>
-                <td>
-                  <CostCellView value={data.total} />
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-          <p className="muted car-trends-note">
-            Days with any unpriced request report their token counts with an explicit unavailable
-            state instead of an amount; fully-priced days show computed amounts.
-          </p>
-        </div>
+              </tfoot>
+            </table>
+            <p className="muted car-trends-note">
+              Days with any unpriced request report their token counts with an explicit unavailable
+              state instead of an amount; fully-priced days show computed amounts.
+            </p>
+          </div>
+        </>
       ) : null}
     </section>
   );
