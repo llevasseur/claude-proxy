@@ -1,4 +1,6 @@
 import {
+  ChatCompletionSseObserver,
+  jsonChatCompletionIdentity as coreJsonChatCompletionIdentity,
   jsonResponseIdentity as coreJsonResponseIdentity,
   estimateUsageCost,
   type SanitizedAuditSidecarV1,
@@ -6,7 +8,7 @@ import {
   type UsageTotals,
 } from "../../packages/core/src/index.ts";
 
-export { SseResponseObserver };
+export { ChatCompletionSseObserver, SseResponseObserver };
 
 // Observation mechanics ported from codex-proxy `proxy/src/observe.ts`: the
 // request model comes from the buffered JSON request body, the authoritative
@@ -23,7 +25,7 @@ function object(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-export function responsesRequestModel(body: Uint8Array): string | null {
+export function parseRequestModel(body: Uint8Array): string | null {
   try {
     const request = object(JSON.parse(Buffer.from(body).toString("utf8")));
     return typeof request?.model === "string" && request.model.length > 0 ? request.model : null;
@@ -34,6 +36,10 @@ export function responsesRequestModel(body: Uint8Array): string | null {
 
 export function jsonResponseIdentity(body: Uint8Array): ResponseIdentity | null {
   return coreJsonResponseIdentity(Buffer.from(body).toString("utf8"));
+}
+
+export function jsonChatCompletionIdentity(body: Uint8Array): ResponseIdentity | null {
+  return coreJsonChatCompletionIdentity(Buffer.from(body).toString("utf8"));
 }
 
 export function makeSidecar(input: {

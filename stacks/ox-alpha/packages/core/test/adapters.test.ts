@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { jsonResponseIdentity, SseResponseObserver } from "../src/adapters.ts";
+import {
+  ChatCompletionSseObserver,
+  jsonChatCompletionIdentity,
+  jsonResponseIdentity,
+  SseResponseObserver,
+} from "../src/adapters.ts";
 
 const completedResponse = {
   object: "response",
@@ -96,5 +101,85 @@ describe("SseResponseObserver", () => {
     observer.push(bytes.slice(0, 30));
     observer.push(bytes.slice(30));
     expect(observer.finish()?.usage.totalTokens).toBe(150);
+  });
+});
+
+const chatCompletion = {
+  id: "20260823094447d415402244454114",
+  object: "chat.completion",
+  model: "x-preview-f-free",
+  usage: {
+    prompt_tokens: 89,
+    completion_tokens: 23,
+    total_tokens: 112,
+    prompt_tokens_details: { cached_tokens: 64 },
+    completion_tokens_details: { reasoning_tokens: 9 },
+  },
+};
+
+describe("jsonChatCompletionIdentity", () => {
+  it("selects model and usage from a whole chat completion body", () => {
+    expect(jsonChatCompletionIdentity(JSON.stringify(chatCompletion))).toEqual({
+      model: "x-preview-f-free",
+      usage: expect.objectContaining({ inputTokens: 89, outputTokens: 23, totalTokens: 112 }),
+    });
+  });
+
+  it("returns null for another contract, a blank model, or a malformed body", () => {
+    expect(jsonChatCompletionIdentity(JSON.stringify(completedResponse))).toBeNull();
+    expect(jsonChatCompletionIdentity("not json")).toBeNull();
+    expect(
+      jsonChatCompletionIdentity(JSON.stringify({ object: "chat.completion", model: "" })),
+    ).toBeNull();
+  });
+
+  it("returns null when usage is missing or invalid instead of throwing", () => {
+    expect(
+      jsonChatCompletionIdentity(JSON.stringify({ object: "chat.completion", model: "m" })),
+    ).toBeNull();
+    expect(
+      jsonChatCompletionIdentity(
+        JSON.stringify({ object: "chat.completion", model: "m", usage: { prompt_tokens: -1 } }),
+      ),
+    ).toBeNull();
+  });
+});
+
+function chatChunk(payload: unknown): Uint8Array {
+  return new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+describe("ChatCompletionSseObserver", () => {
+  it("takes usage from the late chunk that carries it", () => {
+    const observer = new ChatCompletionSseObserver();
+    observer.push(
+      chatChunk({
+        object: "chat.completion.chunk",
+        model: "x-preview-f-free",
+        choices: [{ delta: { content: "hel" } }],
+      }),
+    );
+    observer.push(
+      chatChunk({
+        object: "chat.completion.chunk",
+        model: "x-preview-f-free",
+        choices: [],
+        usage: chatCompletion.usage,
+      }),
+    );
+    observer.push(new TextEncoder().encode("data: [DONE]\n\n"));
+    expect(observer.finish()?.usage.totalTokens).toBe(112);
+  });
+
+  it("stays null when the stream never carries usage", () => {
+    const observer = new ChatCompletionSseObserver();
+    observer.push(
+      chatChunk({
+        object: "chat.completion.chunk",
+        model: "x-preview-f-free",
+        choices: [{ delta: { content: "hi" } }],
+      }),
+    );
+    expect(observer.finish()).toBeNull();
   });
 });

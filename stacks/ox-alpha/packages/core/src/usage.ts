@@ -24,28 +24,37 @@ function optionalTokenCount(container: Record<string, unknown>, key: string, pat
   return value === undefined ? 0 : tokenCount(value, `${path}.${key}`);
 }
 
-export function normalizeResponsesUsage(value: unknown): UsageTotals {
+// The two wire contracts spell the same five counts differently, so the field
+// names are all that differs — the invariants below hold for both.
+interface TokenFieldNames {
+  readonly input: string;
+  readonly output: string;
+  readonly inputDetails: string;
+  readonly outputDetails: string;
+}
+
+function normalizeUsage(value: unknown, fields: TokenFieldNames): UsageTotals {
   const usage = record(value, "usage");
-  const inputTokens = tokenCount(usage.input_tokens, "usage.input_tokens");
-  const outputTokens = tokenCount(usage.output_tokens, "usage.output_tokens");
+  const inputTokens = tokenCount(usage[fields.input], `usage.${fields.input}`);
+  const outputTokens = tokenCount(usage[fields.output], `usage.${fields.output}`);
   const totalTokens = tokenCount(usage.total_tokens, "usage.total_tokens");
   const inputDetails =
-    usage.input_tokens_details === undefined
+    usage[fields.inputDetails] === undefined
       ? {}
-      : record(usage.input_tokens_details, "usage.input_tokens_details");
+      : record(usage[fields.inputDetails], `usage.${fields.inputDetails}`);
   const outputDetails =
-    usage.output_tokens_details === undefined
+    usage[fields.outputDetails] === undefined
       ? {}
-      : record(usage.output_tokens_details, "usage.output_tokens_details");
+      : record(usage[fields.outputDetails], `usage.${fields.outputDetails}`);
   const cachedInputTokens = optionalTokenCount(
     inputDetails,
     "cached_tokens",
-    "usage.input_tokens_details",
+    `usage.${fields.inputDetails}`,
   );
   const reasoningOutputTokens = optionalTokenCount(
     outputDetails,
     "reasoning_tokens",
-    "usage.output_tokens_details",
+    `usage.${fields.outputDetails}`,
   );
 
   if (cachedInputTokens > inputTokens) {
@@ -64,5 +73,25 @@ export function normalizeResponsesUsage(value: unknown): UsageTotals {
     outputTokens,
     reasoningOutputTokens,
     totalTokens,
+  });
+}
+
+export function normalizeResponsesUsage(value: unknown): UsageTotals {
+  return normalizeUsage(value, {
+    input: "input_tokens",
+    output: "output_tokens",
+    inputDetails: "input_tokens_details",
+    outputDetails: "output_tokens_details",
+  });
+}
+
+// OpenAI-compatible chat/completions usage (ADR 0012). Same five counts under
+// the older prompt/completion names.
+export function normalizeChatCompletionsUsage(value: unknown): UsageTotals {
+  return normalizeUsage(value, {
+    input: "prompt_tokens",
+    output: "completion_tokens",
+    inputDetails: "prompt_tokens_details",
+    outputDetails: "completion_tokens_details",
   });
 }

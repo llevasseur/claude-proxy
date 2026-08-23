@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { estimateUsageCost, PRICING_CATALOGUE, PRICING_CATALOGUE_VERSION } from "../src/pricing.ts";
+import {
+  estimateUsageCost,
+  PRICING_CATALOGUE,
+  PRICING_CATALOGUE_VERSION,
+  PRICING_SOURCE,
+} from "../src/pricing.ts";
 import type { UsageTotals } from "../src/types.ts";
 
 const usage: UsageTotals = Object.freeze({
@@ -38,6 +43,8 @@ describe("estimateUsageCost", () => {
       "gpt-5-2025-08-07",
       "gpt-5-mini",
       "gpt-5-nano",
+      // Borrowed rather than ported — see ADR 0013.
+      "x-preview-f-free",
     ]);
     expect(PRICING_CATALOGUE["gpt-5-mini"]?.usdPerMillionTokens).toEqual({
       input: "0.25",
@@ -105,5 +112,39 @@ describe("estimateUsageCost", () => {
       totalTokens: 0,
     });
     expect(result.cost?.amountUsd).toBe("0.000000");
+  });
+
+  it("prices Ox Alpha at the Fable stand-in rates from ADR 0013", () => {
+    // x-preview-f-free: input 10.00, cached input 1.00, output 50.00 per million.
+    // (600k uncached x 10) + (400k cached x 1) + (300k output x 50) + (200k reasoning x 50)
+    const result = estimateUsageCost("x-preview-f-free", {
+      ...usage,
+      cachedInputTokens: 400_000,
+    });
+    expect(result.cost?.amountUsd).toBe("31.400000");
+    expect(result.unavailableReason).toBeNull();
+  });
+});
+
+describe("PRICING_CATALOGUE provenance", () => {
+  it("keeps the ported OpenAI entries on the OpenAI source and catalogue date", () => {
+    for (const model of ["gpt-5", "gpt-5-2025-08-07", "gpt-5-mini", "gpt-5-nano"]) {
+      expect(PRICING_CATALOGUE[model]).toMatchObject({
+        source: PRICING_SOURCE,
+        effectiveDate: PRICING_CATALOGUE_VERSION,
+      });
+    }
+  });
+
+  it("attributes the borrowed Ox Alpha rates to Anthropic rather than OpenAI", () => {
+    const entry = PRICING_CATALOGUE["x-preview-f-free"];
+    expect(entry?.source).toBe("https://platform.claude.com/docs/en/about-claude/pricing");
+    expect(entry?.source).not.toBe(PRICING_SOURCE);
+    expect(entry?.usdPerMillionTokens).toEqual({
+      input: "10.00",
+      cachedInput: "1.00",
+      output: "50.00",
+      reasoningOutput: "50.00",
+    });
   });
 });

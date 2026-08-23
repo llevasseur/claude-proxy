@@ -19,3 +19,5 @@ timestamp: 2026-08-22
 - [0009 — Review one campaign at one closing pull request](0009-one-campaign-review-granularity.md)
 - [0010 — Republish the corpus adapted, not copied](0010-adapted-corpus-renumbering.md)
 - [0011 — Certify phase boundaries with automated evidence](0011-automated-boundary-evidence.md)
+- [0012 — Meter OpenAI-compatible chat/completions usage](0012-meter-chat-completions-usage.md)
+- [0013 — Price Ox Alpha with Claude Fable 5 rates as a stand-in](0013-fable-standin-rates-for-ox-alpha.md)

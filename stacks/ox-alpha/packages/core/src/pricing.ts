@@ -1,24 +1,48 @@
 import type { CostResult, ModelPricing, PriceCategory, UsageTotals } from "./types.ts";
 
-// Pricing mechanics and catalogue rates ported verbatim from codex-proxy
-// `packages/core/src/pricing.ts` — rates are never invented here.
+// Pricing mechanics and OpenAI catalogue rates ported verbatim from codex-proxy
+// `packages/core/src/pricing.ts` — rates are never invented here. The one
+// borrowed entry is declared as such in ADR 0013 rather than passed off as the
+// model's own price.
 export const PRICING_CATALOGUE_VERSION = "2025-08-07";
 export const PRICING_SOURCE = "https://openai.com/api/pricing/";
+
+// Ox Alpha (`x-preview-f-free`) is served by opencode zen, which publishes no
+// rate card, so ADR 0013 prices it with Anthropic's Claude Fable 5 rates as a
+// declared stand-in. Its provenance is recorded per entry rather than under
+// the OpenAI constants above, which would misattribute it.
+const FABLE_STANDIN_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing";
+const FABLE_STANDIN_VERSION = "2026-08-22";
+
+interface RateProvenance {
+  readonly effectiveDate: string;
+  readonly source: string;
+}
 
 export const PRICING_CATALOGUE: Readonly<Record<string, ModelPricing>> = Object.freeze({
   "gpt-5": pricing("gpt-5", "1.25", "0.125", "10.00"),
   "gpt-5-2025-08-07": pricing("gpt-5-2025-08-07", "1.25", "0.125", "10.00"),
   "gpt-5-mini": pricing("gpt-5-mini", "0.25", "0.025", "2.00"),
   "gpt-5-nano": pricing("gpt-5-nano", "0.05", "0.005", "0.40"),
+  "x-preview-f-free": pricing("x-preview-f-free", "10.00", "1.00", "50.00", {
+    effectiveDate: FABLE_STANDIN_VERSION,
+    source: FABLE_STANDIN_SOURCE,
+  }),
 });
 
-function pricing(model: string, input: string, cachedInput: string, output: string): ModelPricing {
+function pricing(
+  model: string,
+  input: string,
+  cachedInput: string,
+  output: string,
+  provenance: RateProvenance = { effectiveDate: PRICING_CATALOGUE_VERSION, source: PRICING_SOURCE },
+): ModelPricing {
   return Object.freeze({
     model,
     currency: "USD",
     unit: "one-million-tokens",
-    effectiveDate: PRICING_CATALOGUE_VERSION,
-    source: PRICING_SOURCE,
+    effectiveDate: provenance.effectiveDate,
+    source: provenance.source,
     usdPerMillionTokens: Object.freeze({ input, cachedInput, output, reasoningOutput: output }),
   });
 }
