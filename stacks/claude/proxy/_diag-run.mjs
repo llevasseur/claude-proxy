@@ -19,7 +19,11 @@ import fs from 'node:fs';
 const DEADLINE_MS = 90_000;
 const args = process.argv.slice(2);
 
-const child = spawn(process.execPath, ['--test', ...args], { stdio: 'inherit' });
+const child = spawn(
+  process.execPath,
+  ['--test', '--test-reporter=./_diag-reporter.mjs', '--test-reporter-destination=stdout', ...args],
+  { stdio: 'inherit' },
+);
 
 const read = (p) => {
   try {

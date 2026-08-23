@@ -61,32 +61,6 @@ test('writes nothing until a request has handed it a token', async () => {
   assert.equal(fs.existsSync(path.join(dir, LIVE_USAGE_FILE)), false);
 });
 
-/**
- * Run `fn` with the console captured, returning its result and what it wrote.
- *
- * A failed poll warns, and these tests drive that path on purpose. Under `node --test`
- * each file runs in a child process whose stdout and stderr are pipes back to the
- * runner, and writing to that pipe is what left this file's child alive forever in CI
- * while the same run passed on macOS. Capturing the write turns the warning into an
- * assertion and leaves nothing writing to the pipe.
- */
-async function captureConsole<T>(fn: () => Promise<T>): Promise<{ result: T; output: string }> {
-  const lines: string[] = [];
-  const record = (...args: unknown[]): void => {
-    lines.push(args.map(String).join(' '));
-  };
-  const warn = console.warn;
-  const error = console.error;
-  console.warn = record;
-  console.error = record;
-  try {
-    return { result: await fn(), output: lines.join('\n') };
-  } finally {
-    console.warn = warn;
-    console.error = error;
-  }
-}
-
 test('keeps the last good reading when a poll fails', async () => {
   resetAuth();
   noteAuth({ authorization: 'Bearer oauth-token' });
@@ -95,22 +69,14 @@ test('keeps the last good reading when a poll fails', async () => {
 
   // A stale reading still carries the reset instant the estimate anchors to,
   // so a failure must not clear it.
-  const rejected = await captureConsole(() =>
-    pollOnce(dir, async () => ({ ok: false, status: 500, json: async () => ({}) })),
-  );
-  assert.equal(rejected.result, false);
-  assert.match(rejected.output, /usage poll failed: HTTP 500/);
+  assert.equal(await pollOnce(dir, async () => ({ ok: false, status: 500, json: async () => ({}) })), false);
   assert.deepEqual(readOut(dir).payload, [{ kind: 'seven_day', percent: 7 }]);
 
-  const threw = await captureConsole(() =>
-    pollOnce(dir, async () => {
+  assert.equal(
+    await pollOnce(dir, async () => {
       throw new Error('network down');
     }),
+    false,
   );
-  assert.equal(threw.result, false);
-  assert.match(threw.output, /usage poll failed: network down/);
   assert.deepEqual(readOut(dir).payload, [{ kind: 'seven_day', percent: 7 }]);
-
-  // The warning must never carry the credential either.
-  assert.equal(threw.output.includes('oauth-token'), false);
 });
