@@ -21,7 +21,7 @@ timestamp: 2026-08-22
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 04 | car-docs-verification | [car-release-04-car-docs-verification](car-release-04-car-docs-verification.md) | `task/car-release-04-car-docs-verification` | in progress |
+| 04 | car-docs-verification | [car-release-04-car-docs-verification](car-release-04-car-docs-verification.md) | `task/car-release-04-car-docs-verification` | blocked: 3 dispatch attempts failed on provider network errors |
 
 ## Completed
 
