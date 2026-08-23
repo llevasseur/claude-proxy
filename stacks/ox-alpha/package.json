@@ -6,6 +6,10 @@
     "node": ">=22.18"
   },
   "scripts": {
+    "proxy": "node --env-file-if-exists=proxy/.env proxy/src/proxy.ts",
+    "server": "pnpm --filter @ox-alpha-proxy/server start",
+    "admin": "pnpm --filter @ox-alpha-proxy/admin dev",
+    "zellij": "bash scripts/zellij.sh",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "build": "pnpm -r build",
