@@ -163,6 +163,20 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
     in isolation. Flaky under load rather than wrong. *(ticket 18 if the fix is cheap,
     otherwise its own ticket)*
 
+19. **codex is on an anti-slop warn tier that no record covers.**
+    `stacks/codex/.oxlintrc.json` restates all 15 rules at `warn` where the root sets
+    `error`. ADR 0051 designs a tier for **ox alone** — with a count, a ratchet and an
+    expiry — and codex has the severities without any of that. The campaign reasoned from
+    the opposite premise for several tickets: ticket 05's "restates its severities" was read
+    as *restoring* root severity, and ticket 21's dispatch asserted outright that codex was
+    not on a tier. **A silent tier looks identical to compliance and never shrinks.**
+    *(ticket 24)*
+20. **Two more live flakes, in lanes no ticket owns yet.** Ticket 21's whole-repo loop failed
+    **3 of 10** runs on `stacks/claude/server` and ox's admin — separate from the ox history
+    flake (ticket 20) and the codex proxy flake (ticket 21), both now fixed. This campaign
+    keeps surfacing flakes because before ticket 16 there was no CI to surface them.
+    *(candidate ticket)*
+
 ## Active tasks
 
 | # | Task | Plan | Branch | Status | Note |
@@ -171,6 +185,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
 | 22 | finish-adr-0050-scoped-names | [monorepo-fusion-22-finish-adr-0050-scoped-names](monorepo-fusion-22-finish-adr-0050-scoped-names.md) | `task/monorepo-fusion-22-finish-adr-0050-scoped-names` | in-progress | |
 | 23 | retire-stale-stack-agents-files | [monorepo-fusion-23-retire-the-stale-stack-agents-files](monorepo-fusion-23-retire-the-stale-stack-agents-files.md) | `task/monorepo-fusion-23-retire-the-stale-stack-agents-files` | todo | Ticket 14 merged the three AGENTS.md into one but `git rm` of the two stack copies was refused twice by the classifier; it correctly refused to empty them instead. Also carries two dangling references ticket 14 disclosed. |
+| 24 | decide-codex-oxlint-severities | [monorepo-fusion-24-decide-codex-oxlint-severities](monorepo-fusion-24-decide-codex-oxlint-severities.md) | `task/monorepo-fusion-24-decide-codex-oxlint-severities` | todo | Found by ticket 21: codex restates all 15 anti-slop rules at `warn` where the root sets `error`. ADR 0051 designs a warn tier for **ox alone**, so codex is on an undocumented one. |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 12 | merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus](monorepo-fusion-12-merge-adr-corpus.md) | `task/monorepo-fusion-12-merge-adr-corpus` | todo | |
 | 13 | write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs](monorepo-fusion-13-write-campaign-adrs.md) | `task/monorepo-fusion-13-write-campaign-adrs` | todo | |
