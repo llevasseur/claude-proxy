@@ -1,9 +1,13 @@
 ---
 type: spec
-title: Bike architecture
+title: Bike architecture (ox-alpha)
 description: Process, contract, storage, API, privacy, and recovery design for the Bike outcome.
 tags: [bike, architecture, responses-api, sqlite, sse]
 timestamp: 2026-08-22
+scope: ox-alpha
+provenance:
+  - repo: ox-alpha-proxy
+    file: docs/specs/bike-architecture.md
 ---
 
 # Bike architecture

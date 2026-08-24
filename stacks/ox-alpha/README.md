@@ -10,8 +10,9 @@ Four independently useful outcomes, delivered in order:
 3. **Boat** — explicit opt-in body capture with redaction and retention, then inspection.
 4. **Plane** — parity with the pinned `claude-proxy` commit.
 
-Read [the roadmap](docs/roadmap/four-rungs-to-plane.md) and
-[the decision records](docs/adrs/index.md) before changing anything.
+Read [the roadmap](../../docs/roadmap/four-rungs-to-plane.md) and
+[the decision records](../../docs/adrs/index.md) before changing anything. Both live in
+the repository-wide docs bundle; ox-alpha keeps no bundle of its own.
 
 
 ## Running locally
@@ -43,7 +44,7 @@ directories and the server reports no traffic. An absolute path avoids it.
 ## Headless operation and recovery
 
 Everything durable lives in final sanitized audit sidecars under `AUDIT_DIR`
-(see [ADR 0002](docs/adrs/0002-sanitized-sidecars.md)). The SQLite database is
+(see [ADR 0019](../../docs/adrs/0019-sanitized-audit-sidecars.md)). The SQLite database is
 rebuildable state and can be deleted at any time.
 
 **Ingest / rebuild.** The server reconciles the sidecar directory on start,

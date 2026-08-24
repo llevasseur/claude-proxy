@@ -1,9 +1,13 @@
 ---
 type: spec
-title: Bike architecture
+title: Bike architecture (codex)
 description: Process, contract, storage, API, privacy, and recovery design for the Bike outcome.
 tags: [bike, architecture, responses-api, sqlite, sse]
 timestamp: 2026-08-19
+scope: codex
+provenance:
+  - repo: codex-proxy
+    file: docs/specs/bike-architecture.md
 ---
 
 # Bike architecture
@@ -97,5 +101,5 @@ retains the shell and last known summary through reconnecting, stale, degraded, 
 - A corrupt sidecar is reported and quarantined without preventing other records.
 - A corrupt or missing database is deleted and rebuilt from final sidecars.
 
-The product and privacy choices are linked from the [Bike feature](../features/bike.md). The delivery sequence and
+The product and privacy choices are linked from the [Bike feature](../features/codex-bike.md). The delivery sequence and
 final parity contract are in the [Bike-to-Plane roadmap](../roadmap/bike-to-plane.md).

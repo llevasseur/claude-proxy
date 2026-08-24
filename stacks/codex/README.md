@@ -45,5 +45,7 @@ Bike keeps three failure domains separate:
 SQLite is disposable. Final sanitized sidecars are the source of truth, so recovery is deletion of the database
 followed by a complete re-ingest.
 
-See the [Bike feature](docs/features/bike.md), [architecture](docs/specs/bike-architecture.md), and
-[Bike-to-Plane roadmap](docs/roadmap/bike-to-plane.md).
+See the [Bike feature](../../docs/features/codex-bike.md),
+[architecture](../../docs/specs/codex-bike-architecture.md), and
+[Bike-to-Plane roadmap](../../docs/roadmap/bike-to-plane.md) in the repository-wide docs
+bundle.
