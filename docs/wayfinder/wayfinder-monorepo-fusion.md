@@ -46,7 +46,7 @@ correct errors in the original brief.
 | [0050](../adrs/0050-stack-scoped-environment-variables.md) | Port defaults stay verbatim; env-var names become stack-scoped with a per-package legacy fallback | **yes** |
 | [0051](../adrs/0051-absorb-ox-into-the-shared-lint-gate.md) | ox absorbed at a warn tier; its biome delta splits by fixability; the GritQL plugin is rescoped | no |
 | [0052](../adrs/0052-inherited-ratification-flags-survive-the-merge.md) | Inherited `needs-human`/`ratified` flags survive unchanged; the backfill covers only claude's 6 unflagged records | **yes** |
-| [0053](../adrs/0053-the-merged-corpus-replaces-its-sources.md) | The merged ADR record replaces both sources: **38** inherited records, not 46; new records renumbered 0039–0056 | **yes** |
+| [0053](../adrs/0053-the-merged-corpus-replaces-its-sources.md) | The merged ADR record replaces both sources: **38** inherited records, not 46; campaign records numbered above them | **yes** |
 | [0054](../adrs/0054-each-stack-keeps-its-own-corpus-root.md) | Each stack keeps its corpus at its own stack root; resolvers untouched; migration carries its own evidence | **yes** |
 | [0055](../adrs/0055-the-rename-covers-every-non-import-reference.md) | The rename covers every non-import reference, gated by a grep, because pnpm fails open | no |
 | [0056](../adrs/0056-the-docs-gate-asserts-indexes-by-file.md) | The docs gate asserts section indexes by file and permits links out to source | no |
@@ -195,7 +195,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | 24 | decide-codex-oxlint-severities | [monorepo-fusion-24-decide-codex-oxlint-severities](monorepo-fusion-24-decide-codex-oxlint-severities.md) | `task/monorepo-fusion-24-decide-codex-oxlint-severities` | todo | Found by ticket 21: codex restates all 15 anti-slop rules at `warn` where the root sets `error`. ADR 0051 designs a warn tier for **ox alone**, so codex is on an undocumented one. |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 25 | retire-sibling-docs-trees | [monorepo-fusion-25-retire-the-sibling-docs-trees](monorepo-fusion-25-retire-the-sibling-docs-trees.md) | `task/monorepo-fusion-25-retire-the-sibling-docs-trees` | todo | **A charting gap, not a slipped ticket.** `stacks/{codex,ox-alpha}/docs/{adrs,features,roadmap,specs}` were never merged into the root bundle. While the sibling `adrs/` stand, each of the eight shared decisions is stated in more than one live file — the contradiction ox ADR 0010 warned of, and a direct violation of ADR 0053. |
-| 13 | write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs](monorepo-fusion-13-write-campaign-adrs.md) | `task/monorepo-fusion-13-write-campaign-adrs` | todo | |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -268,6 +267,42 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 13 — write-campaign-adrs · 2026-08-24 · PR #282
+
+Eleven records at **0039–0049**, every one `ratified: true`, `scope: all`, carrying a
+`provenance` field naming the campaign, and **none carrying `needs-human`** — written as
+records of decisions already taken rather than re-opened.
+
+**It re-derived the numbering against the directory rather than trusting the plan or my
+dispatch.** Both said 0039–0049; it read `docs/adrs/` first, confirmed those eleven slots were
+genuinely free between the 38 inherited records and the campaign's own at 0050+, and only then
+wrote. The range was right, but it was checked rather than assumed — which is the correct
+order given I had just told it my own numbers might be stale.
+
+The load-bearing content survived at full strength. **0039** supersedes **0022** and **0023**,
+resolved through `legacy-map.md` and cited by their post-merge numbers, with the reasoning
+stated outright: parity with a repository is a category error once that repository is a
+directory. **0040** says "codex/ox" names shared repo lineage and nothing else, forbids
+inferring harness from provider or provider from harness, and requires two independent columns
+and two independent registries **with no combined enum**. **0044** keeps cost **null, never
+0**. **0047** rests on evidence — `request_skim` is derived before eviction and is
+forward-only, so a rebuild deletes irreproducible data while reporting success.
+
+`okq --bundle docs validate` was **byte-identical at base and after**, with zero findings under
+`adrs/` on both sides. `ratified=true` went 7 → 18.
+
+**Two follow-ups its reviewer raised, both traceable to me, both now owned:**
+
+1. **Supersession is discoverable only forward.** No `superseded-by` key exists anywhere in the
+   corpus, so a reader arriving at 0022, 0023 or 0028 has no way to learn 0039 replaced them —
+   they read as current. **Folded into ticket 11**, which adds the key and asserts supersession
+   is **bidirectional**, since a one-way link is what produced this.
+2. **ADR 0053's forward projection was stale** — it claimed "56 records total" and a range
+   ending at 0056; the corpus holds 57 and runs to 0057. **Its load-bearing arithmetic is
+   unaffected**: the inherited count of 38 is what that record exists to establish and it held
+   exactly. Only the projected total was wrong, and the ADR now states a shape instead, for the
+   same reason ADR 0052 stopped quoting a count.
 
 ### 15 — re-record-route-budget · 2026-08-24 · PR #281
 

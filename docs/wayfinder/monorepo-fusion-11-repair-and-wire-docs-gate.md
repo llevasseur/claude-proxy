@@ -28,6 +28,25 @@ between `okq:index:begin`/`okq:index:end` markers and emits **directory** links 
 run. claude also has no `docs/roadmap/` (it arrives with ox) and does have a
 `docs/wayfinder/` the assertion never checks.
 
+## Also in scope, added after ticket 13 landed
+
+**Supersession in this corpus is discoverable only forward.** A record names what it
+supersedes; **nothing names what supersedes it**, and no `superseded-by` key exists anywhere
+in `docs/adrs/`. So a reader arriving at 0022, 0023 or 0028 has no way to learn that 0039
+replaced them — they read as current. In a corpus this campaign just tripled in size, that is
+a real navigation defect rather than a tidiness one.
+
+- **Add a `superseded-by` frontmatter key** to every record that something supersedes. Derive
+  the set from the existing forward `Supersedes` references rather than by hand — at minimum
+  0022, 0023 and 0028, but scan for others rather than trusting that list.
+- **Assert it in the gate**: for every `superseded-by: X`, record X must exist and must name
+  this record in its own supersedes reference. **Bidirectional or it fails.** A one-way link
+  is what produced this defect, and a gate that only checks the direction that already works
+  would let it recur.
+- **Do not mark anything superseded that is not.** The distinction ADR 0053 draws holds here:
+  a *merged* record is not a superseded one, and the eight merged pairs must not acquire this
+  key by association.
+
 ## Criteria
 
 1. **Assert each section index exists as a file**, not that the root index links to it

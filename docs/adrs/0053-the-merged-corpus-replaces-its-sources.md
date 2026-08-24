@@ -76,8 +76,20 @@ are load-bearing; numbers move:
 | 0050 | **0042** | claude-proxy's dashboard is the design baseline |
 | 0051 | **0043** | Campaign state lives in the repo |
 
-The six pre-ratified decisions take 0044–0049, and the seven decisions this `/dev` run
-made take 0050–0056. **56 records total: 38 inherited, 18 new.**
+The six pre-ratified decisions take 0044–0049, and the decisions this `/dev` run made take
+0050 onward.
+
+**The forward projection this record originally carried — "56 records total: 38 inherited,
+18 new" — was wrong, and is corrected here rather than left to be discovered.** The campaign
+kept making decisions after this ADR was written, so the run's own records grew past the
+seven it anticipated. **The measured corpus is 57 records running to 0057**: 38 inherited at
+0001–0038, eleven campaign records at 0039–0049, and this run's decision records from 0050.
+
+**The arithmetic that matters is unaffected.** The inherited count of 38 — 46 files less the
+16 paired records merged into 8 — is what this record exists to establish, and it held
+exactly: ticket 12 landed 38, with 29 of them tied on date and broken by source number as
+this record required. **Only the projection of the total was stale**, and a total is precisely
+the thing a live campaign changes by construction. Do not restate one here.
 
 ## Consequences
 
@@ -86,8 +98,14 @@ made take 0050–0056. **56 records total: 38 inherited, 18 new.**
 - ADR 0039's Supersedes field points at the **merged records** that `codex/ox#0005` and
   `#0006` became, and names the originals through the legacy map. Pointing at
   `codex#0005` directly would reference a number that no longer identifies anything.
-- The done criterion "docs/adrs holds 46 renumbered records" is replaced by "38
-  renumbered records plus 0039–0056".
+- The done criterion "docs/adrs holds 46 renumbered records" is replaced by **"38 renumbered
+  inherited records at 0001–0038, plus this campaign's own records above them"** — stated as
+  a shape rather than a total, for the reason above.
+- **Supersession in this corpus is discoverable only forward.** A record names what it
+  supersedes; nothing names what supersedes it, and no `superseded-by` key exists anywhere.
+  So a reader arriving at 0022, 0023 or 0028 has no way to learn they have been superseded
+  by 0039. That is a defect in the corpus rather than in any one record, and **ticket 11 adds
+  the back-reference and a gate assertion that supersession is bidirectional.**
 - Because claude's block sorts first and its numbers are already dense, **all 17 claude
   records keep their existing numbers**, which is why "claude 0001 keeps 0001" appeared
   to hold.
