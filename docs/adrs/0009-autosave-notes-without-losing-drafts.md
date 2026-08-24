@@ -4,6 +4,11 @@ title: Autosave notes without losing drafts
 description: Debounce note saves, retain failed drafts, and reorder notes only after successful content commits.
 tags: [architecture, notes, dashboard, autosave]
 timestamp: 2026-08-16
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0009"
+    file: docs/adrs/0009-autosave-notes-without-losing-drafts.md
 decided-by: /dev
 ratified: false
 wayfinder: notes
@@ -30,3 +35,10 @@ Debounce autosave and show explicit save state. Retain the local draft after net
 ## Consequences
 
 The list reflects durable edits instead of keystrokes or lifecycle actions. The dashboard needs durable in-memory draft and conflict states.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

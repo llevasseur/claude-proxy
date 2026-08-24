@@ -4,6 +4,13 @@ title: Adopt SQLite as the query substrate over the log files
 description: Index the audit sidecars into a disposable SQLite view so reads can be indexed, joined, and aggregated, while logs/ stays the source of truth.
 tags: [architecture, backend, storage, performance]
 timestamp: 2026-08-02
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0004"
+    file: docs/adrs/0004-adopt-sqlite-as-the-query-substrate.md
+ratified: true
+needs-human: false
 ---
 
 # Adopt SQLite as the query substrate over the log files
@@ -170,3 +177,10 @@ What shipped instead is retention and lifecycle ownership: this repo archives an
 evicts its own logs, keeps every sidecar forever, and reports an evicted body as a
 typed state carrying the retained metrics. The campaign is complete at slice 6;
 the substrate stays a disposable view of the files, permanently.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

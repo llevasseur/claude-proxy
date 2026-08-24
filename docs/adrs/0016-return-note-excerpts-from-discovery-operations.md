@@ -4,6 +4,11 @@ title: Return note excerpts from discovery operations
 description: Keep list and search responses bounded by returning metadata and derived excerpts instead of full Markdown bodies.
 tags: [architecture, notes, api, search]
 timestamp: 2026-08-16
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0016"
+    file: docs/adrs/0016-return-note-excerpts-from-discovery-operations.md
 decided-by: /dev
 ratified: false
 wayfinder: notes
@@ -30,3 +35,10 @@ Return note metadata and an approximately 200-character derived plain-text excer
 ## Consequences
 
 Sidebar and agent discovery payloads remain bounded. Clients perform a second request when they need complete content.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.
