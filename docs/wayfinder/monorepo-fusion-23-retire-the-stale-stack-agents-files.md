@@ -31,6 +31,25 @@ siblings' resolution order and left the parsing alone — deliberately, under AD
 zero-behaviour-change rule, which is why claude has three config-test cases where codex's
 proxy has four.
 
+## Also in scope, added after ticket 24 landed
+
+**Root `AGENTS.md` says codex "restates the 15 anti-slop rules". It now restates 7.** Ticket
+24 measured codex at root severity — 123 diagnostics across 19 files on 7 of the 15 rules —
+kept the tier, and **applied the ratchet immediately**: the 8 rules firing zero times came out
+of the restatement and inherit the root's `error`. That 7-rule list is now the counter.
+
+Correct `AGENTS.md` to say 7, and to cite **ADR 0051 as covering codex as well as ox** — the
+ADR was amended to carry codex explicitly, with per-rule counts, ox's ratchet and ox's expiry
+at the end of campaign 3.
+
+Record the reason the tier survived, because a bare count invites someone to just clear it:
+**69 of the 123 sit on rules whose only remedy is parsing input at an I/O boundary or
+replacing an `unknown`/open-dictionary type with a domain type.** Both change what codex does
+with malformed input, which is the runtime change this campaign forbids — the same ground on
+which ADR 0051 already rejected ox's `useExhaustiveDependencies` fixes.
+
+Ticket 24 also added no `CHANGELOG.md` entry. Add one covering it.
+
 ## Criteria
 
 1. **Before deleting anything, confirm the root `AGENTS.md` actually absorbed what those two

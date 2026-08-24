@@ -44,7 +44,7 @@ correct errors in the original brief.
 | ADR | Decision | needs-human |
 |---|---|---|
 | [0050](../adrs/0050-stack-scoped-environment-variables.md) | Port defaults stay verbatim; env-var names become stack-scoped with a per-package legacy fallback | **yes** |
-| [0051](../adrs/0051-absorb-ox-into-the-shared-lint-gate.md) | ox absorbed at a warn tier; its biome delta splits by fixability; the GritQL plugin is rescoped | no |
+| [0051](../adrs/0051-absorb-ox-into-the-shared-lint-gate.md) | ox **and codex** absorbed at a warn tier with counts, a ratchet and an expiry; ox's biome delta splits by fixability. **The GritQL plugin is NOT rescoped** — Biome 2.5.6 cannot; sibling bare-px sites are rewritten instead | no |
 | [0052](../adrs/0052-inherited-ratification-flags-survive-the-merge.md) | Inherited `needs-human`/`ratified` flags survive unchanged; the backfill covers only claude's 6 unflagged records | **yes** |
 | [0053](../adrs/0053-the-merged-corpus-replaces-its-sources.md) | The merged ADR record replaces both sources: **38** inherited records, not 46; campaign records numbered above them | **yes** |
 | [0054](../adrs/0054-each-stack-keeps-its-own-corpus-root.md) | Each stack keeps its corpus at its own stack root; resolvers untouched; migration carries its own evidence | **yes** |
@@ -192,7 +192,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
 | 23 | retire-stale-stack-agents-files | [monorepo-fusion-23-retire-the-stale-stack-agents-files](monorepo-fusion-23-retire-the-stale-stack-agents-files.md) | `task/monorepo-fusion-23-retire-the-stale-stack-agents-files` | todo | Ticket 14 merged the three AGENTS.md into one but `git rm` of the two stack copies was refused twice by the classifier; it correctly refused to empty them instead. Also carries two dangling references ticket 14 disclosed. |
-| 24 | decide-codex-oxlint-severities | [monorepo-fusion-24-decide-codex-oxlint-severities](monorepo-fusion-24-decide-codex-oxlint-severities.md) | `task/monorepo-fusion-24-decide-codex-oxlint-severities` | in-progress |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 25 | retire-sibling-docs-trees | [monorepo-fusion-25-retire-the-sibling-docs-trees](monorepo-fusion-25-retire-the-sibling-docs-trees.md) | `task/monorepo-fusion-25-retire-the-sibling-docs-trees` | in-progress |  |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
@@ -267,6 +266,42 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 24 — decide-codex-oxlint-severities · 2026-08-24 · PR #283
+
+**Measured first, then decided — and the decision rested on the shape of the findings, not
+their count.** `oxlint` at root severities against `stacks/codex/`: **123 diagnostics across
+19 files, on 7 of the 15 rules** — `require-safety-comment-for-type-assertion` 54,
+`no-unknown-parameters` 21, `no-runtime-typeof` 21, `no-unsafe-dictionary-type` 14,
+`no-chained-type-assertions` 8, `no-known-value-widening` 3, `no-unknown-returns` 2.
+
+**Path taken: keep the tier, make it legitimate.** Not on the count — **69 of the 123 sit on
+rules whose only remedy is parsing input at an I/O boundary, or replacing an
+`unknown`/open-dictionary type with a domain type.** Both change what codex does with
+**malformed input**, which is the runtime change this campaign forbids, and it is the same
+ground on which ADR 0051 already rejected ox's `useExhaustiveDependencies` fixes. ADR 0051 now
+carries codex explicitly with per-rule starting counts, ox's ratchet, ox's expiry at the end of
+campaign 3, and says plainly that codex's tier was **discovered rather than designed**.
+
+**It applied the ratchet on day one, which the plan did not ask for.** The 8 rules firing zero
+times came out of the restatement and now inherit the root's `error` — the config names **7
+rules where it named 15**, verified on the base, and that list is the counter. ox's tier is
+untouched: `git diff` over `stacks/ox-alpha/` is empty.
+
+**Two records it corrected on the way:**
+
+- **ADR 0051's Consequences claimed residual warnings land on "ox source only"** — falsified by
+  its own amendment, and fixed.
+- **Ticket 05's Completed entry did read wrong.** "extends the root and restates its
+  severities" was ambiguous about *whose* severities, and that ambiguity is how the campaign
+  came to assert codex was not on a tier at all. It now says codex restates its own `warn`
+  severities on top of the root and does not restore `error`.
+
+**Three follow-ups left, all outside its lane:** the map's ADR table row for 0051 (**corrected
+here** — it described 0051 as ox-only, and its "GritQL plugin is rescoped" clause had been
+stale since ticket 07 proved that rescoping impossible in Biome 2.5.6); root `AGENTS.md` still
+saying codex restates 15 rules and not citing 0051 as covering it; and no `CHANGELOG.md`
+entry. **The latter two are folded into ticket 23.**
 
 ### 13 — write-campaign-adrs · 2026-08-24 · PR #282
 
