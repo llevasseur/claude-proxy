@@ -1,0 +1,49 @@
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    tab name="dev" {
+        pane split_direction="vertical" {
+            // Every pane sets `cwd` to the stack root, and that is load-bearing
+            // rather than tidy. `scripts/zellij.sh` launches from the monorepo
+            // root, where a bare `pnpm proxy` resolves to the *root* script —
+            // claude's. `cwd` picks `stacks/ox-alpha/package.json` instead. It
+            // matters most for this stack's proxy, whose script is
+            // `node --env-file-if-exists=proxy/.env proxy/src/proxy.ts`: that
+            // env path is resolved against the working directory, so from any
+            // other cwd it silently finds no `.env` and falls back to defaults.
+            //
+            // Ports stay out of this layout: each pane reads its own .env.
+            // ox's defaults are proxy 8807 and server 8788 — see
+            // .zellij/README.md for all nine, and change none of them here.
+            pane name="proxy" {
+                cwd "stacks/ox-alpha"
+                command "pnpm"
+                args "proxy"
+            }
+            pane split_direction="horizontal" {
+                pane name="server" {
+                    cwd "stacks/ox-alpha"
+                    command "pnpm"
+                    args "server"
+                }
+                pane name="admin" {
+                    cwd "stacks/ox-alpha"
+                    command "pnpm"
+                    args "admin"
+                }
+            }
+        }
+    }
+
+    tab name="shell" {
+        pane
+    }
+}
