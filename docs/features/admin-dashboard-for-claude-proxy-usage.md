@@ -4,6 +4,7 @@ title: Admin dashboard for claude-proxy usage
 description: A local web dashboard that monitors Claude Code usage, context size, sessions, cache savings, and advice from the proxy's audit logs.
 tags: [dashboard, usage, trends, advice]
 timestamp: 2026-07-24
+scope: claude
 ---
 
 # Admin dashboard for claude-proxy usage

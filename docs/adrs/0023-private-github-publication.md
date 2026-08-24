@@ -5,6 +5,7 @@ description: Ship each sibling repository through a private GitHub remote from d
 tags: [repository, github, publication, process]
 timestamp: 2026-08-19
 scope: all
+superseded-by: "0039"
 provenance:
   - repo: codex-proxy
     number: "0006"

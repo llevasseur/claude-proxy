@@ -4,6 +4,7 @@ title: Usage limit meters
 description: The Overview carries live meters for the 5-hour, weekly, and weekly-Fable allowances, each with a plain-language read on whether the current burn rate is sustainable.
 tags: [dashboard, usage, rate-limits, sse, proxy]
 timestamp: 2026-07-30
+scope: claude
 ---
 
 # Usage limit meters

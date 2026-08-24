@@ -5,6 +5,7 @@ description: A user_version mismatch invalidates the disposable SQLite view; no 
 tags: [architecture, sqlite, car]
 timestamp: 2026-08-22
 scope: codex
+superseded-by: "0047"
 provenance:
   - repo: codex-proxy
     number: "0010"

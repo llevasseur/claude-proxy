@@ -66,9 +66,21 @@ arrangement.
 - The gate can be wired into `check` on the merged tree without a flag day, and codex's
   containment check and index assertion — the two things its version has that ox's
   rewrite dropped — are preserved in intent rather than in letter.
-- ox's bundle needs a `docs/index.md` created before the gate runs against it.
+- ~~ox's bundle needs a `docs/index.md` created before the gate runs against it.~~
+  **Moot.** ox's bundle no longer exists: it was folded into the root bundle along with
+  codex's, and the per-stack `check-docs.mjs` scripts were deleted with the trees they
+  walked. There is one bundle and one gate, at the root.
 - Measured, not predicted: claude's 62 documents contain zero broken links, so the
   bundle's link health was never the risk here. The gate's own assumptions were.
+- **Re-measured against the merged bundle when the repair was implemented**, because the
+  corpus had more than doubled since — 142 documents, not 62. The count went from five
+  errors to **seven**, and the two new ones are a fourth defect in the gate rather than a
+  fourth defect in the docs: this record and one campaign plan each *quote* the generated
+  link form `[adrs/](adrs/)` in prose to explain it, and the scanner read those
+  quotations as links and resolved them relative to the quoting file. **So the gate also
+  blanks fenced blocks and inline code spans before scanning.** A document that quotes a
+  link as an example is not linking anywhere, and reading it as one made a record about
+  links unable to describe one.
 
 ## Provenance
 

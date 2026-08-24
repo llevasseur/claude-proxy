@@ -4,6 +4,7 @@ title: Monorepo + Admin Dashboard — Design Spec
 description: Turn the single-file proxy into a pnpm monorepo with a Node API and a TanStack admin dashboard.
 tags: [monorepo, dashboard, design, architecture]
 timestamp: 2026-07-15
+scope: claude
 ---
 
 # Monorepo + Admin Dashboard — Design Spec

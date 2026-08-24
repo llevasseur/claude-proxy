@@ -5,6 +5,7 @@ description: Begin each sibling repository at its own initial commit and inherit
 tags: [repository, migration, process]
 timestamp: 2026-08-19
 scope: all
+superseded-by: "0039"
 provenance:
   - repo: codex-proxy
     number: "0005"

@@ -4,6 +4,7 @@ title: Session transcripts
 description: The proxy reconstructs a per-thread conversation transcript from the requests it already observes, and the dashboard browses them live.
 tags: [dashboard, usage, backend]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Session transcripts

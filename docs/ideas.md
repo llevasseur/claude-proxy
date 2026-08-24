@@ -4,6 +4,7 @@ title: Ideas ledger (tier 2)
 description: The committed fallback ledger of proposed features and commands for this repo, used when the hosted claude-proxy ideas store is absent.
 tags: [ideas, advice, process]
 timestamp: 2026-08-05
+scope: claude
 ---
 
 # Ideas ledger (tier 2)

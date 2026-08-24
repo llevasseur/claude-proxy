@@ -4,6 +4,7 @@ title: Retention lifecycle
 description: This repo owns its own log lifecycle — it archives past days, evicts request bodies at 30 days, keeps every audit sidecar, and reports eviction as a typed state rather than a missing file.
 tags: [retention, logs, sqlite, maintenance]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Retention lifecycle

@@ -4,6 +4,7 @@ title: Message drill-down
 description: Click a row in a request's "Messages by size" or "Tools by size" table to open a subpage showing that message's or tool's entire content.
 tags: [context-size, usage, dashboard]
 timestamp: 2026-07-24
+scope: claude
 ---
 
 # Message drill-down

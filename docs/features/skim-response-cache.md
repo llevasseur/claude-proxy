@@ -4,6 +4,7 @@ title: Skim response cache
 description: An opt-in, byte-exact response cache in the proxy that replays a repeat streamed /v1/messages reply from disk with zero upstream call, plus a dashboard page measuring hit-rate and dollars saved.
 tags: [backend, dashboard, usage]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Skim response cache
