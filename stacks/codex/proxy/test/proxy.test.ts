@@ -10,7 +10,7 @@ import { afterEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { parseSanitizedAuditSidecar } from '../../packages/core/src/index.ts';
 import type { ProxyConfig } from '../src/config.ts';
-import { type ProxyLogger, startProxy } from '../src/proxy.ts';
+import { type ProxyLogger, shutdownOnSignal, startProxy } from '../src/proxy.ts';
 
 interface ClientResult {
   readonly statusCode: number;
@@ -65,6 +65,7 @@ async function listen(server: Server): Promise<number> {
     });
   });
   servers.push(server);
+  // SAFETY: `listen` resolved above, so the server is bound to a TCP address.
   return (server.address() as AddressInfo).port;
 }
 
@@ -78,6 +79,7 @@ async function fixtureProxy(upstreamPort: number, directory: string): Promise<{ 
   };
   const server = await startProxy(config, silentLogger);
   servers.push(server);
+  // SAFETY: `startProxy` resolves only once the server is bound to a TCP address.
   return { server, port: (server.address() as AddressInfo).port };
 }
 
@@ -586,25 +588,63 @@ test('runs the CLI directly from TypeScript source and publishes ready then shut
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  // SAFETY: `once` resolves with the listener's arguments, and a 'data' listener on a
+  // piped stdio stream receives exactly one Buffer.
   const [output] = (await once(child.stdout, 'data')) as [Buffer];
+  // SAFETY: the CLI's first stdout line is the `proxy-ready` record written by
+  // `startProxy`, whose shape is the event name and the bound port.
   const ready = JSON.parse(output.toString().trim()) as { event: string; port: number };
   assert.equal(ready.event, 'proxy-ready');
   assert.ok(ready.port > 0);
   assert.equal(JSON.parse(await readFile(statusFile, 'utf8')).state, 'ready');
   child.kill('SIGTERM');
-  const [exitCode] = (await once(child, 'exit')) as [number | null];
-  assert.equal(exitCode, 0);
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (JSON.parse(await readFile(statusFile, 'utf8')).state === 'shutdown') break;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  // SAFETY: Node's 'exit' event yields `[code, signal]`, exactly one of which is null.
+  const [exitCode, signal] = (await once(child, 'exit')) as [number | null, NodeJS.Signals | null];
+  // A signal rather than a code means the proxy died under SIGTERM's default disposition
+  // with its handler not yet installed. Asserting both names that mechanism, where the
+  // exit code alone could only report it as `null !== 0`.
+  assert.deepEqual({ exitCode, signal }, { exitCode: 0, signal: null });
+  // The shutdown status write holds the event loop open until it lands, so having exited
+  // already implies it. This was a hundred-attempt poll for a state that was always there.
   assert.equal(JSON.parse(await readFile(statusFile, 'utf8')).state, 'shutdown');
 });
 
+test('handles a signal that arrives before the proxy has finished starting', async () => {
+  const directory = await temporaryDirectory();
+  const upstream = createServer((_incoming, response) => response.end('ok'));
+  const upstreamPort = await listen(upstream);
+  let release: (server: Server) => void = () => {
+    /* replaced synchronously by the executor below */
+  };
+  const started = new Promise<Server>((resolve) => {
+    release = resolve;
+  });
+  const registered = process.listenerCount('SIGTERM');
+  const shutdown = shutdownOnSignal(started, silentLogger);
+  // The window the CLI used to leave open: a start that has not resolved yet already has
+  // a handler, so a signal arriving before `proxy-ready` is handled instead of fatal.
+  assert.equal(process.listenerCount('SIGTERM'), registered + 1);
+  shutdown();
+  const { server } = await fixtureProxy(upstreamPort, directory);
+  const closed = once(server, 'close');
+  release(server);
+  await closed;
+  assert.equal(server.listening, false);
+  process.off('SIGTERM', shutdown);
+  process.off('SIGINT', shutdown);
+});
+
 test('package has no runtime dependencies or build output contract', async () => {
+  // SAFETY: the file read is this package's own manifest, so `JSON.parse` yields its
+  // object; the assertions below probe for named keys rather than consuming values.
+  // A package manifest is an open record by definition, and this test asserts on key
+  // presence rather than consuming any value.
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- see the note above.
   const manifest = JSON.parse(await readFile(join(proxyDirectory, 'package.json'), 'utf8')) as Record<string, unknown>;
   assert.equal('dependencies' in manifest, false);
   assert.deepEqual(manifest.bin, { 'codex-proxy': './src/proxy.ts' });
+  // SAFETY: `scripts` is a manifest field, an open record of script name to command.
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- see the note above.
   assert.equal('build' in (manifest.scripts as Record<string, unknown>), false);
   assert.equal((await readdir(proxyDirectory)).includes('dist'), false);
 });

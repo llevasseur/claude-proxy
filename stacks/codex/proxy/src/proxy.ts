@@ -16,8 +16,13 @@ import { loadProxyConfig, type ProxyConfig } from './config.ts';
 import { jsonResponseIdentity, makeSidecar, responsesRequestModel, SseResponseObserver } from './observe.ts';
 import { ProxyStatusWriter } from './status.ts';
 
+// The field bag is open by design: a logger records whatever the call site has to say
+// about an event, and every call site in this package passes an object literal that
+// TypeScript checks where it is written.
 export interface ProxyLogger {
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- see the note above.
   readonly info: (event: string, fields?: Readonly<Record<string, unknown>>) => void;
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- see the note above.
   readonly error: (event: string, fields?: Readonly<Record<string, unknown>>) => void;
 }
 
@@ -59,6 +64,9 @@ function upstreamHeaders(clientRequest: IncomingMessage, upstream: URL): string[
   return headers;
 }
 
+// `error` is a caught value, which TypeScript types as `unknown` at the catch binding
+// itself; reducing it to a loggable name is this function's entire purpose.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- see the note above.
 function safeError(logger: ProxyLogger, event: string, error: unknown): void {
   logger.error(event, { errorType: error instanceof Error ? error.name : 'unknown' });
 }
@@ -190,6 +198,8 @@ export async function startProxy(config: ProxyConfig, logger: ProxyLogger = cons
       resolve();
     });
   });
+  // SAFETY: the listen callback above has already resolved, so the server is bound to a
+  // TCP address rather than a pipe, and `address()` cannot be null here.
   const address = server.address() as AddressInfo;
   status.setPort(address.port);
   await status.write('ready');
@@ -200,21 +210,39 @@ export async function startProxy(config: ProxyConfig, logger: ProxyLogger = cons
   return server;
 }
 
-async function main(): Promise<void> {
-  const server = await startProxy(loadProxyConfig());
+export function shutdownOnSignal(started: Promise<Server>, logger: ProxyLogger = consoleLogger): () => void {
   let stopping = false;
   const shutdown = (): void => {
     if (stopping) return;
     stopping = true;
-    server.close((error) => {
-      if (error) {
-        safeError(consoleLogger, 'proxy-shutdown-failed', error);
-        process.exitCode = 1;
-      }
-    });
+    void started
+      .then((server) =>
+        server.close((closeError) => {
+          if (closeError) {
+            safeError(logger, 'proxy-shutdown-failed', closeError);
+            process.exitCode = 1;
+          }
+        }),
+      )
+      .catch(() => {
+        /* a start that never produced a server is reported where the start is awaited */
+      });
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
+  return shutdown;
+}
+
+async function main(): Promise<void> {
+  // startProxy announces readiness itself, writing `ready` to the status file and
+  // `proxy-ready` to stdout, so anything watching either can signal this process the
+  // instant it sees one. Registering against the pending promise puts the handlers in
+  // place in the same tick as the call, before that announcement can exist. Awaiting the
+  // server first left a window in which SIGTERM met its default disposition and killed
+  // the proxy outright, which the exit code reported only as a bare `null`.
+  const started = startProxy(loadProxyConfig());
+  shutdownOnSignal(started);
+  await started;
 }
 
 const entryPoint = process.argv[1];
