@@ -32,6 +32,7 @@ import https from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type DeclinedGate, ensureMessageBreakpoint, estPrefixTokens, noteCacheRead } from './cache-breakpoint.ts';
+import { resolveProxyPort } from './config.ts';
 import { asList, asRecord, asText, type JsonValue, parseJson } from './json.ts';
 import * as session from './session.ts';
 import * as skim from './skim.ts';
@@ -47,7 +48,7 @@ import {
   type WireMessage,
 } from './wire.ts';
 
-const PORT = Number(process.env.PORT ?? 8787);
+const PORT = resolveProxyPort();
 const HOST = process.env.HOST ?? '127.0.0.1'; // localhost-only by default; set HOST="" to bind all interfaces
 const UPSTREAM = 'api.anthropic.com';
 

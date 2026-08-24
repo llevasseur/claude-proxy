@@ -30,3 +30,22 @@ test('OPENAI_UPSTREAM rejects a non-HTTP protocol', () => {
 test('PROXY_PORT overrides the default', () => {
   assert.equal(loadProxyConfig({ PROXY_PORT: '0' }).port, 0);
 });
+
+// ADR 0050: one root `.env` would bind a bare `PROXY_PORT` to ox's proxy too. The legacy
+// name keeps working for this package alone.
+test('CODEX_PROXY_PORT wins over the bare PROXY_PORT', () => {
+  assert.equal(loadProxyConfig({ CODEX_PROXY_PORT: '9001', PROXY_PORT: '9002' }).port, 9001);
+});
+
+test('the bare PROXY_PORT still resolves on its own', () => {
+  assert.equal(loadProxyConfig({ PROXY_PORT: '9003' }).port, 9003);
+});
+
+test('the default port is unchanged when neither name is set', () => {
+  assert.equal(loadProxyConfig({}).port, 8026);
+});
+
+test('a bad value reports whichever name the operator supplied', () => {
+  assert.throws(() => loadProxyConfig({ CODEX_PROXY_PORT: '70000' }), /^Error: CODEX_PROXY_PORT must be/);
+  assert.throws(() => loadProxyConfig({ PROXY_PORT: '70000' }), /^Error: PROXY_PORT must be/);
+});
