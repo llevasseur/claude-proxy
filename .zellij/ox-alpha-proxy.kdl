@@ -11,18 +11,17 @@ layout {
 
     tab name="dev" {
         pane split_direction="vertical" {
-            // Every pane sets `cwd` to the stack root, and that is load-bearing
-            // rather than tidy. `scripts/zellij.sh` launches from the monorepo
-            // root, where a bare `pnpm proxy` resolves to the *root* script —
-            // claude's. `cwd` picks `stacks/ox-alpha/package.json` instead. It
-            // matters most for this stack's proxy, whose script is
-            // `node --env-file-if-exists=proxy/.env proxy/src/proxy.ts`: that
-            // env path is resolved against the working directory, so from any
-            // other cwd it silently finds no `.env` and falls back to defaults.
+            // `cwd` on every pane is load-bearing, not tidy: scripts/zellij.sh
+            // launches from the monorepo root, where a bare `pnpm proxy` resolves
+            // to claude's root script. `cwd` picks `stacks/ox-alpha/package.json`
+            // instead, which matters most for this stack's proxy — its
+            // `node --env-file-if-exists=proxy/.env proxy/src/proxy.ts` resolves
+            // that env path against the working directory, so from any other cwd
+            // it silently finds no `.env` and falls back to defaults.
             //
             // Ports stay out of this layout: each pane reads its own .env.
             // ox's defaults are proxy 8807 and server 8788 — see
-            // .zellij/README.md for all nine, and change none of them here.
+            // .zellij/README.md for all nine.
             pane name="proxy" {
                 cwd "stacks/ox-alpha"
                 command "pnpm"

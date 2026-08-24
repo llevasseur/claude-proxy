@@ -13,18 +13,15 @@ layout {
     // second layout.
     tab name="dev" {
         pane split_direction="vertical" {
-            // Every pane sets `cwd` to the stack root, and that is load-bearing
-            // rather than tidy. `scripts/zellij.sh` launches from the monorepo
-            // root, where a bare `pnpm proxy` resolves to the *root* script —
-            // claude's. `cwd` picks `stacks/codex/package.json` instead, and it
-            // is also what makes each script's own relative paths resolve: the
-            // proxy and server run under `pnpm --filter`, so their
-            // `--env-file-if-exists=../../../.env` reaches this stack's root
-            // `.env` from the package directory.
+            // `cwd` on every pane is load-bearing, not tidy: scripts/zellij.sh
+            // launches from the monorepo root, where a bare `pnpm proxy` resolves
+            // to claude's root script. `cwd` picks `stacks/codex/package.json`
+            // instead, and lets each script's `--env-file-if-exists=../../../.env`
+            // reach this stack's root `.env` from the package directory.
             //
             // No port is pinned here; each pane reads its own env. codex's
             // defaults are proxy 8026 and server 4319 — see .zellij/README.md
-            // for all nine, and change none of them here.
+            // for all nine.
             pane name="proxy" {
                 cwd "stacks/codex"
                 command "pnpm"

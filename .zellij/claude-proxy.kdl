@@ -12,15 +12,11 @@ layout {
     tab name="dev" {
         pane split_direction="vertical" {
             pane name="proxy" {
-                // Proxy reads PORT; 8787 (its default) conflicts on this machine.
-                // Layouts can't set env directly, so pass it inline via a shell.
-                //
-                // 8036 is an override for this machine, not a default — the
-                // default is still 8787 and is recorded in .zellij/README.md
-                // with the other eight. These panes need no `cwd`: this stack's
-                // scripts are the monorepo root's, which is where
-                // scripts/zellij.sh launches from. The sibling layouts do need
-                // one, and say why.
+                // Proxy reads PORT; 8787 (its default) conflicts on this machine, and
+                // layouts can't set env directly, so pass it inline via a shell. 8036
+                // is a machine-local override, not the default — see .zellij/README.md
+                // for all nine. These panes need no `cwd`: this stack's scripts are
+                // the monorepo root's, which is where scripts/zellij.sh launches from.
                 command "sh"
                 args "-c" "PORT=8036 pnpm proxy"
             }
