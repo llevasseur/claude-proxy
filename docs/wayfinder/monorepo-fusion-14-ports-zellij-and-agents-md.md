@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-14-ports-zellij-and-agents-md`
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## Measured by the first attempt — do not re-derive these
 

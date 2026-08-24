@@ -170,10 +170,10 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
 | 22 | finish-adr-0050-scoped-names | [monorepo-fusion-22-finish-adr-0050-scoped-names](monorepo-fusion-22-finish-adr-0050-scoped-names.md) | `task/monorepo-fusion-22-finish-adr-0050-scoped-names` | todo | Found by ticket 14: only 3 of ADR 0050's 6 scoped names exist. Tickets 05/06 scoped their own stacks as they were absorbed; claude never had an equivalent ticket, and codex's proxy was missed. |
+| 23 | retire-stale-stack-agents-files | [monorepo-fusion-23-retire-the-stale-stack-agents-files](monorepo-fusion-23-retire-the-stale-stack-agents-files.md) | `task/monorepo-fusion-23-retire-the-stale-stack-agents-files` | todo | Ticket 14 merged the three AGENTS.md into one but `git rm` of the two stack copies was refused twice by the classifier; it correctly refused to empty them instead. Also carries two dangling references ticket 14 disclosed. |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 12 | merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus](monorepo-fusion-12-merge-adr-corpus.md) | `task/monorepo-fusion-12-merge-adr-corpus` | todo | |
 | 13 | write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs](monorepo-fusion-13-write-campaign-adrs.md) | `task/monorepo-fusion-13-write-campaign-adrs` | todo | |
-| 14 | ports-zellij-and-agents-md | [monorepo-fusion-14-ports-zellij-and-agents-md](monorepo-fusion-14-ports-zellij-and-agents-md.md) | `task/monorepo-fusion-14-ports-zellij-and-agents-md` | todo | |
 | 15 | re-record-route-budget | [monorepo-fusion-15-re-record-route-budget](monorepo-fusion-15-re-record-route-budget.md) | `task/monorepo-fusion-15-re-record-route-budget` | todo | Added after ticket 01 found `verify` already red on the untouched base. Must run after ticket 09. |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
@@ -247,6 +247,46 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 14 — ports-zellij-and-agents-md · 2026-08-23 · PR #278
+
+Merged at `ee72f2f`. Nine port defaults recorded in a new `.zellij/README.md` with the
+variable each reads and the file each is written in — **no number changed**. `AGENTS.md`
+merged to one file, with `history/` added to the docs-bundle list, the `!logs` note rewritten
+to say both forms prune on Biome 2.5.6 **and to name that version**, and the GritQL plugin's
+false premise left standing rather than defended. `docs/history/index.md` now names the
+authoritative column and gives the 17-of-61 codex figure against ox's 64 that all resolve.
+
+**Consolidating the layouts repaired broken scripts.** Each stack's `zellij.sh` post-fusion
+`cd`s to the monorepo root and looks for `.zellij/<stack>.kdl` there, so moving them fixed
+scripts that were silently failing rather than merely tidying.
+
+**This ticket ran twice.** The first attempt stalled on an infrastructure fault — the one
+retry `/manage` allows, spent on a cause a retry can actually change. Its discovery survived
+and was written into the plan so the retry started from measurement rather than repeating it.
+
+**Three corrections came out of it, two of them to this campaign's own instructions:**
+
+1. **Only three of ADR 0050's six scoped names exist.** `OX_PROXY_PORT`, `OX_SERVER_PORT`
+   and `CODEX_SERVER_PORT` landed with tickets 05 and 06 — the absorption tickets, each of
+   which scoped its own stack on the way in. **claude never had an equivalent ticket** (02
+   relocated it, 03 renamed its packages, neither owned its runtime configuration), and
+   codex's proxy was missed. `AGENTS.md` documents what exists and names the three pending.
+   **Ticket 22** implements them.
+2. **Residual risk 3 has no subject.** `git check-attr` confirms the unanchored
+   `merge=union` already resolves for three sibling changelog paths, **none of which exist**.
+   Real in mechanism, empty in practice, and now recorded as such.
+3. **The "2190 tests across eleven packages" figure I had been handing every ticket was
+   stale.** Nine packages carry test scripts, and the base is green on all seven gates.
+   Repeating a fixed number across a campaign that keeps moving packages made tickets
+   reconcile against my arithmetic instead of measuring their own base. **Stop quoting it;
+   tell tickets to compare failure sets against the base they measure.**
+
+**Two things it correctly refused or disclosed.** `git rm` of the two stale stack `AGENTS.md`
+files was refused twice by the classifier, and the runner declined to empty them to reach the
+same end by another route — the right call, and **ticket 23** owns it. And it widened its lane
+slightly to move the stack `.zellij` layouts, said so, and named the two dangling references
+that left behind rather than reaching outside to fix them.
 
 ### 21 — codex-proxy-test-flake · 2026-08-23 · PR #277
 
