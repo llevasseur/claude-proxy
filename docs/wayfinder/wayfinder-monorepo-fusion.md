@@ -189,7 +189,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | in-progress |  |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | in-progress | |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
@@ -264,6 +263,45 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 19 — chat-cli-idle-window-test · 2026-08-24 · PR #286
+
+**The flake was a mis-sized window, and the number that sized it was measured rather than
+guessed.** `stacks/claude/server/test/chat-cli.test.ts` asserted
+`Date.now() - started > 1_000` against a 600 ms idle window, and reported
+`expected 602 to be greater than 1000` — a message naming no timer, though ticket 18 had
+established 602 ms meant the *silence* clock fired rather than the ceiling the case is
+about. The case now records arrival times through `onEvent` and asserts, in order: that
+`interrupted` is `limit` (so a failure reads `expected 'timeout' to be 'limit'`), that the
+longest silence anywhere in the run stayed under the idle window, that the streaming phase
+— measured from the **first line**, not from the call — outlasted that window several times
+over, and that more than ten lines arrived.
+
+**The cause was first-exec cost, and the plan's criterion 3 is what forced finding it.**
+`runCliTurn` arms the idle clock at spawn, so the first window must cover the child's whole
+startup — and the test writes a brand-new fixture every run, so it always pays *first*-exec
+cost. At 25 samples per condition, spawn to first stdout: a fresh file is 194 ms median /
+476 p90 / **975 max** idle and 209/231/442 under saturating load, while re-executing the
+same file is 28 ms median / 323 max. The 600 ms window was below the machine's own
+demonstrated worst case. The fix removes the cost rather than inflating the window — a
+throwaway `warmUp()` run leaves the measured run a ~30 ms startup — and the timings then
+moved to 1 000 ms idle / 3 000 ms ceiling on those numbers.
+
+**Criterion 2 answered, and answered against changing production: arming the idle clock at
+spawn is INTENDED.** The documented contract is how long the child may produce *nothing*,
+and a child silent from spawn onward — wedged at startup, or stuck on a permission prompt
+nobody can answer — is exactly what that clock exists to catch; arming only on first output
+would leave such a run to burn to `maxTurnMs`, which is deliberately long. So the defect
+was in the test. **No production file changed**, and the campaign's zero-behaviour-change
+rule held: the diff is the test and `CHANGELOG.md`, nothing else.
+
+Criterion 4 was met by running the full 71-file, 759-test claude-server suite five
+consecutive times with all ten cores saturated — 5/5 green, the case clustered at
+3168–3321 ms — plus CI's own loaded runner. A throwaway negative control confirmed the
+rework is not vacuous: at a 40 ms window the idle clock does win and the first assertion is
+what fails. Anti-slop caught one `error` on this run's own new code (an unjustified
+`as number` on an index access), fixed by dropping the indexing rather than by adding a
+`SAFETY:` comment.
 
 ### 23 — retire-stale-stack-agents-files · 2026-08-24 · PR #285
 
