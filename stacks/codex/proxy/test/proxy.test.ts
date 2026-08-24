@@ -635,10 +635,8 @@ test('handles a signal that arrives before the proxy has finished starting', asy
 });
 
 test('package has no runtime dependencies or build output contract', async () => {
-  // SAFETY: the file read is this package's own manifest, so `JSON.parse` yields its
-  // object; the assertions below probe for named keys rather than consuming values.
-  // A package manifest is an open record by definition, and this test asserts on key
-  // presence rather than consuming any value.
+  // SAFETY: the file read is this package's own manifest, an open record by definition;
+  // the assertions below probe for key presence rather than consuming any value.
   // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type -- see the note above.
   const manifest = JSON.parse(await readFile(join(proxyDirectory, 'package.json'), 'utf8')) as Record<string, unknown>;
   assert.equal('dependencies' in manifest, false);

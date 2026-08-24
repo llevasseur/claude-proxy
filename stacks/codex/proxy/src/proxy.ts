@@ -234,12 +234,9 @@ export function shutdownOnSignal(started: Promise<Server>, logger: ProxyLogger =
 }
 
 async function main(): Promise<void> {
-  // startProxy announces readiness itself, writing `ready` to the status file and
-  // `proxy-ready` to stdout, so anything watching either can signal this process the
-  // instant it sees one. Registering against the pending promise puts the handlers in
-  // place in the same tick as the call, before that announcement can exist. Awaiting the
-  // server first left a window in which SIGTERM met its default disposition and killed
-  // the proxy outright, which the exit code reported only as a bare `null`.
+  // Register against the pending promise, not its resolved server: startProxy announces
+  // readiness before it returns, so awaiting first left a window where SIGTERM met its
+  // default disposition and killed the proxy outright.
   const started = startProxy(loadProxyConfig());
   shutdownOnSignal(started);
   await started;
