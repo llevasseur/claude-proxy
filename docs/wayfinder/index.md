@@ -34,6 +34,7 @@
 | monorepo-fusion-19-chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test.md](monorepo-fusion-19-chat-cli-idle-window-test.md) |
 | monorepo-fusion-20-ox-history-test-flake | [monorepo-fusion-20-ox-history-test-flake.md](monorepo-fusion-20-ox-history-test-flake.md) |
 | monorepo-fusion-21-codex-proxy-test-flake | [monorepo-fusion-21-codex-proxy-test-flake.md](monorepo-fusion-21-codex-proxy-test-flake.md) |
+| monorepo-fusion-22-finish-adr-0050-scoped-names | [monorepo-fusion-22-finish-adr-0050-scoped-names.md](monorepo-fusion-22-finish-adr-0050-scoped-names.md) |
 | monorepo-fusion-zz-retire-done-plans | [monorepo-fusion-zz-retire-done-plans.md](monorepo-fusion-zz-retire-done-plans.md) |
 | Research 002 — Which requests are safe to serve (cacheability gate) | [research-002-cacheability.md](research-002-cacheability.md) |
 | Wayfinder — Monorepo Fusion | [wayfinder-monorepo-fusion.md](wayfinder-monorepo-fusion.md) |
