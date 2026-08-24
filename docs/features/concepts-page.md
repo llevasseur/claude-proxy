@@ -4,6 +4,7 @@ title: Concepts page
 description: A page over logs/concepts.jsonl — every term /teach has explained, with its one Simplified Technical English sentence, field, skills and date, sortable, searchable across the prose the table does not show, indexed by a field and skill facet rail, and each row opening a detail page of the research behind it.
 tags: [dashboard, teach, sqlite, architecture]
 timestamp: 2026-08-03
+scope: claude
 ---
 
 # Concepts page

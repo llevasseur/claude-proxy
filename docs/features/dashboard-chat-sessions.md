@@ -4,6 +4,7 @@ title: Dashboard chat sessions
 description: A prompt input on the Sessions page that starts a real session through the proxy — by a headless Claude Code process in local dev, or a keyed HTTP client in a deployment — so the proxy logs and transcribes it and the new thread appears in the sessions list. Runs either as a full agent at parity with the device's own CLI, or in a sandboxed chat posture with no tools.
 tags: [dashboard, backend, usage, auth]
 timestamp: 2026-07-24
+scope: claude
 ---
 
 # Dashboard chat sessions

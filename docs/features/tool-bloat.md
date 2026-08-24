@@ -4,6 +4,7 @@ title: Tool bloat
 description: A dashboard page ranking every tool schema in a day's request payloads by the bytes and estimated tokens it costs, and its share of all tool bytes.
 tags: [dashboard, usage, context-size]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Tool bloat

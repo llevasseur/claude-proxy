@@ -4,6 +4,7 @@ title: Ideas ledger
 description: A store for invented proposals, kept separate from the suggestion flags because an idea has no source sessions behind it — only a recorded human sign-off makes one actionable, and a claim stamped at the start of work keeps two runs from building the same one.
 tags: [advice, cli, ideas]
 timestamp: 2026-08-07
+scope: claude
 ---
 
 # Ideas ledger

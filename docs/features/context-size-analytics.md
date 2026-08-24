@@ -4,6 +4,7 @@ title: Context-size analytics
 description: A dashboard page showing how large the prompt sent to the model gets — average, largest, and why the largest was so large.
 tags: [context-size, usage, dashboard]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Context-size analytics

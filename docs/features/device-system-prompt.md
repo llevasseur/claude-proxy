@@ -4,6 +4,7 @@ title: Device system prompt
 description: A page over ~/.claude/CLAUDE.md that reads the device-wide instructions every session loads, sizes them in bytes and tokens, and edits the file in place with a backup and an atomic write.
 tags: [dashboard, device, editing, architecture]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Device system prompt

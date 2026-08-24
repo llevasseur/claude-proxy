@@ -4,6 +4,7 @@ title: Pull request tree
 description: A read-only page that draws the project's GitHub pull requests as the tree they formed — merged PRs as the trunk, unlanded ones as branches — with a detail drawer that links each PR to the sessions that worked on it.
 tags: [dashboard, frontend, github]
 timestamp: 2026-08-08
+scope: claude
 ---
 
 # Pull request tree

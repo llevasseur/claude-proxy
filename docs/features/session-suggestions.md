@@ -4,6 +4,7 @@ title: Session suggestions
 description: Every ten transcripts are scored for ways to reach the same outcome in fewer steps, with less context, and against fewer guardrails — with each claim traceable to the sessions it was counted in.
 tags: [dashboard, usage, advice]
 timestamp: 2026-07-25
+scope: claude
 ---
 
 # Session suggestions
