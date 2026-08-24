@@ -139,10 +139,18 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
    **Closed by ticket 16**: `.github/workflows/verify.yml` is on the campaign base as of
    `1513df6`, so every ticket from 05 onward is gated. Tickets 01–04 remain the four that
    merged unchecked. *(closed)*
-8. **The route-budget gate is intermittent, not stale.** Ticket 01 measured it red at
-   433ms; ticket 03 measured the same gate green at `12ee731`. It reads recorded
-   observations from the shared `logs/` store, so its verdict depends on data outside the
-   commit. *(ticket 15, rewritten around this)*
+8. **~~The route-budget gate is intermittent~~ — WRONG, and ticket 15 measured why.** It was
+   never flaky. As `pnpm verify` runs it the gate reported **`no observations for 50`** — all
+   fifty budgeted routes, zero observations — so **ten green runs were vacuous**. Pointed at
+   the real store it failed 10 of 10, byte-identical. Ticket 01's red and ticket 03's green
+   were **two different data sources**: the relocation landed between them and changed what
+   `resolveLogDir()` returns. *(closed by ticket 15)*
+21. **The route-budget gate is STILL reading nothing, and stays that way until ticket 09.**
+    It now resolves `stacks/claude/logs`, which exists in no checkout, while the store is
+    still at the repository root. Ticket 15's minimum-sample-count fix was chosen precisely so
+    it survives the move — but until ticket 09 relocates the corpus, that gate contributes no
+    evidence to a green `verify`. **Do not read this gate's pass as a measurement.**
+    *(ticket 09)*
 9. **The filter gate reads `git ls-files`, so an untracked file is unchecked until it is
    staged.** Ticket 16 found this while planting a test filter — the plant was invisible
    until staged. Design rather than defect (the gate checks the tree that would ship), but
@@ -188,7 +196,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 25 | retire-sibling-docs-trees | [monorepo-fusion-25-retire-the-sibling-docs-trees](monorepo-fusion-25-retire-the-sibling-docs-trees.md) | `task/monorepo-fusion-25-retire-the-sibling-docs-trees` | todo | **A charting gap, not a slipped ticket.** `stacks/{codex,ox-alpha}/docs/{adrs,features,roadmap,specs}` were never merged into the root bundle. While the sibling `adrs/` stand, each of the eight shared decisions is stated in more than one live file — the contradiction ox ADR 0010 warned of, and a direct violation of ADR 0053. |
 | 13 | write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs](monorepo-fusion-13-write-campaign-adrs.md) | `task/monorepo-fusion-13-write-campaign-adrs` | todo | |
-| 15 | re-record-route-budget | [monorepo-fusion-15-re-record-route-budget](monorepo-fusion-15-re-record-route-budget.md) | `task/monorepo-fusion-15-re-record-route-budget` | in-progress |  |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -261,6 +268,45 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 15 — re-record-route-budget · 2026-08-24 · PR #281
+
+**The gate was never flaky. It was reading nothing, and ten green runs were vacuous.**
+Criterion 1 turned out to be the entire ticket, and the answer was neither of the two things
+the prior tickets reported. Ten runs in each of two configurations:
+
+- **As `pnpm verify` actually runs it (no `LOG_DIR`): 10 pass, 0 fail** — with every run
+  printing **`no observations for 50`**. All fifty budgeted routes, zero observations.
+- **With `LOG_DIR` at the real store: 0 pass, 10 fail**, byte-identical each time —
+  `/api/commands (time) median 433ms over 1 observations exceeds its allowance of 390ms`.
+
+**That reconciles the contradiction rather than splitting it.** Ticket 01's red and ticket
+03's green were **two different data sources**, not two samples of a coin-flip: the stack
+relocation landed between them and changed what `resolveLogDir()` returns. Ticket 01 read the
+repo-root `logs/` the bootstrap links; everything after it reads `stacks/claude/logs`, which
+exists in no checkout.
+
+**The fix makes the verdict independent of the store without pinning a path** — a
+`MINIMUM_OBSERVATIONS` threshold of 5 before a median counts as evidence, with anything short
+reported under a new `insufficient` list. The 433ms figure was a median over **one**
+observation; the store holds 272 across 10 routes with six at n≤2, and every route with real
+samples sits well inside its allowance (`/api/health` 14ms against 259.5 over 206 samples).
+**Time half only** — a max over sizes has no noise to out-vote, so one oversized response
+still fails on a single request. The threshold was chosen over a fixture specifically so it
+survives ticket 09's move.
+
+**No allowance moved.** `headroom`, both floors and all 50 recorded numbers untouched;
+`route-budgets.json` is not in the diff. Criterion 2 was correctly not triggered, and the PR
+body says outright that criterion 4's before/after table is absent **because nothing
+changed**, rather than leaving a reviewer to read the gap as an omission. Re-recording would
+have replaced a 490-observation corpus with a 272-observation one from a single cold start —
+strictly worse data.
+
+`route-budgets.test.ts` went 18 → 23 tests. Base and branch failure sets both empty, measured
+in the same worktree by stashing. CI green first try.
+
+**Recorded as residual risk 21: the gate still reads nothing until ticket 09 lands.** Its pass
+is not currently a measurement.
 
 ### 12 — merge-adr-corpus · 2026-08-24 · PR #280
 

@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-15-re-record-route-budget`
-**Status:** active
+**Status:** done · 2026-08-24
 
 ## Why this ticket exists
 
