@@ -97,15 +97,22 @@ is written; the summary is:
 remedy for a collision fusion did not create, and renumbering would be exactly the runtime
 change the campaign forbids.
 
-**Only three of ADR 0050's six scoped names actually exist**, so read the ADR as intent
-rather than as description:
+**All six of ADR 0050's scoped names now exist**, so the ADR describes this repository
+rather than an intent it has not reached. `CODEX_SERVER_PORT`, `OX_PROXY_PORT` and
+`OX_SERVER_PORT` arrived with the absorption tickets; ticket 22 added the remaining
+`CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT` and `CODEX_PROXY_PORT`. Each keeps its bare
+name as a fallback scoped to its own package — `PORT` for both claude packages,
+`PROXY_PORT` for codex's proxy — so a stack launched exactly as it is launched today
+resolves exactly as it did, and no default moved.
 
-- Implemented: `CODEX_SERVER_PORT`, `OX_PROXY_PORT`, `OX_SERVER_PORT` — each keeping its
-  bare name as a fallback scoped to its own package.
-- **Missing:** `CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT`, `CODEX_PROXY_PORT`. claude's
-  proxy and server both still read a bare `PORT`, and codex's proxy a bare `PROXY_PORT`.
-  **Ticket 22 implements these three**; until it lands, do not write code or docs that
-  assume they work.
+**claude's proxy and server validate nothing, and that is deliberate.** Neither package
+had a config module at all before ticket 22, so `Number()` of a bad value has always
+yielded `NaN` and left `listen` to decide. Adopting the siblings' range check would have
+turned a launch that works today into one that throws — the runtime change ADR 0050
+exists to avoid — so claude's two took the siblings' *resolution order* and left the
+parsing alone. That is why `stacks/claude/proxy/config.test.ts` carries three port cases
+where `stacks/codex/proxy/test/config.test.ts` carries four: codex's fourth asserts the
+rejection claude deliberately does not perform.
 
 Two collisions are **recorded rather than fixed**, because both predate fusion — running
 these repositories side by side already collided this way: claude's and ox's servers both
@@ -162,8 +169,20 @@ what makes them overridable without moving a default.
   `noArrayIndexKey` (4) and `noUnusedVariables` (1) — at `warn` instead of `error`,
   because the campaign that absorbed ox forbids changing its runtime behaviour and each of
   those fixes would. `stacks/ox-alpha/.oxlintrc.json` does the same for the anti-slop
-  rules, which start at 358. codex extends the root oxlint config and restates the 15
-  anti-slop rules at `warn`, which is the tier it enforced on itself before the merge.
+  rules, which start at 358. codex extends the root oxlint config and restates **7** of
+  the anti-slop rules at `warn` — the tier it enforced on itself before the merge, now
+  naming only the rules that still fire. **ADR 0051 covers codex as well as ox**: it was
+  amended to carry codex explicitly, with per-rule counts, ox's ratchet, and ox's expiry
+  at the end of campaign 3.
+  Ticket 24 measured codex at root severity — 123 diagnostics across 19 files, on 7 of
+  the 15 rules — kept the tier, and applied the ratchet immediately: the 8 rules firing
+  zero times came out of the restatement and inherit the root's `error`, so that 7-rule
+  list is now the counter. **The tier survived the measurement because clearing it is
+  not a lint fix.** 69 of the 123 sit on rules whose only remedy is parsing input at an
+  I/O boundary, or replacing an `unknown`/open-dictionary type with a domain type — both
+  change what codex does with malformed input, which is the runtime change this campaign
+  forbids, and the same ground on which ADR 0051 already rejected ox's
+  `useExhaustiveDependencies` fixes.
   Two further findings, `noUnusedImports` (3) and `noBarrelFile` (1), are already `warn`
   repo-wide and are deliberately **not** in the block — putting them there would fake a
   ratchet, since removing them from it could never tighten anything.
@@ -234,7 +253,8 @@ what makes them overridable without moving a default.
   (`../../.agents/skills/<name>`), so each checkout resolves to its own branch's skills
   rather than back to the main checkout's.
 - `docs/` is an OKF bundle declared in `docs/index.md` frontmatter — `docs/features/`,
-  `docs/specs/`, `docs/adrs/`, `docs/wayfinder/`, and `docs/history/` (commit maps from the
+  `docs/specs/`, `docs/adrs/`, `docs/roadmap/` (the delivery ladders both siblings
+  brought), `docs/wayfinder/`, and `docs/history/` (commit maps from the
   absorbed repositories; data files rather than concepts, so okq does not index them). Go
   there for depth rather than re-deriving it from source.
 
@@ -378,11 +398,14 @@ them are one of the shapes below. Each has a working form; use it the first time
   `.claude/skills/`. Fix it once with `bash scripts/bootstrap-worktree.sh` (run from
   inside the worktree; it symlinks env files and `logs/` from the main checkout,
   rebuilds `.claude/skills/`, sets `blame.ignoreRevsFile`, then runs
-  `pnpm install --frozen-lockfile`). **Its env link list still names the pre-fusion
-  paths `apps/admin/.env` and `proxy/.env`**, which no longer exist now that claude's
-  stack moved under `stacks/claude/`; the script skips a path it cannot find and says
-  `skip … (not in main checkout)`, so the symptom is a silent absence rather than an
-  error. Read its output rather than assuming env arrived.
+  `pnpm install --frozen-lockfile`). **Its env link list now names the post-relocation
+  paths `stacks/claude/admin/.env` and `stacks/claude/proxy/.env`**; until ticket 23 it
+  still named the pre-fusion `apps/admin/.env` and `proxy/.env`, which had linked nothing
+  since the stack moved. That failure was silent by construction — the script skips a
+  source it cannot find and says only `skip … (not in main checkout)` — so read its
+  output rather than assuming env arrived. It links no `stacks/claude/server/.env`, and
+  never has: that gap predates fusion, so under ADR 0050's boundary it is pre-existing
+  awkwardness rather than a fusion-caused regression, and it is left alone deliberately.
 - **Never wait on a core package build — there isn't one for any stack.** Each core's
   `exports` map points at `./src/index.ts`, none has a `build` script, and nothing in
   the repo references a `dist`. `No such file or directory` for a core `dist` is the
