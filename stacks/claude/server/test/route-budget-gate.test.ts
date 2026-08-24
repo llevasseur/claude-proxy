@@ -85,8 +85,7 @@ if (budgetsRecording()) {
     it('answers every budgeted route inside its recorded time and size allowance', () => {
       const report = checkBudgets(observations, budgets);
 
-      // What this run actually gated, before anything it declined to gate. A green tick
-      // says nothing on its own about which of the two it was.
+      // A green tick alone doesn't say whether anything was actually gated.
       const judged = report.checks.filter((check) => check.judged).length;
       console.log(
         `[route-budgets] judged ${judged} of ${Object.keys(budgets.routes).length} budgeted routes ` +
