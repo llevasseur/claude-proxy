@@ -190,7 +190,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
-| 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | in-progress | |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -263,6 +262,58 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 11 — repair-and-wire-docs-gate · 2026-08-24 · PR #287
+
+**The gate was gone rather than broken, and the plan's own criteria were stale in a second
+way the state-changed section did not predict.** Ticket 25 had deleted both
+`stacks/*/scripts/check-docs.mjs` along with the sibling bundles they walked, and no root
+copy ever existed — so this recreated codex's version at `scripts/check-docs.mjs` instead of
+repairing one, and wired it into `check` behind a new `check:docs` script.
+
+**Re-measured before acting, as instructed, and the number moved twice.** The criteria
+describe five errors against 62 documents; the merged bundle is 142 documents and produced
+**seven**. The two extra were a *fourth defect in the gate*, not new defects in the docs:
+ADR 0056 and this ticket's own plan each **quote** the generated link form `[adrs/](adrs/)`
+in prose to explain it, and the scanner resolved those quotations as links relative to the
+quoting file — so a record about links could not describe one. The gate now blanks fenced
+blocks and inline code spans before scanning. That repair is not in the criteria; it exists
+only because the measurement was re-taken rather than trusted.
+
+Criteria 1, 2, 3, 6 and 7 landed as written; **criterion 4 was moot and skipped**, ox's
+bundle having been folded into the root. Containment now permits a link resolving to a
+tracked file anywhere in the repository — `docs/features/ideas-ledger.md` keeps pointing at
+the source it documents — while still rejecting one that resolves nowhere, escapes the
+checkout, or lands on an untracked file. `scope` is required of every document carrying a
+`type`; 29 gained it, `claude` for the features, specs and root documents and `all` for the
+bundle README. Section `index.md` files carry no frontmatter and are navigation, so they are
+skipped, as are `history/` (data files okq does not index) and `wayfinder/` (this campaign's
+own scaffolding, which the `zz` ticket deletes).
+
+**Supersession is now recorded from both ends** — [ADR 0058](../adrs/0058-supersession-is-recorded-from-both-ends.md).
+0022, 0023 and 0028 carry `superseded-by` naming 0039, 0039 and 0047, derived by scanning
+the corpus's forward references rather than from the plan's hand-list, which turned out to
+be exactly right. The gate asserts the relation **bidirectionally**, and both failure
+branches were exercised against the real corpus before landing. Two lookalikes are
+deliberately excluded: a merged pair is not a supersession (ADR 0053), and neither is a
+partial one — 0002 stays unmarked though 0003 supersedes one constraint in it.
+
+Key files: `scripts/check-docs.mjs`, `package.json`, `docs/adrs/0058-supersession-is-recorded-from-both-ends.md`,
+`docs/adrs/0056-the-docs-gate-asserts-indexes-by-file.md` (its ox consequence struck as moot,
+the re-measurement recorded).
+
+**Two deviations, both reported rather than hidden.** Three root-level documents
+(`docs/README.md`, `docs/ideas.md`, `docs/2026-07-13-claude-usage-summary-design.md`) each
+gained one `scope:` line though the ticket's lane enumerated only `docs/adrs/`,
+`docs/index.md`, `docs/features/` and `docs/specs/`; criterion 7 cannot hold without them and
+no concurrent unit owned them. ADR 0056's *body* was amended where the lane granted its
+frontmatter, because this ticket's own re-measurement made one of its consequences false.
+
+**Left for the `zz` ticket, deliberately:** `okq --bundle docs validate` still reports **26
+errors, every one a `docs/wayfinder/` plan missing `type`**. That was the baseline before
+this ticket and is unchanged by it — those files are deleted wholesale by `zz`, so the gate
+skips `wayfinder/` for `scope` and the validation errors are left standing rather than fixed
+into work the campaign throws away.
 
 ### 19 — chat-cli-idle-window-test · 2026-08-24 · PR #286
 

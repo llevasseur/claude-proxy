@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-11-repair-and-wire-docs-gate`
-**Status:** active
+**Status:** done · 2026-08-24
 
 ## Goal
 
