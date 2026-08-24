@@ -647,9 +647,18 @@ halves, anchor and default.
 
 1. **"codex needs no warn tier" is true for Biome and false for oxlint.** codex ran all 15
    anti-slop rules at `warn` where the root sets `error`, and two configs registering a
-   plugin named `anti-slop` abort the run outright. codex's config now extends the root and
-   restates its severities. ADR 0051 reasoned about Biome alone and should not be read as
-   covering oxlint.
+   plugin named `anti-slop` abort the run outright. codex's config therefore extends the
+   root and **restates codex's own `warn` severities on top of it. It does not restore the
+   root's `error`, and codex remains on a warn tier.**
+   **Corrected by ticket 24.** This sentence originally read "restates its severities",
+   which is ambiguous about whose, and it was read across several later tickets as
+   *restoring* root severity; ticket 21's dispatch went on to assert outright that codex
+   was not under a warn tier, and ticket 21 measured that to be false. Ticket 24 measured
+   the size of it — 123 findings at `error` across 19 files, from 7 of the 15 rules — and
+   amended **ADR 0051** to cover codex's oxlint tier with those per-rule counts, ox's
+   ratchet and ox's expiry. The last sentence here was also wrong by the end: 0051 reasoned
+   about Biome and ox alone when this entry was written, but it now covers codex and oxlint
+   too.
 2. **The GritQL plugin's justifying premise is now false.** Its comment scopes itself with
    "the dashboard sheet is the only CSS in the repo"; this merge breaks that and ox breaks
    it again. One `margin: -1px` in codex's `.sr-only` had to be rewritten because Biome
