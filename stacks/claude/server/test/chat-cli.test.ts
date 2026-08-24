@@ -336,11 +336,9 @@ function chattyCli(name: string, everyMs: number): string {
 /**
  * Run a stand-in once and throw the run away, so the measured run is not the first exec.
  *
- * `runCliTurn` arms the idle clock at spawn, before the child can possibly have said
- * anything, so the first idle window has to cover the child's entire startup. A fixture
- * written moments ago is being executed for the very first time, and on macOS that costs
- * far more than any later exec of the same file. Measured on the development machine,
- * 25 samples per condition, spawn to first stdout byte:
+ * The idle clock arms at spawn, so the first window has to cover a fresh fixture's first
+ * exec, which is far pricier than a later one. Measured on the development machine, 25
+ * samples per condition, spawn to first stdout byte:
  *
  * | fixture exec        | median | p90    | max    |
  * |---------------------|--------|--------|--------|
@@ -349,8 +347,8 @@ function chattyCli(name: string, everyMs: number): string {
  * | re-exec, idle       |  28 ms |  31 ms | 323 ms |
  * | re-exec, loaded     |  47 ms |  52 ms | 227 ms |
  *
- * That first-exec tail is what ended a run at 602 ms under a 600 ms window and made the
- * chatty case look flaky. Paying it here leaves the measured run a ~30 ms startup.
+ * That first-exec tail is what ended a run at 602 ms under a 600 ms window. Paying it
+ * here leaves the measured run a ~30 ms startup.
  */
 async function warmUp(cliPath: string): Promise<void> {
   await new Promise<void>((resolve) => {
@@ -411,10 +409,9 @@ describe.skipIf(process.platform === 'win32')('runCliTurn — ending a run early
 
   it('ends a run that has gone silent, keeping what it had already said', async () => {
     const { cliPath } = fakeCli('fake-claude-idle'); // one line, then hangs
-    // The idle timer is armed at spawn, so this window has to cover the child's whole
-    // startup: too tight and the line never arrives, and the run times out with nothing
-    // to report rather than with the prefix this case is about. 2 s is roughly twice the
-    // worst first-exec startup measured for these fixtures — see warmUp for the numbers.
+    // The idle clock arms at spawn, so this window must cover the child's whole startup.
+    // 2 s is roughly twice the worst first-exec startup measured for these fixtures — see
+    // warmUp for the numbers.
     const result = await runCliTurn({ ...turnInput(cliPath), idleTimeoutMs: 2_000 });
     expect(result.interrupted).toBe('timeout');
     expect(result.text).toBe('partial'); // reported, not thrown away
@@ -428,9 +425,8 @@ describe.skipIf(process.platform === 'win32')('runCliTurn — ending a run early
     const cliPath = chattyCli('fake-claude-chatty', EVERY_MS);
     await warmUp(cliPath); // see warmUp: the first exec is the expensive one
 
-    // What this case is about is liveness, so it records when output actually arrived
-    // rather than how long the call took. `onEvent` is a pure watcher — the result is
-    // decoded from the whole stream either way — so observing changes nothing.
+    // Records when output actually arrived, not how long the call took. `onEvent` is a
+    // pure watcher — the result is decoded from the whole stream either way.
     const arrivals: number[] = [];
     const result = await runCliTurn({
       ...turnInput(cliPath),
@@ -440,18 +436,16 @@ describe.skipIf(process.platform === 'win32')('runCliTurn — ending a run early
     });
     const ended = Date.now();
 
-    // Asserted first, and on the timer rather than on a duration: a failure here now says
-    // which clock fired ("expected 'timeout' to be 'limit'") instead of reporting a bare
-    // elapsed number that leaves the reader to work out what it meant.
+    // Asserted first and on the timer, not a duration, so a failure names which clock
+    // fired ("expected 'timeout' to be 'limit'") instead of a bare elapsed number.
     expect(result.interrupted).toBe('limit');
 
     const first = arrivals[0];
     const last = arrivals[arrivals.length - 1];
     if (first === undefined || last === undefined) throw new Error('the chatty stand-in never produced a line');
 
-    // Output was still arriving when the ceiling landed. The longest silence anywhere in
-    // the run — between two lines, or between the last line and the end — never came near
-    // the idle window, which is the actual claim: the run was never idle enough to end.
+    // The longest silence anywhere in the run — between two lines, or between the last
+    // line and the end — stayed under the idle window: the run was never idle enough to end.
     const gaps: number[] = [];
     let previous = first;
     for (const at of arrivals.slice(1)) {
@@ -461,9 +455,8 @@ describe.skipIf(process.platform === 'win32')('runCliTurn — ending a run early
     gaps.push(ended - last);
     expect(Math.max(...gaps)).toBeLessThan(IDLE_MS);
 
-    // And it stayed alive for several idle windows' worth of streaming. Measured from the
-    // first line rather than from the call, so the child's startup — which the idle clock
-    // does count, being armed at spawn — is not counted here.
+    // Stayed alive for several idle windows' worth of streaming, measured from the first
+    // line rather than the call, so the child's own startup is excluded.
     expect(ended - first).toBeGreaterThan(IDLE_MS * 2);
     expect(arrivals.length).toBeGreaterThan(10); // genuinely streaming, not one lucky line
 
