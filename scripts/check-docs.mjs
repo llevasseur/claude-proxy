@@ -181,6 +181,4 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log(
-  `checked ${markdown.length} documentation files across ${sections.length} sections`,
-);
+console.log(`checked ${markdown.length} documentation files across ${sections.length} sections`);
