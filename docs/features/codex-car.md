@@ -1,9 +1,13 @@
 ---
 type: feature
-title: Car — durable history, trends, ranges, and model filters
+title: Car (codex) — durable history, trends, ranges, and model filters
 description: The second codex-proxy outcome — durable usage history, daily trend views, calendar date ranges, and exact model filters on top of every Bike boundary.
 tags: [car, history, trends, filters, timezone]
 timestamp: 2026-08-22
+scope: codex
+provenance:
+  - repo: codex-proxy
+    file: docs/features/car.md
 ---
 
 # Car — durable history, trends, ranges, and model filters
@@ -24,17 +28,17 @@ usage becomes a daily trend over any calendar range, narrowed by the models the 
   result set with valid envelope metadata — never an error. No normalization or aliasing layer exists.
 - Cost keeps its Bike semantics everywhere: an amount only when the whole aggregate is priced, otherwise an explicit
   typed unavailable reason — never zero, never a partial estimate labeled as total. Models that join the pricing
-  catalogue are priced retroactively in the view ([ADR 0016](../adrs/0016-retroactive-catalogue-pricing.md)).
+  catalogue are priced retroactively in the view ([ADR 0038](../adrs/0038-retroactive-catalogue-pricing.md)).
 - Every Bike boundary holds: transparent forwarding, sanitized-only persistence, nullable complete cost, live Overview,
   process separation, and final sidecars as durable truth.
 
-These choices are owned by [ADR 0009](../adrs/0009-daily-trend-granularity.md),
-[ADR 0010](../adrs/0010-rebuild-view-on-schema-mismatch.md),
-[ADR 0011](../adrs/0011-calendar-date-range-api.md),
-[ADR 0012](../adrs/0012-sse-data-version-signal.md),
-[ADR 0013](../adrs/0013-car-dashboard-routes.md),
-[ADR 0014](../adrs/0014-model-filter-semantics.md), and
-[ADR 0015](../adrs/0015-history-record-listing.md).
+These choices are owned by [ADR 0026](../adrs/0026-daily-trend-granularity.md),
+[ADR 0028](../adrs/0028-rebuild-view-on-schema-mismatch.md),
+[ADR 0030](../adrs/0030-calendar-date-range-api.md),
+[ADR 0032](../adrs/0032-sse-data-version-signal.md),
+[ADR 0034](../adrs/0034-car-dashboard-routes.md),
+[ADR 0036](../adrs/0036-model-filter-semantics.md), and
+[ADR 0037](../adrs/0037-history-record-listing.md).
 
 ## Run shape
 
@@ -63,6 +67,6 @@ cookies, or arbitrary headers, and remains fully useful without inspection data.
 
 ## Publication boundary
 
-Car inherits Bike's fresh-history start ([ADR 0005](../adrs/0005-fresh-repository-history.md)) and private-repository
-publication ([ADR 0006](../adrs/0006-private-github-publication.md)). Runtime secrets and data stay untracked
+Car inherits Bike's fresh-history start ([ADR 0022](../adrs/0022-fresh-repository-history.md)) and private-repository
+publication ([ADR 0023](../adrs/0023-private-github-publication.md)). Runtime secrets and data stay untracked
 regardless of repository visibility. The delivery sequence is in the [Bike-to-Plane roadmap](../roadmap/bike-to-plane.md).

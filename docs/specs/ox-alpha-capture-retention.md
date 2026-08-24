@@ -1,16 +1,20 @@
 ---
 type: spec
-title: Capture storage and retention
+title: Capture storage and retention (ox-alpha)
 description: Storage layout, redaction pipeline, envelope schema, and retention semantics for Boat body capture.
 tags: [boat, capture, redaction, retention, privacy]
 timestamp: 2026-08-22
+scope: ox-alpha
+provenance:
+  - repo: ox-alpha-proxy
+    file: docs/specs/capture-retention.md
 ---
 
 # Capture storage and retention
 
 Boat's capture rung is specified here so the sanitized sidecar contract in
-[Bike architecture](bike-architecture.md) and [ADR 0002](../adrs/0002-sanitized-sidecars.md) stays closed. The
-feature-facing record lives at [Boat](../features/boat.md).
+[Bike architecture](ox-alpha-bike-architecture.md) and [ADR 0019](../adrs/0019-sanitized-audit-sidecars.md) stays closed. The
+feature-facing record lives at [Boat](../features/ox-alpha-boat.md).
 
 ## Defaults and opt-in
 

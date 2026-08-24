@@ -1,15 +1,19 @@
 ---
 type: feature
-title: Boat — opt-in body capture with redaction and retention
+title: Boat (ox-alpha) — opt-in body capture with redaction and retention
 description: Explicitly opted-in request and response body capture, redacted before persistence, stored apart from sanitized sidecars under retention controls.
 tags: [boat, capture, privacy, retention]
 timestamp: 2026-08-22
+scope: ox-alpha
+provenance:
+  - repo: ox-alpha-proxy
+    file: docs/features/boat.md
 ---
 
 # Boat — opt-in body capture with redaction and retention
 
 Provenance: new Boat rung record, named deliberately in the four-rung ladder fixed by
-[ADR 0004](../adrs/0004-four-rung-outcome-ladder.md).
+[ADR 0021](../adrs/0021-outcome-ladder.md).
 
 Boat adds inspection data without weakening Bike's privacy boundary: bodies are captured only when an operator
 explicitly opts in, redacted before a single byte reaches disk, stored away from sanitized sidecars, and deleted on a
@@ -21,7 +25,7 @@ configurable schedule. This record covers capture, retention, and the inspection
 - Capture is **off by default**. With `CAPTURE_BODIES` unset or false, proxy behavior is byte-identical to Bike/Car:
   no body bytes are buffered for capture and no capture file or directory is ever created.
 - Captured bodies live in their own directory (`CAPTURE_DIR`, default `captures` beside the audit directory) with a
-  `.capture.json` suffix. Sanitized sidecar v1 is untouched — no new fields — per [ADR 0002](../adrs/0002-sanitized-sidecars.md).
+  `.capture.json` suffix. Sanitized sidecar v1 is untouched — no new fields — per [ADR 0019](../adrs/0019-sanitized-audit-sidecars.md).
 - Redaction runs **before persistence**. Default rules remove authorization headers and schemes, cookies and
   CSRF/session-cookie assignments, API keys (`sk-…`), and credential-shaped JSON fields; operators add patterns via
   `CAPTURE_REDACT_PATTERNS`. Field names stay readable; values become `[redacted]`.
@@ -54,7 +58,7 @@ pnpm --filter @agent-proxy/ox-server maintain
 ```
 
 The command prints one JSON result line (`examined`, `deletedExpired`, `deletedOverCap`, `remainingFiles`,
-`remainingBytes`) and exits. Retention semantics are specified in [Capture storage and retention](../specs/capture-retention.md).
+`remainingBytes`) and exits. Retention semantics are specified in [Capture storage and retention](../specs/ox-alpha-capture-retention.md).
 
 Bike and Car remain fully useful with zero inspection data present; nothing in this rung feeds the Overview,
 history, or trends surfaces.

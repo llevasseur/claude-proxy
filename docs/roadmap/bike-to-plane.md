@@ -1,16 +1,20 @@
 ---
 type: roadmap
-title: Bike to Plane
+title: Bike to Plane (codex)
 description: Five complete outcomes from live sanitized usage to pinned claude-proxy parity.
 tags: [roadmap, bike, car, boat, train, plane]
 timestamp: 2026-08-19
+scope: codex
+provenance:
+  - repo: codex-proxy
+    file: docs/roadmap/bike-to-plane.md
 ---
 
 # Bike to Plane
 
 > “Incremental delivery ships a bike, then a plane: every phase reaches the destination on its own, and each phase is more complex.”
 
-The ladder is fixed by [ADR 0004](../adrs/0004-fixed-outcome-ladder.md). Every phase must remain independently useful,
+The ladder is fixed by [ADR 0021](../adrs/0021-outcome-ladder.md). Every phase must remain independently useful,
 and each later phase must preserve the safety and operating path of every earlier one.
 
 ## Bike
@@ -28,8 +32,8 @@ fully useful without any Boat inspection data or body capture.
 
 Car shipped through the `car-release` campaign (PRs #14–#19): core range and aggregation domain, server history API
 on view schema v2, `/history` and `/trends` dashboard routes, and durable feature/spec documentation verified against
-the running server. See [docs/features/car.md](../features/car.md) and
-[docs/specs/car-architecture.md](../specs/car-architecture.md).
+the running server. See [docs/features/codex-car.md](../features/codex-car.md) and
+[docs/specs/codex-car-architecture.md](../specs/codex-car-architecture.md).
 
 ```text
 $dev --slug car-release build Car in codex-proxy: add durable usage history, trend views, date ranges, and model/range filters while preserving Bike's transparent forwarding, sanitized-only storage, nullable complete cost, live Overview, process separation, and rebuildable SQLite view. Exclude request/response body capture, prompt/tool/session inspection, and operator automation. Update durable feature, architecture, roadmap, and decision docs; verify fresh install, aggregate gates, historical accuracy, filters, timezone boundaries, SSE continuity, and Bike regression coverage; ship through the repository's campaign workflow.
@@ -59,8 +63,8 @@ $dev --slug train-release build Train in codex-proxy: add operator workflows, au
 
 Plane reaches complete capability and operational parity with `claude-proxy` commit
 `cc25696504e724bd78824e639e97a0a1d846abea`, adapted to the OpenAI Responses contract under
-[ADR 0001](../adrs/0001-use-responses-contract.md) and pinned by
-[ADR 0008](../adrs/0008-pin-plane-parity.md). Plane is complete only when every applicable matrix row below is
+[ADR 0018](../adrs/0018-use-responses-contract.md) and pinned by
+[ADR 0025](../adrs/0025-pin-plane-parity.md). Plane is complete only when every applicable matrix row below is
 implemented and verified, and every non-applicable row carries an explicit OpenAI-specific rationale. A category
 summary or visual resemblance is not parity.
 

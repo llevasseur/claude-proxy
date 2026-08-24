@@ -27,7 +27,7 @@ Proposed by `/dev`. A human has not ratified this decision.
 > “What granularity must Car's trend views support — daily buckets only, or also hourly/weekly/monthly — and is the trend a single total-usage series over time, or multiple series broken down per model within the selected range?”
 
 The roadmap names trend views only outcome-level
-([Bike-to-Plane roadmap](../../stacks/codex/docs/roadmap/bike-to-plane.md)); richer trends are pinned to Plane. No document pins Car's granularity.
+([Bike-to-Plane roadmap](../roadmap/bike-to-plane.md)); richer trends are pinned to Plane. No document pins Car's granularity.
 
 ## Decision
 
