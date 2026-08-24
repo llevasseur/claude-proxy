@@ -74,6 +74,17 @@ likely to collide.
 | Filter by exact multi-select model identifiers | [0036-model-filter-semantics.md](0036-model-filter-semantics.md) |
 | Make durable history a paginated record listing | [0037-history-record-listing.md](0037-history-record-listing.md) |
 | Price historical records against the current catalogue | [0038-retroactive-catalogue-pricing.md](0038-retroactive-catalogue-pricing.md) |
+| Fuse the three proxy repositories into one monorepo | [0039-fuse-the-three-proxy-repos-into-one-monorepo.md](0039-fuse-the-three-proxy-repos-into-one-monorepo.md) |
+| Three providers and three harnesses, paired but not fused | [0040-three-providers-and-three-harnesses.md](0040-three-providers-and-three-harnesses.md) |
+| A site-wide provider picker drives the navigation | [0041-provider-picker-drives-the-navigation.md](0041-provider-picker-drives-the-navigation.md) |
+| claude-proxy's dashboard is the design baseline, and UI design is delegated to a Fable subagent | [0042-claude-dashboard-is-the-design-baseline.md](0042-claude-dashboard-is-the-design-baseline.md) |
+| Campaign state lives in the repo, and the wayfinder map is the control plane | [0043-campaign-state-lives-in-the-repo.md](0043-campaign-state-lives-in-the-repo.md) |
+| Cost semantics: every model gets a price row | [0044-every-model-gets-a-price-row.md](0044-every-model-gets-a-price-row.md) |
+| TanStack Router, repo-wide | [0045-tanstack-router-repo-wide.md](0045-tanstack-router-repo-wide.md) |
+| The server accepts narrowly-scoped local writes | [0046-narrowly-scoped-local-writes.md](0046-narrowly-scoped-local-writes.md) |
+| SQLite is the query substrate, with a forward-only migration ladder | [0047-sqlite-substrate-with-forward-only-migrations.md](0047-sqlite-substrate-with-forward-only-migrations.md) |
+| Deletion policy, split by tier | [0048-deletion-policy-split-by-tier.md](0048-deletion-policy-split-by-tier.md) |
+| Capture every body, redact on read and export | [0049-capture-every-body-redact-on-read.md](0049-capture-every-body-redact-on-read.md) |
 | Keep port defaults verbatim and scope environment variable names per stack | [0050-stack-scoped-environment-variables.md](0050-stack-scoped-environment-variables.md) |
 | Absorb ox into the shared lint gate at a warn tier, and split its delta by fixability | [0051-absorb-ox-into-the-shared-lint-gate.md](0051-absorb-ox-into-the-shared-lint-gate.md) |
 | Inherited ratification flags survive the merge unchanged | [0052-inherited-ratification-flags-survive-the-merge.md](0052-inherited-ratification-flags-survive-the-merge.md) |
