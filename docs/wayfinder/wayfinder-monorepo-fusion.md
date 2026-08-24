@@ -191,7 +191,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 |---|------|------|--------|--------|------|
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | in-progress |  |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
-| 23 | retire-stale-stack-agents-files | [monorepo-fusion-23-retire-the-stale-stack-agents-files](monorepo-fusion-23-retire-the-stale-stack-agents-files.md) | `task/monorepo-fusion-23-retire-the-stale-stack-agents-files` | in-progress | Previous row was stale: no worktree, no pushed branch, no pull request, and the local branch carried zero unique commits. Repaired and re-taken by a fresh run. |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
@@ -265,6 +264,64 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 23 — retire-stale-stack-agents-files · 2026-08-24 · PR #285
+
+**Both stale sibling instruction files are gone, and the deletion ticket 14 was refused
+is the one that went through.** `git rm` of `stacks/codex/AGENTS.md` and
+`stacks/ox-alpha/AGENTS.md` was refused twice by the permission classifier during ticket
+14, which stopped rather than emptying them to reach the same end another way; reissued
+here, it was permitted. **The content check came first and was the point of the ticket** —
+a sibling instruction file is the only copy of its repository's rules, so anything the
+root had not absorbed would have died with it. Three clauses were not in the root. Exactly
+one was genuinely lost: codex's rule that a stack growing more processes grows more panes
+in its own layout rather than a second layout, now recorded in `.zellij/README.md`. The
+other two were false alarms that reading the root alone would have misjudged — `chadex`
+survives in four codex source files including `proxy/src/config.ts` and its own test
+names, and `.gitignore`'s trailing-slash rule survives as `.gitignore`'s own first two
+lines. `docs/roadmap/` was absent from root `AGENTS.md`'s bundle enumeration while present
+in `docs/index.md`, and is now in both.
+
+**Three documents had gone stale behind tickets that correctly stayed in their lanes.**
+Ticket 22 shipped the three missing ADR 0050 scoped port names, so root `AGENTS.md` and
+`.zellij/README.md` both stopped being true the moment it merged — each still told readers
+not to write code assuming `CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT` or
+`CODEX_PROXY_PORT` work. All six now exist and both files say so, with `.zellij`'s
+variable table rewritten to show the scoped name and its bare fallback per row. Recorded
+alongside it, because it is the surprising part: **claude's proxy and server validate
+nothing** — neither had a config module before ticket 22, so adopting the siblings' range
+check would have turned a working launch into a throwing one, and they took the
+resolution order and left the parsing alone. That is why claude has three port cases where
+codex's proxy has four. Ticket 24 likewise left root `AGENTS.md` claiming codex restates
+15 anti-slop rules; it restates **7**, ADR 0051 now covers codex as well as ox, and the
+reason the tier survived is written down so a bare count does not invite someone to clear
+it: 69 of the 123 diagnostics need input parsed at an I/O boundary or an
+`unknown`/open-dictionary type replaced with a domain type, both runtime changes this
+campaign forbids.
+
+**One real bug, silent by construction.** `scripts/bootstrap-worktree.sh` still linked
+`apps/admin/.env` and `proxy/.env`, neither of which has existed since claude's stack
+moved, and `link_from_main` treats a missing source as a normal outcome — so every
+worktree built since the relocation was quietly missing both while the script exited 0.
+Repointed at `stacks/claude/admin/.env` and `stacks/claude/proxy/.env`. **The `logs`
+symlink line was deliberately not touched**: ticket 09 owns it and is paused, and editing
+it here could have left a worktree with no logs link at all. `stacks/claude/server/.env`
+is deliberately still unlinked and now says so — the script never linked it, before fusion
+or after, which makes it pre-existing awkwardness rather than a fusion-caused regression
+under ADR 0050's boundary.
+
+Also fixed: `stacks/ox-alpha/README.md`'s `.zellij` link, which ticket 14's move had left
+dangling, and `stacks/codex/README.md`'s link to the very `AGENTS.md` this ticket deletes.
+`CHANGELOG.md` gains entries for this ticket and for ticket 24, which had added none.
+
+Key files: `AGENTS.md`, `.zellij/README.md`, `scripts/bootstrap-worktree.sh`,
+`stacks/codex/README.md`, `stacks/ox-alpha/README.md`, `CHANGELOG.md`; deleted
+`stacks/codex/AGENTS.md` and `stacks/ox-alpha/AGENTS.md`. Zero behaviour change, all
+seven gates green, review found nothing.
+
+**Reported rather than fixed:** the bootstrap script's header comment still names
+`@claude-proxy/core`, a pre-fusion scoped package name, and was outside this ticket's lane
+(the `.env` lines only).
 
 ### 25 — retire-sibling-docs-trees · 2026-08-24 · PR #284
 
