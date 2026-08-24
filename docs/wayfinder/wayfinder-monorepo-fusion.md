@@ -169,7 +169,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 |---|------|------|--------|--------|------|
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
-| 21 | codex-proxy-test-flake | [monorepo-fusion-21-codex-proxy-test-flake](monorepo-fusion-21-codex-proxy-test-flake.md) | `task/monorepo-fusion-21-codex-proxy-test-flake` | in-progress | |
 | 22 | finish-adr-0050-scoped-names | [monorepo-fusion-22-finish-adr-0050-scoped-names](monorepo-fusion-22-finish-adr-0050-scoped-names.md) | `task/monorepo-fusion-22-finish-adr-0050-scoped-names` | todo | Found by ticket 14: only 3 of ADR 0050's 6 scoped names exist. Tickets 05/06 scoped their own stacks as they were absorbed; claude never had an equivalent ticket, and codex's proxy was missed. |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 12 | merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus](monorepo-fusion-12-merge-adr-corpus.md) | `task/monorepo-fusion-12-merge-adr-corpus` | todo | |
@@ -248,6 +247,44 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 21 — codex-proxy-test-flake · 2026-08-23 · PR #277
+
+**The proxy announced it was ready before it could be shut down.** `startProxy()` publishes
+readiness itself — `ready` to the status file, `proxy-ready` to stdout — but `main()`
+registered `SIGINT`/`SIGTERM` only *after* awaiting it. Any supervisor that reads
+`proxy-ready` as "the process is up" and signals at once races that gap, and when the OS
+deschedules the child inside it SIGTERM meets its **default disposition** and kills the
+proxy outright. Node's `exit` yields `[null, 'SIGTERM']` in exactly that case, which
+`proxy.test.ts:596` could only report as `null !== 0`. Not a timeout to raise, and not a
+test-only defect.
+
+`main()` now takes the start promise first and registers against it, so the handlers land
+in the same tick as the call — `startProxy` runs only to its first `await` before control
+returns — and therefore before any announcement exists. **No retry, sleep, or raised
+timeout was added; one was removed**, the 100-attempt poll for the `shutdown` status, which
+a graceful exit already implies. Behaviour after readiness is unchanged.
+
+**Rates.** A probe replicating the test's spawn/`proxy-ready`/SIGTERM/exit sequence against
+the real `src/proxy.ts` under 12 CPU burners went from **17/200 to 0/200**, every failure
+carrying `code: null, signal: 'SIGTERM'` with the status file still at `ready` — the exact
+signature ticket 06 recorded. Prior evidence was 3 in 10 across tickets 06 and 20.
+
+**Two honest limits, both recorded rather than smoothed over.** The suite-level rate does
+**not** reproduce here: 40 runs of the codex proxy suite under the same load produced 0
+failures against the *unfixed* code, so that denominator proves nothing and is reported
+only for symmetry — ticket 20's wall again, and the reason the rate is measured on the
+mechanism rather than claimed from a green suite. And the whole-repo 10-run loop failed 3
+times without ever touching this flake: every failure was in `stacks/claude/server` or ox's
+admin, other lanes entirely, while codex's proxy suite passed 10/10. The new regression
+test is deterministic in the fixed direction but cannot fail against the unfixed code,
+because a deterministic *process-level* test is not constructible — with the fix the
+handlers exist before the process emits anything observable, which is exactly why it works.
+
+**Correction to the ticket brief:** it asserts codex is not under a warn tier.
+`stacks/codex/.oxlintrc.json` restates all 15 anti-slop rules at `warn` where the root sets
+`error`. The ratchet was met regardless — both touched files report zero findings, cleared
+with `SAFETY:` notes and stated-reason disables only.
 
 ### 20 — ox-history-test-flake · 2026-08-23 · PR #276
 
