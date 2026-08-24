@@ -27,7 +27,7 @@ pnpm zellij
 ```
 
 `pnpm zellij` runs the proxy, server, and dashboard as three panes of one
-session ([`.zellij/ox-alpha-proxy.kdl`](.zellij/ox-alpha-proxy.kdl)) and stops
+session ([`.zellij/ox-alpha-proxy.kdl`](../../.zellij/ox-alpha-proxy.kdl)) and stops
 all three when the terminal closes. Run them separately instead with:
 
 ```bash

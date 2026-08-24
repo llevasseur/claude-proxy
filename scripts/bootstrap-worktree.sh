@@ -49,11 +49,14 @@ link_from_main() {
 
 echo "bootstrapping $(basename "${WORKTREE_ROOT}") from ${MAIN_CHECKOUT}"
 
-# Vite loads `apps/admin/.env`; `proxy/.env` records the device's port and no code
-# path reads it. Tracked `.env.example` files arrive with the worktree.
+# Vite loads `stacks/claude/admin/.env`; `stacks/claude/proxy/.env` records the device's
+# port and no code path reads it. Both moved under `stacks/claude/` with the relocation,
+# and this list kept the pre-fusion paths — which linked nothing, because `link_from_main`
+# skips a missing source and only says so. Tracked `.env.example` files arrive with the
+# worktree.
 echo "env:"
-link_from_main "apps/admin/.env"
-link_from_main "proxy/.env"
+link_from_main "stacks/claude/admin/.env"
+link_from_main "stacks/claude/proxy/.env"
 
 # `resolveLogDir()` (server/src/logs.ts) defaults to `<repo>/logs`, so an unlinked
 # worktree serves an empty dashboard and fails its health check. Linking keeps that

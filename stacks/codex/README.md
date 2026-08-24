@@ -32,7 +32,8 @@ and environment files are ignored by Git.
 | `pnpm anti:slop` | the anti-slop oxlint rules |
 
 CI runs the same five gates on every pull request. Working in a git worktree? Run
-`bash scripts/bootstrap-worktree.sh` inside it first — see [AGENTS.md](AGENTS.md).
+`bash scripts/bootstrap-worktree.sh` inside it first — see the repository-wide
+[AGENTS.md](../../AGENTS.md).
 
 ## Bike processes
 
