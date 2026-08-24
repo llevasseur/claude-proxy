@@ -6,6 +6,7 @@ import {
   budgetsRecording,
   carriedRoutes,
   checkBudgets,
+  MINIMUM_OBSERVATIONS,
   readRouteBudgets,
   recordBudgets,
   unknownBudgetRoutes,
@@ -23,12 +24,20 @@ import {
  * touches `logs/archive`, and the read is read-only, so a run neither migrates a
  * developer's database nor creates one.
  *
- * Two failure modes are deliberately not failures. A route with **no observations** is
+ * Three failure modes are deliberately not failures. A route with **no observations** is
  * reported: a clean clone has no database at all, and a route nobody opened this week has
- * nothing to judge. A **served route with no budget** is reported too, so declaring a route
- * does not require a measurement pass first. What does fail is a breach, and a fixture entry
- * naming a route that no longer exists — otherwise a rename silently un-budgets the route
- * someone was just editing.
+ * nothing to judge. A route with **too few observations** is reported for the neighbouring
+ * reason — below `MINIMUM_OBSERVATIONS` the median has nothing to reject an outlier with, so
+ * a single cold-start request would otherwise become the route's measured cost. A **served
+ * route with no budget** is reported too, so declaring a route does not require a
+ * measurement pass first. What does fail is a breach, and a fixture entry naming a route
+ * that no longer exists — otherwise a rename silently un-budgets the route someone was just
+ * editing.
+ *
+ * **How much of the fixture this run actually judged is printed, every run.** The gate reads
+ * a store it does not own, so "nothing breached" and "nothing was judged" produce the same
+ * green tick — and the second is worth knowing about, because a gate reading an empty or
+ * absent store reports success while gating nothing at all.
  *
  * Budgets are measurements, not targets. `ROUTE_BUDGETS=record pnpm --filter @agent-proxy/claude-server test`
  * rewrites the fixture from whatever traffic the substrate holds, so a legitimate slowdown
@@ -76,7 +85,23 @@ if (budgetsRecording()) {
     it('answers every budgeted route inside its recorded time and size allowance', () => {
       const report = checkBudgets(observations, budgets);
 
+      // A green tick alone doesn't say whether anything was actually gated.
+      const judged = report.checks.filter((check) => check.judged).length;
+      console.log(
+        `[route-budgets] judged ${judged} of ${Object.keys(budgets.routes).length} budgeted routes ` +
+          `from ${observations.length} observations in ${LOG_DIR}`,
+      );
+
       // Reported, never failed — see the module comment.
+      if (report.insufficient.length) {
+        const short = report.checks
+          .filter((check) => !check.judged)
+          .map((check) => `${check.route} (n=${check.observations})`);
+        console.log(
+          `[route-budgets] too few observations to judge ${report.insufficient.length} ` +
+            `(fewer than ${MINIMUM_OBSERVATIONS} each): ${short.join(', ')}`,
+        );
+      }
       if (report.unobserved.length) {
         console.log(`[route-budgets] no observations for ${report.unobserved.length}: ${report.unobserved.join(', ')}`);
       }
