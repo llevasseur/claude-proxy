@@ -183,13 +183,12 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 |---|------|------|--------|--------|------|
 | 19 | chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test](monorepo-fusion-19-chat-cli-idle-window-test.md) | `task/monorepo-fusion-19-chat-cli-idle-window-test` | todo | Found by ticket 18. Under load the idle clock fires instead of the ceiling the test is about, so the case silently stops testing what it names. Not urgent; independent of 05/06. |
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
-| 22 | finish-adr-0050-scoped-names | [monorepo-fusion-22-finish-adr-0050-scoped-names](monorepo-fusion-22-finish-adr-0050-scoped-names.md) | `task/monorepo-fusion-22-finish-adr-0050-scoped-names` | in-progress | |
 | 23 | retire-stale-stack-agents-files | [monorepo-fusion-23-retire-the-stale-stack-agents-files](monorepo-fusion-23-retire-the-stale-stack-agents-files.md) | `task/monorepo-fusion-23-retire-the-stale-stack-agents-files` | todo | Ticket 14 merged the three AGENTS.md into one but `git rm` of the two stack copies was refused twice by the classifier; it correctly refused to empty them instead. Also carries two dangling references ticket 14 disclosed. |
 | 24 | decide-codex-oxlint-severities | [monorepo-fusion-24-decide-codex-oxlint-severities](monorepo-fusion-24-decide-codex-oxlint-severities.md) | `task/monorepo-fusion-24-decide-codex-oxlint-severities` | todo | Found by ticket 21: codex restates all 15 anti-slop rules at `warn` where the root sets `error`. ADR 0051 designs a warn tier for **ox alone**, so codex is on an undocumented one. |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
 | 12 | merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus](monorepo-fusion-12-merge-adr-corpus.md) | `task/monorepo-fusion-12-merge-adr-corpus` | todo | |
 | 13 | write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs](monorepo-fusion-13-write-campaign-adrs.md) | `task/monorepo-fusion-13-write-campaign-adrs` | todo | |
-| 15 | re-record-route-budget | [monorepo-fusion-15-re-record-route-budget](monorepo-fusion-15-re-record-route-budget.md) | `task/monorepo-fusion-15-re-record-route-budget` | todo | Added after ticket 01 found `verify` already red on the untouched base. Must run after ticket 09. |
+| 15 | re-record-route-budget | [monorepo-fusion-15-re-record-route-budget](monorepo-fusion-15-re-record-route-budget.md) | `task/monorepo-fusion-15-re-record-route-budget` | in-progress |  |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -262,6 +261,34 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 22 — finish-adr-0050-scoped-names · 2026-08-24 · PR #279
+
+**All six of ADR 0050's scoped names now exist in source**, verified on the base:
+`CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT`, `CODEX_PROXY_PORT`, `CODEX_SERVER_PORT`,
+`OX_PROXY_PORT`, `OX_SERVER_PORT`. Each keeps its bare name as a package-scoped fallback, no
+default port changed (8787 / 8788 / 8026 verified as unchanged literals), and codex's proxy
+takes ox's proxy shape verbatim so the convention stays one convention.
+
+**The deviation is the interesting part, and it is the campaign's rejection rule applied
+correctly rather than waved at.** claude's proxy and server **had no config module at all** —
+each read the port inline, and neither has ever validated it, so `Number()` of a bad value
+yields `NaN`. Adopting the siblings' range check would have turned a launch that works today
+into one that **throws**. So claude's two take the siblings' *resolution order* and leave the
+parsing alone. That is why claude gets three config-test cases and codex's proxy four, the
+fourth asserting the error names the variable the operator actually set.
+
+It also noticed that a new config module is **dead code without a wiring line at the entry
+point**, and added both.
+
+Base measured on its own untouched cut — empty failure set, seven gates — and identical
+after. Per-package counts read off the runners: claude-proxy 94, codex-proxy 29,
+claude-server 754 across 71 files. Zero anti-slop findings on any touched file. CI green
+first try, no repair rounds, `/review` no findings.
+
+**Out-of-lane follow-up, correctly left:** `AGENTS.md`'s Ports section and
+`.zellij/README.md` still say these three names are missing and that ticket 22 will
+implement them. Both are now false. **Folded into ticket 23.**
 
 ### 14 — ports-zellij-and-agents-md · 2026-08-23 · PR #278
 

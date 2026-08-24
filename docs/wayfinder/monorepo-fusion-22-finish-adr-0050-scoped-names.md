@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-22-finish-adr-0050-scoped-names`
-**Status:** active
+**Status:** done · 2026-08-24
 
 ## Why this ticket exists
 

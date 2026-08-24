@@ -112,6 +112,7 @@ import {
 import { snapshotChatStream, subscribeChatStream } from './chat-stream.js';
 import { type ReconcileResult, reconcileCommandRuns, resolveCommandsDir } from './command-runs.js';
 import { RemoteConceptStoreError, remoteConceptStore } from './concepts-remote.js';
+import { resolveServerPort } from './config.js';
 import { resolveDbPath } from './db/open.js';
 import { recordRouteObservation } from './db/route-observation-store.js';
 import {
@@ -150,7 +151,7 @@ import { resolveSettingsPath } from './settings.js';
 import { resolveSystemPromptPath } from './system-prompt.js';
 import { resolveUsageLimits } from './usage-config.js';
 
-const PORT = Number(process.env.PORT ?? 8788);
+const PORT = resolveServerPort();
 const HOST = process.env.HOST ?? '127.0.0.1'; // localhost-only by default
 const LOG_DIR = resolveLogDir();
 const ARCHIVE_DIR = resolveArchiveDir();
