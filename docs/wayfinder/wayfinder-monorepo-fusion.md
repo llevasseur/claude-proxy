@@ -186,7 +186,7 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | 23 | retire-stale-stack-agents-files | [monorepo-fusion-23-retire-the-stale-stack-agents-files](monorepo-fusion-23-retire-the-stale-stack-agents-files.md) | `task/monorepo-fusion-23-retire-the-stale-stack-agents-files` | todo | Ticket 14 merged the three AGENTS.md into one but `git rm` of the two stack copies was refused twice by the classifier; it correctly refused to empty them instead. Also carries two dangling references ticket 14 disclosed. |
 | 24 | decide-codex-oxlint-severities | [monorepo-fusion-24-decide-codex-oxlint-severities](monorepo-fusion-24-decide-codex-oxlint-severities.md) | `task/monorepo-fusion-24-decide-codex-oxlint-severities` | todo | Found by ticket 21: codex restates all 15 anti-slop rules at `warn` where the root sets `error`. ADR 0051 designs a warn tier for **ox alone**, so codex is on an undocumented one. |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
-| 12 | merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus](monorepo-fusion-12-merge-adr-corpus.md) | `task/monorepo-fusion-12-merge-adr-corpus` | todo | |
+| 25 | retire-sibling-docs-trees | [monorepo-fusion-25-retire-the-sibling-docs-trees](monorepo-fusion-25-retire-the-sibling-docs-trees.md) | `task/monorepo-fusion-25-retire-the-sibling-docs-trees` | todo | **A charting gap, not a slipped ticket.** `stacks/{codex,ox-alpha}/docs/{adrs,features,roadmap,specs}` were never merged into the root bundle. While the sibling `adrs/` stand, each of the eight shared decisions is stated in more than one live file — the contradiction ox ADR 0010 warned of, and a direct violation of ADR 0053. |
 | 13 | write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs](monorepo-fusion-13-write-campaign-adrs.md) | `task/monorepo-fusion-13-write-campaign-adrs` | todo | |
 | 15 | re-record-route-budget | [monorepo-fusion-15-re-record-route-budget](monorepo-fusion-15-re-record-route-budget.md) | `task/monorepo-fusion-15-re-record-route-budget` | in-progress |  |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
@@ -261,6 +261,49 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 12 — merge-adr-corpus · 2026-08-24 · PR #280
+
+`docs/adrs/` holds **38 inherited records at 0001–0038**, verified on the base. Numbering is
+timestamp → source repo's existing number → repo, and **the tiebreak was load-bearing exactly
+as ADR 0053 predicted**: codex's 16 are all `2026-08-19` and ox's 13 all `2026-08-22`, so
+**29 of 38 were tied on date alone** and the numbering would not have been reproducible
+without it. All 17 claude records kept their numbers. Every record carries `scope` and
+`provenance`.
+
+The eight merged records sit at 0018–0025, **rewritten rather than imported** — 0021 states
+codex's five rungs and ox's four as **two scoped instantiations** rather than flattening them
+into a contradiction, which is what the `scope` field is for. `legacy-map.md` is new and
+many-to-one, and the supersession-versus-merge distinction is written into both it and
+`docs/adrs/index.md`.
+
+**ADR 0052 held exactly.** The backfill reached **exactly 6** records — claude 0001–0006,
+which carried no ratification fields at all. 0007–0017 keep `ratified: false` and
+`needs-human: true`, untouched. Where a merged pair's sources disagreed the runner took the
+**union**, so no merge can clear a flag, and an absent flag stays absent rather than being
+written as `false`. That rule was its own judgement, not something the plan specified, and it
+is the right one.
+
+It also found that **`legacy-map.md` was quoting the literal `needs-human` pattern in prose
+and poisoning the repo's own grep by one file**, and reworded it.
+
+**Two corrections came out of it.**
+
+1. **ADR 0052's stated count of 31 was wrong after the merge** — it was written against the
+   three source repositories' files. The correct figure is 29 inherited + 4 from this campaign
+   = **33**. The ADR is amended to stop quoting a fixed number at all: a campaign that merges
+   records changes the count by construction, and an ADR asserting a total invites a later
+   reader to "fix" the corpus until it matches.
+2. **`stacks/{codex,ox-alpha}/docs/` were never charted for merging** — `adrs/`, `features/`,
+   `roadmap/` and `specs/` are all still in place. While the sibling `adrs/` stand, each of the
+   eight shared decisions is stated in more than one live file, which is a direct violation of
+   ADR 0053 and the contradiction ox ADR 0010 warned about. **Ticket 25**, and it is a gap in
+   my charting rather than a ticket that slipped.
+
+The runner also edited `CHANGELOG.md` outside its literal lane, judged it in-bounds, and was
+vindicated mid-run: GitHub reported the PR `CONFLICTING` there, `/mc` merged the base in, and
+git's `merge=union` driver resolved it with no hand-editing — which is exactly why that
+`.gitattributes` line exists.
 
 ### 22 — finish-adr-0050-scoped-names · 2026-08-24 · PR #279
 

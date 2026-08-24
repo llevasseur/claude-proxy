@@ -56,10 +56,17 @@ this campaign on any record it did not write.**
 
 **The done criterion is restated so a correct run can satisfy it:**
 
-> This campaign **creates** no `needs-human` records. The 20 inherited from codex and
-> ox and the 11 already in claude keep their flags, and
-> `rg -l 'needs-human:\s*true' docs/adrs/` returning 31 is the **expected result of a
-> correct run**, not a failure.
+> This campaign **creates** no `needs-human` records. Every inherited flag keeps its value,
+> and a non-zero count from `rg -l 'needs-human:\s*true' docs/adrs/` is the **expected result
+> of a correct run**, not a failure.
+
+**The count is 33, not the 31 this record first stated.** That figure was written before the
+corpus merge and counted the three source repositories' files: 11 claude + 13 codex + 7 ox.
+Ticket 12 then merged 16 paired records into 8, and this campaign wrote records of its own —
+so the number after the merge is **29 inherited + 4 from this campaign = 33**, measured on the
+base. **Do not quote a fixed number here.** A campaign that merges records changes the count
+by construction, and an ADR asserting a specific figure invites a later reader to "fix" the
+corpus until it matches. The invariant is that no flag is cleared, not that a total holds.
 
 An unqualified criterion that a correct execution fails is worse than no criterion,
 because the next agent to check it will try to "fix" it by clearing flags — which is

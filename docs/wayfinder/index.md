@@ -37,6 +37,7 @@
 | monorepo-fusion-22-finish-adr-0050-scoped-names | [monorepo-fusion-22-finish-adr-0050-scoped-names.md](monorepo-fusion-22-finish-adr-0050-scoped-names.md) |
 | monorepo-fusion-23-retire-the-stale-stack-agents-files | [monorepo-fusion-23-retire-the-stale-stack-agents-files.md](monorepo-fusion-23-retire-the-stale-stack-agents-files.md) |
 | monorepo-fusion-24-decide-codex-oxlint-severities | [monorepo-fusion-24-decide-codex-oxlint-severities.md](monorepo-fusion-24-decide-codex-oxlint-severities.md) |
+| monorepo-fusion-25-retire-the-sibling-docs-trees | [monorepo-fusion-25-retire-the-sibling-docs-trees.md](monorepo-fusion-25-retire-the-sibling-docs-trees.md) |
 | monorepo-fusion-zz-retire-done-plans | [monorepo-fusion-zz-retire-done-plans.md](monorepo-fusion-zz-retire-done-plans.md) |
 | Research 002 — Which requests are safe to serve (cacheability gate) | [research-002-cacheability.md](research-002-cacheability.md) |
 | Wayfinder — Monorepo Fusion | [wayfinder-monorepo-fusion.md](wayfinder-monorepo-fusion.md) |
