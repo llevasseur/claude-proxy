@@ -4,6 +4,11 @@ title: Preserve concurrent note edits with immutable revisions
 description: Require an expected version for note writes and reject stale updates without destroying either edit.
 tags: [architecture, notes, storage, concurrency, mcp]
 timestamp: 2026-08-16
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0007"
+    file: docs/adrs/0007-preserve-concurrent-note-edits.md
 decided-by: /dev
 ratified: false
 wayfinder: notes
@@ -30,3 +35,10 @@ Store immutable note revisions and maintain a current-note projection. Every upd
 ## Consequences
 
 Clients must retain drafts until the expected version commits. History and conflict evidence remain recoverable, while updates require explicit conflict handling.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

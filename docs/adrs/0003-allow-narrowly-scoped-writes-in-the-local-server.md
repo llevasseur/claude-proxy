@@ -4,6 +4,13 @@ title: Allow narrowly scoped writes in the local server
 description: Keep log analysis read-only while allowing an explicit, origin-checked set of local chat and suggestion-status writes.
 tags: [architecture, backend, security]
 timestamp: 2026-07-28
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0003"
+    file: docs/adrs/0003-allow-narrowly-scoped-writes-in-the-local-server.md
+ratified: true
+needs-human: false
 ---
 
 # Allow narrowly scoped writes in the local server
@@ -51,3 +58,10 @@ not authentication: deployments must add access control before exposure.
   path, not the open read policy.
 - Localhost remains the trust boundary. Origin checks reduce browser-driven
   cross-origin risk but do not protect a remotely exposed port.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.
