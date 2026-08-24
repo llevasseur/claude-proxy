@@ -23,6 +23,12 @@ own relative paths working — ox's proxy script is
 `node --env-file-if-exists=proxy/.env …`, resolved against the working directory, so
 from anywhere else it finds no `.env` and silently falls back to a default.
 
+**A stack that grows more processes grows more panes in its own layout, not a second
+layout.** codex recorded this for the Plane rung of its ladder and it is the rule for all
+three: one session per stack is what makes `pnpm zellij` mean the same thing everywhere,
+and a second layout for the same stack splits that stack's processes across two sessions
+nobody starts together.
+
 ## The nine defaults
 
 These are the ports the code actually binds today, read from source rather than from a
@@ -40,9 +46,9 @@ Which name each one reads, and where the default is written:
 
 | | variable read | falls back to | default in |
 |---|---|---|---|
-| claude proxy | `PORT` | — | `stacks/claude/proxy/proxy.ts` |
-| claude server | `PORT` | — | `stacks/claude/server/src/server.ts` |
-| codex proxy | `PROXY_PORT` | — | `stacks/codex/proxy/src/config.ts` |
+| claude proxy | `CLAUDE_PROXY_PORT` | `PORT` | `stacks/claude/proxy/config.ts` |
+| claude server | `CLAUDE_SERVER_PORT` | `PORT` | `stacks/claude/server/src/config.ts` |
+| codex proxy | `CODEX_PROXY_PORT` | `PROXY_PORT` | `stacks/codex/proxy/src/config.ts` |
 | codex server | `CODEX_SERVER_PORT` | `PORT` | `stacks/codex/server/src/config.ts` |
 | ox proxy | `OX_PROXY_PORT` | `PROXY_PORT` | `stacks/ox-alpha/proxy/src/config.ts` |
 | ox server | `OX_SERVER_PORT` | `SERVER_PORT` | `stacks/ox-alpha/server/src/config.ts` |
@@ -51,13 +57,22 @@ The three admin ports are Vite's, set in each stack's `vite.config.ts`: claude p
 `5173` with `strictPort`, so it refuses to drift and fails loudly instead; codex sets
 `5173`; ox sets nothing and takes Vite's own default, which is `5173` too.
 
-**Only three of ADR 0050's six scoped names exist.** `CODEX_SERVER_PORT` (ticket 05),
-`OX_PROXY_PORT` and `OX_SERVER_PORT` (ticket 06) are implemented, each keeping its bare
-name as a fallback scoped to its own package. `CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT`
-and `CODEX_PROXY_PORT` **do not exist** — claude's proxy and server both still read a
-bare `PORT`, and codex's proxy a bare `PROXY_PORT`. Ticket 22 implements the missing
-three; until it lands, the table above is the whole truth and ADR 0050 describes a state
-this repository has not reached.
+**All six of ADR 0050's scoped names exist.** `CODEX_SERVER_PORT` (ticket 05),
+`OX_PROXY_PORT` and `OX_SERVER_PORT` (ticket 06) arrived with the absorption tickets, and
+ticket 22 added `CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT` and `CODEX_PROXY_PORT`. Each
+keeps its bare name as a fallback scoped to its own package, so a stack launched exactly
+as it is launched today resolves exactly as it did — **no default in the table above
+moved**, and ADR 0050 now describes this repository rather than a state it had not
+reached.
+
+**claude's proxy and server validate nothing, and that is the one asymmetry worth
+knowing.** Neither package had a config module at all before ticket 22: `Number()` of a
+bad value yields `NaN` and `listen` decides. The siblings all range-check and throw, and
+adopting that check would have turned a launch that works today into one that throws —
+the runtime change ADR 0050 exists to avoid. So claude's two took the siblings'
+*resolution order* and left the parsing alone, which is why claude's proxy has three
+port cases in `stacks/claude/proxy/config.test.ts` where codex's proxy has four: the
+fourth asserts a rejection claude deliberately does not perform.
 
 ## The two collisions, recorded rather than fixed
 
@@ -68,6 +83,6 @@ Both are **pre-existing**: running these repositories side by side before fusion
 collided in exactly this way, so fusion neither caused them nor is the occasion to fix
 them. Under ADR 0050's boundary they are out of scope. What makes them survivable is the
 scoped names above — `OX_SERVER_PORT=…` moves ox's server off `8788` without touching a
-default, and the same holds for claude's once ticket 22 gives it a name of its own. In
+default, and `CLAUDE_SERVER_PORT=…` now does the same for claude's. In
 practice whichever process binds second loses, which is why claude's admin sets
 `strictPort` and says so rather than sliding to `5174`.
