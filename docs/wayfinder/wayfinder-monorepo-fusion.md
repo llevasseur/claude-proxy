@@ -193,7 +193,6 @@ Noted, not yet ticketed into their own units; each is folded into the ticket nam
 | 09 | migrate-corpora | [monorepo-fusion-09-migrate-corpora](monorepo-fusion-09-migrate-corpora.md) | `task/monorepo-fusion-09-migrate-corpora` | paused | Stopped before the `mv`, deliberately: all three corpora have live proxy+server writers with open WAL-mode SQLite connections, so the move risks the corpus and criterion 3 (before == after) is unassertable while claude gains ~21 files/45s. Needs a human to ratify ADR 0054, authorise quiescing the three stacks, and pick a byte measure (`du -sb` is GNU-only; this device has BSD `du`). Criterion 6 and the STACK_ROOT rename already satisfied by tickets 05/06. |
 | 23 | retire-stale-stack-agents-files | [monorepo-fusion-23-retire-the-stale-stack-agents-files](monorepo-fusion-23-retire-the-stale-stack-agents-files.md) | `task/monorepo-fusion-23-retire-the-stale-stack-agents-files` | in-progress |  |
 | 11 | repair-and-wire-docs-gate | [monorepo-fusion-11-repair-and-wire-docs-gate](monorepo-fusion-11-repair-and-wire-docs-gate.md) | `task/monorepo-fusion-11-repair-and-wire-docs-gate` | todo | |
-| 25 | retire-sibling-docs-trees | [monorepo-fusion-25-retire-the-sibling-docs-trees](monorepo-fusion-25-retire-the-sibling-docs-trees.md) | `task/monorepo-fusion-25-retire-the-sibling-docs-trees` | in-progress |  |
 | zz | retire-done-plans | [monorepo-fusion-zz-retire-done-plans](monorepo-fusion-zz-retire-done-plans.md) | `task/monorepo-fusion-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -266,6 +265,50 @@ map. Every wave boundary above is one.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 25 — retire-sibling-docs-trees · 2026-08-24 · PR #284
+
+**The charting gap is closed: there is now one docs bundle.** `stacks/codex/docs/` and
+`stacks/ox-alpha/docs/` are gone, verified absent on the base. 21 documents left the sibling
+trees, ten moved into the root bundle carrying `scope` and `provenance`, colliding filenames
+took their scope as a prefix, and `stacks/codex/docs/index.md` folded into `docs/index.md`.
+
+**Criterion 1 was executed rather than sampled, which is what made the deletion safe.** All
+**29** sibling ADR identifiers — codex 0001–0016, ox-alpha 0001–0013 — were confirmed to have
+a `legacy-map.md` row **before anything was removed**, so nothing was deleted without a
+resolution path. Eight were then read against their targets: the merged pair `codex#0004` +
+`ox#0004` → **0021** with both ladders preserved in the scoped table, `codex#0016` → **0038**
+with its internal `ADR 0010` reference correctly renumbered to 0028, and five more. Each
+target says the same thing. `legacy-map.md` itself is untouched since ticket 12.
+
+**Both rung ladders survive as scoped decisions** rather than being reconciled —
+`docs/roadmap/bike-to-plane.md` beside `docs/roadmap/four-rungs-to-plane.md` — which is what
+the `scope` field is for. ADR references inside migrated documents were renumbered in their
+**visible text**, not only their hrefs.
+
+Baseline before the change: 26 `okq validate` errors, all `docs/wayfinder/` plans missing
+`type`. After: the identical 26. **Zero new**, and the pre-existing ones left alone.
+`okq deadlinks` clean, CI green.
+
+**Two deviations, both disclosed and both correct:**
+
+1. **`docs/adrs/0026` was edited inside the 0001–0049 read-only range** — a single link
+   repoint, because this ticket's own deletion broke that link and **`okq deadlinks` cannot
+   catch it, since the link left the bundle**. Shipping a knowingly-broken link would have
+   been worse. No decision content touched.
+2. **Both `stacks/*/scripts/check-docs.mjs` were deleted** with their `package.json` wiring,
+   outside the declared lane. They walked bundles that no longer exist and would have failed
+   with `ENOENT`. This reaches into **ticket 11's** subject, whose plan is updated
+   accordingly — there is now one gate to repair, and its "create ox's `docs/index.md`"
+   criterion is moot.
+
+**Handed off rather than silently left:** `stacks/codex/AGENTS.md:12` still names
+`docs/features/`, `docs/specs/`, `docs/roadmap/` and `docs/adrs/` under the stack root, where
+they no longer exist. **Ticket 23 owns that file** and is deleting it, so the dangling
+reference resolves there.
+
+**One workflow observation:** the run needed three nudges to get past `/pr` into the merge
+steps — it kept handing back mid-pipeline.
 
 ### 24 — decide-codex-oxlint-severities · 2026-08-24 · PR #283
 

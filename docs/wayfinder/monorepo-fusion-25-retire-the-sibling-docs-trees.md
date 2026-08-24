@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-25-retire-the-sibling-docs-trees`
-**Status:** active
+**Status:** done · 2026-08-24
 
 ## Why this ticket exists
 

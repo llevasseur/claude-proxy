@@ -28,6 +28,22 @@ between `okq:index:begin`/`okq:index:end` markers and emits **directory** links 
 run. claude also has no `docs/roadmap/` (it arrives with ox) and does have a
 `docs/wayfinder/` the assertion never checks.
 
+## State changed under this plan — read before acting on its criteria
+
+**Ticket 25 already deleted both `stacks/*/scripts/check-docs.mjs` and their `package.json`
+wiring.** It was outside that ticket's declared lane and it said so, but the reasoning holds:
+those scripts walked bundles that no longer exist and would have failed with `ENOENT`. So
+there is now exactly one docs gate to repair, at the root, and **criterion 4's "create
+`docs/index.md` for ox's bundle" is moot** — ox's bundle is gone, folded into the root by
+ticket 25 along with codex's.
+
+**The measured failure set is also different from what criterion 1 describes.** The current
+`okq --bundle docs validate` baseline is **26 errors, all of them `docs/wayfinder/` plans
+missing a `type` field** — pre-existing, and not what this ticket is about. Blocker (h)'s
+original five errors against claude's 62 documents were measured before the corpus tripled.
+**Re-measure before acting**, and do not "fix" the wayfinder plan errors: those files are
+deleted wholesale by the `zz` ticket.
+
 ## Also in scope, added after ticket 13 landed
 
 **Supersession in this corpus is discoverable only forward.** A record names what it
