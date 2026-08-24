@@ -13,19 +13,28 @@ layout {
     // second layout.
     tab name="dev" {
         pane split_direction="vertical" {
-            // No port is pinned here. `proxy` and `server` run under `pnpm
-            // --filter`, so `../../../.env` from their package directory is the
-            // monorepo-root file. `admin` is Vite and loads `apps/admin/.env`.
+            // `cwd` on every pane is load-bearing, not tidy: scripts/zellij.sh
+            // launches from the monorepo root, where a bare `pnpm proxy` resolves
+            // to claude's root script. `cwd` picks `stacks/codex/package.json`
+            // instead, and lets each script's `--env-file-if-exists=../../../.env`
+            // reach this stack's root `.env` from the package directory.
+            //
+            // No port is pinned here; each pane reads its own env. codex's
+            // defaults are proxy 8026 and server 4319 — see .zellij/README.md
+            // for all nine.
             pane name="proxy" {
+                cwd "stacks/codex"
                 command "pnpm"
                 args "proxy"
             }
             pane split_direction="horizontal" {
                 pane name="server" {
+                    cwd "stacks/codex"
                     command "pnpm"
                     args "server"
                 }
                 pane name="admin" {
+                    cwd "stacks/codex"
                     command "pnpm"
                     args "admin"
                 }

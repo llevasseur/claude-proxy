@@ -2,164 +2,258 @@
 
 ## Repository map
 
-Read this instead of walking the tree. Four pnpm workspace packages: `proxy/` (the
-logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
-`packages/core/` (`@claude-proxy/core`, pure logic, no runtime deps), `apps/admin/`
-(React/TanStack dashboard).
+Read this instead of walking the tree. This is one pnpm workspace holding **three
+stacks** — three proxies that were separate repositories until the `monorepo-fusion`
+campaign absorbed them, each still its own set of packages under `stacks/<name>/`:
 
-- `server/src/server.ts` dispatches on pathname; the `build*` handlers behind those
-  routes live in `server/src/api.ts`. CLI entry points are
-  `server/src/suggestions-cli.ts` (`pnpm --filter @agent-proxy/claude-server suggestions`),
-  `daily-summary.ts`, `chat-cli.ts`, `maintain-cli.ts`, and `ingest-cli.ts`; the
-  SQLite substrate lives under `server/src/db/`.
-- **Each page in `apps/admin/src/routes/<name>.tsx` declares its own route.** The file
-  exports its component as before, plus `route` — its own `createRoute` call, carrying
-  path, component, `staticData.title` and any `validateSearch` — and, if it belongs in
-  the side rail, `nav`, its station. There is still **no** file-based routing and no
-  generated route tree: `apps/admin/src/routes/registry.ts` is a hand-written list of
-  the 38 modules, so a new page is a new file in `routes/` plus one line there.
-  `apps/admin/src/router.tsx` is now ~20 lines — it imports that list and calls
-  `addChildren`; the root route and the layout live in `apps/admin/src/route-root.tsx`,
-  which builds the rail from the same list. Three things there are load-bearing rather
-  than style: `ROUTES` and the rail's `STATIONS` are `as const` (a plain array literal
-  widens to a union array and the route tree loses which paths exist, which silently
-  degrades `<Link to>` and `useParams({ from })`); a `nav` is written
-  `as const satisfies NavEntry`, never `: NavEntry`, for the same reason; and the
-  import cycle between `registry`, the page files and `route-root` is deliberate and
-  benign, since every edge is read lazily. Section order lives in `NAV_SECTION_ORDER`
-  in `apps/admin/src/routes/nav.ts` and station order is the registry's own order, so a
-  page in no section simply exports no `nav`. Shared UI is
-  `apps/admin/src/components/`, data fetching is `src/api.ts` + `useLiveQuery.ts`.
-- `packages/core/src/` is one file per domain (`sessions.ts`, `suggestions.ts`,
-  `usage-limits.ts`, …) re-exported from `index.ts`. It ships **no build**: its
-  `exports` map points straight at `./src/index.ts`, so consumers import TypeScript
-  source and `packages/core/dist` never exists.
-- `proxy/` is TypeScript with **zero runtime dependencies** — `proxy.ts` (bin
-  `claude-proxy`), plus `wire.ts`, `session.ts`, `skim.ts`, `system-prompt.ts`,
+| Stack | Path | Packages | What it proxies |
+|---|---|---|---|
+| claude | `stacks/claude/` | `proxy`, `server`, `core`, `admin` | Anthropic / Claude Code |
+| codex | `stacks/codex/` | `proxy`, `server`, `packages/core`, `apps/admin` | OpenAI |
+| ox-alpha | `stacks/ox-alpha/` | `proxy`, `server`, `packages/core`, `apps/admin` | OpenAI Responses |
+
+Every package is scoped `@agent-proxy/<stack>-<package>` — `@agent-proxy/claude-server`,
+`@agent-proxy/codex-proxy`, `@agent-proxy/ox-core`. Bins are untouched by that scoping.
+
+**Only claude's stack is flattened.** `pnpm-workspace.yaml` carries `stacks/*/packages/*`
+and `stacks/*/apps/*` for the other two, because flattening codex would break its
+`../scripts/run-if-present.mjs` paths and, more seriously, the `import.meta.dirname/../..`
+anchor ADR 0054 turns on. Do not "tidy" the asymmetry — it is load-bearing.
+
+`ox-alpha` is a clean-room rebuild of `codex-proxy` from its recorded decisions, so the
+two look alike on purpose. Where a plan under-specifies a concrete mechanic — pricing
+rates, Responses SSE usage selection, recordId generation, DST boundaries — ox ports the
+codex mechanic faithfully and cites it. Where neither docs nor code settles a genuine
+choice, it records an unratified needs-human decision rather than picking silently.
+
+### Inside the claude stack
+
+- `stacks/claude/server/src/server.ts` dispatches on pathname; the `build*` handlers
+  behind those routes live in `stacks/claude/server/src/api.ts`. CLI entry points are
+  `suggestions-cli.ts` (`pnpm --filter @agent-proxy/claude-server suggestions`),
+  `daily-summary.ts`, `chat-cli.ts`, `maintain-cli.ts`, and `ingest-cli.ts`; the SQLite
+  substrate lives under `stacks/claude/server/src/db/`.
+- **Each page in `stacks/claude/admin/src/routes/<name>.tsx` declares its own route.** The
+  file exports its component as before, plus `route` — its own `createRoute` call,
+  carrying path, component, `staticData.title` and any `validateSearch` — and, if it
+  belongs in the side rail, `nav`, its station. There is still **no** file-based routing
+  and no generated route tree: `routes/registry.ts` is a hand-written list of the 38
+  modules, so a new page is a new file in `routes/` plus one line there. `router.tsx` is
+  ~20 lines — it imports that list and calls `addChildren`; the root route and the layout
+  live in `route-root.tsx`, which builds the rail from the same list. Three things there
+  are load-bearing rather than style: `ROUTES` and the rail's `STATIONS` are `as const` (a
+  plain array literal widens to a union array and the route tree loses which paths exist,
+  which silently degrades `<Link to>` and `useParams({ from })`); a `nav` is written
+  `as const satisfies NavEntry`, never `: NavEntry`, for the same reason; and the import
+  cycle between `registry`, the page files and `route-root` is deliberate and benign,
+  since every edge is read lazily. Section order lives in `NAV_SECTION_ORDER` in
+  `routes/nav.ts` and station order is the registry's own order, so a page in no section
+  simply exports no `nav`. Shared UI is `components/`, data fetching is `src/api.ts` +
+  `useLiveQuery.ts`.
+- `stacks/claude/core/src/` is one file per domain (`sessions.ts`, `suggestions.ts`,
+  `usage-limits.ts`, …) re-exported from `index.ts`.
+- `stacks/claude/proxy/` is TypeScript with **zero runtime dependencies** — `proxy.ts`
+  (bin `claude-proxy`), plus `wire.ts`, `session.ts`, `skim.ts`, `system-prompt.ts`,
   `usage-live.ts`.
-  TypeScript is a devDependency only; the bin is executed directly by node, which
-  strips the types itself, so there is no build step and no `dist`. Imports carry
-  explicit `.ts` extensions (`allowImportingTsExtensions`) — that is deliberate,
-  not a mistake to "fix".
-- Tests sit beside their package, never in a top-level `test/`:
-  `packages/core/test/*.test.ts` and `server/test/*.test.ts` (both vitest),
-  `proxy/*.test.ts` (node's built-in runner, `node --test`). `apps/admin` has no
-  test suite — `typecheck` is its only gate.
-- `logs/` holds roughly today only: per-request triples
+- `logs/` at the repository root holds roughly today only: per-request triples
   (`<timestamp>_anthropic.audit.json` / `.md` / `.request.txt`),
   `logs/sessions/<threadId>.md` transcripts with `.nodes.jsonl` and `.state.json`
   sidecars, `logs/suggestion-status.json`, `logs/.chat/`, and `logs/archive/`.
-- Verify with `my-command-tools verify`; it runs the root `typecheck`, `test`,
-  `build`, `check`, and `check:env` scripts. `check` is Biome (`biome check .` —
-  lint plus format plus import sorting, read-only); `format` (`biome check --write
-  .`) is the fixer and `lint` (`biome lint .`) narrows to the linter alone.
-- Biome is configured by `biome.json` at the repo root. Two things there are
-  deliberate and should not be "tidied" away:
-  - `!logs` in `files.includes` skips traversal of `logs/` outright. That
-    directory holds captured audit JSON with non-UTF-8 bytes; `!logs/**` would
-    still walk it.
-  - `style/noNonNullAssertion` is **off**. It fired at 255 sites, essentially all
-    of them the direct consequence of `noUncheckedIndexedAccess` being on
-    repo-wide — the assertion is how an already-bounds-checked index access is
-    narrowed. `biome.json` is strict JSON and cannot carry a comment saying so,
-    which is why it says so here.
-  Everything else is suppressed per site with a stated reason rather than turned
-  off; prefer that when a new rule fires on deliberate code.
-- `biome.json` loads one GritQL plugin, `stacks/claude/admin/lint/no-bare-size.grit`.
-  It refuses a bare px in a `padding`, `margin`, `gap`, `font-size` or
-  `border-radius` declaration, because those name a step of the space, type and
-  radius scale in `stacks/claude/admin/src/styles/tokens.css`. If it fires, pick a
-  step (`var(--space-N)`, `var(--text-N)`, `var(--radius-N)`) rather than
-  suppressing — and if no step fits, add a *named* token beside `--space-page`,
-  since a size one rule reaches for still wants a name.
+
+### Rules that hold for every stack
+
+- **No core package has a build, and no proxy has one either.** Each core's `exports` map
+  points straight at `./src/index.ts`, so consumers import TypeScript source and no
+  `dist` ever exists. Each proxy is executed directly by node, which strips the types
+  itself. Imports carry explicit `.ts` extensions (`allowImportingTsExtensions`) — that is
+  deliberate, not a mistake to "fix". **Install is the whole build**, so
+  `ERR_MODULE_NOT_FOUND` means a worktree was never bootstrapped, never that something
+  needs compiling.
+- Keep every proxy and every core free of runtime dependencies.
+- Keep core deterministic: no Node modules, no environment, clock, filesystem, database or
+  network reads.
+- Treat final sanitized audit sidecars as the source of truth and SQLite as rebuildable
+  state.
+- Never persist request bodies, response bodies, prompts, tool data, credentials, cookies,
+  or arbitrary headers.
+- Node 22.18 or newer, pnpm 11.5.2.
+- Tests sit beside their package, never in a top-level `test/`: vitest for the servers and
+  cores, `node --test` for the proxies. claude's admin has no test suite — `typecheck` is
+  its only gate.
+
+## Ports
+
+Nine defaults — three stacks by proxy, server and admin. **`.zellij/README.md` is the
+full record**, including which environment variable each one reads and where the default
+is written; the summary is:
+
+| stack | proxy | server | admin |
+|---|---|---|---|
+| claude | 8787 | 8788 | 5173 |
+| codex | 8026 | 4319 | 5173 |
+| ox-alpha | 8807 | 8788 | 5173 |
+
+**Change none of these numbers.** ADR 0050 struck "allocate nine distinct ports": it was a
+remedy for a collision fusion did not create, and renumbering would be exactly the runtime
+change the campaign forbids.
+
+**Only three of ADR 0050's six scoped names actually exist**, so read the ADR as intent
+rather than as description:
+
+- Implemented: `CODEX_SERVER_PORT`, `OX_PROXY_PORT`, `OX_SERVER_PORT` — each keeping its
+  bare name as a fallback scoped to its own package.
+- **Missing:** `CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT`, `CODEX_PROXY_PORT`. claude's
+  proxy and server both still read a bare `PORT`, and codex's proxy a bare `PROXY_PORT`.
+  **Ticket 22 implements these three**; until it lands, do not write code or docs that
+  assume they work.
+
+Two collisions are **recorded rather than fixed**, because both predate fusion — running
+these repositories side by side already collided this way: claude's and ox's servers both
+default to `8788`, and all three admin dev servers to `5173`. The scoped names above are
+what makes them overridable without moving a default.
+
+## Toolchain
+
+- Verify with `my-command-tools verify`; it discovers and runs the root `typecheck`,
+  `test`, `build`, `check`, `lint`, `check:env` and `check:names` scripts. `check` is
+  Biome (`biome check .` — lint plus format plus import sorting, read-only) plus
+  `scripts/check-package-filters.mjs`; `format` (`biome check --write .`) is the fixer and
+  `lint` (`biome lint .`) narrows to the linter alone. `anti:slop` is oxlint.
+- Biome is configured by `biome.json` at the repo root, pinned to **2.5.6**. Two things
+  there are deliberate and should not be "tidied" away:
+  - The `files.includes` entry `!**/logs` prunes the log directories. They hold captured
+    audit JSON with non-UTF-8 bytes, and the pattern is doubly-starred so it matches a
+    stack's log directory as well as the root one. **The older note here claimed `!logs`
+    prunes while `!logs/**` still walks — on 2.5.6 that distinction does not exist: ticket
+    02 measured both forms against a directory holding invalid UTF-8 and a deliberately
+    unreadable file, and both pruned it, with no UTF-8 errors and no permission error.**
+    The pattern shipped is the one that is documented to prune and measured fastest (364
+    files in 51ms). Treat that as a fact about 2.5.6 specifically and re-measure before
+    trusting it across a Biome upgrade — the reason it is written down with its version is
+    that the previous version of this note went stale silently and was defended by readers
+    who had no way to know.
+  - `style/noNonNullAssertion` is **off**. It fired at 255 sites, essentially all of them
+    the direct consequence of `noUncheckedIndexedAccess` being on repo-wide — the
+    assertion is how an already-bounds-checked index access is narrowed. `biome.json` is
+    strict JSON and cannot carry a comment saying so, which is why it says so here.
+
+  Everything else is suppressed per site with a stated reason rather than turned off;
+  prefer that when a new rule fires on deliberate code.
+- `biome.json` loads one GritQL plugin, `stacks/claude/admin/lint/no-bare-size.grit`. It
+  refuses a bare px in a `padding`, `margin`, `gap`, `font-size` or `border-radius`
+  declaration, because those name a step of the space, type and radius scale in
+  `stacks/claude/admin/src/styles/tokens.css`. If it fires, pick a step
+  (`var(--space-N)`, `var(--text-N)`, `var(--radius-N)`) rather than suppressing — and if
+  no step fits, add a *named* token beside `--space-page`, since a size one rule reaches
+  for still wants a name.
   **It cannot be scoped to one stack, and two tickets established that separately.**
-  `plugins` is a top-level array applying repo-wide, and the path in it says only
-  where the plugin *file* lives, not what it inspects; Biome 2.5.6 supports neither
-  `overrides[].plugins` nor plugin suppression comments. So the header's premise —
-  the dashboard sheet is the only CSS in the repo — stopped being true at fusion and
-  stays false. The sibling stacks' sheets are checked too, and their few bare-px
-  sites are rewritten against a named token that sheet already declares rather than
-  exempted: codex's `margin: -1px` became `calc(-1 * var(--space-1))`, and ox's two
-  `border-radius: 999px` became `var(--radius-pill)`. That is the remedy for a new
-  one; do not reach for a scoping mechanism, because none exists in the pinned
-  version.
-- **ox is at a `warn` tier under both linters, and the tier is a countdown rather
-  than an exemption.** The `stacks/ox-alpha/**` block in `biome.json` `overrides`
-  holds the three rules that fired on ox source when it was absorbed —
-  `noEmptyBlockStatements` (9), `noArrayIndexKey` (4) and `noUnusedVariables` (1) —
-  at `warn` instead of `error`, because the campaign that absorbed ox forbids
-  changing its runtime behaviour and each of those fixes would.
-  `stacks/ox-alpha/.oxlintrc.json` does the same for the anti-slop rules, which start
-  at 358. Two further findings, `noUnusedImports` (3) and `noBarrelFile` (1), are
-  already `warn` repo-wide and are deliberately **not** in the block — putting them
-  there would fake a ratchet, since removing them from it could never tighten
-  anything. `useExhaustiveDependencies` was expected among them and fires zero times
-  on ox, so it stays at `error`.
-  **The ratchet, which is the whole point of the tier: a rule moves from `warn` back
-  to `error` once its count reaches zero, and every file a ticket touches must pass at
+  `plugins` is a top-level array applying repo-wide, and the path in it says only where
+  the plugin *file* lives, not what it inspects; Biome 2.5.6 supports neither
+  `overrides[].plugins` nor plugin suppression comments. So the header's premise — the
+  dashboard sheet is the only CSS in the repo — stopped being true at fusion and stays
+  false; there are three sheets. The sibling stacks' sheets are checked too, and their few
+  bare-px sites are rewritten against a named token that sheet already declares rather
+  than exempted: codex's `margin: -1px` became `calc(-1 * var(--space-1))`, and ox's two
+  `border-radius: 999px` became `var(--radius-pill)`. That is the remedy for a new one; do
+  not reach for a scoping mechanism, because none exists in the pinned version.
+- **ox is at a `warn` tier under both linters, and the tier is a countdown rather than an
+  exemption.** The `stacks/ox-alpha/**` block in `biome.json` `overrides` holds the three
+  rules that fired on ox source when it was absorbed — `noEmptyBlockStatements` (9),
+  `noArrayIndexKey` (4) and `noUnusedVariables` (1) — at `warn` instead of `error`,
+  because the campaign that absorbed ox forbids changing its runtime behaviour and each of
+  those fixes would. `stacks/ox-alpha/.oxlintrc.json` does the same for the anti-slop
+  rules, which start at 358. codex extends the root oxlint config and restates the 15
+  anti-slop rules at `warn`, which is the tier it enforced on itself before the merge.
+  Two further findings, `noUnusedImports` (3) and `noBarrelFile` (1), are already `warn`
+  repo-wide and are deliberately **not** in the block — putting them there would fake a
+  ratchet, since removing them from it could never tighten anything.
+  `useExhaustiveDependencies` was expected among them and fires zero times on ox, so it
+  stays at `error`.
+  **The ratchet, which is the whole point of the tier: a rule moves from `warn` back to
+  `error` once its count reaches zero, and every file a ticket touches must pass at
   `error` before that ticket is done.** That is what makes the backlog shrink
-  monotonically instead of drifting. `off` is never the answer here — `off` is
-  invisible, `warn` is a countdown. The block is expected to be empty by the end of
-  campaign 3; `biome.json` is strict JSON and cannot carry a comment saying so, which
-  is why it says so here.
-- `.gitattributes` exists for exactly one line, `CHANGELOG.md merge=union`, and it
-  is load-bearing rather than tidy-up. Nearly every commit here touches
-  `CHANGELOG.md`, and every one of them **prepends** — so two branches in flight
-  always edit the same first lines and the three-way merge conflicts every single
-  time, in the identical place, with no semantic disagreement to resolve. `union`
-  takes both sides' added lines instead of raising a conflict, which makes the
-  conflict impossible rather than merely quick to resolve. It is safe **because of
-  what this file's format already is**: one bullet per entry on its own line, and
-  `### Added` / `### Changed` / `### Fixed` headings that already repeat down the
-  file, so a duplicated heading is the shape the file has rather than damage.
-  Two consequences to keep in mind. `union` is per-file and per-line: it applies to
-  `CHANGELOG.md` alone, never to code, where "keep both sides" would be a silent
-  wrong answer. And it resolves without asking, so a branch that *rewrites* an
-  existing entry rather than adding one gets both versions — re-read the top of the
-  file after a merge if you edited an entry in place. When a release is eventually
-  cut and `## [x.y.z]` headings appear, revisit this: the guarantee above rests on
-  `## [Unreleased]` being the only release heading.
-- **`.git-blame-ignore-revs` lists the commits `git blame` should look through, and
-  it does nothing until this clone is told to read it:**
+  monotonically instead of drifting. `off` is never the answer here — `off` is invisible,
+  `warn` is a countdown. The block is expected to be empty by the end of campaign 3;
+  `biome.json` is strict JSON and cannot carry a comment saying so, which is why it says
+  so here.
+- `.gitattributes` exists for exactly one line, `CHANGELOG.md merge=union`, and it is
+  load-bearing rather than tidy-up. Nearly every commit here touches `CHANGELOG.md`, and
+  every one of them **prepends** — so two branches in flight always edit the same first
+  lines and the three-way merge conflicts every single time, in the identical place, with
+  no semantic disagreement to resolve. `union` takes both sides' added lines instead of
+  raising a conflict, which makes the conflict impossible rather than merely quick to
+  resolve. It is safe **because of what this file's format already is**: one bullet per
+  entry on its own line, and `### Added` / `### Changed` / `### Fixed` headings that
+  already repeat down the file, so a duplicated heading is the shape the file has rather
+  than damage.
+  Three consequences to keep in mind. `union` is per-file and per-line: it applies to
+  `CHANGELOG.md` alone, never to code, where "keep both sides" would be a silent wrong
+  answer. It resolves without asking, so a branch that *rewrites* an existing entry rather
+  than adding one gets both versions — re-read the top of the file after a merge if you
+  edited an entry in place. And **the pattern has no slash, so it matches at any depth**;
+  that is deliberate and the file's own comment records why. No stack brought a changelog,
+  so this repository has exactly one, at the root, and the widening is real in mechanism
+  and empty in practice. A sibling changelog added later inherits union-merge silently —
+  if it is not shaped like this one, anchor the pattern to `/CHANGELOG.md` then.
+  When a release is eventually cut and `## [x.y.z]` headings appear, revisit this: the
+  guarantee above rests on `## [Unreleased]` being the only release heading.
+- **`.git-blame-ignore-revs` lists the commits `git blame` should look through, and it
+  does nothing until this clone is told to read it:**
 
   ```
   git config blame.ignoreRevsFile .git-blame-ignore-revs
   ```
 
-  Run that once per clone. `blame.ignoreRevsFile` is a config key, and git config
-  is per-clone rather than per-tree, so unlike `.gitattributes` above the file
-  cannot carry its own activation — committing it is only half the mechanism, and
-  the half that is committed is the inert one. `scripts/bootstrap-worktree.sh` runs
-  the command, which covers this clone's worktrees **and its main checkout too**,
-  since linked worktrees write to the shared config rather than to one of their
-  own. A clone that has never bootstrapped a worktree still needs the line above by
-  hand, and the symptom of skipping it is silent: blame works, it just reports the
-  wrong commit.
-  The file currently holds one SHA, the commit that reformatted all 96 of ox's
-  source files to this repository's Biome settings. Nothing about that commit is
-  worth blaming, and without the config every one of those files blames to it.
-  Only ever add a commit that changed no behaviour — a commit mixing a reformat
-  with a real edit makes the real edit unblameable.
-  **One sharp edge, until this file reaches `main`.** The config is per-clone but
-  the file is per-branch, and git treats a missing ignore list as fatal rather than
-  as nothing to ignore — so on a branch cut before this file existed, every
-  `git blame` in the clone dies with `fatal: could not open object name list:
-  .git-blame-ignore-revs`. That is the config finding no file, not damage: either
-  `git config --unset blame.ignoreRevsFile` until you are back on a branch that has
-  it, or merge forward. The window closes on its own once the file is on `main` and
-  every branch is cut from it.
-- **Project skills are tracked under `.agents/skills/<name>/`, and `.claude/skills/`
-  is gitignored.** That directory is only the path Claude Code discovers skills at,
-  so it holds symlinks rather than content and is rebuilt per checkout by
+  Run that once per clone. `blame.ignoreRevsFile` is a config key, and git config is
+  per-clone rather than per-tree, so unlike `.gitattributes` above the file cannot carry
+  its own activation — committing it is only half the mechanism, and the half that is
+  committed is the inert one. `scripts/bootstrap-worktree.sh` runs the command, which
+  covers this clone's worktrees **and its main checkout too**, since linked worktrees
+  write to the shared config rather than to one of their own. A clone that has never
+  bootstrapped a worktree still needs the line above by hand, and the symptom of skipping
+  it is silent: blame works, it just reports the wrong commit.
+  The file currently holds one SHA, the commit that reformatted all 96 of ox's source
+  files to this repository's Biome settings. Nothing about that commit is worth blaming,
+  and without the config every one of those files blames to it. Only ever add a commit
+  that changed no behaviour — a commit mixing a reformat with a real edit makes the real
+  edit unblameable.
+  **One sharp edge, until this file reaches `main`.** The config is per-clone but the file
+  is per-branch, and git treats a missing ignore list as fatal rather than as nothing to
+  ignore — so on a branch cut before this file existed, every `git blame` in the clone
+  dies with `fatal: could not open object name list: .git-blame-ignore-revs`. That is the
+  config finding no file, not damage: either `git config --unset blame.ignoreRevsFile`
+  until you are back on a branch that has it, or merge forward. The window closes on its
+  own once the file is on `main` and every branch is cut from it.
+- **Project skills are tracked under `.agents/skills/<name>/`, and `.claude/skills/` is
+  gitignored.** That directory is only the path Claude Code discovers skills at, so it
+  holds symlinks rather than content and is rebuilt per checkout by
   `scripts/link-project-skills.sh` — wired into `postinstall` and into
   `scripts/bootstrap-worktree.sh`, which is what makes the skills reachable from a
-  worktree. Add or edit a skill under `.agents/skills/`; a new one is surfaced by
-  the next install, or by `pnpm skills:link` now. The link is relative
-  (`../../.agents/skills/<name>`), so each checkout resolves to its own branch's
-  skills rather than back to the main checkout's.
-- `docs/` is an OKF bundle declared in `docs/index.md` frontmatter —
-  `docs/features/`, `docs/specs/`, `docs/adrs/`, `docs/wayfinder/`. Go there for
-  depth rather than re-deriving it from source.
+  worktree. Add or edit a skill under `.agents/skills/`; a new one is surfaced by the next
+  install, or by `pnpm skills:link` now. The link is relative
+  (`../../.agents/skills/<name>`), so each checkout resolves to its own branch's skills
+  rather than back to the main checkout's.
+- `docs/` is an OKF bundle declared in `docs/index.md` frontmatter — `docs/features/`,
+  `docs/specs/`, `docs/adrs/`, `docs/wayfinder/`, and `docs/history/` (commit maps from the
+  absorbed repositories; data files rather than concepts, so okq does not index them). Go
+  there for depth rather than re-deriving it from source.
+
+## Running everything
+
+`pnpm zellij` opens one stack's proxy, server and admin in a single zellij session, plus a
+spare shell tab. **All three layouts live in the root `.zellij/`** — `claude-proxy.kdl`,
+`codex-proxy.kdl`, `ox-alpha-proxy.kdl` — because each stack's `scripts/zellij.sh` resolves
+the repository top level and `cd`s there before asking for `.zellij/<stack>.kdl`, which
+after fusion is the monorepo root. The two sibling layouts pin `cwd` per pane so a bare
+`pnpm proxy` reaches that stack's script rather than the root one, which is claude's. See
+`.zellij/README.md`.
+
+Individually, from a stack directory: `pnpm proxy`, `pnpm server`, `pnpm admin`.
+
+Relative paths in a stack's `.env` — `AUDIT_DIR`, `DATABASE_PATH`, `PROXY_STATUS_FILE`,
+`PROXY_STATUS_PATH` — resolve against that stack's root rather than against the launching
+cwd or the monorepo root, so every pane writes to the same place however it was started.
+Absolute values still win. See ADR 0054.
 
 ## Efficient discovery
 
@@ -200,12 +294,12 @@ logging proxy, bin `claude-proxy`), `server/` (HTTP API plus headless jobs),
   via numeric `offset`/`limit` — never the whole file.
 - **"I need a different symbol from it" is not a reason to re-read.** Going back to a
   file already in the transcript because the interesting function is now a different
-  one is what puts a file at three, four, or five reads — `server/src/api.ts` and the
-  `apps/admin/src/` route files are the recorded repeat offenders, being large enough
-  that each pass is expensive. Locate both symbols in one `rg -n 'foo|bar' <file>`,
-  then pull only the range you still need with numeric `offset`/`limit`. The file's
-  earlier read is still in context; the second full read buys nothing it did not
-  already have.
+  one is what puts a file at three, four, or five reads — the claude server's
+  `src/api.ts` and its `admin/src/routes/` files are the recorded repeat offenders,
+  being large enough that each pass is expensive. Locate both symbols in one
+  `rg -n 'foo|bar' <file>`, then pull only the range you still need with numeric
+  `offset`/`limit`. The file's earlier read is still in context; the second full read
+  buys nothing it did not already have.
 - **Do not re-read to verify an `Edit` that returned success.** `Edit` and `Write`
   fail loudly when they do not apply; a successful result *is* the verification, and
   the harness already tracks the new contents. Verify behaviour with the repo's
@@ -226,16 +320,18 @@ them are one of the shapes below. Each has a working form; use it the first time
 
 - **Never `cd` into a package by relative path.** `cd server`, `cd apps/admin`, and
   `cd packages/core` fail with `(eval):cd:1: no such file or directory: server`
-  whenever the shell is not already at the repo root — which is the normal case in a
-  worktree. Run package scripts from wherever you are with
-  `pnpm --filter @agent-proxy/claude-<server|admin|proxy|core> <script>` — the filter
+  whenever the shell is not already at the right root — which is the normal case in a
+  worktree, and now also the normal case anywhere, since every package sits under
+  `stacks/<name>/`. Run package scripts from wherever you are with
+  `pnpm --filter @agent-proxy/<stack>-<proxy|server|core|admin> <script>` — the filter
   argument is the package's **scoped** name, and pnpm answers an unscoped one with a
   warning and exit 0 rather than an error. Point the helper at a root with
   `my-command-tools <verb> --cwd <absolute path>` (the flag goes **after** the verb;
-  before it the helper just prints usage), and use `git -C <absolute path>` for git. If a directory genuinely must be entered, enter it by absolute path.
+  before it the helper just prints usage), and use `git -C <absolute path>` for git. If a
+  directory genuinely must be entered, enter it by absolute path.
 - **Every path argument is absolute.** `cat components/SeriesLineChart.tsx` fails
   with `No such file or directory` because the file is at
-  `apps/admin/src/components/SeriesLineChart.tsx` relative to a root the shell is
+  `stacks/claude/admin/src/components/SeriesLineChart.tsx` relative to a root the shell is
   not in. Prefer the `Read` tool over `cat`/`head`/`sed` for reading; when a shell
   command must take a path, spell it out in full from the worktree root.
 - **`sed` over `logs/` needs `LC_ALL=C`.** Captured request/response bodies contain
@@ -249,7 +345,8 @@ them are one of the shapes below. Each has a working form; use it the first time
   Never run a dev server or watcher in the foreground; start it in background mode
   with a log file and wait on the log.
 - **Piping a workspace script's `--json` into a parser needs `pnpm --silent`.** The
-  form that parses is `pnpm --silent --filter @agent-proxy/claude-server suggestions list -r 9 --json`,
+  form that parses is
+  `pnpm --silent --filter @agent-proxy/claude-server suggestions list -r 9 --json`,
   with `--silent` **before** `--filter`. pnpm's script runner wraps the script's own
   output in lines of its own — a dimmed `$ tsx src/suggestions-cli.ts …` echo, and a
   `Scope: … workspace projects` banner when the filter matches more than one package
@@ -279,14 +376,18 @@ them are one of the shapes below. Each has a working form; use it the first time
   that something needs building.** `git worktree add` materializes tracked files
   only, so there is no `node_modules/`, no `.env`, no `logs/` and no
   `.claude/skills/`. Fix it once with `bash scripts/bootstrap-worktree.sh` (run from
-  inside the worktree; it symlinks `apps/admin/.env`, `proxy/.env`, and `logs/` from
-  the main checkout, rebuilds `.claude/skills/`, then runs
-  `pnpm install --frozen-lockfile`).
-- **Never wait on a `@claude-proxy/core` build — there isn't one.** Its `exports`
-  map points at `./src/index.ts`, it has no `build` script, and nothing in the repo
-  references a `dist`. `ls: packages/core/dist: No such file or directory` is the
-  expected answer at any time, never a signal to build; install *is* the whole
-  build. A missing `logs/` directory is the same bootstrap symptom, not data loss.
+  inside the worktree; it symlinks env files and `logs/` from the main checkout,
+  rebuilds `.claude/skills/`, sets `blame.ignoreRevsFile`, then runs
+  `pnpm install --frozen-lockfile`). **Its env link list still names the pre-fusion
+  paths `apps/admin/.env` and `proxy/.env`**, which no longer exist now that claude's
+  stack moved under `stacks/claude/`; the script skips a path it cannot find and says
+  `skip … (not in main checkout)`, so the symptom is a silent absence rather than an
+  error. Read its output rather than assuming env arrived.
+- **Never wait on a core package build — there isn't one for any stack.** Each core's
+  `exports` map points at `./src/index.ts`, none has a `build` script, and nothing in
+  the repo references a `dist`. `No such file or directory` for a core `dist` is the
+  expected answer at any time, never a signal to build; install *is* the whole build.
+  A missing `logs/` directory is the same bootstrap symptom, not data loss.
 - **`fatal: 'main' is already used by worktree at ...`** — `main` is checked out in
   the main checkout, so no worktree may check it out again. Never branch a task off
   a local `main` checkout; create the task branch with
@@ -306,8 +407,8 @@ them are one of the shapes below. Each has a working form; use it the first time
 - `gh`'s GraphQL-backed writes (`gh pr create`, `gh pr edit`) resolve to an account
   that is not a collaborator on `llevasseur`-owned repos, while REST succeeds. A
   `must be a collaborator` GraphQL error means the wrong identity, not a permission
-  to request: select the right account (`gh auth switch`, or
-  `GH_TOKEN="$(gh auth token --user llevasseur)"`) or use the REST equivalent.
+  to request: select the right account (`my-command-tools identity --select`) or use
+  the REST equivalent.
 
 ## Worktree ownership
 
@@ -365,9 +466,9 @@ Three shapes account for all of them; recognize them before sending, not after.
   generalizes the branch-lifecycle bullet below — never let a probe ride along with
   the mutation it was checking for.
 - **A long process launched with a trailing `&` plus `sleep` in a foreground call.**
-  `pnpm --filter @agent-proxy/claude-server start > srv.log 2>&1 & sleep 12; grep -iE "listening|error"
-  srv.log` is refused, and re-sending it fails again since a foreground `sleep` is
-  independently blocked. The supported form is the Bash tool's own
+  `pnpm --filter @agent-proxy/claude-server start > srv.log 2>&1 & sleep 12;
+  grep -iE "listening|error" srv.log` is refused, and re-sending it fails again since a
+  foreground `sleep` is independently blocked. The supported form is the Bash tool's own
   `run_in_background` with a log file, then a bounded wait on that log (`Monitor`, or
   an until-loop) and a separate call to read it — the same background-plus-log shape
   "Give a long command an explicit timeout up front" already requires.
