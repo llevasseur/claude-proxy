@@ -16,6 +16,21 @@ future agent reads it as current.
 Ticket 14 also widened its lane slightly, disclosed it, and left two consequences it could
 not reach.
 
+## Also in scope, added after ticket 22 landed
+
+**`AGENTS.md`'s Ports section and `.zellij/README.md` are now false.** Ticket 14 wrote that
+three of ADR 0050's six scoped names were missing and that "ticket 22 implements these
+three". Ticket 22 has landed — **all six exist**. Both files still say otherwise, and ticket
+22 correctly left them alone as out of its lane.
+
+Correct both to state that all six exist. While there, record the one thing ticket 22
+decided that a reader would otherwise find surprising: **claude's proxy and server validate
+nothing.** They had no config module at all, and adopting the siblings' range check would
+have turned a launch that works today into one that throws. So claude's two took the
+siblings' resolution order and left the parsing alone — deliberately, under ADR 0050's
+zero-behaviour-change rule, which is why claude has three config-test cases where codex's
+proxy has four.
+
 ## Criteria
 
 1. **Before deleting anything, confirm the root `AGENTS.md` actually absorbed what those two
