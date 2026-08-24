@@ -4,6 +4,7 @@ import {
   budgetsRecording,
   carriedRoutes,
   checkBudgets,
+  MINIMUM_OBSERVATIONS,
   maxBytes,
   medianMs,
   type RouteBudgets,
@@ -32,6 +33,18 @@ function sized(route: string, bytes: number): RouteObservation {
   return seen(route, 1, bytes);
 }
 
+/**
+ * The same duration enough times for the time half to judge it at all.
+ *
+ * A route under `MINIMUM_OBSERVATIONS` is reported rather than judged, so a case about
+ * *where the allowance sits* has to clear that threshold first or it would pass for the
+ * wrong reason. Identical values because these tests are about the boundary, not the
+ * median — `medianMs` has its own cases above.
+ */
+function many(route: string, durationMs: number, n: number = MINIMUM_OBSERVATIONS): RouteObservation[] {
+  return Array.from({ length: n }, () => seen(route, durationMs));
+}
+
 const MB = 1024 * 1024;
 
 const BUDGETS: RouteBudgets = {
@@ -53,10 +66,10 @@ describe('per-route time budgets', () => {
   });
 
   it('passes a route sitting inside its budget, and inside the headroom above it', () => {
-    expect(checkBudgets([seen('/api/usage', 900), seen('/api/usage', 1100)], BUDGETS).breaches).toEqual([]);
+    expect(checkBudgets(many('/api/usage', 1000), BUDGETS).breaches).toEqual([]);
     // Twice the recorded number is a loaded machine, not a regression, so anything under
     // x3 has to stay green.
-    expect(checkBudgets([seen('/api/usage', 2000), seen('/api/usage', 2200)], BUDGETS).breaches).toEqual([]);
+    expect(checkBudgets(many('/api/usage', 2100), BUDGETS).breaches).toEqual([]);
   });
 
   /**
@@ -66,7 +79,7 @@ describe('per-route time budgets', () => {
    */
   it('fails the sevenfold regression that went unreported, and names the route', () => {
     const scale = 26_600 / 3130;
-    const report = checkBudgets([seen('/api/usage', 1000 * scale), seen('/api/usage', 1000 * scale)], BUDGETS);
+    const report = checkBudgets(many('/api/usage', 1000 * scale), BUDGETS);
     expect(report.breaches).toHaveLength(1);
     expect(report.breaches[0]).toContain('/api/usage (time)');
     expect(report.breaches[0]).toContain('3000ms');
@@ -83,12 +96,12 @@ describe('per-route time budgets', () => {
     const tiny: RouteBudgets = { ...BUDGETS, routes: { '/api/usage': { ms: 0.1, bytes: 4 * MB } } };
     // 40ms against something recorded at 0.1ms is a 400x ratio and still not a finding: at
     // this scale the timer's own noise is the whole measurement.
-    expect(checkBudgets([seen('/api/usage', 40)], tiny).breaches).toEqual([]);
-    expect(checkBudgets([seen('/api/usage', 40)], tiny).checks[0]?.allowedMs).toBe(50);
+    expect(checkBudgets(many('/api/usage', 40), tiny).breaches).toEqual([]);
+    expect(checkBudgets(many('/api/usage', 40), tiny).checks[0]?.allowedMs).toBe(50);
     // Past the floor it fails, so the floor is a floor and not an exemption.
-    expect(checkBudgets([seen('/api/usage', 60)], tiny).breaches).toHaveLength(1);
+    expect(checkBudgets(many('/api/usage', 60), tiny).breaches).toHaveLength(1);
     // And it never binds where the ratio still means something: 1000ms x3 wins.
-    expect(checkBudgets([seen('/api/usage', 100)], BUDGETS).checks[0]?.allowedMs).toBe(3000);
+    expect(checkBudgets(many('/api/usage', 100), BUDGETS).checks[0]?.allowedMs).toBe(3000);
   });
 
   it('reports a served route with no recorded budget rather than failing it', () => {
@@ -162,6 +175,77 @@ describe('per-route time budgets', () => {
     // The old `ROUTE_BUDGETS=0` escape hatch is deliberately gone: it existed for a
     // twenty-minute replay that could fail on a busy machine, and this gate reads a table.
     expect(budgetsRecording({ ROUTE_BUDGETS: '0' })).toBe(false);
+  });
+});
+
+/**
+ * How much traffic a route needs before its median counts as evidence.
+ *
+ * The case that produced this: `/api/commands` was reported as breaching its 390ms
+ * allowance on a **median of 433ms over one observation** — one cold-start request, against
+ * a number recorded over a 490-observation corpus. The median is chosen for outlier
+ * rejection, and at n=1 it is the outlier. Left alone, whether the gate is red depends on
+ * how much incidental traffic the shared store happens to hold, which is the thing a gate
+ * must not depend on.
+ *
+ * None of this touches an allowance. Every case below keeps `headroom`, both floors and the
+ * recorded per-route numbers exactly as they are, and asserts on *whether the route was
+ * judged*, never on where its line sits.
+ */
+describe('how much evidence a route needs before its time half is judged', () => {
+  /** The `/api/commands` shape, reduced to its numbers: hugely over, on one request. */
+  it('reports a route breaching on a single observation rather than failing it', () => {
+    const report = checkBudgets([seen('/api/usage', 99_999)], BUDGETS);
+    expect(report.breaches, 'one request is not a measurement').toEqual([]);
+    expect(report.insufficient).toEqual(['/api/usage']);
+    // Reported rather than dropped: the numbers are still there to read.
+    expect(report.checks[0]).toMatchObject({ route: '/api/usage', observations: 1, judged: false, over: false });
+    expect(report.checks[0]?.allowedMs, 'the allowance is unchanged, it was simply not applied').toBe(3000);
+  });
+
+  it('judges the very same numbers once the route has enough of them', () => {
+    const report = checkBudgets(many('/api/usage', 99_999), BUDGETS);
+    expect(report.breaches).toHaveLength(1);
+    expect(report.breaches[0]).toContain('/api/usage (time)');
+    expect(report.insufficient).toEqual([]);
+    expect(report.checks[0]).toMatchObject({ judged: true, over: true });
+  });
+
+  it('draws the line at MINIMUM_OBSERVATIONS, one short and exactly at it', () => {
+    const short = checkBudgets(many('/api/usage', 99_999, MINIMUM_OBSERVATIONS - 1), BUDGETS);
+    expect(short.breaches).toEqual([]);
+    expect(short.insufficient).toEqual(['/api/usage']);
+
+    const enough = checkBudgets(many('/api/usage', 99_999, MINIMUM_OBSERVATIONS), BUDGETS);
+    expect(enough.breaches).toHaveLength(1);
+    expect(enough.insufficient).toEqual([]);
+  });
+
+  /**
+   * Two different answers to two different questions: nobody opened this route, versus
+   * somebody opened it too few times to tell. Collapsing them would hide the second, which
+   * is the one that silently withdraws a route from the gate.
+   */
+  it('separates a route with too little traffic from one with none', () => {
+    const report = checkBudgets([seen('/api/usage', 10)], { ...BUDGETS, routes: { ...BUDGETS.routes } });
+    expect(report.insufficient).toEqual(['/api/usage']);
+    expect(report.unobserved).toEqual([]);
+
+    const none = checkBudgets([], BUDGETS);
+    expect(none.insufficient).toEqual([]);
+    expect(none.unobserved).toEqual(['/api/usage']);
+  });
+
+  /**
+   * The size half takes a max, not a median, and `RouteBudget.bytes` records why that needs
+   * no threshold: a serialized length carries no measurement noise, so one enormous answer
+   * is an enormous answer. Gating it on sample count would lose the 28.2MB case entirely.
+   */
+  it('still judges the size half on a single observation', () => {
+    const report = checkBudgets([seen('/api/usage', 1, 28.2 * MB)], BUDGETS);
+    expect(report.insufficient, 'the time half abstains').toEqual(['/api/usage']);
+    expect(report.breaches, 'the size half does not').toHaveLength(1);
+    expect(report.breaches[0]).toContain('/api/usage (size)');
   });
 });
 

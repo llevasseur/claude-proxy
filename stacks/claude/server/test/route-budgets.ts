@@ -89,6 +89,28 @@ export interface RouteBudgets {
   routes: Record<string, RouteBudget>;
 }
 
+/**
+ * How many observations a route needs before its median is treated as evidence.
+ *
+ * The median is chosen for outlier rejection — {@link RouteBudget.ms} justifies it by "one
+ * response in several hundred reliably catches a GC pause". That argument needs samples to
+ * reject an outlier *with*. At one observation the median **is** the sample, so a single
+ * cold-start request becomes the route's measured cost; at two it is their mean, which is
+ * the mean the median exists to avoid. Five is the smallest count that leaves two samples
+ * either side of the middle one, which is the property the median was picked for.
+ *
+ * This is not slack on top of an allowance, and it moves no recorded number: `headroom`,
+ * both floors and every per-route measurement are untouched. It decides only *whether a
+ * route has enough evidence to be judged at all* — the rule the report already applies at
+ * zero observations, held consistently above zero. A route below the threshold is named in
+ * {@link BudgetReport.insufficient} and judged as soon as it has the samples.
+ *
+ * The time half only. A max over sizes needs no such threshold: {@link RouteBudget.bytes}
+ * records that a serialized length carries no measurement noise, so one large answer is a
+ * real large answer and there is no outlier to out-vote.
+ */
+export const MINIMUM_OBSERVATIONS = 5;
+
 /** One route's median duration judged against its time budget. */
 export interface BudgetCheck {
   route: string;
@@ -96,6 +118,12 @@ export interface BudgetCheck {
   medianMs: number;
   budgetMs: number;
   allowedMs: number;
+  /**
+   * Whether the median was treated as evidence at all — see {@link MINIMUM_OBSERVATIONS}.
+   * A route below the threshold still reports its numbers, so the count it is short by is
+   * visible rather than merely absent.
+   */
+  judged: boolean;
   over: boolean;
 }
 
@@ -121,6 +149,14 @@ export interface BudgetReport {
    * no database, and a route nobody opened this week has nothing to judge.
    */
   unobserved: string[];
+  /**
+   * Routes with some traffic but fewer than {@link MINIMUM_OBSERVATIONS} of it, whose time
+   * half was therefore not judged. Reported, never failed, and distinct from
+   * {@link BudgetReport.unobserved} because the answer to it is different: an unobserved
+   * route was never opened, whereas one of these was opened too few times for its median to
+   * mean anything yet. Their size half is judged as normal.
+   */
+  insufficient: string[];
 }
 
 /** The middle value of a set of durations. See {@link RouteBudget.ms} for why a median. */
@@ -161,6 +197,7 @@ export function checkBudgets(observations: RouteObservation[], budgets: RouteBud
   const sizes: SizeCheck[] = [];
   const breaches: string[] = [];
   const unbudgeted: string[] = [];
+  const insufficient: string[] = [];
   const grouped = byRoute(observations);
 
   for (const [route, seen] of grouped) {
@@ -172,13 +209,18 @@ export function checkBudgets(observations: RouteObservation[], budgets: RouteBud
 
     const observedMs = medianMs(seen.ms);
     const allowedMs = Math.max(budget.ms * budgets.headroom, budgets.floorMs);
-    const overMs = observedMs > allowedMs;
+    // Too few samples for the median to reject anything, so this route's time half is
+    // reported rather than judged. See `MINIMUM_OBSERVATIONS`.
+    const judged = seen.ms.length >= MINIMUM_OBSERVATIONS;
+    if (!judged) insufficient.push(route);
+    const overMs = judged && observedMs > allowedMs;
     checks.push({
       route,
       observations: seen.ms.length,
       medianMs: observedMs,
       budgetMs: budget.ms,
       allowedMs,
+      judged,
       over: overMs,
     });
     if (overMs) {
@@ -213,7 +255,14 @@ export function checkBudgets(observations: RouteObservation[], budgets: RouteBud
     .filter((route) => !grouped.has(route))
     .sort();
 
-  return { checks, sizes, breaches: breaches.sort(), unbudgeted: unbudgeted.sort(), unobserved };
+  return {
+    checks,
+    sizes,
+    breaches: breaches.sort(),
+    unbudgeted: unbudgeted.sort(),
+    unobserved,
+    insufficient: insufficient.sort(),
+  };
 }
 
 /**
