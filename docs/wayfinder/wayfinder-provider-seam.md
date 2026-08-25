@@ -137,9 +137,8 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
 | 09 | ox-server-port-move | [provider-seam-09-ox-server-port-move](provider-seam-09-ox-server-port-move.md) | `task/provider-seam-09-ox-server-port-move` | in-progress | |
-| 10 | route-registry-provider-declarations | [provider-seam-10-route-registry-provider-declarations](provider-seam-10-route-registry-provider-declarations.md) | `task/provider-seam-10-route-registry-provider-declarations` | todo | |
+| 10 | route-registry-provider-declarations | [provider-seam-10-route-registry-provider-declarations](provider-seam-10-route-registry-provider-declarations.md) | `task/provider-seam-10-route-registry-provider-declarations` | paused | Work in hand but **uncommitted** in the ticket worktree — do not recreate the branch or remove that worktree, it is the only copy. |
 | 11 | feature-flag-gating | [provider-seam-11-feature-flag-gating](provider-seam-11-feature-flag-gating.md) | `task/provider-seam-11-feature-flag-gating` | todo | |
-| 12 | fold-in-decimal-money-and-cost-reason | [provider-seam-12-fold-in-decimal-money-and-cost-reason](provider-seam-12-fold-in-decimal-money-and-cost-reason.md) | `task/provider-seam-12-fold-in-decimal-money-and-cost-reason` | in-progress | |
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
 | 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | todo | |
 | 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | todo | |
@@ -228,3 +227,40 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 12 — fold-in-decimal-money-and-cost-reason · 2026-08-25 · [#292](https://github.com/llevasseur/claude-proxy/pull/292)
+
+Both mechanics landed in `stacks/claude/core/src/pricing.ts`, additively: integer picoUSD
+arithmetic carried as decimal strings (`resolveCost`, `addUsdAmounts`, `aggregateCost`,
+`ExactCost`) and the typed `CostUnavailableReason` with codex's three codes. 16 new cases in
+`stacks/claude/core/test/pricing.test.ts`; `my-command-tools verify` green across all eight
+gates.
+
+**The gap was real and is now pinned by a test.** `priceFor` answers *every* model, so an
+unpriced model has always billed silently at the sonnet-shaped `FALLBACK_PRICE` and read as
+a measurement rather than a guess. `resolveCost` refuses to guess instead — `unknown-model`
+for an unmatched model, `missing-category-price` for an unusable rate on a **consumed**
+bucket only (ADR 0020 says "any consumed usage category", so a broken rate on an unused
+bucket does not sink the request), and `aggregate-incomplete` propagated by `aggregateCost`.
+
+**Three deviations worth keeping.** The float API (`estimateCost`, `addCost`, `priceFor`,
+`ZERO_COST`) is untouched, because its callers — `digest.ts`, `skim.ts`, `commands.ts` and
+`stacks/claude/server/src/command-runs.ts` — sit outside this ticket's lane; the exact path
+is a parallel addition rather than a replacement, and swapping the callers over belongs to
+whichever ticket owns them. `cost-rate.ts` was deliberately left unchanged: its nulls mean a
+day moved no tokens, which is ADR 0060's genuinely-zero — a real measurement, not an unpriced
+cost — and typing it as cost-unavailable is precisely the drift criterion 4 forbids. And
+`priceFor` now delegates to a new strict `priceRowFor`, leaving one family-matching
+implementation rather than two that could drift.
+
+**Refused under "fold in nothing else":** ox's per-entry rate provenance (ADR 0044 gives
+claude no effective dating) and both siblings' `Object.freeze` habit — differences, not gaps.
+
+**For ticket 07:** nothing is imported from it and nothing needs to be. The reusable part is
+the *shape* — a `code` discriminant plus the context needed to act on it — and the type's doc
+comment says so outright, so the store-absence union is written the same way rather than
+drifting into an unrelated enum.
+
+**One pre-existing flake observed, not caused here:**
+`stacks/ox-alpha/apps/admin/src/css.test.ts` hits its 10s `beforeAll` timeout on a cold Vite
+dep-optimization cache in a freshly bootstrapped worktree, and passes in ~1.0s once warm.
