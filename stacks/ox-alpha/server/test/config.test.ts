@@ -65,10 +65,10 @@ describe('the two server defaults bind at the same time', () => {
     // repository is the one whose server binds 8788 — so both were occupied when this test
     // was written. That is a fact about the desktop, not a verdict on the defaults, and the
     // test says so by skipping rather than by passing on a branch that asserted nothing.
-    const held: number[] = [];
-    for (const port of [oxPort, CLAUDE_SERVER_DEFAULT_PORT]) {
-      if ((await listen(port)) === 'in-use') held.push(port);
-    }
+    const probes = await Promise.all(
+      [oxPort, CLAUDE_SERVER_DEFAULT_PORT].map(async (port) => ({ port, outcome: await listen(port) })),
+    );
+    const held = probes.filter((probe) => probe.outcome === 'in-use').map((probe) => probe.port);
     if (held.length > 0) {
       context.skip(`already bound by another process on this machine: ${held.join(', ')}`);
       return;
