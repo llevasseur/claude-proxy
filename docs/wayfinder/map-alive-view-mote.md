@@ -26,7 +26,7 @@ unratified; six carry `needs-human: true`.
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 01 | shared-shell-and-select | [alive-view-mote-01-shared-shell-and-select](alive-view-mote-01-shared-shell-and-select.md) | `task/alive-view-mote-01-shared-shell-and-select` | todo |
+| 01 | shared-shell-and-select | [alive-view-mote-01-shared-shell-and-select](alive-view-mote-01-shared-shell-and-select.md) | `task/alive-view-mote-01-shared-shell-and-select` | in-progress | |
 | 02 | core-emotion-derivation | [alive-view-mote-02-core-emotion-derivation](alive-view-mote-02-core-emotion-derivation.md) | `task/alive-view-mote-02-core-emotion-derivation` | in-progress | |
 | 03 | alive-route-page | [alive-view-mote-03-alive-route-page](alive-view-mote-03-alive-route-page.md) | `task/alive-view-mote-03-alive-route-page` | todo |
 
