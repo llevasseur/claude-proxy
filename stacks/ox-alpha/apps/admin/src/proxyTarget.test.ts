@@ -6,17 +6,15 @@ import type { ProxyOptions, UserConfigFnObject } from 'vite';
 import { afterEach, describe, expect, it } from 'vitest';
 import config from '../vite.config';
 
-// Every read this dashboard renders arrives through the /api proxy, so its target
-// decides *whose* corpus is on screen. ADR 0062 moved ox's server to 8808 and left
-// claude's where it was; a target still naming claude's port would render claude's
-// data as ox's, silently and with no error anywhere. Resolving the real config is
-// the point — asserting the literal in the source would pass on a config that never
-// reaches it.
+// Every read arrives through the /api proxy, so its target decides *whose* corpus is on
+// screen: ADR 0062 moved ox's server to 8808 and left claude's on 8788, so a target still
+// naming claude's port renders claude's data as ox's with no error anywhere. These cases
+// resolve the real config rather than the literal in its source.
 const OX_SERVER_ORIGIN = 'http://127.0.0.1:8808';
 
 const ADMIN_DIR = join(import.meta.dirname, '..');
 // SAFETY: vite.config.ts exports `defineConfig(({ mode }) => ({ … }))`, so this
-// UserConfigExport is the plain-object function member of that union.
+// UserConfigExport is that union's plain-object function member.
 const resolveConfig = config as UserConfigFnObject;
 const scratch: string[] = [];
 
@@ -30,10 +28,9 @@ function scratchDir(): string {
   return dir;
 }
 
-// The config calls loadEnv against the cwd, so a scratch cwd is what lets each case
-// state its own env. The empty prefix also lifts matching keys off process.env, so
-// an ADMIN_SERVER_URL exported by whoever ran the suite would otherwise decide the
-// answer in place of the shipped files.
+// The config calls loadEnv against the cwd, so a scratch cwd lets each case state its own
+// env. The empty prefix also lifts matching keys off process.env, so an exported
+// ADMIN_SERVER_URL would otherwise decide the answer in place of the shipped files.
 async function targetFrom(envDir: string): Promise<string> {
   const cwd = process.cwd();
   const exported = process.env.ADMIN_SERVER_URL;
@@ -43,8 +40,8 @@ async function targetFrom(envDir: string): Promise<string> {
     const resolved = await resolveConfig({ command: 'serve', mode: 'development' });
     const api = resolved.server?.proxy?.['/api'];
     expect(api, 'the dev server proxies /api').toBeTypeOf('object');
-    // SAFETY: the assertion above establishes that /api maps to an options object
-    // rather than to the bare target string vite also accepts here.
+    // SAFETY: the assertion above establishes /api maps to an options object rather than
+    // to the bare target string vite also accepts here.
     return String((api as ProxyOptions).target);
   } finally {
     process.chdir(cwd);

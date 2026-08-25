@@ -6,9 +6,8 @@ describe('serverInfo', () => {
     expect(serverInfo().defaultPort).toBe(8808);
   });
 
-  // serverInfo resolves the port itself rather than calling readConfig, so this is a
-  // second copy of that resolution — and it has already drifted once. Assert it here
-  // too, from an env that names neither port, so the copies cannot part again quietly.
+  // serverInfo resolves the port itself rather than calling readConfig — a second copy of
+  // that resolution, which has already drifted once.
   it('resolves the port to that same default from an unconfigured environment', () => {
     expect(serverInfo({}).port).toBe(8808);
   });
