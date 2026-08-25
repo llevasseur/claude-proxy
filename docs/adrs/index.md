@@ -95,5 +95,11 @@ likely to collide.
 | The filter gate covers invocations, not records | [0057-the-filter-gate-covers-invocations-not-records.md](0057-the-filter-gate-covers-invocations-not-records.md) |
 | Supersession is recorded from both ends | [0058-supersession-is-recorded-from-both-ends.md](0058-supersession-is-recorded-from-both-ends.md) |
 | Land the fusion campaign incomplete, with the corpus migration still paused | [0059-land-the-fusion-campaign-incomplete.md](0059-land-the-fusion-campaign-incomplete.md) |
+| A store's absence is typed, and never rendered as data | [0060-a-stores-absence-is-typed.md](0060-a-stores-absence-is-typed.md) |
+| Three schemas, three ladders, one adapter contract | [0061-three-schemas-three-ladders-one-contract.md](0061-three-schemas-three-ladders-one-contract.md) |
+| Three servers, and ox's server port moves off 8788 | [0062-three-servers-and-one-moved-port.md](0062-three-servers-and-one-moved-port.md) |
+| Ox Alpha keeps its nested usage buckets, and the disjoint-bucket claim stays open | [0063-ox-alpha-keeps-its-nested-usage-buckets.md](0063-ox-alpha-keeps-its-nested-usage-buckets.md) |
+| Tokens do not aggregate across providers | [0064-tokens-do-not-aggregate-across-providers.md](0064-tokens-do-not-aggregate-across-providers.md) |
+| Cost and pricing_source are resolved at read time, never stored | [0065-cost-is-resolved-at-read-time.md](0065-cost-is-resolved-at-read-time.md) |
 | Legacy ADR identifier map | [legacy-map.md](legacy-map.md) |
 <!-- okq:index:end -->
