@@ -135,14 +135,13 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 06 | pricing-table-and-read-time-cost | [provider-seam-06-pricing-table-and-read-time-cost](provider-seam-06-pricing-table-and-read-time-cost.md) | `task/provider-seam-06-pricing-table-and-read-time-cost` | todo | |
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
-| 11 | feature-flag-gating | [provider-seam-11-feature-flag-gating](provider-seam-11-feature-flag-gating.md) | `task/provider-seam-11-feature-flag-gating` | in-progress | |
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
 | 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | todo | |
 | 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | todo | |
 | 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | todo | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
-| 19 | ox-8788-stragglers | [provider-seam-19-ox-8788-stragglers](provider-seam-19-ox-8788-stragglers.md) | `task/provider-seam-19-ox-8788-stragglers` | in-progress | |
+| 20 | harness-capability-union | [provider-seam-20-harness-capability-union](provider-seam-20-harness-capability-union.md) | `task/provider-seam-20-harness-capability-union` | todo | |
 | zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -176,7 +175,8 @@ ticket codes against. **02 follows 01.**
 - **09, 10, 12** are independent of the spine by file scope and may run in the first wave
   alongside 01: 09 touches only ox's server config, 10 only claude's admin route registry,
   12 only claude's core money and cost-reason modules.
-- **11** after 01.
+- **11** after 01. **20** after 11 — it repairs a stand-in 11 could only document, because
+  the file it has to widen was 01's and already merged.
 - **14, 15, 16** after 06 (they render pricing state). **17** after 07. The four UI tickets
   are independent of **each other** by file scope once their data has landed.
 - **18** after everything it documents. **zz** last, after every other ticket completes.
@@ -225,6 +225,46 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 19 — ox-8788-stragglers · 2026-08-25 · [#299](https://github.com/llevasseur/claude-proxy/pull/299)
+
+Eleven `8788` hits under `stacks/ox-alpha/` before, five after, and each remaining one is a
+comment or the `CLAUDE_SERVER_DEFAULT_PORT` constant — every survivor names **claude's**
+port rather than configuring ox's, verified against the merged tree rather than taken from
+the ticket's own report.
+
+**The contamination this closes was a read-path one, not a collision.** Ox's shipped
+dashboard proxied `/api` to claude's server, so it would have rendered claude's data as
+ox's, silently and with no error anywhere.
+
+**Two late catches by the ticket's reviewer are the part worth keeping.** The comment pass
+run before the pull request **reintroduced** the numeral into a new test header *after* the
+count had been taken — a sweep verified by counting can be undone by a later step in the
+same run, which is an argument for re-counting last rather than first. And
+`vite.config.ts` used `??`, which passes a present-but-empty `ADMIN_SERVER_URL=` straight
+through as an empty proxy target; `??` guards absence, not emptiness, and an env var is
+routinely present and empty. Both fixed in `1a916bd` before the squash.
+
+### 11 — feature-flag-gating · 2026-08-25 · [#301](https://github.com/llevasseur/claude-proxy/pull/301)
+
+A capability-gating module in `stacks/claude/core/src/` that imports ticket 01's three seam
+files without editing any of them, so core stays dependency-free and deterministic.
+
+**29 capabilities audited and classified** — 13 ungated, 11 Claude-Code-specific, 3
+Anthropic-wire-specific, 2 both — recorded as a table in the module's doc comment and in
+`docs/features/capability-gating.md`. Nothing was deleted, and a test pins that a claude
+session still sees all 29.
+
+**The audit reached all 39 route modules and edited none of them.** Ticket 10 owned that
+directory, so gating sits at the capability layer instead — which also means a route module
+and the classification table cannot drift into disagreeing about one page.
+
+**One imprecision is recorded rather than hidden, and ticket 20 exists to repair it.** The
+harness axis reuses ticket 01's closed three-member `HarnessCapability` union, and four
+device-config capabilities (`hooks-and-plugins`, `slash-commands`, `cli-internals`,
+`project-memory`) had to declare `session-transcripts` as the nearest established member
+rather than a precise gate, because `harness-adapter.ts` was ticket 01's and already
+merged. Both the module and the feature doc say so outright.
 
 ### 10 — route-registry-provider-declarations · 2026-08-25 · [#296](https://github.com/llevasseur/claude-proxy/pull/296)
 

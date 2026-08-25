@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-11-feature-flag-gating`
-**Status:** active
+**Status:** done · 2026-08-25
 
 Depends on ticket 01. **Read the first criterion before writing any code.**
 
