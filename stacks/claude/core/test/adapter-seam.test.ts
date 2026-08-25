@@ -77,8 +77,7 @@ describe('registering on one axis does not touch the other', () => {
     const harnessesBefore = [...harnessRegistry.ids()];
     const providersBefore = [...providerRegistry.ids()];
 
-    // Re-registering the adapter already under this key mutates the provider
-    // registry without leaving residue behind for other cases.
+    // Re-registers under the same key; the harness registry must stay untouched.
     providerRegistry.register(anthropicProviderAdapter);
 
     expect([...harnessRegistry.ids()]).toEqual(harnessesBefore);
