@@ -128,15 +128,13 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 01 | adapter-contract-and-registries | [provider-seam-01-adapter-contract-and-registries](provider-seam-01-adapter-contract-and-registries.md) | `task/provider-seam-01-adapter-contract-and-registries` | in-progress | |
-| 02 | sidecar-v2-provider-discriminator | [provider-seam-02-sidecar-v2-provider-discriminator](provider-seam-02-sidecar-v2-provider-discriminator.md) | `task/provider-seam-02-sidecar-v2-provider-discriminator` | todo | |
+| 02 | sidecar-v2-provider-discriminator | [provider-seam-02-sidecar-v2-provider-discriminator](provider-seam-02-sidecar-v2-provider-discriminator.md) | `task/provider-seam-02-sidecar-v2-provider-discriminator` | in-progress | |
 | 03 | claude-migration-23 | [provider-seam-03-claude-migration-23](provider-seam-03-claude-migration-23.md) | `task/provider-seam-03-claude-migration-23` | todo | |
 | 04 | codex-store-repair-and-migration | [provider-seam-04-codex-store-repair-and-migration](provider-seam-04-codex-store-repair-and-migration.md) | `task/provider-seam-04-codex-store-repair-and-migration` | todo | |
 | 05 | ox-store-repair-and-migration | [provider-seam-05-ox-store-repair-and-migration](provider-seam-05-ox-store-repair-and-migration.md) | `task/provider-seam-05-ox-store-repair-and-migration` | todo | |
 | 06 | pricing-table-and-read-time-cost | [provider-seam-06-pricing-table-and-read-time-cost](provider-seam-06-pricing-table-and-read-time-cost.md) | `task/provider-seam-06-pricing-table-and-read-time-cost` | todo | |
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
-| 09 | ox-server-port-move | [provider-seam-09-ox-server-port-move](provider-seam-09-ox-server-port-move.md) | `task/provider-seam-09-ox-server-port-move` | in-progress | |
 | 10 | route-registry-provider-declarations | [provider-seam-10-route-registry-provider-declarations](provider-seam-10-route-registry-provider-declarations.md) | `task/provider-seam-10-route-registry-provider-declarations` | in-progress | |
 | 11 | feature-flag-gating | [provider-seam-11-feature-flag-gating](provider-seam-11-feature-flag-gating.md) | `task/provider-seam-11-feature-flag-gating` | todo | |
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
@@ -145,6 +143,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | todo | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
+| 19 | ox-8788-stragglers | [provider-seam-19-ox-8788-stragglers](provider-seam-19-ox-8788-stragglers.md) | `task/provider-seam-19-ox-8788-stragglers` | todo | |
 | zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -227,6 +226,43 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 01 — adapter-contract-and-registries · 2026-08-25 · [#294](https://github.com/llevasseur/claude-proxy/pull/294)
+
+The campaign's spine landed as **three** modules in `stacks/claude/core/src/`, not the two
+the plan named: `provider-adapter.ts`, `harness-adapter.ts`, and `adapter-seam.ts`. 23 new
+test cases.
+
+**The third file is the deviation worth keeping.** ADR 0040 requires two independent
+registries with neither column inferred from the other, and "one file each" would have made
+one contract file import the other to reach the shared id unions — a file-level dependency
+that contradicts the ADR whatever the types say. `adapter-seam.ts` holds the two id unions
+and `RecordStamp`, so both contract files import from it and neither imports the other.
+
+**The ox adapter deliberately does not import `@agent-proxy/ox-core`.** Doing so would need
+`allowImportingTsExtensions` while claude's core is browser-bundled under `types: []`, and
+every core must stay dependency-free. So `reconcileUsage` takes counters that are **already
+parsed and validated** rather than raw payloads, which leaves ox's parser, its five
+validations and its `UsageValidationError` untouched — exactly what ADR 0063 requires.
+
+**ADR 0064 is enforced structurally rather than by convention.** Each reconciled type
+carries a literal `provider` discriminant, so summing across providers does not typecheck.
+Tokens cannot be aggregated across providers by accident.
+
+### 09 — ox-server-port-move · 2026-08-25 · [#293](https://github.com/llevasseur/claude-proxy/pull/293)
+
+`stacks/ox-alpha/server/src/config.ts:86` now defaults to `8808`, beside ox's own proxy on
+`8807`. `.zellij/README.md` and the root `AGENTS.md` are updated in both their ports table
+and their surrounding prose. Five tests, including a real dual-bind that brings claude's and
+ox's servers up together.
+
+**That dual-bind test skips explicitly rather than passing when a port is externally held.**
+A bind test that silently succeeds because something else already owns the port asserts
+nothing, so it says so instead.
+
+**No `superseded-by` key was added to ADR 0050 or ADR 0062, and that is correct.** ADR 0058
+holds that a partial supersession is not a supersession: 0050 still governs the other eight
+ports and its whole scoped-variable scheme, so the relation is recorded in prose alone.
 
 ### 12 — fold-in-decimal-money-and-cost-reason · 2026-08-25 · [#292](https://github.com/llevasseur/claude-proxy/pull/292)
 

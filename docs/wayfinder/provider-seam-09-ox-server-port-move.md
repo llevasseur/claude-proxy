@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-09-ox-server-port-move`
-**Status:** active
+**Status:** done · 2026-08-25
 
 Independent of the spine by file scope — this touches only ox's server config and its
 tests, plus the ports documentation. It may run in the first wave.
