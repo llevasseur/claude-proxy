@@ -1,0 +1,16 @@
+{
+  "name": "@agent-proxy/net-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Internet-spend stack: SQLite sample store with forward-only migrations and the pure read-time spend model.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.6.3",
+    "vitest": "~3.2.0"
+  }
+}
