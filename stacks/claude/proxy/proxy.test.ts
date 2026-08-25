@@ -255,6 +255,46 @@ test('sidecar carries real tokens, session, and model for a non-streaming call',
   assert.equal(parsed.session.account, 'acct456');
 });
 
+test('sidecar states its schema version and both adapter axes', () => {
+  const { usage, inputTokens, model } = decodeResponse(nonStreamingBody);
+  const reqJson = {};
+  const parsed = JSON.parse(
+    writeAuditSidecar({
+      timestamp: '2026-07-20T01:15:22.069Z',
+      reqJson,
+      statusCode: 200,
+      method: 'POST',
+      path: '/v1/messages',
+      audit: auditRequest(reqJson, inputTokens),
+      inputTokens,
+      usage,
+      respModel: model,
+      headers: {},
+      skim: null,
+    }),
+  );
+
+  // Stated outright, so a reader never infers the version from the key set.
+  assert.equal(parsed.schemaVersion, 2);
+  // Two independent fields. Neither is derived from the other: this proxy speaks
+  // the Anthropic wire to a Claude Code harness, and it names both.
+  assert.equal(parsed.provider, 'anthropic');
+  assert.equal(parsed.harness, 'claude-code');
+  // Pinned to the exact value, not merely to "an integer". This proxy cannot
+  // import `anthropicProviderAdapter` to read its version — it declares no
+  // dependencies — so the seam is held by two assertions that must be edited
+  // together: this one, and the matching `toBe(1)` in
+  // `stacks/claude/core/test/sidecar.test.ts`. A loose `>= 1` here would let the
+  // adapter move to 2 while the proxy stamped every capture 1 forever, with both
+  // suites green and every record thereafter naming the wrong adapter.
+  assert.equal(parsed.adapterVersion, 1);
+
+  // Cost is resolved at read time and has no slot here, however the rate table moves.
+  assert.equal('cost' in parsed, false);
+  assert.equal('pricing_source' in parsed, false);
+  assert.equal('pricingSource' in parsed, false);
+});
+
 /** A sidecar built from the given upstream response headers. */
 function sidecarWithRespHeaders(respHeaders: Record<string, string | string[]> | undefined) {
   const { usage, inputTokens, model } = decodeResponse(nonStreamingBody);
