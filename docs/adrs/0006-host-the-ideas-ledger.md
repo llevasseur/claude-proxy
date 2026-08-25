@@ -4,6 +4,13 @@ title: Host the ideas ledger on the existing operator Worker
 description: Move the ideas ledger out of logs/ideas.json and into the D1 database the concept store already runs on, as an append-only event log replayed through packages/core, with claiming promoted to an atomic conditional write and no local fallback.
 tags: [architecture, backend, storage, mcp, cloud, ideas]
 timestamp: 2026-08-10
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0006"
+    file: docs/adrs/0006-host-the-ideas-ledger.md
+ratified: true
+needs-human: false
 ---
 
 # Host the ideas ledger on the existing operator Worker
@@ -123,7 +130,7 @@ rebuild it from.
 
 **A network dependency enters the ideas CLI, and it is fatal by design.** Every
 other network dependency in this system degrades quietly on purpose; this one
-does not, per the first decision above. `pnpm --filter server ideas list` on an
+does not, per the first decision above. `pnpm --filter @agent-proxy/claude-server ideas list` on an
 unconfigured device fails with a message naming `IDEAS_URL` and `IDEAS_TOKEN`,
 rather than printing an empty ledger.
 
@@ -183,3 +190,10 @@ is the decision to revisit first if runs start losing claims mid-flight.
 watch has nothing to watch", and the one ADR 0005 already priced: it reintroduces
 per-connection state on the always-on component, for a dashboard list. Polling
 with a diff produces the same SSE frames the watch source produced.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

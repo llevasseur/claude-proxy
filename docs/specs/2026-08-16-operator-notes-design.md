@@ -4,6 +4,7 @@ title: Operator Notes — Design Spec
 description: The shipped design for a hosted immutable Notes store, server-held credentials, MCP and REST access, live delivery, and a conflict-aware dashboard.
 tags: [notes, operator, cloudflare, dashboard, design]
 timestamp: 2026-08-16
+scope: claude
 ---
 
 # Operator Notes — Design Spec

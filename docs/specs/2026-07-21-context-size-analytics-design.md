@@ -4,6 +4,7 @@ title: Context-Size Analytics — Design Spec
 description: Surface how large the prompt/context sent to the model gets — average, largest, and why the largest was so large.
 tags: [context-size, usage, dashboard, design]
 timestamp: 2026-07-21
+scope: claude
 ---
 
 # Context-Size Analytics — Design Spec

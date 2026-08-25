@@ -4,6 +4,7 @@ title: Headless Chat Transport — Design Spec
 description: Run dashboard chat through a headless Claude Code process in local dev so it bills the device's own subscription, keeping the API-key HTTP client as the transport a deployment uses.
 tags: [chat, dashboard, proxy, auth, design]
 timestamp: 2026-07-24
+scope: claude
 ---
 
 # Headless Chat Transport — Design Spec

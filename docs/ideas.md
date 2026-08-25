@@ -4,6 +4,7 @@ title: Ideas ledger (tier 2)
 description: The committed fallback ledger of proposed features and commands for this repo, used when the hosted claude-proxy ideas store is absent.
 tags: [ideas, advice, process]
 timestamp: 2026-08-05
+scope: claude
 ---
 
 # Ideas ledger (tier 2)
@@ -29,7 +30,7 @@ substitute for that, and both are required:
 
 The ledger resolves to the highest available store, and this file is the middle one:
 
-1. **The hosted ledger**, through `pnpm --filter server ideas` in claude-proxy. It was
+1. **The hosted ledger**, through `pnpm --filter @agent-proxy/claude-server ideas` in claude-proxy. It was
    `<logDir>/ideas.json` and is now an append-only event log on the `operator` Worker's D1 database
    ([ADR 0006](adrs/0006-host-the-ideas-ledger.md)), so it is shared across every repo *and* every
    machine rather than being device-wide. The CLI is the same; only what answers it changed.

@@ -4,6 +4,7 @@ title: Operator notes
 description: Authored Markdown shared by humans and agents through one hosted revision-preserving store, a server-side bridge, and a responsive dashboard.
 tags: [notes, operator, dashboard, mcp, rest]
 timestamp: 2026-08-16
+scope: claude
 ---
 
 # Operator notes

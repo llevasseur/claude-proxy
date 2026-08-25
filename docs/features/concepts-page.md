@@ -4,6 +4,7 @@ title: Concepts page
 description: A page over logs/concepts.jsonl — every term /teach has explained, with its one Simplified Technical English sentence, field, skills and date, sortable, searchable across the prose the table does not show, indexed by a field and skill facet rail, and each row opening a detail page of the research behind it.
 tags: [dashboard, teach, sqlite, architecture]
 timestamp: 2026-08-03
+scope: claude
 ---
 
 # Concepts page
@@ -129,7 +130,7 @@ for the array facet, and `concept_item` for the detail lists) at schema version 
 
 - One `file_watermark` row keyed on `bytes` + `modified`. An unchanged store is not opened.
 - A changed store is re-parsed whole and **every row replaced in one transaction**. That wholesale
-  rebuild is the point — it is what keeps `rm logs/claude-proxy.db && pnpm --filter server ingest` a
+  rebuild is the point — it is what keeps `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` a
   total recovery rather than a resync.
 - The primary key is the line's position in the file, because the store has no natural key.
 - The record round-trips through a `document` column, so a read answers with what the file said
@@ -153,7 +154,7 @@ that is normal here, since `/teach` appends from outside the server.
 - [x] The page follows the store live through `/api/concepts/stream`.
 - [x] An absent store renders an empty state; a blank line, a torn final line, and a record that is
       not a concept are each skipped without emptying the page.
-- [x] `rm logs/claude-proxy.db && pnpm --filter server ingest` reproduces the table exactly.
+- [x] `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` reproduces the table exactly.
 - [x] An unchanged store is skipped on its watermark; a changed one replaces every row rather than
       appending to them, `concept_skill` included.
 - [x] Both backings answer `/api/concepts` identically, including when a record landed after the

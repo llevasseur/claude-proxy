@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-12-merge-adr-corpus`
-**Status:** active
+**Status:** done · 2026-08-24
 
 ## Goal
 

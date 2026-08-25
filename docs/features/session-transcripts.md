@@ -4,6 +4,7 @@ title: Session transcripts
 description: The proxy reconstructs a per-thread conversation transcript from the requests it already observes, and the dashboard browses them live.
 tags: [dashboard, usage, backend]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Session transcripts
@@ -212,7 +213,7 @@ transcript.
 - ~~**Both request-joined views are live-day-only.**~~ **Resolved.** `resolveSessionRequests`
   now goes through `readWindow` in `server/src/db/source.ts`, which composes `logs/archive/<date>/`
   with the live root, so the Peak context tile and the errors page's "View the full turn" links
-  survive `pnpm --filter server maintain` archiving the session's day.
+  survive `pnpm --filter @agent-proxy/claude-server maintain` archiving the session's day.
 - The errors page is the one session view with no SSE subscription and no **Live** indicator —
   worth streaming it too, or is an error list stable enough to leave on the one-shot query?
 

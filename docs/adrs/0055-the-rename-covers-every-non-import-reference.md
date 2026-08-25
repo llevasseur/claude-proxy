@@ -33,13 +33,13 @@ places it lives outside them are the places no gate looks. The griller asked:
 > deferred, in which case what stops the retention job from reporting green while doing
 > nothing?"
 
-Measured in claude-proxy alone: **104** occurrences of `--filter server` and 26 of
-`--filter concepts`. Only 155 of the 184 rename sites across the three repos are
+Measured in claude-proxy alone, **before the rename**: **104** occurrences of the unscoped
+`--filter server` and 26 of `--filter concepts`. Only 155 of the 184 rename sites across the three repos are
 `.ts`/`.tsx`; the other 29 are markdown, JSON, YAML and shell, and typecheck sees none
 of them.
 
 The decisive one is not a document. `scripts/com.llevasseur.claude-proxy.maintain.plist`
-invokes `pnpm --filter server maintain --apply` with `WorkingDirectory` set to the repo,
+invoked `pnpm --filter server maintain --apply` with `WorkingDirectory` set to the repo,
 and **`launchctl list` confirms it is loaded on this device right now**, alongside
 `com.llevasseur.claude-proxy`, both last exit 0.
 
@@ -72,11 +72,11 @@ deferred.**
    and leaves the job broken.
 5. **`AGENTS.md` is the highest-leverage entry.** It is not documentation here; it is the
    instruction every future agent reads, including the recorded
-   `pnpm --silent --filter server suggestions list -r 9 --json` form that exists
+   `pnpm --silent --filter @agent-proxy/claude-server suggestions list -r 9 --json` form that exists
    *because* getting it wrong was a repeated, logged failure. Leaving it stale re-arms a
    failure the repository already paid for.
-6. **The sweep is a judgement ticket, not a mechanical one.** `--filter server` names one
-   package today and one of three after fusion, so every site *acquires* a stack it never
+6. **The sweep is a judgement ticket, not a mechanical one.** The unscoped `--filter server` named one
+   package before the rename and names one of three after fusion, so every site *acquires* a stack it never
    needed. It therefore cannot be bundled into the mechanical rename ticket.
 
 ## Consequences

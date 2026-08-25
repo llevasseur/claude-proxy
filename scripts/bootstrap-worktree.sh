@@ -49,11 +49,14 @@ link_from_main() {
 
 echo "bootstrapping $(basename "${WORKTREE_ROOT}") from ${MAIN_CHECKOUT}"
 
-# Vite loads `apps/admin/.env`; `proxy/.env` records the device's port and no code
-# path reads it. Tracked `.env.example` files arrive with the worktree.
+# Vite loads `stacks/claude/admin/.env`; `stacks/claude/proxy/.env` records the device's
+# port and no code path reads it. Both moved under `stacks/claude/` with the relocation,
+# and this list kept the pre-fusion paths — which linked nothing, because `link_from_main`
+# skips a missing source and only says so. Tracked `.env.example` files arrive with the
+# worktree.
 echo "env:"
-link_from_main "apps/admin/.env"
-link_from_main "proxy/.env"
+link_from_main "stacks/claude/admin/.env"
+link_from_main "stacks/claude/proxy/.env"
 
 # `resolveLogDir()` (server/src/logs.ts) defaults to `<repo>/logs`, so an unlinked
 # worktree serves an empty dashboard and fails its health check. Linking keeps that
@@ -65,6 +68,14 @@ link_from_main "logs"
 # where Claude Code finds them, is gitignored and does not.
 echo "skills:"
 bash "${WORKTREE_ROOT}/scripts/link-project-skills.sh"
+
+# `.git-blame-ignore-revs` is committed but inert — `blame.ignoreRevsFile` is a
+# config key, so `git blame` still lands on the reformat commit until this runs.
+# Path stays relative: linked worktrees share one config with the main checkout,
+# so setting it here configures that too.
+echo "blame:"
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+echo "  set     blame.ignoreRevsFile -> .git-blame-ignore-revs"
 
 # Frozen: the lockfile arrived with the branch, so a failure here is real drift.
 echo "install:"

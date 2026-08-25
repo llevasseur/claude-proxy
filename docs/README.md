@@ -1,6 +1,7 @@
 ---
 type: readme
 title: docs
+scope: all
 ---
 
 # docs

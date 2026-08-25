@@ -4,6 +4,13 @@ title: Monorepo with pnpm, TanStack, and Node
 description: Restructure the single-file proxy repo into a pnpm monorepo with a Node API and a TanStack dashboard.
 tags: [architecture, monorepo, frontend, backend]
 timestamp: 2026-07-15
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0002"
+    file: docs/adrs/0002-monorepo-with-pnpm-tanstack-and-node.md
+ratified: true
+needs-human: false
 ---
 
 # Monorepo with pnpm, TanStack, and Node
@@ -45,3 +52,10 @@ stays plain `.mjs` to preserve its "runs with bare `node`" guarantee.
 
 See the full design in
 [`specs/2026-07-15-monorepo-admin-dashboard-design.md`](../specs/2026-07-15-monorepo-admin-dashboard-design.md).
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

@@ -4,6 +4,7 @@ title: Config inventory
 description: Three dashboard pages showing what this device's config and the proxy itself keep out of every Claude Code request.
 tags: [dashboard, usage, architecture]
 timestamp: 2026-07-24
+scope: claude
 ---
 
 # Config inventory

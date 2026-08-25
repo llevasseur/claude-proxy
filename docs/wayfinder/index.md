@@ -27,6 +27,17 @@
 | monorepo-fusion-12-merge-adr-corpus | [monorepo-fusion-12-merge-adr-corpus.md](monorepo-fusion-12-merge-adr-corpus.md) |
 | monorepo-fusion-13-write-campaign-adrs | [monorepo-fusion-13-write-campaign-adrs.md](monorepo-fusion-13-write-campaign-adrs.md) |
 | monorepo-fusion-14-ports-zellij-and-agents-md | [monorepo-fusion-14-ports-zellij-and-agents-md.md](monorepo-fusion-14-ports-zellij-and-agents-md.md) |
+| monorepo-fusion-15-re-record-route-budget | [monorepo-fusion-15-re-record-route-budget.md](monorepo-fusion-15-re-record-route-budget.md) |
+| monorepo-fusion-16-scope-the-gate-and-land-ci | [monorepo-fusion-16-scope-the-gate-and-land-ci.md](monorepo-fusion-16-scope-the-gate-and-land-ci.md) |
+| monorepo-fusion-17-fix-the-proxy-test-hang | [monorepo-fusion-17-fix-the-proxy-test-hang.md](monorepo-fusion-17-fix-the-proxy-test-hang.md) |
+| monorepo-fusion-18-tolerate-node-22-sqlite-warning | [monorepo-fusion-18-tolerate-node-22-sqlite-warning.md](monorepo-fusion-18-tolerate-node-22-sqlite-warning.md) |
+| monorepo-fusion-19-chat-cli-idle-window-test | [monorepo-fusion-19-chat-cli-idle-window-test.md](monorepo-fusion-19-chat-cli-idle-window-test.md) |
+| monorepo-fusion-20-ox-history-test-flake | [monorepo-fusion-20-ox-history-test-flake.md](monorepo-fusion-20-ox-history-test-flake.md) |
+| monorepo-fusion-21-codex-proxy-test-flake | [monorepo-fusion-21-codex-proxy-test-flake.md](monorepo-fusion-21-codex-proxy-test-flake.md) |
+| monorepo-fusion-22-finish-adr-0050-scoped-names | [monorepo-fusion-22-finish-adr-0050-scoped-names.md](monorepo-fusion-22-finish-adr-0050-scoped-names.md) |
+| monorepo-fusion-23-retire-the-stale-stack-agents-files | [monorepo-fusion-23-retire-the-stale-stack-agents-files.md](monorepo-fusion-23-retire-the-stale-stack-agents-files.md) |
+| monorepo-fusion-24-decide-codex-oxlint-severities | [monorepo-fusion-24-decide-codex-oxlint-severities.md](monorepo-fusion-24-decide-codex-oxlint-severities.md) |
+| monorepo-fusion-25-retire-the-sibling-docs-trees | [monorepo-fusion-25-retire-the-sibling-docs-trees.md](monorepo-fusion-25-retire-the-sibling-docs-trees.md) |
 | monorepo-fusion-zz-retire-done-plans | [monorepo-fusion-zz-retire-done-plans.md](monorepo-fusion-zz-retire-done-plans.md) |
 | Research 002 — Which requests are safe to serve (cacheability gate) | [research-002-cacheability.md](research-002-cacheability.md) |
 | Wayfinder — Monorepo Fusion | [wayfinder-monorepo-fusion.md](wayfinder-monorepo-fusion.md) |

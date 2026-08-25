@@ -4,6 +4,7 @@ title: Background jobs browser
 description: A device-wide page listing every ~/.claude/jobs directory, with each job's folder tree and a pretty-or-raw viewer for any file inside it.
 tags: [dashboard, device, architecture]
 timestamp: 2026-07-28
+scope: claude
 ---
 
 # Background jobs browser

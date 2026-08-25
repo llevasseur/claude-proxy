@@ -4,6 +4,11 @@ title: Archive notes instead of deleting them
 description: Expose reversible archive and restore operations while withholding permanent purge from agents and the dashboard.
 tags: [architecture, notes, lifecycle, mcp]
 timestamp: 2026-08-16
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0008"
+    file: docs/adrs/0008-archive-notes-instead-of-deleting.md
 decided-by: /dev
 ratified: false
 wayfinder: notes
@@ -30,3 +35,10 @@ Expose archive and restore operations to the dashboard, REST, and MCP. Archived 
 ## Consequences
 
 Storage grows with retained history. Operators gain a reversible lifecycle and agents cannot permanently erase note revisions.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

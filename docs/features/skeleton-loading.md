@@ -4,6 +4,7 @@ title: Skeleton loading
 description: Every dashboard page reserves its content's own boxes while loading, so data arrives in place instead of pushing the page around.
 tags: [dashboard, loading, accessibility, react]
 timestamp: 2026-07-29
+scope: claude
 ---
 
 # Skeleton loading

@@ -4,6 +4,7 @@ title: Project memory browser
 description: A dashboard section that browses Claude Code's own per-project auto-memory files on this device, read-only.
 tags: [dashboard, backend, frontend]
 timestamp: 2026-07-24
+scope: claude
 ---
 
 # Project memory browser

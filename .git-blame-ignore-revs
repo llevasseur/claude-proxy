@@ -1,0 +1,27 @@
+# Commits that changed formatting only, and that `git blame` should look through.
+#
+# This file is inert until the clone is told to read it:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# That setting is per-clone and cannot be committed, which is why the command is
+# also in `AGENTS.md` and in `scripts/bootstrap-worktree.sh`. Without it every SHA
+# below is ignored by nothing and `git blame` still reports the reformat.
+#
+# The setting is per-clone and this file is per-branch, and git calls a missing
+# ignore list fatal rather than empty. So while branches cut before this file
+# existed are still around, `git blame` on one of them dies with `could not open
+# object name list`. Unset the config until you are back on a branch that has the
+# file, or merge forward; the window closes once this reaches `main`.
+#
+# Add a commit here only when it changed no behaviour at all. A commit that mixes
+# a reformat with a real edit makes the real edit unblameable, so keep them apart.
+
+# style(ox): reformat to the repository's Biome settings
+#
+# `stacks/ox-alpha/` had never been checked by Biome 2.5.x. This commit ran the
+# formatter and the `organizeImports` assist across 96 files — quote style double
+# to single, line width 100 to 120, import order — and changed nothing else. The
+# linter was held off so that no safe lint fix could slip a code change in beside
+# the formatting. See `docs/adrs/0051-absorb-ox-into-the-shared-lint-gate.md`.
+dfff4423dfdba60d832c1fe3ce5090c6be7727ad

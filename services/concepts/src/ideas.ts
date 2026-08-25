@@ -43,7 +43,7 @@ import {
   isIdeaTakeable,
   similarAreas,
   similarIdeaSlugs,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import type { Db, DbStatement } from './db.ts';
 import { isJsonRecord, parseJson } from './json.ts';
 import { seedBytes, ulid } from './ulid.ts';

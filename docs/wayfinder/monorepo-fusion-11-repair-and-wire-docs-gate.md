@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-11-repair-and-wire-docs-gate`
-**Status:** active
+**Status:** done · 2026-08-24
 
 ## Goal
 
@@ -27,6 +27,41 @@ between `okq:index:begin`/`okq:index:end` markers and emits **directory** links 
 `[adrs/](adrs/)`. Adding the literal form by hand would be overwritten on the next okq
 run. claude also has no `docs/roadmap/` (it arrives with ox) and does have a
 `docs/wayfinder/` the assertion never checks.
+
+## State changed under this plan — read before acting on its criteria
+
+**Ticket 25 already deleted both `stacks/*/scripts/check-docs.mjs` and their `package.json`
+wiring.** It was outside that ticket's declared lane and it said so, but the reasoning holds:
+those scripts walked bundles that no longer exist and would have failed with `ENOENT`. So
+there is now exactly one docs gate to repair, at the root, and **criterion 4's "create
+`docs/index.md` for ox's bundle" is moot** — ox's bundle is gone, folded into the root by
+ticket 25 along with codex's.
+
+**The measured failure set is also different from what criterion 1 describes.** The current
+`okq --bundle docs validate` baseline is **26 errors, all of them `docs/wayfinder/` plans
+missing a `type` field** — pre-existing, and not what this ticket is about. Blocker (h)'s
+original five errors against claude's 62 documents were measured before the corpus tripled.
+**Re-measure before acting**, and do not "fix" the wayfinder plan errors: those files are
+deleted wholesale by the `zz` ticket.
+
+## Also in scope, added after ticket 13 landed
+
+**Supersession in this corpus is discoverable only forward.** A record names what it
+supersedes; **nothing names what supersedes it**, and no `superseded-by` key exists anywhere
+in `docs/adrs/`. So a reader arriving at 0022, 0023 or 0028 has no way to learn that 0039
+replaced them — they read as current. In a corpus this campaign just tripled in size, that is
+a real navigation defect rather than a tidiness one.
+
+- **Add a `superseded-by` frontmatter key** to every record that something supersedes. Derive
+  the set from the existing forward `Supersedes` references rather than by hand — at minimum
+  0022, 0023 and 0028, but scan for others rather than trusting that list.
+- **Assert it in the gate**: for every `superseded-by: X`, record X must exist and must name
+  this record in its own supersedes reference. **Bidirectional or it fails.** A one-way link
+  is what produced this defect, and a gate that only checks the direction that already works
+  would let it recur.
+- **Do not mark anything superseded that is not.** The distinction ADR 0053 draws holds here:
+  a *merged* record is not a superseded one, and the eight merged pairs must not acquire this
+  key by association.
 
 ## Criteria
 

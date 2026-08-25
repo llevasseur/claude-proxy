@@ -4,6 +4,11 @@ title: Use Markdown for note content
 description: Keep one lossless note representation across the dashboard, REST API, and MCP tools.
 tags: [architecture, notes, markdown, mcp]
 timestamp: 2026-08-16
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0010"
+    file: docs/adrs/0010-use-markdown-for-note-content.md
 decided-by: /dev
 ratified: false
 wayfinder: notes
@@ -30,3 +35,10 @@ Store an explicit plain-text title and a Markdown body. Preserve both fields unc
 ## Consequences
 
 Agents and people share a simple lossless format. Rich block semantics and Notion-compatible structured documents remain out of scope.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

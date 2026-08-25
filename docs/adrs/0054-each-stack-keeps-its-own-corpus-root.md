@@ -73,6 +73,30 @@ equal, plus a per-stack ingest smoke test proving each server reads from its new
 
 > A step no gate can see gets an explicit proof, or it did not happen.
 
+## Amendment — the migration requires quiescence, which this record originally omitted
+
+As first written this record said the corpora "move by `mv`, once, on this device" and
+treated the move as mechanical. Ticket 09 measured otherwise and refused to proceed:
+
+- **All three corpora have live writers.** A proxy and a server run per stack, and each
+  corpus holds a **WAL-mode SQLite database with a live `-shm` file** — claude's is a
+  2.03 GB database beside a 1.70 GB WAL. Renaming a directory out from under an open WAL
+  connection risks the corpus this campaign treats as the product.
+- **The evidence requirement is unassertable against a live writer.** Two counts of
+  claude's corpus 45 seconds apart differed by 21 files. A before/after pair that straddles
+  an active writer differs for reasons unrelated to the move, so equality could not be
+  claimed honestly — and a plausible-looking number would have been worse than none.
+- **`du -sb` does not exist on this device.** macOS ships BSD `du` and there is no `gdu`,
+  so the measure had to be chosen rather than assumed. **Use summed `stat -f%z`**, not
+  `du -sk`: `-sb` on GNU reports *apparent* bytes, `stat -f%z` matches that exactly, and
+  block-based `du -sk` varies with filesystem block size and would mask a real difference
+  behind rounding.
+
+**So quiescing the three stacks is a precondition of the move, not an optimisation** — it
+is what makes both the `mv` safe and the equality assertion true. It is also a side effect
+on the operator's own machine, so it is theirs to authorise rather than an unattended run's
+to take.
+
 ## Consequences
 
 - claude's `logs` is a **symlink** in worktrees — which is why `.gitignore` carries

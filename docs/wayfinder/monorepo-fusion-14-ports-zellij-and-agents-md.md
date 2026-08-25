@@ -2,7 +2,30 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-14-ports-zellij-and-agents-md`
-**Status:** active
+**Status:** done · 2026-08-23
+
+## Measured by the first attempt — do not re-derive these
+
+That run stalled on an infrastructure fault before writing anything, but its discovery was
+sound and is recorded here so the retry starts from it.
+
+1. **Only three of ADR 0050's six scoped names exist** — `OX_PROXY_PORT`, `OX_SERVER_PORT`,
+   `CODEX_SERVER_PORT`. `CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT` and `CODEX_PROXY_PORT` do
+   not; claude's proxy **and** server both read bare `PORT`. **That is ticket 22's to
+   implement, not this ticket's** — but the `AGENTS.md` port section must document what
+   actually exists today rather than what ADR 0050 specifies, and say which three are
+   pending.
+2. **Residual risk 3 has no subject.** `git check-attr` shows the unanchored
+   `CHANGELOG.md merge=union` already resolves for `stacks/codex/CHANGELOG.md`,
+   `stacks/ox-alpha/CHANGELOG.md` and `docs/CHANGELOG.md` — **none of which exist**. So the
+   widening is real in mechanism and empty in practice. Record that rather than checking a
+   shape against files that are not there: note in `.gitattributes` that the pattern is
+   unanchored deliberately, that no sibling changelog exists today, and that one appearing
+   later inherits union-merge without a decision being made.
+3. **Moving the layouts into the root `.zellij/` repairs something.** Each stack's
+   `zellij.sh` post-fusion `cd`s to the monorepo root and looks for `.zellij/<stack>.kdl`
+   there, so consolidating them fixes scripts that are currently broken rather than merely
+   tidying. Say so in the commit.
 
 ## Goal
 
@@ -40,6 +63,16 @@ layouts, and produce one `AGENTS.md` for the fused repository.
    - the nine ports
    - the `git config blame.ignoreRevsFile` line from ticket 07
    - the corrected `pnpm --silent --filter …` invocation form with its new scoped names
+   - **`history/` in the docs bundle's folder list**, which ticket 01 added and which
+     `AGENTS.md` currently omits
+5. **Correct the `!logs` note, which ticket 02 measured as stale.** `AGENTS.md` records
+   that `!logs` skips traversal while `!logs/**` still walks the directory. On Biome
+   **2.5.6 both forms prune**, so the distinction no longer discriminates on the pinned
+   version. The repo ships `!**/logs` as documented-to-prune and measurably faster (364
+   files in 51ms, no UTF-8 errors and no permission error against a deliberately
+   unreadable directory). Rewrite the note to say what is true now and to name the
+   version it was measured on — a justification that has quietly stopped holding is worse
+   than none, because the next reader defends it.
 4. **Settle residual risk 3 — `.gitattributes` scope.** `CHANGELOG.md merge=union` has
    **no slash**, so git matches it at **any depth**: after absorption, codex's and ox's
    own changelogs land at `stacks/<name>/CHANGELOG.md` and inherit union-merge without

@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-01-rewrite-sibling-histories`
-**Status:** active
+**Status:** done · 2026-08-23
 
 ## Goal
 

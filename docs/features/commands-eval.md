@@ -4,6 +4,7 @@ title: Commands eval
 description: What each installed slash command costs to run — tokens attributed to its declared steps, where runs stop, and which waste patterns they trip.
 tags: [dashboard, usage, commands, backend]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Commands eval

@@ -1,0 +1,351 @@
+import { costPerMTok, type PerCallStats, rateTokens, reportTzAbbr, type UsageDigest } from '@agent-proxy/claude-core';
+import { fmtBytes, fmtCompact, fmtInt, fmtPct, fmtUsd, fmtUsdCompact, fmtUsdPerMTok } from './format';
+
+/**
+ * Where a statistic's number comes from, stated on its own page rather than left
+ * to be inferred from the chart. The per-call means deliberately exclude
+ * traffic, so the exclusion belongs next to the number.
+ */
+export interface MetricProvenance {
+  /** The arithmetic, in the audit sidecar's own field names. */
+  formula: string;
+  /** Sidecar fields the formula reads. */
+  sources: string[];
+  /** Requests deliberately left out of both numerator and denominator. */
+  exclusions?: string[];
+  /** What this number cannot tell you, stated before it is over-read. */
+  caveats?: string[];
+}
+
+/**
+ * How a statistic collapses a window of end-of-day snapshots into one number:
+ * `Σ num / Σ den`, weighted by volume rather than by day.
+ */
+export interface MetricBlend {
+  /** This day's contribution to the numerator. */
+  num: (d: UsageDigest) => number;
+  /** This day's weight. `1` blends per day; requests blend a per-request mean. */
+  den: (d: UsageDigest) => number;
+  /** What the denominator counts, read after the value. */
+  unit: string;
+}
+
+/** Blends a per-request mean on the requests behind it. */
+const perRequest = (pick: (s: PerCallStats) => number): MetricBlend => ({
+  num: (d) => pick(d.perCall.work) * d.perCall.work.requests,
+  den: (d) => d.perCall.work.requests,
+  unit: 'per work request',
+});
+
+/** Blends a daily total into a per-day average. */
+const perDay = (pick: (d: UsageDigest) => number): MetricBlend => ({
+  num: pick,
+  den: () => 1,
+  unit: 'per day',
+});
+
+/** One Overview statistic, shared by the cards, their mini charts, and `/trends/$metric`. */
+export interface StatMetric {
+  /** URL slug for `/trends/$metric` and the key used across the app. */
+  key: string;
+  /** Card caption. */
+  label: string;
+  /** Heading on the large-scale trend page (defaults to `label`). */
+  title?: string;
+  /** One-line explanation shown on the trend page. */
+  description: string;
+  /** Line/plot colour (a CSS custom property). */
+  color: string;
+  /** Formats a plotted value for tooltips, tables, and the popover. */
+  format: (n: number) => string;
+  /** Compact y-axis tick; defaults to `format`, already tick-width for percentages and rates. */
+  formatTick?: (n: number) => string;
+  /** The value plotted for a single day. */
+  value: (d: UsageDigest) => number;
+  /** The card's headline for today; defaults to `format(value(d))`. */
+  headline?: (d: UsageDigest) => string;
+  /** Small caption under the headline. */
+  sub?: (d: UsageDigest) => string | undefined;
+  /** Whether a rising value is a regression (cost, tokens) vs. a win (cache). */
+  increaseIsBad?: boolean;
+  /** Matching field in `UsageDigest.trend` for the day-over-day delta chip. */
+  trendField?: string;
+  /** How a window of days collapses into the one blended figure `/trends` shows. */
+  blend: MetricBlend;
+  /** Shown as "How this is computed" on the trend page, when stated. */
+  provenance?: MetricProvenance;
+  /** The same statistic read off one cohort; its presence adds the composition panel. */
+  perCall?: (s: PerCallStats) => number;
+  /**
+   * Whether `perCall` is a mean *per request*, so `share × value` over the
+   * cohorts reproduces the all-request figure. Calls per session divides by
+   * sessions, which are not partitioned by cohort, so the panel omits the column.
+   */
+  perCallAdditive?: boolean;
+}
+
+const fmtBytesLabel = (n: number) => `${fmtInt(n)} B`;
+const fmtTokensLabel = (n: number) => `${fmtInt(n)} tok`;
+
+/**
+ * The cohort every per-call metric is measured over, worded the same way each
+ * time so the four pages agree about what they left out.
+ */
+const CLASSIFIER_EXCLUSION =
+  "Auto-mode permission-classifier calls. Claude Code sends a separate ~110 KB prompt per agent tool call to score it; that is real spend, but it is not a request you made. Counting it would make this mean track the ratio of classifier to work traffic rather than either one. The trend page's composition panel shows the cohort it was held out of.";
+
+/** How a classifier call is recognised — stated wherever the exclusion is. */
+const CLASSIFIER_DETECTION =
+  'A request is classifier traffic when its system-prompt hash resolves to a stored outline carrying both the "HARD BLOCK" and "SOFT BLOCK" headings. Identification is by outline, not by size: the classifier prompt moves by a kilobyte or two between revisions, and a byte threshold would silently reclassify prompts as they drift across it.';
+
+/**
+ * Zone every day-bucketed Overview/Trend value is reported in, e.g. `"EDT"`.
+ * Distinct from `format.ts`'s `LOCAL_TZ_ABBR`, which is the viewer's own zone
+ * and labels individual timestamps. Resolved once, so a window spanning the
+ * daylight-saving switch carries the current abbreviation throughout.
+ */
+export const REPORT_TZ_ABBR = reportTzAbbr();
+
+/** The Overview statistics, in the order they appear on the page. */
+export const METRICS: StatMetric[] = [
+  {
+    key: 'real-input',
+    label: 'Real input tokens',
+    description: 'Non-cached input tokens sent to the model each day.',
+    color: 'var(--accent)',
+    format: fmtInt,
+    formatTick: fmtCompact,
+    value: (d) => d.tokens.realInput,
+    blend: perDay((d) => d.tokens.realInput),
+    trendField: 'realInput',
+  },
+  {
+    key: 'output',
+    label: 'Output tokens',
+    description: 'Tokens generated by the model each day.',
+    color: 'var(--good)',
+    format: fmtInt,
+    formatTick: fmtCompact,
+    value: (d) => d.tokens.output,
+    blend: perDay((d) => d.tokens.output),
+    trendField: 'output',
+  },
+  {
+    key: 'cost',
+    label: 'Est. cost',
+    description: 'Approximate USD spend per day, from token counts and model pricing.',
+    color: 'var(--accent-2)',
+    format: fmtUsd,
+    formatTick: fmtUsdCompact,
+    value: (d) => d.cost.total,
+    blend: perDay((d) => d.cost.total),
+    sub: () => 'approx.',
+    trendField: 'cost',
+  },
+  {
+    key: 'cost-rate',
+    label: 'Cost per token',
+    title: 'Cost per million tokens',
+    description:
+      "Estimated USD per million tokens moved each day, counting the whole prompt and the output. A day's efficiency, independent of its size — cache reads are far cheaper than fresh input, so leaning on the cache pulls this down.",
+    color: 'var(--signal)',
+    format: fmtUsdPerMTok,
+    // Ticks drop the repeated `/MTok` suffix and the trailing cents; the title carries the unit.
+    formatTick: fmtUsdCompact,
+    value: (d) => costPerMTok(d),
+    // The window's whole spend over every token it moved — the same arithmetic
+    // `costPerMTok` does for one day.
+    blend: { num: (d) => d.cost.total * 1_000_000, den: rateTokens, unit: 'per M tokens moved' },
+    sub: () => 'blended',
+    increaseIsBad: true,
+    trendField: 'costPerMTok',
+  },
+  {
+    key: 'cost-per-call',
+    label: 'Cost per call',
+    title: 'Estimated cost per request',
+    description:
+      "What one request costs, averaged over the day's work traffic. A day's spend is roughly this times the number of calls, and this barely moves with conversation depth once compaction caps the prefix — so the call count, not the size of any one prompt, is what the bill tracks.",
+    color: 'var(--accent-2)',
+    format: fmtUsd,
+    value: (d) => d.perCall.work.costUsd,
+    blend: perRequest((s) => s.costUsd),
+    perCall: (s) => s.costUsd,
+    perCallAdditive: true,
+    sub: () => 'excl. classifier',
+    increaseIsBad: true,
+    trendField: 'costPerCall',
+    provenance: {
+      formula: 'sum(estimateCost(tokens, model).total) / count(requests), over work requests only',
+      sources: [
+        'tokens.input, tokens.output, tokens.cacheRead, tokens.cacheCreation',
+        'model (priced by packages/core/src/pricing.ts)',
+        'request.system.hash (to place the request in a cohort)',
+      ],
+      exclusions: [CLASSIFIER_EXCLUSION],
+      caveats: [
+        'Cost is estimated from token counts and a static price table, not read from a bill. It tracks relative movement reliably and absolute dollars approximately.',
+        CLASSIFIER_DETECTION,
+      ],
+    },
+  },
+  {
+    key: 'fixed-prefix',
+    label: 'Fixed prefix',
+    title: 'Fixed prefix tokens per call',
+    description:
+      'Estimated tool-schema plus system-prompt tokens resent on every request, regardless of what was asked. The largest controllable line item in a prompt: it is paid once per call whether or not the turn needed any of it.',
+    color: 'var(--amber)',
+    format: fmtTokensLabel,
+    formatTick: fmtCompact,
+    value: (d) => d.perCall.work.fixedPrefixTokens,
+    blend: perRequest((s) => s.fixedPrefixTokens),
+    perCall: (s) => s.fixedPrefixTokens,
+    perCallAdditive: true,
+    sub: () => 'tools + system',
+    increaseIsBad: true,
+    trendField: 'fixedPrefixTokens',
+    provenance: {
+      formula: 'sum(estTokens(request.toolsBytes + request.systemBytes)) / count(requests), over work requests only',
+      sources: ['request.toolsBytes', 'request.systemBytes', 'tools[].name, tools[].bytes (for the per-tool split)'],
+      exclusions: [CLASSIFIER_EXCLUSION],
+      caveats: [
+        'Estimated from bytes at roughly 4 bytes per token, not billed. The wire returns one input count for the whole prompt, so the tools-and-system share of it cannot be measured directly — only approximated.',
+        'Most of these tokens are served from the prefix cache at a tenth of the input rate, so this is a size, not a price. Read it next to cost per call rather than instead of it.',
+      ],
+    },
+  },
+  {
+    key: 'fresh-input',
+    label: 'Fresh input per call',
+    title: 'Fresh input tokens per call',
+    description:
+      'Uncached input tokens per request — what was genuinely new that turn, after the prefix cache absorbed everything the conversation had already sent. The high-signal half of a prompt.',
+    color: 'var(--accent)',
+    format: fmtTokensLabel,
+    formatTick: fmtCompact,
+    value: (d) => d.perCall.work.freshInputTokens,
+    blend: perRequest((s) => s.freshInputTokens),
+    perCall: (s) => s.freshInputTokens,
+    perCallAdditive: true,
+    sub: () => 'uncached',
+    increaseIsBad: true,
+    trendField: 'freshInputPerCall',
+    provenance: {
+      formula: 'sum(tokens.input) / count(requests), over work requests only',
+      sources: ['tokens.input — the billed non-cached input count, straight from the response usage block'],
+      exclusions: [CLASSIFIER_EXCLUSION],
+      caveats: [
+        'This one is measured, not estimated: it is the count Anthropic billed. A cache miss on an unchanged prefix inflates it without anything new having been sent.',
+        'Large tool results are the usual cause of a spike. The context pages show which ones, message by message.',
+      ],
+    },
+  },
+  {
+    key: 'calls-per-session',
+    label: 'Calls per session',
+    title: 'Requests per session',
+    description:
+      'How many requests a session spends on average. With cost per call roughly flat, this is the other half of the bill — the number of round trips a piece of work takes.',
+    color: 'var(--signal)',
+    format: (n) => `${n.toFixed(1)} calls`,
+    formatTick: (n) => n.toFixed(1),
+    value: (d) => d.perCall.work.callsPerSession,
+    // Sessions, not requests: that is the denominator this mean is over.
+    blend: {
+      num: (d) => d.perCall.work.requests,
+      den: (d) => d.perCall.work.sessions,
+      unit: 'per session id',
+    },
+    perCall: (s) => s.callsPerSession,
+    sub: () => 'per session id',
+    increaseIsBad: true,
+    trendField: 'callsPerSession',
+    provenance: {
+      formula: 'count(requests) / count(distinct session.sessionId), over work requests only',
+      sources: ['session.sessionId — Claude Code’s own session id, read off the request headers'],
+      exclusions: [
+        CLASSIFIER_EXCLUSION,
+        'Requests carrying no session id. Older sidecars predate the capture, and they are left out of both counts rather than pooled into one anonymous session.',
+      ],
+      caveats: [
+        'A session spanning midnight is counted on both days, so each day sees only its own slice of it. Day-over-day movement is reliable; a single day’s absolute value understates a long-running session.',
+        'A resumed session keeps its id, so resuming reads as a longer session rather than a second one.',
+      ],
+    },
+  },
+  {
+    key: 'cache-hit',
+    label: 'Cache-hit ratio',
+    description: 'Share of prompt tokens served from cache (cacheRead / realInput) each day.',
+    color: 'var(--signal)',
+    format: (n) => fmtPct(n),
+    value: (d) => d.tokens.cacheHitRatio * 100,
+    // The ratio's own two totals, not an average of daily percentages.
+    blend: { num: (d) => d.tokens.cacheRead * 100, den: (d) => d.tokens.realInput, unit: 'of prompt tokens' },
+    increaseIsBad: false,
+    trendField: 'cacheHitPct',
+  },
+  {
+    key: 'requests',
+    label: 'Requests',
+    description: 'Requests captured per day.',
+    color: 'var(--good)',
+    format: fmtInt,
+    formatTick: fmtCompact,
+    value: (d) => d.requestCount,
+    blend: perDay((d) => d.requestCount),
+    trendField: 'requestCount',
+  },
+  {
+    key: 'busiest-hour',
+    label: 'Busiest hour',
+    title: 'Busiest-hour requests',
+    description: `Requests during the single busiest hour of each day (${REPORT_TZ_ABBR}).`,
+    color: 'var(--accent)',
+    format: (n) => `${fmtInt(n)} req`,
+    formatTick: fmtCompact,
+    value: (d) => d.busiestHour?.requestCount ?? 0,
+    // Only the count blends; which hour it fell in is a per-day fact.
+    blend: perDay((d) => d.busiestHour?.requestCount ?? 0),
+    headline: (d) => (d.busiestHour ? `${String(d.busiestHour.hour).padStart(2, '0')}:00` : '—'),
+    sub: (d) => (d.busiestHour ? `${d.busiestHour.requestCount} req · ${REPORT_TZ_ABBR}` : undefined),
+  },
+  {
+    key: 'tool-overhead',
+    label: 'Tool overhead',
+    description: 'Estimated tool-schema tokens as a percentage of input tokens each day.',
+    color: 'var(--amber)',
+    format: (n) => fmtPct(n),
+    value: (d) => d.toolOverheadPctOfInput,
+    // Only the percentage is in the digest; input tokens recover the total behind it.
+    blend: {
+      num: (d) => d.toolOverheadPctOfInput * d.tokens.realInput,
+      den: (d) => d.tokens.realInput,
+      unit: 'of input tokens',
+    },
+    sub: () => 'of input tokens',
+    trendField: 'toolOverheadPct',
+  },
+  {
+    key: 'avg-system-prompt',
+    label: 'Avg system prompt',
+    description: 'Mean system-prompt size (bytes) per request each day.',
+    color: 'var(--amber)',
+    format: fmtBytesLabel,
+    formatTick: fmtBytes,
+    value: (d) => d.avgSystemPromptBytes,
+    // A mean over requests, not days: the day's request count is its weight.
+    blend: {
+      num: (d) => d.avgSystemPromptBytes * d.requestCount,
+      den: (d) => d.requestCount,
+      unit: 'per request',
+    },
+    trendField: 'avgSystemPromptBytes',
+  },
+];
+
+const BY_KEY = new Map(METRICS.map((m) => [m.key, m]));
+
+/** Look up a metric by its URL slug. */
+export const findMetric = (key: string): StatMetric | undefined => BY_KEY.get(key);

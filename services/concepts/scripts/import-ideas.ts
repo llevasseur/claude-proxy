@@ -26,7 +26,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type IdeaEntry, parseIdeasStore } from '@claude-proxy/core';
+import { type IdeaEntry, parseIdeasStore } from '@agent-proxy/claude-core';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 

@@ -2,7 +2,7 @@
 
 **Wayfinder:** `monorepo-fusion`
 **Branch:** `task/monorepo-fusion-13-write-campaign-adrs`
-**Status:** active
+**Status:** done · 2026-08-24
 
 ## Goal
 

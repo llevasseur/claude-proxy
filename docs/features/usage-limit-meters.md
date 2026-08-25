@@ -4,6 +4,7 @@ title: Usage limit meters
 description: The Overview carries live meters for the 5-hour, weekly, and weekly-Fable allowances, each with a plain-language read on whether the current burn rate is sustainable.
 tags: [dashboard, usage, rate-limits, sse, proxy]
 timestamp: 2026-07-30
+scope: claude
 ---
 
 # Usage limit meters
@@ -194,7 +195,7 @@ judging it against 168 hours would read 4% and stamp `partial` on a complete cou
 
 ## Coverage — how much of a window is actually on disk
 
-`logs/` retains roughly the current day; `pnpm --filter server maintain` relocates past days
+`logs/` retains roughly the current day; `pnpm --filter @agent-proxy/claude-server maintain` relocates past days
 into `logs/archive/<date>/`. Every `.audit.json` is kept there forever and no day directory is
 ever removed — only the `.md` and `.request.txt` bodies are evicted, past `RETENTION_DAYS`
 (30) — so eviction can never take coverage down with it. The live directory alone therefore
