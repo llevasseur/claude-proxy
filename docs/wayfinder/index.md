@@ -19,7 +19,6 @@
 | Decision internet-spend 003 — Short months clamp to the last day; UTC stored, local resolution | [decision-internet-spend-003-period-boundaries.md](decision-internet-spend-003-period-boundaries.md) |
 | Decision internet-spend 004 — Agent patterns match by case-insensitive substring | [decision-internet-spend-004-agent-pattern-matching.md](decision-internet-spend-004-agent-pattern-matching.md) |
 | Decision internet-spend 005 — The collector is a timer inside net-server; LaunchAgent out of scope | [decision-internet-spend-005-collector-residency.md](decision-internet-spend-005-collector-residency.md) |
-| Internet Spend 01 — net-server store and read-time model | [internet-spend-01-net-store-and-read-model.md](internet-spend-01-net-store-and-read-model.md) |
 | Internet Spend 02 — net-server collector and HTTP API | [internet-spend-02-net-collector-and-api.md](internet-spend-02-net-collector-and-api.md) |
 | Internet Spend 03 — admin /internet route page | [internet-spend-03-internet-route-page.md](internet-spend-03-internet-route-page.md) |
 | Internet Spend 04 — Overview budget meter | [internet-spend-04-overview-budget-meter.md](internet-spend-04-overview-budget-meter.md) |
