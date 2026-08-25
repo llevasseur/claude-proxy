@@ -12,6 +12,7 @@ number: "02"
 # Alive View 02 — core emotion derivation
 
 Branch: `task/alive-view-mote-02-core-emotion-derivation`, cut from `wayfinder/alive-view-mote`.
+Status: done · 2026-08-25
 Lane: `stacks/claude/core/src/` (one new domain file plus its export line in `index.ts`) and that package's tests. Touch nothing under any admin app.
 
 ## Criteria
