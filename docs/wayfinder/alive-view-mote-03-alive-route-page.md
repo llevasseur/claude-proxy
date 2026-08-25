@@ -12,6 +12,7 @@ number: "03"
 # Alive View 03 — the /sessions/alive route page
 
 Branch: `task/alive-view-mote-03-alive-route-page`, cut from `wayfinder/alive-view-mote` **after tickets 01 and 02 have merged** (it consumes both the shell and the derivation).
+**Status:** done · 2026-08-25
 Lane: one new file `stacks/claude/admin/src/routes/sessions-alive.tsx`, one line in `stacks/claude/admin/src/routes/registry.ts`, and a layout-spec doc under `docs/features/` or `docs/specs/`. It must not re-edit ticket 01's shell or ticket 02's core except to import them.
 
 ## Criteria

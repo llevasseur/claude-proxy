@@ -30,6 +30,7 @@ import { route as sessionDetailRoute } from './session-detail';
 import { route as sessionErrorsRoute } from './session-errors';
 import { nav as sessionGraphNav, route as sessionGraphRoute } from './session-graph';
 import { nav as sessionsNav, route as sessionsRoute } from './sessions';
+import { route as sessionsAliveRoute } from './sessions-alive';
 import { nav as skimNav, route as skimRoute } from './skim';
 import { route as suggestionBucketRoute } from './suggestion-bucket';
 import { nav as systemPromptNav, route as systemPromptRoute } from './system-prompt';
@@ -70,6 +71,7 @@ export const ROUTES = [
   projectDetailRoute,
   memoryDetailRoute,
   sessionsRoute,
+  sessionsAliveRoute,
   sessionGraphRoute,
   sessionDetailRoute,
   sessionErrorsRoute,

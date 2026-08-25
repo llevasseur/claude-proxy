@@ -26,15 +26,67 @@ unratified; six carry `needs-human: true`.
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 01 | shared-shell-and-select | [alive-view-mote-01-shared-shell-and-select](alive-view-mote-01-shared-shell-and-select.md) | `task/alive-view-mote-01-shared-shell-and-select` | todo |
-| 02 | core-emotion-derivation | [alive-view-mote-02-core-emotion-derivation](alive-view-mote-02-core-emotion-derivation.md) | `task/alive-view-mote-02-core-emotion-derivation` | todo |
-| 03 | alive-route-page | [alive-view-mote-03-alive-route-page](alive-view-mote-03-alive-route-page.md) | `task/alive-view-mote-03-alive-route-page` | todo |
 
-Dependencies: 03 depends on 01 and 02; 01 and 02 are independent.
+Dependencies: 03 depends on 01 and 02; 01 and 02 are independent. All three have landed.
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 03 — alive-route-page (2026-08-25)
+
+PR [#307](https://github.com/llevasseur/claude-proxy/pull/307), squash-merged into
+`wayfinder/alive-view-mote`. `/sessions/alive` is live: a new route
+(`stacks/claude/admin/src/routes/sessions-alive.tsx`, registered once in the registry, no
+`nav`) renders through ticket 01's shell, polling `/api/sessions/graph` at the session
+graph's 4 s cadence under its query key and `/api/sessions/graph/nodes` for the watched
+family exactly as `session-graph.tsx` does (20 s backstop, `keepPreviousData`), deriving
+with ticket 02's `deriveAliveView` with `Date.now()` injected at render on a 15 s tick.
+Selection rides the rail's `onSelect`, defaulting to the tab-owned thread. Empty watch,
+Stressed and aria-live behaviour follow ADRs 0025–0027; the layout spec
+(`docs/features/alive-view.md`) landed in its own commit before the component. Deviations
+worth keeping: **no SSE subscription** — ADR 0018's redundancy clause applied, since the
+4 s index poll refreshes `modified` three orders of magnitude finer than the stress
+threshold; and the owned thread is the default watch rather than a state initialiser,
+because `useChatThread` resolves asynchronously after mount. The shell's inert Alive span
+became a real `Link`. One repair round (the shell's required `onNewChat`); two chat-cli
+test failures in the first verify were the machine-load flake recorded under ticket 02 —
+the file passes standalone and the fresh full run is green. **Browser evidence missing**:
+no browser automation tooling existed this session, so the plan's Chrome checks (toggle
+both directions, selection swaps within poll cadence, stale fixture reads Stressed) are
+recorded verbatim as not-run in the PR body rather than simulated.
+
+### 02 — core-emotion-derivation (2026-08-25)
+
+PR [#304](https://github.com/llevasseur/claude-proxy/pull/304), squash-merged into
+`wayfinder/alive-view-mote`. `stacks/claude/core/src/alive-view.ts`
+is the pure derivation: newest-`modified` family transcript picks the last merged node and the
+last-append clock (ADR 0022); `done`, an interrupted last step and empty inputs read Smiling,
+`error` reads Disgruntled, mid-run reads Thinking, and only Thinking ages into Stressed past
+`STRESS_THRESHOLD_MS` (ADR 0023). Trigger lines carry the bare "idle for Xm" stressed form and
+the general "`<lead>` · step `<index>` · `<age>`m ago" form, with per-type leads — tool call
+head, error blaming its tool or its own truncated text (ADR 0024), `stopped` for a cut-off run.
+Deviations worth keeping: the plan left the exact line assembly open, so decision/done lines
+lead with the emotion word plus the node's text and a toolless signature renders as name only;
+and the input accepts either a caller-merged stream or the raw transcript/derived pair, since
+`mergeSessionNodes` keeps the transcript's length and ticket 03 polls the already-merged shape.
+The workspace `test` gate flakes on this machine under load (ox-admin css hook timeout, server
+chat-cli timings, a route-methods random-port collision with a live process on 8807); each passes
+in isolation, CI green after one flake rerun.
+
+### 01 — shared-shell-and-select (2026-08-25)
+
+PR [#303](https://github.com/llevasseur/claude-proxy/pull/303), squash-merged into
+`wayfinder/alive-view-mote`. `SessionsShell.tsx` now holds what `/sessions` built inline — the
+`QueryState`-framed transcript rail with its skeleton (moved out of `sessions.tsx`) and a slim
+Chat/Alive view switch above the rail-and-pane grid, per ADR 0028 — and `SessionsSidenav` grew
+its one optional prop, `onSelect?` (ADR 0021): absent it rows render today's `<Link>` unchanged,
+present it they render as buttons handing over the thread id. Deviations worth keeping: the
+Alive tab ships **inert** — typed links cannot name the unregistered `/sessions/alive`, and
+registering that route is ticket 03's work, so ticket 03 flips one span into a `Link`; and the
+header row is styled inline against existing tokens because the stylesheet sits outside the
+ticket's lane. The ox-alpha admin CSS test timed out under machine load during verify but passes
+standalone; unrelated to this lane.
 
 ## Agent kickoff prompt
 
