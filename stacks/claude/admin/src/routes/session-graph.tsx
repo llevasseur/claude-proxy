@@ -193,9 +193,12 @@ function GraphSkeleton({ rows = 2, steps = 4 }: { rows?: number; steps?: number 
   );
 }
 
-/** The extra layer a step wears when the run was cut off on it, or resumed on it. */
-function cutClass(node: SessionNode): string {
-  return `${node.interrupted ? ' is-cut' : ''}${node.interruption ? ' is-resumed' : ''}`;
+/**
+ * The extra layer a step wears when the run was cut off on it, or resumed on it. A cut whose
+ * spawn observably restarted (`resumed`) drops the severed layer — the work came back.
+ */
+function cutClass(node: SessionNode, resumed: boolean): string {
+  return `${node.interrupted && !resumed ? ' is-cut' : ''}${node.interruption ? ' is-resumed' : ''}`;
 }
 
 const nodeKind = (node: SessionNode): string => (spawnAgentType(node) === null ? node.type : 'spawn');
@@ -617,7 +620,7 @@ export function SessionGraphPage() {
               className='gtrail'
               style={{ left: trail.x, top: trail.y, width: trail.w, height: trail.h }}>
               <div className='gtrail-head'>
-                <span className='gtrail-kind'>interrupted</span>
+                <span className='gtrail-kind'>{trail.resumed ? 'interrupted · resumed' : 'interrupted'}</span>
                 <span className='gtrail-why'>{interruptionLabel(trail.kind)}</span>
                 <span className='gtrail-title' title={trail.label}>
                   {trail.label}
@@ -809,7 +812,7 @@ function CommandOrStepBox({
   return (
     <button
       type='button'
-      className={`gnode gnode--${boxTone(box)}${run ? ' gnode--cmd' : ''}${cutClass(node)}${selected ? ' is-selected' : ''}`}
+      className={`gnode gnode--${boxTone(box)}${run ? ' gnode--cmd' : ''}${cutClass(node, box.resumed)}${selected ? ' is-selected' : ''}`}
       style={boxStyle(box, run)}
       onClick={onSelect}>
       <span className='gnode-kind'>{run ? FAMILY_LABEL[run.family] : agent ? 'agent' : nodeKind(node)}</span>
