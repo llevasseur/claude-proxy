@@ -79,11 +79,12 @@ export function readConfig(
 ): ServerConfig {
   const host = environment.SERVER_HOST?.trim() || '127.0.0.1';
   // The listener port comes from `OX_SERVER_PORT`; the bare `SERVER_PORT` this package has
-  // always read stays a fallback scoped to this package alone. See ADR 0050. The 8788 default
-  // is unchanged and still collides with claude's server — pre-existing rather than
-  // fusion-caused, and the scoped name is what makes it overridable.
+  // always read stays a fallback scoped to this package alone. See ADR 0050. The default is
+  // 8808, beside ox's own proxy default of 8807, and it no longer collides with claude's
+  // server on 8788: ADR 0062 moved it because ADR 0041's provider picker needs both servers
+  // bound at once in a checkout nobody has configured, which an override cannot deliver.
   const portName = environment.OX_SERVER_PORT === undefined ? 'SERVER_PORT' : 'OX_SERVER_PORT';
-  const port = integer(environment.OX_SERVER_PORT ?? environment.SERVER_PORT, 8788, portName, 0);
+  const port = integer(environment.OX_SERVER_PORT ?? environment.SERVER_PORT, 8808, portName, 0);
   if (port > 65535) throw new Error(`${portName} must be <= 65535`);
   const auditDirectory = resolve(cwd, environment.AUDIT_DIR ?? 'logs/audit');
   const base = Object.freeze({

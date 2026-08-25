@@ -91,11 +91,18 @@ is written; the summary is:
 |---|---|---|---|
 | claude | 8787 | 8788 | 5173 |
 | codex | 8026 | 4319 | 5173 |
-| ox-alpha | 8807 | 8788 | 5173 |
+| ox-alpha | 8807 | 8808 | 5173 |
 
 **Change none of these numbers.** ADR 0050 struck "allocate nine distinct ports": it was a
 remedy for a collision fusion did not create, and renumbering would be exactly the runtime
-change the campaign forbids.
+change that campaign forbade.
+
+**Exactly one has moved since, and it is the exception that shows the rule.** ADR 0062
+took ox's server from `8788` to `8808`, beside ox's own proxy on `8807`, because ADR
+0041's provider picker needs claude's and ox's servers bound simultaneously in a checkout
+nobody has configured — which an override cannot deliver. That amends one clause of 0050
+and adds no `superseded-by` to it: 0050 still governs the other eight numbers and its
+whole scoped-variable scheme.
 
 **All six of ADR 0050's scoped names now exist**, so the ADR describes this repository
 rather than an intent it has not reached. `CODEX_SERVER_PORT`, `OX_PROXY_PORT` and
@@ -103,7 +110,8 @@ rather than an intent it has not reached. `CODEX_SERVER_PORT`, `OX_PROXY_PORT` a
 `CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT` and `CODEX_PROXY_PORT`. Each keeps its bare
 name as a fallback scoped to its own package — `PORT` for both claude packages,
 `PROXY_PORT` for codex's proxy — so a stack launched exactly as it is launched today
-resolves exactly as it did, and no default moved.
+resolves exactly as it did. No default moved to make that true; ox's server moved later
+and separately, for the reason above.
 
 **claude's proxy and server validate nothing, and that is deliberate.** Neither package
 had a config module at all before ticket 22, so `Number()` of a bad value has always
@@ -114,10 +122,13 @@ parsing alone. That is why `stacks/claude/proxy/config.test.ts` carries three po
 where `stacks/codex/proxy/test/config.test.ts` carries four: codex's fourth asserts the
 rejection claude deliberately does not perform.
 
-Two collisions are **recorded rather than fixed**, because both predate fusion — running
-these repositories side by side already collided this way: claude's and ox's servers both
-default to `8788`, and all three admin dev servers to `5173`. The scoped names above are
-what makes them overridable without moving a default.
+Two collisions predated fusion — running these repositories side by side already collided
+this way — and fusion recorded both rather than fixing them. **One is now fixed and one is
+not.** The two servers no longer share a number: claude's holds `8788`, ox's is on `8808`,
+because a picker reading both at once turned that collision from awkwardness into a
+default checkout that cannot work. **All three admin dev servers still default to `5173`**,
+since nothing requires three dashboards up simultaneously; the scoped names remain what
+makes that one overridable without moving a default.
 
 ## Toolchain
 
