@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { estimateCost, FALLBACK_PRICE, MODEL_PRICES, priceFor } from '../src/pricing.js';
+import {
+  addCost,
+  addUsdAmounts,
+  aggregateCost,
+  type CostResult,
+  estimateCost,
+  FALLBACK_PRICE,
+  MODEL_PRICES,
+  type ModelPrice,
+  priceFor,
+  priceRowFor,
+  resolveCost,
+  ZERO_COST,
+} from '../src/pricing.js';
+
+const tokens = (t: Partial<Parameters<typeof estimateCost>[0]> = {}) => ({
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheCreation: 0,
+  realInput: 0,
+  ...t,
+});
+
+/** A row an operator could plausibly mistype: every rate usable but `input`. */
+const BROKEN_INPUT_RATE = {
+  opus: { input: Number.NaN, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+} satisfies Record<string, ModelPrice>;
 
 describe('priceFor', () => {
   it('matches families by substring', () => {
@@ -60,5 +87,131 @@ describe('estimateCost', () => {
   it('is zero for zero tokens', () => {
     const cost = estimateCost({ input: 0, output: 0, cacheRead: 0, cacheCreation: 0, realInput: 0 }, 'claude-opus-4-8');
     expect(cost.total).toBe(0);
+  });
+});
+
+describe('priceRowFor', () => {
+  it('reports the miss instead of covering it', () => {
+    expect(priceRowFor('gpt-5')).toBeNull();
+    expect(priceRowFor('')).toBeNull();
+  });
+
+  it('matches the same families priceFor does', () => {
+    expect(priceRowFor('claude-opus-5')).toBe(MODEL_PRICES.opus);
+    expect(priceRowFor('claude-sonnet-5')).toBe(MODEL_PRICES.sonnet);
+  });
+});
+
+describe('resolveCost', () => {
+  it('prices each bucket exactly, as decimal strings', () => {
+    const result = resolveCost(
+      tokens({ input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheCreation: 1_000_000 }),
+      'claude-opus-5',
+    );
+    expect(result.unavailableReason).toBeNull();
+    expect(result.cost).toEqual({
+      currency: 'USD',
+      input: '5.000000',
+      output: '25.000000',
+      cacheWrite: '6.250000',
+      cacheRead: '0.500000',
+      total: '36.750000',
+    });
+  });
+
+  it('agrees with the float path for priced models', () => {
+    const t = tokens({ input: 123_456, output: 7_890, cacheRead: 654_321, cacheCreation: 42_000 });
+    const exact = resolveCost(t, 'claude-sonnet-5');
+    const float = estimateCost(t, 'claude-sonnet-5');
+    expect(Number(exact.cost?.total)).toBeCloseTo(float.total, 9);
+  });
+
+  it('marks an unpriced model unavailable rather than substituting zero', () => {
+    const result = resolveCost(tokens({ input: 1_000_000 }), 'gpt-5');
+    expect(result.cost).toBeNull();
+    expect(result.unavailableReason).toEqual({ code: 'unknown-model', model: 'gpt-5' });
+    // The gap this closes: the float path silently bills an unknown model at the
+    // fallback row, which reads as a real measurement.
+    expect(estimateCost(tokens({ input: 1_000_000 }), 'gpt-5').total).toBe(FALLBACK_PRICE.input);
+  });
+
+  it('reports an unusable rate on a consumed bucket', () => {
+    const result = resolveCost(tokens({ input: 10 }), 'claude-opus-5', BROKEN_INPUT_RATE);
+    expect(result.cost).toBeNull();
+    expect(result.unavailableReason).toEqual({
+      code: 'missing-category-price',
+      model: 'claude-opus-5',
+      category: 'input',
+    });
+  });
+
+  it('ignores an unusable rate on a bucket that consumed nothing', () => {
+    const result = resolveCost(tokens({ output: 1_000_000 }), 'claude-opus-5', BROKEN_INPUT_RATE);
+    expect(result.unavailableReason).toBeNull();
+    expect(result.cost?.total).toBe('25.000000');
+  });
+
+  it('totals zero tokens as a real zero, not an unavailable cost', () => {
+    const result = resolveCost(tokens(), 'claude-opus-5');
+    expect(result.unavailableReason).toBeNull();
+    expect(result.cost?.total).toBe('0.000000');
+  });
+
+  it('refuses a negative or fractional token count', () => {
+    expect(() => resolveCost(tokens({ input: -1 }), 'claude-opus-5')).toThrow(RangeError);
+    expect(() => resolveCost(tokens({ input: 1.5 }), 'claude-opus-5')).toThrow(RangeError);
+  });
+});
+
+describe('addUsdAmounts', () => {
+  it('is exact where floating point drifts', () => {
+    // The canonical drift: ten tenths do not sum to one in binary floating point.
+    const tenths = Array.from({ length: 10 }, () => '0.100000');
+    expect(tenths.reduce((a, b) => a + Number(b), 0)).not.toBe(1);
+    expect(addUsdAmounts(tenths)).toBe('1.000000');
+  });
+
+  it('adds fractions of a cent without losing them', () => {
+    expect(addUsdAmounts(['0.100000', '0.200000'])).toBe('0.300000');
+    expect(0.1 + 0.2).not.toBe(0.3);
+    expect(addUsdAmounts(Array.from({ length: 1_000_000 }, () => '0.000001'))).toBe('1.000000');
+  });
+
+  it('totals an empty list as zero', () => {
+    expect(addUsdAmounts([])).toBe('0.000000');
+  });
+
+  it('rejects an amount it did not produce', () => {
+    expect(() => addUsdAmounts(['-1.000000'])).toThrow(/invalid USD amount/);
+    expect(() => addUsdAmounts(['1e-6'])).toThrow(/invalid USD amount/);
+  });
+});
+
+describe('aggregateCost', () => {
+  it('sums priced costs exactly', () => {
+    const one = resolveCost(tokens({ cacheRead: 1_000_000 }), 'claude-haiku-4-5');
+    expect(one.cost?.total).toBe('0.100000');
+    const ten = aggregateCost(Array.from({ length: 10 }, () => one));
+    expect(ten.cost?.total).toBe('1.000000');
+
+    // Same ten days down the float path, which is what this replaces.
+    const drifted = Array.from({ length: 10 }, () =>
+      estimateCost(tokens({ cacheRead: 1_000_000 }), 'claude-haiku-4-5'),
+    ).reduce(addCost, ZERO_COST);
+    expect(drifted.total).not.toBe(1);
+  });
+
+  it('propagates unavailability rather than understating the total', () => {
+    const priced = resolveCost(tokens({ input: 1_000_000 }), 'claude-opus-5');
+    const unpriced = resolveCost(tokens({ input: 1_000_000 }), 'gpt-5');
+    const result = aggregateCost([priced, unpriced]);
+    expect(result.cost).toBeNull();
+    expect(result.unavailableReason).toEqual({ code: 'aggregate-incomplete', detail: 'unknown-model' });
+  });
+
+  it('totals an empty aggregate as zero', () => {
+    const result: CostResult = aggregateCost([]);
+    expect(result.unavailableReason).toBeNull();
+    expect(result.cost?.total).toBe('0.000000');
   });
 });
