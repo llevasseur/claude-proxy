@@ -128,7 +128,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 
 | # | Task | Plan | Branch | Status | Note |
 |---|------|------|--------|--------|------|
-| 01 | adapter-contract-and-registries | [provider-seam-01-adapter-contract-and-registries](provider-seam-01-adapter-contract-and-registries.md) | `task/provider-seam-01-adapter-contract-and-registries` | todo | |
+| 01 | adapter-contract-and-registries | [provider-seam-01-adapter-contract-and-registries](provider-seam-01-adapter-contract-and-registries.md) | `task/provider-seam-01-adapter-contract-and-registries` | in-progress | |
 | 02 | sidecar-v2-provider-discriminator | [provider-seam-02-sidecar-v2-provider-discriminator](provider-seam-02-sidecar-v2-provider-discriminator.md) | `task/provider-seam-02-sidecar-v2-provider-discriminator` | todo | |
 | 03 | claude-migration-23 | [provider-seam-03-claude-migration-23](provider-seam-03-claude-migration-23.md) | `task/provider-seam-03-claude-migration-23` | todo | |
 | 04 | codex-store-repair-and-migration | [provider-seam-04-codex-store-repair-and-migration](provider-seam-04-codex-store-repair-and-migration.md) | `task/provider-seam-04-codex-store-repair-and-migration` | todo | |
