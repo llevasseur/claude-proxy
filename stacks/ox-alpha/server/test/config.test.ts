@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readConfig } from '../src/config.ts';
 
@@ -24,6 +26,16 @@ describe('readConfig port resolution', () => {
 
   it("defaults clear of claude's server, with no override supplied", () => {
     expect(readConfig({}).port).not.toBe(CLAUDE_SERVER_DEFAULT_PORT);
+  });
+
+  // The shipped example is what an operator copies to .env, so a stale port there is a
+  // live break rather than stale prose — and nothing else reads the file: check:env
+  // resolves the proxy store, and no other test opens it.
+  it('ships an example whose OX_SERVER_PORT is the default it documents', () => {
+    const example = readFileSync(join(import.meta.dirname, '..', '.env.example'), 'utf8');
+    const assignment = example.split('\n').find((line) => line.startsWith('OX_SERVER_PORT='));
+    expect(assignment, '.env.example sets OX_SERVER_PORT').toBeTruthy();
+    expect(Number(assignment?.slice('OX_SERVER_PORT='.length))).toBe(readConfig({}).port);
   });
 
   it('reports whichever name the operator supplied', () => {

@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-19-ox-8788-stragglers`
-**Status:** active
+**Status:** done · 2026-08-25
 
 Ticket 09 moved ox's server default from `8788` to `8808` at
 `stacks/ox-alpha/server/src/config.ts:86`, and updated `.zellij/README.md` and the root

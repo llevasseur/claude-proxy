@@ -12,6 +12,7 @@ import { fmtInt, fmtLocalTsShort, fmtPct, fmtUsd } from '../format';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /**
  * "Commands" — what each installed slash command costs to run.
@@ -250,3 +251,6 @@ export const nav = {
   exact: false,
   icon: TerminalSquare,
 } as const satisfies NavEntry;
+
+/** Command runs reconstructed from Claude Code sessions. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

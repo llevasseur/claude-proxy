@@ -8,6 +8,7 @@ import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonText } from '../components/Skeleton';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
+import { EVERY_PROVIDER } from './providers';
 
 /**
  * One saved concept, addressed by `ord` — the line it sits on in
@@ -178,3 +179,6 @@ export const route = createRoute({
   component: ConceptDetailPage,
   staticData: { title: 'Concept' },
 });
+
+/** The concept store is the repository’s own corpus — named by ADR 0041 as agnostic. */
+export const providers = EVERY_PROVIDER;

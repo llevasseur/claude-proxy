@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-10-route-registry-provider-declarations`
-**Status:** active
+**Status:** done · 2026-08-25
 
 The **data side** of the provider picker. Independent of the spine by file scope — it
 touches only claude's admin route modules — so it may run in the first wave. The picker

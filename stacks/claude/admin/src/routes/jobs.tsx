@@ -11,6 +11,7 @@ import { type SkeletonColumn, SkeletonStats, SkeletonTable } from '../components
 import { fmtBytes, fmtInt, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
+import { EVERY_PROVIDER } from './providers';
 
 /**
  * "Jobs" — every background job directory under `~/.claude/jobs` on this device.
@@ -403,3 +404,6 @@ export const nav = {
   exact: false,
   icon: HardDrive,
 } as const satisfies NavEntry;
+
+/** Device jobs are the machine’s, not a provider’s. */
+export const providers = EVERY_PROVIDER;

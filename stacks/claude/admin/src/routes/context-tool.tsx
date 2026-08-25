@@ -20,6 +20,7 @@ import {
 } from '../json';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
+import type { ProviderSupport } from './providers';
 
 export function ContextToolPage() {
   const { file, index } = useParams({ from: '/context/$file/tool/$index' });
@@ -246,3 +247,6 @@ export const route = createRoute({
   component: ContextToolPage,
   staticData: { title: 'Context tool call' },
 });
+
+/** One tool block inside a captured Anthropic request. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

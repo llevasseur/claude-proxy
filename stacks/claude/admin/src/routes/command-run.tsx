@@ -20,6 +20,7 @@ import { fmtBytes, fmtDuration, fmtInt, fmtLocalTs, fmtPct, fmtUsd } from '../fo
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { fmtFlag } from './command-detail';
+import type { ProviderSupport } from './providers';
 
 /** Step colours, cycled — the same palette the command page's stacked bar uses. */
 const STEP_COLORS = ['var(--signal)', 'var(--good)', 'var(--amber)', 'var(--violet)', 'var(--coral)'];
@@ -572,3 +573,6 @@ export const route = createRoute({
   component: CommandRunPage,
   staticData: { title: 'Command run' },
 });
+
+/** One command run inside a Claude Code session. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

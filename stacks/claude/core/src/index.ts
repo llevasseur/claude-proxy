@@ -1,6 +1,7 @@
 export * from './adapter-seam.js';
 export * from './advice.js';
 export * from './api-routes.js';
+export * from './capabilities.js';
 export * from './cli-args.js';
 export * from './cli-internals.js';
 export * from './code-view.js';

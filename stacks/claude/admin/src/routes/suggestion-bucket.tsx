@@ -30,6 +30,7 @@ import {
 import { fmtBytes, fmtInt, fmtLocalTsShort, fmtPct } from '../format';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
+import { EVERY_PROVIDER } from './providers';
 
 const SEV_LABEL = { high: 'High', warn: 'Warn', info: 'Info' } as const;
 
@@ -385,3 +386,6 @@ export const route = createRoute({
   component: SuggestionBucketPage,
   staticData: { title: 'Session suggestions' },
 });
+
+/** A bucket of Advice, which ADR 0041 names as agnostic. */
+export const providers = EVERY_PROVIDER;

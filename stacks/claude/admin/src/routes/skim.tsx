@@ -14,6 +14,7 @@ import { fmtInt, fmtPct, fmtUsd, fmtUsdCompact } from '../format';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 const HIT_RATE_SERIES: Series[] = [{ dataKey: 'hitRate', name: 'Hit rate', color: 'var(--good)' }];
 const SAVED_SERIES: Series[] = [{ dataKey: 'cumUsd', name: 'Cumulative saved', color: 'var(--accent-2)' }];
@@ -200,3 +201,6 @@ export const nav = {
   exact: false,
   icon: Zap,
 } as const satisfies NavEntry;
+
+/** The proxy’s skim of Anthropic response bodies. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

@@ -25,6 +25,7 @@ import { rootRoute } from '../route-root';
 import { type LiveStatus, useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 import type { NavEntry } from './nav';
+import { EVERY_PROVIDER } from './providers';
 
 export function OverviewPage() {
   const [days, selectDays, isSwitching] = useTransitionState(7);
@@ -347,3 +348,6 @@ export const nav = {
   exact: true,
   icon: Monitor,
 } as const satisfies NavEntry;
+
+/** The one station every provider has, so the redirect in ADR 0041 always has somewhere to land. */
+export const providers = EVERY_PROVIDER;

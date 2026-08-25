@@ -14,6 +14,7 @@ import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { useRestoredScroll } from '../useRestoredScroll';
 import { contextDays } from './context';
+import type { ProviderSupport } from './providers';
 
 /** When, model, three numeric columns, then the size bar. */
 const REQUEST_COLUMNS: readonly SkeletonColumn[] = [
@@ -265,3 +266,6 @@ export const route = createRoute({
   staticData: { title: 'Context thread' },
   validateSearch: (search: JsonRecord): ContextThreadSearch => ({ days: contextDays(search.days) }),
 });
+
+/** A thread reconstructed from captured Anthropic requests. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

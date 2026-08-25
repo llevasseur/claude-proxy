@@ -7,6 +7,7 @@ import { Skeleton, type SkeletonColumn, SkeletonTable, SkeletonText } from '../c
 import { fmtInt, fmtLocalTsShort, LOCAL_TZ_ABBR } from '../format';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 const WINDOW_DAYS = 14;
 
@@ -400,3 +401,6 @@ export const nav = {
   exact: false,
   icon: EyeOff,
 } as const satisfies NavEntry;
+
+/** Text the proxy withheld from the Anthropic wire. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

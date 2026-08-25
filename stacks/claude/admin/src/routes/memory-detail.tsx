@@ -11,6 +11,7 @@ import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
 import { fmtBytes, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
+import type { ProviderSupport } from './providers';
 
 export function MemoryDetailPage() {
   const { project, name } = useParams({ from: '/projects/$project/memory/$name' });
@@ -109,3 +110,6 @@ export const route = createRoute({
   component: MemoryDetailPage,
   staticData: { title: 'Memory' },
 });
+
+/** A Claude Code memory file. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

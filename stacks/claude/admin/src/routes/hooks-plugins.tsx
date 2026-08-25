@@ -7,6 +7,7 @@ import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /**
  * "Hooks & Plugins" — config inventory of the device's `~/.claude/settings.json`
@@ -244,3 +245,6 @@ export const nav = {
   exact: false,
   icon: Puzzle,
 } as const satisfies NavEntry;
+
+/** Claude Code hook and plugin configuration. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;
