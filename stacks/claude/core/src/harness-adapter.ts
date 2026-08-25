@@ -35,7 +35,17 @@ export type HarnessCapability =
   /** Captures the request's system prompt as a re-identifiable artifact. */
   | 'system-prompt-capture'
   /** Supports the app-layer response cache, distinct from any prefix cache. */
-  | 'skim-cache';
+  | 'skim-cache'
+  /** Keeps a machine-wide settings file on disk, declaring what it loads and what it withholds. */
+  | 'device-settings-file'
+  /** Lets a user define named commands on disk, and marks their invocation in its own requests. */
+  | 'user-defined-commands'
+  /** Keeps per-project instruction files on disk, keyed by the project they belong to. */
+  | 'project-scoped-memory'
+  /** Ships its own program bundle on the device, readable as text at a resolvable path. */
+  | 'installed-cli-bundle'
+  /** Injects content into its own requests that its own settings offer no way to suppress. */
+  | 'harness-injected-request-content';
 
 /**
  * The versioned harness contract.
@@ -70,14 +80,27 @@ function harnessAdapter(
 }
 
 /**
- * Claude Code. The three capabilities are the ones this repository demonstrates:
- * it reads per-thread session transcripts, it captures system prompts by hash,
- * and it has a skim cache.
+ * Claude Code. Every capability here is one this repository demonstrates against
+ * something it actually reads: per-thread session transcripts, system prompts
+ * captured by hash, a skim cache, `~/.claude/settings.json`, the command
+ * definitions under `~/.claude/commands/`, the per-project memory files under
+ * `~/.claude/projects/`, the installed CLI bundle, and the reminders the client
+ * injects into its own requests.
+ *
+ * **Naming the evidence rather than the harness is the point.** Each member says
+ * what state has to exist for a surface to have anything to render, so a second
+ * harness that keeps a settings file declares `device-settings-file` on its own
+ * evidence rather than inheriting anything from this list.
  */
 export const claudeCodeHarnessAdapter: HarnessAdapter = harnessAdapter('claude-code', 1, [
   'session-transcripts',
   'system-prompt-capture',
   'skim-cache',
+  'device-settings-file',
+  'user-defined-commands',
+  'project-scoped-memory',
+  'installed-cli-bundle',
+  'harness-injected-request-content',
 ]);
 
 /** Codex. Capabilities are not yet established here — see the file header. */

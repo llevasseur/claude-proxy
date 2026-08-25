@@ -159,6 +159,56 @@ describe('the audit itself', () => {
   });
 });
 
+describe('every harness gate names the state it actually reads', () => {
+  // The three that parse `logs/sessions/<threadId>.md`, and nothing else. Six gates
+  // used to declare `session-transcripts` without needing it.
+  const TRANSCRIPT_READERS: readonly CapabilityId[] = [
+    'session-transcripts',
+    'live-session-graph',
+    'session-suggestions',
+  ];
+
+  it('declares session-transcripts for exactly the capabilities that parse transcripts', () => {
+    const declaring = CAPABILITIES.filter((d) => d.harness === 'session-transcripts').map((d) => d.id);
+    expect(declaring).toEqual(TRANSCRIPT_READERS);
+  });
+
+  it('gates each device-configuration surface on the state it reads', () => {
+    expect(capabilityDeclaration('hooks-and-plugins').harness).toBe('device-settings-file');
+    expect(capabilityDeclaration('withheld-tools').harness).toBe('device-settings-file');
+    expect(capabilityDeclaration('slash-commands').harness).toBe('user-defined-commands');
+    expect(capabilityDeclaration('project-memory').harness).toBe('project-scoped-memory');
+    expect(capabilityDeclaration('cli-internals').harness).toBe('installed-cli-bundle');
+    expect(capabilityDeclaration('proxy-filters').harness).toBe('harness-injected-request-content');
+  });
+
+  it('shares one member between the two surfaces that read the same settings file', () => {
+    // Evidence, not tidiness: `/hooks-plugins` and `/withheld` both resolve out of
+    // `~/.claude/settings.json`, so a harness cannot offer one and not the other.
+    expect(capabilityDeclaration('withheld-tools').harness).toBe(capabilityDeclaration('hooks-and-plugins').harness);
+  });
+
+  it('closes every repointed gate for the other two harnesses', () => {
+    const repointed: readonly CapabilityId[] = [
+      'hooks-and-plugins',
+      'slash-commands',
+      'cli-internals',
+      'project-memory',
+      'proxy-filters',
+      'withheld-tools',
+    ];
+    for (const id of repointed) {
+      expect(capabilityAllowsHarness(id, 'codex')).toBe(false);
+      expect(capabilityAllowsHarness(id, 'opencode')).toBe(false);
+      // Still ungated on the provider axis — repointing one axis must not have
+      // leaked a gate onto the other. ADR 0040.
+      for (const provider of PROVIDER_IDS) {
+        expect(capabilityAllowsProvider(id, provider)).toBe(true);
+      }
+    }
+  });
+});
+
 describe('the two supports helpers', () => {
   it('answers for the provider axis from the registered adapter', () => {
     expect(providerSupports('anthropic', 'additive-cache-counters')).toBe(true);

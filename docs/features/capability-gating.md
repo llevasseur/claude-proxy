@@ -65,6 +65,34 @@ adapter answers `false` rather than consulting a table no adapter backed. The ha
 delegates to `HarnessAdapter.supports()` rather than keeping a second table beside it —
 one declaration of what Claude Code does, not two that can drift.
 
+## The harness axis
+
+`HarnessCapability` in `stacks/claude/core/src/harness-adapter.ts` carries eight members.
+Ticket 01 landed the first three, which describe what a harness records about a session.
+The five below them describe what it leaves on the device or puts into its own requests,
+and they exist because four gates had been declaring `session-transcripts` as the nearest
+member the union offered rather than the state they needed.
+
+| Harness capability | What supporting it means |
+|---|---|
+| `session-transcripts` | Writes a per-thread transcript this repository can read back |
+| `system-prompt-capture` | Captures the request's system prompt as a re-identifiable artifact |
+| `skim-cache` | Supports the app-layer response cache, distinct from any prefix cache |
+| `device-settings-file` | Keeps a machine-wide settings file declaring what it loads and what it withholds |
+| `user-defined-commands` | Lets a user define named commands on disk, and marks their invocation in its own requests |
+| `project-scoped-memory` | Keeps per-project instruction files on disk, keyed by the project |
+| `installed-cli-bundle` | Ships its own program bundle on the device, readable as text |
+| `harness-injected-request-content` | Injects content into its own requests its own settings cannot suppress |
+
+The union stays **closed**, for the reason ticket 01 closed it: a gate keyed on a
+free-form string fails *open* on a typo, rendering a surface against a session that cannot
+feed it. Widening it is adding a member, never relaxing it to `string`.
+
+**No member names a provider, and none is derived from one.** `device-settings-file` says
+a settings file exists, not whose wire the session speaks — so a second harness that keeps
+one declares it on its own evidence. codex and opencode still declare nothing at all, and
+empty continues to mean "not yet established" rather than "known absent".
+
 ## The audit
 
 Exhaustive over claude's capabilities: all 39 route modules (detail routes folded into the
@@ -98,21 +126,21 @@ station they belong to) plus the cross-cutting mechanisms that are not pages at 
 | `live-session-graph` | `/sessions/graph` | `session-transcripts` |
 | `session-suggestions` | `/advice`, `/advice/sessions/$bucket` | `session-transcripts` |
 | `device-system-prompt` | `/system-prompt` | `system-prompt-capture` |
-| `project-memory` | `/projects`, `/projects/$project`, `…/memory/$name` | `session-transcripts` |
-| `hooks-and-plugins` | `/hooks-plugins` | `session-transcripts` |
-| `slash-commands` | `/commands`, `/commands/$command`, `…/$runId` | `session-transcripts` |
-| `cli-internals` | `/cli-internals`, `/cli-internals/$id` | `session-transcripts` |
+| `project-memory` | `/projects`, `/projects/$project`, `…/memory/$name` | `project-scoped-memory` |
+| `hooks-and-plugins` | `/hooks-plugins` | `device-settings-file` |
+| `slash-commands` | `/commands`, `/commands/$command`, `…/$runId` | `user-defined-commands` |
+| `cli-internals` | `/cli-internals`, `/cli-internals/$id` | `installed-cli-bundle` |
 | `skim-response-cache` | `/skim` | `skim-cache` |
-| `proxy-filters` | `/filters` | `session-transcripts` |
-| `withheld-tools` | `/withheld` | `session-transcripts` |
+| `proxy-filters` | `/filters` | `harness-injected-request-content` |
+| `withheld-tools` | `/withheld` | `device-settings-file` |
 
-**The harness axis reuses ticket 01's closed union rather than growing one of its own**,
-and that union has three members. A capability whose harness dependency is not one of the
-three declares the nearest established member, which is why the device-config surfaces —
-`hooks-and-plugins`, `slash-commands`, `cli-internals`, `project-memory` — all gate on
-`session-transcripts`: what they actually share is "this harness is the one whose device
-state and session records this repository can read". Widening that union belongs to
-whichever ticket owns `harness-adapter.ts`; this one does not edit it.
+**`session-transcripts` now means transcripts and nothing else.** The three capabilities
+that declare it are the three that parse `logs/sessions/<threadId>.md`; the other eight
+name the state they actually read. Six gates used to declare it without needing it, and
+two of those six had never been listed as borrowing it — `withheld-tools` reads the same
+`~/.claude/settings.json` the hooks inventory reads, and `proxy-filters` describes what
+the proxy strips from requests the harness itself shapes. Both surfaced from re-deriving
+every gate against its own module instead of against the list of known ones.
 
 ### Anthropic-wire-specific — gates on the ProviderAdapter (3)
 
@@ -150,12 +178,17 @@ be exercised.
 a route module needs no edit to carry a classification, and a route module and this table
 cannot drift into disagreeing about one page. Ticket 10 owns that directory.
 
-`provider-adapter.ts`, `harness-adapter.ts` and `adapter-seam.ts` are imported and never
-edited: they are ticket 01's landed contract.
+`provider-adapter.ts` and `adapter-seam.ts` are imported and never edited: they are ticket
+01's landed contract. `harness-adapter.ts` is ticket 01's too, and the widening above is
+the one change made to it — five members added to `HarnessCapability` and declared by the
+`claude-code` adapter. Nothing was removed from it, and the contract, the registry and
+`stampFromHarness` are untouched.
 
 ## Where it lives
 
 `stacks/claude/core/src/capabilities.ts`, re-exported from that package's `index.ts`, with
-its tests in `stacks/claude/core/test/capabilities.test.ts`. The module is pure — no
+its tests in `stacks/claude/core/test/capabilities.test.ts`. The `HarnessCapability` union
+it gates on lives in `stacks/claude/core/src/harness-adapter.ts`, tested in
+`stacks/claude/core/test/harness-adapter.test.ts`. The module is pure — no
 clock, no filesystem, no environment, no network, no runtime dependency — because
 `stacks/claude/core/src` is bundled into the browser by the admin app.
