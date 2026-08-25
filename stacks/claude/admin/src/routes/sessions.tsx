@@ -12,6 +12,7 @@ import { Skeleton } from '../components/Skeleton';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /**
  * Sessions, laid out the way a chat client is: the transcripts as a scrolling rail on
@@ -232,3 +233,6 @@ export const nav = {
   exact: true,
   icon: MessagesSquare,
 } as const satisfies NavEntry;
+
+/** Claude Code transcripts — the Anthropic pairing’s own session shape. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

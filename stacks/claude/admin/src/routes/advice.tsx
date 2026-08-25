@@ -21,6 +21,7 @@ import { fmtInt, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import type { NavEntry } from './nav';
+import { EVERY_PROVIDER } from './providers';
 
 export function AdvicePage() {
   const query = useQuery({ queryKey: ['summary'], queryFn: () => getSummary() });
@@ -319,3 +320,6 @@ export const nav = {
   exact: false,
   icon: Lightbulb,
 } as const satisfies NavEntry;
+
+/** Named by ADR 0041 as agnostic: coaching is about the operator, not a provider. */
+export const providers = EVERY_PROVIDER;

@@ -12,6 +12,7 @@ import { fmtBytes, fmtInt, fmtPct } from '../format';
 import { REPORT_TZ_ABBR } from '../metrics';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
+import type { ProviderSupport } from './providers';
 
 const SECTION_COLUMNS: readonly SkeletonColumn[] = [
   {},
@@ -325,3 +326,6 @@ export const route = createRoute({
   component: PromptDetailPage,
   staticData: { title: 'System prompt' },
 });
+
+/** A system prompt as sent on the Anthropic wire. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

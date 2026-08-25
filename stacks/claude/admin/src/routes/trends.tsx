@@ -13,6 +13,7 @@ import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /** Metric, its blended value, what that value is per, and the days behind it. */
 const BLENDED_COLUMNS: readonly SkeletonColumn[] = [{}, { className: 'num' }, {}, { className: 'num' }];
@@ -166,3 +167,6 @@ export const nav = {
   exact: false,
   icon: TrendingUp,
 } as const satisfies NavEntry;
+
+/** Trends over captured Anthropic requests — ADR 0041’s example of a provider’s own view. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

@@ -14,6 +14,7 @@ import { rootRoute } from '../route-root';
 import { useRestoredScroll } from '../useRestoredScroll';
 import { useTransitionState } from '../useTransitionState';
 import { contextDays } from './context';
+import type { ProviderSupport } from './providers';
 
 export function ContextDetailPage() {
   const { file } = useParams({ from: '/context/$file' });
@@ -465,3 +466,6 @@ export const route = createRoute({
     return { thread, days: contextDays(search.days) };
   },
 });
+
+/** One captured Anthropic request’s context. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

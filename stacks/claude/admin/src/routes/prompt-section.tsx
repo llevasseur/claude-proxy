@@ -6,6 +6,7 @@ import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
 import { rootRoute } from '../route-root';
+import type { ProviderSupport } from './providers';
 
 /**
  * The window bodies are looked for in. The text is a property of the prompt
@@ -135,3 +136,6 @@ export const route = createRoute({
   component: PromptSectionPage,
   staticData: { title: 'Prompt section' },
 });
+
+/** A section of a system prompt sent on the Anthropic wire. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

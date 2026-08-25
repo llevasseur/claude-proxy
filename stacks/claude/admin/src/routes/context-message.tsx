@@ -20,6 +20,7 @@ import {
 } from '../json';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
+import type { ProviderSupport } from './providers';
 
 export function ContextMessagePage() {
   const { file, index } = useParams({ from: '/context/$file/message/$index' });
@@ -278,3 +279,6 @@ export const route = createRoute({
   component: ContextMessagePage,
   staticData: { title: 'Context message' },
 });
+
+/** One message inside a captured Anthropic request. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

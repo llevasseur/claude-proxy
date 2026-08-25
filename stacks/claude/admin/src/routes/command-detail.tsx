@@ -35,6 +35,7 @@ import { fmtCompact, fmtDuration, fmtInt, fmtLocalTs, fmtLocalTsShort, fmtPct, f
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
+import type { ProviderSupport } from './providers';
 
 /** One colour per outcome, shared by the scatter, its legend and the run list. */
 const OUTCOME_COLOR = {
@@ -901,3 +902,6 @@ export const route = createRoute({
   component: CommandDetailPage,
   staticData: { title: 'Command' },
 });
+
+/** One command, across Claude Code sessions. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

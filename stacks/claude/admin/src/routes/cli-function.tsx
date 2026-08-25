@@ -8,6 +8,7 @@ import { fmtInt } from '../format';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 import { fmtBundleSize, MISS_DETAIL, MISS_LABEL } from './cli-internals';
+import type { ProviderSupport } from './providers';
 
 /**
  * One catalogued CLI function: how it was found, what this version minified it to,
@@ -166,3 +167,6 @@ export const route = createRoute({
   component: CliFunctionPage,
   staticData: { title: 'CLI function' },
 });
+
+/** One function inside the Claude Code CLI bundle. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

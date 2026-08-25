@@ -36,6 +36,7 @@ import {
 import { type JsonRecord, textField } from '../json';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /**
  * Live session graph — one session at a time, its appended steps (task / decision /
@@ -1427,3 +1428,6 @@ export const nav = {
   exact: false,
   icon: Network,
 } as const satisfies NavEntry;
+
+/** The live graph over Claude Code sessions. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

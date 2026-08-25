@@ -21,6 +21,7 @@ import { Skeleton, SkeletonStats, SkeletonText } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /**
  * "System prompt" — `~/.claude/CLAUDE.md`, the device-wide instructions Claude Code
@@ -438,3 +439,6 @@ export const nav = {
   exact: false,
   icon: ScrollText,
 } as const satisfies NavEntry;
+
+/** The device’s Claude Code system prompt. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

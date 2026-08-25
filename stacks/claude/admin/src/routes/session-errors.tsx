@@ -6,6 +6,7 @@ import { Breadcrumbs } from '../components/Breadcrumbs';
 import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonMsgBlocks } from '../components/Skeleton';
 import { rootRoute } from '../route-root';
+import type { ProviderSupport } from './providers';
 
 /** Per-session drill-down listing every errored tool result, re-linked to its task and tool call. */
 export function SessionErrorsPage() {
@@ -129,3 +130,6 @@ export const route = createRoute({
   component: SessionErrorsPage,
   staticData: { title: 'Session errors' },
 });
+
+/** Errors raised inside a Claude Code session. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;
