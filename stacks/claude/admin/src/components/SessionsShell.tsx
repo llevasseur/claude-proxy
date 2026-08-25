@@ -68,11 +68,9 @@ export function SessionsShell({
           aria-current={pathname === '/sessions' ? 'page' : undefined}>
           Chat
         </Link>
-        {/* Alive waits for ticket 03 to register /sessions/alive — typed links cannot
-            name an unregistered path. It becomes a Link there; until then it stays inert. */}
-        <span aria-disabled='true' style={tabIdle}>
+        <Link to='/sessions/alive' style={pathname === '/sessions/alive' ? tabActive : tabIdle}>
           Alive
-        </span>
+        </Link>
       </nav>
 
       {/* The grid below is the shell the sessions pages have always had; only the
