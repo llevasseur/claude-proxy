@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
@@ -84,6 +85,21 @@ export interface SidecarSource {
    * day before it.
    */
   oldestDay(logDir: string, opts?: { archiveDir?: string }): Promise<string | null>;
+
+  /**
+   * A cheap identity of everything this backing could answer a window read with,
+   * or `undefined` when the backing offers none. Equal strings across two calls
+   * promise the same answer to any `readSidecars` / `readArchivedDay` question —
+   * not byte-identical sidecars, but the aggregates built over them.
+   *
+   * This is what lets a repeated build answer from its previous payload instead
+   * of re-materializing the same rows: the capture ticks behind the dashboard's
+   * streams land many times a minute while most touch nothing a given builder
+   * reads. The DB answers with row counts and the highest request id, which move
+   * whenever ingest appends; the files answer with a name+size+mtime roll-up of
+   * the live directory and the archive's day directories.
+   */
+  watermark?(logDir: string): Promise<string>;
 
   /**
    * Every archived day in `days` at once, keyed by reporting day. Optional: a
@@ -195,12 +211,49 @@ async function oldestDayOnDisk(logDir: string, archiveDir?: string): Promise<str
   return earliest === null ? null : shiftDay(earliest, -1);
 }
 
+/**
+ * The file backing's corpus identity: every live file's name, size and mtime,
+ * plus the archive's day directories with their own mtimes — the two roots a
+ * window read walks. A capture appends or rewrites a live entry; the archiver
+ * creates or fills an archive day, which moves that directory's mtime.
+ */
+async function fileCorpusWatermark(logDir: string): Promise<string> {
+  const parts: string[] = [];
+  let live: Dirent[];
+  try {
+    live = await readdir(logDir, { withFileTypes: true });
+  } catch {
+    return 'missing';
+  }
+  for (const entry of live) {
+    if (!entry.isFile()) continue;
+    const info = await stat(path.join(logDir, entry.name)).catch(() => null);
+    if (info) parts.push(`${entry.name}:${info.size}:${info.mtimeMs}`);
+  }
+
+  const dayMarks: string[] = [];
+  const archiveRoot = path.join(logDir, 'archive');
+  let days: Dirent[] = [];
+  try {
+    days = await readdir(archiveRoot, { withFileTypes: true });
+  } catch {
+    // No archive yet — the live roll-up alone is the identity.
+  }
+  for (const entry of days) {
+    if (!entry.isDirectory()) continue;
+    const info = await stat(path.join(archiveRoot, entry.name)).catch(() => null);
+    if (info) dayMarks.push(`${entry.name}:${info.mtimeMs}`);
+  }
+  return `${parts.sort().join(',')}|${dayMarks.sort().join(',')}`;
+}
+
 /** The behaviour the server has today: scan the directory, parse every file. */
 export const fileSource: SidecarSource = {
   kind: 'files',
   readSidecars: (logDir, opts, now) => readSidecarsFromFiles(logDir, opts, now),
   readArchivedDay: (logDir, date, opts) => readArchivedDayFromFiles(logDir, date, opts),
   oldestDay: (logDir, opts) => oldestDayOnDisk(logDir, opts?.archiveDir),
+  watermark: (logDir) => fileCorpusWatermark(logDir),
   listSessions: (logDir) => listSessionsFromFiles(logDir),
   listSessionGraphs: (logDir) => listSessionGraphsFromFiles(logDir),
   readSession: (logDir, id) => readSessionFromFiles(logDir, id),
@@ -1490,6 +1543,20 @@ export function dbSource(db: DatabaseSync): SidecarSource {
       return readConceptsFromFiles(logDir);
     },
     readSidecars: (logDir, opts = {}, now = new Date()) => readDir(db, logDir, LIVE, opts, now),
+    watermark: async () => {
+      // Ingest is the table's only writer and appends monotonically, so the row
+      // count plus the highest id move whenever anything a window read could see
+      // arrives — live or archived — and retention pruning moves the count back.
+      // SAFETY: each SELECT names exactly the aliased aggregates it reads back,
+      // so every row is that shape.
+      const rows = db.prepare('SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS maxId FROM request').get() as {
+        count: number;
+        maxId: number;
+      };
+      // SAFETY: the SELECT names exactly `count`.
+      const skipped = db.prepare('SELECT COUNT(*) AS count FROM request_skipped').get() as { count: number };
+      return `${rows.count}:${rows.maxId}:${skipped.count}`;
+    },
     readThread: async (logDir, threadId, opts = {}, now = new Date()) => threadFromDb(db, logDir, threadId, opts, now),
     oldestDay: async () => oldestDayFromDb(db),
     readAllDays: async (logDir, days, opts = {}) => {
