@@ -46,3 +46,40 @@ describe('the harness registry', () => {
     expect(empty.find('codex')).toBeUndefined();
   });
 });
+
+/** The five members added so the device-and-request gates name their own state. */
+const DEVICE_MEMBERS = [
+  'device-settings-file',
+  'user-defined-commands',
+  'project-scoped-memory',
+  'installed-cli-bundle',
+  'harness-injected-request-content',
+] as const;
+
+describe('the widened union', () => {
+  it('declares every added member for Claude Code, on evidence this repository reads', () => {
+    for (const member of DEVICE_MEMBERS) {
+      expect(claudeCodeHarnessAdapter.supports(member)).toBe(true);
+    }
+  });
+
+  it('answers false for the harnesses that have established nothing', () => {
+    for (const member of DEVICE_MEMBERS) {
+      expect(codexHarnessAdapter.supports(member)).toBe(false);
+      expect(opencodeHarnessAdapter.supports(member)).toBe(false);
+    }
+  });
+
+  it('stays closed, so an unknown member is a type error rather than a silent false', () => {
+    // @ts-expect-error A free-form string is not a `HarnessCapability`. A gate keyed
+    // on one fails *open* on a typo — this misspelling is the failure ticket 01
+    // closed the union against, and widening it must not have relaxed that.
+    expect(claudeCodeHarnessAdapter.supports('device-setings-file')).toBe(false);
+  });
+
+  it('names no provider in any member, keeping the two axes independent per ADR 0040', () => {
+    for (const member of claudeCodeHarnessAdapter.capabilities) {
+      expect(member).not.toMatch(/anthropic|openai|ox-alpha|claude|codex|opencode/);
+    }
+  });
+});
