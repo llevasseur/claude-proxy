@@ -13,6 +13,7 @@ Add one with `okq new feature "<title>"`.
 |-------|------|
 | Admin dashboard for claude-proxy usage | [admin-dashboard-for-claude-proxy-usage.md](admin-dashboard-for-claude-proxy-usage.md) |
 | Background jobs browser | [background-jobs-browser.md](background-jobs-browser.md) |
+| Capability gating on the two adapters | [capability-gating.md](capability-gating.md) |
 | Bike (codex) — live sanitized usage overview | [codex-bike.md](codex-bike.md) |
 | Car (codex) — durable history, trends, ranges, and model filters | [codex-car.md](codex-car.md) |
 | Commands eval | [commands-eval.md](commands-eval.md) |
