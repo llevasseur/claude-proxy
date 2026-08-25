@@ -10,7 +10,11 @@
 | Title | File |
 |-------|------|
 | Wayfinder — local-markdown tracker | [README.md](README.md) |
+| Alive View 01 — shared sessions shell and rail selection | [alive-view-mote-01-shared-shell-and-select.md](alive-view-mote-01-shared-shell-and-select.md) |
+| Alive View 02 — core emotion derivation | [alive-view-mote-02-core-emotion-derivation.md](alive-view-mote-02-core-emotion-derivation.md) |
+| Alive View 03 — the /sessions/alive route page | [alive-view-mote-03-alive-route-page.md](alive-view-mote-03-alive-route-page.md) |
 | Decision 004 — Correctness guardrails for serving cached replies | [decision-004-guardrails.md](decision-004-guardrails.md) |
+| Wayfinder — Alive View on the sessions tab | [map-alive-view-mote.md](map-alive-view-mote.md) |
 | Map: Skim a thin layer off the top of requests to Anthropic | [map-proxy-skim.md](map-proxy-skim.md) |
 | Map: SQLite as the query substrate over the log files | [map-sqlite-substrate.md](map-sqlite-substrate.md) |
 | monorepo-fusion-01-rewrite-sibling-histories | [monorepo-fusion-01-rewrite-sibling-histories.md](monorepo-fusion-01-rewrite-sibling-histories.md) |

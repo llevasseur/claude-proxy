@@ -53,17 +53,28 @@ likely to collide.
 | Order notes strictly by recent edit | [0015-order-notes-strictly-by-recent-edit.md](0015-order-notes-strictly-by-recent-edit.md) |
 | Return note excerpts from discovery operations | [0016-return-note-excerpts-from-discovery-operations.md](0016-return-note-excerpts-from-discovery-operations.md) |
 | Allow blank note titles | [0017-allow-blank-note-titles.md](0017-allow-blank-note-titles.md) |
+| Alive view reads server-built node streams | [0018-alive-view-reads-server-built-node-streams.md](0018-alive-view-reads-server-built-node-streams.md) |
 | Use the OpenAI Responses contract | [0018-use-responses-contract.md](0018-use-responses-contract.md) |
 | Keep audit sidecars sanitized | [0019-sanitized-audit-sidecars.md](0019-sanitized-audit-sidecars.md) |
+| Trigger-line age is last-append age | [0019-trigger-line-age-is-last-append-age.md](0019-trigger-line-age-is-last-append-age.md) |
+| Stress threshold stays view-local at 30 minutes | [0020-stress-threshold-stays-view-local.md](0020-stress-threshold-stays-view-local.md) |
 | Make incomplete cost unavailable | [0020-unavailable-incomplete-cost.md](0020-unavailable-incomplete-cost.md) |
 | Fix the outcome ladder, five rungs for codex and four for ox-alpha | [0021-outcome-ladder.md](0021-outcome-ladder.md) |
+| SessionsSidenav grows an optional onSelect prop | [0021-sessions-sidenav-optional-on-select.md](0021-sessions-sidenav-optional-on-select.md) |
+| Alive view derives from the newest family transcript | [0022-alive-view-derives-from-newest-family-transcript.md](0022-alive-view-derives-from-newest-family-transcript.md) |
 | Start with fresh repository history | [0022-fresh-repository-history.md](0022-fresh-repository-history.md) |
+| An interrupted last node reads finished | [0023-an-interrupted-last-node-reads-finished.md](0023-an-interrupted-last-node-reads-finished.md) |
 | Publish the repository privately | [0023-private-github-publication.md](0023-private-github-publication.md) |
+| A toolless error renders its own text | [0024-a-toolless-error-renders-its-own-text.md](0024-a-toolless-error-renders-its-own-text.md) |
 | Promise transparent HTTP forwarding | [0024-transparent-http-surface.md](0024-transparent-http-surface.md) |
 | Pin Plane parity to one claude-proxy commit | [0025-pin-plane-parity.md](0025-pin-plane-parity.md) |
+| The alive view's empty state explains itself | [0025-the-alive-views-empty-state-explains-itself.md](0025-the-alive-views-empty-state-explains-itself.md) |
 | Bucket Car trends by report-timezone day | [0026-daily-trend-granularity.md](0026-daily-trend-granularity.md) |
+| Stressed renders a bare idle line | [0026-stressed-renders-a-bare-idle-line.md](0026-stressed-renders-a-bare-idle-line.md) |
 | Review one campaign at one closing pull request | [0027-one-campaign-review-granularity.md](0027-one-campaign-review-granularity.md) |
+| The emotion word is the live region | [0027-the-emotion-word-is-the-live-region.md](0027-the-emotion-word-is-the-live-region.md) |
 | Rebuild the view on schema version mismatch | [0028-rebuild-view-on-schema-mismatch.md](0028-rebuild-view-on-schema-mismatch.md) |
+| The view toggle lives in the shared shell's header row | [0028-the-view-toggle-lives-in-the-shared-shell-header-row.md](0028-the-view-toggle-lives-in-the-shared-shell-header-row.md) |
 | Republish the corpus adapted, not copied | [0029-adapted-corpus-renumbering.md](0029-adapted-corpus-renumbering.md) |
 | Express Car ranges as calendar dates on new endpoints | [0030-calendar-date-range-api.md](0030-calendar-date-range-api.md) |
 | Certify phase boundaries with automated evidence | [0031-automated-boundary-evidence.md](0031-automated-boundary-evidence.md) |
