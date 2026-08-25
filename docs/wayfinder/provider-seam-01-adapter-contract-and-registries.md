@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-01-adapter-contract-and-registries`
-**Status:** active
+**Status:** done · 2026-08-25
 
 This is the campaign's spine. Every other ticket codes against what this one defines, so
 get the contract right before anything consumes it.

@@ -57,6 +57,7 @@
 | provider-seam-16-ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp.md](provider-seam-16-ui-fallback-stamp.md) |
 | provider-seam-17-ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed.md](provider-seam-17-ui-interrupted-resumed.md) |
 | provider-seam-18-docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec.md](provider-seam-18-docs-feature-and-spec.md) |
+| provider-seam-19-ox-8788-stragglers | [provider-seam-19-ox-8788-stragglers.md](provider-seam-19-ox-8788-stragglers.md) |
 | provider-seam-zz-retire-done-plans | [provider-seam-zz-retire-done-plans.md](provider-seam-zz-retire-done-plans.md) |
 | Research 002 — Which requests are safe to serve (cacheability gate) | [research-002-cacheability.md](research-002-cacheability.md) |
 | Wayfinder — Monorepo Fusion | [wayfinder-monorepo-fusion.md](wayfinder-monorepo-fusion.md) |
