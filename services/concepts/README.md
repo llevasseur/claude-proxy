@@ -130,7 +130,9 @@ What that means for a client:
   `-32020` (`HeaderMismatch`).
 - **A `2026-07-28` client can ask `server/discover`** for the supported versions, capabilities and
   identity in one call. It is optional — any RPC can be sent cold — but it is
-  the cheapest way to see what is here.
+  the cheapest way to see what is here. The result declares `ttlMs: 0` and
+  `cacheScope: private`, so clients never reuse discovery across connections or
+  treat this authenticated server's metadata as shared state.
 - **A version this server does not implement** comes back as `400` with code
   `-32022` (`UnsupportedProtocolVersionError`), whose `data.supported` lists
   both versions it does.

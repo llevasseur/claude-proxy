@@ -766,6 +766,10 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
       capabilities: CAPABILITIES,
       instructions: SERVER_INSTRUCTIONS,
       _meta: { [META_SERVER_INFO]: SERVER_INFO },
+      // Codex's 2026 decoder needs both cache fields to distinguish discovery
+      // from the deliberately permissive CallToolResult shape.
+      ttlMs: 0,
+      cacheScope: 'private',
     });
   }
 
