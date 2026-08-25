@@ -16,6 +16,7 @@ import { fmtBytes, fmtInt, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
+import type { ProviderSupport } from './providers';
 
 /**
  * A chat session id, which this route also accepts: a dashboard chat can be linked or bookmarked
@@ -326,3 +327,6 @@ export const route = createRoute({
   component: SessionDetailPage,
   staticData: { title: 'Session' },
 });
+
+/** One Claude Code session transcript. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

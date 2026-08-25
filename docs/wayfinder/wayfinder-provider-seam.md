@@ -135,7 +135,6 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 06 | pricing-table-and-read-time-cost | [provider-seam-06-pricing-table-and-read-time-cost](provider-seam-06-pricing-table-and-read-time-cost.md) | `task/provider-seam-06-pricing-table-and-read-time-cost` | todo | |
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
-| 10 | route-registry-provider-declarations | [provider-seam-10-route-registry-provider-declarations](provider-seam-10-route-registry-provider-declarations.md) | `task/provider-seam-10-route-registry-provider-declarations` | paused | Work in hand but **uncommitted** in the ticket worktree — do not recreate the branch or remove that worktree, it is the only copy. |
 | 11 | feature-flag-gating | [provider-seam-11-feature-flag-gating](provider-seam-11-feature-flag-gating.md) | `task/provider-seam-11-feature-flag-gating` | in-progress | |
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
 | 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | todo | |
@@ -143,7 +142,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | todo | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
-| 19 | ox-8788-stragglers | [provider-seam-19-ox-8788-stragglers](provider-seam-19-ox-8788-stragglers.md) | `task/provider-seam-19-ox-8788-stragglers` | todo | |
+| 19 | ox-8788-stragglers | [provider-seam-19-ox-8788-stragglers](provider-seam-19-ox-8788-stragglers.md) | `task/provider-seam-19-ox-8788-stragglers` | in-progress | |
 | zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
@@ -226,6 +225,36 @@ A gate is a commit on `wayfinder/provider-seam` with a green verify and an hones
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 10 — route-registry-provider-declarations · 2026-08-25 · [#296](https://github.com/llevasseur/claude-proxy/pull/296)
+
+All 39 route modules in `stacks/claude/admin/src/routes/` now export `providers` beside
+their `route` and `nav`, and `registry.ts` collects them into one `MODULE_SUPPORT` list in
+`ROUTES` order. A new `routes/providers.ts` holds `PROVIDER_IDS`, `ProviderId`,
+`DEFAULT_PROVIDER`, `ProviderSupport` and `EVERY_PROVIDER`. 28 pages declare
+`['anthropic']`; the 11 agnostic ones name `EVERY_PROVIDER` rather than spelling the list
+out, so a fourth provider reaches all of them at once.
+
+**The declaration is a field on the module, not a field inside `nav`.** A page in no rail
+section exports no `nav` at all and still has to say which providers it belongs to, so
+putting it inside `nav` would have left every detail route undeclarable.
+
+**Only one of the three consumers exists yet, and that is the plan working as written.**
+The rail reads `MODULE_SUPPORT` through `navRailFor`, which leaves an unsupported station
+out rather than rendering it disabled. The redirect guard and the docs scope filter arrive
+with the picker, which is a later campaign — the docs gate carries no provider vocabulary
+today. Nothing keeps a second list, which is what that criterion actually forbids.
+
+**`STATIONS` is now derived rather than its own `as const` literal**, filtered from
+`MODULE_SUPPORT`, which is `as const`. Filtering a readonly tuple yields an array of the
+element union, so `nav.to` survives as the union of path literals — the guarantee the
+original `as const` protected — and it is now asserted rather than left to a reader.
+
+**The type-level assertions were proven to fire, not merely written.** Widening
+`skim.tsx`'s `nav` and `providers` to their documented wrong forms made `typecheck` fail at
+`registry.ts(237,41)` and `(246,44)`. `typecheck` is claude admin's only gate, so an
+assertion nobody had tested would have left the whole verification resting on an untested
+line.
 
 ### 01 — adapter-contract-and-registries · 2026-08-25 · [#294](https://github.com/llevasseur/claude-proxy/pull/294)
 

@@ -11,6 +11,7 @@ import { type JsonRecord, textField } from '../json';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import type { NavEntry } from './nav';
+import { EVERY_PROVIDER } from './providers';
 
 /**
  * The ideas ledger, one area at a time.
@@ -166,3 +167,6 @@ export const nav = {
   exact: false,
   icon: Sparkles,
 } as const satisfies NavEntry;
+
+/** The ideas ledger is the repository’s own — named by ADR 0041 as agnostic. */
+export const providers = EVERY_PROVIDER;

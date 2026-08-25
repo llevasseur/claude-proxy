@@ -6,6 +6,7 @@ import { QueryState } from '../components/QueryState';
 import { Skeleton, SkeletonMsgBlocks, SkeletonStats } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
 import { rootRoute } from '../route-root';
+import type { ProviderSupport } from './providers';
 
 /** How far back bodies are searched for the schema — a search depth, not a filter. */
 const LOOKBACK_DAYS = 30;
@@ -120,3 +121,6 @@ export const route = createRoute({
   component: ToolSchemaPage,
   staticData: { title: 'Tool schema' },
 });
+
+/** A tool schema as declared in an Anthropic request. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;
