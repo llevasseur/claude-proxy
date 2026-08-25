@@ -7,6 +7,7 @@ import { type SkeletonColumn, SkeletonTableCard } from '../components/Skeleton';
 import { fmtBytes, fmtInt, fmtPct } from '../format';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /** Tool, three numeric columns, then the share bar. */
 const TOOL_COLUMNS: readonly SkeletonColumn[] = [
@@ -85,3 +86,6 @@ export const nav = {
   exact: false,
   icon: Wrench,
 } as const satisfies NavEntry;
+
+/** Tool-schema bloat measured against the Anthropic request budget. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

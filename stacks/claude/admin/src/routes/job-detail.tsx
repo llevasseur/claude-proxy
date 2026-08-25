@@ -13,6 +13,7 @@ import { Skeleton, SkeletonStats, SkeletonText, SkeletonTextCard } from '../comp
 import { fmtBytes, fmtInt, fmtLocalTs } from '../format';
 import { rootRoute } from '../route-root';
 import { cwdLabel, StateBadge } from './jobs';
+import { EVERY_PROVIDER } from './providers';
 
 /**
  * One background job: what its `state.json` says, and its directory as a browsable
@@ -331,3 +332,6 @@ export const route = createRoute({
   component: JobDetailPage,
   staticData: { title: 'Job' },
 });
+
+/** Device jobs are the machine’s, not a provider’s. */
+export const providers = EVERY_PROVIDER;

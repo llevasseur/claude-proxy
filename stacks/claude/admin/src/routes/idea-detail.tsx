@@ -19,6 +19,7 @@ import { Skeleton, SkeletonText } from '../components/Skeleton';
 import { fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
+import { EVERY_PROVIDER } from './providers';
 
 /**
  * One idea, in full.
@@ -396,3 +397,6 @@ export const route = createRoute({
   component: IdeaDetailPage,
   staticData: { title: 'Idea' },
 });
+
+/** The ideas ledger is the repository’s own — named by ADR 0041 as agnostic. */
+export const providers = EVERY_PROVIDER;

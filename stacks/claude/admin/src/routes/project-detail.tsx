@@ -10,6 +10,7 @@ import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skel
 import { fmtBytes, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
+import type { ProviderSupport } from './providers';
 
 /** File name, size, and modified time. */
 const MEMORY_COLUMNS: readonly SkeletonColumn[] = [{ cell: '54%' }, { className: 'num' }, { className: 'num' }];
@@ -202,3 +203,6 @@ export const route = createRoute({
   component: ProjectDetailPage,
   staticData: { title: 'Project' },
 });
+
+/** One Claude Code project directory. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

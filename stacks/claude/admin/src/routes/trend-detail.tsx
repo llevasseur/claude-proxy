@@ -21,6 +21,7 @@ import { findMetric, REPORT_TZ_ABBR, type StatMetric } from '../metrics';
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
+import type { ProviderSupport } from './providers';
 
 /** The tall chart this page leads with, in px. */
 const CHART_HEIGHT = 340;
@@ -349,3 +350,6 @@ export const route = createRoute({
   component: TrendDetailPage,
   staticData: { title: 'Trend' },
 });
+
+/** One metric of the Anthropic request corpus. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

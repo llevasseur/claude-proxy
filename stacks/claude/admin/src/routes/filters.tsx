@@ -7,6 +7,7 @@ import { QueryState } from '../components/QueryState';
 import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skeleton';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /**
  * "Proxy filters" — the inventory of what `proxy/proxy.ts` strips out of every
@@ -146,3 +147,6 @@ export const nav = {
   exact: false,
   icon: ListFilter,
 } as const satisfies NavEntry;
+
+/** The filters the proxy applies to the Anthropic wire. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

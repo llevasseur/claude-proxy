@@ -18,6 +18,7 @@ import {
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import type { NavEntry } from './nav';
+import { EVERY_PROVIDER } from './providers';
 
 const ACTIVE_KEY = ['notes', 'active'] as const;
 const AUTOSAVE_MS = 700;
@@ -710,3 +711,6 @@ export const nav = {
   exact: true,
   icon: NotebookPen,
 } as const satisfies NavEntry;
+
+/** Markdown the operator writes; no provider produced it. */
+export const providers = EVERY_PROVIDER;

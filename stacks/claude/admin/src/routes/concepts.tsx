@@ -9,6 +9,7 @@ import { Skeleton, type SkeletonColumn, SkeletonTable } from '../components/Skel
 import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import type { NavEntry } from './nav';
+import { EVERY_PROVIDER } from './providers';
 
 /**
  * "Concepts" — every term `/teach` has explained, newest first.
@@ -717,3 +718,6 @@ export const nav = {
   exact: false,
   icon: BookOpen,
 } as const satisfies NavEntry;
+
+/** The concept store is the repository’s own corpus — named by ADR 0041 as agnostic. */
+export const providers = EVERY_PROVIDER;

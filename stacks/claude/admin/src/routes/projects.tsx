@@ -10,6 +10,7 @@ import { fmtInt } from '../format';
 import { rootRoute } from '../route-root';
 import { useTransitionState } from '../useTransitionState';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /** Project name, its memory count, then the share bar. */
 const PROJECT_COLUMNS: readonly SkeletonColumn[] = [{ cell: '62%' }, { className: 'num' }, { className: 'bar-col' }];
@@ -185,3 +186,6 @@ export const nav = {
   exact: false,
   icon: FolderGit2,
 } as const satisfies NavEntry;
+
+/** Claude Code project directories — the Anthropic pairing’s own files. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;

@@ -11,6 +11,7 @@ import { Skeleton, SkeletonStatus } from '../components/Skeleton';
 import { fmtInt, fmtLocalTsShort } from '../format';
 import { rootRoute } from '../route-root';
 import type { NavEntry } from './nav';
+import { EVERY_PROVIDER } from './providers';
 
 /**
  * The project's pull requests as the tree they actually formed: merged PRs form the
@@ -678,3 +679,6 @@ export const nav = {
   exact: false,
   icon: GitPullRequest,
 } as const satisfies NavEntry;
+
+/** GitHub state, keyed by repository rather than by provider. */
+export const providers = EVERY_PROVIDER;

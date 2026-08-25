@@ -24,6 +24,7 @@ import { rootRoute } from '../route-root';
 import { useLiveQuery } from '../useLiveQuery';
 import { useTransitionState } from '../useTransitionState';
 import type { NavEntry } from './nav';
+import type { ProviderSupport } from './providers';
 
 /** Thread, when, model, three numeric columns, then the size bar. */
 const THREAD_COLUMNS: readonly SkeletonColumn[] = [
@@ -520,3 +521,6 @@ export const nav = {
   exact: false,
   icon: Gauge,
 } as const satisfies NavEntry;
+
+/** Context size measured from captured Anthropic requests. */
+export const providers = ['anthropic'] as const satisfies ProviderSupport;
