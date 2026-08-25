@@ -4,6 +4,13 @@ title: Record architecture decisions
 description: Use ADRs to capture significant, hard-to-reverse decisions.
 tags: [process]
 timestamp: 2026-07-15
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0001"
+    file: docs/adrs/0001-record-architecture-decisions.md
+ratified: true
+needs-human: false
 ---
 
 # Record architecture decisions
@@ -29,3 +36,10 @@ Decision / Consequences.
 The rationale behind decisions is preserved and queryable
 (`okq find --type adr`). One lightweight step is added when making a
 significant decision.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

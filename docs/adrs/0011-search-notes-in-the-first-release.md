@@ -4,6 +4,11 @@ title: Search notes in the first release
 description: Provide full-text search over note titles and Markdown bodies to people and agents from the first release.
 tags: [architecture, notes, search, mcp]
 timestamp: 2026-08-16
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0011"
+    file: docs/adrs/0011-search-notes-in-the-first-release.md
 decided-by: /dev
 ratified: false
 wayfinder: notes
@@ -30,3 +35,10 @@ Provide full-text search over title and Markdown body in the first release. Expo
 ## Consequences
 
 The initial migration must maintain an FTS projection and test ranking and filtering. Both human and agent clients can retrieve older notes without scanning every body.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

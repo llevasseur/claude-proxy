@@ -1,4 +1,25 @@
 # Every branch prepends to the top of CHANGELOG.md, so two branches in flight
 # always conflict on the same first lines; union keeps both sides' added lines.
 # Deliberate — see the repository map in AGENTS.md before changing it.
+#
+# The pattern has no slash, so git matches it at ANY depth, not just here. That
+# is left as it is on purpose, and the reasoning is worth keeping because the
+# shape invites a "fix". After fusion the obvious worry was that codex's and
+# ox's own changelogs would land at stacks/<name>/CHANGELOG.md and inherit
+# union-merge without anyone deciding it. They did not: neither stack brought a
+# changelog, and this repository has exactly one, at the root. So the widening
+# is real in mechanism and empty in practice — `git check-attr` already answers
+# `merge: union` for stacks/codex/CHANGELOG.md and stacks/ox-alpha/CHANGELOG.md,
+# paths that do not exist.
+#
+# Anchoring this to /CHANGELOG.md would therefore change no behaviour today,
+# which is exactly why it is not worth doing: it would trade a rule that keeps
+# working when a sibling changelog appears for one that quietly stops. The
+# consequence to know is the other direction — a sibling changelog added later
+# inherits union-merge silently, with no decision made at the time. Union is
+# safe only for a file shaped like this one: one bullet per entry on its own
+# line, and repeating ### Added / ### Changed / ### Fixed headings, so a
+# duplicated heading is the file's normal shape rather than damage. A new
+# changelog that is not shaped that way needs this line anchored, and this
+# comment is the record that the choice was made once and left open.
 CHANGELOG.md merge=union

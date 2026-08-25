@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node"],
+    // Type stripping requires the real `.ts` specifier on every relative import.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["*.ts"]
+}

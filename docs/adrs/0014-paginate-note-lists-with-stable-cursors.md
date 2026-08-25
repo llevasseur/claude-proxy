@@ -4,6 +4,11 @@ title: Paginate note lists with stable cursors
 description: Bound note listing and search with opaque cursors over a stable recency order.
 tags: [architecture, notes, pagination, api]
 timestamp: 2026-08-16
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0014"
+    file: docs/adrs/0014-paginate-note-lists-with-stable-cursors.md
 decided-by: /dev
 ratified: false
 wayfinder: notes
@@ -30,3 +35,10 @@ Use opaque cursor pagination ordered by `updatedAt DESC, id DESC`. Default to 50
 ## Consequences
 
 REST, MCP, and the dashboard share stable pagination semantics. Clients must follow cursors instead of assuming one complete export.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

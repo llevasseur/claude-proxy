@@ -1,0 +1,230 @@
+---
+type: note
+title: Wayfinder — Provider Seam
+description: Campaign map for extracting versioned ProviderAdapter and HarnessAdapter seams, routing every token calculation through the (provider, model) pair that produced it, and landing per-proxy storage.
+tags: [wayfinder, providers, adapters, storage, campaign]
+timestamp: 2026-08-25
+scope: all
+---
+
+# Wayfinder — Provider Seam
+
+**Slug:** `provider-seam`
+**Integration branch:** `the-great-merge` (cut from it, merged back into it; the planning and campaign pull requests target it — resolved from `--integration`, not the repository default)
+**Base branch:** `wayfinder/provider-seam` (cut from the integration branch above; every ticket targets it)
+**Unattended:** `yes` (fixed at start by whether `--unattended` was typed there; `yes` means the kickoff prompt resumes this campaign unattended)
+**Plans directory:** `docs/wayfinder`
+**Started:** 2026-08-25
+**Goal:** Extract a versioned ProviderAdapter and HarnessAdapter from the three fused stacks, route every token calculation through the (provider, model) pair that produced it, and land per-proxy storage.
+
+> Ephemeral scaffolding, on a schedule. Every `provider-seam-*.md` plan beside this file stays here for
+> the campaign's life — marked done once its task lands — so any task can be restarted from what
+> was asked. The final ticket `provider-seam-zz` deletes them all; this map goes when the wayfinder
+> closes. The durable output is the merged code and the repository's feature and spec docs.
+
+## Scope
+
+**In scope.** Two adapter registries and their versioned contract; sidecar v2; per-store
+migrations on all three stacks; a rate table with read-time cost resolution; the typed
+store-absence envelope; the data side of the provider picker; four dashboard surfaces.
+
+**Out of scope, and a ticket that touches them is rejected:** removing any existing
+claude-proxy page, metric or capability. **Every capability survives.** What is
+Anthropic-wire-specific gates on the ProviderAdapter and what is Claude-Code-specific
+gates on the HarnessAdapter, so it answers false and does not render for a codex or ox
+session. Gating is not deletion.
+
+**Also out of scope:** rewriting Ox Alpha's usage normalizer (ADR 0063), any canonical
+cross-provider token schema (ADR 0064), and any rebuild-or-drop path for any database
+(ADRs 0047, 0048, 0065).
+
+## Decisions governing this campaign
+
+Six records written before any ticket was cut, from a five-round grill. **Read these
+before executing anything — three of them correct the original brief.** All six are
+`decided-by: /dev`, `ratified: false`, `needs-human: true`.
+
+| ADR | Decision |
+|---|---|
+| [0060](../adrs/0060-a-stores-absence-is-typed.md) | A store's absence is **typed**, never a bare gap. Three states stay distinct: never created, present-but-unreadable, and genuinely-zero (a real measurement) |
+| [0061](../adrs/0061-three-schemas-three-ladders-one-contract.md) | **Three schemas, three independent ladders, one adapter contract.** claude 22→23, codex 3→4, ox 1→2. Shared mechanism, never a shared schema |
+| [0062](../adrs/0062-three-servers-and-one-moved-port.md) | **Three servers**, dashboard fans out over three origins, and ox's server default moves `8788`→`8808`. Amends one clause of the (also unratified) ADR 0050 |
+| [0063](../adrs/0063-ox-alpha-keeps-its-nested-usage-buckets.md) | **Ox Alpha keeps its nested-bucket normalizer unchanged**; the disjoint-bucket claim is recorded as an open question |
+| [0064](../adrs/0064-tokens-do-not-aggregate-across-providers.md) | **Tokens never aggregate across providers.** Side-by-side series; any all-provider scalar is money only |
+| [0065](../adrs/0065-cost-is-resolved-at-read-time.md) | **`cost` and `pricing_source` are not stored**, resolved at read time. `provider`/`harness`/`model`/`adapter_version` are stored |
+
+### Ratified records this campaign implements rather than re-decides
+
+Cite these; do not re-open them. [0040](../adrs/0040-three-providers-and-three-harnesses.md)
+(two independent registries, no combined key, neither column inferred from the other),
+[0041](../adrs/0041-provider-picker-drives-the-navigation.md) (the picker and the rail),
+[0044](../adrs/0044-every-model-gets-a-price-row.md) (rate table, CRUD page, fallback
+stamp, unknown/null, no effective dating), [0020](../adrs/0020-unavailable-incomplete-cost.md)
+(typed unavailable reason, never zero), [0038](../adrs/0038-retroactive-catalogue-pricing.md)
+(reprice at today's rates), [0046](../adrs/0046-narrowly-scoped-local-writes.md) (n stores,
+n writers, no cross-provider join at the storage layer, `interrupted`/`resumed`/
+`usage_complete: false`), [0047](../adrs/0047-sqlite-substrate-with-forward-only-migrations.md)
+(forward-only ladder, per-database), [0048](../adrs/0048-deletion-policy-split-by-tier.md)
+(the record tier is never deleted), [0042](../adrs/0042-claude-dashboard-is-the-design-baseline.md)
+(claude's dashboard is the baseline and UI design is delegated to a Fable subagent).
+
+## Corrections to the brief, established by measurement
+
+A ticket that follows the original brief instead of the correction will do the wrong work.
+
+1. **Per-proxy storage, reader-side fan-out and `interrupted`/`resumed` were NOT
+   ungoverned.** ADR 0046 already ratifies all three, at lines 41, 72 and 56–64. Two
+   planned `/dev` ADRs re-deciding them were **struck** — re-deciding a ratified decision
+   creates a second authority for one question.
+2. **"Columns on every record" does not hold for `cost` and `pricing_source`.** Both are
+   functions of a table an operator may edit at any moment, and freezing them defeats the
+   purpose ADR 0044 line 71 gives the stamp. See ADR 0065.
+3. **The three stores share no schema and cannot.** ox's entire schema is three tables
+   with the payload in a `sidecar_json` blob — no `model` column, no token columns, no
+   request table. Convergence would be a rewrite of two servers, not an adapter
+   extraction. See ADR 0061.
+4. **`body_derived` is real.** It is a column on `request`, added in the `SCHEMA_V13`
+   block of `stacks/claude/server/src/db/open.ts`, and the comment above it records why it
+   is deliberately not `skim_text IS NOT NULL`. An earlier pass wrongly concluded it did
+   not exist by grepping for a *table* of that name.
+5. **The claude/ox port collision changes category.** It was pre-existing awkwardness only
+   while nothing required both servers up at once; ADR 0041's picker requires exactly that.
+   See ADR 0062.
+
+## Live measurements
+
+Taken before charting; re-measure rather than trusting these if a ticket turns on one.
+
+- `stacks/claude/server/src/db/open.ts:38` — `SCHEMA_VERSION = 22`, 27 tables.
+- `stacks/codex/server/src/database.ts:22` — `SCHEMA_VERSION = 3`.
+- `stacks/ox-alpha/server/src/database.ts:20` — `SCHEMA_VERSION = 1`, three tables.
+- The live claude database is 2.1 GB at `user_version` 22: **60,834 requests**, 56,951
+  `request_skim` rows, 57,623 at `body_derived = 1`, **3,211 at `blob_evicted = 1`**, and
+  6 distinct models. Those 3,211 evicted-body rows are exactly why forward migration is
+  mandatory and no rebuild path exists.
+- Ports: claude server `8788`, ox server `8788` (collide), codex server `4319`.
+
+## Residual risks
+
+1. **The route-budget gate still measures nothing.** It resolves `stacks/claude/logs`,
+   which exists in no checkout, while the store is at the repository root — inherited from
+   the fusion campaign's ticket 09, which is still `paused`. **Do not read this gate's
+   pass as a measurement.**
+2. **The six distinct models are today's corpus, not a property of the design.** ADR 0044
+   makes the price table "a row for every model the corpus contains", so it grows. The
+   read-time join in ADR 0065 stays cheap because it is keyed on `model` against a small
+   dimension table, **not** because six is small.
+3. **No captured ox-alpha-proxy sidecar exists in this repository.** Every capture in
+   `stacks/claude/logs` is `_anthropic.*`. ADR 0063's open question cannot be closed from
+   anything currently here.
+4. **codex's delete-on-mismatch and ox's missing ladder are live data hazards**, not
+   cleanup. Tickets 04 and 05 each fix their own before bumping, which is why each is one
+   ticket rather than two.
+5. **Three admin dev servers still share `5173`.** ADR 0062 deliberately leaves them,
+   because the picker does not require them bound simultaneously. If a later campaign runs
+   two dashboards at once, that becomes in scope by the same test.
+
+## Active tasks
+
+| # | Task | Plan | Branch | Status | Note |
+|---|------|------|--------|--------|------|
+| 01 | adapter-contract-and-registries | [provider-seam-01-adapter-contract-and-registries](provider-seam-01-adapter-contract-and-registries.md) | `task/provider-seam-01-adapter-contract-and-registries` | todo | |
+| 02 | sidecar-v2-provider-discriminator | [provider-seam-02-sidecar-v2-provider-discriminator](provider-seam-02-sidecar-v2-provider-discriminator.md) | `task/provider-seam-02-sidecar-v2-provider-discriminator` | todo | |
+| 03 | claude-migration-23 | [provider-seam-03-claude-migration-23](provider-seam-03-claude-migration-23.md) | `task/provider-seam-03-claude-migration-23` | todo | |
+| 04 | codex-store-repair-and-migration | [provider-seam-04-codex-store-repair-and-migration](provider-seam-04-codex-store-repair-and-migration.md) | `task/provider-seam-04-codex-store-repair-and-migration` | todo | |
+| 05 | ox-store-repair-and-migration | [provider-seam-05-ox-store-repair-and-migration](provider-seam-05-ox-store-repair-and-migration.md) | `task/provider-seam-05-ox-store-repair-and-migration` | todo | |
+| 06 | pricing-table-and-read-time-cost | [provider-seam-06-pricing-table-and-read-time-cost](provider-seam-06-pricing-table-and-read-time-cost.md) | `task/provider-seam-06-pricing-table-and-read-time-cost` | todo | |
+| 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
+| 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
+| 09 | ox-server-port-move | [provider-seam-09-ox-server-port-move](provider-seam-09-ox-server-port-move.md) | `task/provider-seam-09-ox-server-port-move` | todo | |
+| 10 | route-registry-provider-declarations | [provider-seam-10-route-registry-provider-declarations](provider-seam-10-route-registry-provider-declarations.md) | `task/provider-seam-10-route-registry-provider-declarations` | todo | |
+| 11 | feature-flag-gating | [provider-seam-11-feature-flag-gating](provider-seam-11-feature-flag-gating.md) | `task/provider-seam-11-feature-flag-gating` | todo | |
+| 12 | fold-in-decimal-money-and-cost-reason | [provider-seam-12-fold-in-decimal-money-and-cost-reason](provider-seam-12-fold-in-decimal-money-and-cost-reason.md) | `task/provider-seam-12-fold-in-decimal-money-and-cost-reason` | todo | |
+| 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
+| 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | todo | |
+| 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | todo | |
+| 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | todo | |
+| 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
+| 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
+| zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
+
+<!--
+Status is exactly one of these six:
+  todo          — never started; nothing to resume. Pick it up.
+  in-progress   — a ticket run is executing it now. Leave it alone.
+  paused        — deliberately stopped, resumable as-is. Pick it back up.
+  blocked-limit — the usage window ran out mid-run; nothing is wrong with the
+                  work. Resume it once the window resets.
+  rejected      — a human reviewed it and turned it down. Do NOT retry it; it
+                  needs a new human decision or a rewritten plan.
+  redo          — the work landed but must be done again differently. Restart
+                  it from the plan.
+Note is required for blocked-limit, rejected, and redo; empty for the rest.
+
+The `zz` row is this campaign's final ticket. It always sorts last, it is executed
+after every other task, and it deletes every plan in this directory. Do not drop it:
+nothing else removes them, so without it they outlive the campaign permanently.
+-->
+
+## Ordering
+
+**01 is the spine and blocks almost everything** — it defines the contract every other
+ticket codes against. **02 follows 01.**
+
+- **01 → 02** sequential.
+- **03, 04, 05** after 02, and **independent of each other by file scope** — one per stack,
+  no shared files. They are the campaign's widest wave.
+- **06** after 03. **07** after 03, 04 and 05, since it needs all three stores to fan out
+  over. **08** after 07. **13** after 08.
+- **09, 10, 12** are independent of the spine by file scope and may run in the first wave
+  alongside 01: 09 touches only ox's server config, 10 only claude's admin route registry,
+  12 only claude's core money and cost-reason modules.
+- **11** after 01.
+- **14, 15, 16** after 06 (they render pricing state). **17** after 07. The four UI tickets
+  are independent of **each other** by file scope once their data has landed.
+- **18** after everything it documents. **zz** last, after every other ticket completes.
+
+**Two orderings are internal to a ticket rather than between tickets, deliberately.**
+Ticket 04 removes codex's delete-on-mismatch *before* bumping its ladder, and ticket 05
+adds ox's forward ladder *before* bumping its version. Splitting either into two tickets
+would let a wave run them out of order, and in 04's case that destroys codex's corpus. They
+are one ticket each precisely so the ordering cannot be violated.
+
+A gate is a commit on `wayfinder/provider-seam` with a green verify and an honest map.
+
+## Agent kickoff prompt
+
+> Read this repository's agent instructions, the wayfinder workflow, and the campaign map
+> at `docs/wayfinder/wayfinder-provider-seam.md`. Inspect live git and worktree state
+> rather than trusting any summary.
+>
+> Before choosing anything, repair stale rows: for each task marked in progress, check
+> whether a run is really behind it — a live worktree, a branch pushed within that run's
+> lifetime, an open pull request. Leave the ones that have one. For the rest, read the
+> branch and rewrite the status: to stopped-by-usage-window where work is in hand, and to
+> never-started where there is nothing worth resuming.
+>
+> Then execute the next unblocked active task by running the task workflow against its
+> plan, with `wayfinder/provider-seam` as the base branch, and retarget the resulting pull
+> request to that same branch. A task is eligible when it was never started, was
+> deliberately paused, was stopped because a usage window ran out and that window has since
+> reset, or is marked for redoing differently. Never re-execute a task a human rejected —
+> report it and pick another. A task marked in progress belongs to a live run.
+>
+> The task numbered `zz` deletes this campaign's plan files. Execute it only once it is the
+> last active task left; skip it while any other task is active, and never drop it from the
+> map or treat it as already done.
+>
+> If you stop before the pull request is open, set the task's status to say why, with a
+> short note, rather than leaving it marked in progress.
+>
+> This campaign's map records it as unattended, so type the wayfinder workflow's
+> `--unattended` flag on the invocation you run. That routes the ticket through the
+> merge-through runner, which resolves conflicts, waits for checks, retargets the pull
+> request onto `wayfinder/provider-seam`, and merges it there. Do not stop at the open pull
+> request — carry the ticket through to merged, never leave it targeting the repository
+> default branch, and include the merge in what you report back.
+
+## Completed
+
+<!-- newest first; one entry appended per task completion -->

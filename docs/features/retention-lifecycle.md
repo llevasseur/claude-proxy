@@ -4,13 +4,14 @@ title: Retention lifecycle
 description: This repo owns its own log lifecycle — it archives past days, evicts request bodies at 30 days, keeps every audit sidecar, and reports eviction as a typed state rather than a missing file.
 tags: [retention, logs, sqlite, maintenance]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Retention lifecycle
 
 ## Summary
 
-`pnpm --filter server maintain` archives past-day logs, evicts request **bodies** older
+`pnpm --filter @agent-proxy/claude-server maintain` archives past-day logs, evicts request **bodies** older
 than `RETENTION_DAYS` (default 30) from `logs/archive/<date>/`, and prints the day's
 digest. Every `.audit.json` sidecar is kept forever, so an evicted day still answers
 usage, tools, trends and summary byte-identically. A view that reads something out of the
@@ -37,14 +38,14 @@ The measurement that decides the design: across 16,581 captured request triples 
 are ~96% of the bytes (`.request.txt` 3.45 GB, `.md` 3.05 GB) and the sidecars ~1%
 (0.07 GB). Every field path that occurs in a sidecar maps to a column in the SQLite
 substrate. So keeping the sidecars costs a rounding error and preserves total recovery
-(`rm logs/claude-proxy.db && pnpm --filter server ingest`), while evicting the bodies takes
+(`rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest`), while evicting the bodies takes
 essentially the whole disk win.
 
 ## Behavior
 
 ### The command
 
-`pnpm --filter server maintain [--apply]` does five things in order:
+`pnpm --filter @agent-proxy/claude-server maintain [--apply]` does five things in order:
 
 0. **Reconcile command runs** — under `--apply` only, distil any still-visible command
    runs into `logs/commands/runs.jsonl`. It must run *before* archiving relocates the
@@ -160,7 +161,7 @@ count keeps rising past the edge and the text stops disappearing with it.
 This is deliberately not the content-addressed blob store [ADR
 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md) rejected. These are bounded
 derived strings, `logs/` remains the sole source of truth, and
-`rm logs/claude-proxy.db && pnpm --filter server ingest` still reconstructs everything that
+`rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` still reconstructs everything that
 is on disk — asserted in `server/test/derive-before-evict.test.ts`, not assumed.
 
 One value was considered and left out: the system-prompt **section text** that
@@ -184,7 +185,7 @@ is the part worth keeping.
 
 ## Acceptance criteria
 
-- `pnpm --filter server maintain` with no flags changes nothing on disk and prints the plan.
+- `pnpm --filter @agent-proxy/claude-server maintain` with no flags changes nothing on disk and prints the plan.
 - `RETENTION_DAYS=never` (or `off`) evicts nothing while archiving is unchanged; `0` is
   rejected and falls back to 30.
 - Every run prints the bytes it is keeping, the observed per-day body rate, and the growth

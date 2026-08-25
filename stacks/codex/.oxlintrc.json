@@ -1,0 +1,13 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "extends": ["../../.oxlintrc.json"],
+  "rules": {
+    "anti-slop/no-chained-type-assertions": "warn",
+    "anti-slop/no-known-value-widening": "warn",
+    "anti-slop/no-runtime-typeof": "warn",
+    "anti-slop/no-unknown-parameters": "warn",
+    "anti-slop/no-unknown-returns": "warn",
+    "anti-slop/no-unsafe-dictionary-type": "warn",
+    "anti-slop/require-safety-comment-for-type-assertion": "warn"
+  }
+}

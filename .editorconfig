@@ -1,0 +1,18 @@
+# Biome reads this file (`formatter.useEditorconfig` is `true` in biome.json)
+# and every value here restates a biome.json setting, so it changes no formatting.
+# Keep the two in sync — a mismatch wins for Biome too and reformats the tree.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+max_line_length = 120
+trim_trailing_whitespace = true
+
+# Two trailing spaces are a hard line break in Markdown, so trimming them edits
+# prose. Biome does not read this key; it is here for the editor.
+[*.md]
+trim_trailing_whitespace = false

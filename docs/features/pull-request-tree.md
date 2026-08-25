@@ -4,6 +4,7 @@ title: Pull request tree
 description: A read-only page that draws the project's GitHub pull requests as the tree they formed — merged PRs as the trunk, unlanded ones as branches — with a detail drawer that links each PR to the sessions that worked on it.
 tags: [dashboard, frontend, github]
 timestamp: 2026-08-08
+scope: claude
 ---
 
 # Pull request tree
@@ -159,7 +160,7 @@ Three things about the recording are deliberate:
   a command that opens one. A failed open records nothing.
 - **It goes to the sidecar, not the transcript.** The record is a derived *pointer* — ADR
   0004's rule that `logs/` is the source of truth is untouched, and
-  `rm logs/claude-proxy.db && pnpm --filter server ingest` refills the column from the
+  `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` refills the column from the
   sidecars.
 - **A recorded url is compared by `owner/name#number`**, so a run that opened
   `other/repo#14` is not read as this checkout's #14. Host is excluded from that key,

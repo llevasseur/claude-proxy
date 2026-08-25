@@ -1,0 +1,13 @@
+# No trailing slash: in a worktree `logs` is a symlink, which `logs/` misses.
+logs
+node_modules/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.DS_Store
+# Git's storage for /task worktrees, not project configuration.
+.claude/

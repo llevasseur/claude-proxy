@@ -4,6 +4,11 @@ title: Keep operator credentials out of the browser
 description: Route dashboard Notes access through the local server so operator credentials remain at the machine trust boundary.
 tags: [architecture, notes, security, dashboard]
 timestamp: 2026-08-16
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0012"
+    file: docs/adrs/0012-keep-operator-credentials-out-of-the-browser.md
 decided-by: /dev
 ratified: false
 wayfinder: notes
@@ -30,3 +35,10 @@ Route browser Notes requests through the local Node server. Keep the operator to
 ## Consequences
 
 The local server becomes a required proxy with no local Notes fallback. Browser code never receives the shared write token.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

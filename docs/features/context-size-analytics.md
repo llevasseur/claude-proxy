@@ -4,6 +4,7 @@ title: Context-size analytics
 description: A dashboard page showing how large the prompt sent to the model gets — average, largest, and why the largest was so large.
 tags: [context-size, usage, dashboard]
 timestamp: 2026-08-02
+scope: claude
 ---
 
 # Context-size analytics
@@ -68,7 +69,7 @@ captured data, without touching the passive-observer proxy.
   in the peak and in a thread's row are broken by the earlier request exactly as before, because
   days are merged oldest-first under the same strictly-greater rule the single pass used. The
   rows are **derived and disposable**, like `day_digest` and `usage_day` beside them: `logs/`
-  stays the source of truth and `rm logs/claude-proxy.db && pnpm --filter server ingest` rebuilds
+  stays the source of truth and `rm logs/claude-proxy.db && pnpm --filter @agent-proxy/claude-server ingest` rebuilds
   everything. See [ADR 0004](../adrs/0004-adopt-sqlite-as-the-query-substrate.md).
 - **Thread page** (`/context/thread/$threadId?days=<n>`) — the shared drill-down a thread's
   single row opens: its opening prompt and full thread id, stat tiles for **requests**,

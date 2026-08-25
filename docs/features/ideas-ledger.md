@@ -4,6 +4,7 @@ title: Ideas ledger
 description: A store for invented proposals, kept separate from the suggestion flags because an idea has no source sessions behind it — only a recorded human sign-off makes one actionable, and a claim stamped at the start of work keeps two runs from building the same one.
 tags: [advice, cli, ideas]
 timestamp: 2026-08-07
+scope: claude
 ---
 
 # Ideas ledger
@@ -14,7 +15,7 @@ The ideas ledger records features and commands somebody proposed building, and w
 decided about each one. **It is hosted** — an append-only event log on the `operator` Worker's D1
 database, replayed through `packages/core` on read
 ([ADR 0006](../adrs/0006-host-the-ideas-ledger.md)) — so it is one ledger across every machine
-rather than one per machine. It is read and written by `pnpm --filter server ideas`, which needs no
+rather than one per machine. It is read and written by `pnpm --filter @agent-proxy/claude-server ideas`, which needs no
 running local server, and adjudicated from the [dashboard's](admin-dashboard-for-claude-proxy-usage.md)
 `/ideas` page — one tab per area, one detail page per idea — over `GET /api/ideas` and the
 `POST /api/ideas/status`, `/api/ideas/area`, `/api/ideas/comment` and `/api/ideas/claim` writes.
@@ -233,14 +234,14 @@ than automated, exactly as the rest of
 [`services/concepts/README.md`'s operator setup](../../services/concepts/README.md#operator-setup)
 is. Merging the code changes nothing about what the Worker serves. The order is:
 
-1. **Apply the remote D1 migration.** `pnpm --filter concepts schema:apply` runs
+1. **Apply the remote D1 migration.** `pnpm --filter @agent-proxy/concepts schema:apply` runs
    `services/concepts/migrations/0002_ideas.sql` — the event log and the claim lease — against
    `operator-db`. `schema:apply:local` is the local-only sibling and does not touch the deployed
    database.
-2. **Deploy the Worker.** `pnpm --filter concepts deploy`. **Until this lands there is no
+2. **Deploy the Worker.** `pnpm --filter @agent-proxy/concepts deploy`. **Until this lands there is no
    `/api/ideas/*` route at all**, whatever the migration did: the routes are code, and the deployed
    build is whatever was pushed last.
-3. **Seed each device that still has a local ledger.** `pnpm --filter concepts seed:ideas`, run **on
+3. **Seed each device that still has a local ledger.** `pnpm --filter @agent-proxy/concepts seed:ideas`, run **on
    every machine holding a `logs/ideas.json`** rather than once — each accumulated its own while the
    ledger was per-device. It is safe to re-run and safe to run on two machines holding the same
    idea, because event ids are derived from event content. The README documents this half in full.
@@ -264,7 +265,7 @@ other way round cost a real debugging session.
 deleted, because the sequencing is a correctness requirement: the service ships, then `/ideate` and
 `/improve` are repointed and synced to **every** device, and only then does the file go. Deleting
 it first would silently drop the ideas on any device still running the old commands.
-`pnpm --filter concepts seed:ideas` is the migration — run it **on every machine that has a local
+`pnpm --filter @agent-proxy/concepts seed:ideas` is the migration — run it **on every machine that has a local
 ledger**, since each one accumulated its own. It decomposes each entry back into the events that
 produced it, stamped with the entry's own timestamps, and because ids are derived it is safe to run
 twice and safe to run on two machines holding the same idea. A **claim is not imported**: it is a
@@ -576,7 +577,7 @@ of the answer.
       with the SSE contract and the dashboard unchanged.
 - [x] The nightly backup commits the ideas export beside `concepts.jsonl`, and an unchanged day
       makes no commit.
-- [x] `pnpm --filter concepts seed:ideas` imports a device's `logs/ideas.json` and is safe to
+- [x] `pnpm --filter @agent-proxy/concepts seed:ideas` imports a device's `logs/ideas.json` and is safe to
       re-run and to run on several devices, because event ids are derived from event content.
 - [x] The two stores never merge: `suggestions list` returns no idea and `ideas list` no
       suggestion, verified by driving both against one log directory.

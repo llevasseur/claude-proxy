@@ -13,7 +13,7 @@ import {
   parseIdeaAdds,
   parseIdeaClaims,
   parseIdeaMarks,
-} from '@claude-proxy/core';
+} from '@agent-proxy/claude-core';
 import type { Db } from './db.ts';
 import {
   addIdeas,

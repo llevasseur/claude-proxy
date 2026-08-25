@@ -1,8 +1,10 @@
 packages:
-  - proxy
-  - server
+  - stacks/*/*
+  # codex is not flattened the way claude's stack is: its `../scripts/run-if-present.mjs`
+  # and `import.meta.dirname/../..` anchors depend on the extra level.
+  - stacks/*/packages/*
+  - stacks/*/apps/*
   - packages/*
-  - apps/*
   - services/*
 allowBuilds:
   esbuild: true

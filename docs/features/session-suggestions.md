@@ -4,6 +4,7 @@ title: Session suggestions
 description: Every ten transcripts are scored for ways to reach the same outcome in fewer steps, with less context, and against fewer guardrails — with each claim traceable to the sessions it was counted in.
 tags: [dashboard, usage, advice]
 timestamp: 2026-07-25
+scope: claude
 ---
 
 # Session suggestions
@@ -142,8 +143,8 @@ or not anyone acted on it. A flag per suggestion records that someone did.
   bucket and date of the claim it broke when that claim was recorded in another bucket. Both pages
   show a `N regressed` badge in their header. The breakdown-derived suggestions carry no control:
   they are computed per request rather than per bucket, so the store has no row for them.
-- **From the command line** — `pnpm --filter server suggestions list [-r <range>] [-s <flags>]
-  [--recurrence <states>] [-d]` and `pnpm --filter server suggestions mark -r <bucket> -i <ids>
+- **From the command line** — `pnpm --filter @agent-proxy/claude-server suggestions list [-r <range>] [-s <flags>]
+  [--recurrence <states>] [-d]` and `pnpm --filter @agent-proxy/claude-server suggestions mark -r <bucket> -i <ids>
   -s <flag> [-n <note>]`, both with `--json` for the API's own shape. **Add pnpm's `--silent`
   before `--filter` whenever that JSON is going into a parser** — pnpm's script runner otherwise
   wraps the output in a `$ tsx …` echo and a `Scope: …` banner, on whichever stream that version

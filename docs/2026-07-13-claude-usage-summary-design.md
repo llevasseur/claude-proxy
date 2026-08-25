@@ -4,6 +4,7 @@ title: Claude Usage Daily Summary — Design Spec
 description: Device-wide Claude Code usage capture producing a once-daily end-of-day summary.
 tags: [usage, daily-summary, design]
 timestamp: 2026-07-13
+scope: claude
 ---
 
 # Claude Usage Daily Summary — Design Spec
@@ -21,11 +22,11 @@ under the personal profile). **Does not touch `hyperion-nexus-app`.**
 `proxy/proxy.mjs`, not a root `proxy.mjs`. Components 4 and 5 — planned as `scripts/lib/
 usage-digest.ts` and `scripts/usage-summary.ts` inside `test-eve/my-agent` — landed **in this
 repo** instead, as `packages/core/src/digest.ts` (+ `advice.ts`, `pricing.ts`) and
-`server/src/daily-summary.ts` (`pnpm --filter server summary [date]`), with the same numbers also
+`server/src/daily-summary.ts` (`pnpm --filter @agent-proxy/claude-server summary [date]`), with the same numbers also
 served to the [admin dashboard](features/admin-dashboard-for-claude-proxy-usage.md).
 Component 5's last two steps landed here as well, rather than in `test-eve`: archiving to
 `logs/archive/<date>/` and retention are owned by `server/src/retention.ts` and run by
-`pnpm --filter server maintain`, a dry run unless given `--apply`. The retention rule changed
+`pnpm --filter @agent-proxy/claude-server maintain`, a dry run unless given `--apply`. The retention rule changed
 shape on the way — instead of pruning whole archive directories, it evicts only the `.md` and
 `.request.txt` bodies past `RETENTION_DAYS` (default 30) and keeps every `.audit.json`
 forever. See [Retention lifecycle](features/retention-lifecycle.md). The

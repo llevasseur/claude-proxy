@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    // No `rootDir`: two tests reach out of the package into `proxy/`.
+    "noEmit": true,
+    "types": ["node"],
+    // The proxy's relative imports carry a real `.ts` extension; tests import it directly.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src", "test"]
+}

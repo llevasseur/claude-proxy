@@ -4,6 +4,7 @@ title: Dashboard Agent Mode — Design Spec
 description: Run a dashboard prompt as a full Claude Code session at parity with the device's own CLI — real tools, custom slash commands, the user's alias — bounded to this repo's checkout, alongside the sandboxed chat posture it does not replace.
 tags: [chat, agent, dashboard, proxy, security, design]
 timestamp: 2026-07-25
+scope: claude
 ---
 
 # Dashboard Agent Mode — Design Spec

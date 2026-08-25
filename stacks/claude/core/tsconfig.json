@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // `src` is bundled into the browser by `apps/admin`: no ambient Node types, so
+    // a `node:` import or a `process` reference here fails typecheck.
+    "types": []
+  },
+  "include": ["src"]
+}

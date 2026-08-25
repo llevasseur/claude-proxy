@@ -4,6 +4,13 @@ title: Host the concept store as a Cloudflare Worker over D1
 description: Move the /teach corpus out of logs/concepts.jsonl and into a hosted append-only D1 database, reachable by agents over MCP from any machine, with a daily git backup as the reversibility guarantee.
 tags: [architecture, backend, storage, mcp, cloud]
 timestamp: 2026-08-07
+scope: claude
+provenance:
+  - repo: claude-proxy
+    number: "0005"
+    file: docs/adrs/0005-host-the-concept-store.md
+ratified: true
+needs-human: false
 ---
 
 # Host the concept store as a Cloudflare Worker over D1
@@ -160,3 +167,10 @@ a session id or retaining connection state.
 Recorded here because the reasoning that justified it — least privilege for
 read-only consumers — is sound, and if orbs ever stop writing, this is the
 decision to revisit first.
+
+## Provenance
+
+Native to `claude-proxy`, this repository's own corpus. It kept its number through the
+`monorepo-fusion` merge because the claude block sorts first by timestamp and its numbering
+was already dense. See [the legacy map](legacy-map.md) for how every inherited identifier
+resolves.

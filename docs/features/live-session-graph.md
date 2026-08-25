@@ -4,6 +4,7 @@ title: Live session graph
 description: A full-bleed page that draws a session's steps as a snake and each subagent it spawned as an indented branch beneath it, updating as the run proceeds.
 tags: [dashboard, frontend, usage]
 timestamp: 2026-07-24
+scope: claude
 ---
 
 # Live session graph
