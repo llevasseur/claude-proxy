@@ -26,7 +26,7 @@ unratified; six carry `needs-human: true`.
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 03 | alive-route-page | [alive-view-mote-03-alive-route-page](alive-view-mote-03-alive-route-page.md) | `task/alive-view-mote-03-alive-route-page` | todo |
+| 03 | alive-route-page | [alive-view-mote-03-alive-route-page](alive-view-mote-03-alive-route-page.md) | `task/alive-view-mote-03-alive-route-page` | in-progress |
 
 Dependencies: 03 depends on 01 and 02; 01 and 02 are independent.
 
