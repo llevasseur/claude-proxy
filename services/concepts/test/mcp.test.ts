@@ -7,7 +7,6 @@ import { handleMcp } from '../src/mcp.ts';
 import { saveConcept } from '../src/store.ts';
 import { arrayAt, bodyRecord, concept, numberAt, recordAt, recordsAt, testDb, textAt, textRecord } from './harness.ts';
 
-/** Both stateless revisions this server implements. */
 const PROTOCOL_VERSION = '2026-07-28';
 const LEGACY_PROTOCOL_VERSION = '2025-06-18';
 const META_VERSION = 'io.modelcontextprotocol/protocolVersion';
@@ -39,7 +38,6 @@ function rpc(method: string, params: JsonRecord = {}, version = PROTOCOL_VERSION
   });
 }
 
-/** A post-initialize request in the binding current Codex clients use. */
 function legacyRpc(method: string, params: JsonRecord = {}, id: number | null = 1) {
   return post({ 'mcp-protocol-version': LEGACY_PROTOCOL_VERSION }, { jsonrpc: '2.0', id, method, params });
 }

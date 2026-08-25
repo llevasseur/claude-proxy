@@ -61,10 +61,7 @@ import {
   searchConcepts,
 } from './store.ts';
 
-/**
- * The revisions this server speaks, newest first. The older binding retains
- * its initialize exchange but does not require server-side session state.
- */
+/** Supported revisions, newest first. Neither requires server-side session state. */
 const MODERN_PROTOCOL_VERSION = '2026-07-28';
 const LEGACY_PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_VERSIONS: readonly string[] = [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION];
@@ -627,12 +624,10 @@ function result<T>(id: RequestId, value: T): Response {
   return jsonBody({ jsonrpc: '2.0', id: id ?? null, result: value }, 200);
 }
 
-/** Encode one tool outcome identically under either supported protocol. */
 async function toolCallResponse(id: RequestId, db: Db, name: string, args: JsonRecord): Promise<Response> {
   try {
     const payload = await callTool(db, name, args);
-    // Every tool answers with an object, so `error` is the complete distinction
-    // between a refusal the model can correct and a successful result.
+    // An error payload is a correctable tool refusal, not a transport failure.
     return result(id, {
       content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
       structuredContent: payload,
@@ -709,8 +704,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
   const id = requestId(body);
   const params = recordField(body, 'params') ?? {};
 
-  // Current Codex clients negotiate 2025-06-18. The exchange remains
-  // stateless: the selected version is carried on each subsequent request.
+  // Codex negotiates 2025-06-18 without requiring server-side session state.
   if (method === 'initialize') {
     const requested = isJsonText(params.protocolVersion) ? params.protocolVersion : null;
     if (requested !== LEGACY_PROTOCOL_VERSION) {
@@ -726,19 +720,16 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
 
   const headerVersion = request.headers.get('mcp-protocol-version');
 
-  // The legacy handshake completes with this notification. It establishes no
-  // state, so acknowledging it requires neither a session id nor storage.
+  // The legacy initialized notification creates no server-side state.
   if (method === 'notifications/initialized' && headerVersion !== MODERN_PROTOCOL_VERSION) {
     return new Response(null, { status: 202 });
   }
 
-  // The modern revision defines no client-to-server notifications.
   if (method.startsWith('notifications/')) {
     return rpcError(null, -32600, `no client notification is defined by this protocol revision: ${method}`, 400);
   }
 
-  // Legacy requests declare only the negotiated header. They intentionally
-  // skip the modern mirrored-header and `_meta` requirements below.
+  // Legacy requests use only the negotiated header, without modern mirrored metadata.
   if (headerVersion === LEGACY_PROTOCOL_VERSION) {
     if (method === 'ping') return result(id, {});
     if (method === 'tools/list') return result(id, { tools: TOOLS });
@@ -750,8 +741,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
     return rpcError(id, -32601, `method not found: ${method}`, 404);
   }
 
-  // Modern requests declare their version in a header and in `_meta`, which
-  // must agree. Nothing is remembered between requests.
+  // Modern requests declare matching versions in the header and `params._meta`.
   const bodyVersion = metaProtocolVersion(params);
   if (!headerVersion) return rpcError(id, HEADER_MISMATCH, 'missing required header MCP-Protocol-Version', 400);
   if (!bodyVersion) {
