@@ -35,6 +35,8 @@ async function targetFrom(envDir: string): Promise<string> {
   const cwd = process.cwd();
   const exported = process.env.ADMIN_SERVER_URL;
   delete process.env.ADMIN_SERVER_URL;
+  // Requires vitest's forks pool, which this package leaves at its default: process.chdir
+  // throws under the threads pool.
   process.chdir(envDir);
   try {
     const resolved = await resolveConfig({ command: 'serve', mode: 'development' });
