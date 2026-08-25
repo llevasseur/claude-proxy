@@ -41,7 +41,7 @@ export function SessionsAlivePage() {
   // The watched id: whatever the rail picked, else the thread this tab owns.
   // The owned thread resolves asynchronously after a turn starts, so it is the
   // default watch rather than a state initialiser — the pick wins once made.
-  const { sessionId, chat, pendingPrompt } = useChatSession();
+  const { sessionId, chat, pendingPrompt, reset: newChat } = useChatSession();
   const started = chat !== null || pendingPrompt !== null;
   const { threadId: resolved } = useChatThread(sessionId, started && !chat?.session.threadId);
   const owned = chat?.session.threadId ?? resolved ?? undefined;
@@ -129,6 +129,7 @@ export function SessionsAlivePage() {
       sessions={transcripts}
       activeId={watchedId ?? undefined}
       isDrafting={false}
+      onNewChat={newChat}
       onSelect={setPickedId}>
       <section
         aria-label='Alive'
