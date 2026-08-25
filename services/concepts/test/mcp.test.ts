@@ -66,9 +66,12 @@ describe('handleMcp', () => {
     const result = recordAt(await bodyRecord(response), 'result');
     const capabilities = recordAt(result, 'capabilities');
     expect(response.status).toBe(200);
+    expect(textAt(result, 'resultType')).toBe('complete');
     expect(arrayAt(result, 'supportedVersions')).toEqual([PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION]);
     expect(capabilities.tools).toBeDefined();
     expect(recordAt(capabilities, 'extensions')).toEqual({});
+    expect(numberAt(result, 'ttlMs')).toBe(0);
+    expect(textAt(result, 'cacheScope')).toBe('private');
     // `operator`, not `concepts`: the Worker serves three datasets, while the
     // package directory retains the first dataset's historical name.
     expect(recordAt(result, '_meta')['io.modelcontextprotocol/serverInfo']).toEqual({
