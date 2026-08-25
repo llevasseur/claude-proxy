@@ -27,7 +27,7 @@ unratified; six carry `needs-human: true`.
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
 | 01 | shared-shell-and-select | [alive-view-mote-01-shared-shell-and-select](alive-view-mote-01-shared-shell-and-select.md) | `task/alive-view-mote-01-shared-shell-and-select` | todo |
-| 02 | core-emotion-derivation | [alive-view-mote-02-core-emotion-derivation](alive-view-mote-02-core-emotion-derivation.md) | `task/alive-view-mote-02-core-emotion-derivation` | todo |
+| 02 | core-emotion-derivation | [alive-view-mote-02-core-emotion-derivation](alive-view-mote-02-core-emotion-derivation.md) | `task/alive-view-mote-02-core-emotion-derivation` | in-progress | |
 | 03 | alive-route-page | [alive-view-mote-03-alive-route-page](alive-view-mote-03-alive-route-page.md) | `task/alive-view-mote-03-alive-route-page` | todo |
 
 Dependencies: 03 depends on 01 and 02; 01 and 02 are independent.
