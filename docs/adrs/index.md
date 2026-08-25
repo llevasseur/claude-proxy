@@ -94,5 +94,6 @@ likely to collide.
 | The docs gate asserts section indexes by file, and permits links out to source | [0056-the-docs-gate-asserts-indexes-by-file.md](0056-the-docs-gate-asserts-indexes-by-file.md) |
 | The filter gate covers invocations, not records | [0057-the-filter-gate-covers-invocations-not-records.md](0057-the-filter-gate-covers-invocations-not-records.md) |
 | Supersession is recorded from both ends | [0058-supersession-is-recorded-from-both-ends.md](0058-supersession-is-recorded-from-both-ends.md) |
+| Land the fusion campaign incomplete, with the corpus migration still paused | [0059-land-the-fusion-campaign-incomplete.md](0059-land-the-fusion-campaign-incomplete.md) |
 | Legacy ADR identifier map | [legacy-map.md](legacy-map.md) |
 <!-- okq:index:end -->
