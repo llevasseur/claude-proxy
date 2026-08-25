@@ -14,7 +14,17 @@
 | Alive View 02 — core emotion derivation | [alive-view-mote-02-core-emotion-derivation.md](alive-view-mote-02-core-emotion-derivation.md) |
 | Alive View 03 — the /sessions/alive route page | [alive-view-mote-03-alive-route-page.md](alive-view-mote-03-alive-route-page.md) |
 | Decision 004 — Correctness guardrails for serving cached replies | [decision-004-guardrails.md](decision-004-guardrails.md) |
+| Decision internet-spend 001 — The headline counts wire bytes, stored per interface | [decision-internet-spend-001-wire-bytes-and-per-interface-schema.md](decision-internet-spend-001-wire-bytes-and-per-interface-schema.md) |
+| Decision internet-spend 002 — One delta rule, typed discontinuities, gap and quiet split | [decision-internet-spend-002-delta-gap-and-day-semantics.md](decision-internet-spend-002-delta-gap-and-day-semantics.md) |
+| Decision internet-spend 003 — Short months clamp to the last day; UTC stored, local resolution | [decision-internet-spend-003-period-boundaries.md](decision-internet-spend-003-period-boundaries.md) |
+| Decision internet-spend 004 — Agent patterns match by case-insensitive substring | [decision-internet-spend-004-agent-pattern-matching.md](decision-internet-spend-004-agent-pattern-matching.md) |
+| Decision internet-spend 005 — The collector is a timer inside net-server; LaunchAgent out of scope | [decision-internet-spend-005-collector-residency.md](decision-internet-spend-005-collector-residency.md) |
+| Internet Spend 01 — net-server store and read-time model | [internet-spend-01-net-store-and-read-model.md](internet-spend-01-net-store-and-read-model.md) |
+| Internet Spend 02 — net-server collector and HTTP API | [internet-spend-02-net-collector-and-api.md](internet-spend-02-net-collector-and-api.md) |
+| Internet Spend 03 — admin /internet route page | [internet-spend-03-internet-route-page.md](internet-spend-03-internet-route-page.md) |
+| Internet Spend 04 — Overview budget meter | [internet-spend-04-overview-budget-meter.md](internet-spend-04-overview-budget-meter.md) |
 | Wayfinder — Alive View on the sessions tab | [map-alive-view-mote.md](map-alive-view-mote.md) |
+| Wayfinder — Internet Spend meter | [map-internet-spend.md](map-internet-spend.md) |
 | Map: Skim a thin layer off the top of requests to Anthropic | [map-proxy-skim.md](map-proxy-skim.md) |
 | Map: SQLite as the query substrate over the log files | [map-sqlite-substrate.md](map-sqlite-substrate.md) |
 | monorepo-fusion-01-rewrite-sibling-histories | [monorepo-fusion-01-rewrite-sibling-histories.md](monorepo-fusion-01-rewrite-sibling-histories.md) |
