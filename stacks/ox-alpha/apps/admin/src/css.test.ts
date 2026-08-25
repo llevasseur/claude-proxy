@@ -10,6 +10,11 @@ import { afterAll, beforeAll, expect, test } from 'vitest';
 // (rather than trusting source) is what makes the assertion about the bundle.
 
 const OUT_DIR = join(import.meta.dirname, '..', 'dist-css-test');
+
+// The hook below runs a real vite build: about three seconds alone, past vitest's 10s
+// default hook budget under a full `verify` where every package builds at once.
+const BUILD_TIMEOUT_MS = 120_000;
+
 let bundleCss = '';
 
 beforeAll(() => {
@@ -22,8 +27,9 @@ beforeAll(() => {
   const assets = join(OUT_DIR, 'assets');
   const cssFile = readdirSync(assets).find((name) => name.endsWith('.css'));
   expect(cssFile, 'built bundle contains a stylesheet').toBeTruthy();
+  // SAFETY: the assertion above establishes the name is present rather than undefined.
   bundleCss = readFileSync(join(assets, cssFile as string), 'utf8');
-});
+}, BUILD_TIMEOUT_MS);
 
 afterAll(() => {
   rmSync(OUT_DIR, { recursive: true, force: true });

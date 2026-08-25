@@ -4,7 +4,9 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
   // Loads apps/admin/.env only; the dashboard never reads server env files.
   const env = loadEnv(mode, process.cwd(), '');
-  const target = env.ADMIN_SERVER_URL ?? 'http://127.0.0.1:8788';
+  // `||` rather than `??`: in a .env a bare `ADMIN_SERVER_URL=` means unset, and `??`
+  // would pass the empty string through as the proxy target.
+  const target = env.ADMIN_SERVER_URL || 'http://127.0.0.1:8808';
   return {
     plugins: [react()],
     server: {
