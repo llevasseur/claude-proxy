@@ -1,8 +1,8 @@
 /**
  * MCP over streamable HTTP, hand-rolled rather than via the official SDK — see
- * ADR 0005. Implements revision 2026-07-28 and nothing earlier: every request
- * declares its own protocol version, there is no `initialize` handshake and no
- * session, and the answer is always a single `application/json` body.
+ * ADR 0005. Implements the stateless 2025-06-18 handshake used by current
+ * clients and the 2026-07-28 per-request protocol. Both paths always answer
+ * with a single `application/json` body and neither creates a session.
  */
 
 import {
@@ -61,12 +61,13 @@ import {
   searchConcepts,
 } from './store.ts';
 
-/**
- * The revisions this server speaks. Modern-era only: a legacy client that
- * expects a handshake is turned away rather than served.
- */
-const SUPPORTED_VERSIONS: readonly string[] = ['2026-07-28'];
+/** Supported revisions, newest first. Neither requires server-side session state. */
+const MODERN_PROTOCOL_VERSION = '2026-07-28';
+const LEGACY_PROTOCOL_VERSION = '2025-06-18';
+const SUPPORTED_VERSIONS: readonly string[] = [MODERN_PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION];
 const SERVER_INFO = { name: 'operator', version: '0.2.0' };
+const SERVER_INSTRUCTIONS =
+  'Three datasets over one database. CONCEPTS is the glossary of terms the user has taught themselves — call concepts_list first for a cheap overview, then concepts_get or concepts_search for prose. IDEAS is the proposal ledger: call ideas_list with available:true, ideas_get for one key, ideas_claim before coding, ideas_add to propose, and ideas_mark to record the outcome. NOTES is authored Markdown: call notes_list or notes_search for compact results, notes_get for the full body, and always pass the last observed version to notes_update.';
 
 /** `_meta` keys the revision reserves for per-request protocol metadata. */
 const META_PROTOCOL_VERSION = 'io.modelcontextprotocol/protocolVersion';
@@ -623,6 +624,25 @@ function result<T>(id: RequestId, value: T): Response {
   return jsonBody({ jsonrpc: '2.0', id: id ?? null, result: value }, 200);
 }
 
+async function toolCallResponse(id: RequestId, db: Db, name: string, args: JsonRecord): Promise<Response> {
+  try {
+    const payload = await callTool(db, name, args);
+    // An error payload is a correctable tool refusal, not a transport failure.
+    return result(id, {
+      content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+      structuredContent: payload,
+      isError: 'error' in payload,
+    });
+  } catch (error) {
+    return result(id, {
+      content: [
+        { type: 'text', text: `tool ${name} failed: ${error instanceof Error ? error.message : String(error)}` },
+      ],
+      isError: true,
+    });
+  }
+}
+
 function rpcError(id: RequestId, code: number, message: string, status: number): Response {
   return jsonBody({ jsonrpc: '2.0', id: id ?? null, error: { code, message } }, status);
 }
@@ -684,25 +704,44 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
   const id = requestId(body);
   const params = recordField(body, 'params') ?? {};
 
-  // A legacy client has no fall-forward mechanism, so name the versions it
-  // would need rather than answering with a bare "method not found".
+  // Codex negotiates 2025-06-18 without requiring server-side session state.
   if (method === 'initialize') {
     const requested = isJsonText(params.protocolVersion) ? params.protocolVersion : null;
-    return unsupportedVersion(
-      id,
-      requested,
-      'this server implements MCP 2026-07-28, which has no initialize handshake',
-    );
+    if (requested !== LEGACY_PROTOCOL_VERSION) {
+      return unsupportedVersion(id, requested, 'unsupported protocol version');
+    }
+    return result(id, {
+      protocolVersion: LEGACY_PROTOCOL_VERSION,
+      capabilities: { tools: CAPABILITIES.tools },
+      serverInfo: SERVER_INFO,
+      instructions: SERVER_INSTRUCTIONS,
+    });
   }
 
-  // The revision defines no client-to-server notifications over streamable HTTP.
+  const headerVersion = request.headers.get('mcp-protocol-version');
+
+  // The legacy initialized notification creates no server-side state.
+  if (method === 'notifications/initialized' && headerVersion !== MODERN_PROTOCOL_VERSION) {
+    return new Response(null, { status: 202 });
+  }
+
   if (method.startsWith('notifications/')) {
     return rpcError(null, -32600, `no client notification is defined by this protocol revision: ${method}`, 400);
   }
 
-  // Declared per request in a header and in `_meta`, which must agree. Nothing
-  // is remembered between requests.
-  const headerVersion = request.headers.get('mcp-protocol-version');
+  // Legacy requests use only the negotiated header, without modern mirrored metadata.
+  if (headerVersion === LEGACY_PROTOCOL_VERSION) {
+    if (method === 'ping') return result(id, {});
+    if (method === 'tools/list') return result(id, { tools: TOOLS });
+    if (method === 'tools/call') {
+      const name = isJsonText(params.name) ? params.name : '';
+      const args = recordField(params, 'arguments') ?? {};
+      return await toolCallResponse(id, db, name, args);
+    }
+    return rpcError(id, -32601, `method not found: ${method}`, 404);
+  }
+
+  // Modern requests declare matching versions in the header and `params._meta`.
   const bodyVersion = metaProtocolVersion(params);
   if (!headerVersion) return rpcError(id, HEADER_MISMATCH, 'missing required header MCP-Protocol-Version', 400);
   if (!bodyVersion) {
@@ -725,8 +764,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
       resultType: 'complete',
       supportedVersions: SUPPORTED_VERSIONS,
       capabilities: CAPABILITIES,
-      instructions:
-        'Three datasets over one database. CONCEPTS is the glossary of terms the user has taught themselves — call concepts_list first for a cheap overview, then concepts_get or concepts_search for prose. IDEAS is the proposal ledger: call ideas_list with available:true, ideas_get for one key, ideas_claim before coding, ideas_add to propose, and ideas_mark to record the outcome. NOTES is authored Markdown: call notes_list or notes_search for compact results, notes_get for the full body, and always pass the last observed version to notes_update.',
+      instructions: SERVER_INSTRUCTIONS,
       _meta: { [META_SERVER_INFO]: SERVER_INFO },
     });
   }
@@ -738,26 +776,7 @@ export async function handleMcp(request: Request, db: Db): Promise<Response> {
   if (method === 'tools/call') {
     const name = isJsonText(params.name) ? params.name : '';
     const args = recordField(params, 'arguments') ?? {};
-    try {
-      const payload = await callTool(db, name, args);
-      // Every tool answers with an object, so the presence of `error` is the whole
-      // test — it is how a refusal reaches the model as one rather than as a result.
-      const isError = 'error' in payload;
-      return result(id, {
-        content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
-        structuredContent: payload,
-        isError,
-      });
-    } catch (error) {
-      // A tool failure is reported inside the result, not as a transport error,
-      // so the model can see it and correct its arguments.
-      return result(id, {
-        content: [
-          { type: 'text', text: `tool ${name} failed: ${error instanceof Error ? error.message : String(error)}` },
-        ],
-        isError: true,
-      });
-    }
+    return await toolCallResponse(id, db, name, args);
   }
 
   // 404 with a JSON-RPC body, which distinguishes a modern MCP endpoint from a
