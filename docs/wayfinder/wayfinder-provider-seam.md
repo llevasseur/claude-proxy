@@ -137,7 +137,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 07 | typed-store-absence-envelope | [provider-seam-07-typed-store-absence-envelope](provider-seam-07-typed-store-absence-envelope.md) | `task/provider-seam-07-typed-store-absence-envelope` | todo | |
 | 08 | provider-scoped-routes-and-fanout | [provider-seam-08-provider-scoped-routes-and-fanout](provider-seam-08-provider-scoped-routes-and-fanout.md) | `task/provider-seam-08-provider-scoped-routes-and-fanout` | todo | |
 | 09 | ox-server-port-move | [provider-seam-09-ox-server-port-move](provider-seam-09-ox-server-port-move.md) | `task/provider-seam-09-ox-server-port-move` | todo | |
-| 10 | route-registry-provider-declarations | [provider-seam-10-route-registry-provider-declarations](provider-seam-10-route-registry-provider-declarations.md) | `task/provider-seam-10-route-registry-provider-declarations` | todo | |
+| 10 | route-registry-provider-declarations | [provider-seam-10-route-registry-provider-declarations](provider-seam-10-route-registry-provider-declarations.md) | `task/provider-seam-10-route-registry-provider-declarations` | in-progress | |
 | 11 | feature-flag-gating | [provider-seam-11-feature-flag-gating](provider-seam-11-feature-flag-gating.md) | `task/provider-seam-11-feature-flag-gating` | todo | |
 | 12 | fold-in-decimal-money-and-cost-reason | [provider-seam-12-fold-in-decimal-money-and-cost-reason](provider-seam-12-fold-in-decimal-money-and-cost-reason.md) | `task/provider-seam-12-fold-in-decimal-money-and-cost-reason` | in-progress | |
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
