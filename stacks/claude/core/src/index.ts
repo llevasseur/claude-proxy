@@ -27,6 +27,7 @@ export * from './provenance.js';
 export * from './provider-adapter.js';
 export * from './pull-requests.js';
 export * from './sessions.js';
+export * from './sidecar.js';
 export * from './skim.js';
 export * from './suggestion-status.js';
 export * from './suggestions.js';

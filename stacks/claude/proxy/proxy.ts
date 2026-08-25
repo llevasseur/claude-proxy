@@ -364,8 +364,39 @@ interface SidecarInput {
   cacheBreakpointDeclinedBy?: DeclinedGate | null;
 }
 
+/**
+ * The version this proxy writes, and the adapter pair that produces it.
+ *
+ * **These are literals rather than imports, and that is the zero-dependency rule
+ * rather than an oversight.** `stacks/claude/core/src/adapter-seam.ts` owns the
+ * `ProviderId` and `HarnessId` vocabularies and
+ * `stacks/claude/core/src/provider-adapter.ts` owns the version — but this proxy
+ * declares no `dependencies` at all and is executed straight by node, so
+ * importing the core barrel here would pull forty modules into the proxy's
+ * runtime. What crosses the seam is therefore the *data*, three strings and a
+ * number, validated on the way back in by `readSidecar` in
+ * `stacks/claude/core/src/sidecar.ts`. If the anthropic adapter's version moves,
+ * this constant moves with it.
+ */
+const SIDECAR_SCHEMA_VERSION = 2 as const;
+const SIDECAR_PROVIDER = 'anthropic' as const;
+const SIDECAR_HARNESS = 'claude-code' as const;
+const SIDECAR_ADAPTER_VERSION = 1 as const;
+
 /** The sidecar's own contract — the stable JSON shape tooling reads back. */
 interface AuditSidecar {
+  /**
+   * Stated outright so a reader never has to infer the version from which keys
+   * it finds. A captured sidecar without this field is v1, and stays v1 — none
+   * is ever rewritten in place.
+   */
+  schemaVersion: typeof SIDECAR_SCHEMA_VERSION;
+  /** The wire contract and pricing axis. Never derived from `harness`. */
+  provider: typeof SIDECAR_PROVIDER;
+  /** The session shape and transcript format. Never derived from `provider`. */
+  harness: typeof SIDECAR_HARNESS;
+  /** Version of the adapter that produced this record. */
+  adapterVersion: number;
   timestamp: string;
   model: string;
   endpoint: string;
@@ -412,6 +443,10 @@ function writeAuditSidecar({
   const u = usage ?? {};
   const rateLimit = extractRateLimit(respHeaders);
   const sidecar: AuditSidecar = {
+    schemaVersion: SIDECAR_SCHEMA_VERSION,
+    provider: SIDECAR_PROVIDER,
+    harness: SIDECAR_HARNESS,
+    adapterVersion: SIDECAR_ADAPTER_VERSION,
     timestamp,
     model: asText(reqJson?.model) ?? respModel ?? 'unknown',
     endpoint: `${method} ${reqPath}`,
