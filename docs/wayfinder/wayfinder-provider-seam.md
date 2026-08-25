@@ -139,7 +139,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 09 | ox-server-port-move | [provider-seam-09-ox-server-port-move](provider-seam-09-ox-server-port-move.md) | `task/provider-seam-09-ox-server-port-move` | todo | |
 | 10 | route-registry-provider-declarations | [provider-seam-10-route-registry-provider-declarations](provider-seam-10-route-registry-provider-declarations.md) | `task/provider-seam-10-route-registry-provider-declarations` | todo | |
 | 11 | feature-flag-gating | [provider-seam-11-feature-flag-gating](provider-seam-11-feature-flag-gating.md) | `task/provider-seam-11-feature-flag-gating` | todo | |
-| 12 | fold-in-decimal-money-and-cost-reason | [provider-seam-12-fold-in-decimal-money-and-cost-reason](provider-seam-12-fold-in-decimal-money-and-cost-reason.md) | `task/provider-seam-12-fold-in-decimal-money-and-cost-reason` | todo | |
+| 12 | fold-in-decimal-money-and-cost-reason | [provider-seam-12-fold-in-decimal-money-and-cost-reason](provider-seam-12-fold-in-decimal-money-and-cost-reason.md) | `task/provider-seam-12-fold-in-decimal-money-and-cost-reason` | in-progress | |
 | 13 | cross-provider-token-series | [provider-seam-13-cross-provider-token-series](provider-seam-13-cross-provider-token-series.md) | `task/provider-seam-13-cross-provider-token-series` | todo | |
 | 14 | ui-pricing-crud-page | [provider-seam-14-ui-pricing-crud-page](provider-seam-14-ui-pricing-crud-page.md) | `task/provider-seam-14-ui-pricing-crud-page` | todo | |
 | 15 | ui-unknown-cost-treatment | [provider-seam-15-ui-unknown-cost-treatment](provider-seam-15-ui-unknown-cost-treatment.md) | `task/provider-seam-15-ui-unknown-cost-treatment` | todo | |
