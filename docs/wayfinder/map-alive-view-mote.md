@@ -26,7 +26,6 @@ unratified; six carry `needs-human: true`.
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 01 | shared-shell-and-select | [alive-view-mote-01-shared-shell-and-select](alive-view-mote-01-shared-shell-and-select.md) | `task/alive-view-mote-01-shared-shell-and-select` | in-progress | |
 | 02 | core-emotion-derivation | [alive-view-mote-02-core-emotion-derivation](alive-view-mote-02-core-emotion-derivation.md) | `task/alive-view-mote-02-core-emotion-derivation` | in-progress | |
 | 03 | alive-route-page | [alive-view-mote-03-alive-route-page](alive-view-mote-03-alive-route-page.md) | `task/alive-view-mote-03-alive-route-page` | todo |
 
@@ -35,6 +34,20 @@ Dependencies: 03 depends on 01 and 02; 01 and 02 are independent.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 01 — shared-shell-and-select (2026-08-25)
+
+PR [#303](https://github.com/llevasseur/claude-proxy/pull/303), squash-merged into
+`wayfinder/alive-view-mote`. `SessionsShell.tsx` now holds what `/sessions` built inline — the
+`QueryState`-framed transcript rail with its skeleton (moved out of `sessions.tsx`) and a slim
+Chat/Alive view switch above the rail-and-pane grid, per ADR 0028 — and `SessionsSidenav` grew
+its one optional prop, `onSelect?` (ADR 0021): absent it rows render today's `<Link>` unchanged,
+present it they render as buttons handing over the thread id. Deviations worth keeping: the
+Alive tab ships **inert** — typed links cannot name the unregistered `/sessions/alive`, and
+registering that route is ticket 03's work, so ticket 03 flips one span into a `Link`; and the
+header row is styled inline against existing tokens because the stylesheet sits outside the
+ticket's lane. The ox-alpha admin CSS test timed out under machine load during verify but passes
+standalone; unrelated to this lane.
 
 ## Agent kickoff prompt
 

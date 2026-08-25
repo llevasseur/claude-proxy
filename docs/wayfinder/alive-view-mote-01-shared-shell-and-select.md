@@ -11,6 +11,10 @@ number: "01"
 
 # Alive View 01 — shared sessions shell and rail selection
 
+**Wayfinder:** `alive-view-mote`
+**Branch:** `task/alive-view-mote-01-shared-shell-and-select`
+**Status:** done · 2026-08-25
+
 Branch: `task/alive-view-mote-01-shared-shell-and-select`, cut from `wayfinder/alive-view-mote`.
 Lane: `stacks/claude/admin/src/routes/sessions.tsx`, `stacks/claude/admin/src/components/SessionsSidenav.tsx`, one new component file under `stacks/claude/admin/src/components/`. Touch nothing else in `apps` or other stacks' trees.
 
