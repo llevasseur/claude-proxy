@@ -78,17 +78,17 @@ server-initiated messages — and would cost a dependency in the request path of
 the only always-on component in the system. Three tools and four JSON-RPC
 methods came to less code than configuring the SDK would have.
 
-**Protocol revision `2026-07-28` only — no legacy era.** That revision replaced
-the `initialize` handshake with a version declared on every request, and removed
-protocol-level sessions and the GET stream outright. Those removals describe
-what this service already was: it holds nothing between requests and answers
-each one from a single JSON body, so the handshake was pure ceremony over a
-server that had no state to establish. Supporting the legacy era alongside it
-would mean carrying a second dispatch path and a session concept solely for
-clients that do not need one — cost paid on the always-on component to serve
-nobody. The agents that connect here are ours and are current, so the server
-speaks one revision, and a client that asks for another gets an
-`UnsupportedProtocolVersionError` naming what it does speak.
+**Protocol revisions `2025-06-18` and `2026-07-28`, both stateless.** The newer
+revision replaced the `initialize` handshake with a version declared on every
+request, and removed protocol-level sessions and the GET stream outright. Those
+removals describe what this service already was: it holds nothing between
+requests and answers each one from a single JSON body. Codex still negotiates
+`2025-06-18`, however, so the Worker also answers that revision's `initialize`
+and `notifications/initialized` messages. It returns no session id and retains
+nothing from either message; subsequent requests declare their negotiated
+version in the header. Compatibility therefore adds a dispatch path, not a
+session concept. A client that asks for any other revision gets an
+`UnsupportedProtocolVersionError` naming both revisions the server speaks.
 
 **No hosted UI.** This is an agent interface. The dashboard stays in
 `apps/admin/`, reading through `server/`.
@@ -150,13 +150,11 @@ request immediately from a single JSON body, so the SDK's surface is nearly all
 unused, and the dependency-free posture of the surrounding packages is worth
 more than the boilerplate saved.
 
-**Serve both protocol eras from the one endpoint.** The spec permits it, and it
-would let any client at all connect. Rejected because the cost lands on the
-component least able to absorb it: a dual-era server must keep sessions for the
-legacy half, which reintroduces exactly the per-connection state this service
-was built to avoid, in order to serve clients that no agent here runs. The
-reversal is cheap if that changes — the modern path is a strict subset of the
-work, so adding the handshake back is additive rather than a rewrite.
+**Serve only `2026-07-28`.** Originally accepted because the newer protocol is
+the service's natural shape. Reversed when the Codex client proved it still
+negotiates `2025-06-18`. The premise that dual support requires sessions was
+also too strong: this server can complete the older handshake without issuing
+a session id or retaining connection state.
 
 **Two tokens, read and write.** Held until the orb decision made it fictional.
 Recorded here because the reasoning that justified it — least privilege for

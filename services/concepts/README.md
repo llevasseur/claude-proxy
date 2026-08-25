@@ -19,8 +19,8 @@ It is a D1 (SQLite) database behind two interfaces over the same data:
 
 - **REST**, which `/teach` posts to and which `server/` will proxy.
 - **MCP**, at `POST /mcp`, which is how an agent queries it. It implements
-  revision `2026-07-28` and nothing earlier — see [MCP protocol
-  revision](#mcp-protocol-revision).
+  revisions `2025-06-18` and `2026-07-28` — see [MCP protocol
+  revisions](#mcp-protocol-revisions).
 
 Design rationale — why the database is truth here when ADR 0004 says files are,
 why there is one token rather than two, why the MCP layer is hand-rolled — is in
@@ -35,7 +35,7 @@ why there is one token rather than two, why the MCP layer is hand-rolled — is 
 | `src/ideas.ts` | The ideas event log, its replay through `packages/core`, and the atomic claim |
 | `src/notes.ts` | Immutable note revisions, current projection, search, pagination, archive, and conflicts |
 | `src/db.ts` | The `Db` port — D1 in production, `node:sqlite` in tests |
-| `src/mcp.ts` | JSON-RPC, per-request version checks, and tool definitions |
+| `src/mcp.ts` | JSON-RPC, protocol negotiation and per-request checks, and tool definitions |
 | `src/rest.ts` | The HTTP surface |
 | `src/backup.ts` | Nightly commit of all datasets to a private git repo |
 | `migrations/0001_init.sql` | The concepts schema, and the source of truth for the tests |
@@ -109,31 +109,31 @@ lease row taken by a single `INSERT … ON CONFLICT DO UPDATE … WHERE` whose
 `changes` count decides which of two racing runs won. Even there the six-hour
 cutoff comes from `IDEA_CLAIM_TTL_MS` rather than being written out again.
 
-## MCP protocol revision
+## MCP protocol revisions
 
-**Modern-era clients only: this server implements MCP `2026-07-28` and no
-earlier revision.** That revision drops the `initialize` handshake, sessions,
-and the GET stream, which is exactly the shape this service already had — every
-answer is one `application/json` body it can produce immediately — so
-supporting only it removes per-connection state rather than adding any.
+The server implements MCP `2025-06-18`, used by current Codex clients, and
+`2026-07-28`. Both are stateless here: every answer is one `application/json`
+body, the server sends no messages of its own, and it issues no session id.
 
 What that means for a client:
 
-- **Declare the version on every request**, in `params._meta` under
+- **A `2025-06-18` client initializes normally.** The server returns its tools
+  capability, identity, and instructions, then acknowledges
+  `notifications/initialized`. Later requests carry the negotiated
+  `MCP-Protocol-Version` header; no server-side session is created.
+- **A `2026-07-28` client declares the version on every request**, in `params._meta` under
   `io.modelcontextprotocol/protocolVersion` *and* in the `MCP-Protocol-Version`
-  header. The two must agree. There is no handshake and nothing is remembered
-  between requests; each one is accepted or rejected on its own.
-- **Mirror `Mcp-Method`**, and `Mcp-Name` on a `tools/call`, into the headers.
+  header. The two must agree; there is no handshake.
+- **A `2026-07-28` client also mirrors `Mcp-Method`**, and `Mcp-Name` on a
+  `tools/call`, into the headers.
   A missing or disagreeing header is `400 Bad Request` with JSON-RPC code
   `-32020` (`HeaderMismatch`).
-- **Ask `server/discover`** for the supported versions, capabilities and
+- **A `2026-07-28` client can ask `server/discover`** for the supported versions, capabilities and
   identity in one call. It is optional — any RPC can be sent cold — but it is
   the cheapest way to see what is here.
 - **A version this server does not implement** comes back as `400` with code
   `-32022` (`UnsupportedProtocolVersionError`), whose `data.supported` lists
-  every version it does. A legacy client's `initialize` gets that same error
-  rather than "method not found", because naming the versions is the only
-  diagnostic such a client can surface — it has no way to fall forward.
+  both versions it does.
 - **An unknown method** is `404` with code `-32601`, carrying a JSON-RPC body so
   a client can tell a modern MCP endpoint from a host that serves no MCP at all.
 

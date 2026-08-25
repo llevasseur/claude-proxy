@@ -7,8 +7,9 @@ import { handleMcp } from '../src/mcp.ts';
 import { saveConcept } from '../src/store.ts';
 import { arrayAt, bodyRecord, concept, numberAt, recordAt, recordsAt, testDb, textAt, textRecord } from './harness.ts';
 
-/** The one revision this server implements. Asserted exactly, never by shape. */
+/** Both stateless revisions this server implements. */
 const PROTOCOL_VERSION = '2026-07-28';
+const LEGACY_PROTOCOL_VERSION = '2025-06-18';
 const META_VERSION = 'io.modelcontextprotocol/protocolVersion';
 
 /** A raw POST, for the cases that are about a header being wrong or absent. */
@@ -38,6 +39,11 @@ function rpc(method: string, params: JsonRecord = {}, version = PROTOCOL_VERSION
   });
 }
 
+/** A post-initialize request in the binding current Codex clients use. */
+function legacyRpc(method: string, params: JsonRecord = {}, id: number | null = 1) {
+  return post({ 'mcp-protocol-version': LEGACY_PROTOCOL_VERSION }, { jsonrpc: '2.0', id, method, params });
+}
+
 /**
  * One `tools/call` round trip, decoded once for every tool case below: the tool
  * result is a JSON document carried as text inside the content block, and every
@@ -62,7 +68,7 @@ describe('handleMcp', () => {
     const result = recordAt(await bodyRecord(response), 'result');
     const capabilities = recordAt(result, 'capabilities');
     expect(response.status).toBe(200);
-    expect(arrayAt(result, 'supportedVersions')).toEqual([PROTOCOL_VERSION]);
+    expect(arrayAt(result, 'supportedVersions')).toEqual([PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION]);
     expect(capabilities.tools).toBeDefined();
     expect(recordAt(capabilities, 'extensions')).toEqual({});
     // `operator`, not `concepts`: the Worker serves three datasets, while the
@@ -100,24 +106,38 @@ describe('handleMcp', () => {
   });
 
   it('rejects a version it does not implement, naming the ones it does', async () => {
-    const response = await handleMcp(rpc('tools/list', {}, '2025-06-18'), testDb());
+    const response = await handleMcp(rpc('tools/list', {}, '2024-11-05'), testDb());
     const error = recordAt(await bodyRecord(response), 'error');
     expect(response.status).toBe(400);
     expect(numberAt(error, 'code')).toBe(-32022);
-    expect(recordAt(error, 'data')).toEqual({ supported: [PROTOCOL_VERSION], requested: '2025-06-18' });
+    expect(recordAt(error, 'data')).toEqual({
+      supported: [PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION],
+      requested: '2024-11-05',
+    });
   });
 
-  it('refuses initialize by naming its versions, since a legacy client cannot fall forward', async () => {
+  it('initializes the stateless protocol used by current Codex clients', async () => {
     const request = post(
       {},
-      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: LEGACY_PROTOCOL_VERSION } },
     );
     const response = await handleMcp(request, testDb());
-    const error = recordAt(await bodyRecord(response), 'error');
-    expect(response.status).toBe(400);
-    expect(numberAt(error, 'code')).toBe(-32022);
-    expect(arrayAt(recordAt(error, 'data'), 'supported')).toEqual([PROTOCOL_VERSION]);
-    expect(textAt(error, 'message')).toContain(PROTOCOL_VERSION);
+    const initialized = recordAt(await bodyRecord(response), 'result');
+    expect(response.status).toBe(200);
+    expect(textAt(initialized, 'protocolVersion')).toBe(LEGACY_PROTOCOL_VERSION);
+    expect(recordAt(initialized, 'capabilities').tools).toBeDefined();
+    expect(recordAt(initialized, 'serverInfo')).toEqual({ name: 'operator', version: '0.2.0' });
+    expect(textAt(initialized, 'instructions')).toContain('Three datasets');
+  });
+
+  it('serves legacy tool discovery and calls without modern mirrored metadata', async () => {
+    const listed = recordAt(await bodyRecord(await handleMcp(legacyRpc('tools/list'), testDb())), 'result');
+    expect(recordsAt(listed, 'tools').map((tool) => textAt(tool, 'name'))).toContain('concepts_list');
+
+    const called = await handleMcp(legacyRpc('tools/call', { name: 'concepts_list', arguments: {} }), testDb());
+    const callResult = recordAt(await bodyRecord(called), 'result');
+    expect(recordsAt(callResult, 'content')[0]).toMatchObject({ type: 'text' });
+    expect(recordAt(callResult, 'structuredContent')).toMatchObject({ count: 0, concepts: [] });
   });
 
   it('rejects a request that declares no protocol version at all', async () => {
@@ -151,7 +171,13 @@ describe('handleMcp', () => {
     expect(textAt(error, 'message')).toContain('Mcp-Name');
   });
 
-  it('rejects a notification, since this revision defines none from the client', async () => {
+  it('acknowledges the legacy initialized notification without creating a session', async () => {
+    const response = await handleMcp(legacyRpc('notifications/initialized', {}, null), testDb());
+    expect(response.status).toBe(202);
+    expect(await response.text()).toBe('');
+  });
+
+  it('rejects a notification under the modern revision', async () => {
     const response = await handleMcp(rpc('notifications/initialized'), testDb());
     expect(response.status).toBe(400);
     expect(numberAt(recordAt(await bodyRecord(response), 'error'), 'code')).toBe(-32600);
