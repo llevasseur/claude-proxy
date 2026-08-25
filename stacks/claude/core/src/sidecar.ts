@@ -54,7 +54,7 @@
  *
  * ## Why the boundary lint rules are disabled for this file
  *
- * The five rules below all say the same thing: do not accept `unknown`, do not
+ * The four rules below all say the same thing: do not accept `unknown`, do not
  * hold an open dictionary, do not branch on `typeof` — **parse the payload at
  * its I/O boundary and work in domain types instead.** That is exactly what this
  * file does; it *is* that boundary. `readSidecar` takes the `JSON.parse` result
@@ -62,7 +62,7 @@
  * domain type. A parser cannot accept the domain type it exists to produce, so
  * on this file the rules fire on the remedy rather than on the defect.
  *
- * Scoped to this file and to these five rules by a comment rather than by
+ * Scoped to this file and to these four rules by a comment rather than by
  * `.oxlintrc.json`, so it stays visible to anyone reading the module and does
  * not weaken the rules anywhere else. `require-safety-comment-for-type-assertion`
  * is deliberately **not** in the list: every assertion below carries a real
@@ -72,7 +72,6 @@
 // oxlint-disable anti-slop/no-unknown-parameters -- decoding boundary; see the note above.
 // oxlint-disable anti-slop/no-unsafe-dictionary-type -- decoding boundary; see the note above.
 // oxlint-disable anti-slop/no-runtime-typeof -- decoding boundary; see the note above.
-// oxlint-disable anti-slop/no-unknown-returns -- decoding boundary; see the note above.
 // oxlint-disable anti-slop/no-known-value-widening -- decoding boundary; see the note above.
 
 import type { HarnessId, ProviderId, RecordStamp } from './adapter-seam.js';
@@ -133,9 +132,11 @@ const SIDECAR_ADDED_KEYS = Object.freeze(['schemaVersion', 'provider', 'harness'
  * is wrong, not merely unnecessary.
  */
 export const FORBIDDEN_SIDECAR_KEYS: readonly string[] = Object.freeze([
+  'access_token',
   'api_key',
   'apiKey',
   'authorization',
+  'bearer',
   'body',
   'cookie',
   'cookies',
@@ -147,6 +148,8 @@ export const FORBIDDEN_SIDECAR_KEYS: readonly string[] = Object.freeze([
   'pricingSource',
   'prompt',
   'promptText',
+  'proxy_authorization',
+  'refresh_token',
   'request_body',
   'requestBody',
   'requestHeaders',
@@ -154,13 +157,37 @@ export const FORBIDDEN_SIDECAR_KEYS: readonly string[] = Object.freeze([
   'responseBody',
   'responseHeaders',
   'secret',
+  'set_cookie',
   'system_prompt',
   'systemPrompt',
   'tool_calls',
   'tool_definitions',
   'toolCalls',
   'toolDefinitions',
+  'x_api_key',
 ]);
+
+/**
+ * Fold a key to the shape the blocklist is matched on: lowercase, with `-` and
+ * `_` removed.
+ *
+ * **Exact case-sensitive matching was the hole.** `x-api-key` is the header this
+ * proxy actually authenticates Anthropic with and is the likeliest credential to
+ * leak; `set-cookie` is the real response-header spelling; and `Authorization`
+ * and `Cookie` are the canonical HTTP casings, so all four walked past a list
+ * that already carried their lowercase or underscored forms. Normalizing both
+ * sides collapses every spelling of one name onto one entry.
+ *
+ * It widens nothing it should not: the real sidecar's own keys — `toolCount`,
+ * `estTokens`, `cacheRead`, `totalBytes` — fold to strings that appear nowhere
+ * on the list.
+ */
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replaceAll('-', '').replaceAll('_', '');
+}
+
+/** The blocklist folded once, at module load, so matching is a set lookup. */
+const NORMALIZED_FORBIDDEN_KEYS: ReadonlySet<string> = new Set(FORBIDDEN_SIDECAR_KEYS.map(normalizeKey));
 
 /** Raised for every rejection in this module. Never swallowed, never defaulted. */
 export class SidecarValidationError extends Error {
@@ -267,11 +294,29 @@ export function assertSanitizedSidecar(value: unknown, path = 'sidecar'): void {
   }
   if (typeof value !== 'object' || value === null) return;
   for (const [key, nested] of Object.entries(value)) {
-    if (FORBIDDEN_SIDECAR_KEYS.includes(key)) {
+    if (NORMALIZED_FORBIDDEN_KEYS.has(normalizeKey(key))) {
       throw new SidecarValidationError(`${path}.${key} is a field a sanitized sidecar must never carry`);
     }
     assertSanitizedSidecar(nested, `${path}.${key}`);
   }
+}
+
+/**
+ * One check for an adapter version, wherever it came from.
+ *
+ * Shared rather than inlined because the two read paths get the value from
+ * different places — the payload on v2, the capturing adapter on v1 — and a
+ * field validated on one path and trusted on the other is validated nowhere a
+ * caller can rely on.
+ */
+function assertAdapterVersion(value: unknown, path: string): number {
+  // SAFETY: `Number.isSafeInteger` on the left of the `||` has already rejected
+  // every non-number, so the comparison runs only on a proven number.
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new SidecarValidationError(`${path} must be a positive safe integer`);
+  }
+  // SAFETY: `Number.isSafeInteger` above already established this is a number.
+  return value as number;
 }
 
 function assertRegistered(context: SidecarReadContext, provider: ProviderId, harness: HarnessId): void {
@@ -298,8 +343,14 @@ function assertRegistered(context: SidecarReadContext, provider: ProviderId, har
 export function toSidecarV2<TBody extends Record<string, unknown>>(
   body: TBody,
   stamp: RecordStamp,
-): TBody & SidecarProvenanceV2 {
+): Readonly<TBody & SidecarProvenanceV2> {
   assertSanitizedSidecar(body);
+  // The writer holds the same two values to the standard the reader enforces, so
+  // a payload this function accepts is one `readSidecar` can read back. Skipping
+  // them here would let a bad `adapterVersion` be written and only fail at some
+  // later read, with the offending value long out of reach.
+  assertAdapterVersion(stamp.adapterVersion, 'stamp.adapterVersion');
+  asNonEmptyString(stamp.model, 'stamp.model');
   for (const key of SIDECAR_PROVENANCE_KEYS) {
     if (key !== 'model' && key in body) {
       throw new SidecarValidationError(`sidecar body already carries the provenance key '${key}'`);
@@ -341,7 +392,29 @@ export function readSidecar(value: unknown, context: SidecarReadContext): ReadSi
   assertSanitizedSidecar(sidecar);
 
   if (schemaVersion === SIDECAR_SCHEMA_V1) {
+    // A v1 file carries none of v2's discriminators by definition, so finding one
+    // here means the version field is *missing*, not that the file is v1 — and
+    // resolving from the capturing adapter would then quietly overwrite a stated
+    // provider with a different one. That is the same misattribution the v2 path
+    // refuses loudly, so it is refused loudly here too rather than half the time.
+    // This is not a second version signal: the version was already decided above,
+    // from `schemaVersion` alone. It is a consistency check on the result.
+    for (const key of SIDECAR_ADDED_KEYS) {
+      if (key !== 'schemaVersion' && key in sidecar) {
+        throw new SidecarValidationError(
+          `sidecar states no schemaVersion but carries '${key}' — refusing to read it as v1 and overwrite that value`,
+        );
+      }
+    }
     assertRegistered(context, context.capturedBy.provider, context.capturedBy.harness);
+    assertAdapterVersion(context.capturedBy.adapterVersion, 'capturedBy.adapterVersion');
+
+    // The v1 payload is handed back as it arrived; nothing here rewrites a v1
+    // sidecar. The one key dropped is a literally-stated `schemaVersion`, so that
+    // `body` means "payload minus header" at both versions rather than only at v2.
+    const v1Body: Record<string, unknown> = { ...sidecar };
+    delete v1Body.schemaVersion;
+
     return Object.freeze({
       schemaVersion,
       stampSource: 'capturing-adapter' as const,
@@ -351,9 +424,7 @@ export function readSidecar(value: unknown, context: SidecarReadContext): ReadSi
         model: asNonEmptyString(sidecar.model, 'sidecar.model'),
         adapterVersion: context.capturedBy.adapterVersion,
       }),
-      // The v1 payload is handed back exactly as it arrived: no provenance
-      // header is spliced in, because nothing here rewrites a v1 sidecar.
-      body: Object.freeze({ ...sidecar }),
+      body: Object.freeze(v1Body),
     });
   }
 
@@ -366,12 +437,7 @@ export function readSidecar(value: unknown, context: SidecarReadContext): ReadSi
   // `assertRegistered` call below, which rejects any id the registries do not name.
   const harness = asNonEmptyString(sidecar.harness, 'sidecar.harness') as HarnessId;
   assertRegistered(context, provider, harness);
-  const adapterVersion = sidecar.adapterVersion;
-  // SAFETY: `Number.isSafeInteger` has already established this is a number, so
-  // the comparison is on a value whose type the guard to its left proved.
-  if (!Number.isSafeInteger(adapterVersion) || (adapterVersion as number) < 1) {
-    throw new SidecarValidationError('sidecar.adapterVersion must be a positive safe integer');
-  }
+  const adapterVersion = assertAdapterVersion(sidecar.adapterVersion, 'sidecar.adapterVersion');
 
   const body: Record<string, unknown> = { ...sidecar };
   for (const key of SIDECAR_ADDED_KEYS) {
@@ -385,9 +451,7 @@ export function readSidecar(value: unknown, context: SidecarReadContext): ReadSi
       provider,
       harness,
       model: asNonEmptyString(sidecar.model, 'sidecar.model'),
-      // SAFETY: narrowed by the `Number.isSafeInteger` guard above, which threw
-      // for anything that is not a positive safe integer.
-      adapterVersion: adapterVersion as number,
+      adapterVersion,
     }),
     body: Object.freeze(body),
   });

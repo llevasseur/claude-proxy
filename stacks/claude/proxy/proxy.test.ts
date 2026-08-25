@@ -280,7 +280,14 @@ test('sidecar states its schema version and both adapter axes', () => {
   // the Anthropic wire to a Claude Code harness, and it names both.
   assert.equal(parsed.provider, 'anthropic');
   assert.equal(parsed.harness, 'claude-code');
-  assert.ok(Number.isSafeInteger(parsed.adapterVersion) && parsed.adapterVersion >= 1);
+  // Pinned to the exact value, not merely to "an integer". This proxy cannot
+  // import `anthropicProviderAdapter` to read its version — it declares no
+  // dependencies — so the seam is held by two assertions that must be edited
+  // together: this one, and the matching `toBe(1)` in
+  // `stacks/claude/core/test/sidecar.test.ts`. A loose `>= 1` here would let the
+  // adapter move to 2 while the proxy stamped every capture 1 forever, with both
+  // suites green and every record thereafter naming the wrong adapter.
+  assert.equal(parsed.adapterVersion, 1);
 
   // Cost is resolved at read time and has no slot here, however the rate table moves.
   assert.equal('cost' in parsed, false);

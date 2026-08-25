@@ -96,6 +96,15 @@ describe('a v2 sidecar survives write-then-read with every field intact', () => 
     expect(read.body).toEqual(v1Body);
   });
 
+  it('pins the anthropic adapter version the proxy hardcodes', () => {
+    // The other half of the seam. `stacks/claude/proxy` cannot import this
+    // adapter without taking a runtime dependency, so it writes `1` as a literal
+    // and asserts that literal in `proxy.test.ts`. Moving the adapter's version
+    // must fail here, forcing both sites into the same diff — otherwise the proxy
+    // keeps stamping the old version and every record misnames its adapter.
+    expect(anthropicProviderAdapter.adapterVersion).toBe(1);
+  });
+
   it('keeps provider and harness independent, so an unusual pairing survives', () => {
     // If either axis were derived from the other this pairing could not round-trip.
     const stamp = stampFromHarness(claudeCodeHarnessAdapter, { provider: 'ox-alpha', model: 'gpt-5' });
@@ -233,5 +242,97 @@ describe('sidecars stay sanitized, and cost is not among their fields', () => {
     expect(() => readSidecar({ ...v1Body, responseBody: 'text' }, { capturedBy: capturedByClaude })).toThrow(
       SidecarValidationError,
     );
+  });
+
+  it('catches a credential however it is spelled or cased', () => {
+    // `x-api-key` is the header this proxy authenticates Anthropic with, and
+    // `set-cookie` is the real response-header spelling. Exact case-sensitive
+    // matching let all of these through even though the list already carried
+    // their lowercase or underscored forms.
+    const spellings = [
+      { 'x-api-key': 'sk-ant-REAL' },
+      { 'X-Api-Key': 'sk-ant-REAL' },
+      { 'set-cookie': 's=1' },
+      { Authorization: 'Bearer sk' },
+      { Cookie: 'a=b' },
+      { access_token: 'tok' },
+      { 'proxy-authorization': 'Basic x' },
+    ];
+    for (const carrier of spellings) {
+      expect(() => assertSanitizedSidecar({ ...v1Body, upstream: carrier })).toThrow(SidecarValidationError);
+    }
+  });
+
+  it('still accepts the keys a real sidecar carries, after normalization', () => {
+    // The fold must not start catching `toolCount`, `estTokens` or `cacheRead`.
+    expect(() => assertSanitizedSidecar(v1Body)).not.toThrow();
+  });
+});
+
+describe('a missing version field with v2 discriminators present is refused', () => {
+  it('never overwrites a stated provider by reading the file as v1', () => {
+    // No `schemaVersion`, but the header's other keys are there. Resolving from
+    // the capturing adapter would silently turn openai/codex into
+    // anthropic/claude-code — the misattribution the v2 path rejects loudly.
+    const headerWithoutVersion = {
+      timestamp: '2026-08-25T12:00:00.000Z',
+      model: 'm',
+      provider: 'openai',
+      harness: 'codex',
+      adapterVersion: 7,
+    };
+
+    expect(() => readSidecar(headerWithoutVersion, { capturedBy: capturedByClaude })).toThrow(
+      /refusing to read it as v1/,
+    );
+  });
+
+  it('leaves a genuine v1 file, which carries none of those keys, readable', () => {
+    expect(readSidecar(throughDisk(v1Body), { capturedBy: capturedByClaude }).stamp.provider).toBe('anthropic');
+  });
+});
+
+describe('the writer holds a stamp to the standard the reader enforces', () => {
+  it('refuses an adapter version the reader would reject', () => {
+    // SAFETY: both literals are registered ids; the assertions only widen the
+    // inferred string literals to the union types `RecordStamp` declares. What is
+    // deliberately invalid here is `adapterVersion`, supplied per case below.
+    const bad = { provider: 'anthropic' as ProviderId, harness: 'claude-code' as HarnessId, model: 'm' };
+
+    expect(() => toSidecarV2({ endpoint: '/e' }, { ...bad, adapterVersion: Number.NaN })).toThrow(
+      SidecarValidationError,
+    );
+    expect(() => toSidecarV2({ endpoint: '/e' }, { ...bad, adapterVersion: 0 })).toThrow(SidecarValidationError);
+  });
+
+  it('refuses an empty model the reader would reject', () => {
+    // SAFETY: both literals are registered ids, widened to their declared unions.
+    // The empty `model` is the invalid field under test.
+    const bad = {
+      provider: 'anthropic' as ProviderId,
+      harness: 'claude-code' as HarnessId,
+      model: '',
+      adapterVersion: 1,
+    };
+
+    expect(() => toSidecarV2({ endpoint: '/e' }, bad)).toThrow(SidecarValidationError);
+  });
+
+  it('validates the capturing adapter version on the v1 path too', () => {
+    expect(() =>
+      readSidecar(throughDisk(v1Body), {
+        capturedBy: { provider: 'anthropic', harness: 'claude-code', adapterVersion: Number.NaN },
+      }),
+    ).toThrow(/capturedBy.adapterVersion/);
+  });
+
+  it('reports body as payload-minus-header at both versions', () => {
+    // A literal `schemaVersion: 1` is in-contract, and used to survive into
+    // `body` while a v2 header did not — so the same logical record answered
+    // `Object.keys(body)` differently depending on its version.
+    const read = readSidecar({ schemaVersion: 1, model: 'm', endpoint: '/e' }, { capturedBy: capturedByClaude });
+
+    expect(read.schemaVersion).toBe(SIDECAR_SCHEMA_V1);
+    expect(read.body).toEqual({ model: 'm', endpoint: '/e' });
   });
 });
