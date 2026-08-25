@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-12-fold-in-decimal-money-and-cost-reason`
-**Status:** active
+**Status:** done · 2026-08-25
 
 Independent of the spine by file scope — claude's core money and cost modules — so it may
 run in the first wave.
