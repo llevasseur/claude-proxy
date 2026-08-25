@@ -23,6 +23,11 @@ const tokens = (t: Partial<Parameters<typeof estimateCost>[0]> = {}) => ({
   ...t,
 });
 
+/** A row an operator could plausibly mistype: every rate usable but `input`. */
+const BROKEN_INPUT_RATE = {
+  opus: { input: Number.NaN, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+} satisfies Record<string, ModelPrice>;
+
 describe('priceFor', () => {
   it('matches families by substring', () => {
     expect(priceFor('claude-opus-4-8')).toBe(MODEL_PRICES.opus);
@@ -131,19 +136,17 @@ describe('resolveCost', () => {
   });
 
   it('reports an unusable rate on a consumed bucket', () => {
-    const broken: Record<string, ModelPrice> = {
-      opus: { input: Number.NaN, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
-    };
-    const result = resolveCost(tokens({ input: 10 }), 'claude-opus-5', broken);
+    const result = resolveCost(tokens({ input: 10 }), 'claude-opus-5', BROKEN_INPUT_RATE);
     expect(result.cost).toBeNull();
-    expect(result.unavailableReason).toEqual({ code: 'missing-category-price', model: 'claude-opus-5', category: 'input' });
+    expect(result.unavailableReason).toEqual({
+      code: 'missing-category-price',
+      model: 'claude-opus-5',
+      category: 'input',
+    });
   });
 
   it('ignores an unusable rate on a bucket that consumed nothing', () => {
-    const broken: Record<string, ModelPrice> = {
-      opus: { input: Number.NaN, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
-    };
-    const result = resolveCost(tokens({ output: 1_000_000 }), 'claude-opus-5', broken);
+    const result = resolveCost(tokens({ output: 1_000_000 }), 'claude-opus-5', BROKEN_INPUT_RATE);
     expect(result.unavailableReason).toBeNull();
     expect(result.cost?.total).toBe('25.000000');
   });

@@ -35,7 +35,10 @@ export const FALLBACK_PRICE: ModelPrice = { input: 3, output: 15, cacheWrite: 3.
  * matches. This is the honest lookup: it reports the miss rather than covering
  * it, which is what lets `resolveCost` mark the cost unavailable.
  */
-export function priceRowFor(model: string, prices: Readonly<Record<string, ModelPrice>> = MODEL_PRICES): ModelPrice | null {
+export function priceRowFor(
+  model: string,
+  prices: Readonly<Record<string, ModelPrice>> = MODEL_PRICES,
+): ModelPrice | null {
   const m = model.toLowerCase();
   for (const [family, row] of Object.entries(prices)) {
     if (m.includes(family)) return row;
@@ -179,7 +182,7 @@ export function resolveCost(
     ['cacheWrite', tokens.cacheCreation, row.cacheWrite],
     ['cacheRead', tokens.cacheRead, row.cacheRead],
   ];
-  const picoUsd: Record<PriceCategory, bigint> = { input: 0n, output: 0n, cacheWrite: 0n, cacheRead: 0n };
+  const picoUsd = { input: 0n, output: 0n, cacheWrite: 0n, cacheRead: 0n } satisfies Record<PriceCategory, bigint>;
   let total = 0n;
 
   for (const [category, count, rate] of buckets) {
@@ -188,7 +191,8 @@ export function resolveCost(
     }
     if (count === 0) continue;
     const perToken = picoUsdPerToken(rate);
-    if (perToken === null) return { cost: null, unavailableReason: { code: 'missing-category-price', model, category } };
+    if (perToken === null)
+      return { cost: null, unavailableReason: { code: 'missing-category-price', model, category } };
     const amount = BigInt(count) * perToken;
     picoUsd[category] = amount;
     total += amount;
