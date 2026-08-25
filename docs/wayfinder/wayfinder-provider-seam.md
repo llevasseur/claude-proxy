@@ -143,7 +143,7 @@ Taken before charting; re-measure rather than trusting these if a ticket turns o
 | 16 | ui-fallback-stamp | [provider-seam-16-ui-fallback-stamp](provider-seam-16-ui-fallback-stamp.md) | `task/provider-seam-16-ui-fallback-stamp` | todo | |
 | 17 | ui-interrupted-resumed | [provider-seam-17-ui-interrupted-resumed](provider-seam-17-ui-interrupted-resumed.md) | `task/provider-seam-17-ui-interrupted-resumed` | todo | |
 | 18 | docs-feature-and-spec | [provider-seam-18-docs-feature-and-spec](provider-seam-18-docs-feature-and-spec.md) | `task/provider-seam-18-docs-feature-and-spec` | todo | |
-| 19 | ox-8788-stragglers | [provider-seam-19-ox-8788-stragglers](provider-seam-19-ox-8788-stragglers.md) | `task/provider-seam-19-ox-8788-stragglers` | todo | |
+| 19 | ox-8788-stragglers | [provider-seam-19-ox-8788-stragglers](provider-seam-19-ox-8788-stragglers.md) | `task/provider-seam-19-ox-8788-stragglers` | in-progress | |
 | zz | retire-done-plans | [provider-seam-zz-retire-done-plans](provider-seam-zz-retire-done-plans.md) | `task/provider-seam-zz-retire-done-plans` | todo | Final ticket — deletes every plan. Execute last. |
 
 <!--
