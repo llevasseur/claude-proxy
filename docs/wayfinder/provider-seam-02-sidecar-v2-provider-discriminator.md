@@ -2,7 +2,7 @@
 
 **Wayfinder:** `provider-seam`
 **Branch:** `task/provider-seam-02-sidecar-v2-provider-discriminator`
-**Status:** active
+**Status:** done · 2026-08-25
 
 Depends on ticket 01's contract.
 
