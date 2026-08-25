@@ -70,7 +70,15 @@ export async function memoiseByCorpus<T>(
 
   const slot: CorpusSlot = { sig, payload: undefined, inflight: null };
   slots.set(key, slot);
-  const run = build();
+  let run: Promise<T>;
+  try {
+    run = build();
+  } catch (err) {
+    // A builder that throws before producing a promise must leave no slot
+    // behind — a settled slot with no payload would answer `undefined` forever.
+    if (slots.get(key) === slot) slots.delete(key);
+    throw err;
+  }
   slot.inflight = run;
   // Marks the slot settled or sweeps a failed build out of the map. Both
   // outcomes are consumed here, so this chain never rejects on its own — the

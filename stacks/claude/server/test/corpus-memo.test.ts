@@ -141,6 +141,19 @@ describe('memoiseByCorpus', () => {
     await expect(run()).resolves.toEqual({ ok: true });
   });
 
+  it('sweeps the slot when the build throws before producing a promise', async () => {
+    const { source } = stubSource(() => mark);
+    let fail = true;
+    const run = () =>
+      memoiseByCorpus('summary', logDir, source, OPEN_DAY, () => {
+        if (fail) throw new Error('sync failure');
+        return Promise.resolve({ ok: true });
+      });
+    await expect(run()).rejects.toThrow('sync failure');
+    fail = false;
+    await expect(run()).resolves.toEqual({ ok: true });
+  });
+
   it('bypasses the memo for a backing with no watermark', async () => {
     const { watermark: _stripped, ...bare } = fileSource;
     // SAFETY: the spread dropped only the optional `watermark`, so `bare` still
