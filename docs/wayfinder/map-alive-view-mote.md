@@ -26,13 +26,35 @@ unratified; six carry `needs-human: true`.
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 03 | alive-route-page | [alive-view-mote-03-alive-route-page](alive-view-mote-03-alive-route-page.md) | `task/alive-view-mote-03-alive-route-page` | in-progress |
 
-Dependencies: 03 depends on 01 and 02; 01 and 02 are independent.
+Dependencies: 03 depends on 01 and 02; 01 and 02 are independent. All three have landed.
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+### 03 — alive-route-page (2026-08-25)
+
+PR [#307](https://github.com/llevasseur/claude-proxy/pull/307), squash-merged into
+`wayfinder/alive-view-mote`. `/sessions/alive` is live: a new route
+(`stacks/claude/admin/src/routes/sessions-alive.tsx`, registered once in the registry, no
+`nav`) renders through ticket 01's shell, polling `/api/sessions/graph` at the session
+graph's 4 s cadence under its query key and `/api/sessions/graph/nodes` for the watched
+family exactly as `session-graph.tsx` does (20 s backstop, `keepPreviousData`), deriving
+with ticket 02's `deriveAliveView` with `Date.now()` injected at render on a 15 s tick.
+Selection rides the rail's `onSelect`, defaulting to the tab-owned thread. Empty watch,
+Stressed and aria-live behaviour follow ADRs 0025–0027; the layout spec
+(`docs/features/alive-view.md`) landed in its own commit before the component. Deviations
+worth keeping: **no SSE subscription** — ADR 0018's redundancy clause applied, since the
+4 s index poll refreshes `modified` three orders of magnitude finer than the stress
+threshold; and the owned thread is the default watch rather than a state initialiser,
+because `useChatThread` resolves asynchronously after mount. The shell's inert Alive span
+became a real `Link`. One repair round (the shell's required `onNewChat`); two chat-cli
+test failures in the first verify were the machine-load flake recorded under ticket 02 —
+the file passes standalone and the fresh full run is green. **Browser evidence missing**:
+no browser automation tooling existed this session, so the plan's Chrome checks (toggle
+both directions, selection swaps within poll cadence, stale fixture reads Stressed) are
+recorded verbatim as not-run in the PR body rather than simulated.
 
 ### 02 — core-emotion-derivation (2026-08-25)
 
