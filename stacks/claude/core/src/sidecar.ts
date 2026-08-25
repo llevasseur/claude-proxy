@@ -1,6 +1,8 @@
 /**
  * Sidecar v2 — the sanitized audit sidecar, with an explicit provider
- * discriminator.
+ * discriminator. Sanitization itself is
+ * `docs/adrs/0019-sanitized-audit-sidecars.md`: bodies, prompts and tool data
+ * have no schema slot here, v1 or v2.
  *
  * ## What v2 adds, and what it deliberately does not
  *
@@ -113,6 +115,9 @@ const SIDECAR_ADDED_KEYS = Object.freeze(['schemaVersion', 'provider', 'harness'
 
 /**
  * Keys a sidecar may never carry, at any depth.
+ *
+ * This is `docs/adrs/0019-sanitized-audit-sidecars.md` made executable: request
+ * and response bodies have no schema slot, and this list is where that's enforced.
  *
  * **The list names only unambiguous offenders**, because a false positive here
  * rejects a real captured sidecar — the very files this repository treats as its
