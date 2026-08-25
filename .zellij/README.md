@@ -34,13 +34,19 @@ nobody starts together.
 These are the ports the code actually binds today, read from source rather than from a
 specification. **Nothing here is a target to converge on: change no number.** ADR 0050
 struck "allocate nine distinct ports" — that was a remedy for a collision fusion did not
-create, and renumbering would itself be the runtime change this campaign forbids.
+create, and renumbering would itself be the runtime change that campaign forbade.
+
+**One number has moved since, and exactly one.** ADR 0062 took ox's server from `8788` to
+`8808` — beside ox's own proxy on `8807` — because ADR 0041's provider picker needs
+claude's and ox's servers bound *at the same time*, in a checkout nobody has configured.
+That amends 0050's "change none of these numbers" for this single default and leaves the
+rest of 0050 governing, so the sentence above still holds for the other eight.
 
 | stack | proxy | server | admin |
 |---|---|---|---|
 | claude | 8787 | 8788 | 5173 |
 | codex | 8026 | 4319 | 5173 |
-| ox-alpha | 8807 | 8788 | 5173 |
+| ox-alpha | 8807 | 8808 | 5173 |
 
 Which name each one reads, and where the default is written:
 
@@ -61,9 +67,10 @@ The three admin ports are Vite's, set in each stack's `vite.config.ts`: claude p
 `OX_PROXY_PORT` and `OX_SERVER_PORT` (ticket 06) arrived with the absorption tickets, and
 ticket 22 added `CLAUDE_PROXY_PORT`, `CLAUDE_SERVER_PORT` and `CODEX_PROXY_PORT`. Each
 keeps its bare name as a fallback scoped to its own package, so a stack launched exactly
-as it is launched today resolves exactly as it did — **no default in the table above
-moved**, and ADR 0050 now describes this repository rather than a state it had not
-reached.
+as it is launched today resolves exactly as it did, and ADR 0050 now describes this
+repository rather than a state it had not reached. **Eight of the nine defaults are the
+ones fusion found**; ox's server is the one that moved, under ADR 0062, and it moved by
+changing the number rather than by leaning on the scoped name.
 
 **claude's proxy and server validate nothing, and that is the one asymmetry worth
 knowing.** Neither package had a config module at all before ticket 22: `Number()` of a
@@ -74,15 +81,24 @@ the runtime change ADR 0050 exists to avoid. So claude's two took the siblings'
 port cases in `stacks/claude/proxy/config.test.ts` where codex's proxy has four: the
 fourth asserts a rejection claude deliberately does not perform.
 
-## The two collisions, recorded rather than fixed
+## The collisions: one fixed, one still recorded
 
-- **claude's server and ox's server both default to `8788`.**
-- **All three admin dev servers default to `5173`.**
+- **The two servers no longer collide.** claude's stays on `8788` and ox's is on `8808`.
+- **All three admin dev servers still default to `5173`.**
 
-Both are **pre-existing**: running these repositories side by side before fusion already
-collided in exactly this way, so fusion neither caused them nor is the occasion to fix
-them. Under ADR 0050's boundary they are out of scope. What makes them survivable is the
-scoped names above — `OX_SERVER_PORT=…` moves ox's server off `8788` without touching a
-default, and `CLAUDE_SERVER_PORT=…` now does the same for claude's. In
-practice whichever process binds second loses, which is why claude's admin sets
-`strictPort` and says so rather than sliding to `5174`.
+Both started out **pre-existing** — running these repositories side by side before fusion
+already collided in exactly these two ways — and under ADR 0050's boundary both were out
+of scope, survivable because the scoped names made them overridable.
+
+**What changed for the servers is what the collision costs.** While nothing needed two
+servers up at once, an override was a sufficient answer. ADR 0041's provider picker asks
+one dashboard to read all three, so the collision stopped being awkwardness and started
+being a default checkout that cannot work; by 0050's own boundary test it became
+campaign-caused and in scope. ADR 0062 moved ox's default rather than claude's, the
+smaller blast radius of the two, and `OX_SERVER_PORT=8788` still puts it back for anyone
+who wants the old number.
+
+**The admin collision stands, and deliberately.** The picker does not require three
+dashboards up at once, so nothing has made it campaign-caused. In practice whichever
+process binds second loses, which is why claude's admin sets `strictPort` and says so
+rather than sliding to `5174`.
