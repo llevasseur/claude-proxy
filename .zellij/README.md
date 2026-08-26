@@ -1,11 +1,13 @@
-# Dev session layouts, and the nine ports
+# Dev session layouts, and the ports
 
-Three zellij layouts, one per stack, each opening that stack's proxy, server and admin
-in a `dev` tab plus a spare shell. Launch one with `pnpm zellij` from the stack whose
-session you want — the root script starts claude's, `stacks/codex` and
-`stacks/ox-alpha` start their own.
+Four zellij layouts, one per stack, each opening that stack's processes in a `dev` tab
+plus a spare shell. Launch one with `pnpm zellij` from the stack whose session you want —
+the root script starts claude's, `stacks/codex`, `stacks/ox-alpha` and `stacks/net` start
+their own. Claude, codex and ox each open proxy, server and admin; net opens only its
+server, because it has one process — the collector lives inside it (decision
+internet-spend 005).
 
-All three layouts live here rather than under their stacks, and that move repaired
+All four layouts live here rather than under their stacks, and that move repaired
 something rather than tidying it. Each stack's `scripts/zellij.sh` resolves
 `git rev-parse --show-toplevel` and `cd`s there, which after fusion is the *monorepo*
 root, and then asks for `.zellij/<stack>.kdl` — a path that did not exist until these
@@ -16,8 +18,9 @@ files arrived. Both sibling launchers were broken on arrival and are not any mor
 | [claude-proxy.kdl](claude-proxy.kdl) | `pnpm zellij` | the monorepo root |
 | [codex-proxy.kdl](codex-proxy.kdl) | `stacks/codex` → `pnpm zellij` | `cwd "stacks/codex"` |
 | [ox-alpha-proxy.kdl](ox-alpha-proxy.kdl) | `stacks/ox-alpha` → `pnpm zellij` | `cwd "stacks/ox-alpha"` |
+| [net-server.kdl](net-server.kdl) | `stacks/net` → `pnpm zellij` | `cwd "stacks/net"` |
 
-The two sibling layouts pin `cwd` per pane because a bare `pnpm proxy` at the monorepo
+The sibling layouts pin `cwd` per pane because a bare `pnpm proxy` at the monorepo
 root resolves to the *root* script, which is claude's. `cwd` also keeps each script's
 own relative paths working — ox's proxy script is
 `node --env-file-if-exists=proxy/.env …`, resolved against the working directory, so
@@ -29,18 +32,19 @@ three: one session per stack is what makes `pnpm zellij` mean the same thing eve
 and a second layout for the same stack splits that stack's processes across two sessions
 nobody starts together.
 
-## The nine defaults
+## The defaults
 
 These are the ports the code actually binds today, read from source rather than from a
 specification. **Nothing here is a target to converge on: change no number.** ADR 0050
 struck "allocate nine distinct ports" — that was a remedy for a collision fusion did not
-create, and renumbering would itself be the runtime change this campaign forbids.
+create, and renumbering would itself be the runtime change the fusion campaign forbids.
 
 | stack | proxy | server | admin |
 |---|---|---|---|
 | claude | 8787 | 8788 | 5173 |
 | codex | 8026 | 4319 | 5173 |
 | ox-alpha | 8807 | 8788 | 5173 |
+| net | — | 8531 | — |
 
 Which name each one reads, and where the default is written:
 
@@ -52,10 +56,17 @@ Which name each one reads, and where the default is written:
 | codex server | `CODEX_SERVER_PORT` | `PORT` | `stacks/codex/server/src/config.ts` |
 | ox proxy | `OX_PROXY_PORT` | `PROXY_PORT` | `stacks/ox-alpha/proxy/src/config.ts` |
 | ox server | `OX_SERVER_PORT` | `SERVER_PORT` | `stacks/ox-alpha/server/src/config.ts` |
+| net server | `NET_SERVER_PORT` | `PORT` | `stacks/net/packages/server/src/config.ts` |
 
 The three admin ports are Vite's, set in each stack's `vite.config.ts`: claude pins
 `5173` with `strictPort`, so it refuses to drift and fails loudly instead; codex sets
 `5173`; ox sets nothing and takes Vite's own default, which is `5173` too.
+
+net's server reads one more name: `NET_ALLOWED_ORIGINS`, a comma-separated list of
+origins allowed to `PUT /api/config`, defaulting to
+`http://localhost:5173,http://127.0.0.1:5173`; its GETs answer open CORS regardless.
+It also honors `NET_DB_PATH` for the database location — see
+`stacks/net/packages/server/src/db.ts`.
 
 **All six of ADR 0050's scoped names exist.** `CODEX_SERVER_PORT` (ticket 05),
 `OX_PROXY_PORT` and `OX_SERVER_PORT` (ticket 06) arrived with the absorption tickets, and

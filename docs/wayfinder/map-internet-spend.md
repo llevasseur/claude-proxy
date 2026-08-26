@@ -27,8 +27,7 @@ unratified; 001 and 005 carry `needs-human: true`.
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 01 | net-store-and-read-model | [internet-spend-01-net-store-and-read-model](internet-spend-01-net-store-and-read-model.md) | `task/internet-spend-01-net-store-and-read-model` | todo |
-| 02 | net-collector-and-api | [internet-spend-02-net-collector-and-api](internet-spend-02-net-collector-and-api.md) | `task/internet-spend-02-net-collector-and-api` | todo |
+| 02 | net-collector-and-api | [internet-spend-02-net-collector-and-api](internet-spend-02-net-collector-and-api.md) | `task/internet-spend-02-net-collector-and-api` | in-progress |
 | 03 | internet-route-page | [internet-spend-03-internet-route-page](internet-spend-03-internet-route-page.md) | `task/internet-spend-03-internet-route-page` | todo |
 | 04 | overview-budget-meter | [internet-spend-04-overview-budget-meter](internet-spend-04-overview-budget-meter.md) | `task/internet-spend-04-overview-budget-meter` | todo |
 
@@ -38,6 +37,9 @@ and are independent of each other.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- 01 — net-store-and-read-model: merged as #311; its plan file was retired with
+  the ticket, so this entry carries no link.
 
 ## Agent kickoff prompt
 
