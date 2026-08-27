@@ -13,6 +13,7 @@ import {
   useModelOptions,
   useWindowDigests,
 } from '../components/DayWindow';
+import { InternetSpendCard } from '../components/InternetSpendCard';
 import { type ModelOption, shortModelName } from '../components/ModelPicker';
 import { PerRequestCard, PerRequestSkeleton } from '../components/PerRequestCard';
 import { QueryState } from '../components/QueryState';
@@ -70,6 +71,9 @@ export function OverviewPage() {
         />
 
         <UsageSection data={usage.data} isLoading={usage.isLoading} error={usage.error} />
+        {/* Every net-server read is sealed inside this card — its own queries, its own
+            failures — so nothing about it reaches the meters above or the sections below. */}
+        <InternetSpendCard />
         {/* Both queries gate the skeleton: the tiles carry a mini chart drawn from the
             trends window, so landing them separately would grow the row twice. */}
         <QueryState
