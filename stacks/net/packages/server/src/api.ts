@@ -35,7 +35,8 @@ export interface CorsHeaders {
 
 export interface ApiReply {
   readonly status: number;
-  readonly body: unknown;
+  /** Serialised with `JSON.stringify` by `server.ts`, so it is JSON by contract. */
+  readonly body: JsonValue;
   readonly headers: CorsHeaders;
 }
 
@@ -56,7 +57,7 @@ function writeCors(origin: string | undefined, allowedOrigins: readonly string[]
   return headers;
 }
 
-function json(status: number, body: ApiReply['body'], headers: CorsHeaders = OPEN_CORS): ApiReply {
+function json(status: number, body: JsonValue, headers: CorsHeaders = OPEN_CORS): ApiReply {
   return { status, body, headers };
 }
 

@@ -40,8 +40,10 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 async function respond(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-  // node parses a repeated Origin header into an array; a request that sends one
-  // more than once declares no single origin, so it is treated as declaring none.
+  // `IncomingHttpHeaders` types every header as `string | string[]`, so the
+  // array arm is discharged for the type checker rather than for a request that
+  // can arrive: node arrays `set-cookie` alone and comma-joins every other
+  // repeated header, `origin` included.
   const rawOrigin = req.headers.origin;
   const origin = Array.isArray(rawOrigin) ? undefined : rawOrigin;
 

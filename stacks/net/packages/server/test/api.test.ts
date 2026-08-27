@@ -272,12 +272,19 @@ describe('config routes', () => {
       { resetDay: 32 },
       { agentPatterns: [''] },
       { agentPatterns: 'node' },
+      // The four non-object shapes the payload gate has to separate: a string,
+      // an array, a bare null, and a number.
       'not-an-object',
+      [],
+      null,
+      7,
     ];
     for (const body of invalidBodies) {
       const reply = request(ctx, 'PUT', '/api/config', { origin: 'http://127.0.0.1:5173', body });
       expect(reply?.status).toBe(400);
     }
+    // An absent body is the fifth: `undefined` never reaches the array above.
+    expect(request(ctx, 'PUT', '/api/config', { origin: 'http://127.0.0.1:5173' })?.status).toBe(400);
     expect(get(ctx, '/api/config')?.body).toMatchObject({ limitBytes: null, resetDay: null });
   });
 

@@ -90,11 +90,13 @@ export function insertDiscontinuity(db: DatabaseSync, timestamp: number, kind: '
   db.prepare('INSERT INTO discontinuity (timestamp, kind) VALUES (?, ?)').run(timestamp, kind);
 }
 
-export interface NetConfig {
+// An object type rather than an interface, so it stays assignable to `JsonValue`
+// when a route hands it straight back as a reply body.
+export type NetConfig = {
   limitBytes: number | null;
   resetDay: number | null;
   agentPatterns: string[];
-}
+};
 
 /** One row of the key/value config table. An object type for the same reason `SampleRow` is. */
 type ConfigRow = {
@@ -114,8 +116,10 @@ export function readNetConfig(db: DatabaseSync): NetConfig {
     resetDay: DEFAULT_NET_CONFIG.resetDay,
     agentPatterns: [...DEFAULT_NET_CONFIG.agentPatterns],
   };
-  // SAFETY: the SELECT names exactly `key` and `value`, both NOT NULL TEXT
-  // columns of the config table created by migration 001.
+  // SAFETY: the SELECT names exactly `key` and `value`. `value` is NOT NULL by
+  // migration 001; `key` is its PRIMARY KEY, and sqlite would accept a NULL
+  // there, but `writeNetConfigValue` is the only writer and always binds a
+  // string. Every branch below re-checks the value before using it.
   const rows = db.prepare('SELECT key, value FROM config').all() as ConfigRow[];
   for (const row of rows) {
     if (row.key === 'limitBytes' || row.key === 'resetDay') {
