@@ -9,10 +9,8 @@ import { bucketDays, classifyIntervals, computeDeltas, DEFAULT_AGENT_PATTERNS, f
 /** The sampling cadence the collector runs at; gap classification keys off 3x it. */
 export const CADENCE_MS = 3_600_000;
 
-// Written as an object type rather than an interface so it carries the implicit
-// index signature that makes it comparable to the `Record<string, …>` shape
-// node:sqlite returns — that comparability is what lets the assertions below
-// name this type directly instead of laundering a row through `unknown`.
+// An object type rather than an interface, so its implicit index signature keeps
+// it comparable to the `Record<string, …>` row shape node:sqlite returns.
 export type SampleRow = {
   readonly timestamp: number;
   readonly boot_epoch: number;

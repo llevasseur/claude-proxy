@@ -23,9 +23,8 @@ export interface ApiContext {
 }
 
 /**
- * The CORS headers this API emits. Every field is optional because the read and
- * write paths emit different subsets of them, and because the allowed origin is
- * echoed only when the request declared one on the allow list.
+ * The CORS headers this API emits. Every field is optional: the read and write
+ * paths emit different subsets, and the origin is echoed only for an allow-listed one.
  */
 export interface CorsHeaders {
   'access-control-allow-origin'?: string;
