@@ -27,9 +27,8 @@ unratified; 001 and 005 carry `needs-human: true`.
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 02 | net-collector-and-api | [internet-spend-02-net-collector-and-api](internet-spend-02-net-collector-and-api.md) | `task/internet-spend-02-net-collector-and-api` | in-progress |
-| 03 | internet-route-page | [internet-spend-03-internet-route-page](internet-spend-03-internet-route-page.md) | `task/internet-spend-03-internet-route-page` | todo |
-| 04 | overview-budget-meter | [internet-spend-04-overview-budget-meter](internet-spend-04-overview-budget-meter.md) | `task/internet-spend-04-overview-budget-meter` | todo |
+| 03 | internet-route-page | [internet-spend-03-internet-route-page](internet-spend-03-internet-route-page.md) | `task/internet-spend-03-internet-route-page` | in-progress |
+| 04 | overview-budget-meter | [internet-spend-04-overview-budget-meter](internet-spend-04-overview-budget-meter.md) | `task/internet-spend-04-overview-budget-meter` | in-progress |
 
 Dependencies: 02 depends on 01; 03 and 04 depend on 02 (for the API contract)
 and are independent of each other.
@@ -37,6 +36,20 @@ and are independent of each other.
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- 02 — net-collector-and-api: merged as #312. Ships `stacks/net/packages/server/`
+  — a resident hourly `nettop` timer (decision 005, no launchd), ticket 01's
+  delta/discontinuity write rules applied per batch inside one transaction, and
+  four routes on port 8531 (`/api/summary`, `/api/days`, `GET`/`PUT /api/config`)
+  with open CORS on reads and origin-checked writes. Adds the fourth zellij
+  layout and the AGENTS.md stack row. 82 vitest cases beside the package.
+  **Deviation, needs human:** this macOS build's `nettop -L 1` never emits the
+  planned `name.pid`-with-interface row — process totals carry no interface and
+  interface-bearing flow rows name no process, with no join key — so flow rows
+  are stored under their tuple with synthetic pid 0. Wire-byte totals, deltas
+  and discontinuities hold; agent share stays empty under the default patterns
+  on this build. Folds into decision 001's review. Its plan file was retired
+  with the ticket, so this entry carries no link.
 
 - 01 — net-store-and-read-model: merged as #311; its plan file was retired with
   the ticket, so this entry carries no link.
