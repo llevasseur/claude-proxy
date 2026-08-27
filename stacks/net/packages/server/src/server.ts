@@ -7,6 +7,7 @@ import { handleApiRequest } from './api.ts';
 import { collectBatch, startCollector } from './collector.ts';
 import { readConfig } from './config.ts';
 import { openNetDatabase } from './db.ts';
+import type { JsonValue } from './json.ts';
 
 const config = readConfig();
 const db = openNetDatabase();
@@ -39,9 +40,14 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 async function respond(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-  const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+  // `IncomingHttpHeaders` types every header as `string | string[]`, so the
+  // array arm is discharged for the type checker rather than for a request that
+  // can arrive: node arrays `set-cookie` alone and comma-joins every other
+  // repeated header, `origin` included.
+  const rawOrigin = req.headers.origin;
+  const origin = Array.isArray(rawOrigin) ? undefined : rawOrigin;
 
-  let body: unknown;
+  let body: JsonValue | undefined;
   if (req.method === 'PUT') {
     try {
       const raw = await readBody(req);
@@ -66,9 +72,9 @@ async function respond(req: IncomingMessage, res: ServerResponse): Promise<void>
 }
 
 const server = createServer((req, res) => {
-  void respond(req, res).catch((error: unknown) => {
+  void respond(req, res).catch((cause: unknown) => {
     res.writeHead(500, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: String(error) }));
+    res.end(JSON.stringify({ error: String(cause) }));
   });
 });
 

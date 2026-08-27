@@ -316,15 +316,18 @@ function previousMonthOf(date: CivilDate): CivilDate {
     : { year: date.year, month: date.month - 1, day: 1 };
 }
 
+/** The half-open civil-date span one billing period covers. */
+export interface PeriodBounds {
+  start: CivilDate;
+  endExclusive: CivilDate;
+}
+
 /**
  * Anchored day-of-month reset clamped to the month's last day; resetDay 1 is
  * the calendar month; unset falls back to the 1st (decision internet-spend
  * 003). Purely civil-date arithmetic, so DST cannot move a boundary.
  */
-export function periodBounds(
-  nowLocal: CivilDate,
-  resetDay: number | null | undefined,
-): { start: CivilDate; endExclusive: CivilDate } {
+export function periodBounds(nowLocal: CivilDate, resetDay: number | null | undefined): PeriodBounds {
   const anchor = resetDay ?? 1;
   const currentReset = clampedReset(nowLocal.year, nowLocal.month, anchor);
   if (compareCivil(nowLocal, currentReset) >= 0) {

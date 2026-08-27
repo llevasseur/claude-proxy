@@ -21,6 +21,7 @@
 | Decision internet-spend 005 — The collector is a timer inside net-server; LaunchAgent out of scope | [decision-internet-spend-005-collector-residency.md](decision-internet-spend-005-collector-residency.md) |
 | Internet Spend 03 — admin /internet route page | [internet-spend-03-internet-route-page.md](internet-spend-03-internet-route-page.md) |
 | Internet Spend 04 — Overview budget meter | [internet-spend-04-overview-budget-meter.md](internet-spend-04-overview-budget-meter.md) |
+| Internet Spend 06 — move the campaign's decision records into the ADR bundle | [internet-spend-06-relocate-decision-records.md](internet-spend-06-relocate-decision-records.md) |
 | Wayfinder — Alive View on the sessions tab | [map-alive-view-mote.md](map-alive-view-mote.md) |
 | Wayfinder — Internet Spend meter | [map-internet-spend.md](map-internet-spend.md) |
 | Map: Skim a thin layer off the top of requests to Anthropic | [map-proxy-skim.md](map-proxy-skim.md) |

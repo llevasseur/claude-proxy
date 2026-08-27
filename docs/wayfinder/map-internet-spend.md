@@ -21,21 +21,49 @@ slug: internet-spend
 
 Decisions this campaign made are recorded as
 `docs/wayfinder/decision-internet-spend-001`–`005`, decided by `/dev`,
-unratified; 001 and 005 carry `needs-human: true`.
+unratified; 001 and 005 carry `needs-human: true`. Ticket 06 moves those five
+into `docs/adrs/`, where they survive this campaign's close
+([ADR 0067](../adrs/0067-campaign-decisions-live-in-the-adr-bundle.md)).
+Two further decisions were made while resuming the campaign and were written
+straight into the ADR bundle:
+[0066](../adrs/0066-a-campaign-clears-its-own-lint-debt.md) (`needs-human`) and
+[0067](../adrs/0067-campaign-decisions-live-in-the-adr-bundle.md).
 
 ## Active tasks
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
 | 03 | internet-route-page | [internet-spend-03-internet-route-page](internet-spend-03-internet-route-page.md) | `task/internet-spend-03-internet-route-page` | in-progress |
-| 04 | overview-budget-meter | [internet-spend-04-overview-budget-meter](internet-spend-04-overview-budget-meter.md) | `task/internet-spend-04-overview-budget-meter` | in-progress |
+| 04 | overview-budget-meter | [internet-spend-04-overview-budget-meter](internet-spend-04-overview-budget-meter.md) | `task/internet-spend-04-overview-budget-meter` | todo |
+| 06 | relocate-decision-records | [internet-spend-06-relocate-decision-records](internet-spend-06-relocate-decision-records.md) | `task/internet-spend-06-relocate-decision-records` | in-progress |
 
-Dependencies: 02 depends on 01; 03 and 04 depend on 02 (for the API contract)
-and are independent of each other.
+Dependencies: 02 depends on 01; 03 and 04 depend on 02 (for the API contract).
+Tickets 03 and 06 are both complete and open — PR #313 and PR #314 — and both
+were blocked from merging by the inherited `anti:slop` debt ticket 05 has now
+cleared. That is why each reads in-progress with no run behind it: each needs
+the campaign base merged in and CI re-run before it can land. Ticket 04 depends
+on 03 as well as 02: its budget meter links to `/internet`, and under the typed
+router that link does not typecheck until 03's route exists.
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- 05 — net-anti-slop-debt: merged as #315. Clears all 74 `anti:slop` errors
+  tickets 01 and 02 landed ungated, at root severity and with no waiver — no
+  `biome.json` override, no `stacks/net/.oxlintrc.json`, no rule demoted, no
+  suppression comment ([ADR 0066](../adrs/0066-a-campaign-clears-its-own-lint-debt.md)).
+  Two root causes rather than 74 separate fixes: `node:sqlite` returns
+  `Record<string, SQLOutputValue>` and an `interface` never gets an implicit
+  index signature, so `SampleRow`, `ConfigRow`, `VersionRow` and `NetConfig`
+  became object types and every `as unknown as` chain collapsed to one
+  assertion with one `SAFETY:` line; and a new `src/json.ts` decodes at the I/O
+  boundary, retiring all six `typeof` checks rather than exempting them. Review
+  caught a real waiver en route — retyping `json()`'s body to `ApiReply['body']`
+  satisfied the rule only because it matches a literal `unknown` keyword node
+  while the type still resolved to `unknown`; it is now `JsonValue`. 82 tests
+  unchanged; CI green. Its plan file was retired with the ticket, so this entry
+  carries no link.
 
 - 02 — net-collector-and-api: merged as #312. Ships `stacks/net/packages/server/`
   — a resident hourly `nettop` timer (decision 005, no launchd), ticket 01's

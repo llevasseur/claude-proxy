@@ -8,14 +8,17 @@ import { migrateNetDatabase, openNetDatabase, resolveNetDatabasePath, SCHEMA_VER
 const TABLES = ['sample', 'discontinuity', 'usage_day', 'config'] as const;
 
 function tableNames(db: DatabaseSync): string[] {
+  // SAFETY: the SELECT names `name`, a column sqlite_master always carries.
   const rows = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-    .all() as unknown as Array<{ name: string }>;
+    .all() as Array<{ name: string }>;
   return rows.map((row) => row.name);
 }
 
 function userVersion(db: DatabaseSync): number {
-  return (db.prepare('PRAGMA user_version').get() as unknown as { user_version: number }).user_version;
+  // SAFETY: `PRAGMA user_version` always answers exactly one row carrying that
+  // one integer column.
+  return (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
 }
 
 describe('openNetDatabase', () => {
@@ -46,7 +49,9 @@ describe('openNetDatabase', () => {
 
     const second = openNetDatabase(path);
     expect(userVersion(second)).toBe(1);
-    const row = second.prepare("SELECT value FROM config WHERE key = 'limitBytes'").get() as unknown as {
+    // SAFETY: the row was inserted above, and `value` is a NOT NULL TEXT column,
+    // so the SELECT answers exactly one row carrying it.
+    const row = second.prepare("SELECT value FROM config WHERE key = 'limitBytes'").get() as {
       value: string;
     };
     expect(row.value).toBe('1073741824');
@@ -79,9 +84,11 @@ describe('sample table shape (decision internet-spend 001)', () => {
     db.prepare(
       'INSERT INTO sample (timestamp, boot_epoch, name, pid, interface, bytes_in, bytes_out) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ).run(1_790_000_000_000, 42, 'Claude Helper (Renderer)', 901, 'en0', 1_000_000, 500_000);
+    // SAFETY: the INSERT above wrote the one sample row, and the SELECT names
+    // exactly the seven NOT NULL columns migration 001 declares.
     const row = db
       .prepare('SELECT timestamp, boot_epoch, name, pid, interface, bytes_in, bytes_out FROM sample')
-      .get() as unknown as {
+      .get() as {
       timestamp: number;
       boot_epoch: number;
       name: string;
@@ -106,7 +113,9 @@ describe('sample table shape (decision internet-spend 001)', () => {
     expect(() => db.prepare('INSERT INTO discontinuity (timestamp, kind) VALUES (?, ?)').run(1, 'meteor')).toThrow();
     db.prepare('INSERT INTO discontinuity (timestamp, kind) VALUES (?, ?)').run(1, 'boot');
     db.prepare('INSERT INTO discontinuity (timestamp, kind) VALUES (?, ?)').run(2, 'decrease');
-    const count = db.prepare('SELECT COUNT(*) AS count FROM discontinuity').get() as unknown as { count: number };
+    // SAFETY: `SELECT COUNT(*) AS count` always answers exactly one row holding
+    // that one integer column.
+    const count = db.prepare('SELECT COUNT(*) AS count FROM discontinuity').get() as { count: number };
     expect(count.count).toBe(2);
   });
 });
