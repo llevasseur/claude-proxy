@@ -42,6 +42,12 @@ async function getNetConfig(): Promise<NetConfig> {
     throw new NetServerUnreachableError(NET_API_BASE);
   }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  // SAFETY: the check above has established that net-server answered 2xx. `NetConfig`
+  // is transcribed in `../net-api` from what `stacks/net/packages/server/src/api.ts`
+  // returns for this route — `readNetConfig`, whose three fields are always present —
+  // so this names that shared declaration rather than claiming anything about the body.
+  // Every field is read through a `null` check below, so a stale server shape narrows
+  // to "unset" rather than to a wrong number.
   return (await response.json()) as NetConfig;
 }
 
