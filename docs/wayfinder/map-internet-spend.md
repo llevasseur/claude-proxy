@@ -19,35 +19,61 @@ slug: internet-spend
 > Ephemeral scaffolding, deleted when the wayfinder closes. The durable output is
 > the merged code and the repository's feature and spec docs.
 
-Decisions this campaign made are recorded as
-`docs/wayfinder/decision-internet-spend-001`–`005`, decided by `/dev`,
-unratified; 001 and 005 carry `needs-human: true`. Ticket 06 moves those five
-into `docs/adrs/`, where they survive this campaign's close
-([ADR 0067](../adrs/0067-campaign-decisions-live-in-the-adr-bundle.md)).
-Two further decisions were made while resuming the campaign and were written
-straight into the ADR bundle:
-[0066](../adrs/0066-a-campaign-clears-its-own-lint-debt.md) (`needs-human`) and
-[0067](../adrs/0067-campaign-decisions-live-in-the-adr-bundle.md).
+Every decision this campaign made lives in the ADR bundle, where it survives the
+campaign's close — ticket 06 moved the first five there
+([ADR 0067](../adrs/0067-campaign-decisions-live-in-the-adr-bundle.md)). All
+seven are `decided-by: /dev` and `ratified: false`; three carry
+`needs-human: true` and are the human's review list:
+
+- [0068](../adrs/0068-wire-bytes-and-per-interface-schema.md) — wire bytes, per-interface schema (**needs-human**)
+- [0069](../adrs/0069-delta-gap-and-day-semantics.md) — delta rule, gap and day semantics
+- [0070](../adrs/0070-period-boundaries.md) — period boundaries
+- [0071](../adrs/0071-agent-pattern-matching.md) — agent pattern matching
+- [0072](../adrs/0072-collector-residency.md) — collector residency (**needs-human**)
+- [0066](../adrs/0066-a-campaign-clears-its-own-lint-debt.md) — the campaign clears its own lint debt (**needs-human**)
+- [0067](../adrs/0067-campaign-decisions-live-in-the-adr-bundle.md) — decisions live in the ADR bundle
 
 ## Active tasks
 
 | # | Task | Plan | Branch | Status |
 |---|------|------|--------|--------|
-| 03 | internet-route-page | [internet-spend-03-internet-route-page](internet-spend-03-internet-route-page.md) | `task/internet-spend-03-internet-route-page` | in-progress |
-| 04 | overview-budget-meter | [internet-spend-04-overview-budget-meter](internet-spend-04-overview-budget-meter.md) | `task/internet-spend-04-overview-budget-meter` | todo |
-| 06 | relocate-decision-records | [internet-spend-06-relocate-decision-records](internet-spend-06-relocate-decision-records.md) | `task/internet-spend-06-relocate-decision-records` | in-progress |
+| 04 | overview-budget-meter | [internet-spend-04-overview-budget-meter](internet-spend-04-overview-budget-meter.md) | `task/internet-spend-04-overview-budget-meter` | in-progress |
 
 Dependencies: 02 depends on 01; 03 and 04 depend on 02 (for the API contract).
-Tickets 03 and 06 are both complete and open — PR #313 and PR #314 — and both
-were blocked from merging by the inherited `anti:slop` debt ticket 05 has now
-cleared. That is why each reads in-progress with no run behind it: each needs
-the campaign base merged in and CI re-run before it can land. Ticket 04 depends
-on 03 as well as 02: its budget meter links to `/internet`, and under the typed
-router that link does not typecheck until 03's route exists.
+Ticket 04 depends on 03 as well: its budget meter links to `/internet`, and
+under the typed router that link does not typecheck until 03's route exists —
+which it now does, so 04 is unblocked.
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- 06 — relocate-decision-records: merged as #314. Moves the campaign's five
+  decision records out of this directory — which is swept at close — into the
+  ADR bundle as `docs/adrs/0068`–`0072`, via `git mv` so history follows. Bodies
+  are byte-identical, each record's verbatim griller question included; only
+  frontmatter and the title heading changed shape. Both `needs-human` flags
+  survived on 0068 and 0072, and `AGENTS.md` plus two changelog links were
+  repointed. One judgement beyond the plan, accepted: `status: proposed` was
+  dropped too, since no ADR in the bundle carries a `status:` key, `ratified:
+  false` already encodes it, and each record's own Status section states it.
+  Its plan file was retired with the ticket, so this entry carries no link.
+
+- 03 — internet-route-page: merged as #313. The admin `/internet` page —
+  self-declared route, `net-api.ts` as its own fetch module (the shared
+  `src/api.ts` untouched), headline period total, daily stacked upload/download
+  bars with hole days drawn as nothing rather than fabricated zeroes, hatched
+  `ReferenceArea` bands over gap/decrease/boot spans, approximate agent share,
+  collector status line, on-page budget editor, and an explicit "net-server
+  unreachable" state. Two deviations from the plan, both recorded in the PR:
+  criterion 3 could not be met from `/api/summary` alone — that route's totals
+  are corpus-wide with no period-scoped figure, so the headline sums day buckets
+  inside `summary.period` from a second `/api/days` call and reads `—` rather
+  than `0` when the period has no samples; and criterion 1's "exactly one line
+  in `registry.ts`" is three, because a page carrying a rail station needs its
+  station line too. **No visual proof was captured** — it belongs to campaign
+  close. Its plan file was retired with the ticket, so this entry carries no
+  link.
 
 - 05 — net-anti-slop-debt: merged as #315. Clears all 74 `anti:slop` errors
   tickets 01 and 02 landed ungated, at root severity and with no waiver — no
