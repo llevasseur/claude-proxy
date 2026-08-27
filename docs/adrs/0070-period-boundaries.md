@@ -1,11 +1,10 @@
 ---
-type: decision
-title: "Decision internet-spend 003 — Short months clamp to the last day; UTC stored, local resolution"
+type: adr
+title: Short months clamp to the last day; UTC stored, local resolution
 description: Budget period boundaries under an anchored day-of-month reset, and the storage/resolution time split.
-label: wayfinder:decision
-map: map-internet-spend
-status: proposed
+tags: [net, budgets, time, aggregates]
 timestamp: 2026-08-25
+scope: net
 decided-by: /dev
 ratified: false
 wayfinder: internet-spend
@@ -13,7 +12,7 @@ grill-round: 3
 needs-human: false
 ---
 
-# Decision internet-spend 003 — Short months clamp to the last day; UTC stored, local resolution
+# Short months clamp to the last day; UTC stored, local resolution
 
 > **Status: proposed — NOT ratified by a human.** Proposed by the `/dev`
 > workflow running unattended.
