@@ -112,5 +112,7 @@ likely to collide.
 | Ox Alpha keeps its nested usage buckets, and the disjoint-bucket claim stays open | [0063-ox-alpha-keeps-its-nested-usage-buckets.md](0063-ox-alpha-keeps-its-nested-usage-buckets.md) |
 | Tokens do not aggregate across providers | [0064-tokens-do-not-aggregate-across-providers.md](0064-tokens-do-not-aggregate-across-providers.md) |
 | Cost and pricing_source are resolved at read time, never stored | [0065-cost-is-resolved-at-read-time.md](0065-cost-is-resolved-at-read-time.md) |
+| A campaign clears its own lint debt rather than merging red or waiving the rule | [0066-a-campaign-clears-its-own-lint-debt.md](0066-a-campaign-clears-its-own-lint-debt.md) |
+| A campaign's decision records live in the ADR bundle, not beside its map | [0067-campaign-decisions-live-in-the-adr-bundle.md](0067-campaign-decisions-live-in-the-adr-bundle.md) |
 | Legacy ADR identifier map | [legacy-map.md](legacy-map.md) |
 <!-- okq:index:end -->
