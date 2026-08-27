@@ -41,16 +41,25 @@ CREATE TABLE config (
 );
 `;
 
-const MIGRATIONS: Readonly<Record<number, string>> = {
+/** The migration ladder, keyed by the schema version each step arrives at. */
+interface MigrationLadder {
+  readonly [version: number]: string;
+}
+
+const MIGRATIONS: MigrationLadder = {
   1: MIGRATION_001,
 };
 
-interface VersionRow {
+// An object type rather than an interface, so it stays comparable to the
+// `Record<string, …>` row shape node:sqlite returns.
+type VersionRow = {
   readonly user_version: number;
-}
+};
 
 function userVersion(db: DatabaseSync): number {
-  return (db.prepare('PRAGMA user_version').get() as unknown as VersionRow).user_version;
+  // SAFETY: `PRAGMA user_version` always answers exactly one row carrying that
+  // one integer column, so the row is present and shaped as declared.
+  return (db.prepare('PRAGMA user_version').get() as VersionRow).user_version;
 }
 
 export function migrateNetDatabase(db: DatabaseSync): number {

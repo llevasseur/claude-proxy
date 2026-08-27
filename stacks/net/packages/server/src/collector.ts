@@ -112,12 +112,17 @@ export async function collectBatch(deps: CollectorDeps): Promise<CollectResult> 
   return { status: 'ok', timestamp, storedSamples, discontinuities };
 }
 
+/** A running collector timer; `stop` cancels it and is idempotent thereafter. */
+export interface CollectorHandle {
+  stop: () => void;
+}
+
 /**
  * The resident hourly timer (decision internet-spend 005): one process, one
  * database, single writer. Runs one batch immediately so a freshly started
  * server has coverage from its first minute, then wakes on the cadence.
  */
-export function startCollector(deps: CollectorDeps, options: { intervalMs?: number } = {}): { stop: () => void } {
+export function startCollector(deps: CollectorDeps, options: { intervalMs?: number } = {}): CollectorHandle {
   const intervalMs = options.intervalMs ?? COLLECT_INTERVAL_MS;
   void collectBatch(deps).catch(() => undefined);
   const timer = setInterval(() => void collectBatch(deps).catch(() => undefined), Math.max(intervalMs, 1));
