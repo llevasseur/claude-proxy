@@ -35,18 +35,35 @@ seven are `decided-by: /dev` and `ratified: false`; three carry
 
 ## Active tasks
 
-| # | Task | Plan | Branch | Status |
-|---|------|------|--------|--------|
-| 04 | overview-budget-meter | [internet-spend-04-overview-budget-meter](internet-spend-04-overview-budget-meter.md) | `task/internet-spend-04-overview-budget-meter` | in-progress |
+None — every ticket has landed and the campaign is ready to close.
 
-Dependencies: 02 depends on 01; 03 and 04 depend on 02 (for the API contract).
-Ticket 04 depends on 03 as well: its budget meter links to `/internet`, and
-under the typed router that link does not typecheck until 03's route exists —
-which it now does, so 04 is unblocked.
+This campaign carries no `zz` plan-retirement ticket, because it retires each
+plan at that ticket's own completion rather than sweeping them at the end. All
+six plans are already gone; only this map remains for the close to retire.
 
 ## Completed
 
 <!-- newest first; one entry appended per task completion -->
+
+- 04 — overview-budget-meter: merged as #316. The Overview internet section —
+  a usage-limit meter when `limitBytes` and `resetDay` are both configured, a
+  14-day daily-total chart when they are not, an inline "net-server unreachable"
+  line when the server is down, and a link through to `/internet`. Ships the
+  campaign's durable feature doc `docs/features/internet-usage-meter.md`, which
+  cites ADRs 0068–0072 rather than restating them. All three verification
+  scenarios were run in a browser against a live net-server holding 43 real
+  samples: the fallback chart drew nothing for the 13 sampleless days rather
+  than zero-height bars; the configured meter read 9.9 MB, `2026-08-01 →
+  2026-08-31 (PDT)`, 20% of 50.0 MB, matching what `/internet` showed
+  independently; and with net-server stopped every existing Overview meter
+  rendered unchanged with no console errors.
+  **Deviation:** the plan asked for the meter "beside the existing Overview
+  meters", and it renders instead as its own full-width card immediately after
+  the usage grid. Placing it inside that grid would have coupled it to the
+  claude usage data path, whose section returns early when usage data is absent
+  — so the internet card would have disappeared whenever the *claude* usage read
+  failed, which criterion 3 forbids. Adjacency was traded for isolation.
+  Its plan file was retired with the ticket, so this entry carries no link.
 
 - 06 — relocate-decision-records: merged as #314. Moves the campaign's five
   decision records out of this directory — which is swept at close — into the
