@@ -16,7 +16,6 @@
 | Decision 004 — Correctness guardrails for serving cached replies | [decision-004-guardrails.md](decision-004-guardrails.md) |
 | Internet Spend 03 — admin /internet route page | [internet-spend-03-internet-route-page.md](internet-spend-03-internet-route-page.md) |
 | Internet Spend 04 — Overview budget meter | [internet-spend-04-overview-budget-meter.md](internet-spend-04-overview-budget-meter.md) |
-| Internet Spend 05 — clear the stacks/net anti-slop debt | [internet-spend-05-net-anti-slop-debt.md](internet-spend-05-net-anti-slop-debt.md) |
 | Internet Spend 06 — move the campaign's decision records into the ADR bundle | [internet-spend-06-relocate-decision-records.md](internet-spend-06-relocate-decision-records.md) |
 | Wayfinder — Alive View on the sessions tab | [map-alive-view-mote.md](map-alive-view-mote.md) |
 | Wayfinder — Internet Spend meter | [map-internet-spend.md](map-internet-spend.md) |
