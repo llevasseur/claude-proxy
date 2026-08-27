@@ -71,10 +71,8 @@ export function OverviewPage() {
         />
 
         <UsageSection data={usage.data} isLoading={usage.isLoading} error={usage.error} />
-        {/* net-server is a different process on a different port, and is frequently not
-            running at all. Every read of it is sealed inside this card — it owns its own
-            queries and renders its own failures — so nothing about it can reach the
-            meters above or the sections below. */}
+        {/* Every net-server read is sealed inside this card — its own queries, its own
+            failures — so nothing about it reaches the meters above or the sections below. */}
         <InternetSpendCard />
         {/* Both queries gate the skeleton: the tiles carry a mini chart drawn from the
             trends window, so landing them separately would grow the row twice. */}

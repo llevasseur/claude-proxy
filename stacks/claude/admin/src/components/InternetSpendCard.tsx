@@ -12,26 +12,20 @@ import {
 } from '../net-api';
 import { InternetDaysChart } from './InternetDaysChart';
 
-/** The fallback window, in days: what the Overview shows when no budget is configured. */
+/** Fallback window, in days, when no budget is configured. */
 const FALLBACK_WINDOW = 14;
 
-/** `/api/days` clamps `window` here too; asking for more than a year is asking for nothing. */
+/** `/api/days` clamps `window` here too. */
 const MAX_WINDOW = 366;
 
 const MS_PER_DAY = 86_400_000;
 
-/** Past this share of the limit the budget is spent, not merely close. */
+/** Past this share of the limit the budget reads as spent, not merely close. */
 const EXHAUSTED_SHARE = 0.995;
 
 /**
- * `GET /api/config`.
- *
- * `../net-api` owns the net-server client and already covers `/api/summary`,
- * `/api/days` and the *write* half of `/api/config`, but it exports no reader for
- * this route. It is declared here rather than added there because that module
- * belongs to the `/internet` page's ticket; everything else this card needs —
- * the base URL, the error classes, the response types — is imported from it rather
- * than restated.
+ * `GET /api/config`. Declared here because `../net-api` covers every other net-server
+ * route but exports no reader for this one.
  */
 async function getNetConfig(): Promise<NetConfig> {
   let response: Response;
@@ -42,23 +36,16 @@ async function getNetConfig(): Promise<NetConfig> {
     throw new NetServerUnreachableError(NET_API_BASE);
   }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  // SAFETY: the check above has established that net-server answered 2xx. `NetConfig`
-  // is transcribed in `../net-api` from what `stacks/net/packages/server/src/api.ts`
-  // returns for this route — `readNetConfig`, whose three fields are always present —
-  // so this names that shared declaration rather than claiming anything about the body.
-  // Every field is read through a `null` check below, so a stale server shape narrows
-  // to "unset" rather than to a wrong number.
+  // SAFETY: a 2xx from net-server, whose `readNetConfig` always returns `NetConfig`'s
+  // three fields. Every field is read through a `null` check below, so a stale server
+  // shape narrows to "unset" rather than to a wrong number.
   return (await response.json()) as NetConfig;
 }
 
 const dayParts = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
 
-/*
- * The three helpers below are deliberately duplicated from `routes/internet.tsx`
- * rather than shared: that file is another ticket's, and a shared home for them
- * would have to be `net-api.ts`, which is the same ticket's. They are small,
- * pure, and each carries the reasoning it encodes.
- */
+/* The three helpers below are duplicated from `routes/internet.tsx`; both that file
+ * and the only shared home for them, `net-api.ts`, belong to another ticket. */
 
 /** A UTC epoch as the viewer's local calendar day, `YYYY-MM-DD` — the form `/api/days` keys on. */
 function localDay(epochMs: number): string {
@@ -76,12 +63,9 @@ function daySpanInclusive(from: string, to: string): number {
 }
 
 /**
- * Wire bytes attributed to a day inside the period.
- *
- * `/api/summary.totals` is corpus-wide and answers a different question, so the
- * period's figure is summed from the day buckets instead. `null` when the period
- * holds no known day at all — the honest answer there is "nothing recorded", where
- * a `0` would read as "nothing sent".
+ * Wire bytes attributed to the days inside the period, summed from the day buckets
+ * rather than read from the corpus-wide `/api/summary.totals`. `null` when the period
+ * holds no known day — "nothing recorded", where `0` would read as "nothing sent".
  */
 function periodTotal(days: readonly NetDay[], period: NetPeriod): number | null {
   let total = 0;
@@ -95,8 +79,8 @@ function periodTotal(days: readonly NetDay[], period: NetPeriod): number | null 
 }
 
 /**
- * How much of the period has elapsed, as a fraction. The period is inclusive at both
- * ends and its days are the unit, so a period's first day is already partly spent.
+ * How much of the period has elapsed, as a fraction. Inclusive at both ends with days
+ * as the unit, so the first day counts as spent.
  */
 function periodElapsed(period: NetPeriod, today: string): number {
   const span = daySpanInclusive(period.start, period.end);
@@ -105,10 +89,8 @@ function periodElapsed(period: NetPeriod, today: string): number {
 }
 
 /**
- * The tone classes here mean *pace*, not fill — `.usage-meter.tone-*` is shared with
- * the allowance gauges above, where a nearly-full bar late in a window is fine and a
- * modest one early on is not. A budget period has that same shape, so the read is
- * spend measured against how much of the period has gone.
+ * Tone means *pace*, not fill: `.usage-meter.tone-*` is shared with the allowance
+ * gauges above, so spend is read against how much of the period has gone.
  */
 function budgetTone(share: number, elapsed: number): 'good' | 'signal' | 'warn' | 'bad' {
   if (share >= EXHAUSTED_SHARE) return 'bad';
@@ -128,25 +110,21 @@ const TONE_LABEL = {
 /**
  * Internet wire-byte spend, on the Overview.
  *
- * Config-driven: a limit *and* a reset day together make the period a budget cycle
- * worth metering, and this renders that meter. With either unset there is no budget
- * to be near, so it falls back to showing that the machine is using the internet at
- * all — daily totals over the last fortnight.
+ * A limit *and* a reset day together draw the budget meter; with either unset it falls
+ * back to daily totals over the last fortnight.
  *
- * Every net-server read is confined to this component. It is a different server on a
- * different port from the one the rest of the Overview reads, and it is frequently
- * not running at all, so none of its query state is allowed to reach the page: on any
- * failure this returns a single note and the meters above are untouched.
+ * Every net-server read is confined to this component — that server is frequently not
+ * running, so on any failure this renders a single note and the meters above are
+ * untouched.
  */
 export function InternetSpendCard() {
-  // `/api/config` is the cheap route — three settings, no corpus scan — so which of
-  // the two renderings applies is settled without waiting on `/api/summary`, which
-  // recomputes the whole spend model at read time.
+  // The cheap route — three settings, no corpus scan — so the branch is settled without
+  // waiting on `/api/summary`, which recomputes the spend model at read time.
   const config = useQuery({ queryKey: ['net', 'config'], queryFn: getNetConfig, retry: false });
   const budgeted = config.data !== undefined && config.data.limitBytes !== null && config.data.resetDay !== null;
 
-  // Only the budgeted branch needs the summary, and only for the period bounds: the
-  // reset day the period is derived from lives on the server's clock, not this one.
+  // Only the budgeted branch needs the summary, and only for the period bounds, which
+  // are derived on the server's clock rather than this one.
   const summary = useQuery({
     queryKey: ['net', 'summary'],
     queryFn: getNetSummary,
@@ -155,9 +133,8 @@ export function InternetSpendCard() {
   });
 
   const period = summary.data?.period ?? null;
-  // The period is asked for by its own span rather than sliced out of the fallback's
-  // fortnight: a reset day far enough behind puts the period's start outside 14 days,
-  // and the headline must not quietly shrink to the window that happens to be fetched.
+  // Sized to the period rather than sliced out of the fallback fortnight: a reset day
+  // far enough behind puts the period's start outside 14 days.
   const dayWindow =
     budgeted && period ? Math.min(MAX_WINDOW, daySpanInclusive(period.start, localDay(Date.now()))) : FALLBACK_WINDOW;
   const days = useQuery({
@@ -170,8 +147,7 @@ export function InternetSpendCard() {
 
   const error = config.error ?? summary.error ?? days.error;
   if (error) return <SectionNote error={error} />;
-  // Nothing yet, or nothing worth a box: the card appears when its data lands rather
-  // than reserving a slot the Overview would otherwise jump around.
+  // No slot is reserved while loading; the card appears when its data lands.
   if (!config.data || !days.data) return null;
 
   if (budgeted && period && config.data.limitBytes !== null) {
@@ -181,12 +157,10 @@ export function InternetSpendCard() {
 }
 
 /**
- * The one line a failed net-server read is allowed to put on this page, in the same
- * shape the usage meters use for their own degraded state.
- *
- * Unreachable is named specifically because it means something different from an
- * error: the collector is a timer inside that process (ADR 0072), so a server that is
- * down is not withholding figures — there are none for that interval.
+ * The one line a failed net-server read may put on this page, in the shape the usage
+ * meters use for their own degraded state. Unreachable is named specifically: the
+ * collector is a timer inside that process (ADR 0072), so a server that is down has no
+ * figures for the interval rather than withholding them.
  */
 function SectionNote({ error }: { error: unknown }) {
   if (error instanceof NetServerUnreachableError) {
@@ -200,9 +174,8 @@ function SectionNote({ error }: { error: unknown }) {
 }
 
 /**
- * Bytes spent this period against the configured limit, with the period it is a total
- * of named. The bar is decorative and the figures beside it carry the reading, which
- * is how the allowance gauges above handle the same thing.
+ * Bytes spent this period against the configured limit, with the period named. The bar
+ * is decorative; the figures beside it carry the reading.
  */
 function BudgetMeter({ limitBytes, period, days }: { limitBytes: number; period: NetPeriod; days: readonly NetDay[] }) {
   const total = periodTotal(days, period);
@@ -249,8 +222,7 @@ function BudgetMeter({ limitBytes, period, days }: { limitBytes: number; period:
 }
 
 /**
- * No budget set, so there is no meter to draw — but the corpus still has something to
- * say, and a fortnight of daily totals says it without inventing a ceiling to measure
+ * No budget set: a fortnight of daily totals, without inventing a ceiling to measure
  * against.
  */
 function FallbackChart({ days }: { days: readonly NetDay[] }) {

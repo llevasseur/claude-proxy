@@ -3,7 +3,7 @@ import { fmtBytes } from '../format';
 import { isJsonNumber } from '../json';
 import type { NetDay } from '../net-api';
 
-/** Plot height, in px. Overview scale — about a third of the `/internet` page's own chart. */
+/** Plot height, in px — Overview scale, about a third of the `/internet` chart. */
 const CHART_HEIGHT = 110;
 
 /** One bar's day. */
@@ -17,10 +17,8 @@ interface MiniRow {
 /**
  * `/api/days` answers newest first; a chart reads left to right.
  *
- * A hole becomes `null` rather than `0`. A zero-height bar would be a claim that
- * nothing crossed the wire that day, where the only thing known is that nothing was
- * recorded — the collector runs solely while net-server does (ADR 0072), so an
- * unattended machine leaves holes rather than quiet days (ADR 0069).
+ * A hole becomes `null` rather than `0`: the collector runs only while net-server does
+ * (ADR 0072), so an unattended machine leaves holes rather than quiet days (ADR 0069).
  */
 function toRows(days: readonly NetDay[]): MiniRow[] {
   return [...days].reverse().map((day) => ({
@@ -69,10 +67,8 @@ function DayTooltip({
 }
 
 /**
- * Daily wire-byte totals over a short window, as one bar per local calendar day.
- *
- * Download and upload are summed into a single bar rather than stacked: this is the
- * Overview's glance at internet activity, and the split belongs on `/internet`.
+ * Daily wire-byte totals over a short window, one bar per local calendar day. Download
+ * and upload are summed into a single bar; the split belongs on `/internet`.
  */
 export function InternetDaysChart({ days }: { days: readonly NetDay[] }) {
   const rows = toRows(days);
@@ -88,8 +84,8 @@ export function InternetDaysChart({ days }: { days: readonly NetDay[] }) {
   return (
     <div style={{ height: CHART_HEIGHT }}>
       <ResponsiveContainer width='100%' height='100%'>
-        {/* Off for the same reason the other plots turn it off: recharts otherwise
-            marks the plot surface `tabIndex=0`. */}
+        {/* Off as on the other plots: recharts otherwise marks the plot surface
+            `tabIndex=0`. */}
         <BarChart accessibilityLayer={false} data={rows} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray='3 3' stroke='var(--border)' vertical={false} />
           <XAxis
