@@ -1,11 +1,10 @@
 ---
-type: decision
-title: "Decision internet-spend 001 — The headline counts wire bytes, stored per interface"
+type: adr
+title: The headline counts wire bytes, stored per interface
 description: What counts as an internet byte for stacks/net — physical interfaces only, selected at read time over per-(process,interface) raw rows.
-label: wayfinder:decision
-map: map-internet-spend
-status: proposed
+tags: [net, collector, storage, interfaces]
 timestamp: 2026-08-25
+scope: net
 decided-by: /dev
 ratified: false
 wayfinder: internet-spend
@@ -13,7 +12,7 @@ grill-round: 1
 needs-human: true
 ---
 
-# Decision internet-spend 001 — The headline counts wire bytes, stored per interface
+# The headline counts wire bytes, stored per interface
 
 > **Status: proposed — NOT ratified by a human.** This decision was proposed by
 > the `/dev` workflow running unattended and has not been ratified. It defines

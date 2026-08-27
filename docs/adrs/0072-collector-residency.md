@@ -1,11 +1,10 @@
 ---
-type: decision
-title: "Decision internet-spend 005 — The collector is a timer inside net-server; LaunchAgent out of scope"
+type: adr
+title: The collector is a timer inside net-server; LaunchAgent out of scope
 description: Where the hourly wake lives, the fourth zellij layout, and the deployment story left to the operator.
-label: wayfinder:decision
-map: map-internet-spend
-status: proposed
+tags: [net, collector, deployment, zellij]
 timestamp: 2026-08-25
+scope: net
 decided-by: /dev
 ratified: false
 wayfinder: internet-spend
@@ -13,7 +12,7 @@ grill-round: 5
 needs-human: true
 ---
 
-# Decision internet-spend 005 — The collector is a timer inside net-server; LaunchAgent out of scope
+# The collector is a timer inside net-server; LaunchAgent out of scope
 
 > **Status: proposed — NOT ratified by a human.** Proposed by the `/dev`
 > workflow running unattended. Whether this Mac should have a launchd-owned

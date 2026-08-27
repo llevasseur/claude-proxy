@@ -1,11 +1,10 @@
 ---
-type: decision
-title: "Decision internet-spend 002 — One delta rule, typed discontinuities, gap and quiet split"
+type: adr
+title: One delta rule, typed discontinuities, gap and quiet split
 description: The shared write/read delta rule for cumulative counter series, how decreases, reboots, long gaps and known-quiet spans classify, and how a day's label aggregates.
-label: wayfinder:decision
-map: map-internet-spend
-status: proposed
+tags: [net, deltas, discontinuities, aggregates]
 timestamp: 2026-08-25
+scope: net
 decided-by: /dev
 ratified: false
 wayfinder: internet-spend
@@ -13,7 +12,7 @@ grill-round: 2
 needs-human: false
 ---
 
-# Decision internet-spend 002 — One delta rule, typed discontinuities, gap and quiet split
+# One delta rule, typed discontinuities, gap and quiet split
 
 > **Status: proposed — NOT ratified by a human.** Proposed by the `/dev`
 > workflow running unattended. It is the scoped hole-semantics requirement

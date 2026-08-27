@@ -15,7 +15,7 @@ campaign absorbed them, each still its own set of packages under `stacks/<name>/
 
 The net stack's hourly collector is a timer inside its server process, not a second
 process — a LaunchAgent or any always-on machine-side component is deliberately out of
-scope ([decision internet-spend 005](docs/wayfinder/decision-internet-spend-005-collector-residency.md)),
+scope ([decision internet-spend 005](docs/adrs/0072-collector-residency.md)),
 so data exists only while net-server runs.
 
 Every package is scoped `@agent-proxy/<stack>-<package>` — `@agent-proxy/claude-server`,
